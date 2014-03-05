@@ -1,0 +1,12 @@
+ObjectFiles = \
+num_vars.o \
+var_ops.o \
+output_ops.o \
+plasma_vars.o \
+file_ops.o \
+fourier_ops.o \
+driver_rich.o \
+driver.o \
+PB3D.o \
+test.o \
+time.o \

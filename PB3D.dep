@@ -1,0 +1,53 @@
+test.o : \
+    num_vars.o \
+    fourier_ops.o \
+    var_ops.o
+
+PB3D.o : \
+    num_vars.o \
+    plasma_vars.o \
+    file_ops.o \
+    driver.o \
+    test.o \
+    var_ops.o \
+    time.o
+
+driver.o : \
+    num_vars.o \
+    plasma_vars.o \
+    driver_rich.o \
+    file_ops.o \
+    var_ops.o 
+
+driver_rich.o : \
+    num_vars.o \
+    file_ops.o \
+    var_ops.o
+
+output_ops.o : \
+    num_vars.o \
+    var_ops.o \
+    file_ops.o
+
+fourier_ops.o : \
+    file_ops.o \
+    num_vars.o
+
+file_ops.o : \
+    num_vars.o \
+    var_ops.o
+
+plasma_vars.o : \
+    num_vars.o \
+    file_ops.o \
+    fourier_ops.o \
+    var_ops.o
+
+var_ops.o : \
+    num_vars.o
+
+time.o : \
+    num_vars.o \
+    var_ops.o 
+
+num_vars.o : \

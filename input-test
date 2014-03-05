@@ -1,0 +1,7 @@
+&INPUTDATA
+    format_out = 2
+    style = 1
+    n_theta = 10
+    n_zeta = 10
+/
+

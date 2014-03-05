@@ -1,0 +1,53 @@
+\documentclass[pdftex,12pt,a4paper]{report}
+
+% standard packages
+\usepackage{graphicx,amsmath,url}
+\usepackage{color}
+
+
+% for easier formatting of the integer variable type
+\newcommand{\iv}{(\textit{integer})}
+% for easier formatting of the real variable type
+\newcommand{\rv}{(\textit{real})}
+% for easier formatting of the logical variable type
+\newcommand{\lv}{(\textit{logical})}
+% for easier formatting of the character variable type
+\newcommand{\cv}{(\textit{character})}
+
+\begin{document}
+\title{Peeling Ballooning in 3D - Documentation}
+\date{2014}
+\author{Toon Weyens\\ Departamento de F\'isica, Universidad Carlos III de Madrid}
+
+
+\maketitle
+
+\chapter{Variables}
+
+\section{PB3D.f90}
+
+\begin{itemize}
+ \item \texttt{numargs} \iv: number of arguments passed when calling the program
+ \item \texttt{iseq} \iv: index running over all the passed arguments
+ \item \texttt{command\_arg(10)} \cv: command line arguments
+ \item \texttt{prog\_name} \cv: name of program (PB3D), used when displaying info with \texttt{-h}
+\end{itemize}
+
+\section{\texttt{driver\_rich.f90}}
+
+\section{plasma\_vars.f90}
+
+\section{num\_vars.f90}
+
+\begin{itemize}
+ \item \texttt{dp} \iv: kind of double precision
+ \item \texttt{dx} \rv: discretization parameter
+ \item \texttt{rel\_prec} \rv: relative precision criterion for convergence
+ \item \texttt{style} \iv: determines method used for minimization
+  \begin{itemize}
+   \item 1 [\texttt{def}]: Euler-Lagrange minimization of energy, finite differences and Richardson's method
+  \end{itemize}
+
+\end{itemize}
+
+\end{document}
