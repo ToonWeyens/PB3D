@@ -10,8 +10,11 @@ LIB     = libstell.a
 LIB_DIR = /home/toon/Documents/School/PHD/Stellinstal/LIBSTELL
 FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fcheck=all -fbacktrace # for debugging
 #FLAGS = -O3 ! for optimization
+COMP_LINK_1 = /usr/bin/gfortran # gfortran
+COMP_LINK_2 = /usr/bin/f95 # f95
+COMP_LINK_3 = /usr/local/solarisstudio12.3/bin/f95 # oracle f95
 
-COMPILE = /usr/bin/gfortran -I/usr/include -I$(HOME_BIN)/libstell_dir # -I$(VISIT_DIR)/include #-I/usr/lib/fortran/modules/plplot -ffixed-form
+COMPILE = $(COMP_LINK_1) -I/usr/include -I$(HOME_BIN)/libstell_dir # -I$(VISIT_DIR)/include #-I/usr/lib/fortran/modules/plplot -ffixed-form
 #COMPILE_FREE = gfortran -I/usr/include -I/usr/lib/fortran/modules/plplot -ffree-form
 FFILE   = '$*''.f'
 CFILE   = '$*''.c'

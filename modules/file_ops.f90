@@ -363,7 +363,7 @@ contains
         integer, intent(out) :: i_unit                                          ! will hold the file handle
 
         character(len=max_str_ln) :: mod_file_name                               ! modified file name
-        integer :: id, jdummy, istat
+        integer :: id, jd, istat
 
         ! try to open the given name
         i_unit = n_seq_0                                                        ! start at the number indicated by n_seq_0
@@ -376,8 +376,8 @@ contains
             &'" not found. Trying combinations')
         call lvl_ud(1)
         do id = 1, size(exts)                                                   ! iterate over all possible extensions
-            do jdummy = 1, size(con_symb)                                       ! iterate over all possible connectors
-                mod_file_name = trim(exts(id))//trim(con_symb(jdummy))&
+            do jd = 1, size(con_symb)                                           ! iterate over all possible connectors
+                mod_file_name = trim(exts(id))//trim(con_symb(jd))&
                     &//trim(file_name) 
                 if (present(ext)) mod_file_name = trim(mod_file_name) &         ! if an extension is provided, append it
                     &// trim(ext)

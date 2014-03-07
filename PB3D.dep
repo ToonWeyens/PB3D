@@ -1,7 +1,8 @@
 test.o : \
     num_vars.o \
     fourier_ops.o \
-    var_ops.o
+    var_ops.o \
+    metric_ops.o
 
 PB3D.o : \
     num_vars.o \
@@ -22,7 +23,10 @@ driver.o : \
 driver_rich.o : \
     num_vars.o \
     file_ops.o \
-    var_ops.o
+    var_ops.o \
+    output_ops.o \
+    grid_vars.o \
+    metric_ops.o
 
 output_ops.o : \
     num_vars.o \
@@ -42,6 +46,19 @@ plasma_vars.o : \
     file_ops.o \
     fourier_ops.o \
     var_ops.o
+
+grid_vars.o : \
+    num_vars.o \
+    output_ops.o \
+    plasma_vars.o
+
+metric_ops.o : \
+    num_vars.o \
+    plasma_vars.o \
+    fourier_ops.o \
+    output_ops.o \
+    var_ops.o \
+    grid_vars.o 
 
 var_ops.o : \
     num_vars.o

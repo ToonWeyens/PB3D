@@ -1,20 +1,20 @@
 ! Test some routines and functions
 module test
     use num_vars, only: dp, max_str_ln
-    use output_ops, only: writo, lvl_ud
+    use output_ops, only: writo, lvl_ud, print_ar_1, print_ar_2
     use var_ops, only: strh2l
     use time, only: start_time, stop_time
 
     implicit none
     private
-    public test_repack, test_write_out, test_mesh_cs, test_calc_metric
+    public test_repack, test_write_out, test_mesh_cs, test_metric_C2V
 
 contains
     subroutine test_repack()
         ! VMEC variable has structure (1:mnmax, 1:n_r)
         ! output variable should have (1:n_r, 0:mpol-1, -ntor:ntor)
         use fourier_ops, only: repack
-        integer :: n_rB, mpolB, ntorB, mnmaxB, nfpB
+        integer :: n_rB, mpolB, ntorB, mnmaxB
         real(dp), allocatable :: xmB(:), xnB(:)
         real(dp), allocatable :: varinB(:,:)
         real(dp), allocatable :: varoutB(:,:,:)
@@ -36,10 +36,9 @@ contains
                 
             xmB = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
             xnB = [0.0, 1.0, 2.0, 3.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0]
-            nfpB = 1
             varinB(:,1) = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
             varinB(:,2) = 2*varinB(:,1)
-            varoutB = repack(varinB,mnmaxB,n_rB,mpolB,ntorB,xmB,xnB/nfpB)
+            varoutB = repack(varinB,mnmaxB,n_rB,mpolB,ntorB,xmB,xnB)
                 
             !write(*,*) 'varinB(:,1) = ', varinB(:,1)
             !write(*,*) 'varinB(:,2) = ', varinB(:,2)
@@ -73,7 +72,7 @@ contains
         use fourier_ops, only: mesh_cs
         use output_ops, only: print_ar_2
         use num_vars, only: pi
-        use plasma_vars, only: mpol, ntor, nfp
+        use plasma_vars, only: mpol, ntor
      
         real(dp), allocatable :: output(:,:,:)
         real(dp) :: theta, zeta
@@ -87,15 +86,15 @@ contains
                 call writo('Testing write_out')
                 call lvl_ud(1)
                 
-                write(*,'(A)',advance='no') 'mpol, ntor, nfp = ' 
-                read(*,*) mpol, ntor, nfp
+                write(*,'(A)',advance='no') 'mpol, ntor = ' 
+                read(*,*) mpol, ntor
                 
                 write(*,'(A)',advance='no') 'theta, zeta (*pi) = ' 
                 read(*,*) theta, zeta
                 theta = pi*theta
                 zeta = pi*zeta
                 
-                output =  mesh_cs(mpol,ntor,nfp,theta,zeta)
+                output =  mesh_cs(mpol,ntor,theta,zeta)
                 write(*,*) 'size mesh = ', size(output,2), size(output,3)
                 write(*,*) 'mesh_cs(:,:,1) = '
                 call print_ar_2(output(:,:,1))
@@ -109,112 +108,107 @@ contains
         end do
     end subroutine
 
-    subroutine test_calc_metric()
-        use plasma_vars, only: calc_metric, n_r, &
-            &hrr, hzz, htt, htz, hrt, hrz, grr, gzz, gtt, gtz, grt, grz, jac
-        use num_vars, only: n_theta, n_zeta, dp
-        use var_ops, only: mat_mult, mat_sub
-        use output_ops, only: print_ar_2, write_out
+    subroutine test_metric_C2V()
+        use num_vars, only: pi
+        use metric_ops, only: metric_C, metric_C2V, metric_V, &
+            &C2V_up, C2V_dn, jac_V, g_V, h_V
+        use grid_vars, only: calc_ang_mesh, calc_RZl, &
+            &n_theta, n_zeta, theta, zeta
+        use plasma_vars, only: n_r
+        use var_ops, only: i2str, r2strt, mat_mult, det
         
+        real(dp) :: min_theta, max_theta, min_zeta, max_zeta
+        real(dp) :: C2V_mult(3,3)
+        real(dp) :: u_mat(3,3), diff_mat(3,3)                                   ! unity 3x3 matrix, difference matrix with unity_mat
+        integer :: max_index(3)                                                 ! index of maximum difference
+        real(dp) :: diff_max                                                    ! maximum deviation of unity matrix
+        real(dp) :: g_J, h_J                                                    ! jacobian calculated from g and h
+        integer :: max_J_index(2,3)                                             ! index of maximum difference 
+        real(dp) :: diff_J_max(2)                                               ! maximum of difference between g_J, h_J and jac_V
         integer :: id, jd, kd
-        real(dp) :: g(3,3), h(3,3), g_max(3,3,2), h_max(3,3,2)                  ! lower and upper metric matrix at a 3D point, value at max diff
-        real(dp) :: gh(3,3), gh_max(3,3)                                        ! lower metric matrice * upper metric matrix, value at max diff
-        real(dp) :: hg(3,3), hg_max(3,3)                                        ! upper metric matrice * lower metric matrix, value at max diff
-        real(dp) :: u_mat(3,3), diff_mat(3,3,2)                                 ! unity 3x3 matrix, difference matrix of gh (of hg) - unity_mat
-        real(dp) :: diff(n_theta,n_zeta,n_r,2)                                  ! maximum value of difference matrix as function of theta, zeta, r
-        integer :: max_index(3,2)                                               ! index of maximum difference
         
-        if(test_this('calc_metric')) then
-            h = 0.0_dp
-            g = 0.0_dp
-            u_mat = 0.0_dp
-            u_mat(1,1) = 1.0_dp
-            u_mat(2,2) = 1.0_dp
-            u_mat(3,3) = 1.0_dp
-            diff = 0.0_dp
-            max_index = 0
+        if(test_this('metric_C2V')) then
+            call writo('test whether we have C2V_dn*C2V_up^T = 1')
+            call lvl_ud(1)
             
-            do id = 2,n_theta
-                do jd = 2,n_zeta
-                    do kd = 2, n_r-1                                            ! exclude the values where Jac = 0
-                        g(1,1) = grr(id,jd,kd)
-                        g(1,2) = grt(id,jd,kd)
-                        g(1,3) = grz(id,jd,kd)
-                        g(2,1) = grt(id,jd,kd)
-                        g(2,2) = gtt(id,jd,kd)
-                        g(2,3) = gtz(id,jd,kd)
-                        g(3,1) = grz(id,jd,kd)
-                        g(3,2) = gtz(id,jd,kd)
-                        g(3,3) = gzz(id,jd,kd)
-                        h(1,1) = hrr(id,jd,kd)
-                        h(1,2) = hrt(id,jd,kd)
-                        h(1,3) = hrz(id,jd,kd)
-                        h(2,1) = hrt(id,jd,kd)
-                        h(2,2) = htt(id,jd,kd)
-                        h(2,3) = htz(id,jd,kd)
-                        h(3,1) = hrz(id,jd,kd)
-                        h(3,2) = htz(id,jd,kd)
-                        h(3,3) = hzz(id,jd,kd)
-                        gh = mat_mult(g,h)
-                        hg = mat_mult(h,g)
-                        
-                        diff_mat(:,:,1) = abs(mat_sub(u_mat,gh))
-                        diff_mat(:,:,2) = abs(mat_sub(u_mat,hg))
-                        if (maxval(diff_mat(:,:,1)).gt.maxval(diff(:,:,:,1))) &
-                            then
-                            max_index(:,1) = [id, jd, kd]
-                            g_max(:,:,1) = g
-                            h_max(:,:,1) = h
-                            gh_max = gh
+            n_theta = 10; min_theta = 0; max_theta = 2*pi
+            n_zeta = 10; min_zeta = 0; max_zeta = 2*pi
+            theta = calc_ang_mesh(n_theta, min_theta, max_theta)
+            zeta = calc_ang_mesh(n_zeta, min_zeta, max_zeta)
+            
+            ! calculate the cylindrical variables R and Z and derivatives
+            call calc_RZl
+            
+            ! calculate the metrics in the cylindrical coordinate system
+            call metric_C
+            
+            ! calculate the transformation matrix C(ylindrical) -> V(mec)
+            call metric_C2V
+            
+            ! calculate C2V_dn * C2V_up^T and check if it's equal to 1
+            u_mat = 0.0_dp
+            u_mat(1,1) = 1.0_dp; u_mat(2,2) = 1.0_dp; u_mat(3,3) = 1.0_dp
+            max_index = 0
+            diff_max = 0.0_dp
+            do kd = 1,n_r
+                do jd = 1,n_zeta
+                    do id = 1,n_theta
+                        C2V_mult = mat_mult(C2V_up(id,jd,kd,:,:),&
+                            &transpose(C2V_dn(id,jd,kd,:,:)))
+                        diff_mat = C2V_mult - u_mat
+                        if (maxval(diff_mat).gt.diff_max) then
+                            max_index = [id,jd,kd]
+                            diff_max = maxval(diff_mat)
                         end if
-                        diff(id,jd,kd,1) = maxval(diff_mat(:,:,1))
-                        if (maxval(diff_mat(:,:,2)).gt.maxval(diff(:,:,:,2))) &
-                            then
-                            max_index(:,2) = [id, jd, kd]
-                            g_max(:,:,2) = g
-                            h_max(:,:,2) = h
-                            hg_max = hg
-                        end if
-                        diff(id,jd,kd,2) = maxval(diff_mat(:,:,2))
                     end do
                 end do
             end do
             
-            write(*,*) 'max diff of gh found at (theta, zeta, r) :', &
-                &max_index(:,1)
-            write(*,*) 'diff = ', &
-                &diff(max_index(1,1),max_index(2,1),max_index(3,1),1)
-            write(*,*) 'with g : '
-            call print_ar_2(g_max(:,:,1))
-            write(*,*) 'and h : '
-            call print_ar_2(h_max(:,:,1))
-            write(*,*) 'so gh : '
-            call print_ar_2(gh_max)
+            call writo('maximum deviation from unity matrix found at ('//&
+                &trim(i2str(max_index(1)))//','//trim(i2str(max_index(2)))//&
+                &','//trim(i2str(max_index(3)))//'), equal to '//&
+                &trim(r2strt(diff_max)))
             
-            write(*,*) 'At this point, the jacobian is equal to:', &
-                &jac(max_index(1,1),max_index(2,1),max_index(3,1))
+            call lvl_ud(-1)
             
-            write(*,*) 'max diff of hg found at (theta, zeta, r) :', &
-                &max_index(:,2)
-            write(*,*) 'diff = ', &
-                &diff(max_index(1,2),max_index(2,2),max_index(3,2),2)
-            write(*,*) 'with g : '
-            call print_ar_2(g_max(:,:,2))
-            write(*,*) 'and h : '
-            call print_ar_2(h_max(:,:,2))
-            write(*,*) 'so hg : '
-            call print_ar_2(hg_max)
+            call writo('Test whether the determinants of g_C, h_C are agreee &
+                &with jac_V')
+            call lvl_ud(1)
             
-            write(*,*) 'At this point, the jacobian is equal to:', &
-                &jac(max_index(1,2),max_index(2,2),max_index(3,2))
+            ! calculate  the  metric  factors in the VMEC coordinate system 
+            call metric_V
             
-            write(*,*) 'differences as function of (theta, zeta, r) have &
-                & been written to the output file'
-            call write_out(n_theta, n_zeta, diff(:,:,2,1), 'diff_gh_2', &
-                &comment = 'diff gh at r=2')
-            call write_out(n_theta, n_zeta, diff(:,:,n_r-1,2), 'diff_gh_nr-1', &
-                &comment = 'diff gh at r=nr-1')
-
+            diff_J_max = 0.0_dp
+            do kd = 1,n_r
+                do jd = 1,n_zeta
+                    do id = 1,n_theta
+                        g_J = sqrt(det(3,g_V(id,jd,kd,:,:)))
+                        h_J = 1.0_dp/sqrt(det(3,h_V(id,jd,kd,:,:)))
+                        if (g_J-jac_V(id,jd,kd).gt.diff_J_max(1)) then
+                            max_J_index(1,:) = [id,jd,kd]
+                            diff_J_max(1) = g_J-jac_V(id,jd,kd) 
+                        end if
+                        if (h_J-jac_V(id,jd,kd).gt.diff_J_max(2)) then
+                            max_J_index(2,:) = [id,jd,kd]
+                            diff_J_max(2) = h_J-jac_V(id,jd,kd) 
+                        end if
+                    end do
+                end do
+            end do
+            
+            call writo('maximum deviation of sqrt(det(g_J)) from jac_V found &
+                & at ('//trim(i2str(max_J_index(1,1)))//','//&
+                &trim(i2str(max_J_index(1,2)))//','//&
+                &trim(i2str(max_J_index(1,3)))//'), equal to '//&
+                &trim(r2strt(diff_J_max(1))))
+            call writo('maximum deviation of 1/sqrt(det(h_J)) from jac_V found &
+                & at ('//trim(i2str(max_J_index(2,1)))//','//&
+                &trim(i2str(max_J_index(2,2)))//','//&
+                &trim(i2str(max_J_index(2,3)))//'), equal to '//&
+                &trim(r2strt(diff_J_max(2))))
+            
+            call lvl_ud(-1)
+            
         end if
     end subroutine
 

@@ -3,7 +3,7 @@ module var_ops
     use num_vars, only: dp, max_str_ln
     implicit none
     private
-    public i2str, r2str, r2strt, strh2l, mat_mult, mat_sub
+    public i2str, r2str, r2strt, strh2l, mat_mult, mat_sub, det
 
 contains
     ! Convert an integer to string 
@@ -62,8 +62,8 @@ contains
         
         allocate(mat_mult(size(A,1),size(B,2)))
         mat_mult = 0.0_dp
-        do id = 1,size(A,1)
-            do jd = 1,size(B,2)
+        do jd = 1,size(B,2)
+            do id = 1,size(A,1)
                 do kd = 1, size(A,2)
                     mat_mult(id,jd) = mat_mult(id,jd) + A(id,kd)*B(kd,jd)
                 end do
@@ -85,10 +85,39 @@ contains
         
         allocate(mat_sub(size(A,1),size(A,2)))
         mat_sub = 0.0_dp
-        do id = 1,size(A,1)
-            do jd = 1,size(B,2)
+        do jd = 1,size(B,2)
+            do id = 1,size(A,1)
                 mat_sub(id,jd) = A(id,jd)-B(id,jd)
             end do
         end do
     end function mat_sub
+
+    ! calculate determinant of a matrix
+    ! (adapted from http://dualm.wordpress.com/2012/01/06/computing-determinant-in-fortran/)
+    real(dp) function det(N, mat)
+        integer, intent(in) :: N 
+        real(dp), intent(inout) :: mat(:,:)
+        integer :: i, info
+        integer, allocatable :: ipiv(:)
+        real(dp) :: sgn
+        
+        allocate(ipiv(N))
+        
+        ipiv = 0
+        
+        call dgetrf(N, N, mat, N, ipiv, info)
+        
+        det = 1.0_dp
+        do i = 1, N
+            det = det*mat(i, i)
+        end do
+        
+        sgn = 1.0_dp
+        do i = 1, N
+            if(ipiv(i) /= i) then
+                sgn = -sgn
+            end if
+        end do
+        det = sgn*det   
+    end function det
 end module var_ops

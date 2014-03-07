@@ -11,9 +11,9 @@ contains
     ! Inverse Fourier transformation, VMEC style
     ! Also calculates  the poloidal and toroidal  derivatives. Normal derivative
     ! is done discretely, outside of this function
-    function f2r(fun_cos,fun_sin,ang_factor,mpol,ntor,nfp)
+    function f2r(fun_cos,fun_sin,ang_factor,mpol,ntor)
         use output_ops, only: print_ar_2
-        integer, intent(in) :: mpol, ntor, nfp
+        integer, intent(in) :: mpol, ntor
         real(dp), allocatable :: f2r(:)
         real(dp), intent(in) :: fun_cos(0:mpol-1,-ntor:ntor)                    ! cos part of Fourier variables (coeff. of the sum)
         real(dp), intent(in) :: fun_sin(0:mpol-1,-ntor:ntor)                    ! sin part of Fourier variables (coeff. of the sum)
@@ -32,14 +32,14 @@ contains
         f2r = 0.0_dp
         
         ! sum over all poloidal and toroidal modes
-        do m = 0,mpol-1
-            do n = -ntor,ntor
+        do n = -ntor,ntor
+            do m = 0,mpol-1
                 f2r(1) = f2r(1) + fun_cos(m,n)*ang_factor(m,n,1) &              ! the variable itself
                     &+ fun_sin(m,n)*ang_factor(m,n,2)
-                f2r(3) = f2r(3) + m * (-fun_cos(m,n)*ang_factor(m,n,2) &        ! theta derivative
+                f2r(3) = f2r(3) + m * (-fun_cos(m,n)*ang_factor(m,n,2) &        ! theta derivative: m(-f_c*s+f_s*c)
+                    &+ fun_sin(m,n)*ang_factor(m,n,1))                          
+                f2r(4) = f2r(4) + n * (-fun_cos(m,n)*ang_factor(m,n,2) &        ! zeta derivative: n(-f_c*s+f_s*c)
                     &+ fun_sin(m,n)*ang_factor(m,n,1))
-                f2r(4) = f2r(4) + n*nfp * (fun_cos(m,n)*ang_factor(m,n,2) &     ! zeta derivative
-                    &- fun_sin(m,n)*ang_factor(m,n,1))
             end do
         end do
     end function f2r
@@ -47,28 +47,28 @@ contains
     ! Calculate the cosine and sine factors  on a mesh (0:mpol-1, -ntor:ntor) at
     ! a given poloidal and toroidal position (theta,zeta)
     ! The first index contains the cosine factors and the second one the sines.
-    function mesh_cs(mpol,ntor,nfp,theta,zeta)
-        integer, intent(in) :: mpol, ntor, nfp
+    function mesh_cs(mpol,ntor,theta,zeta)
+        integer, intent(in) :: mpol, ntor
         real(dp), allocatable :: mesh_cs(:,:,:)
         real(dp) :: theta, zeta
         
         integer :: m, n
         
         ! test the given inputs
-        if (mpol.lt.1 .or. nfp.lt.1) then
-            call writo('ERROR: mpol and nfp have to be at least 1')
+        if (mpol.lt.1) then
+            call writo('ERROR: mpol has to be at least 1')
             stop
         end if
         
         allocate(mesh_cs(0:mpol-1,-ntor:ntor,2))
         mesh_cs = 0.0_dp
         
-        do m = 0,mpol-1
-            do n = -ntor,ntor
+        do n = -ntor,ntor
+            do m = 0,mpol-1
                 ! cos factor
-                mesh_cs(m,n,1) = cos(m*theta - n*nfp*zeta)
+                mesh_cs(m,n,1) = cos(m*theta + n*zeta)
                 ! sin factor
-                mesh_cs(m,n,2) = sin(m*theta - n*nfp*zeta)
+                mesh_cs(m,n,2) = sin(m*theta + n*zeta)
             end do
         end do
     end function mesh_cs
@@ -82,6 +82,7 @@ contains
     ! It is  possible that the  input variable is  not allocated. In  this case,
     ! output zero's
     function repack(var_VMEC,mnmax,ns,mpol,ntor,xm,xn)
+        use output_ops, only : print_ar_1
         integer, intent(in) :: mnmax, ns, mpol, ntor
         real(dp), intent(in) :: xm(mnmax), xn(mnmax)
         real(dp), allocatable :: var_VMEC(:,:)

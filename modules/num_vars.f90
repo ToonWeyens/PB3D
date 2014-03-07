@@ -3,11 +3,11 @@ module num_vars
     private
     public max_it, dp, qp, style, max_str_ln, n_seq_0, max_args, &
         &max_opts, prog_name, max_r, ltest, pi, min_theta, max_theta, &
-        &min_zeta, max_zeta, n_theta, n_zeta
+        &min_zeta, max_zeta, n_theta, n_zeta                                    ! n_theta, n_zeta: # physical points used in theta, zeta
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
-    integer, parameter :: qp = selected_real_kind (32)                        ! quadruple precision
+    integer, parameter :: qp = selected_real_kind (32)                          ! quadruple precision
     integer, parameter :: max_str_ln = 80                                       ! maximum length of filenames
     integer, parameter :: n_seq_0 = 10                                          ! start of index of file numbers for opening
     integer, parameter :: max_args = 10                                         ! maximum number of input arguments
