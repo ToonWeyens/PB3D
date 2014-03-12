@@ -5,14 +5,13 @@ module grid_vars
     implicit none
     private
     public calc_ang_mesh, calc_RZl, &
-        &theta, zeta, rad, n_theta, n_zeta, n_r, R, Z
+        &theta, zeta, rad, n_theta, n_zeta, R, Z, lam
 
     real(dp), allocatable :: theta(:), zeta(:), rad(:)                          ! grid points
     ! R and Z and derivatives in real (as opposed to Fourier) space (see below)
     ! (index 1: variable, 2: r derivative, 2: theta derivative, 3: zeta derivative)
-    real(dp), allocatable :: R(:,:,:,:), Z(:,:,:,:)
-    integer :: n_theta, n_zeta, n_r
-    
+    real(dp), allocatable :: R(:,:,:,:), Z(:,:,:,:), lam(:,:,:,:)
+    integer :: n_theta, n_zeta     
 
 contains
     ! calculate the angular points in the mesh
@@ -56,9 +55,9 @@ contains
     ! decomposition using the grid points currently stored in the variables 
     ! theta, zeta, rad
     subroutine calc_RZl
-        use fourier_ops, only: repack, mesh_cs, f2r
-        use plasma_vars, only: R_c, R_s, Z_c, Z_s, n_r, rmax_surf, rmin_surf, &
-            &zmax_surf, ntor, mpol
+        use fourier_ops, only: mesh_cs, f2r
+        use VMEC_vars, only: R_c, R_s, Z_c, Z_s, l_c, l_s, n_r, rmax_surf, &
+            &rmin_surf, zmax_surf, ntor, mpol
         
         ! local variables
         real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
@@ -68,9 +67,11 @@ contains
         ! deallocate if allocated
         if (allocated(R)) deallocate(R)
         if (allocated(Z)) deallocate(Z)
+        if (allocated(lam)) deallocate(lam)
         ! reallocate
         allocate(R(n_theta,n_zeta,n_r,4)); R = 0.0_dp
         allocate(Z(n_theta,n_zeta,n_r,4)); Z = 0.0_dp
+        allocate(lam(n_theta,n_zeta,n_r,4)); lam = 0.0_dp
         
         ! do calculations for all angular points
         tor: do jd = 1, n_zeta
@@ -84,10 +85,13 @@ contains
                         &f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor)
                     Z(id,jd,kd,:) = &
                         &f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor)
+                    lam(id,jd,kd,:) = &
+                        &f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor)
                 end do
                 
                 ! numerically calculate normal derivatives at the currrent angular points
                 ! first normal point
+                ! FULL MESH quantities R and Z
                 delta_r = 1.0/(n_r-1)                                           ! step size between first points
                 R(id,jd,1,2) = (R(id,jd,2,1)-R(id,jd,1,1))/delta_r              ! forward difference
                 Z(id,jd,1,2) = (Z(id,jd,2,1)-Z(id,jd,1,1))/delta_r              ! forward difference
@@ -100,8 +104,21 @@ contains
                 delta_r = 1.0/(n_r-1)                                           ! step size between last points
                 R(id,jd,n_r,2) = (R(id,jd,n_r,1)-R(id,jd,n_r-1,1))/delta_r
                 Z(id,jd,n_r,2) = (Z(id,jd,n_r,1)-Z(id,jd,n_r-1,1))/delta_r
+                ! HALF MESH quantity lambda
+                delta_r = 1.0/(n_r-1)                                           ! step size between first points
+                lam(id,jd,2,2) = (lam(id,jd,3,1)-lam(id,jd,2,1))/delta_r              ! forward difference
+                do kd = 4, n_r
+                    delta_r = 2.0/(n_r-1)                                       ! intermediate step size: centered differences
+                    lam(id,jd,kd-1,2) = (lam(id,jd,kd,1)-lam(id,jd,kd-2,1))&
+                        &/delta_r                                               ! centered difference
+                end do
+                ! last normal point
+                delta_r = 1.0/(n_r-1)                                           ! step size between last points
+                lam(id,jd,n_r,2) = (lam(id,jd,n_r,1)-lam(id,jd,n_r-1,1))/delta_r
             end do pol
         end do tor
+        write(*,*) 'maximum value of lambda', maxval(lam(:,:,:,1))
+        write(*,*) 'minimum value of lambda', minval(lam(:,:,:,1))
         
         ! output a message if the found R  and Z values are not within the VMEC-
         ! provided bounds
@@ -113,6 +130,7 @@ contains
         call lvl_ud(1)
         call within_bounds(Z(:,:,:,1),-zmax_surf,zmax_surf)
         call lvl_ud(-1)
+        ! ̉¿¿¿¿¿ IS THERE SOME CRITERION FOR THE MAXIMUM AND / OR MINIMUM OF LAMBDA ???
     contains
         ! display whether the calculated table for R or Z fits within the limits
         ! outputted by VMEC

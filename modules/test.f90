@@ -54,7 +54,7 @@ contains
         use file_ops, only: &
             &output_i
         use output_ops, only: write_out
-        use plasma_vars, only: &
+        use VMEC_vars, only: &
             &mnmax, n_r, rmnc
             
         if(test_this('write_out')) then
@@ -72,7 +72,7 @@ contains
         use fourier_ops, only: mesh_cs
         use output_ops, only: print_ar_2
         use num_vars, only: pi
-        use plasma_vars, only: mpol, ntor
+        use VMEC_vars, only: mpol, ntor
      
         real(dp), allocatable :: output(:,:,:)
         real(dp) :: theta, zeta
@@ -114,7 +114,7 @@ contains
             &C2V_up, C2V_dn, jac_V, g_V, h_V
         use grid_vars, only: calc_ang_mesh, calc_RZl, &
             &n_theta, n_zeta, theta, zeta
-        use plasma_vars, only: n_r
+        use VMEC_vars, only: n_r
         use var_ops, only: i2str, r2strt, mat_mult, det
         
         real(dp) :: min_theta, max_theta, min_zeta, max_zeta

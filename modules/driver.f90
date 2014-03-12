@@ -6,7 +6,7 @@
 !-------------------------------------------------------
 module driver
     use driver_rich, only: run_rich_driver
-    use plasma_vars
+    use VMEC_vars
     use num_vars, only: max_it, style
     use var_ops, only: i2str
     use output_ops, only: writo, lvl_ud

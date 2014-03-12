@@ -1,4 +1,4 @@
-module plasma_vars
+module VMEC_vars
     use num_vars, only: dp
     use var_ops, only: r2str, i2str
     use output_ops, only: lvl_ud, writo
@@ -15,8 +15,8 @@ module plasma_vars
     implicit none
     private
     public read_VMEC, &
-        &mnmax, rmnc, mpol, ntor, n_r, R_c, R_s, Z_c, Z_s, rmax_surf, &
-        &rmin_surf, zmax_surf
+        &mnmax, rmnc, mpol, ntor, n_r, R_c, R_s, Z_c, Z_s, l_c, l_s, &
+        &rmax_surf, rmin_surf, zmax_surf
 
     real(dp), allocatable :: R_c(:,:,:), R_s(:,:,:), Z_c(:,:,:), &              ! Coeff. of R, Z, lambda in (co)sine series
         &Z_s(:,:,:), l_c(:,:,:), l_s(:,:,:)
@@ -79,4 +79,4 @@ contains
         call lvl_ud(-1)
     end subroutine
 
-end module plasma_vars
+end module VMEC_vars

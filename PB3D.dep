@@ -6,7 +6,7 @@ test.o : \
 
 PB3D.o : \
     num_vars.o \
-    plasma_vars.o \
+    VMEC_vars.o \
     file_ops.o \
     driver.o \
     test.o \
@@ -15,7 +15,7 @@ PB3D.o : \
 
 driver.o : \
     num_vars.o \
-    plasma_vars.o \
+    VMEC_vars.o \
     driver_rich.o \
     file_ops.o \
     var_ops.o 
@@ -26,7 +26,8 @@ driver_rich.o : \
     var_ops.o \
     output_ops.o \
     grid_vars.o \
-    metric_ops.o
+    metric_ops.o \
+    magn_vars.o \
 
 output_ops.o : \
     num_vars.o \
@@ -41,20 +42,23 @@ file_ops.o : \
     num_vars.o \
     var_ops.o
 
-plasma_vars.o : \
+VMEC_vars.o : \
     num_vars.o \
     file_ops.o \
     fourier_ops.o \
     var_ops.o
 
+magn_vars.o : \
+    num_vars.o \
+
 grid_vars.o : \
     num_vars.o \
     output_ops.o \
-    plasma_vars.o
+    VMEC_vars.o
 
 metric_ops.o : \
     num_vars.o \
-    plasma_vars.o \
+    VMEC_vars.o \
     fourier_ops.o \
     output_ops.o \
     var_ops.o \

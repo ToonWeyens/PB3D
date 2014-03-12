@@ -15,6 +15,7 @@ contains
         use grid_vars, only: calc_ang_mesh, calc_RZl, &
             &theta, zeta, n_theta, n_zeta
         use metric_ops, only: metric_C, metric_C2V, metric_V
+        use magn_vars, only: magn_theta
         
         integer :: ir                                                           ! Richardson's level
         logical :: converged                                                    ! is it converged?
@@ -30,14 +31,19 @@ contains
             call lvl_ud(1)
             ir = ir + 1
             
+            call writo('Resolving field lines')
+            ! calculate theta(zeta) for the current field line
+            !theta = magn_theta(alpha,zeta,lam)
+            
             call writo('Calculate cylindrical metrics')
-            ! calculate the grid points in current Richardson level
+            ! calculate  starting   points  for  the  grid   points  in  current
+            ! Richardson level  theta 
             n_theta = 10; min_theta = 0; max_theta = 2*pi
             n_zeta = 10; min_zeta = 0; max_zeta = 2*pi
             theta = calc_ang_mesh(n_theta, min_theta, max_theta)
             zeta = calc_ang_mesh(n_zeta, min_zeta, max_zeta)
             
-            ! calculate the cylindrical variables R and Z and derivatives
+            ! calculate the cylindrical variables R, Z and lambda and derivatives
             call calc_RZl
             
             ! calculate the metrics in the cylindrical coordinate system

@@ -28,7 +28,7 @@ program PB3D
     use num_vars, only: ltest
     use var_ops, only: r2str
     use output_ops, only: init_output_ops, lvl_ud, writo
-    use plasma_vars, only: read_VMEC                                            ! The plasma variables
+    use VMEC_vars, only: read_VMEC                                            ! The plasma variables
     use driver, only: run_driver                                                ! Main driver
     use file_ops, only: open_input, open_output, search_file, read_input, &
         &parse_args, init_file_ops

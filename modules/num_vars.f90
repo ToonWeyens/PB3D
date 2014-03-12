@@ -3,7 +3,7 @@ module num_vars
     private
     public max_it, dp, qp, style, max_str_ln, n_seq_0, max_args, &
         &max_opts, prog_name, max_r, ltest, pi, min_theta, max_theta, &
-        &min_zeta, max_zeta, n_theta, n_zeta                                    ! n_theta, n_zeta: # physical points used in theta, zeta
+        &min_zeta, max_zeta, n_theta, n_zeta, max_it_NR
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -24,7 +24,10 @@ module num_vars
     ! global variables
     real(dp) :: pi=4_dp*datan(1.0_dp)                                           ! pi
     real(dp) :: min_theta, max_theta, min_zeta, max_zeta                        ! angular values at which table of metrics is calculated
-    integer :: n_theta, n_zeta                                                  ! number of points in table
+    integer :: n_theta, n_zeta                                                  ! number of points in physical mesh
+    
+    ! considering finding the magnetic field lines
+    integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
 
 !contains
 end module num_vars

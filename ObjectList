@@ -2,7 +2,8 @@ ObjectFiles = \
 num_vars.o \
 var_ops.o \
 output_ops.o \
-plasma_vars.o \
+VMEC_vars.o \
+magn_vars.o \
 grid_vars.o \
 metric_ops.o \
 file_ops.o \

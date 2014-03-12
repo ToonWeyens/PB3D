@@ -2,7 +2,7 @@ module metric_ops
     use num_vars, only: dp
     use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
     use var_ops, only: r2str, i2str
-    use plasma_vars, only: n_r
+    use VMEC_vars, only: n_r
     use grid_vars, only: n_theta, n_zeta, R, Z
     
     implicit none
@@ -23,7 +23,7 @@ contains
 
     ! calculate the trivial metric elements in the C(ylindrical) coordinate system
     subroutine metric_C
-        use plasma_vars, only: n_r
+        use VMEC_vars, only: n_r
         use grid_vars, only: R, n_theta, n_zeta
         
         ! local variables
