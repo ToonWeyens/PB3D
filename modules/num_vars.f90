@@ -3,7 +3,7 @@ module num_vars
     private
     public max_it, dp, qp, style, max_str_ln, n_seq_0, max_args, &
         &max_opts, prog_name, max_r, ltest, pi, min_theta, max_theta, &
-        &min_zeta, max_zeta, n_theta, n_zeta, max_it_NR
+        &min_zeta, max_zeta, n_theta, n_zeta, max_it_NR, tol_NR
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -28,6 +28,7 @@ module num_vars
     
     ! considering finding the magnetic field lines
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
+    real(dp) :: tol_NR                                                          ! tolerance for Newton-Rhapson
 
 !contains
 end module num_vars

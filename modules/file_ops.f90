@@ -5,7 +5,7 @@ module file_ops
     use var_ops, only: i2str
     use num_vars, only: dp, n_seq_0, max_str_ln, max_args, max_opts, &
         &prog_name, style, max_r, ltest, min_theta, max_theta, min_zeta, &
-        &max_zeta, n_theta, n_zeta
+        &max_zeta, n_theta, n_zeta, max_it_NR, tol_NR
     use output_ops, only: lvl_ud, writo, &
         &lvl
     implicit none
@@ -40,7 +40,7 @@ module file_ops
 
     ! input options
     namelist /inputdata/ format_out, style, min_theta, max_theta, min_zeta, &
-        &max_zeta, n_theta, n_zeta
+        &max_zeta, n_theta, n_zeta, max_it_NR, tol_NR
 
 contains
     ! initialize the variables for the module
@@ -350,6 +350,8 @@ contains
             max_zeta = 2.0_dp*pi
             n_theta = 10
             n_zeta = 10
+            max_it_NR = 50
+            tol_NR = 1.0E-10_dp
         end subroutine
     end subroutine
 

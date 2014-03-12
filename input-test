@@ -3,5 +3,6 @@
     style = 1
     n_theta = 10
     n_zeta = 10
+    max_it_NR = 20
 /
 

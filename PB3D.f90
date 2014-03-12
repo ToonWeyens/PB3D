@@ -24,7 +24,7 @@
 program PB3D
     use time, only: init_time, start_time, stop_time, passed_time
     use test, only: test_repack, test_write_out, test_mesh_cs, &
-        &test_metric_C2V
+        &test_metric_C2V, test_theta_B
     use num_vars, only: ltest
     use var_ops, only: r2str
     use output_ops, only: init_output_ops, lvl_ud, writo
@@ -75,6 +75,7 @@ program PB3D
         call test_write_out
         call test_mesh_cs
         call test_metric_C2V
+        call test_theta_B
         call writo('')
         call passed_time
         call writo('')

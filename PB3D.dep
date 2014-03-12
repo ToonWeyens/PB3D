@@ -27,7 +27,7 @@ driver_rich.o : \
     output_ops.o \
     grid_vars.o \
     metric_ops.o \
-    magn_vars.o \
+    B_vars.o \
 
 output_ops.o : \
     num_vars.o \
@@ -48,8 +48,11 @@ VMEC_vars.o : \
     fourier_ops.o \
     var_ops.o
 
-magn_vars.o : \
+B_vars.o : \
     num_vars.o \
+    VMEC_vars.o \
+    output_ops.o \
+    var_ops.o \
 
 grid_vars.o : \
     num_vars.o \

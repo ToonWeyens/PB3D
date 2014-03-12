@@ -199,10 +199,10 @@ contains
             
             
             if (str_full) then                                                  ! truncate
-                write (var_str, '(E9.3)') arr(size(arr))                            ! last variable
+                write (var_str, '(ES9.2)') arr(size(arr))                            ! last variable
                 var_str = ' ... ' // trim(var_str)
             else 
-                write (var_str, '(E9.3)') arr(id)                                   ! current variable
+                write (var_str, '(ES9.2)') arr(id)                                   ! current variable
                 var_str = ' ' // trim(var_str)
             end if
             output_str = trim(output_str) // trim(var_str)

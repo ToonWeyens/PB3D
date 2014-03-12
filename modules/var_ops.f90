@@ -24,7 +24,7 @@ contains
     ! Convert a real (double) to string and truncate it
     character(len=max_str_ln) function r2strt(k)
         real(dp), intent(in) :: k
-        write (r2strt, '(E9.3)') k
+        write (r2strt, '(ES9.2)') k
         r2strt = adjustl(r2strt)
     end function r2strt
 

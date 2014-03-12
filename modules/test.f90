@@ -2,12 +2,13 @@
 module test
     use num_vars, only: dp, max_str_ln
     use output_ops, only: writo, lvl_ud, print_ar_1, print_ar_2
-    use var_ops, only: strh2l
     use time, only: start_time, stop_time
+    use var_ops, only: strh2l, i2str, r2str, r2strt, mat_mult, det
 
     implicit none
     private
-    public test_repack, test_write_out, test_mesh_cs, test_metric_C2V
+    public test_repack, test_write_out, test_mesh_cs, test_metric_C2V, &
+        &test_theta_B
 
 contains
     subroutine test_repack()
@@ -115,7 +116,6 @@ contains
         use grid_vars, only: calc_ang_mesh, calc_RZl, &
             &n_theta, n_zeta, theta, zeta
         use VMEC_vars, only: n_r
-        use var_ops, only: i2str, r2strt, mat_mult, det
         
         real(dp) :: min_theta, max_theta, min_zeta, max_zeta
         real(dp) :: C2V_mult(3,3)
@@ -209,6 +209,39 @@ contains
             
             call lvl_ud(-1)
             
+        end if
+    end subroutine
+
+    subroutine test_theta_B()
+        use B_vars, only: theta_B
+        use VMEC_vars, only: n_r
+        use num_vars, only: pi
+        use grid_vars, only: calc_ang_mesh
+        
+        real(dp) :: zeta_in, theta_in
+        real(dp) :: theta_out(n_r)
+        real(dp) :: alpha_in(10)
+        integer :: id
+        integer n_a
+        
+        n_a = 10
+        alpha_in = calc_ang_mesh(n_a, 0_dp*pi, 2_dp*pi)
+        !n_a = 1
+        !alpha_in = calc_ang_mesh(n_a, 1.8_dp*pi, 1.8_dp*pi)
+        
+        if(test_this('theta_B')) then
+            zeta_in = pi/3_dp
+            theta_in = zeta_in
+            
+            alpha: do id = 1, n_a
+                call writo('>>> at (zeta,alpha) = ('//trim(r2strt(zeta_in))//','&
+                    &//trim(r2strt(alpha_in(id)))//')')
+                theta_out = theta_B(alpha_in(id),zeta_in)
+                call writo('starting value for theta chosen equal to: '&
+                    &//trim(r2str(theta_in))//' and final values equal to:')
+                call print_ar_1(theta_out)
+                theta_in = theta_out(1)
+            end do alpha
         end if
     end subroutine
 

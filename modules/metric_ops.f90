@@ -1,4 +1,7 @@
-module metric_ops
+!-------------------------------------------------------
+!   Variables, subroutines and  functions that have to do with the metric elements
+!-------------------------------------------------------
+module metric_ops 
     use num_vars, only: dp
     use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
     use var_ops, only: r2str, i2str

@@ -1,3 +1,7 @@
+!-------------------------------------------------------
+!   Variables, subroutines and  functions that have to do with  the mesh used in
+!   the calculations
+!-------------------------------------------------------
 module grid_vars
     use num_vars, only: dp
     use output_ops, only: writo, lvl_ud, print_ar_2
@@ -5,13 +9,13 @@ module grid_vars
     implicit none
     private
     public calc_ang_mesh, calc_RZl, &
-        &theta, zeta, rad, n_theta, n_zeta, R, Z, lam
+        &theta, zeta, alpha, rad, n_theta, n_zeta, n_alpha, R, Z, lam
 
-    real(dp), allocatable :: theta(:), zeta(:), rad(:)                          ! grid points
+    real(dp), allocatable :: theta(:), zeta(:), alpha(:), rad(:)                ! grid points
     ! R and Z and derivatives in real (as opposed to Fourier) space (see below)
     ! (index 1: variable, 2: r derivative, 2: theta derivative, 3: zeta derivative)
     real(dp), allocatable :: R(:,:,:,:), Z(:,:,:,:), lam(:,:,:,:)
-    integer :: n_theta, n_zeta     
+    integer :: n_theta, n_zeta, n_alpha
 
 contains
     ! calculate the angular points in the mesh
@@ -81,12 +85,9 @@ contains
                 
                 ! calculate the variables R, Z, and their angular derivatives for all normal points and current angular point
                 do kd = 1, n_r
-                    R(id,jd,kd,:) = &
-                        &f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor)
-                    Z(id,jd,kd,:) = &
-                        &f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor)
-                    lam(id,jd,kd,:) = &
-                        &f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor)
+                    R(id,jd,kd,:) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor)
+                    Z(id,jd,kd,:) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor)
+                    lam(id,jd,kd,:) = f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor)
                 end do
                 
                 ! numerically calculate normal derivatives at the currrent angular points
@@ -117,8 +118,6 @@ contains
                 lam(id,jd,n_r,2) = (lam(id,jd,n_r,1)-lam(id,jd,n_r-1,1))/delta_r
             end do pol
         end do tor
-        write(*,*) 'maximum value of lambda', maxval(lam(:,:,:,1))
-        write(*,*) 'minimum value of lambda', minval(lam(:,:,:,1))
         
         ! output a message if the found R  and Z values are not within the VMEC-
         ! provided bounds

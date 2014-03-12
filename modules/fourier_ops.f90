@@ -1,4 +1,7 @@
-! This module contains operations concerning the Fourier treatment
+!-------------------------------------------------------
+!   Variables,  subroutines and  functions that  have  to do  with the  fourier
+!   representation used and its relations with the real space
+!-------------------------------------------------------
 module fourier_ops
     use output_ops, only: writo
     use num_vars, only: dp
@@ -48,10 +51,12 @@ contains
     ! a given poloidal and toroidal position (theta,zeta)
     ! The first index contains the cosine factors and the second one the sines.
     function mesh_cs(mpol,ntor,theta,zeta)
+        ! input / output
         integer, intent(in) :: mpol, ntor
         real(dp), allocatable :: mesh_cs(:,:,:)
         real(dp) :: theta, zeta
         
+        ! local variables
         integer :: m, n
         
         ! test the given inputs

@@ -13,11 +13,12 @@ module driver_rich
 contains
     subroutine run_rich_driver()
         use grid_vars, only: calc_ang_mesh, calc_RZl, &
-            &theta, zeta, n_theta, n_zeta
+            &theta, zeta, alpha, n_theta, n_zeta, n_alpha
         use metric_ops, only: metric_C, metric_C2V, metric_V
         use magn_vars, only: magn_theta
+        use B_vars, only: theta_B
         
-        integer :: ir                                                           ! Richardson's level
+        integer :: ir, jd, ld                                                   ! counters
         logical :: converged                                                    ! is it converged?
         real(dp) :: min_theta, max_theta, min_zeta, max_zeta
         
@@ -31,29 +32,39 @@ contains
             call lvl_ud(1)
             ir = ir + 1
             
-            call writo('Resolving field lines')
-            ! calculate theta(zeta) for the current field line
-            !theta = magn_theta(alpha,zeta,lam)
-            
-            call writo('Calculate cylindrical metrics')
-            ! calculate  starting   points  for  the  grid   points  in  current
-            ! Richardson level  theta 
-            n_theta = 10; min_theta = 0; max_theta = 2*pi
-            n_zeta = 10; min_zeta = 0; max_zeta = 2*pi
-            theta = calc_ang_mesh(n_theta, min_theta, max_theta)
-            zeta = calc_ang_mesh(n_zeta, min_zeta, max_zeta)
-            
-            ! calculate the cylindrical variables R, Z and lambda and derivatives
-            call calc_RZl
-            
-            ! calculate the metrics in the cylindrical coordinate system
-            call metric_C
-            
-            ! calculate the transformation matrix C(ylindrical) -> V(mec)
-            call metric_C2V
-            
-            ! calculate  the  metric  factors in the VMEC coordinate system 
-            call metric_V
+            ! iterate over all field lines
+            field_lines: do ld = 1,n_alpha
+                call writo('Resolving field lines')
+                call lvl_ud(1)
+                
+                ! calculate starting points for the grid points
+                n_zeta = 10; min_zeta = 0; max_zeta = 2*pi
+                zeta = calc_ang_mesh(n_zeta, min_zeta, max_zeta)
+                    
+                ! calculate theta(zeta) for the current field line and toroidal points
+                toroidal: do jd = 1,n_zeta
+                    theta = theta_B(alpha(ld),zeta(jd))
+                end do toroidal
+                
+                call lvl_ud(-1)
+                
+                call writo('Calculate cylindrical metrics')
+                call lvl_ud(1)
+                
+                ! calculate the cylindrical variables R, Z and lambda and derivatives
+                call calc_RZl
+                
+                ! calculate the metrics in the cylindrical coordinate system
+                call metric_C
+                
+                ! calculate the transformation matrix C(ylindrical) -> V(mec)
+                call metric_C2V
+                
+                ! calculate  the  metric  factors in the VMEC coordinate system 
+                call metric_V
+                
+                call lvl_ud(-1)
+            end do field_lines
             
             call lvl_ud(-1)
         end do Richard
