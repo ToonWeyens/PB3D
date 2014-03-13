@@ -1,22 +1,24 @@
-! This module contains operations on files (open, close, etc.)
+!-------------------------------------------------------
+!   This module contains operations on files (open, close, etc.)
+!-------------------------------------------------------
 module file_ops
     use netcdf
+    use num_vars, only: &
+        &dp, n_seq_0, max_str_ln, max_args, max_opts, prog_name, style, max_it_r,&
+        &ltest, max_it_NR, tol_NR, output_i, input_i, VMEC_i, min_alpha, &
+        &max_alpha, n_alpha
     use safe_open_mod, only: safe_open
-    use var_ops, only: i2str
-    use num_vars, only: dp, n_seq_0, max_str_ln, max_args, max_opts, &
-        &prog_name, style, max_r, ltest, min_theta, max_theta, min_zeta, &
-        &max_zeta, n_theta, n_zeta, max_it_NR, tol_NR
+    use str_ops, only: i2str
     use output_ops, only: lvl_ud, writo, &
-        &lvl
+        &lvl, format_out
+    use grid_vars, only: &
+        &min_zeta, max_zeta, n_zeta
+    use VMEC_vars, only: VMEC_name
     implicit none
     private
     public open_input, open_output, search_file, parse_args, read_input, &      ! routines
         &init_file_ops, &
-        &input_name, input_i, VMEC_name, VMEC_i, format_out, output_name, &     ! variables
-        &output_i
-
-    ! global variables
-    integer :: format_out
+        &input_name                                                             ! variables
 
     ! user-specified arguments
     integer :: numargs                                                          ! control the user-specified arguments
@@ -24,23 +26,18 @@ module file_ops
 
     ! concerning input file
     character(len=max_str_ln) :: input_name                                     ! will hold the full name of the input file
-    integer :: input_i                                                          ! will hold the file number of input file
    
-    ! concerning VMEC input file
-    character(len=max_str_ln) :: VMEC_name                                      ! will hold name of the VMEC input file
-    integer :: VMEC_i                                                           ! will hold the file number of VMEC file
+    ! concerning output file
+    character(len=max_str_ln) :: output_name                                    ! will hold name of output file
 
     ! options provided with command line
     character(len=max_str_ln), allocatable :: opt_args(:)
     integer, allocatable :: inc_args(:)
 
-    ! concerning output file
-    character(len=max_str_ln) :: output_name
-    integer :: output_i
-
     ! input options
-    namelist /inputdata/ format_out, style, min_theta, max_theta, min_zeta, &
-        &max_zeta, n_theta, n_zeta, max_it_NR, tol_NR
+    namelist /inputdata/ format_out, style, min_zeta, &
+        &max_zeta, min_alpha, max_alpha, n_zeta, n_alpha, max_it_NR, &
+        &tol_NR, max_it_r
 
 contains
     ! initialize the variables for the module
@@ -341,17 +338,20 @@ contains
         subroutine default_input()
             use num_vars, only: pi
             
+            max_it_NR = 50
+            max_it_r = 5                                                           ! 3 levels of Richardson's extrapolation
+            tol_NR = 1.0E-10_dp
             format_out = 1                                                      ! NETCDF output
             style = 1                                                           ! Richardson Extrapolation with normal discretization
-            max_r = 3                                                           ! 3 levels of Richardson's extrapolation
-            min_theta = 0.0_dp
-            max_theta = 2.0_dp*pi
             min_zeta = 0.0_dp
             max_zeta = 2.0_dp*pi
-            n_theta = 10
+            min_alpha = 0.0_dp
+            max_alpha = 2.0_dp*pi
             n_zeta = 10
-            max_it_NR = 50
-            tol_NR = 1.0E-10_dp
+            n_alpha = 10
+            n_zeta = 10_dp
+            min_zeta = 0
+            max_zeta = 2*pi
         end subroutine
     end subroutine
 

@@ -2,17 +2,18 @@
 ! well as in a file
 module output_ops
     use netcdf
-    use var_ops, only: i2str
+    use str_ops, only: i2str, r2str
     use num_vars, only: dp, max_str_ln
-    use file_ops, only: format_out, output_i
     implicit none
     private
     public init_output_ops, lvl_ud, writo, write_out, print_ar_1, print_ar_2, &
-        &lvl, lvl_sep
+        &lvl, lvl_sep, format_out
 
     ! global variables
     integer :: lvl                                                              ! lvl determines the indenting. higher lvl = more indenting
     character(len=2) :: lvl_sep = ''                                            ! characters that separate different levels of output
+    integer :: format_out
+
 
 contains
     ! initialize the variables for the module
@@ -33,6 +34,8 @@ contains
  
     ! write output using method indicated by format_out
     subroutine write_out(nx, ny, fun, fun_name, alt_output_i, comment)
+        use num_vars, only: output_i
+        
         integer, intent(in) :: nx, ny
         integer, intent(in), optional :: alt_output_i
         character(len=*) :: fun_name
@@ -60,6 +63,7 @@ contains
         end select
     contains
         ! writes a 2D array into matlab format
+        ! Called only by write_out!
         subroutine write_out_matlab(output_i, nx, ny, fun, fun_name, comment)
             integer, intent(in) :: output_i, nx, ny
             character(len=*) :: fun_name
@@ -155,9 +159,6 @@ contains
 
     ! print an array of dimension 1 on the screen
     subroutine print_ar_1(arr)
-        use num_vars, only: max_str_ln
-        use var_ops, only: r2str
-        
         real(dp) :: arr(:)
         
         integer :: id

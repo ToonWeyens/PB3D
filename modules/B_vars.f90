@@ -2,9 +2,9 @@
 !   Variables, subroutines and functions that have to do with the magnetic field
 !-------------------------------------------------------
 module B_vars
-    use num_vars, only: dp
+    use num_vars, only: dp, pi
     use output_ops, only: writo, print_ar_2
-    use var_ops, only: r2str, r2strt, i2str
+    use str_ops, only: r2str, r2strt, i2str
 
     implicit none
     private
@@ -22,7 +22,7 @@ contains
         
         ! input / output
         real(dp) :: theta_B(n_r)                                                ! theta(zeta)
-        real(dp), intent(in) :: alpha_in, zeta_in                               ! alpha, zeta
+        real(dp), intent(in) :: alpha_in, zeta_in(n_r)                          ! alpha, zeta
         real(dp), optional :: theta_in(n_r)                                     ! optional input (guess) for theta
         
         ! local variables
@@ -30,7 +30,7 @@ contains
         real(dp) :: lam(4)
         real(dp) :: cs(0:mpol-1,-ntor:ntor,2)
         real(dp) :: f, f_theta
-        real(dp) :: theta_NR
+        real(dp) :: theta_NR                                                    ! temporary solution for a given r, iteration
         
         ! for all radial points
         rad: do kd = 1, n_r
@@ -42,27 +42,23 @@ contains
             if (present(theta_in)) then
                 theta_NR = theta_in(kd)
             else if (kd.eq.1) then
-                theta_NR = zeta_in                                ! take the provided zeta
+                theta_NR = pi                                                   ! take pi, because it is in the middle of 0...2pi
             else                                                                ! take solution for previous flux surface
                 theta_NR = theta_B(kd-1)
             end if
             
             ! Newton-Rhapson loop
             NR: do jd = 1,max_it_NR
+                ! transform lambda from Fourier space to real space
                 ! calculate the (co)sines
-                cs = mesh_cs(mpol,ntor,theta_NR,zeta_in)
-                !write(*,*) 'kd (rad), jd (NR) = ', kd, jd
-                !write(*,*) 'mpol, ntor, theta_NR, zeta_in = ', mpol, ntor, &
-                    !&theta_NR, zeta_in
+                cs = mesh_cs(mpol,ntor,theta_NR,zeta_in(kd))
                 
                 ! calculate lambda and angular derivatives
                 lam = f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor)
-                !write(*,*) 'lambda = ', lam
                 
                 ! calculate the factors f and f_theta
-                f = zeta_in - (theta_NR+lam(1))/iotaf(kd) - alpha_in
+                f = zeta_in(kd) - (theta_NR+lam(1))/iotaf(kd) - alpha_in
                 f_theta = -(1.0_dp + lam(3))/iotaf(kd)
-                !write(*,*) 'f, f_theta = ', f, f_theta
                 
                 ! correction to theta_NR
                 theta_NR = theta_NR - f/f_theta

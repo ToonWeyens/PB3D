@@ -1,10 +1,9 @@
 module VMEC_vars
-    use num_vars, only: dp
-    use var_ops, only: r2str, i2str
+    use num_vars, only: &
+        &dp, max_str_ln
+    use str_ops, only: r2str, i2str
     use output_ops, only: lvl_ud, writo
-    use file_ops, only: &
-        &VMEC_name
-    use read_wout_mod , only: read_wout_file, read_wout_deallocate, &
+    use read_wout_mod , only: read_wout_file, read_wout_deallocate, &           ! from LIBSTELL
         &iasym, version_, lfreeb, &
         &n_r => ns, mpol, ntor, xn, xm, mnmax, nfp, &                           ! mpol, ntor = # modes
         &phi, iotaf, &                                                          ! toroidal flux (FM), iota (FM)
@@ -16,10 +15,13 @@ module VMEC_vars
     private
     public read_VMEC, &
         &mnmax, rmnc, mpol, ntor, n_r, R_c, R_s, Z_c, Z_s, l_c, l_s, &
-        &rmax_surf, rmin_surf, zmax_surf, iotaf
+        &rmax_surf, rmin_surf, zmax_surf, iotaf, VMEC_name
 
     real(dp), allocatable :: R_c(:,:,:), R_s(:,:,:), Z_c(:,:,:), &              ! Coeff. of R, Z, lambda in (co)sine series
         &Z_s(:,:,:), l_c(:,:,:), l_s(:,:,:)
+    
+    character(len=max_str_ln) :: VMEC_name                                      ! will hold name of the VMEC input file
+    
 
 contains
     ! Reads the VMEC equilibrium data

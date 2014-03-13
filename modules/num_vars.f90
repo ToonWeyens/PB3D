@@ -2,8 +2,8 @@ module num_vars
     implicit none
     private
     public max_it, dp, qp, style, max_str_ln, n_seq_0, max_args, &
-        &max_opts, prog_name, max_r, ltest, pi, min_theta, max_theta, &
-        &min_zeta, max_zeta, n_theta, n_zeta, max_it_NR, tol_NR
+        &max_opts, prog_name, max_it_r, ltest, pi, max_it_NR, tol_NR, &
+        &input_i, output_i, VMEC_i, min_alpha, max_alpha, n_alpha
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -15,7 +15,7 @@ module num_vars
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
 
     ! considering runtime
-    integer :: max_r                                                            ! number of levels for Richardson's extrapolation
+    integer :: max_it_r                                                            ! number of levels for Richardson's extrapolation
     integer :: max_it                                                           ! max. nr. iterations
     integer :: style                                                            ! determines the method used for minimization
         ! 1 [def] : Euler-Lagrange min., finite diff and Richardson's method
@@ -23,12 +23,19 @@ module num_vars
 
     ! global variables
     real(dp) :: pi=4_dp*datan(1.0_dp)                                           ! pi
-    real(dp) :: min_theta, max_theta, min_zeta, max_zeta                        ! angular values at which table of metrics is calculated
-    integer :: n_theta, n_zeta                                                  ! number of points in physical mesh
-    
+
     ! considering finding the magnetic field lines
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
     real(dp) :: tol_NR                                                          ! tolerance for Newton-Rhapson
+
+    ! input / output
+    integer :: input_i                                                          ! will hold the file number of input file
+    integer :: VMEC_i                                                           ! will hold the file number of VMEC file
+    integer :: output_i                                                         ! will hold the file number of output file
+    
+    ! considering the various field lines for which to do the calculations
+    integer :: n_alpha
+    real(dp) :: min_alpha, max_alpha
 
 !contains
 end module num_vars

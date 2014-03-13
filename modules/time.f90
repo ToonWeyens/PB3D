@@ -1,6 +1,6 @@
 module time
     use num_vars, only: max_str_ln, dp
-    use var_ops, only: r2str
+    use str_ops, only: r2str
     use output_ops, only: writo
 
     implicit none

@@ -26,16 +26,12 @@ program PB3D
     use test, only: test_repack, test_write_out, test_mesh_cs, &
         &test_metric_C2V, test_theta_B
     use num_vars, only: ltest
-    use var_ops, only: r2str
+    use str_ops, only: r2str
     use output_ops, only: init_output_ops, lvl_ud, writo
     use VMEC_vars, only: read_VMEC                                            ! The plasma variables
     use driver, only: run_driver                                                ! Main driver
     use file_ops, only: open_input, open_output, search_file, read_input, &
         &parse_args, init_file_ops
-    use read_wout_mod , only: read_wout_file!,                       & 
-!        rmnc, zmns, lmns, rmns, zmnc, lmnc, bmnc, gmnc, bsubumnc,   &
-!        bsubvmnc, bsubsmns, bsupumnc, bsupvmnc, currvmnc,           &
-!        currumnc, bbc, raxis, zaxis
 
     implicit none
 
@@ -71,9 +67,9 @@ program PB3D
         call start_time
         call writo('Start tests')
         call lvl_ud(1)
-        call test_repack
-        call test_write_out
-        call test_mesh_cs
+        !call test_repack
+        !call test_write_out
+        !call test_mesh_cs
         call test_metric_C2V
         call test_theta_B
         call writo('')
@@ -94,10 +90,6 @@ program PB3D
     call writo('')
     call lvl_ud(-1)
 
-    ! SEE COBRAVMEC/SOURCES/SUMMODOS.F FOR RECONSTRUCTION OF B
-    !                       ORDER_INPUT.F FOR COBRA'S METHOD OF READING VMEC
-    !     LIBSTELL/SOURCES/MODULES/READ_WOUT_MOD.F90 FOR THE LIBSTELL METHOD
-    
     !-------------------------------------------------------
     !   cleaning up
     !-------------------------------------------------------

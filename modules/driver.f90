@@ -8,7 +8,7 @@ module driver
     use driver_rich, only: run_rich_driver
     use VMEC_vars
     use num_vars, only: max_it, style
-    use var_ops, only: i2str
+    use str_ops, only: i2str
     use output_ops, only: writo, lvl_ud
     implicit none
     private

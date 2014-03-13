@@ -3,70 +3,77 @@
 !   the ODE's.
 !-------------------------------------------------------
 module driver_rich
-    use num_vars, only: max_r, dp, pi
-    use var_ops, only: i2str
-    use output_ops, only: writo, print_ar_2, lvl_ud
+    use num_vars, only: max_it_r, dp, pi
+    use str_ops, only: i2str, r2str, r2strt
+    use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
     implicit none
     private
     public run_rich_driver
 
+    real(dp), allocatable :: alpha(:)
+    
 contains
     subroutine run_rich_driver()
-        use grid_vars, only: calc_ang_mesh, calc_RZl, &
-            &theta, zeta, alpha, n_theta, n_zeta, n_alpha
-        use metric_ops, only: metric_C, metric_C2V, metric_V
-        use magn_vars, only: magn_theta
-        use B_vars, only: theta_B
+        use num_vars, only: min_alpha, max_alpha, n_alpha
+        use grid_vars, only: eqd_mesh
+        use eq_ops, only: calc_eq
         
-        integer :: ir, jd, ld                                                   ! counters
+        integer :: ir, ia                                                       ! counters
         logical :: converged                                                    ! is it converged?
-        real(dp) :: min_theta, max_theta, min_zeta, max_zeta
         
-        ! Initalize some variables
-        ir = 1
-        converged = .false.
+        ! determine the magnetic field lines for which to run the calculations 
+        ! (equidistant mesh)
+        if (allocated(alpha)) deallocate(alpha)
+        allocate(alpha(n_alpha))
+        alpha = eqd_mesh(n_alpha, min_alpha, max_alpha)                    ! just evenly spread them over 0..2*pi
         
-        Richard: do while (.not.converged .and. ir.le.max_r)
-            call writo('Level ' // trim(i2str(ir)) // ' of Richardson''s &
-                &extrapolation')
+        call writo('The calculations will be done for '//trim(i2str(n_alpha))&
+            &//' values of alpha')
+        ! 1--------------------------------------------------------------------
+        ! 1--------------------------------------------------------------------
+        ! 1--------------------------------------------------------------------
+        call lvl_ud(1)
+        
+        ! Do the calculations for every field line
+        field_lines: do ia = 1, n_alpha
+            ! Display message
+            call writo(trim(i2str(ia))//'/'//trim(i2str(n_alpha))//&
+                &': Calculations for field line alpha = '&
+                &//trim(r2strt(alpha(ia)))//':')
+            ! 2----------------------------------------------------------------
+            ! 2----------------------------------------------------------------
             call lvl_ud(1)
-            ir = ir + 1
-            
-            ! iterate over all field lines
-            field_lines: do ld = 1,n_alpha
-                call writo('Resolving field lines')
+                
+                ! Calculate the equilibrium quantities for current alpha
+                call calc_eq(alpha(ia))
+                
+                ! Initalize some variables
+                ir = 1
+                converged = .false.
+                
+                ! Start Richardson loop
+                call writo('Starting Richardson loop')
+                ! 3------------------------------------------------------------
                 call lvl_ud(1)
                 
-                ! calculate starting points for the grid points
-                n_zeta = 10; min_zeta = 0; max_zeta = 2*pi
-                zeta = calc_ang_mesh(n_zeta, min_zeta, max_zeta)
-                    
-                ! calculate theta(zeta) for the current field line and toroidal points
-                toroidal: do jd = 1,n_zeta
-                    theta = theta_B(alpha(ld),zeta(jd))
-                end do toroidal
-                
+                    Richard: do while (.not.converged .and. ir.le.max_it_r)
+                        call writo('Level ' // trim(i2str(ir)) // &
+                            &' of Richardson''s extrapolation')
+                        call lvl_ud(1)
+                        ir = ir + 1
+                        
+                        call lvl_ud(-1)
+                    end do Richard
+                ! 3------------------------------------------------------------
                 call lvl_ud(-1)
-                
-                call writo('Calculate cylindrical metrics')
-                call lvl_ud(1)
-                
-                ! calculate the cylindrical variables R, Z and lambda and derivatives
-                call calc_RZl
-                
-                ! calculate the metrics in the cylindrical coordinate system
-                call metric_C
-                
-                ! calculate the transformation matrix C(ylindrical) -> V(mec)
-                call metric_C2V
-                
-                ! calculate  the  metric  factors in the VMEC coordinate system 
-                call metric_V
-                
-                call lvl_ud(-1)
-            end do field_lines
             
+            ! 2----------------------------------------------------------------
+            ! 2----------------------------------------------------------------
             call lvl_ud(-1)
-        end do Richard
+        end do field_lines
+        ! 1--------------------------------------------------------------------
+        ! 1--------------------------------------------------------------------
+        ! 1--------------------------------------------------------------------
+        call lvl_ud(-1)
     end subroutine
 end module driver_rich

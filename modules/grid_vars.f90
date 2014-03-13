@@ -3,27 +3,65 @@
 !   the calculations
 !-------------------------------------------------------
 module grid_vars
-    use num_vars, only: dp
+    use num_vars, only: dp, pi
     use output_ops, only: writo, lvl_ud, print_ar_2
+    use str_ops, only: r2strt, i2str
 
     implicit none
     private
-    public calc_ang_mesh, calc_RZl, &
-        &theta, zeta, alpha, rad, n_theta, n_zeta, n_alpha, R, Z, lam
+    public eqd_mesh, tor_mesh, pol_mesh, calc_RZl, &
+        &theta, zeta, n_zeta, R, Z, lam, min_zeta, max_zeta 
 
-    real(dp), allocatable :: theta(:), zeta(:), alpha(:), rad(:)                ! grid points
     ! R and Z and derivatives in real (as opposed to Fourier) space (see below)
     ! (index 1: variable, 2: r derivative, 2: theta derivative, 3: zeta derivative)
     real(dp), allocatable :: R(:,:,:,:), Z(:,:,:,:), lam(:,:,:,:)
-    integer :: n_theta, n_zeta, n_alpha
+    real(dp), allocatable :: theta(:,:), zeta(:,:)                                ! grid points
+    real(dp) :: min_zeta, max_zeta
+    integer :: n_zeta
 
 contains
-    ! calculate the angular points in the mesh
-    ! currently trivial implementation, but can be extended for mesh adaptation
-    ! or, for example, following a field line
-    function calc_ang_mesh(n_ang,min_ang, max_ang)
+    ! calculate the toroidal mesh, filling the global variable zeta. This is done
+    ! for every flux surface. 
+    ! ¡¡¡SHOULD BE DONE ADAPTIVELY!!!
+    ! ¡¡¡NEED A CHECK FOR THE FINENESS!!!
+    subroutine tor_mesh
+        use VMEC_vars, only: n_r
+        
+        ! local variables
+        integer :: kd
+        
+        if (allocated(zeta)) deallocate(zeta)
+        allocate(zeta(n_zeta, n_r)); zeta = 0.0_dp
+        do kd = 1,n_r
+            zeta(:,kd) = eqd_mesh(n_zeta, min_zeta, max_zeta)
+        end do
+    end subroutine tor_mesh
+
+    ! calculate the poloidal mesh, in which the magnetic field line is straight,
+    ! for a particular alpha
+    subroutine pol_mesh(alpha)
+        use B_vars, only: theta_B
+        use VMEC_vars, only: n_r
+        
+        ! input / output
+        real(dp) :: alpha
+        real(dp) :: zeta_in(n_r)                                                ! to avoid annoying warnings on array creation
+        
+        ! local variables
+        integer :: jd
+           
+        if (allocated(theta)) deallocate(theta)
+        allocate(theta(n_zeta, n_r)); theta = 0.0_dp
+        do jd = 1,n_zeta
+            zeta_in = zeta(jd,:)
+            theta(jd,:) = theta_B(alpha,zeta_in)
+        end do
+    end subroutine pol_mesh
+    
+    ! calculate mesh of equidistant points
+    function eqd_mesh(n_ang, min_ang, max_ang)
         ! input and output
-        real(dp), allocatable :: calc_ang_mesh(:)
+        real(dp), allocatable :: eqd_mesh(:)
         real(dp), intent(in) :: min_ang, max_ang
         integer, intent(in) :: n_ang
         
@@ -43,21 +81,22 @@ contains
             stop
         end if
         
-        allocate(calc_ang_mesh(n_ang))
+        ! initialize output vector
+        allocate(eqd_mesh(n_ang)); eqd_mesh = 0.0_dp
         ! There are (n_ang-1) pieces in the total interval but the last one 
         ! is not needed as the functions are all periodic
-        delta_ang = (max_ang-min_ang)/(n_ang)
-        calc_ang_mesh = 0.0_dp
         
-        calc_ang_mesh(1) = min_ang
+        delta_ang = (max_ang-min_ang)/(n_ang)
+        
+        eqd_mesh(1) = min_ang
         do id = 2,n_ang
-            calc_ang_mesh(id) = calc_ang_mesh(id-1) + delta_ang
+            eqd_mesh(id) = eqd_mesh(id-1) + delta_ang
         end do
-    end function calc_ang_mesh
+    end function eqd_mesh
 
     ! calculate the coordinates R  and Z and l in real  space from their Fourier
     ! decomposition using the grid points currently stored in the variables 
-    ! theta, zeta, rad
+    ! theta, zeta
     subroutine calc_RZl
         use fourier_ops, only: mesh_cs, f2r
         use VMEC_vars, only: R_c, R_s, Z_c, Z_s, l_c, l_s, n_r, rmax_surf, &
@@ -73,18 +112,18 @@ contains
         if (allocated(Z)) deallocate(Z)
         if (allocated(lam)) deallocate(lam)
         ! reallocate
-        allocate(R(n_theta,n_zeta,n_r,4)); R = 0.0_dp
-        allocate(Z(n_theta,n_zeta,n_r,4)); Z = 0.0_dp
-        allocate(lam(n_theta,n_zeta,n_r,4)); lam = 0.0_dp
+        allocate(R(n_zeta,n_zeta,n_r,4)); R = 0.0_dp
+        allocate(Z(n_zeta,n_zeta,n_r,4)); Z = 0.0_dp
+        allocate(lam(n_zeta,n_zeta,n_r,4)); lam = 0.0_dp
         
         ! do calculations for all angular points
         tor: do jd = 1, n_zeta
-            pol: do id = 1,n_theta
-                ! calculate the (co)sines at the current mesh points
-                cs = mesh_cs(mpol,ntor,theta(id),zeta(jd))
-                
+            pol: do id = 1,n_zeta
                 ! calculate the variables R, Z, and their angular derivatives for all normal points and current angular point
                 do kd = 1, n_r
+                    ! calculate the (co)sines at the current mesh points
+                    cs = mesh_cs(mpol,ntor,theta(id,kd),zeta(jd,kd))
+                    
                     R(id,jd,kd,:) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor)
                     Z(id,jd,kd,:) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor)
                     lam(id,jd,kd,:) = f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor)
@@ -134,8 +173,6 @@ contains
         ! display whether the calculated table for R or Z fits within the limits
         ! outputted by VMEC
         subroutine within_bounds(var,min_VMEC,max_VMEC)
-            use var_ops, only: r2strt
-            
             ! input and output
             real(dp), intent(in) :: var(:,:,:)
             real(dp), intent(in) :: min_VMEC, max_VMEC

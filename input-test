@@ -1,8 +1,9 @@
 &INPUTDATA
     format_out = 2
     style = 1
-    n_theta = 10
     n_zeta = 10
+    n_alpha = 3
     max_it_NR = 20
+    max_it_r = 2
 /
 

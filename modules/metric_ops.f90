@@ -4,9 +4,9 @@
 module metric_ops 
     use num_vars, only: dp
     use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
-    use var_ops, only: r2str, i2str
+    use str_ops, only: r2str, i2str
     use VMEC_vars, only: n_r
-    use grid_vars, only: n_theta, n_zeta, R, Z
+    use grid_vars, only: n_zeta, R, Z
     
     implicit none
     private
@@ -26,9 +26,6 @@ contains
 
     ! calculate the trivial metric elements in the C(ylindrical) coordinate system
     subroutine metric_C
-        use VMEC_vars, only: n_r
-        use grid_vars, only: R, n_theta, n_zeta
-        
         ! local variables
         integer :: kd
         
@@ -36,16 +33,16 @@ contains
         if (allocated(g_C)) deallocate(g_C)
         if (allocated(h_C)) deallocate(h_C)
         
-        allocate(g_C(n_theta,n_zeta,n_r,3,3)); g_C = 0.0_dp
-        allocate(h_C(n_theta,n_zeta,n_r,3,3)); h_C = 0.0_dp
+        allocate(g_C(3,3,n_zeta,n_zeta,n_r)); g_C = 0.0_dp
+        allocate(h_C(3,3,n_zeta,n_zeta,n_r)); h_C = 0.0_dp
         
         do kd = 1,n_r
-            g_C(:,:,:,1,1) = 1.0_dp
-            g_C(:,:,:,2,2) = R(:,:,:,1)**2
-            g_C(:,:,:,3,3) = 1.0_dp
-            h_C(:,:,:,1,1) = 1.0_dp
-            h_C(:,:,:,2,2) = 1.0_dp/R(:,:,:,1)**2
-            h_C(:,:,:,3,3) = 1.0_dp
+            g_C(1,1,:,:,:) = 1.0_dp
+            g_C(2,2,:,:,:) = R(:,:,:,1)**2
+            g_C(3,3,:,:,:) = 1.0_dp
+            h_C(1,1,:,:,:) = 1.0_dp
+            h_C(2,2,:,:,:) = 1.0_dp/R(:,:,:,1)**2
+            h_C(3,3,:,:,:) = 1.0_dp
         end do
     end subroutine
 
@@ -53,7 +50,7 @@ contains
     ! coordinate system from the VMEC file.
     subroutine metric_C2V
         ! local variables
-        real(dp) :: cf(n_theta,n_zeta)                                          ! common factor used in calculating the elements of the matrix
+        real(dp) :: cf(n_zeta,n_zeta)                                          ! common factor used in calculating the elements of the matrix
         integer :: kd
         
         ! deallocate if allocated
@@ -61,40 +58,40 @@ contains
         if (allocated(C2V_up)) deallocate(C2V_up)
         if (allocated(jac_V)) deallocate(jac_V)
         ! reallocate
-        allocate(C2V_dn(n_theta,n_zeta,n_r,3,3))
-        allocate(C2V_up(n_theta,n_zeta,n_r,3,3))
-        allocate(jac_V(n_theta,n_zeta,n_r))
+        allocate(C2V_dn(3,3,n_zeta,n_zeta,n_r))
+        allocate(C2V_up(3,3,n_zeta,n_zeta,n_r))
+        allocate(jac_V(n_zeta,n_zeta,n_r))
         
         ! calculate transformation matrix for contravariant coordinates
         do kd = 1,n_r
             jac_V(:,:,kd) = R(:,:,kd,1)*(R(:,:,kd,2)*Z(:,:,kd,3)&
                 &-R(:,:,kd,3)*Z(:,:,kd,2))
             cf = R(:,:,kd,1)/jac_V(:,:,kd)
-            C2V_up(:,:,kd,1,1) = cf*Z(:,:,kd,3)
-            C2V_up(:,:,kd,1,2) = cf*(R(:,:,kd,4)*Z(:,:,kd,3)&
+            C2V_up(1,1,:,:,kd) = cf*Z(:,:,kd,3)
+            C2V_up(1,2,:,:,kd) = cf*(R(:,:,kd,4)*Z(:,:,kd,3)&
                 &-R(:,:,kd,3)*Z(:,:,kd,4))
-            C2V_up(:,:,kd,1,3) = -cf*R(:,:,kd,3)
-            C2V_up(:,:,kd,2,1) = -cf*Z(:,:,kd,2)
-            C2V_up(:,:,kd,2,2) = cf*(R(:,:,kd,2)*Z(:,:,kd,4)&
+            C2V_up(1,3,:,:,kd) = -cf*R(:,:,kd,3)
+            C2V_up(2,1,:,:,kd) = -cf*Z(:,:,kd,2)
+            C2V_up(2,2,:,:,kd) = cf*(R(:,:,kd,2)*Z(:,:,kd,4)&
                 &-R(:,:,kd,4)*Z(:,:,kd,2))
-            C2V_up(:,:,kd,2,3) = cf*R(:,:,kd,2)
-            C2V_up(:,:,kd,3,1) = 0.0_dp
-            C2V_up(:,:,kd,3,2) = cf*(R(:,:,kd,3)*Z(:,:,kd,2)&
+            C2V_up(2,3,:,:,kd) = cf*R(:,:,kd,2)
+            C2V_up(3,1,:,:,kd) = 0.0_dp
+            C2V_up(3,2,:,:,kd) = cf*(R(:,:,kd,3)*Z(:,:,kd,2)&
                 &-R(:,:,kd,2)*Z(:,:,kd,3))
-            C2V_up(:,:,kd,3,3) = 0.0_dp
+            C2V_up(3,3,:,:,kd) = 0.0_dp
         end do
         
         ! calculate transformation matrix for covariant coordinates
         do kd = 1,n_r
-            C2V_dn(:,:,kd,1,1) = R(:,:,kd,2)
-            C2V_dn(:,:,kd,1,2) = 0.0_dp
-            C2V_dn(:,:,kd,1,3) = Z(:,:,kd,2)
-            C2V_dn(:,:,kd,2,1) = R(:,:,kd,3)
-            C2V_dn(:,:,kd,2,2) = 0.0_dp
-            C2V_dn(:,:,kd,2,3) = Z(:,:,kd,3)
-            C2V_dn(:,:,kd,3,1) = R(:,:,kd,4)
-            C2V_dn(:,:,kd,3,2) = -1
-            C2V_dn(:,:,kd,3,3) = Z(:,:,kd,4)
+            C2V_dn(1,1,:,:,kd) = R(:,:,kd,2)
+            C2V_dn(1,2,:,:,kd) = 0.0_dp
+            C2V_dn(1,3,:,:,kd) = Z(:,:,kd,2)
+            C2V_dn(2,1,:,:,kd) = R(:,:,kd,3)
+            C2V_dn(2,2,:,:,kd) = 0.0_dp
+            C2V_dn(2,3,:,:,kd) = Z(:,:,kd,3)
+            C2V_dn(3,1,:,:,kd) = R(:,:,kd,4)
+            C2V_dn(3,2,:,:,kd) = -1
+            C2V_dn(3,3,:,:,kd) = Z(:,:,kd,4)
         end do
     end subroutine
 
@@ -109,16 +106,16 @@ contains
         if (allocated(g_V)) deallocate(g_V)
         if (allocated(h_V)) deallocate(h_V)
         ! reallocate
-        allocate(g_V(n_theta,n_zeta,n_r,3,3))
-        allocate(h_V(n_theta,n_zeta,n_r,3,3))
+        allocate(g_V(3,3,n_zeta,n_zeta,n_r))
+        allocate(h_V(3,3,n_zeta,n_zeta,n_r))
             
         do kd = 1,n_r
             do jd = 1,n_zeta
-                do id = 1,n_theta
-                    g_V(id,jd,kd,:,:) = metric_calc(g_C(id,jd,kd,:,:),&
-                        &C2V_dn(id,jd,kd,:,:))
-                    h_V(id,jd,kd,:,:) = metric_calc(h_C(id,jd,kd,:,:),&
-                        &C2V_up(id,jd,kd,:,:))
+                do id = 1,n_zeta
+                    g_V(:,:,id,jd,kd) = &
+                        &metric_calc(g_C(:,:,id,jd,kd), C2V_dn(:,:,id,jd,kd))
+                    h_V(:,:,id,jd,kd) = &
+                        &metric_calc(h_C(:,:,id,jd,kd), C2V_up(:,:,id,jd,kd))
                 end do
             end do
         end do

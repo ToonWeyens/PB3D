@@ -3,7 +3,7 @@
 !   representation used and its relations with the real space
 !-------------------------------------------------------
 module fourier_ops
-    use output_ops, only: writo
+    use output_ops, only: writo, print_ar_1, print_ar_2
     use num_vars, only: dp
 
     implicit none
@@ -15,7 +15,6 @@ contains
     ! Also calculates  the poloidal and toroidal  derivatives. Normal derivative
     ! is done discretely, outside of this function
     function f2r(fun_cos,fun_sin,ang_factor,mpol,ntor)
-        use output_ops, only: print_ar_2
         integer, intent(in) :: mpol, ntor
         real(dp), allocatable :: f2r(:)
         real(dp), intent(in) :: fun_cos(0:mpol-1,-ntor:ntor)                    ! cos part of Fourier variables (coeff. of the sum)
@@ -87,7 +86,6 @@ contains
     ! It is  possible that the  input variable is  not allocated. In  this case,
     ! output zero's
     function repack(var_VMEC,mnmax,ns,mpol,ntor,xm,xn)
-        use output_ops, only : print_ar_1
         integer, intent(in) :: mnmax, ns, mpol, ntor
         real(dp), intent(in) :: xm(mnmax), xn(mnmax)
         real(dp), allocatable :: var_VMEC(:,:)
