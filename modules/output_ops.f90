@@ -57,6 +57,14 @@ contains
             case (2)                                                            ! matlab
                 call write_out_matlab(fin_output_i, nx, ny, fun, fun_name, &
                     &comment)
+            case (3)
+                if (nx.eq.2) then                                               ! DISLIN 2D
+                    call write_out_dislin_2D(ny, fun, fun_name, comment)
+                else if (nx.gt.2) then                                          ! DISLIN 3D
+                    call write_out_dislin_3D(nx, ny, fun, fun_name, comment)
+                else
+                    call writo('WARNING: Dimension 1 has to be at least 2')
+                end if
             case default 
                 call writo('WARNING: No output format associated with ' &
                     &// i2str(format_out) )
@@ -65,11 +73,13 @@ contains
         ! writes a 2D array into matlab format
         ! Called only by write_out!
         subroutine write_out_matlab(output_i, nx, ny, fun, fun_name, comment)
+            ! input / output
             integer, intent(in) :: output_i, nx, ny
             character(len=*) :: fun_name
             real(dp) :: fun(1:nx,1:ny)
             character(len=*), optional :: comment
             
+            ! local variables
             integer :: ix, iy
             character(len=max_str_ln) :: form_str
             
@@ -88,6 +98,152 @@ contains
                 write(output_i,form_str) (fun(ix,iy), iy = 1, ny), '%', ix 
             enddo 
             write(output_i,*) '];'
+        end subroutine
+        
+        ! writes a 2D array onto the screen using DISLIN
+        subroutine write_out_dislin_2D(np, fun, fun_name, comment)
+            use dislin
+            
+            ! input / output
+            integer, intent(in) :: np
+            character(len=*) :: fun_name
+            real(dp) :: fun(2,1:np)
+            character(len=*), optional :: comment
+            
+            ! local variables
+            integer :: ic
+            real(dp) :: mint, maxt, minf, maxf
+            real(dp) :: x_val(np), y_val(np)                                    ! to avoid annoying compiler performance warnings
+        
+            
+            call metafl('xwin')                                                 ! xWin terminal
+            !call window(0,0,1024,512)                                           ! set window size
+            call setpag('DA4L')                                                 ! A4 landscape
+            !call sclfac(0.4_dp)                                                 ! scale factor
+            call disini                                                         ! start DISFIN
+            call winkey('return')                                               ! return key also exits
+            call errmod('all','off')                                            ! disable all messages
+            call errmod('warnings','on')                                        ! turn warnings on
+            
+            call pagfll(255)                                                    ! white background
+            call setrgb(0.0_dp,0.0_dp,0.0_dp)                                   ! black foreground for rest
+            call pagera()                                                       ! plots page border
+            call complx()                                                       ! sets complex font
+            !call axspos(451,1800)                                               ! position of lower left corner of axis
+            !call axslen(2200,1200)                                              ! length of axis
+
+            call name('x','x')                                                  ! name and label of x axis
+            call name('f','y')                                                  ! name and label of y axis
+            call labdig(-1,'x')                                                 ! number of digits after decimal point in lables
+            call ticks(10,'xy')
+
+            call titlin ('f = '//fun_name , 1)                                  ! main title
+            call titlin (comment, 3)                                            ! subtitle
+            
+            ic=intrgb(0.95_dp,0.95_dp,0.95_dp)                                  ! light grey in RGB
+            call axsbgd(ic)                                                     ! background color for axis
+            
+            minf = minval(fun(2,:)); maxf = maxval(fun(2,:))
+            mint = minval(fun(1,:)); maxt = maxval(fun(1,:))
+            call graf(mint,maxt,mint,(maxt-mint)/6,minf,maxf,minf,(maxf-minf)/6)
+            call title
+        
+            call color('red')                                                   ! red color
+            call thkcrv(5)
+            x_val = fun(1,:); y_val = fun(2,:)
+            call curve(x_val,y_val,np)                                          ! plot 2D curve
+            call thkcrv(1)
+            
+            call color('black')                                                 ! black color
+            !call axgit                                                          ! plot axis
+            call dash                                                           ! dashed line style
+            call xaxgit                                                         ! plot only x axis
+            call solid                                                          ! solid line style
+            !call yaxgit                                                         ! plot only y axis
+            
+            call setrgb(0.5_dp,0.5_dp,0.5_dp)                                   ! dark grey foreground for grid
+            call grid(1,1)                                                      ! 1 line per 'ticks' for x-axis and also for y
+            call setrgb(0.0_dp,0.0_dp,0.0_dp)                                   ! black foreground for rest
+            
+            call disfin                                                         ! terminate DISFIN
+        end subroutine
+        
+        ! writes a surfrace plot onto the screen using DISLIN
+        subroutine write_out_dislin_3D(nx, ny, fun, fun_name, comment)
+            use dislin
+            
+            ! input / output
+            integer, intent(in) :: nx, ny
+            character(len=*) :: fun_name
+            real(dp) :: fun(1:nx,1:ny)
+            character(len=*), optional :: comment
+            
+            ! local variables
+            integer :: ic, id
+            real(dp) :: minx, maxx, miny, maxy, minf, maxf
+            real(dp) :: x_arr(nx), y_arr(ny)
+            !real(dp) :: zlev                                                    ! for surface plots
+        
+            
+            call metafl('xwin')                                                 ! xWin terminal
+            !call window(0,0,1024,512)                                           ! set window size
+            call setpag('DA4L')                                                 ! A4 landscape
+            !call sclfac(0.4_dp)                                                 ! scale factor
+            call disini                                                         ! start DISFIN
+            call winkey('return')                                               ! return key also exits
+            call errmod('all','off')                                            ! disable all messages
+            call errmod('warnings','on')                                        ! turn warnings on
+            
+            call pagfll(255)                                                    ! white background
+            call setrgb(0.0_dp,0.0_dp,0.0_dp)                                   ! black foreground for rest
+            call pagera()                                                       ! plots page border
+            call complx()                                                       ! sets complex font
+            !call axspos(451,1800)                                               ! position of lower left corner of axis
+            !call axslen(2200,1200)                                              ! length of axis
+
+            call name('x','x')                                                  ! name and label of x axis
+            call name('y','y')                                                  ! name and label of y axis
+            call name('f','z')                                                  ! name and label of z axis
+            call labdig(-1,'x')                                                 ! number of digits after decimal point in lables
+            call ticks(10,'xy')
+
+            call titlin ('f = '//fun_name , 1)                                  ! main title
+            call titlin (comment, 3)                                            ! subtitle
+            
+            ic=intrgb(0.95_dp,0.95_dp,0.95_dp)                                  ! light grey in RGB
+            call axsbgd(ic)                                                     ! background color for axis
+            
+            minx = 1; maxx = size(fun,1)
+            miny = 1; maxy = size(fun,2)
+            minf = minval(fun); maxf = maxval(fun)
+            call graf3D(minx,maxx,minx,(maxx-minx)/6,miny,maxy,miny,&           ! (shaded) surface plot
+                &(maxy-miny)/6,minf,maxf,minf,(maxf-minf)/6)
+            !call graf(minx,maxx,minx,(maxx-minx)/6,miny,maxy,miny,&             ! contour plot
+                 !&(maxy-miny)/6)
+            call box3d                                                          ! 3D box
+            call title
+            
+            x_arr = (/( id, id = 1,nx)/)
+            y_arr = (/( id, id = 1,ny)/)
+            call color('red')                                                   ! red color
+            call thkcrv(5)
+            call surmat(fun,nx,ny,1,1)                                          ! surface plot
+            !call shdmod('smooth','sufrace')                                    ! shaded surface plot
+            !call surshd(x_arr,nx,y_arr,ny,fun)
+            !do id = 1,9                                                         ! contour plot
+                !zlev = minf + (id-1)*(maxf-minf)/10
+                !call setclr(id*25)
+                !if(id.eq.5) then
+                  !call labels('none','contur')
+                !else
+                  !call labels('float','contur')
+                !end if
+                !call contur(x_arr,nx,y_arr,ny,fun,zlev)
+            !end do
+            call thkcrv(1)
+            call color('black')                                                 ! black color
+            
+            call disfin                                                         ! terminate DISFIN
         end subroutine
     end subroutine
 

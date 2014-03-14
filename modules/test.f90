@@ -229,6 +229,7 @@ contains
         use VMEC_vars, only: n_r, mpol, ntor,l_c, l_s, iotaf
         use fourier_ops, only: mesh_cs, f2r
         use grid_vars, only: eqd_mesh
+        use output_ops, only: format_out
         
         integer :: id, kd, n_theta
         real(dp) :: zeta_in(n_r), theta_in(n_r)
@@ -239,6 +240,7 @@ contains
         real(dp) :: lam(4)
         real(dp), allocatable :: f(:,:), theta_plot(:)
         real(dp), allocatable :: plot_f_theta(:,:)
+        integer :: format_out_old
         
         alpha_in = pi*1.2_dp
         zeta_in = pi*0.4_dp
@@ -278,8 +280,7 @@ contains
             call writo('Calculating f for a range of theta values')
             
             call lvl_ud(1)
-            ! plot f as a function of theta
-            write(*,*) 'n_theta =', n_theta
+            n_theta = 50
             
             allocate(theta_plot(n_theta)); theta_plot = 0.0_dp
             theta_plot = eqd_mesh(n_theta, -3_dp*pi, 3_dp*pi)
@@ -297,16 +298,25 @@ contains
                 end do
                 plot_f_theta(1,:) = theta_plot
                 plot_f_theta(2,:) = f(:,kd)
+                
+                ! print the output to the screen
                 call writo('Plot of f(theta) for r = '//trim(i2str(kd)))
                 call print_ar_2(plot_f_theta)
+                
+                ! plot it on the screen as well using format_out = 3
+                format_out_old = format_out
+                format_out = 3
                 call write_out(2, n_theta, plot_f_theta, &
-                    &'theta_f_'//trim(i2str(kd)), comment=&
-                    &'f as a function of theta at r = '//trim(i2str(kd)))
+                    &'f as a function of theta at r = '//trim(i2str(kd)),&
+                    &comment='theta_0 = '//trim(r2strt(theta_out(kd)))//&
+                    &' for zeta = '//trim(r2strt(zeta_in(kd))))
+                format_out = format_out_old
             end do
-            call lvl_ud(-1)
             
             call writo('Paused... press enter')
             read(*,*)
+            
+            call lvl_ud(-1)
         end if
     end subroutine
 

@@ -1,77 +1,71 @@
-# Provisional makefile for the program PB3D (Peeling Ballooning in 3D)
+##############################################################################
+#
+#   Makefile for the program PB3D (Peeling Ballooning in 3D)
+#   Toon Weyens
+#
+##############################################################################
 
-SHELL   = /bin/sh
-#MYHOME  = $(HOME)
-#PRECOMP = /lib/cpp -P -traditional -DLINUX -DNEED_BLAS -DSILO_AVAIL -DNETCDF
-HOME_BIN= /home/toon/bin
-VISIT_DIR = /usr/local/visit/2.7.1/linux-x86_64/libsim/V2
-LIB_LINK= $(HOME_BIN)/libstell.a -L/usr/lib -lgfortran -lnetcdff -lnetcdf -llapack -lblas # $(VISIT_DIR)/lib/libsimV2.a $(VISIT_DIR)/lib/libsimV2f.a #-lgfortranbegin 
-LIB     = libstell.a
-LIB_DIR = /home/toon/Documents/School/PHD/Stellinstal/LIBSTELL
-FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fcheck=all -fbacktrace # for debugging
-#FLAGS = -O3 ! for optimization
-COMP_LINK_1 = /usr/bin/gfortran # gfortran
-COMP_LINK_2 = /usr/bin/f95 # f95
-COMP_LINK_3 = /usr/local/solarisstudio12.3/bin/f95 # oracle f95
+##############################################################################
+#   Paths
+##############################################################################
+HOME_BIN = /home/toon/bin
 
-COMPILE = $(COMP_LINK_1) -I/usr/include -I$(HOME_BIN)/libstell_dir # -I$(VISIT_DIR)/include #-I/usr/lib/fortran/modules/plplot -ffixed-form
-#COMPILE_FREE = gfortran -I/usr/include -I/usr/lib/fortran/modules/plplot -ffree-form
-FFILE   = '$*''.f'
-CFILE   = '$*''.c'
-F90FILE = '$*''.f90'
-#LINK    = g++ -fPIC $(FLAGS) $(SFLAGS) -o
-LINK    = g++ -fPIC $(FLAGS) $(SFLAGS) -o
-#MOD_PATH= -I
-SPATH   = modules
+# Comiler
+COMP_DIR = /usr/bin/gfortran # gfortran
+#COMP_DIR = /usr/bin/f95 # f95
+#COMP_DIR = /usr/local/solarisstudio12.3/bin/f95 # oracle f95
 
-#Contains list of source files (.o) and dependencies
+# Linker
+LINK_DIR = /usr/bin/g++ # g++ (needed for C++ preprocessing)
+
+# DISLIN path
+DISLIN_DIR = /usr/local/dislin
+
+# Add "modules" to the search path for the prerequisites
+VPATH = modules
+
+# Contains list of source files (.o) and dependencies
 DEPLIST = PB3D.dep
 OBJLIST = ObjectList
 
-#Includes source files and dependency list
+# Includes source files and dependency list
 include $(DEPLIST) # Dependencies of all the objects
 include $(OBJLIST) # Names of all the objects
-VPATH = $(SPATH)
 
+##############################################################################
+#   Compiler specifications
+##############################################################################
+# compiler flags
+COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fcheck=all -fbacktrace
+#COMP_FLAGS = -O3
 
+# compiler include
+COMP_INC = -I/usr/include -I$(HOME_BIN)/libstell_dir -I$(DISLIN_DIR)/gf/real64
+
+# compiler command
+COMPILE = $(COMP_DIR) $(COMP_INC) $(COMP_FLAGS)
+
+##############################################################################
+#   Link specifications
+##############################################################################
+# link flags
+LINK_FLAGS = -fPIC
+
+# libraries
+LINK_LIB = $(HOME_BIN)/libstell.a -L/usr/lib -lgfortran -lnetcdff -lnetcdf -llapack -lblas $(DISLIN_DIR)/libdislin_d.a -lXm -lXt -lX11 -lGL
+
+# link command
+LINK    = $(LINK_DIR) $(LINK_FLAGS) $(COMP_FLAGS)
+
+##############################################################################
+#   Rules
+##############################################################################
 PB3D:  $(ObjectFiles)
-	$(LINK) $@ $(ObjectFiles) $(LIB_LINK)
+	$(LINK) -o $@ $(ObjectFiles) $(LINK_LIB)
 %.o : %.f90
-	$(COMPILE) $(FLAGS) -c $<
-$(LIB) :
-#	@cd $(LIB_DIR); make release # If you want the library to be updated. 
-
+	$(COMPILE) -c $<
 clean:
-	- rm -f *.o *.mod
+	- rm -f *.o *.mod *~
 
-
-
-
-#.SUFFIXES :
-#.SUFFIXES : .f .f90 .o
-#PB3D:  $(LIB) $(ObjectFiles)
-#	$(LINK) $@ $(ObjectFiles) $(LIB_LINK)
-##Compile object files defined in OBJLIST.
-#.f.o :
-#	@if grep -q '^#if' $<; \
-#      then \
-#         cp $< $(CFILE); \
-#         echo '$(PRECOMP) $<'; $(PRECOMP) $(CFILE) $(FFILE); \
-#         rm -f $(CFILE); echo '$(COMPILE) $(FLAGS) $(MOD_PATH).. -c $<'; \
-#         $(COMPILE) $(FLAGS) $(MOD_PATH).. -c $(FFILE); \
-#      else \
-#         echo '$(COMPILE) $(FLAGS) $(MOD_PATH). -c $<'; \
-#         $(COMPILE) $(FLAGS) $(MOD_PATH). -c $<; \
-#      fi
-#
-#.f90.o :
-#	@if grep -q '^#if' $<; \
-#      then \
-#         cp $< $(CFILE); \
-#         echo '$(PRECOMP) $<'; $(PRECOMP) $(CFILE) $(F90FILE); \
-#         rm -f $(CFILE); echo '$(COMPILE_FREE) $(FLAGS) $(MOD_PATH).. -c $<'; \
-#        $(COMPILE_FREE) $(FLAGS) $(MOD_PATH).. -c $(F90FILE); \
-#      else \
-#         echo '$(COMPILE_FREE) $(FLAGS) $(MOD_PATH). -c $<'; \
-#         $(COMPILE_FREE) $(FLAGS) $(MOD_PATH).. -c $<; \
-#      fi
+output:
+	- rm -f *.m *.nc
