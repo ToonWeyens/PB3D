@@ -21,7 +21,6 @@ PB3D.o : \
 
 driver.o : \
     num_vars.o \
-    VMEC_vars.o \
     driver_rich.o \
     output_ops.o \
     str_ops.o 

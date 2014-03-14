@@ -37,9 +37,9 @@ contains
         use num_vars, only: output_i
         
         integer, intent(in) :: nx, ny
-        integer, intent(in), optional :: alt_output_i
         character(len=*) :: fun_name
         real(dp) :: fun(1:nx,1:ny)
+        integer, intent(in), optional :: alt_output_i
         character(len=*), optional :: comment
 
         integer :: fin_output_i

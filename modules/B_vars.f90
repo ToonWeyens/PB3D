@@ -32,8 +32,8 @@ contains
         real(dp) :: f, f_theta
         real(dp) :: theta_NR                                                    ! temporary solution for a given r, iteration
         
-        ! for all radial points
-        rad: do kd = 1, n_r
+        ! for all normal points
+        norm: do kd = 1, n_r
             ! initialization
             f = 0.0_dp
             f_theta = 0.0_dp
@@ -54,7 +54,7 @@ contains
                 cs = mesh_cs(mpol,ntor,theta_NR,zeta_in(kd))
                 
                 ! calculate lambda and angular derivatives
-                lam = f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor)
+                lam = f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor)                 ! ¡HALF MESH quantities!
                 
                 ! calculate the factors f and f_theta
                 f = zeta_in(kd) - (theta_NR+lam(1))/iotaf(kd) - alpha_in
@@ -78,6 +78,6 @@ contains
                     stop
                 end if
             end do NR
-        end do rad
+        end do norm
     end function theta_B
 end module B_vars

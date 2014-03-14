@@ -1,7 +1,7 @@
 ! Test some routines and functions
 module test
     use num_vars, only: dp, max_str_ln, pi
-    use output_ops, only: writo, lvl_ud, print_ar_1, print_ar_2, &
+    use output_ops, only: writo, lvl_ud, print_ar_1, print_ar_2, write_out, &
         &lvl
     use time, only: start_time, stop_time
     use str_ops, only: strh2l, i2str, r2str, r2strt
@@ -228,23 +228,31 @@ contains
         use B_vars, only: theta_B
         use VMEC_vars, only: n_r, mpol, ntor,l_c, l_s, iotaf
         use fourier_ops, only: mesh_cs, f2r
+        use grid_vars, only: eqd_mesh
         
+        integer :: id, kd, n_theta
         real(dp) :: zeta_in(n_r), theta_in(n_r)
         real(dp) :: theta_out(n_r)
         real(dp) :: alpha_in
         real(dp) :: alpha_calc(n_r)
         real(dp) :: cs(0:mpol-1,-ntor:ntor,2)
         real(dp) :: lam(4)
-        integer :: kd
+        real(dp), allocatable :: f(:,:), theta_plot(:)
+        real(dp), allocatable :: plot_f_theta(:,:)
         
         alpha_in = pi*1.2_dp
         zeta_in = pi*0.4_dp
         
         
         if(test_this('theta_B')) then
+            call writo('Calculating whether the theta calculated by theta_B &
+                &results effectively in the given alpha when substituted')
+            call lvl_ud(1)
+            
             ! starting value equal to zeta
             theta_in = zeta_in
             theta_out = theta_B(alpha_in,zeta_in,theta_in)
+            
             ! calculate lamda to be able to test alpha
             do kd = 1, n_r
                 ! cosines and sines
@@ -265,6 +273,37 @@ contains
             call print_ar_1(theta_out)
             call writo('As a check: calculated alpha = ')
             call print_ar_1(alpha_calc)
+            call lvl_ud(-1)
+            
+            call writo('Calculating f for a range of theta values')
+            
+            call lvl_ud(1)
+            ! plot f as a function of theta
+            write(*,*) 'n_theta =', n_theta
+            
+            allocate(theta_plot(n_theta)); theta_plot = 0.0_dp
+            theta_plot = eqd_mesh(n_theta, -3_dp*pi, 3_dp*pi)
+            allocate(f(n_theta,n_r)); f = 0.0_dp
+            allocate(plot_f_theta(2,n_theta))
+            
+            do kd = 1, n_r
+                do id = 1, n_theta
+                    ! cosines and sines
+                    cs = mesh_cs(mpol,ntor,theta_plot(id),zeta_in(kd))
+                    ! lambda
+                    lam = f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor)
+                    f(id,kd) = zeta_in(kd) - (theta_plot(id)+lam(1))/iotaf(kd) &
+                        &- alpha_in
+                end do
+                plot_f_theta(1,:) = theta_plot
+                plot_f_theta(2,:) = f(:,kd)
+                call writo('Plot of f(theta) for r = '//trim(i2str(kd)))
+                call print_ar_2(plot_f_theta)
+                call write_out(2, n_theta, plot_f_theta, &
+                    &'theta_f_'//trim(i2str(kd)), comment=&
+                    &'f as a function of theta at r = '//trim(i2str(kd)))
+            end do
+            call lvl_ud(-1)
             
             call writo('Paused... press enter')
             read(*,*)
