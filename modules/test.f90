@@ -121,7 +121,7 @@ contains
     subroutine test_metric_C2V()
         use metric_ops, only: metric_C, metric_C2V, metric_V, &
             &C2V_up, C2V_dn, jac_V, g_V, h_V
-        use grid_vars, only: eqd_mesh, calc_RZl, n_zeta, &
+        use eq_vars, only: eqd_mesh, calc_RZl, n_zeta, &
             &min_zeta, max_zeta, theta, zeta
         use VMEC_vars, only: n_r
         
@@ -225,10 +225,9 @@ contains
     end subroutine
 
     subroutine test_theta_B()
-        use B_vars, only: theta_B
         use VMEC_vars, only: n_r, mpol, ntor,l_c, l_s, iotaf
         use fourier_ops, only: mesh_cs, f2r
-        use grid_vars, only: eqd_mesh
+        use eq_vars, only: eqd_mesh, theta_B
         use output_ops, only: format_out
         
         integer :: id, kd, n_theta
@@ -259,8 +258,19 @@ contains
             do kd = 1, n_r
                 ! cosines and sines
                 cs = mesh_cs(mpol,ntor,theta_out(kd),zeta_in(kd))
-                ! lambda
-                lam = f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor)
+                
+                ! calculate lambda and angular derivatives, converted to FM
+                if (kd.eq.1) then                                               ! first point not defined on HM -> extrapolate
+                    lam = 3./2. * f2r(l_c(:,:,2),l_s(:,:,2),cs,mpol,ntor) - &
+                        &1./2. * f2r(l_c(:,:,3),l_s(:,:,3),cs,mpol,ntor)
+                else if (kd.eq.n_r) then                                        ! last point -> extrapolate as well
+                    lam = 3./2. * f2r(l_c(:,:,n_r),l_s(:,:,n_r),cs,mpol,ntor)-&
+                        &1./2. * f2r(l_c(:,:,n_r-1),l_s(:,:,n_r-1),cs,mpol,ntor)
+                else                                                            ! intermediate points -> interpolate
+                    lam = 1./2. * f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor) + &
+                        &1./2. * f2r(l_c(:,:,kd+1),l_s(:,:,kd+1),cs,mpol,ntor)
+                end if
+                
                 ! alpha
                 alpha_calc(kd) = zeta_in(kd) - &
                     &(theta_out(kd) + lam(1))/iotaf(kd)

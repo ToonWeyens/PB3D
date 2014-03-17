@@ -6,7 +6,7 @@ module metric_ops
     use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
     use str_ops, only: r2str, i2str
     use VMEC_vars, only: n_r
-    use grid_vars, only: n_zeta, R, Z
+    use eq_vars, only: n_zeta, R, Z
     
     implicit none
     private

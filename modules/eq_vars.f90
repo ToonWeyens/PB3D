@@ -1,15 +1,15 @@
 !-------------------------------------------------------
-!   Variables, subroutines and  functions that have to do with  the mesh used in
-!   the calculations
+!   Variables,  subroutines  and functions  that  have  to do  with  equilibrium
+!   quantities and the mesh used in the calculations
 !-------------------------------------------------------
-module grid_vars
+module eq_vars
     use num_vars, only: dp, pi
     use output_ops, only: writo, lvl_ud, print_ar_2
-    use str_ops, only: r2strt, i2str
+    use str_ops, only: r2strt, i2str, r2str
 
     implicit none
     private
-    public eqd_mesh, tor_mesh, pol_mesh, calc_RZl, &
+    public eqd_mesh, tor_mesh, pol_mesh, calc_RZl, theta_B, &
         &theta, zeta, n_zeta, R, Z, lam, min_zeta, max_zeta 
 
     ! R and Z and derivatives in real (as opposed to Fourier) space (see below)
@@ -40,7 +40,6 @@ contains
     ! calculate the poloidal mesh, in which the magnetic field line is straight,
     ! for a particular alpha
     subroutine pol_mesh(alpha)
-        use B_vars, only: theta_B
         use VMEC_vars, only: n_r
         
         ! input / output
@@ -93,6 +92,18 @@ contains
             eqd_mesh(id) = eqd_mesh(id-1) + delta_ang
         end do
     end function eqd_mesh
+    
+    ! transform half-mesh to full-mesh quantities
+    function h2f(var)
+        use VMEC_vars, only: n_r
+        real(dp) :: h2f(n_zeta,n_zeta,n_r,4)
+        real(dp), intent(in) :: var(n_zeta,n_zeta,n_r,4)
+        
+        ! interpolate the inner quantities
+        h2f(:,:,2:n_r-1,:) = 0.5_dp*(var(:,:,2:n_r-1,:) + var(:,:,3:n_r,:))          ! Only last values must come from B.C.
+        h2f(:,:,n_r,:) = 2*var(:,:,n_r,:) - h2f(:,:,n_r-1,:)                       ! Extrapolate first, last points
+        h2f(:,:,1,:) = 2*var(:,:,2,:)-h2f(:,:,2,:)
+    end function
 
     ! calculate the coordinates R  and Z and l in real  space from their Fourier
     ! decomposition using the grid points currently stored in the variables 
@@ -203,4 +214,83 @@ contains
             end if
         end subroutine
     end subroutine calc_RZl
-end module grid_vars
+    
+    ! Calculates the  poloidal angle theta as  a function of the  toroidal angle
+    ! zeta following a particular magnetic field line alpha.
+    ! This is done using a Newton-Rhapson scheme that calculates the zero's of the
+    ! function f(theta) = zeta - q (theta + lambda(theta)) - alpha
+    function theta_B(alpha_in,zeta_in,theta_in)
+        use num_vars, only: max_it_NR, tol_NR
+        use VMEC_vars, only: mpol, ntor, n_r, l_c, l_s, iotaf
+        use fourier_ops, only: mesh_cs, f2r
+        
+        ! input / output
+        real(dp) :: theta_B(n_r)                                                ! theta(zeta)
+        real(dp), intent(in) :: alpha_in, zeta_in(n_r)                          ! alpha, zeta
+        real(dp), optional :: theta_in(n_r)                                     ! optional input (guess) for theta
+        
+        ! local variables
+        integer :: jd,kd
+        real(dp) :: lam(4)                                                      ! lambda, interpolated from current and next mesh points
+        real(dp) :: cs(0:mpol-1,-ntor:ntor,2)
+        real(dp) :: f, f_theta
+        real(dp) :: theta_NR                                                    ! temporary solution for a given r, iteration
+        
+        ! for all normal points
+        norm: do kd = 1, n_r
+            ! initialization
+            f = 0.0_dp
+            f_theta = 0.0_dp
+            
+            ! if first guess for theta is given
+            if (present(theta_in)) then
+                theta_NR = theta_in(kd)
+            else if (kd.eq.1) then
+                theta_NR = pi                                                   ! take pi, because it is in the middle of 0...2pi
+            else                                                                ! take solution for previous flux surface
+                theta_NR = theta_B(kd-1)
+            end if
+            
+            ! Newton-Rhapson loop
+            NR: do jd = 1,max_it_NR
+                ! transform lambda from Fourier space to real space
+                ! calculate the (co)sines
+                cs = mesh_cs(mpol,ntor,theta_NR,zeta_in(kd))
+                
+                ! calculate lambda and angular derivatives, converted to FM
+                if (kd.eq.1) then                                               ! first point not defined on HM -> extrapolate
+                    lam = 3./2. * f2r(l_c(:,:,2),l_s(:,:,2),cs,mpol,ntor) - &
+                        &1./2. * f2r(l_c(:,:,3),l_s(:,:,3),cs,mpol,ntor)
+                else if (kd.eq.n_r) then                                        ! last point -> extrapolate as well
+                    lam = 3./2. * f2r(l_c(:,:,n_r),l_s(:,:,n_r),cs,mpol,ntor)-&
+                        &1./2. * f2r(l_c(:,:,n_r-1),l_s(:,:,n_r-1),cs,mpol,ntor)
+                else                                                            ! intermediate points -> interpolate
+                    lam = 1./2. * f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor) + &
+                        &1./2. * f2r(l_c(:,:,kd+1),l_s(:,:,kd+1),cs,mpol,ntor)
+                end if
+                
+                ! calculate the factors f and f_theta
+                f = zeta_in(kd) - (theta_NR+lam(1))/iotaf(kd) - alpha_in
+                f_theta = -(1.0_dp + lam(3))/iotaf(kd)
+                
+                ! correction to theta_NR
+                theta_NR = theta_NR - f/f_theta
+                
+                ! check for convergence
+                if (abs(f/f_theta).lt.tol_NR) then
+                    theta_B(kd) = theta_NR
+                    exit
+                else if (jd .eq. max_it_NR) then
+                    call writo('ERROR: Newton-Rhapson method to find &
+                        &theta(zeta) not converged after '//trim(i2str(jd))//&
+                        &' iterations. Try increasing max_it_NR in input file?')
+                    call writo('(the residual was equal to '//&
+                        &trim(r2str(f/f_theta)))
+                    call writo(' with f = '//trim(r2strt(f))//' and f_theta = '&
+                        &//trim(r2strt(f_theta))//')')
+                    stop
+                end if
+            end do NR
+        end do norm
+    end function theta_B
+end module eq_vars

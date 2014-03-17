@@ -7,8 +7,7 @@ test.o : \
     metric_ops.o \
     time.o \
     VMEC_vars.o \
-    grid_vars.o \
-    B_vars.o \
+    eq_vars.o \
 
 PB3D.o : \
     num_vars.o \
@@ -30,14 +29,13 @@ driver_rich.o : \
     file_ops.o \
     str_ops.o \
     output_ops.o \
-    grid_vars.o \
+    eq_vars.o \
     metric_ops.o \
-    B_vars.o \
     eq_ops.o \
 
 eq_ops.o : \
     num_vars.o \
-    grid_vars.o \
+    eq_vars.o \
     output_ops.o \
     metric_ops.o \
     
@@ -52,7 +50,7 @@ fourier_ops.o : \
 file_ops.o : \
     num_vars.o \
     str_ops.o \
-    grid_vars.o \
+    eq_vars.o \
     output_ops.o \
     VMEC_vars.o \
 
@@ -62,27 +60,19 @@ VMEC_vars.o : \
     output_ops.o \
     fourier_ops.o \
 
-grid_vars.o : \
+eq_vars.o : \
     num_vars.o \
     str_ops.o \
     output_ops.o \
     fourier_ops.o \
     VMEC_vars.o \
-    B_vars.o \
-
-B_vars.o : \
-    num_vars.o \
-    VMEC_vars.o \
-    output_ops.o \
-    str_ops.o \
-    fourier_ops.o \
 
 metric_ops.o : \
     num_vars.o \
     VMEC_vars.o \
     output_ops.o \
     str_ops.o \
-    grid_vars.o 
+    eq_vars.o 
 
 var_ops.o : \
     num_vars.o \

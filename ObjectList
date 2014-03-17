@@ -3,8 +3,7 @@ num_vars.o \
 var_ops.o \
 output_ops.o \
 VMEC_vars.o \
-B_vars.o \
-grid_vars.o \
+eq_vars.o \
 metric_ops.o \
 file_ops.o \
 fourier_ops.o \

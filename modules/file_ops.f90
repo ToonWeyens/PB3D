@@ -11,7 +11,7 @@ module file_ops
     use str_ops, only: i2str
     use output_ops, only: lvl_ud, writo, &
         &lvl, format_out
-    use grid_vars, only: &
+    use eq_vars, only: &
         &min_zeta, max_zeta, n_zeta
     use VMEC_vars, only: VMEC_name
     implicit none

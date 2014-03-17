@@ -1,6 +1,5 @@
 !-------------------------------------------------------
-!   Calculates the equilibrium quantities, making use of the metric_ops, B_vars,
-!   grid_vars, etc
+!   Calculates the equilibrium quantities, making use of the metric_ops, eq_vars, etc
 !-------------------------------------------------------
 module eq_ops
     use num_vars, only: pi, dp
@@ -14,7 +13,7 @@ contains
     ! calculate the equilibrium quantities on a grid determined by straight field
     ! lines.
     subroutine calc_eq(alpha)
-        use grid_vars, only: eqd_mesh, tor_mesh, pol_mesh, calc_RZl
+        use eq_vars, only: eqd_mesh, tor_mesh, pol_mesh, calc_RZl
         use metric_ops, only: metric_C, metric_C2V, metric_V
         
         real(dp) :: alpha

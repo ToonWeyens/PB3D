@@ -15,7 +15,7 @@ module driver_rich
 contains
     subroutine run_rich_driver()
         use num_vars, only: min_alpha, max_alpha, n_alpha
-        use grid_vars, only: eqd_mesh
+        use eq_vars, only: eqd_mesh
         use eq_ops, only: calc_eq
         
         integer :: ir, ia                                                       ! counters
