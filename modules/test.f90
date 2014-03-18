@@ -1,10 +1,12 @@
-! Test some routines and functions
+!-------------------------------------------------------
+!   Test some routines and functions
+!-------------------------------------------------------
 module test
     use num_vars, only: dp, max_str_ln, pi
-    use output_ops, only: writo, lvl_ud, print_ar_1, print_ar_2, write_out, &
-        &lvl
+    use output_ops, only: writo, lvl_ud, print_ar_1, print_ar_2, write_out
+    use input_ops, only: yes_no
     use time, only: start_time, stop_time
-    use str_ops, only: strh2l, i2str, r2str, r2strt
+    use str_ops, only: i2str, r2str, r2strt
     use var_ops, only: mat_mult, det
 
     implicit none
@@ -22,7 +24,8 @@ contains
         real(dp), allocatable :: varinB(:,:)
         real(dp), allocatable :: varoutB(:,:,:)
             
-        if(test_this('repack')) then
+        call writo('test repack?')
+        if(yes_no(.false.)) then
             call lvl_ud(1)
             n_rB = 2
             mpolB = 2
@@ -62,7 +65,8 @@ contains
         use VMEC_vars, only: &
             &mnmax, n_r, rmnc
             
-        if(test_this('write_out')) then
+        call writo('test write_out?')
+        if(yes_no(.false.)) then
             call writo('Testing write_out')
             call lvl_ud(1)
             call write_out(mnmax, n_r, rmnc, 'rmnc_name', output_i)       
@@ -89,7 +93,8 @@ contains
         zeta = 0
         
         do
-            if(test_this('mesh_cs')) then
+            call writo('test mesh_cs?')
+            if(yes_no(.false.)) then
                 call writo('Testing write_out')
                 call lvl_ud(1)
                 
@@ -121,28 +126,29 @@ contains
     subroutine test_metric_C2V()
         use metric_ops, only: metric_C, metric_C2V, metric_V, &
             &C2V_up, C2V_dn, jac_V, g_V, h_V
-        use eq_vars, only: eqd_mesh, calc_RZl, n_zeta, &
-            &min_zeta, max_zeta, theta, zeta
+        use eq_vars, only: eqd_mesh, calc_RZl, n_par, &
+            &min_par, max_par, theta, zeta
         use VMEC_vars, only: n_r
         
         real(dp) :: C2V_mult(3,3)
         real(dp) :: u_mat(3,3), diff_mat(3,3)                                   ! unity 3x3 matrix, difference matrix with unity_mat
-        integer :: max_index(3)                                                 ! index of maximum difference
+        integer :: max_index(2)                                                 ! index of maximum difference
         real(dp) :: diff_max                                                    ! maximum deviation of unity matrix
         real(dp) :: g_J, h_J                                                    ! jacobian calculated from g and h
-        integer :: max_J_index(2,3)                                             ! index of maximum difference 
+        integer :: max_J_index(2,2)                                             ! index of maximum difference 
         real(dp) :: diff_J_max(2)                                               ! maximum of difference between g_J, h_J and jac_V
-        integer :: id, jd, kd
+        integer :: id, kd
         
-        if(test_this('metric_C2V')) then
+        call writo('test metric_C2V?')
+        if(yes_no(.false.)) then
             call writo('test whether we have C2V_dn*C2V_up^T = 1')
             call lvl_ud(1)
             
             ! initalize theta and zeta. No need for field-line following theta
-            allocate(zeta(n_zeta, n_r)); zeta = 0.0_dp
-            allocate(theta(n_zeta, n_r)); theta = 0.0_dp
+            allocate(zeta(n_par, n_r)); zeta = 0.0_dp
+            allocate(theta(n_par, n_r)); theta = 0.0_dp
             do kd = 1,n_r
-                zeta(:,kd) = eqd_mesh(n_zeta, min_zeta, max_zeta)
+                zeta(:,kd) = eqd_mesh(n_par, min_par, max_par)
             end do
             theta = zeta
             
@@ -161,23 +167,20 @@ contains
             max_index = 0
             diff_max = 0.0_dp
             do kd = 1,n_r
-                do jd = 1,n_zeta
-                    do id = 1,n_zeta
-                        C2V_mult = mat_mult(C2V_up(:,:,id,jd,kd),&
-                            &transpose(C2V_dn(:,:,id,jd,kd)))
-                        diff_mat = C2V_mult - u_mat
-                        if (maxval(abs(diff_mat)).gt.diff_max) then
-                            max_index = [id,jd,kd]
-                            diff_max = maxval(abs(diff_mat))
-                        end if
-                    end do
+                do id = 1,n_par
+                    C2V_mult = mat_mult(C2V_up(:,:,id,kd),&
+                        &transpose(C2V_dn(:,:,id,kd)))
+                    diff_mat = C2V_mult - u_mat
+                    if (maxval(abs(diff_mat)).gt.diff_max) then
+                        max_index = [id,kd]
+                        diff_max = maxval(abs(diff_mat))
+                    end if
                 end do
             end do
             
             call writo('maximum deviation from unity matrix found at ('//&
                 &trim(i2str(max_index(1)))//','//trim(i2str(max_index(2)))//&
-                &','//trim(i2str(max_index(3)))//'), equal to '//&
-                &trim(r2strt(diff_max)))
+                &'), equal to '//trim(r2strt(diff_max)))
             
             call lvl_ud(-1)
             
@@ -190,32 +193,28 @@ contains
             
             diff_J_max = 0.0_dp
             do kd = 1,n_r
-                do jd = 1,n_zeta
-                    do id = 1,n_zeta
-                        g_J = sqrt(det(3,g_V(:,:,id,jd,kd)))
-                        h_J = 1.0_dp/sqrt(det(3,h_V(:,:,id,jd,kd)))
-                        if (abs(g_J-jac_V(id,jd,kd)).gt.diff_J_max(1)) then
-                            max_J_index(1,:) = [id,jd,kd]
-                            diff_J_max(1) = abs(g_J-jac_V(id,jd,kd))
-                        end if
-                        if (h_J-jac_V(id,jd,kd).gt.diff_J_max(2)) then
-                            max_J_index(2,:) = [id,jd,kd]
-                            diff_J_max(2) = abs(h_J-jac_V(id,jd,kd)) 
-                        end if
-                    end do
+                do id = 1,n_par
+                    g_J = sqrt(det(3,g_V(:,:,id,kd)))
+                    h_J = 1.0_dp/sqrt(det(3,h_V(:,:,id,kd)))
+                    if (abs(g_J-jac_V(id,kd)).gt.diff_J_max(1)) then
+                        max_J_index(1,:) = [id,kd]
+                        diff_J_max(1) = abs(g_J-jac_V(id,kd))
+                    end if
+                    if (h_J-jac_V(id,kd).gt.diff_J_max(2)) then
+                        max_J_index(2,:) = [id,kd]
+                        diff_J_max(2) = abs(h_J-jac_V(id,kd)) 
+                    end if
                 end do
             end do
             
             call writo('maximum deviation of sqrt(det(g_J)) from jac_V found &
                 & at ('//trim(i2str(max_J_index(1,1)))//','//&
                 &trim(i2str(max_J_index(1,2)))//','//&
-                &trim(i2str(max_J_index(1,3)))//'), equal to '//&
-                &trim(r2strt(diff_J_max(1))))
+                &'), equal to '//trim(r2strt(diff_J_max(1))))
             call writo('maximum deviation of 1/sqrt(det(h_J)) from jac_V found &
                 & at ('//trim(i2str(max_J_index(2,1)))//','//&
                 &trim(i2str(max_J_index(2,2)))//','//&
-                &trim(i2str(max_J_index(2,3)))//'), equal to '//&
-                &trim(r2strt(diff_J_max(2))))
+                &'), equal to '//trim(r2strt(diff_J_max(2))))
             
             call lvl_ud(-1)
             
@@ -225,135 +224,121 @@ contains
     end subroutine
 
     subroutine test_theta_B()
-        use VMEC_vars, only: n_r, mpol, ntor,l_c, l_s, iotaf
-        use fourier_ops, only: mesh_cs, f2r
-        use eq_vars, only: eqd_mesh, theta_B
+        use VMEC_vars, only: n_r, mpol, ntor
+        use eq_vars, only: eqd_mesh, h2f, pol_mesh, tor_mesh, &
+            &n_par, min_par, max_par, theta, zeta
         use output_ops, only: format_out
         
-        integer :: id, kd, n_theta
-        real(dp) :: zeta_in(n_r), theta_in(n_r)
-        real(dp) :: theta_out(n_r)
-        real(dp) :: alpha_in
-        real(dp) :: alpha_calc(n_r)
-        real(dp) :: cs(0:mpol-1,-ntor:ntor,2)
-        real(dp) :: lam(4)
-        real(dp), allocatable :: f(:,:), theta_plot(:)
-        real(dp), allocatable :: plot_f_theta(:,:)
+        real(dp) :: alpha
         integer :: format_out_old
+        integer :: id, kd
+        real(dp), allocatable :: plot_ang(:,:)
+        real(dp), allocatable :: theta_plot(:), f(:,:)
+        real(dp), allocatable :: plot_f_theta(:,:)
+        real(dp) :: l_c_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_c
+        real(dp) :: l_s_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_s
+        integer :: n_theta
         
-        alpha_in = pi*1.2_dp
-        zeta_in = pi*0.4_dp
-        
-        
-        if(test_this('theta_B')) then
-            call writo('Calculating whether the theta calculated by theta_B &
-                &results effectively in the given alpha when substituted')
+        call writo('test theta_B?')
+        if(yes_no(.false.)) then
+            call writo('Plot zeta(theta)')
+            
             call lvl_ud(1)
             
-            ! starting value equal to zeta
-            theta_in = zeta_in
-            theta_out = theta_B(alpha_in,zeta_in,theta_in)
+            ! CALCULATE THETA(ZETA)
+            call writo('Calculating theta(zeta)')
+            alpha = 1.2_dp*pi
+            n_par = 20
+            min_par = 0.0_dp
+            max_par = 2.0_dp*pi
             
-            ! calculate lamda to be able to test alpha
-            do kd = 1, n_r
-                ! cosines and sines
-                cs = mesh_cs(mpol,ntor,theta_out(kd),zeta_in(kd))
+            ! determine the toroidal mesh points
+            call tor_mesh
+            
+            ! calculate poloidal mesh points that follow the magnetic field line
+            ! cfor urrent toroidal mesh points and field line (alpha)
+            call pol_mesh(alpha)
+            
+            allocate(plot_ang(2,n_par))
+            do kd = 1,n_r
+                ! plot (theta,zeta)
+                plot_ang(1,:) = theta(:,kd)
+                plot_ang(2,:) = zeta(:,kd)
                 
-                ! calculate lambda and angular derivatives, converted to FM
-                if (kd.eq.1) then                                               ! first point not defined on HM -> extrapolate
-                    lam = 3./2. * f2r(l_c(:,:,2),l_s(:,:,2),cs,mpol,ntor) - &
-                        &1./2. * f2r(l_c(:,:,3),l_s(:,:,3),cs,mpol,ntor)
-                else if (kd.eq.n_r) then                                        ! last point -> extrapolate as well
-                    lam = 3./2. * f2r(l_c(:,:,n_r),l_s(:,:,n_r),cs,mpol,ntor)-&
-                        &1./2. * f2r(l_c(:,:,n_r-1),l_s(:,:,n_r-1),cs,mpol,ntor)
-                else                                                            ! intermediate points -> interpolate
-                    lam = 1./2. * f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor) + &
-                        &1./2. * f2r(l_c(:,:,kd+1),l_s(:,:,kd+1),cs,mpol,ntor)
-                end if
-                
-                ! alpha
-                alpha_calc(kd) = zeta_in(kd) - &
-                    &(theta_out(kd) + lam(1))/iotaf(kd)
-            end do
-            
-            call writo('with alpha = '//trim(r2str(alpha_in))//&
-                &', and zeta = ')
-            call print_ar_1(zeta_in)
-            call writo('  -> starting values for theta chosen equal to:')
-            call print_ar_1(theta_in)
-            call writo('     and final values equal to:')
-            call print_ar_1(theta_out)
-            call writo('As a check: calculated alpha = ')
-            call print_ar_1(alpha_calc)
-            call lvl_ud(-1)
-            
-            call writo('Calculating f for a range of theta values')
-            
-            call lvl_ud(1)
-            n_theta = 50
-            
-            allocate(theta_plot(n_theta)); theta_plot = 0.0_dp
-            theta_plot = eqd_mesh(n_theta, -3_dp*pi, 3_dp*pi)
-            allocate(f(n_theta,n_r)); f = 0.0_dp
-            allocate(plot_f_theta(2,n_theta))
-            
-            do kd = 1, n_r
-                do id = 1, n_theta
-                    ! cosines and sines
-                    cs = mesh_cs(mpol,ntor,theta_plot(id),zeta_in(kd))
-                    ! lambda
-                    lam = f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor)
-                    f(id,kd) = zeta_in(kd) - (theta_plot(id)+lam(1))/iotaf(kd) &
-                        &- alpha_in
-                end do
-                plot_f_theta(1,:) = theta_plot
-                plot_f_theta(2,:) = f(:,kd)
-                
-                ! print the output to the screen
-                call writo('Plot of f(theta) for r = '//trim(i2str(kd)))
-                call print_ar_2(plot_f_theta)
-                
-                ! plot it on the screen as well using format_out = 3
+                ! plot it on the screen using format_out = 3
                 format_out_old = format_out
                 format_out = 3
-                call write_out(2, n_theta, plot_f_theta, &
-                    &'f as a function of theta at r = '//trim(i2str(kd)),&
-                    &comment='theta_0 = '//trim(r2strt(theta_out(kd)))//&
-                    &' for zeta = '//trim(r2strt(zeta_in(kd))))
+                call write_out(2, n_par, plot_ang, &
+                        &'zeta as a function of theta at r = '//trim(i2str(kd))&
+                        &//'/'//trim(i2str(n_r)))
                 format_out = format_out_old
+                
+                call writo('Paused... plot next?')
+                if(.not.yes_no(.true.)) then
+                    exit
+                end if
             end do
             
-            call writo('Paused... press enter')
-            read(*,*)
+            call lvl_ud(-1)
+            
+            ! CALCULATE F FOR A RANGE OF PARALLEL VALUES
+            call writo('Calculating f for a range of parallel values')
+            
+            call lvl_ud(1)
+            n_theta = 100
+            
+            allocate(theta_plot(n_theta)); theta_plot = 0.0_dp
+            allocate(f(n_theta,n_r)); f = 0.0_dp
+            allocate(plot_f_theta(2,n_theta)); plot_f_theta = 0.0_dp
+            theta_plot = eqd_mesh(n_theta, -3_dp*pi, 3_dp*pi)
+            
+            perp: do kd = 1, n_r
+                par: do id = 1, n_par
+                    plot_f_theta(1,:) = theta_plot
+                    plot_f_theta(2,:) = f_plot(n_theta,theta_plot,zeta(id,kd))
+                    
+                    ! plot it on the screen using format_out = 3
+                    format_out_old = format_out
+                    format_out = 3
+                    call write_out(2, n_theta, plot_f_theta, &
+                        &'f as a function of theta at r = '//trim(i2str(kd))&
+                        &//'/'//trim(i2str(n_r)),&
+                        &comment='theta_0 = '//trim(r2strt(theta(id,kd)))//&
+                        &' for zeta = '//trim(r2strt(zeta(id,kd))))
+                    format_out = format_out_old
+                    
+                    call writo('Paused... plot next?')
+                    if(.not.yes_no(.true.)) then
+                        exit perp
+                    end if
+                end do par
+            end do perp
             
             call lvl_ud(-1)
         end if
+    contains
+        function f_plot(n_theta,theta_plot,zeta_plot)
+            use fourier_ops, only: mesh_cs, f2r
+            use VMEC_vars, only: iotaf
+            
+            ! input / output
+            integer :: n_theta, jd
+            real(dp) :: f_plot(n_theta)
+            real(dp) :: theta_plot(n_theta)
+            real(dp) :: zeta_plot
+            
+            ! local variables
+            real(dp), allocatable :: cs(:,:,:)                                  ! (co)sines for all pol m and tor n
+            real(dp) :: lam
+            
+            allocate(cs(0:mpol-1,-ntor:ntor,2))
+            do jd = 1, n_theta
+                ! cosines and sines
+                cs = mesh_cs(mpol,ntor,theta_plot(jd),zeta_plot)
+                ! lambda
+                lam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,1)
+                f_plot(jd) = zeta_plot-(theta_plot(jd)+lam)/iotaf(kd)-alpha
+            end do
+        end function f_plot
     end subroutine
-
-    logical function test_this(test_name)
-        use output_ops, only: &
-            &lvl_sep
-        character(len=*) :: test_name
-        character(len=max_str_ln) :: answer_str
-
-        integer :: id 
-
-        call writo('test ' // trim(test_name) // '?')
-        do id = 1,lvl                                                           ! to get the response on the right collumn
-            write(*,'(A)',advance='no') lvl_sep
-        end do
-        write(*,'(A)',advance='no') 'y(es)/n(o) [no]: '
-        call stop_time
-        read (*, '(A)') answer_str
-        call start_time
-
-        test_this = .false.
-        select case (strh2l(trim(answer_str)))
-            !case ('y','Y','yes','Yes','YEs','YES','yEs','yES','yeS','YeS')
-            case ('y','yes')
-                test_this = .true.
-            case ('n','N','no','No','NO','nO') 
-            case default 
-        end select
-    end function test_this
 end module test

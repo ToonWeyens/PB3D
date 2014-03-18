@@ -5,6 +5,7 @@
 module fourier_ops
     use output_ops, only: writo, print_ar_1, print_ar_2
     use num_vars, only: dp
+    use str_ops, only: i2str
 
     implicit none
     private
@@ -12,15 +13,21 @@ module fourier_ops
 
 contains
     ! Inverse Fourier transformation, VMEC style
-    ! Also calculates  the poloidal and toroidal  derivatives. Normal derivative
-    ! is done discretely, outside of this function
-    function f2r(fun_cos,fun_sin,ang_factor,mpol,ntor)
-        integer, intent(in) :: mpol, ntor
-        real(dp), allocatable :: f2r(:)
+    ! Also calculates the poloidal or toroidal derivatives, as indicated by:
+    !   deriv = 1, no derivative
+    !   deriv = 2, ERROR (reserved for normal derivative)
+    !   deriv = 3, poloidal derivative
+    !   deriv = 4, toroidal derivative
+    ! (Normal derivative is done discretely, outside of this function)
+    function f2r(fun_cos,fun_sin,ang_factor,mpol,ntor,deriv)
+        ! input / output
+        integer, intent(in) :: mpol, ntor, deriv
+        real(dp) :: f2r
         real(dp), intent(in) :: fun_cos(0:mpol-1,-ntor:ntor)                    ! cos part of Fourier variables (coeff. of the sum)
         real(dp), intent(in) :: fun_sin(0:mpol-1,-ntor:ntor)                    ! sin part of Fourier variables (coeff. of the sum)
         real(dp), intent(in) :: ang_factor(0:mpol-1,-ntor:ntor,2)               ! (co)sine factors on mesh
         
+        ! local variables
         integer :: m,n
         
         ! some tests
@@ -29,21 +36,40 @@ contains
             stop
         end if
         
-        ! allocate and initiate
-        allocate(f2r(4))
+        ! initiate
         f2r = 0.0_dp
         
-        ! sum over all poloidal and toroidal modes
-        do n = -ntor,ntor
-            do m = 0,mpol-1
-                f2r(1) = f2r(1) + fun_cos(m,n)*ang_factor(m,n,1) &              ! the variable itself
-                    &+ fun_sin(m,n)*ang_factor(m,n,2)
-                f2r(3) = f2r(3) + m * (-fun_cos(m,n)*ang_factor(m,n,2) &        ! theta derivative: m(-f_c*s+f_s*c)
-                    &+ fun_sin(m,n)*ang_factor(m,n,1))                          
-                f2r(4) = f2r(4) + n * (-fun_cos(m,n)*ang_factor(m,n,2) &        ! zeta derivative: n(-f_c*s+f_s*c)
-                    &+ fun_sin(m,n)*ang_factor(m,n,1))
+        ! set pol_fac and tor_fac according to possible derivative asked
+        select case (deriv)
+            case (1)                                                            ! no derivative
+            ! sum over all poloidal and toroidal modes
+            do n = -ntor,ntor
+                do m = 0,mpol-1
+                    f2r = f2r + fun_cos(m,n)*ang_factor(m,n,1) &          ! the variable itself
+                        &+ fun_sin(m,n)*ang_factor(m,n,2)
+                end do
             end do
-        end do
+            case (3)                                                            ! poloidal derivative: m(-f_c*s+f_s*c)
+            ! sum over all poloidal and toroidal modes
+            do n = -ntor,ntor
+                do m = 0,mpol-1
+                    f2r = f2r + m * (-fun_cos(m,n)*ang_factor(m,n,2) &
+                        &+ fun_sin(m,n)*ang_factor(m,n,1))
+                end do
+            end do
+            case (4)                                                            ! toroidal derivative: n(-f_c*s+f_s*c)
+            ! sum over all poloidal and toroidal modes
+            do n = -ntor,ntor
+                do m = 0,mpol-1
+                    f2r = f2r + n * (-fun_cos(m,n)*ang_factor(m,n,2) &
+                        &+ fun_sin(m,n)*ang_factor(m,n,1))
+                end do
+            end do
+            case default
+            call writo('ERROR: No action associated with argument deriv = '//&
+                &trim(i2str(deriv)))
+            stop
+        end select
     end function f2r
  
     ! Calculate the cosine and sine factors  on a mesh (0:mpol-1, -ntor:ntor) at

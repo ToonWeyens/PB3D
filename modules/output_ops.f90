@@ -1,5 +1,6 @@
-! This module contains operations concerning giving output, on the screen as 
-! well as in a file
+!-------------------------------------------------------
+!   This module contains operations concerning giving output, on the screen as 
+!-------------------------------------------------------
 module output_ops
     use netcdf
     use str_ops, only: i2str, r2str
@@ -107,7 +108,7 @@ contains
             ! input / output
             integer, intent(in) :: np
             character(len=*) :: fun_name
-            real(dp) :: fun(2,1:np)
+            real(dp) :: fun(2,np)
             character(len=*), optional :: comment
             
             ! local variables

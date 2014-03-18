@@ -43,6 +43,12 @@ output_ops.o : \
     num_vars.o \
     str_ops.o \
 
+input_ops.o : \
+    output_ops.o \
+    time.o \
+    str_ops.o \
+    num_vars.o \
+
 fourier_ops.o : \
     output_ops.o \
     num_vars.o
@@ -82,6 +88,7 @@ str_ops.o : \
     num_vars.o \
 
 time.o : \
+    output_ops.o \
     num_vars.o \
     var_ops.o 
 

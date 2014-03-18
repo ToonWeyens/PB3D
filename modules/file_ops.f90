@@ -12,7 +12,7 @@ module file_ops
     use output_ops, only: lvl_ud, writo, &
         &lvl, format_out
     use eq_vars, only: &
-        &min_zeta, max_zeta, n_zeta
+        &min_par, max_par, n_par
     use VMEC_vars, only: VMEC_name
     implicit none
     private
@@ -35,8 +35,8 @@ module file_ops
     integer, allocatable :: inc_args(:)
 
     ! input options
-    namelist /inputdata/ format_out, style, min_zeta, &
-        &max_zeta, min_alpha, max_alpha, n_zeta, n_alpha, max_it_NR, &
+    namelist /inputdata/ format_out, style, min_par, &
+        &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, &
         &tol_NR, max_it_r
 
 contains
@@ -343,15 +343,12 @@ contains
             tol_NR = 1.0E-10_dp
             format_out = 1                                                      ! NETCDF output
             style = 1                                                           ! Richardson Extrapolation with normal discretization
-            min_zeta = 0.0_dp
-            max_zeta = 2.0_dp*pi
+            min_par = 0.0_dp
+            max_par = 2.0_dp*pi
+            n_par = 10
             min_alpha = 0.0_dp
             max_alpha = 2.0_dp*pi
-            n_zeta = 10
             n_alpha = 10
-            n_zeta = 10_dp
-            min_zeta = 0
-            max_zeta = 2*pi
         end subroutine
     end subroutine
 

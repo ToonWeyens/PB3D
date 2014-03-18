@@ -13,7 +13,8 @@ contains
     ! calculate the equilibrium quantities on a grid determined by straight field
     ! lines.
     subroutine calc_eq(alpha)
-        use eq_vars, only: eqd_mesh, tor_mesh, pol_mesh, calc_RZl, calc_flux_q
+        use eq_vars, only: eqd_mesh, tor_mesh, pol_mesh, calc_RZl, calc_flux_q, &
+            &check_mesh
         use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F
         
         real(dp) :: alpha
@@ -32,6 +33,9 @@ contains
             ! calculate poloidal mesh points that follow the magnetic field line
             ! cfor urrent toroidal mesh points and field line (alpha)
             call pol_mesh(alpha)
+            
+            ! check whether the mesh has been calculated correctl
+            call check_mesh(alpha)
             
             call lvl_ud(-1)
             ! 2----------------------------------------------------------------
