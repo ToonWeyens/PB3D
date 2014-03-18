@@ -4,18 +4,19 @@
 !-------------------------------------------------------
 module eq_vars
     use num_vars, only: dp, pi
-    use output_ops, only: writo, lvl_ud, print_ar_2
+    use output_ops, only: writo, lvl_ud, print_ar_2, print_ar_1
     use str_ops, only: r2strt, i2str, r2str
 
     implicit none
     private
-    public eqd_mesh, tor_mesh, pol_mesh, calc_RZl, theta_B, &
-        &theta, zeta, n_zeta, R, Z, lam, min_zeta, max_zeta 
+    public eqd_mesh, tor_mesh, pol_mesh, calc_RZl, theta_B, calc_flux_q, &
+        &theta, zeta, n_zeta, R, Z, lam, min_zeta, max_zeta, q_f
 
     ! R and Z and derivatives in real (as opposed to Fourier) space (see below)
     ! (index 1: variable, 2: r derivative, 2: theta derivative, 3: zeta derivative)
     real(dp), allocatable :: R(:,:,:,:), Z(:,:,:,:), lam(:,:,:,:)
-    real(dp), allocatable :: theta(:,:), zeta(:,:)                                ! grid points
+    real(dp), allocatable :: theta(:,:), zeta(:,:)                              ! grid points
+    real(dp), allocatable :: q_f(:,:)                                           ! safety factor and normal derivative
     real(dp) :: min_zeta, max_zeta
     integer :: n_zeta
 
@@ -96,18 +97,19 @@ contains
     ! transform half-mesh to full-mesh quantities
     function h2f(var)
         use VMEC_vars, only: n_r
-        real(dp) :: h2f(n_zeta,n_zeta,n_r,4)
-        real(dp), intent(in) :: var(n_zeta,n_zeta,n_r,4)
+        real(dp) :: h2f(n_zeta,n_zeta,n_r)
+        real(dp), intent(in) :: var(n_zeta,n_zeta,n_r)
         
         ! interpolate the inner quantities
-        h2f(:,:,2:n_r-1,:) = 0.5_dp*(var(:,:,2:n_r-1,:) + var(:,:,3:n_r,:))          ! Only last values must come from B.C.
-        h2f(:,:,n_r,:) = 2*var(:,:,n_r,:) - h2f(:,:,n_r-1,:)                       ! Extrapolate first, last points
-        h2f(:,:,1,:) = 2*var(:,:,2,:)-h2f(:,:,2,:)
+        h2f(:,:,2:n_r-1) = 0.5_dp*(var(:,:,2:n_r-1) + var(:,:,3:n_r))           ! Only last values must come from B.C.
+        h2f(:,:,n_r) = 2*var(:,:,n_r) - h2f(:,:,n_r-1)                          ! Extrapolate first, last points
+        h2f(:,:,1) = 2*var(:,:,2)-h2f(:,:,2)
     end function
 
     ! calculate the coordinates R  and Z and l in real  space from their Fourier
     ! decomposition using the grid points currently stored in the variables 
-    ! theta, zeta
+    ! theta, zeta.
+    ! the output is all FULL MESH (FM)
     subroutine calc_RZl
         use fourier_ops, only: mesh_cs, f2r
         use VMEC_vars, only: R_c, R_s, Z_c, Z_s, l_c, l_s, n_r, rmax_surf, &
@@ -115,8 +117,8 @@ contains
         
         ! local variables
         real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
-        real(dp) :: delta_r                                                     ! normal step size
         integer :: id, jd, kd
+        real(dp) :: tempvar(n_r)
         
         ! deallocate if allocated
         if (allocated(R)) deallocate(R)
@@ -141,33 +143,20 @@ contains
                 end do
                 
                 ! numerically calculate normal derivatives at the currrent angular points
-                ! first normal point
-                ! FULL MESH quantities R and Z
-                delta_r = 1.0/(n_r-1)                                           ! step size between first points
-                R(id,jd,1,2) = (R(id,jd,2,1)-R(id,jd,1,1))/delta_r              ! forward difference
-                Z(id,jd,1,2) = (Z(id,jd,2,1)-Z(id,jd,1,1))/delta_r              ! forward difference
-                do kd = 3, n_r
-                    delta_r = 2.0/(n_r-1)                                       ! intermediate step size: centered differences
-                    R(id,jd,kd-1,2) = (R(id,jd,kd,1)-R(id,jd,kd-2,1))/delta_r   ! centered difference
-                    Z(id,jd,kd-1,2) = (Z(id,jd,kd,1)-Z(id,jd,kd-2,1))/delta_r   ! centered difference
-                end do
-                ! last normal point
-                delta_r = 1.0/(n_r-1)                                           ! step size between last points
-                R(id,jd,n_r,2) = (R(id,jd,n_r,1)-R(id,jd,n_r-1,1))/delta_r
-                Z(id,jd,n_r,2) = (Z(id,jd,n_r,1)-Z(id,jd,n_r-1,1))/delta_r
-                ! HALF MESH quantity lambda
-                delta_r = 1.0/(n_r-1)                                           ! step size between first points
-                lam(id,jd,2,2) = (lam(id,jd,3,1)-lam(id,jd,2,1))/delta_r              ! forward difference
-                do kd = 4, n_r
-                    delta_r = 2.0/(n_r-1)                                       ! intermediate step size: centered differences
-                    lam(id,jd,kd-1,2) = (lam(id,jd,kd,1)-lam(id,jd,kd-2,1))&
-                        &/delta_r                                               ! centered difference
-                end do
-                ! last normal point
-                delta_r = 1.0/(n_r-1)                                           ! step size between last points
-                lam(id,jd,n_r,2) = (lam(id,jd,n_r,1)-lam(id,jd,n_r-1,1))/delta_r
+                tempvar = R(id,jd,:,1)
+                R(id,jd,:,2) = calc_norm_deriv(tempvar,.true.)
+                tempvar = Z(id,jd,:,1)
+                Z(id,jd,:,2) = calc_norm_deriv(tempvar,.true.)
+                tempvar = lam(id,jd,:,1)
+                lam(id,jd,:,2) = calc_norm_deriv(tempvar,.false.)
             end do pol
         end do tor
+        
+        ! convert HALF MESH quantities to full mesh
+        lam(:,:,:,1) = h2f(lam(:,:,:,1))                                        ! quantity
+        lam(:,:,:,3) = h2f(lam(:,:,:,3))                                        ! theta derivative
+        lam(:,:,:,4) = h2f(lam(:,:,:,4))                                        ! zeta derivative
+        ! normal derivative is already in FM
         
         ! output a message if the found R  and Z values are not within the VMEC-
         ! provided bounds
@@ -179,7 +168,9 @@ contains
         call lvl_ud(1)
         call within_bounds(Z(:,:,:,1),-zmax_surf,zmax_surf)
         call lvl_ud(-1)
+        
         ! ̉¿¿¿¿¿ IS THERE SOME CRITERION FOR THE MAXIMUM AND / OR MINIMUM OF LAMBDA ???
+        
     contains
         ! display whether the calculated table for R or Z fits within the limits
         ! outputted by VMEC
@@ -214,6 +205,65 @@ contains
             end if
         end subroutine
     end subroutine calc_RZl
+
+    ! calculates normal derivatives in FM and HM
+    function calc_norm_deriv(var,FM)
+        use VMEC_vars, only: n_r
+        
+        ! input / output
+        real(dp) :: calc_norm_deriv(n_r)
+        real(dp), intent(in) :: var(n_r)
+        logical :: FM                                                           ! whether or not Full Mesh (true: FM, false: HM)
+        
+        ! local variables
+        real(dp) :: delta_r                                                     ! step size
+        real(dp) :: varout(n_r)                                                 ! temporary variable to hold output
+        integer :: kd
+        
+        if (FM) then                                                            ! full mesh calculation
+            ! first normal point
+            delta_r = 1.0/(n_r-1)                                               ! step size between first points
+            varout(1) = (var(2)-var(1))/delta_r                                 ! forward difference
+            ! internal points
+            do kd = 3, n_r
+                delta_r = 2.0/(n_r-1)                                           ! intermediate step size: centered differences
+                varout(kd-1) = (var(kd)-var(kd-2))/delta_r                      ! centered difference
+            end do
+            ! last normal point
+            delta_r = 1.0/(n_r-1)                                               ! step size between last points
+            varout(n_r) = (var(n_r)-var(n_r-1))/delta_r
+        else                                                                    ! half mesh calculation
+            ! first normal point: choose equal to derivative at second point (linear approx.)
+            delta_r = 1.0/(n_r-1)                                               ! step size between first points
+            varout(1) = (var(3)-var(2))/delta_r                                 ! centered difference
+            ! internal points
+            do kd = 2, n_r-1
+                delta_r = 1.0/(n_r-1)                                           ! intermediate step size: centered differences
+                varout(kd) = (var(kd+1)-var(kd))/delta_r                        ! centered difference
+            end do
+            ! last normal point: choose equal to derivative at next to last point (linear approx.)
+            delta_r = 1.0/(n_r-1)                                               ! step size between last points
+            varout(n_r) = (var(n_r)-var(n_r-1))/delta_r
+        end if
+        
+        calc_norm_deriv = varout
+    end function calc_norm_deriv
+    
+    ! Calculates flux quantities in FM
+    subroutine calc_flux_q
+        use VMEC_vars, only: iotaf, n_r                                         ! 1/q in FM
+        
+        ! local variables
+        integer :: kd
+        
+        ! reallocate
+        if (allocated(q_f)) deallocate(q_f)
+        allocate(q_f(n_r,2))
+        
+        do kd = 1,n_r
+            q_f(kd,1) = 1/iotaf(kd)
+        end do
+    end subroutine
     
     ! Calculates the  poloidal angle theta as  a function of the  toroidal angle
     ! zeta following a particular magnetic field line alpha.

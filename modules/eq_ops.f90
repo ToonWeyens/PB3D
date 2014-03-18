@@ -13,8 +13,8 @@ contains
     ! calculate the equilibrium quantities on a grid determined by straight field
     ! lines.
     subroutine calc_eq(alpha)
-        use eq_vars, only: eqd_mesh, tor_mesh, pol_mesh, calc_RZl
-        use metric_ops, only: metric_C, metric_C2V, metric_V
+        use eq_vars, only: eqd_mesh, tor_mesh, pol_mesh, calc_RZl, calc_flux_q
+        use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F
         
         real(dp) :: alpha
         
@@ -44,6 +44,9 @@ contains
             ! calculate the cylindrical variables R, Z and lambda and derivatives
             call calc_RZl
             
+            ! calculate flux quantities
+            call calc_flux_q
+            
             ! calculate the metrics in the cylindrical coordinate system
             call metric_C
             
@@ -52,6 +55,9 @@ contains
             
             ! calculate  the  metric  factors in the VMEC coordinate system 
             call metric_V
+            
+            ! calculate the transformation matrix V(mec) -> F(lux)
+            call metric_V2F
             
             call lvl_ud(-1)
             ! 2----------------------------------------------------------------

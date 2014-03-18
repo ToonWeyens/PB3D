@@ -10,17 +10,20 @@ module metric_ops
     
     implicit none
     private
-    public metric_C2V, metric_V, metric_C, &
+    public metric_C2V, metric_V, metric_C, metric_V2F, &
         &C2V_up, C2V_dn, jac_V, h_V, g_V
 
     ! upper (h) and lower (g) metric factors
     ! (index 1,2,3: theta, zeta, r, index 4,5: 3x3 matrix)
     real(dp), allocatable :: g_C(:,:,:,:,:), h_C(:,:,:,:,:)                     ! in the C(ylindrical) coordinate system
     real(dp), allocatable :: g_V(:,:,:,:,:), h_V(:,:,:,:,:)                     ! in the V(MEC) coordinate system
+    real(dp), allocatable :: g_F(:,:,:,:,:), h_F(:,:,:,:,:)                     ! in the F(lux) coordinate system
     ! upper and lower transformation matrices
     ! (index 1,2,3: theta, zeta, r, index 4,5: 3x3 matrix)
-    real(dp), allocatable :: C2V_up(:,:,:,:,:), C2V_dn(:,:,:,:,:)
+    real(dp), allocatable :: C2V_up(:,:,:,:,:), C2V_dn(:,:,:,:,:)               ! C(ylindrical) to V(MEC)
+    real(dp), allocatable :: V2F_up(:,:,:,:,:), V2F_dn(:,:,:,:,:)               ! V(MEC) to F(lux)
     real(dp), allocatable :: jac_V(:,:,:)                                       ! jacobian of V(MEC) coordinate system
+    real(dp), allocatable :: jac_F(:,:,:)                                       ! jacobian of F(lux) coordinate system
 
 contains
 
@@ -58,9 +61,9 @@ contains
         if (allocated(C2V_up)) deallocate(C2V_up)
         if (allocated(jac_V)) deallocate(jac_V)
         ! reallocate
-        allocate(C2V_dn(3,3,n_zeta,n_zeta,n_r))
-        allocate(C2V_up(3,3,n_zeta,n_zeta,n_r))
-        allocate(jac_V(n_zeta,n_zeta,n_r))
+        allocate(C2V_dn(3,3,n_zeta,n_zeta,n_r)); C2V_dn = 0.0_dp
+        allocate(C2V_up(3,3,n_zeta,n_zeta,n_r)); C2V_up = 0.0_dp
+        allocate(jac_V(n_zeta,n_zeta,n_r)); jac_V = 0.0_dp
         
         ! calculate transformation matrix for contravariant coordinates
         do kd = 1,n_r
@@ -92,6 +95,33 @@ contains
             C2V_dn(3,1,:,:,kd) = R(:,:,kd,4)
             C2V_dn(3,2,:,:,kd) = -1
             C2V_dn(3,3,:,:,kd) = Z(:,:,kd,4)
+        end do
+    end subroutine
+
+    ! Calculate  the transformation  matrix between  the V(mec)  and the  F(lux)
+    ! coordinate system
+    subroutine metric_V2F
+        use eq_vars, only: q_f, theta, n_zeta, lam
+        
+        ! local variables
+        integer :: id, jd, kd
+        
+        ! deallocate if allocated
+        if (allocated(V2F_dn)) deallocate(V2F_dn)
+        if (allocated(V2F_up)) deallocate(V2F_up)
+        if (allocated(jac_F)) deallocate(jac_F)
+        ! reallocate
+        allocate(V2F_dn(3,3,n_zeta,n_zeta,n_r)); V2F_dn = 0.0_dp
+        allocate(V2F_up(3,3,n_zeta,n_zeta,n_r)); V2F_up = 0.0_dp
+        allocate(jac_F(n_zeta,n_zeta,n_r)); jac_F = 0.0_dp
+        
+        do kd = 1,n_r
+            do jd = 1, n_zeta
+                do id = 1, n_zeta
+                    V2F_up(1,1,id,jd,kd) =  -q_f(kd,2)*(theta(id,kd)&
+                        &+lam(id,jd,kd,1)) - q_f(kd,1)*lam(id,jd,kd,2)
+                end do
+            end do
         end do
     end subroutine
 
