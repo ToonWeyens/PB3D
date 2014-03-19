@@ -16,7 +16,8 @@ PB3D.o : \
     driver.o \
     test.o \
     str_ops.o \
-    time.o
+    time.o \
+    input_ops.o \
 
 driver.o : \
     num_vars.o \
@@ -48,6 +49,8 @@ input_ops.o : \
     time.o \
     str_ops.o \
     num_vars.o \
+    eq_vars.o \
+    file_ops.o \
 
 fourier_ops.o : \
     output_ops.o \

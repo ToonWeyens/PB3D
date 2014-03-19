@@ -6,7 +6,7 @@ module VMEC_vars
     use read_wout_mod , only: read_wout_file, read_wout_deallocate, &           ! from LIBSTELL
         &iasym, version_, lfreeb, &
         &n_r => ns, mpol, ntor, xn, xm, mnmax, nfp, &                           ! mpol, ntor = # modes
-        &phi, iotaf, &                                                          ! toroidal flux (FM), iota (FM)
+        &phi, phipf, iotaf, &                                                   ! toroidal flux (FM), norm. deriv. of toroidal flux (FM), iota (FM)
         &presf, gmns, gmnc, &                                                   ! pressure (FM), jacobian (HM)
         &bsubumns, bsubumnc, bsubvmns, bsubvmnc, bsubsmns, bsubsmnc, &          ! B_theta (HM), B_zeta (HM), B_r (FM)
         &lmns, lmnc, rmns, rmnc, zmns, zmnc, &                                  ! lambda (HM), R (FM), Z(FM)
@@ -15,7 +15,7 @@ module VMEC_vars
     private
     public read_VMEC, &
         &mnmax, rmnc, mpol, ntor, n_r, R_c, R_s, Z_c, Z_s, l_c, l_s, &
-        &rmax_surf, rmin_surf, zmax_surf, iotaf, VMEC_name
+        &rmax_surf, rmin_surf, zmax_surf, iotaf, VMEC_name, phi, phipf
 
     real(dp), allocatable :: R_c(:,:,:), R_s(:,:,:), Z_c(:,:,:), &              ! Coeff. of R, Z, lambda in (co)sine series
         &Z_s(:,:,:), l_c(:,:,:), l_s(:,:,:)

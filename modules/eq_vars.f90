@@ -1,6 +1,7 @@
 !-------------------------------------------------------
 !   Variables,  subroutines  and functions  that  have  to do  with  equilibrium
 !   quantities and the mesh used in the calculations
+!   These are called in the subroutine calc_eq in the module eq_ops
 !-------------------------------------------------------
 module eq_vars
     use num_vars, only: dp, pi
@@ -11,13 +12,14 @@ module eq_vars
     private
     public eqd_mesh, calc_mesh, calc_RZl, ang_B, calc_flux_q, h2f, &
         &check_mesh, &
-        &theta, zeta, n_par, R, Z, lam, min_par, max_par, q_f
+        &theta, zeta, n_par, R, Z, lam, min_par, max_par, q_saf, &
+        &flux_p, flux_t
 
     ! R and Z and derivatives in real (as opposed to Fourier) space (see below)
     ! (index 1: variable, 2: r derivative, 2: theta derivative, 3: zeta derivative)
     real(dp), allocatable :: R(:,:,:), Z(:,:,:), lam(:,:,:)
     real(dp), allocatable :: theta(:,:), zeta(:,:)                              ! grid points
-    real(dp), allocatable :: q_f(:,:)                                           ! safety factor and normal derivative
+    real(dp), allocatable :: q_saf(:,:), flux_p(:,:), flux_t(:,:)               ! safety factor, pol. flux, tor. flux, and normal derivative
     real(dp) :: min_par, max_par
     integer :: n_par
 
@@ -311,22 +313,35 @@ contains
     
     ! Calculates flux quantities in FM
     subroutine calc_flux_q
-        use VMEC_vars, only: iotaf, n_r                                         ! 1/q in FM
+        use VMEC_vars, only: &
+            &iotaf, n_r, phi, phipf
         
         ! local variables
         integer :: kd
         
         ! reallocate
-        if (allocated(q_f)) deallocate(q_f)
-        allocate(q_f(n_r,2))
+        if (allocated(q_saf)) deallocate(q_saf)
+        allocate(q_saf(n_r,2))
+        if (allocated(flux_p)) deallocate(flux_p)
+        allocate(flux_p(n_r,2))
+        if (allocated(flux_t)) deallocate(flux_t)
+        allocate(flux_t(n_r,2))
         
-        ! invert iotaf
+        ! safety factor q_saf: invert iotaf
         do kd = 1,n_r
-            q_f(kd,1) = 1/iotaf(kd)
+            q_saf(kd,1) = 1/iotaf(kd)
         end do
+        q_saf(:,2) = calc_norm_deriv(q_saf(:,1),.true.)
         
-        ! calculate normal derivative
-        q_f(:,2) = calc_norm_deriv(q_f(:,1),.true.)
+        ! toroidal flux: copy from VMEC
+        flux_t(:,1) = phi
+        flux_t(:,2) = phipf
+        
+        ! poloidal flux: calculate using iotaf and phi, phipf
+        do kd = 1,n_r
+            flux_p(kd,1) = iotaf(kd)*phi(kd)
+        end do
+        flux_p(:,2) = calc_norm_deriv(flux_p(:,1),.true.)
     end subroutine
     
     ! Calculates the  poloidal/toroidal angle theta(zeta)  as a function  of the

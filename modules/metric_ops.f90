@@ -10,8 +10,8 @@ module metric_ops
     
     implicit none
     private
-    public metric_C2V, metric_V, metric_C, metric_V2F, &
-        &C2V_up, C2V_dn, jac_V, h_V, g_V
+    public metric_C2V, metric_V, metric_C, metric_V2F, metric_F, &
+        &C2V_up, C2V_dn, jac_V, h_V, g_V, V2F_up, V2F_dn, jac_F, h_F, g_F
 
     ! upper (h) and lower (g) metric factors
     ! (index 1,2: along B, perp to flux surfaces, index 4,5: 3x3 matrix)
@@ -97,10 +97,12 @@ contains
     ! Calculate  the transformation  matrix between  the V(mec)  and the  F(lux)
     ! coordinate system
     subroutine metric_V2F
-        use eq_vars, only: q_f, theta, n_par, lam
+        use eq_vars, only: q_saf, theta, n_par, lam, flux_p
+        use num_vars, only: pi
         
         ! local variables
         integer :: id, kd
+        real(dp) :: theta_s                                                     ! = theta + lambda
         
         ! deallocate if allocated
         if (allocated(V2F_dn)) deallocate(V2F_dn)
@@ -113,8 +115,36 @@ contains
         
         do kd = 1,n_r
             do id = 1, n_par
-                V2F_up(1,1,id,kd) =  -q_f(kd,2)*(theta(id,kd)&
-                    &+lam(id,kd,1)) - q_f(kd,1)*lam(id,kd,2)
+                theta_s = theta(id,kd)+lam(id,kd,1)
+                V2F_up(1,1,id,kd) = -q_saf(kd,2)*theta_s &
+                    &- q_saf(kd,1)*lam(id,kd,2)
+                V2F_up(1,2,id,kd) = -q_saf(kd,1)*(1+lam(id,kd,3))
+                V2F_up(1,3,id,kd) = 1 - q_saf(kd,1)*lam(id,kd,4)
+                V2F_up(2,1,id,kd) = flux_p(kd,2)/(2*pi)
+                V2F_up(2,2,id,kd) = 0.0_dp
+                V2F_up(2,3,id,kd) = 0.0_dp
+                V2F_up(3,1,id,kd) = lam(id,kd,2)
+                V2F_up(3,2,id,kd) = 1 + lam(id,kd,3)
+                V2F_up(3,3,id,kd) = lam(id,kd,4)
+                jac_F(id,kd) = (flux_p(kd,2)/(2*pi)*(1+lam(id,kd,3)))**(-1)*&
+                    &jac_V(id,kd)
+            end do
+        end do
+        
+        do kd = 1,n_r
+            do id = 1, n_par
+                theta_s = theta(id,kd)+lam(id,kd,1)
+                V2F_dn(1,1,id,kd) = 0.0_dp
+                V2F_dn(1,2,id,kd) = -lam(id,kd,4)/(1+lam(id,kd,3))
+                V2F_dn(1,3,id,kd) = 1.0_dp
+                V2F_dn(2,1,id,kd) = 2*pi/flux_p(kd,2)
+                V2F_dn(2,2,id,kd) = -2*pi/flux_p(kd,2) * (lam(id,kd,2)+&
+                    &lam(id,kd,4)*q_saf(kd,2)*theta_s)/(1+lam(id,kd,3))
+                V2F_dn(2,3,id,kd) = 2*pi/flux_p(kd,2)*q_saf(kd,2)*theta_s
+                V2F_dn(3,1,id,kd) = 0.0_dp
+                V2F_dn(3,2,id,kd) = (1-q_saf(kd,1)*lam(id,kd,4))/&
+                    &(1+lam(id,kd,3))
+                V2F_dn(3,3,id,kd) = q_saf(kd,1)
             end do
         end do
     end subroutine
@@ -143,6 +173,30 @@ contains
         end do
     end subroutine
 
+    ! calculate the  metric coefficients in  the F(lux) coordinate  system using
+    ! the metric  coefficients in  the V(MEC) coordinate  system and  the trans-
+    ! formation matrices
+    subroutine metric_F
+        ! local variables
+        integer :: id, kd
+        
+        ! deallocate if allocated
+        if (allocated(g_F)) deallocate(g_F)
+        if (allocated(h_F)) deallocate(h_F)
+        ! reallocate
+        allocate(g_F(3,3,n_par,n_r))
+        allocate(h_F(3,3,n_par,n_r))
+            
+        do kd = 1,n_r
+            do id = 1,n_par
+                g_F(:,:,id,kd) = &
+                    &metric_calc(g_V(:,:,id,kd), V2F_dn(:,:,id,kd))
+                h_F(:,:,id,kd) = &
+                    &metric_calc(h_V(:,:,id,kd), V2F_up(:,:,id,kd))
+            end do
+        end do
+    end subroutine
+    
     ! calculate the metric coefficients from the transformation matrices  in the 
     ! coordinate system B using 
     ! (lower) g_B = TC2V_dn*g_A*TC2V_dn^T

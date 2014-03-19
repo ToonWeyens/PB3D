@@ -1,10 +1,11 @@
 &INPUTDATA
     format_out = 2
     style = 1
-    n_par = 30
+    n_par = 50
     n_alpha = 3
     max_it_NR = 500
     max_it_r = 2
     theta_var_along_B = .true.
+    format_out = 3
 /
 

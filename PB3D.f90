@@ -24,14 +24,15 @@
 program PB3D
     use time, only: init_time, start_time, stop_time, passed_time
     use test, only: test_repack, test_write_out, test_mesh_cs, &
-        &test_metric_C2V, test_theta_B
+        &test_metric_transf, test_theta_B
     use num_vars, only: ltest
     use str_ops, only: r2str
     use output_ops, only: init_output_ops, lvl_ud, writo
-    use VMEC_vars, only: read_VMEC                                            ! The plasma variables
+    use VMEC_vars, only: read_VMEC                                              ! The plasma variables
     use driver, only: run_driver                                                ! Main driver
-    use file_ops, only: open_input, open_output, search_file, read_input, &
-        &parse_args, init_file_ops
+    use file_ops, only: open_input, open_output, search_file, parse_args, &
+        &init_file_ops
+    use input_ops, only: read_input
 
     implicit none
 
@@ -70,7 +71,7 @@ program PB3D
         !call test_repack
         !call test_write_out
         !call test_mesh_cs
-        call test_metric_C2V
+        call test_metric_transf
         call test_theta_B
         call writo('')
         call passed_time
