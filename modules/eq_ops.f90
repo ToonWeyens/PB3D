@@ -13,7 +13,7 @@ contains
     ! calculate the equilibrium quantities on a grid determined by straight field
     ! lines.
     subroutine calc_eq(alpha)
-        use eq_vars, only: eqd_mesh, tor_mesh, pol_mesh, calc_RZl, calc_flux_q, &
+        use eq_vars, only: eqd_mesh, calc_mesh, calc_RZl, calc_flux_q, &
             &check_mesh
         use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F
         
@@ -24,24 +24,21 @@ contains
         ! 1--------------------------------------------------------------------
         call lvl_ud(1)
         
-        call writo('Start determining the grid')
+        call writo('Start determining the equilibrium grid')
         call lvl_ud(1)
-        
-            ! determine the toroidal mesh points
-            call tor_mesh
             
-            ! calculate poloidal mesh points that follow the magnetic field line
-            ! cfor urrent toroidal mesh points and field line (alpha)
-            call pol_mesh(alpha)
+            ! calculate mesh points (theta, zeta) that follow the magnetic field
+            ! line
+            call calc_mesh(alpha)
             
             ! check whether the mesh has been calculated correctl
             call check_mesh(alpha)
             
             call lvl_ud(-1)
             ! 2----------------------------------------------------------------
-            call writo('Grid determined')
+            call writo('Equilibrium grid determined')
             
-            call writo('Calculating equilibrium quantities on grid')
+            call writo('Calculating equilibrium quantities on equilibrium grid')
             ! 2----------------------------------------------------------------
             call lvl_ud(1)
             
@@ -65,7 +62,7 @@ contains
             
             call lvl_ud(-1)
             ! 2----------------------------------------------------------------
-            call writo('Equilibrium quantities calculated on grid')
+            call writo('Equilibrium quantities calculated on equilibrium grid')
         
         call lvl_ud(-1)
         ! 1--------------------------------------------------------------------

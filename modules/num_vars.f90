@@ -3,7 +3,8 @@ module num_vars
     private
     public max_it, dp, qp, style, max_str_ln, n_seq_0, max_args, &
         &max_opts, prog_name, max_it_r, ltest, pi, max_it_NR, tol_NR, &
-        &input_i, output_i, VMEC_i, min_alpha, max_alpha, n_alpha
+        &input_i, output_i, VMEC_i, min_alpha, max_alpha, n_alpha, &
+        &theta_var_along_B
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -27,6 +28,7 @@ module num_vars
     ! considering finding the magnetic field lines
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
     real(dp) :: tol_NR                                                          ! tolerance for Newton-Rhapson
+    logical :: theta_var_along_B                                                ! true if theta is used as the parallel variable
 
     ! input / output
     integer :: input_i                                                          ! will hold the file number of input file

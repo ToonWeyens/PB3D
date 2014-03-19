@@ -6,7 +6,7 @@ module file_ops
     use num_vars, only: &
         &dp, n_seq_0, max_str_ln, max_args, max_opts, prog_name, style, max_it_r,&
         &ltest, max_it_NR, tol_NR, output_i, input_i, VMEC_i, min_alpha, &
-        &max_alpha, n_alpha
+        &max_alpha, n_alpha, theta_var_along_B
     use safe_open_mod, only: safe_open
     use str_ops, only: i2str
     use output_ops, only: lvl_ud, writo, &
@@ -37,7 +37,7 @@ module file_ops
     ! input options
     namelist /inputdata/ format_out, style, min_par, &
         &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, &
-        &tol_NR, max_it_r
+        &tol_NR, max_it_r, theta_var_along_B
 
 contains
     ! initialize the variables for the module
@@ -338,17 +338,18 @@ contains
         subroutine default_input()
             use num_vars, only: pi
             
-            max_it_NR = 50
-            max_it_r = 5                                                           ! 3 levels of Richardson's extrapolation
-            tol_NR = 1.0E-10_dp
+            max_it_NR = 50                                                      ! maximum 50 Newton-Rhapson iterations
+            tol_NR = 1.0E-10_dp                                                 ! wanted relative error in Newton-Rhapson iteration
+            max_it_r = 5                                                        ! maximum 5 levels of Richardson's extrapolation
             format_out = 1                                                      ! NETCDF output
             style = 1                                                           ! Richardson Extrapolation with normal discretization
-            min_par = 0.0_dp
-            max_par = 2.0_dp*pi
-            n_par = 10
-            min_alpha = 0.0_dp
-            max_alpha = 2.0_dp*pi
-            n_alpha = 10
+            min_par = -4.0_dp*pi                                                ! minimum parallel angle
+            max_par = 4.0_dp*pi                                                 ! maximum parallel angle
+            n_par = 10                                                          ! number of parallel grid points
+            min_alpha = 0.0_dp                                                  ! minimum field line label
+            max_alpha = 2.0_dp*pi                                               ! maximum field line label
+            n_alpha = 10                                                        ! number of different field lines
+            theta_var_along_B = .true.                                          ! theta is used as the default parallel variable
         end subroutine
     end subroutine
 

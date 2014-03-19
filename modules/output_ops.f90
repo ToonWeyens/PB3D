@@ -37,14 +37,18 @@ contains
     subroutine write_out(nx, ny, fun, fun_name, alt_output_i, comment)
         use num_vars, only: output_i
         
+        ! input / output
         integer, intent(in) :: nx, ny
         character(len=*) :: fun_name
         real(dp) :: fun(1:nx,1:ny)
         integer, intent(in), optional :: alt_output_i
         character(len=*), optional :: comment
-
+        
+        ! local variables
         integer :: fin_output_i
-
+        real(dp), allocatable :: fun_alt(:,:)
+        integer :: id
+        
         if (present(alt_output_i)) then 
             fin_output_i = alt_output_i
         else
@@ -59,12 +63,19 @@ contains
                 call write_out_matlab(fin_output_i, nx, ny, fun, fun_name, &
                     &comment)
             case (3)
-                if (nx.eq.2) then                                               ! DISLIN 2D
+                if (nx.eq.1) then                                               ! DISLIN 2D without x-vector
+                    ! allocate a new variable fun_alt that holds a standard-axis
+                    ! ax nd the original data in the y-axis
+                    allocate(fun_alt(2,size(fun,2))); fun_alt = 0.0_dp
+                    fun_alt(1,:) = (/ ( id , id = 1,size(fun,2)) /)
+                    fun_alt(2,:) = fun(1,:)
+                    call write_out_dislin_2D(ny, fun_alt, fun_name, comment)
+                else if (nx.eq.2) then                                          ! DISLIN 2D
                     call write_out_dislin_2D(ny, fun, fun_name, comment)
                 else if (nx.gt.2) then                                          ! DISLIN 3D
                     call write_out_dislin_3D(nx, ny, fun, fun_name, comment)
                 else
-                    call writo('WARNING: Dimension 1 has to be at least 2')
+                    call writo('WARNING: Dimension 1 has to be at least 1')
                 end if
             case default 
                 call writo('WARNING: No output format associated with ' &
@@ -113,9 +124,8 @@ contains
             
             ! local variables
             integer :: ic
-            real(dp) :: mint, maxt, minf, maxf
+            real(dp) :: t_axis(4), f_axis(4)                                    ! axis that envelops minimum, maximum of data
             real(dp) :: x_val(np), y_val(np)                                    ! to avoid annoying compiler performance warnings
-        
             
             call metafl('xwin')                                                 ! xWin terminal
             !call window(0,0,1024,512)                                           ! set window size
@@ -135,18 +145,23 @@ contains
 
             call name('x','x')                                                  ! name and label of x axis
             call name('f','y')                                                  ! name and label of y axis
-            call labdig(-1,'x')                                                 ! number of digits after decimal point in lables
-            call ticks(10,'xy')
+            call ticks(5,'x')
+            call ticks(5,'y')
 
-            call titlin ('f = '//fun_name , 1)                                  ! main title
+            call titlin ('f(x) = '//fun_name , 1)                               ! main title
             call titlin (comment, 3)                                            ! subtitle
             
             ic=intrgb(0.95_dp,0.95_dp,0.95_dp)                                  ! light grey in RGB
             call axsbgd(ic)                                                     ! background color for axis
             
-            minf = minval(fun(2,:)); maxf = maxval(fun(2,:))
-            mint = minval(fun(1,:)); maxt = maxval(fun(1,:))
-            call graf(mint,maxt,mint,(maxt-mint)/6,minf,maxf,minf,(maxf-minf)/6)
+            ! min and max of axis
+            t_axis = det_axis(fun(1,:),10)
+            f_axis = det_axis(fun(2,:),10)
+            call labdig(max(0,-floor(log10(t_axis(4)))),'x')                    ! number of digits after decimal point in lables
+            call labdig(max(0,-floor(log10(f_axis(4)))),'y')                    ! number of digits after decimal point in lables
+            
+            call graf(t_axis(1),t_axis(2),t_axis(3),t_axis(4),&
+                &f_axis(1),f_axis(2),f_axis(3),f_axis(4))
             call title
         
             call color('red')                                                   ! red color
@@ -181,8 +196,10 @@ contains
             
             ! local variables
             integer :: ic, id
-            real(dp) :: minx, maxx, miny, maxy, minf, maxf
+            real(dp) :: f_axis(4)                                               ! axis that envelops minimum, maximum of data
             real(dp) :: x_arr(nx), y_arr(ny)
+            real(dp) :: minx, maxx, miny, maxy
+            real(dp) :: fun_joined(1:nx*ny)
             !real(dp) :: zlev                                                    ! for surface plots
         
             
@@ -205,8 +222,7 @@ contains
             call name('x','x')                                                  ! name and label of x axis
             call name('y','y')                                                  ! name and label of y axis
             call name('f','z')                                                  ! name and label of z axis
-            call labdig(-1,'x')                                                 ! number of digits after decimal point in lables
-            call ticks(10,'xy')
+            call ticks(5,'xyz')
 
             call titlin ('f = '//fun_name , 1)                                  ! main title
             call titlin (comment, 3)                                            ! subtitle
@@ -214,11 +230,18 @@ contains
             ic=intrgb(0.95_dp,0.95_dp,0.95_dp)                                  ! light grey in RGB
             call axsbgd(ic)                                                     ! background color for axis
             
+            ! min and max of axis
             minx = 1; maxx = size(fun,1)
             miny = 1; maxy = size(fun,2)
-            minf = minval(fun); maxf = maxval(fun)
+            do id = 1,ny
+                fun_joined((id-1)*nx+1:id*nx) = fun(:,id)
+            end do
+            f_axis = det_axis(fun_joined,10)
+            call labdig(-1,'xy')
+            call labdig(max(0,-floor(log10(f_axis(4)))),'z')                    ! number of digits after decimal point in lables
+            
             call graf3D(minx,maxx,minx,(maxx-minx)/6,miny,maxy,miny,&           ! (shaded) surface plot
-                &(maxy-miny)/6,minf,maxf,minf,(maxf-minf)/6)
+                &(maxy-miny)/6,f_axis(1),f_axis(2),f_axis(3),f_axis(4))
             !call graf(minx,maxx,minx,(maxx-minx)/6,miny,maxy,miny,&             ! contour plot
                  !&(maxy-miny)/6)
             call box3d                                                          ! 3D box
@@ -246,6 +269,73 @@ contains
             
             call disfin                                                         ! terminate DISFIN
         end subroutine
+        
+        ! determine the best axis for a data range of the form:
+        ! (from http://www2.mps.mpg.de/dislin/kap4.html)
+        !   det_axis(1) = minimum
+        !   det_axis(2) = maximum
+        !   det_axis(3) = where to start the first label
+        !   det_axis(4) = step betwen labels
+        ! (minf,maxf,minf,(maxf-minf)/6)
+        function det_axis(var, n_points)
+            ! input / output
+            integer :: n_points
+            real(dp) :: var(:)
+            real(dp) :: det_axis(4)
+            
+            ! local variables
+            real(dp) :: delta_var                                               ! delta from data
+            integer :: base_exp_x2                                              ! exponent of 2X delta from data
+            real(dp) :: aux                                                     ! auxiliary variable
+            integer :: aux2                                                     ! auxiliary variable
+            real(dp) :: delta_ax                                                ! delta used in axis
+            real(dp) :: l_b, u_b                                                ! lower and upper bound
+            real(dp) :: margin                                                  ! margin for comparison
+            
+            ! initialize output
+            det_axis = 0.0_dp
+            
+            ! find the distance between labels on the axis by dividing the range
+            ! of  the input  data  (var) by  the number  of  points wanted,  and
+            ! rounding to the nearest multiple of 1Ej * 0.5 or 1Ej * 1.0
+            ! First find the value of j. E.g.: if delta_var = 0.036 and n_points
+            ! = 6,  the value delta_var/n_points  = 0.006  has to be  rounded to
+            ! 0.005, which means that j = 2
+            ! Then, the nearest minimum and  maximum that are multiples of 0.005
+            ! are found, that encompass the data in var
+            l_b = minval(var)
+            u_b = maxval(var)
+            delta_var = u_b - l_b
+            aux = 2.0_dp*delta_var/n_points
+            base_exp_x2 = floor(log10(aux)) + 1                                 ! so that we get a number of the form 0.abcd
+            aux2 = nint(aux*10.0_dp**(-base_exp_x2))
+            if (aux2.eq.0) then
+                delta_ax = 10.0_dp**(base_exp_x2)*0.1_dp                        ! so that we get 0.1 from aux2/2
+            else
+                delta_ax = 10.0_dp**(base_exp_x2)*aux2*0.5_dp                   ! so that we get 0.5 from aux2/2
+            end if
+            
+            ! determine the lower and upper  bounds by checking whether there is
+            ! a remainder when  dividing the lowest, highest  value by delta_ax.
+            margin = 1.0E-5_dp                                                  ! visually indistinguishable
+            if (abs(dmod(l_b,delta_ax)).gt.margin) then                         ! take rounded times delta
+                det_axis(1) = ( floor(l_b/delta_ax) ) * delta_ax
+            else
+                det_axis(1) = l_b
+            end if
+            if (abs(dmod(u_b,delta_ax)).gt.margin) then                         ! take rounded times delta
+                det_axis(2) = ( ceiling(u_b/delta_ax) ) * delta_ax
+            else
+                det_axis(2) = u_b
+            end if
+            
+            ! starting point of axis
+            det_axis(3) = det_axis(1)
+            
+            ! determine the step size that is a multiple of delta_ax, closest to
+            ! delta_var/n_points = aux/2 -> step size * delta_ax
+            det_axis(4) = nint(0.5_dp*aux/delta_ax)*delta_ax
+        end function det_axis
     end subroutine
 
     ! write output to optional file number 'file_i' using the correct 

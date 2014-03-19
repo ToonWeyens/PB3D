@@ -1,6 +1,6 @@
 module time
     use num_vars, only: max_str_ln, dp
-    use str_ops, only: r2str
+    use str_ops, only: r2strt
     use output_ops, only: writo
 
     implicit none
@@ -59,7 +59,7 @@ contains
         if (deltat.lt.0.1) then
             end_str = ' less than 0.1 seconds)'
         else
-            end_str = ' ' // trim(r2str(deltat)) // ' seconds)'
+            end_str = ' ' // trim(r2strt(deltat)) // ' seconds)'
         end if
         call writo(trim(begin_str) // trim(end_str))
 

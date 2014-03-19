@@ -126,8 +126,8 @@ contains
     subroutine test_metric_C2V()
         use metric_ops, only: metric_C, metric_C2V, metric_V, &
             &C2V_up, C2V_dn, jac_V, g_V, h_V
-        use eq_vars, only: eqd_mesh, calc_RZl, n_par, &
-            &min_par, max_par, theta, zeta
+        use eq_vars, only: eqd_mesh, calc_RZl, &
+            &n_par, min_par, max_par, theta, zeta
         use VMEC_vars, only: n_r
         
         real(dp) :: C2V_mult(3,3)
@@ -225,9 +225,10 @@ contains
 
     subroutine test_theta_B()
         use VMEC_vars, only: n_r, mpol, ntor
-        use eq_vars, only: eqd_mesh, h2f, pol_mesh, tor_mesh, &
-            &n_par, min_par, max_par, theta, zeta
+        use eq_vars, only: eqd_mesh, h2f, calc_mesh, &
+            &n_par, theta, zeta
         use output_ops, only: format_out
+        use num_vars, only: theta_var_along_B
         
         real(dp) :: alpha
         integer :: format_out_old
@@ -238,6 +239,7 @@ contains
         real(dp) :: l_c_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_c
         real(dp) :: l_s_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_s
         integer :: n_theta
+        logical :: theta_var_along_B_old
         
         call writo('test theta_B?')
         if(yes_no(.false.)) then
@@ -248,16 +250,12 @@ contains
             ! CALCULATE THETA(ZETA)
             call writo('Calculating theta(zeta)')
             alpha = 1.2_dp*pi
-            n_par = 20
-            min_par = 0.0_dp
-            max_par = 2.0_dp*pi
             
-            ! determine the toroidal mesh points
-            call tor_mesh
-            
-            ! calculate poloidal mesh points that follow the magnetic field line
-            ! cfor urrent toroidal mesh points and field line (alpha)
-            call pol_mesh(alpha)
+            ! calculate mesh points (theta, zeta) that follow the magnetic field
+            ! line
+            theta_var_along_B_old = theta_var_along_B
+            theta_var_along_B = .false.
+            call calc_mesh(alpha)
             
             allocate(plot_ang(2,n_par))
             do kd = 1,n_r
@@ -269,8 +267,12 @@ contains
                 format_out_old = format_out
                 format_out = 3
                 call write_out(2, n_par, plot_ang, &
-                        &'zeta as a function of theta at r = '//trim(i2str(kd))&
-                        &//'/'//trim(i2str(n_r)))
+                        &'zeta(theta) at r = '//trim(i2str(kd))&
+                        &//'/'//trim(i2str(n_r)),comment=&
+                        &trim(r2strt(minval(plot_ang(1,:))))//' < theta < '&
+                        &//trim(r2strt(maxval(plot_ang(1,:))))//&
+                        &' and delta_theta = '//trim(r2strt(&
+                        &maxval(plot_ang(1,:))-minval(plot_ang(1,:)))))
                 format_out = format_out_old
                 
                 call writo('Paused... plot next?')
@@ -300,8 +302,8 @@ contains
                     ! plot it on the screen using format_out = 3
                     format_out_old = format_out
                     format_out = 3
-                    call write_out(2, n_theta, plot_f_theta, &
-                        &'f as a function of theta at r = '//trim(i2str(kd))&
+                    call write_out(2,n_theta,plot_f_theta, 'f(theta) = zeta -q&
+                        &(theta + lambda) - alpha_0 at r = '//trim(i2str(kd))&
                         &//'/'//trim(i2str(n_r)),&
                         &comment='theta_0 = '//trim(r2strt(theta(id,kd)))//&
                         &' for zeta = '//trim(r2strt(zeta(id,kd))))
@@ -313,6 +315,9 @@ contains
                     end if
                 end do par
             end do perp
+            
+            ! reset this value
+            theta_var_along_B = theta_var_along_B_old 
             
             call lvl_ud(-1)
         end if

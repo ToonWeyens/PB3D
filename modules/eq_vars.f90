@@ -9,7 +9,7 @@ module eq_vars
 
     implicit none
     private
-    public eqd_mesh, tor_mesh, pol_mesh, calc_RZl, ang_B, calc_flux_q, h2f, &
+    public eqd_mesh, calc_mesh, calc_RZl, ang_B, calc_flux_q, h2f, &
         &check_mesh, &
         &theta, zeta, n_par, R, Z, lam, min_par, max_par, q_f
 
@@ -22,73 +22,87 @@ module eq_vars
     integer :: n_par
 
 contains
-    ! calculate the toroidal mesh, filling the global variable zeta. This is done
-    ! for every flux surface. 
+    ! calculate the angular mesh, filling the global variables (theta, zeta). 
+    ! This is done for every flux surface. 
+    ! The variable  theta_var_along_B determines  whether theta  is used  as the
+    ! base variable. If .false., zeta is used.
     ! ¡¡¡SHOULD BE DONE ADAPTIVELY!!!
     ! ¡¡¡NEED A CHECK FOR THE FINENESS!!!
-    subroutine tor_mesh
+    subroutine calc_mesh(alpha)
         use VMEC_vars, only: n_r
-        
-        ! local variables
-        integer :: kd
-        
-        if (allocated(zeta)) deallocate(zeta)
-        allocate(zeta(n_par, n_r)); zeta = 0.0_dp
-        do kd = 1,n_r
-            zeta(:,kd) = eqd_mesh(n_par, min_par, max_par)
-        end do
-    end subroutine tor_mesh
-
-    ! calculate the poloidal mesh, in which the magnetic field line is straight,
-    ! for a particular alpha
-    subroutine pol_mesh(alpha)
-        use VMEC_vars, only: n_r
+        use num_vars, only: theta_var_along_B
         
         ! input / output
         real(dp) :: alpha
-        real(dp) :: zeta_in(n_r)
         
         ! local variables
-        integer :: jd
-           
+        integer :: kd
+        real(dp) :: var_in(n_r)
+        
+        if (allocated(zeta)) deallocate(zeta)
+        allocate(zeta(n_par, n_r)); zeta = 0.0_dp
         if (allocated(theta)) deallocate(theta)
         allocate(theta(n_par, n_r)); theta = 0.0_dp
         
-        do jd = 1,n_par
-            zeta_in = zeta(jd,:)
-            theta(jd,:) = ang_B(.true.,alpha,zeta_in)
-        end do
-    end subroutine pol_mesh
+        if (theta_var_along_B) then                                             ! first calculate theta
+            do kd = 1,n_r
+                theta(:,kd) = eqd_mesh(n_par, min_par, max_par)
+            end do
+            do kd = 1,n_par
+                var_in = theta(kd,:)
+                zeta(kd,:) = ang_B(.false.,alpha,var_in)
+            end do
+        else                                                                    ! first calculate zeta
+            do kd = 1,n_r
+                zeta(:,kd) = eqd_mesh(n_par, min_par, max_par)
+            end do
+            do kd = 1,n_par
+                var_in = zeta(kd,:)
+                theta(kd,:) = ang_B(.true.,alpha,var_in)
+            end do
+        end if
+    end subroutine calc_mesh
     
     ! check  whether   the  straight  field   line  mesh  has   been  calculated
     ! satisfactorily,  by  calculating  again  the zeta's  from  the  calculated
     ! theta's
     subroutine check_mesh(alpha)
         use VMEC_vars, only: n_r
-        use num_vars, only: tol_NR
+        use num_vars, only: tol_NR, theta_var_along_B, max_str_ln
         
         ! input / output
         real(dp) :: alpha
-        real(dp) :: theta_in(n_r)
         
         ! local variables
-        real(dp) :: zeta_calc(n_par,n_r)
-        real(dp) :: zeta_diff(n_par,n_r)
+        real(dp) :: var_calc(n_par,n_r)
+        real(dp) :: var_diff(n_par,n_r)
+        real(dp) :: var_in(n_r)
         integer :: id
+        character(len=max_str_ln) :: par_ang, dep_ang                           ! parallel angle and dependant angle, for output message
         
-        zeta_calc = 0.0_dp                                                      ! first guess
-        do id = 1,n_par
-            theta_in = theta(id,:)
-            zeta_calc(id,:) = ang_B(.false.,alpha,theta_in)
-        end do
+        if (theta_var_along_B) then                                             ! calculate theta again from zeta
+            do id = 1,n_par
+                var_in = zeta(id,:)
+                var_calc(id,:) = ang_B(.true.,alpha,var_in)
+            end do
+            par_ang = 'poloidal'; dep_ang = 'toroidal'
+            var_diff = theta - var_calc
+        else                                                                    ! calculate zeta again from theta
+            do id = 1,n_par
+                var_in = theta(id,:)
+                var_calc(id,:) = ang_B(.false.,alpha,var_in)
+            end do
+            par_ang = 'toroidal'; dep_ang = 'poloidal'
+            var_diff = zeta - var_calc
+        end if
         
-        zeta_diff = zeta - zeta_calc
-        if (maxval(abs(zeta_diff)).gt.tol_NR*100) then
-            call writo('ERROR: Calculating again the toroidal grid points &
-                &from the poloidal grid points, along the magnetic fields, &
-                &does not result in the same values as initally given.')
+        if (maxval(abs(var_diff)).gt.tol_NR*100) then
+            call writo('ERROR: Calculating again the '//trim(par_ang)//&
+                &' grid points from the '//trim(dep_ang)//' grid points, &
+                &along the magnetic fields, does not result in the same &
+                &values as initally given.')
             call writo('The maximum error is equal to '//&
-                &trim(r2strt(100*maxval(abs(zeta_diff))))//'%')
+                &trim(r2strt(100*maxval(abs(var_diff))))//'%')
             stop
         end if
     end subroutine check_mesh
@@ -158,6 +172,7 @@ contains
         real(dp) :: tempvar(n_r)
         real(dp) :: l_c_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_c
         real(dp) :: l_s_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_s
+        real(dp) :: lam_H(n_r)
         
         ! deallocate if allocated
         if (allocated(R)) deallocate(R)
@@ -188,6 +203,7 @@ contains
                 lam(id,kd,1) = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,1)
                 lam(id,kd,3) = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,3)
                 lam(id,kd,4) = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,4)
+                lam_H(kd) = f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor,1)             ! HM needed for the calculation of the normal derivative
             end do perp
             
             ! numerically calculate normal derivatives at the currrent angular points
@@ -195,8 +211,7 @@ contains
             R(id,:,2) = calc_norm_deriv(tempvar,.true.)
             tempvar = Z(id,:,1)
             Z(id,:,2) = calc_norm_deriv(tempvar,.true.)
-            tempvar = lam(id,:,1)
-            lam(id,:,2) = calc_norm_deriv(tempvar,.true.)
+            lam(id,:,2) = calc_norm_deriv(lam_H,.false.)
         end do par
         
         ! output a message if the found R  and Z values are not within the VMEC-
@@ -209,8 +224,6 @@ contains
         call lvl_ud(1)
         call within_bounds(Z(:,:,1),-zmax_surf,zmax_surf)
         call lvl_ud(-1)
-        
-        ! ̉¿¿¿¿¿ IS THERE SOME CRITERION FOR THE MAXIMUM AND / OR MINIMUM OF LAMBDA ???
         
     contains
         ! display whether the calculated table for R or Z fits within the limits
@@ -231,12 +244,12 @@ contains
             margin = 5.0E-2_dp                                                  ! 1% for comparison 
             
             ! minimum and maximum of variable
-            min_frac = 2*(minval(var)-min_VMEC)/(minval(var)+min_VMEC)          ! positive if within bounds
-            max_frac = 2*(maxval(var)-max_VMEC)/(maxval(var)+max_VMEC)          ! positive if out of bounds
+            min_frac = 2*(minval(var)-min_VMEC)/abs(minval(var)+min_VMEC)       ! positive if within bounds
+            max_frac = 2*(maxval(var)-max_VMEC)/abs(maxval(var)+max_VMEC)       ! positive if out of bounds
             
             if (min_frac.lt.-margin .and. max_frac.gt.margin) then
                 return
-            else if (min_frac.gt.margin) then                                   ! too low minimum
+            else if (min_frac.lt.-margin) then                                  ! too low minimum
                 call writo('WARNING: minimum of variable in real angular space &
                     & is lower than VMEC provided minimum by '//&
                     &trim(r2strt(100*min_frac))//'%...')
@@ -307,9 +320,13 @@ contains
         if (allocated(q_f)) deallocate(q_f)
         allocate(q_f(n_r,2))
         
+        ! invert iotaf
         do kd = 1,n_r
             q_f(kd,1) = 1/iotaf(kd)
         end do
+        
+        ! calculate normal derivative
+        q_f(:,2) = calc_norm_deriv(q_f(:,1),.true.)
     end subroutine
     
     ! Calculates the  poloidal/toroidal angle theta(zeta)  as a function  of the
