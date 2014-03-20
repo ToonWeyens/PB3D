@@ -127,7 +127,7 @@ contains
         use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F, &
             &metric_F, &
             &C2V_up, C2V_dn, V2F_up, V2F_dn, jac_V, g_V, h_V, jac_F, g_F, h_F
-        use eq_vars, only: eqd_mesh, calc_RZl, calc_flux_q, &
+        use eq_vars, only: eqd_mesh, calc_RZl, calc_flux_q, flux_brkdwn, &
             &n_par, min_par, max_par, theta, zeta
         use VMEC_vars, only: n_r
         
@@ -149,6 +149,10 @@ contains
             
             ! calculate flux quantities
             call calc_flux_q
+            
+            ! find out where using the poloidal flux as normal coordinate breaks
+            ! down and calculate the transformation points
+            call flux_brkdwn
             
             ! calculate the metrics in the cylindrical coordinate system
             call metric_C
@@ -239,26 +243,26 @@ contains
             real(dp) :: g(3,3,n_par,n_r), h(3,3,n_par,n_r)
             
             ! local variables
-            real(dp) :: g_J, h_J                                                    ! jacobian calculated from g and h
-            integer :: max_J_index(2,2)                                             ! index of maximum difference 
-            real(dp) :: diff_J_max(2)                                               ! maximum of difference between g_J, h_J and jac_V
+            real(dp) :: g_J, h_J                                                ! jacobian calculated from g and h
+            integer :: max_J_index(2,2)                                         ! index of maximum difference 
+            real(dp) :: diff_J_max(2)                                           ! maximum of difference between g_J, h_J and jac_V
             integer :: id, kd
-            real(dp) :: j_calc(n_par,n_r,2)
+            !real(dp) :: j_calc(n_par,n_r,2)
             
             diff_J_max = 0.0_dp
             do kd = 1,n_r
                 do id = 1,n_par
                     g_J = sqrt(abs(det(3,g(:,:,id,kd))))
-                    j_calc(id,kd,1) = g_J
+                    !j_calc(id,kd,1) = g_J
                     h_J = 1.0_dp/sqrt(abs(det(3,h(:,:,id,kd))))
-                    j_calc(id,kd,2) = h_J
-                    if (abs(g_J-abs(jac(id,kd))).gt.diff_J_max(1)) then
+                    !j_calc(id,kd,2) = h_J
+                    if (abs(g_J-jac(id,kd)).gt.diff_J_max(1)) then
                         max_J_index(1,:) = [id,kd]
-                        diff_J_max(1) = abs(g_J-abs(jac(id,kd)))
+                        diff_J_max(1) = abs(g_J-jac(id,kd))
                     end if
-                    if (h_J-abs(jac(id,kd)).gt.diff_J_max(2)) then
+                    if (h_J-jac(id,kd).gt.diff_J_max(2)) then
                         max_J_index(2,:) = [id,kd]
-                        diff_J_max(2) = abs(h_J-abs(jac(id,kd)))
+                        diff_J_max(2) = abs(h_J-jac(id,kd))
                     end if
                 end do
             end do
@@ -281,16 +285,20 @@ contains
         use output_ops, only: format_out
         use num_vars, only: theta_var_along_B
         
+        ! local variables (not to be used in child functions)
         real(dp) :: alpha
-        integer :: format_out_old
-        integer :: id, kd
+        integer :: id
         real(dp), allocatable :: plot_ang(:,:)
-        real(dp), allocatable :: theta_plot(:), f(:,:)
-        real(dp), allocatable :: plot_f_theta(:,:)
-        real(dp) :: l_c_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_c
-        real(dp) :: l_s_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_s
-        integer :: n_theta
-        logical :: theta_var_along_B_old
+        real(dp), allocatable :: plot_dep_var(:)
+        real(dp), allocatable :: plot_var(:,:)
+        integer :: n_plot
+        character(len=max_str_ln) :: par_ang, dep_ang                           ! parallel angle and dependent angle, for output message
+        integer :: format_out_old
+        real(dp) :: grid_min, grid_max
+        integer :: n_par_old
+        
+        ! local variables (also used in child functions)
+        integer :: kd
         
         call writo('test theta_B?')
         if(yes_no(.false.)) then
@@ -302,10 +310,12 @@ contains
             call writo('Calculating theta(zeta)')
             alpha = 1.2_dp*pi
             
+            ! decrease the number of parallel points for less plots
+            n_par_old = n_par
+            n_par = 4
+            
             ! calculate mesh points (theta, zeta) that follow the magnetic field
             ! line
-            theta_var_along_B_old = theta_var_along_B
-            theta_var_along_B = .false.
             call calc_mesh(alpha)
             
             allocate(plot_ang(2,n_par))
@@ -321,9 +331,9 @@ contains
                         &'zeta(theta) at r = '//trim(i2str(kd))&
                         &//'/'//trim(i2str(n_r)),comment=&
                         &trim(r2strt(minval(plot_ang(1,:))))//' < theta < '&
-                        &//trim(r2strt(maxval(plot_ang(1,:))))//&
-                        &' and delta_theta = '//trim(r2strt(&
-                        &maxval(plot_ang(1,:))-minval(plot_ang(1,:)))))
+                        &//trim(r2strt(maxval(plot_ang(1,:))))//' and '//&
+                        &trim(r2strt(minval(plot_ang(2,:))))//' < zeta < '&
+                        &//trim(r2strt(maxval(plot_ang(2,:)))))
                 format_out = format_out_old
                 
                 call writo('Paused... plot next?')
@@ -338,26 +348,52 @@ contains
             call writo('Calculating f for a range of parallel values')
             
             call lvl_ud(1)
-            n_theta = 100
+            n_plot = 100
             
-            allocate(theta_plot(n_theta)); theta_plot = 0.0_dp
-            allocate(f(n_theta,n_r)); f = 0.0_dp
-            allocate(plot_f_theta(2,n_theta)); plot_f_theta = 0.0_dp
-            theta_plot = eqd_mesh(n_theta, -3_dp*pi, 3_dp*pi)
+            ! initialize
+            allocate(plot_dep_var(n_plot)); plot_dep_var = 0.0_dp
+            allocate(plot_var(2,n_plot)); plot_var = 0.0_dp
             
+            ! set correct plot messages
+            if (theta_var_along_B) then                                         ! looking for zeta
+                par_ang = 'theta'; dep_ang = 'zeta'
+            else                                                                ! looking for theta
+                par_ang = 'zeta'; dep_ang = 'theta'
+            end if
+                
             perp: do kd = 1, n_r
+                ! determine grid considering the solutions on current flux surface
+                if (theta_var_along_B) then                                         ! looking for zeta
+                    grid_min = minval(zeta(:,kd)) - &
+                        &0.1*(maxval(zeta(:,kd))-minval(zeta(:,kd)))
+                    grid_max = maxval(zeta(:,kd)) + &
+                        &0.1*(maxval(zeta(:,kd))-minval(zeta(:,kd)))
+                else                                                                ! looking for theta
+                    grid_min = minval(theta(:,kd)) - &
+                        &0.1*(maxval(theta(:,kd))-minval(theta(:,kd)))
+                    grid_max = maxval(theta(:,kd)) + &
+                        &0.1*(maxval(theta(:,kd))-minval(theta(:,kd)))
+                end if
+                plot_dep_var = eqd_mesh(n_plot, grid_min, grid_max)
                 par: do id = 1, n_par
-                    plot_f_theta(1,:) = theta_plot
-                    plot_f_theta(2,:) = f_plot(n_theta,theta_plot,zeta(id,kd))
+                    if (theta_var_along_B) then                                 ! looking for zeta
+                        plot_var(1,:) = plot_dep_var                            ! eq. mesh of zeta
+                        plot_var(2,:) = &
+                            find_f_plot(n_plot,plot_dep_var,theta(id,kd),alpha) ! corresponding f(zeta)
+                    else                                                        ! looking for theta
+                        plot_var(1,:) = plot_dep_var                            ! eq. mesh of theta
+                        plot_var(2,:) = &
+                            find_f_plot(n_plot,plot_dep_var,zeta(id,kd),alpha)  ! corresponding f(theta)
+                    end if
                     
                     ! plot it on the screen using format_out = 3
                     format_out_old = format_out
                     format_out = 3
-                    call write_out(2,n_theta,plot_f_theta, 'f(theta) = zeta -q&
-                        &(theta + lambda) - alpha_0 at r = '//trim(i2str(kd))&
-                        &//'/'//trim(i2str(n_r)),&
-                        &comment='theta_0 = '//trim(r2strt(theta(id,kd)))//&
-                        &' for zeta = '//trim(r2strt(zeta(id,kd))))
+                    call write_out(2,n_plot,plot_var, 'f('//trim(dep_ang)&
+                        &//') = zeta -q(theta + lambda) - alpha_0 at r = '//&
+                        &trim(i2str(kd))//'/'//trim(i2str(n_r)), comment=&
+                        &'= 0 at (theta, zeta) = ('//trim(r2strt(theta(id,kd)))&
+                        &//', '//trim(r2strt(zeta(id,kd)))//')')
                     format_out = format_out_old
                     
                     call writo('Paused... plot next?')
@@ -367,34 +403,47 @@ contains
                 end do par
             end do perp
             
-            ! reset this value
-            theta_var_along_B = theta_var_along_B_old 
+            n_par = n_par_old
             
             call lvl_ud(-1)
         end if
     contains
-        function f_plot(n_theta,theta_plot,zeta_plot)
+        ! calculates the function f = zeta - q (theta + lambda) - alpha_0
+        ! makes use of kd from parent to indicate the flux surface
+        function find_f_plot(n_ang,dep_var,par_var,alpha)
             use fourier_ops, only: mesh_cs, f2r
             use VMEC_vars, only: iotaf
             
             ! input / output
-            integer :: n_theta, jd
-            real(dp) :: f_plot(n_theta)
-            real(dp) :: theta_plot(n_theta)
-            real(dp) :: zeta_plot
+            integer :: n_ang
+            real(dp) :: find_f_plot(n_ang)
+            real(dp) :: dep_var(n_ang)
+            real(dp) :: par_var
+            real(dp) :: alpha
             
             ! local variables
+            integer :: jd
             real(dp), allocatable :: cs(:,:,:)                                  ! (co)sines for all pol m and tor n
             real(dp) :: lam
+            real(dp) :: l_c_F(0:mpol-1,-ntor:ntor,1:n_r)                        ! FM version of HM l_c
+            real(dp) :: l_s_F(0:mpol-1,-ntor:ntor,1:n_r)                        ! FM version of HM l_s
             
             allocate(cs(0:mpol-1,-ntor:ntor,2))
-            do jd = 1, n_theta
-                ! cosines and sines
-                cs = mesh_cs(mpol,ntor,theta_plot(jd),zeta_plot)
-                ! lambda
-                lam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,1)
-                f_plot(jd) = zeta_plot-(theta_plot(jd)+lam)/iotaf(kd)-alpha
+            do jd = 1, n_ang
+                if (theta_var_along_B) then                                     ! looking for zeta (dep. var)
+                    ! cosines and sines
+                    cs = mesh_cs(mpol,ntor,par_var,dep_var(jd))
+                    ! lambda
+                    lam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,1)
+                    find_f_plot(jd) = dep_var(jd)-(par_var+lam)/iotaf(kd)-alpha
+                else                                                            ! looking for theta (dep. var)
+                    ! cosines and sines
+                    cs = mesh_cs(mpol,ntor,dep_var(jd),par_var)
+                    ! lambda
+                    lam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,1)
+                    find_f_plot(jd) = par_var-(dep_var(jd)+lam)/iotaf(kd)-alpha
+                end if
             end do
-        end function f_plot
+        end function find_f_plot
     end subroutine
 end module test

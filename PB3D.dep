@@ -69,12 +69,18 @@ VMEC_vars.o : \
     output_ops.o \
     fourier_ops.o \
 
+utilities.o : \
+    num_vars.o \
+    output_ops.o \
+    str_ops.o \
+
 eq_vars.o : \
     num_vars.o \
     str_ops.o \
     output_ops.o \
     fourier_ops.o \
     VMEC_vars.o \
+    utilities.o \
 
 metric_ops.o : \
     num_vars.o \

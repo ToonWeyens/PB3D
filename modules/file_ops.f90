@@ -258,6 +258,9 @@ contains
             case (2)                                                            ! matlab
                 call writo('Output format chosen: matlab')
                 call open_matlab
+            case (3)                                                            ! DISLIN
+                call writo('Output format chosen: DISLIN')
+                ! no need to do anything
             case default
                 call writo('WARNING: output format "' // &
                     &trim(i2str(format_out)) // &

@@ -11,15 +11,16 @@ module eq_vars
     implicit none
     private
     public eqd_mesh, calc_mesh, calc_RZl, ang_B, calc_flux_q, h2f, &
-        &check_mesh, &
+        &check_mesh, flux_brkdwn, &
         &theta, zeta, n_par, R, Z, lam, min_par, max_par, q_saf, &
-        &flux_p, flux_t
+        &flux_p, flux_t, flux_p_rect
 
     ! R and Z and derivatives in real (as opposed to Fourier) space (see below)
     ! (index 1: variable, 2: r derivative, 2: theta derivative, 3: zeta derivative)
     real(dp), allocatable :: R(:,:,:), Z(:,:,:), lam(:,:,:)
     real(dp), allocatable :: theta(:,:), zeta(:,:)                              ! grid points
-    real(dp), allocatable :: q_saf(:,:), flux_p(:,:), flux_t(:,:)               ! safety factor, pol. flux, tor. flux, and normal derivative
+    real(dp), allocatable :: q_saf(:,:), flux_p(:,:), flux_t(:,:), pres(:,:)    ! safety factor, pol. flux, tor. flux and pressure, and normal derivative
+    real(dp), allocatable :: flux_p_rect(:,:)                                   ! rectified poloidal flux, monotomously rising, 2nd index: rising (>0) or falling(<0)
     real(dp) :: min_par, max_par
     integer :: n_par
 
@@ -80,7 +81,7 @@ contains
         real(dp) :: var_diff(n_par,n_r)
         real(dp) :: var_in(n_r)
         integer :: id
-        character(len=max_str_ln) :: par_ang, dep_ang                           ! parallel angle and dependant angle, for output message
+        character(len=max_str_ln) :: par_ang, dep_ang                           ! parallel angle and dependent angle, for output message
         
         if (theta_var_along_B) then                                             ! calculate theta again from zeta
             do id = 1,n_par
@@ -314,7 +315,7 @@ contains
     ! Calculates flux quantities in FM
     subroutine calc_flux_q
         use VMEC_vars, only: &
-            &iotaf, n_r, phi, phipf
+            &iotaf, n_r, phi, phipf, presf
         
         ! local variables
         integer :: kd
@@ -326,8 +327,10 @@ contains
         allocate(flux_p(n_r,2))
         if (allocated(flux_t)) deallocate(flux_t)
         allocate(flux_t(n_r,2))
+        if (allocated(pres)) deallocate(pres)
+        allocate(pres(n_r,2))
         
-        ! safety factor q_saf: invert iotaf
+        ! safety factor q_saf: invert iotaf and derivate
         do kd = 1,n_r
             q_saf(kd,1) = 1/iotaf(kd)
         end do
@@ -342,6 +345,72 @@ contains
             flux_p(kd,1) = iotaf(kd)*phi(kd)
         end do
         flux_p(:,2) = calc_norm_deriv(flux_p(:,1),.true.)
+        
+        ! pressure: copy from VMEC and derivate
+        pres(:,1) = presf
+        pres(:,2) = calc_norm_deriv(pres(:,1),.true.)
+    end subroutine
+
+    ! Checks where using the poloidal flux as normal coordinate breaks down by 
+    ! calculating the local minima and maxima of the poloidal flux. This then 
+    ! breaks up the normal range in subranges where either the positive or the negative
+    ! poloidal flux is taken, with some additive constants to ensure continuity. 
+    subroutine flux_brkdwn
+        use VMEC_vars, only: n_r
+        
+        ! local variables
+        integer :: kd
+        integer :: behav                                                        ! < 0 : falling; > 0 : rising; = 0 : constant
+        real(dp), parameter :: tol = 10*epsilon(1.0_dp)
+        real(dp) :: flux_p_0                                                    ! factor to add to flux_p to get continuous flux_p_rect
+        
+        ! reallocate
+        if (allocated(flux_p_rect)) deallocate(flux_p_rect)
+        allocate(flux_p_rect(n_r,2))
+        
+        ! follow the poloidal  flux accross flux surfaces  and determine whether
+        ! it reaches  a local  extremum. Fill the  rectified pol.  flux variable
+        ! making use  of flux_p_0, which is  an additive constante to  +/- phi_p
+        ! that ensures continuitiy of phi_p_0. It is initalized to (phi_0)_0 = 0
+        ! and then  at every change  of the monotomous  behavior of phi_p  it is
+        ! updated  using the  formula (phi_0)_i  = phi_i  - (phi_0)_(i-1)  where
+        ! phi_i is the value  of phi at the flux surface i  where the i'th local
+        ! extremum is foundV
+        ! first point
+        flux_p_rect(1,1) = flux_p(1,1)
+        flux_p_0 = 0.0_dp
+        if (flux_p(1,2).gt.tol) then 
+            behav = 1
+        else if (flux_p(1,2).lt.tol) then
+            behav = -1
+        else
+            behav = 0
+        end if
+        ! next points
+        do kd = 2,n_r
+            if (flux_p(kd,2).gt.-tol .and. flux_p(kd,2).lt.tol) then            ! function stagnates
+                call writo('ERROR: The poloidal flux has stagnated. The current&
+                    & version of this code cannot deal with this, as it &
+                    & produces infinities...')
+                stop
+            else if (flux_p(kd,2).lt.-tol) then                                 ! function falls
+                if (behav.gt.0) then                                            ! function was rising
+                    behav = -1                                                  ! now it is falling
+                    flux_p_0 = (flux_p(kd,1)+flux_p(kd-1,1))/2.0_dp - flux_p_0  ! update flux_p_0
+                end if
+            else if (flux_p(kd,2).gt.tol) then                                  ! function rises
+                if (behav.lt.0) then                                            ! function was falling
+                    behav = 1                                                   ! now it is rising
+                    flux_p_0 = (flux_p(kd,1)+flux_p(kd-1,1))/2.0_dp - flux_p_0  ! update flux_p_0
+                end if
+            end if
+            flux_p_rect(kd,1) = abs(flux_p(kd,1)) + 2*flux_p_0
+            flux_p_rect(kd,2) = dfloat(behav)
+        end do
+        
+        ! print a message to user
+        call writo('The poloidal flux becomes negative at some points... -> &
+            &flux rectification method used.')
     end subroutine
     
     ! Calculates the  poloidal/toroidal angle theta(zeta)  as a function  of the
@@ -353,9 +422,10 @@ contains
     !   find_theta = .true. : look for theta as a function of zeta
     !   find_theta = .false. : look for zeta as a function of theta
     function ang_B(find_theta,alpha_in,input_ang,guess)
-        use num_vars, only: max_it_NR, tol_NR
+        use num_vars, only: tol_NR
         use VMEC_vars, only: mpol, ntor, n_r, l_c, l_s, iotaf
         use fourier_ops, only: mesh_cs, f2r
+        use utilities, only: zero_NR
         
         ! input / output
         real(dp) :: ang_B(n_r)                                                  ! theta(zeta)/zeta(theta)
@@ -364,16 +434,16 @@ contains
         real(dp), intent(in) :: input_ang(n_r)                                  ! the input angle zeta/theta
         real(dp), intent(in), optional :: guess(n_r)                            ! optional input (guess) for theta/zeta
         
-        ! local variables
-        integer :: jd,kd
-        real(dp) :: lam, dlam                                                   ! lambda and poloidal/toroidal derivative
-        real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! factors of cosine and sine for inverse fourier transform
-        real(dp) :: f, df                                                       ! function f and poloidal/toroidal derivative
-        real(dp) :: ang_NR                                                      ! temporary solution for a given r, iteration
+        ! local variables (also used in child functions)
+        integer :: kd
         real(dp) :: l_c_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_c
         real(dp) :: l_s_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_s
+        real(dp) :: lam                                                         ! lambda
+        real(dp) :: dlam                                                        ! angular derivative of lambda
+        
+        ! local variables (not to be used in child functions)
         real(dp) :: alpha_calc                                                  ! calculated alpha, to check with the given alpha
-        real(dp) :: corr                                                        ! correction calculated
+        real(dp) :: ang_NR                                                      ! temporary solution for a given r, iteration
         
         ! convert l_c and l_s to FM
         l_c_F = 0.0_dp; l_c_F = h2f(l_c, mpol, 2*ntor+1)
@@ -381,10 +451,6 @@ contains
         
         ! for all normal points
         norm: do kd = 1, n_r
-            ! initialization
-            f = 0.0_dp
-            df = 0.0_dp
-            
             ! if first guess for theta is given
             if (present(guess)) then
                 ang_NR = guess(kd)
@@ -394,54 +460,11 @@ contains
                 ang_NR = ang_B(kd-1)
             end if
             
-            ! Newton-Rhapson loop
-            NR: do jd = 1,max_it_NR
-                ! transform lambda from Fourier space to real space
-                ! calculate the (co)sines
-                if (find_theta) then                                            ! looking for theta
-                    cs = mesh_cs(mpol,ntor,ang_NR,input_ang(kd))
-                else                                                            ! looking for zeta
-                    cs = mesh_cs(mpol,ntor,input_ang(kd),ang_NR)
-                end if
-                
-                ! calculate lambda and angular derivatives, using FM coeff.
-                lam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,1)
-                if (find_theta) then                                            ! looking for theta
-                    dlam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,3)
-                else                                                            ! looking for zeta
-                    dlam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,4)
-                end if
-                
-                ! calculate the factors f and f_t
-                if (find_theta) then                                            ! looking for theta
-                    f = input_ang(kd) - (ang_NR+lam)/iotaf(kd) - alpha_in
-                    df = -(1.0_dp + dlam)/iotaf(kd)
-                else                                                            ! looking for zeta
-                    f = ang_NR - (input_ang(kd)+lam)/iotaf(kd) - alpha_in
-                    df = 1.0_dp - dlam/iotaf(kd)
-                end if
-                
-                ! correction to theta_NR
-                corr = -f/df
-                ang_NR = ang_NR + corr
-                
-                ! check for convergence
-                if (abs(corr).lt.tol_NR) then
-                    ang_B(kd) = ang_NR
-                    exit
-                else if (jd .eq. max_it_NR) then
-                    call writo('ERROR: Newton-Rhapson method to find &
-                        &theta(zeta) not converged after '//trim(i2str(jd))//&
-                        &' iterations. Try increasing max_it_NR in input file?')
-                    call writo('(the residual was equal to '//&
-                        &trim(r2str(corr)))
-                    call writo(' with f = '//trim(r2strt(f))//' and df = '&
-                        &//trim(r2strt(df))//')')
-                    stop
-                end if
-            end do NR
+            ! Newton-Rhapson loop for current normal point
+            ang_B(kd) = zero_NR(fun_ang_B,dfun_ang_B,ang_NR)
             
-            ! do a check whether the result is indeed alpha
+            ! do a check  whether the result is indeed alpha,  making use of the
+            ! last lam and dlam that have been calculated in the child functions
             if (find_theta) then                                                ! looking for theta
                 alpha_calc = input_ang(kd) - (ang_B(kd) + lam)/iotaf(kd)
             else                                                                ! looking for zeta
@@ -456,5 +479,73 @@ contains
                 stop
             end if
         end do norm
+        
+    contains
+        ! function that returns  f = alpha -  alpha_0. It uses kd  from the main
+        ! loop in the  parent function as the normal position  where to evaluate
+        ! the quantitites, and input_ang(kd) as the angle for which the magnetic
+        ! match is sought, as well as alpha_in, l_s_F and l_c_F
+        function fun_ang_B(ang)
+            ! input / output
+            real(dp) :: fun_ang_B
+            real(dp), intent(in) :: ang
+            
+            ! local variables
+            real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                               ! factors of cosine and sine for inverse fourier transform
+            
+            ! transform lambda from Fourier space to real space
+            ! calculate the (co)sines
+            if (find_theta) then                                                ! looking for theta
+                cs = mesh_cs(mpol,ntor,ang,input_ang(kd))
+            else                                                                ! looking for zeta
+                cs = mesh_cs(mpol,ntor,input_ang(kd),ang)
+            end if
+            
+            ! calculate lambda, using FM coeff.
+            lam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,1)
+            
+            ! calculate the output function
+            if (find_theta) then                                                ! looking for theta
+                fun_ang_B = input_ang(kd) - (ang+lam)/iotaf(kd) - alpha_in
+            else                                                                ! looking for zeta
+                fun_ang_B = ang - (input_ang(kd)+lam)/iotaf(kd) - alpha_in
+            end if
+        end function fun_ang_B
+        
+        ! function that returns  df/d(ang) = d(alpha -  alpha_0)/d(ang). It uses
+        ! kd from  the main loop in  the parent function as  the normal position
+        ! where to evaluate the quantitites,  and input_ang(kd) as the angle for
+        ! which the  magnetic match is  sought, as  well as alpha_in,  l_s_F and
+        ! l_c_F
+        function dfun_ang_B(ang)
+            ! input / output
+            real(dp) :: dfun_ang_B
+            real(dp), intent(in) :: ang
+            
+            ! local variables
+            real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                               ! factors of cosine and sine for inverse fourier transform
+            
+            ! transform lambda from Fourier space to real space
+            ! calculate the (co)sines
+            if (find_theta) then                                                ! looking for theta
+                cs = mesh_cs(mpol,ntor,ang,input_ang(kd))
+            else                                                                ! looking for zeta
+                cs = mesh_cs(mpol,ntor,input_ang(kd),ang)
+            end if
+            
+            ! calculate angular derivatives of lambda, using FM coeff.
+            if (find_theta) then                                                ! looking for theta
+                dlam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,3)
+            else                                                                ! looking for zeta
+                dlam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,4)
+            end if
+            
+            ! calculate the output function
+            if (find_theta) then                                            ! looking for theta
+                dfun_ang_B = -(1.0_dp + dlam)/iotaf(kd)
+            else                                                            ! looking for zeta
+                dfun_ang_B = 1.0_dp - dlam/iotaf(kd)
+            end if
+        end function dfun_ang_B
     end function ang_B
 end module eq_vars

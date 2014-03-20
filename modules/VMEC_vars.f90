@@ -14,7 +14,7 @@ module VMEC_vars
     implicit none
     private
     public read_VMEC, &
-        &mnmax, rmnc, mpol, ntor, n_r, R_c, R_s, Z_c, Z_s, l_c, l_s, &
+        &mnmax, rmnc, mpol, ntor, n_r, R_c, R_s, Z_c, Z_s, l_c, l_s, presf, &
         &rmax_surf, rmin_surf, zmax_surf, iotaf, VMEC_name, phi, phipf
 
     real(dp), allocatable :: R_c(:,:,:), R_s(:,:,:), Z_c(:,:,:), &              ! Coeff. of R, Z, lambda in (co)sine series

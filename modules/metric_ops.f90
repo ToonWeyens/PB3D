@@ -49,106 +49,6 @@ contains
         end do
     end subroutine
 
-    ! Calculate  the transformation  matrix  between  C(ylindrical) and  V(mec)
-    ! coordinate system from the VMEC file.
-    subroutine metric_C2V
-        ! local variables
-        real(dp) :: cf(n_par)                                                  ! common factor used in calculating the elements of the matrix
-        integer :: kd
-        
-        ! deallocate if allocated
-        if (allocated(C2V_dn)) deallocate(C2V_dn)
-        if (allocated(C2V_up)) deallocate(C2V_up)
-        if (allocated(jac_V)) deallocate(jac_V)
-        ! reallocate
-        allocate(C2V_dn(3,3,n_par,n_r)); C2V_dn = 0.0_dp
-        allocate(C2V_up(3,3,n_par,n_r)); C2V_up = 0.0_dp
-        allocate(jac_V(n_par,n_r)); jac_V = 0.0_dp
-        
-        ! calculate transformation matrix for contravariant coordinates
-        do kd = 1,n_r
-            jac_V(:,kd) = R(:,kd,1)*(R(:,kd,2)*Z(:,kd,3)-R(:,kd,3)*Z(:,kd,2))
-            cf = R(:,kd,1)/jac_V(:,kd)
-            C2V_up(1,1,:,kd) = cf*Z(:,kd,3)
-            C2V_up(1,2,:,kd) = cf*(R(:,kd,4)*Z(:,kd,3)-R(:,kd,3)*Z(:,kd,4))
-            C2V_up(1,3,:,kd) = -cf*R(:,kd,3)
-            C2V_up(2,1,:,kd) = -cf*Z(:,kd,2)
-            C2V_up(2,2,:,kd) = cf*(R(:,kd,2)*Z(:,kd,4)-R(:,kd,4)*Z(:,kd,2))
-            C2V_up(2,3,:,kd) = cf*R(:,kd,2)
-            C2V_up(3,1,:,kd) = 0.0_dp
-            C2V_up(3,2,:,kd) = cf*(R(:,kd,3)*Z(:,kd,2)-R(:,kd,2)*Z(:,kd,3))
-            C2V_up(3,3,:,kd) = 0.0_dp
-        end do
-        
-        ! calculate transformation matrix for covariant coordinates
-        do kd = 1,n_r
-            C2V_dn(1,1,:,kd) = R(:,kd,2)
-            C2V_dn(1,2,:,kd) = 0.0_dp
-            C2V_dn(1,3,:,kd) = Z(:,kd,2)
-            C2V_dn(2,1,:,kd) = R(:,kd,3)
-            C2V_dn(2,2,:,kd) = 0.0_dp
-            C2V_dn(2,3,:,kd) = Z(:,kd,3)
-            C2V_dn(3,1,:,kd) = R(:,kd,4)
-            C2V_dn(3,2,:,kd) = -1
-            C2V_dn(3,3,:,kd) = Z(:,kd,4)
-        end do
-    end subroutine
-
-    ! Calculate  the transformation  matrix between  the V(mec)  and the  F(lux)
-    ! coordinate system
-    subroutine metric_V2F
-        use eq_vars, only: q_saf, theta, n_par, lam, flux_p
-        use num_vars, only: pi
-        
-        ! local variables
-        integer :: id, kd
-        real(dp) :: theta_s                                                     ! = theta + lambda
-        
-        ! deallocate if allocated
-        if (allocated(V2F_dn)) deallocate(V2F_dn)
-        if (allocated(V2F_up)) deallocate(V2F_up)
-        if (allocated(jac_F)) deallocate(jac_F)
-        ! reallocate
-        allocate(V2F_dn(3,3,n_par,n_r)); V2F_dn = 0.0_dp
-        allocate(V2F_up(3,3,n_par,n_r)); V2F_up = 0.0_dp
-        allocate(jac_F(n_par,n_r)); jac_F = 0.0_dp
-        
-        do kd = 1,n_r
-            do id = 1, n_par
-                theta_s = theta(id,kd)+lam(id,kd,1)
-                V2F_up(1,1,id,kd) = -q_saf(kd,2)*theta_s &
-                    &- q_saf(kd,1)*lam(id,kd,2)
-                V2F_up(1,2,id,kd) = -q_saf(kd,1)*(1+lam(id,kd,3))
-                V2F_up(1,3,id,kd) = 1 - q_saf(kd,1)*lam(id,kd,4)
-                V2F_up(2,1,id,kd) = flux_p(kd,2)/(2*pi)
-                V2F_up(2,2,id,kd) = 0.0_dp
-                V2F_up(2,3,id,kd) = 0.0_dp
-                V2F_up(3,1,id,kd) = lam(id,kd,2)
-                V2F_up(3,2,id,kd) = 1 + lam(id,kd,3)
-                V2F_up(3,3,id,kd) = lam(id,kd,4)
-                jac_F(id,kd) = (flux_p(kd,2)/(2*pi)*(1+lam(id,kd,3)))**(-1)*&
-                    &jac_V(id,kd)
-            end do
-        end do
-        
-        do kd = 1,n_r
-            do id = 1, n_par
-                theta_s = theta(id,kd)+lam(id,kd,1)
-                V2F_dn(1,1,id,kd) = 0.0_dp
-                V2F_dn(1,2,id,kd) = -lam(id,kd,4)/(1+lam(id,kd,3))
-                V2F_dn(1,3,id,kd) = 1.0_dp
-                V2F_dn(2,1,id,kd) = 2*pi/flux_p(kd,2)
-                V2F_dn(2,2,id,kd) = -2*pi/flux_p(kd,2) * (lam(id,kd,2)+&
-                    &lam(id,kd,4)*q_saf(kd,2)*theta_s)/(1+lam(id,kd,3))
-                V2F_dn(2,3,id,kd) = 2*pi/flux_p(kd,2)*q_saf(kd,2)*theta_s
-                V2F_dn(3,1,id,kd) = 0.0_dp
-                V2F_dn(3,2,id,kd) = (1-q_saf(kd,1)*lam(id,kd,4))/&
-                    &(1+lam(id,kd,3))
-                V2F_dn(3,3,id,kd) = q_saf(kd,1)
-            end do
-        end do
-    end subroutine
-
     ! calculate the  metric coefficients in  the V(MEC) coordinate  system using
     ! the metric  coefficients in  the C(ylindrical)  coordinate system  and the
     ! trans- formation matrices
@@ -197,6 +97,113 @@ contains
         end do
     end subroutine
     
+    ! Calculate  the transformation  matrix  between  C(ylindrical) and  V(mec)
+    ! coordinate system from the VMEC file.
+    subroutine metric_C2V
+        ! local variables
+        real(dp) :: cf(n_par)                                                  ! common factor used in calculating the elements of the matrix
+        integer :: kd
+        
+        ! deallocate if allocated
+        if (allocated(C2V_dn)) deallocate(C2V_dn)
+        if (allocated(C2V_up)) deallocate(C2V_up)
+        if (allocated(jac_V)) deallocate(jac_V)
+        ! reallocate
+        allocate(C2V_dn(3,3,n_par,n_r)); C2V_dn = 0.0_dp
+        allocate(C2V_up(3,3,n_par,n_r)); C2V_up = 0.0_dp
+        allocate(jac_V(n_par,n_r)); jac_V = 0.0_dp
+        
+        ! calculate transformation matrix for contravariant coordinates
+        do kd = 1,n_r
+            jac_V(:,kd) = R(:,kd,1)*(R(:,kd,2)*Z(:,kd,3)-R(:,kd,3)*Z(:,kd,2))
+            cf = R(:,kd,1)/jac_V(:,kd)
+            C2V_up(1,1,:,kd) = cf*Z(:,kd,3)
+            C2V_up(1,2,:,kd) = cf*(R(:,kd,4)*Z(:,kd,3)-R(:,kd,3)*Z(:,kd,4))
+            C2V_up(1,3,:,kd) = -cf*R(:,kd,3)
+            C2V_up(2,1,:,kd) = -cf*Z(:,kd,2)
+            C2V_up(2,2,:,kd) = cf*(R(:,kd,2)*Z(:,kd,4)-R(:,kd,4)*Z(:,kd,2))
+            C2V_up(2,3,:,kd) = cf*R(:,kd,2)
+            C2V_up(3,1,:,kd) = 0.0_dp
+            C2V_up(3,2,:,kd) = cf*(R(:,kd,3)*Z(:,kd,2)-R(:,kd,2)*Z(:,kd,3))
+            C2V_up(3,3,:,kd) = 0.0_dp
+        end do
+        
+        ! calculate transformation matrix for covariant coordinates
+        do kd = 1,n_r
+            C2V_dn(1,1,:,kd) = R(:,kd,2)
+            C2V_dn(1,2,:,kd) = 0.0_dp
+            C2V_dn(1,3,:,kd) = Z(:,kd,2)
+            C2V_dn(2,1,:,kd) = R(:,kd,3)
+            C2V_dn(2,2,:,kd) = 0.0_dp
+            C2V_dn(2,3,:,kd) = Z(:,kd,3)
+            C2V_dn(3,1,:,kd) = R(:,kd,4)
+            C2V_dn(3,2,:,kd) = -1
+            C2V_dn(3,3,:,kd) = Z(:,kd,4)
+        end do
+    end subroutine
+
+    ! Calculate  the transformation  matrix between  the V(mec)  and the  F(lux)
+    ! coordinate system
+    subroutine metric_V2F
+        use eq_vars, only: q_saf, theta, n_par, lam, flux_p, flux_p_rect
+        use num_vars, only: pi
+        
+        ! local variables
+        integer :: id, kd
+        real(dp) :: theta_s                                                     ! = theta + lambda
+        
+        ! deallocate if allocated
+        if (allocated(V2F_dn)) deallocate(V2F_dn)
+        if (allocated(V2F_up)) deallocate(V2F_up)
+        if (allocated(jac_F)) deallocate(jac_F)
+        ! reallocate
+        allocate(V2F_dn(3,3,n_par,n_r)); V2F_dn = 0.0_dp
+        allocate(V2F_up(3,3,n_par,n_r)); V2F_up = 0.0_dp
+        allocate(jac_F(n_par,n_r)); jac_F = 0.0_dp
+        
+        do kd = 1,n_r
+            do id = 1, n_par
+                theta_s = theta(id,kd)+lam(id,kd,1)
+                V2F_up(1,1,id,kd) = -q_saf(kd,2)*theta_s &
+                    &- q_saf(kd,1)*lam(id,kd,2)
+                V2F_up(1,2,id,kd) = -q_saf(kd,1)*(1+lam(id,kd,3))
+                V2F_up(1,3,id,kd) = 1 - q_saf(kd,1)*lam(id,kd,4)
+                V2F_up(2,1,id,kd) = flux_p(kd,2)/(2*pi)
+                V2F_up(2,2,id,kd) = 0.0_dp
+                V2F_up(2,3,id,kd) = 0.0_dp
+                V2F_up(3,1,id,kd) = lam(id,kd,2)
+                V2F_up(3,2,id,kd) = 1 + lam(id,kd,3)
+                V2F_up(3,3,id,kd) = lam(id,kd,4)
+                jac_F(id,kd) = (flux_p(kd,2)/(2*pi)*(1+lam(id,kd,3)))**(-1)*&
+                    &jac_V(id,kd)
+            end do
+            ! invert the second row and the jacobian if the poloidal flux had to
+            ! be rectified at this flux surf.
+            V2F_up(2,:,:,kd) = flux_p_rect(kd,2) * V2F_up(2,:,:,kd)
+            jac_F(:,kd) = flux_p_rect(kd,2) * jac_F(:,kd)
+        end do
+        
+        do kd = 1,n_r
+            do id = 1, n_par
+                theta_s = theta(id,kd)+lam(id,kd,1)
+                V2F_dn(1,1,id,kd) = 0.0_dp
+                V2F_dn(1,2,id,kd) = -lam(id,kd,4)/(1+lam(id,kd,3))
+                V2F_dn(1,3,id,kd) = 1.0_dp
+                V2F_dn(2,1,id,kd) = 2*pi/flux_p(kd,2)
+                V2F_dn(2,2,id,kd) = -2*pi/flux_p(kd,2) * (lam(id,kd,2)+&
+                    &lam(id,kd,4)*q_saf(kd,2)*theta_s)/(1+lam(id,kd,3))
+                V2F_dn(2,3,id,kd) = 2*pi/flux_p(kd,2)*q_saf(kd,2)*theta_s
+                V2F_dn(3,1,id,kd) = 0.0_dp
+                V2F_dn(3,2,id,kd) = (1-q_saf(kd,1)*lam(id,kd,4))/&
+                    &(1+lam(id,kd,3))
+                V2F_dn(3,3,id,kd) = q_saf(kd,1)
+            end do
+            ! invert the second row if the  poloidal flux had to be rectified at
+            ! this flux surf.
+            V2F_dn(2,:,:,kd) = flux_p_rect(kd,2) * V2F_dn(2,:,:,kd)
+        end do
+    end subroutine
+
     ! calculate the metric coefficients from the transformation matrices  in the 
     ! coordinate system B using 
     ! (lower) g_B = TC2V_dn*g_A*TC2V_dn^T

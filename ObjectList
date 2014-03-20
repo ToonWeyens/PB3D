@@ -15,3 +15,4 @@ PB3D.o \
 test.o \
 time.o \
 str_ops.o \
+utilities.o \

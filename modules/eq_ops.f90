@@ -14,7 +14,7 @@ contains
     ! lines.
     subroutine calc_eq(alpha)
         use eq_vars, only: eqd_mesh, calc_mesh, calc_RZl, calc_flux_q, &
-            &check_mesh
+            &check_mesh, flux_brkdwn
         use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F
         
         real(dp) :: alpha
@@ -31,7 +31,7 @@ contains
             ! line
             call calc_mesh(alpha)
             
-            ! check whether the mesh has been calculated correctl
+            ! check whether the mesh has been calculated correctly
             call check_mesh(alpha)
             
             call lvl_ud(-1)
@@ -47,6 +47,10 @@ contains
             
             ! calculate flux quantities
             call calc_flux_q
+            
+            ! find out where using the poloidal flux as normal coordinate breaks
+            ! down and calculate the transformation points
+            call flux_brkdwn
             
             ! calculate the metrics in the cylindrical coordinate system
             call metric_C
