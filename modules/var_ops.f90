@@ -4,7 +4,7 @@ module var_ops
     use output_ops, only: writo
     implicit none
     private
-    public mat_mult, mat_sub, det
+    public mat_mult, matvec_mult, mat_sub, det
 
 contains
     ! multipy two matrices
@@ -28,6 +28,26 @@ contains
             end do
         end do
     end function mat_mult
+    
+    ! multiply a matrix with a vector
+    function matvec_mult(A,b)
+        real(dp) :: A(:,:), b(:)
+        real(dp), allocatable :: matvec_mult(:)
+        integer :: id, kd
+        
+        if (size(A,2).ne.size(b)) then
+            call writo('ERROR: Matrix A and vector b not compatible')
+            stop
+        end if
+        
+        allocate(matvec_mult(size(A,1)))
+        matvec_mult = 0.0_dp
+        do id = 1, size(A,1)
+            do kd = 1, size(A,2)
+                matvec_mult(id) = matvec_mult(id) + A(id,kd)*b(kd)
+            end do
+        end do
+    end function matvec_mult
 
     ! subtract two matrices
     function mat_sub(A,B)

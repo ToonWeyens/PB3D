@@ -16,3 +16,4 @@ test.o \
 time.o \
 str_ops.o \
 utilities.o \
+B_vars.o \

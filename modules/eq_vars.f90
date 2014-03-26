@@ -10,17 +10,21 @@ module eq_vars
 
     implicit none
     private
-    public eqd_mesh, calc_mesh, calc_RZl, ang_B, calc_flux_q, h2f, &
-        &check_mesh, flux_brkdwn, &
-        &theta, zeta, n_par, R, Z, lam, min_par, max_par, q_saf, &
-        &flux_p, flux_t, flux_p_rect
+    public eqd_mesh, calc_mesh, calc_RZl, ang_B, calc_flux_q, h2f, f2h, &
+        &check_mesh, flux_brkdwn, calc_norm_deriv, &
+        &theta, zeta, theta_H, zeta_H, n_par, R, Z, lam_H, min_par, max_par, &
+        &q_saf, q_saf_H, flux_p, flux_p_H, flux_t, flux_p_rect
 
     ! R and Z and derivatives in real (as opposed to Fourier) space (see below)
     ! (index 1: variable, 2: r derivative, 2: theta derivative, 3: zeta derivative)
-    real(dp), allocatable :: R(:,:,:), Z(:,:,:), lam(:,:,:)
-    real(dp), allocatable :: theta(:,:), zeta(:,:)                              ! grid points
-    real(dp), allocatable :: q_saf(:,:), flux_p(:,:), flux_t(:,:), pres(:,:)    ! safety factor, pol. flux, tor. flux and pressure, and normal derivative
-    real(dp), allocatable :: flux_p_rect(:,:)                                   ! rectified poloidal flux, monotomously rising, 2nd index: rising (>0) or falling(<0)
+    real(dp), allocatable :: R(:,:,:), Z(:,:,:)                                 ! R, Z (FM)
+    real(dp), allocatable :: lam_H(:,:,:)                                       ! lambda in (HM)
+    real(dp), allocatable :: theta(:,:), zeta(:,:)                              ! grid points (n_par, n_r, 2) (FM)
+    real(dp), allocatable :: theta_H(:,:), zeta_H(:,:)                          ! grid points (n_par, n_r, 2) (HM)
+    real(dp), allocatable :: q_saf(:,:), q_saf_H(:,:)                           ! safety factor (FM) and (HM)
+    real(dp), allocatable :: flux_p(:,:), flux_t(:,:), pres(:,:)                ! pol. flux, tor. flux and pressure, and normal derivative (FM)
+    real(dp), allocatable :: flux_p_H(:,:), pres_H(:,:)                         ! pol. flux and pressure (HM)
+    real(dp), allocatable :: flux_p_rect(:,:)                                   ! rectified pol. flux, mon. rising, 2nd index: rising (>0) or falling(<0) (FM)
     real(dp) :: min_par, max_par
     integer :: n_par
 
@@ -39,29 +43,44 @@ contains
         real(dp) :: alpha
         
         ! local variables
-        integer :: kd
+        integer :: jd, kd
         real(dp) :: var_in(n_r)
         
         if (allocated(zeta)) deallocate(zeta)
-        allocate(zeta(n_par, n_r)); zeta = 0.0_dp
+        allocate(zeta(n_par,n_r)); zeta = 0.0_dp
+        if (allocated(zeta_H)) deallocate(zeta_H)
+        allocate(zeta_H(n_par,n_r)); zeta_H = 0.0_dp
         if (allocated(theta)) deallocate(theta)
-        allocate(theta(n_par, n_r)); theta = 0.0_dp
+        allocate(theta(n_par,n_r)); theta = 0.0_dp
+        if (allocated(theta_H)) deallocate(theta_H)
+        allocate(theta_H(n_par,n_r)); theta_H = 0.0_dp
         
         if (theta_var_along_B) then                                             ! first calculate theta
-            do kd = 1,n_r
-                theta(:,kd) = eqd_mesh(n_par, min_par, max_par)
+            do jd = 1,n_r
+                theta(:,jd) = eqd_mesh(n_par, min_par, max_par)
+                theta_H(:,jd) = eqd_mesh(n_par, min_par, max_par)
             end do
-            do kd = 1,n_par
-                var_in = theta(kd,:)
-                zeta(kd,:) = ang_B(.false.,alpha,var_in)
+            !do kd = 1,n_par
+                !var_in = theta(kd,:)
+                !zeta(kd,:) = ang_B(.false.,.true.,alpha,var_in)
+                !var_in = theta_H(kd,:)
+                !zeta-H(kd,:) = ang_B(.false.,.false.,alpha,var_in)
+            !end do
+            ! TEMPORARY REPLACEMENT:
+            do jd = 1,n_r
+                zeta(:,jd) = eqd_mesh(n_par, min_par, max_par)
+                zeta_H(:,jd) = eqd_mesh(n_par, min_par, max_par)
             end do
         else                                                                    ! first calculate zeta
-            do kd = 1,n_r
-                zeta(:,kd) = eqd_mesh(n_par, min_par, max_par)
+            do jd = 1,n_r
+                zeta(:,jd) = eqd_mesh(n_par, min_par, max_par)
+                zeta_H(:,jd) = eqd_mesh(n_par, min_par, max_par)
             end do
             do kd = 1,n_par
                 var_in = zeta(kd,:)
-                theta(kd,:) = ang_B(.true.,alpha,var_in)
+                theta(kd,:) = ang_B(.true.,.true.,alpha,var_in)
+                var_in = zeta(kd,:)
+                theta_H(kd,:) = ang_B(.true.,.false.,alpha,var_in)
             end do
         end if
     end subroutine calc_mesh
@@ -86,17 +105,17 @@ contains
         if (theta_var_along_B) then                                             ! calculate theta again from zeta
             do id = 1,n_par
                 var_in = zeta(id,:)
-                var_calc(id,:) = ang_B(.true.,alpha,var_in)
+                var_calc(id,:) = ang_B(.true.,.true.,alpha,var_in)
             end do
             par_ang = 'poloidal'; dep_ang = 'toroidal'
-            var_diff = theta - var_calc
+            var_diff = theta(:,:) - var_calc
         else                                                                    ! calculate zeta again from theta
             do id = 1,n_par
                 var_in = theta(id,:)
-                var_calc(id,:) = ang_B(.false.,alpha,var_in)
+                var_calc(id,:) = ang_B(.false.,.true.,alpha,var_in)
             end do
             par_ang = 'toroidal'; dep_ang = 'poloidal'
-            var_diff = zeta - var_calc
+            var_diff = zeta(:,:) - var_calc
         end if
         
         if (maxval(abs(var_diff)).gt.tol_NR*100) then
@@ -148,73 +167,85 @@ contains
     
     ! transform half-mesh to full-mesh quantities
     ! Adapted from SIESTA routines
-    function h2f(var,nx,ny)
+    function h2f(var)
         use VMEC_vars, only: n_r
-        integer, intent(in) :: nx, ny                                           ! size of first two dimensins (third is r)
-        real(dp) :: h2f(nx,ny,n_r)
-        real(dp), intent(in) :: var(nx,ny,n_r)
+        real(dp) :: h2f(n_r)
+        real(dp), intent(in) :: var(n_r)
         
         ! interpolate the inner quantities
-        h2f(:,:,2:n_r-1) = 0.5_dp*(var(:,:,2:n_r-1) + var(:,:,3:n_r))           ! Only last values must come from B.C.
-        h2f(:,:,n_r) = 2*var(:,:,n_r) - h2f(:,:,n_r-1)                          ! Extrapolate first, last points
-        h2f(:,:,1) = 2*var(:,:,2)-h2f(:,:,2)
+        h2f(2:n_r-1) = 0.5_dp*(var(2:n_r-1) + var(3:n_r))                       ! Only last values must come from B.C.
+        h2f(n_r) = 2*var(n_r) - h2f(n_r-1)                                      ! Extrapolate first, last points
+        h2f(1) = 2*var(2)-h2f(2)
+    end function
+
+    ! transform  half-mesh to  full-mesh  quantities based  on  h2f. The  result
+    ! is  reversible   (h2f*f2h  =   h)  only  if   the  second   derivative  of
+    ! the  function  is  zero  at  all  points,  because  the  condition  h_i  =
+    ! 1/4*(h_(i-1)+2*h_i+h_(i+1)) can  be derived. This is  logical, because the
+    ! linear interpolation is only exact for first order polynomials.
+    ! ¡¡¡THEREFORE,  THE  WHOLE  INTERPOLATION SHOULD  BE
+    ! SUBSTITUTED BY SOMETHING ELSE, SUCH AS SPLINES!!!
+    function f2h(var)
+        use VMEC_vars, only: n_r
+        real(dp) :: f2h(n_r)
+        real(dp), intent(in) :: var(n_r)
+        
+        ! interpolate the inner quantities
+        f2h(2:n_r) = 0.5_dp*(var(1:n_r-1) + var(2:n_r))                         ! Only last values must come from B.C.
+        f2h(1) = 0.0_dp
     end function
 
     ! calculate the coordinates R  and Z and l in real  space from their Fourier
     ! decomposition  using the  grid points  currently stored  in the  variables
     ! theta, zeta.
-    ! the output is all FULL MESH (FM)
     subroutine calc_RZl
         use fourier_ops, only: mesh_cs, f2r
-        use VMEC_vars, only: R_c, R_s, Z_c, Z_s, l_c, l_s, n_r, rmax_surf, &
-            &rmin_surf, zmax_surf, ntor, mpol
+        use VMEC_vars, only: R_c, R_s, Z_c, Z_s, lam_c, lam_s, n_r, &
+            &rmax_surf, rmin_surf, zmax_surf, ntor, mpol
         
         ! local variables
         real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
         integer :: id, kd
         real(dp) :: tempvar(n_r)
-        real(dp) :: l_c_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_c
-        real(dp) :: l_s_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_s
-        real(dp) :: lam_H(n_r)
         
         ! deallocate if allocated
         if (allocated(R)) deallocate(R)
         if (allocated(Z)) deallocate(Z)
-        if (allocated(lam)) deallocate(lam)
+        if (allocated(lam_H)) deallocate(lam_H)
         ! reallocate
         allocate(R(n_par,n_r,4)); R = 0.0_dp
         allocate(Z(n_par,n_r,4)); Z = 0.0_dp
-        allocate(lam(n_par,n_r,4)); lam = 0.0_dp
-        
-        ! convert l_c and l_s to FM
-        l_c_F = 0.0_dp; l_c_F = h2f(l_c, mpol, 2*ntor+1)
-        l_s_F = 0.0_dp; l_s_F = h2f(l_s, mpol, 2*ntor+1)
+        allocate(lam_H(n_par,n_r,4)); lam_H = 0.0_dp
         
         ! do calculations for all angular points
-        par: do id = 1, n_par                                                  ! parallel: along the magnetic field line
-            ! calculate the variables R, Z, and their angular derivatives for all normal points and current angular point
+        par: do id = 1, n_par                                                   ! parallel: along the magnetic field line
+            ! calculate the  variables R, Z,  and their angular  derivatives for
+            ! all normal points and current angular point
             perp: do kd = 1, n_r                                                ! perpendicular: normal to the flux surfaces
-                ! calculate the (co)sines at the current mesh points
+                ! FM quantities
                 cs = mesh_cs(mpol,ntor,theta(id,kd),zeta(id,kd))
-                
                 R(id,kd,1) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor,1)
                 R(id,kd,3) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor,3)
                 R(id,kd,4) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor,4)
                 Z(id,kd,1) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor,1)
                 Z(id,kd,3) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor,3)
                 Z(id,kd,4) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor,4)
-                lam(id,kd,1) = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,1)
-                lam(id,kd,3) = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,3)
-                lam(id,kd,4) = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,4)
-                lam_H(kd) = f2r(l_c(:,:,kd),l_s(:,:,kd),cs,mpol,ntor,1)             ! HM needed for the calculation of the normal derivative
+                
+                ! HM quantities
+                cs = mesh_cs(mpol,ntor,theta_H(id,kd),zeta_H(id,kd))
+                lam_H(id,kd,1) = f2r(lam_c(:,:,kd),lam_s(:,:,kd),cs,mpol,ntor,1)
+                lam_H(id,kd,3) = f2r(lam_c(:,:,kd),lam_s(:,:,kd),cs,mpol,ntor,3)
+                lam_H(id,kd,4) = f2r(lam_c(:,:,kd),lam_s(:,:,kd),cs,mpol,ntor,4)
             end do perp
             
-            ! numerically calculate normal derivatives at the currrent angular points
+            ! numerically calculate  normal derivatives at the  currrent angular
+            ! points
             tempvar = R(id,:,1)
-            R(id,:,2) = calc_norm_deriv(tempvar,.true.)
+            R(id,:,2) = calc_norm_deriv(tempvar,.true.,.true.)
             tempvar = Z(id,:,1)
-            Z(id,:,2) = calc_norm_deriv(tempvar,.true.)
-            lam(id,:,2) = calc_norm_deriv(lam_H,.false.)
+            Z(id,:,2) = calc_norm_deriv(tempvar,.true.,.true.)
+            tempvar = lam_H(id,:,1)
+            lam_H(id,:,2) = calc_norm_deriv(tempvar,.false.,.false.)
         end do par
         
         ! output a message if the found R  and Z values are not within the VMEC-
@@ -269,53 +300,75 @@ contains
         end subroutine
     end subroutine calc_RZl
 
-    ! calculates normal derivatives in FM and HM
-    function calc_norm_deriv(var,FM)
+    ! calculates normal derivatives of a FM or HM quantity
+    ! Both input and output can be FM or HM:
+    !   +-----------------------------------+
+    !   | I\O |      HM      |      FM      |
+    !   | ----------------------------------|
+    !   | HM  | centr. diff. |  (i+1)-(i)   |
+    !   | ----------------------------------|
+    !   | FM  |   (i)-(i-1)  | centr. diff. |
+    !   +-----------------------------------+
+    function calc_norm_deriv(var,FM_i,FM_o)
         use VMEC_vars, only: n_r
         
         ! input / output
         real(dp) :: calc_norm_deriv(n_r)
         real(dp), intent(in) :: var(n_r)
-        logical :: FM                                                           ! whether or not Full Mesh (true: FM, false: HM)
+        logical :: FM_i, FM_o                                                   ! whether or not Full Mesh for input and output (true: FM, false: HM)
         
         ! local variables
-        real(dp) :: delta_r                                                     ! step size
         real(dp) :: varout(n_r)                                                 ! temporary variable to hold output
         integer :: kd
         
-        if (FM) then                                                            ! full mesh calculation
-            ! first normal point
-            delta_r = 1.0/(n_r-1)                                               ! step size between first points
-            varout(1) = (var(2)-var(1))/delta_r                                 ! forward difference
-            ! internal points
-            do kd = 3, n_r
-                delta_r = 2.0/(n_r-1)                                           ! intermediate step size: centered differences
-                varout(kd-1) = (var(kd)-var(kd-2))/delta_r                      ! centered difference
-            end do
-            ! last normal point
-            delta_r = 1.0/(n_r-1)                                               ! step size between last points
-            varout(n_r) = (var(n_r)-var(n_r-1))/delta_r
-        else                                                                    ! half mesh calculation
-            ! first normal point: choose equal to derivative at second point (linear approx.)
-            delta_r = 1.0/(n_r-1)                                               ! step size between first points
-            varout(1) = (var(3)-var(2))/delta_r                                 ! centered difference
-            ! internal points
-            do kd = 2, n_r-1
-                delta_r = 1.0/(n_r-1)                                           ! intermediate step size: centered differences
-                varout(kd) = (var(kd+1)-var(kd))/delta_r                        ! centered difference
-            end do
-            ! last normal point: choose equal to derivative at next to last point (linear approx.)
-            delta_r = 1.0/(n_r-1)                                               ! step size between last points
-            varout(n_r) = (var(n_r)-var(n_r-1))/delta_r
+        if (FM_i) then                                                          ! FM input
+            if (FM_o) then                                                      ! FM output
+                ! (2,2) FM_i, FM_o: CENTRAL DIFFERENCES
+                ! first normal point
+                varout(1) = (var(2)-var(1)) * (n_r-1)                           ! forward difference
+                ! internal points
+                do kd = 3, n_r
+                    varout(kd-1) = (var(kd)-var(kd-2)) * (n_r-1)/2.0_dp         ! centered difference
+                end do
+                ! last normal point
+                varout(n_r) = (var(n_r)-var(n_r-1)) * (n_r-1)
+            else                                                                ! HM output
+                ! (2,1) FM_i, HM_o: (i)-(i-1)
+                do kd = 2, n_r
+                    varout(kd) = (var(kd)-var(kd-1)) * (n_r-1)                  ! centered difference
+                end do
+            end if
+        else                                                                    ! HM input
+            if (FM_o) then                                                      ! FM output
+                ! (1,2) HM_i, FM_o: (i+1)-(i)
+                ! first normal point: choose equal to derivative at second point (linear approx.)
+                varout(1) = (var(3)-var(2)) * (n_r-1)                           ! centered difference
+                ! internal points
+                do kd = 2, n_r-1
+                    varout(kd) = (var(kd+1)-var(kd)) * (n_r-1)                  ! centered difference
+                end do
+                ! last normal point: choose equal to derivative at next to last point (linear approx.)
+                varout(n_r) = (var(n_r)-var(n_r-1)) * (n_r-1)
+            else                                                                ! HM output
+                ! (1,1) HM_i, HM_o: CENTRAL DIFFERENCES
+                ! first normal point
+                varout(2) = (var(3)-var(2)) * (n_r-1)                           ! forward difference
+                ! internal points
+                do kd = 4, n_r
+                    varout(kd-1) = (var(kd)-var(kd-2)) * (n_r-1)/2.0_dp         ! centered difference
+                end do
+                ! last normal point
+                varout(n_r) = (var(n_r)-var(n_r-1)) * (n_r-1)
+            end if
         end if
         
         calc_norm_deriv = varout
     end function calc_norm_deriv
     
-    ! Calculates flux quantities in FM
+    ! Calculates flux quantities
     subroutine calc_flux_q
         use VMEC_vars, only: &
-            &iotaf, n_r, phi, phipf, presf
+            &iotaf, iotah, n_r, phi, phi_r, presf, presh
         
         ! local variables
         integer :: kd
@@ -323,32 +376,46 @@ contains
         ! reallocate
         if (allocated(q_saf)) deallocate(q_saf)
         allocate(q_saf(n_r,2))
+        if (allocated(q_saf_H)) deallocate(q_saf_H)
+        allocate(q_saf_H(n_r,2))
         if (allocated(flux_p)) deallocate(flux_p)
         allocate(flux_p(n_r,2))
+        if (allocated(flux_p_H)) deallocate(flux_p_H)
+        allocate(flux_p_H(n_r,2))
         if (allocated(flux_t)) deallocate(flux_t)
         allocate(flux_t(n_r,2))
         if (allocated(pres)) deallocate(pres)
         allocate(pres(n_r,2))
+        if (allocated(pres_H)) deallocate(pres_H)
+        allocate(pres_H(n_r,2))
         
-        ! safety factor q_saf: invert iotaf and derivate
+        ! safety factor q_saf: invert iota and derivate
         do kd = 1,n_r
             q_saf(kd,1) = 1/iotaf(kd)
         end do
-        q_saf(:,2) = calc_norm_deriv(q_saf(:,1),.true.)
+        do kd = 2,n_r
+            q_saf_H(kd,1) = 1/iotah(kd)
+        end do
+        q_saf(:,2) = calc_norm_deriv(q_saf_H(:,1),.false.,.true.)
+        q_saf_H(:,2) = calc_norm_deriv(q_saf(:,1),.true.,.false.)
         
         ! toroidal flux: copy from VMEC
         flux_t(:,1) = phi
-        flux_t(:,2) = phipf
+        flux_t(:,2) = phi_r
         
-        ! poloidal flux: calculate using iotaf and phi, phipf
+        ! poloidal flux: calculate using iotaf and phi, phi_r
         do kd = 1,n_r
             flux_p(kd,1) = iotaf(kd)*phi(kd)
+            flux_p_H(kd,1) = iotah(kd)*phi(kd)
         end do
-        flux_p(:,2) = calc_norm_deriv(flux_p(:,1),.true.)
+        flux_p(:,2) = calc_norm_deriv(flux_p_H(:,1),.true.,.false.)
+        flux_p_H(:,2) = calc_norm_deriv(flux_p(:,1),.false.,.true.)
         
         ! pressure: copy from VMEC and derivate
         pres(:,1) = presf
-        pres(:,2) = calc_norm_deriv(pres(:,1),.true.)
+        pres_H(:,1) = presh
+        pres(:,2) = calc_norm_deriv(pres_H(:,1),.true.,.false.)
+        pres_H(:,2) = calc_norm_deriv(pres(:,1),.false.,.true.)
     end subroutine
 
     ! Checks where using the poloidal flux as normal coordinate breaks down by 
@@ -363,6 +430,8 @@ contains
         integer :: behav                                                        ! < 0 : falling; > 0 : rising; = 0 : constant
         real(dp), parameter :: tol = 10*epsilon(1.0_dp)
         real(dp) :: flux_p_0                                                    ! factor to add to flux_p to get continuous flux_p_rect
+        integer :: cp(n_r), n_cp                                                ! for output: the places where the behavior changes and the number of places
+        character(len=6*n_r) :: cp_str                                          ! string version of the nonzero elements of cp
         
         ! reallocate
         if (allocated(flux_p_rect)) deallocate(flux_p_rect)
@@ -381,11 +450,16 @@ contains
         flux_p_0 = 0.0_dp
         if (flux_p(1,2).gt.tol) then 
             behav = 1
-        else if (flux_p(1,2).lt.tol) then
+        else if (flux_p(1,2).lt.-tol) then
             behav = -1
         else
             behav = 0
         end if
+        
+        ! initialization of cp variables for output
+        n_cp = 0
+        cp = 0
+        
         ! next points
         do kd = 2,n_r
             if (flux_p(kd,2).gt.-tol .and. flux_p(kd,2).lt.tol) then            ! function stagnates
@@ -394,23 +468,43 @@ contains
                     & produces infinities...')
                 stop
             else if (flux_p(kd,2).lt.-tol) then                                 ! function falls
-                if (behav.gt.0) then                                            ! function was rising
+                if (behav.gt.0) then                                            ! CHANGE: function was rising
                     behav = -1                                                  ! now it is falling
                     flux_p_0 = (flux_p(kd,1)+flux_p(kd-1,1))/2.0_dp - flux_p_0  ! update flux_p_0
-                end if
+                    n_cp = n_cp + 1
+                    cp(n_cp) = kd
+                end if                                                          ! NO CHANGE
+                flux_p_rect(kd,1) = -flux_p(kd,1) + 2*flux_p_0
             else if (flux_p(kd,2).gt.tol) then                                  ! function rises
-                if (behav.lt.0) then                                            ! function was falling
+                if (behav.lt.0) then                                            ! CHANGE: function was falling
                     behav = 1                                                   ! now it is rising
                     flux_p_0 = (flux_p(kd,1)+flux_p(kd-1,1))/2.0_dp - flux_p_0  ! update flux_p_0
-                end if
+                    n_cp = n_cp + 1
+                    cp(n_cp) = kd
+                end if                                                          ! NO CHANGE
+                flux_p_rect(kd,1) = flux_p(kd,1) + 2*flux_p_0
             end if
-            flux_p_rect(kd,1) = abs(flux_p(kd,1)) + 2*flux_p_0
             flux_p_rect(kd,2) = dfloat(behav)
         end do
         
+        ! set up cp_str, containing all the points where the behavior changes
+        if (n_cp.eq.1) then
+            cp_str = 'surface '//i2str(cp(1))
+        else if (n_cp.gt.1) then
+            cp_str = 'surfaces ('//i2str(cp(1))
+            do kd = 2,n_cp
+                cp_str = trim(cp_str)//', '//i2str(cp(kd))
+            end do
+            cp_str = trim(cp_str)//')'
+        else
+            cp_str = ''
+        end if
+        
         ! print a message to user
-        call writo('The poloidal flux becomes negative at some points... -> &
-            &flux rectification method used.')
+        if (n_cp.gt.0) then
+            call writo('The derivative of the poloidal flux changes sign at &
+                &flux '//trim(cp_str)//'... -> flux rectification method used.')
+        end if
     end subroutine
     
     ! Calculates the  poloidal/toroidal angle theta(zeta)  as a function  of the
@@ -421,35 +515,58 @@ contains
     ! the logical find_theta determines whether theta is sought or zeta:
     !   find_theta = .true. : look for theta as a function of zeta
     !   find_theta = .false. : look for zeta as a function of theta
-    function ang_B(find_theta,alpha_in,input_ang,guess)
+    function ang_B(find_theta,fm ,alpha_in,input_ang,guess)
         use num_vars, only: tol_NR
-        use VMEC_vars, only: mpol, ntor, n_r, l_c, l_s, iotaf
+        use VMEC_vars, only: mpol, ntor, n_r, lam_c, lam_s, iotaf, iotah
         use fourier_ops, only: mesh_cs, f2r
         use utilities, only: zero_NR
         
         ! input / output
         real(dp) :: ang_B(n_r)                                                  ! theta(zeta)/zeta(theta)
-        logical :: find_theta                                                   ! whether theta or zeta is sought
+        logical, intent(in) :: find_theta                                       ! whether theta or zeta is sought
+        logical, intent(in) :: FM                                               ! whether full or half mesh quantity is sought
         real(dp), intent(in) :: alpha_in                                        ! alpha
         real(dp), intent(in) :: input_ang(n_r)                                  ! the input angle zeta/theta
         real(dp), intent(in), optional :: guess(n_r)                            ! optional input (guess) for theta/zeta
         
         ! local variables (also used in child functions)
-        integer :: kd
-        real(dp) :: l_c_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_c
-        real(dp) :: l_s_F(0:mpol-1,-ntor:ntor,1:n_r)                            ! FM version of HM l_s
+        integer :: jd, kd
+        real(dp) :: lam_c_loc(0:mpol-1,-ntor:ntor,1:n_r)                        ! local version of HM l_c (either FM or HM)
+        real(dp) :: lam_s_loc(0:mpol-1,-ntor:ntor,1:n_r)                        ! local version of HM l_s (either FM or HM)
+        real(dp) :: q(n_r)                                                      ! local version of 1/iota (either FM or HM)
         real(dp) :: lam                                                         ! lambda
         real(dp) :: dlam                                                        ! angular derivative of lambda
+        real(dp) :: tempcoeff(n_r)                                              ! temporary holds a coefficient
         
         ! local variables (not to be used in child functions)
         real(dp) :: alpha_calc                                                  ! calculated alpha, to check with the given alpha
         real(dp) :: ang_NR                                                      ! temporary solution for a given r, iteration
+        integer :: norm_start                                                   ! either 1 (FM) or 2 (HM)
         
-        ! convert l_c and l_s to FM
-        l_c_F = 0.0_dp; l_c_F = h2f(l_c, mpol, 2*ntor+1)
-        l_s_F = 0.0_dp; l_s_F = h2f(l_s, mpol, 2*ntor+1)
+        ! convert lam_c and lam_s to FM if FM is .true., select correct q
+        if (FM) then
+            do jd = -ntor, ntor
+                do kd = 0, mpol-1
+                    tempcoeff = lam_c(kd,jd,:)
+                    lam_c_loc(kd,jd,:) = h2f(tempcoeff)
+                    tempcoeff = lam_s(kd,jd,:)
+                    lam_s_loc(kd,jd,:) = h2f(tempcoeff)
+                end do
+            end do
+            q = iotaf
+        else 
+            lam_c_loc = lam_c
+            lam_s_loc = lam_s
+            q = iotah
+        end if
         
         ! for all normal points
+        if (fm) then
+            norm_start = 1
+        else
+            norm_start = 2
+        end if
+        ang_B = 0.0_dp
         norm: do kd = 1, n_r
             ! if first guess for theta is given
             if (present(guess)) then
@@ -466,9 +583,9 @@ contains
             ! do a check  whether the result is indeed alpha,  making use of the
             ! last lam and dlam that have been calculated in the child functions
             if (find_theta) then                                                ! looking for theta
-                alpha_calc = input_ang(kd) - (ang_B(kd) + lam)/iotaf(kd)
+                alpha_calc = input_ang(kd) - (ang_B(kd) + lam)*q(kd)
             else                                                                ! looking for zeta
-                alpha_calc = ang_B(kd) - (input_ang(kd) + lam)/iotaf(kd)
+                alpha_calc = ang_B(kd) - (input_ang(kd) + lam)*q(kd)
             end if
             if (alpha_calc-alpha_in.gt.tol_NR*100) then
                 call writo('ERROR: In theta_B, calculating alpha as a check,&
@@ -484,7 +601,7 @@ contains
         ! function that returns  f = alpha -  alpha_0. It uses kd  from the main
         ! loop in the  parent function as the normal position  where to evaluate
         ! the quantitites, and input_ang(kd) as the angle for which the magnetic
-        ! match is sought, as well as alpha_in, l_s_F and l_c_F
+        ! match is sought, as well as q, alpha_in, lam_s_loc and lam_c_loc
         function fun_ang_B(ang)
             ! input / output
             real(dp) :: fun_ang_B
@@ -501,22 +618,22 @@ contains
                 cs = mesh_cs(mpol,ntor,input_ang(kd),ang)
             end if
             
-            ! calculate lambda, using FM coeff.
-            lam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,1)
+            ! calculate lambda
+            lam = f2r(lam_c_loc(:,:,kd),lam_s_loc(:,:,kd),cs,mpol,ntor,1)
             
             ! calculate the output function
             if (find_theta) then                                                ! looking for theta
-                fun_ang_B = input_ang(kd) - (ang+lam)/iotaf(kd) - alpha_in
+                fun_ang_B = input_ang(kd) - (ang+lam)*q(kd) - alpha_in
             else                                                                ! looking for zeta
-                fun_ang_B = ang - (input_ang(kd)+lam)/iotaf(kd) - alpha_in
+                fun_ang_B = ang - (input_ang(kd)+lam)*q(kd) - alpha_in
             end if
         end function fun_ang_B
         
         ! function that returns  df/d(ang) = d(alpha -  alpha_0)/d(ang). It uses
         ! kd from  the main loop in  the parent function as  the normal position
         ! where to evaluate the quantitites,  and input_ang(kd) as the angle for
-        ! which the  magnetic match is  sought, as  well as alpha_in,  l_s_F and
-        ! l_c_F
+        ! which the magnetic match is sought,  as well as q, alpha_in, lam_s_loc
+        ! and lam_c_loc
         function dfun_ang_B(ang)
             ! input / output
             real(dp) :: dfun_ang_B
@@ -533,19 +650,20 @@ contains
                 cs = mesh_cs(mpol,ntor,input_ang(kd),ang)
             end if
             
-            ! calculate angular derivatives of lambda, using FM coeff.
+            ! calculate angular derivatives of lambda
             if (find_theta) then                                                ! looking for theta
-                dlam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,3)
+                dlam = f2r(lam_c_loc(:,:,kd),lam_s_loc(:,:,kd),cs,mpol,ntor,3)
             else                                                                ! looking for zeta
-                dlam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,4)
+                dlam = f2r(lam_c_loc(:,:,kd),lam_s_loc(:,:,kd),cs,mpol,ntor,4)
             end if
             
             ! calculate the output function
-            if (find_theta) then                                            ! looking for theta
-                dfun_ang_B = -(1.0_dp + dlam)/iotaf(kd)
-            else                                                            ! looking for zeta
-                dfun_ang_B = 1.0_dp - dlam/iotaf(kd)
+            if (find_theta) then                                                ! looking for theta
+                dfun_ang_B = -(1.0_dp + dlam)*q(kd)
+            else                                                                ! looking for zeta
+                dfun_ang_B = 1.0_dp - dlam*q(kd)
             end if
         end function dfun_ang_B
     end function ang_B
+    
 end module eq_vars

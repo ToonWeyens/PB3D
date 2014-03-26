@@ -103,12 +103,12 @@ contains
         end do
     end function mesh_cs
 
-    ! Repack variables representing the Fourier  composition of R, Z and lambda.
-    ! In VMEC these are stored as (1:mnmax, 1:ns) with mnmax the total number of
-    ! all modes.  Here they are  to be  stored as (0:mpol-1,  -ntor:ntor, 1:ns),
-    ! which is valid due to the symmetry  of the modes (only one of either theta
-    ! or zeta has  to be able to  change sign because of  the (anti)-symmetry of
-    ! the (co)sine.
+    ! Repack  variables  representing the  Fourier  composition  such as  R,  Z,
+    ! lambda, ...  In VMEC these  are stored as  (1:mnmax, 1:ns) with  mnmax the
+    ! total  number of  all modes.  Here  they are  to be  stored as  (0:mpol-1,
+    ! -ntor:ntor, 1:ns), which  is valid due to the symmetry  of the modes (only
+    ! one of either theta  or zeta has to be able to change  sign because of the
+    ! (anti)-symmetry of the (co)sine.
     ! It is  possible that the  input variable is  not allocated. In  this case,
     ! output zero's
     function repack(var_VMEC,mnmax,ns,mpol,ntor,xm,xn)

@@ -34,11 +34,20 @@ driver_rich.o : \
     metric_ops.o \
     eq_ops.o \
 
+B_vars.o : \
+    num_vars.o \
+    fourier_ops.o \
+    VMEC_vars.o \
+    var_ops.o \
+    metric_ops.o \
+    output_ops.o \
+
 eq_ops.o : \
     num_vars.o \
     eq_vars.o \
     output_ops.o \
     metric_ops.o \
+    B_vars.o \
     
 output_ops.o : \
     num_vars.o \
@@ -79,6 +88,7 @@ eq_vars.o : \
     str_ops.o \
     output_ops.o \
     fourier_ops.o \
+    var_ops.o \
     VMEC_vars.o \
     utilities.o \
 

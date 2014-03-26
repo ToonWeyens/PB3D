@@ -1,7 +1,9 @@
 &INPUTDATA
     format_out = 3
     style = 1
-    n_par = 50
+    n_par = 10
+    min_par = 0
+    max_par = 6.283185307179586
     n_alpha = 3
     max_it_NR = 500
     max_it_r = 2

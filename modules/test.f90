@@ -12,7 +12,7 @@ module test
     implicit none
     private
     public test_repack, test_write_out, test_mesh_cs, test_metric_transf, &
-        &test_theta_B
+        &test_ang_B
 
 contains
     subroutine test_repack()
@@ -126,9 +126,10 @@ contains
     subroutine test_metric_transf()
         use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F, &
             &metric_F, &
-            &C2V_up, C2V_dn, V2F_up, V2F_dn, jac_V, g_V, h_V, jac_F, g_F, h_F
+            &C2V_up, C2V_dn, C2V_up_H, C2V_dn_H, V2F_up, V2F_dn, V2F_up_H, &
+            &V2F_dn_H, jac_V, g_V, h_V, jac_F, g_F, h_F
         use eq_vars, only: eqd_mesh, calc_RZl, calc_flux_q, flux_brkdwn, &
-            &n_par, min_par, max_par, theta, zeta
+            &n_par, min_par, max_par, theta, zeta, theta_H, zeta_H
         use VMEC_vars, only: n_r
         
         ! local variables
@@ -139,10 +140,14 @@ contains
             ! initalize theta and zeta. No need for field-line following theta
             allocate(zeta(n_par, n_r)); zeta = 0.0_dp
             allocate(theta(n_par, n_r)); theta = 0.0_dp
+            allocate(zeta_H(n_par, n_r)); zeta_H = 0.0_dp
+            allocate(theta_H(n_par, n_r)); theta_H = 0.0_dp
             do kd = 1,n_r
                 zeta(:,kd) = eqd_mesh(n_par, min_par, max_par)
+                zeta_H(:,kd) = eqd_mesh(n_par, min_par, max_par)
             end do
-            theta = zeta
+            theta = zeta_H
+            theta_H = zeta_H
             
             ! calculate the cylindrical variables R, Z and lambda and derivatives
             call calc_RZl
@@ -174,10 +179,16 @@ contains
             
             call writo('Cylindrical -> VMEC:')
             call lvl_ud(1)
+            call writo('Half Mesh:')
+            call transf_inv_transf(C2V_up_H, C2V_dn_H)
+            call writo('Full Mesh:')
             call transf_inv_transf(C2V_up, C2V_dn)
             call lvl_ud(-1)
             call writo('VMEC -> flux:')
             call lvl_ud(1)
+            call writo('Half Mesh:')
+            call transf_inv_transf(V2F_up_H, V2F_dn_H)
+            call writo('Full Mesh:')
             call transf_inv_transf(V2F_up, V2F_dn)
             call lvl_ud(-1)
             
@@ -218,7 +229,7 @@ contains
             u_mat(1,1) = 1.0_dp; u_mat(2,2) = 1.0_dp; u_mat(3,3) = 1.0_dp
             max_index = 0
             diff_max = 0.0_dp
-            do kd = 1,n_r
+            do kd = 2,n_r                                                       ! the magnetic axis gives infinities
                 do id = 1,n_par
                     T_mult = mat_mult(T_up(:,:,id,kd),&
                         &transpose(T_dn(:,:,id,kd)))
@@ -278,9 +289,9 @@ contains
         end subroutine
     end subroutine
 
-    subroutine test_theta_B()
+    subroutine test_ang_B()
         use VMEC_vars, only: n_r, mpol, ntor
-        use eq_vars, only: eqd_mesh, h2f, calc_mesh, &
+        use eq_vars, only: eqd_mesh, calc_mesh, &
             &n_par, theta, zeta
         use output_ops, only: format_out
         use num_vars, only: theta_var_along_B
@@ -300,7 +311,7 @@ contains
         ! local variables (also used in child functions)
         integer :: kd
         
-        call writo('test theta_B?')
+        call writo('test ang_B?')
         if(yes_no(.false.)) then
             call writo('Plot zeta(theta)')
             
@@ -312,7 +323,7 @@ contains
             
             ! decrease the number of parallel points for less plots
             n_par_old = n_par
-            n_par = 4
+            !n_par = 4
             
             ! calculate mesh points (theta, zeta) that follow the magnetic field
             ! line
@@ -378,12 +389,12 @@ contains
                 par: do id = 1, n_par
                     if (theta_var_along_B) then                                 ! looking for zeta
                         plot_var(1,:) = plot_dep_var                            ! eq. mesh of zeta
-                        plot_var(2,:) = &
-                            find_f_plot(n_plot,plot_dep_var,theta(id,kd),alpha) ! corresponding f(zeta)
+                        plot_var(2,:) = find_f_plot(n_plot,plot_dep_var, &
+                            &theta(id,kd),alpha)                              ! corresponding f(zeta)
                     else                                                        ! looking for theta
                         plot_var(1,:) = plot_dep_var                            ! eq. mesh of theta
-                        plot_var(2,:) = &
-                            find_f_plot(n_plot,plot_dep_var,zeta(id,kd),alpha)  ! corresponding f(theta)
+                        plot_var(2,:) = find_f_plot(n_plot,plot_dep_var, &
+                            &zeta(id,kd),alpha)                               ! corresponding f(theta)
                     end if
                     
                     ! plot it on the screen using format_out = 3
@@ -392,7 +403,8 @@ contains
                     call write_out(2,n_plot,plot_var, 'f('//trim(dep_ang)&
                         &//') = zeta -q(theta + lambda) - alpha_0 at r = '//&
                         &trim(i2str(kd))//'/'//trim(i2str(n_r)), comment=&
-                        &'= 0 at (theta, zeta) = ('//trim(r2strt(theta(id,kd)))&
+                        &'= 0 at (theta, zeta) = ('//&
+                        &trim(r2strt(theta(id,kd)))&
                         &//', '//trim(r2strt(zeta(id,kd)))//')')
                     format_out = format_out_old
                     

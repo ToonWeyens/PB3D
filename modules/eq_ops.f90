@@ -15,8 +15,9 @@ contains
     subroutine calc_eq(alpha)
         use eq_vars, only: eqd_mesh, calc_mesh, calc_RZl, calc_flux_q, &
             &check_mesh, flux_brkdwn
-        use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F
-        
+        use B_vars, only: calc_B_V, calc_B_F
+        use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F, &
+            &metric_F
         real(dp) :: alpha
         
         call writo('Start setting up equilibrium quantities')
@@ -32,7 +33,7 @@ contains
             call calc_mesh(alpha)
             
             ! check whether the mesh has been calculated correctly
-            call check_mesh(alpha)
+            !call check_mesh(alpha)
             
             call lvl_ud(-1)
             ! 2----------------------------------------------------------------
@@ -58,11 +59,19 @@ contains
             ! calculate the transformation matrix C(ylindrical) -> V(mec)
             call metric_C2V
             
-            ! calculate  the  metric  factors in the VMEC coordinate system 
+            ! calculate the metric factors in the VMEC coordinate system
             call metric_V
             
             ! calculate the transformation matrix V(mec) -> F(lux)
             call metric_V2F
+            
+            ! calculate the metric factors in the flux coordinate system
+            call metric_F
+            
+            ! calculate the magnetic field components  in both V(mec) and F(lux)
+            ! coordinates
+            call calc_B_V
+            call calc_B_F
             
             call lvl_ud(-1)
             ! 2----------------------------------------------------------------
