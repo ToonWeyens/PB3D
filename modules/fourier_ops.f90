@@ -1,7 +1,7 @@
-!-------------------------------------------------------
-!   Variables,  subroutines and  functions that  have  to do  with the  fourier
-!   representation used and its relations with the real space
-!-------------------------------------------------------
+!------------------------------------------------------------------------------!
+!   Variables, subroutines and  functions that  have  to do  with the  fourier !
+!   representation used and its relations with the real space                  !
+!------------------------------------------------------------------------------!
 module fourier_ops
     use output_ops, only: writo, print_ar_1, print_ar_2
     use num_vars, only: dp

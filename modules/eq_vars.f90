@@ -1,8 +1,8 @@
-!-------------------------------------------------------
-!   Variables,  subroutines  and functions  that  have  to do  with  equilibrium
-!   quantities and the mesh used in the calculations
-!   These are called in the subroutine calc_eq in the module eq_ops
-!-------------------------------------------------------
+!------------------------------------------------------------------------------!
+!   Variables,  subroutines  and functions  that  have  to do  with            !
+!   equilibrium quantities and the mesh used in the calculations               !
+!   These are called in the subroutine calc_eq in the module eq_ops            !
+!------------------------------------------------------------------------------!
 module eq_vars
     use num_vars, only: dp, pi
     use output_ops, only: writo, lvl_ud, print_ar_2, print_ar_1, write_out
@@ -11,9 +11,9 @@ module eq_vars
     implicit none
     private
     public eqd_mesh, calc_mesh, calc_RZl, ang_B, calc_flux_q, h2f, f2h, &
-        &check_mesh, flux_brkdwn, calc_norm_deriv, &
+        &check_mesh, calc_norm_deriv, &
         &theta, zeta, theta_H, zeta_H, n_par, R, Z, lam_H, min_par, max_par, &
-        &q_saf, q_saf_H, flux_p, flux_p_H, flux_t, flux_p_rect
+        &q_saf, q_saf_H, flux_p, flux_p_H, flux_t, flux_t_H
 
     ! R and Z and derivatives in real (as opposed to Fourier) space (see below)
     ! (index 1: variable, 2: r derivative, 2: theta derivative, 3: zeta derivative)
@@ -23,8 +23,7 @@ module eq_vars
     real(dp), allocatable :: theta_H(:,:), zeta_H(:,:)                          ! grid points (n_par, n_r, 2) (HM)
     real(dp), allocatable :: q_saf(:,:), q_saf_H(:,:)                           ! safety factor (FM) and (HM)
     real(dp), allocatable :: flux_p(:,:), flux_t(:,:), pres(:,:)                ! pol. flux, tor. flux and pressure, and normal derivative (FM)
-    real(dp), allocatable :: flux_p_H(:,:), pres_H(:,:)                         ! pol. flux and pressure (HM)
-    real(dp), allocatable :: flux_p_rect(:,:)                                   ! rectified pol. flux, mon. rising, 2nd index: rising (>0) or falling(<0) (FM)
+    real(dp), allocatable :: flux_p_H(:,:), flux_t_H(:,:), pres_H(:,:)          ! pol. flux, tor.flux and pressure (HM)
     real(dp) :: min_par, max_par
     integer :: n_par
 
@@ -56,10 +55,11 @@ contains
         allocate(theta_H(n_par,n_r)); theta_H = 0.0_dp
         
         if (theta_var_along_B) then                                             ! first calculate theta
-            do jd = 1,n_r
-                theta(:,jd) = eqd_mesh(n_par, min_par, max_par)
-                theta_H(:,jd) = eqd_mesh(n_par, min_par, max_par)
-            end do
+            ! ¡¡¡¡¡¡! TEMPORARILY REPLACED !!!!!
+            !do jd = 1,n_r
+                !theta(:,jd) = eqd_mesh(n_par, min_par, max_par)
+                !theta_H(:,jd) = eqd_mesh(n_par, min_par, max_par)
+            !end do
             !do kd = 1,n_par
                 !var_in = theta(kd,:)
                 !zeta(kd,:) = ang_B(.false.,.true.,alpha,var_in)
@@ -67,6 +67,8 @@ contains
                 !zeta-H(kd,:) = ang_B(.false.,.false.,alpha,var_in)
             !end do
             ! TEMPORARY REPLACEMENT:
+            theta = 1.*pi/2
+            theta_H = 1.*pi/2
             do jd = 1,n_r
                 zeta(:,jd) = eqd_mesh(n_par, min_par, max_par)
                 zeta_H(:,jd) = eqd_mesh(n_par, min_par, max_par)
@@ -168,13 +170,19 @@ contains
     ! transform half-mesh to full-mesh quantities
     ! Adapted from SIESTA routines
     function h2f(var)
-        use VMEC_vars, only: n_r
-        real(dp) :: h2f(n_r)
-        real(dp), intent(in) :: var(n_r)
+        ! input / output
+        real(dp), allocatable :: h2f(:)
+        real(dp), intent(in) :: var(:)
+        
+        ! local variables
+        integer :: n_max
+        
+        n_max = size(var)
+        allocate(h2f(n_max))
         
         ! interpolate the inner quantities
-        h2f(2:n_r-1) = 0.5_dp*(var(2:n_r-1) + var(3:n_r))                       ! Only last values must come from B.C.
-        h2f(n_r) = 2*var(n_r) - h2f(n_r-1)                                      ! Extrapolate first, last points
+        h2f(2:n_max-1) = 0.5_dp*(var(2:n_max-1) + var(3:n_max))                 ! Only last values must come from B.C.
+        h2f(n_max) = 2*var(n_max) - h2f(n_max-1)                                ! Extrapolate first, last points
         h2f(1) = 2*var(2)-h2f(2)
     end function
 
@@ -186,12 +194,17 @@ contains
     ! ¡¡¡THEREFORE,  THE  WHOLE  INTERPOLATION SHOULD  BE
     ! SUBSTITUTED BY SOMETHING ELSE, SUCH AS SPLINES!!!
     function f2h(var)
-        use VMEC_vars, only: n_r
-        real(dp) :: f2h(n_r)
-        real(dp), intent(in) :: var(n_r)
+        real(dp), allocatable :: f2h(:)
+        real(dp), intent(in) :: var(:)
+        
+        ! local variables
+        integer :: n_max
+        
+        n_max = size(var)
+        allocate(f2h(n_max))
         
         ! interpolate the inner quantities
-        f2h(2:n_r) = 0.5_dp*(var(1:n_r-1) + var(2:n_r))                         ! Only last values must come from B.C.
+        f2h(2:n_max) = 0.5_dp*(var(1:n_max-1) + var(2:n_max))                   ! Only last values must come from B.C.
         f2h(1) = 0.0_dp
     end function
 
@@ -206,7 +219,6 @@ contains
         ! local variables
         real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
         integer :: id, kd
-        real(dp) :: tempvar(n_r)
         
         ! deallocate if allocated
         if (allocated(R)) deallocate(R)
@@ -240,12 +252,10 @@ contains
             
             ! numerically calculate  normal derivatives at the  currrent angular
             ! points
-            tempvar = R(id,:,1)
-            R(id,:,2) = calc_norm_deriv(tempvar,.true.,.true.)
-            tempvar = Z(id,:,1)
-            Z(id,:,2) = calc_norm_deriv(tempvar,.true.,.true.)
-            tempvar = lam_H(id,:,1)
-            lam_H(id,:,2) = calc_norm_deriv(tempvar,.false.,.false.)
+            R(id,:,2) = calc_norm_deriv(R(id,:,1),dfloat(n_r-1),.true.,.true.)
+            Z(id,:,2) = calc_norm_deriv(Z(id,:,1),dfloat(n_r-1),.true.,.true.)
+            lam_H(id,:,2) = calc_norm_deriv(lam_H(id,:,1),dfloat(n_r-1),.false.&
+                &,.false.)
         end do par
         
         ! output a message if the found R  and Z values are not within the VMEC-
@@ -309,56 +319,61 @@ contains
     !   | ----------------------------------|
     !   | FM  |   (i)-(i-1)  | centr. diff. |
     !   +-----------------------------------+
-    function calc_norm_deriv(var,FM_i,FM_o)
-        use VMEC_vars, only: n_r
-        
+    ! ¡¡¡¡ TRY TO IMPROVE THIS BY USING HIGHER ORDER EXTRAPOLATION FOR FIRST, LAST POINTS!!!!
+    function calc_norm_deriv(var,inv_step,FM_i,FM_o)
         ! input / output
-        real(dp) :: calc_norm_deriv(n_r)
-        real(dp), intent(in) :: var(n_r)
-        logical :: FM_i, FM_o                                                   ! whether or not Full Mesh for input and output (true: FM, false: HM)
+        real(dp), allocatable :: calc_norm_deriv(:)                             ! output variable
+        real(dp), intent(in) :: var(:)                                          ! input variable
+        logical, intent(in) :: FM_i, FM_o                                       ! whether or not Full Mesh for input and output (true: FM, false: HM)
+        real(dp), intent(in) :: inv_step                                        ! inverse of step size in var
         
         ! local variables
-        real(dp) :: varout(n_r)                                                 ! temporary variable to hold output
-        integer :: kd
+        real(dp), allocatable :: varout(:)                                      ! temporary variable to hold output
+        integer :: kd                                                           ! counters
+        integer :: n_max                                                        ! maximum index of array
+        
+        n_max = size(var)
+        allocate(calc_norm_deriv(n_max))
+        allocate(varout(n_max))
         
         if (FM_i) then                                                          ! FM input
             if (FM_o) then                                                      ! FM output
                 ! (2,2) FM_i, FM_o: CENTRAL DIFFERENCES
                 ! first normal point
-                varout(1) = (var(2)-var(1)) * (n_r-1)                           ! forward difference
+                varout(1) = (var(2)-var(1)) * inv_step                          ! forward difference
                 ! internal points
-                do kd = 3, n_r
-                    varout(kd-1) = (var(kd)-var(kd-2)) * (n_r-1)/2.0_dp         ! centered difference
+                do kd = 3, n_max
+                    varout(kd-1) = (var(kd)-var(kd-2)) * inv_step / 2.0_dp      ! centered difference
                 end do
                 ! last normal point
-                varout(n_r) = (var(n_r)-var(n_r-1)) * (n_r-1)
+                varout(n_max) = (var(n_max)-var(n_max-1)) * inv_step
             else                                                                ! HM output
                 ! (2,1) FM_i, HM_o: (i)-(i-1)
-                do kd = 2, n_r
-                    varout(kd) = (var(kd)-var(kd-1)) * (n_r-1)                  ! centered difference
+                do kd = 2, n_max
+                    varout(kd) = (var(kd)-var(kd-1)) * inv_step                 ! centered difference
                 end do
             end if
         else                                                                    ! HM input
             if (FM_o) then                                                      ! FM output
                 ! (1,2) HM_i, FM_o: (i+1)-(i)
                 ! first normal point: choose equal to derivative at second point (linear approx.)
-                varout(1) = (var(3)-var(2)) * (n_r-1)                           ! centered difference
+                varout(1) = (var(3)-var(2)) * inv_step                          ! centered difference
                 ! internal points
-                do kd = 2, n_r-1
-                    varout(kd) = (var(kd+1)-var(kd)) * (n_r-1)                  ! centered difference
+                do kd = 2, n_max-1
+                    varout(kd) = (var(kd+1)-var(kd)) * inv_step                 ! centered difference
                 end do
                 ! last normal point: choose equal to derivative at next to last point (linear approx.)
-                varout(n_r) = (var(n_r)-var(n_r-1)) * (n_r-1)
+                varout(n_max) = (var(n_max)-var(n_max-1)) * inv_step
             else                                                                ! HM output
                 ! (1,1) HM_i, HM_o: CENTRAL DIFFERENCES
                 ! first normal point
-                varout(2) = (var(3)-var(2)) * (n_r-1)                           ! forward difference
+                varout(2) = (var(3)-var(2)) * inv_step                          ! forward difference
                 ! internal points
-                do kd = 4, n_r
-                    varout(kd-1) = (var(kd)-var(kd-2)) * (n_r-1)/2.0_dp         ! centered difference
+                do kd = 4, n_max
+                    varout(kd-1) = (var(kd)-var(kd-2)) * inv_step / 2.0_dp      ! centered difference
                 end do
                 ! last normal point
-                varout(n_r) = (var(n_r)-var(n_r-1)) * (n_r-1)
+                varout(n_max) = (var(n_max)-var(n_max-1)) * inv_step
             end if
         end if
         
@@ -368,7 +383,7 @@ contains
     ! Calculates flux quantities
     subroutine calc_flux_q
         use VMEC_vars, only: &
-            &iotaf, iotah, n_r, phi, phi_r, presf, presh
+            &iotaf, iotah, n_r, phi, phi_r, phi_r_H, presf, presh
         
         ! local variables
         integer :: kd
@@ -384,6 +399,8 @@ contains
         allocate(flux_p_H(n_r,2))
         if (allocated(flux_t)) deallocate(flux_t)
         allocate(flux_t(n_r,2))
+        if (allocated(flux_t_H)) deallocate(flux_t_H)
+        allocate(flux_t_H(n_r,2))
         if (allocated(pres)) deallocate(pres)
         allocate(pres(n_r,2))
         if (allocated(pres_H)) deallocate(pres_H)
@@ -396,117 +413,32 @@ contains
         do kd = 2,n_r
             q_saf_H(kd,1) = 1/iotah(kd)
         end do
-        q_saf(:,2) = calc_norm_deriv(q_saf_H(:,1),.false.,.true.)
-        q_saf_H(:,2) = calc_norm_deriv(q_saf(:,1),.true.,.false.)
+        q_saf(:,2) = calc_norm_deriv(q_saf_H(:,1),dfloat(n_r-1),.false.,.true.)
+        q_saf_H(:,2) = calc_norm_deriv(q_saf(:,1),dfloat(n_r-1),.true.,.false.)
         
         ! toroidal flux: copy from VMEC
         flux_t(:,1) = phi
         flux_t(:,2) = phi_r
+        flux_t_H(:,1) = phi
+        flux_t_H(:,2) = phi_r_H
         
         ! poloidal flux: calculate using iotaf and phi, phi_r
+        ! THIS IS WRONG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         do kd = 1,n_r
             flux_p(kd,1) = iotaf(kd)*phi(kd)
             flux_p_H(kd,1) = iotah(kd)*phi(kd)
         end do
-        flux_p(:,2) = calc_norm_deriv(flux_p_H(:,1),.true.,.false.)
-        flux_p_H(:,2) = calc_norm_deriv(flux_p(:,1),.false.,.true.)
+        ! THIS IS CORRECT:
+        flux_p(:,2) = iotaf*phi_r
+        flux_p_H(:,2) = iotah*phi_r_H
         
         ! pressure: copy from VMEC and derivate
         pres(:,1) = presf
         pres_H(:,1) = presh
-        pres(:,2) = calc_norm_deriv(pres_H(:,1),.true.,.false.)
-        pres_H(:,2) = calc_norm_deriv(pres(:,1),.false.,.true.)
+        pres(:,2) = calc_norm_deriv(pres_H(:,1),dfloat(n_r-1),.true.,.false.)
+        pres_H(:,2) = calc_norm_deriv(pres(:,1),dfloat(n_r-1),.false.,.true.)
     end subroutine
 
-    ! Checks where using the poloidal flux as normal coordinate breaks down by 
-    ! calculating the local minima and maxima of the poloidal flux. This then 
-    ! breaks up the normal range in subranges where either the positive or the negative
-    ! poloidal flux is taken, with some additive constants to ensure continuity. 
-    subroutine flux_brkdwn
-        use VMEC_vars, only: n_r
-        
-        ! local variables
-        integer :: kd
-        integer :: behav                                                        ! < 0 : falling; > 0 : rising; = 0 : constant
-        real(dp), parameter :: tol = 10*epsilon(1.0_dp)
-        real(dp) :: flux_p_0                                                    ! factor to add to flux_p to get continuous flux_p_rect
-        integer :: cp(n_r), n_cp                                                ! for output: the places where the behavior changes and the number of places
-        character(len=6*n_r) :: cp_str                                          ! string version of the nonzero elements of cp
-        
-        ! reallocate
-        if (allocated(flux_p_rect)) deallocate(flux_p_rect)
-        allocate(flux_p_rect(n_r,2))
-        
-        ! follow the poloidal  flux accross flux surfaces  and determine whether
-        ! it reaches  a local  extremum. Fill the  rectified pol.  flux variable
-        ! making use  of flux_p_0, which is  an additive constante to  +/- phi_p
-        ! that ensures continuitiy of phi_p_0. It is initalized to (phi_0)_0 = 0
-        ! and then  at every change  of the monotomous  behavior of phi_p  it is
-        ! updated  using the  formula (phi_0)_i  = phi_i  - (phi_0)_(i-1)  where
-        ! phi_i is the value  of phi at the flux surface i  where the i'th local
-        ! extremum is foundV
-        ! first point
-        flux_p_rect(1,1) = flux_p(1,1)
-        flux_p_0 = 0.0_dp
-        if (flux_p(1,2).gt.tol) then 
-            behav = 1
-        else if (flux_p(1,2).lt.-tol) then
-            behav = -1
-        else
-            behav = 0
-        end if
-        
-        ! initialization of cp variables for output
-        n_cp = 0
-        cp = 0
-        
-        ! next points
-        do kd = 2,n_r
-            if (flux_p(kd,2).gt.-tol .and. flux_p(kd,2).lt.tol) then            ! function stagnates
-                call writo('ERROR: The poloidal flux has stagnated. The current&
-                    & version of this code cannot deal with this, as it &
-                    & produces infinities...')
-                stop
-            else if (flux_p(kd,2).lt.-tol) then                                 ! function falls
-                if (behav.gt.0) then                                            ! CHANGE: function was rising
-                    behav = -1                                                  ! now it is falling
-                    flux_p_0 = (flux_p(kd,1)+flux_p(kd-1,1))/2.0_dp - flux_p_0  ! update flux_p_0
-                    n_cp = n_cp + 1
-                    cp(n_cp) = kd
-                end if                                                          ! NO CHANGE
-                flux_p_rect(kd,1) = -flux_p(kd,1) + 2*flux_p_0
-            else if (flux_p(kd,2).gt.tol) then                                  ! function rises
-                if (behav.lt.0) then                                            ! CHANGE: function was falling
-                    behav = 1                                                   ! now it is rising
-                    flux_p_0 = (flux_p(kd,1)+flux_p(kd-1,1))/2.0_dp - flux_p_0  ! update flux_p_0
-                    n_cp = n_cp + 1
-                    cp(n_cp) = kd
-                end if                                                          ! NO CHANGE
-                flux_p_rect(kd,1) = flux_p(kd,1) + 2*flux_p_0
-            end if
-            flux_p_rect(kd,2) = dfloat(behav)
-        end do
-        
-        ! set up cp_str, containing all the points where the behavior changes
-        if (n_cp.eq.1) then
-            cp_str = 'surface '//i2str(cp(1))
-        else if (n_cp.gt.1) then
-            cp_str = 'surfaces ('//i2str(cp(1))
-            do kd = 2,n_cp
-                cp_str = trim(cp_str)//', '//i2str(cp(kd))
-            end do
-            cp_str = trim(cp_str)//')'
-        else
-            cp_str = ''
-        end if
-        
-        ! print a message to user
-        if (n_cp.gt.0) then
-            call writo('The derivative of the poloidal flux changes sign at &
-                &flux '//trim(cp_str)//'... -> flux rectification method used.')
-        end if
-    end subroutine
-    
     ! Calculates the  poloidal/toroidal angle theta(zeta)  as a function  of the
     ! toroidal/poloidal angle  zeta/theta following a particular  magnetic field
     ! line alpha.
@@ -665,5 +597,4 @@ contains
             end if
         end function dfun_ang_B
     end function ang_B
-    
 end module eq_vars

@@ -1,6 +1,6 @@
-!-------------------------------------------------------
-!   Test some routines and functions
-!-------------------------------------------------------
+!------------------------------------------------------------------------------!
+!   Test some routines and functions                                           !
+!------------------------------------------------------------------------------!
 module test
     use num_vars, only: dp, max_str_ln, pi
     use output_ops, only: writo, lvl_ud, print_ar_1, print_ar_2, write_out
@@ -12,7 +12,7 @@ module test
     implicit none
     private
     public test_repack, test_write_out, test_mesh_cs, test_metric_transf, &
-        &test_ang_B
+        &test_ang_B, test_h2f_f2h, test_norm_deriv
 
 contains
     subroutine test_repack()
@@ -122,13 +122,223 @@ contains
             read(*,*)
         end do
     end subroutine
+    
+    subroutine test_norm_deriv()
+        use eq_vars, only: calc_norm_deriv
+        
+        ! local variables
+        real(dp), allocatable :: varin(:), varout(:), varout_num(:)
+        real(dp), allocatable :: x_FM(:), x_HM(:)
+        integer :: id, n_r, tp
+        real(dp), allocatable :: plotvar(:,:)
+        
+        do
+            call writo('test calc_norm_deriv?')
+            if(yes_no(.false.)) then
+                write(*,'(A)',advance='no') 'n_r ? ' 
+                read(*,*) n_r
+                write(*,*) 'type ?'
+                write(*,'(A)',advance='no') '(1: (FM_i,FM_o), 2: (FM_i,HM_o), &
+                    &3: (HM_i,FM_o), 4: (HM_i,HM_o)  = ' 
+                read(*,*) tp
+                
+                if (allocated(x_FM)) deallocate(x_FM)
+                if (allocated(x_HM)) deallocate(x_HM)
+                if (allocated(varin)) deallocate(varin)
+                if (allocated(varout)) deallocate(varout)
+                if (allocated(varout_num)) deallocate(varout_num)
+                if (allocated(plotvar)) deallocate(plotvar)
+                allocate(x_FM(n_r))
+                allocate(x_HM(n_r))
+                allocate(varin(n_r))
+                allocate(varout(n_r))
+                allocate(varout_num(n_r))
+                allocate(plotvar(2, n_r))
+                
+                x_FM = [(2*pi*id/n_r, id=1,n_r)]
+                x_HM = [0.0_dp, (pi/n_r * (2*id-1), id=2,n_r)]
+                
+                if (tp.eq.1 .or. tp.eq.2) then                                  ! FM output
+                    varin = sin(x_FM)
+                else                                                            ! HM output
+                    varin = sin(x_HM)
+                end if
+                
+                if (tp.eq.1 .or. tp.eq.3) then                                  ! FM output
+                    varout = cos(x_FM)
+                else                                                            ! HM output
+                    varout = cos(x_HM)
+                end if
+                
+                select case (tp)
+                    case (1)                                                    ! FM input, FM output
+                        varout_num = calc_norm_deriv(varin,(n_r-1)/(2*pi),&
+                            &.true.,.true.)
+                    case (2)                                                    ! FM input, HM output
+                        varout_num = calc_norm_deriv(varin,(n_r-1)/(2*pi),&
+                            &.true.,.false.)
+                        varout(1) = 0.0_dp
+                    case (3)                                                    ! HM input, FM output
+                        varout_num = calc_norm_deriv(varin,(n_r-1)/(2*pi),&
+                            &.false.,.true.)
+                    case (4)                                                    ! HM input, HM output
+                        varout_num = calc_norm_deriv(varin,(n_r-1)/(2*pi),&
+                            &.false.,.false.)
+                        varout(1) = 0.0_dp
+                end select
+                
+                if (tp.eq.1 .or. tp.eq.2) then                                  ! FM input
+                    plotvar(1,:) = x_FM
+                    plotvar(2,:) = varin
+                else
+                    plotvar(1,:) = x_HM
+                    plotvar(2,:) = varin
+                end if
+                call write_out(2,n_r,plotvar,'varin')
+                
+                if (tp.eq.1 .or. tp.eq.3) then                                  ! FM output
+                    plotvar(1,:) = x_FM
+                    plotvar(2,:) = varout
+                else
+                    plotvar(1,:) = x_HM
+                    plotvar(2,:) = varout
+                end if
+                call write_out(2,n_r,plotvar,'varout')
+                
+                if (tp.eq.1 .or. tp.eq.3) then                                  ! FM output
+                    plotvar(1,:) = x_FM
+                    plotvar(2,:) = varout_num
+                else
+                    plotvar(1,:) = x_HM
+                    plotvar(2,:) = varout_num
+                end if
+                call write_out(2,n_r,plotvar,'varout numerical')
+                
+                if (tp.eq.1 .or. tp.eq.3) then                                  ! FM output
+                    plotvar(1,:) = x_FM
+                    plotvar(2,:) = abs(varout_num-varout)
+                else
+                    plotvar(1,:) = x_HM
+                    plotvar(2,:) = abs(varout_num-varout)
+                end if
+                call write_out(2,n_r,plotvar,'absolute difference')
+            else
+                exit
+            end if
+        end do
+    end subroutine
+    
+    subroutine test_h2f_f2h()
+        use eq_vars, only: h2f, f2h
+        
+        ! local variables
+        integer :: id, kd
+        integer :: n_max, step, n_r
+        integer, parameter :: length = 50
+        real(dp), allocatable :: varin(:), varout(:), varoutout(:), vardiff(:)
+        real(dp) :: maxerr(length), averr(length), num_points(length)
+        real(dp) :: plotvar(2,length)
+        logical :: ind_plot, log_plot
+        
+        call writo('test h2f, f2h?')
+        if(yes_no(.false.)) then
+            call writo('Testing whether h2f*f2h = 1')
+            call writo('The relative difference between an original FM variable&
+                & var and h2f*f2h*var, should be decreasing with increasing &
+                &number of radial points')
+            call writo('')
+            call writo('Do you want the individual plots?')
+            ind_plot = yes_no(.false.)
+            call writo('')
+            do
+                call writo('n_max = ?')
+                read(*,*) n_max
+                if (n_max.lt.2*length) then
+                    call writo('n_max has to be larger than or equal to '&
+                        &//trim(i2str(2*length))//'...')
+                else 
+                    exit
+                end if
+            end do
+            call writo('logarithmic plot?')
+            log_plot = yes_no(.false.)
+            call writo('')
+            
+            call lvl_ud(1)
+            
+            step = n_max/length
+            
+            do id = 1,length
+                n_r = id*step
+                
+                num_points(id) = n_r
+                
+                if (allocated(varin)) deallocate(varin)
+                if (allocated(varout)) deallocate(varout)
+                if (allocated(varoutout)) deallocate(varoutout)
+                if (allocated(vardiff)) deallocate(vardiff)
+                allocate(varin(n_r))
+                allocate(varout(n_r))
+                allocate(varoutout(n_r))
+                allocate(vardiff(n_r))
+                
+                do kd = 1,n_r
+                    ! some continuous curve:
+                    varin(kd) = sin(float(kd)/n_r) + 0.5*cos(3*float(kd)/n_r)
+                end do
+                
+                varout = f2h(varin)
+                varoutout = h2f(varout)
+                do kd = 1,n_r
+                    vardiff(kd) = 2*(varin(kd)-varoutout(kd))/&
+                        &(varin(kd)+varoutout(kd))
+                end do
+                maxerr(id) = maxval(abs(vardiff))
+                averr(id) = sum(abs(vardiff))/size(vardiff)
+                
+                if(ind_plot) then
+                    call write_out(1,n_r,varin,'input with '//trim(i2str(n_r))&
+                        &//' radial points ('//trim(i2str(id))//'/'//&
+                        &trim(i2str(length))//')')
+                    call write_out(1,n_r,varoutout,'output with '//&
+                        &trim(i2str(n_r))//' radial points ('//trim(i2str(id))&
+                        &//'/'//trim(i2str(length))//')')
+                    call write_out(1,n_r,vardiff,'absolute relative difference&
+                        & with '//trim(i2str(n_r))//' radial points ('&
+                        &//trim(i2str(id))//'/'//trim(i2str(length))//')', &
+                        &comment='max = '//trim(r2strt(maxerr(id)))&
+                        &//', average: '//trim(r2strt(averr(id))))
+                end if
+            end do
+            
+            plotvar(1,:) = num_points
+            if (log_plot) then
+                plotvar(2,:) = log10(maxerr)
+            else
+                plotvar(2,:) = maxerr
+            end if
+            call write_out(2,length,plotvar,'maximum error as a function of &
+                &numer of points')
+            if (log_plot) then
+                plotvar(2,:) = log10(averr)
+            else
+                plotvar(2,:) = averr
+            end if
+            call write_out(2,length,plotvar,'average error as a function of &
+                &numer of points')
+                
+            call writo('Paused... press enter')
+            read(*,*)
+            call lvl_ud(-1)
+        end if
+    end subroutine
 
     subroutine test_metric_transf()
         use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F, &
             &metric_F, &
             &C2V_up, C2V_dn, C2V_up_H, C2V_dn_H, V2F_up, V2F_dn, V2F_up_H, &
             &V2F_dn_H, jac_V, g_V, h_V, jac_F, g_F, h_F
-        use eq_vars, only: eqd_mesh, calc_RZl, calc_flux_q, flux_brkdwn, &
+        use eq_vars, only: eqd_mesh, calc_RZl, calc_flux_q, &
             &n_par, min_par, max_par, theta, zeta, theta_H, zeta_H
         use VMEC_vars, only: n_r
         
@@ -154,10 +364,6 @@ contains
             
             ! calculate flux quantities
             call calc_flux_q
-            
-            ! find out where using the poloidal flux as normal coordinate breaks
-            ! down and calculate the transformation points
-            call flux_brkdwn
             
             ! calculate the metrics in the cylindrical coordinate system
             call metric_C

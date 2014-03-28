@@ -1,3 +1,6 @@
+!------------------------------------------------------------------------------!
+!   routines and functions that have to do with the computation time           !
+!------------------------------------------------------------------------------!
 module time
     use num_vars, only: max_str_ln, dp
     use str_ops, only: r2strt

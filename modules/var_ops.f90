@@ -1,4 +1,6 @@
-! This module contains operations on variables other than strings
+!------------------------------------------------------------------------------!
+!   This module contains operations on variables other than strings            !
+!------------------------------------------------------------------------------!
 module var_ops
     use num_vars, only: dp, max_str_ln
     use output_ops, only: writo

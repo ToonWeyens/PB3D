@@ -1,6 +1,7 @@
-!-------------------------------------------------------
-!   This module contains operations concerning giving output, on the screen as 
-!-------------------------------------------------------
+!------------------------------------------------------------------------------!
+!   This module contains operations concerning giving output, on the screen as !
+!   well as in output files                                                    !
+!------------------------------------------------------------------------------!
 module output_ops
     use netcdf
     use str_ops, only: i2str, r2str

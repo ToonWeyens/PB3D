@@ -1,11 +1,11 @@
-!-------------------------------------------------------
-!   Variables, subroutines and  functions that have to do with the metric elements
-!-------------------------------------------------------
+!------------------------------------------------------------------------------!
+!   Variables, subroutines and  functions that have to do with the metric      !
+!   elements                                                                   !
+!------------------------------------------------------------------------------!
 module metric_ops 
     use num_vars, only: dp
     use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
     use str_ops, only: r2str, i2str
-    use VMEC_vars, only: n_r
     
     implicit none
     private
@@ -39,11 +39,11 @@ contains
     subroutine metric_C
         use eq_vars, only: f2h, &
             &n_par, R
+        use VMEC_vars, only: n_r
         
         ! local variables
         integer :: jd
         real(dp) :: R_H(n_r)                                                    ! HM version of R
-        real(dp) :: temparray(n_r)
         
         ! checking for previous allocation
         if (allocated(g_C)) deallocate(g_C)
@@ -66,13 +66,12 @@ contains
             h_C(3,3,jd,:) = 1.0_dp
             
             ! HM
-            temparray = R(jd,:,1)
-            R_H(:) = f2h(temparray)
+            R_H = f2h(R(jd,:,1))
             g_C_H(1,1,jd,:) = 1.0_dp
-            g_C_H(2,2,jd,:) = R_H(:)**2
+            g_C_H(2,2,jd,:) = R_H**2
             g_C_H(3,3,jd,:) = 1.0_dp
             h_C_H(1,1,jd,:) = 1.0_dp
-            h_C_H(2,2,jd,:) = 1.0_dp/R_H(:)**2
+            h_C_H(2,2,jd,:) = 1.0_dp/R_H**2
             h_C_H(3,3,jd,:) = 1.0_dp
         end do
     end subroutine
@@ -82,6 +81,7 @@ contains
     ! trans- formation matrices
     subroutine metric_V
         use eq_vars, only: n_par
+        use VMEC_vars, only: n_r
         
         ! local variables
         integer :: id, kd
@@ -116,6 +116,7 @@ contains
     ! formation matrices
     subroutine metric_F
         use eq_vars, only: n_par
+        use VMEC_vars, only: n_r
         
         ! local variables
         integer :: id, kd
@@ -148,7 +149,7 @@ contains
     ! Calculate  the transformation  matrix  between  C(ylindrical) and  V(mec)
     ! coordinate system from the VMEC file.
     subroutine metric_C2V
-        use VMEC_vars, only: jac_V_c, jac_V_s, mpol, ntor
+        use VMEC_vars, only: n_r, jac_V_H_c, jac_V_H_s, mpol, ntor
         use eq_vars, only: h2f, f2h, calc_norm_deriv, &
             &theta_H, zeta_H, n_par, R, Z
         use fourier_ops, only: f2r, mesh_cs
@@ -160,7 +161,6 @@ contains
         real(dp) :: jac_V_H_alt(n_par, n_r)                                     ! Jacobian from VMEC (HM)
         real(dp) :: jac_V_H_dff(n_par, n_r)
         real(dp) :: R_H(n_r,4), Z_H(n_r,4)                                      ! HM versions of R, Z
-        real(dp) :: temparray(n_r)
         
         ! deallocate if allocated
         if (allocated(C2V_dn)) deallocate(C2V_dn)
@@ -184,7 +184,7 @@ contains
                 ! calculate the (co)sines at the current mesh points
                 cs = mesh_cs(mpol,ntor,theta_H(jd,kd),zeta_H(jd,kd))
                 jac_V_H_alt(jd,kd) = &
-                    &-f2r(jac_V_c(:,:,kd),jac_V_s(:,:,kd),cs,mpol,ntor,1)
+                    &-f2r(jac_V_H_c(:,:,kd),jac_V_H_s(:,:,kd),cs,mpol,ntor,1)
             end do perp
         end do par
         
@@ -194,25 +194,20 @@ contains
         Z_H = 0.0_dp
         do jd = 1,n_par
             ! calculate R_H and Z_H
-            temparray = R(jd,:,1)
-            R_H(:,1) = f2h(temparray)
-            R_H(:,2) = calc_norm_deriv(temparray,.true.,.false.)
-            temparray = R(jd,:,3)
-            R_H(:,3) = f2h(temparray)
-            temparray = R(jd,:,4)
-            R_H(:,4) = f2h(temparray)
-            temparray = Z(jd,:,1)
-            Z_H(:,1) = f2h(temparray)
-            Z_H(:,2) = calc_norm_deriv(temparray,.true.,.false.)
-            temparray = Z(jd,:,3)
-            Z_H(:,3) = f2h(temparray)
-            temparray = Z(jd,:,4)
-            Z_H(:,4) = f2h(temparray)
+            R_H(:,1) = f2h(R(jd,:,1))
+            R_H(:,2) = calc_norm_deriv(R(jd,:,1),dfloat(n_r-1),.true.,.false.)
+            R_H(:,3) = f2h(R(jd,:,3))
+            R_H(:,4) = f2h(R(jd,:,4))
+            Z_H(:,1) = f2h(Z(jd,:,1))
+            Z_H(:,2) = calc_norm_deriv(Z(jd,:,1),dfloat(n_r-1),.true.,.false.)
+            Z_H(:,3) = f2h(Z(jd,:,3))
+            Z_H(:,4) = f2h(Z(jd,:,4))
             
             jac_V_H(jd,:) = R_H(:,1)*(R_H(:,2)*Z_H(:,3)-R_H(:,3)*Z_H(:,2))
             
             ! upper metric factors
             !cf = R_H(:,1)/jac_V_H_alt(jd,:); cf(1) = 0.0_dp                     ! for correctness (VMEC provided jac is better than ours)
+            ! ??? IS IT REALLY BETTER???
             cf = R_H(:,1)/jac_V_H(jd,:); cf(1) = 0.0_dp                         ! for consistency between C2V_up and C2V_dn
             C2V_up_H(1,1,jd,:) = cf*Z_H(:,3)
             C2V_up_H(1,2,jd,:) = cf*(R_H(:,4)*Z_H(:,3)-R_H(:,3)*Z_H(:,4))
@@ -221,7 +216,7 @@ contains
             C2V_up_H(2,2,jd,:) = cf*(R_H(:,2)*Z_H(:,4)-R_H(:,4)*Z_H(:,2))
             C2V_up_H(2,3,jd,:) = cf*R_H(:,2)
             C2V_up_H(3,1,jd,:) = 0.0_dp
-            C2V_up_H(3,2,jd,:) = cf*(R_H(:,3)*Z_H(:,2)-R_H(:,2)*Z_H(:,3))
+            C2V_up_H(3,2,jd,:) = -1.0_dp
             C2V_up_H(3,3,jd,:) = 0.0_dp
             
             ! lower metric factors
@@ -242,32 +237,37 @@ contains
             
             ! convert to full mesh
             ! jacobian
-            temparray = jac_V_H(jd,:)
-            jac_V(jd,:) = h2f(temparray)
+            jac_V(jd,:) = h2f(jac_V_H(jd,:))
             
             ! transformation matrices
             do id = 1,3
                 do kd = 1,3
-                    temparray = C2V_up_H(kd,id,jd,:)
-                    C2V_up(kd,id,jd,:) = h2f(temparray)
-                    temparray = C2V_dn_H(kd,id,jd,:)
-                    C2V_dn(kd,id,jd,:) = h2f(temparray)
+                    C2V_up(kd,id,jd,:) = h2f(C2V_up_H(kd,id,jd,:))
+                    C2V_dn(kd,id,jd,:) = h2f(C2V_dn_H(kd,id,jd,:))
                 end do
             end do
         end do
+        write(*,*) 'Jac_V_H = '
+        call print_ar_2(jac_V_H)
+        write(*,*) 'Jac_V_H_alt = '
+        call print_ar_2(jac_V_H_alt)
+        write(*,*) 'Jac_V_H_dff = '
+        call print_ar_2(jac_V_H_dff)
+        write(*,*) 'max diff = ', maxval(abs(jac_V_H_dff))
+        read(*,*)
     end subroutine
 
     ! Calculate  the transformation  matrix between  the V(mec)  and the  F(lux)
     ! coordinate system
     subroutine metric_V2F
         use eq_vars, only: h2f, &
-            &q_saf_H, theta_H, n_par, lam_H, flux_p_H, flux_p_rect
+            &q_saf_H, theta_H, n_par, lam_H, flux_p_H
         use num_vars, only: pi
+        use VMEC_vars, only: n_r
         
         ! local variables
         integer :: id, jd, kd
         real(dp) :: theta_s                                                     ! = theta + lambda
-        real(dp) :: temparray(n_r)
         
         ! deallocate if allocated
         if (allocated(V2F_dn)) deallocate(V2F_dn)
@@ -313,28 +313,18 @@ contains
                     &(1+lam_H(id,kd,3))
                 V2F_dn_H(3,3,id,kd) = q_saf_H(kd,1)
             end do
-            !! invert the second row and the jacobian if the poloidal flux had to
-            !! be rectified at this flux surf.
-            !V2F_up_H(2,:,:,kd) = flux_p_rect(kd,2) * V2F_up(2,:,:,kd)
-            !jac_F(:,kd) = flux_p_rect(kd,2) * jac_F(:,kd)
-            !! invert the second row if the  poloidal flux had to be rectified at
-            !! this flux surf.
-            !V2F_dn(2,:,:,kd) = flux_p_rect(kd,2) * V2F_dn(2,:,:,kd)
         end do
         
         ! convert to full mesh
         do jd = 1,n_par
             ! jacobian
-            temparray = jac_F_H(jd,:)
-            jac_F(jd,:) = h2f(temparray)
+            jac_F(jd,:) = h2f(jac_F_H(jd,:))
             
             ! transformation matrices
             do id = 1,3
                 do kd = 1,3
-                    temparray = V2F_up_H(kd,id,jd,:)
-                    V2F_up(kd,id,jd,:) = h2f(temparray)
-                    temparray = V2F_dn_H(kd,id,jd,:)
-                    V2F_dn(kd,id,jd,:) = h2f(temparray)
+                    V2F_up(kd,id,jd,:) = h2f(V2F_up_H(kd,id,jd,:))
+                    V2F_dn(kd,id,jd,:) = h2f(V2F_dn_H(kd,id,jd,:))
                 end do
             end do
         end do

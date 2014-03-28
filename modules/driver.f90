@@ -1,9 +1,9 @@
-!-------------------------------------------------------
-!   Main driver of program Peeling Ballooning in 3D, chooses between available 
-!   drivers, according to the value of the parameter style:
-!       1. driver_rich, using Richardson's extrapolation and normal 
-!           discretization
-!-------------------------------------------------------
+!------------------------------------------------------------------------------!
+!   Main driver of program Peeling Ballooning in 3D, chooses between available !
+!   drivers, according to the value of the parameter style:                    !
+!       1. driver_rich, using Richardson's extrapolation and normal            !
+!           discretization                                                     !
+!------------------------------------------------------------------------------!
 module driver
     use driver_rich, only: run_rich_driver
     use num_vars, only: style

@@ -1,6 +1,6 @@
-!-------------------------------------------------------
-!   This module contains operations concerning giving input
-!-------------------------------------------------------
+!------------------------------------------------------------------------------!
+!   This module contains operations concerning giving input                    !
+!------------------------------------------------------------------------------!
 module input_ops
     use str_ops, only: strh2l
     use num_vars, only: &

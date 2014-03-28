@@ -1,3 +1,7 @@
+!------------------------------------------------------------------------------!
+!   This module contains operations concerning the magnetic field in various   !
+!   coordinate systems                                                         !
+!------------------------------------------------------------------------------!
 module B_vars
     use num_vars, only: dp, pi
     use output_ops, only: print_ar_2
@@ -27,7 +31,6 @@ contains
         
         ! local variables
         real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
-        real(dp) :: tempvar(n_r)
         integer :: id, jd, kd
         
         ! deallocate if allocated
@@ -70,31 +73,27 @@ contains
                 
                 ! numerically  calculate  normal  derivatives  at  the  currrent
                 ! angular points
-                tempvar = B_V_sub(id,:,1,1)
-                B_V_sub(id,:,2,1) = calc_norm_deriv(tempvar,.true.,.true.)      ! component r (FM defined in VMEC)
+                B_V_sub(id,:,2,1) = calc_norm_deriv(B_V_sub(id,:,1,1),&
+                    &dfloat(n_r-1),.true.,.true.)                                 ! component r (FM defined in VMEC)
                 
                 comp3: do jd = 2,3                                              ! components theta and phi (HM defined in VMEC)
-                    tempvar = B_V_sub_H(id,:,1,jd)
-                    B_V_sub_H(id,:,2,jd) = &
-                        &calc_norm_deriv(tempvar,.false.,.false.)
+                    B_V_sub_H(id,:,2,jd) = calc_norm_deriv(B_V_sub_H(id,:,1,jd)&
+                        &,dfloat(n_r-1),.false.,.false.)
                 end do comp3
             end do perp
             
             ! convert from FM to HM and from HM to FM
             deriv: do kd = 1,4
                 ! all derivatives of contravar. component r
-                tempvar = B_V_sub(id,:,kd,1)
-                B_V_sub_H(id,:,kd,1) = f2h(tempvar)
+                B_V_sub_H(id,:,kd,1) = f2h(B_V_sub(id,:,kd,1))
                 
                 ! all derivatives of contravar. components theta, zeta
                 comp2: do jd = 2,3
-                    tempvar = B_V_sub_H(id,:,kd,jd)
-                    B_V_sub(id,:,kd,jd) = h2f(tempvar)
+                    B_V_sub(id,:,kd,jd) = h2f(B_V_sub_H(id,:,kd,jd))
                 end do comp2
             end do deriv
             ! magnitude
-            tempvar = B_V_H(id,:)
-            B_V(id,:) = h2f(tempvar)
+            B_V(id,:) = h2f(B_V_H(id,:))
         end do par
     end subroutine
     
@@ -111,7 +110,7 @@ contains
         use eq_vars, only: n_par
         
         ! local variables
-        integer :: id, jd, kd
+        integer :: id, kd
         real(dp) :: B_F_sub_H_alt(n_par,n_r,3)
         real(dp) :: B_F_sub_alt(n_par,n_r,3)
         real(dp) :: B_F_alt(n_par,n_r)

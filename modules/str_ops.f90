@@ -1,4 +1,6 @@
-! This module contains operations on strings
+!------------------------------------------------------------------------------!
+!   This module contains operations on strings                                 !
+!------------------------------------------------------------------------------!
 module str_ops
     use num_vars, only: dp, max_str_ln
     implicit none

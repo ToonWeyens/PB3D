@@ -1,6 +1,7 @@
-!-------------------------------------------------------
-!   Calculates the equilibrium quantities, making use of the metric_ops, eq_vars, etc
-!-------------------------------------------------------
+!------------------------------------------------------------------------------!
+!   Calculates the equilibrium quantities, making use of the metric_ops,       !
+!   eq_vars, etc                                                               !
+!------------------------------------------------------------------------------!
 module eq_ops
     use num_vars, only: pi, dp
     use output_ops, only: print_ar_2, lvl_ud, writo
@@ -14,7 +15,7 @@ contains
     ! lines.
     subroutine calc_eq(alpha)
         use eq_vars, only: eqd_mesh, calc_mesh, calc_RZl, calc_flux_q, &
-            &check_mesh, flux_brkdwn
+            &check_mesh
         use B_vars, only: calc_B_V, calc_B_F
         use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F, &
             &metric_F
@@ -48,10 +49,6 @@ contains
             
             ! calculate flux quantities
             call calc_flux_q
-            
-            ! find out where using the poloidal flux as normal coordinate breaks
-            ! down and calculate the transformation points
-            call flux_brkdwn
             
             ! calculate the metrics in the cylindrical coordinate system
             call metric_C
