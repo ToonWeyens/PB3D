@@ -8,6 +8,7 @@ test.o : \
     time.o \
     VMEC_vars.o \
     eq_vars.o \
+    utilities.o \
 
 PB3D.o : \
     num_vars.o \

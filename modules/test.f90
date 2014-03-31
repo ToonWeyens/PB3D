@@ -12,7 +12,7 @@ module test
     implicit none
     private
     public test_repack, test_write_out, test_mesh_cs, test_metric_transf, &
-        &test_ang_B, test_h2f_f2h, test_norm_deriv
+        &test_ang_B, test_h2f_f2h, test_norm_deriv, test_ext_var
 
 contains
     subroutine test_repack()
@@ -155,35 +155,40 @@ contains
                 allocate(varout_num(n_r))
                 allocate(plotvar(2, n_r))
                 
-                x_FM = [(2*pi*id/n_r, id=1,n_r)]
-                x_HM = [0.0_dp, (pi/n_r * (2*id-1), id=2,n_r)]
+                ! x = [0...1]
+                x_FM = [(float(id)/(n_r-1), id=0,n_r-1)]
+                x_HM = x_FM - 0.5/(n_r-1)
                 
+                ! input: sin(2*pi * x) + 0.5*cos(2*pi * 0.3*x)
                 if (tp.eq.1 .or. tp.eq.2) then                                  ! FM output
-                    varin = sin(x_FM)
+                    varin = sin(2*pi*x_FM) + 0.5* cos(2*pi*0.3*x_FM)
                 else                                                            ! HM output
-                    varin = sin(x_HM)
+                    varin = sin(2*pi*x_HM) + 0.5* cos(2*pi*0.3*x_HM)
+                    varin(1) = 0.0_dp
                 end if
                 
+                ! output = 2*pi * cos(2*pi * x)
                 if (tp.eq.1 .or. tp.eq.3) then                                  ! FM output
-                    varout = cos(x_FM)
+                    varout = 2*pi * (cos(2*pi*x_FM) - 0.15*sin(2*pi*0.3*x_FM))
                 else                                                            ! HM output
-                    varout = cos(x_HM)
+                    varout = 2*pi * (cos(2*pi*x_HM) - 0.15*sin(2*pi*0.3*x_HM))
+                    varout(1) = 0.0_dp
                 end if
                 
                 select case (tp)
                     case (1)                                                    ! FM input, FM output
-                        varout_num = calc_norm_deriv(varin,(n_r-1)/(2*pi),&
-                            &.true.,.true.)
+                        varout_num = calc_norm_deriv(varin,&
+                            &1.0_dp*float(n_r-1),.true.,.true.)
                     case (2)                                                    ! FM input, HM output
-                        varout_num = calc_norm_deriv(varin,(n_r-1)/(2*pi),&
-                            &.true.,.false.)
+                        varout_num = calc_norm_deriv(varin,&
+                            &1.0_dp*float(n_r-1),.true.,.false.)
                         varout(1) = 0.0_dp
                     case (3)                                                    ! HM input, FM output
-                        varout_num = calc_norm_deriv(varin,(n_r-1)/(2*pi),&
-                            &.false.,.true.)
+                        varout_num = calc_norm_deriv(varin,&
+                            &1.0_dp*float(n_r-1),.false.,.true.)
                     case (4)                                                    ! HM input, HM output
-                        varout_num = calc_norm_deriv(varin,(n_r-1)/(2*pi),&
-                            &.false.,.false.)
+                        varout_num = calc_norm_deriv(varin,&
+                            &1.0_dp*float(n_r-1),.false.,.false.)
                         varout(1) = 0.0_dp
                 end select
                 
@@ -228,6 +233,54 @@ contains
         end do
     end subroutine
     
+    subroutine test_ext_var()
+        use utilities, only : ext_var
+        
+        ! local variables
+        integer :: jd, kd
+        integer :: n_r
+        real(dp), allocatable :: x(:), varin(:), var_num(:),varder(:), &
+            &varder_num(:), x_int(:)
+        
+        call writo('test ext_var')
+        if(yes_no(.false.)) then
+            call writo('Testing whether extrapolation is working correctly')
+            
+            n_r = 100
+            allocate(x(n_r))
+            allocate(varin(n_r))
+            allocate(var_num(n_r))
+            allocate(varder(n_r))
+            allocate(varder_num(n_r))
+            allocate(x_int(n_r))
+            do kd = 1,n_r
+                ! some continuous curve:
+                x(kd) = float(kd)*2*pi/n_r
+                x_int(kd) = float(2*kd-1)*pi/n_r
+                varin(kd) = sin(float(kd)*2*pi/n_r) + &
+                    &0.5*cos(3*float(kd)*2*pi/n_r)
+                varder(kd) = cos(float(kd)*2*pi/n_r) - &
+                    &1.5*sin(3*float(kd)*2*pi/n_r)
+            end do
+            do kd = 1,n_r-3
+                var_num(kd) = ext_var([(varin(jd),jd=kd,kd+2)],&
+                    &[(x(jd),jd=kd,kd+2)],x_int(kd),0)
+                varder_num(kd) = ext_var([(varin(jd),jd=kd,kd+2)],&
+                    &[(x(jd),jd=kd,kd+2)],x(kd),1)
+            end do
+            call write_out(2,n_r,transpose(reshape([x,varin],[n_r,2])),&
+                &'function: sin(x)+0.5*cos(3x)')
+            call write_out(2,n_r,transpose(reshape([x_int,var_num],[n_r,2])),&
+                &'num interp. of function: sin(x)+0.5*cos(3x)')
+            call write_out(2,n_r,transpose(reshape([x,varder],[n_r,2])),&
+                &'function: sin(x)-1.5*cos(3x)')
+            call write_out(2,n_r,transpose(reshape([x,varder_num],[n_r,2])),&
+                &'num interp. of deriv. of function: cos(x)-1.5*sin(3x)')
+            
+            
+        end if
+    end subroutine
+    
     subroutine test_h2f_f2h()
         use eq_vars, only: h2f, f2h
         
@@ -253,7 +306,7 @@ contains
             do
                 call writo('n_max = ?')
                 read(*,*) n_max
-                if (n_max.lt.2*length) then
+                if (n_max.lt.4*length) then
                     call writo('n_max has to be larger than or equal to '&
                         &//trim(i2str(2*length))//'...')
                 else 

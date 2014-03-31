@@ -206,9 +206,7 @@ contains
             jac_V_H(jd,:) = R_H(:,1)*(R_H(:,2)*Z_H(:,3)-R_H(:,3)*Z_H(:,2))
             
             ! upper metric factors
-            !cf = R_H(:,1)/jac_V_H_alt(jd,:); cf(1) = 0.0_dp                     ! for correctness (VMEC provided jac is better than ours)
-            ! ??? IS IT REALLY BETTER???
-            cf = R_H(:,1)/jac_V_H(jd,:); cf(1) = 0.0_dp                         ! for consistency between C2V_up and C2V_dn
+            cf = R_H(:,1)/jac_V_H(jd,:); cf(1) = 0.0_dp
             C2V_up_H(1,1,jd,:) = cf*Z_H(:,3)
             C2V_up_H(1,2,jd,:) = cf*(R_H(:,4)*Z_H(:,3)-R_H(:,3)*Z_H(:,4))
             C2V_up_H(1,3,jd,:) = -cf*R_H(:,3)

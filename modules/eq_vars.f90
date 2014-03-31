@@ -170,20 +170,26 @@ contains
     ! transform half-mesh to full-mesh quantities
     ! Adapted from SIESTA routines
     function h2f(var)
+        use utilities, only: ext_var
+        
         ! input / output
         real(dp), allocatable :: h2f(:)
         real(dp), intent(in) :: var(:)
         
         ! local variables
         integer :: n_max
+        integer :: kd
         
         n_max = size(var)
         allocate(h2f(n_max))
         
         ! interpolate the inner quantities
-        h2f(2:n_max-1) = 0.5_dp*(var(2:n_max-1) + var(3:n_max))                 ! Only last values must come from B.C.
-        h2f(n_max) = 2*var(n_max) - h2f(n_max-1)                                ! Extrapolate first, last points
-        h2f(1) = 2*var(2)-h2f(2)
+        h2f(2:n_max-1) = 0.5_dp*(var(2:n_max-1) + var(3:n_max))
+        ! extrapolate the outer quantities using 3 points
+        h2f(n_max) = ext_var([(var(kd),kd=n_max-2,n_max)],&
+           &[(1.0_dp*(kd-0.5)/(n_max-1),kd=n_max-3,n_max-1)],1.0_dp,0)
+        h2f(1) = ext_var([(var(kd),kd=2,4)],&
+           &[(1.0_dp*(kd-0.5)/(n_max-1),kd=1,3)],0.0_dp,0)
     end function
 
     ! transform  half-mesh to  full-mesh  quantities based  on  h2f. The  result
@@ -310,7 +316,9 @@ contains
         end subroutine
     end subroutine calc_RZl
 
-    ! calculates normal derivatives of a FM or HM quantity
+    ! calculates normal  derivatives of a  FM or  HM quantity. The  inverse step
+    ! size  has to  be specified,  normalized  so that  the whole  range of  the
+    ! variable is between 0 and 1 (both inclusive)
     ! Both input and output can be FM or HM:
     !   +-----------------------------------+
     !   | I\O |      HM      |      FM      |
@@ -319,8 +327,9 @@ contains
     !   | ----------------------------------|
     !   | FM  |   (i)-(i-1)  | centr. diff. |
     !   +-----------------------------------+
-    ! ¡¡¡¡ TRY TO IMPROVE THIS BY USING HIGHER ORDER EXTRAPOLATION FOR FIRST, LAST POINTS!!!!
     function calc_norm_deriv(var,inv_step,FM_i,FM_o)
+        use utilities, only: ext_var
+        
         ! input / output
         real(dp), allocatable :: calc_norm_deriv(:)                             ! output variable
         real(dp), intent(in) :: var(:)                                          ! input variable
@@ -339,14 +348,16 @@ contains
         if (FM_i) then                                                          ! FM input
             if (FM_o) then                                                      ! FM output
                 ! (2,2) FM_i, FM_o: CENTRAL DIFFERENCES
-                ! first normal point
-                varout(1) = (var(2)-var(1)) * inv_step                          ! forward difference
+                ! first normal point: extrapolate using 4 points
+                varout(1) = ext_var([(var(kd),kd=1,4)],&
+                    &[(kd/inv_step,kd=0,3)],0.0_dp,1)
                 ! internal points
                 do kd = 3, n_max
                     varout(kd-1) = (var(kd)-var(kd-2)) * inv_step / 2.0_dp      ! centered difference
                 end do
-                ! last normal point
-                varout(n_max) = (var(n_max)-var(n_max-1)) * inv_step
+                ! last normal point: extrapolate using 4 points
+                varout(n_max) = ext_var([(var(kd),kd=n_max-3,n_max)],&
+                    &[(kd/inv_step,kd=n_max-4,n_max-1)],1.0_dp,1)
             else                                                                ! HM output
                 ! (2,1) FM_i, HM_o: (i)-(i-1)
                 do kd = 2, n_max
@@ -356,24 +367,29 @@ contains
         else                                                                    ! HM input
             if (FM_o) then                                                      ! FM output
                 ! (1,2) HM_i, FM_o: (i+1)-(i)
-                ! first normal point: choose equal to derivative at second point (linear approx.)
-                varout(1) = (var(3)-var(2)) * inv_step                          ! centered difference
+                ! first normal point: extrapolate using 4 points
+                varout(1) = ext_var([(var(kd),kd=2,5)],&
+                    &[((kd-0.5)/inv_step,kd=1,4)],0.0_dp,1)
                 ! internal points
                 do kd = 2, n_max-1
                     varout(kd) = (var(kd+1)-var(kd)) * inv_step                 ! centered difference
                 end do
-                ! last normal point: choose equal to derivative at next to last point (linear approx.)
-                varout(n_max) = (var(n_max)-var(n_max-1)) * inv_step
+                ! last normal point: extrapolate using 4 points
+                varout(n_max) = ext_var([(var(kd),kd=n_max-4,n_max)],&
+                    &[((kd-0.5)/inv_step,kd=n_max-5,n_max-1)],1.0_dp,1)
             else                                                                ! HM output
                 ! (1,1) HM_i, HM_o: CENTRAL DIFFERENCES
-                ! first normal point
-                varout(2) = (var(3)-var(2)) * inv_step                          ! forward difference
+                ! first normal point: extrapolate using 4 points
+                varout(2) = ext_var([(var(kd),kd=2,5)],&
+                    &[((kd-0.5)/inv_step,kd=1,4)],0.5_dp/inv_step,1)
                 ! internal points
                 do kd = 4, n_max
                     varout(kd-1) = (var(kd)-var(kd-2)) * inv_step / 2.0_dp      ! centered difference
                 end do
-                ! last normal point
-                varout(n_max) = (var(n_max)-var(n_max-1)) * inv_step
+                ! last normal point: extrapolate using 4 points
+                varout(n_max) = ext_var([(var(kd),kd=n_max-4,n_max)],&
+                    &[((kd-0.5)/inv_step,kd=n_max-5,n_max-1)],&
+                    &(n_max-1.5_dp)/inv_step,1)
             end if
         end if
         

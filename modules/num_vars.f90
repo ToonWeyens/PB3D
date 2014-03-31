@@ -41,6 +41,6 @@ module num_vars
     ! considering the various field lines for which to do the calculations
     integer :: n_alpha
     real(dp) :: min_alpha, max_alpha
-
+    
 !contains
 end module num_vars
