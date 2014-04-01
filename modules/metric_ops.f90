@@ -4,7 +4,7 @@
 !------------------------------------------------------------------------------!
 module metric_ops 
     use num_vars, only: dp
-    use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
+    use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud, write_out
     use str_ops, only: r2str, i2str
     
     implicit none
@@ -195,13 +195,20 @@ contains
         do jd = 1,n_par
             ! calculate R_H and Z_H
             R_H(:,1) = f2h(R(jd,:,1))
-            R_H(:,2) = calc_norm_deriv(R(jd,:,1),dfloat(n_r-1),.true.,.false.)
+            R_H(:,2) = calc_norm_deriv(R(jd,:,1),n_r-1._dp,.true.,.false.)
             R_H(:,3) = f2h(R(jd,:,3))
             R_H(:,4) = f2h(R(jd,:,4))
             Z_H(:,1) = f2h(Z(jd,:,1))
-            Z_H(:,2) = calc_norm_deriv(Z(jd,:,1),dfloat(n_r-1),.true.,.false.)
+            Z_H(:,2) = calc_norm_deriv(Z(jd,:,1),n_r-1._dp,.true.,.false.)
             Z_H(:,3) = f2h(Z(jd,:,3))
             Z_H(:,4) = f2h(Z(jd,:,4))
+            
+            !call write_out(2,n_r/10,transpose(reshape([(1.0_dp*kd/(n_r-1),&
+                !&kd=1,n_r/10),R(jd,2:n_r/10+1,1)],[n_r/10,2])),&
+                !&'R_H at id = '//trim(i2str(id)))
+            !call write_out(2,n_r/10,transpose(reshape([(1.0_dp*kd/(n_r-1),&
+                !&kd=1,n_r/10),R_H(2:n_r/10+1,2)],[n_r/10,2])),&
+                !&'Rr at id = '//trim(i2str(jd)))
             
             jac_V_H(jd,:) = R_H(:,1)*(R_H(:,2)*Z_H(:,3)-R_H(:,3)*Z_H(:,2))
             
@@ -225,7 +232,7 @@ contains
             C2V_dn_H(2,2,jd,:) = 0.0_dp
             C2V_dn_H(2,3,jd,:) = Z_H(:,3)
             C2V_dn_H(3,1,jd,:) = R_H(:,4)
-            C2V_dn_H(3,2,jd,:) = -1
+            C2V_dn_H(3,2,jd,:) = -1.0_dp
             C2V_dn_H(3,3,jd,:) = Z_H(:,4)
             
             do kd = 1, n_r
@@ -245,14 +252,19 @@ contains
                 end do
             end do
         end do
-        write(*,*) 'Jac_V_H = '
-        call print_ar_2(jac_V_H)
-        write(*,*) 'Jac_V_H_alt = '
-        call print_ar_2(jac_V_H_alt)
-        write(*,*) 'Jac_V_H_dff = '
-        call print_ar_2(jac_V_H_dff)
-        write(*,*) 'max diff = ', maxval(abs(jac_V_H_dff))
-        read(*,*)
+        !write(*,*) 'Jac_V_H = '
+        !call print_ar_2(jac_V_H)
+        !write(*,*) 'Jac_V_H_alt = '
+        !call print_ar_2(jac_V_H_alt)
+        !write(*,*) 'Jac_V_H_dff = '
+        !call print_ar_2(jac_V_H_dff)
+        !write(*,*) 'max diff = ', maxval(abs(jac_V_H_dff))
+        !do id = 1,n_par
+            !call write_out(2,n_r-1,transpose(reshape([((jd-0.5_dp)/(n_r-1),&
+                !&jd=1,n_r-1),jac_V_H(id,2:n_r)],[n_r-1,2])),&
+                !&'jac at id = '//trim(i2str(id)))
+        !end do
+        !read(*,*)
     end subroutine
 
     ! Calculate  the transformation  matrix between  the V(mec)  and the  F(lux)
@@ -296,8 +308,8 @@ contains
                 V2F_up_H(3,1,id,kd) = lam_H(id,kd,2)
                 V2F_up_H(3,2,id,kd) = 1 + lam_H(id,kd,3)
                 V2F_up_H(3,3,id,kd) = lam_H(id,kd,4)
-                jac_F_H(id,kd) = (flux_p_H(kd,2)/(2*pi)*(1+lam_H(id,kd,3)))**(-1)*&
-                    &jac_V_H(id,kd)
+                jac_F_H(id,kd) = (flux_p_H(kd,2)/(2*pi)*&
+                    &(1+lam_H(id,kd,3)))**(-1)*jac_V_H(id,kd)
                 
                 V2F_dn_H(1,1,id,kd) = 0.0_dp
                 V2F_dn_H(1,2,id,kd) = -lam_H(id,kd,4)/(1+lam_H(id,kd,3))

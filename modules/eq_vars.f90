@@ -55,6 +55,15 @@ contains
         allocate(theta_H(n_par,n_r)); theta_H = 0.0_dp
         
         if (theta_var_along_B) then                                             ! first calculate theta
+            ! ¡¡¡¡¡¡¡¡¡¡ TO CALCULATE RADIAL DERIVATIVES YOU NEED COORDINATES THETA
+            !            AND ZETA (VMEC) TO BE CONSTANT IN DIFFERENT FLUX SURFACES
+            !            -> YOU CANNOT FOLLOW A MAGNETIC FIELD JUST LIKE THIS!!!
+            !            -> THIS WOULD YIELD THE NORMAL DERIVATIVE WITH ALPHA = CONSTANT
+            !               WHICH IS IN THE FLUX COORDINATE SYSTEM
+            ! !¡¡¡¡¡¡¡ ANOTHER PROBLEM: YOU SHOULD FIND THIS AS A FUNCTION OF THETA_F, 
+            !          WITHIN A CERTAIN RANGE, NOT OF THETA_V!
+            !          -> FIND EQUIDISTANT MESH IN THETA_F AND LOOK FOR THETA_V FIRST, 
+            !             FROM WHICH YOU CAN FIND ZETA_V
             ! ¡¡¡¡¡¡! TEMPORARILY REPLACED !!!!!
             !do jd = 1,n_r
                 !theta(:,jd) = eqd_mesh(n_par, min_par, max_par)
@@ -67,8 +76,8 @@ contains
                 !zeta-H(kd,:) = ang_B(.false.,.false.,alpha,var_in)
             !end do
             ! TEMPORARY REPLACEMENT:
-            theta = 1.*pi/2
-            theta_H = 1.*pi/2
+            theta = 0.*pi/2
+            theta_H = 0.*pi/2
             do jd = 1,n_r
                 zeta(:,jd) = eqd_mesh(n_par, min_par, max_par)
                 zeta_H(:,jd) = eqd_mesh(n_par, min_par, max_par)
@@ -200,6 +209,9 @@ contains
     ! ¡¡¡THEREFORE,  THE  WHOLE  INTERPOLATION SHOULD  BE
     ! SUBSTITUTED BY SOMETHING ELSE, SUCH AS SPLINES!!!
     function f2h(var)
+        use utilities, only: ext_var
+        
+        ! input / output
         real(dp), allocatable :: f2h(:)
         real(dp), intent(in) :: var(:)
         
@@ -211,7 +223,6 @@ contains
         
         ! interpolate the inner quantities
         f2h(2:n_max) = 0.5_dp*(var(1:n_max-1) + var(2:n_max))                   ! Only last values must come from B.C.
-        f2h(1) = 0.0_dp
     end function
 
     ! calculate the coordinates R  and Z and l in real  space from their Fourier
@@ -258,10 +269,19 @@ contains
             
             ! numerically calculate  normal derivatives at the  currrent angular
             ! points
-            R(id,:,2) = calc_norm_deriv(R(id,:,1),dfloat(n_r-1),.true.,.true.)
-            Z(id,:,2) = calc_norm_deriv(Z(id,:,1),dfloat(n_r-1),.true.,.true.)
+            R(id,:,2) = calc_norm_deriv(R(id,:,1),n_r-1._dp,.true.,.true.)
+            Z(id,:,2) = calc_norm_deriv(Z(id,:,1),n_r-1._dp,.true.,.true.)
             lam_H(id,:,2) = calc_norm_deriv(lam_H(id,:,1),dfloat(n_r-1),.false.&
                 &,.false.)
+            
+            !call write_out(2,6,transpose(reshape([(1.0_dp*jd/(n_r-1),&
+                !&jd=0,5),R(id,1:6,1)],[6,2])),'R at id = '//trim(i2str(id)))
+            !call write_out(2,6,transpose(reshape([(1.0_dp*jd/(n_r-1),&
+                !&jd=0,5),R(id,1:6,2)],[6,2])),'Rr at id = '//trim(i2str(id)))
+            !call write_out(2,n_r,transpose(reshape([(1.0_dp*jd/(n_r-1),&
+                !&jd=0,n_r-1),R(id,:,1)],[n_r,2])),'R at id = '//trim(i2str(id)))
+            !call write_out(2,n_r,transpose(reshape([(1.0_dp*jd/(n_r-1),&
+                !&jd=0,n_r-1),R(id,:,2)],[n_r,2])),'Rr at id = '//trim(i2str(id)))
         end do par
         
         ! output a message if the found R  and Z values are not within the VMEC-
@@ -360,9 +380,18 @@ contains
                     &[(kd/inv_step,kd=n_max-4,n_max-1)],1.0_dp,1)
             else                                                                ! HM output
                 ! (2,1) FM_i, HM_o: (i)-(i-1)
+                varout(1) = 0.0_dp
                 do kd = 2, n_max
                     varout(kd) = (var(kd)-var(kd-1)) * inv_step                 ! centered difference
                 end do
+                !varout(2) = ext_var([(var(jd),jd=1,10)],&
+                    !&[(jd/inv_step,jd=0,9)],0.5_dp/inv_step,1)
+                !varout(3) = ext_var([(var(jd),jd=1,10)],&
+                    !&[(jd/inv_step,jd=0,9)],1.5_dp/inv_step,1)
+                !varout(4) = ext_var([(var(jd),jd=1,10)],&
+                    !&[(jd/inv_step,jd=0,9)],2.5_dp/inv_step,1)
+                !varout(5) = ext_var([(var(jd),jd=1,10)],&
+                    !&[(jd/inv_step,jd=0,9)],3.5_dp/inv_step,1)
             end if
         else                                                                    ! HM input
             if (FM_o) then                                                      ! FM output
@@ -380,6 +409,7 @@ contains
             else                                                                ! HM output
                 ! (1,1) HM_i, HM_o: CENTRAL DIFFERENCES
                 ! first normal point: extrapolate using 4 points
+                varout(1) = 0.0_dp
                 varout(2) = ext_var([(var(kd),kd=2,5)],&
                     &[((kd-0.5)/inv_step,kd=1,4)],0.5_dp/inv_step,1)
                 ! internal points

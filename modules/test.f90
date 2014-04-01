@@ -262,22 +262,33 @@ contains
                 varder(kd) = cos(float(kd)*2*pi/n_r) - &
                     &1.5*sin(3*float(kd)*2*pi/n_r)
             end do
-            do kd = 1,n_r-3
+            do kd = 1,n_r-2
                 var_num(kd) = ext_var([(varin(jd),jd=kd,kd+2)],&
                     &[(x(jd),jd=kd,kd+2)],x_int(kd),0)
                 varder_num(kd) = ext_var([(varin(jd),jd=kd,kd+2)],&
                     &[(x(jd),jd=kd,kd+2)],x(kd),1)
             end do
+            call writo('Don''t worry about the last 3 points!!!')
             call write_out(2,n_r,transpose(reshape([x,varin],[n_r,2])),&
                 &'function: sin(x)+0.5*cos(3x)')
             call write_out(2,n_r,transpose(reshape([x_int,var_num],[n_r,2])),&
                 &'num interp. of function: sin(x)+0.5*cos(3x)')
             call write_out(2,n_r,transpose(reshape([x,varder],[n_r,2])),&
-                &'function: sin(x)-1.5*cos(3x)')
+                &'deriv of function: cos(x)-1.5*sin(3x)')
             call write_out(2,n_r,transpose(reshape([x,varder_num],[n_r,2])),&
                 &'num interp. of deriv. of function: cos(x)-1.5*sin(3x)')
+            call write_out(2,n_r-2,transpose(reshape([x(1:n_r-2),&
+                &abs(varder_num(1:n_r-2)-varder(1:n_r-2))],[n_r-2,2])),&
+                &'relative error: cos(x)-1.5*sin(3x)')
             
-            
+            !! check whether the interpolating polynomial yields the source points
+            !do kd = 1,n_r-3
+                !var_num(kd) = ext_var([(varin(jd),jd=kd,kd+2)],&
+                    !&[(x(jd),jd=kd,kd+2)],x(kd),0)
+                !write(*,*) 'kd = ', kd
+                !write(*,*) 'var_num = ', var_num(kd)
+                !write(*,*) 'varin   = ', varin(kd)
+            !end do
         end if
     end subroutine
     
@@ -497,6 +508,12 @@ contains
                         max_index = [id,kd]
                         diff_max = maxval(abs(diff_mat))
                     end if
+                    !write(*,*) 'kd, id = ', kd, id
+                    !write(*,*) 'T_up = '
+                    !call print_ar_2(T_up(:,:,kd,id))
+                    !write(*,*) 'diff_mat = '
+                    !call print_ar_2(diff_mat)
+                    !read(*,*)
                 end do
             end do
             

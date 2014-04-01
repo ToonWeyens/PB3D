@@ -5,7 +5,7 @@ module VMEC_vars
     use num_vars, only: &
         &dp, max_str_ln, pi
     use str_ops, only: r2str, i2str
-    use output_ops, only: lvl_ud, writo, print_ar_1
+    use output_ops, only: lvl_ud, writo, print_ar_1, print_ar_2, write_out
     use read_wout_mod , only: read_wout_file, read_wout_deallocate, &           ! from LIBSTELL
         &iasym, version_, lfreeb, &                                             ! whether it is symmetric, version number, free boundary or not
         &n_r => ns, mpol, ntor, xn, xm, mnmax, nfp, &                           ! mpol, ntor = # modes
@@ -109,6 +109,7 @@ contains
         B_V_s_H(:,:,:) = repack(bmns,mnmax,n_r,mpol,ntor,xm,xn)
         jac_V_H_c(:,:,:) = repack(gmnc,mnmax,n_r,mpol,ntor,xm,xn)
         jac_V_H_s(:,:,:) = repack(gmns,mnmax,n_r,mpol,ntor,xm,xn)
+        !call write_out(mnmax,5,rmnc(:,1:5),'rmnc with n_r = '//trim(i2str(n_r)))
         
         call lvl_ud(-1)
     end subroutine
