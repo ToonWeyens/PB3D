@@ -7,7 +7,6 @@ module test
     use input_ops, only: yes_no
     use time, only: start_time, stop_time
     use str_ops, only: i2str, r2str, r2strt
-    use var_ops, only: mat_mult, det
 
     implicit none
     private
@@ -124,7 +123,7 @@ contains
     end subroutine
     
     subroutine test_norm_deriv()
-        use eq_vars, only: calc_norm_deriv
+        use utilities, only: calc_norm_deriv
         
         ! local variables
         real(dp), allocatable :: varin(:), varout(:), varout_num(:)
@@ -293,7 +292,7 @@ contains
     end subroutine
     
     subroutine test_h2f_f2h()
-        use eq_vars, only: h2f, f2h
+        use utilities, only: h2f, f2h
         
         ! local variables
         integer :: id, kd
@@ -401,10 +400,12 @@ contains
         use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F, &
             &metric_F, &
             &C2V_up, C2V_dn, C2V_up_H, C2V_dn_H, V2F_up, V2F_dn, V2F_up_H, &
-            &V2F_dn_H, jac_V, g_V, h_V, jac_F, g_F, h_F
+            &V2F_dn_H, jac_V, g_V, h_V, jac_F, g_F, h_F, jac_V_H, g_V_H, &
+            &h_V_H, jac_F_H, g_F_H, h_F_H
         use eq_vars, only: eqd_mesh, calc_RZl, calc_flux_q, &
             &n_par, min_par, max_par, theta, zeta, theta_H, zeta_H
         use VMEC_vars, only: n_r
+        use utilities, only: mat_mult, det
         
         ! local variables
         integer :: kd
@@ -450,16 +451,32 @@ contains
             call writo('Cylindrical -> VMEC:')
             call lvl_ud(1)
             call writo('Half Mesh:')
+            call lvl_ud(1)
+            call writo('Paused... press enter')
+            read(*,*)
+            call lvl_ud(-1)
             call transf_inv_transf(C2V_up_H, C2V_dn_H)
             call writo('Full Mesh:')
+            call lvl_ud(1)
+            call writo('Paused... press enter')
+            read(*,*)
+            call lvl_ud(-1)
             call transf_inv_transf(C2V_up, C2V_dn)
             call lvl_ud(-1)
             call writo('VMEC -> flux:')
             call lvl_ud(1)
             call writo('Half Mesh:')
+            call lvl_ud(1)
+            call writo('Paused... press enter')
+            read(*,*)
             call transf_inv_transf(V2F_up_H, V2F_dn_H)
+            call lvl_ud(-1)
             call writo('Full Mesh:')
+            call lvl_ud(1)
+            call writo('Paused... press enter')
+            read(*,*)
             call transf_inv_transf(V2F_up, V2F_dn)
+            call lvl_ud(-1)
             call lvl_ud(-1)
             
             call lvl_ud(-1)
@@ -470,11 +487,33 @@ contains
             
             call writo('VMEC:')
             call lvl_ud(1)
+            call writo('Half Mesh:')
+            call lvl_ud(1)
+            call writo('Paused... press enter')
+            read(*,*)
+            call check_dets(jac_V_H,g_V_H,h_V_H)
+            call lvl_ud(-1)
+            call writo('Full Mesh:')
+            call lvl_ud(1)
+            call writo('Paused... press enter')
+            read(*,*)
             call check_dets(jac_V,g_V,h_V)
+            call lvl_ud(-1)
             call lvl_ud(-1)
             call writo('flux:')
             call lvl_ud(1)
+            call writo('Half Mesh:')
+            call lvl_ud(1)
+            call writo('Paused... press enter')
+            read(*,*)
+            call check_dets(jac_F_H,g_F_H,h_F_H)
+            call lvl_ud(-1)
+            call writo('Full Mesh:')
+            call lvl_ud(1)
+            call writo('Paused... press enter')
+            read(*,*)
             call check_dets(jac_F,g_F,h_F)
+            call lvl_ud(-1)
             call lvl_ud(-1)
             
             call lvl_ud(-1)
@@ -491,35 +530,25 @@ contains
             ! local variables
             real(dp) :: T_mult(3,3)
             real(dp) :: u_mat(3,3), diff_mat(3,3)                               ! unity 3x3 matrix, difference matrix with unity_mat
-            integer :: max_index(2)                                             ! index of maximum difference
-            real(dp) :: diff_max                                                ! maximum deviation of unity matrix
+            real(dp) :: diff_max(n_r)                                           ! maximum deviation of unity matrix for all radial points
             integer :: id
             
             u_mat = 0.0_dp
             u_mat(1,1) = 1.0_dp; u_mat(2,2) = 1.0_dp; u_mat(3,3) = 1.0_dp
-            max_index = 0
             diff_max = 0.0_dp
             do kd = 2,n_r                                                       ! the magnetic axis gives infinities
                 do id = 1,n_par
                     T_mult = mat_mult(T_up(:,:,id,kd),&
                         &transpose(T_dn(:,:,id,kd)))
                     diff_mat = T_mult - u_mat
-                    if (maxval(abs(diff_mat)).gt.diff_max) then
-                        max_index = [id,kd]
-                        diff_max = maxval(abs(diff_mat))
+                    if (maxval(abs(diff_mat)).gt.diff_max(kd)) then
+                        diff_max(kd) = log10(max(maxval(abs(diff_mat)),&
+                            &1.0E-20_dp))
                     end if
-                    !write(*,*) 'kd, id = ', kd, id
-                    !write(*,*) 'T_up = '
-                    !call print_ar_2(T_up(:,:,kd,id))
-                    !write(*,*) 'diff_mat = '
-                    !call print_ar_2(diff_mat)
-                    !read(*,*)
                 end do
             end do
-            
-            call writo('maximum deviation from unity matrix found at ('//&
-                &trim(i2str(max_index(1)))//','//trim(i2str(max_index(2)))//&
-                &'), equal to '//trim(r2strt(diff_max)))
+            call write_out(1,n_r,diff_max,'maximum difference from &
+                &unit matrix [log]', comment=' for different radial positions')
         end subroutine
         
         ! check whether jacobians calculated in the routines in metric_ops and
@@ -531,8 +560,7 @@ contains
             
             ! local variables
             real(dp) :: g_J, h_J                                                ! jacobian calculated from g and h
-            integer :: max_J_index(2,2)                                         ! index of maximum difference 
-            real(dp) :: diff_J_max(2)                                           ! maximum of difference between g_J, h_J and jac_V
+            real(dp) :: diff_J_max(n_r,2)                                       ! maximum of difference between g_J, h_J and jac_V
             integer :: id, kd
             !real(dp) :: j_calc(n_par,n_r,2)
             
@@ -543,25 +571,23 @@ contains
                     !j_calc(id,kd,1) = g_J
                     h_J = 1.0_dp/sqrt(abs(det(3,h(:,:,id,kd))))
                     !j_calc(id,kd,2) = h_J
-                    if (abs(g_J-jac(id,kd)).gt.diff_J_max(1)) then
-                        max_J_index(1,:) = [id,kd]
-                        diff_J_max(1) = abs(g_J-jac(id,kd))
+                    if (abs(abs(g_J)-abs(jac(id,kd))).gt.diff_J_max(kd,1)) then
+                        diff_J_max(kd,1) = log10(max(abs(abs(g_J)-abs(jac(id,kd))),&
+                            &1.0E-20_dp))
                     end if
-                    if (h_J-jac(id,kd).gt.diff_J_max(2)) then
-                        max_J_index(2,:) = [id,kd]
-                        diff_J_max(2) = abs(h_J-jac(id,kd))
+                    if (abs(abs(h_J)-abs(jac(id,kd))).gt.diff_J_max(kd,2)) then
+                        diff_J_max(kd,2) = log10(max(abs(abs(h_J)-abs(jac(id,kd))),&
+                            &1.0E-20_dp))
                     end if
                 end do
             end do
             
-            call writo('maximum deviation of sqrt(det(g_J)) from jac found &
-                & at ('//trim(i2str(max_J_index(1,1)))//','//&
-                &trim(i2str(max_J_index(1,2)))//','//&
-                &'), equal to '//trim(r2strt(diff_J_max(1))))
-            call writo('maximum deviation of 1/sqrt(det(h_J)) from jac found &
-                & at ('//trim(i2str(max_J_index(2,1)))//','//&
-                &trim(i2str(max_J_index(2,2)))//','//&
-                &'), equal to '//trim(r2strt(diff_J_max(2))))
+            call write_out(1,n_r,diff_J_max(:,1),'maximum difference &
+                &between sqrt(det(g_ij)) and jac [log]', &
+                &comment=' for different radial positions')
+            call write_out(1,n_r,diff_J_max(:,2),'maximum difference &
+                &between sqrt(det(h^ij)) and jac [log]', &
+                &comment=' for different radial positions')
         end subroutine
     end subroutine
 

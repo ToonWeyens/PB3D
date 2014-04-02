@@ -10,8 +10,7 @@ module eq_vars
 
     implicit none
     private
-    public eqd_mesh, calc_mesh, calc_RZl, ang_B, calc_flux_q, h2f, f2h, &
-        &check_mesh, calc_norm_deriv, &
+    public eqd_mesh, calc_mesh, calc_RZl, ang_B, calc_flux_q, check_mesh, &
         &theta, zeta, theta_H, zeta_H, n_par, R, Z, lam_H, min_par, max_par, &
         &q_saf, q_saf_H, flux_p, flux_p_H, flux_t, flux_t_H
 
@@ -176,55 +175,6 @@ contains
         end do
     end function eqd_mesh
     
-    ! transform half-mesh to full-mesh quantities
-    ! Adapted from SIESTA routines
-    function h2f(var)
-        use utilities, only: ext_var
-        
-        ! input / output
-        real(dp), allocatable :: h2f(:)
-        real(dp), intent(in) :: var(:)
-        
-        ! local variables
-        integer :: n_max
-        integer :: kd
-        
-        n_max = size(var)
-        allocate(h2f(n_max))
-        
-        ! interpolate the inner quantities
-        h2f(2:n_max-1) = 0.5_dp*(var(2:n_max-1) + var(3:n_max))
-        ! extrapolate the outer quantities using 3 points
-        h2f(n_max) = ext_var([(var(kd),kd=n_max-2,n_max)],&
-           &[(1.0_dp*(kd-0.5)/(n_max-1),kd=n_max-3,n_max-1)],1.0_dp,0)
-        h2f(1) = ext_var([(var(kd),kd=2,4)],&
-           &[(1.0_dp*(kd-0.5)/(n_max-1),kd=1,3)],0.0_dp,0)
-    end function
-
-    ! transform  half-mesh to  full-mesh  quantities based  on  h2f. The  result
-    ! is  reversible   (h2f*f2h  =   h)  only  if   the  second   derivative  of
-    ! the  function  is  zero  at  all  points,  because  the  condition  h_i  =
-    ! 1/4*(h_(i-1)+2*h_i+h_(i+1)) can  be derived. This is  logical, because the
-    ! linear interpolation is only exact for first order polynomials.
-    ! ¡¡¡THEREFORE,  THE  WHOLE  INTERPOLATION SHOULD  BE
-    ! SUBSTITUTED BY SOMETHING ELSE, SUCH AS SPLINES!!!
-    function f2h(var)
-        use utilities, only: ext_var
-        
-        ! input / output
-        real(dp), allocatable :: f2h(:)
-        real(dp), intent(in) :: var(:)
-        
-        ! local variables
-        integer :: n_max
-        
-        n_max = size(var)
-        allocate(f2h(n_max))
-        
-        ! interpolate the inner quantities
-        f2h(2:n_max) = 0.5_dp*(var(1:n_max-1) + var(2:n_max))                   ! Only last values must come from B.C.
-    end function
-
     ! calculate the coordinates R  and Z and l in real  space from their Fourier
     ! decomposition  using the  grid points  currently stored  in the  variables
     ! theta, zeta.
@@ -232,6 +182,7 @@ contains
         use fourier_ops, only: mesh_cs, f2r
         use VMEC_vars, only: R_c, R_s, Z_c, Z_s, lam_c, lam_s, n_r, &
             &rmax_surf, rmin_surf, zmax_surf, ntor, mpol
+        use utilities, only: calc_norm_deriv
         
         ! local variables
         real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
@@ -336,100 +287,11 @@ contains
         end subroutine
     end subroutine calc_RZl
 
-    ! calculates normal  derivatives of a  FM or  HM quantity. The  inverse step
-    ! size  has to  be specified,  normalized  so that  the whole  range of  the
-    ! variable is between 0 and 1 (both inclusive)
-    ! Both input and output can be FM or HM:
-    !   +-----------------------------------+
-    !   | I\O |      HM      |      FM      |
-    !   | ----------------------------------|
-    !   | HM  | centr. diff. |  (i+1)-(i)   |
-    !   | ----------------------------------|
-    !   | FM  |   (i)-(i-1)  | centr. diff. |
-    !   +-----------------------------------+
-    function calc_norm_deriv(var,inv_step,FM_i,FM_o)
-        use utilities, only: ext_var
-        
-        ! input / output
-        real(dp), allocatable :: calc_norm_deriv(:)                             ! output variable
-        real(dp), intent(in) :: var(:)                                          ! input variable
-        logical, intent(in) :: FM_i, FM_o                                       ! whether or not Full Mesh for input and output (true: FM, false: HM)
-        real(dp), intent(in) :: inv_step                                        ! inverse of step size in var
-        
-        ! local variables
-        real(dp), allocatable :: varout(:)                                      ! temporary variable to hold output
-        integer :: kd                                                           ! counters
-        integer :: n_max                                                        ! maximum index of array
-        
-        n_max = size(var)
-        allocate(calc_norm_deriv(n_max))
-        allocate(varout(n_max))
-        
-        if (FM_i) then                                                          ! FM input
-            if (FM_o) then                                                      ! FM output
-                ! (2,2) FM_i, FM_o: CENTRAL DIFFERENCES
-                ! first normal point: extrapolate using 4 points
-                varout(1) = ext_var([(var(kd),kd=1,4)],&
-                    &[(kd/inv_step,kd=0,3)],0.0_dp,1)
-                ! internal points
-                do kd = 3, n_max
-                    varout(kd-1) = (var(kd)-var(kd-2)) * inv_step / 2.0_dp      ! centered difference
-                end do
-                ! last normal point: extrapolate using 4 points
-                varout(n_max) = ext_var([(var(kd),kd=n_max-3,n_max)],&
-                    &[(kd/inv_step,kd=n_max-4,n_max-1)],1.0_dp,1)
-            else                                                                ! HM output
-                ! (2,1) FM_i, HM_o: (i)-(i-1)
-                varout(1) = 0.0_dp
-                do kd = 2, n_max
-                    varout(kd) = (var(kd)-var(kd-1)) * inv_step                 ! centered difference
-                end do
-                !varout(2) = ext_var([(var(jd),jd=1,10)],&
-                    !&[(jd/inv_step,jd=0,9)],0.5_dp/inv_step,1)
-                !varout(3) = ext_var([(var(jd),jd=1,10)],&
-                    !&[(jd/inv_step,jd=0,9)],1.5_dp/inv_step,1)
-                !varout(4) = ext_var([(var(jd),jd=1,10)],&
-                    !&[(jd/inv_step,jd=0,9)],2.5_dp/inv_step,1)
-                !varout(5) = ext_var([(var(jd),jd=1,10)],&
-                    !&[(jd/inv_step,jd=0,9)],3.5_dp/inv_step,1)
-            end if
-        else                                                                    ! HM input
-            if (FM_o) then                                                      ! FM output
-                ! (1,2) HM_i, FM_o: (i+1)-(i)
-                ! first normal point: extrapolate using 4 points
-                varout(1) = ext_var([(var(kd),kd=2,5)],&
-                    &[((kd-0.5)/inv_step,kd=1,4)],0.0_dp,1)
-                ! internal points
-                do kd = 2, n_max-1
-                    varout(kd) = (var(kd+1)-var(kd)) * inv_step                 ! centered difference
-                end do
-                ! last normal point: extrapolate using 4 points
-                varout(n_max) = ext_var([(var(kd),kd=n_max-4,n_max)],&
-                    &[((kd-0.5)/inv_step,kd=n_max-5,n_max-1)],1.0_dp,1)
-            else                                                                ! HM output
-                ! (1,1) HM_i, HM_o: CENTRAL DIFFERENCES
-                ! first normal point: extrapolate using 4 points
-                varout(1) = 0.0_dp
-                varout(2) = ext_var([(var(kd),kd=2,5)],&
-                    &[((kd-0.5)/inv_step,kd=1,4)],0.5_dp/inv_step,1)
-                ! internal points
-                do kd = 4, n_max
-                    varout(kd-1) = (var(kd)-var(kd-2)) * inv_step / 2.0_dp      ! centered difference
-                end do
-                ! last normal point: extrapolate using 4 points
-                varout(n_max) = ext_var([(var(kd),kd=n_max-4,n_max)],&
-                    &[((kd-0.5)/inv_step,kd=n_max-5,n_max-1)],&
-                    &(n_max-1.5_dp)/inv_step,1)
-            end if
-        end if
-        
-        calc_norm_deriv = varout
-    end function calc_norm_deriv
-    
     ! Calculates flux quantities
     subroutine calc_flux_q
         use VMEC_vars, only: &
             &iotaf, iotah, n_r, phi, phi_r, phi_r_H, presf, presh
+        use utilities, only: calc_norm_deriv, f2h
         
         ! local variables
         integer :: kd
@@ -462,10 +324,10 @@ contains
         q_saf(:,2) = calc_norm_deriv(q_saf_H(:,1),dfloat(n_r-1),.false.,.true.)
         q_saf_H(:,2) = calc_norm_deriv(q_saf(:,1),dfloat(n_r-1),.true.,.false.)
         
-        ! toroidal flux: copy from VMEC
+        ! toroidal flux: copy from VMEC and interpolate
         flux_t(:,1) = phi
         flux_t(:,2) = phi_r
-        flux_t_H(:,1) = phi
+        flux_t_H(:,1) = f2h(phi)
         flux_t_H(:,2) = phi_r_H
         
         ! poloidal flux: calculate using iotaf and phi, phi_r
@@ -497,7 +359,7 @@ contains
         use num_vars, only: tol_NR
         use VMEC_vars, only: mpol, ntor, n_r, lam_c, lam_s, iotaf, iotah
         use fourier_ops, only: mesh_cs, f2r
-        use utilities, only: zero_NR
+        use utilities, only: zero_NR, h2f
         
         ! input / output
         real(dp) :: ang_B(n_r)                                                  ! theta(zeta)/zeta(theta)

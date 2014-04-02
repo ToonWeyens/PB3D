@@ -3,7 +3,6 @@ test.o : \
     output_ops.o \
     str_ops.o \
     fourier_ops.o \
-    var_ops.o \
     metric_ops.o \
     time.o \
     VMEC_vars.o \
@@ -39,9 +38,9 @@ B_vars.o : \
     num_vars.o \
     fourier_ops.o \
     VMEC_vars.o \
-    var_ops.o \
     metric_ops.o \
     output_ops.o \
+    utilities.o \
 
 eq_ops.o : \
     num_vars.o \
@@ -89,7 +88,6 @@ eq_vars.o : \
     str_ops.o \
     output_ops.o \
     fourier_ops.o \
-    var_ops.o \
     VMEC_vars.o \
     utilities.o \
 
@@ -98,11 +96,8 @@ metric_ops.o : \
     VMEC_vars.o \
     output_ops.o \
     str_ops.o \
-    eq_vars.o 
-
-var_ops.o : \
-    num_vars.o \
-    output_ops.o \
+    eq_vars.o \
+    utilities.o \
 
 str_ops.o : \
     num_vars.o \
@@ -110,6 +105,5 @@ str_ops.o : \
 time.o : \
     output_ops.o \
     num_vars.o \
-    var_ops.o 
 
 num_vars.o : \

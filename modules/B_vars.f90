@@ -26,8 +26,8 @@ contains
         use VMEC_vars, only: ntor, mpol, n_r, &
             &B_V_sub_c_M, B_V_sub_s_M, &                                        ! Coeff. of B_i in (co)sine series (last index: r,theta,phi) (FM, HM, HM)
             &B_V_c_H, B_V_s_H                                                   ! Coeff. of magnitude of B (HM)
-        use eq_vars, only: calc_norm_deriv, h2f, f2h, &
-            &n_par, theta, zeta, theta_H, zeta_H
+        use eq_vars, only: n_par, theta, zeta, theta_H, zeta_H
+        use utilities, only: calc_norm_deriv, f2h, h2f
         
         ! local variables
         real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
@@ -105,7 +105,7 @@ contains
     ! e_theta*e_i/J_F = g_F(3,i)/J_F.
     subroutine calc_B_F
         use VMEC_vars, only: n_r
-        use var_ops, only: matvec_mult
+        use utilities, only: matvec_mult
         use metric_ops, only: V2F_dn, V2F_dn_H, jac_F, jac_F_H, g_F, g_F_H
         use eq_vars, only: n_par
         

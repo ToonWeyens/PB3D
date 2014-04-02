@@ -10,8 +10,8 @@ module metric_ops
     implicit none
     private
     public metric_C2V, metric_V, metric_C, metric_V2F, metric_F, &
-        &C2V_up, C2V_dn, C2V_up_H, C2V_dn_H, jac_V, h_V, g_V, h_V_H, g_V_H, &
-        &V2F_up, V2F_dn, V2F_up_H, V2F_dn_H, jac_F, jac_F_H, &
+        &C2V_up, C2V_dn, C2V_up_H, C2V_dn_H, jac_V, jac_V_H, h_V, g_V, h_V_H, &
+        &g_V_H, V2F_up, V2F_dn, V2F_up_H, V2F_dn_H, jac_F, jac_F_H, &
         &h_F, g_F, h_F_H, g_F_H
 
     ! upper (h) and lower (g) metric factors
@@ -37,8 +37,8 @@ contains
 
     ! calculate the trivial metric elements in the C(ylindrical) coordinate system
     subroutine metric_C
-        use eq_vars, only: f2h, &
-            &n_par, R
+        use eq_vars, only: n_par, R
+        use utilities, only: f2h
         use VMEC_vars, only: n_r
         
         ! local variables
@@ -82,6 +82,7 @@ contains
     subroutine metric_V
         use eq_vars, only: n_par
         use VMEC_vars, only: n_r
+        use utilities, only: h2f
         
         ! local variables
         integer :: id, kd
@@ -117,6 +118,7 @@ contains
     subroutine metric_F
         use eq_vars, only: n_par
         use VMEC_vars, only: n_r
+        use utilities, onLy: h2f
         
         ! local variables
         integer :: id, kd
@@ -150,9 +152,9 @@ contains
     ! coordinate system from the VMEC file.
     subroutine metric_C2V
         use VMEC_vars, only: n_r, jac_V_H_c, jac_V_H_s, mpol, ntor
-        use eq_vars, only: h2f, f2h, calc_norm_deriv, &
-            &theta_H, zeta_H, n_par, R, Z
+        use eq_vars, only: theta_H, zeta_H, n_par, R, Z
         use fourier_ops, only: f2r, mesh_cs
+        use utilities, only: calc_norm_deriv, f2h, h2f
         
         ! local variables
         real(dp) :: cf(n_r)                                                     ! common factor used in calculating the elements of the matrix
@@ -270,10 +272,10 @@ contains
     ! Calculate  the transformation  matrix between  the V(mec)  and the  F(lux)
     ! coordinate system
     subroutine metric_V2F
-        use eq_vars, only: h2f, &
-            &q_saf_H, theta_H, n_par, lam_H, flux_p_H
+        use eq_vars, only: q_saf_H, theta_H, n_par, lam_H, flux_p_H
         use num_vars, only: pi
         use VMEC_vars, only: n_r
+        use utilities, only: h2f
         
         ! local variables
         integer :: id, jd, kd
@@ -347,7 +349,7 @@ contains
     ! where g_A and h_A are the metric coefficients of the lower (covariant) and
     ! upper (contravariant) unit vectors in the coordinate system A
     function metric_calc(gh_A, TC2V)
-        use var_ops, only: mat_mult
+        use utilities, only: mat_mult
         
         ! input / output
         real(dp), intent(in) :: gh_A(3,3)
