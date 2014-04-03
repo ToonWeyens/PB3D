@@ -75,8 +75,8 @@ contains
                 !zeta-H(kd,:) = ang_B(.false.,.false.,alpha,var_in)
             !end do
             ! TEMPORARY REPLACEMENT:
-            theta = 0.*pi/2
-            theta_H = 0.*pi/2
+            theta = 0.4*pi/2
+            theta_H = 0.4*pi/2
             do jd = 1,n_r
                 zeta(:,jd) = eqd_mesh(n_par, min_par, max_par)
                 zeta_H(:,jd) = eqd_mesh(n_par, min_par, max_par)
@@ -222,7 +222,7 @@ contains
             ! points
             R(id,:,2) = calc_norm_deriv(R(id,:,1),n_r-1._dp,.true.,.true.)
             Z(id,:,2) = calc_norm_deriv(Z(id,:,1),n_r-1._dp,.true.,.true.)
-            lam_H(id,:,2) = calc_norm_deriv(lam_H(id,:,1),dfloat(n_r-1),.false.&
+            lam_H(id,:,2) = calc_norm_deriv(lam_H(id,:,1),n_r-1._dp,.false.&
                 &,.false.)
             
             !call write_out(2,6,transpose(reshape([(1.0_dp*jd/(n_r-1),&
@@ -237,14 +237,22 @@ contains
         
         ! output a message if the found R  and Z values are not within the VMEC-
         ! provided bounds
-        call writo('Checking the bounds of R')
-        call lvl_ud(1)
-        call within_bounds(R(:,:,1),rmin_surf,rmax_surf)
-        call lvl_ud(-1)
-        call writo('Checking the bounds of Z')
-        call lvl_ud(1)
-        call within_bounds(Z(:,:,1),-zmax_surf,zmax_surf)
-        call lvl_ud(-1)
+        if (rmax_surf.gt.0.0_dp) then
+            call writo('Checking the bounds of R')
+            call lvl_ud(1)
+            call within_bounds(R(:,:,1),rmin_surf,rmax_surf)
+            call lvl_ud(-1)
+        else
+            call writo('Not possible to check the bounds of R')
+        end if
+        if (zmax_surf.gt.0.0_dp) then
+            call writo('Checking the bounds of Z')
+            call lvl_ud(1)
+            call within_bounds(Z(:,:,1),-zmax_surf,zmax_surf)
+            call lvl_ud(-1)
+        else
+            call writo('Not possible to check the bounds of Z')
+        end if
         
     contains
         ! display whether the calculated table for R or Z fits within the limits
@@ -268,9 +276,7 @@ contains
             min_frac = 2*(minval(var)-min_VMEC)/abs(minval(var)+min_VMEC)       ! positive if within bounds
             max_frac = 2*(maxval(var)-max_VMEC)/abs(maxval(var)+max_VMEC)       ! positive if out of bounds
             
-            if (min_frac.lt.-margin .and. max_frac.gt.margin) then
-                return
-            else if (min_frac.lt.-margin) then                                  ! too low minimum
+            if (min_frac.lt.-margin) then                                       ! too low minimum
                 call writo('WARNING: minimum of variable in real angular space &
                     & is lower than VMEC provided minimum by '//&
                     &trim(r2strt(100*min_frac))//'%...')
@@ -279,10 +285,13 @@ contains
                 call writo(' -> Maybe run VMEC with more accuracy?')
             else if (max_frac.gt.margin) then                                   ! too high maximum
                 call writo('WARNING: maximum of variable in real angular space &
-                    & is greater than VMEC provided minimum by '//&
+                    & is greater than VMEC provided maximum by '//&
                     &trim(r2strt(100*max_frac))//'%...')
                 call writo(' -> Maybe use more angular mesh points')
                 call writo(' -> Maybe run VMEC with more accuracy?')
+            else 
+                call writo('within bounds')
+                return
             end if
         end subroutine
     end subroutine calc_RZl
@@ -291,7 +300,7 @@ contains
     subroutine calc_flux_q
         use VMEC_vars, only: &
             &iotaf, iotah, n_r, phi, phi_r, phi_r_H, presf, presh
-        use utilities, only: calc_norm_deriv, f2h
+        use utilities, only: calc_norm_deriv, f2h, calc_int
         
         ! local variables
         integer :: kd
@@ -321,8 +330,8 @@ contains
         do kd = 2,n_r
             q_saf_H(kd,1) = 1/iotah(kd)
         end do
-        q_saf(:,2) = calc_norm_deriv(q_saf_H(:,1),dfloat(n_r-1),.false.,.true.)
-        q_saf_H(:,2) = calc_norm_deriv(q_saf(:,1),dfloat(n_r-1),.true.,.false.)
+        q_saf(:,2) = calc_norm_deriv(q_saf_H(:,1),n_r-1._dp,.false.,.true.)
+        q_saf_H(:,2) = calc_norm_deriv(q_saf(:,1),n_r-1._dp,.true.,.false.)
         
         ! toroidal flux: copy from VMEC and interpolate
         flux_t(:,1) = phi
@@ -331,20 +340,17 @@ contains
         flux_t_H(:,2) = phi_r_H
         
         ! poloidal flux: calculate using iotaf and phi, phi_r
-        ! THIS IS WRONG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        do kd = 1,n_r
-            flux_p(kd,1) = iotaf(kd)*phi(kd)
-            flux_p_H(kd,1) = iotah(kd)*phi(kd)
-        end do
-        ! THIS IS CORRECT:
         flux_p(:,2) = iotaf*phi_r
         flux_p_H(:,2) = iotah*phi_r_H
+        flux_p(:,1) = calc_int(flux_p(:,2),[(kd/(n_r-1.0_dp),kd=0,n_r-1)])
+        flux_p_H(:,1) = [0.0_dp, calc_int(flux_p_H(2:n_r,2),&
+            &[((kd-0.5_dp)/(n_r-1.0_dp),kd=1,n_r-1)])]
         
         ! pressure: copy from VMEC and derivate
         pres(:,1) = presf
         pres_H(:,1) = presh
-        pres(:,2) = calc_norm_deriv(pres_H(:,1),dfloat(n_r-1),.true.,.false.)
-        pres_H(:,2) = calc_norm_deriv(pres(:,1),dfloat(n_r-1),.false.,.true.)
+        pres(:,2) = calc_norm_deriv(pres_H(:,1),n_r-1._dp,.true.,.false.)
+        pres_H(:,2) = calc_norm_deriv(pres(:,1),n_r-1._dp,.false.,.true.)
     end subroutine
 
     ! Calculates the  poloidal/toroidal angle theta(zeta)  as a function  of the

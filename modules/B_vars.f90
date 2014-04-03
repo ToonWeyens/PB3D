@@ -9,7 +9,7 @@ module B_vars
     implicit none
     private
     public calc_B_V, calc_B_F, &
-        &B_V_sub, B_F_sub, B_V, B_V_H, B_F, B_F_H
+        &B_V_sub, B_V_sub_H, B_F_sub, B_V, B_V_H, B_F, B_F_H
     
     real(dp), allocatable :: B_V_sub(:,:,:,:)                                   ! contravar. comp. of B in V(mec) coords, last index: (r,theta,zeta) (FM)
     real(dp), allocatable :: B_V_sub_H(:,:,:,:)                                 ! contravar. comp. of B in V(mec) coords, last index: (r,theta,zeta) (HM)
@@ -20,7 +20,7 @@ module B_vars
 
 contains
     ! Calculate  the components  of the  magnetic field  in the  VMEC coordinate
-    ! system
+    ! system. Only the covariant components are calculated.
     subroutine calc_B_V
         use fourier_ops, only: mesh_cs, f2r
         use VMEC_vars, only: ntor, mpol, n_r, &
@@ -69,30 +69,36 @@ contains
                     B_V_sub_H(id,kd,4,jd) = f2r(B_V_sub_c_M(:,:,kd,jd),&
                         &B_V_sub_s_M(:,:,kd,jd),cs,mpol,ntor,4)
                 end do comp
-                B_V_H(id,kd) =  f2r(B_V_c_H(:,:,kd),B_V_s_H(:,:,kd),cs,mpol,ntor,1)
-                
-                ! numerically  calculate  normal  derivatives  at  the  currrent
-                ! angular points
-                B_V_sub(id,:,2,1) = calc_norm_deriv(B_V_sub(id,:,1,1),&
-                    &dfloat(n_r-1),.true.,.true.)                                 ! component r (FM defined in VMEC)
-                
-                comp3: do jd = 2,3                                              ! components theta and phi (HM defined in VMEC)
-                    B_V_sub_H(id,:,2,jd) = calc_norm_deriv(B_V_sub_H(id,:,1,jd)&
-                        &,dfloat(n_r-1),.false.,.false.)
-                end do comp3
+                B_V_H(id,kd) = f2r(B_V_c_H(:,:,kd),B_V_s_H(:,:,kd),cs,&
+                    &mpol,ntor,1)
             end do perp
             
-            ! convert from FM to HM and from HM to FM
-            deriv: do kd = 1,4
-                ! all derivatives of contravar. component r
-                B_V_sub_H(id,:,kd,1) = f2h(B_V_sub(id,:,kd,1))
-                
-                ! all derivatives of contravar. components theta, zeta
-                comp2: do jd = 2,3
-                    B_V_sub(id,:,kd,jd) = h2f(B_V_sub_H(id,:,kd,jd))
-                end do comp2
-            end do deriv
-            ! magnitude
+            ! numerically  calculate  normal  derivatives  at  the  currrent
+            ! angular point
+            B_V_sub(id,:,2,1) = calc_norm_deriv(B_V_sub(id,:,1,1),&
+                &dfloat(n_r-1),.true.,.true.)
+            
+            comp3: do jd = 2,3                                                  ! components theta and phi (HM defined in VMEC)
+                B_V_sub_H(id,:,2,jd) = calc_norm_deriv(B_V_sub_H(id,:,1,jd)&
+                    &,dfloat(n_r-1),.false.,.false.)
+            end do comp3
+            
+            ! convert from FM to HM: component r
+            B_V_sub_H(id,:,1,1) = f2h(B_V_sub(id,:,1,1))
+            B_V_sub_H(id,:,2,1) = calc_norm_deriv(B_V_sub(id,:,1,1),&
+                    &dfloat(n_r-1),.true.,.false.)
+            B_V_sub_H(id,:,3,1) = f2h(B_V_sub(id,:,1,1))
+            B_V_sub_H(id,:,4,1) = f2h(B_V_sub(id,:,4,1))
+            
+            ! convert from HM to FM: components theta and zeta
+            comp2: do jd = 2,3
+                B_V_sub(id,:,1,jd) = h2f(B_V_sub_H(id,:,1,jd))
+                B_V_sub(id,:,2,jd) = calc_norm_deriv(B_V_sub_H(id,:,1,jd),&
+                        &n_r-1._dp,.false.,.true.)
+                B_V_sub(id,:,3,jd) = h2f(B_V_sub_H(id,:,3,jd))
+                B_V_sub(id,:,4,jd) = h2f(B_V_sub_H(id,:,4,jd))
+            end do comp2
+            ! and magnitude
             B_V(id,:) = h2f(B_V_H(id,:))
         end do par
     end subroutine

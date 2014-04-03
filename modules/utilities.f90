@@ -9,7 +9,7 @@ module utilities
     implicit none
     private
     public zero_NR, ext_var, calc_norm_deriv, f2h, h2f, mat_mult, det, &
-        &matvec_mult
+        &matvec_mult, calc_int
 
 contains
     ! finds the zero of a function using Newton-Rhapson iteration
@@ -158,11 +158,6 @@ contains
         end do polynom
     end function ext_var
 
-    ! integrates a function using the trapezoidal rule
-    function calc_norm_int()
-        real(dp), allocatable :: calc_norm_int
-    end function calc_norm_int
-    
     ! transform half-mesh to full-mesh quantities
     ! Adapted from SIESTA routines
     function h2f(var)
@@ -206,6 +201,48 @@ contains
         f2h(2:n_max) = 0.5_dp*(var(1:n_max-1) + var(2:n_max))                   ! Only last values must come from B.C.
     end function
 
+    ! integrates a function using the trapezoidal rule using constant step size:
+    !   int_1^n f(x) dx = (x(2)-x(1))/2 f(a) + (x(n)-x(n-1))/2 f(n) 
+    !                     + sum_k=2^(n-1){f(k)*(x(k+1)-x(k-1))/2},
+    ! with n the number of points. So, n  points have to be specified as well as
+    ! n values  for the function  to be interpolated. They  have to be  given in
+    ! ascending order but the step size does not have to be constant
+    ! this yields the following difference formula:
+    !   int_1^n f(x) dx = int_1^(n-1) f(x) dx + (f(n)+f(n+1))*(x(n+1)-x(n))/2,
+    ! which is used here
+    function calc_int(var,x)
+        ! input / output
+        real(dp), allocatable :: calc_int(:)
+        real(dp) :: var(:)
+        real(dp) :: x(:)
+        
+        ! local variables
+        integer :: n_max
+        integer :: kd
+        
+        n_max = size(var)
+        
+        ! tests
+        if (size(x).ne.n_max) then
+            call writo('ERROR: in calc_int, the arrays of points and values &
+                &are not of the same length')
+            stop
+        else if (n_max.lt.2) then
+            call writo('ERROR: asking calc_int to integrate with '&
+                &//trim(i2str(n_max))//' points. Need at least 2')
+            stop
+        end if
+        
+        ! allocate output
+        allocate(calc_int(n_max)); calc_int = 0.0_dp
+        
+        ! calculate integral for all points
+        do kd = 2, n_max
+            calc_int(kd) = calc_int(kd-1) + &
+                &(var(kd)+var(kd-1))/2 * (x(kd)-x(kd-1))
+        end do
+    end function calc_int
+    
     ! calculates normal  derivatives of a  FM or  HM quantity. The  inverse step
     ! size  has to  be specified,  normalized  so that  the whole  range of  the
     ! variable is between 0 and 1 (both inclusive)

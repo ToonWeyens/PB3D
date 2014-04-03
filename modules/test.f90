@@ -11,7 +11,7 @@ module test
     implicit none
     private
     public test_repack, test_write_out, test_mesh_cs, test_metric_transf, &
-        &test_ang_B, test_h2f_f2h, test_norm_deriv, test_ext_var
+        &test_ang_B, test_h2f_f2h, test_norm_deriv, test_ext_var, test_B
 
 contains
     subroutine test_repack()
@@ -318,7 +318,7 @@ contains
                 read(*,*) n_max
                 if (n_max.lt.4*length) then
                     call writo('n_max has to be larger than or equal to '&
-                        &//trim(i2str(2*length))//'...')
+                        &//trim(i2str(4*length))//'...')
                 else 
                     exit
                 end if
@@ -589,6 +589,210 @@ contains
                 &between sqrt(det(h^ij)) and jac [log]', &
                 &comment=' for different radial positions')
         end subroutine
+    end subroutine
+
+    subroutine test_B()
+        use eq_ops, only: calc_eq
+        use eq_vars, only: n_par, flux_p, flux_p_H, q_saf, q_saf_H, lam_H
+        use metric_ops, only: jac_V, jac_V_H, g_V, g_V_H, jac_F, jac_F_H
+        use VMEC_vars, only: n_r
+        use utilities, only: h2f
+        use B_vars, only: B_V_sub, B_V_sub_H, B_V, B_V_H
+        
+        ! local variables
+        real(dp) :: B_V_sub_alt(n_par,n_r,3)
+        real(dp) :: B_V_sub_alt2(n_par,n_r,3)
+        real(dp) :: B_V_sub_H_alt(n_par,n_r,3)
+        real(dp) :: B_V_sub_H_alt2(n_par,n_r,3)
+        real(dp) :: B_V_alt(n_par,n_r)
+        real(dp) :: B_V_H_alt(n_par,n_r)
+        real(dp) :: diff(n_r)
+        integer :: id, jd, kd
+        real(dp) :: lam(n_par,n_r,4)
+        
+        call writo('test magnetic fields?')
+        if(yes_no(.false.)) then
+            call lvl_ud(1)
+            
+            ! calculate equilibrium with some value for alpha
+            call writo('Calculate equilibrium')
+            call lvl_ud(1)
+            call calc_eq(pi/2)
+            call lvl_ud(-1)
+            
+            call writo('Testing whether the magnetic fields from VMEC are &
+                &in agreement with B_i = nabla alpha x nabla psi')
+            call lvl_ud(1)
+            
+            ! calculate lam from lam_H
+            do id = 1,n_par
+                do jd = 1,4
+                    lam(id,:,jd) = h2f(lam_H(id,:,jd))
+                end do
+            end do
+            
+            ! calculate B_i alternatively
+            B_V_sub_alt = 0.0_dp
+            B_V_sub_H_alt = 0.0_dp
+            perp: do kd = 1,n_r                                                 ! avoid problems at magn. axis.
+                par: do id = 1,n_par
+                    comp: do jd = 1,3
+                        B_V_sub_alt(id,kd,jd) = &
+                            &flux_p(kd,2)/(2*pi*jac_V(id,kd)) * &
+                            &(q_saf(kd,1)*(1+lam(id,kd,3)) * g_V(3,jd,id,kd) + &
+                            &(1-q_saf(kd,1)*lam(id,kd,4)) * g_V(2,jd,id,kd))
+                        B_V_sub_alt2(id,kd,jd) = &
+                            &1/jac_F(id,kd) * &
+                            &(q_saf(kd,1) * g_V(3,jd,id,kd) + &
+                            &(1-q_saf(kd,1)*lam(id,kd,4))/(1+lam(id,kd,3))* &
+                            &g_V(2,jd,id,kd))
+                        B_V_sub_H_alt(id,kd,jd) = &
+                            &flux_p_H(kd,2)/(2*pi*jac_V_H(id,kd)) * &
+                            &(q_saf_H(kd,1)*(1+lam_H(id,kd,3)) &
+                            &* g_V_H(3,jd,id,kd) + (1-q_saf_H(kd,1)*&
+                            &lam_H(id,kd,4)) * g_V_H(2,jd,id,kd))
+                        B_V_sub_H_alt2(id,kd,jd) = &
+                            &1/jac_F_H(id,kd) * &
+                            &(q_saf_H(kd,1) * g_V_H(3,jd,id,kd) + &
+                            &(1-q_saf_H(kd,1)*lam_H(id,kd,4))/&
+                            &(1+lam_H(id,kd,3))* g_V_H(2,jd,id,kd))
+                    end do comp
+                end do par
+            end do perp
+            
+            ! calculate B alternatively
+            B_V_alt = 0.0_dp
+            B_V_H_alt = 0.0_dp
+            perp2: do kd = 1,n_r
+                par2: do id = 1,n_par
+                    B_V_alt(id,kd) = sqrt(1/(jac_F(id,kd)) * &
+                        &((1-q_saf(kd,1)*lam(id,kd,4))/(1+lam(id,kd,3)) &
+                        &* B_V_sub(id,kd,1,2) + q_saf(kd,1)*B_V_sub(id,kd,1,3)))
+                    B_V_H_alt(id,kd) = sqrt(1/(jac_F_H(id,kd)) * &
+                        &((1-q_saf_H(kd,1)*lam_H(id,kd,4))/(1+lam_H(id,kd,3)) &
+                        &* B_V_sub_H(id,kd,1,2) &
+                        &+ q_saf_H(kd,1)*B_V_sub_H(id,kd,1,3)))
+                end do par2
+            end do perp2
+            
+            call writo('FULL MESH')
+            call lvl_ud(1)
+            diff = 0.0_dp
+            call writo('Paused... press enter')
+            read(*,*)
+            
+            ! FM magnitude
+            do kd = 1, n_r
+                diff(kd) = log10(min(max(maxval(abs(B_V(:,kd)-B_V_alt(:,kd)))&
+                    &,1.0E-20_dp),1E10_dp))
+            end do
+            call write_out(1,n_r,diff,'test whether sqrt(B_theta/J)_F = B &
+                &[log]')
+            
+            ! FM r component
+            do kd = 1, n_r
+                diff(kd) = log10(min(max(maxval(abs(B_V_sub(:,kd,1,1)-&
+                    &B_V_sub_alt(:,kd,1))),1.0E-20_dp),1E10_dp))
+            end do
+            call write_out(1,n_r,diff,'max diff. between standard and &
+                &alternative treatment, r component [log]')
+            do kd = 1, n_r
+                diff(kd) = log10(min(max(maxval(abs(B_V_sub(:,kd,1,1)-&
+                    &B_V_sub_alt2(:,kd,1))),1.0E-20_dp),1E10_dp))
+            end do
+            call write_out(1,n_r,diff,'max diff. between standard and &
+                &alternative treatment 2, r component [log]')
+            
+            ! FM theta component
+            do kd = 1, n_r
+                diff(kd) = log10(min(max(maxval(abs(B_V_sub(:,kd,1,2)-&
+                    &B_V_sub_alt(:,kd,2))),1.0E-20_dp),1E10_dp))
+            end do
+            call write_out(1,n_r,diff,'max diff. between standard and &
+                &alternative treatment, theta component [log]')
+            do kd = 1, n_r
+                diff(kd) = log10(min(max(maxval(abs(B_V_sub(:,kd,1,2)-&
+                    &B_V_sub_alt2(:,kd,2))),1.0E-20_dp),1E10_dp))
+            end do
+            call write_out(1,n_r,diff,'max diff. between standard and &
+                &alternative treatment 2, theta component [log]')
+                
+            ! FM zeta component
+            do kd = 1, n_r
+                diff(kd) = log10(min(max(maxval(abs(B_V_sub(:,kd,1,3)-&
+                    &B_V_sub_alt(:,kd,3))),1.0E-20_dp),1E10_dp))
+            end do
+            call write_out(1,n_r,diff,'max diff. between standard and &
+                &alternative treatment, zeta component [log]')
+            do kd = 1, n_r
+                diff(kd) = log10(min(max(maxval(abs(B_V_sub(:,kd,1,3)-&
+                    &B_V_sub_alt2(:,kd,3))),1.0E-20_dp),1E10_dp))
+            end do
+            call write_out(1,n_r,diff,'max diff. between standard and &
+                &alternative treatment 2, zeta component [log]')
+            
+            call lvl_ud(-1)
+            
+            call writo('HALF MESH')
+            call lvl_ud(1)
+            call writo('Paused... press enter')
+            read(*,*)
+            
+            ! HM magnitude
+            do kd = 1, n_r
+                diff(kd) = log10(min(max(maxval(abs(B_V_H(:,kd)-&
+                    &B_V_H_alt(:,kd))),1.0E-20_dp),1E10_dp))
+            end do
+            call write_out(1,n_r-1,diff(2:n_r),'test whether &
+                &sqrt(B_theta/J)_F = B [log]')
+            
+            ! HM r component
+            do kd = 1, n_r
+                diff(kd) = log10(max(maxval(abs(B_V_sub_H(:,kd,1,1)-&
+                    &B_V_sub_H_alt(:,kd,1))),1.0E-20_dp))
+            end do
+            call write_out(1,n_r-1,diff(2:n_r),'max diff. between standard and &
+                &alternative treatment, r component [log]')
+            do kd = 1, n_r
+                diff(kd) = log10(max(maxval(abs(B_V_sub_H(:,kd,1,1)-&
+                    &B_V_sub_H_alt2(:,kd,1))),1.0E-20_dp))
+            end do
+            call write_out(1,n_r-1,diff(2:n_r),'max diff. between standard and &
+                &alternative treatment 2, r component [log]')
+            
+            ! HM theta component
+            do kd = 1, n_r
+                diff(kd) = log10(max(maxval(abs(B_V_sub_H(:,kd,1,2)-&
+                    &B_V_sub_H_alt(:,kd,2))),1.0E-20_dp))
+            end do
+            call write_out(1,n_r-1,diff(2:n_r),'max diff. between standard and &
+                &alternative treatment, theta component [log]')
+            do kd = 1, n_r
+                diff(kd) = log10(max(maxval(abs(B_V_sub_H(:,kd,1,2)-&
+                    &B_V_sub_H_alt2(:,kd,2))),1.0E-20_dp))
+            end do
+            call write_out(1,n_r-1,diff(2:n_r),'max diff. between standard and &
+                &alternative treatment 2, theta component [log]')
+            
+            ! HM zeta component
+            do kd = 1, n_r
+                diff(kd) = log10(max(maxval(abs(B_V_sub_H(:,kd,1,3)-&
+                    &B_V_sub_H_alt(:,kd,3))),1.0E-20_dp))
+            end do
+            call write_out(1,n_r-1,diff(2:n_r),'max diff. between standard and &
+                &alternative treatment, zeta component [log]')
+            do kd = 1, n_r
+                diff(kd) = log10(max(maxval(abs(B_V_sub_H(:,kd,1,3)-&
+                    &B_V_sub_H_alt2(:,kd,3))),1.0E-20_dp))
+            end do
+            call write_out(1,n_r-1,diff(2:n_r),'max diff. between standard and &
+                &alternative treatment 2, zeta component [log]')
+            
+            call lvl_ud(-1)
+            
+            call lvl_ud(-1)
+            call lvl_ud(-1)
+        end if
     end subroutine
 
     subroutine test_ang_B()

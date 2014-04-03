@@ -68,7 +68,7 @@ contains
             ! calculate the magnetic field components  in both V(mec) and F(lux)
             ! coordinates
             call calc_B_V
-            call calc_B_F
+            !call calc_B_F
             
             call lvl_ud(-1)
             ! 2----------------------------------------------------------------

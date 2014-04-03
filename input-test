@@ -3,7 +3,7 @@
     style = 1
     n_par = 10
     min_par = 0
-    max_par = 6.283185307179586
+    max_par = 12.566370614359172953850573533118011536788
     n_alpha = 3
     max_it_NR = 500
     max_it_r = 2

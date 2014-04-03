@@ -95,7 +95,7 @@ contains
         
         R_c = repack(rmnc,mnmax,n_r,mpol,ntor,xm,xn)
         R_s = repack(rmns,mnmax,n_r,mpol,ntor,xm,xn)
-        Z_c = repack(zmnc,mnmax,n_r,mpol,ntor,xm,xn)                            ! xn includes the nfp factor from VMEC, which will not be looked at in this code
+        Z_c = repack(zmnc,mnmax,n_r,mpol,ntor,xm,xn)
         Z_s = repack(zmns,mnmax,n_r,mpol,ntor,xm,xn)
         lam_c = repack(lmnc,mnmax,n_r,mpol,ntor,xm,xn)
         lam_s = repack(lmns,mnmax,n_r,mpol,ntor,xm,xn)
@@ -109,7 +109,6 @@ contains
         B_V_s_H(:,:,:) = repack(bmns,mnmax,n_r,mpol,ntor,xm,xn)
         jac_V_H_c(:,:,:) = repack(gmnc,mnmax,n_r,mpol,ntor,xm,xn)
         jac_V_H_s(:,:,:) = repack(gmns,mnmax,n_r,mpol,ntor,xm,xn)
-        !call write_out(mnmax,5,rmnc(:,1:5),'rmnc with n_r = '//trim(i2str(n_r)))
         
         call lvl_ud(-1)
     end subroutine

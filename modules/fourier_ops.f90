@@ -32,7 +32,7 @@ contains
         
         ! some tests
         if (mpol.lt.1 .and. ntor.lt. 1) then 
-            call writo('ERROR: number of modes has to be at least 1')
+            call writo('ERROR: In f2r, number of modes has to be at least 1')
             stop
         end if
         
@@ -45,7 +45,7 @@ contains
             ! sum over all poloidal and toroidal modes
             do n = -ntor,ntor
                 do m = 0,mpol-1
-                    f2r = f2r + fun_cos(m,n)*ang_factor(m,n,1) &          ! the variable itself
+                    f2r = f2r + fun_cos(m,n)*ang_factor(m,n,1) &                ! the variable itself
                         &+ fun_sin(m,n)*ang_factor(m,n,2)
                 end do
             end do
@@ -61,20 +61,22 @@ contains
             ! sum over all poloidal and toroidal modes
             do n = -ntor,ntor
                 do m = 0,mpol-1
-                    f2r = f2r + n * (-fun_cos(m,n)*ang_factor(m,n,2) &
-                        &+ fun_sin(m,n)*ang_factor(m,n,1))
+                    f2r = f2r + n * (fun_cos(m,n)*ang_factor(m,n,2) &
+                        &- fun_sin(m,n)*ang_factor(m,n,1))
                 end do
             end do
             case default
-            call writo('ERROR: No action associated with argument deriv = '//&
-                &trim(i2str(deriv)))
+            call writo('ERROR: In f2r, no action associated with argument &
+                &deriv = '//trim(i2str(deriv)))
             stop
         end select
     end function f2r
  
     ! Calculate the cosine and sine factors  on a mesh (0:mpol-1, -ntor:ntor) at
     ! a given poloidal and toroidal position (theta,zeta)
-    ! The first index contains the cosine factors and the second one the sines.
+    ! The first index contains the cosine  factors and the second one the sines.
+    ! xn includes the nfp factor from VMEC,  which will not be looked at in this
+    ! code
     function mesh_cs(mpol,ntor,theta,zeta)
         ! input / output
         integer, intent(in) :: mpol, ntor
@@ -96,9 +98,9 @@ contains
         do n = -ntor,ntor
             do m = 0,mpol-1
                 ! cos factor
-                mesh_cs(m,n,1) = cos(m*theta + n*zeta)
+                mesh_cs(m,n,1) = cos(m*theta - n*zeta)
                 ! sin factor
-                mesh_cs(m,n,2) = sin(m*theta + n*zeta)
+                mesh_cs(m,n,2) = sin(m*theta - n*zeta)
             end do
         end do
     end function mesh_cs

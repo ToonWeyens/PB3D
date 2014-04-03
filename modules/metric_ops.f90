@@ -80,12 +80,13 @@ contains
     ! the metric  coefficients in  the C(ylindrical)  coordinate system  and the
     ! trans- formation matrices
     subroutine metric_V
-        use eq_vars, only: n_par
+        use eq_vars, only: n_par, R, Z
         use VMEC_vars, only: n_r
         use utilities, only: h2f
         
         ! local variables
         integer :: id, kd
+        real(dp) :: g_V_alt(3,3)
         
         ! deallocate if allocated
         if (allocated(g_V)) deallocate(g_V)
@@ -108,6 +109,31 @@ contains
                     &metric_calc(g_C_H(:,:,id,kd), C2V_dn_H(:,:,id,kd))
                 h_V_H(:,:,id,kd) = &
                     &metric_calc(h_C_H(:,:,id,kd), C2V_up_H(:,:,id,kd))
+                
+                g_V_alt(1,1) = R(id,kd,2)*R(id,kd,2) + Z(id,kd,2)*Z(id,kd,2)
+                g_V_alt(1,2) = R(id,kd,2)*R(id,kd,3) + Z(id,kd,2)*Z(id,kd,3)
+                g_V_alt(1,3) = R(id,kd,2)*R(id,kd,4) + Z(id,kd,2)*Z(id,kd,4)
+                g_V_alt(2,1) = g_V_alt(1,2)
+                g_V_alt(2,2) = R(id,kd,3)*R(id,kd,3) + Z(id,kd,3)*Z(id,kd,3)
+                g_V_alt(2,3) = R(id,kd,3)*R(id,kd,4) + Z(id,kd,3)*Z(id,kd,4)
+                g_V_alt(3,1) = g_V_alt(1,3)
+                g_V_alt(3,2) = g_V_alt(2,3)
+                g_V_alt(3,3) = R(id,kd,4)*R(id,kd,4) + Z(id,kd,4)*Z(id,kd,4) &
+                    &+R(id,kd,1)*R(id,kd,1)
+                !write(*,*) 'r,par = ', kd, id
+                !write(*,*) 'g_C = '
+                !call print_ar_2(g_C(:,:,id,kd))
+                !write(*,*) 'C2V_dn = '
+                !call print_ar_2(C2V_dn(:,:,id,kd))
+                !write(*,*) 'R = '
+                !call print_ar_1(R(id,kd,:))
+                !write(*,*) 'standard treatment:'
+                !call print_ar_2(g_V(:,:,id,kd))
+                !write(*,*) 'alternative treatment:'
+                !call print_ar_2(g_V_alt)
+                !write(*,*) 'difference'
+                !call print_ar_2(g_V_alt-g_V(:,:,id,kd))
+                !read(*,*)
             end do
         end do
     end subroutine
@@ -212,6 +238,7 @@ contains
                 !&kd=1,n_r/10),R_H(2:n_r/10+1,2)],[n_r/10,2])),&
                 !&'Rr at id = '//trim(i2str(jd)))
             
+            ! HM version
             jac_V_H(jd,:) = R_H(:,1)*(R_H(:,2)*Z_H(:,3)-R_H(:,3)*Z_H(:,2))
             
             ! upper metric factors
@@ -242,7 +269,34 @@ contains
                     &(jac_V_H_alt(jd,kd)+jac_V_H(jd,kd))
             end do
             
-            ! convert to full mesh
+            !! FM version (alternative below: convert HM to FM)
+            !! ¡¡¡ PROBLEM: YIELDS ZERO JACOBIAN WHICH LEADS TO INFINITIES !!!
+            !jac_V(jd,:) = R(jd,:,1)*(R(jd,:,2)*Z(jd,:,3)-R(jd,:,3)*Z(jd,:,2))
+            
+            !! upper metric factors
+            !cf = R(jd,:,1)/jac_V(jd,:); cf(1) = 0.0_dp
+            !C2V_up(1,1,jd,:) = cf*Z(jd,:,3)
+            !C2V_up(1,2,jd,:) = cf*(R(jd,:,4)*Z(jd,:,3)-R(jd,:,3)*Z(jd,:,4))
+            !C2V_up(1,3,jd,:) = -cf*R(jd,:,3)
+            !C2V_up(2,1,jd,:) = -cf*Z(jd,:,2)
+            !C2V_up(2,2,jd,:) = cf*(R(jd,:,2)*Z(jd,:,4)-R(jd,:,4)*Z(jd,:,2))
+            !C2V_up(2,3,jd,:) = cf*R(jd,:,2)
+            !C2V_up(3,1,jd,:) = 0.0_dp
+            !C2V_up(3,2,jd,:) = -1.0_dp
+            !C2V_up(3,3,jd,:) = 0.0_dp
+            
+            !! lower metric factors
+            !C2V_dn(1,1,jd,:) = R(jd,:,2)
+            !C2V_dn(1,2,jd,:) = 0.0_dp
+            !C2V_dn(1,3,jd,:) = Z(jd,:,2)
+            !C2V_dn(2,1,jd,:) = R(jd,:,3)
+            !C2V_dn(2,2,jd,:) = 0.0_dp
+            !C2V_dn(2,3,jd,:) = Z(jd,:,3)
+            !C2V_dn(3,1,jd,:) = R(jd,:,4)
+            !C2V_dn(3,2,jd,:) = -1.0_dp
+            !C2V_dn(3,3,jd,:) = Z(jd,:,4)
+            
+            ! convert to full mesh (alternative above: calculate directly)
             ! jacobian
             jac_V(jd,:) = h2f(jac_V_H(jd,:))
             
@@ -310,6 +364,7 @@ contains
                 V2F_up_H(3,1,id,kd) = lam_H(id,kd,2)
                 V2F_up_H(3,2,id,kd) = 1 + lam_H(id,kd,3)
                 V2F_up_H(3,3,id,kd) = lam_H(id,kd,4)
+                
                 jac_F_H(id,kd) = (flux_p_H(kd,2)/(2*pi)*&
                     &(1+lam_H(id,kd,3)))**(-1)*jac_V_H(id,kd)
                 
@@ -344,23 +399,22 @@ contains
 
     ! calculate the metric coefficients from the transformation matrices  in the 
     ! coordinate system B using 
-    ! (lower) g_B = TC2V_dn*g_A*TC2V_dn^T
-    ! (upper) h_B = TC2V_up*h_A*T2CV_up^T
+    ! (lower) g_B = T_dn*g_A*T_dn^T
+    ! (upper) h_B = T_up*h_A*T_up^T
     ! where g_A and h_A are the metric coefficients of the lower (covariant) and
     ! upper (contravariant) unit vectors in the coordinate system A
-    function metric_calc(gh_A, TC2V)
+    function metric_calc(gh_A, T)
         use utilities, only: mat_mult
         
         ! input / output
         real(dp), intent(in) :: gh_A(3,3)
-        real(dp), intent(in) :: TC2V(3,3)
+        real(dp), intent(in) :: T(3,3)
         real(dp) :: metric_calc(3,3)
         
         ! local variables
         real(dp) :: temp_mat(3,3)
         
-        temp_mat = mat_mult(gh_A,transpose(TC2V))
-        metric_calc = mat_mult(TC2V,temp_mat)
+        temp_mat = mat_mult(gh_A,transpose(T))
+        metric_calc = mat_mult(T,temp_mat)
     end function metric_calc
-
 end module metric_ops

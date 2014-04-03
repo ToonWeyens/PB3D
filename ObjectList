@@ -1,6 +1,5 @@
 ObjectFiles = \
 num_vars.o \
-var_ops.o \
 output_ops.o \
 input_ops.o \
 VMEC_vars.o \
