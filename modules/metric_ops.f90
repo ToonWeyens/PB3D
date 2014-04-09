@@ -12,7 +12,7 @@ module metric_ops
     public metric_C2V, metric_V, metric_C, metric_V2F, metric_F, &
         &C2V_up, C2V_dn, C2V_up_H, C2V_dn_H, jac_V, jac_V_H, h_V, g_V, h_V_H, &
         &g_V_H, V2F_up, V2F_dn, V2F_up_H, V2F_dn_H, jac_F, jac_F_H, &
-        &h_F, g_F, h_F_H, g_F_H
+        &h_F, g_F, h_F_H, g_F_H, VMEC_jac
 
     ! upper (h) and lower (g) metric factors
     ! (index 1,2: along B, perp to flux surfaces, index 4,5: 3x3 matrix)
@@ -34,6 +34,129 @@ module metric_ops
     real(dp), allocatable :: jac_F_H(:,:)                                       ! jacobian of F(lux) coordinate system (HM)
 
 contains
+    ! returns VMEC jacobian in (r,theta,zeta) with optional derivatives
+    function VMEC_jac(pt,deriv)
+        use eq_vars, onlY: VMEC_R, VMEC_Z, VMEC_coords
+        use utilities, only: fun_mult, fun_sum, norm_deriv
+        
+        ! input / output
+        real(dp) :: VMEC_jac
+        real(dp), intent(in) :: pt(3)
+        integer, intent(in) :: deriv(2)
+        
+        ! check order of derivatives
+        if (minval(deriv).lt.0) then
+            call writo('ERROR: asking for a derivative of degree '//&
+                &trim(i2str(minval(deriv)))//' of VMEC_jac')
+            stop
+        end if
+        
+        ! calculate VMEC_jac and possible angular derivatives in Fourier space
+        VMEC_jac = fun_mult(VMEC_R,aux3,pt,deriv)
+    contains
+        function coord_r(pt)
+            real(dp) :: coord_r
+            real(dp), intent(in) :: pt(3)
+            
+            coord_r = VMEC_coords(pt,1)
+            !write(*,*) 'coord_r ('//trim(r2strt(pt(1)))//') = '//&
+                !&trim(r2strt(coord_r))
+        end function
+        function R010(pt,deriv)
+            real(dp) :: R010
+            real(dp), intent(in) :: pt(3)
+            integer, intent(in) :: deriv(2)
+            
+            R010 = VMEC_R(pt,[1,0]+deriv)
+            !write(*,*) 'R010 ('//trim(r2strt(pt(1)))//','&
+                !&//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//') = '&
+                !&//trim(r2strt(R010))
+        end function
+        function R100(pt,deriv)
+            real(dp) :: R100
+            real(dp), intent(in) :: pt(3)
+            integer, intent(in) :: deriv(2)
+            
+            R100 = norm_deriv(VMEC_R,coord_r,pt,deriv)
+            !write(*,*) 'R100 ('//trim(r2strt(pt(1)))//','&
+                !&//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//') = '&
+                !&//trim(r2strt(R100))
+        end function
+        function Z010(pt,deriv)
+            real(dp) :: Z010
+            real(dp), intent(in) :: pt(3)
+            integer, intent(in) :: deriv(2)
+            
+            Z010 = VMEC_Z(pt,[1,0]+deriv)
+            !write(*,*) 'Z010 ('//trim(r2strt(pt(1)))//','&
+                !&//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//') = '&
+                !&//trim(r2strt(Z010))
+        end function
+        function Z100(pt,deriv)
+            real(dp) :: Z100
+            real(dp), intent(in) :: pt(3)
+            integer, intent(in) :: deriv(2)
+            
+            Z100 = norm_deriv(VMEC_Z,coord_r,pt,deriv)
+            !write(*,*) 'Z100 ('//trim(r2strt(pt(1)))//','&
+                !&//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//') = '&
+                !&//trim(r2strt(Z100))
+        end function
+        function aux1(pt,deriv)
+            real(dp) :: aux1
+            real(dp), intent(in) :: pt(3)
+            integer, intent(in) :: deriv(2)
+            
+            aux1 = fun_mult(R100,Z010,pt,deriv)
+            !write(*,*) 'aux1 ('//trim(r2strt(pt(1)))//','&
+                !&//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//') = '&
+                !&//trim(r2strt(aux1))
+        end function
+        function aux2(pt,deriv)
+            real(dp) :: aux2
+            real(dp), intent(in) :: pt(3)
+            integer, intent(in) :: deriv(2)
+            
+            aux2 = - fun_mult(R010,Z100,pt,deriv)
+            !write(*,*) 'aux2 ('//trim(r2strt(pt(1)))//','&
+                !&//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//') = '&
+                !&//trim(r2strt(aux2))
+        end function
+        function aux3(pt,deriv)
+            real(dp) :: aux3
+            real(dp), intent(in) :: pt(3)
+            integer, intent(in) :: deriv(2)
+            
+            aux3 = fun_sum(aux1,aux2,pt,deriv)
+            !write(*,*) 'aux3 ('//trim(r2strt(pt(1)))//','&
+                !&//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//') = '&
+                !&//trim(r2strt(aux3))
+        end function
+    end function
+    
+    ! returns lower transformation matrix from C(ylincrical) to V(MEC) coordinates
+    function T_C2V_dn(pt,deriv)
+        use eq_vars, only: VMEC_R, VMEC_Z, VMEC_coords
+        use utilities, onlY: norm_deriv
+        
+        ! input / output
+        real(dp) :: T_C2V_dn(3,3)
+        real(dp), intent(in) :: pt(3)
+        integer, intent(in) :: deriv(2)
+        
+        T_C2V_dn(1,1) = norm_deriv(VMEC_R,VMEC_coords(pt,1),pt,deriv)
+        T_C2V_dn(1,2) = 0.0_dp
+        T_C2V_dn(1,3) = norm_deriv(VMEC_Z,VMEC_coords(pt,1),pt,deriv)
+        T_C2V_dn(2,1) = VMEC_R(pt,deriv+[1,0])
+        T_C2V_dn(2,2) = 0.0_dp
+        T_C2V_dn(2,3) = VMEC_Z(pt,deriv+[1,0])
+        T_C2V_dn(3,1) = VMEC_R(pt,deriv+[0,1])
+        T_C2V_dn(3,2) = -1.0_dp
+        T_C2V_dn(3,3) = VMEC_Z(pt,deriv+[0,1])
+    end function
+
+
+
 
     ! calculate the trivial metric elements in the C(ylindrical) coordinate system
     subroutine metric_C
@@ -212,7 +335,7 @@ contains
                 ! calculate the (co)sines at the current mesh points
                 cs = mesh_cs(mpol,ntor,theta_H(jd,kd),zeta_H(jd,kd))
                 jac_V_H_alt(jd,kd) = &
-                    &-f2r(jac_V_H_c(:,:,kd),jac_V_H_s(:,:,kd),cs,mpol,ntor,1)
+                    &-f2r(jac_V_H_c(:,:,kd),jac_V_H_s(:,:,kd),cs,mpol,ntor)
             end do perp
         end do par
         

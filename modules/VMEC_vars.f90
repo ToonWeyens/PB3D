@@ -20,14 +20,16 @@ module VMEC_vars
     implicit none
     private
     public read_VMEC, &
-        &mnmax, rmnc, mpol, ntor, n_r, R_c, R_s, Z_c, Z_s, lam_c, lam_s, &
+        &mnmax, rmnc, mpol, ntor, n_r, R_c, R_s, R_c_H, R_s_H, Z_c, Z_s, &
+        &Z_c_H, Z_s_H, L_c, L_s, L_c_H, L_s_H, &
         &presf, presh, rmax_surf, rmin_surf, zmax_surf, iotaf, iotah, &
         &VMEC_name, phi, phi_r, &
         &phi_r_H, B_V_sub_s_M, B_V_sub_c_M, B_V_c_H, B_V_s_H, &
         &jac_V_H_c, jac_V_H_s
 
-    real(dp), allocatable :: R_c(:,:,:), R_s(:,:,:), Z_c(:,:,:), Z_s(:,:,:), &  ! Coeff. of R and Z in (co)sine series (FM)
-        &lam_c(:,:,:), lam_s(:,:,:), &                                          ! Coeff. of lambda in (co)sine series (HM)
+    real(dp), allocatable :: R_c(:,:,:), R_s(:,:,:), R_c_H(:,:,:), &            ! Coeff. of R in (co)sine series (FM)
+        &R_s_H(:,:,:), Z_c(:,:,:), Z_s(:,:,:), Z_c_H(:,:,:), Z_s_H(:,:,:), &    ! Coeff. of Z in (co)sine series (FM)
+        &L_c(:,:,:), L_s(:,:,:), L_c_H(:,:,:), L_s_H(:,:,:), &                  ! Coeff. of lambda in (co)sine series (HM)
         &B_V_sub_c_M(:,:,:,:), B_V_sub_s_M(:,:,:,:), &                          ! Coeff. of B_i in (co)sine series (last index: r,theta,phi) (FM, HM, HM)
         &B_V_c_H(:,:,:), B_V_s_H(:,:,:), &                                      ! Coeff. of magnitude of B (HM)
         &jac_V_H_c(:,:,:), jac_V_H_s(:,:,:)                                     ! Jacobian in VMEC coordinates (HM)
@@ -39,7 +41,11 @@ contains
     ! Reads the VMEC equilibrium data
     subroutine read_VMEC()
         use fourier_ops, only: repack
+        use utilities, only: f2h, h2f
+        
+        ! local variables
         integer :: istat                                                        ! holds status of read_wout_file
+        integer :: id, jd                                                       ! counters
         
         call writo('Reading data from VMEC output "' &
             &// trim(VMEC_name) // '"')
@@ -80,12 +86,18 @@ contains
         
         ! Allocate and repack the Fourier coefficients to translate them for use
         ! in this code
-        allocate(Z_c(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(Z_s(0:mpol-1,-ntor:ntor,1:n_r))
         allocate(R_c(0:mpol-1,-ntor:ntor,1:n_r))
         allocate(R_s(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(lam_c(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(lam_s(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(R_c_H(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(R_s_H(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(Z_c(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(Z_s(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(Z_c_H(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(Z_s_H(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(L_c(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(L_s(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(L_c_H(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(L_s_H(0:mpol-1,-ntor:ntor,1:n_r))
         allocate(B_V_sub_c_M(0:mpol-1,-ntor:ntor,1:n_r,3))
         allocate(B_V_sub_s_M(0:mpol-1,-ntor:ntor,1:n_r,3))
         allocate(B_V_c_H(0:mpol-1,-ntor:ntor,1:n_r))
@@ -97,8 +109,18 @@ contains
         R_s = repack(rmns,mnmax,n_r,mpol,ntor,xm,xn)
         Z_c = repack(zmnc,mnmax,n_r,mpol,ntor,xm,xn)
         Z_s = repack(zmns,mnmax,n_r,mpol,ntor,xm,xn)
-        lam_c = repack(lmnc,mnmax,n_r,mpol,ntor,xm,xn)
-        lam_s = repack(lmns,mnmax,n_r,mpol,ntor,xm,xn)
+        L_c_H = repack(lmnc,mnmax,n_r,mpol,ntor,xm,xn)
+        L_s_H = repack(lmns,mnmax,n_r,mpol,ntor,xm,xn)
+        do jd = -ntor,ntor
+            do id = 0,mpol-1
+                R_c_H(id,jd,:) = f2h(R_c(id,jd,:))
+                R_s_H(id,jd,:) = f2h(R_s(id,jd,:))
+                Z_c_H(id,jd,:) = f2h(Z_c(id,jd,:))
+                Z_s_H(id,jd,:) = f2h(Z_s(id,jd,:))
+                L_c(id,jd,:) = h2f(L_c(id,jd,:))
+                L_s(id,jd,:) = h2f(L_s(id,jd,:))
+            end do
+        end do
         B_V_sub_c_M(:,:,:,1) = repack(bsubsmnc,mnmax,n_r,mpol,ntor,xm,xn)
         B_V_sub_s_M(:,:,:,1) = repack(bsubsmns,mnmax,n_r,mpol,ntor,xm,xn)
         B_V_sub_c_M(:,:,:,2) = repack(bsubumnc,mnmax,n_r,mpol,ntor,xm,xn)

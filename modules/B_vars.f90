@@ -53,24 +53,24 @@ contains
                 ! FM quantities: r (s)
                 cs = mesh_cs(mpol,ntor,theta(id,kd),zeta(id,kd))
                 B_V_sub(id,kd,1,1) = f2r(B_V_sub_c_M(:,:,kd,1),&
-                    &B_V_sub_s_M(:,:,kd,1),cs,mpol,ntor,1)
+                    &B_V_sub_s_M(:,:,kd,1),cs,mpol,ntor)
                 B_V_sub(id,kd,3,1) = f2r(B_V_sub_c_M(:,:,kd,1),&
-                    &B_V_sub_s_M(:,:,kd,1),cs,mpol,ntor,3)
+                    &B_V_sub_s_M(:,:,kd,1),cs,mpol,ntor,[1,0])
                 B_V_sub(id,kd,4,1) = f2r(B_V_sub_c_M(:,:,kd,1),&
-                    &B_V_sub_s_M(:,:,kd,1),cs,mpol,ntor,4)
+                    &B_V_sub_s_M(:,:,kd,1),cs,mpol,ntor,[0,1])
                 
                 ! HM quantities: theta (u), zeta (v)
                 cs = mesh_cs(mpol,ntor,theta_H(id,kd),zeta_H(id,kd))
                 comp: do jd = 2,3
                     B_V_sub_H(id,kd,1,jd) = f2r(B_V_sub_c_M(:,:,kd,jd),&
-                        &B_V_sub_s_M(:,:,kd,jd),cs,mpol,ntor,1)
+                        &B_V_sub_s_M(:,:,kd,jd),cs,mpol,ntor)
                     B_V_sub_H(id,kd,3,jd) = f2r(B_V_sub_c_M(:,:,kd,jd),&
-                        &B_V_sub_s_M(:,:,kd,jd),cs,mpol,ntor,3)
+                        &B_V_sub_s_M(:,:,kd,jd),cs,mpol,ntor,[1,0])
                     B_V_sub_H(id,kd,4,jd) = f2r(B_V_sub_c_M(:,:,kd,jd),&
-                        &B_V_sub_s_M(:,:,kd,jd),cs,mpol,ntor,4)
+                        &B_V_sub_s_M(:,:,kd,jd),cs,mpol,ntor,[0,1])
                 end do comp
                 B_V_H(id,kd) = f2r(B_V_c_H(:,:,kd),B_V_s_H(:,:,kd),cs,&
-                    &mpol,ntor,1)
+                    &mpol,ntor)
             end do perp
             
             ! numerically  calculate  normal  derivatives  at  the  currrent

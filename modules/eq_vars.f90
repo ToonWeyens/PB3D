@@ -10,9 +10,10 @@ module eq_vars
 
     implicit none
     private
-    public eqd_mesh, calc_mesh, calc_RZl, ang_B, calc_flux_q, check_mesh, &
+    public eqd_mesh, calc_mesh, calc_RZL, ang_B, calc_flux_q, check_mesh, &
         &theta, zeta, theta_H, zeta_H, n_par, R, Z, lam_H, min_par, max_par, &
-        &q_saf, q_saf_H, flux_p, flux_p_H, flux_t, flux_t_H
+        &q_saf, q_saf_H, flux_p, flux_p_H, flux_t, flux_t_H, VMEC_R, VMEC_Z, &
+        &VMEC_L, VMEC_Dflux_p, VMEC_Dflux_t, VMEC_q_saf, VMEC_coords
 
     ! R and Z and derivatives in real (as opposed to Fourier) space (see below)
     ! (index 1: variable, 2: r derivative, 2: theta derivative, 3: zeta derivative)
@@ -27,6 +28,211 @@ module eq_vars
     integer :: n_par
 
 contains
+    ! calculate R in (r,theta,zeta) with optional angular derivatives
+    function VMEC_R(pt,deriv)
+        use fourier_ops, only: mesh_cs, f2r
+        use VMEC_vars, only: R_c, R_s, R_c_H, R_s_H, ntor, mpol
+        use utilities, only: find_VMEC_norm_coord
+        
+        ! input / output
+        real(dp) :: VMEC_R
+        real(dp), intent(in) :: pt(3)
+        integer, intent(in) :: deriv(2)
+        
+        ! local variables
+        integer :: kd
+        real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
+        logical :: FM
+        
+        ! check order of derivatives
+        if (minval(deriv).lt.0) then
+            call writo('ERROR: asking for a derivative of degree '//&
+                &trim(i2str(minval(deriv)))//' of R')
+            stop
+        end if
+        
+        ! determine whether to use FM or HM and which radial value
+        call find_VMEC_norm_coord('R',pt(1),FM,kd)
+        
+        ! calculate R and possible angular derivatives in Fourier space
+        cs = mesh_cs(mpol,ntor,pt(2),pt(3))
+        if (FM) then                                                            ! FM
+            VMEC_R = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor,deriv)
+        else                                                                    ! HM
+            VMEC_R = f2r(R_c_H(:,:,kd),R_s_H(:,:,kd),cs,mpol,ntor,deriv)
+        end if
+    end function
+    
+    function VMEC_Z(pt,deriv)
+        use fourier_ops, only: mesh_cs, f2r
+        use VMEC_vars, only: Z_c, Z_s, Z_c_H, Z_s_H, ntor, mpol
+        use utilities, only: find_VMEC_norm_coord
+        
+        ! input / output
+        real(dp) :: VMEC_Z
+        real(dp), intent(in) :: pt(3)
+        integer, intent(in) :: deriv(2)
+        
+        ! local variables
+        integer :: kd
+        real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
+        logical :: FM
+        
+        ! check order of derivatives
+        if (minval(deriv).lt.0) then
+            call writo('ERROR: asking for a derivative of degree '//&
+                &trim(i2str(minval(deriv)))//' of Z')
+            stop
+        end if
+        
+        ! determine whether to use FM or HM and which radial value
+        call find_VMEC_norm_coord('Z',pt(1),FM,kd)
+        
+        ! calculate Z and possible angular derivatives in Fourier space
+        cs = mesh_cs(mpol,ntor,pt(2),pt(3))
+        if (FM) then                                                            ! FM
+            VMEC_Z = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor,deriv)
+        else                                                                    ! HM
+            VMEC_Z = f2r(Z_c_H(:,:,kd),Z_s_H(:,:,kd),cs,mpol,ntor,deriv)
+        end if
+    end function
+    
+    function VMEC_L(pt,deriv)
+        use fourier_ops, only: mesh_cs, f2r
+        use VMEC_vars, only: L_c, L_s, L_c_H, L_s_H, ntor, mpol
+        use utilities, only: find_VMEC_norm_coord
+        
+        ! input / output
+        real(dp) :: VMEC_L
+        real(dp), intent(in) :: pt(3)
+        integer, intent(in) :: deriv(2)
+        
+        ! local variables
+        integer :: kd
+        real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
+        logical :: FM
+        
+        ! check order of derivatives
+        if (minval(deriv).lt.0) then
+            call writo('ERROR: asking for a derivative of degree '//&
+                &trim(i2str(minval(deriv)))//' of L')
+            stop
+        end if
+        
+        ! determine whether to use FM or HM and which radial value
+        call find_VMEC_norm_coord('L',pt(1),FM,kd)
+        
+        ! calculate L and possible angular derivatives in Fourier space
+        cs = mesh_cs(mpol,ntor,pt(2),pt(3))
+        if (FM) then                                                            ! FM
+            VMEC_L = f2r(L_c(:,:,kd),L_s(:,:,kd),cs,mpol,ntor,deriv)
+        else                                                                    ! HM
+            VMEC_L = f2r(L_c_H(:,:,kd),L_s_H(:,:,kd),cs,mpol,ntor,deriv)
+        end if
+    end function
+    
+    ! returns the VMEC coords (r,theta,zeta)_VMEC, indicated by dm = 1,2,3
+    function VMEC_coords(pt,dm)
+        use VMEC_vars, only: n_r
+        use utilities, only: find_VMEC_norm_coord
+        
+        ! input / output
+        real(dp) :: VMEC_coords
+        real(dp), intent(in) :: pt(3)
+        integer, intent(in) :: dm
+        
+        ! local variables
+        logical :: FM
+        integer :: kd
+            
+        if (dm.eq.1) then                                                       ! r coordinate
+            call find_VMEC_norm_coord('VMEC coordinates',pt(1),FM,kd)
+            VMEC_coords = (kd-1.0_dp)/(n_r-1)
+        else if (dm.eq.2) then                                                  ! theta coordinate
+            VMEC_coords = pt(2)
+        else if (dm.eq.3) then                                                  ! zeta coordinate
+            VMEC_coords = pt(3)
+        else
+            call writo('ERROR: asking VMEC coordinates for dimension '//&
+                &trim(i2str(dm))//', but only 1,2 or 3 is allowed')
+            stop
+        end if
+    end function
+
+    ! returns first normal deriv. of the toroidal flux
+    function VMEC_Dflux_t(pt)
+        use VMEC_vars, only: phi_r, phi_r_H
+        use utilities, only: find_VMEC_norm_coord
+        
+        ! input / output
+        real(dp) :: VMEC_Dflux_t
+        real(dp), intent(in) :: pt(3)
+        
+        ! local variables
+        integer :: kd
+        logical :: FM
+        
+        ! determine whether to use FM or HM and which radial value
+        call find_VMEC_norm_coord('L',pt(1),FM,kd)
+        
+        if (FM) then
+            VMEC_Dflux_t = phi_r(kd)
+        else
+            VMEC_Dflux_t = phi_r_H(kd)
+        end if
+    end function
+    
+    ! returns first normal deriv. of the poloidal flux
+    function VMEC_Dflux_p(pt)
+        use VMEC_vars, only: phi_r, phi_r_H, iotah, iotaf
+        use utilities, only: find_VMEC_norm_coord
+        
+        ! input / output
+        real(dp) :: VMEC_Dflux_p
+        real(dp), intent(in) :: pt(3)
+        
+        ! local variables
+        integer :: kd
+        logical :: FM
+        
+        ! determine whether to use FM or HM and which radial value
+        call find_VMEC_norm_coord('L',pt(1),FM,kd)
+        
+        if (FM) then
+            VMEC_Dflux_p = iotaf(kd)*phi_r(kd)
+        else
+            VMEC_Dflux_p = iotah(kd)*phi_r_H(kd)
+        end if
+    end function
+    
+    ! returns safety factor
+    function VMEC_q_saf(pt)
+        use VMEC_vars, only: iotah, iotaf
+        use utilities, only: find_VMEC_norm_coord
+        
+        ! input / output
+        real(dp) :: VMEC_q_saf
+        real(dp), intent(in) :: pt(3)
+        
+        ! local variables
+        integer :: kd
+        logical :: FM
+        
+        ! determine whether to use FM or HM and which radial value
+        call find_VMEC_norm_coord('L',pt(1),FM,kd)
+        
+        if (FM) then
+            VMEC_q_saf = 1.0_dp/iotaf(kd)
+        else
+            VMEC_q_saf = 1.0_dp/iotah(kd)
+        end if
+    end function
+
+
+
+
+
+
     ! calculate the angular mesh, filling the global variables (theta, zeta). 
     ! This is done for every flux surface. 
     ! The variable  theta_var_along_B determines  whether theta  is used  as the
@@ -178,9 +384,9 @@ contains
     ! calculate the coordinates R  and Z and l in real  space from their Fourier
     ! decomposition  using the  grid points  currently stored  in the  variables
     ! theta, zeta.
-    subroutine calc_RZl
+    subroutine calc_RZL
         use fourier_ops, only: mesh_cs, f2r
-        use VMEC_vars, only: R_c, R_s, Z_c, Z_s, lam_c, lam_s, n_r, &
+        use VMEC_vars, only: R_c, R_s, Z_c, Z_s, L_c, L_s, n_r, &
             &rmax_surf, rmin_surf, zmax_surf, ntor, mpol
         use utilities, only: calc_norm_deriv
         
@@ -197,6 +403,11 @@ contains
         allocate(Z(n_par,n_r,4)); Z = 0.0_dp
         allocate(lam_H(n_par,n_r,4)); lam_H = 0.0_dp
         
+        R(1,1,1) = VMEC_R([40.5_dp,0.1*pi,0.2*pi],[0,0])
+        write(*,*) 'R_HM = ', R(1,1,1)
+        R(1,1,1) = VMEC_R([40.5_dp,0.1*pi,0.2*pi],[0,1])
+        write(*,*) 'Dtheta R_HM = ', R(1,1,1)
+        
         ! do calculations for all angular points
         par: do id = 1, n_par                                                   ! parallel: along the magnetic field line
             ! calculate the  variables R, Z,  and their angular  derivatives for
@@ -204,18 +415,18 @@ contains
             perp: do kd = 1, n_r                                                ! perpendicular: normal to the flux surfaces
                 ! FM quantities
                 cs = mesh_cs(mpol,ntor,theta(id,kd),zeta(id,kd))
-                R(id,kd,1) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor,1)
-                R(id,kd,3) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor,3)
-                R(id,kd,4) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor,4)
-                Z(id,kd,1) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor,1)
-                Z(id,kd,3) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor,3)
-                Z(id,kd,4) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor,4)
+                R(id,kd,1) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor)
+                R(id,kd,3) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor,[1,0])
+                R(id,kd,4) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor,[0,1])
+                Z(id,kd,1) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor)
+                Z(id,kd,3) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor,[1,0])
+                Z(id,kd,4) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor,[0,1])
                 
                 ! HM quantities
                 cs = mesh_cs(mpol,ntor,theta_H(id,kd),zeta_H(id,kd))
-                lam_H(id,kd,1) = f2r(lam_c(:,:,kd),lam_s(:,:,kd),cs,mpol,ntor,1)
-                lam_H(id,kd,3) = f2r(lam_c(:,:,kd),lam_s(:,:,kd),cs,mpol,ntor,3)
-                lam_H(id,kd,4) = f2r(lam_c(:,:,kd),lam_s(:,:,kd),cs,mpol,ntor,4)
+                lam_H(id,kd,1) = f2r(L_c(:,:,kd),L_s(:,:,kd),cs,mpol,ntor)
+                lam_H(id,kd,3) = f2r(L_c(:,:,kd),L_s(:,:,kd),cs,mpol,ntor,[1,0])
+                lam_H(id,kd,4) = f2r(L_c(:,:,kd),L_s(:,:,kd),cs,mpol,ntor,[0,1])
             end do perp
             
             ! numerically calculate  normal derivatives at the  currrent angular
@@ -294,7 +505,7 @@ contains
                 return
             end if
         end subroutine
-    end subroutine calc_RZl
+    end subroutine calc_RZL
 
     ! Calculates flux quantities
     subroutine calc_flux_q
@@ -363,7 +574,7 @@ contains
     !   find_theta = .false. : look for zeta as a function of theta
     function ang_B(find_theta,fm ,alpha_in,input_ang,guess)
         use num_vars, only: tol_NR
-        use VMEC_vars, only: mpol, ntor, n_r, lam_c, lam_s, iotaf, iotah
+        use VMEC_vars, only: mpol, ntor, n_r, L_c, L_s, iotaf, iotah
         use fourier_ops, only: mesh_cs, f2r
         use utilities, only: zero_NR, h2f
         
@@ -377,8 +588,8 @@ contains
         
         ! local variables (also used in child functions)
         integer :: jd, kd
-        real(dp) :: lam_c_loc(0:mpol-1,-ntor:ntor,1:n_r)                        ! local version of HM l_c (either FM or HM)
-        real(dp) :: lam_s_loc(0:mpol-1,-ntor:ntor,1:n_r)                        ! local version of HM l_s (either FM or HM)
+        real(dp) :: L_c_loc(0:mpol-1,-ntor:ntor,1:n_r)                        ! local version of HM l_c (either FM or HM)
+        real(dp) :: L_s_loc(0:mpol-1,-ntor:ntor,1:n_r)                        ! local version of HM l_s (either FM or HM)
         real(dp) :: q(n_r)                                                      ! local version of 1/iota (either FM or HM)
         real(dp) :: lam                                                         ! lambda
         real(dp) :: dlam                                                        ! angular derivative of lambda
@@ -389,20 +600,20 @@ contains
         real(dp) :: ang_NR                                                      ! temporary solution for a given r, iteration
         integer :: norm_start                                                   ! either 1 (FM) or 2 (HM)
         
-        ! convert lam_c and lam_s to FM if FM is .true., select correct q
+        ! convert L_c and L_s to FM if FM is .true., select correct q
         if (FM) then
             do jd = -ntor, ntor
                 do kd = 0, mpol-1
-                    tempcoeff = lam_c(kd,jd,:)
-                    lam_c_loc(kd,jd,:) = h2f(tempcoeff)
-                    tempcoeff = lam_s(kd,jd,:)
-                    lam_s_loc(kd,jd,:) = h2f(tempcoeff)
+                    tempcoeff = L_c(kd,jd,:)
+                    L_c_loc(kd,jd,:) = h2f(tempcoeff)
+                    tempcoeff = L_s(kd,jd,:)
+                    L_s_loc(kd,jd,:) = h2f(tempcoeff)
                 end do
             end do
             q = iotaf
         else 
-            lam_c_loc = lam_c
-            lam_s_loc = lam_s
+            L_c_loc = L_c
+            L_s_loc = L_s
             q = iotah
         end if
         
@@ -447,7 +658,7 @@ contains
         ! function that returns  f = alpha -  alpha_0. It uses kd  from the main
         ! loop in the  parent function as the normal position  where to evaluate
         ! the quantitites, and input_ang(kd) as the angle for which the magnetic
-        ! match is sought, as well as q, alpha_in, lam_s_loc and lam_c_loc
+        ! match is sought, as well as q, alpha_in, L_s_loc and L_c_loc
         function fun_ang_B(ang)
             ! input / output
             real(dp) :: fun_ang_B
@@ -465,7 +676,7 @@ contains
             end if
             
             ! calculate lambda
-            lam = f2r(lam_c_loc(:,:,kd),lam_s_loc(:,:,kd),cs,mpol,ntor,1)
+            lam = f2r(L_c_loc(:,:,kd),L_s_loc(:,:,kd),cs,mpol,ntor)
             
             ! calculate the output function
             if (find_theta) then                                                ! looking for theta
@@ -478,8 +689,8 @@ contains
         ! function that returns  df/d(ang) = d(alpha -  alpha_0)/d(ang). It uses
         ! kd from  the main loop in  the parent function as  the normal position
         ! where to evaluate the quantitites,  and input_ang(kd) as the angle for
-        ! which the magnetic match is sought,  as well as q, alpha_in, lam_s_loc
-        ! and lam_c_loc
+        ! which the  magnetic match is sought,  as well as q,  alpha_in, L_s_loc
+        ! and L_c_loc
         function dfun_ang_B(ang)
             ! input / output
             real(dp) :: dfun_ang_B
@@ -498,9 +709,9 @@ contains
             
             ! calculate angular derivatives of lambda
             if (find_theta) then                                                ! looking for theta
-                dlam = f2r(lam_c_loc(:,:,kd),lam_s_loc(:,:,kd),cs,mpol,ntor,3)
+                dlam = f2r(L_c_loc(:,:,kd),L_s_loc(:,:,kd),cs,mpol,ntor,[1,0])
             else                                                                ! looking for zeta
-                dlam = f2r(lam_c_loc(:,:,kd),lam_s_loc(:,:,kd),cs,mpol,ntor,4)
+                dlam = f2r(L_c_loc(:,:,kd),L_s_loc(:,:,kd),cs,mpol,ntor,[0,1])
             end if
             
             ! calculate the output function

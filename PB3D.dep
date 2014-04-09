@@ -78,6 +78,7 @@ VMEC_vars.o : \
     str_ops.o \
     output_ops.o \
     fourier_ops.o \
+    utilities.o \
 
 utilities.o : \
     num_vars.o \

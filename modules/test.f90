@@ -11,7 +11,8 @@ module test
     implicit none
     private
     public test_repack, test_write_out, test_mesh_cs, test_metric_transf, &
-        &test_ang_B, test_h2f_f2h, test_norm_deriv, test_ext_var, test_B
+        &test_ang_B, test_h2f_f2h, test_calc_norm_deriv, test_ext_var, test_B, &
+        &test_fun_mult, test_norm_deriv, test_VMEC_jac
 
 contains
     subroutine test_repack()
@@ -122,7 +123,111 @@ contains
         end do
     end subroutine
     
-    subroutine test_norm_deriv()
+    subroutine test_norm_deriv()                                                ! function version
+        use utilities, only: norm_deriv
+        use VMEC_vars, only: n_r
+        
+        ! local variables
+        integer :: n_r_OLD
+        integer :: n_max
+        integer :: id
+        
+        call writo('test norm_deriv?')
+        do
+            if(yes_no(.false.)) then
+                do
+                    write(*,'(A)',advance='no') 'n_r ? ' 
+                    read(*,*) n_max
+                    if (n_max.lt.10) then
+                        call writo('Choose a value larger than 10')
+                        cycle
+                    else
+                        n_r_OLD = n_r
+                        n_r = n_max
+                        exit
+                    end if
+                end do
+                
+                call writo('FM values')
+                call writo('Paused... press enter')
+                read(*,*)
+                call write_out(1,n_max,[(f(args(id),[0,0]),id=1,n_max)],&
+                    &'f = cos x + 3*sin 2*y')
+                call write_out(1,n_max,[(f100(args(id)),id=1,n_max)],&
+                    &'Df = - sin x + 3*sin 2*y')
+                call write_out(1,n_max,[(f100_num(args(id)),id=1,n_max)],&
+                    &'Df num')
+                call write_out(1,n_max,[(f100_diff(args(id)),id=1,n_max)],&
+                    &'Df diff')
+                
+                call writo('HM values')
+                call writo('Paused... press enter')
+                read(*,*)
+                call write_out(1,n_max-1,[(f(args_HM(id),[0,0]),id=2,n_max)],&
+                    &'f = cos x + 3*sin 2*y')
+                call write_out(1,n_max-1,[(f100(args_HM(id)),id=2,n_max)],&
+                    &'Df = - sin x + 3*sin 2*y')
+                call write_out(1,n_max-1,[(f100_num(args_HM(id)),id=2,n_max)],&
+                    &'Df num')
+                call write_out(1,n_max-1,[(f100_diff(args_HM(id)),id=2,n_max)],&
+                    &'Df diff')
+                
+                n_r = n_r_OLD
+            else
+                exit
+            end if
+        end do
+    contains
+        function args(id)
+            real(dp) :: args(3)
+            integer, intent(in) :: id
+            
+            args = [1.0_dp*id,0.0_dp,0.0_dp]
+        end function 
+        function args_HM(id)
+            real(dp) :: args_HM(3)
+            integer, intent(in) :: id
+            
+            args_HM = [1.0_dp*id-0.5_dp,0.0_dp,0.0_dp]
+        end function 
+        function rad(pt)                                                        ! for pt = 1,n_max, returns 0,2*pi
+            real(dp) :: rad
+            real(dp), intent(in) :: pt(3)
+            
+            rad = 2*pi*(pt(1) - 1.0_dp)/(n_max-1.0_dp)
+        end function rad
+        function f(pt,deriv)
+            real(dp) :: f
+            real(dp), intent(in) :: pt(3)
+            integer, intent(in) :: deriv(2)
+            
+            if (deriv(1).eq.0) then
+                f = cos(rad(pt)) + 3*sin(2*rad(pt))
+            else
+                write(*,*) 'ERROR: only deriv(1) can be used'
+            end if
+        end function
+        function f100(pt)
+            real(dp) :: f100
+            real(dp), intent(in) :: pt(3)
+            
+            f100 = - sin(rad(pt)) + 6*cos(2*rad(pt))
+        end function
+        function f100_num(pt)
+            real(dp) :: f100_num
+            real(dp), intent(in) :: pt(3)
+            
+            f100_num = norm_deriv(f,rad,pt,[0,0])
+        end function
+        function f100_diff(pt)
+            real(dp) :: f100_diff
+            real(dp), intent(in) :: pt(3)
+            
+            f100_diff = f100_num(pt) - f100(pt)
+        end function
+    end subroutine
+    
+    subroutine test_calc_norm_deriv()                                           ! array version
         use utilities, only: calc_norm_deriv
         
         ! local variables
@@ -395,6 +500,89 @@ contains
             call lvl_ud(-1)
         end if
     end subroutine
+    
+    subroutine test_VMEC_jac()
+        use eq_ops, only: calc_eq
+        use eq_vars, only: n_par, max_par, min_par, theta_H, zeta_H
+        use VMEC_vars, only: n_r
+        use metric_ops, only: jac_V_H, VMEC_jac
+        
+        ! local variables
+        real(dp) :: jac_V_H_alt2(n_par, n_r)                                    ! Jacobian from functions (HM)
+        real(dp) :: jac_V_H_der(n_par, n_r)                                     ! angular deriv. of Jacobian from functions (HM)
+        real(dp) :: jac_V_H_diff(n_r)                                           ! difference over all parallel points
+        integer :: jd,kd
+        
+        call writo('test VMEC_jac?')
+        if(yes_no(.false.)) then
+            ! calculate equilibrium with some value for alpha
+            call writo('Calculate equilibrium')
+            call lvl_ud(1)
+            call calc_eq(pi/2)
+            call lvl_ud(-1)
+            
+            ! calculate jacobian using VMEC_jac
+            call writo('Calculating jacobians')
+            jac_V_H_alt2 = 0.0_dp
+            par: do jd = 1, n_par                                               ! parallel: along the magnetic field line
+                perp: do kd = 2, n_r                                            ! perpendicular: normal to the flux surfaces
+                    jac_V_H_alt2(jd,kd) = VMEC_jac([kd-0.5_dp,theta_H(jd,kd),&
+                        &zeta_H(jd,kd)],[0,0])
+                end do perp
+            end do par
+            
+            ! plot
+            call writo('Plotting jacobians')
+            call lvl_ud(1)
+            call writo('individual plots?')
+            if(yes_no(.false.)) then
+                do jd = 1,n_par
+                    call write_out(1,n_r,jac_V_H(jd,:),'jac_V_H at par = '//&
+                        &trim(i2str(jd)))
+                    call write_out(1,n_r,jac_V_H_alt2(jd,:),'jac_V_H_alt2 at &
+                        &par = '//trim(i2str(jd)))
+                    call write_out(1,n_r,abs(jac_V_H_alt2(jd,:)-jac_V_H(jd,:)),&
+                        &'jac_V_H_alt2 at par = '//trim(i2str(jd)))
+                end do
+            end if
+            do kd = 1,n_r
+                jac_V_H_diff(kd) = maxval(abs(jac_V_H_alt2(:,kd)-jac_V_H(:,kd)))
+            end do
+            call write_out(1,n_r,jac_V_H_diff,'maximum difference between &
+                &jac_V_H')
+            call lvl_ud(-1)
+            
+            ! angular derivatives
+            call writo('Calculating angular derivatives')
+            call lvl_ud(1)
+            perp2: do kd = 2, n_r
+                call writo('Poloidal dependency at r = '//trim(i2str(kd)))
+                parpol: do jd = 1, n_par
+                    jac_V_H_alt2(jd,kd) = VMEC_jac([kd-0.5_dp,(max_par-min_par)&
+                        &*jd/n_par,0.4*pi],[0,0])
+                    jac_V_H_der(jd,kd) = VMEC_jac([kd-0.5_dp,(max_par-min_par)&
+                        &*jd/n_par,0.4*pi],[1,0])
+                end do parpol
+                call write_out(1,n_par,jac_V_H_alt2(:,kd),'jacobian at r = '&
+                    &//trim(i2str(kd)))
+                call write_out(1,n_par,jac_V_H_der(:,kd),'pol. deriv at r = '&
+                    &//trim(i2str(kd)))
+                
+                call writo('Toroidal dependency at r = '//trim(i2str(kd)))
+                partor: do jd = 1, n_par
+                    jac_V_H_alt2(jd,kd) = VMEC_jac([kd-0.5_dp,0.4*pi,&
+                        &(max_par-min_par)*jd/n_par],[0,0])
+                    jac_V_H_der(jd,kd) = VMEC_jac([kd-0.5_dp,0.4*pi,&
+                        &(max_par-min_par)*jd/n_par],[0,1])
+                end do partor
+                call write_out(1,n_par,jac_V_H_alt2(:,kd),'jacobian at r = '&
+                    &//trim(i2str(kd)))
+                call write_out(1,n_par,jac_V_H_der(:,kd),'tor. deriv at r = '&
+                    &//trim(i2str(kd)))
+            end do perp2
+            call lvl_ud(-1)
+        end if
+    end subroutine
 
     subroutine test_metric_transf()
         use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F, &
@@ -402,7 +590,7 @@ contains
             &C2V_up, C2V_dn, C2V_up_H, C2V_dn_H, V2F_up, V2F_dn, V2F_up_H, &
             &V2F_dn_H, jac_V, g_V, h_V, jac_F, g_F, h_F, jac_V_H, g_V_H, &
             &h_V_H, jac_F_H, g_F_H, h_F_H
-        use eq_vars, only: eqd_mesh, calc_RZl, calc_flux_q, &
+        use eq_vars, only: eqd_mesh, calc_RZL, calc_flux_q, &
             &n_par, min_par, max_par, theta, zeta, theta_H, zeta_H
         use VMEC_vars, only: n_r
         use utilities, only: mat_mult, det
@@ -413,6 +601,10 @@ contains
         call writo('test metric_transf?')
         if(yes_no(.false.)) then
             ! initalize theta and zeta. No need for field-line following theta
+            if (allocated(zeta)) deallocate(zeta)
+            if (allocated(theta)) deallocate(theta)
+            if (allocated(zeta_H)) deallocate(zeta_H)
+            if (allocated(theta_H)) deallocate(theta_H)
             allocate(zeta(n_par, n_r)); zeta = 0.0_dp
             allocate(theta(n_par, n_r)); theta = 0.0_dp
             allocate(zeta_H(n_par, n_r)); zeta_H = 0.0_dp
@@ -425,7 +617,7 @@ contains
             theta_H = zeta_H
             
             ! calculate the cylindrical variables R, Z and lambda and derivatives
-            call calc_RZl
+            call calc_RZL
             
             ! calculate flux quantities
             call calc_flux_q
@@ -952,16 +1144,204 @@ contains
                     ! cosines and sines
                     cs = mesh_cs(mpol,ntor,par_var,dep_var(jd))
                     ! lambda
-                    lam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,1)
+                    lam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor)
                     find_f_plot(jd) = dep_var(jd)-(par_var+lam)/iotaf(kd)-alpha
                 else                                                            ! looking for theta (dep. var)
                     ! cosines and sines
                     cs = mesh_cs(mpol,ntor,dep_var(jd),par_var)
                     ! lambda
-                    lam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor,1)
+                    lam = f2r(l_c_F(:,:,kd),l_s_F(:,:,kd),cs,mpol,ntor)
                     find_f_plot(jd) = par_var-(dep_var(jd)+lam)/iotaf(kd)-alpha
                 end if
             end do
         end function find_f_plot
+    end subroutine
+    
+    subroutine test_fun_mult()
+        use utilities, only: fun_mult
+        use fourier_ops, only: f2r
+        use eq_vars, only: VMEC_R, vmec_z
+        use VMEC_vars, only: ntor
+        
+        ! local variables also used in subfunctinos
+        real(dp) :: rad, theta, zeta
+        integer :: n_pt                                                         ! max # points to plot
+        integer :: id                                                           ! counter
+        
+        call writo('test fun_mult?')
+        if(yes_no(.false.)) then
+            call writo('Testing whether fun_mult correctly multiplies two &
+                &functions, taking into account derivatives')
+            call lvl_ud(1)
+            
+            ! read user-input
+            write(*,'(A)',advance='no') 'r = ? ' 
+            read(*,*) rad
+            write(*,'(A)',advance='no') 'theta = ? ' 
+            read(*,*) theta
+            if (ntor.gt.0) then
+                write(*,'(A)',advance='no') 'zeta = ? ' 
+                read(*,*) zeta
+            end if
+            
+            ! plot R
+            n_pt = 50
+            
+            ! R
+            call write_out(1,n_pt,[(R([rad,id*2*pi/n_pt,zeta]),&
+                &id=1,n_pt)],'R at r = '//trim(r2strt(rad))//' and zeta = '//&
+                &trim(r2strt(zeta)))
+            ! Z
+            call write_out(1,n_pt,[(Z([rad,id*2*pi/n_pt,zeta]),&
+                &id=1,n_pt)],'Z at r = '//trim(r2strt(rad))//' and zeta = '//&
+                &trim(r2strt(zeta)))
+            ! R Z
+            call write_out(1,n_pt,[(RZ([rad,id*2*pi/n_pt,zeta]),&
+                &id=1,n_pt)],'R Z at r = '//trim(r2strt(rad))//&
+                &' and zeta = '//trim(r2strt(zeta)))
+            ! R Z_alt
+            call write_out(1,n_pt,[(RZ_alt([rad,id*2*pi/n_pt,zeta]),&
+                &id=1,n_pt)],'R Z alt at r = '//trim(r2strt(rad))//&
+                &' and zeta = '//trim(r2strt(zeta)))
+            ! R Z_diff
+            call write_out(1,n_pt,[(RZ_diff([rad,id*2*pi/n_pt,zeta]),&
+                &id=1,n_pt)],'R Z alt diff r = '//trim(r2strt(rad))//&
+                &' and zeta = '//trim(r2strt(zeta)))
+            ! R Z 30
+            call write_out(1,n_pt,[(RZ30([rad,id*2*pi/n_pt,zeta]),&
+                &id=1,n_pt)],'R Z 30 at r = '//trim(r2strt(rad))//&
+                &' and zeta = '//trim(r2strt(zeta)))
+            ! R Z_alt 30
+            call write_out(1,n_pt,[(RZ30_alt([rad,id*2*pi/n_pt,zeta]),&
+                &id=1,n_pt)],'R Z 30 alt at r = '//trim(r2strt(rad))//&
+                &' and zeta = '//trim(r2strt(zeta)))
+            ! R Z_diff 30
+            call write_out(1,n_pt,[(RZ30_diff([rad,id*2*pi/n_pt,zeta]),&
+                &id=1,n_pt)],'R Z 30 diff at r = '//trim(r2strt(rad))//&
+                &' and zeta = '//trim(r2strt(zeta)))
+                
+            if (ntor.gt.0) then
+                ! R Z 11
+                call write_out(1,n_pt,[(RZ11([rad,id*2*pi/n_pt,zeta]),&
+                    &id=1,n_pt)],'R Z 11 at r = '//trim(r2strt(rad))//&
+                    &' and zeta = '//trim(r2strt(zeta)))
+                ! R Z 11 alt
+                call write_out(1,n_pt,[(RZ11_alt([rad,id*2*pi/n_pt,zeta]),&
+                    &id=1,n_pt)],'R Z 11 alt at r = '//trim(r2strt(rad))//&
+                    &' and zeta = '//trim(r2strt(zeta)))
+                ! R Z 11 diff
+                call write_out(1,n_pt,[(RZ11_diff([rad,id*2*pi/n_pt,zeta]),&
+                    &id=1,n_pt)],'R Z 11 diff at r = '//trim(r2strt(rad))//&
+                    &' and zeta = '//trim(r2strt(zeta)))
+            end if
+            
+            call lvl_ud(-1)
+        end if
+    contains
+        function R(pt)
+            real(dp) :: R
+            real(dp) :: pt(3)
+            
+            R = VMEC_R(pt,[0,0])
+        end function
+        function Z(pt)
+            real(dp) :: Z
+            real(dp) :: pt(3)
+            
+            Z = VMEC_Z(pt,[0,0])
+        end function
+        function RZ(pt)
+            real(dp) :: RZ
+            real(dp) :: pt(3)
+            
+            RZ = fun_mult(VMEC_R,VMEC_Z,pt,[0,0])
+        end function
+        function RZ_alt(pt)
+            real(dp) :: RZ_alt
+            real(dp) :: pt(3)
+            
+            RZ_alt = VMEC_R(pt,[0,0])*VMEC_Z(pt,[0,0])
+        end function
+        function RZ_diff(pt)
+            real(dp) :: RZ_diff
+            real(dp) :: pt(3)
+            
+            RZ_diff = VMEC_R(pt,[0,0])*VMEC_Z(pt,[0,0]) - RZ(pt)
+        end function
+        function RZ30(pt)
+            real(dp) :: RZ30
+            real(dp) :: pt(3)
+            
+            RZ30 = fun_mult(VMEC_R,VMEC_Z,pt,[3,0])
+        end function
+        function RZ30_alt(pt)
+            real(dp) :: RZ30_alt
+            real(dp) :: pt(3)
+            
+            RZ30_alt = VMEC_R(pt,[3,0])*VMEC_Z(pt,[0,0]) + 3*VMEC_R(pt,[2,0])&
+                &*VMEC_Z(pt,[1,0]) + 3*VMEC_R(pt,[1,0])*VMEC_Z(pt,[2,0]) + &
+                &VMEC_R(pt,[0,0])*VMEC_Z(pt,[3,0])
+        end function
+        function RZ30_diff(pt)
+            real(dp) :: RZ30_diff
+            real(dp) :: pt(3)
+            
+            RZ30_diff = RZ30_alt(pt) - RZ30(pt)
+        end function
+        function R01(pt)
+            real(dp) :: R01
+            real(dp) :: pt(3)
+            
+            R01 = VMEC_R(pt,[0,1])
+        end function
+        function R10(pt)
+            real(dp) :: R10
+            real(dp) :: pt(3)
+            
+            R10 = VMEC_R(pt,[1,0])
+        end function
+        function R11(pt)
+            real(dp) :: R11
+            real(dp) :: pt(3)
+            
+            R11 = VMEC_R(pt,[1,1])
+        end function
+        function Z01(pt)
+            real(dp) :: Z01
+            real(dp) :: pt(3)
+            
+            Z01 = VMEC_Z(pt,[0,1])
+        end function
+        function Z10(pt)
+            real(dp) :: Z10
+            real(dp) :: pt(3)
+            
+            Z10 = VMEC_Z(pt,[1,0])
+        end function
+        function Z11(pt)
+            real(dp) :: Z11
+            real(dp) :: pt(3)
+            
+            Z11 = VMEC_Z(pt,[1,1])
+        end function
+        function RZ11(pt)
+            real(dp) :: RZ11
+            real(dp) :: pt(3)
+            
+            RZ11 = fun_mult(VMEC_R,VMEC_Z,pt,[1,1])
+        end function
+        function RZ11_alt(pt)
+            real(dp) :: RZ11_alt
+            real(dp) :: pt(3)
+            
+            RZ11_alt = R11(pt)*Z(pt) + R01(pt)*Z10(pt) + R10(pt)*Z01(pt) &
+                &+ R(pt)*Z11(pt)
+        end function
+        function RZ11_diff(pt)
+            real(dp) :: RZ11_diff
+            real(dp) :: pt(3)
+            
+            RZ11_diff = RZ11_alt(pt) - RZ11(pt)
+        end function
     end subroutine
 end module test

@@ -21,7 +21,8 @@ contains
     ! (Normal derivative is done discretely, outside of this function)
     function f2r(fun_cos,fun_sin,ang_factor,mpol,ntor,deriv)
         ! input / output
-        integer, intent(in) :: mpol, ntor, deriv
+        integer, intent(in) :: mpol, ntor
+        integer, intent(in), optional :: deriv(2)
         real(dp) :: f2r
         real(dp), intent(in) :: fun_cos(0:mpol-1,-ntor:ntor)                    ! cos part of Fourier variables (coeff. of the sum)
         real(dp), intent(in) :: fun_sin(0:mpol-1,-ntor:ntor)                    ! sin part of Fourier variables (coeff. of the sum)
@@ -29,6 +30,9 @@ contains
         
         ! local variables
         integer :: m,n
+        integer :: id
+        real(dp) :: fac_cos, fac_sin                                            ! factor in front of cos and sin, after taking derivatives
+        real(dp) :: fac_cos_temp, fac_sin_temp                                  ! when calculating factors for angular derivatives
         
         ! some tests
         if (mpol.lt.1 .and. ntor.lt. 1) then 
@@ -39,37 +43,35 @@ contains
         ! initiate
         f2r = 0.0_dp
         
-        ! set pol_fac and tor_fac according to possible derivative asked
-        select case (deriv)
-            case (1)                                                            ! no derivative
-            ! sum over all poloidal and toroidal modes
-            do n = -ntor,ntor
-                do m = 0,mpol-1
-                    f2r = f2r + fun_cos(m,n)*ang_factor(m,n,1) &                ! the variable itself
-                        &+ fun_sin(m,n)*ang_factor(m,n,2)
-                end do
+        ! sum over modes
+        do n = -ntor,ntor
+            do m = 0,mpol-1
+                ! initialize factors in front of cos and sin
+                fac_cos = fun_cos(m,n)
+                fac_sin = fun_sin(m,n)
+                
+                ! angular derivatives
+                if (present(deriv)) then 
+                    ! apply possible poloidal derivatives
+                    do id = 1,deriv(1)
+                        fac_cos_temp = m * fac_sin
+                        fac_sin_temp = - m * fac_cos
+                        fac_cos = fac_cos_temp
+                        fac_sin = fac_sin_temp
+                    end do
+                    ! apply possible toroidal derivatives
+                    do id = 1,deriv(2)
+                        fac_cos_temp = - n * fac_sin
+                        fac_sin_temp = n * fac_cos
+                        fac_cos = fac_cos_temp
+                        fac_sin = fac_sin_temp
+                    end do
+                end if
+                
+                f2r = f2r + fac_cos*ang_factor(m,n,1) &
+                    &+ fac_sin*ang_factor(m,n,2)
             end do
-            case (3)                                                            ! poloidal derivative: m(-f_c*s+f_s*c)
-            ! sum over all poloidal and toroidal modes
-            do n = -ntor,ntor
-                do m = 0,mpol-1
-                    f2r = f2r + m * (-fun_cos(m,n)*ang_factor(m,n,2) &
-                        &+ fun_sin(m,n)*ang_factor(m,n,1))
-                end do
-            end do
-            case (4)                                                            ! toroidal derivative: n(-f_c*s+f_s*c)
-            ! sum over all poloidal and toroidal modes
-            do n = -ntor,ntor
-                do m = 0,mpol-1
-                    f2r = f2r + n * (fun_cos(m,n)*ang_factor(m,n,2) &
-                        &- fun_sin(m,n)*ang_factor(m,n,1))
-                end do
-            end do
-            case default
-            call writo('ERROR: In f2r, no action associated with argument &
-                &deriv = '//trim(i2str(deriv)))
-            stop
-        end select
+        end do
     end function f2r
  
     ! Calculate the cosine and sine factors  on a mesh (0:mpol-1, -ntor:ntor) at

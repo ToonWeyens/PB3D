@@ -14,7 +14,7 @@ contains
     ! calculate the equilibrium quantities on a grid determined by straight field
     ! lines.
     subroutine calc_eq(alpha)
-        use eq_vars, only: eqd_mesh, calc_mesh, calc_RZl, calc_flux_q, &
+        use eq_vars, only: eqd_mesh, calc_mesh, calc_RZL, calc_flux_q, &
             &check_mesh
         use B_vars, only: calc_B_V, calc_B_F
         use metric_ops, only: metric_C, metric_C2V, metric_V, metric_V2F, &
@@ -45,7 +45,7 @@ contains
             call lvl_ud(1)
             
             ! calculate the cylindrical variables R, Z and lambda and derivatives
-            call calc_RZl
+            call calc_RZL
             
             ! calculate flux quantities
             call calc_flux_q

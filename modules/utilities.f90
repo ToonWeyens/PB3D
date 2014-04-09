@@ -9,7 +9,8 @@ module utilities
     implicit none
     private
     public zero_NR, ext_var, calc_norm_deriv, f2h, h2f, mat_mult, det, &
-        &matvec_mult, calc_int
+        &matvec_mult, calc_int, fun_mult, fun_sum, find_VMEC_norm_coord, &
+        &norm_deriv
 
 contains
     ! finds the zero of a function using Newton-Rhapson iteration
@@ -197,6 +198,7 @@ contains
         n_max = size(var)
         allocate(f2h(n_max))
         
+        f2h(1) = 0.0_dp
         ! interpolate the inner quantities
         f2h(2:n_max) = 0.5_dp*(var(1:n_max-1) + var(2:n_max))                   ! Only last values must come from B.C.
     end function
@@ -242,6 +244,58 @@ contains
                 &(var(kd)+var(kd-1))/2 * (x(kd)-x(kd-1))
         end do
     end function calc_int
+    
+    ! calculates normal derivatives of a function. Apart from the function to be
+    ! derived, also a function containing the normal variable has to be passed.
+    recursive function norm_deriv(f,x,pt,deriv)
+        use VMEC_vars, only: n_r
+        
+        ! input / output
+        real(dp) :: norm_deriv
+        real(dp), intent(in) :: pt(3)
+        integer, intent(in) :: deriv(2)
+        interface
+            function f(pt1,deriv1)
+                use num_vars, only: dp
+                real(dp) :: f
+                real(dp), intent(in) :: pt1(3)
+                integer, intent(in) :: deriv1(2)
+            end function f
+            function x(pt2)
+                use num_vars, only: dp
+                real(dp) :: x
+                real(dp), intent(in) :: pt2(3)
+            end function x
+        end interface
+        
+        ! local variables
+        integer :: id, kd
+        logical :: FM
+        real(dp) :: pt_l(3), pt_r(3), d_pt(3)
+        
+        ! determine whether to use FM or HM and which radial value
+        call find_VMEC_norm_coord('VMEC normal derivatives',pt(1),FM,kd)
+        
+        ! determine one  normal derivative making  use of the  points x(1)+-0.5,
+        ! except for the  first and last points of the  grid, where higher-order
+        ! extrapolation is needed
+        if (FM .and. kd.eq.1) then                                              ! first point in FM
+            ! first normal point in FM: 0.0 -> extrapolate using 4 FM points
+            d_pt = [1.0_dp,0.0_dp,0.0_dp]
+            norm_deriv = ext_var([(f(pt+id*d_pt,deriv),id=0,3)],&
+                &[(x(pt+id*d_pt),id=0,3)],0.0_dp,1)
+        else if (FM .and. kd.eq.n_r) then                                       ! last point in FM
+            ! last normal point in FM: n_r -> extrapolate using 4 FM points
+            d_pt = [1.0_dp,0.0_dp,0.0_dp]
+            norm_deriv = ext_var([(f(pt-id*d_pt,deriv),id=0,3)],&
+                &[(x(pt-id*d_pt),id=0,3)],x(pt),1)
+        else                                                                    ! interior points
+            ! simple centered differences using FM if HM and HM if FM
+            pt_l = pt - [0.5_dp,0._dp,0._dp]
+            pt_r = pt + [0.5_dp,0._dp,0._dp]
+            norm_deriv = (f(pt_r,deriv) - f(pt_l,deriv)) / (x(pt_r) - x(pt_l))
+        end if
+    end function norm_deriv
     
     ! calculates normal  derivatives of a  FM or  HM quantity. The  inverse step
     ! size  has to  be specified,  normalized  so that  the whole  range of  the
@@ -421,4 +475,120 @@ contains
         end do
         det = sgn*det   
     end function det
+    
+    ! product of two functions, with angular derivatives
+    recursive function fun_mult(f1,f2,pt,deriv)
+        ! input / output
+        real(dp) :: fun_mult
+        real(dp), intent(in) :: pt(3)
+        integer, intent(in) :: deriv(2)
+        interface
+            function f1(pt1,deriv1)
+                use num_vars, only: dp
+                real(dp) :: f1
+                real(dp), intent(in) :: pt1(3)
+                integer, intent(in) :: deriv1(2)
+            end function f1
+            function f2(pt2,deriv2)
+                use num_vars, only: dp
+                real(dp) :: f2
+                real(dp), intent(in) :: pt2(3)
+                integer, intent(in) :: deriv2(2)
+            end function f2
+        end interface
+        
+        ! local variables
+        real(dp) :: bin_fac(2)                                                  ! binomial factor for pol. and tor. sum
+        integer :: m_max, n_max                                                 ! max. degree of pol., tor. derivatives
+        integer :: m, n                                                         ! current degree of pol., tor. derivatives
+        
+        ! distribute angular derivatives using binomial theorem
+        fun_mult = 0.0_dp
+        
+        m_max = deriv(1)
+        n_max = deriv(2)
+        
+        ! poloidal derivatives
+        do m = 0,m_max
+            if (m.eq.0) then                                                    ! first term in sum
+                bin_fac(1) = 1.0_dp
+            else
+                bin_fac(1) = bin_fac(1)*(m_max-(m-1))/m
+            end if
+            ! toroidal derivatives
+            do n = 0,n_max
+                if (n.eq.0) then                                                ! first term in sum
+                    bin_fac(2) = 1.0_dp
+                else
+                    bin_fac(2) = bin_fac(2)*(n_max-(n-1))/n
+                end if
+                fun_mult = fun_mult + bin_fac(1)*bin_fac(2) * &
+                    &f1(pt,[m,n])*f2(pt,[m_max-m,n_max-n])
+            end do
+        end do
+    end function fun_mult
+
+    ! sum of two functions, with angular derivatives
+    recursive function fun_sum(f1,f2,pt,deriv)
+        ! input / output
+        real(dp) :: fun_sum
+        real(dp), intent(in) :: pt(3)
+        integer, intent(in) :: deriv(2)
+        interface
+            function f1(pt1,deriv1)
+                use num_vars, only: dp
+                real(dp) :: f1
+                real(dp), intent(in) :: pt1(3)
+                integer, intent(in) :: deriv1(2)
+            end function f1
+            function f2(pt2,deriv2)
+                use num_vars, only: dp
+                real(dp) :: f2
+                real(dp), intent(in) :: pt2(3)
+                integer, intent(in) :: deriv2(2)
+            end function f2
+        end interface
+        
+        fun_sum = f1(pt,deriv) + f2(pt,deriv)
+    end function fun_sum
+    
+    ! calculates the radial mesh point for VMEC variables
+    subroutine find_VMEC_norm_coord(fun_name,pt_r,FM,kd)
+        use VMEC_vars, only: n_r
+        
+        ! input / output
+        real(dp) :: pt_r
+        logical :: FM
+        integer :: kd
+        character(len=*) :: fun_name
+        
+        ! local variables
+        real(dp), parameter :: prec = 100*epsilon(1.0_dp)                       ! precision which we want
+        
+        ! determine whether to use FM or HM and which radial value, test
+        if (mod(pt_r,1.0_dp).lt.prec) then                                     ! FM
+            FM = .true.
+            kd = nint(pt_r)
+            if (kd.lt.1 .or. kd.gt.n_r) then
+                call writo('ERROR: FM r-range for '//trim(fun_name)//' is &
+                    &discrete values between 1 and '//trim(i2str(n_r))//&
+                    &', yet asking for '//trim(i2str(kd)))
+                stop
+            end if
+        else if (mod(pt_r,0.5_dp).lt.prec) then                                ! HM
+            FM = .false.
+            kd = nint(pt_r+0.5_dp)
+            if (kd.lt.2 .or. kd.gt.n_r) then
+                call writo('ERROR: HM r-range for '//trim(fun_name)//' is &
+                    &discrete values between 2 and '//trim(i2str(n_r))//&
+                    &', yet asking for '//trim(i2str(kd)))
+                stop
+            end if
+        else 
+            call writo('ERROR: for '//trim(fun_name)//', use integer values &
+                &for FM quantities or half-integer values for HM. The &
+                &provided value deviated too much from this.')
+            stop
+        end if 
+    end subroutine
 end module utilities
