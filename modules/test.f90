@@ -12,7 +12,8 @@ module test
     private
     public test_repack, test_write_out, test_mesh_cs, test_metric_transf, &
         &test_ang_B, test_h2f_f2h, test_calc_norm_deriv, test_ext_var, test_B, &
-        &test_fun_mult, test_norm_deriv, test_VMEC_jac
+        &test_fun_mult, test_norm_deriv, test_VMEC_jac, test_VMEC_norm_deriv, &
+        &test_VMEC_conv_FHM
 
 contains
     subroutine test_repack()
@@ -123,6 +124,227 @@ contains
         end do
     end subroutine
     
+    subroutine test_VMEC_norm_deriv()                                           ! array version with higher derivatives
+        use utilities, only: VMEC_norm_deriv
+        
+        ! local variables
+        integer :: loc_max, id, kd
+        integer :: n_steps
+        real(dp) :: start_step
+        real(dp), allocatable :: varin(:)
+        real(dp), allocatable :: var1_an(:), var2_an(:), var3_an(:), &
+            &var4_an(:), var5_an(:)
+        real(dp), allocatable :: var1_nm(:), var2_nm(:), var3_nm(:), &
+            &var4_nm(:), var5_nm(:)
+        logical :: ind_plots
+        real(dp), allocatable :: step_size(:)
+        real(dp), allocatable :: max_error(:,:)
+        real(dp), allocatable :: mean_error(:,:)
+        real(dp), allocatable :: plot_var(:,:)
+        
+        call writo('test VMEC_norm_deriv?')
+        if(yes_no(.false.)) then
+            ! read user input
+            do
+                write(*,'(A)',advance='no') 'how many steps ? ' 
+                read(*,*) n_steps
+                if (n_steps.lt.10) then
+                    call writo('Choose a value larger than 10')
+                    cycle
+                else
+                    exit
+                end if
+            end do
+            do
+                write(*,'(A)',advance='no') 'starting (max) step size ? ' 
+                read(*,*) start_step
+                if (start_step.gt.1E-1_dp) then
+                    call writo('Choose a value smaller than 0.1')
+                    cycle
+                else
+                    exit
+                end if
+            end do
+            
+            call writo('Individual plots?')
+            if(yes_no(.false.)) then
+                ind_plots = .true.
+            else
+                ind_plots = .false.
+            end if
+            
+            ! initialize
+            allocate(step_size(n_steps)); step_size = 0.0_dp
+            allocate(max_error(n_steps,5)); max_error = 0.0_dp
+            allocate(mean_error(n_steps,5)); mean_error = 0.0_dp
+            allocate(plot_var(2,n_steps)); plot_var = 0.0_dp
+            
+            call lvl_ud(1)
+                
+            ! n_steps calculations up to min_step
+            do id = 1,n_steps
+                loc_max = nint(id/start_step)
+                step_size(id) = 2*pi/loc_max
+                
+                call writo(trim(i2str(id))//'/'//trim(i2str(n_steps))//&
+                    &': calculating using '//trim(i2str(loc_max))//' points')
+                
+                ! set up input function: sin(2*pi * x) + 2*cos(2*pi * 0.3*x)
+                if (allocated(varin)) deallocate(varin)
+                if (allocated(var1_an)) deallocate(var1_an)
+                if (allocated(var2_an)) deallocate(var2_an)
+                if (allocated(var3_an)) deallocate(var3_an)
+                if (allocated(var4_an)) deallocate(var4_an)
+                if (allocated(var5_an)) deallocate(var5_an)
+                if (allocated(var1_nm)) deallocate(var1_nm)
+                if (allocated(var2_nm)) deallocate(var2_nm)
+                if (allocated(var3_nm)) deallocate(var3_nm)
+                if (allocated(var4_nm)) deallocate(var4_nm)
+                if (allocated(var5_nm)) deallocate(var5_nm)
+                
+                allocate(varin(loc_max))
+                allocate(var1_an(loc_max))
+                allocate(var2_an(loc_max))
+                allocate(var3_an(loc_max))
+                allocate(var4_an(loc_max))
+                allocate(var5_an(loc_max))
+                allocate(var1_nm(loc_max))
+                allocate(var2_nm(loc_max))
+                allocate(var3_nm(loc_max))
+                allocate(var4_nm(loc_max))
+                allocate(var5_nm(loc_max))
+                
+                ! function
+                !varin = [(sin((kd-1)*pi/(loc_max-1))&
+                    !&+0.25*cos((kd-1)*pi/(loc_max-1)),kd=1,loc_max)]
+                varin = 1.0_dp/800*[(0.5+0.5*(kd*step_size(id))**2&
+                    &-0.005*(kd*step_size(id))**3&
+                    &+0.0000001*(kd*step_size(id))**4,kd=1,loc_max)]
+                
+                ! analytical derivatives
+                var1_an = 1.0_dp/800*[((kd*step_size(id))&
+                    &-0.015*(kd*step_size(id))**2&
+                    &+0.0000004*(kd*step_size(id))**3,kd=1,loc_max)]
+                var2_an = 1.0_dp/800*[(1-0.03*(kd*step_size(id))&
+                    &+0.0000012*(kd*step_size(id))**2,kd=1,loc_max)]
+                var3_an = 1.0_dp/800*[(-0.03+0.0000024*(kd*step_size(id))&
+                    &,kd=1,loc_max)]
+                var4_an = 1.0_dp/800*[(0.0000024,kd=1,loc_max)]
+                var5_an = 0.0_dp
+                
+                ! analytical derivatives
+                !var1_an = (0.5)**1*[(cos(pi*(kd-1)/(loc_max-1))&
+                    !&-0.25*sin(pi*(kd-1)/(loc_max-1)),kd=1,loc_max)]
+                !var2_an = (0.5)**2*[(-sin(pi*(kd-1)/(loc_max-1))&
+                    !&-0.25*cos(pi*(kd-1)/(loc_max-1)),kd=1,loc_max)]
+                !var3_an = (0.5)**3*[(-cos(pi*(kd-1)/(loc_max-1))&
+                    !&+0.25*sin(pi*(kd-1)/(loc_max-1)),kd=1,loc_max)]
+                !var4_an = (0.5)**4*[(sin(pi*(kd-1)/(loc_max-1))&
+                    !&+0.25*cos(pi*(kd-1)/(loc_max-1)),kd=1,loc_max)]
+                !var5_an = (0.5)**5*[(cos(pi*(kd-1)/(loc_max-1))&
+                    !&-0.25*sin(pi*(kd-1)/(loc_max-1)),kd=1,loc_max)]
+                
+                ! analytical derivatives
+                call VMEC_norm_deriv(varin,var1_nm,1.0_dp/step_size(id),1,1)
+                call VMEC_norm_deriv(varin,var2_nm,1.0_dp/step_size(id),2,1)
+                call VMEC_norm_deriv(varin,var3_nm,1.0_dp/step_size(id),3,1)
+                call VMEC_norm_deriv(varin,var4_nm,1.0_dp/step_size(id),4,1)
+                call VMEC_norm_deriv(varin,var5_nm,1.0_dp/step_size(id),5,1)
+                
+                ! max and mean errors
+                max_error(id,1) = maxval(abs(var1_an-var1_nm))/ &
+                    &maxval(abs(var1_an))
+                max_error(id,2) = maxval(abs(var2_an-var2_nm))/ &
+                    &maxval(abs(var2_an))
+                max_error(id,3) = maxval(abs(var3_an-var3_nm))/ &
+                    &maxval(abs(var3_an))
+                max_error(id,4) = maxval(abs(var4_an-var4_nm))/ &
+                    &maxval(abs(var4_an))
+                max_error(id,5) = maxval(abs(var5_an-var5_nm))/ &
+                    &maxval(abs(var5_an))
+                
+                mean_error(id,1) = sum(abs(var1_an-var1_nm))/loc_max/ &
+                    &maxval(abs(var1_an))
+                mean_error(id,2) = sum(abs(var2_an-var2_nm))/loc_max/ &
+                    &maxval(abs(var2_an))
+                mean_error(id,3) = sum(abs(var3_an-var3_nm))/loc_max/ &
+                    &maxval(abs(var3_an))
+                mean_error(id,4) = sum(abs(var4_an-var4_nm))/loc_max/ &
+                    &maxval(abs(var4_an))
+                mean_error(id,5) = sum(abs(var5_an-var5_nm))/loc_max/ &
+                    &maxval(abs(var5_an))
+                
+                ! plots
+                if (ind_plots) then
+                    call write_out(1,loc_max,varin,'input variable')
+                    
+                    call write_out(1,loc_max,var1_an,'analytical deriv. ord. 1')
+                    call write_out(1,loc_max,var1_nm,'numerical deriv. ord. 1')
+                    call write_out(1,loc_max,(var1_an-var1_nm)/&
+                        &maxval(abs(var1_an)),'diff, deriv. 1')
+                    !call write_out(1,loc_max,log10(abs(var1_an-var1_nm)/&
+                        !&maxval(abs(var1_an))),'diff, deriv. 1 [log]')
+                    
+                    call write_out(1,loc_max,var2_an,'analytical deriv. ord. 2')
+                    call write_out(1,loc_max,var2_nm,'numerical deriv. ord. 2')
+                    call write_out(1,loc_max,(var2_an-var2_nm)/&
+                        &maxval(abs(var2_an)),'diff, deriv. 2')
+                    !call write_out(1,loc_max,log10(abs(var2_an-var2_nm)/&
+                        !&maxval(abs(var2_an))),'diff, deriv. 2 [log]')
+                    
+                    call write_out(1,loc_max,var3_an,'analytical deriv. ord. 3')
+                    call write_out(1,loc_max,var3_nm,'numerical deriv. ord. 3')
+                    call write_out(1,loc_max,(var3_an-var3_nm)/&
+                        &maxval(abs(var3_an)),'diff, deriv. 3')
+                    !call write_out(1,loc_max,log10(abs(var3_an-var3_nm)/&
+                        !&maxval(abs(var3_an))),'diff, deriv. 3 [log]')
+                    
+                    call write_out(1,loc_max,var4_an,'analytical deriv. ord. 4')
+                    call write_out(1,loc_max,var4_nm,'numerical deriv. ord. 4')
+                    call write_out(1,loc_max,(var4_an-var4_nm)/&
+                        &maxval(abs(var4_an)),'diff, deriv. 4')
+                    !call write_out(1,loc_max,log10(abs(var4_an-var4_nm)/&
+                        !&maxval(abs(var4_an))),'diff, deriv. 4 [log]')
+                    
+                    call write_out(1,loc_max,var5_an,'analytical deriv. ord. 5')
+                    call write_out(1,loc_max,var5_nm,'numerical deriv. ord. 5')
+                    call write_out(1,loc_max,(var5_an-var5_nm)/&
+                        &maxval(abs(var5_an)),'diff, deriv. 5')
+                    !call write_out(1,loc_max,log10(abs(var5_an-var5_nm)/&
+                        !&maxval(abs(var5_an))),'diff, deriv. 5 [log]')
+                end if
+            end do
+            
+            ! plot errors
+            do id = 1,5
+                plot_var(1,:) = step_size
+                plot_var(2,:) = max_error(:,id)
+                call write_out(2,n_steps,plot_var,'f(Delta) = max. error as &
+                    &function of step size Delta',comment='for  &
+                    &deriv. of order '//trim(i2str(id)))
+                plot_var(1,:) = log10(step_size)
+                plot_var(2,:) = log10(max_error(:,id))
+                call write_out(2,n_steps,plot_var,'f(Delta) = max. error as &
+                    &function of step size Delta [log-log]',comment='for  &
+                    &deriv. of order '//trim(i2str(id)))
+            end do
+            do id = 1,5
+                plot_var(1,:) = step_size
+                plot_var(2,:) = mean_error(:,id)
+                call write_out(2,n_steps,plot_var,'f(Delta) = mean error as &
+                    &function of step size Delta',comment='for  &
+                    &deriv. of order '//trim(i2str(id)))
+                plot_var(1,:) = log10(step_size)
+                plot_var(2,:) = log10(mean_error(:,id))
+                call write_out(2,n_steps,plot_var,'f(Delta) = mean error as &
+                    &function of step size Delta [log-log]',comment='for  &
+                    &deriv. of order '//trim(i2str(id)))
+            end do
+            
+            call lvl_ud(-1)
+        end if
+    end subroutine
+    
     subroutine test_norm_deriv()                                                ! function version
         use utilities, only: norm_deriv
         use VMEC_vars, only: n_r
@@ -217,7 +439,7 @@ contains
             real(dp) :: f100_num
             real(dp), intent(in) :: pt(3)
             
-            f100_num = norm_deriv(f,rad,pt,[0,0])
+            f100_num = norm_deriv(f,rad,pt,[0,0],n_r)
         end function
         function f100_diff(pt)
             real(dp) :: f100_diff
@@ -393,6 +615,114 @@ contains
                 !write(*,*) 'var_num = ', var_num(kd)
                 !write(*,*) 'varin   = ', varin(kd)
             !end do
+        end if
+    end subroutine
+    
+    subroutine test_VMEC_conv_FHM()
+        use utilities, only: VMEC_conv_FHM
+        
+        ! local variables
+        integer :: id, kd
+        integer :: n_max, step, n_r
+        integer, parameter :: length = 50
+        real(dp), allocatable :: varin(:), varout(:), varoutout(:), vardiff(:)
+        real(dp) :: maxerr(length), averr(length), num_points(length)
+        real(dp) :: plotvar(2,length)
+        logical :: ind_plot, log_plot
+        
+        call writo('test VMEC_conv_FHM?')
+        if(yes_no(.false.)) then
+            call writo('Testing whether h2f*f2h = 1')
+            call writo('The relative difference between an original FM variable&
+                & var and h2f*f2h*var, should be decreasing with increasing &
+                &number of radial points')
+            call writo('')
+            call writo('Do you want the individual plots?')
+            ind_plot = yes_no(.false.)
+            call writo('')
+            do
+                call writo('n_max = ?')
+                read(*,*) n_max
+                if (n_max.lt.4*length) then
+                    call writo('n_max has to be larger than or equal to '&
+                        &//trim(i2str(4*length))//'...')
+                else 
+                    exit
+                end if
+            end do
+            call writo('logarithmic plot?')
+            log_plot = yes_no(.false.)
+            call writo('')
+            
+            call lvl_ud(1)
+            
+            step = n_max/length
+            
+            do id = 1,length
+                n_r = id*step
+                
+                num_points(id) = n_r
+                
+                if (allocated(varin)) deallocate(varin)
+                if (allocated(varout)) deallocate(varout)
+                if (allocated(varoutout)) deallocate(varoutout)
+                if (allocated(vardiff)) deallocate(vardiff)
+                allocate(varin(n_r))
+                allocate(varout(n_r))
+                allocate(varoutout(n_r))
+                allocate(vardiff(n_r))
+                
+                do kd = 1,n_r
+                    ! some continuous curve:
+                    varin(kd) = sin(float(kd)/n_r) + 0.5*cos(3*float(kd)/n_r)
+                end do
+                
+                call VMEC_conv_FHM(varin,varout,.true.)
+                call VMEC_conv_FHM(varout,varoutout,.false.)
+                do kd = 1,n_r
+                    vardiff(kd) = 2*(varin(kd)-varoutout(kd))/&
+                        &(varin(kd)+varoutout(kd))
+                end do
+                maxerr(id) = maxval(abs(vardiff))
+                averr(id) = sum(abs(vardiff))/size(vardiff)
+                
+                if(ind_plot) then
+                    call write_out(1,n_r,varin,'input with '//trim(i2str(n_r))&
+                        &//' radial points ('//trim(i2str(id))//'/'//&
+                        &trim(i2str(length))//')')
+                    !call write_out(1,n_r,varout,'first output with '//&
+                        !&trim(i2str(n_r))//' radial points ('//&
+                        !&trim(i2str(id))//'/'//trim(i2str(length))//')')
+                    call write_out(1,n_r,varoutout,'output with '//&
+                        &trim(i2str(n_r))//' radial points ('//trim(i2str(id))&
+                        &//'/'//trim(i2str(length))//')')
+                    call write_out(1,n_r,vardiff,'absolute relative difference&
+                        & with '//trim(i2str(n_r))//' radial points ('&
+                        &//trim(i2str(id))//'/'//trim(i2str(length))//')', &
+                        &comment='max = '//trim(r2strt(maxerr(id)))&
+                        &//', average: '//trim(r2strt(averr(id))))
+                end if
+            end do
+            
+            plotvar(1,:) = num_points
+            if (log_plot) then
+                plotvar(2,:) = log10(maxerr)
+            else
+                plotvar(2,:) = maxerr
+            end if
+            call write_out(2,length,plotvar,'maximum error as a function of &
+                &numer of points')
+            if (log_plot) then
+                plotvar(2,:) = log10(averr)
+            else
+                plotvar(2,:) = averr
+            end if
+            call write_out(2,length,plotvar,'average error as a function of &
+                &numer of points')
+                
+            call writo('Paused... press enter')
+            read(*,*)
+            call lvl_ud(-1)
         end if
     end subroutine
     

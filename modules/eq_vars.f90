@@ -31,7 +31,7 @@ contains
     ! calculate R in (r,theta,zeta) with optional angular derivatives
     function VMEC_R(pt,deriv)
         use fourier_ops, only: mesh_cs, f2r
-        use VMEC_vars, only: R_c, R_s, R_c_H, R_s_H, ntor, mpol
+        use VMEC_vars, only: R_c, R_s, R_c_H, R_s_H, ntor, mpol, n_r
         use utilities, only: find_VMEC_norm_coord
         
         ! input / output
@@ -52,20 +52,20 @@ contains
         end if
         
         ! determine whether to use FM or HM and which radial value
-        call find_VMEC_norm_coord('R',pt(1),FM,kd)
+        call find_VMEC_norm_coord('R',pt(1),FM,kd,n_r)
         
         ! calculate R and possible angular derivatives in Fourier space
         cs = mesh_cs(mpol,ntor,pt(2),pt(3))
         if (FM) then                                                            ! FM
-            VMEC_R = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor,deriv)
+            VMEC_R = f2r(R_c(:,:,kd,1),R_s(:,:,kd,1),cs,mpol,ntor,deriv)
         else                                                                    ! HM
-            VMEC_R = f2r(R_c_H(:,:,kd),R_s_H(:,:,kd),cs,mpol,ntor,deriv)
+            VMEC_R = f2r(R_c_H(:,:,kd,1),R_s_H(:,:,kd,1),cs,mpol,ntor,deriv)
         end if
     end function
     
     function VMEC_Z(pt,deriv)
         use fourier_ops, only: mesh_cs, f2r
-        use VMEC_vars, only: Z_c, Z_s, Z_c_H, Z_s_H, ntor, mpol
+        use VMEC_vars, only: Z_c, Z_s, Z_c_H, Z_s_H, ntor, mpol, n_r
         use utilities, only: find_VMEC_norm_coord
         
         ! input / output
@@ -86,20 +86,20 @@ contains
         end if
         
         ! determine whether to use FM or HM and which radial value
-        call find_VMEC_norm_coord('Z',pt(1),FM,kd)
+        call find_VMEC_norm_coord('Z',pt(1),FM,kd,n_r)
         
         ! calculate Z and possible angular derivatives in Fourier space
         cs = mesh_cs(mpol,ntor,pt(2),pt(3))
         if (FM) then                                                            ! FM
-            VMEC_Z = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor,deriv)
+            VMEC_Z = f2r(Z_c(:,:,kd,1),Z_s(:,:,kd,1),cs,mpol,ntor,deriv)
         else                                                                    ! HM
-            VMEC_Z = f2r(Z_c_H(:,:,kd),Z_s_H(:,:,kd),cs,mpol,ntor,deriv)
+            VMEC_Z = f2r(Z_c_H(:,:,kd,1),Z_s_H(:,:,kd,1),cs,mpol,ntor,deriv)
         end if
     end function
     
     function VMEC_L(pt,deriv)
         use fourier_ops, only: mesh_cs, f2r
-        use VMEC_vars, only: L_c, L_s, L_c_H, L_s_H, ntor, mpol
+        use VMEC_vars, only: L_c, L_s, L_c_H, L_s_H, ntor, mpol, n_r
         use utilities, only: find_VMEC_norm_coord
         
         ! input / output
@@ -120,14 +120,14 @@ contains
         end if
         
         ! determine whether to use FM or HM and which radial value
-        call find_VMEC_norm_coord('L',pt(1),FM,kd)
+        call find_VMEC_norm_coord('L',pt(1),FM,kd,n_r)
         
         ! calculate L and possible angular derivatives in Fourier space
         cs = mesh_cs(mpol,ntor,pt(2),pt(3))
         if (FM) then                                                            ! FM
-            VMEC_L = f2r(L_c(:,:,kd),L_s(:,:,kd),cs,mpol,ntor,deriv)
+            VMEC_L = f2r(L_c(:,:,kd,1),L_s(:,:,kd,1),cs,mpol,ntor,deriv)
         else                                                                    ! HM
-            VMEC_L = f2r(L_c_H(:,:,kd),L_s_H(:,:,kd),cs,mpol,ntor,deriv)
+            VMEC_L = f2r(L_c_H(:,:,kd,1),L_s_H(:,:,kd,1),cs,mpol,ntor,deriv)
         end if
     end function
     
@@ -146,7 +146,7 @@ contains
         integer :: kd
             
         if (dm.eq.1) then                                                       ! r coordinate
-            call find_VMEC_norm_coord('VMEC coordinates',pt(1),FM,kd)
+            call find_VMEC_norm_coord('VMEC coordinates',pt(1),FM,kd,n_r)
             VMEC_coords = (kd-1.0_dp)/(n_r-1)
         else if (dm.eq.2) then                                                  ! theta coordinate
             VMEC_coords = pt(2)
@@ -161,7 +161,7 @@ contains
 
     ! returns first normal deriv. of the toroidal flux
     function VMEC_Dflux_t(pt)
-        use VMEC_vars, only: phi_r, phi_r_H
+        use VMEC_vars, only: phi_r, phi_r_H, n_r
         use utilities, only: find_VMEC_norm_coord
         
         ! input / output
@@ -173,7 +173,7 @@ contains
         logical :: FM
         
         ! determine whether to use FM or HM and which radial value
-        call find_VMEC_norm_coord('L',pt(1),FM,kd)
+        call find_VMEC_norm_coord('L',pt(1),FM,kd,n_r)
         
         if (FM) then
             VMEC_Dflux_t = phi_r(kd)
@@ -184,7 +184,7 @@ contains
     
     ! returns first normal deriv. of the poloidal flux
     function VMEC_Dflux_p(pt)
-        use VMEC_vars, only: phi_r, phi_r_H, iotah, iotaf
+        use VMEC_vars, only: phi_r, phi_r_H, iotah, iotaf, n_r
         use utilities, only: find_VMEC_norm_coord
         
         ! input / output
@@ -196,7 +196,7 @@ contains
         logical :: FM
         
         ! determine whether to use FM or HM and which radial value
-        call find_VMEC_norm_coord('L',pt(1),FM,kd)
+        call find_VMEC_norm_coord('L',pt(1),FM,kd,n_r)
         
         if (FM) then
             VMEC_Dflux_p = iotaf(kd)*phi_r(kd)
@@ -207,7 +207,7 @@ contains
     
     ! returns safety factor
     function VMEC_q_saf(pt)
-        use VMEC_vars, only: iotah, iotaf
+        use VMEC_vars, only: iotah, iotaf, n_r
         use utilities, only: find_VMEC_norm_coord
         
         ! input / output
@@ -219,7 +219,7 @@ contains
         logical :: FM
         
         ! determine whether to use FM or HM and which radial value
-        call find_VMEC_norm_coord('L',pt(1),FM,kd)
+        call find_VMEC_norm_coord('L',pt(1),FM,kd,n_r)
         
         if (FM) then
             VMEC_q_saf = 1.0_dp/iotaf(kd)
@@ -415,18 +415,18 @@ contains
             perp: do kd = 1, n_r                                                ! perpendicular: normal to the flux surfaces
                 ! FM quantities
                 cs = mesh_cs(mpol,ntor,theta(id,kd),zeta(id,kd))
-                R(id,kd,1) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor)
-                R(id,kd,3) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor,[1,0])
-                R(id,kd,4) = f2r(R_c(:,:,kd),R_s(:,:,kd),cs,mpol,ntor,[0,1])
-                Z(id,kd,1) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor)
-                Z(id,kd,3) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor,[1,0])
-                Z(id,kd,4) = f2r(Z_c(:,:,kd),Z_s(:,:,kd),cs,mpol,ntor,[0,1])
+                R(id,kd,1) = f2r(R_c(:,:,kd,1),R_s(:,:,kd,1),cs,mpol,ntor)
+                R(id,kd,3) = f2r(R_c(:,:,kd,1),R_s(:,:,kd,1),cs,mpol,ntor,[1,0])
+                R(id,kd,4) = f2r(R_c(:,:,kd,1),R_s(:,:,kd,1),cs,mpol,ntor,[0,1])
+                Z(id,kd,1) = f2r(Z_c(:,:,kd,1),Z_s(:,:,kd,1),cs,mpol,ntor)
+                Z(id,kd,3) = f2r(Z_c(:,:,kd,1),Z_s(:,:,kd,1),cs,mpol,ntor,[1,0])
+                Z(id,kd,4) = f2r(Z_c(:,:,kd,1),Z_s(:,:,kd,1),cs,mpol,ntor,[0,1])
                 
                 ! HM quantities
                 cs = mesh_cs(mpol,ntor,theta_H(id,kd),zeta_H(id,kd))
-                lam_H(id,kd,1) = f2r(L_c(:,:,kd),L_s(:,:,kd),cs,mpol,ntor)
-                lam_H(id,kd,3) = f2r(L_c(:,:,kd),L_s(:,:,kd),cs,mpol,ntor,[1,0])
-                lam_H(id,kd,4) = f2r(L_c(:,:,kd),L_s(:,:,kd),cs,mpol,ntor,[0,1])
+                lam_H(id,kd,1) = f2r(L_c(:,:,kd,1),L_s(:,:,kd,1),cs,mpol,ntor)
+                lam_H(id,kd,3) = f2r(L_c(:,:,kd,1),L_s(:,:,kd,1),cs,mpol,ntor,[1,0])
+                lam_H(id,kd,4) = f2r(L_c(:,:,kd,1),L_s(:,:,kd,1),cs,mpol,ntor,[0,1])
             end do perp
             
             ! numerically calculate  normal derivatives at the  currrent angular
@@ -604,16 +604,16 @@ contains
         if (FM) then
             do jd = -ntor, ntor
                 do kd = 0, mpol-1
-                    tempcoeff = L_c(kd,jd,:)
+                    tempcoeff = L_c(kd,jd,:,1)
                     L_c_loc(kd,jd,:) = h2f(tempcoeff)
-                    tempcoeff = L_s(kd,jd,:)
+                    tempcoeff = L_s(kd,jd,:,1)
                     L_s_loc(kd,jd,:) = h2f(tempcoeff)
                 end do
             end do
             q = iotaf
         else 
-            L_c_loc = L_c
-            L_s_loc = L_s
+            L_c_loc = L_c(:,:,:,1)
+            L_s_loc = L_s(:,:,:,1)
             q = iotah
         end if
         

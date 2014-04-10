@@ -27,9 +27,12 @@ module VMEC_vars
         &phi_r_H, B_V_sub_s_M, B_V_sub_c_M, B_V_c_H, B_V_s_H, &
         &jac_V_H_c, jac_V_H_s
 
-    real(dp), allocatable :: R_c(:,:,:), R_s(:,:,:), R_c_H(:,:,:), &            ! Coeff. of R in (co)sine series (FM)
-        &R_s_H(:,:,:), Z_c(:,:,:), Z_s(:,:,:), Z_c_H(:,:,:), Z_s_H(:,:,:), &    ! Coeff. of Z in (co)sine series (FM)
-        &L_c(:,:,:), L_s(:,:,:), L_c_H(:,:,:), L_s_H(:,:,:), &                  ! Coeff. of lambda in (co)sine series (HM)
+    real(dp), allocatable :: &
+        &R_c(:,:,:,:), R_s(:,:,:,:), R_c_H(:,:,:,:), R_s_H(:,:,:,:), &          ! Coeff. of R in (co)sine series (FM) and norm. deriv.
+        &Z_c(:,:,:,:), Z_s(:,:,:,:), Z_c_H(:,:,:,:), Z_s_H(:,:,:,:), &          ! Coeff. of Z in (co)sine series (FM) and norm. deriv.
+        &L_c(:,:,:,:), L_s(:,:,:,:), L_c_H(:,:,:,:), L_s_H(:,:,:,:)             ! Coeff. of lambda in (co)sine series (HM) and norm. deriv.
+
+    real(dp), allocatable :: &
         &B_V_sub_c_M(:,:,:,:), B_V_sub_s_M(:,:,:,:), &                          ! Coeff. of B_i in (co)sine series (last index: r,theta,phi) (FM, HM, HM)
         &B_V_c_H(:,:,:), B_V_s_H(:,:,:), &                                      ! Coeff. of magnitude of B (HM)
         &jac_V_H_c(:,:,:), jac_V_H_s(:,:,:)                                     ! Jacobian in VMEC coordinates (HM)
@@ -41,7 +44,8 @@ contains
     ! Reads the VMEC equilibrium data
     subroutine read_VMEC()
         use fourier_ops, only: repack
-        use utilities, only: f2h, h2f
+        use utilities, only: f2h, h2f, VMEC_norm_deriv
+        use num_vars, only: ltest, max_deriv
         
         ! local variables
         integer :: istat                                                        ! holds status of read_wout_file
@@ -63,7 +67,7 @@ contains
             call writo('Fixed boundary VMEC')
         end if
         
-        call writo('Running some tests')
+        call writo('Running tests')
         call lvl_ud(1)
         if (mnmax.ne.((ntor+1)+(2*ntor+1)*(mpol-1))) then                       ! are ntor, mpol and mnmax what is expected?
             call writo('ERROR: inconsistency in ntor, mpol and mnmax')
@@ -71,7 +75,7 @@ contains
         end if
         call lvl_ud(-1)
         
-        call writo('Updating some variables')
+        call writo('Updating variables')
         ! make ntor already include the factor nfp for easier handling in this code
         ntor = ntor*nfp
         
@@ -86,53 +90,66 @@ contains
         
         ! Allocate and repack the Fourier coefficients to translate them for use
         ! in this code
-        allocate(R_c(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(R_s(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(R_c_H(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(R_s_H(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(Z_c(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(Z_s(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(Z_c_H(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(Z_s_H(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(L_c(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(L_s(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(L_c_H(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(L_s_H(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(B_V_sub_c_M(0:mpol-1,-ntor:ntor,1:n_r,3))
-        allocate(B_V_sub_s_M(0:mpol-1,-ntor:ntor,1:n_r,3))
-        allocate(B_V_c_H(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(B_V_s_H(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(jac_V_H_c(0:mpol-1,-ntor:ntor,1:n_r))
-        allocate(jac_V_H_s(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(R_c(0:mpol-1,-ntor:ntor,1:n_r,max_deriv))
+        allocate(R_s(0:mpol-1,-ntor:ntor,1:n_r,max_deriv))
+        allocate(R_c_H(0:mpol-1,-ntor:ntor,1:n_r,max_deriv))
+        allocate(R_s_H(0:mpol-1,-ntor:ntor,1:n_r,max_deriv))
+        allocate(Z_c(0:mpol-1,-ntor:ntor,1:n_r,max_deriv))
+        allocate(Z_s(0:mpol-1,-ntor:ntor,1:n_r,max_deriv))
+        allocate(Z_c_H(0:mpol-1,-ntor:ntor,1:n_r,max_deriv))
+        allocate(Z_s_H(0:mpol-1,-ntor:ntor,1:n_r,max_deriv))
+        allocate(L_c(0:mpol-1,-ntor:ntor,1:n_r,max_deriv))
+        allocate(L_s(0:mpol-1,-ntor:ntor,1:n_r,max_deriv))
+        allocate(L_c_H(0:mpol-1,-ntor:ntor,1:n_r,max_deriv))
+        allocate(L_s_H(0:mpol-1,-ntor:ntor,1:n_r,max_deriv))
         
-        R_c = repack(rmnc,mnmax,n_r,mpol,ntor,xm,xn)
-        R_s = repack(rmns,mnmax,n_r,mpol,ntor,xm,xn)
-        Z_c = repack(zmnc,mnmax,n_r,mpol,ntor,xm,xn)
-        Z_s = repack(zmns,mnmax,n_r,mpol,ntor,xm,xn)
-        L_c_H = repack(lmnc,mnmax,n_r,mpol,ntor,xm,xn)
-        L_s_H = repack(lmns,mnmax,n_r,mpol,ntor,xm,xn)
+        ! for tests
+        if (ltest) then
+            allocate(B_V_sub_c_M(0:mpol-1,-ntor:ntor,1:n_r,3))
+            allocate(B_V_sub_s_M(0:mpol-1,-ntor:ntor,1:n_r,3))
+            allocate(B_V_c_H(0:mpol-1,-ntor:ntor,1:n_r))
+            allocate(B_V_s_H(0:mpol-1,-ntor:ntor,1:n_r))
+            allocate(jac_V_H_c(0:mpol-1,-ntor:ntor,1:n_r))
+            allocate(jac_V_H_s(0:mpol-1,-ntor:ntor,1:n_r))
+        end if
+        
+        ! factors R_c,s; Z_c,s and L_C,s and HM varieties
+        R_c(:,:,:,1) = repack(rmnc,mnmax,n_r,mpol,ntor,xm,xn)
+        R_s(:,:,:,1) = repack(rmns,mnmax,n_r,mpol,ntor,xm,xn)
+        Z_c(:,:,:,1) = repack(zmnc,mnmax,n_r,mpol,ntor,xm,xn)
+        Z_s(:,:,:,1) = repack(zmns,mnmax,n_r,mpol,ntor,xm,xn)
+        L_c_H(:,:,:,1) = repack(lmnc,mnmax,n_r,mpol,ntor,xm,xn)
+        L_s_H(:,:,:,1) = repack(lmns,mnmax,n_r,mpol,ntor,xm,xn)
         do jd = -ntor,ntor
             do id = 0,mpol-1
-                R_c_H(id,jd,:) = f2h(R_c(id,jd,:))
-                R_s_H(id,jd,:) = f2h(R_s(id,jd,:))
-                Z_c_H(id,jd,:) = f2h(Z_c(id,jd,:))
-                Z_s_H(id,jd,:) = f2h(Z_s(id,jd,:))
-                L_c(id,jd,:) = h2f(L_c(id,jd,:))
-                L_s(id,jd,:) = h2f(L_s(id,jd,:))
+                R_c_H(id,jd,:,1) = f2h(R_c(id,jd,:,1))
+                R_s_H(id,jd,:,1) = f2h(R_s(id,jd,:,1))
+                Z_c_H(id,jd,:,1) = f2h(Z_c(id,jd,:,1))
+                Z_s_H(id,jd,:,1) = f2h(Z_s(id,jd,:,1))
+                L_c(id,jd,:,1) = h2f(L_c(id,jd,:,1))
+                L_s(id,jd,:,1) = h2f(L_s(id,jd,:,1))
             end do
         end do
-        B_V_sub_c_M(:,:,:,1) = repack(bsubsmnc,mnmax,n_r,mpol,ntor,xm,xn)
-        B_V_sub_s_M(:,:,:,1) = repack(bsubsmns,mnmax,n_r,mpol,ntor,xm,xn)
-        B_V_sub_c_M(:,:,:,2) = repack(bsubumnc,mnmax,n_r,mpol,ntor,xm,xn)
-        B_V_sub_s_M(:,:,:,2) = repack(bsubumns,mnmax,n_r,mpol,ntor,xm,xn)
-        B_V_sub_c_M(:,:,:,3) = repack(bsubvmnc,mnmax,n_r,mpol,ntor,xm,xn)
-        B_V_sub_s_M(:,:,:,3) = repack(bsubvmns,mnmax,n_r,mpol,ntor,xm,xn)
-        B_V_c_H(:,:,:) = repack(bmnc,mnmax,n_r,mpol,ntor,xm,xn)
-        B_V_s_H(:,:,:) = repack(bmns,mnmax,n_r,mpol,ntor,xm,xn)
-        jac_V_H_c(:,:,:) = repack(gmnc,mnmax,n_r,mpol,ntor,xm,xn)
-        jac_V_H_s(:,:,:) = repack(gmns,mnmax,n_r,mpol,ntor,xm,xn)
+        
+        ! normal derivatives of these factors
+        
+        
+        ! for tests
+        if (ltest) then
+            B_V_sub_c_M(:,:,:,1) = repack(bsubsmnc,mnmax,n_r,mpol,ntor,xm,xn)
+            B_V_sub_s_M(:,:,:,1) = repack(bsubsmns,mnmax,n_r,mpol,ntor,xm,xn)
+            B_V_sub_c_M(:,:,:,2) = repack(bsubumnc,mnmax,n_r,mpol,ntor,xm,xn)
+            B_V_sub_s_M(:,:,:,2) = repack(bsubumns,mnmax,n_r,mpol,ntor,xm,xn)
+            B_V_sub_c_M(:,:,:,3) = repack(bsubvmnc,mnmax,n_r,mpol,ntor,xm,xn)
+            B_V_sub_s_M(:,:,:,3) = repack(bsubvmns,mnmax,n_r,mpol,ntor,xm,xn)
+            B_V_c_H(:,:,:) = repack(bmnc,mnmax,n_r,mpol,ntor,xm,xn)
+            B_V_s_H(:,:,:) = repack(bmns,mnmax,n_r,mpol,ntor,xm,xn)
+            jac_V_H_c(:,:,:) = repack(gmnc,mnmax,n_r,mpol,ntor,xm,xn)
+            jac_V_H_s(:,:,:) = repack(gmns,mnmax,n_r,mpol,ntor,xm,xn)
+        end if
         
         call lvl_ud(-1)
+        call writo('Grid parameters successfully read')
     end subroutine
 
 end module VMEC_vars

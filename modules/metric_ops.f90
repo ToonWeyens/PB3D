@@ -6,6 +6,7 @@ module metric_ops
     use num_vars, only: dp
     use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud, write_out
     use str_ops, only: r2str, i2str
+    use VMEC_vars, only: n_r
     
     implicit none
     private
@@ -77,7 +78,7 @@ contains
             real(dp), intent(in) :: pt(3)
             integer, intent(in) :: deriv(2)
             
-            R100 = norm_deriv(VMEC_R,coord_r,pt,deriv)
+            R100 = norm_deriv(VMEC_R,coord_r,pt,deriv,n_r)
             !write(*,*) 'R100 ('//trim(r2strt(pt(1)))//','&
                 !&//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//') = '&
                 !&//trim(r2strt(R100))
@@ -97,7 +98,7 @@ contains
             real(dp), intent(in) :: pt(3)
             integer, intent(in) :: deriv(2)
             
-            Z100 = norm_deriv(VMEC_Z,coord_r,pt,deriv)
+            Z100 = norm_deriv(VMEC_Z,coord_r,pt,deriv,n_r)
             !write(*,*) 'Z100 ('//trim(r2strt(pt(1)))//','&
                 !&//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//') = '&
                 !&//trim(r2strt(Z100))
@@ -137,6 +138,7 @@ contains
     ! returns lower transformation matrix from C(ylincrical) to V(MEC) coordinates
     function T_C2V_dn(pt,deriv)
         use eq_vars, only: VMEC_R, VMEC_Z, VMEC_coords
+        use VMEC_vars, only: n_r
         use utilities, onlY: norm_deriv
         
         ! input / output
@@ -144,9 +146,9 @@ contains
         real(dp), intent(in) :: pt(3)
         integer, intent(in) :: deriv(2)
         
-        T_C2V_dn(1,1) = norm_deriv(VMEC_R,VMEC_coords(pt,1),pt,deriv)
+        T_C2V_dn(1,1) = norm_deriv(VMEC_R,VMEC_coords(pt,1),pt,deriv,n_r)
         T_C2V_dn(1,2) = 0.0_dp
-        T_C2V_dn(1,3) = norm_deriv(VMEC_Z,VMEC_coords(pt,1),pt,deriv)
+        T_C2V_dn(1,3) = norm_deriv(VMEC_Z,VMEC_coords(pt,1),pt,deriv,n_r)
         T_C2V_dn(2,1) = VMEC_R(pt,deriv+[1,0])
         T_C2V_dn(2,2) = 0.0_dp
         T_C2V_dn(2,3) = VMEC_Z(pt,deriv+[1,0])
@@ -304,6 +306,7 @@ contains
         use eq_vars, only: theta_H, zeta_H, n_par, R, Z
         use fourier_ops, only: f2r, mesh_cs
         use utilities, only: calc_norm_deriv, f2h, h2f
+        use num_vars, onlY: ltest
         
         ! local variables
         real(dp) :: cf(n_r)                                                     ! common factor used in calculating the elements of the matrix
@@ -328,16 +331,18 @@ contains
         allocate(jac_V(n_par,n_r)); jac_V = 0.0_dp
         allocate(jac_V_H(n_par,n_r)); jac_V_H = 0.0_dp
         
-        ! transform the VMEC jacobian to real space, using FM variants
-        par: do jd = 1, n_par                                                   ! parallel: along the magnetic field line
-            ! import jac_V on HM from VMEC
-            perp: do kd = 1, n_r                                                ! perpendicular: normal to the flux surfaces
-                ! calculate the (co)sines at the current mesh points
-                cs = mesh_cs(mpol,ntor,theta_H(jd,kd),zeta_H(jd,kd))
-                jac_V_H_alt(jd,kd) = &
-                    &-f2r(jac_V_H_c(:,:,kd),jac_V_H_s(:,:,kd),cs,mpol,ntor)
-            end do perp
-        end do par
+        if (ltest) then
+            ! transform the VMEC jacobian to real space, using FM variants
+            par: do jd = 1, n_par                                               ! parallel: along the magnetic field line
+                ! import jac_V on HM from VMEC
+                perp: do kd = 1, n_r                                            ! perpendicular: normal to the flux surfaces
+                    ! calculate the (co)sines at the current mesh points
+                    cs = mesh_cs(mpol,ntor,theta_H(jd,kd),zeta_H(jd,kd))
+                    jac_V_H_alt(jd,kd) = &
+                        &-f2r(jac_V_H_c(:,:,kd),jac_V_H_s(:,:,kd),cs,mpol,ntor)
+                end do perp
+            end do par
+        end if
         
         ! calculate transformation matrix for C -> V (HM), making use of of R_H,
         ! Z_H, and derivatives

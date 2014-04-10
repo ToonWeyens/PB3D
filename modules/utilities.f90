@@ -10,9 +10,183 @@ module utilities
     private
     public zero_NR, ext_var, calc_norm_deriv, f2h, h2f, mat_mult, det, &
         &matvec_mult, calc_int, fun_mult, fun_sum, find_VMEC_norm_coord, &
-        &norm_deriv
+        &norm_deriv, VMEC_norm_deriv, VMEC_conv_FHM
 
 contains
+    ! numerically derivates a function whose values are given on a regular mesh,
+    ! specified by  the inverse  step size to  an order specified  by ord  and a
+    ! precision specified by prec (which is the  power of the step size to which
+    ! the result is still correct. E.g.:  for forward differences, prec = 0, and
+    ! for central differences prec=1)
+    subroutine VMEC_norm_deriv(var,dvar,inv_step,ord,prec)
+        use num_vars, only: max_deriv
+        
+        ! input / output
+        real(dp), intent(in) :: var(:), inv_step
+        real(dp), intent(inout) :: dvar(:)
+        integer, intent(in) :: ord, prec
+        
+        ! local variables
+        integer :: max_n
+        
+        max_n = size(var)
+        
+        ! tests
+        if (size(dvar).ne.max_n) then
+            call writo('ERROR: In VMEC_norm_deriv, the derived vector has to &
+                &be of the same length as the input vector')
+            stop
+        end if
+        if (ord.lt.1 .or. ord.gt.max_deriv) then
+            call writo('ERROR: VMEC_norm_deriv can only derive from order 1 &
+                &up to order '//trim(i2str(max_deriv)))
+            stop
+        end if
+        
+        ! choose correct precision
+        select case (prec)
+            case (1)
+                call prec1
+            case default
+                call writo('ERROR: precision of order '//trim(i2str(prec))//&
+                    &' not implemented')
+                stop
+        end select
+    contains
+        subroutine prec1
+            ! test whether enough points are given
+            if (max_n-2.lt.ord) then
+                call writo('ERROR: for a derivative of order '//&
+                    &trim(i2str(ord))//', with precision '//trim(i2str(prec))&
+                    &//', at least '//trim(i2str(ord+2))//&
+                    &' input values have to be passed')
+                stop
+            end if
+            
+            ! apply derivation rules precise up to order 1
+            select case (ord)
+                case(1)                                                         ! first derivative
+                    ! first point
+                    dvar(1) = (-3*var(1)+4*var(2)-var(3))*inv_step/2
+                    ! middle points
+                    dvar(2:max_n-1) = (-var(1:max_n-2)+var(3:max_n))*inv_step/2
+                    ! last point
+                    dvar(max_n) = (var(max_n-2) - 4*var(max_n-1) &
+                        &+ 3*var(max_n))* inv_step/2
+                case(2)                                                         ! second derivative
+                    ! first point
+                    dvar(1) = (2*var(1)-5*var(2)+4*var(3)-var(4))*inv_step**2
+                    ! middle points
+                    dvar(2:max_n-1) = (var(1:max_n-2)-2*var(2:max_n-1)&
+                        &+var(3:max_n))*inv_step**2
+                    ! last point
+                    dvar(max_n) = (-var(max_n-3)+4*var(max_n-2)-5*var(max_n-1)&
+                        &+2*var(max_n))*inv_step**2
+                case(3)                                                         ! third derivative
+                    ! first point
+                    dvar(1) = (-5*var(1)+18*var(2)-24*var(3)+14*var(4)&
+                        &-3*var(5))* inv_step**3/2
+                    ! second point
+                    dvar(2) = (-3*var(1)+10*var(2)-12*var(3)+6*var(4)-var(5))* &
+                        &inv_step**3/2
+                    ! middle points
+                    dvar(3:max_n-2) = (-var(1:max_n-4)+2*var(2:max_n-3)-&
+                        &2*var(4:max_n-1)+var(5:max_n))*inv_step**3/2
+                    ! next-to-last point
+                    dvar(max_n-1) = (var(max_n-4)-6*var(max_n-3)&
+                        &+12*var(max_n-2)-10*var(max_n-1)+3*var(max_n))&
+                        &*inv_step**3/2
+                    ! last point
+                    dvar(max_n) = (3*var(max_n-4)-14*var(max_n-3)&
+                        &+24*var(max_n-2)-18*var(max_n-1)+5*var(max_n))&
+                        &*inv_step**3/2
+                case(4)                                                         ! fourth derivative
+                    ! first point
+                    dvar(1) = (3*var(1)-14*var(2)+26*var(3)-24*var(4)+11*var(5)&
+                        &-2*var(6))*inv_step**4
+                    ! second point
+                    dvar(2) = (2*var(1)-9*var(2)+16*var(3)-14*var(4)+6*var(5)&
+                        &-var(6))*inv_step**4
+                    ! middle points
+                    dvar(3:max_n-2) = (var(1:max_n-4)-4*var(2:max_n-3)&
+                        &+6*var(3:max_n-2)-4*var(4:max_n-1)+var(5:max_n))&
+                        &*inv_step**4
+                    ! next-to-last point
+                    dvar(max_n-1) = (-var(max_n-5)+6*var(max_n-4)&
+                        &-14*var(max_n-3)+16*var(max_n-2)-9*var(max_n-1)&
+                        &+2*var(max_n))*inv_step**4
+                    ! last point
+                    dvar(max_n) = (-2*var(max_n-5)+11*var(max_n-4)-&
+                        &24*var(max_n-3)+26*var(max_n-2)-14*var(max_n-1)&
+                        &+3*var(max_n))*inv_step**4
+                case(5)                                                         ! fifth derivative
+                    ! first point
+                    dvar(1) = (-7*var(1)+40*var(2)-95*var(3)+120*var(4)&
+                        &-85*var(5)+32*var(6)-5*var(7))*inv_step**5/2
+                    ! second point
+                    dvar(2) = (-5*var(1)+28*var(2)-65*var(3)+80*var(4)&
+                        &-55*var(5)+20*var(6)-3*var(7))*inv_step**5/2
+                    ! third point
+                    dvar(3) = (-3*var(1)+16*var(2)-35*var(3)+40*var(4)&
+                        &-25*var(5)+8*var(6)-var(7))*inv_step**5/2
+                    ! middle points
+                    dvar(4:max_n-3) = (-var(1:max_n-6)+4*var(2:max_n-5)&
+                        &-5*var(3:max_n-4)+5*var(5:max_n-2)-4*var(6:max_n-1)&
+                        &+var(7:max_n))*inv_step**5/2
+                    ! next-to-next-to-last point
+                    dvar(max_n-2) = (var(max_n-6)-8*var(max_n-5)&
+                        &+25*var(max_n-4)-40*var(max_n-3)+35*var(max_n-2)&
+                        &-16*var(max_n-1)+3*var(max_n))*inv_step**5/2
+                    ! next-to-last point
+                    dvar(max_n-1) = (3*var(max_n-6)-20*var(max_n-5)&
+                        &+55*var(max_n-4)-80*var(max_n-3)+65*var(max_n-2)&
+                        &-28*var(max_n-1)+5*var(max_n))*inv_step**5/2
+                    ! last point
+                    dvar(max_n) = (5*var(max_n-6)-32*var(max_n-5)&
+                        &+85*var(max_n-4)-120*var(max_n-3)+95*var(max_n-2)&
+                        &-40*var(max_n-1)+7*var(max_n))*inv_step**5/2
+                case default
+                    ! This you should never reach!
+                    call writo('ERROR: Derivation of order '//&
+                        &trim(i2str(ord))//' not possible in VMEC_norm_deriv')
+            end select
+        end subroutine
+    end subroutine
+
+    ! numerically interpolates a function that is given on either FM to HM or HM
+    ! to FM. If FM2HM is .true., the starting point is FM, if .false., it is HM
+    subroutine VMEC_conv_FHM(var,cvar,FM2HM)
+        ! input / output
+        real(dp), intent(in) :: var(:)
+        real(dp), intent(inout) :: cvar(:)
+        logical, intent(in) :: FM2HM
+        
+        ! local variables
+        integer :: max_n
+        
+        max_n = size(var)
+        
+        ! tests
+        if (size(cvar).ne.max_n) then
+            call writo('ERROR: In VMEC_conv_FHM, the converted vector has to &
+                &be of the same length as the input vector')
+            stop
+        end if
+        
+        if (FM2HM) then                                                         ! FM to HM
+            cvar(1) = 0.0_dp
+            cvar(2:max_n) = (var(1:max_n-1)+var(2:max_n))/2.0_dp
+        else                                                                    ! HM to FM
+            cvar(1) = (3.0_dp*var(2)-var(3))/2.0_dp
+            cvar(2:max_n-1) = (var(2:max_n-1)+var(3:max_n))/2.0_dp
+            cvar(max_n) = (-var(max_n-1)+3.0_dp*var(max_n))/2.0_dp
+        end if
+    end subroutine
+    
+
+
+
+    
     ! finds the zero of a function using Newton-Rhapson iteration
     function zero_NR(fun,dfun,guess)
         use num_vars, only: max_it_NR, tol_NR
@@ -247,13 +421,12 @@ contains
     
     ! calculates normal derivatives of a function. Apart from the function to be
     ! derived, also a function containing the normal variable has to be passed.
-    recursive function norm_deriv(f,x,pt,deriv)
-        use VMEC_vars, only: n_r
-        
+    recursive function norm_deriv(f,x,pt,deriv,n_max)
         ! input / output
         real(dp) :: norm_deriv
         real(dp), intent(in) :: pt(3)
         integer, intent(in) :: deriv(2)
+        integer, intent(in) :: n_max
         interface
             function f(pt1,deriv1)
                 use num_vars, only: dp
@@ -274,7 +447,7 @@ contains
         real(dp) :: pt_l(3), pt_r(3), d_pt(3)
         
         ! determine whether to use FM or HM and which radial value
-        call find_VMEC_norm_coord('VMEC normal derivatives',pt(1),FM,kd)
+        call find_VMEC_norm_coord('VMEC normal derivatives',pt(1),FM,kd,n_max)
         
         ! determine one  normal derivative making  use of the  points x(1)+-0.5,
         ! except for the  first and last points of the  grid, where higher-order
@@ -284,8 +457,8 @@ contains
             d_pt = [1.0_dp,0.0_dp,0.0_dp]
             norm_deriv = ext_var([(f(pt+id*d_pt,deriv),id=0,3)],&
                 &[(x(pt+id*d_pt),id=0,3)],0.0_dp,1)
-        else if (FM .and. kd.eq.n_r) then                                       ! last point in FM
-            ! last normal point in FM: n_r -> extrapolate using 4 FM points
+        else if (FM .and. kd.eq.n_max) then                                       ! last point in FM
+            ! last normal point in FM: n_max -> extrapolate using 4 FM points
             d_pt = [1.0_dp,0.0_dp,0.0_dp]
             norm_deriv = ext_var([(f(pt-id*d_pt,deriv),id=0,3)],&
                 &[(x(pt-id*d_pt),id=0,3)],x(pt),1)
@@ -553,14 +726,13 @@ contains
     end function fun_sum
     
     ! calculates the radial mesh point for VMEC variables
-    subroutine find_VMEC_norm_coord(fun_name,pt_r,FM,kd)
-        use VMEC_vars, only: n_r
-        
+    subroutine find_VMEC_norm_coord(fun_name,pt_r,FM,kd,n_max)
         ! input / output
         real(dp) :: pt_r
         logical :: FM
         integer :: kd
         character(len=*) :: fun_name
+        integer, intent(in) :: n_max
         
         ! local variables
         real(dp), parameter :: prec = 100*epsilon(1.0_dp)                       ! precision which we want
@@ -569,18 +741,18 @@ contains
         if (mod(pt_r,1.0_dp).lt.prec) then                                     ! FM
             FM = .true.
             kd = nint(pt_r)
-            if (kd.lt.1 .or. kd.gt.n_r) then
+            if (kd.lt.1 .or. kd.gt.n_max) then
                 call writo('ERROR: FM r-range for '//trim(fun_name)//' is &
-                    &discrete values between 1 and '//trim(i2str(n_r))//&
+                    &discrete values between 1 and '//trim(i2str(n_max))//&
                     &', yet asking for '//trim(i2str(kd)))
                 stop
             end if
         else if (mod(pt_r,0.5_dp).lt.prec) then                                ! HM
             FM = .false.
             kd = nint(pt_r+0.5_dp)
-            if (kd.lt.2 .or. kd.gt.n_r) then
+            if (kd.lt.2 .or. kd.gt.n_max) then
                 call writo('ERROR: HM r-range for '//trim(fun_name)//' is &
-                    &discrete values between 2 and '//trim(i2str(n_r))//&
+                    &discrete values between 2 and '//trim(i2str(n_max))//&
                     &', yet asking for '//trim(i2str(kd)))
                 stop
             end if

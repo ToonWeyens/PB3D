@@ -7,7 +7,7 @@ module num_vars
     public max_it, dp, qp, style, max_str_ln, n_seq_0, max_args, &
         &max_opts, prog_name, max_it_r, ltest, pi, max_it_NR, tol_NR, &
         &input_i, output_i, VMEC_i, min_alpha, max_alpha, n_alpha, &
-        &theta_var_along_B
+        &theta_var_along_B, max_deriv
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -16,6 +16,7 @@ module num_vars
     integer, parameter :: n_seq_0 = 10                                          ! start of index of file numbers for opening
     integer, parameter :: max_args = 10                                         ! maximum number of input arguments
     integer, parameter :: max_opts = 8                                          ! maximum number of options in input arguments
+    integer, parameter :: max_deriv = 5                                         ! highest derivatives that are tabulated for VMEC amplitudes R, Z, L
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
 
     ! considering runtime
