@@ -12,12 +12,8 @@ module fourier_ops
     public repack, mesh_cs, f2r
 
 contains
-    ! Inverse Fourier transformation, VMEC style
-    ! Also calculates the poloidal or toroidal derivatives, as indicated by:
-    !   deriv = 1, no derivative
-    !   deriv = 2, ERROR (reserved for normal derivative)
-    !   deriv = 3, poloidal derivative
-    !   deriv = 4, toroidal derivative
+    ! Inverse Fourier transformation, VMEC style Also calculates the poloidal or
+    ! toroidal derivatives, as indicated by the variable deriv(2)
     ! (Normal derivative is done discretely, outside of this function)
     function f2r(fun_cos,fun_sin,ang_factor,mpol,ntor,deriv)
         ! input / output

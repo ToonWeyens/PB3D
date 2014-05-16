@@ -88,7 +88,9 @@ contains
             call writo('Overwriting with user-provided file "' // &
                 &trim(input_name) // '"')
         end if
+        
         call lvl_ud(-1)
+        call writo('Input values set')
     contains
         subroutine default_input()
             use num_vars, only: pi

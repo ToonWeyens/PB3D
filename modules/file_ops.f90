@@ -180,7 +180,7 @@ contains
             call lvl_ud(-1)
         end if
         call lvl_ud(-1)
-        call writo('Input files opened')
+        call writo('Files opened')
         
     contains
         ! this subroutine scans for chosen options

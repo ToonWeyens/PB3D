@@ -8,7 +8,6 @@ test.o : \
     VMEC_vars.o \
     eq_vars.o \
     utilities.o \
-    B_vars.o \
 
 PB3D.o : \
     num_vars.o \
@@ -35,20 +34,11 @@ driver_rich.o : \
     metric_ops.o \
     eq_ops.o \
 
-B_vars.o : \
-    num_vars.o \
-    fourier_ops.o \
-    VMEC_vars.o \
-    metric_ops.o \
-    output_ops.o \
-    utilities.o \
-
 eq_ops.o : \
     num_vars.o \
     eq_vars.o \
     output_ops.o \
     metric_ops.o \
-    B_vars.o \
     
 output_ops.o : \
     num_vars.o \

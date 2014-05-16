@@ -16,7 +16,7 @@ module num_vars
     integer, parameter :: n_seq_0 = 10                                          ! start of index of file numbers for opening
     integer, parameter :: max_args = 10                                         ! maximum number of input arguments
     integer, parameter :: max_opts = 8                                          ! maximum number of options in input arguments
-    integer, parameter :: max_deriv = 5                                         ! highest derivatives that are tabulated for VMEC amplitudes R, Z, L
+    integer, parameter, dimension(3) :: max_deriv = [5,5,5]                     ! highest derivatives that are tabulated for VMEC amplitudes R, Z, L in theta,zeta,r)
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
 
     ! considering runtime

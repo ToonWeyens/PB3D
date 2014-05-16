@@ -8,12 +8,20 @@ module utilities
     
     implicit none
     private
-    public zero_NR, ext_var, calc_norm_deriv, f2h, h2f, mat_mult, det, &
-        &matvec_mult, calc_int, fun_mult, fun_sum, find_VMEC_norm_coord, &
-        &norm_deriv, VMEC_norm_deriv, VMEC_conv_FHM
+    public zero_NR, ext_var, det, calc_int, arr_mult, find_VMEC_norm_coord, &
+        &VMEC_norm_deriv, VMEC_conv_FHM, check_deriv, inv
 
+    interface arr_mult
+        module procedure arr_mult_3_3, arr_mult_3_1, arr_mult_1_1
+    end interface
+    interface det
+        module procedure det_0D, det_2D
+    end interface
+    interface inv
+        module procedure inv_0D, inv_2D
+    end interface
 contains
-    ! numerically derivates a function whose values are given on a regular mesh,
+    ! numerically derives a  function whose values are given on  a regular mesh,
     ! specified by  the inverse  step size to  an order specified  by ord  and a
     ! precision specified by prec (which is the  power of the step size to which
     ! the result is still correct. E.g.:  for forward differences, prec = 0, and
@@ -37,9 +45,9 @@ contains
                 &be of the same length as the input vector')
             stop
         end if
-        if (ord.lt.1 .or. ord.gt.max_deriv) then
+        if (ord.lt.1 .or. ord.gt.max_deriv(3)) then
             call writo('ERROR: VMEC_norm_deriv can only derive from order 1 &
-                &up to order '//trim(i2str(max_deriv)))
+                &up to order '//trim(i2str(max_deriv(3))))
             stop
         end if
         
@@ -153,8 +161,8 @@ contains
         end subroutine
     end subroutine
 
-    ! numerically interpolates a function that is given on either FM to HM or HM
-    ! to FM. If FM2HM is .true., the starting point is FM, if .false., it is HM
+    ! numerically interpolates a function that is given on either FM to HM or to
+    ! FM. If FM2HM is .true., the starting variable is FM, if .false., it is HM
     subroutine VMEC_conv_FHM(var,cvar,FM2HM)
         ! input / output
         real(dp), intent(in) :: var(:)
@@ -183,57 +191,71 @@ contains
         end if
     end subroutine
     
-
-
-
-    
-    ! finds the zero of a function using Newton-Rhapson iteration
-    function zero_NR(fun,dfun,guess)
-        use num_vars, only: max_it_NR, tol_NR
-        
+    ! checks  whether the  derivatives requested  for a  certain subroutine  are
+    ! valid
+    subroutine check_deriv(deriv,max_deriv,sr_name)
         ! input / output
-        real(dp) :: zero_NR
-        real(dp) :: guess
-        interface
-            function fun(x)                                                     ! the function
-                use num_vars, only: dp
-                real(dp) :: fun
-                real(dp), intent(in) :: x
-            end function fun
-            function dfun(x)                                                    ! derivative of the function
-                use num_vars, only: dp
-                real(dp) :: dfun
-                real(dp), intent(in) :: x
-            end function dfun
-        end interface
+        integer, intent(in) :: deriv(3)
+        integer, intent(in) :: max_deriv(3)
+        character(len=*), intent(in) :: sr_name
         
         ! local variables
-        integer :: jd
-        real(dp) :: corr
+        integer :: id
         
-        zero_NR = guess
-        
-        NR: do jd = 1,max_it_NR
-            ! correction to theta_NR
-            corr = -fun(zero_NR)/dfun(zero_NR)
-            zero_NR = zero_NR + corr
-            
-            ! check for convergence
-            ! CHANGE THIS TO RELATIVE
-            if (abs(corr).lt.tol_NR) then
-                exit
-            else if (jd .eq. max_it_NR) then
-                call writo('ERROR: Newton-Rhapson method not converged after '&
-                    &//trim(i2str(jd))//' iterations. Try increasing max_it_NR&
-                    & in input file?')
-                call writo('(the residual was equal to '//&
-                    &trim(r2str(corr)))
-                zero_NR = 0.0_dp
+        ! test the derivatives
+        do id = 1, 3
+            if (deriv(id).gt.max_deriv(id)) then
+                call writo('ERROR: Asking '//trim(sr_name)//' for a derivative&
+                    & in the '//trim(i2str(id))//'th VMEC coordinate of order '&
+                    &//trim(i2str(deriv(id)))//', while the maximum order is '&
+                    &//trim(i2str(max_deriv(id))))
                 stop
             end if
-        end do NR
-    end function zero_NR
+        end do
+    end subroutine
 
+    ! integrates a function using the trapezoidal rule using constant step size:
+    !   int_1^n f(x) dx = (x(2)-x(1))/2 f(a) + (x(n)-x(n-1))/2 f(n) 
+    !                     + sum_k=2^(n-1){f(k)*(x(k+1)-x(k-1))/2},
+    ! with n the number of points. So, n  points have to be specified as well as
+    ! n values  for the function  to be interpolated. They  have to be  given in
+    ! ascending order but the step size does not have to be constant
+    ! this yields the following difference formula:
+    !   int_1^n f(x) dx = int_1^(n-1) f(x) dx + (f(n)+f(n+1))*(x(n+1)-x(n))/2,
+    ! which is used here
+    function calc_int(var,x)
+        ! input / output
+        real(dp), allocatable :: calc_int(:)
+        real(dp) :: var(:)
+        real(dp) :: x(:)
+        
+        ! local variables
+        integer :: n_max
+        integer :: kd
+        
+        n_max = size(var)
+        
+        ! tests
+        if (size(x).ne.n_max) then
+            call writo('ERROR: in calc_int, the arrays of points and values &
+                &are not of the same length')
+            stop
+        else if (n_max.lt.2) then
+            call writo('ERROR: asking calc_int to integrate with '&
+                &//trim(i2str(n_max))//' points. Need at least 2')
+            stop
+        end if
+        
+        ! allocate output
+        allocate(calc_int(n_max)); calc_int = 0.0_dp
+        
+        ! calculate integral for all points
+        do kd = 2, n_max
+            calc_int(kd) = calc_int(kd-1) + &
+                &(var(kd)+var(kd-1))/2 * (x(kd)-x(kd-1))
+        end do
+    end function calc_int
+    
     ! extrapolates  a   function,  using  linear  or   quadratic  interpolation,
     ! depending on  the number of  points and values  given. The data  should be
     ! given sorted, in ascending order, without duplicate points in var_points.
@@ -247,8 +269,6 @@ contains
     ! instead of  the function  itself. Of  course, k should  be lower  than the
     ! degree of the polynomial
     function ext_var(var,var_points,ext_point,deriv_in)
-        use var_ops, only: matvec_mult
-        
         ! input / output
         real(dp) :: ext_var                                                     ! output
         real(dp), intent(in) :: var(:), var_points(:)                           ! input function and points at which tabulated
@@ -332,399 +352,388 @@ contains
             ext_var = ext_var + fact*a_i(id)*ext_point**(id-1-deriv)
         end do polynom
     end function ext_var
-
-    ! transform half-mesh to full-mesh quantities
-    ! Adapted from SIESTA routines
-    function h2f(var)
+    
+    ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
+    ! that are distributed between both acording to the binomial theorem
+    ! VERSION with arr_1 and arr_2 in three coords.
+    subroutine arr_mult_3_3(arr_1,arr_2,arr_3,deriv)
         ! input / output
-        real(dp), allocatable :: h2f(:)
-        real(dp), intent(in) :: var(:)
+        real(dp), intent(in) :: arr_1(1:,1:,0:,0:,0:)
+        real(dp), intent(in) :: arr_2(1:,1:,0:,0:,0:)
+        real(dp), intent(out) :: arr_3(1:,1:)
+        integer, intent(in) :: deriv(3)
         
         ! local variables
-        integer :: n_max
-        integer :: kd
-        
-        n_max = size(var)
-        allocate(h2f(n_max))
-        
-        ! interpolate the inner quantities
-        h2f(2:n_max-1) = 0.5_dp*(var(2:n_max-1) + var(3:n_max))
-        ! extrapolate the outer quantities using 3 points
-        h2f(n_max) = ext_var([(var(kd),kd=n_max-2,n_max)],&
-           &[(1.0_dp*(kd-0.5)/(n_max-1),kd=n_max-3,n_max-1)],1.0_dp,0)
-        h2f(1) = ext_var([(var(kd),kd=2,4)],&
-           &[(1.0_dp*(kd-0.5)/(n_max-1),kd=1,3)],0.0_dp,0)
-    end function
-
-    ! transform  half-mesh to  full-mesh  quantities based  on  h2f. The  result
-    ! is  reversible   (h2f*f2h  =   h)  only  if   the  second   derivative  of
-    ! the  function  is  zero  at  all  points,  because  the  condition  h_i  =
-    ! 1/4*(h_(i-1)+2*h_i+h_(i+1)) can  be derived. This is  logical, because the
-    ! linear interpolation is only exact for first order polynomials.
-    function f2h(var)
-        ! input / output
-        real(dp), allocatable :: f2h(:)
-        real(dp), intent(in) :: var(:)
-        
-        ! local variables
-        integer :: n_max
-        
-        n_max = size(var)
-        allocate(f2h(n_max))
-        
-        f2h(1) = 0.0_dp
-        ! interpolate the inner quantities
-        f2h(2:n_max) = 0.5_dp*(var(1:n_max-1) + var(2:n_max))                   ! Only last values must come from B.C.
-    end function
-
-    ! integrates a function using the trapezoidal rule using constant step size:
-    !   int_1^n f(x) dx = (x(2)-x(1))/2 f(a) + (x(n)-x(n-1))/2 f(n) 
-    !                     + sum_k=2^(n-1){f(k)*(x(k+1)-x(k-1))/2},
-    ! with n the number of points. So, n  points have to be specified as well as
-    ! n values  for the function  to be interpolated. They  have to be  given in
-    ! ascending order but the step size does not have to be constant
-    ! this yields the following difference formula:
-    !   int_1^n f(x) dx = int_1^(n-1) f(x) dx + (f(n)+f(n+1))*(x(n+1)-x(n))/2,
-    ! which is used here
-    function calc_int(var,x)
-        ! input / output
-        real(dp), allocatable :: calc_int(:)
-        real(dp) :: var(:)
-        real(dp) :: x(:)
-        
-        ! local variables
-        integer :: n_max
-        integer :: kd
-        
-        n_max = size(var)
+        real(dp) :: bin_fac(3)                                                  ! binomial factor for norm., pol. and tor. sum
+        integer :: r, m, n                                                      ! current degree of norm., pol., tor. derivatives
+        integer :: kd                                                           ! normal counter
         
         ! tests
-        if (size(x).ne.n_max) then
-            call writo('ERROR: in calc_int, the arrays of points and values &
-                &are not of the same length')
+        if (size(arr_1).ne.size(arr_2)) then
+            call writo('ERROR: In arr_mult, arrays 1 and 2 need to have the &
+                &same size')
             stop
-        else if (n_max.lt.2) then
-            call writo('ERROR: asking calc_int to integrate with '&
-                &//trim(i2str(n_max))//' points. Need at least 2')
+        end if
+        if (size(arr_1,1).ne.size(arr_3,1) .or. size(arr_1,2).ne.size(arr_3,2)) then
+            call writo('ERROR: In arr_mult, arrays 1 and 2 need to have the &
+                &same size as the resulting array 3')
             stop
         end if
         
-        ! allocate output
-        allocate(calc_int(n_max)); calc_int = 0.0_dp
-        
-        ! calculate integral for all points
-        do kd = 2, n_max
-            calc_int(kd) = calc_int(kd-1) + &
-                &(var(kd)+var(kd-1))/2 * (x(kd)-x(kd-1))
+        ! distribute normal and angular derivatives using binomial theorem
+        ! normal derivatives
+        do r = 0,deriv(1)
+            if (r.eq.0) then                                                    ! first term in sum
+                bin_fac(1) = 1.0_dp
+            else
+                bin_fac(1) = bin_fac(1)*(deriv(1)-(r-1))/r
+            end if
+            ! poloidal derivatives
+            do m = 0,deriv(2)
+                if (m.eq.0) then                                                ! first term in sum
+                    bin_fac(2) = 1.0_dp
+                else
+                    bin_fac(2) = bin_fac(2)*(deriv(2)-(m-1))/m
+                end if
+                ! toroidal derivatives
+                do n = 0,deriv(3)
+                    if (n.eq.0) then                                            ! first term in sum
+                        bin_fac(3) = 1.0_dp
+                    else
+                        bin_fac(3) = bin_fac(3)*(deriv(3)-(n-1))/n
+                    end if
+                    
+                    ! current term in the tripple summation
+                    do kd = 1, size(arr_1,2)
+                        arr_3(:,kd) = arr_3(:,kd) + &
+                            &bin_fac(1)*bin_fac(2)*bin_fac(3) &
+                            &* arr_1(:,kd,r,m,n)&
+                            &* arr_2(:,kd,deriv(1)-r,deriv(2)-m,deriv(3)-n)
+                    end do
+                end do
+            end do
         end do
-    end function calc_int
+    end subroutine
     
-    ! calculates normal derivatives of a function. Apart from the function to be
-    ! derived, also a function containing the normal variable has to be passed.
-    recursive function norm_deriv(f,x,pt,deriv,n_max)
+    ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
+    ! that are distributed between both acording to the binomial theorem
+    ! VERSION with arr_1 in three coords and arr_2 only in the flux coord.
+    subroutine arr_mult_3_1(arr_1,arr_2,arr_3,deriv)
         ! input / output
-        real(dp) :: norm_deriv
-        real(dp), intent(in) :: pt(3)
-        integer, intent(in) :: deriv(2)
-        integer, intent(in) :: n_max
-        interface
-            function f(pt1,deriv1)
-                use num_vars, only: dp
-                real(dp) :: f
-                real(dp), intent(in) :: pt1(3)
-                integer, intent(in) :: deriv1(2)
-            end function f
-            function x(pt2)
-                use num_vars, only: dp
-                real(dp) :: x
-                real(dp), intent(in) :: pt2(3)
-            end function x
-        end interface
+        real(dp), intent(in) :: arr_1(1:,1:,0:,0:,0:)
+        real(dp), intent(in) :: arr_2(1:,0:)
+        real(dp), intent(out) :: arr_3(1:,1:)
+        integer, intent(in) :: deriv(3)
         
         ! local variables
-        integer :: id, kd
-        logical :: FM
-        real(dp) :: pt_l(3), pt_r(3), d_pt(3)
+        real(dp) :: bin_fac                                                     ! binomial factor for norm. sum
+        integer :: r                                                            ! current degree of norm. derivative
+        integer :: kd                                                           ! normal counter
         
-        ! determine whether to use FM or HM and which radial value
-        call find_VMEC_norm_coord('VMEC normal derivatives',pt(1),FM,kd,n_max)
-        
-        ! determine one  normal derivative making  use of the  points x(1)+-0.5,
-        ! except for the  first and last points of the  grid, where higher-order
-        ! extrapolation is needed
-        if (FM .and. kd.eq.1) then                                              ! first point in FM
-            ! first normal point in FM: 0.0 -> extrapolate using 4 FM points
-            d_pt = [1.0_dp,0.0_dp,0.0_dp]
-            norm_deriv = ext_var([(f(pt+id*d_pt,deriv),id=0,3)],&
-                &[(x(pt+id*d_pt),id=0,3)],0.0_dp,1)
-        else if (FM .and. kd.eq.n_max) then                                       ! last point in FM
-            ! last normal point in FM: n_max -> extrapolate using 4 FM points
-            d_pt = [1.0_dp,0.0_dp,0.0_dp]
-            norm_deriv = ext_var([(f(pt-id*d_pt,deriv),id=0,3)],&
-                &[(x(pt-id*d_pt),id=0,3)],x(pt),1)
-        else                                                                    ! interior points
-            ! simple centered differences using FM if HM and HM if FM
-            pt_l = pt - [0.5_dp,0._dp,0._dp]
-            pt_r = pt + [0.5_dp,0._dp,0._dp]
-            norm_deriv = (f(pt_r,deriv) - f(pt_l,deriv)) / (x(pt_r) - x(pt_l))
+        ! tests
+        if (size(arr_1,2).ne.size(arr_2,1)) then
+            call writo('ERROR: In arr_mult, arrays 1 and 2 need to have the &
+                &same size in the flux coord.')
+            stop
         end if
-    end function norm_deriv
+        if (size(arr_1,1).ne.size(arr_3,1) .or. size(arr_1,2).ne.size(arr_3,2)) then
+            call writo('ERROR: In arr_mult, array 1 needs to have the same &
+                &size as the resulting array 3')
+            stop
+        end if
+        
+        ! distribute   normal  derivatives   using  binomial   theorem,  angular
+        ! derivatives only operate on the first array
+        ! normal derivatives
+        do r = 0,deriv(1)
+            if (r.eq.0) then                                                    ! first term in sum
+                bin_fac = 1.0_dp
+            else
+                bin_fac = bin_fac*(deriv(1)-(r-1))/r
+            end if
+            
+            ! current term in the tripple summation
+            do kd = 1, size(arr_1,2)
+                arr_3(:,kd) = arr_3(:,kd) + bin_fac * &
+                    &arr_1(:,kd,r,deriv(2),deriv(3))* arr_2(kd,deriv(1)-r)
+            end do
+        end do
+    end subroutine
     
-    ! calculates normal  derivatives of a  FM or  HM quantity. The  inverse step
-    ! size  has to  be specified,  normalized  so that  the whole  range of  the
-    ! variable is between 0 and 1 (both inclusive)
-    ! Both input and output can be FM or HM:
-    !   +-----------------------------------+
-    !   | I\O |      HM      |      FM      |
-    !   | ----------------------------------|
-    !   | HM  | centr. diff. |  (i+1)-(i)   |
-    !   | ----------------------------------|
-    !   | FM  |   (i)-(i-1)  | centr. diff. |
-    !   +-----------------------------------+
-    function calc_norm_deriv(var,inv_step,FM_i,FM_o)
+    ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
+    ! that are distributed between both acording to the binomial theorem
+    ! VERSION with arr_1 and arr_2 only in the flux coord.
+    subroutine arr_mult_1_1(arr_1,arr_2,arr_3,deriv)
         ! input / output
-        real(dp), allocatable :: calc_norm_deriv(:)                             ! output variable
-        real(dp), intent(in) :: var(:)                                          ! input variable
-        logical, intent(in) :: FM_i, FM_o                                       ! whether or not Full Mesh for input and output (true: FM, false: HM)
-        real(dp), intent(in) :: inv_step                                        ! inverse of step size in var
+        real(dp), intent(in) :: arr_1(1:,0:)
+        real(dp), intent(in) :: arr_2(1:,0:)
+        real(dp), intent(out) :: arr_3(1:)
+        integer, intent(in) :: deriv(3)
         
         ! local variables
-        real(dp), allocatable :: varout(:)                                      ! temporary variable to hold output
-        integer :: kd                                                           ! counters
-        integer :: n_max                                                        ! maximum index of array
+        real(dp) :: bin_fac                                                     ! binomial factor for norm. sum
+        integer :: r                                                            ! current degree of norm. derivative
         
-        n_max = size(var)
-        allocate(calc_norm_deriv(n_max))
-        allocate(varout(n_max))
-        
-        if (FM_i) then                                                          ! FM input
-            if (FM_o) then                                                      ! FM output
-                ! (2,2) FM_i, FM_o: CENTRAL DIFFERENCES
-                ! first normal point: extrapolate using 4 points
-                varout(1) = ext_var([(var(kd),kd=1,4)],&
-                    &[(kd/inv_step,kd=0,3)],0.0_dp,1)
-                ! internal points
-                do kd = 3, n_max
-                    varout(kd-1) = (var(kd)-var(kd-2)) * inv_step / 2.0_dp      ! centered difference
-                end do
-                ! last normal point: extrapolate using 4 points
-                varout(n_max) = ext_var([(var(kd),kd=n_max-3,n_max)],&
-                    &[(kd/inv_step,kd=n_max-4,n_max-1)],1.0_dp,1)
-            else                                                                ! HM output
-                ! (2,1) FM_i, HM_o: (i)-(i-1)
-                varout(1) = 0.0_dp
-                do kd = 2, n_max
-                    varout(kd) = (var(kd)-var(kd-1)) * inv_step                 ! centered difference
-                end do
-                !varout(2) = ext_var([(var(jd),jd=1,10)],&
-                    !&[(jd/inv_step,jd=0,9)],0.5_dp/inv_step,1)
-                !varout(3) = ext_var([(var(jd),jd=1,10)],&
-                    !&[(jd/inv_step,jd=0,9)],1.5_dp/inv_step,1)
-                !varout(4) = ext_var([(var(jd),jd=1,10)],&
-                    !&[(jd/inv_step,jd=0,9)],2.5_dp/inv_step,1)
-                !varout(5) = ext_var([(var(jd),jd=1,10)],&
-                    !&[(jd/inv_step,jd=0,9)],3.5_dp/inv_step,1)
-            end if
-        else                                                                    ! HM input
-            if (FM_o) then                                                      ! FM output
-                ! (1,2) HM_i, FM_o: (i+1)-(i)
-                ! first normal point: extrapolate using 4 points
-                varout(1) = ext_var([(var(kd),kd=2,5)],&
-                    &[((kd-0.5)/inv_step,kd=1,4)],0.0_dp,1)
-                ! internal points
-                do kd = 2, n_max-1
-                    varout(kd) = (var(kd+1)-var(kd)) * inv_step                 ! centered difference
-                end do
-                ! last normal point: extrapolate using 4 points
-                varout(n_max) = ext_var([(var(kd),kd=n_max-4,n_max)],&
-                    &[((kd-0.5)/inv_step,kd=n_max-5,n_max-1)],1.0_dp,1)
-            else                                                                ! HM output
-                ! (1,1) HM_i, HM_o: CENTRAL DIFFERENCES
-                ! first normal point: extrapolate using 4 points
-                varout(1) = 0.0_dp
-                varout(2) = ext_var([(var(kd),kd=2,5)],&
-                    &[((kd-0.5)/inv_step,kd=1,4)],0.5_dp/inv_step,1)
-                ! internal points
-                do kd = 4, n_max
-                    varout(kd-1) = (var(kd)-var(kd-2)) * inv_step / 2.0_dp      ! centered difference
-                end do
-                ! last normal point: extrapolate using 4 points
-                varout(n_max) = ext_var([(var(kd),kd=n_max-4,n_max)],&
-                    &[((kd-0.5)/inv_step,kd=n_max-5,n_max-1)],&
-                    &(n_max-1.5_dp)/inv_step,1)
-            end if
+        ! tests
+        if (size(arr_1,1).ne.size(arr_2,1)) then
+            call writo('ERROR: In arr_mult, arrays 1 and 2 need to have the &
+                &same size in the flux coord.')
+            stop
         end if
-        
-        calc_norm_deriv = varout
-    end function calc_norm_deriv
-    
-    ! multipy two matrices
-    function mat_mult(A,B)
-        real(dp) :: A(:,:), B(:,:)
-        real(dp), allocatable :: mat_mult(:,:)
-        integer :: id, jd, kd
-        
-        if (size(A,2).ne.size(B,1)) then
-            call writo('ERROR: matrices A and B not compatible')
+        if (size(arr_1,1).ne.size(arr_3,1)) then
+            call writo('ERROR: In arr_mult, array 1 needs to have the same &
+                &size as the resulting array 3')
             stop
         end if
         
-        allocate(mat_mult(size(A,1),size(B,2)))
-        mat_mult = 0.0_dp
-        do jd = 1,size(B,2)
-            do id = 1,size(A,1)
-                do kd = 1, size(A,2)
-                    mat_mult(id,jd) = mat_mult(id,jd) + A(id,kd)*B(kd,jd)
-                end do
+        if (deriv(2).gt.0 .or. deriv(3).gt.0) then                              ! no addition to arr_3
+            return
+        else
+            ! distribute  normal  derivatives  using binomial  theorem,  angular
+            ! derivatives only operate on the first array
+            ! normal derivatives
+            do r = 0,deriv(1)
+                if (r.eq.0) then                                                    ! first term in sum
+                    bin_fac = 1.0_dp
+                else
+                    bin_fac = bin_fac*(deriv(1)-(r-1))/r
+                end if
+                
+                ! current term in the tripple summation
+                arr_3 = arr_3 + bin_fac * arr_1(:,r)* arr_2(:,deriv(1)-r)
             end do
-        end do
-    end function mat_mult
-    
-    ! multiply a matrix with a vector
-    function matvec_mult(A,b)
-        real(dp) :: A(:,:), b(:)
-        real(dp), allocatable :: matvec_mult(:)
-        integer :: id, kd
-        
-        if (size(A,2).ne.size(b)) then
-            call writo('ERROR: Matrix A and vector b not compatible')
-            stop
         end if
-        
-        allocate(matvec_mult(size(A,1)))
-        matvec_mult = 0.0_dp
-        do id = 1, size(A,1)
-            do kd = 1, size(A,2)
-                matvec_mult(id) = matvec_mult(id) + A(id,kd)*b(kd)
-            end do
-        end do
-    end function matvec_mult
+    end subroutine
 
-    ! subtract two matrices
-    function mat_sub(A,B)
-        real(dp) :: A(:,:), B(:,:)
-        real(dp), allocatable :: mat_sub(:,:)
-        integer :: id, jd
+    ! calculate determinant of a matrix which is defined on a 2D grid
+    ! the size should be small, as the direct formula is used.
+    recursive function det_2D(A) result (detA)
+        ! input / output
+        real(dp), intent(in) :: A(:,:,:,:)
+        real(dp), allocatable :: detA(:,:)
         
-        if (size(A,1).ne.size(B,1) .or. size(A,2).ne.size(B,2)) then
-            call writo('ERROR: matrices A and B not compatible')
+        ! local variables
+        integer :: id                                                           ! counter
+        integer :: n                                                            ! holds size of A
+        real(dp) :: sgn                                                         ! holds either plus or minus one
+        integer, allocatable :: slct(:)                                         ! 0 in between 1's selects which column to delete
+        integer, allocatable :: idx(:)                                          ! counts from 1 to size(A)
+        
+        ! tests
+        if (size(A,3).ne.size(A,4)) then
+            call writo('ERROR: In det(A), the matrix A has to be square')
+            stop
+        end if
+        if (size(A,3).gt.4) then
+            call writo('ERROR: det(A) should only be used for small matrices')
             stop
         end if
         
-        allocate(mat_sub(size(A,1),size(A,2)))
-        mat_sub = 0.0_dp
-        do jd = 1,size(B,2)
-            do id = 1,size(A,1)
-                mat_sub(id,jd) = A(id,jd)-B(id,jd)
+        ! intialize
+        n = size(A,3)
+        sgn = 1.0_dp
+        allocate (idx(n))
+        idx = [(id,id=1,n)]
+        allocate (slct(n))
+        slct = 1
+        allocate (detA(size(A,1),size(A,2)))
+        detA = 0.0_dp
+        
+        if (n.eq.1) then                                                        ! shouldn't be used
+            detA = A(:,:,1,1)
+        else if (n.eq.2) then
+            detA = A(:,:,1,1)*A(:,:,2,2)-A(:,:,1,2)*A(:,:,2,1)
+        else
+            do id = 1, n
+                slct(id) = 0
+                detA = detA + &
+                    &A(:,:,1,id)*sgn*det_2D(A(:,:,2:n,pack(idx,slct.gt.0)))
+                sgn = -sgn
+                slct(id) = 1
             end do
-        end do
-    end function mat_sub
+        end if
+    end function
 
-    ! calculate determinant of a matrix
+    ! calculate determinant of a constant matrix
     ! (adapted from http://dualm.wordpress.com/2012/01/06/computing-determinant-in-fortran/)
-    real(dp) function det(N, mat)
-        integer, intent(in) :: N 
-        real(dp), intent(inout) :: mat(:,:)
-        integer :: i, info
-        integer, allocatable :: ipiv(:)
+    ! ¡¡¡WARNING: the matrix A is changed on output!!!
+    function det_0D(A)
+        ! input / output
+        real(dp), intent(inout) :: A(:,:)
+        real(dp) :: det_0D
+        
+        ! local variables
+        integer :: n 
         real(dp) :: sgn
+        integer :: id, info
+        integer, allocatable :: ipiv(:)
         
-        allocate(ipiv(N))
+        ! tests
+        if (size(A,1).ne.size(A,2)) then
+            call writo('ERROR: In det(A), the matrix A has to be square')
+            stop
+        end if
         
+        ! initialize
+        n = size(A,1)
+        allocate(ipiv(n))
         ipiv = 0
         
-        call dgetrf(N, N, mat, N, ipiv, info)
+        call dgetrf(n, n, A, n, ipiv, info)
         
-        det = 1.0_dp
-        do i = 1, N
-            det = det*mat(i, i)
+        det_0D = 1.0_dp
+        do id = 1, n
+            det_0D = det_0D*A(id, id)
         end do
         
         sgn = 1.0_dp
-        do i = 1, N
-            if(ipiv(i) /= i) then
+        do id = 1, n
+            if(ipiv(id).ne.id) then
                 sgn = -sgn
             end if
         end do
-        det = sgn*det   
-    end function det
+        det_0D = sgn*det_0D
+    end function det_0D
     
-    ! product of two functions, with angular derivatives
-    recursive function fun_mult(f1,f2,pt,deriv)
+    ! calculate inverse of  square matrix A which has  elements depending on
+    ! 2D mesh (first two coords)
+    ! this method uses direct inversion using  Cramer's rule, since the matrix A
+    ! is supposed to be  very small (i.e. 3x3 or 1x1) and  since the inverse has
+    ! to be calculated at  each of the points in the 2D mesh,  this can be quite
+    ! fast
+    function inv_2D(A)
         ! input / output
-        real(dp) :: fun_mult
-        real(dp), intent(in) :: pt(3)
-        integer, intent(in) :: deriv(2)
+        real(dp), intent(in) :: A(:,:,:,:)
+        real(dp), allocatable :: inv_2D(:,:,:,:)
+        
+        ! local variables
+        real(dp), allocatable :: detA(:,:)
+        integer :: id, kd                                                       ! counters
+        integer :: n
+        integer, allocatable :: slct(:,:)                                       ! 0 in between 1's selects which column to delete
+        integer, allocatable :: idx(:)                                          ! counts from 1 to size(A)
+        
+        ! tests
+        if (size(A,3).ne.size(A,4)) then
+            call writo('ERROR: In inv_2D, the matrix has to be square')
+            stop
+        end if
+        
+        ! initializing
+        n = size(A,3)
+        allocate(detA(size(A,1),size(A,2)))
+        detA = 0.0_dp
+        allocate (idx(n))
+        idx = [(id,id=1,n)]
+        allocate (slct(n,2))
+        slct = 1
+        allocate(inv_2D(size(A,1),size(A,2),n,n))
+        
+        ! calculate determinant
+        detA = det(A)
+        
+        ! calculate cofactor matrix, replacing original elements
+        do kd = 1,n
+            do id = 1,n
+                slct(kd,1) = 0
+                slct(id,2) = 0
+                inv_2D(:,:,id,kd) = (-1.0_dp)**(id+kd)*det(A(:,:,&
+                    &pack(idx,slct(:,1).gt.0),pack(idx,slct(:,2).gt.0)))
+                slct(kd,1) = 1
+                slct(id,2) = 1
+            end do
+        end do
+        
+        ! divide by determinant
+        do kd = 1,n
+            do id = 1,n
+                inv_2D(:,:,id,kd) = inv_2D(:,:,id,kd) / detA
+            end do
+        end do
+    end function inv_2D
+    
+    ! calculate inverse of a constant square matrix
+    function inv_0D(A)
+        ! input / output
+        real(dp), intent(in) :: A(:,:)
+        real(dp), allocatable :: inv_0D(:,:)
+        
+        ! local variables
+        integer :: n 
+        integer :: info
+        integer, allocatable :: ipiv(:)
+        real(dp), allocatable :: w(:)                                           ! work variable
+        
+        ! tests
+        if (size(A,1).ne.size(A,1)) then
+            call writo('ERROR: In inv_0D(A), the matrix A has to be square')
+            stop
+        end if
+        
+        ! initialize
+        n = size(A,1)
+        allocate(ipiv(n))
+        ipiv = 0
+        allocate(w(n))
+        allocate(inv_0D(n,n))
+        
+        inv_0D = A
+        
+        call dgetrf(n, n, inv_0D, n, ipiv, info)                                ! LU factorization
+        
+        call dgetri(n, inv_0D, n, ipiv, w, n, info)                             ! inverse of LU
+    end function inv_0D
+
+    
+
+ 
+    ! finds the zero of a function using Newton-Rhapson iteration
+    function zero_NR(fun,dfun,guess)
+        use num_vars, only: max_it_NR, tol_NR
+        
+        ! input / output
+        real(dp) :: zero_NR
+        real(dp) :: guess
         interface
-            function f1(pt1,deriv1)
+            function fun(x)                                                     ! the function
                 use num_vars, only: dp
-                real(dp) :: f1
-                real(dp), intent(in) :: pt1(3)
-                integer, intent(in) :: deriv1(2)
-            end function f1
-            function f2(pt2,deriv2)
+                real(dp) :: fun
+                real(dp), intent(in) :: x
+            end function fun
+            function dfun(x)                                                    ! derivative of the function
                 use num_vars, only: dp
-                real(dp) :: f2
-                real(dp), intent(in) :: pt2(3)
-                integer, intent(in) :: deriv2(2)
-            end function f2
+                real(dp) :: dfun
+                real(dp), intent(in) :: x
+            end function dfun
         end interface
         
         ! local variables
-        real(dp) :: bin_fac(2)                                                  ! binomial factor for pol. and tor. sum
-        integer :: m_max, n_max                                                 ! max. degree of pol., tor. derivatives
-        integer :: m, n                                                         ! current degree of pol., tor. derivatives
+        integer :: jd
+        real(dp) :: corr
         
-        ! distribute angular derivatives using binomial theorem
-        fun_mult = 0.0_dp
+        zero_NR = guess
         
-        m_max = deriv(1)
-        n_max = deriv(2)
-        
-        ! poloidal derivatives
-        do m = 0,m_max
-            if (m.eq.0) then                                                    ! first term in sum
-                bin_fac(1) = 1.0_dp
-            else
-                bin_fac(1) = bin_fac(1)*(m_max-(m-1))/m
+        NR: do jd = 1,max_it_NR
+            ! correction to theta_NR
+            corr = -fun(zero_NR)/dfun(zero_NR)
+            zero_NR = zero_NR + corr
+            
+            ! check for convergence
+            ! CHANGE THIS TO RELATIVE
+            if (abs(corr).lt.tol_NR) then
+                exit
+            else if (jd .eq. max_it_NR) then
+                call writo('ERROR: Newton-Rhapson method not converged after '&
+                    &//trim(i2str(jd))//' iterations. Try increasing max_it_NR&
+                    & in input file?')
+                call writo('(the residual was equal to '//&
+                    &trim(r2str(corr)))
+                zero_NR = 0.0_dp
+                stop
             end if
-            ! toroidal derivatives
-            do n = 0,n_max
-                if (n.eq.0) then                                                ! first term in sum
-                    bin_fac(2) = 1.0_dp
-                else
-                    bin_fac(2) = bin_fac(2)*(n_max-(n-1))/n
-                end if
-                fun_mult = fun_mult + bin_fac(1)*bin_fac(2) * &
-                    &f1(pt,[m,n])*f2(pt,[m_max-m,n_max-n])
-            end do
-        end do
-    end function fun_mult
+        end do NR
+    end function zero_NR
 
-    ! sum of two functions, with angular derivatives
-    recursive function fun_sum(f1,f2,pt,deriv)
-        ! input / output
-        real(dp) :: fun_sum
-        real(dp), intent(in) :: pt(3)
-        integer, intent(in) :: deriv(2)
-        interface
-            function f1(pt1,deriv1)
-                use num_vars, only: dp
-                real(dp) :: f1
-                real(dp), intent(in) :: pt1(3)
-                integer, intent(in) :: deriv1(2)
-            end function f1
-            function f2(pt2,deriv2)
-                use num_vars, only: dp
-                real(dp) :: f2
-                real(dp), intent(in) :: pt2(3)
-                integer, intent(in) :: deriv2(2)
-            end function f2
-        end interface
-        
-        fun_sum = f1(pt,deriv) + f2(pt,deriv)
-    end function fun_sum
-    
     ! calculates the radial mesh point for VMEC variables
     subroutine find_VMEC_norm_coord(fun_name,pt_r,FM,kd,n_max)
         ! input / output
