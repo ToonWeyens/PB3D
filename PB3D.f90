@@ -23,11 +23,12 @@
 !-------------------------------------------------------
 program PB3D
     use time, only: init_time, start_time, stop_time, passed_time
-    use test, only: test_repack, test_write_out, test_mesh_cs, &
+    use test, only: test_repack, test_print_GP, test_mesh_cs, &
         &test_metric_transf, test_ang_B, test_ext_var, test_B, &
         &test_VMEC_norm_deriv, test_VMEC_conv_FHM, test_calc_RZL, &
         &test_arr_mult, test_calc_T_VF, test_calc_inv_met, test_det, &
-        &test_inv
+        &test_inv, test_calc_f_deriv, test_calc_g, test_f2r, &
+        &test_calc_matrix_X
     use num_vars, only: ltest
     use str_ops, only: r2str
     use output_ops, only: init_output_ops, lvl_ud, writo
@@ -72,20 +73,24 @@ program PB3D
         call writo('Start tests')
         call lvl_ud(1)
         !call test_repack
-        !call test_write_out
+        !call test_print_GP
         !call test_mesh_cs
         !call test_ext_var
         !call test_det
         !call test_inv
+        !call test_f2r
+        !call test_ang_B
+        !call test_calc_g
+        !call test_calc_f_deriv
+        call test_calc_matrix_X
         call test_metric_transf
+        call test_B
         call test_calc_inv_met
         call test_calc_T_VF
         call test_arr_mult
         call test_calc_RZL
         call test_VMEC_conv_FHM
         call test_VMEC_norm_deriv
-        call test_B
-        !call test_ang_B
         call writo('')
         call passed_time
         call writo('')
@@ -109,6 +114,7 @@ program PB3D
     !-------------------------------------------------------
     call writo('Start cleaning up')
     call lvl_ud(1)
+    ! CLOSE THE OUTPUT FILES, 
     call lvl_ud(-1)
 
 !contains

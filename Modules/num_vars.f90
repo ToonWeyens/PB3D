@@ -7,7 +7,7 @@ module num_vars
     public max_it, dp, qp, style, max_str_ln, n_seq_0, max_args, &
         &max_opts, prog_name, max_it_r, ltest, pi, max_it_NR, tol_NR, &
         &input_i, output_i, VMEC_i, min_alpha, max_alpha, n_alpha, &
-        &theta_var_along_B, max_deriv
+        &theta_var_along_B, max_deriv, mu_0, calc_mesh_style, iu
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -16,18 +16,21 @@ module num_vars
     integer, parameter :: n_seq_0 = 10                                          ! start of index of file numbers for opening
     integer, parameter :: max_args = 10                                         ! maximum number of input arguments
     integer, parameter :: max_opts = 8                                          ! maximum number of options in input arguments
-    integer, parameter, dimension(3) :: max_deriv = [5,5,5]                     ! highest derivatives that are tabulated for VMEC amplitudes R, Z, L in theta,zeta,r)
+    integer, parameter, dimension(3) :: max_deriv = [4,4,4]                     ! highest derivatives that are tabulated for VMEC amplitudes R, Z, L in theta,zeta,r)
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
+    complex(dp), parameter :: iu = (0,1)                                        ! complex unit
 
     ! considering runtime
-    integer :: max_it_r                                                            ! number of levels for Richardson's extrapolation
+    integer :: max_it_r                                                         ! number of levels for Richardson's extrapolation
     integer :: max_it                                                           ! max. nr. iterations
     integer :: style                                                            ! determines the method used for minimization
         ! 1 [def] : Euler-Lagrange min., finite diff and Richardson's method
     logical :: ltest                                                            ! whether or not to call the testing routines
+    integer :: calc_mesh_style
 
-    ! global variables
-    real(dp) :: pi=4_dp*datan(1.0_dp)                                           ! pi
+    ! physical and mathematical variables
+    real(dp), parameter :: pi=4_dp*datan(1.0_dp)                                ! pi
+    real(dp), parameter :: mu_0 = 4E-7_dp*pi                                    ! permeability of free space
 
     ! considering finding the magnetic field lines
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
@@ -42,6 +45,4 @@ module num_vars
     ! considering the various field lines for which to do the calculations
     integer :: n_alpha
     real(dp) :: min_alpha, max_alpha
-    
-!contains
 end module num_vars

@@ -1,17 +1,19 @@
 ObjectFiles = \
 num_vars.o \
+time.o \
+str_ops.o \
+utilities.o \
 output_ops.o \
 input_ops.o \
 VMEC_vars.o \
 eq_vars.o \
 metric_ops.o \
 file_ops.o \
+matrix_X.o \
+X_vars.o \
 fourier_ops.o \
 eq_ops.o \
 driver_rich.o \
 driver.o \
-PB3D.o \
 test.o \
-time.o \
-str_ops.o \
-utilities.o \
+PB3D.o \

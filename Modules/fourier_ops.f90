@@ -15,7 +15,7 @@ contains
     ! Inverse Fourier transformation, VMEC style Also calculates the poloidal or
     ! toroidal derivatives, as indicated by the variable deriv(2)
     ! (Normal derivative is done discretely, outside of this function)
-    function f2r(fun_cos,fun_sin,ang_factor,mpol,ntor,deriv)
+    function f2r(fun_cos,fun_sin,ang_factor,mpol,ntor,nfp,deriv)
         ! input / output
         integer, intent(in) :: mpol, ntor
         integer, intent(in), optional :: deriv(2)
@@ -23,10 +23,11 @@ contains
         real(dp), intent(in) :: fun_cos(0:mpol-1,-ntor:ntor)                    ! cos part of Fourier variables (coeff. of the sum)
         real(dp), intent(in) :: fun_sin(0:mpol-1,-ntor:ntor)                    ! sin part of Fourier variables (coeff. of the sum)
         real(dp), intent(in) :: ang_factor(0:mpol-1,-ntor:ntor,2)               ! (co)sine factors on mesh
+        integer, intent(in) :: nfp                                              ! common denominator nfp in toroidal mode numbers
         
         ! local variables
-        integer :: m,n
-        integer :: id
+        integer :: m,n                                                          ! counters for mode numbers
+        integer :: id                                                           ! counters
         real(dp) :: fac_cos, fac_sin                                            ! factor in front of cos and sin, after taking derivatives
         real(dp) :: fac_cos_temp, fac_sin_temp                                  ! when calculating factors for angular derivatives
         
@@ -57,13 +58,15 @@ contains
                     end do
                     ! apply possible toroidal derivatives
                     do id = 1,deriv(2)
-                        fac_cos_temp = - n * fac_sin
-                        fac_sin_temp = n * fac_cos
+                        fac_cos_temp = - n * nfp * fac_sin
+                        fac_sin_temp = n * nfp * fac_cos
                         fac_cos = fac_cos_temp
                         fac_sin = fac_sin_temp
                     end do
                 end if
                 
+                ! orthonormalization has been taken  care of by considering only
+                ! half the summation in the poloidal variable
                 f2r = f2r + fac_cos*ang_factor(m,n,1) &
                     &+ fac_sin*ang_factor(m,n,2)
             end do
@@ -73,13 +76,13 @@ contains
     ! Calculate the cosine and sine factors  on a mesh (0:mpol-1, -ntor:ntor) at
     ! a given poloidal and toroidal position (theta,zeta)
     ! The first index contains the cosine  factors and the second one the sines.
-    ! xn includes the nfp factor from VMEC,  which will not be looked at in this
-    ! code
-    function mesh_cs(mpol,ntor,theta,zeta)
+    ! CHANGE THIS USING THE GONIOMETRIC IDENTITIES TO SAVE COMPUTING TIME
+    function mesh_cs(mpol,ntor,nfp,theta,zeta)
         ! input / output
         integer, intent(in) :: mpol, ntor
         real(dp), allocatable :: mesh_cs(:,:,:)
-        real(dp) :: theta, zeta
+        real(dp), intent(in) :: theta, zeta
+        integer, intent(in) :: nfp
         
         ! local variables
         integer :: m, n
@@ -95,10 +98,12 @@ contains
         
         do n = -ntor,ntor
             do m = 0,mpol-1
+                ! ¡¡¡IN VMEC  AND SIESTA, THE  FACTOR NFP IS NOT  INCLUDED IN
+                ! THE ARGUMENT OF THE SIN AND COS!!! WHY???
                 ! cos factor
-                mesh_cs(m,n,1) = cos(m*theta - n*zeta)
+                mesh_cs(m,n,1) = cos(m*theta - n*nfp*zeta)
                 ! sin factor
-                mesh_cs(m,n,2) = sin(m*theta - n*zeta)
+                mesh_cs(m,n,2) = sin(m*theta - n*nfp*zeta)
             end do
         end do
     end function mesh_cs
@@ -110,23 +115,23 @@ contains
     ! one of either theta  or zeta has to be able to change  sign because of the
     ! (anti)-symmetry of the (co)sine.
     ! It is  possible that the  input variable is  not allocated. In  this case,
-    ! output zero's
-    function repack(var_VMEC,mnmax,ns,mpol,ntor,xm,xn)
-        integer, intent(in) :: mnmax, ns, mpol, ntor
+    ! output zeros
+    function repack(var_VMEC,mnmax,n_r,mpol,ntor,xm,xn)
+        integer, intent(in) :: mnmax, n_r, mpol, ntor
         real(dp), intent(in) :: xm(mnmax), xn(mnmax)
         real(dp), allocatable :: var_VMEC(:,:)
             
         integer :: mode, m, n
             
-        real(dp) :: repack(0:mpol-1,-ntor:ntor,1:ns)
+        real(dp) :: repack(0:mpol-1,-ntor:ntor,1:n_r)
             
         if (allocated(var_VMEC)) then
             ! check if the  values in xm and  xn don't exceed the  maximum number of
             ! poloidal and toroidal modes (xm and xn are of length mnmax and contain
             ! the pol/tor mode number)
             if (maxval(xm).gt.mpol .or. maxval(abs(xn)).gt.ntor) then
-                call writo('WARNING: In repack, less modes are used than in the &
-                    &VMEC format')
+                call writo('WARNING: In repack, less modes are used than in the&
+                    & VMEC format')
             end if
                 
             repack = 0.0_dp
@@ -135,7 +140,10 @@ contains
                 m = nint(xm(mode))
                 n = nint(xn(mode))
                 ! if the modes don't fit, cycle
-                if (m.gt.mpol .or. abs(n).gt.ntor) cycle
+                if (m.gt.mpol .or. abs(n).gt.ntor) then
+                    call writo('WARNING: In f2r, m > mpol or n > ntor!')
+                    cycle
+                end if
                 
                 repack(m,n,:) = var_VMEC(mode,:)
             end do

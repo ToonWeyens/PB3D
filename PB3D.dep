@@ -1,14 +1,3 @@
-test.o : \
-    num_vars.o \
-    output_ops.o \
-    str_ops.o \
-    fourier_ops.o \
-    metric_ops.o \
-    time.o \
-    VMEC_vars.o \
-    eq_vars.o \
-    utilities.o \
-
 PB3D.o : \
     num_vars.o \
     VMEC_vars.o \
@@ -19,11 +8,24 @@ PB3D.o : \
     time.o \
     input_ops.o \
 
+test.o : \
+    num_vars.o \
+    output_ops.o \
+    str_ops.o \
+    fourier_ops.o \
+    metric_ops.o \
+    time.o \
+    VMEC_vars.o \
+    eq_vars.o \
+    utilities.o \
+    matrix_X.o \
+    X_vars.o \
+
 driver.o : \
     num_vars.o \
     driver_rich.o \
     output_ops.o \
-    str_ops.o 
+    str_ops.o \
 
 driver_rich.o : \
     num_vars.o \
@@ -33,12 +35,28 @@ driver_rich.o : \
     eq_vars.o \
     metric_ops.o \
     eq_ops.o \
+    matrix_X.o \
+    X_vars.o \
+
+matrix_X.0 : \
+    num_vars.o \
+    eq_ops.o \
+    metric_ops.o \
+    utilities.o \
+    VMEC_vars.o \
+    output_ops.o \
+    X_vars.o \
+
+X_vars.o : \
+    num_vars.o \
+    output_ops.o \
 
 eq_ops.o : \
     num_vars.o \
     eq_vars.o \
     output_ops.o \
     metric_ops.o \
+    utilities.o \
     
 output_ops.o : \
     num_vars.o \
@@ -51,10 +69,11 @@ input_ops.o : \
     num_vars.o \
     eq_vars.o \
     file_ops.o \
+    X_vars.o \
 
 fourier_ops.o : \
     output_ops.o \
-    num_vars.o
+    num_vars.o \
 
 file_ops.o : \
     num_vars.o \

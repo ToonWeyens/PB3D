@@ -4,7 +4,7 @@
 !------------------------------------------------------------------------------!
 module metric_ops 
     use num_vars, only: dp, max_deriv
-    use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud, write_out
+    use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
     use str_ops, only: r2str, i2str
     use VMEC_vars, only: n_r
     use utilities, only: check_deriv
@@ -14,13 +14,15 @@ module metric_ops
     public calc_T_VC, calc_g_C, calc_jac_C, calc_g_V, T_VC, calc_jac_V, &
         &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_F, &
         &calc_f_deriv, &
-        &g_V, jac_F, h_F, g_F, g_C, T_VF, T_FV, jac_V, det_T_VF, det_T_FV
+        &g_V, jac_F, h_F, g_F, g_C, T_VF, T_FV, jac_V, det_T_VF, det_T_FV, &
+        &g_F_FD, h_F_FD, jac_F_FD
 
     ! upper (h) and lower (g) metric factors
     ! (index 1,2: along B, perp to flux surfaces, index 4,5: 3x3 matrix)
     real(dp), allocatable :: g_C(:,:,:,:,:,:,:)                                 ! in the C(ylindrical) coordinate system (FM)
     real(dp), allocatable :: g_V(:,:,:,:,:,:,:)                                 ! in the V(MEC) coordinate system (FM)
-    real(dp), allocatable :: g_F(:,:,:,:,:,:,:), h_F(:,:,:,:,:,:,:)             ! in the F(lux) coordinate system (FM)
+    real(dp), allocatable :: g_F(:,:,:,:,:,:,:), h_F(:,:,:,:,:,:,:)             ! in the F(lux) coordinate system (FM) with derivatves in the V(MEC) system
+    real(dp), allocatable :: g_F_FD(:,:,:,:,:,:,:), h_F_FD(:,:,:,:,:,:,:)       ! in the F(lux) coordinate system (FM) with derivatives in the F(lux) system
     ! upper and lower transformation matrices
     ! (index 1,2: along B, perp to flux surfaces, index 4,5: 3x3 matrix)
     real(dp), allocatable :: T_VC(:,:,:,:,:,:,:)                                ! C(ylindrical) to V(MEC) (FM) (lower)
@@ -31,8 +33,10 @@ module metric_ops
     real(dp), allocatable :: det_T_FV(:,:,:,:,:)                                ! determinant of T_FV
     real(dp), allocatable :: jac_C(:,:,:,:,:)                                   ! jacobian of C(ylindrical) coordinate system (FM)
     real(dp), allocatable :: jac_V(:,:,:,:,:)                                   ! jacobian of V(MEC) coordinate system (FM)
-    real(dp), allocatable :: jac_F(:,:,:,:,:)                                   ! jacobian of F(lux) coordinate system (FM)
+    real(dp), allocatable :: jac_F(:,:,:,:,:)                                   ! jacobian of F(lux) coordinate system (FM) with derivatives in the V(MEC) system
+    real(dp), allocatable :: jac_F_FD(:,:,:,:,:)                                ! jacobian of F(lux) coordinate system (FM) with derivatives in the F(lux) system
         
+    ! interfaces
     interface calc_g_C
         module procedure calc_g_C_ind, calc_g_C_arr
     end interface
@@ -62,8 +66,8 @@ module metric_ops
             &calc_inv_met_ind_0D, calc_inv_met_arr_0D
     end interface
     interface calc_f_deriv
-        module procedure calc_f_deriv_ind, calc_f_deriv_arr, &
-            &calc_f_deriv_arr_2D
+        module procedure calc_f_deriv_3_ind, calc_f_deriv_3_arr, &
+            &calc_f_deriv_3_arr_2D, calc_f_deriv_1_ind
     end interface
 
 contains
@@ -92,6 +96,16 @@ contains
         allocate(h_F(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
+        ! g_F_FD
+        if (allocated(g_F_FD)) deallocate(g_F_FD)
+        allocate(g_F_FD(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+            &0:max_deriv(3)-1))
+        
+        ! h_F_FD
+        if (allocated(h_F_FD)) deallocate(h_F_FD)
+        allocate(h_F_FD(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+            &0:max_deriv(3)-1))
+        
         ! T_VC
         if (allocated(T_VC)) deallocate(T_VC)
         allocate(T_VC(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
@@ -99,13 +113,13 @@ contains
         
         ! T_VF
         if (allocated(T_VF)) deallocate(T_VF)
-        allocate(T_VF(n_par,n_r,3,3,0:max_deriv(1)-2,0:max_deriv(2)-2,&
-            &0:max_deriv(3)-2)); T_VC = 0.0_dp
+        allocate(T_VF(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+            &0:max_deriv(3)-1)); T_VC = 0.0_dp
         
         ! T_FV
         if (allocated(T_FV)) deallocate(T_FV)
-        allocate(T_FV(n_par,n_r,3,3,0:max_deriv(1)-2,0:max_deriv(2)-2,&
-            &0:max_deriv(3)-2)); T_VC = 0.0_dp
+        allocate(T_FV(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+            &0:max_deriv(3)-1)); T_VC = 0.0_dp
         
         ! det_T_VC
         if (allocated(det_T_VC)) deallocate(det_T_VC)
@@ -134,6 +148,11 @@ contains
         ! jac_F
         if (allocated(jac_F)) deallocate(jac_F)
         allocate(jac_F(n_par,n_r,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+            &0:max_deriv(3)-1))
+        
+        ! jac_F_FD
+        if (allocated(jac_F_FD)) deallocate(jac_F_FD)
+        allocate(jac_F_FD(n_par,n_r,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
     end subroutine
     
@@ -174,6 +193,8 @@ contains
     ! calculate the  metric coefficients in  the V(MEC) coordinate  system using
     ! the metric  coefficients in  the C(ylindrical)  coordinate system  and the
     ! transformation matrices
+    ! NOTE: It is assumed that the  lower order derivatives have been calculated
+    !       already. If not, the results will be incorrect!
     subroutine calc_g_V_ind(deriv)
         use num_vars, only: max_deriv
         
@@ -183,7 +204,7 @@ contains
         ! check the derivatives requested
         call check_deriv(deriv,max_deriv-[1,1,1],'calc_g_V')
         
-        call calc_g(T_VC,g_C,g_V,deriv,max_deriv-[1,1,1])
+        call calc_g(g_C,T_VC,g_V,deriv,max_deriv-[1,1,1])
     end subroutine
     subroutine calc_g_V_arr(deriv)
         ! input / output
@@ -209,7 +230,7 @@ contains
         ! check the derivatives requested
         call check_deriv(deriv,max_deriv-[1,1,1],'calc_g_F')
         
-        call calc_g(T_FV,g_V,g_F,deriv,max_deriv-[1,1,1])
+        call calc_g(g_V,T_FV,g_F,deriv,max_deriv-[1,1,1])
     end subroutine
     subroutine calc_g_F_arr(deriv)
         ! input / output
@@ -235,7 +256,9 @@ contains
     ! the coefficients Ci are calculated as mi!/(i!j!(m-i-j)!) x 
     !   1   for odd values of m-i
     !   1/2 for even values of m-i
-    subroutine calc_g(T_BA,g_A,g_B,deriv,max_deriv)
+    ! NOTE: It is assumed that the  lower order derivatives have been calculated
+    !       already. If not, the results will be incorrect!
+    subroutine calc_g(g_A,T_BA,g_B,deriv,max_deriv)
         use eq_vars, only: n_par
         use VMEC_vars, only: n_r
         
@@ -361,6 +384,8 @@ contains
     
     ! calculate the jacobian in VMEC coordinates from 
     !   jac_V = T_VC jac_C
+    ! NOTE: It is assumed that the  lower order derivatives have been calculated
+    !       already. If not, the results will be incorrect!
     subroutine calc_jac_V_ind(deriv)
         use utilities, only: arr_mult
         ! input / output
@@ -388,6 +413,8 @@ contains
     
     ! calculate the jacobian in Flux coordinates from 
     !   jac_F = T_FV jac_V
+    ! NOTE: It is assumed that the  lower order derivatives have been calculated
+    !       already. If not, the results will be incorrect!
     subroutine calc_jac_F_ind(deriv)
         use utilities, only: arr_mult
         ! input / output
@@ -480,11 +507,11 @@ contains
         integer, intent(in) :: deriv(3)
         
         ! local variables
-        integer :: id, jd, kd                                                   ! counter
+        integer :: id                                                           ! counter
         real(dp) :: theta_s(n_par,n_r,0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1)   ! straight field line coordinate theta
         
         ! check the derivatives requested
-        call check_deriv(deriv,max_deriv-[2,2,2],'calc_T_VF')
+        call check_deriv(deriv,max_deriv-[1,1,1],'calc_T_VF')
         
         ! initialize
         theta_s = 0.0_dp
@@ -495,14 +522,7 @@ contains
         theta_s(:,:,0,0,0) = theta                                              ! underived
         theta_s(:,:,0,1,0) = 1.0_dp                                             ! first derivative in theta
         ! add the deformation described by lambda
-        do kd = 0,deriv(3)+1                                                    ! zeta derivatives
-            do jd = 0,deriv(2)+1                                                ! theta derivatives
-                do id = 0,deriv(1)+1                                            ! r derivatives
-                    theta_s(:,:,id,jd,kd) = &
-                        &theta_s(:,:,id,jd,kd) + VMEC_L(:,:,id,jd,kd)
-                end do
-            end do
-        end do
+        theta_s = theta_s + VMEC_L(:,:,0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1)
         
         ! calculate transformation matrix T_V^F (FM)
         ! (1,1)
@@ -560,6 +580,8 @@ contains
     
     ! calculate D_1^m1 D_2^m2 D_3^m3 X from D_1^i1 D_2^i2 D_3^3 X and 
     ! D_1^j1 D_2^j2 D_3^j3 Y where XY = 1, i,j = 0..m, according to [ADD REF]
+    ! NOTE: It is assumed that the  lower order derivatives have been calculated
+    !       already. If not, the results will be incorrect!
     subroutine calc_inv_met_ind(X,Y,deriv)                                      ! matrix version
         use utilities, only: inv
         use VMEC_vars, only: n_r
@@ -723,44 +745,220 @@ contains
     end subroutine
     
     ! calculate the derivatives in the flux coordinates from derivatives in VMEC
-    ! coordinates. These are replaced
-    subroutine calc_f_deriv_ind(X,deriv)
-        ! input / output
-        real(dp), intent(inout) :: X(1:,1:,0:,0:,0:)
-        integer, intent(in) :: deriv(:)
+    ! coordinates.
+    ! The routine works by exchangeing the  derivatives in the coordinates B for
+    ! derivatives in coordinates A using the formula
+    !   D^m_B X = T_BA D_A (D^m-1_B X)
+    ! This is done for the derivatives in each of the coordinates B until degree
+    ! 0  is  reached. Furthermore,  each  of  these  degrees of  derivatives  in
+    ! coordinates  B  has  to  be   derived  optionally  also  in  the  original
+    ! coordinates A, which yields the formula:
+    !   D^p_A (D^m_B X) = sum_q binom(p,q) D^q_A (T_BA) D^p-q_A D_A (D^m-1_B X)
+    ! This way, ultimately  the desired derivatives in the coordinates  B can be
+    ! obtained recursively from the lower orders in the coordinates B and higher
+    ! orders in the coordinates A
+    ! see [ADD REF] for more detailed information
+    recursive subroutine calc_f_deriv_3_ind(X_A,T_BA,X_B,max_deriv,deriv_B,&    ! normal variable version
+        &deriv_A_input)
+        use utilities, only: arr_mult
         
-        ! CONTINUE HERE 
-        ! !!!!!!!!!!!!!!!
-    end subroutine
-    subroutine calc_f_deriv_arr(X,deriv)                                        ! scalar version
         ! input / output
-        real(dp), intent(inout) :: X(1:,1:,0:,0:,0:)
-        integer, intent(in) :: deriv(:,:)
+        real(dp), intent(in) :: X_A(1:,1:,0:,0:,0:)                             ! variable and derivs. in coord. system A
+        real(dp), intent(inout) :: X_B(1:,1:)                                   ! requested derivs. of variable in coord. system B
+        real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      ! transf. mat. and derivs. between coord. systems A and B
+        integer, intent(in), optional :: deriv_A_input(:)                       ! derivs. in coord. system A (optional)
+        integer, intent(in) :: deriv_B(:)                                       ! derivs. in coord. system B
+        integer, intent(in) :: max_deriv(:)                                     ! maximum degrees of derivs.
         
         ! local variables
-        integer :: id
+        integer :: id, jd, kd, ld                                               ! counters
+        integer :: deriv_id_B                                                   ! holds the deriv. currently calculated
+        integer, allocatable :: deriv_A(:)                                      ! holds either deriv_A or 0
+        real(dp), allocatable :: X_B_x(:,:,:,:,:)                               ! X_B and derivs. D^p-q_A with extra 1 exchanged deriv. D_A
+        integer, allocatable :: deriv_A_x(:)                                    ! holds A derivs. for exchanged X_B_x
+        integer, allocatable :: deriv_B_x(:)                                    ! holds B derivs. for exchanged X_B_x
         
-        do id = 1, size(deriv,2)
-            call calc_f_deriv_ind(X,deriv(:,id))
+        ! setup deriv_A
+        allocate(deriv_A(size(deriv_B)))
+        if (present(deriv_A_input)) then
+            deriv_A = deriv_A_input
+        else
+            deriv_A = 0
+        end if
+        
+        ! check the derivatives requested
+        ! (every B deriv. needs all the A derivs. -> sum(deriv_B) needed)
+        call check_deriv(deriv_A +sum(deriv_B),max_deriv,'calc_f_deriv')
+        
+        ! detect first deriv. in the B coord. system that needs to be exchanged,
+        ! with derivs in the A coord. system going from B coord. 1 to B coord. 2
+        ! to B coord. 3
+        ! if equal to  zero on termination, this means that  no more exchange is
+        ! necessary
+        deriv_id_B = 0
+        do id = 1,3
+            if (deriv_B(id).gt.0) then
+                deriv_id_B = id
+                exit
+            end if
         end do
-        write(*,*) 'THIS IS NOT YET IMPLEMENTED. CONTINUE!!!'
+        
+        ! calculate the  derivative in coord.  deriv_id_B of coord. system  B of
+        ! one order lower than requested here
+        ! check if we have reached the zeroth derivative in coord. B
+        if (deriv_id_B.eq.0) then                                               ! return the function with its requierd A derivs.
+            X_B = X_A(:,:,deriv_A(1),deriv_A(2),deriv_A(3))
+        else                                                                    ! apply the formula to obtain X_B using exchanged derivs.
+            ! allocate  the  exchanged  X_B_x  and  the  derivs.  in  A  and  B,
+            ! corresponding to D^m-1_B X
+            allocate(X_B_x(size(X_B,1),size(X_B,2),0:deriv_A(1),0:deriv_A(2),&
+                &0:deriv_A(3)))
+            allocate(deriv_A_x(size(deriv_A)))
+            allocate(deriv_B_x(size(deriv_B)))
+            
+            ! initialize X_B
+            X_B = 0.0_dp
+            
+            ! loop over the 3 terms in the sum due to the transf. mat.
+            do id = 1,3
+                ! calculate X_B_x for orders 0 up to deriv_A
+                do jd = 0,deriv_A(1)
+                    do kd = 0,deriv_A(2)
+                        do ld = 0,deriv_A(3)
+                            ! calculate the  derivs. in  A for X_B_x:  for every
+                            ! component in the sum due  to the transf. mat., the
+                            ! deriv. is one order  higher than [jd,kd,ld] at the
+                            ! corresponding coord. id
+                            deriv_A_x = [jd,kd,ld]
+                            deriv_A_x(id) = deriv_A_x(id) + 1
+                            
+                            ! calculate the derivs. in B  for X_B_x: this is one
+                            ! order lower in the coordinate deriv_id_B
+                            deriv_B_x = deriv_B
+                            deriv_B_x(deriv_id_B) = deriv_B_x(deriv_id_B) - 1
+                            
+                            ! recursively call the subroutine again to calculate
+                            ! X_B_x for the current derivatives
+                            call calc_f_deriv_3_ind(X_A,T_BA,X_B_x(:,:,jd,kd,ld),&
+                                &max_deriv,deriv_B_x,deriv_A_x)
+                        end do
+                    end do
+                end do
+                
+                ! use X_B_x at this term in summation due to the transf. mat. to
+                ! update X_B using the formula
+                call arr_mult(T_BA(:,:,deriv_id_B,id,0:,0:,0:),&
+                    &X_B_x(:,:,0:,0:,0:),X_B,deriv_A)
+            end do
+        end if
     end subroutine
-    subroutine calc_f_deriv_arr_2D(X,deriv)                                     ! matrix version
+    recursive subroutine calc_f_deriv_1_ind(X_A,T_BA,X_B,max_deriv,deriv_B,&    ! flux variable version
+        &deriv_A_input)
+        use utilities, only: arr_mult
+        
         ! input / output
-        real(dp), intent(inout) :: X(1:,1:,1:,1:,0:,0:,0:)
-        integer, intent(in) :: deriv(:,:)
+        real(dp), intent(in) :: X_A(1:,0:)                                      ! variable and derivs. in coord. system A
+        real(dp), intent(inout) :: X_B(1:)                                      ! requested derivs. of variable in coord. system B
+        real(dp), intent(in) :: T_BA(1:,0:)                                     ! transf. mat. and derivs. between coord. systems A and B
+        integer, intent(in), optional :: deriv_A_input                          ! derivs. in coord. system A (optional)
+        integer, intent(in) :: deriv_B                                          ! derivs. in coord. system B
+        integer, intent(in) :: max_deriv                                        ! maximum degrees of derivs.
         
         ! local variables
-        integer :: id, jd, kd
+        integer :: jd                                                           ! counters
+        integer :: deriv_A                                                      ! holds either deriv_A or 0
+        real(dp), allocatable :: X_B_x(:,:)                                     ! X_B and derivs. D^p-q_A with extra 1 exchanged deriv. D_A
+        integer :: deriv_A_x                                                    ! holds A derivs. for exchanged X_B_x
+        integer :: deriv_B_x                                                    ! holds B derivs. for exchanged X_B_x
         
-        do kd = 1,size(X,4)
-            do jd = 1,size(X,3)
-                do id = 1, size(deriv,2)
-                    call calc_f_deriv_ind(X(:,:,jd,kd,:,:,:),deriv(:,id))
+        ! setup deriv_A
+        if (present(deriv_A_input)) then
+            deriv_A = deriv_A_input
+        else
+            deriv_A = 0
+        end if
+        
+        ! check the derivatives requested
+        ! (every B deriv. needs all the A derivs. -> sum(deriv_B) needed)
+        call check_deriv([deriv_A+deriv_B,0,0],[max_deriv,0,0],'calc_f_deriv')
+        
+        ! calculate the  derivative in coord.  deriv_id_B of coord. system  B of
+        ! one order lower than requested here
+        ! check if we have reached the zeroth derivative in coord. B
+        if (deriv_B.eq.0) then                                                  ! return the function with its requierd A derivs.
+            X_B = X_A(:,deriv_A)
+        else                                                                    ! apply the formula to obtain X_B using exchanged derivs.
+            ! allocate  the  exchanged  X_B_x  and  the  derivs.  in  A  and  B,
+            ! corresponding to D^m-1_B X
+            allocate(X_B_x(size(X_B,1),0:deriv_A))
+            
+            ! initialize X_B
+            X_B = 0.0_dp
+            
+            ! calculate X_B_x for orders 0 up to deriv_A
+            do jd = 0,deriv_A
+                ! calculate the derivs.  in A for X_B_x: for  every component in
+                ! the  sum due  to the  transf. mat.,  the deriv.  is one  order
+                ! higher than jd
+                deriv_A_x = jd+1
+                
+                ! calculate the derivs. in B for X_B_x: this is one order lower
+                deriv_B_x = deriv_B-1
+                
+                ! recursively call  the subroutine again to  calculate X_B_x for
+                ! the current derivatives
+                call calc_f_deriv_1_ind(X_A,T_BA,X_B_x(:,jd),max_deriv,&
+                    &deriv_B_x,deriv_A_x)
+            end do
+            
+            ! use X_B_x to calculate X_B using the formula
+            call arr_mult(T_BA(:,0:),X_B_x(:,0:),X_B,[deriv_A,0,0])
+        end if
+    end subroutine
+    subroutine calc_f_deriv_3_arr(X_A,T_BA,X_B,max_deriv,derivs)
+        ! input / output
+        real(dp), intent(in) :: X_A(1:,1:,0:,0:,0:)                             ! variable and derivs. in coord. system A
+        real(dp), intent(inout) :: X_B(1:,1:,0:,0:,0:)                          ! requested derivs. of variable in coord. system B
+        real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      ! transf. mat. and derivs. between coord. systems A and B
+        integer, intent(in) :: derivs(:,:)                                      ! series of derivs. (in coordinate system B)
+        integer, intent(in) :: max_deriv(:)                                     ! maximum degrees of derivs.
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        
+        do id = 1, size(derivs,2)
+            call calc_f_deriv_3_ind(X_A,T_BA,&
+                &X_B(:,:,derivs(1,id),derivs(2,id),derivs(3,id)),&
+                &max_deriv,derivs(:,id))
+        end do
+    end subroutine
+    subroutine calc_f_deriv_3_arr_2D(X_A,T_BA,X_B,max_deriv,derivs)             ! matrix version
+        ! input / output
+        real(dp), intent(in) :: X_A(1:,1:,1:,1:,0:,0:,0:)                       ! variable and derivs. in coord. system A
+        real(dp), intent(inout) :: X_B(1:,1:,1:,1:,0:,0:,0:)                    ! requested derivs. of variable in coord. system B
+        real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      ! transf. mat. and derivs. between coord. systems A and B
+        integer, intent(in) :: derivs(:,:)                                      ! series of derivs. (in coordinate system B)
+        integer, intent(in) :: max_deriv(:)                                     ! maximum degrees of derivs.
+        
+        ! local variables
+        integer :: id, jd, kd                                                   ! counters
+        
+        ! test whether the dimensions of X_A and X_B agree
+        if (size(X_A,3).ne.size(X_B,3) .or. size(X_A,4).ne.size(X_B,4)) then
+            call writo('ERROR: In calc_f_deriv with 2D X_A and X_B, their sizes&
+                & have to be equal!')
+            stop
+        end if
+        
+        do kd = 1,size(X_A,4)
+            do jd = 1,size(X_A,3)
+                do id = 1, size(derivs,2)
+                    call calc_f_deriv_3_ind(X_A(:,:,jd,kd,:,:,:),T_BA,&
+                        &X_B(:,:,jd,kd,derivs(1,id),derivs(2,id),derivs(3,id)),&
+                        &max_deriv,derivs(:,id))
                 end do
             end do
         end do
-        write(*,*) 'THIS IS NOT YET IMPLEMENTED. CONTINUE!!!'
     end subroutine
 end module metric_ops
     

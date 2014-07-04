@@ -261,6 +261,9 @@ contains
             case (3)                                                            ! DISLIN
                 call writo('Output format chosen: DISLIN')
                 ! no need to do anything
+            case (4)                                                            ! GNUplot
+                call writo('Output format chosen: GNUplot')
+                call open_gnuplot
             case default
                 call writo('WARNING: output format "' // &
                     &trim(i2str(format_out)) // &
@@ -286,14 +289,30 @@ contains
             
         ! Open a .m file
         subroutine open_matlab()
-            output_i = n_seq_0                                                    ! start at the number indicated by n_seq_0
+            output_i = n_seq_0                                                  ! start at the number indicated by n_seq_0
             output_name = trim(output_name) // '.m'
-            call safe_open(output_i,ostat,output_name,'replace','formatted')
+            call safe_open(output_i,ostat,output_name,'replace','formatted',&
+                &delim_in='none')
             if (ostat.ne.0) then
                 call writo('ERROR: Cannot open matlab output file')
                 stop
             else
                 call writo('matlab output file "' // trim(output_name) &
+                    &//'" opened at number ' // trim(i2str(output_i)))
+            end if
+        end subroutine
+        
+        ! Open a .dat file
+        subroutine open_gnuplot()
+            output_i = n_seq_0                                                  ! start at the number indicated by n_seq_0
+            output_name = trim(output_name) // '.dat'
+            call safe_open(output_i,ostat,output_name,'replace','formatted',&
+                &delim_in='none')
+            if (ostat.ne.0) then
+                call writo('ERROR: Cannot open GNUplot output file')
+                stop
+            else
+                call writo('GNUplot output file "' // trim(output_name) &
                     &//'" opened at number ' // trim(i2str(output_i)))
             end if
         end subroutine

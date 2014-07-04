@@ -8,9 +8,17 @@ module utilities
     
     implicit none
     private
-    public zero_NR, ext_var, det, calc_int, arr_mult, find_VMEC_norm_coord, &
-        &VMEC_norm_deriv, VMEC_conv_FHM, check_deriv, inv
+    public zero_NR, ext_var, det, calc_int, arr_mult, VMEC_norm_deriv, &
+        &VMEC_conv_FHM, check_deriv, inv, calc_derivs, derivs
+    
+    ! the possible derivatives of order i
+    integer, allocatable :: derivs_0(:,:)                                       ! all possible derivatives of order 0
+    integer, allocatable :: derivs_1(:,:)                                       ! all possible derivatives of order 1
+    integer, allocatable :: derivs_2(:,:)                                       ! all possible derivatives of order 2
+    integer, allocatable :: derivs_3(:,:)                                       ! all possible derivatives of order 3
+    integer, allocatable :: derivs_4(:,:)                                       ! all possible derivatives of order 3
 
+    ! interfaces
     interface arr_mult
         module procedure arr_mult_3_3, arr_mult_3_1, arr_mult_1_1
     end interface
@@ -75,12 +83,12 @@ contains
             select case (ord)
                 case(1)                                                         ! first derivative
                     ! first point
-                    dvar(1) = (-3*var(1)+4*var(2)-var(3))*inv_step/2
+                    dvar(1) = (-3*var(1)+4*var(2)-var(3))*inv_step*0.5
                     ! middle points
-                    dvar(2:max_n-1) = (-var(1:max_n-2)+var(3:max_n))*inv_step/2
+                    dvar(2:max_n-1) = (-var(1:max_n-2)+var(3:max_n))*inv_step*0.5
                     ! last point
                     dvar(max_n) = (var(max_n-2) - 4*var(max_n-1) &
-                        &+ 3*var(max_n))* inv_step/2
+                        &+ 3*var(max_n))* inv_step*0.5
                 case(2)                                                         ! second derivative
                     ! first point
                     dvar(1) = (2*var(1)-5*var(2)+4*var(3)-var(4))*inv_step**2
@@ -93,17 +101,17 @@ contains
                 case(3)                                                         ! third derivative
                     ! first point
                     dvar(1) = (-5*var(1)+18*var(2)-24*var(3)+14*var(4)&
-                        &-3*var(5))* inv_step**3/2
+                        &-3*var(5))* inv_step**3*0.5
                     ! second point
                     dvar(2) = (-3*var(1)+10*var(2)-12*var(3)+6*var(4)-var(5))* &
-                        &inv_step**3/2
+                        &inv_step**3*0.5
                     ! middle points
                     dvar(3:max_n-2) = (-var(1:max_n-4)+2*var(2:max_n-3)-&
-                        &2*var(4:max_n-1)+var(5:max_n))*inv_step**3/2
+                        &2*var(4:max_n-1)+var(5:max_n))*inv_step**3*0.5
                     ! next-to-last point
                     dvar(max_n-1) = (var(max_n-4)-6*var(max_n-3)&
                         &+12*var(max_n-2)-10*var(max_n-1)+3*var(max_n))&
-                        &*inv_step**3/2
+                        &*inv_step**3*0.5
                     ! last point
                     dvar(max_n) = (3*var(max_n-4)-14*var(max_n-3)&
                         &+24*var(max_n-2)-18*var(max_n-1)+5*var(max_n))&
@@ -130,29 +138,29 @@ contains
                 case(5)                                                         ! fifth derivative
                     ! first point
                     dvar(1) = (-7*var(1)+40*var(2)-95*var(3)+120*var(4)&
-                        &-85*var(5)+32*var(6)-5*var(7))*inv_step**5/2
+                        &-85*var(5)+32*var(6)-5*var(7))*inv_step**5*0.5
                     ! second point
                     dvar(2) = (-5*var(1)+28*var(2)-65*var(3)+80*var(4)&
-                        &-55*var(5)+20*var(6)-3*var(7))*inv_step**5/2
+                        &-55*var(5)+20*var(6)-3*var(7))*inv_step**5*0.5
                     ! third point
                     dvar(3) = (-3*var(1)+16*var(2)-35*var(3)+40*var(4)&
-                        &-25*var(5)+8*var(6)-var(7))*inv_step**5/2
+                        &-25*var(5)+8*var(6)-var(7))*inv_step**5*0.5
                     ! middle points
                     dvar(4:max_n-3) = (-var(1:max_n-6)+4*var(2:max_n-5)&
                         &-5*var(3:max_n-4)+5*var(5:max_n-2)-4*var(6:max_n-1)&
-                        &+var(7:max_n))*inv_step**5/2
+                        &+var(7:max_n))*inv_step**5*0.5
                     ! next-to-next-to-last point
                     dvar(max_n-2) = (var(max_n-6)-8*var(max_n-5)&
                         &+25*var(max_n-4)-40*var(max_n-3)+35*var(max_n-2)&
-                        &-16*var(max_n-1)+3*var(max_n))*inv_step**5/2
+                        &-16*var(max_n-1)+3*var(max_n))*inv_step**5*0.5
                     ! next-to-last point
                     dvar(max_n-1) = (3*var(max_n-6)-20*var(max_n-5)&
                         &+55*var(max_n-4)-80*var(max_n-3)+65*var(max_n-2)&
-                        &-28*var(max_n-1)+5*var(max_n))*inv_step**5/2
+                        &-28*var(max_n-1)+5*var(max_n))*inv_step**5*0.5
                     ! last point
                     dvar(max_n) = (5*var(max_n-6)-32*var(max_n-5)&
                         &+85*var(max_n-4)-120*var(max_n-3)+95*var(max_n-2)&
-                        &-40*var(max_n-1)+7*var(max_n))*inv_step**5/2
+                        &-40*var(max_n-1)+7*var(max_n))*inv_step**5*0.5
                 case default
                     ! This you should never reach!
                     call writo('ERROR: Derivation of order '//&
@@ -369,16 +377,26 @@ contains
         integer :: kd                                                           ! normal counter
         
         ! tests
-        if (size(arr_1).ne.size(arr_2)) then
-            call writo('ERROR: In arr_mult, arrays 1 and 2 need to have the &
-                &same size')
-            stop
-        end if
-        if (size(arr_1,1).ne.size(arr_3,1) .or. size(arr_1,2).ne.size(arr_3,2)) then
-            call writo('ERROR: In arr_mult, arrays 1 and 2 need to have the &
-                &same size as the resulting array 3')
-            stop
-        end if
+        !if (size(arr_1).ne.size(arr_2)) then
+            !call writo('ERROR: In arr_mult, arrays 1 and 2 need to have the &
+                !&same size')
+            !stop
+        !end if
+        !if (size(arr_1,1).ne.size(arr_3,1) .or. size(arr_1,2).ne.size(arr_3,2)) then
+            !call writo('ERROR: In arr_mult, arrays 1 and 2 need to have the &
+                !&same size as the resulting array 3')
+            !stop
+        !end if
+        do kd = 1,3
+            if (size(arr_1,2+kd).lt.deriv(kd)+1 .or. &
+                &size(arr_2,2+kd).lt.deriv(kd)+1) then
+                call writo('ERROR: arrays 1 and 2 do not provide the necessary &
+                    &orders of derivatives to calculate a derivative of order &
+                    &['//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//&
+                    &','//trim(i2str(deriv(3)))//', at least in coordinate '&
+                    &//trim(i2str(kd)))
+            end if
+        end do
         
         ! distribute normal and angular derivatives using binomial theorem
         ! normal derivatives
@@ -684,9 +702,6 @@ contains
         call dgetri(n, inv_0D, n, ipiv, w, n, info)                             ! inverse of LU
     end function inv_0D
 
-    
-
- 
     ! finds the zero of a function using Newton-Rhapson iteration
     function zero_NR(fun,dfun,guess)
         use num_vars, only: max_it_NR, tol_NR
@@ -734,42 +749,84 @@ contains
         end do NR
     end function zero_NR
 
-    ! calculates the radial mesh point for VMEC variables
-    subroutine find_VMEC_norm_coord(fun_name,pt_r,FM,kd,n_max)
-        ! input / output
-        real(dp) :: pt_r
-        logical :: FM
-        integer :: kd
-        character(len=*) :: fun_name
-        integer, intent(in) :: n_max
-        
+    ! calculate all possible combinations of derivatives of a certain order
+    subroutine calc_derivs
         ! local variables
-        real(dp), parameter :: prec = 100*epsilon(1.0_dp)                       ! precision which we want
+        integer :: id, jd, kd, ld                                               ! counters
+        integer :: ci, cj, ck, cl                                               ! counters
         
-        ! determine whether to use FM or HM and which radial value, test
-        if (mod(pt_r,1.0_dp).lt.prec) then                                     ! FM
-            FM = .true.
-            kd = nint(pt_r)
-            if (kd.lt.1 .or. kd.gt.n_max) then
-                call writo('ERROR: FM r-range for '//trim(fun_name)//' is &
-                    &discrete values between 1 and '//trim(i2str(n_max))//&
-                    &', yet asking for '//trim(i2str(kd)))
-                stop
-            end if
-        else if (mod(pt_r,0.5_dp).lt.prec) then                                ! HM
-            FM = .false.
-            kd = nint(pt_r+0.5_dp)
-            if (kd.lt.2 .or. kd.gt.n_max) then
-                call writo('ERROR: HM r-range for '//trim(fun_name)//' is &
-                    &discrete values between 2 and '//trim(i2str(n_max))//&
-                    &', yet asking for '//trim(i2str(kd)))
-                stop
-            end if
-        else 
-            call writo('ERROR: for '//trim(fun_name)//', use integer values &
-                &for FM quantities or half-integer values for HM. The &
-                &provided value deviated too much from this.')
-            stop
-        end if 
+        ! deallocate if needed
+        if (allocated(derivs_0)) deallocate(derivs_0)
+        if (allocated(derivs_1)) deallocate(derivs_1)
+        if (allocated(derivs_2)) deallocate(derivs_2)
+        if (allocated(derivs_3)) deallocate(derivs_3)
+        if (allocated(derivs_4)) deallocate(derivs_4)
+        allocate(derivs_0(3,1))
+        allocate(derivs_1(3,3))
+        allocate(derivs_2(3,6))
+        allocate(derivs_3(3,10))
+        allocate(derivs_4(3,15))
+        
+        ci = 1
+        cj = 1
+        ck = 1
+        cl = 1
+        
+        derivs_0 = 0
+        derivs_1 = 0
+        derivs_2 = 0
+        derivs_3 = 0
+        derivs_4 = 0
+        
+        do id = 1,3
+            derivs_1(id,ci) = derivs_1(id,ci) + 1
+            ci = ci+1
+            do jd = 1,id
+                derivs_2(id,cj) = derivs_2(id,cj) + 1
+                derivs_2(jd,cj) = derivs_2(jd,cj) + 1
+                cj = cj+1
+                do kd = 1,jd
+                    derivs_3(id,ck) = derivs_3(id,ck) + 1
+                    derivs_3(jd,ck) = derivs_3(jd,ck) + 1
+                    derivs_3(kd,ck) = derivs_3(kd,ck) + 1
+                    ck = ck+1
+                    do ld = 1,kd
+                        derivs_4(id,cl) = derivs_4(id,cl) + 1
+                        derivs_4(jd,cl) = derivs_4(jd,cl) + 1
+                        derivs_4(kd,cl) = derivs_4(kd,cl) + 1
+                        derivs_4(ld,cl) = derivs_4(ld,cl) + 1
+                        cl = cl+1
+                    end do
+                end do
+            end do
+        end do
     end subroutine
+    
+    function derivs(order)
+        ! input / output
+        integer, intent(in) :: order
+        integer, allocatable :: derivs(:,:)
+        
+        select case (order)
+            case (0)
+                allocate(derivs(3,size(derivs_0,2)))
+                derivs = derivs_0
+            case (1)
+                allocate(derivs(3,size(derivs_1,2)))
+                derivs = derivs_1
+            case (2)
+                allocate(derivs(3,size(derivs_2,2)))
+                derivs = derivs_2
+            case (3)
+                allocate(derivs(3,size(derivs_3,2)))
+                derivs = derivs_3
+            case (4)
+                allocate(derivs(3,size(derivs_4,2)))
+                derivs = derivs_4
+            case default
+                call writo('ERROR: In get_derivs, only orders 0 to 4 are &
+                    &supported')
+                stop
+        end select
+    end function
 end module utilities

@@ -18,11 +18,8 @@ COMP_DIR = /usr/bin/gfortran # gfortran
 # Linker
 LINK_DIR = /usr/bin/g++ # g++ (needed for C++ preprocessing)
 
-# DISLIN path
-DISLIN_DIR = /usr/local/dislin
-
-# Add "modules" to the search path for the prerequisites
-VPATH = modules
+# Add "Modules" to the search path for the prerequisites
+VPATH = Modules
 
 # Contains list of source files (.o) and dependencies
 DEPLIST = PB3D.dep
@@ -36,11 +33,11 @@ include $(OBJLIST) # Names of all the objects
 #   Compiler specifications
 ##############################################################################
 # compiler flags
-COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fcheck=all -fbacktrace
+COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fcheck=all -fbacktrace -pg
 #COMP_FLAGS = -O3
 
 # compiler include
-COMP_INC = -I/usr/include -I$(HOME_BIN)/libstell_dir -I$(DISLIN_DIR)/gf/real64
+COMP_INC = -I/usr/include -I$(HOME_BIN)/libstell_dir
 
 # compiler command
 COMPILE = $(COMP_DIR) $(COMP_INC) $(COMP_FLAGS)
@@ -52,7 +49,7 @@ COMPILE = $(COMP_DIR) $(COMP_INC) $(COMP_FLAGS)
 LINK_FLAGS = -fPIC
 
 # libraries
-LINK_LIB = $(HOME_BIN)/libstell.a -L/usr/lib -lgfortran -lnetcdff -lnetcdf -llapack -lblas $(DISLIN_DIR)/libdislin_d.a -lXm -lXt -lX11 -lGL
+LINK_LIB = $(HOME_BIN)/libstell.a -L/usr/lib -lgfortran -lnetcdff -lnetcdf -llapack -lblas
 
 # link command
 LINK    = $(LINK_DIR) $(LINK_FLAGS) $(COMP_FLAGS)
@@ -65,7 +62,7 @@ PB3D:  $(ObjectFiles)
 %.o : %.f90
 	$(COMPILE) -c $<
 clean:
-	- rm -f *.o *.mod *~
+	- rm -f *.o *.mod *~ gmon.out output.xdot fort.* results.txt PB3D_out* tempoutput.dat
 
 output:
 	- rm -f *.m *.nc

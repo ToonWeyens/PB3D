@@ -5,12 +5,13 @@ module input_ops
     use str_ops, only: strh2l
     use num_vars, only: &
         &dp, max_str_ln, style, min_alpha, max_alpha, n_alpha, max_it_NR, &
-        &tol_NR, max_it_r, theta_var_along_B, input_i, n_seq_0
+        &tol_NR, max_it_r, theta_var_along_B, input_i, n_seq_0, calc_mesh_style
     use eq_vars, only: &
         &min_par, max_par, n_par
     use output_ops, only: writo, lvl_ud, &
         &format_out
     use file_ops, only: input_name
+    use X_vars, only: n_X, m_X
     implicit none
     private
     public yes_no, read_input
@@ -18,7 +19,7 @@ module input_ops
     ! input options
     namelist /inputdata/ format_out, style, min_par, &
         &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, &
-        &tol_NR, max_it_r, theta_var_along_B
+        &tol_NR, max_it_r, theta_var_along_B, n_X, m_X
 
 contains
     ! queries for yes or no, depending on the flag yes:
@@ -30,10 +31,10 @@ contains
         use time, only: start_time, stop_time
         
         ! input / output
-        character(len=max_str_ln) :: answer_str
         logical :: yes
         
         ! local variables
+        character(len=max_str_ln) :: answer_str
         integer :: id 
 
         do id = 1,lvl                                                           ! to get the response on the right collumn
@@ -77,6 +78,9 @@ contains
             &default values')
         call default_input
         
+        ! initialize non-input file variables
+        calc_mesh_style = 0
+        
         ! read user input
         if (input_i.ge.n_seq_0) then                                            ! otherwise, defaults are loaded
             read (input_i, nml=inputdata, iostat=istat) 
@@ -107,6 +111,8 @@ contains
             max_alpha = 2.0_dp*pi                                               ! maximum field line label
             n_alpha = 10                                                        ! number of different field lines
             theta_var_along_B = .true.                                          ! theta is used as the default parallel variable
+            n_X = 20                                                            ! toroidal mode number of perturbation
+            allocate(m_X(3)); m_X = [20,21,22]                                  ! poloidal mode numbers of perturbation
         end subroutine
     end subroutine
 end module input_ops
