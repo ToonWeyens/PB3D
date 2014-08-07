@@ -2,39 +2,25 @@
 !   Calculate the matrix  elements due to the Plasma of  the system of equations
 !   that has to be solved as described in [ADD REF]
 !------------------------------------------------------------------------------!
-module matrix_X
-    use num_vars, only: dp, iu, mu_0
+module X_ops
+#include <PB3D_macros.h>
+    use num_vars, only: dp, iu, mu_0, max_str_ln
     use output_ops, only: lvl_ud, writo, print_ar_2
 
     implicit none
     private
-    public calc_matrix_X, &
-        &PV0, PV1, PV2, KV0, KV1, KV2
+    public prepare_matrix_X, solve_EV_system
 
-    ! global variables
-    complex(dp), allocatable :: U_X_0(:,:,:), U_X_1(:,:,:)                      ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
-    complex(dp), allocatable :: DU_X_0(:,:,:), DU_X_1(:,:,:)                    ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
-    real(dp), allocatable :: sigma(:,:)                                         ! parallel current
-    real(dp), allocatable :: extra1(:,:)                                        ! extra terms in PV_0 (see routine calc_extra)
-    real(dp), allocatable :: extra2(:,:)                                        ! extra terms in PV_0 (see routine calc_extra)
-    real(dp), allocatable :: extra3(:,:)                                        ! extra terms in PV_0 (see routine calc_extra)
-    complex(dp), allocatable :: PV0(:,:,:,:)                                    ! ~PV^0 coefficient
-    complex(dp), allocatable :: PV1(:,:,:,:)                                    ! ~PV^1 coefficient
-    complex(dp), allocatable :: PV2(:,:,:,:)                                    ! ~PV^2 coefficient
-    complex(dp), allocatable :: KV0(:,:,:,:)                                    ! ~KV^0 coefficient
-    complex(dp), allocatable :: KV1(:,:,:,:)                                    ! ~KV^1 coefficient
-    complex(dp), allocatable :: KV2(:,:,:,:)                                    ! ~KV^2 coefficient
-    complex(dp), allocatable :: mat_P(:,:)                                      ! final matrix corresponding to P
-    complex(dp), allocatable :: mat_K(:,:)                                      ! final matrix corresponding to K
-    
 contains
     ! initialize the variables of this module
     ! ¡¡¡ THIS SHOULD BE  CHANGED TO TAKE INTO ACCOUNT THAT  U_X AND DU_X ARE
     ! HERMITIAN SO ONLY  M*(M+1)/2 ELEMENTS ARE NEEDED INSTEAD  OF M^2. HOWEVER,
     ! TAKE INTO ACCOUNT AS WELL THE MPI STORAGE MATRIX FORMATS !!!
-    subroutine init_matrix_X(n_m_X)
+    subroutine init_X_ops(n_m_X)
         use eq_vars, only: n_par
         use VMEC_vars, only: n_r
+        use X_vars, only: U_X_0, U_X_1, DU_X_0, DU_X_1, sigma, extra1, extra2, &
+            &extra3, PV0, PV1, PV2, KV0, KV1, KV2
         
         ! input / output
         integer :: n_m_X
@@ -90,19 +76,17 @@ contains
         ! KV2
         if (allocated(KV2)) deallocate(KV2)
         allocate(KV2(n_par,n_r,n_m_X,n_m_X))
-    end subroutine init_matrix_X
+    end subroutine init_X_ops
     
-    ! calculate the matrix elements
-    subroutine calc_matrix_X(n_r_X)
+    ! prepare the matrix elements by calculating KV and PV, which then will have
+    ! to be integrated, with a complex exponential weighting function
+    subroutine prepare_matrix_X
         use X_vars, only: n_X, m_X
-        
-        ! input / output
-        integer :: n_r_X                                                        ! nr. of normal points for perturbation quantities
         
         ! initialize the variables
         call writo('Initalizing variables...')
         call lvl_ud(1)
-        call init_matrix_X(size(m_X))
+        call init_X_ops(size(m_X))
         call lvl_ud(-1)
         
         ! calculate U and DU
@@ -130,13 +114,6 @@ contains
         call lvl_ud(1)
         call calc_KV(size(m_X))
         call lvl_ud(-1)
-        
-        ! Fill  up mat_P by discretizing  the equations, making use  of PV0, PV1
-        ! and PV2, interpolated in the n_r (equilibrium) values
-        call writo('Filling matrix mat_P and mat_K...')
-        call lvl_ud(1)
-        call fill_matrix_X(n_r_X)
-        call lvl_ud(-1)
     end subroutine
     
     ! calculate ~PV_(k,m)^i at all n_r values (see [ADD REF] for details)
@@ -144,13 +121,14 @@ contains
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
         use eq_vars, only: n_par, q => q_saf_FD
         use VMEC_vars, only: n_r
-        use X_vars, only: calc_rho
+        use X_vars, only: DU_X_0, DU_X_1, sigma, extra1, extra2, extra3, PV0, PV1, PV2
         
         ! input / output
         integer, intent(in) :: n_X                                              ! tor. mode nr n
         integer, intent(in) :: m_X(:)                                           ! vector containing pol. mode nrs m
         
         ! local variables
+        integer :: n_m_X                                                        ! number of poloidal modes m
         integer :: m, k, kd                                                     ! counters
         real(dp), allocatable :: com_fac(:,:)                                   ! common factor |nabla psi|^2/(mu_0*J^2*B^2)
         
@@ -161,6 +139,9 @@ contains
         real(dp), allocatable :: g33(:,:)                                       ! h^alpha,psi
         ! upper metric factors
         real(dp), allocatable :: h22(:,:)                                       ! h^alpha,psi
+        
+        ! initialize
+        n_m_X = size(m_X)
         
         ! set up submatrices
         ! jacobian
@@ -175,8 +156,8 @@ contains
         com_fac = h22/(mu_0*J*g33)
         
         ! calculate PVi
-        do m = 1,size(m_X)
-            do k = 1,size(m_X)
+        do m = 1,n_m_X
+            do k = 1,m
                 ! calculate PV0
                 PV0(:,:,k,m) = com_fac * (DU_X_0(:,:,m) - extra1 - extra2 ) * &
                     &(conjg(DU_X_0(:,:,k)) - extra1 - extra2) - &
@@ -189,17 +170,27 @@ contains
                         &( mu_0*J(:,kd)**2*h22(:,kd) )
                 end do
                 
-                ! calculate PV1
-                PV1(:,:,k,m) = com_fac * DU_X_1(:,:,m) * &
-                    &(conjg(DU_X_0(:,:,k)) - extra1 - extra2)
-                
                 ! calculate PV2
                 PV2(:,:,k,m) = com_fac * DU_X_1(:,:,m) * conjg(DU_X_1(:,:,k))
             end do
         end do
         
-        ! calculate rho from input
-        call calc_rho(n_par,n_r)
+        ! fill the Hermitian conjugates
+        do m = 1,n_m_X
+            do k = m+1,n_m_X
+                PV0(:,:,k,m) = conjg(PV0(:,:,m,k))
+                PV2(:,:,k,m) = conjg(PV2(:,:,m,k))
+            end do
+        end do
+        
+        ! PV1 is not Hermitian
+        do m = 1,n_m_X
+            do k = 1,n_m_X
+                ! calculate PV1
+                PV1(:,:,k,m) = com_fac * DU_X_1(:,:,m) * &
+                    &(conjg(DU_X_0(:,:,k)) - extra1 - extra2)
+            end do
+        end do
     end subroutine
     
     ! calculate ~KV_(k,m)^i at all n_r values (see [ADD REF] for details)
@@ -207,7 +198,7 @@ contains
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
         use eq_vars, only: n_par
         use VMEC_vars, only: n_r
-        use X_vars, only: rho
+        use X_vars, only: rho, U_X_0, U_X_1, KV0, KV1, KV2
         
         ! input / output
         integer, intent(in) :: n_m_X                                            ! number of poloidal modes m
@@ -236,35 +227,73 @@ contains
         allocate(com_fac(n_par,n_r))
         com_fac = J*h22/g33
         
+        ! for  Hermitian KV0  and  KV2,  only half  of  the  terms  have  to  be
+        ! calculated
         do m = 1,n_m_X
-            do k = 1,n_m_X
+            do k = 1,m
                 ! calculate KV0
                 KV0(:,:,k,m) = com_fac * U_X_0(:,:,m) * conjg(U_X_0(:,:,k)) + &
                     &1/h22
-                
-                ! calculate KV1
-                KV1(:,:,k,m) = com_fac * U_X_1(:,:,m) * conjg(U_X_0(:,:,k))
                 
                 ! calculate KV2
                 KV2(:,:,k,m) = com_fac * U_X_1(:,:,m) * conjg(U_X_1(:,:,k))
                 
                 ! multiply by rho
                 KV0(:,:,k,m) = KV0(:,:,k,m)*rho
-                KV1(:,:,k,m) = KV1(:,:,k,m)*rho
                 KV2(:,:,k,m) = KV2(:,:,k,m)*rho
+            end do
+        end do
+        ! fill the Hermitian conjugates
+        do m = 1,n_m_X
+            do k = m+1,n_m_X
+                KV0(:,:,k,m) = conjg(KV0(:,:,m,k))
+                KV2(:,:,k,m) = conjg(KV2(:,:,m,k))
+            end do
+        end do
+        
+        ! KV1 is not Hermitian
+        do m = 1,n_m_X
+            do k = 1,n_m_X
+                ! calculate KV1
+                KV1(:,:,k,m) = com_fac * U_X_1(:,:,m) * conjg(U_X_0(:,:,k))
+                
+                ! multiply by rho
+                KV1(:,:,k,m) = KV1(:,:,k,m)*rho
             end do
         end do
     end subroutine
     
-    ! fills mat_P and mat_K making use of PVi and KVi
-    subroutine fill_matrix_X(n_r_X)
-        use X_vars, only: m_X
+    ! set-up and  solve the  EV system  by discretizing  the equations  in n_r_X
+    ! normal points,  making use of  PV0, PV1 and  PV2, interpolated in  the n_r
+    ! (equilibrium) values
+    subroutine solve_EV_system(ierr)
+        use X_vars, only: n_r_X, m_X, n_X
+        use VMEC_vars, only: n_r
+        use num_vars, only: EV_style
+        use str_ops, only: i2str
+        use slepc_ops, only: solve_EV_system_slepc
+        
+        character(*), parameter :: rout_name = 'solve_EV_system'
         
         ! input / output
-        integer :: n_r_X                                                        ! nr. of normal points for perturbation quantities
+        integer, intent(inout) :: ierr                                          ! error
         
-        !!! CONTINUE HERE !!!
-        !!! NEED PETSC STORAGE !!!
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        select case (EV_style)
+            case(1)                                                             ! slepc solver for EV problem
+                call solve_EV_system_slepc(m_X,n_r_X,n_X,n_r-1._dp,ierr)
+                CHCKERR('')
+            case default
+                err_msg = 'No EV solver style associated with '//&
+                    &trim(i2str(EV_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
     end subroutine
     
     ! calculate  U_m^0, U_m^1  at n_r  values  of the  normal coordinate,  n_par
@@ -274,6 +303,7 @@ contains
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
         use eq_vars, only: q => q_saf_FD, theta, n_par, p => pres_FD
         use VMEC_vars, only: n_r
+        use X_vars, only: U_X_0, U_X_1, DU_X_0, DU_X_1
         
         ! input / output
         integer, intent(in) :: n_X                                              ! tor. mode nr n
@@ -355,6 +385,7 @@ contains
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
         use eq_vars, only: n_par, p => pres_FD
         use VMEC_vars, only: n_r
+        use X_vars, only: calc_rho, sigma, extra1, extra2, extra3
         
         ! local variables
         integer :: kd                                                           ! counter
@@ -425,5 +456,8 @@ contains
                 &h22(:,kd) * ( D2g33(:,kd)/g33(:,kd) - 2*D2J(:,kd)/J(:,kd) ) + &
                 &h23(:,kd) * ( D3g33(:,kd)/g33(:,kd) - 2*D3J(:,kd)/J(:,kd) ) ) )
         end do
+        
+        ! calculate rho from input
+        call calc_rho(n_par,n_r)
     end subroutine
 end module

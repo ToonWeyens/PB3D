@@ -8,7 +8,7 @@ module output_ops
     implicit none
     private
     public init_output_ops, lvl_ud, writo, print_GP_2D, print_GP_3D, print_ar_1, &
-        &print_ar_2, draw_GP, &
+        &print_ar_2, draw_GP, print_err_msg, &
         &lvl, lvl_sep, format_out
 
     ! global variables
@@ -26,6 +26,19 @@ module output_ops
     end interface
     
 contains
+    ! prints an error  message that is either user-provided, or  the name of the
+    ! calling routine
+    subroutine print_err_msg(err_msg,routine_name)
+        character(len=*) :: err_msg, routine_name
+        
+        lvl = 2
+        if (trim(err_msg).eq.'') then
+            call writo('>> calling routine: '//trim(routine_name))
+        else
+            call writo('ERROR: '//trim(err_msg))
+        end if
+    end subroutine
+    
     ! initialize the variables for the module
     subroutine init_output_ops
         lvl = 1

@@ -3,8 +3,9 @@
 !   representation used and its relations with the real space                  !
 !------------------------------------------------------------------------------!
 module fourier_ops
+#include <PB3D_macros.h>
     use output_ops, only: writo, print_ar_1, print_ar_2
-    use num_vars, only: dp
+    use num_vars, only: dp, max_str_ln
     use str_ops, only: i2str
 
     implicit none
@@ -15,7 +16,9 @@ contains
     ! Inverse Fourier transformation, VMEC style Also calculates the poloidal or
     ! toroidal derivatives, as indicated by the variable deriv(2)
     ! (Normal derivative is done discretely, outside of this function)
-    function f2r(fun_cos,fun_sin,ang_factor,mpol,ntor,nfp,deriv)
+    function f2r(fun_cos,fun_sin,ang_factor,mpol,ntor,nfp,deriv,ierr)
+        character(*), parameter :: rout_name = 'f2r'
+        
         ! input / output
         integer, intent(in) :: mpol, ntor
         integer, intent(in), optional :: deriv(2)
@@ -24,17 +27,23 @@ contains
         real(dp), intent(in) :: fun_sin(0:mpol-1,-ntor:ntor)                    ! sin part of Fourier variables (coeff. of the sum)
         real(dp), intent(in) :: ang_factor(0:mpol-1,-ntor:ntor,2)               ! (co)sine factors on mesh
         integer, intent(in) :: nfp                                              ! common denominator nfp in toroidal mode numbers
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: m,n                                                          ! counters for mode numbers
         integer :: id                                                           ! counters
         real(dp) :: fac_cos, fac_sin                                            ! factor in front of cos and sin, after taking derivatives
         real(dp) :: fac_cos_temp, fac_sin_temp                                  ! when calculating factors for angular derivatives
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! some tests
         if (mpol.lt.1 .and. ntor.lt. 1) then 
-            call writo('ERROR: In f2r, number of modes has to be at least 1')
-            stop
+            err_msg = 'In f2r, number of modes has to be at least 1'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
         ! initiate
@@ -77,20 +86,28 @@ contains
     ! a given poloidal and toroidal position (theta,zeta)
     ! The first index contains the cosine  factors and the second one the sines.
     ! CHANGE THIS USING THE GONIOMETRIC IDENTITIES TO SAVE COMPUTING TIME
-    function mesh_cs(mpol,ntor,nfp,theta,zeta)
+    function mesh_cs(mpol,ntor,nfp,theta,zeta,ierr)
+        character(*), parameter :: rout_name = 'mesh_cs'
+        
         ! input / output
         integer, intent(in) :: mpol, ntor
         real(dp), allocatable :: mesh_cs(:,:,:)
         real(dp), intent(in) :: theta, zeta
         integer, intent(in) :: nfp
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: m, n
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! test the given inputs
         if (mpol.lt.1) then
-            call writo('ERROR: mpol has to be at least 1')
-            stop
+            err_msg = 'mpol has to be at least 1'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
         allocate(mesh_cs(0:mpol-1,-ntor:ntor,2))

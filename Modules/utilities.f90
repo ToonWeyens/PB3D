@@ -2,14 +2,15 @@
 !   Numerical utilities                                                        !
 !------------------------------------------------------------------------------!
 module utilities
-    use num_vars, only: dp
+#include <PB3D_macros.h>
+    use num_vars, only: dp, iu, max_str_ln
     use output_ops, only: writo, print_ar_1, print_ar_2
     use str_ops, only: i2str, r2strt, r2str
     
     implicit none
     private
     public zero_NR, ext_var, det, calc_int, arr_mult, VMEC_norm_deriv, &
-        &VMEC_conv_FHM, check_deriv, inv, calc_derivs, derivs
+        &VMEC_conv_FHM, check_deriv, inv, calc_derivs, derivs, calc_interp
     
     ! the possible derivatives of order i
     integer, allocatable :: derivs_0(:,:)                                       ! all possible derivatives of order 0
@@ -28,35 +29,50 @@ module utilities
     interface inv
         module procedure inv_0D, inv_2D
     end interface
+    interface calc_int
+        module procedure calc_int_real, calc_int_complex
+    end interface
+    interface calc_interp
+        module procedure calc_interp_real, calc_interp_complex
+    end interface
 contains
     ! numerically derives a  function whose values are given on  a regular mesh,
     ! specified by  the inverse  step size to  an order specified  by ord  and a
     ! precision specified by prec (which is the  power of the step size to which
     ! the result is still correct. E.g.:  for forward differences, prec = 0, and
     ! for central differences prec=1)
-    subroutine VMEC_norm_deriv(var,dvar,inv_step,ord,prec)
+    subroutine VMEC_norm_deriv(var,dvar,inv_step,ord,prec,ierr)
         use num_vars, only: max_deriv
+        
+        character(*), parameter :: rout_name = 'VMEC_norm_deriv'
         
         ! input / output
         real(dp), intent(in) :: var(:), inv_step
         real(dp), intent(inout) :: dvar(:)
         integer, intent(in) :: ord, prec
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: max_n
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         max_n = size(var)
         
         ! tests
         if (size(dvar).ne.max_n) then
-            call writo('ERROR: In VMEC_norm_deriv, the derived vector has to &
-                &be of the same length as the input vector')
-            stop
+            err_msg = 'In VMEC_norm_deriv, derived vector has to &
+                &be of the same length as input vector'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         if (ord.lt.1 .or. ord.gt.max_deriv(3)) then
-            call writo('ERROR: VMEC_norm_deriv can only derive from order 1 &
-                &up to order '//trim(i2str(max_deriv(3))))
-            stop
+            err_msg = 'VMEC_norm_deriv can only derive from order 1 &
+                &up to order '//trim(i2str(max_deriv(3)))
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
         ! choose correct precision
@@ -64,19 +80,21 @@ contains
             case (1)
                 call prec1
             case default
-                call writo('ERROR: precision of order '//trim(i2str(prec))//&
-                    &' not implemented')
-                stop
+                err_msg = 'precision of order '//trim(i2str(prec))//&
+                    &' not implemented'
+                ierr = 1
+                CHCKERR(err_msg)
         end select
     contains
         subroutine prec1
             ! test whether enough points are given
             if (max_n-2.lt.ord) then
-                call writo('ERROR: for a derivative of order '//&
+                err_msg = 'for a derivative of order '//&
                     &trim(i2str(ord))//', with precision '//trim(i2str(prec))&
                     &//', at least '//trim(i2str(ord+2))//&
-                    &' input values have to be passed')
-                stop
+                    &' input values have to be passed'
+                ierr = 1
+                CHCKERR(err_msg)
             end if
             
             ! apply derivation rules precise up to order 1
@@ -163,30 +181,40 @@ contains
                         &-40*var(max_n-1)+7*var(max_n))*inv_step**5*0.5
                 case default
                     ! This you should never reach!
-                    call writo('ERROR: Derivation of order '//&
-                        &trim(i2str(ord))//' not possible in VMEC_norm_deriv')
+                    err_msg = 'Derivation of order '//&
+                        &trim(i2str(ord))//' not possible in VMEC_norm_deriv'
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
         end subroutine
     end subroutine
 
     ! numerically interpolates a function that is given on either FM to HM or to
     ! FM. If FM2HM is .true., the starting variable is FM, if .false., it is HM
-    subroutine VMEC_conv_FHM(var,cvar,FM2HM)
+    subroutine VMEC_conv_FHM(var,cvar,FM2HM,ierr)
+        character(*), parameter :: rout_name = 'VMEC_conv_FHM'
+        
         ! input / output
         real(dp), intent(in) :: var(:)
         real(dp), intent(inout) :: cvar(:)
         logical, intent(in) :: FM2HM
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: max_n
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         max_n = size(var)
         
         ! tests
         if (size(cvar).ne.max_n) then
-            call writo('ERROR: In VMEC_conv_FHM, the converted vector has to &
-                &be of the same length as the input vector')
-            stop
+            err_msg = 'In VMEC_conv_FHM, the converted vector has to &
+                &be of the same length as the input vector'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
         if (FM2HM) then                                                         ! FM to HM
@@ -201,23 +229,31 @@ contains
     
     ! checks  whether the  derivatives requested  for a  certain subroutine  are
     ! valid
-    subroutine check_deriv(deriv,max_deriv,sr_name)
+    subroutine check_deriv(deriv,max_deriv,sr_name,ierr)
+        character(*), parameter :: rout_name = 'check_deriv'
+        
         ! input / output
         integer, intent(in) :: deriv(3)
         integer, intent(in) :: max_deriv(3)
         character(len=*), intent(in) :: sr_name
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! test the derivatives
         do id = 1, 3
             if (deriv(id).gt.max_deriv(id)) then
-                call writo('ERROR: Asking '//trim(sr_name)//' for a derivative&
+                err_msg = 'Asking '//trim(sr_name)//' for a derivative&
                     & in the '//trim(i2str(id))//'th VMEC coordinate of order '&
                     &//trim(i2str(deriv(id)))//', while the maximum order is '&
-                    &//trim(i2str(max_deriv(id))))
-                stop
+                    &//trim(i2str(max_deriv(id)))
+                ierr = 1
+                CHCKERR(err_msg)
             end if
         end do
     end subroutine
@@ -231,38 +267,84 @@ contains
     ! this yields the following difference formula:
     !   int_1^n f(x) dx = int_1^(n-1) f(x) dx + (f(n)+f(n+1))*(x(n+1)-x(n))/2,
     ! which is used here
-    function calc_int(var,x)
+    subroutine calc_int_real(var,x,var_int,ierr)
+        character(*), parameter :: rout_name = 'calc_int_real'
+        
         ! input / output
-        real(dp), allocatable :: calc_int(:)
+        real(dp) :: var_int(:)
         real(dp) :: var(:)
         real(dp) :: x(:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: n_max
         integer :: kd
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         n_max = size(var)
         
         ! tests
         if (size(x).ne.n_max) then
-            call writo('ERROR: in calc_int, the arrays of points and values &
-                &are not of the same length')
-            stop
+            err_msg = 'in calc_int, the arrays of points and values &
+                &are not of the same length'
+            ierr = 1
+            CHCKERR(err_msg)
         else if (n_max.lt.2) then
-            call writo('ERROR: asking calc_int to integrate with '&
-                &//trim(i2str(n_max))//' points. Need at least 2')
-            stop
+            err_msg = 'asking calc_int to integrate with '&
+                &//trim(i2str(n_max))//' points. Need at least 2'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
-        ! allocate output
-        allocate(calc_int(n_max)); calc_int = 0.0_dp
-        
         ! calculate integral for all points
+        var_int = 0.0_dp
+        
         do kd = 2, n_max
-            calc_int(kd) = calc_int(kd-1) + &
+            var_int(kd) = var_int(kd-1) + &
                 &(var(kd)+var(kd-1))/2 * (x(kd)-x(kd-1))
         end do
-    end function calc_int
+    end subroutine
+    subroutine calc_int_complex(var,x,var_int,ierr)
+        character(*), parameter :: rout_name = 'calc_int_complex'
+        
+        ! input / output
+        complex(dp) :: var_int(:)
+        complex(dp) :: var(:)
+        real(dp) :: x(:)
+        integer, intent(inout) :: ierr                                          ! error
+        
+        ! local variables
+        integer :: n_max
+        integer :: kd
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        n_max = size(var)
+        
+        ! tests
+        if (size(x).ne.n_max) then
+            err_msg = 'in calc_int, the arrays of points and values &
+                &are not of the same length'
+        else if (n_max.lt.2) then
+            err_msg = 'asking calc_int to integrate with '&
+                &//trim(i2str(n_max))//' points. Need at least 2'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        
+        ! calculate integral for all points
+        var_int = 0.0_dp
+        
+        do kd = 2, n_max
+            var_int(kd) = var_int(kd-1) + &
+                &(var(kd)+var(kd-1))/2 * (x(kd)-x(kd-1))
+        end do
+    end subroutine
     
     ! extrapolates  a   function,  using  linear  or   quadratic  interpolation,
     ! depending on  the number of  points and values  given. The data  should be
@@ -274,14 +356,17 @@ contains
     ! | ...   ...   ...   ... | | ... |   |  ...   |
     ! for the interpolating polynomial ext_var = a_0 + a_1 x + a_2 x^2 + ...
     ! There is an optional flag to look  for the k^th derivative of the function
-    ! instead of  the function  itself. Of  course, k should  be lower  than the
-    ! degree of the polynomial
-    function ext_var(var,var_points,ext_point,deriv_in)
+    ! instead of the function itself, where k should be lower than the degree of
+    ! the polynomial
+    function ext_var(var,var_points,ext_point,deriv_in,ierr)
+        character(*), parameter :: rout_name = 'ext_var'
+        
         ! input / output
         real(dp) :: ext_var                                                     ! output
         real(dp), intent(in) :: var(:), var_points(:)                           ! input function and points at which tabulated
         real(dp), intent(in) :: ext_point                                       ! point to which extrapolate
         integer, intent(in), optional :: deriv_in                               ! specifies an optional derivative
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id, jd
@@ -291,28 +376,34 @@ contains
         real(dp), allocatable :: A(:,:), LU(:,:)
         real(dp), allocatable :: a_i(:)
         real(dp) :: fact                                                        ! multiplicative factor, see below
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
+        ! initialize ierr
+        ierr = 0
         
         ! determine the degree of the polynomial ext_var
         pol_deg = size(var)
         
         ! tests
         if (size(var).ne.size(var_points)) then
-            call writo('ERROR: in ext_var, the size of the arrays containing &
-                &the variable and the points do not match')
-            stop
+            err_msg = 'in ext_var, the size of the arrays containing &
+                &the variable and the points do not match'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         if (present(deriv_in)) then 
             deriv = deriv_in
             if (deriv.ge.pol_deg) then                                          ! order of derivative too hight
-                call writo('ERROR: asking ext_var for '//trim(i2str(deriv_in))&
+                err_msg = 'asking ext_var for '//trim(i2str(deriv_in))&
                     &//'th derivative, while using a polynomial of degree '&
-                    &//trim(i2str(pol_deg)))
-                stop
+                    &//trim(i2str(pol_deg))
+                ierr = 1
+                CHCKERR(err_msg)
             else if (deriv.lt.0) then
-                call writo('ERROR: asking ext_var for a derivative of order '&
-                    &//trim(i2str(deriv_in)))
-                stop
+                err_msg = 'asking ext_var for a derivative of order '&
+                    &//trim(i2str(deriv_in))
+                ierr = 1
+                CHCKERR(err_msg)
             end if
         else
             deriv = 0
@@ -337,14 +428,15 @@ contains
         
         
         if (istat.ne.0) then
-            call writo('ERROR: in ext_var, the solution could not be found.')
-            call writo(' -> Are you sure that you are extrapolating independent&
-                & points?')
-            call writo(' -> The matrix equation to be solved was Ax=b, A = ')
-            call print_ar_2(A)
-            call writo('    b = ')
-            call print_ar_1(var)
-            stop
+            !call writo(' -> Are you sure that you are extrapolating independent&
+                !& points?')
+            !call writo(' -> The matrix equation to be solved was Ax=b, A = ')
+            !call print_ar_2(A)
+            !call writo('    b = ')
+            !call print_ar_1(var)
+            err_msg = 'in ext_var, the solution could not be found.'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
         ext_var = 0.0_dp
@@ -364,37 +456,48 @@ contains
     ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
     ! that are distributed between both acording to the binomial theorem
     ! VERSION with arr_1 and arr_2 in three coords.
-    subroutine arr_mult_3_3(arr_1,arr_2,arr_3,deriv)
+    subroutine arr_mult_3_3(arr_1,arr_2,arr_3,deriv,ierr)
+        character(*), parameter :: rout_name = 'arr_mult_3_3'
+        
         ! input / output
         real(dp), intent(in) :: arr_1(1:,1:,0:,0:,0:)
         real(dp), intent(in) :: arr_2(1:,1:,0:,0:,0:)
         real(dp), intent(out) :: arr_3(1:,1:)
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         real(dp) :: bin_fac(3)                                                  ! binomial factor for norm., pol. and tor. sum
         integer :: r, m, n                                                      ! current degree of norm., pol., tor. derivatives
         integer :: kd                                                           ! normal counter
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! tests
-        !if (size(arr_1).ne.size(arr_2)) then
-            !call writo('ERROR: In arr_mult, arrays 1 and 2 need to have the &
-                !&same size')
-            !stop
-        !end if
-        !if (size(arr_1,1).ne.size(arr_3,1) .or. size(arr_1,2).ne.size(arr_3,2)) then
-            !call writo('ERROR: In arr_mult, arrays 1 and 2 need to have the &
-                !&same size as the resulting array 3')
-            !stop
-        !end if
+        if (size(arr_1).ne.size(arr_2)) then
+            err_msg = 'In arr_mult, arrays 1 and 2 need to have the &
+                &same size'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        if (size(arr_1,1).ne.size(arr_3,1) .or. size(arr_1,2).ne.size(arr_3,2)) then
+            err_msg = 'In arr_mult, arrays 1 and 2 need to have the &
+                &same size as the resulting array 3'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
         do kd = 1,3
             if (size(arr_1,2+kd).lt.deriv(kd)+1 .or. &
                 &size(arr_2,2+kd).lt.deriv(kd)+1) then
-                call writo('ERROR: arrays 1 and 2 do not provide the necessary &
+                err_msg = 'arrays 1 and 2 do not provide the necessary &
                     &orders of derivatives to calculate a derivative of order &
                     &['//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//&
                     &','//trim(i2str(deriv(3)))//', at least in coordinate '&
-                    &//trim(i2str(kd)))
+                    &//trim(i2str(kd))
+                ierr = 1
+                CHCKERR(err_msg)
             end if
         end do
         
@@ -436,28 +539,38 @@ contains
     ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
     ! that are distributed between both acording to the binomial theorem
     ! VERSION with arr_1 in three coords and arr_2 only in the flux coord.
-    subroutine arr_mult_3_1(arr_1,arr_2,arr_3,deriv)
+    subroutine arr_mult_3_1(arr_1,arr_2,arr_3,deriv,ierr)
+        character(*), parameter :: rout_name = 'arr_mult_3_1'
+        
         ! input / output
         real(dp), intent(in) :: arr_1(1:,1:,0:,0:,0:)
         real(dp), intent(in) :: arr_2(1:,0:)
         real(dp), intent(out) :: arr_3(1:,1:)
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         real(dp) :: bin_fac                                                     ! binomial factor for norm. sum
         integer :: r                                                            ! current degree of norm. derivative
         integer :: kd                                                           ! normal counter
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! tests
         if (size(arr_1,2).ne.size(arr_2,1)) then
-            call writo('ERROR: In arr_mult, arrays 1 and 2 need to have the &
-                &same size in the flux coord.')
-            stop
+            err_msg = 'In arr_mult, arrays 1 and 2 need to have the &
+                &same size in the flux coord.'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
-        if (size(arr_1,1).ne.size(arr_3,1) .or. size(arr_1,2).ne.size(arr_3,2)) then
-            call writo('ERROR: In arr_mult, array 1 needs to have the same &
-                &size as the resulting array 3')
-            stop
+        if (size(arr_1,1).ne.size(arr_3,1) .or. &
+            &size(arr_1,2).ne.size(arr_3,2)) then
+            err_msg = 'In arr_mult, array 1 needs to have the same &
+                &size as the resulting array 3'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
         ! distribute   normal  derivatives   using  binomial   theorem,  angular
@@ -481,27 +594,36 @@ contains
     ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
     ! that are distributed between both acording to the binomial theorem
     ! VERSION with arr_1 and arr_2 only in the flux coord.
-    subroutine arr_mult_1_1(arr_1,arr_2,arr_3,deriv)
+    subroutine arr_mult_1_1(arr_1,arr_2,arr_3,deriv,ierr)
+        character(*), parameter :: rout_name = 'arr_mult_1_1'
+        
         ! input / output
         real(dp), intent(in) :: arr_1(1:,0:)
         real(dp), intent(in) :: arr_2(1:,0:)
         real(dp), intent(out) :: arr_3(1:)
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         real(dp) :: bin_fac                                                     ! binomial factor for norm. sum
         integer :: r                                                            ! current degree of norm. derivative
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! tests
         if (size(arr_1,1).ne.size(arr_2,1)) then
-            call writo('ERROR: In arr_mult, arrays 1 and 2 need to have the &
-                &same size in the flux coord.')
-            stop
+            err_msg = 'In arr_mult, arrays 1 and 2 need to have the &
+                &same size in the flux coord.'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         if (size(arr_1,1).ne.size(arr_3,1)) then
-            call writo('ERROR: In arr_mult, array 1 needs to have the same &
-                &size as the resulting array 3')
-            stop
+            err_msg = 'In arr_mult, array 1 needs to have the same &
+                &size as the resulting array 3'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
         if (deriv(2).gt.0 .or. deriv(3).gt.0) then                              ! no addition to arr_3
@@ -525,10 +647,13 @@ contains
 
     ! calculate determinant of a matrix which is defined on a 2D grid
     ! the size should be small, as the direct formula is used.
-    recursive function det_2D(A) result (detA)
+    recursive function det_2D(A,ierr) result (detA)
+        character(*), parameter :: rout_name = 'det_2D'
+        
         ! input / output
         real(dp), intent(in) :: A(:,:,:,:)
         real(dp), allocatable :: detA(:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id                                                           ! counter
@@ -536,15 +661,21 @@ contains
         real(dp) :: sgn                                                         ! holds either plus or minus one
         integer, allocatable :: slct(:)                                         ! 0 in between 1's selects which column to delete
         integer, allocatable :: idx(:)                                          ! counts from 1 to size(A)
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! tests
         if (size(A,3).ne.size(A,4)) then
-            call writo('ERROR: In det(A), the matrix A has to be square')
-            stop
+            err_msg = 'In det(A), the matrix A has to be square'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         if (size(A,3).gt.4) then
-            call writo('ERROR: det(A) should only be used for small matrices')
-            stop
+            err_msg = 'det(A) should only be used for small matrices'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
         ! intialize
@@ -565,7 +696,7 @@ contains
             do id = 1, n
                 slct(id) = 0
                 detA = detA + &
-                    &A(:,:,1,id)*sgn*det_2D(A(:,:,2:n,pack(idx,slct.gt.0)))
+                    &A(:,:,1,id)*sgn*det_2D(A(:,:,2:n,pack(idx,slct.gt.0)),ierr)
                 sgn = -sgn
                 slct(id) = 1
             end do
@@ -575,21 +706,29 @@ contains
     ! calculate determinant of a constant matrix
     ! (adapted from http://dualm.wordpress.com/2012/01/06/computing-determinant-in-fortran/)
     ! ¡¡¡WARNING: the matrix A is changed on output!!!
-    function det_0D(A)
+    function det_0D(A,ierr)
+        character(*), parameter :: rout_name = 'det_0D'
+        
         ! input / output
         real(dp), intent(inout) :: A(:,:)
         real(dp) :: det_0D
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: n 
         real(dp) :: sgn
         integer :: id, info
         integer, allocatable :: ipiv(:)
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! tests
         if (size(A,1).ne.size(A,2)) then
-            call writo('ERROR: In det(A), the matrix A has to be square')
-            stop
+            err_msg = 'In det(A), the matrix A has to be square'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
         ! initialize
@@ -619,10 +758,13 @@ contains
     ! is supposed to be  very small (i.e. 3x3 or 1x1) and  since the inverse has
     ! to be calculated at  each of the points in the 2D mesh,  this can be quite
     ! fast
-    function inv_2D(A)
+    function inv_2D(A,ierr)
+        character(*), parameter :: rout_name = 'inv_2D'
+        
         ! input / output
         real(dp), intent(in) :: A(:,:,:,:)
         real(dp), allocatable :: inv_2D(:,:,:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         real(dp), allocatable :: detA(:,:)
@@ -630,11 +772,16 @@ contains
         integer :: n
         integer, allocatable :: slct(:,:)                                       ! 0 in between 1's selects which column to delete
         integer, allocatable :: idx(:)                                          ! counts from 1 to size(A)
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! tests
         if (size(A,3).ne.size(A,4)) then
-            call writo('ERROR: In inv_2D, the matrix has to be square')
-            stop
+            err_msg = 'In inv_2D, the matrix has to be square'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
         ! initializing
@@ -648,7 +795,8 @@ contains
         allocate(inv_2D(size(A,1),size(A,2),n,n))
         
         ! calculate determinant
-        detA = det(A)
+        detA = det(A,ierr)
+        CHCKERR('')
         
         ! calculate cofactor matrix, replacing original elements
         do kd = 1,n
@@ -656,7 +804,7 @@ contains
                 slct(kd,1) = 0
                 slct(id,2) = 0
                 inv_2D(:,:,id,kd) = (-1.0_dp)**(id+kd)*det(A(:,:,&
-                    &pack(idx,slct(:,1).gt.0),pack(idx,slct(:,2).gt.0)))
+                    &pack(idx,slct(:,1).gt.0),pack(idx,slct(:,2).gt.0)),ierr)
                 slct(kd,1) = 1
                 slct(id,2) = 1
             end do
@@ -671,21 +819,29 @@ contains
     end function inv_2D
     
     ! calculate inverse of a constant square matrix
-    function inv_0D(A)
+    function inv_0D(A,ierr)
+        character(*), parameter :: rout_name = 'inv_0D'
+        
         ! input / output
         real(dp), intent(in) :: A(:,:)
         real(dp), allocatable :: inv_0D(:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: n 
         integer :: info
         integer, allocatable :: ipiv(:)
         real(dp), allocatable :: w(:)                                           ! work variable
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! tests
         if (size(A,1).ne.size(A,1)) then
-            call writo('ERROR: In inv_0D(A), the matrix A has to be square')
-            stop
+            err_msg = 'In inv_0D(A), the matrix A has to be square'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
         ! initialize
@@ -703,12 +859,15 @@ contains
     end function inv_0D
 
     ! finds the zero of a function using Newton-Rhapson iteration
-    function zero_NR(fun,dfun,guess)
+    function zero_NR(fun,dfun,guess,ierr)
         use num_vars, only: max_it_NR, tol_NR
+        
+        character(*), parameter :: rout_name = 'zero_NR'
         
         ! input / output
         real(dp) :: zero_NR
         real(dp) :: guess
+        integer, intent(inout) :: ierr                                          ! error
         interface
             function fun(x)                                                     ! the function
                 use num_vars, only: dp
@@ -725,6 +884,10 @@ contains
         ! local variables
         integer :: jd
         real(dp) :: corr
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         zero_NR = guess
         
@@ -738,13 +901,12 @@ contains
             if (abs(corr).lt.tol_NR) then
                 exit
             else if (jd .eq. max_it_NR) then
-                call writo('ERROR: Newton-Rhapson method not converged after '&
-                    &//trim(i2str(jd))//' iterations. Try increasing max_it_NR&
-                    & in input file?')
-                call writo('(the residual was equal to '//&
-                    &trim(r2str(corr)))
+                err_msg = 'Newton-Rhapson method not converged after '&
+                    &//trim(i2str(jd))//' iterations, with residual = '//&
+                    &trim(r2str(corr))
                 zero_NR = 0.0_dp
-                stop
+                ierr = 1
+                CHCKERR(err_msg)
             end if
         end do NR
     end function zero_NR
@@ -824,9 +986,127 @@ contains
                 allocate(derivs(3,size(derivs_4,2)))
                 derivs = derivs_4
             case default
-                call writo('ERROR: In get_derivs, only orders 0 to 4 are &
-                    &supported')
-                stop
         end select
     end function
+    
+    ! simple linear interpolation of matrix varin at point pt where pt = 0..1 is
+    ! calculated in matrix varout
+    subroutine calc_interp_real(varin,varout,pt,ierr)
+        character(*), parameter :: rout_name = 'calc_interp_real'
+        
+        ! input / output
+        real(dp), intent(in) :: varin(:,:,:,:)                                  ! input variable, not interpolated
+        real(dp), intent(inout) :: varout(:,:,:)                                ! output variable, interpolated
+        real(dp), intent(inout) :: pt                                           ! point at which to interpolate (0...1)
+        integer, intent(inout) :: ierr                                          ! error
+        
+        ! local variables
+        integer :: ind_lo, ind_hi                                               ! lower and upper index
+        integer :: n_pt                                                         ! nr. of points
+        real(dp) :: frac                                                        ! fraction between lower and upper index (0..1)
+        real(dp) :: pt_conv                                                     ! converted pt, referring to array size instead of (0...1)
+        real(dp) :: margin = 1E-8_dp                                            ! margin for the comparisons
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (size(varin,1).ne.size(varout,1) .or. size(varin,3).ne.&
+            &size(varout,2) .or. size(varin,4).ne.size(varout,3)) then
+            err_msg = 'In calc_interp, the sizes of varin and varout &
+                &have to match!'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        if (pt.lt.0) then
+            if (pt.lt.0-margin) then
+                err_msg = 'in calc_interp, pt has to lie within 0..1, &
+                    &yet it is equal to '//trim(r2str(pt))//'...'
+                ierr = 1
+                CHCKERR(err_msg)
+            else
+                pt = 0.0_dp
+            end if
+        end if
+        if (pt.gt.1) then
+            if (pt.gt.1+margin) then
+                err_msg = 'in calc_interp, pt has to lie within 0..1, &
+                    &yet it is equal to '//trim(r2str(pt))//'...'
+                ierr = 1
+                CHCKERR(err_msg)
+            else
+                pt = 1.0_dp
+            end if
+        end if
+        
+        ! find interpolation points
+        n_pt = size(varin,2)
+        pt_conv = 1+(n_pt-1)*pt
+        ind_lo = floor(pt_conv)
+        ind_hi = ceiling(pt_conv)
+        frac = pt_conv - ind_lo                                                 ! because ind_hi - ind_lo = 1
+        
+        ! interpolate
+        varout = varin(:,ind_lo,:,:) + frac * varin(:,ind_hi,:,:)
+    end subroutine
+    subroutine calc_interp_complex(varin,varout,pt,ierr)
+        character(*), parameter :: rout_name = 'calc_interp_complex'
+        
+        ! input / output
+        complex(dp), intent(in) :: varin(:,:,:,:)                               ! input variable, not interpolated
+        complex(dp), intent(inout) :: varout(:,:,:)                             ! output variable, interpolated
+        real(dp), intent(inout) :: pt                                           ! point at which to interpolate (0...1)
+        integer, intent(inout) :: ierr                                          ! error
+        
+        ! local variables
+        integer :: ind_lo, ind_hi                                               ! lower and upper index
+        integer :: n_pt                                                         ! nr. of points
+        complex(dp) :: frac                                                     ! fraction between lower and upper index (0..1)
+        real(dp) :: pt_conv                                                     ! converted pt, referring to array size instead of (0...1)
+        real(dp) :: margin = 1E-4_dp                                            ! margin for the comparisons
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (size(varin,1).ne.size(varout,1) .or. size(varin,3).ne.&
+            &size(varout,2) .or. size(varin,4).ne.size(varout,3)) then
+            err_msg = 'In calc_interp, the sizes of varin and varout &
+                &have to match!'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        if (pt.lt.0) then
+            if (pt.lt.0-margin) then
+                err_msg = 'in calc_interp, pt has to lie within 0..1, &
+                    &yet it is equal to '//trim(r2str(pt))//'...'
+                ierr = 1
+                CHCKERR(err_msg)
+            else
+                pt = 0.0_dp
+            end if
+        end if
+        if (pt.gt.1) then
+            if (pt.gt.1+margin) then
+                err_msg = 'in calc_interp, pt has to lie within 0..1, &
+                    &yet it is equal to '//trim(r2str(pt))//'...'
+                ierr = 1
+                CHCKERR(err_msg)
+            else
+                pt = 1.0_dp
+            end if
+        end if
+        
+        ! find interpolation points
+        n_pt = size(varin,2)
+        pt_conv = 1+(n_pt-1)*pt
+        ind_lo = floor(pt_conv)
+        ind_hi = ceiling(pt_conv)
+        frac = pt_conv - ind_lo                                                 ! because ind_hi - ind_lo = 1
+        
+        ! interpolate
+        varout = varin(:,ind_lo,:,:) + frac * varin(:,ind_hi,:,:)
+    end subroutine
 end module utilities

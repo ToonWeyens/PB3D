@@ -2,7 +2,7 @@
 !   Test some routines and functions                                           !
 !------------------------------------------------------------------------------!
 module test
-    use num_vars, only: dp, max_str_ln, pi, mu_0, output_i
+    use num_vars, only: dp, max_str_ln, pi, mu_0, output_i, iu
     use output_ops, only: writo, lvl_ud, print_ar_1, print_ar_2, print_GP_2D, &
         &print_GP_3D
     use input_ops, only: yes_no
@@ -15,7 +15,10 @@ module test
         &test_ang_B, test_ext_var, test_B, test_VMEC_norm_deriv, &
         &test_arr_mult, test_VMEC_conv_FHM, test_calc_RZL, test_calc_T_VF, &
         &test_calc_inv_met, test_det, test_inv, test_calc_f_deriv, test_calc_g,&
-        &test_f2r, test_calc_matrix_X
+        &test_f2r, test_prepare_matrix_X, test_slepc, test_calc_interp
+    
+    ! local variables
+    integer :: ierr
 
 contains
     subroutine test_f2r
@@ -58,7 +61,7 @@ contains
             
             ! physical grid
             zeta = 0.4*pi/2
-            theta = eqd_mesh(n, min_n, max_n)
+            theta = eqd_mesh(n, min_n, max_n,ierr)
             
             ! set up Fourier coefficients
             cosvar(:,-1) = [3,2,3]
@@ -72,8 +75,8 @@ contains
             call lvl_ud(1)
             ! invert Fourier series
             do id = 1,n
-                cs = mesh_cs(mpol,ntor,nfp,theta(id),zeta(id))
-                realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[0,0])
+                cs = mesh_cs(mpol,ntor,nfp,theta(id),zeta(id),ierr)
+                realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[0,0],ierr)
             end do
             
             call print_GP_2D('real variable','',realvar)
@@ -98,8 +101,8 @@ contains
             call lvl_ud(1)
             ! invert Fourier series
             do id = 1,n
-                cs = mesh_cs(mpol,ntor,nfp,theta(id),zeta(id))
-                realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[1,0])
+                cs = mesh_cs(mpol,ntor,nfp,theta(id),zeta(id),ierr)
+                realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[1,0],ierr)
             end do
             
             call print_GP_2D('real variable','',realvar)
@@ -124,8 +127,8 @@ contains
             call lvl_ud(1)
             ! invert Fourier series
             do id = 1,n
-                cs = mesh_cs(mpol,ntor,nfp,theta(id),zeta(id))
-                realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[0,1])
+                cs = mesh_cs(mpol,ntor,nfp,theta(id),zeta(id),ierr)
+                realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[0,1],ierr)
             end do
             
             call print_GP_2D('real variable','',realvar)
@@ -150,8 +153,8 @@ contains
             call lvl_ud(1)
             ! invert Fourier series
             do id = 1,n
-                cs = mesh_cs(mpol,ntor,nfp,theta(id),zeta(id))
-                realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[2,1])
+                cs = mesh_cs(mpol,ntor,nfp,theta(id),zeta(id),ierr)
+                realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[2,1],ierr)
             end do
             
             call print_GP_2D('real variable','',realvar)
@@ -535,30 +538,43 @@ contains
         end subroutine
     end subroutine
 
-    subroutine test_calc_matrix_X
-        use matrix_X, only: calc_matrix_X, PV0, PV1, PV2
+    subroutine test_prepare_matrix_X
+        use X_ops, only: prepare_matrix_X
+        use X_vars, only: PV0, PV1, PV2
         use eq_ops, only: calc_eq
-        use X_vars, only: n_r_X
         
-        call writo('test calc_matrix_X?')
+        call writo('test prepare_matrix_X?')
         if(yes_no(.false.)) then
             ! calculate equilibrium
             call writo('calculating equilibrium')
             call lvl_ud(1)
-            call calc_eq(0.2*pi)           
+            call calc_eq(0.2*pi,ierr)           
             call lvl_ud(-1)
             
             ! calculate equilibrium
             call lvl_ud(1)
             call writo('calculating P')
-            call calc_matrix_X(n_r_X)
+            call prepare_matrix_X
             call lvl_ud(-1)
             
             ! visualize PV
+            call writo('Real PV0 (5,5) =')
+            call print_ar_2(realpart(PV0(5,5,:,:)))
+            call writo('Imag PV0 (5,5) =')
+            call print_ar_2(imagpart(PV0(5,5,:,:)))
+            
+            call writo('Real PV1 (5,5) =')
+            call print_ar_2(realpart(PV1(5,5,:,:)))
+            call writo('Imag PV1 (5,5) =')
+            call print_ar_2(imagpart(PV1(5,5,:,:)))
+            
             call writo('Real PV2 (5,5) =')
             call print_ar_2(realpart(PV2(5,5,:,:)))
             call writo('Imag PV2 (5,5) =')
             call print_ar_2(imagpart(PV2(5,5,:,:)))
+            
+            call writo('Stopping')
+            stop
         end if
     end subroutine
     
@@ -589,7 +605,7 @@ contains
                 theta = pi*theta
                 zeta = pi*zeta
                 
-                output =  mesh_cs(mpol,ntor,nfp,theta,zeta)
+                output =  mesh_cs(mpol,ntor,nfp,theta,zeta,ierr)
                 write(*,*) 'size mesh = ', size(output,2), size(output,3)
                 write(*,*) 'mesh_cs(:,:,1) = '
                 call print_ar_2(output(:,:,1))
@@ -785,10 +801,14 @@ contains
                 end select
                 
                 ! numerical derivatives
-                call VMEC_norm_deriv(varin,var1_nm,1.0_dp/step_size(id),1,1)
-                call VMEC_norm_deriv(varin,var2_nm,1.0_dp/step_size(id),2,1)
-                call VMEC_norm_deriv(varin,var3_nm,1.0_dp/step_size(id),3,1)
-                call VMEC_norm_deriv(varin,var4_nm,1.0_dp/step_size(id),4,1)
+                call VMEC_norm_deriv(varin,var1_nm,1.0_dp/step_size(id),1,1,&
+                    &ierr)
+                call VMEC_norm_deriv(varin,var2_nm,1.0_dp/step_size(id),2,1,&
+                    &ierr)
+                call VMEC_norm_deriv(varin,var3_nm,1.0_dp/step_size(id),3,1,&
+                    &ierr)
+                call VMEC_norm_deriv(varin,var4_nm,1.0_dp/step_size(id),4,1,&
+                    &ierr)
                 
                 ! max and mean errors
                 max_error(id,1) = maxval(abs(var1_an-var1_nm))/ &
@@ -900,9 +920,9 @@ contains
             end do
             do kd = 1,n_r-2
                 var_num(kd) = ext_var([(varin(jd),jd=kd,kd+2)],&
-                    &[(x(jd),jd=kd,kd+2)],x_int(kd),0)
+                    &[(x(jd),jd=kd,kd+2)],x_int(kd),0,ierr=ierr)
                 varder_num(kd) = ext_var([(varin(jd),jd=kd,kd+2)],&
-                    &[(x(jd),jd=kd,kd+2)],x(kd),1)
+                    &[(x(jd),jd=kd,kd+2)],x(kd),1,ierr=ierr)
             end do
             call writo('Don''t worry about the last 3 points!!!')
             call print_GP_2D('function: sin(x)+0.5*cos(3x)','',varin,x=x)
@@ -989,8 +1009,8 @@ contains
                     varin(kd) = sin(float(kd)/n_r) + 0.5*cos(3*float(kd)/n_r)
                 end do
                 
-                call VMEC_conv_FHM(varin,varout,.true.)
-                call VMEC_conv_FHM(varout,varoutout,.false.)
+                call VMEC_conv_FHM(varin,varout,.true.,ierr)
+                call VMEC_conv_FHM(varout,varoutout,.false.,ierr)
                 do kd = 1,n_r
                     vardiff(kd) = 2*(varin(kd)-varoutout(kd))/&
                         &(varin(kd)+varoutout(kd))
@@ -1066,16 +1086,16 @@ contains
             
             zeta = 0.4*pi/2
             do jd = 1,n_r
-                theta(:,jd) = eqd_mesh(n_par, 0.0_dp*pi, 3.0_dp*pi)
+                theta(:,jd) = eqd_mesh(n_par, 0.0_dp*pi, 3.0_dp*pi,ierr)
             end do
             
-            call calc_RZL([0,0,0])
-            call calc_RZL([0,1,0])
-            call calc_RZL([0,2,0])
-            call calc_RZL([0,3,0])
-            call calc_RZL([0,0,1])
-            call calc_RZL([0,0,2])
-            call calc_RZL([0,0,3])
+            call calc_RZL([0,0,0],ierr)
+            call calc_RZL([0,1,0],ierr)
+            call calc_RZL([0,2,0],ierr)
+            call calc_RZL([0,3,0],ierr)
+            call calc_RZL([0,0,1],ierr)
+            call calc_RZL([0,0,2],ierr)
+            call calc_RZL([0,0,3],ierr)
             call lvl_ud(-1)
             
             call writo('Plotting R')
@@ -1201,7 +1221,7 @@ contains
             
             call writo('calculating equilibrium')
             call lvl_ud(1)
-            call calc_eq(0.2*pi)           
+            call calc_eq(0.2*pi,ierr)           
             call lvl_ud(-1)
             
             call writo('calculating case')
@@ -1345,7 +1365,7 @@ contains
             
             call writo('calculating equilibrium')
             call lvl_ud(1)
-            call calc_eq(0.2*pi)           
+            call calc_eq(0.2*pi,ierr)           
             call lvl_ud(-1)
             
             call writo('check g_V?')
@@ -1522,7 +1542,7 @@ contains
             
             call writo('calculating equilibrium')
             call lvl_ud(1)
-            call calc_eq(0.2*pi)           
+            call calc_eq(0.2*pi,ierr)           
             call lvl_ud(-1)
             
             call writo('testing flux quantities')
@@ -1805,7 +1825,7 @@ contains
             
             call writo('calculating equilibrium')
             call lvl_ud(1)
-            call calc_eq(0.2*pi)
+            call calc_eq(0.2*pi,ierr)
             call lvl_ud(-1)
             
             call writo('testing zeroth order')
@@ -1949,7 +1969,7 @@ contains
             call print_ar_2(A)
             
             detA = 0.0_dp
-            detA = det(A)
+            detA = det(A,ierr)
             call writo('det(A) = '//trim(r2str(detA)))
             call writo('compare with analyitcal result: -33')
         end subroutine
@@ -1974,12 +1994,12 @@ contains
                     A(id,kd,:,:) = transpose(reshape(&
                         &[(1.0_dp+kd*id**2/sqrt(jd*1.0_dp), jd=1,16)],[4,4]))
                     A_part = A(id,kd,:,:)
-                    detA(id,kd) = det(A_part)
+                    detA(id,kd) = det(A_part,ierr)
                 end do
             end do
             
             ! calculate alternative all at once 
-            detA_ALT = det(A)
+            detA_ALT = det(A,ierr)
             
             ! difference
             call writo('determinants calculated individually:')
@@ -2018,7 +2038,7 @@ contains
             
             ! calculate inverse
             A_inv = A
-            A_inv = inv(A)
+            A_inv = inv(A,ierr)
             
             ! multiply
             do kd = 1,5
@@ -2073,7 +2093,7 @@ contains
             call writo('At which toroidal point zeta do you want the plot?')
             read(*,*) zeta_in
             calc_mesh_style = 2
-            call calc_eq(zeta_in)
+            call calc_eq(zeta_in,ierr)
             call lvl_ud(-1)
             
             call writo('check J_V?')
@@ -2095,14 +2115,15 @@ contains
                 ! jac_V from VMEC
                 do kd = 1,n_r
                     do id = 1,n_par
-                        cs = mesh_cs(mpol,ntor,nfp,theta(id,kd),zeta(id,kd))
+                        cs = mesh_cs(mpol,ntor,nfp,theta(id,kd),zeta(id,kd),ierr)
                         jac_ALT_H(id,kd) = f2r(jac_V_c_H(:,:,kd),&
-                            &jac_V_s_H(:,:,kd),cs,mpol,ntor,nfp,[0,0])
+                            &jac_V_s_H(:,:,kd),cs,mpol,ntor,nfp,[0,0],ierr)
                     end do
                 end do
                 ! HM to FM
                 do id = 1,n_par
-                    call VMEC_conv_FHM(jac_ALT_H(id,:),jac_ALT(id,:),.false.)
+                    call VMEC_conv_FHM(jac_ALT_H(id,:),jac_ALT(id,:),.false.,&
+                        &ierr)
                 end do
                 call print_GP_3D('jac_V (1: calc, 2: VMEC, 3: diff)','',&
                     &reshape([jac_V(:,:,0,0,0),jac_ALT,&
@@ -2173,7 +2194,7 @@ contains
             call writo('check jacobians as determinants?')
             if(yes_no(.false.)) then
                 call lvl_ud(1)
-                jac_ALT = det(T_FV(:,:,:,:,0,0,0))
+                jac_ALT = det(T_FV(:,:,:,:,0,0,0),ierr)
                 call print_ar_2(jac_ALT-det_T_FV(:,:,0,0,0))
                 read(*,*)
                 call lvl_ud(-1)
@@ -2184,7 +2205,7 @@ contains
                 call lvl_ud(1)
                 call writo('VMEC coordinate system')
                 ! calculate h_V from g_V
-                call calc_inv_met(h_V,g_V,[0,0,0])
+                call calc_inv_met(h_V,g_V,[0,0,0],ierr)
                 do kd = 1,n_r
                     do id = 1,n_par
                         !call writo('h_V('//trim(i2str(id))//','//&
@@ -2245,7 +2266,7 @@ contains
                             &trim(i2str(kd))//')','',h_F(:,2:n_r,id,kd,0,0,0))
                         do jd =1,n_par
                             call VMEC_norm_deriv(h_F(jd,2:n_r,id,kd,0,0,0),&
-                                &h_F_ALT(jd,2:n_r),n_r-1._dp,1,1)
+                                &h_F_ALT(jd,2:n_r),n_r-1._dp,1,1,ierr)
                         end do
                         call print_GP_3D('Dr h_F('//trim(i2str(id))//','//&
                             &trim(i2str(kd))//') (1: an, 2: num, 3:diff)',&
@@ -2300,7 +2321,7 @@ contains
             call writo('calculating equilibrium with constant zeta')
             call lvl_ud(1)
             calc_mesh_style = 2
-            call calc_eq(0.12*pi)
+            call calc_eq(0.12*pi,ierr)
             call lvl_ud(-1)
             
             call writo('check covar. comp. of magnetic field in VMEC coords?')
@@ -2356,9 +2377,9 @@ contains
                 call writo('comparison with g_V(1,2)/J^2')
                 do kd = 1,n_r
                     do id = 1,n_par
-                        cs = mesh_cs(mpol,ntor,nfp,theta(id,kd),zeta(id,kd))
+                        cs = mesh_cs(mpol,ntor,nfp,theta(id,kd),zeta(id,kd),ierr)
                         B_ALT(id,kd) = f2r(B_V_c_H(:,:,kd),B_V_s_H(:,:,kd),cs,&
-                            &mpol,ntor,nfp,[0,0])
+                            &mpol,ntor,nfp,[0,0],ierr)
                         B(id,kd) = sqrt(g_F(id,kd,3,3,0,0,0))/&
                             &jac_F(id,kd,0,0,0)
                     end do
@@ -2372,7 +2393,7 @@ contains
                 
                 call writo('comparison with B_i B_j h^ij')
                 ! calculate h_V from g_V
-                call calc_inv_met(h_V,g_V,[0,0,0])
+                call calc_inv_met(h_V,g_V,[0,0,0],ierr)
                 call calc_B_V_covar([0,0])
                 B_ALT_2 = 0.0_dp
                 do id = 1,3
@@ -2386,7 +2407,7 @@ contains
                 ! conversion FM -> HM and store in B
                 B_ALT_2(:,1) = 0.0_dp                                           ! to avoid NaN
                 do id = 1,n_par
-                    call VMEC_conv_FHM(B_ALT_2(id,:),B(id,:),.true.)
+                    call VMEC_conv_FHM(B_ALT_2(id,:),B(id,:),.true.,ierr)
                 end do
                 call print_GP_2D('B(par=5) (1: calc from B_i B^j, 2: VMEC)',&
                     &'',reshape([B(5,:),B_ALT(5,:)],[n_r,2]))
@@ -2497,10 +2518,10 @@ contains
             
             do kd = 1,n_r
                 do id = 1,n_par
-                    cs = mesh_cs(mpol,ntor,nfp,theta(id,kd),zeta(id,kd))
+                    cs = mesh_cs(mpol,ntor,nfp,theta(id,kd),zeta(id,kd),ierr)
                     do jd = 1,3
                         B_V_sub_ALT(id,kd,jd) = f2r(B_V_sub_c_M(:,:,kd,jd),&
-                            &B_V_sub_s_M(:,:,kd,jd),cs,mpol,ntor,nfp,deriv)
+                            &B_V_sub_s_M(:,:,kd,jd),cs,mpol,ntor,nfp,deriv,ierr)
                         B_V_sub(id,kd,jd) = flux_p(kd,1)/&
                             &(2*pi*jac_V(id,kd,0,0,0)) * &
                             &(q_saf(kd,0)*(1+VMEC_L(id,kd,0,1,0)) * &
@@ -2513,7 +2534,8 @@ contains
             ! convert HM to FM (theta and zeta component)
             do jd = 2,3
                 do id = 1,n_par
-                    call VMEC_conv_FHM(B_V_sub_ALT(id,:,jd),tempvar(id,:),.false.)
+                    call VMEC_conv_FHM(B_V_sub_ALT(id,:,jd),tempvar(id,:),&
+                        &.false.,ierr)
                 end do
                 B_V_sub_ALT(:,:,jd) = tempvar
             end do
@@ -2554,7 +2576,7 @@ contains
             
             ! calculate mesh points (theta, zeta) that follow the magnetic field
             ! line
-            call calc_mesh(alpha)
+            call calc_mesh(alpha,ierr)
             
             call print_GP_2D('zeta(theta)','',transpose(zeta),&
                 &x=transpose(theta))
@@ -2595,7 +2617,7 @@ contains
                     grid_max = maxval(theta(:,kd)) + &
                         &0.1*(maxval(theta(:,kd))-minval(theta(:,kd)))
                 end if
-                plot_dep_var = eqd_mesh(n_plot, grid_min, grid_max)
+                plot_dep_var = eqd_mesh(n_plot, grid_min, grid_max,ierr)
                 par: do id = 1, n_par
                     if (theta_var_along_B) then                                 ! looking for zeta
                         plot_var(1,:) = plot_dep_var                            ! eq. mesh of zeta
@@ -2647,15 +2669,17 @@ contains
             do jd = 1, n_ang
                 if (theta_var_along_B) then                                     ! looking for zeta (dep. var)
                     ! cosines and sines
-                    cs = mesh_cs(mpol,ntor,nfp,par_var,dep_var(jd))
+                    cs = mesh_cs(mpol,ntor,nfp,par_var,dep_var(jd),ierr)
                     ! lambda
-                    lam = f2r(L_c(:,:,kd,0),L_s(:,:,kd,0),cs,mpol,ntor,nfp)
+                    lam = f2r(L_c(:,:,kd,0),L_s(:,:,kd,0),cs,mpol,ntor,nfp,&
+                        &ierr=ierr)
                     find_f_plot(jd) = dep_var(jd)-(par_var+lam)/iotaf(kd)-alpha
                 else                                                            ! looking for theta (dep. var)
                     ! cosines and sines
-                    cs = mesh_cs(mpol,ntor,nfp,dep_var(jd),par_var)
+                    cs = mesh_cs(mpol,ntor,nfp,dep_var(jd),par_var,ierr)
                     ! lambda
-                    lam = f2r(L_c(:,:,kd,0),L_s(:,:,kd,0),cs,mpol,ntor,nfp)
+                    lam = f2r(L_c(:,:,kd,0),L_s(:,:,kd,0),cs,mpol,ntor,nfp,&
+                        &ierr=ierr)
                     find_f_plot(jd) = par_var-(dep_var(jd)+lam)/iotaf(kd)-alpha
                 end if
             end do
@@ -2732,13 +2756,13 @@ contains
             
             zeta = 0.4*pi/2
             do jd = 1,n_r
-                theta(:,jd) = eqd_mesh(n_par, 0.0_dp*pi, 3.0_dp*pi)
+                theta(:,jd) = eqd_mesh(n_par, 0.0_dp*pi, 3.0_dp*pi,ierr)
             end do
             
             do kd = 0, 3
                 do jd = 0, 3
                     do id = 0, 3
-                        call calc_RZL([id,jd,kd])
+                        call calc_RZL([id,jd,kd],ierr)
                     end do
                 end do
             end do
@@ -2748,7 +2772,7 @@ contains
             call writo('multiply R and Z')
             call lvl_ud(1)
             RZ = 0.0_dp
-            call arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,0])
+            call arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,0],ierr)
             RZ_num = VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,0,0)
             call print_GP_2D('RZ (calc,num) at par = 5','',&
                 &reshape([RZ(5,:),RZ_num],[n_r,2]))
@@ -2761,7 +2785,7 @@ contains
             call lvl_ud(1)
             ! Dr
             RZ = 0.0_dp
-            call arr_mult(VMEC_R,VMEC_Z,RZ,[1,0,0])
+            call arr_mult(VMEC_R,VMEC_Z,RZ,[1,0,0],ierr)
             RZ_num = VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,1,0,0)
             call print_GP_2D('DrRZ (calc,num) at par = 5','',&
@@ -2770,7 +2794,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Dtheta
             RZ = 0.0_dp
-            call arr_mult(VMEC_R,VMEC_Z,RZ,[0,1,0])
+            call arr_mult(VMEC_R,VMEC_Z,RZ,[0,1,0],ierr)
             RZ_num = VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,1,0)
             call print_GP_2D('DtRZ (calc,num) at par = 5','',&
@@ -2779,7 +2803,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Dzeta
             RZ = 0.0_dp
-            call arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,1])
+            call arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,1],ierr)
             RZ_num = VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,0,1)
             call print_GP_2D('DzRZ (calc,num) at par = 5','',&
@@ -2793,7 +2817,7 @@ contains
             call lvl_ud(1)
             ! Drr
             RZ = 0.0_dp
-            call arr_mult(VMEC_R,VMEC_Z,RZ,[2,0,0])
+            call arr_mult(VMEC_R,VMEC_Z,RZ,[2,0,0],ierr)
             RZ_num = VMEC_R(5,:,2,0,0)*VMEC_Z(5,:,0,0,0) + &
                 &2.0_dp * VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,1,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,2,0,0)
@@ -2803,7 +2827,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Drtheta
             RZ = 0.0_dp
-            call arr_mult(VMEC_R,VMEC_Z,RZ,[1,1,0])
+            call arr_mult(VMEC_R,VMEC_Z,RZ,[1,1,0],ierr)
             RZ_num = VMEC_R(5,:,1,1,0)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,0,1,0) + &
                 &VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,1,0,0) + &
@@ -2814,7 +2838,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Drzeta
             RZ = 0.0_dp
-            call arr_mult(VMEC_R,VMEC_Z,RZ,[1,0,1])
+            call arr_mult(VMEC_R,VMEC_Z,RZ,[1,0,1],ierr)
             RZ_num = VMEC_R(5,:,1,0,1)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,0,0,1) + &
                 &VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,1,0,0) + &
@@ -2825,7 +2849,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Dthetatheta
             RZ = 0.0_dp
-            call arr_mult(VMEC_R,VMEC_Z,RZ,[0,2,0])
+            call arr_mult(VMEC_R,VMEC_Z,RZ,[0,2,0],ierr)
             RZ_num = VMEC_R(5,:,0,2,0)*VMEC_Z(5,:,0,0,0) + &
                 &2.0_dp * VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,0,1,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,2,0)
@@ -2835,7 +2859,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Dtzeta
             RZ = 0.0_dp
-            call arr_mult(VMEC_R,VMEC_Z,RZ,[0,1,1])
+            call arr_mult(VMEC_R,VMEC_Z,RZ,[0,1,1],ierr)
             RZ_num = VMEC_R(5,:,0,1,1)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,0,0,1) + &
                 &VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,0,1,0) + &
@@ -2846,7 +2870,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Dzetazeta
             RZ = 0.0_dp
-            call arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,2])
+            call arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,2],ierr)
             RZ_num = VMEC_R(5,:,0,0,2)*VMEC_Z(5,:,0,0,0) + &
                 &2.0_dp * VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,0,0,1) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,0,2)
@@ -2860,7 +2884,7 @@ contains
             call writo('higher order derive RZ')
             call lvl_ud(1)
             RZ = 0.0_dp
-            call arr_mult(VMEC_R,VMEC_Z,RZ,[1,2,3])
+            call arr_mult(VMEC_R,VMEC_Z,RZ,[1,2,3],ierr)
             RZ_num = VMEC_R(5,:,1,2,3)*VMEC_Z(5,:,0,0,0) + &
                 &3.0_dp * VMEC_R(5,:,1,2,2)*VMEC_Z(5,:,0,0,1) + &
                 &3.0_dp * VMEC_R(5,:,1,2,1)*VMEC_Z(5,:,0,0,2) + &
@@ -2909,13 +2933,13 @@ contains
             
             zeta = 0.4*pi/2
             do jd = 1,n_r
-                theta(:,jd) = eqd_mesh(n_par, 0.0_dp*pi, 3.0_dp*pi)
+                theta(:,jd) = eqd_mesh(n_par, 0.0_dp*pi, 3.0_dp*pi,ierr)
             end do
             
             do kd = 0, 3
                 do jd = 0, 3
                     do id = 0, 3
-                        call calc_RZL([id,jd,kd])
+                        call calc_RZL([id,jd,kd],ierr)
                     end do
                 end do
             end do
@@ -2923,14 +2947,14 @@ contains
             
             call writo('calculate q_saf')
             call lvl_ud(1)
-            call calc_flux_q
+            call calc_flux_q(ierr)
             call lvl_ud(-1)
             
             ! multiply
             call writo('multiply R and q_saf')
             call lvl_ud(1)
             Rq = 0.0_dp
-            call arr_mult(VMEC_R,q_saf,Rq,[0,0,0])
+            call arr_mult(VMEC_R,q_saf,Rq,[0,0,0],ierr)
             Rq_num = VMEC_R(5,:,0,0,0)*q_saf(:,0)
             call print_GP_2D('Rq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[n_r,2]))
@@ -2943,7 +2967,7 @@ contains
             call lvl_ud(1)
             ! Dr
             Rq = 0.0_dp
-            call arr_mult(VMEC_R,q_saf,Rq,[1,0,0])
+            call arr_mult(VMEC_R,q_saf,Rq,[1,0,0],ierr)
             Rq_num = VMEC_R(5,:,1,0,0)*q_saf(:,0) + &
                 &VMEC_R(5,:,0,0,0)*q_saf(:,1)
             call print_GP_2D('DrRq (calc,num) at par = 5','',&
@@ -2952,7 +2976,7 @@ contains
                 &Rq(5,:)-Rq_num)
             ! Dtheta
             Rq = 0.0_dp
-            call arr_mult(VMEC_R,q_saf,Rq,[0,1,0])
+            call arr_mult(VMEC_R,q_saf,Rq,[0,1,0],ierr)
             Rq_num = VMEC_R(5,:,0,1,0)*q_saf(:,0) + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DtRq (calc,num) at par = 5','',&
@@ -2961,7 +2985,7 @@ contains
                 &Rq(5,:)-Rq_num)
             ! Dzeta
             Rq = 0.0_dp
-            call arr_mult(VMEC_R,q_saf,Rq,[0,0,1])
+            call arr_mult(VMEC_R,q_saf,Rq,[0,0,1],ierr)
             Rq_num = VMEC_R(5,:,0,0,1)*q_saf(:,0) + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DzRq (calc,num) at par = 5','',&
@@ -2975,7 +2999,7 @@ contains
             call lvl_ud(1)
             ! Drr
             Rq = 0.0_dp
-            call arr_mult(VMEC_R,q_saf,Rq,[2,0,0])
+            call arr_mult(VMEC_R,q_saf,Rq,[2,0,0],ierr)
             Rq_num = VMEC_R(5,:,2,0,0)*q_saf(:,0) + &
                 &2.0_dp * VMEC_R(5,:,1,0,0)*q_saf(:,1) + &
                 &VMEC_R(5,:,0,0,0)*q_saf(:,2)
@@ -2985,7 +3009,7 @@ contains
                 &Rq(5,:)-Rq_num)
             ! Drtheta
             Rq = 0.0_dp
-            call arr_mult(VMEC_R,q_saf,Rq,[1,1,0])
+            call arr_mult(VMEC_R,q_saf,Rq,[1,1,0],ierr)
             Rq_num = VMEC_R(5,:,1,1,0)*q_saf(:,0) + &
                 &VMEC_R(5,:,1,0,0)*0.0_dp + &
                 &VMEC_R(5,:,0,1,0)*q_saf(:,1) + &
@@ -2996,7 +3020,7 @@ contains
                 &Rq(5,:)-Rq_num)
             ! Drzeta
             Rq = 0.0_dp
-            call arr_mult(VMEC_R,q_saf,Rq,[1,0,1])
+            call arr_mult(VMEC_R,q_saf,Rq,[1,0,1],ierr)
             Rq_num = VMEC_R(5,:,1,0,1)*q_saf(:,0) + &
                 &VMEC_R(5,:,1,0,0)*0.0_dp + &
                 &VMEC_R(5,:,0,0,1)*q_saf(:,1) + &
@@ -3007,7 +3031,7 @@ contains
                 &Rq(5,:)-Rq_num)
             ! Dthetatheta
             Rq = 0.0_dp
-            call arr_mult(VMEC_R,q_saf,Rq,[0,2,0])
+            call arr_mult(VMEC_R,q_saf,Rq,[0,2,0],ierr)
             Rq_num = VMEC_R(5,:,0,2,0)*q_saf(:,0) + &
                 &2.0_dp * VMEC_R(5,:,0,1,0)*0.0_dp + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
@@ -3017,7 +3041,7 @@ contains
                 &Rq(5,:)-Rq_num)
             ! Dtzeta
             Rq = 0.0_dp
-            call arr_mult(VMEC_R,q_saf,Rq,[0,1,1])
+            call arr_mult(VMEC_R,q_saf,Rq,[0,1,1],ierr)
             Rq_num = VMEC_R(5,:,0,1,1)*q_saf(:,0) + &
                 &VMEC_R(5,:,0,1,0)*0.0_dp + &
                 &VMEC_R(5,:,0,0,1)*0.0_dp + &
@@ -3028,7 +3052,7 @@ contains
                 &Rq(5,:)-Rq_num)
             ! Dzetazeta
             Rq = 0.0_dp
-            call arr_mult(VMEC_R,q_saf,Rq,[0,0,2])
+            call arr_mult(VMEC_R,q_saf,Rq,[0,0,2],ierr)
             Rq_num = VMEC_R(5,:,0,0,2)*q_saf(:,0) + &
                 &2.0_dp * VMEC_R(5,:,0,0,1)*0.0_dp + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
@@ -3042,7 +3066,7 @@ contains
             call writo('higher order derive Rq')
             call lvl_ud(1)
             Rq = 0.0_dp
-            call arr_mult(VMEC_R,q_saf,Rq,[1,2,3])
+            call arr_mult(VMEC_R,q_saf,Rq,[1,2,3],ierr)
             Rq_num = VMEC_R(5,:,1,2,3)*q_saf(:,0) + &
                 &3.0_dp * VMEC_R(5,:,1,2,2)*0.0_dp + &
                 &3.0_dp * VMEC_R(5,:,1,2,1)*0.0_dp + &
@@ -3091,20 +3115,20 @@ contains
             
             zeta = 0.4*pi/2
             do jd = 1,n_r
-                theta(:,jd) = eqd_mesh(n_par, 0.0_dp*pi, 3.0_dp*pi)
+                theta(:,jd) = eqd_mesh(n_par, 0.0_dp*pi, 3.0_dp*pi,ierr)
             end do
             call lvl_ud(-1)
             
             call writo('calculate q_saf and pres')
             call lvl_ud(1)
-            call calc_flux_q
+            call calc_flux_q(ierr)
             call lvl_ud(-1)
             
             ! multiply
             call writo('multiply pres and q_saf')
             call lvl_ud(1)
             pq = 0.0_dp
-            call arr_mult(pres,q_saf,pq,[0,0,0])
+            call arr_mult(pres,q_saf,pq,[0,0,0],ierr)
             pq_num = pres(:,0)*q_saf(:,0)
             call print_GP_2D('pq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[n_r,2]))
@@ -3117,7 +3141,7 @@ contains
             call lvl_ud(1)
             ! Dr
             pq = 0.0_dp
-            call arr_mult(pres,q_saf,pq,[1,0,0])
+            call arr_mult(pres,q_saf,pq,[1,0,0],ierr)
             pq_num = pres(:,1)*q_saf(:,0) + &
                 &pres(:,0)*q_saf(:,1)
             call print_GP_2D('Drpq (calc,num) = 5','',&
@@ -3126,7 +3150,7 @@ contains
                 &pq-pq_num)
             ! Dtheta
             pq = 0.0_dp
-            call arr_mult(pres,q_saf,pq,[0,1,0])
+            call arr_mult(pres,q_saf,pq,[0,1,0],ierr)
             pq_num = 0.0_dp*q_saf(:,0) + &
                 &pres(:,0)*0.0_dp
             call print_GP_2D('Dtpq (calc,num) = 5','',&
@@ -3135,7 +3159,7 @@ contains
                 &pq-pq_num)
             ! Dzeta
             pq = 0.0_dp
-            call arr_mult(pres,q_saf,pq,[0,0,1])
+            call arr_mult(pres,q_saf,pq,[0,0,1],ierr)
             pq_num = 0.0_dp*q_saf(:,0) + &
                 &pres(:,0)*0.0_dp
             call print_GP_2D('Dzpq (calc,num) = 5','',&
@@ -3149,7 +3173,7 @@ contains
             call lvl_ud(1)
             ! Drr
             pq = 0.0_dp
-            call arr_mult(pres,q_saf,pq,[2,0,0])
+            call arr_mult(pres,q_saf,pq,[2,0,0],ierr)
             pq_num = pres(:,2)*q_saf(:,0) + &
                 &2.0_dp * pres(:,1)*q_saf(:,1) + &
                 &pres(:,0)*q_saf(:,2)
@@ -3159,7 +3183,7 @@ contains
                 &pq-pq_num)
             ! Drtheta
             pq = 0.0_dp
-            call arr_mult(pres,q_saf,pq,[1,1,0])
+            call arr_mult(pres,q_saf,pq,[1,1,0],ierr)
             pq_num = 0.0_dp
             call print_GP_2D('Drtpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[n_r,2]))
@@ -3167,7 +3191,7 @@ contains
                 &pq-pq_num)
             ! Drzeta
             pq = 0.0_dp
-            call arr_mult(pres,q_saf,pq,[1,0,1])
+            call arr_mult(pres,q_saf,pq,[1,0,1],ierr)
             pq_num = 0.0_dp
             call print_GP_2D('Drzpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[n_r,2]))
@@ -3175,7 +3199,7 @@ contains
                 &pq-pq_num)
             ! Dthetatheta
             pq = 0.0_dp
-            call arr_mult(pres,q_saf,pq,[0,2,0])
+            call arr_mult(pres,q_saf,pq,[0,2,0],ierr)
             pq_num = 0.0_dp
             call print_GP_2D('Dttpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[n_r,2]))
@@ -3183,7 +3207,7 @@ contains
                 &pq-pq_num)
             ! Dtzeta
             pq = 0.0_dp
-            call arr_mult(pres,q_saf,pq,[0,1,1])
+            call arr_mult(pres,q_saf,pq,[0,1,1],ierr)
             pq_num = 0.0_dp
             call print_GP_2D('Dtzpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[n_r,2]))
@@ -3191,7 +3215,7 @@ contains
                 &pq-pq_num)
             ! Dzetazeta
             pq = 0.0_dp
-            call arr_mult(pres,q_saf,pq,[0,0,2])
+            call arr_mult(pres,q_saf,pq,[0,0,2],ierr)
             pq_num = 0.0_dp
             call print_GP_2D('Dzzpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[n_r,2]))
@@ -3203,7 +3227,7 @@ contains
             call writo('higher order derive pq')
             call lvl_ud(1)
             pq = 0.0_dp
-            call arr_mult(pres,q_saf,pq,[1,2,3])
+            call arr_mult(pres,q_saf,pq,[1,2,3],ierr)
             pq_num = 0.0_dp
             call print_GP_2D('Drttzzzpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[n_r,2]))
@@ -3211,5 +3235,206 @@ contains
                 &pq-pq_num)
             call lvl_ud(-1)
         end subroutine
+    end subroutine
+    
+    subroutine test_calc_interp
+        use utilities, only: calc_interp
+        
+        ! local variables
+        real(dp) :: varin_real(4,10,2,2)
+        real(dp) :: varout_real(4,2,2)
+        complex(dp) :: varin_complex(4,10,2,2)
+        complex(dp) :: varout_complex(4,2,2)
+        integer :: id, jd, kd, ld
+        real(dp) :: point
+        
+        call writo('test calc_interp?')
+        if(yes_no(.false.)) then
+            call lvl_ud(1)
+            
+            ! fill variables varin
+            do id = 1,4
+                do jd = 1,10
+                    do kd = 1,2
+                        do ld = 1,2
+                            varin_real(id,jd,kd,ld) = id+jd+kd+ld
+                            varin_complex(id,jd,kd,ld) = &
+                                &varin_real(id,jd,kd,ld)*(1 + 2*iu)
+                        end do
+                    end do
+                end do
+            end do
+            
+            call writo('real input variable at (1,2):')
+            call print_ar_2(varin_real(:,:,1,2))
+            call writo('Re(complex input variable at (1,2)):')
+            call print_ar_2(realpart(varin_complex(:,:,1,2)))
+            call writo('Im(complex input variable at (1,2)):')
+            call print_ar_2(imagpart(varin_complex(:,:,1,2)))
+            
+            ! interpolating at a point 0.6
+            point = 0.6_dp
+            call calc_interp(varin_real,varout_real,point,ierr)
+            call calc_interp(varin_complex,varout_complex,point,ierr)
+            
+            ! printing results
+            call writo('real output variable at (1,2):')
+            call print_ar_1(varout_real(:,1,2))
+            call writo('Re(complex output variable at (1,2)):')
+            call print_ar_1(realpart(varout_complex(:,1,2)))
+            call writo('Im(complex output variable at (1,2)):')
+            call print_ar_1(imagpart(varout_complex(:,1,2)))
+            
+            call lvl_ud(-1)
+            
+            call writo('Stopping')
+            stop
+        end if
+    end subroutine
+    
+    ! test SLEPC
+    ! (from $PETSC_DIR/src/eps/examples/tutorials/ex1f90.F90)
+    subroutine test_slepc
+#include <finclude/slepcepsdef.h>
+        use slepceps
+        
+        ! local variables
+        Mat :: A
+        EPS :: solver
+        PetscErrorCode :: ierr
+        PetscMPIInt :: rank, n_procs
+        PetscInt :: n_m_X, n_r_X, n_block
+        PetscInt :: i, j, Istart, Iend
+        PetscInt :: nev, ncv, mpd
+        EPSType :: tname
+        PetscScalar, allocatable :: loc_block(:,:)
+        PetscInt, allocatable :: loc_x(:), loc_y(:)
+        
+        call writo('test slepc?')
+        if(yes_no(.false.)) then
+            call lvl_ud(1)
+            
+            call SlepcInitialize(PETSC_NULL_CHARACTER,ierr)
+            call MPI_Comm_rank(PETSC_COMM_WORLD,rank,ierr)
+            
+            ! set options
+            call PetscOptionsSetValue('-draw_pause','-1',ierr)
+            call PetscOptionsSetValue('-eps_view','',ierr)
+            
+#if defined(PETSC_USE_COMPLEX)
+            call PetscPrintf(PETSC_COMM_WORLD,"using complex numbers\n",ierr);
+#else
+            call PetscPrintf(PETSC_COMM_WORLD,"can only use complex numbers!\n",ierr);
+            call SlepcFinalize(ierr)
+            stop
+#endif
+            
+            ! divide the n_r_X normal points between the n_procs processors
+            n_m_X = 6                                                           ! size of block (=M)
+            n_r_X = 10                                                          ! number of radial points
+            call MPI_Comm_size(PETSC_COMM_WORLD,n_procs,ierr)                   ! number of processors
+            if (n_procs.gt.n_r_X) then
+                call PetscPrintf(PETSC_COMM_WORLD,"n_procs too high!\n",ierr);
+                call SlepcFinalize(ierr)
+                stop
+            end if
+            n_block = n_r_X/n_procs                                             ! number of radial points on this processor
+            if (mod(n_r_X,n_procs).gt.0) then
+                if (mod(n_r_X,n_procs).gt.rank) n_block = n_block + 1           ! add a point to the first ranks if there is a remainder
+            end if
+            
+            ! create  a  matrix A  with the  appropriate number  of preallocated
+            ! entries
+            call MatCreateAIJ(PETSC_COMM_WORLD,n_block*n_m_X,n_block*n_m_X,&
+                &n_r_X*n_m_X,n_r_X*n_m_X,3*n_m_X,PETSC_NULL_INTEGER,&
+                &3*n_m_X,PETSC_NULL_INTEGER,A,ierr)
+            
+            ! fill the matrix A
+            call MatGetOwnershipRange(A,Istart,Iend,ierr)
+            !write(*,*) 'rank, Istart, Iend = ', rank, Istart, Iend
+            allocate(loc_block(n_m_X,n_m_X))
+            allocate(loc_x(n_m_X))
+            allocate(loc_y(n_m_X))
+            do i = 1,n_block
+                if (rank.ne.0 .or. i.ne.1) then                                 ! don't do the left block for first normal point
+                    ! for each to the left block add -1
+                    loc_block = -1.0
+                    loc_x = [(j, j = Istart,Iend-1)] + (i-1)*n_m_X
+                    loc_y = loc_x-n_m_X
+                    call MatSetValues(A,n_m_X,loc_x,n_m_X,loc_y,loc_block,&
+                        &INSERT_VALUES,ierr)
+                end if
+                ! for each block add imaginary unit PETSC_i
+                loc_block = PETSC_i
+                loc_x = [(j, j = Istart,Iend-1)] + (i-1)*n_m_X
+                loc_y = loc_x
+                call MatSetValues(A,n_m_X,loc_x,n_m_X,loc_y,loc_block,&
+                    &INSERT_VALUES,ierr)
+                if (rank.ne.n_procs-1 .or. i.ne.n_block) then                   ! don't do the right block for last normal point
+                    ! for each block add 1
+                    loc_block = +1.0
+                    loc_x = [(j, j = Istart,Iend-1)] + (i-1)*n_m_X
+                    loc_y = loc_x+n_m_X
+                    call MatSetValues(A,n_m_X,loc_x,n_m_X,loc_y,loc_block,&
+                        &INSERT_VALUES,ierr)
+                end if
+            end do
+            
+            ! assemble the matrix and view it
+            call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr)
+            call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr)
+            
+            call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            call MatView(A,PETSC_VIEWER_DRAW_WORLD,ierr)
+
+            ! create vector
+            !call MatGetVecs(A,X,Y,ierr)
+            !call VecGetOwnershipRange(X,Istart,Iend,ierr)
+            !do i= Istart,Iend-1
+                !val = rank*1000 + 100.0*i + 10.0*PETSC_i
+                !call VecSetValues(X,one,i,val,ADD_VALUES,ierr)
+            !end do
+            !call VecAssemblyBegin(X,ierr)
+            !call VecAssemblyEnd(X,ierr)
+            
+            ! matmult with matrix A
+            !call VecDuplicate(X,Y,ierr)
+            !call MatMult(A,X,Y,ierr)
+              
+            !call PetscObjectSetName(X, "starting vector X:",ierr)
+            !call PetscObjectSetName(Y, "multiplied vector Y:",ierr)
+            !call VecView(X,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            !call VecView(Y,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            !call VecDestroy(X,ierr)
+            !call VecDestroy(Y,ierr)
+            
+            ! solve an EV problem
+            call EPSCreate(PETSC_COMM_WORLD,solver,ierr)
+            call EPSSetOperators(solver,A,PETSC_NULL_OBJECT,ierr)
+            call EPSSetProblemType(solver,EPS_HEP,ierr)
+            call EPSSetFromOptions(solver,ierr)
+            call EPSSolve(solver,ierr) 
+
+            ! get some information from the solver and display it
+            call EPSGetType(solver,tname,ierr)
+            if (rank .eq. 0) write(*,'(" solution method: ",A)') tname
+            call EPSGetDimensions(solver,nev,ncv,mpd,ierr)
+            if (rank .eq. 0) write(*,'(" number of req. EV: ",I4)') nev
+            if (rank .eq. 0) write(*,'(" max. dim. of subspace: ",I4)') ncv
+            if (rank .eq. 0) write(*,'(" max. dim. for projected problem: ",&
+                &I4)') mpd
+
+            ! destroy and finalize
+            call EPSPrintSolution(solver,PETSC_NULL_OBJECT,ierr)
+            call EPSDestroy(solver,ierr)
+            call MatDestroy(A,ierr)
+            
+            call SlepcFinalize(ierr)
+            
+            call lvl_ud(-1)
+            
+            call writo('Stopping')
+            stop
+        end if
     end subroutine
 end module test

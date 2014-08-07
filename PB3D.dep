@@ -1,5 +1,6 @@
 PB3D.o : \
     num_vars.o \
+    MPI_ops.o \
     VMEC_vars.o \
     file_ops.o \
     driver.o \
@@ -18,7 +19,7 @@ test.o : \
     VMEC_vars.o \
     eq_vars.o \
     utilities.o \
-    matrix_X.o \
+    X_ops.o \
     X_vars.o \
 
 driver.o : \
@@ -29,16 +30,23 @@ driver.o : \
 
 driver_rich.o : \
     num_vars.o \
+    MPI_ops.o \
     file_ops.o \
     str_ops.o \
     output_ops.o \
     eq_vars.o \
     metric_ops.o \
     eq_ops.o \
-    matrix_X.o \
+    X_ops.o \
     X_vars.o \
 
-matrix_X.0 : \
+slepc_ops.o : \
+    num_vars.o \
+    output_ops.o \
+    str_ops.o \
+    utilities.o \
+
+X_ops.o : \
     num_vars.o \
     eq_ops.o \
     metric_ops.o \
@@ -46,6 +54,8 @@ matrix_X.0 : \
     VMEC_vars.o \
     output_ops.o \
     X_vars.o \
+    slepc_ops.o \
+    str_ops.o \
 
 X_vars.o : \
     num_vars.o \
@@ -109,6 +119,11 @@ metric_ops.o : \
     str_ops.o \
     eq_vars.o \
     utilities.o \
+
+MPI_ops.o : \
+    num_vars.o \
+    str_ops.o \
+    output_ops.o \
 
 str_ops.o : \
     num_vars.o \

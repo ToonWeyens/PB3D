@@ -5,8 +5,9 @@
 !           discretization                                                     !
 !------------------------------------------------------------------------------!
 module driver
+#include <PB3D_macros.h>
     use driver_rich, only: run_rich_driver
-    use num_vars, only: style
+    use num_vars, only: style, max_str_ln
     use str_ops, only: i2str
     use output_ops, only: writo, lvl_ud
     implicit none
@@ -14,7 +15,20 @@ module driver
     public run_driver
 
 contains
-    subroutine run_driver()
+    ! the main driver routine
+    subroutine run_driver(ierr)
+        character(*), parameter :: rout_name = 'run_driver'
+        
+        ! input / output
+        integer, intent(inout) :: ierr                                          ! error
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! run the appropriate driver depending on "style"
         select case (style)
             ! Richardson's exptrapolation and normal discretization
             case (1)
@@ -22,12 +36,14 @@ contains
                 call lvl_ud(1)
                 call writo('Richardson''s extrapolation and &
                     &normal discretization, generalized eigenvalue problem')
-                call run_rich_driver
                 call lvl_ud(-1)
+                call run_rich_driver(ierr)
+                CHCKERR('')
             case default
-                call writo('ERROR: style "' // trim(i2str(style)) // '" is not&
-                    & valid')
-                stop
+                err_msg = 'style "' // trim(i2str(style)) // '" is not&
+                    & valid'
+                ierr = 1
+                CHCKERR(err_msg)
         end select
     end subroutine
 end module driver

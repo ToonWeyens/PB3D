@@ -3,7 +3,8 @@
 !   elements                                                                   !
 !------------------------------------------------------------------------------!
 module metric_ops 
-    use num_vars, only: dp, max_deriv
+#include <PB3D_macros.h>
+    use num_vars, only: dp, max_deriv, max_str_ln
     use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
     use str_ops, only: r2str, i2str
     use VMEC_vars, only: n_r
@@ -157,15 +158,22 @@ contains
     end subroutine
     
     ! calculate the lower metric elements in the C(ylindrical) coordinate system
-    subroutine calc_g_C_ind(deriv)
+    subroutine calc_g_C_ind(deriv,ierr)
         use eq_vars, only: VMEC_R
         use utilities, only: arr_mult
         
+        character(*), parameter :: rout_name = 'calc_g_C_ind'
+        
         ! input / output
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
+        
+        ! initialize ierr
+        ierr = 0
         
         ! check the derivatives requested
-        call check_deriv(deriv,max_deriv,'calc_g_C')
+        call check_deriv(deriv,max_deriv,'calc_g_C',ierr)
+        CHCKERR('')
         
         g_C(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         if (sum(deriv).eq.0) then
@@ -176,17 +184,21 @@ contains
             g_C(:,:,3,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         end if
         call arr_mult(VMEC_R,VMEC_R,g_C(:,:,2,2,deriv(1),deriv(2),deriv(3)),&
-            &deriv)
+            &deriv,ierr)
     end subroutine
-    subroutine calc_g_C_arr(deriv)
+    subroutine calc_g_C_arr(deriv,ierr)
+        character(*), parameter :: rout_name = 'calc_g_C_arr'
+        
         ! input / output
         integer, intent(in) :: deriv(:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id
         
         do id = 1, size(deriv,2)
-            call calc_g_C_ind(deriv(:,id))
+            call calc_g_C_ind(deriv(:,id),ierr)
+            CHCKERR('')
         end do
     end subroutine
 
@@ -195,52 +207,76 @@ contains
     ! transformation matrices
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
-    subroutine calc_g_V_ind(deriv)
+    subroutine calc_g_V_ind(deriv,ierr)
         use num_vars, only: max_deriv
+        
+        character(*), parameter :: rout_name = 'calc_g_V_ind'
         
         ! input / output
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
+        
+        ! initialize ierr
+        ierr = 0
         
         ! check the derivatives requested
-        call check_deriv(deriv,max_deriv-[1,1,1],'calc_g_V')
+        call check_deriv(deriv,max_deriv-[1,1,1],'calc_g_V',ierr)
+        CHCKERR('')
         
-        call calc_g(g_C,T_VC,g_V,deriv,max_deriv-[1,1,1])
+        call calc_g(g_C,T_VC,g_V,deriv,max_deriv-[1,1,1],ierr)
+        CHCKERR('')
     end subroutine
-    subroutine calc_g_V_arr(deriv)
+    subroutine calc_g_V_arr(deriv,ierr)
+        character(*), parameter :: rout_name = 'calc_g_V_arr'
+        
         ! input / output
         integer, intent(in) :: deriv(:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id
         
         do id = 1, size(deriv,2)
-            call calc_g_V_ind(deriv(:,id))
+            call calc_g_V_ind(deriv(:,id),ierr)
+            CHCKERR('')
         end do
     end subroutine
 
     ! calculate the  metric coefficients in  the F(lux) coordinate  system using
     ! the metric  coefficients in  the V(MEC) coordinate  system and  the trans-
     ! formation matrices
-    subroutine calc_g_F_ind(deriv)
+    subroutine calc_g_F_ind(deriv,ierr)
         use num_vars, only: max_deriv
+        
+        character(*), parameter :: rout_name = 'calc_g_F_ind'
         
         ! input / output
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
+        
+        ! initialize ierr
+        ierr = 0
         
         ! check the derivatives requested
-        call check_deriv(deriv,max_deriv-[1,1,1],'calc_g_F')
+        call check_deriv(deriv,max_deriv-[1,1,1],'calc_g_F',ierr)
+        CHCKERR('')
         
-        call calc_g(g_V,T_FV,g_F,deriv,max_deriv-[1,1,1])
+        call calc_g(g_V,T_FV,g_F,deriv,max_deriv-[1,1,1],ierr)
+        CHCKERR('')
     end subroutine
-    subroutine calc_g_F_arr(deriv)
+    subroutine calc_g_F_arr(deriv,ierr)
+        character(*), parameter :: rout_name = 'calc_g_F_arr'
+        
         ! input / output
         integer, intent(in) :: deriv(:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id
         
         do id = 1, size(deriv,2)
-            call calc_g_F_ind(deriv(:,id))
+            call calc_g_F_ind(deriv(:,id),ierr)
+            CHCKERR('')
         end do
     end subroutine
     
@@ -258,11 +294,14 @@ contains
     !   1/2 for even values of m-i
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
-    subroutine calc_g(g_A,T_BA,g_B,deriv,max_deriv)
+    subroutine calc_g(g_A,T_BA,g_B,deriv,max_deriv,ierr)
         use eq_vars, only: n_par
         use VMEC_vars, only: n_r
         
+        character(*), parameter :: rout_name = 'calc_g'
+        
         ! input / output
+        integer, intent(inout) :: ierr                                          ! error variable
         integer, intent(in) :: deriv(3)
         integer, intent(in) :: max_deriv(3)
         real(dp), intent(in) :: T_BA(:,:,:,:,0:,0:,0:)
@@ -275,8 +314,12 @@ contains
         integer :: m1, m2, m3                                                   ! alias for deriv
         real(dp), allocatable :: C1(:), C2(:), C3(:)                            ! coeff. for (il)
         
+        ! initialize ierr
+        ierr = 0
+        
         ! check the derivatives requested
-        call check_deriv(deriv,max_deriv,'calc_g')
+        call check_deriv(deriv,max_deriv,'calc_g',ierr)
+        CHCKERR('')
         
         ! set ml
         m1 = deriv(1)
@@ -357,28 +400,39 @@ contains
     end subroutine
     
     ! calculate the jacobian in cylindrical coordinates
-    subroutine calc_jac_C_ind(deriv)
+    subroutine calc_jac_C_ind(deriv,ierr)
         use eq_vars, only: VMEC_R
+        
+        character(*), parameter :: rout_name = 'calc_jac_C_ind'
         
         ! input / output
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
+        
+        ! initialize ierr
+        ierr = 0
         
         ! check the derivatives requested
-        call check_deriv(deriv,max_deriv,'calc_J_C')
+        call check_deriv(deriv,max_deriv,'calc_J_C',ierr)
+        CHCKERR('')
         
         jac_C(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         jac_C(:,:,deriv(1),deriv(2),deriv(3)) = &
             &VMEC_R(:,:,deriv(1),deriv(2),deriv(3))
     end subroutine
-    subroutine calc_jac_C_arr(deriv)
+    subroutine calc_jac_C_arr(deriv,ierr)
+        character(*), parameter :: rout_name = 'calc_jac_C_arr'
+        
         ! input / output
         integer, intent(in) :: deriv(:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id
         
         do id = 1, size(deriv,2)
-            call calc_jac_C_ind(deriv(:,id))
+            call calc_jac_C_ind(deriv(:,id),ierr)
+            CHCKERR('')
         end do
     end subroutine
     
@@ -386,28 +440,40 @@ contains
     !   jac_V = T_VC jac_C
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
-    subroutine calc_jac_V_ind(deriv)
+    subroutine calc_jac_V_ind(deriv,ierr)
         use utilities, only: arr_mult
+        
+        character(*), parameter :: rout_name = 'calc_jac_V_ind'
+        
         ! input / output
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
+        
+        ! initialize ierr
+        ierr = 0
         
         ! check the derivatives requested
-        call check_deriv(deriv,max_deriv-[1,1,1],'calc_J_V')
+        call check_deriv(deriv,max_deriv-[1,1,1],'calc_J_V',ierr)
+        CHCKERR('')
         
         ! calculate determinant
         jac_V(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         call arr_mult(jac_C,det_T_VC,jac_V(:,:,deriv(1),deriv(2),deriv(3)),&
-            &deriv)
+            &deriv,ierr)
     end subroutine
-    subroutine calc_jac_V_arr(deriv)
+    subroutine calc_jac_V_arr(deriv,ierr)
+        character(*), parameter :: rout_name = 'calc_jac_V_arr'
+        
         ! input / output
         integer, intent(in) :: deriv(:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id
         
         do id = 1, size(deriv,2)
-            call calc_jac_V_ind(deriv(:,id))
+            call calc_jac_V_ind(deriv(:,id),ierr)
+            CHCKERR('')
         end do
     end subroutine
     
@@ -415,42 +481,58 @@ contains
     !   jac_F = T_FV jac_V
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
-    subroutine calc_jac_F_ind(deriv)
+    subroutine calc_jac_F_ind(deriv,ierr)
         use utilities, only: arr_mult
+        
+        character(*), parameter :: rout_name = 'calc_jac_F_ind'
+        
         ! input / output
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
+        
+        ! initialize ierr
+        ierr = 0
         
         ! check the derivatives requested
-        call check_deriv(deriv,max_deriv-[1,1,1],'calc_J_V')
+        call check_deriv(deriv,max_deriv-[1,1,1],'calc_J_V',ierr)
+        CHCKERR('')
         
         ! calculate determinant
         jac_F(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         call arr_mult(jac_V,det_T_FV,jac_F(:,:,deriv(1),deriv(2),deriv(3)),&
-            &deriv)
+            &deriv,ierr)
     end subroutine
-    subroutine calc_jac_F_arr(deriv)
+    subroutine calc_jac_F_arr(deriv,ierr)
+        character(*), parameter :: rout_name = 'calc_jac_F_arr'
+        
         ! input / output
         integer, intent(in) :: deriv(:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id
         
         do id = 1, size(deriv,2)
-            call calc_jac_F_ind(deriv(:,id))
+            call calc_jac_F_ind(deriv(:,id),ierr)
+            CHCKERR('')
         end do
     end subroutine
 
     ! calculate  the transformation  matrix  between  C(ylindrical) and  V(mec)
     ! coordinate system
-    subroutine calc_T_VC_ind(deriv)
+    subroutine calc_T_VC_ind(deriv,ierr)
         use utilities, only: arr_mult
         use eq_vars, only: VMEC_R, VMEC_Z
         
+        character(*), parameter :: rout_name = 'calc_T_VC_ind'
+        
         ! input / output
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! check the derivatives requested
-        call check_deriv(deriv,max_deriv-[1,1,1],'calc_T_VC')
+        call check_deriv(deriv,max_deriv-[1,1,1],'calc_T_VC',ierr)
+        CHCKERR('')
         
         ! initialize
         T_VC(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
@@ -479,39 +561,50 @@ contains
         ! determinant
         det_T_VC(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         call arr_mult(VMEC_R(:,:,1:,0:,0:),VMEC_Z(:,:,0:,1:,0:),&
-            &det_T_VC(:,:,deriv(1),deriv(2),deriv(3)),deriv)
+            &det_T_VC(:,:,deriv(1),deriv(2),deriv(3)),deriv,ierr)
         call arr_mult(-VMEC_R(:,:,0:,1:,0:),VMEC_Z(:,:,1:,0:,0:),&
-            &det_T_VC(:,:,deriv(1),deriv(2),deriv(3)),deriv)
+            &det_T_VC(:,:,deriv(1),deriv(2),deriv(3)),deriv,ierr)
     end subroutine
-    subroutine calc_T_VC_arr(deriv)
+    subroutine calc_T_VC_arr(deriv,ierr)
+        character(*), parameter :: rout_name = 'calc_T_VC_arr'
+        
         ! input / output
         integer, intent(in) :: deriv(:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id
         
         do id = 1, size(deriv,2)
-            call calc_T_VC_ind(deriv(:,id))
+            call calc_T_VC_ind(deriv(:,id),ierr)
+            CHCKERR('')
         end do
     end subroutine
 
     ! calculate  the transformation  matrix  between  C(ylindrical) and  V(mec)
     ! coordinate system
-    subroutine calc_T_VF_ind(deriv)
+    subroutine calc_T_VF_ind(deriv,ierr)
         use num_vars, only: pi
         use eq_vars, only: VMEC_L, q_saf, n_par, theta, flux_p
         use utilities, only: arr_mult
         use VMEC_vars, only: n_r
         
+        character(*), parameter :: rout_name = 'calc_T_VF_ind'
+        
         ! input / output
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id                                                           ! counter
         real(dp) :: theta_s(n_par,n_r,0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1)   ! straight field line coordinate theta
         
+        ! initialize ierr
+        ierr = 0
+        
         ! check the derivatives requested
-        call check_deriv(deriv,max_deriv-[1,1,1],'calc_T_VF')
+        call check_deriv(deriv,max_deriv-[1,1,1],'calc_T_VF',ierr)
+        CHCKERR('')
         
         ! initialize
         theta_s = 0.0_dp
@@ -527,9 +620,9 @@ contains
         ! calculate transformation matrix T_V^F (FM)
         ! (1,1)
         call arr_mult(theta_s,-q_saf(:,1:),&
-            &T_VF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv)
+            &T_VF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv,ierr)
         call arr_mult(VMEC_L(:,:,1:,0:,0:),-q_saf,&
-            &T_VF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv)
+            &T_VF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv,ierr)
         ! (1,2)
         if (deriv(2).eq.0 .and. deriv(3).eq.0) then
             do id = 1,n_par
@@ -543,7 +636,7 @@ contains
             &VMEC_L(:,:,deriv(1)+1,deriv(2),deriv(3))
         ! (2,1)
         call arr_mult(theta_s(:,:,0:,1:,0:),-q_saf,&
-            &T_VF(:,:,2,1,deriv(1),deriv(2),deriv(3)),deriv)
+            &T_VF(:,:,2,1,deriv(1),deriv(2),deriv(3)),deriv,ierr)
         ! (2,2)
         T_VF(:,:,2,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         ! (2,3)
@@ -554,7 +647,7 @@ contains
             T_VF(:,:,3,1,0,0,0) = 1.0_dp
         end if
         call arr_mult(VMEC_L(:,:,0:,0:,1:),-q_saf,&
-            &T_VF(:,:,3,1,deriv(1),deriv(2),deriv(3)),deriv)
+            &T_VF(:,:,3,1,deriv(1),deriv(2),deriv(3)),deriv,ierr)
         ! (3,2)
         T_VF(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         ! (3,3)
@@ -564,17 +657,21 @@ contains
         ! determinant
         det_T_VF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         call arr_mult(theta_s(:,:,0:,1:,0:)/(2*pi),flux_p(:,1:),&
-            &det_T_VF(:,:,deriv(1),deriv(2),deriv(3)),deriv)
+            &det_T_VF(:,:,deriv(1),deriv(2),deriv(3)),deriv,ierr)
     end subroutine
-    subroutine calc_T_VF_arr(deriv)
+    subroutine calc_T_VF_arr(deriv,ierr)
+        character(*), parameter :: rout_name = 'calc_T_VF_arr'
+        
         ! input / output
         integer, intent(in) :: deriv(:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id
         
         do id = 1, size(deriv,2)
-            call calc_T_VF_ind(deriv(:,id))
+            call calc_T_VF_ind(deriv(:,id),ierr)
+            CHCKERR('')
         end do
     end subroutine
     
@@ -582,21 +679,27 @@ contains
     ! D_1^j1 D_2^j2 D_3^j3 Y where XY = 1, i,j = 0..m, according to [ADD REF]
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
-    subroutine calc_inv_met_ind(X,Y,deriv)                                      ! matrix version
+    subroutine calc_inv_met_ind(X,Y,deriv,ierr)                                 ! matrix version
         use utilities, only: inv
         use VMEC_vars, only: n_r
         use eq_vars, only: n_par
+        
+        character(*), parameter :: rout_name = 'calc_inv_met_ind'
         
         ! input / output
         real(dp), intent(inout) :: X(1:,1:,1:,1:,0:,0:,0:)
         real(dp), intent(in) :: Y(1:,1:,1:,1:,0:,0:,0:)
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id, kd                                                       ! counters
         integer :: r, t, z                                                      ! counters for derivatives
         integer :: m1, m2, m3                                                   ! alias for deriv(i)
         real(dp) :: bin_fac(3)                                                  ! binomial factor for norm., pol. and tor. sum
+        
+        ! initialize ierr
+        ierr = 0
         
         m1 = deriv(1)
         m2 = deriv(2)
@@ -607,7 +710,8 @@ contains
         
         ! calculate terms
         if (m1.eq.0 .and. m2.eq.0 .and. m3.eq.0) then                           ! direct inverse
-            X(:,:,:,:,0,0,0) = inv(Y(:,:,:,:,0,0,0))
+            X(:,:,:,:,0,0,0) = inv(Y(:,:,:,:,0,0,0),ierr)
+            CHCKERR('')
         else                                                                    ! calculate using the other inverses
             do z = 0,m3                                                         ! derivs in third coord
                 if (z.eq.0) then                                                ! first term in sum
@@ -651,21 +755,26 @@ contains
             end do
         end if
     end subroutine
-    subroutine calc_inv_met_ind_0D(X,Y,deriv)                                   ! scalar version
+    subroutine calc_inv_met_ind_0D(X,Y,deriv,ierr)                              ! scalar version
         use utilities, only: inv
         use VMEC_vars, only: n_r
         use eq_vars, only: n_par
+        character(*), parameter :: rout_name = 'calc_inv_met_ind_0D'
         
         ! input / output
         real(dp), intent(inout) :: X(1:,1:,0:,0:,0:)
         real(dp), intent(in) :: Y(1:,1:,0:,0:,0:)
         integer, intent(in) :: deriv(3)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id, kd                                                       ! counters
         integer :: r, t, z                                                      ! counters for derivatives
         integer :: m1, m2, m3                                                   ! alias for deriv(i)
         real(dp) :: bin_fac(3)                                                  ! binomial factor for norm., pol. and tor. sum
+        
+        ! initialize ierr
+        ierr = 0
         
         m1 = deriv(1)
         m2 = deriv(2)
@@ -683,6 +792,8 @@ contains
                     bin_fac(3) = 1.0_dp
                 else
                     bin_fac(3) = bin_fac(3)*(m3-(z-1))/z
+                    ! ADD SOME ERROR CHECKING HERE !!!!
+                    CHCKERR('')
                 end if
                 do t = 0,m2                                                     ! derivs in second coord
                     if (t.eq.0) then                                            ! first term in sum
@@ -717,30 +828,38 @@ contains
             end do
         end if
     end subroutine
-    subroutine calc_inv_met_arr(X,Y,deriv)
+    subroutine calc_inv_met_arr(X,Y,deriv,ierr)
+        character(*), parameter :: rout_name = 'calc_inv_met_arr'
+        
         ! input / output
         real(dp), intent(inout) :: X(1:,1:,1:,1:,0:,0:,0:)
         real(dp), intent(in) :: Y(1:,1:,1:,1:,0:,0:,0:)
         integer, intent(in) :: deriv(:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id
         
         do id = 1, size(deriv,2)
-            call calc_inv_met_ind(X,Y,deriv(:,id))
+            call calc_inv_met_ind(X,Y,deriv(:,id),ierr)
+            CHCKERR('')
         end do
     end subroutine
-    subroutine calc_inv_met_arr_0D(X,Y,deriv)
+    subroutine calc_inv_met_arr_0D(X,Y,deriv,ierr)
+        character(*), parameter :: rout_name = 'calc_inv_met_arr_0D'
+        
         ! input / output
         real(dp), intent(inout) :: X(1:,1:,0:,0:,0:)
         real(dp), intent(in) :: Y(1:,1:,0:,0:,0:)
         integer, intent(in) :: deriv(:,:)
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id
         
         do id = 1, size(deriv,2)
-            call calc_inv_met_ind_0D(X,Y,deriv(:,id))
+            call calc_inv_met_ind_0D(X,Y,deriv(:,id),ierr)
+            CHCKERR('')
         end do
     end subroutine
     
@@ -759,8 +878,10 @@ contains
     ! orders in the coordinates A
     ! see [ADD REF] for more detailed information
     recursive subroutine calc_f_deriv_3_ind(X_A,T_BA,X_B,max_deriv,deriv_B,&    ! normal variable version
-        &deriv_A_input)
+        &deriv_A_input,ierr)
         use utilities, only: arr_mult
+        
+        character(*), parameter :: rout_name = 'calc_f_deriv_3_ind'
         
         ! input / output
         real(dp), intent(in) :: X_A(1:,1:,0:,0:,0:)                             ! variable and derivs. in coord. system A
@@ -769,6 +890,7 @@ contains
         integer, intent(in), optional :: deriv_A_input(:)                       ! derivs. in coord. system A (optional)
         integer, intent(in) :: deriv_B(:)                                       ! derivs. in coord. system B
         integer, intent(in) :: max_deriv(:)                                     ! maximum degrees of derivs.
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id, jd, kd, ld                                               ! counters
@@ -777,6 +899,9 @@ contains
         real(dp), allocatable :: X_B_x(:,:,:,:,:)                               ! X_B and derivs. D^p-q_A with extra 1 exchanged deriv. D_A
         integer, allocatable :: deriv_A_x(:)                                    ! holds A derivs. for exchanged X_B_x
         integer, allocatable :: deriv_B_x(:)                                    ! holds B derivs. for exchanged X_B_x
+        
+        ! initialize ierr
+        ierr = 0
         
         ! setup deriv_A
         allocate(deriv_A(size(deriv_B)))
@@ -788,7 +913,8 @@ contains
         
         ! check the derivatives requested
         ! (every B deriv. needs all the A derivs. -> sum(deriv_B) needed)
-        call check_deriv(deriv_A +sum(deriv_B),max_deriv,'calc_f_deriv')
+        call check_deriv(deriv_A +sum(deriv_B),max_deriv,'calc_f_deriv',ierr)
+        CHCKERR('')
         
         ! detect first deriv. in the B coord. system that needs to be exchanged,
         ! with derivs in the A coord. system going from B coord. 1 to B coord. 2
@@ -840,7 +966,9 @@ contains
                             ! recursively call the subroutine again to calculate
                             ! X_B_x for the current derivatives
                             call calc_f_deriv_3_ind(X_A,T_BA,X_B_x(:,:,jd,kd,ld),&
-                                &max_deriv,deriv_B_x,deriv_A_x)
+                                &max_deriv,deriv_B_x,deriv_A_input=deriv_A_x,&
+                                &ierr=ierr)
+                            CHCKERR('')
                         end do
                     end do
                 end do
@@ -848,13 +976,16 @@ contains
                 ! use X_B_x at this term in summation due to the transf. mat. to
                 ! update X_B using the formula
                 call arr_mult(T_BA(:,:,deriv_id_B,id,0:,0:,0:),&
-                    &X_B_x(:,:,0:,0:,0:),X_B,deriv_A)
+                    &X_B_x(:,:,0:,0:,0:),X_B,deriv_A,ierr)
+                CHCKERR('')
             end do
         end if
     end subroutine
     recursive subroutine calc_f_deriv_1_ind(X_A,T_BA,X_B,max_deriv,deriv_B,&    ! flux variable version
-        &deriv_A_input)
+        &deriv_A_input,ierr)
         use utilities, only: arr_mult
+        
+        character(*), parameter :: rout_name = 'calc_f_deriv_1_ind'
         
         ! input / output
         real(dp), intent(in) :: X_A(1:,0:)                                      ! variable and derivs. in coord. system A
@@ -863,6 +994,7 @@ contains
         integer, intent(in), optional :: deriv_A_input                          ! derivs. in coord. system A (optional)
         integer, intent(in) :: deriv_B                                          ! derivs. in coord. system B
         integer, intent(in) :: max_deriv                                        ! maximum degrees of derivs.
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: jd                                                           ! counters
@@ -870,6 +1002,9 @@ contains
         real(dp), allocatable :: X_B_x(:,:)                                     ! X_B and derivs. D^p-q_A with extra 1 exchanged deriv. D_A
         integer :: deriv_A_x                                                    ! holds A derivs. for exchanged X_B_x
         integer :: deriv_B_x                                                    ! holds B derivs. for exchanged X_B_x
+        
+        ! initialize ierr
+        ierr = 0
         
         ! setup deriv_A
         if (present(deriv_A_input)) then
@@ -880,7 +1015,9 @@ contains
         
         ! check the derivatives requested
         ! (every B deriv. needs all the A derivs. -> sum(deriv_B) needed)
-        call check_deriv([deriv_A+deriv_B,0,0],[max_deriv,0,0],'calc_f_deriv')
+        call check_deriv([deriv_A+deriv_B,0,0],[max_deriv,0,0],'calc_f_deriv',&
+            &ierr)
+        CHCKERR('')
         
         ! calculate the  derivative in coord.  deriv_id_B of coord. system  B of
         ! one order lower than requested here
@@ -908,20 +1045,25 @@ contains
                 ! recursively call  the subroutine again to  calculate X_B_x for
                 ! the current derivatives
                 call calc_f_deriv_1_ind(X_A,T_BA,X_B_x(:,jd),max_deriv,&
-                    &deriv_B_x,deriv_A_x)
+                    &deriv_B_x,deriv_A_input=deriv_A_x,ierr=ierr)
+                CHCKERR('')
             end do
             
             ! use X_B_x to calculate X_B using the formula
-            call arr_mult(T_BA(:,0:),X_B_x(:,0:),X_B,[deriv_A,0,0])
+            call arr_mult(T_BA(:,0:),X_B_x(:,0:),X_B,[deriv_A,0,0],ierr)
+            CHCKERR('')
         end if
     end subroutine
-    subroutine calc_f_deriv_3_arr(X_A,T_BA,X_B,max_deriv,derivs)
+    subroutine calc_f_deriv_3_arr(X_A,T_BA,X_B,max_deriv,derivs,ierr)
+        character(*), parameter :: rout_name = 'calc_f_deriv_3_arr'
+        
         ! input / output
         real(dp), intent(in) :: X_A(1:,1:,0:,0:,0:)                             ! variable and derivs. in coord. system A
         real(dp), intent(inout) :: X_B(1:,1:,0:,0:,0:)                          ! requested derivs. of variable in coord. system B
         real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      ! transf. mat. and derivs. between coord. systems A and B
         integer, intent(in) :: derivs(:,:)                                      ! series of derivs. (in coordinate system B)
         integer, intent(in) :: max_deriv(:)                                     ! maximum degrees of derivs.
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id                                                           ! counter
@@ -929,25 +1071,31 @@ contains
         do id = 1, size(derivs,2)
             call calc_f_deriv_3_ind(X_A,T_BA,&
                 &X_B(:,:,derivs(1,id),derivs(2,id),derivs(3,id)),&
-                &max_deriv,derivs(:,id))
+                &max_deriv,derivs(:,id),ierr=ierr)
+            CHCKERR('')
         end do
     end subroutine
-    subroutine calc_f_deriv_3_arr_2D(X_A,T_BA,X_B,max_deriv,derivs)             ! matrix version
+    subroutine calc_f_deriv_3_arr_2D(X_A,T_BA,X_B,max_deriv,derivs,ierr)        ! matrix version
+        character(*), parameter :: rout_name = 'calc_f_deriv_3_arr_2D'
+        
         ! input / output
         real(dp), intent(in) :: X_A(1:,1:,1:,1:,0:,0:,0:)                       ! variable and derivs. in coord. system A
         real(dp), intent(inout) :: X_B(1:,1:,1:,1:,0:,0:,0:)                    ! requested derivs. of variable in coord. system B
         real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      ! transf. mat. and derivs. between coord. systems A and B
         integer, intent(in) :: derivs(:,:)                                      ! series of derivs. (in coordinate system B)
         integer, intent(in) :: max_deriv(:)                                     ! maximum degrees of derivs.
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! test whether the dimensions of X_A and X_B agree
         if (size(X_A,3).ne.size(X_B,3) .or. size(X_A,4).ne.size(X_B,4)) then
-            call writo('ERROR: In calc_f_deriv with 2D X_A and X_B, their sizes&
-                & have to be equal!')
-            stop
+            err_msg = 'In calc_f_deriv with 2D X_A and X_B, their sizes&
+                & have to be equal!'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         
         do kd = 1,size(X_A,4)
@@ -955,7 +1103,8 @@ contains
                 do id = 1, size(derivs,2)
                     call calc_f_deriv_3_ind(X_A(:,:,jd,kd,:,:,:),T_BA,&
                         &X_B(:,:,jd,kd,derivs(1,id),derivs(2,id),derivs(3,id)),&
-                        &max_deriv,derivs(:,id))
+                        &max_deriv,derivs(:,id),ierr=ierr)
+                    CHCKERR('')
                 end do
             end do
         end do

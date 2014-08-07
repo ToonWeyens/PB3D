@@ -8,6 +8,7 @@
     max_it_NR = 500
     max_it_r = 2
     theta_var_along_B = .true.
+    n_procs_per_alpha = 2
 /
 
 pi   = 3.1415926535897932384626433832795028841971693993751058

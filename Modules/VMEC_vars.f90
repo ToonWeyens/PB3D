@@ -2,6 +2,7 @@
 !   functions and routines that concern variables given by VMEC                !
 !------------------------------------------------------------------------------!
 module VMEC_vars
+#include <PB3D_macros.h>
     use num_vars, only: &
         &dp, max_str_ln, pi
     use str_ops, only: r2str, i2str
@@ -43,39 +44,49 @@ module VMEC_vars
 
 contains
     ! Reads the VMEC equilibrium data
-    subroutine read_VMEC()
+    subroutine read_VMEC(ierr)
         use fourier_ops, only: repack
         use utilities, only: VMEC_norm_deriv, VMEC_conv_FHM
-        use num_vars, only: ltest, max_deriv, VMEC_i
+        use num_vars, only: max_deriv, VMEC_i
+#if ldebug
+        use num_vars, only: ltest
+#endif
+        
+        character(*), parameter :: rout_name = 'read_VMEC'
+        
+        ! input / output
+        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
-        integer :: istat                                                        ! holds status of read_wout_file
         integer :: id, jd, kd                                                   ! counters
         real(dp), allocatable :: L_c_H(:,:,:,:)                                 ! temporary HM variable
         real(dp), allocatable :: L_s_H(:,:,:,:)                                 ! temporary HM variable
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         call writo('Reading data from VMEC output "' &
             &// trim(VMEC_name) // '"')
         call lvl_ud(1)
-        call read_wout_file(VMEC_name, istat)                                   ! LIBSTELL routine
-        if (istat.ne.0) then                                                    ! not able to read from the VMEC file
-            call writo("ERROR: can't read the VMEC file")
-            stop
-        end if
+        err_msg = 'can''t read the VMEC file'
+        call read_wout_file(VMEC_name, ierr)                                    ! LIBSTELL routine
+        CHCKERR(err_msg)
         close(VMEC_i)                                                           ! close the VMEC file
         
         call writo('VMEC version is ' // trim(r2str(version_)))
         if (lfreeb) then
             call writo('Free boundary VMEC')
-            call writo('This is not yet supported by PB3D...')
-            stop
+            err_msg = 'This is not yet supported by PB3D...'
+            ierr = 1
+            CHCKERR(err_msg)
         else
             call writo('Fixed boundary VMEC')
         end if
         if (lrfp) then
-            call writo('ERROR: VMEC cannot run yet using the poloidal flux &
-                & as normal coordinate ')
-            stop
+            err_msg = 'VMEC cannot run yet using the poloidal flux as normal coordinate '
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         if (lasym) then
             call writo('No stellerator symmetry')
@@ -90,8 +101,9 @@ contains
         call writo('Running tests')
         call lvl_ud(1)
         if (mnmax.ne.((ntor+1)+(2*ntor+1)*(mpol-1))) then                       ! are ntor, mpol and mnmax what is expected?
-            call writo('ERROR: inconsistency in ntor, mpol and mnmax')
-            stop
+            err_msg = 'inconsistency in ntor, mpol and mnmax'
+            ierr = 1
+            CHCKERR(err_msg)
         end if
         call lvl_ud(-1)
         
@@ -131,17 +143,23 @@ contains
             do jd = -ntor,ntor
                 do id = 0,mpol-1
                     call VMEC_norm_deriv(R_c(id,jd,:,0),R_c(id,jd,:,kd),&
-                        &n_r-1._dp,kd,1)
+                        &n_r-1._dp,kd,1,ierr)
+                    CHCKERR('')
                     call VMEC_norm_deriv(R_s(id,jd,:,0),R_s(id,jd,:,kd),&
-                        &n_r-1._dp,kd,1)
+                        &n_r-1._dp,kd,1,ierr)
+                    CHCKERR('')
                     call VMEC_norm_deriv(Z_c(id,jd,:,0),Z_c(id,jd,:,kd),&
-                        &n_r-1._dp,kd,1)
+                        &n_r-1._dp,kd,1,ierr)
+                    CHCKERR('')
                     call VMEC_norm_deriv(Z_s(id,jd,:,0),Z_s(id,jd,:,kd),&
-                        &n_r-1._dp,kd,1)
+                        &n_r-1._dp,kd,1,ierr)
+                    CHCKERR('')
                     call VMEC_norm_deriv(L_c_H(id,jd,:,0),L_c_H(id,jd,:,kd),&
-                        &n_r-1._dp,kd,1)
+                        &n_r-1._dp,kd,1,ierr)
+                    CHCKERR('')
                     call VMEC_norm_deriv(L_s_H(id,jd,:,0),L_s_H(id,jd,:,kd),&
-                        &n_r-1._dp,kd,1)
+                        &n_r-1._dp,kd,1,ierr)
+                    CHCKERR('')
                 end do
             end do
         end do
@@ -151,13 +169,14 @@ contains
             do jd = -ntor,ntor
                 do id = 0,mpol-1
                     call VMEC_conv_FHM(L_c_H(id,jd,:,kd),L_c(id,jd,:,kd),&
-                        &.false.)
+                        &.false.,ierr)
                     call VMEC_conv_FHM(L_s_H(id,jd,:,kd),L_s(id,jd,:,kd),&
-                        &.false.)
+                        &.false.,ierr)
                 end do
             end do
         end do
         
+#if ldebug
         ! for tests
         if (ltest) then
             allocate(B_V_sub_c_M(0:mpol-1,-ntor:ntor,1:n_r,3))
@@ -178,6 +197,7 @@ contains
             jac_V_c_H(:,:,:) = -repack(gmnc,mnmax,n_r,mpol,ntor,xm,xn)
             jac_V_s_H(:,:,:) = -repack(gmns,mnmax,n_r,mpol,ntor,xm,xn)
         end if
+#endif
         
         call lvl_ud(-1)
         call writo('Grid parameters successfully read')

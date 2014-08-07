@@ -5,13 +5,14 @@ module input_ops
     use str_ops, only: strh2l
     use num_vars, only: &
         &dp, max_str_ln, style, min_alpha, max_alpha, n_alpha, max_it_NR, &
-        &tol_NR, max_it_r, theta_var_along_B, input_i, n_seq_0, calc_mesh_style
+        &tol_NR, max_it_r, theta_var_along_B, input_i, n_seq_0, &
+        &calc_mesh_style, EV_style, n_procs_per_alpha
     use eq_vars, only: &
         &min_par, max_par, n_par
     use output_ops, only: writo, lvl_ud, &
         &format_out
     use file_ops, only: input_name
-    use X_vars, only: n_X, m_X
+    use X_vars, only: n_X, m_X, min_r, max_r
     implicit none
     private
     public yes_no, read_input
@@ -19,7 +20,8 @@ module input_ops
     ! input options
     namelist /inputdata/ format_out, style, min_par, &
         &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, &
-        &tol_NR, max_it_r, theta_var_along_B, n_X, m_X
+        &tol_NR, max_it_r, theta_var_along_B, n_X, m_X, min_r, max_r, &
+        &EV_style, n_procs_per_alpha
 
 contains
     ! queries for yes or no, depending on the flag yes:
@@ -62,8 +64,9 @@ contains
     end function yes_no
     
     ! reads input from user-provided input file
-    subroutine read_input()
-        integer :: istat                                                        ! holds status of read command
+    subroutine read_input
+        ! local variables
+        integer :: istat                                                        ! error
         
         if (input_i.ge.0) then                                                  ! if open_input opened a file
             call writo('Setting up user-provided input "' &       
@@ -83,20 +86,20 @@ contains
         
         ! read user input
         if (input_i.ge.n_seq_0) then                                            ! otherwise, defaults are loaded
-            read (input_i, nml=inputdata, iostat=istat) 
-            if (istat.ne.0) then
-                call writo('ERROR: Error reading input file "' // &
+            read (input_i, nml=inputdata, iostat=istat)                         ! read input data
+            if (istat.eq.0) then                                                ! input file succesfully read
+                call writo('Overwriting with user-provided file "' // &
                     &trim(input_name) // '"')
-                stop
-            endif
-            call writo('Overwriting with user-provided file "' // &
-                &trim(input_name) // '"')
+            else                                                                ! cannot read input data
+                call writo('Cannot open user-provided file "' // &
+                    &trim(input_name) // '". Using defaults')
+            end if
         end if
         
         call lvl_ud(-1)
         call writo('Input values set')
     contains
-        subroutine default_input()
+        subroutine default_input
             use num_vars, only: pi
             
             max_it_NR = 50                                                      ! maximum 50 Newton-Rhapson iterations
@@ -112,7 +115,11 @@ contains
             n_alpha = 10                                                        ! number of different field lines
             theta_var_along_B = .true.                                          ! theta is used as the default parallel variable
             n_X = 20                                                            ! toroidal mode number of perturbation
+            min_r = 0.1_dp                                                      ! minimum radius
+            max_r = 1.0_dp                                                      ! maximum radius
             allocate(m_X(3)); m_X = [20,21,22]                                  ! poloidal mode numbers of perturbation
+            EV_style = 1                                                        ! slepc solver for EV problem
+            n_procs_per_alpha = 1                                               ! 1 processor per field line
         end subroutine
     end subroutine
 end module input_ops
