@@ -10,7 +10,7 @@ module fourier_ops
 
     implicit none
     private
-    public repack, mesh_cs, f2r
+    public repack, calc_mesh_cs, f2r
 
 contains
     ! Inverse Fourier transformation, VMEC style Also calculates the poloidal or
@@ -41,7 +41,7 @@ contains
         
         ! some tests
         if (mpol.lt.1 .and. ntor.lt. 1) then 
-            err_msg = 'In f2r, number of modes has to be at least 1'
+            err_msg = 'The number of modes has to be at least 1'
             ierr = 1
             CHCKERR(err_msg)
         end if
@@ -86,15 +86,14 @@ contains
     ! a given poloidal and toroidal position (theta,zeta)
     ! The first index contains the cosine  factors and the second one the sines.
     ! CHANGE THIS USING THE GONIOMETRIC IDENTITIES TO SAVE COMPUTING TIME
-    function mesh_cs(mpol,ntor,nfp,theta,zeta,ierr)
+    integer function calc_mesh_cs(mesh_cs,mpol,ntor,nfp,theta,zeta) result(ierr)
         character(*), parameter :: rout_name = 'mesh_cs'
         
         ! input / output
         integer, intent(in) :: mpol, ntor
-        real(dp), allocatable :: mesh_cs(:,:,:)
+        real(dp), intent(inout) :: mesh_cs(0:mpol-1,-ntor:ntor,2)
         real(dp), intent(in) :: theta, zeta
         integer, intent(in) :: nfp
-        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: m, n
@@ -110,20 +109,17 @@ contains
             CHCKERR(err_msg)
         end if
         
-        allocate(mesh_cs(0:mpol-1,-ntor:ntor,2))
         mesh_cs = 0.0_dp
         
         do n = -ntor,ntor
             do m = 0,mpol-1
-                ! ¡¡¡IN VMEC  AND SIESTA, THE  FACTOR NFP IS NOT  INCLUDED IN
-                ! THE ARGUMENT OF THE SIN AND COS!!! WHY???
                 ! cos factor
                 mesh_cs(m,n,1) = cos(m*theta - n*nfp*zeta)
                 ! sin factor
                 mesh_cs(m,n,2) = sin(m*theta - n*nfp*zeta)
             end do
         end do
-    end function mesh_cs
+    end function calc_mesh_cs
 
     ! Repack  variables  representing the  Fourier  composition  such as  R,  Z,
     ! lambda, ...  In VMEC these  are stored as  (1:mnmax, 1:ns) with  mnmax the
@@ -133,7 +129,11 @@ contains
     ! (anti)-symmetry of the (co)sine.
     ! It is  possible that the  input variable is  not allocated. In  this case,
     ! output zeros
+    ! [MPI] only global master
+    !       (this is a precaution: only the global master should use it)
     function repack(var_VMEC,mnmax,n_r,mpol,ntor,xm,xn)
+        use num_vars, only: glob_rank
+        
         integer, intent(in) :: mnmax, n_r, mpol, ntor
         real(dp), intent(in) :: xm(mnmax), xn(mnmax)
         real(dp), allocatable :: var_VMEC(:,:)
@@ -142,10 +142,10 @@ contains
             
         real(dp) :: repack(0:mpol-1,-ntor:ntor,1:n_r)
             
-        if (allocated(var_VMEC)) then
-            ! check if the  values in xm and  xn don't exceed the  maximum number of
-            ! poloidal and toroidal modes (xm and xn are of length mnmax and contain
-            ! the pol/tor mode number)
+        if (allocated(var_VMEC) .and. glob_rank.eq.0) then                      ! only global rank
+            ! check if the  values in xm and xn don't  exceed the maximum number
+            ! of poloidal and toroidal modes (xm  and xn are of length mnmax and
+            ! contain the pol/tor mode number)
             if (maxval(xm).gt.mpol .or. maxval(abs(xn)).gt.ntor) then
                 call writo('WARNING: In repack, less modes are used than in the&
                     & VMEC format')

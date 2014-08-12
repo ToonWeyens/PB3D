@@ -26,24 +26,27 @@ module output_ops
     end interface
     
 contains
-    ! prints an error  message that is either user-provided, or  the name of the
-    ! calling routine
-    subroutine print_err_msg(err_msg,routine_name)
-        character(len=*) :: err_msg, routine_name
-        
-        lvl = 2
-        if (trim(err_msg).eq.'') then
-            call writo('>> calling routine: '//trim(routine_name))
-        else
-            call writo('ERROR: '//trim(err_msg))
-        end if
-    end subroutine
-    
     ! initialize the variables for the module
+    ! [MPI] All ranks
     subroutine init_output_ops
         lvl = 1
     end subroutine
 
+    ! prints an error  message that is either user-provided, or  the name of the
+    ! calling routine
+    subroutine print_err_msg(err_msg,routine_name)
+        use num_vars, only: glob_rank
+        character(len=*) :: err_msg, routine_name
+        
+        lvl = 2
+        if (trim(err_msg).eq.'') then
+            call writo('>> calling routine: '//trim(routine_name)//' of rank '&
+                &//trim(i2str(glob_rank)))
+        else
+            call writo('ERROR in '//trim(routine_name)//': '//trim(err_msg))
+        end if
+    end subroutine
+    
     ! increases/decreases lvl of output
     subroutine lvl_ud(inc)                                                      ! ud from up / down
         integer :: inc
@@ -62,6 +65,8 @@ contains
     ! with the  x-values. The  logical draw=.false. optionally  disables calling
     ! the  GNUPlot drawing  procedure for  output on  screen [default],  without
     ! modifying the plot file
+    ! The first index of y (and x) contains the points of a current plot
+    ! The second index indicates various plots (one or more)
     subroutine print_GP_2D_ind(fun_name,file_name,y,x,draw)                     ! individual plot
         ! input / output
         character(len=*), intent(in) :: fun_name
@@ -170,6 +175,8 @@ contains
     ! vectors  with the  x  and y-values.  The  logical draw=.false.  optionally
     ! disables  calling  the GNUPlot  drawing  procedure  for output  on  screen
     ! [default], without modifying the plot file
+    ! The first index of z (and x, y) contains the points of a current plot
+    ! The second index indicates various plots (one or more)
     subroutine print_GP_3D_ind(fun_name,file_name,z,y,x,draw)                   ! individual plot
         ! input / output
         character(len=*), intent(in) :: fun_name
@@ -413,7 +420,18 @@ contains
     
     ! write output to optional file number 'file_i' using the correct 
     ! indentation for the level ('lvl_loc') of the output
+    ! [MPI] Only masters of groups of alpha and the global master call these
+    !       The  global master  outputs to  the  master output  file, while  the
+    !       masters  of the  groups of  alpha  write their  output to  different
+    !       files, which  are then read  by the  global master when  the group's
+    !       work is done
+    !       Before the groups are created, the group rank is set to be identical
+    !       to  the global  rank. This  way,  the group  rank always  determines
+    !       whether a  process outputs  or not,  also when  there are  no groups
+    !       (yet)
     subroutine writo(input_str,lvl_input,file_i)
+        use num_vars, only: group_rank
+        
         character(len=*), intent(in) :: input_str                               ! the name that is searched for
         integer, optional, intent(in) :: lvl_input                              ! optinally set the output lvl
         integer, optional, intent(in) :: file_i                                 ! optionally set the number of output file
@@ -424,46 +442,48 @@ contains
         integer :: lvl_loc                                                      ! holds either lvl_loc or lvl
         integer :: id, i_part, max_len_part, num_parts, st_part, en_part
         
-        ! assign either lvl_input or lvl to lvl_loc
-        if (present(lvl_input)) then
-            lvl_loc = lvl_input
-        else
-            lvl_loc = lvl
-        end if
-        
-        ! Divide the input string length by the max_str_ln and loop over the different parts
-        max_len_part = max_str_ln-(lvl_loc-1)*len(lvl_sep)                      ! max length of a part
-        num_parts = (len(trim(input_str))-1)/(max_len_part) + 1                 ! how many parts there are
-        do i_part = 1, num_parts
-            ! construct input string for the appropriate level
-            st_part = (i_part-1)*max_len_part+1                                 ! index of start of this part
-            if (i_part.lt.num_parts) then                                       ! index of end of this part
-                en_part = i_part*max_len_part 
-            else                                                                ! last part is shorter
-                en_part = len(trim(input_str))
-            end if
-            output_str = &
-                &input_str(st_part:en_part)
-            do id = 1,lvl_loc-1                                                 ! start with lvl_loc 1
-                output_str = lvl_sep // trim(output_str)
-            end do
-            
-            ! construct header string of equal length as output strength
-            header_str = ''
-            do id = 1, len(trim(output_str))
-                header_str =  trim(header_str) // '-'
-            end do
-            
-            if (present(file_i)) then
-                if (lvl_loc.eq.1) write(file_i,*) header_str                    ! first level gets extra lines
-                write(file_i,*) output_str
-                if (lvl_loc.eq.1) write(file_i,*) header_str
+        if (group_rank.eq.0) then                                               ! only group master (= global master if no groups)
+            ! assign either lvl_input or lvl to lvl_loc
+            if (present(lvl_input)) then
+                lvl_loc = lvl_input
             else
-                if (lvl_loc.eq.1) write(*,*) header_str                         ! first level gets extra lines
-                write(*,*) output_str
-                if (lvl_loc.eq.1) write(*,*) header_str
+                lvl_loc = lvl
             end if
-        end do
+            
+            ! Divide the input string length by the max_str_ln and loop over the different parts
+            max_len_part = max_str_ln-(lvl_loc-1)*len(lvl_sep)                  ! max length of a part
+            num_parts = (len(trim(input_str))-1)/(max_len_part) + 1             ! how many parts there are
+            do i_part = 1, num_parts
+                ! construct input string for the appropriate level
+                st_part = (i_part-1)*max_len_part+1                             ! index of start of this part
+                if (i_part.lt.num_parts) then                                   ! index of end of this part
+                    en_part = i_part*max_len_part 
+                else                                                            ! last part is shorter
+                    en_part = len(trim(input_str))
+                end if
+                output_str = &
+                    &input_str(st_part:en_part)
+                do id = 1,lvl_loc-1                                             ! start with lvl_loc 1
+                    output_str = lvl_sep // trim(output_str)
+                end do
+                
+                ! construct header string of equal length as output strength
+                header_str = ''
+                do id = 1, len(trim(output_str))
+                    header_str =  trim(header_str) // '-'
+                end do
+                
+                if (present(file_i)) then
+                    if (lvl_loc.eq.1) write(file_i,*) header_str                ! first level gets extra lines
+                    write(file_i,*) output_str
+                    if (lvl_loc.eq.1) write(file_i,*) header_str
+                else
+                    if (lvl_loc.eq.1) write(*,*) header_str                     ! first level gets extra lines
+                    write(*,*) output_str
+                    if (lvl_loc.eq.1) write(*,*) header_str
+                end if
+            end do
+        end if
     end subroutine
 
     ! print an array of dimension 2 on the screen

@@ -20,9 +20,6 @@ module file_ops
 
     ! concerning input file
     character(len=max_str_ln) :: input_name                                     ! will hold the full name of the input file
-   
-    ! concerning output file
-    character(len=max_str_ln) :: output_name                                    ! will hold name of output file
 
     ! options provided with command line
     character(len=max_str_ln), allocatable :: opt_args(:)
@@ -30,8 +27,9 @@ module file_ops
 
 contains
     ! initialize the variables for the module
+    ! [MPI] All ranks
     subroutine init_file_ops
-        use num_vars, only: max_opts, ltest
+        use num_vars, only: max_opts, ltest, output_name
         
         output_name = "PB3D_out"                                                ! standard output name
         ltest = .false.                                                         ! don't call the testing routines
@@ -47,13 +45,11 @@ contains
 
     ! parses the command line arguments
     ! The input arguments are saved in command_arg
-    subroutine parse_args(ierr)
+    ! [MPI] only global master
+    integer function parse_args() result(ierr)
         use num_vars, only: prog_name, glob_rank
         
         character(*), parameter :: rout_name = 'parse_args'
-        
-        ! input / output
-        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         character(len=max_str_ln) :: open_error(3), open_help(7)                ! message for incorrect usage, help, warnings
@@ -121,17 +117,15 @@ contains
             
             call writo("Command line arguments parsed")
         end if
-    end subroutine
+    end function parse_args
 
     ! open the input file
-    subroutine open_input(ierr)
-        use num_vars, only: VMEC_i, input_i, ltest
+    ! [MPI] Only global master
+    integer function open_input() result(ierr)
+        use num_vars, only: VMEC_i, input_i, ltest, glob_rank, output_name
         use VMEC_vars, only: VMEC_name
         
         character(*), parameter :: rout_name = 'open_input'
-        
-        ! input / output
-        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         integer :: id                                                           ! counter
@@ -145,72 +139,73 @@ contains
         
         ierr = 0                                                                ! no errors (yet)
      
-        ! Messages for the user
-        internal_input_error(1) = "input file number ok but name empty!" ! problems opening the input file
-        internal_input_error(2) = "input file number negative but name&
-            & not empty!"
-        internal_VMEC_error(1) = "VMEC file number ok but name empty!"   ! problems opening the input file
-        internal_VMEC_error(2) = "VMEC file number negative but name&
-            & not empty!"
-        internal_VMEC_error(3) = "no VMEC file found"                    ! problems opening the input file
-     
-        call writo("Attempting to open files")
-        call lvl_ud(1)
-        ! check for correct input file and use default if needed
-        input_name = command_arg(1)                                             ! first argument is the name of the input file
-        input_exts = ["input"]
-        input_con_symb = [".","-","_"]
-        call search_file(input_i,input_name,input_exts,input_con_symb)
-        if (input_i.lt.0) then
-            if (input_name.eq."") then
-                call writo('No input file found. Default used')
-            else 
-                ierr = 1
-                CHCKERR(internal_input_error(2))
-            end if
-        else
-            if (input_name.eq."") then
-                ierr = 1
-                CHCKERR(internal_input_error(1))
-            else
-                call writo('Input file "' // trim(input_name) &
-                    &// '" opened at number ' // trim(i2str(input_i)))
-            end if
-        end if
-        
-        ! check for VMEC file and print error if not found (no default!)
-        VMEC_name = command_arg(2)
-        VMEC_exts = ["wout"]
-        VMEC_con_symb = [".","-","_"]
-        call search_file(VMEC_i,VMEC_name,VMEC_exts,VMEC_con_symb,'.nc')
-        if (VMEC_i.lt.0) then
-            if (VMEC_name.eq."") then
-                ierr = 1
-                CHCKERR(internal_VMEC_error(3))                              ! no default for VMEC input
-            else 
-                ierr = 1
-                CHCKERR(internal_VMEC_error(2))
-            end if
-        else
-            if (VMEC_name.eq."") then
-                ierr = 1
-                CHCKERR(internal_VMEC_error(1))
-            else
-                call writo('VMEC file "' // trim(VMEC_name) &
-                    &// '" opened at number ' // trim(i2str(VMEC_i)))
-            end if
-        end if
-        
-        ! set options
-        if (numargs.gt.2) then                                                  ! options given
-            call writo('applying options')
+        if (glob_rank.eq.0) then                                                ! following only for master process
+            ! Messages for the user
+            internal_input_error(1) = "input file number ok but name empty"     ! problems opening the input file
+            internal_input_error(2) = "input file number negative but name&
+                & not empty!"
+            internal_VMEC_error(1) = "VMEC file number ok but name empty"       ! problems opening the input file
+            internal_VMEC_error(2) = "VMEC file number negative but name&
+                & not empty!"
+            internal_VMEC_error(3) = "no VMEC file found"                       ! problems opening the input file
+         
+            call writo("Attempting to open files")
             call lvl_ud(1)
-            call read_opts()
+            ! check for correct input file and use default if needed
+            input_name = command_arg(1)                                         ! first argument is the name of the input file
+            input_exts = ["input"]
+            input_con_symb = [".","-","_"]
+            call search_file(input_i,input_name,input_exts,input_con_symb)
+            if (input_i.lt.0) then
+                if (input_name.eq."") then
+                    call writo('No input file found. Default used')
+                else 
+                    ierr = 1
+                    CHCKERR(internal_input_error(2))
+                end if
+            else
+                if (input_name.eq."") then
+                    ierr = 1
+                    CHCKERR(internal_input_error(1))
+                else
+                    call writo('Input file "' // trim(input_name) &
+                        &// '" opened at number ' // trim(i2str(input_i)))
+                end if
+            end if
+            
+            ! check for VMEC file and print error if not found (no default!)
+            VMEC_name = command_arg(2)
+            VMEC_exts = ["wout"]
+            VMEC_con_symb = [".","-","_"]
+            call search_file(VMEC_i,VMEC_name,VMEC_exts,VMEC_con_symb,'.nc')
+            if (VMEC_i.lt.0) then
+                if (VMEC_name.eq."") then
+                    ierr = 1
+                    CHCKERR(internal_VMEC_error(3))                             ! no default for VMEC input
+                else 
+                    ierr = 1
+                    CHCKERR(internal_VMEC_error(2))
+                end if
+            else
+                if (VMEC_name.eq."") then
+                    ierr = 1
+                    CHCKERR(internal_VMEC_error(1))
+                else
+                    call writo('VMEC file "' // trim(VMEC_name) &
+                        &// '" opened at number ' // trim(i2str(VMEC_i)))
+                end if
+            end if
+            
+            ! set options
+            if (numargs.gt.2) then                                              ! options given
+                call writo('applying options')
+                call lvl_ud(1)
+                call read_opts
+                call lvl_ud(-1)
+            end if
             call lvl_ud(-1)
+            call writo('Files opened')
         end if
-        call lvl_ud(-1)
-        call writo('Files opened')
-        
     contains
         ! this subroutine scans for chosen options
         subroutine read_opts
@@ -235,7 +230,7 @@ contains
                                 &trim(command_arg(id)) // '" already set, &
                                 &ignoring...')
                         else                                                    ! option not yet taken
-                            call apply_opt(jd,id,ierr)
+                            ierr = apply_opt(jd,id)
                             CHCKERR('')
                             opt_taken(jd) = .true.
                         end if
@@ -254,12 +249,11 @@ contains
         end subroutine
         
         ! this subroutine applies chosen options
-        subroutine apply_opt(opt_nr,arg_nr,ierr)
+        integer function apply_opt(opt_nr,arg_nr) result(ierr)
             character(*), parameter :: rout_name = 'apply_opt'
             
             ! input / output
             integer :: opt_nr, arg_nr
-            integer, intent(inout) :: ierr                                      ! error
             
             select case(opt_nr)
                 case (1)                                                        ! option -o
@@ -282,115 +276,112 @@ contains
                 case default
                     call writo('WARNING: Invalid option number')
             end select
-        end subroutine
-    end subroutine
+        end function apply_opt
+    end function open_input
 
     ! open an output file
-    subroutine open_output(ierr)
-        use num_vars, only: output_i, n_seq_0
+    ! [MPI] only group masters
+    integer function open_output() result(ierr)
+        use num_vars, only: output_i, n_seq_0, group_rank, group_nr, &
+            &glob_rank, output_name
         use output_ops, only: format_out
         
         character(*), parameter :: rout_name = 'open_output'
         
-        ! input / output
-        integer, intent(inout) :: ierr                                          ! error
+        ! local variables (also used in child functions)
         character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=max_str_ln) :: full_output_name                           ! including the extension
         
         ! initialize ierr
         ierr = 0
         
-        call writo('Attempting to open output files')
-        call lvl_ud(1)
-        select case (format_out)
-            case (1)                                                            ! NETCDF
-                call writo('Output format chosen: NETCDF')
-                call open_NETCDF(ierr)
-            case (2)                                                            ! matlab
-                call writo('Output format chosen: matlab')
-                call open_matlab(ierr)
-            case (3)                                                            ! DISLIN
-                call writo('Output format chosen: DISLIN')
-                ! no need to do anything
-            case (4)                                                            ! GNUplot
-                call writo('Output format chosen: GNUplot')
-                call open_gnuplot(ierr)
-            case default
-                call writo('WARNING: output format "' // &
-                    &trim(i2str(format_out)) // &
-                    &'" is not valid. Standard output chosen')
-                call open_NETCDF(ierr)
-        end select
-        CHCKERR('')
-        call lvl_ud(-1)
-        call writo('Output files opened')
+        if (group_rank.eq.0) then                                               ! only group masters
+            call writo('Attempting to open output files')
+            call lvl_ud(1)
+            
+            ! apend group number to output name if not also global master
+            if (glob_rank.ne.0) output_name = trim(output_name)//'_'//&
+                &trim(i2str(group_nr))
+            
+            ! select output format
+            select case (format_out)
+                case (1)                                                        ! NETCDF
+                    call writo('Output format chosen: NETCDF')
+                    ierr = open_NETCDF()
+                    CHCKERR('')
+                case (2)                                                        ! matlab
+                    call writo('Output format chosen: matlab')
+                    ierr = open_matlab()
+                    CHCKERR('')
+                case (3)                                                        ! DISLIN
+                    call writo('Output format chosen: DISLIN')
+                    ! no need to do anything
+                case (4)                                                        ! GNUplot
+                    call writo('Output format chosen: GNUplot')
+                    ierr = open_gnuplot()
+                    CHCKERR('')
+                case default
+                    call writo('WARNING: output format "' // &
+                        &trim(i2str(format_out)) // &
+                        &'" is not valid. Standard output chosen')
+                    ierr = open_NETCDF()
+                    CHCKERR('')
+            end select
+            CHCKERR('')
+            call lvl_ud(-1)
+            call writo('Output files opened')
+        end if
     contains
         ! Open the NETCDF file
-        subroutine open_NETCDF(ierr)
+        integer function open_NETCDF() result(ierr)
             character(*), parameter :: rout_name = 'open_NETCDF'
-            
-            ! input / output
-            integer, intent(inout) :: ierr                                      ! error
             
             ! initialize ierr
             ierr = 0
              
-            output_name = trim(output_name) // '.nc'
-            ierr = nf90_create(trim(output_name), 0, output_i)                 ! 0: overwrite if exists
-            err_msg = 'Cannot open NETCDF output file'
+            full_output_name = trim(output_name) // '.nc'
+            ierr = nf90_create(trim(full_output_name), 0, output_i)             ! 0: overwrite if exists
             if (ierr.ne.0) then
+                err_msg = 'Cannot open NETCDF output file'
                 CHCKERR(err_msg)
             else
-                call writo('NETCDF output file "' // trim(output_name) &
+                call writo('NETCDF output file "' // trim(full_output_name) &
                     &//'" opened at number ' // trim(i2str(output_i)))
             end if
-        end subroutine
+        end function open_NETCDF
             
         ! Open a .m file
-        subroutine open_matlab(ierr)
+        integer function open_matlab() result(ierr)
             character(*), parameter :: rout_name = 'open_matlab'
             
-            ! input / output
-            integer, intent(inout) :: ierr                                      ! error
-            
             ! initialize ierr
             ierr = 0
             
             output_i = n_seq_0                                                  ! start at the number indicated by n_seq_0
-            output_name = trim(output_name) // '.m'
-            call safe_open(output_i,ierr,output_name,'replace','formatted',&
-                &delim_in='none')
-            err_msg = 'Cannot open matlab output file'
-            if (ierr.ne.0) then
-                CHCKERR(err_msg)
-            else
-                call writo('matlab output file "' // trim(output_name) &
-                    &//'" opened at number ' // trim(i2str(output_i)))
-            end if
-        end subroutine
+            full_output_name = trim(output_name) // '.m'
+            call safe_open(output_i,ierr,full_output_name,'replace',&
+                &'formatted',delim_in='none')
+            CHCKERR('Cannot open matlab output file')
+            call writo('matlab output file "' // trim(full_output_name) &
+                &//'" opened at number ' // trim(i2str(output_i)))
+        end function open_matlab
         
         ! Open a .dat file
-        subroutine open_gnuplot(ierr)
+        integer function open_gnuplot() result(ierr)
             character(*), parameter :: rout_name = 'open_gnuplot'
-            
-            ! input / output
-            integer, intent(inout) :: ierr                                      ! error
             
             ! initialize ierr
             ierr = 0
             
             output_i = n_seq_0                                                  ! start at the number indicated by n_seq_0
-            output_name = trim(output_name) // '.dat'
-            call safe_open(output_i,ierr,output_name,'replace','formatted',&
-                &delim_in='none')
-            err_msg = 'Cannot open GNUplot output file'
-            if (ierr.ne.0) then
-                CHCKERR(err_msg)
-            else
-                call writo('GNUplot output file "' // trim(output_name) &
-                    &//'" opened at number ' // trim(i2str(output_i)))
-            end if
-        end subroutine
-    end subroutine
+            full_output_name = trim(output_name) // '.dat'
+            call safe_open(output_i,ierr,full_output_name,'replace',&
+                &'formatted',delim_in='none')
+            CHCKERR('Cannot open GNUplot output file')
+            call writo('GNUplot output file "' // trim(full_output_name) &
+                &//'" opened at number ' // trim(i2str(output_i)))
+        end function open_gnuplot
+    end function open_output
 
     ! looks for the full name of a file and tests for its existence
     ! output:   full name of file, empty string if non-existent

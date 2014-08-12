@@ -64,40 +64,45 @@ contains
     end function yes_no
     
     ! reads input from user-provided input file
+    ! [MPI] only global master
     subroutine read_input
+        use num_vars, only: glob_rank
+        
         ! local variables
         integer :: istat                                                        ! error
         
-        if (input_i.ge.0) then                                                  ! if open_input opened a file
-            call writo('Setting up user-provided input "' &       
-                &// trim(input_name) // '"')
-        else 
-            call writo('Setting default values for input')
-        end if
-        call lvl_ud(1)
-        
-        ! initialize input variables (optionally overwritten by user later)
-        if (input_i.ge.0) call writo('Initialize all the inputs with &
-            &default values')
-        call default_input
-        
-        ! initialize non-input file variables
-        calc_mesh_style = 0
-        
-        ! read user input
-        if (input_i.ge.n_seq_0) then                                            ! otherwise, defaults are loaded
-            read (input_i, nml=inputdata, iostat=istat)                         ! read input data
-            if (istat.eq.0) then                                                ! input file succesfully read
-                call writo('Overwriting with user-provided file "' // &
-                    &trim(input_name) // '"')
-            else                                                                ! cannot read input data
-                call writo('Cannot open user-provided file "' // &
-                    &trim(input_name) // '". Using defaults')
+        if (glob_rank.eq.0) then                                                ! only global master
+            if (input_i.ge.0) then                                              ! if open_input opened a file
+                call writo('Setting up user-provided input "' &       
+                    &// trim(input_name) // '"')
+            else 
+                call writo('Setting default values for input')
             end if
+            call lvl_ud(1)
+            
+            ! initialize input variables (optionally overwritten by user later)
+            if (input_i.ge.0) call writo('Initialize all the inputs with &
+                &default values')
+            call default_input
+            
+            ! initialize non-input file variables
+            calc_mesh_style = 0
+            
+            ! read user input
+            if (input_i.ge.n_seq_0) then                                        ! otherwise, defaults are loaded
+                read (input_i, nml=inputdata, iostat=istat)                     ! read input data
+                if (istat.eq.0) then                                            ! input file succesfully read
+                    call writo('Overwriting with user-provided file "' // &
+                        &trim(input_name) // '"')
+                else                                                            ! cannot read input data
+                    call writo('Cannot open user-provided file "' // &
+                        &trim(input_name) // '". Using defaults')
+                end if
+            end if
+            
+            call lvl_ud(-1)
+            call writo('Input values set')
         end if
-        
-        call lvl_ud(-1)
-        call writo('Input values set')
     contains
         subroutine default_input
             use num_vars, only: pi

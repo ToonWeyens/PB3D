@@ -266,7 +266,7 @@ contains
     ! set-up and  solve the  EV system  by discretizing  the equations  in n_r_X
     ! normal points,  making use of  PV0, PV1 and  PV2, interpolated in  the n_r
     ! (equilibrium) values
-    subroutine solve_EV_system(ierr)
+    integer function solve_EV_system() result(ierr)
         use X_vars, only: n_r_X, m_X, n_X
         use VMEC_vars, only: n_r
         use num_vars, only: EV_style
@@ -274,9 +274,6 @@ contains
         use slepc_ops, only: solve_EV_system_slepc
         
         character(*), parameter :: rout_name = 'solve_EV_system'
-        
-        ! input / output
-        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -286,7 +283,7 @@ contains
         
         select case (EV_style)
             case(1)                                                             ! slepc solver for EV problem
-                call solve_EV_system_slepc(m_X,n_r_X,n_X,n_r-1._dp,ierr)
+                ierr = solve_EV_system_slepc(m_X,n_r_X,n_X,n_r-1._dp)
                 CHCKERR('')
             case default
                 err_msg = 'No EV solver style associated with '//&
@@ -294,7 +291,7 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
-    end subroutine
+    end function solve_EV_system
     
     ! calculate  U_m^0, U_m^1  at n_r  values  of the  normal coordinate,  n_par
     ! values  of the  parallel  coordinate and  M values  of  the poloidal  mode

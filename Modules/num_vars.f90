@@ -8,7 +8,9 @@ module num_vars
         &max_opts, prog_name, max_it_r, ltest, pi, max_it_NR, tol_NR, &
         &input_i, output_i, VMEC_i, min_alpha, max_alpha, n_alpha, &
         &theta_var_along_B, max_deriv, mu_0, calc_mesh_style, iu, EV_style, &
-        &n_procs_per_alpha, n_procs, MPI_comm_groups, glob_rank, glob_n_procs
+        &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
+        &glob_rank, glob_n_procs, group_rank, group_n_procs, group_nr, &
+        &n_groups,  output_name, next_job, next_job_win
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -19,11 +21,21 @@ module num_vars
     integer, parameter :: max_opts = 8                                          ! maximum number of options in input arguments
     integer, parameter, dimension(3) :: max_deriv = [4,4,4]                     ! highest derivatives that are tabulated for VMEC amplitudes R, Z, L in theta,zeta,r)
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
+    character(len=max_str_ln) :: output_name                                    ! will hold name of output file
+
+    ! MPI variables
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha
     integer, allocatable :: n_procs(:)                                          ! hwo many processors per group of alpha
-    integer :: MPI_comm_groups                                                  ! communicator for the groups of alpha
+    integer :: MPI_Comm_groups                                                  ! communicator for the groups of alpha
+    integer :: MPI_Comm_masters                                                 ! communicator for the masters of the groups of alpha
     integer :: glob_rank                                                        ! global MPI rank
     integer :: glob_n_procs                                                     ! global nr. MPI processes
+    integer :: group_rank                                                       ! alpha group MPI rank
+    integer :: group_n_procs                                                    ! alpha gropu nr. MPI processes
+    integer :: group_nr                                                         ! group nr.
+    integer :: n_groups                                                         ! nr. of groups
+    integer :: next_job                                                         ! next job to be done
+    integer :: next_job_win                                                     ! window to next_job
 
     ! considering runtime
     integer :: max_it_r                                                         ! number of levels for Richardson's extrapolation
@@ -45,9 +57,9 @@ module num_vars
     logical :: theta_var_along_B                                                ! true if theta is used as the parallel variable
 
     ! input / output
-    integer :: input_i                                                          ! will hold the file number of input file
-    integer :: VMEC_i                                                           ! will hold the file number of VMEC file
-    integer :: output_i                                                         ! will hold the file number of output file
+    integer :: input_i                                                          ! file number of input file
+    integer :: VMEC_i                                                           ! file number of VMEC file
+    integer :: output_i                                                         ! file number of output file
     
     ! considering the various field lines for which to do the calculations
     integer :: n_alpha                                                          ! how many field lines

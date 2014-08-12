@@ -16,6 +16,7 @@ module time
 
 contains
     ! intialize the time passed to 0
+    ! [MPI] All ranks
     subroutine init_time
         deltat = 0
         t1 = 0
@@ -24,6 +25,7 @@ contains
     end subroutine
 
     ! start a timer
+    ! [MPI] All ranks
     subroutine start_time
         if (running) then
             call writo('WARNING: Tried to start timer, but was already running')

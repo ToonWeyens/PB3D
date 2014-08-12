@@ -21,7 +21,7 @@ contains
     !!!! HERE YOU HAVE TO DIVIDE BETWEEN PROCESSORS IF THERE ARE STILL PROCESSORS LEFT !!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     
-    subroutine solve_EV_system_slepc(m_X,n_r_X,n_X,inv_step,ierr)
+    integer function solve_EV_system_slepc(m_X,n_r_X,n_X,inv_step) result(ierr)
         use X_vars, only: PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val
         use num_vars, only: MPI_comm_groups
         
@@ -32,7 +32,6 @@ contains
         PetscInt, intent(in) :: m_X(:)                                          ! number of poloidal modes m
         PetscInt, intent(in) :: n_X                                             ! toroidal mode number
         PetscReal, intent(in) :: inv_step                                       ! inverse step size
-        PetscErrorCode :: ierr                                                  ! error code
         
         ! local variables
         ! petsc / MPI variables
@@ -64,8 +63,11 @@ contains
         call lvl_ud(1)
         PETSC_COMM_WORLD = MPI_comm_groups                                      ! limit slepc group to local group
         call SlepcInitialize(PETSC_NULL_CHARACTER,ierr)                         ! initialize slepc
+        CHCKERR('slepc failed to initialize')
         call MPI_Comm_rank(PETSC_COMM_WORLD,rank,ierr)                          ! rank
+        CHCKERR('MPI rank failed')
         call MPI_Comm_size(PETSC_COMM_WORLD,n_procs,ierr)                       ! number of processors
+        CHCKERR('MPI size failed')
         ! HAS TO BE CHANGED !!!!!!!!!!!!!!!!!!!!
         if (n_procs.gt.n_r_X) then                                              ! check for nr. of processors
             call writo('ERROR: using too many processors')
@@ -83,7 +85,7 @@ contains
         call writo('run tests...')
 #if defined(PETSC_USE_COMPLEX)
 #else
-        err_msg = 'petsc and slepc have to be configured and compiled &
+        err_msg = 'Petsc and slepc have to be configured and compiled &
             &with the option "--with-scalar-type=complex"'
         call SlepcFinalize(ierr)
         ierr = 1
@@ -106,15 +108,17 @@ contains
         call MatCreateAIJ(PETSC_COMM_WORLD,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,&    ! Hermitian matrix as a first approximation
             &n_r_X*n_m_X,n_r_X*n_m_X,2*n_m_X,PETSC_NULL_INTEGER,&
             &2*n_m_X,PETSC_NULL_INTEGER,A,ierr)
+        CHCKERR('MatCreateAIJ failed for matrix A')
         call MatCreateAIJ(PETSC_COMM_WORLD,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,&    ! Hermitian matrix as a first approximation
             &n_r_X*n_m_X,n_r_X*n_m_X,2*n_m_X,PETSC_NULL_INTEGER,&
             &2*n_m_X,PETSC_NULL_INTEGER,B,ierr)
+        CHCKERR('MatCreateAIJ failed for matrix B')
         
         ! fill the elements of A and B
-        call fill_mat(n_X,n_r_X,n_m_X,inv_step,PV0,PV1,PV2,A,ierr)
+        ierr = fill_mat(n_X,n_r_X,n_m_X,inv_step,PV0,PV1,PV2,A)
         CHCKERR('')
         call writo('Matrix A set up')
-        call fill_mat(n_X,n_r_X,n_m_X,inv_step,KV0,KV1,KV2,B,ierr)
+        ierr = fill_mat(n_X,n_r_X,n_m_X,inv_step,KV0,KV1,KV2,B)
         CHCKERR('')
         call writo('Matrix B set up')
         call lvl_ud(-1)
@@ -134,23 +138,32 @@ contains
         call writo('solve the EV problem...')
         !call PetscOptionsSetValue('-eps_view','-1',ierr)
         call EPSCreate(PETSC_COMM_WORLD,solver,ierr)
+        CHCKERR('EPSCreate failed')
         call EPSSetOperators(solver,A,B,ierr)                                   ! generalized EV problem A X = lambda B X
+        CHCKERR('EPSetOperators failed')
         !call EPSSetOperators(solver,A,PETSC_NULL_OBJECT,ierr)                   ! normal EV problem A X = lambda X
         !call EPSSetProblemType(solver,EPS_HEP,ierr)
         call EPSSetFromOptions(solver,ierr)
+        CHCKERR('EPSetFromOptions failed')
         call EPSSolve(solver,ierr) 
+        CHCKERR('EPS couldn''t find a solution')
         
         ! output
         call writo('summarize solution...')
         call lvl_ud(1)
         call EPSGetType(solver,EPS_type,ierr)                                   ! EPS solver type
+        CHCKERR('EPSGetType failed')
         call EPSGetTolerances(solver,tol,max_it);                               ! tolerance and max. nr. of iterations
+        CHCKERR('EPSGetTolerances failed')
         call writo(trim(EPS_type)//' solver with tolerance '//&
             &trim(r2strt(tol))//' and maximum '//trim(i2str(max_it))//&
             &' iterations')
         call EPSGetConverged(solver,n_conv,ierr)                                ! nr. of converged solutions
+        CHCKERR('EPSGetConverged failed')
         call EPSGetIterationNumber(solver,n_it,ierr)                            ! nr. of iterations
+        CHCKERR('EPSGetIterationNumber failed')
         call EPSGetDimensions(solver,n_ev,ncv,mpd,ierr)                         ! nr. of requested EV, ...
+        CHCKERR('EPSGetDimensions failed')
         call writo(trim(i2str(n_conv))//' converged solutions &
             &after '//trim(i2str(n_it))//' iterations, with '//&
             &trim(i2str(n_ev))//' requested solution')
@@ -160,9 +173,12 @@ contains
         call writo('storing results...')
         call lvl_ud(1)
         call MatGetVecs(A,vec_r,vec_i,ierr)
+        CHCKERR('MatGetVecs failed')
         do id = 0,n_conv-1
             call EPSGetEigenpair(solver,id,val_r,val_i,vec_r,vec_i,ierr)
+            CHCKERR('EPSGetEigenpair failed')
             call EPSComputeRelativeError(solver,id,error,ierr)
+            CHCKERR('EPSComputeRelativeError failed')
             call writo('for solution '//trim(i2str(id+1))//&
             &'/'//trim(i2str(n_conv))//':')
             call lvl_ud(1)
@@ -174,24 +190,30 @@ contains
         !!!! NOW GATHER THE SOLUTION VECTOR IN ONE... YOU DON'T NEED THE IMAGINARY PART!!!
         !!!! CONTINUE HERE !!!
         call VecDestroy(vec_r,ierr)
+        CHCKERR('Failed to destroy vec_r')
         call VecDestroy(vec_i,ierr)
+        CHCKERR('Failed to destroy vec_i')
         call lvl_ud(-1)
         
         
         ! destroy and finalize
         call writo('finalize petsc...')
         call EPSDestroy(solver,ierr)
+        CHCKERR('Failed to destroy EPS solver')
         call MatDestroy(A,ierr)
+        CHCKERR('Failed to destroy matrix A')
         call MatDestroy(B,ierr)
+        CHCKERR('Failed to destroy matrix B')
         
         call SlepcFinalize(ierr)
-    end subroutine
+        CHCKERR('Failed to Finalize slepc')
+    end function solve_EV_system_slepc
     
     ! fills a matrix according  to [ADD REF]. Is used for both  the matrix A and
     ! B, corresponding  to the plasma  potential energy and  the (perpendicular)
     ! kinetic energy
     ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING, SO IT IS TREATED AS HERMITIAN !!!
-    subroutine fill_mat(n_X,n_r_X,n_m_X,inv_step,V0,V1,V2,mat,ierr)
+    integer function fill_mat(n_X,n_r_X,n_m_X,inv_step,V0,V1,V2,mat) result(ierr)
         use metric_ops, only: jac_F_FD
         use X_vars, only: min_r, max_r
         use VMEC_vars, only: n_r
@@ -207,7 +229,6 @@ contains
         PetscScalar, intent(in) :: V0(:,:,:,:), V1(:,:,:,:), V2(:,:,:,:)        ! either PVi or KVi
         Mat, intent(inout) :: mat                                               ! either A or B
         PetscReal, intent(in) :: inv_step                                       ! inverse step size
-        integer, intent(inout) :: ierr                                          ! error variable
         
         ! local variables
         PetscScalar, allocatable :: loc_block(:,:)                              ! block matrix for 1 normal point
@@ -241,6 +262,7 @@ contains
         
         ! get ownership of the rows
         call MatGetOwnershipRange(mat,n_start,n_end,ierr)                       ! starting and ending row n_start and n_end
+        CHCKERR('Couldn''t get ownership range of matrix')
         r_X_start = n_start/n_m_X
         r_X_end = n_end/n_m_X
         
@@ -267,13 +289,13 @@ contains
                 do k = 1,n_m_X
                     intgrnd(:,:,k,m) = exp_theta(:,:,k,m) * &
                         &jac_F_FD(:,:,0,0,0) * V0(:,:,k,m)                      ! integrand, not integrated
-                    call calc_interp(intgrnd,intgrnd_int,norm_pt,ierr)           ! integrand, integrated
+                    ierr = calc_interp(intgrnd,intgrnd_int,norm_pt)             ! integrand, integrated
                     CHCKERR('')
-                    call calc_interp(reshape(theta,[n_par,n_r,1,1]),&
-                        &theta_int,norm_pt,ierr)                                ! theta array at interpolated position
+                    ierr = calc_interp(reshape(theta,[n_par,n_r,1,1]),&
+                        &theta_int,norm_pt)                                     ! theta array at interpolated position
                     CHCKERR('')
-                    call calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
-                        &integral,ierr)                                         ! integral of entire function
+                    ierr = calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
+                        &integral)                                              ! integral of entire function
                     CHCKERR('')
                     loc_block(k,m) = loc_block(k,m) + integral(n_par)           ! add total integral (at pos n_par)
                 end do
@@ -284,13 +306,13 @@ contains
                     intgrnd(:,:,k,m) = 2 * exp_theta(:,:,k,m) * &
                         &(inv_step/n_X)**2 * jac_F_FD(:,:,0,0,0) * &
                         &V2(:,:,k,m)                                            ! integrand, not integrated
-                    call calc_interp(intgrnd,intgrnd_int,norm_pt,ierr)          ! integrand, integrated
+                    ierr = calc_interp(intgrnd,intgrnd_int,norm_pt)             ! integrand, integrated
                     CHCKERR('')
-                    call calc_interp(reshape(theta,[n_par,n_r,1,1]),&
-                        &theta_int,norm_pt,ierr)                                ! theta array at interpolated position
+                    ierr = calc_interp(reshape(theta,[n_par,n_r,1,1]),&
+                        &theta_int,norm_pt)                                     ! theta array at interpolated position
                     CHCKERR('')
-                    call calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
-                        &integral,ierr)                                         ! integral of entire function
+                    ierr = calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
+                        &integral)                                              ! integral of entire function
                     CHCKERR('')
                     loc_block(k,m) = loc_block(k,m) + integral(n_par)           ! add total integral (at pos n_par)
                 end do
@@ -301,6 +323,7 @@ contains
             loc_m = loc_k
             call MatSetValues(mat,n_m_X,loc_k,n_m_X,loc_m,loc_block,&
                 &INSERT_VALUES,ierr)
+            CHCKERR('Couldn''t add values to matrix')
             
             ! -----------------!
             ! BLOCKS (id,id+1) !
@@ -313,13 +336,13 @@ contains
                         intgrnd(:,:,k,m) = exp_theta(:,:,k,m) * &
                             &PETSC_i*inv_step/(2*n_X) * &
                             &jac_F_FD(:,:,0,0,0) * conjg(V1(:,:,m,k))           ! integrand, not integrated
-                        call calc_interp(intgrnd,intgrnd_int,norm_pt_1,ierr)    ! integrand, integrated
+                        ierr = calc_interp(intgrnd,intgrnd_int,norm_pt_1)       ! integrand, integrated
                         CHCKERR('')
-                        call calc_interp(reshape(theta,[n_par,n_r,1,1]),&
-                            &theta_int,norm_pt_1,ierr)                          ! theta array at interpolated position
+                        ierr = calc_interp(reshape(theta,[n_par,n_r,1,1]),&
+                            &theta_int,norm_pt_1)                               ! theta array at interpolated position
                         CHCKERR('')
-                        call calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
-                            &integral,ierr)                                     ! integral of entire function
+                        ierr = calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
+                            &integral)                                          ! integral of entire function
                         CHCKERR('')
                         loc_block(k,m) = loc_block(k,m) + integral(n_par)       ! add total integral (at pos n_par)
                     end do
@@ -330,13 +353,13 @@ contains
                         intgrnd(:,:,k,m) = exp_theta(:,:,k,m) * &
                             &PETSC_i*inv_step/(2*n_X) * &
                             &jac_F_FD(:,:,0,0,0) * V1(:,:,k,m)                  ! integrand, not integrated
-                        call calc_interp(intgrnd,intgrnd_int,norm_pt,ierr)      ! integrand, integrated
+                        ierr = calc_interp(intgrnd,intgrnd_int,norm_pt)         ! integrand, integrated
                         CHCKERR('')
-                        call calc_interp(reshape(theta,[n_par,n_r,1,1]),&
-                            &theta_int,norm_pt,ierr)                            ! theta array at interpolated position
+                        ierr = calc_interp(reshape(theta,[n_par,n_r,1,1]),&
+                            &theta_int,norm_pt)                                 ! theta array at interpolated position
                         CHCKERR('')
-                        call calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
-                            &integral,ierr)                                     ! integral of entire function
+                        ierr = calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
+                            &integral)                                          ! integral of entire function
                         CHCKERR('')
                         loc_block(k,m) = loc_block(k,m) + integral(n_par)       ! add total integral (at pos n_par)
                     end do
@@ -347,13 +370,13 @@ contains
                         intgrnd(:,:,k,m) = - exp_theta(:,:,k,m) * &
                             &(inv_step/n_X)**2 * jac_F_FD(:,:,0,0,0) * &
                             &V2(:,:,k,m)                                        ! integrand, not integrated
-                        call calc_interp(intgrnd,intgrnd_int,norm_pt_5,ierr)    ! integrand, integrated
+                        ierr = calc_interp(intgrnd,intgrnd_int,norm_pt_5)       ! integrand, integrated
                         CHCKERR('')
-                        call calc_interp(reshape(theta,[n_par,n_r,1,1]),&
-                            &theta_int,norm_pt_5,ierr)                          ! theta array at interpolated position
+                        ierr = calc_interp(reshape(theta,[n_par,n_r,1,1]),&
+                            &theta_int,norm_pt_5)                               ! theta array at interpolated position
                         CHCKERR('')
-                        call calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
-                            &integral,ierr)                                     ! integral of entire function
+                        ierr = calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
+                            &integral)                                          ! integral of entire function
                         CHCKERR('')
                         loc_block(k,m) = loc_block(k,m) + integral(n_par)       ! add total integral (at pos n_par)
                     end do
@@ -364,13 +387,17 @@ contains
                 loc_m = loc_k+n_m_X
                 call MatSetValues(mat,n_m_X,loc_k,n_m_X,loc_m,loc_block,&
                     &INSERT_VALUES,ierr)
+                CHCKERR('Couldn''t add values to matrix')
             end if
         end do
         
         ! assemble the matrix and view it
         call MatAssemblyBegin(mat,MAT_FINAL_ASSEMBLY,ierr)
+        CHCKERR('Coulnd''t begin assembly of matrix')
         call MatAssemblyEnd(mat,MAT_FINAL_ASSEMBLY,ierr)
+        CHCKERR('Coulnd''t end assembly of matrix')
         
         call MatSetOption(mat,MAT_HERMITIAN,PETSC_TRUE,ierr)                    ! Hermitian to a first approximation
-    end subroutine
+        CHCKERR('Coulnd''t set option Hermitian')
+    end function fill_mat
 end module

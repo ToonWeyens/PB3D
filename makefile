@@ -16,7 +16,7 @@ PB3D_DIR = /home/toon/Documents/PHD/PB3D
 
 # Comiler
 #COMP_DIR = /usr/bin/gfortran # gfortran
-COMP_DIR = /usr/bin/mpif90 # mpi fortran
+COMP_DIR = /usr/local/bin/mpif90 # mpi fortran
 
 # Linker
 LINK_DIR = /usr/bin/g++ # g++ (needed for C++ preprocessing)

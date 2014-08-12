@@ -16,11 +16,9 @@ module driver
 
 contains
     ! the main driver routine
-    subroutine run_driver(ierr)
+    ! [MPI] All ranks
+    integer function run_driver() result(ierr)
         character(*), parameter :: rout_name = 'run_driver'
-        
-        ! input / output
-        integer, intent(inout) :: ierr                                          ! error
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -37,13 +35,13 @@ contains
                 call writo('Richardson''s extrapolation and &
                     &normal discretization, generalized eigenvalue problem')
                 call lvl_ud(-1)
-                call run_rich_driver(ierr)
+                ierr = run_rich_driver()
                 CHCKERR('')
             case default
-                err_msg = 'style "' // trim(i2str(style)) // '" is not&
+                err_msg = 'Style "' // trim(i2str(style)) // '" is not&
                     & valid'
                 ierr = 1
                 CHCKERR(err_msg)
         end select
-    end subroutine
+    end function run_driver
 end module driver

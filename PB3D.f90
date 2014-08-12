@@ -24,10 +24,10 @@
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D
     use time, only: init_time, start_time, passed_time
-    use test, only: test_repack, test_print_GP, test_mesh_cs, &
-        &test_metric_transf, test_ang_B, test_ext_var, test_B, &
+    use test, only: test_repack, test_print_GP, test_calc_mesh_cs, &
+        &test_metric_transf, test_ang_B, test_calc_ext_var, test_B, &
         &test_VMEC_norm_deriv, test_VMEC_conv_FHM, test_calc_RZL, &
-        &test_arr_mult, test_calc_T_VF, test_calc_inv_met, test_det, &
+        &test_arr_mult, test_calc_T_VF, test_calc_inv_met, test_calc_det, &
         &test_inv, test_calc_f_deriv, test_calc_g, test_f2r, &
         &test_prepare_matrix_X, test_slepc, test_calc_interp
 #if ldebug
@@ -40,7 +40,7 @@ program PB3D
     use file_ops, only: open_input, open_output, search_file, parse_args, &
         &init_file_ops
     use input_ops, only: read_input
-    use MPI_ops, only: start_MPI, stop_MPI, abort_MPI
+    use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, split_MPI, broadcast_vars
     
     implicit none
 
@@ -52,11 +52,11 @@ program PB3D
     !-------------------------------------------------------
     !   Initialize some routines
     !-------------------------------------------------------
-    call start_MPI(ierr)
+    ierr = start_MPI()                                                          ! start MPI
     CHCKERR
-    call init_output_ops
-    call init_file_ops
-    call init_time
+    call init_output_ops                                                        ! initialize output operations
+    call init_file_ops                                                          ! initialize output operations
+    call init_time                                                              ! initialize time
  
     !-------------------------------------------------------
     !   Read the user-provided input file and the VMEC output
@@ -64,16 +64,17 @@ program PB3D
     call start_time
     call writo('Start reading the input')
     call lvl_ud(1)
-    call parse_args(ierr)                                                       ! parse arguments
+    ierr = parse_args()                                                         ! parse argument (options are used in open_input)
     CHCKERR
-    call open_input(ierr)                                                       ! open the input files
+    ierr = open_input()                                                         ! open the input files
     CHCKERR
     call read_input                                                             ! read input files
-    call read_VMEC(ierr)                                                        ! read VMEC file
+    ierr = read_VMEC()                                                          ! read VMEC file
     CHCKERR
-    call open_output(ierr)                                                      ! open output file
+    ierr = open_output()                                                        ! open output file per alpha group
     CHCKERR
-    !call broadcast_input                                                        ! broadcast to other processors
+    ierr = broadcast_vars()                                                     ! broadcast to other processors
+    CHCKERR
     call writo('')
     call passed_time
     call writo('')
@@ -87,41 +88,62 @@ program PB3D
         call start_time
         call writo('Start tests')
         call lvl_ud(1)
-        !call test_repack
+        !ierr = test_ang_B()
+        !CHCKERR
+        !ierr = test_repack()
+        !CHCKERR
         !call test_print_GP
-        !call test_mesh_cs
-        !call test_ext_var
-        !call test_det
-        !call test_inv
-        !call test_f2r
-        !call test_ang_B
-        !call test_calc_g
-        !call test_calc_f_deriv
-        call test_arr_mult
-        call test_calc_interp
-        call test_slepc
-        call test_prepare_matrix_X
-        call test_metric_transf
-        call test_B
-        call test_calc_inv_met
-        call test_calc_T_VF
-        call test_calc_RZL
-        call test_VMEC_conv_FHM
-        call test_VMEC_norm_deriv
+        !CHCKERR
+        !ierr = test_calc_mesh_cs()
+        !CHCKERR
+        !ierr = test_calc_ext_var()
+        !CHCKERR
+        !ierr = test_f2r()
+        !CHCKERR
+        !ierr = test_calc_det()
+        !CHCKERR
+        !ierr = test_inv()
+        !CHCKERR
+        !ierr = test_calc_g()
+        !CHCKERR
+        !ierr = test_calc_f_deriv()
+        !CHCKERR
+        !ierr = test_arr_mult()
+        !CHCKERR
+        !ierr = test_metric_transf()
+        !CHCKERR
+        !ierr = test_calc_interp()
+        !CHCKERR
+        !ierr = test_slepc()
+        !CHCKERR
+        !ierr = test_prepare_matrix_X()
+        !CHCKERR
+        !ierr = test_B()
+        !CHCKERR
+        !ierr = test_calc_inv_met()
+        !CHCKERR
+        !ierr = test_calc_T_VF()
+        !CHCKERR
+        ierr = test_calc_RZL()
+        CHCKERR
+        !ierr = test_VMEC_conv_FHM()
+        !CHCKERR
+        !ierr = test_VMEC_norm_deriv()
+        !CHCKERR
         call writo('')
         call passed_time
         call writo('')
         call lvl_ud(-1)
     end if
 #endif
-
+    
     !-------------------------------------------------------
     !   Start main driver
     !-------------------------------------------------------
     call start_time
     call writo('Start main driver')
     call lvl_ud(1)
-    call run_driver(ierr)
+    ierr = run_driver()
     CHCKERR
     call writo('')
     call passed_time
@@ -134,7 +156,7 @@ program PB3D
     call writo('Start cleaning up')
     call lvl_ud(1)
     ! CLOSE THE OUTPUT FILES, 
-    call stop_MPI(ierr)
+    ierr = stop_MPI()
     CHCKERR
     call lvl_ud(-1)
 
@@ -142,6 +164,8 @@ contains
     ! stops the computations, aborting MPI, etc.
     ! as a special case, if ierr = 66, no error message is printed
     subroutine sudden_stop(ierr)
+        use num_vars, only: glob_rank
+        
         ! input / output
         integer, intent(in) :: ierr                                             ! error to output
         
@@ -149,13 +173,14 @@ contains
         integer :: ierr_abort                                                   ! error to output
         
         if (ierr.ne.66) then
-            call writo('>> calling routine: PB3D (main)')
+            call writo('>> calling routine: PB3D (main) of rank '//&
+                &trim(i2str(glob_rank)))
             call writo('ERROR CODE '//trim(i2str(ierr))//&
-                &'. Aborting MPI..')
+                &'. Aborting MPI rank '//trim(i2str(glob_rank)))
             call lvl_ud(1)
-            call abort_MPI(ierr_abort)
+            ierr_abort = abort_MPI()
         else
-            call stop_MPI(ierr_abort)
+            ierr_abort = stop_MPI()
         end if
         if (ierr_abort.ne.0) then
             call writo('MPI cannot abort...')

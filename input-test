@@ -4,7 +4,7 @@
     n_par = 20
     min_par = 0
     max_par = 3.1415926535897932384626433832795028841971693993751058
-    n_alpha = 3
+    n_alpha = 10
     max_it_NR = 500
     max_it_r = 2
     theta_var_along_B = .true.

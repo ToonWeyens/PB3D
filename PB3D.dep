@@ -124,6 +124,9 @@ MPI_ops.o : \
     num_vars.o \
     str_ops.o \
     output_ops.o \
+    VMEC_vars.o \
+    X_vars.o \
+    eq_vars.o \
 
 str_ops.o : \
     num_vars.o \
