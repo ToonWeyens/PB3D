@@ -282,8 +282,8 @@ contains
     ! open an output file
     ! [MPI] only group masters
     integer function open_output() result(ierr)
-        use num_vars, only: output_i, n_seq_0, group_rank, group_nr, &
-            &glob_rank, output_name
+        use num_vars, only: output_i, n_seq_0, glob_rank, group_nr, &
+            &glob_rank, group_rank, output_name
         use output_ops, only: format_out
         
         character(*), parameter :: rout_name = 'open_output'
@@ -295,8 +295,8 @@ contains
         ! initialize ierr
         ierr = 0
         
-        if (group_rank.eq.0) then                                               ! only group masters
-            call writo('Attempting to open output files')
+        if (group_rank.eq.0) then                                               ! only group_masters
+            if (glob_rank.eq.0) call writo('Attempting to open output files')   ! but only global master outputs
             call lvl_ud(1)
             
             ! apend group number to output name if not also global master
@@ -306,30 +306,34 @@ contains
             ! select output format
             select case (format_out)
                 case (1)                                                        ! NETCDF
-                    call writo('Output format chosen: NETCDF')
+                    if (glob_rank.eq.0) call writo('Output format chosen: &
+                        &NETCDF')
                     ierr = open_NETCDF()
                     CHCKERR('')
                 case (2)                                                        ! matlab
-                    call writo('Output format chosen: matlab')
+                    if (glob_rank.eq.0) call writo('Output format chosen: &
+                        &matlab')
                     ierr = open_matlab()
                     CHCKERR('')
                 case (3)                                                        ! DISLIN
-                    call writo('Output format chosen: DISLIN')
+                    if (glob_rank.eq.0) call writo('Output format chosen: &
+                        &DISLIN')
                     ! no need to do anything
                 case (4)                                                        ! GNUplot
-                    call writo('Output format chosen: GNUplot')
+                    if (glob_rank.eq.0) call writo('Output format chosen: &
+                        &GNUplot')
                     ierr = open_gnuplot()
                     CHCKERR('')
                 case default
-                    call writo('WARNING: output format "' // &
-                        &trim(i2str(format_out)) // &
+                    if (glob_rank.eq.0) call writo('WARNING: output format "'&
+                        &// trim(i2str(format_out)) // &
                         &'" is not valid. Standard output chosen')
                     ierr = open_NETCDF()
                     CHCKERR('')
             end select
             CHCKERR('')
             call lvl_ud(-1)
-            call writo('Output files opened')
+            if (glob_rank.eq.0) call writo('Output files opened')
         end if
     contains
         ! Open the NETCDF file
@@ -345,8 +349,9 @@ contains
                 err_msg = 'Cannot open NETCDF output file'
                 CHCKERR(err_msg)
             else
-                call writo('NETCDF output file "' // trim(full_output_name) &
-                    &//'" opened at number ' // trim(i2str(output_i)))
+                if (glob_rank.eq.0) call writo('NETCDF output file "'//&
+                    &trim(full_output_name) //'" opened at number '//&
+                    &trim(i2str(output_i)))
             end if
         end function open_NETCDF
             
@@ -362,8 +367,9 @@ contains
             call safe_open(output_i,ierr,full_output_name,'replace',&
                 &'formatted',delim_in='none')
             CHCKERR('Cannot open matlab output file')
-            call writo('matlab output file "' // trim(full_output_name) &
-                &//'" opened at number ' // trim(i2str(output_i)))
+            if (glob_rank.eq.0) call writo('matlab output file "'//&
+                &trim(full_output_name)//'" opened at number '//&
+                &trim(i2str(output_i)))
         end function open_matlab
         
         ! Open a .dat file
@@ -378,8 +384,9 @@ contains
             call safe_open(output_i,ierr,full_output_name,'replace',&
                 &'formatted',delim_in='none')
             CHCKERR('Cannot open GNUplot output file')
-            call writo('GNUplot output file "' // trim(full_output_name) &
-                &//'" opened at number ' // trim(i2str(output_i)))
+            if (glob_rank.eq.0) call writo('GNUplot output file "'//&
+                &trim(full_output_name)//'" opened at number '//&
+                &trim(i2str(output_i)))
         end function open_gnuplot
     end function open_output
 

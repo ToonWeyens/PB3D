@@ -29,7 +29,16 @@ contains
     ! initialize the variables for the module
     ! [MPI] All ranks
     subroutine init_output_ops
+        use num_vars, only: glob_rank
+        
         lvl = 1
+        
+        ! print date and time
+        if (glob_rank.eq.0) then
+            write(*,*) 'Simulation started on '//get_date()//&
+                &', at '//get_time()
+            write(*,*) ''
+        end if
     end subroutine
 
     ! prints an error  message that is either user-provided, or  the name of the
@@ -429,29 +438,35 @@ contains
     !       to  the global  rank. This  way,  the group  rank always  determines
     !       whether a  process outputs  or not,  also when  there are  no groups
     !       (yet)
-    subroutine writo(input_str,lvl_input,file_i)
-        use num_vars, only: group_rank
+    subroutine writo(input_str,file_i)
+        use num_vars, only: group_rank, glob_rank, output_i
         
+        ! input / output
         character(len=*), intent(in) :: input_str                               ! the name that is searched for
-        integer, optional, intent(in) :: lvl_input                              ! optinally set the output lvl
         integer, optional, intent(in) :: file_i                                 ! optionally set the number of output file
         
+        ! local variables
         character(len=max_str_ln) :: output_str                                 ! the name that is searched for
-        
         character(len=max_str_ln) :: header_str                                 ! the name that is searched for
-        integer :: lvl_loc                                                      ! holds either lvl_loc or lvl
         integer :: id, i_part, max_len_part, num_parts, st_part, en_part
+        integer :: loc_file_i
         
         if (group_rank.eq.0) then                                               ! only group master (= global master if no groups)
-            ! assign either lvl_input or lvl to lvl_loc
-            if (present(lvl_input)) then
-                lvl_loc = lvl_input
+            ! set  loc_file_i,  depending on  whether  it is  given, or  whether
+            ! non-global group master calling
+            if (present(file_i)) then
+                loc_file_i = file_i
             else
-                lvl_loc = lvl
+                if (glob_rank.ne.0) then
+                    loc_file_i = output_i
+                else
+                    loc_file_i = 0
+                end if
             end if
             
-            ! Divide the input string length by the max_str_ln and loop over the different parts
-            max_len_part = max_str_ln-(lvl_loc-1)*len(lvl_sep)                  ! max length of a part
+            ! Divide the input string length by the max_str_ln and loop over the
+            ! different parts
+            max_len_part = max_str_ln-(lvl-1)*len(lvl_sep) - 10                 ! max length of a part (10 for time)
             num_parts = (len(trim(input_str))-1)/(max_len_part) + 1             ! how many parts there are
             do i_part = 1, num_parts
                 ! construct input string for the appropriate level
@@ -461,27 +476,22 @@ contains
                 else                                                            ! last part is shorter
                     en_part = len(trim(input_str))
                 end if
-                output_str = &
-                    &input_str(st_part:en_part)
-                do id = 1,lvl_loc-1                                             ! start with lvl_loc 1
+                output_str = input_str(st_part:en_part)
+                do id = 1,lvl-1                                                 ! start with lvl 1
                     output_str = lvl_sep // trim(output_str)
                 end do
+                output_str = get_time()//': '//trim(output_str)
                 
                 ! construct header string of equal length as output strength
                 header_str = ''
-                do id = 1, len(trim(output_str))
+                do id = 1, len(trim(output_str)) - 10                           ! 10 for time
                     header_str =  trim(header_str) // '-'
                 end do
+                header_str = '          '//trim(header_str)
                 
-                if (present(file_i)) then
-                    if (lvl_loc.eq.1) write(file_i,*) header_str                ! first level gets extra lines
-                    write(file_i,*) output_str
-                    if (lvl_loc.eq.1) write(file_i,*) header_str
-                else
-                    if (lvl_loc.eq.1) write(*,*) header_str                     ! first level gets extra lines
-                    write(*,*) output_str
-                    if (lvl_loc.eq.1) write(*,*) header_str
-                end if
+                if (lvl.eq.1) write(loc_file_i,*) header_str                    ! first level gets extra lines
+                write(loc_file_i,*) output_str
+                if (lvl.eq.1) write(loc_file_i,*) header_str
             end do
         end if
     end subroutine
@@ -553,6 +563,34 @@ contains
         output_str = trim(output_str) // ' |'
         write(*,*) output_str
     end subroutine
+    
+    ! returns the date
+    ! (from http://infohost.nmt.edu/tcc/help/lang/fortran/date.html)
+    function get_date() result(date)
+        ! input / output
+        character(len=10) :: date                                               ! date
+        
+        ! local variables
+        integer :: today(3)
+        
+        call idate(today)                                                       ! today(1)=day, (2)=month, (3)=year
+        
+        write (date,'(i2.2,"/",i2.2,"/",i4.4)')  today(2), today(1), today(3)
+    end function get_date
+    
+    ! returns the time
+    ! (from http://infohost.nmt.edu/tcc/help/lang/fortran/date.html)
+    function get_time() result(time)
+        ! input / output
+        character(len=8) :: time                                                ! time
+        
+        ! local variables
+        integer :: now(3)
+        
+        call itime(now)                                                         ! now(1)=hour, (2)=minute, (3)=second
+        
+        write (time,'(i2.2,":",i2.2,":",i2.2)')  now
+    end function get_time
 end module output_ops
 
     !! PREVIOUS OUTPUT ROUTINE, REPLACED BY PRINT_GP

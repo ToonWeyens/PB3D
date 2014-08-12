@@ -57,6 +57,7 @@ contains
         integer :: world_group                                                  ! MPI group associated to MPI_COMM_WORLD
         integer :: master_group                                                 ! MPI group associated to alpha group masters
         integer :: intsize                                                      ! size of MPI real
+        integer(kind=MPI_ADDRESS_KIND) :: size_one = 1                          ! size equal to 1
         
         ! initialize ierr
         ierr = 0
@@ -159,16 +160,28 @@ contains
         CHCKERR('Failed to create group of group masters')
         call MPI_Comm_create(MPI_COMM_WORLD,master_group,MPI_Comm_masters,ierr) ! create communicator for master subset
         CHCKERR('Failed to create communicator to group of group masters')
+        !!!! MPI_Comm_masters NOT NECESSARY ANYMORE !!!!
         
-        ! create  a  window  to  the  variable  next_job  in  the  processes  of
-        ! MPI_Comm_masters
-        if (group_rank.eq.0) then
-            call MPI_Type_extent(MPI_INTEGER,intsize,ierr) 
-            CHCKERR('Couldn''t determine the extent of MPI_REAL')
-            call MPI_Win_create(next_job,1,intsize,MPI_INFO_NULL,&
-                &MPI_Comm_masters,next_job_win,ierr)
-            CHCKERR('Couldn''t create window to next_job')
+        ! set starting next_job to 1 on global master
+        if (glob_rank.eq.0) then
+            next_job = 1
         end if
+        
+        ! create a window to the variable next_job in the global master
+        call MPI_Type_extent(MPI_INTEGER,intsize,ierr) 
+        CHCKERR('Couldn''t determine the extent of MPI_REAL')
+        if (group_rank.eq.0) then
+            call MPI_Win_create(next_job,1*size_one,intsize,MPI_INFO_NULL,&
+                &MPI_COMM_WORLD,next_job_win,ierr)
+        else
+            call MPI_Win_create(0,0*size_one,intsize,MPI_INFO_NULL,&
+                &MPI_COMM_WORLD,next_job_win,ierr)
+        end if
+        CHCKERR('Couldn''t create window to next_job')
+        
+        ! set fence so that the global master holds next_job = 1 for sure
+        call MPI_Win_fence(0,next_job_win,ierr)
+        CHCKERR('Couldn''t set fence')
         
         ! open an output file for the groups that are not the master group (i.e.
         ! the group containing the global master)
@@ -181,17 +194,36 @@ contains
     ! merge the MPI groups back to MPI_COMM_WORLD
     ! [MPI] Collective call
     integer function merge_MPI() result(ierr)
+        use num_vars, only: MPI_Comm_groups, MPI_Comm_masters, n_groups, &
+            &group_rank, next_job_win, glob_rank
+        
         character(*), parameter :: rout_name = 'merge_MPI'
         
         ! initialize ierr
         ierr = 0
         
-        write(*,*) '!!! NOT YET IMPLEMENTED !!!'
-        !!! MERGE THE MPI groups
+        ! free window for next_job
+        call MPI_Win_free(next_job_win,ierr)
+        CHCKERR('Unable to free window for next job')
+        
+        ! free groups and masters communicators
+        call MPI_Comm_free(MPI_Comm_groups,ierr)
+        CHCKERR('Unable to free communicator for groups')
+        if (n_groups.gt.1) then
+            if (group_rank.eq.0) then
+                call MPI_Comm_free(MPI_Comm_masters,ierr)
+                CHCKERR('Unable to free communicator for masters')
+            end if
+        end if
+        
+        ! reset meaningless group_rank to glob_rank (for output, etc...)
+        group_rank = glob_rank
+        
+        ! barrier
+        call MPI_Barrier(MPI_COMM_WORLD,ierr)
+        CHCKERR('Coulnd''t set barrier')
         
         !!! ALSO CLOSE THEIR OUTPUT FILES, MAYBE DELETE?!?!?!
-        
-        !!! FREE THE WINDOWS !!!!!
     end function merge_MPI
     
     ! stop MPI
@@ -221,55 +253,45 @@ contains
     ! compares  own next_job with next_job  of other group masters  and gets the
     ! maximum value. Returns this value
     ! [MPI] Collective call
-    integer function get_next_job() result(ierr)
-        use num_vars, only: n_groups, group_rank, max_str_ln, &
-            &next_job_win, next_job, MPI_Comm_groups, n_alpha
+    integer function get_next_job(next_job) result(ierr)
+        use num_vars, only: group_rank, max_str_ln, next_job_win, &
+            &MPI_Comm_groups, n_alpha, group_nr
         
         character(*), parameter :: rout_name = 'get_next_job'
         
+        ! input / output
+        integer, intent(inout) :: next_job
+        
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: id                                                           ! counter
-        integer(kind=MPI_ADDRESS_KIND) :: null_disp = 0                         ! target displacement
-        integer :: their_next_job                                               ! temporary copy of remote next_job
+        integer(kind=MPI_ADDRESS_KIND) :: null_disp = 0                         ! zero target displacement
         
         ! initialize ierr
         ierr = 0
         
-        ! the following only if there are more than 1 group
-        if (n_groups.gt.1) then
-            ! test whether it is a master that calls this routine
-            if (group_rank.eq.0) then
-                ! initialize their_next_job to next_job of this group
-                their_next_job = next_job
-                
-                !  loop  over  all  masters comparing  their_next_job  to  local
-                ! next_job
-                do id = 0,n_groups-1
-                    call MPI_Win_lock(MPI_LOCK_EXCLUSIVE,id,0,next_job_win,ierr)
-                    err_msg = 'Coulnd''t lock window for rank '//trim(i2str(id))
-                    CHCKERR(err_msg)
-                    call MPI_GET(their_next_job,1,MPI_INTEGER,id,null_disp,1,&
-                        &MPI_INTEGER,next_job_win,ierr)
-                    err_msg = 'Couldn''t use Fetch_and_op to increment &
-                        &next_job of group '//trim(i2str(id))
-                    CHCKERR(err_msg)
-                    call MPI_Win_unlock(id,next_job_win,ierr)
-                    err_msg = 'Coulnd''t unlock window for rank '//&
-                        &trim(i2str(id))
-                    CHCKERR(err_msg)
-                    if (their_next_job.gt.next_job) next_job = their_next_job
-                end do
-            end if
-        end if
-                
-        ! increment next_job if there is one and set to -1 if not
-        if (next_job.lt.n_alpha) then
-            next_job = next_job + 1
-        else
-            next_job = -1
+        ! test whether it is a master that calls this routine
+        if (group_rank.eq.0) then
+            call MPI_Win_lock(MPI_LOCK_EXCLUSIVE,0,0,next_job_win,ierr)
+            err_msg = 'Group '//trim(i2str(group_nr))//&
+                &' coulnd''t lock window on global master'
+            CHCKERR(err_msg)
+            call MPI_Get_accumulate(1,1,MPI_INTEGER,next_job,1,&
+                &MPI_INTEGER,0,null_disp,1,MPI_INTEGER,MPI_SUM,&
+                &next_job_win,ierr)
+            err_msg = 'Group '//trim(i2str(group_nr))//&
+                &' coulnd''t increment next_job on global master'
+            CHCKERR(err_msg)
+            call MPI_Win_unlock(0,next_job_win,ierr)
+            err_msg = 'Group '//trim(i2str(group_nr))//&
+                &' coulnd''t unlock window on global master'
+            CHCKERR(err_msg)
         end if
         
+        ! if all jobs reached, output -1
+        if (next_job.ge.n_alpha+1) then
+            next_job = -1
+        end if
+                
         ! broadcast next_job to whole group
         call MPI_Bcast(next_job,1,MPI_INTEGER,0,MPI_Comm_groups,ierr)
         CHCKERR('MPI broadcast failed')

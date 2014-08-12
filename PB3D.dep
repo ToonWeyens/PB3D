@@ -74,7 +74,6 @@ output_ops.o : \
 
 input_ops.o : \
     output_ops.o \
-    time.o \
     str_ops.o \
     num_vars.o \
     eq_vars.o \

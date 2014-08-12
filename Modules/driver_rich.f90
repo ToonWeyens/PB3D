@@ -23,15 +23,21 @@ contains
     !       the other groups
     integer function run_rich_driver() result(ierr)
         use num_vars, only: min_alpha, max_alpha, n_alpha, glob_rank, &
-            &n_groups, group_nr, group_rank, max_alpha, next_job, next_job_win
+            &group_nr, max_alpha
         use eq_vars, only: calc_eqd_mesh
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
-        use MPI
         
         character(*), parameter :: rout_name = 'run_rich_driver'
         
+        ! local variables
+        integer :: next_job                                                     ! holds next job of current group, filled with get_next_job
+        
         ! initialize ierr
         ierr = 0
+        
+        ! output concerning n_alpha
+        call writo('The calculations will be done for '//&
+            &trim(i2str(n_alpha))//' values of alpha')
         
         ! determine the magnetic field lines for which to run the calculations 
         ! (equidistant mesh)
@@ -47,19 +53,7 @@ contains
         CHCKERR('')
         call lvl_ud(-1)
         
-        if (glob_rank.eq.0) then                                                ! only global rank
-            call writo('The calculations will be done for '//&
-                &trim(i2str(n_alpha))//' values of alpha')
-        end if
-        
         call lvl_ud(1)
-            
-        ! initialize next_job to 0
-        next_job = 0
-        
-        !call MPI_barrier(MPI_COMM_WORLD,ierr)
-        !write(*,*) 'stopping rank ', glob_rank
-        !stop
         
         ! do the calculations for every  field line, where initially every group
         ! is assigned a field line. On completion of a job, the completing group
@@ -68,26 +62,36 @@ contains
         ! loop over all fied lines
         field_lines: do
             ! get next job for current group
-            ierr = get_next_job()
+            ierr = get_next_job(next_job)
             CHCKERR('')
-            
-            ! output
-            if (next_job.gt.0) then
-                call writo('Job '//trim(i2str(next_job))//' assigned to group '//&
-                    &trim(i2str(group_nr)))
-            else
-                call writo('Finished all jobs')
-                exit
-            end if
             
             ! Do the calculations for a field line alpha
             if (next_job.gt.0) then
-                !ierr = run_for_alpha(alpha(next_job),next_job)
+                ! display message
+                call writo('Job '//trim(i2str(next_job))//': Calculations for &
+                    &field line alpha = '//trim(r2strt(alpha(next_job)))//&
+                    &', allocated to group '//trim(i2str(group_nr)))
+                
+                call lvl_ud(1)                                                  ! starting calculation for current fied line
+                
+                ! calculate
+                ierr = run_for_alpha(alpha(next_job))
                 CHCKERR('')
+                
+                ! display message
+                call lvl_ud(-1)                                                 ! done with calculation for current field line
+                call writo('Job '//trim(i2str(next_job))//': Calculations for &
+                    &field line alpha = '//trim(r2strt(alpha(next_job)))//&
+                    &', completed by group '//trim(i2str(group_nr)))
+            else
+                call writo('Finished all jobs')
+                exit field_lines
             end if
         end do field_lines
         
         call lvl_ud(-1)
+        
+        ! Calculations done
         
         ! merge  the subcommunicator into communicator MPI_COMM_WORLD
         if (glob_rank.eq.0) then
@@ -103,8 +107,7 @@ contains
     end function run_rich_driver
     
     ! runs the calculations for one of the alpha's
-    integer function run_for_alpha(alpha,i_alpha) result(ierr)
-        use num_vars, only: group_nr, group_rank, n_alpha
+    integer function run_for_alpha(alpha) result(ierr)
         use eq_ops, only: calc_eq
         use X_ops, only: prepare_matrix_X, solve_EV_system
         
@@ -112,7 +115,6 @@ contains
         
         ! input / output
         real(dp), intent(in) :: alpha                                           ! alpha at which to run the calculations
-        integer, intent(in) :: i_alpha                                          ! which of the alpha's this is
         
         ! local variables
         integer :: ir                                                           ! counter for richardson extrapolation
@@ -121,21 +123,11 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! initialize ierr
-        ierr = 0
-        
-        ! Display message
-        call writo(trim(i2str(i_alpha))//'/'//trim(i2str(n_alpha))//&
-            &': Calculations for field line alpha = '//trim(r2strt(alpha))//&
-            &', allocated to group '//trim(i2str(group_nr)))
-        
-        call lvl_ud(1)                                                          ! starting calculation for current fied line
-                
         ! Calculate the equilibrium quantities for current alpha
         ierr = calc_eq(alpha)
         CHCKERR('')
         
-        ! Initalize some variables
+        ! Initalize some variables for Richardson loop
         ir = 1
         converged = .false.
         
@@ -179,11 +171,6 @@ contains
             
         call lvl_ud(-1)                                                         ! done with richardson
         call writo('Finished Richardson loop')
-            
-        call lvl_ud(-1)                                                         ! done with calculation for current field line
-        call writo(trim(i2str(i_alpha))//'/'//trim(i2str(n_alpha))//&
-            &': Finished calculations for field line alpha = '//&
-            &trim(r2strt(alpha)))
     end function run_for_alpha
     
     ! calculates the number of normal  points for the perturbation n_r_X for the
