@@ -47,8 +47,8 @@ contains
         use num_vars, only: glob_rank
         character(len=*) :: err_msg, routine_name
         
-        lvl = 2
         if (trim(err_msg).eq.'') then
+            lvl = 2
             call writo('>> calling routine: '//trim(routine_name)//' of rank '&
                 &//trim(i2str(glob_rank)))
         else

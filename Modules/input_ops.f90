@@ -6,13 +6,13 @@ module input_ops
     use num_vars, only: &
         &dp, max_str_ln, style, min_alpha, max_alpha, n_alpha, max_it_NR, &
         &tol_NR, max_it_r, theta_var_along_B, input_i, n_seq_0, &
-        &calc_mesh_style, EV_style, n_procs_per_alpha
+        &calc_mesh_style, EV_style, n_procs_per_alpha, plot_q
     use eq_vars, only: &
         &min_par, max_par, n_par
     use output_ops, only: writo, lvl_ud, &
         &format_out
     use file_ops, only: input_name
-    use X_vars, only: n_X, m_X, min_r, max_r
+    use X_vars, only: n_X, min_m_X, max_m_X, min_r, max_r
     implicit none
     private
     public yes_no, read_input
@@ -20,8 +20,8 @@ module input_ops
     ! input options
     namelist /inputdata/ format_out, style, min_par, &
         &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, &
-        &tol_NR, max_it_r, theta_var_along_B, n_X, m_X, min_r, max_r, &
-        &EV_style, n_procs_per_alpha
+        &tol_NR, max_it_r, theta_var_along_B, n_X, min_m_X, max_m_X, min_r, &
+        &max_r, EV_style, n_procs_per_alpha, plot_q
 
 contains
     ! queries for yes or no, depending on the flag yes:
@@ -122,9 +122,11 @@ contains
             n_X = 20                                                            ! toroidal mode number of perturbation
             min_r = 0.1_dp                                                      ! minimum radius
             max_r = 1.0_dp                                                      ! maximum radius
-            allocate(m_X(3)); m_X = [20,21,22]                                  ! poloidal mode numbers of perturbation
+            min_m_X = 20                                                        ! lowest poloidal mode number m_X
+            max_m_X = 22                                                        ! highest poloidal mode number m_X
             EV_style = 1                                                        ! slepc solver for EV problem
             n_procs_per_alpha = 1                                               ! 1 processor per field line
+            plot_q = .false.                                                    ! do not plot the q-profile with nq-m = 0
         end subroutine
     end subroutine
 end module input_ops

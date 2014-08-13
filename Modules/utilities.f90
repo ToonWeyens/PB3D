@@ -862,7 +862,8 @@ contains
         inv_0D = A
         
         call dgetrf(n, n, inv_0D, n, ipiv, ierr)                                ! LU factorization
-        CHCKERR('Lapack couldn''t find the LU factorization')
+        err_msg = 'Lapack couldn''t find the LU factorization'
+        CHCKERR(err_msg)
         
         call dgetri(n, inv_0D, n, ipiv, w, n, ierr)                             ! inverse of LU
         CHCKERR('Lapack couldn''t compute the inverse')
@@ -903,6 +904,8 @@ contains
         NR: do jd = 1,max_it_NR
             ! correction to theta_NR
             corr = -fun(zero_NR)/dfun(zero_NR)
+            !write(*,*) 'jd, zero_NR = ', jd, zero_NR
+            !write(*,*) 'fun, dfun = ', fun(zero_NR), dfun(zero_NR)
             zero_NR = zero_NR + corr
             
             ! check for convergence

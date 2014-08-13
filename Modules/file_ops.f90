@@ -12,7 +12,7 @@ module file_ops
     implicit none
     private
     public open_input, open_output, search_file, parse_args, init_file_ops, &   ! routines
-        &input_name                                                             ! variables
+        &input_name, opt_args
 
     ! user-specified arguments
     integer :: numargs                                                          ! control the user-specified arguments
@@ -64,7 +64,8 @@ contains
             open_error(1) = ""                                                  ! incorrect usage
             open_error(2) = "Usage: " // trim(prog_name) // &
                 &" USER_INPUT VMEC_INPUT [OPTIONS]"
-            open_error(3) = "Try './" // trim(prog_name) // " --help' for more &
+            open_error(3) = "Try './" // trim(prog_name) // " --help' or &
+                &'./" // trim(prog_name) // " -h' for more &
                 &information."
             open_help(1) = open_error(2)                                        ! help with usage
             open_help(2) = ""
@@ -99,7 +100,7 @@ contains
                 do id = 1,size(open_error)
                     call writo(open_error(id))
                 end do
-                ierr = 1
+                ierr = 66
                 CHCKERR('')
             end if
             

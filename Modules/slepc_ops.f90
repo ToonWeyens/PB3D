@@ -17,13 +17,10 @@ contains
     ! This subroutine sets up  the matrices A ad B of  the generalized EV system
     ! described in [ADD REF] and solves them using the slepc suite
     
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!! HERE YOU HAVE TO DIVIDE BETWEEN PROCESSORS IF THERE ARE STILL PROCESSORS LEFT !!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    
     integer function solve_EV_system_slepc(m_X,n_r_X,n_X,inv_step) result(ierr)
         use X_vars, only: PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val
-        use num_vars, only: MPI_comm_groups
+        use num_vars, only: MPI_comm_groups, group_n_procs
+        use file_ops, only: opt_args
         
         character(*), parameter :: rout_name = 'solve_EV_system_slepc'
         
@@ -44,6 +41,9 @@ contains
         PetscReal :: error                                                      ! error of EPS solver
         PetscReal :: tol                                                        ! tolerance of EPS solver
         PetscInt ::  max_it                                                     ! maximum number of iterations
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=max_str_ln) :: option_name                                ! options
+        PetscBool :: flg                                                        ! flag to catch options
         
         ! perturbation quantities
         PetscInt :: n_m_X                                                       ! nr. of poloidal modes
@@ -61,24 +61,26 @@ contains
         ! initialize slepc
         call writo('initialize slepc...')
         call lvl_ud(1)
-        PETSC_COMM_WORLD = MPI_comm_groups                                      ! limit slepc group to local group
+        ! set PETSC_COMM_WORLD
+        PETSC_COMM_WORLD = MPI_Comm_groups
+        if (group_n_procs.gt.n_r_X) then                                        ! too many processors
+            call writo('WARNING: using too many processors per group: '&
+                &//trim(i2str(group_n_procs))//', while beyond '//&
+                &trim(i2str(n_r_X))//' does not bring improvement')
+            call writo(' -> consider setting "n_procs_per_alpha" to lower &
+                &values, increasing n_r_X or increasing number of field &
+                &lines n_alpha')
+        end if
+        
         call SlepcInitialize(PETSC_NULL_CHARACTER,ierr)                         ! initialize slepc
         CHCKERR('slepc failed to initialize')
         call MPI_Comm_rank(PETSC_COMM_WORLD,rank,ierr)                          ! rank
         CHCKERR('MPI rank failed')
         call MPI_Comm_size(PETSC_COMM_WORLD,n_procs,ierr)                       ! number of processors
         CHCKERR('MPI size failed')
-        ! HAS TO BE CHANGED !!!!!!!!!!!!!!!!!!!!
-        if (n_procs.gt.n_r_X) then                                              ! check for nr. of processors
-            call writo('ERROR: using too many processors')
-            call writo('!!! THIS SHOULD BE IMPROVED BY JUST LIMITING IT &
-                &INTERNALLY !!!')
-            call SlepcFinalize(ierr)
-            stop
-        end if
-        ! HAS TO BE CHANGED !!!!!!!!!!!!!!!!!!!!
         call writo('slepc started with '//trim(i2str(n_procs))&
             &//' processors')
+        
         call lvl_ud(-1)
         
         ! checking for complex numbers
@@ -91,6 +93,13 @@ contains
         ierr = 1
         ERR(err_msg)
 #endif
+        
+        ! catch options so they don't give a Petsc warning
+        do id = 1,size(opt_args)
+            option_name = opt_args(id)
+            if (trim(option_name).ne.'') call PetscOptionsHasName(&
+                &PETSC_NULL_CHARACTER,trim(option_name),flg,ierr)
+        end do
         
         ! setting variables
         call writo('set variables...')

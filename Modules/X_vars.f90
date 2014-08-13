@@ -12,11 +12,13 @@ module X_vars
     public calc_rho, &
         &rho, n_x, min_r, max_r, m_X, n_r_X, U_X_0, U_X_1, DU_X_0, &
         &DU_X_1, sigma, extra1, extra2, extra3, PV0, PV1, PV2, KV0, KV1, KV2, &
-        &X_vec, X_val
+        &X_vec, X_val, min_m_X, max_m_X
 
     ! global variables
     real(dp), allocatable :: rho(:,:)                                           ! density
     integer :: n_X                                                              ! toroidal mode number
+    integer :: min_m_X                                                          ! lowest poloidal mode number m_X
+    integer :: max_m_X                                                          ! highest poloidal mode number m_X
     integer, allocatable :: m_X(:)                                              ! vector of poloidal mode numbers
     integer :: n_r_X                                                            ! number of normal points for perturbations
     real(dp) :: min_r, max_r                                                    ! mimimum and maximum radius

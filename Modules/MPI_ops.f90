@@ -58,6 +58,7 @@ contains
         integer :: master_group                                                 ! MPI group associated to alpha group masters
         integer :: intsize                                                      ! size of MPI real
         integer(kind=MPI_ADDRESS_KIND) :: size_one = 1                          ! size equal to 1
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -159,7 +160,8 @@ contains
             &master_group,ierr)                                                 ! take master subset
         CHCKERR('Failed to create group of group masters')
         call MPI_Comm_create(MPI_COMM_WORLD,master_group,MPI_Comm_masters,ierr) ! create communicator for master subset
-        CHCKERR('Failed to create communicator to group of group masters')
+        err_msg = 'Failed to create communicator to group of group masters'
+        CHCKERR(err_msg)
         !!!! MPI_Comm_masters NOT NECESSARY ANYMORE !!!!
         
         ! set starting next_job to 1 on global master
@@ -169,7 +171,8 @@ contains
         
         ! create a window to the variable next_job in the global master
         call MPI_Type_extent(MPI_INTEGER,intsize,ierr) 
-        CHCKERR('Couldn''t determine the extent of MPI_REAL')
+        err_msg = 'Couldn''t determine the extent of MPI_REAL'
+        CHCKERR(err_msg)
         if (group_rank.eq.0) then
             call MPI_Win_create(next_job,1*size_one,intsize,MPI_INFO_NULL,&
                 &MPI_COMM_WORLD,next_job_win,ierr)
@@ -195,9 +198,12 @@ contains
     ! [MPI] Collective call
     integer function merge_MPI() result(ierr)
         use num_vars, only: MPI_Comm_groups, MPI_Comm_masters, n_groups, &
-            &group_rank, next_job_win, glob_rank
+            &group_rank, next_job_win, glob_rank, max_str_ln
         
         character(*), parameter :: rout_name = 'merge_MPI'
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -212,7 +218,8 @@ contains
         if (n_groups.gt.1) then
             if (group_rank.eq.0) then
                 call MPI_Comm_free(MPI_Comm_masters,ierr)
-                CHCKERR('Unable to free communicator for masters')
+                err_msg = 'Unable to free communicator for masters'
+                CHCKERR(err_msg)
             end if
         end if
         
@@ -321,25 +328,26 @@ contains
     !   17  integer                     n_procs_per_alpha
     !   18  integer                     n_alpha
     !   19  integer                     n_X
-    !   20  integer(3)                  m_X(3)
-    !   21  real_dp                     min_alpha
-    !   22  real_dp                     max_alpha
-    !   23  real_dp                     min_r
-    !   24  real_dp                     max_r
-    !   25  real_dp                     tol_NR
-    !   26  real_dp                     min_par
-    !   27  real_dp                     max_par
-    !   28  real_dp                     version
-    !   29  real_dp(n_r)                phi(n_r)
-    !   30  real_dp(n_r)                phi_r(n_r)
-    !   31  real_dp(n_r)                iotaf(n_r)
-    !   32  real_dp(n_r)                presf(n_r)
-    !   33  real_dp(*)                  R_c(*)
-    !   34  real_dp(*)                  R_s(*)
-    !   35  real_dp(*)                  Z_c(*)
-    !   36  real_dp(*)                  Z_s(*)
-    !   37  real_dp(*)                  L_c(*)
-    !   38  real_dp(*)                  L_s(*)
+    !   20  integer                     min_m_X
+    !   21  integer                     max_m_X
+    !   22  real_dp                     min_alpha
+    !   23  real_dp                     max_alpha
+    !   24  real_dp                     min_r
+    !   25  real_dp                     max_r
+    !   26  real_dp                     tol_NR
+    !   27  real_dp                     min_par
+    !   28  real_dp                     max_par
+    !   29  real_dp                     version
+    !   30  real_dp(n_r)                phi(n_r)
+    !   31  real_dp(n_r)                phi_r(n_r)
+    !   32  real_dp(n_r)                iotaf(n_r)
+    !   33  real_dp(n_r)                presf(n_r)
+    !   34  real_dp(*)                  R_c(*)
+    !   35  real_dp(*)                  R_s(*)
+    !   36  real_dp(*)                  Z_c(*)
+    !   37  real_dp(*)                  Z_s(*)
+    !   38  real_dp(*)                  L_c(*)
+    !   39  real_dp(*)                  L_s(*)
     !   with (*) = (0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3))
     ! [MPI] Collective call
     integer function broadcast_vars() result(ierr)
@@ -350,7 +358,7 @@ contains
             &n_procs_per_alpha, style, max_alpha, min_alpha, tol_NR, glob_rank, &
             &glob_n_procs
         use output_ops, only: format_out
-        use X_vars, only: n_X, m_X, max_r, min_r
+        use X_vars, only: n_X, min_m_X, max_m_X, max_r, min_r
         use eq_vars, only: n_par, max_par, min_par
         
         character(*), parameter :: rout_name = 'broadcast_vars'
@@ -388,8 +396,8 @@ contains
             call MPI_Bcast(n_procs_per_alpha,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(n_alpha,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(n_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            call bcast_size_1_I(m_X)
-            call MPI_Bcast(m_X,size(m_X),MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_r,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)

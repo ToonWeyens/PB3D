@@ -5,7 +5,8 @@
 module X_ops
 #include <PB3D_macros.h>
     use num_vars, only: dp, iu, mu_0, max_str_ln
-    use output_ops, only: lvl_ud, writo, print_ar_2
+    use output_ops, only: lvl_ud, writo, print_ar_2, print_GP_2D
+    use str_ops, only: i2str, r2strt
 
     implicit none
     private
@@ -16,14 +17,29 @@ contains
     ! ¡¡¡ THIS SHOULD BE  CHANGED TO TAKE INTO ACCOUNT THAT  U_X AND DU_X ARE
     ! HERMITIAN SO ONLY  M*(M+1)/2 ELEMENTS ARE NEEDED INSTEAD  OF M^2. HOWEVER,
     ! TAKE INTO ACCOUNT AS WELL THE MPI STORAGE MATRIX FORMATS !!!
-    subroutine init_X_ops(n_m_X)
+    subroutine init_X_ops
         use eq_vars, only: n_par
         use VMEC_vars, only: n_r
         use X_vars, only: U_X_0, U_X_1, DU_X_0, DU_X_1, sigma, extra1, extra2, &
-            &extra3, PV0, PV1, PV2, KV0, KV1, KV2
+            &extra3, PV0, PV1, PV2, KV0, KV1, KV2, min_m_X, max_m_X, m_X
+        use num_vars, only: plot_q
         
-        ! input / output
-        integer :: n_m_X
+        ! local variables
+        integer :: id                                                           ! counter
+        integer :: n_m_X                                                        ! number of poloidal modes m
+        
+        ! initialize
+        n_m_X = max_m_X - min_m_X + 1
+        
+        ! setup m_X
+        if (allocated(m_X)) deallocate(m_X)
+        allocate(m_X(n_m_X))
+        m_X = [(id, id = min_m_X, max_m_X)]
+        if (plot_q) then
+            call resonance_plot
+        else
+            call writo('resonance plot not requested')
+        end if
         
         ! U_X_0
         if (allocated(U_X_0)) deallocate(U_X_0)
@@ -78,21 +94,171 @@ contains
         allocate(KV2(n_par,n_r,n_m_X,n_m_X))
     end subroutine init_X_ops
     
+    ! plot q-profile with nq-m = 0 indicated if requested
+    subroutine resonance_plot
+        use num_vars, only: glob_rank, tol_NR
+        use utilities, only: calc_zero_NR, calc_interp
+        use eq_vars, only: q_saf
+        use VMEC_vars, only: n_r
+        use X_vars, only: min_m_X, max_m_X, m_X, n_X
+        
+        ! local variables (also used in child functions)
+        integer :: m_X_for_function                                             ! used in q_fun to determine flux surface at which q = m/n
+        
+        ! local variables (not to be used in child functions)
+        integer :: id, jd, kd                                                   ! counters
+        real(dp), allocatable :: x_vars(:,:)                                    ! for plotting
+        real(dp), allocatable :: y_vars(:,:)                                    ! for plotting
+        real(dp) :: q_solution                                                  ! solution for q = m/n
+        real(dp) :: old_tol_NR                                                  ! to backup tol_NR
+        integer :: istat                                                        ! status
+        integer :: n_m_X                                                        ! number of poloidal modes m
+        
+        if (glob_rank.eq.0) then
+            ! initialize
+            n_m_X = max_m_X - min_m_X + 1
+            
+            ! backup tol_NR
+            old_tol_NR = tol_NR
+            
+            ! set  lower  tolerance  for  Newton-Rhapson  because  working  with
+            ! discrete data that is not perfectly continous
+            tol_NR = 5E-3_dp
+            
+            call writo('plotting safety factor q and resonant surfaces q = m/n')
+            call lvl_ud(1)
+            
+            call writo('calculating resonant surfaces q = m/n')
+            call lvl_ud(1)
+            
+            allocate(x_vars(n_r,n_m_X+1))
+            allocate(y_vars(n_r,n_m_X+1))
+            x_vars(:,1) = [((id-1.0_dp)/(n_r-1.0_dp), id = 1,n_r)]
+            !y_vars = minval(q_saf(:,0))
+            y_vars = 0
+            y_vars(:,1) = q_saf(:,0)
+            
+            kd = 2
+            do jd = 1, n_m_X
+                ! find place where q = m/n by solving q-m/n = 0, using
+                ! the functin q_fun with m_X_for_function = m_X(jd)
+                m_X_for_function = m_X(jd)
+                call lvl_ud(1)
+                istat = calc_zero_NR(q_solution,q_fun,q_dfun,1.0_dp)
+                call lvl_ud(-1)
+                ! intercept error
+                if (istat.ne.0) then
+                    call writo('Error intercepted: Couldn''t find resonating &
+                        &surface for poloidal mode '//trim(i2str(m_X(jd))))
+                else
+                    if (q_solution.gt.1.0_dp) then
+                        call writo('Poloidal mode '//trim(i2str(m_X(jd)))//&
+                            &' does not resonate in plasma')
+                        y_vars(n_r,kd) = maxval(q_saf(:,0))
+                    else
+                        call writo('Poloidal mode '//trim(i2str(m_X(jd)))//&
+                            &' resonates in plasma at normalized &
+                            &radius '//trim(r2strt(q_solution)))
+                        y_vars(n_r,kd) = m_X(jd)*1.0_dp/n_X
+                    end if
+                    x_vars(:,kd) = q_solution
+                    kd = kd + 1
+                end if
+            end do
+            
+            call lvl_ud(-1)
+            
+            call writo('Plotting results')
+            call print_GP_2D('safety factor q','',y_vars(:,1:kd-1),&
+                &x=x_vars(:,1:kd-1))
+            
+            call lvl_ud(-1)
+            
+            tol_NR = old_tol_NR
+        end if
+    contains
+        ! returns q-m/n, used to solve for q = m/n
+        real(dp) function q_fun(pt) result(res)
+            use utilities, only: calc_interp
+            
+            ! input / output
+            real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
+            
+            ! local variables
+            real(dp) :: varin(1,n_r,1,1)                                        ! so calc_interp can be used
+            real(dp) :: varout(1,1,1)                                           ! so calc_interp can be used
+            real(dp) :: pt_copy                                                 ! copy of pt to use with calc_interp
+            
+            ! initialize res
+            res = 0
+            
+            ! check whether to interpolate or extrapolate
+            if (pt.lt.0) then                                                   ! point requested lower than 0
+                ! extrapolate variable from 0
+                res = q_saf(1,0) - m_X_for_function*1.0_dp/n_X + &
+                    &q_saf(0,1) * (pt-0.0_dp)
+            else if (pt.gt.1) then                                              ! point requested higher than 1
+                ! extrapolate variable from 1
+                res = q_saf(n_r,0) - m_X_for_function*1.0_dp/n_X + &
+                    &q_saf(n_r,1) * (pt-1.0_dp)
+            else                                                                ! point requested between 0 and 1
+                ! interpolate using calc_interp
+                pt_copy = pt
+                
+                varin(1,:,1,1) = q_saf(:,0) - m_X_for_function*1.0_dp/n_X
+                istat = calc_interp(varin,varout,pt_copy)
+                
+                res = varout(1,1,1)
+            end if
+        end function q_fun
+        
+        ! returns d(q-m/n)/dr, used to solve for q = m/n
+        real(dp) function q_dfun(pt) result(res)
+            use utilities, only: calc_interp
+            
+            ! input / output
+            real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
+            
+            ! local variables
+            real(dp) :: varin(1,n_r,1,1)                                        ! so calc_interp can be used
+            real(dp) :: varout(1,1,1)                                           ! so calc_interp can be used
+            real(dp) :: pt_copy                                                 ! copy of pt to use with calc_interp
+            
+            ! initialize res
+            res = 0
+            
+            ! check whether to interpolate or extrapolate
+            if (pt.lt.0) then                                                   ! point requested lower than 0
+                ! extrapolate variable from 0
+                res = q_saf(1,1) + q_saf(0,2) * (pt-0.0_dp)
+            else if (pt.gt.1) then                                              ! point requested higher than 1
+                ! extrapolate variable from 1
+                res = q_saf(n_r,1) + q_saf(n_r,2) * (pt-1.0_dp)
+            else                                                                ! point requested between 0 and 1
+                ! interpolate using calc_interp
+                pt_copy = pt
+                
+                varin(1,:,1,1) = q_saf(:,1)
+                istat = calc_interp(varin,varout,pt_copy)
+                
+                res = varout(1,1,1)
+            end if
+        end function q_dfun
+    end subroutine resonance_plot
+        
     ! prepare the matrix elements by calculating KV and PV, which then will have
     ! to be integrated, with a complex exponential weighting function
     subroutine prepare_matrix_X
-        use X_vars, only: n_X, m_X
-        
         ! initialize the variables
         call writo('Initalizing variables...')
         call lvl_ud(1)
-        call init_X_ops(size(m_X))
+        call init_X_ops
         call lvl_ud(-1)
         
         ! calculate U and DU
         call writo('Calculating U and DU...')
         call lvl_ud(1)
-        call calc_U(n_X,m_X)
+        call calc_U
         call lvl_ud(-1)
         
         ! calculate extra equilibrium quantities
@@ -105,27 +271,24 @@ contains
         ! values of the normal coordinate
         call writo('Calculating PV0, PV1 and PV2...')
         call lvl_ud(1)
-        call calc_PV(n_X,m_X)
+        call calc_PV
         call lvl_ud(-1)
         
         ! Calculate KV0, KV1  and KV2 for all (k,m) pairs  and n_r (equilibrium)
         ! values of the normal coordinate
         call writo('Calculating KV0, KV1 and KV2...')
         call lvl_ud(1)
-        call calc_KV(size(m_X))
+        call calc_KV
         call lvl_ud(-1)
-    end subroutine
+    end subroutine prepare_matrix_X
     
     ! calculate ~PV_(k,m)^i at all n_r values (see [ADD REF] for details)
-    subroutine calc_PV(n_X,m_X)
+    subroutine calc_PV
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
         use eq_vars, only: n_par, q => q_saf_FD
         use VMEC_vars, only: n_r
-        use X_vars, only: DU_X_0, DU_X_1, sigma, extra1, extra2, extra3, PV0, PV1, PV2
-        
-        ! input / output
-        integer, intent(in) :: n_X                                              ! tor. mode nr n
-        integer, intent(in) :: m_X(:)                                           ! vector containing pol. mode nrs m
+        use X_vars, only: DU_X_0, DU_X_1, sigma, extra1, extra2, extra3, PV0, &
+            &PV1, PV2, n_X, m_X
         
         ! local variables
         integer :: n_m_X                                                        ! number of poloidal modes m
@@ -194,18 +357,17 @@ contains
     end subroutine
     
     ! calculate ~KV_(k,m)^i at all n_r values (see [ADD REF] for details)
-    subroutine calc_KV(n_m_X)
+    subroutine calc_KV
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
         use eq_vars, only: n_par
         use VMEC_vars, only: n_r
-        use X_vars, only: rho, U_X_0, U_X_1, KV0, KV1, KV2
+        use X_vars, only: rho, U_X_0, U_X_1, KV0, KV1, KV2, m_X
         
-        ! input / output
-        integer, intent(in) :: n_m_X                                            ! number of poloidal modes m
         
         ! local variables
         integer :: m, k                                                         ! counters
         real(dp), allocatable :: com_fac(:,:)                                   ! common factor |nabla psi|^2/(mu_0*J^2*B^2)
+        integer :: n_m_X                                                        ! number of poloidal modes m
         
         ! submatrices
         ! jacobian
@@ -214,6 +376,9 @@ contains
         real(dp), allocatable :: g33(:,:)                                       ! h^alpha,psi
         ! upper metric factors
         real(dp), allocatable :: h22(:,:)                                       ! h^alpha,psi
+        
+        ! initialize
+        n_m_X = size(m_X)
         
         ! set up submatrices
         ! jacobian
@@ -296,15 +461,11 @@ contains
     ! calculate  U_m^0, U_m^1  at n_r  values  of the  normal coordinate,  n_par
     ! values  of the  parallel  coordinate and  M values  of  the poloidal  mode
     ! number, with m = size(m_X)
-    subroutine calc_U(n_X,m_X)
+    subroutine calc_U
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
         use eq_vars, only: q => q_saf_FD, theta, n_par, p => pres_FD
         use VMEC_vars, only: n_r
-        use X_vars, only: U_X_0, U_X_1, DU_X_0, DU_X_1
-        
-        ! input / output
-        integer, intent(in) :: n_X                                              ! tor. mode nr n
-        integer, intent(in) :: m_X(:)                                           ! vector containing pol. mode nrs m
+        use X_vars, only: U_X_0, U_X_1, DU_X_0, DU_X_1, n_X, m_X
         
         ! local variables
         integer :: jd, kd                                                       ! counters

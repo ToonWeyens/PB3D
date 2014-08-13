@@ -26,6 +26,7 @@ contains
             &group_nr, max_alpha
         use eq_vars, only: calc_eqd_mesh
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
+        use X_vars, only: n_X, min_m_X, max_m_X
         
         character(*), parameter :: rout_name = 'run_rich_driver'
         
@@ -37,7 +38,12 @@ contains
         
         ! output concerning n_alpha
         call writo('The calculations will be done for '//&
-            &trim(i2str(n_alpha))//' values of alpha')
+            &trim(i2str(n_alpha))//' values of alpha with:')
+        call lvl_ud(1)
+        call writo('toroidal mode number n = '//trim(i2str(n_X)))
+        call writo('poloidal mode number m = '//trim(i2str(min_m_X))//'..'//&
+            &trim(i2str(max_m_X)))
+        call lvl_ud(-1)
         
         ! determine the magnetic field lines for which to run the calculations 
         ! (equidistant mesh)
@@ -52,8 +58,6 @@ contains
         ierr = split_MPI()
         CHCKERR('')
         call lvl_ud(-1)
-        
-        call lvl_ud(1)
         
         ! do the calculations for every  field line, where initially every group
         ! is assigned a field line. On completion of a job, the completing group
@@ -88,8 +92,6 @@ contains
                 exit field_lines
             end if
         end do field_lines
-        
-        call lvl_ud(-1)
         
         ! Calculations done
         
@@ -178,7 +180,7 @@ contains
     subroutine calc_n_r_X
         use X_vars, only: n_r_X
         
-        n_r_X = 50
+        n_r_X = 20
         call writo('TEMPORALLY SETTING n_r_X to '//trim(i2str(n_r_X))//'!!!')
     end subroutine
 end module driver_rich
