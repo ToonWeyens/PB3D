@@ -17,19 +17,31 @@ contains
     ! ¡¡¡ THIS SHOULD BE  CHANGED TO TAKE INTO ACCOUNT THAT  U_X AND DU_X ARE
     ! HERMITIAN SO ONLY  M*(M+1)/2 ELEMENTS ARE NEEDED INSTEAD  OF M^2. HOWEVER,
     ! TAKE INTO ACCOUNT AS WELL THE MPI STORAGE MATRIX FORMATS !!!
-    subroutine init_X_ops
+    integer function init_X_ops() result(ierr)
         use eq_vars, only: n_par
         use VMEC_vars, only: n_r
         use X_vars, only: U_X_0, U_X_1, DU_X_0, DU_X_1, sigma, extra1, extra2, &
             &extra3, PV0, PV1, PV2, KV0, KV1, KV2, min_m_X, max_m_X, m_X
         use num_vars, only: plot_q
         
+        character(*), parameter :: rout_name = 'init_X_ops'
+        
         ! local variables
         integer :: id                                                           ! counter
         integer :: n_m_X                                                        ! number of poloidal modes m
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        
+        ! initialize ierr
+        ierr = 0
         
         ! initialize
         n_m_X = max_m_X - min_m_X + 1
+        if (n_m_X.lt.1) then
+            ierr = 1
+            err_msg = 'max_m_X has to be larger or equal to min_m_X'
+            CHCKERR(err_msg)
+        end if
         
         ! setup m_X
         if (allocated(m_X)) deallocate(m_X)
@@ -92,7 +104,7 @@ contains
         ! KV2
         if (allocated(KV2)) deallocate(KV2)
         allocate(KV2(n_par,n_r,n_m_X,n_m_X))
-    end subroutine init_X_ops
+    end function init_X_ops
     
     ! plot q-profile with nq-m = 0 indicated if requested
     subroutine resonance_plot
@@ -248,11 +260,17 @@ contains
         
     ! prepare the matrix elements by calculating KV and PV, which then will have
     ! to be integrated, with a complex exponential weighting function
-    subroutine prepare_matrix_X
+    integer function prepare_matrix_X() result(ierr)
+        character(*), parameter :: rout_name = 'prepare_matrix_X'
+        
+        ! initialize ierr
+        ierr = 0
+        
         ! initialize the variables
         call writo('Initalizing variables...')
         call lvl_ud(1)
-        call init_X_ops
+        ierr = init_X_ops()
+        CHCKERR('')
         call lvl_ud(-1)
         
         ! calculate U and DU
@@ -280,7 +298,7 @@ contains
         call lvl_ud(1)
         call calc_KV
         call lvl_ud(-1)
-    end subroutine prepare_matrix_X
+    end function prepare_matrix_X
     
     ! calculate ~PV_(k,m)^i at all n_r values (see [ADD REF] for details)
     subroutine calc_PV
@@ -432,9 +450,9 @@ contains
     ! normal points,  making use of  PV0, PV1 and  PV2, interpolated in  the n_r
     ! (equilibrium) values
     integer function solve_EV_system() result(ierr)
-        use X_vars, only: n_r_X, m_X, n_X
+        use X_vars, only: n_r_X, m_X, n_X, X_vec
         use VMEC_vars, only: n_r
-        use num_vars, only: EV_style
+        use num_vars, only: EV_style, group_rank
         use str_ops, only: i2str
         use slepc_ops, only: solve_EV_system_slepc
         
@@ -450,6 +468,13 @@ contains
             case(1)                                                             ! slepc solver for EV problem
                 ierr = solve_EV_system_slepc(m_X,n_r_X,n_X,n_r-1._dp)
                 CHCKERR('')
+                ! TEMPORARY!!
+                write(*,*) 'plotting results'
+                if (group_rank.eq.0) then
+                    call print_GP_2D('norm of solution','',&
+                        &transpose(sqrt(realpart(X_vec(:,:,1))**2 + &
+                        &imagpart(X_vec(:,:,1))**2)))
+                end if
             case default
                 err_msg = 'No EV solver style associated with '//&
                     &trim(i2str(EV_style))

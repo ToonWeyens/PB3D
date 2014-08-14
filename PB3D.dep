@@ -46,6 +46,7 @@ slepc_ops.o : \
     str_ops.o \
     utilities.o \
     file_ops.o \
+    VMEC_vars.o \
 
 X_ops.o : \
     num_vars.o \

@@ -157,7 +157,8 @@ contains
             call writo('calculating magnitudes KV and PV at these &
                 &normal points')
             call lvl_ud(1)
-            call prepare_matrix_X
+            ierr = prepare_matrix_X()
+            CHCKERR('')
             call lvl_ud(-1)
             
             ! setup the matrices of the generalized EV system
@@ -180,7 +181,7 @@ contains
     subroutine calc_n_r_X
         use X_vars, only: n_r_X
         
-        n_r_X = 20
+        n_r_X = 10
         call writo('TEMPORALLY SETTING n_r_X to '//trim(i2str(n_r_X))//'!!!')
     end subroutine
 end module driver_rich

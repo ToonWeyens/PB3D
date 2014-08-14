@@ -34,7 +34,7 @@ module X_vars
     complex(dp), allocatable :: KV0(:,:,:,:)                                    ! ~KV^0 coefficient
     complex(dp), allocatable :: KV1(:,:,:,:)                                    ! ~KV^1 coefficient
     complex(dp), allocatable :: KV2(:,:,:,:)                                    ! ~KV^2 coefficient
-    complex(dp), allocatable :: X_vec(:,:)                                      ! Eigenvector solution
+    complex(dp), allocatable :: X_vec(:,:,:)                                    ! Eigenvector solution
     complex(dp), allocatable :: X_val(:)                                        ! EIgenvalue solution
     
 contains

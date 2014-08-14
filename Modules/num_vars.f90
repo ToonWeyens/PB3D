@@ -10,7 +10,8 @@ module num_vars
         &theta_var_along_B, max_deriv, mu_0, calc_mesh_style, iu, EV_style, &
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
         &glob_rank, glob_n_procs, group_rank, group_n_procs, group_nr, &
-        &n_groups,  output_name, next_job, next_job_win, plot_q
+        &n_groups,  output_name, next_job, next_job_win, plot_q, &
+        &n_sol_requested
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -23,6 +24,7 @@ module num_vars
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! will hold name of output file
     logical :: plot_q                                                           ! whether to plot the q-profile with nq-m = 0
+    integer :: n_sol_requested                                                  ! how many solutions requested
 
     ! MPI variables
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha

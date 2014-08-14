@@ -5,12 +5,14 @@
     min_par = 0
     max_par = 3.1415926535897932384626433832795028841971693993751058
     n_alpha = 1
+    min_r = 0.4
+    max_r = 1.0
     max_it_NR = 500
     max_it_r = 2
     theta_var_along_B = .true.
     n_procs_per_alpha = 2
     min_m_X = 180 
-    max_m_X = 186
+    max_m_X = 180
 /
 
 pi   = 3.1415926535897932384626433832795028841971693993751058

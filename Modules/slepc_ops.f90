@@ -18,8 +18,9 @@ contains
     ! described in [ADD REF] and solves them using the slepc suite
     
     integer function solve_EV_system_slepc(m_X,n_r_X,n_X,inv_step) result(ierr)
-        use X_vars, only: PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val
-        use num_vars, only: MPI_comm_groups, group_n_procs
+        use X_vars, only: PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, min_m_X, &
+            &max_m_X
+        use num_vars, only: MPI_comm_groups, group_n_procs, n_sol_requested
         use file_ops, only: opt_args
         
         character(*), parameter :: rout_name = 'solve_EV_system_slepc'
@@ -32,7 +33,7 @@ contains
         
         ! local variables
         ! petsc / MPI variables
-        PetscMPIInt :: rank, n_procs                                            ! rank and nr. of processors
+        PetscMPIInt :: Petsc_rank, n_procs                                      ! rank and nr. of processors
         EPS :: solver                                                           ! EV solver
         PetscInt :: n_it                                                        ! nr. of iterations
         PetscInt :: n_conv                                                      ! nr. of converged solutions
@@ -52,11 +53,16 @@ contains
         Mat :: B                                                                ! matrix B in EV problem A X = lambda B X
         
         ! solution
-        Vec :: vec_r, vec_i                                                     ! real and imag. part of solution EV vector
+        Vec :: vec_par                                                          ! solution EV parallel vector
+        Vec :: vec_seq                                                          ! solution EV sequential vector
         PetscReal :: val_r, val_i                                               ! real and imag. part of solution EV value
+        VecScatter :: scatter_ctx                                               ! context for scattering of solution vector to group master
+        PetscScalar, pointer :: vec_pointer(:)                                  ! pointer to the solution vectors
         
         ! other variables
-        PetscInt :: id                                                          ! counter
+        PetscInt :: id, jd, kd                                                  ! counters
+        PetscInt :: max_n_EV                                                    ! nr. of EV's saved, up to n_sol_requested
+        PetscInt :: vec_index                                                   ! vector index to export out of Petsc
         
         ! initialize slepc
         call writo('initialize slepc...')
@@ -74,7 +80,7 @@ contains
         
         call SlepcInitialize(PETSC_NULL_CHARACTER,ierr)                         ! initialize slepc
         CHCKERR('slepc failed to initialize')
-        call MPI_Comm_rank(PETSC_COMM_WORLD,rank,ierr)                          ! rank
+        call MPI_Comm_rank(PETSC_COMM_WORLD,Petsc_rank,ierr)                    ! rank
         CHCKERR('MPI rank failed')
         call MPI_Comm_size(PETSC_COMM_WORLD,n_procs,ierr)                       ! number of processors
         CHCKERR('MPI size failed')
@@ -106,12 +112,14 @@ contains
         n_m_X = size(m_X)                                                       ! number of poloidal modes (= size of one block)
         n_r_X_loc = n_r_X/n_procs                                               ! number of radial points on this processor
         if (mod(n_r_X,n_procs).gt.0) then                                       ! check if there is a remainder
-            if (mod(n_r_X,n_procs).gt.rank) n_r_X_loc = n_r_X_loc + 1           ! add a point to the first ranks if there is a remainder
+            if (mod(n_r_X,n_procs).gt.Petsc_rank) n_r_X_loc = n_r_X_loc + 1           ! add a point to the first ranks if there is a remainder
         end if
         
         ! set up the matrix
         call writo('set up matrices...')
+        
         call lvl_ud(1)
+        
         ! create a  matrix A and B  with the appropriate number  of preallocated
         ! entries
         call MatCreateAIJ(PETSC_COMM_WORLD,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,&    ! Hermitian matrix as a first approximation
@@ -130,18 +138,19 @@ contains
         ierr = fill_mat(n_X,n_r_X,n_m_X,inv_step,KV0,KV1,KV2,B)
         CHCKERR('')
         call writo('Matrix B set up')
+        
         call lvl_ud(-1)
         
-        !! visualize the matrices
+        ! visualize the matrices
         !call PetscOptionsSetValue('-draw_pause','-1',ierr)
-        !write(*,*) 'A ='
-        !call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
+        write(*,*) 'A ='
+        call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
         !call MatView(A,PETSC_VIEWER_DRAW_WORLD,ierr)
-        !read(*,*)
-        !write(*,*) 'B ='
-        !call MatView(B,PETSC_VIEWER_STDOUT_WORLD,ierr)
+        read(*,*)
+        write(*,*) 'B ='
+        call MatView(B,PETSC_VIEWER_STDOUT_WORLD,ierr)
         !call MatView(B,PETSC_VIEWER_DRAW_WORLD,ierr)
-        !read(*,*)
+        read(*,*)
         
         ! solve EV problem
         call writo('solve the EV problem...')
@@ -159,7 +168,9 @@ contains
         
         ! output
         call writo('summarize solution...')
+        
         call lvl_ud(1)
+        
         call EPSGetType(solver,EPS_type,ierr)                                   ! EPS solver type
         CHCKERR('EPSGetType failed')
         call EPSGetTolerances(solver,tol,max_it);                               ! tolerance and max. nr. of iterations
@@ -176,34 +187,92 @@ contains
         call writo(trim(i2str(n_conv))//' converged solutions &
             &after '//trim(i2str(n_it))//' iterations, with '//&
             &trim(i2str(n_ev))//' requested solution')
+        
         call lvl_ud(-1)
         
         ! store results
-        call writo('storing results...')
+        ! set maximum nr of solutions to be saved
+        if (n_sol_requested.gt.n_conv) then
+            max_n_EV = n_conv
+        else
+            max_n_EV = n_sol_requested
+        end if
+        
+        ! allocate X_vec and X_val if group master if first time
+        if (Petsc_rank.eq.0) then
+            if (allocated(X_vec)) deallocate(X_vec)
+            allocate(X_vec(min_m_X:max_m_X,1:n_r_X,1:max_n_EV))
+            if (allocated(X_val)) deallocate(X_val)
+            allocate(X_val(1:max_n_EV))
+        end if
+        
+        ! print info
+        call writo('storing results with '//trim(i2str(max_n_EV))//' highest &
+            &Eigenvalues...')
+        
         call lvl_ud(1)
-        call MatGetVecs(A,vec_r,vec_i,ierr)
+        
+        call MatGetVecs(A,vec_par,PETSC_NULL_OBJECT,ierr)                       ! get compatible parallel vector to matrix A
         CHCKERR('MatGetVecs failed')
-        do id = 0,n_conv-1
-            call EPSGetEigenpair(solver,id,val_r,val_i,vec_r,vec_i,ierr)
+        
+        ! store them
+        do id = 1,max_n_EV
+            ! get EV solution
+            call EPSGetEigenpair(solver,id-1,val_r,val_i,vec_par,&
+                &PETSC_NULL_OBJECT,ierr)                                        ! get solution EV vector and value (starts at index 0)
             CHCKERR('EPSGetEigenpair failed')
-            call EPSComputeRelativeError(solver,id,error,ierr)
+            call EPSComputeRelativeError(solver,id-1,error,ierr)                ! get error (starts at index 0)
             CHCKERR('EPSComputeRelativeError failed')
-            call writo('for solution '//trim(i2str(id+1))//&
-            &'/'//trim(i2str(n_conv))//':')
+            call writo('for solution '//trim(i2str(id))//&
+                &'/'//trim(i2str(n_conv))//':')
+            
             call lvl_ud(1)
+            
+            ! print output
             call writo('eigenvalue: '//trim(r2str(val_r))//' + '//&
                 &trim(r2str(val_i))//' i')
             call writo('with rel. error: '//trim(r2str(error)))
+            !call writo('Eigenvector = ')
+            !call VecView(vec_par,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            !CHCKERR('Cannot view vector')
+            
             call lvl_ud(-1)
+            
+            ! get solution vector to group master
+            call VecScatterCreateToZero(vec_par,scatter_ctx,vec_seq,ierr)       ! create scatter to group master
+            err_msg = 'Failed to create scatter to all context'
+            CHCKERR(err_msg)
+            call VecScatterBegin(scatter_ctx,vec_par,vec_seq,INSERT_VALUES,&
+                &SCATTER_FORWARD,ierr)                                          ! begin scatter to group master
+            err_msg = 'Failed to begin scatter to group master'
+            CHCKERR(err_msg)
+            call VecScatterEnd(scatter_ctx,vec_par,vec_seq,INSERT_VALUES,&
+                &SCATTER_FORWARD,ierr)                                          ! end scatter to group master
+            err_msg = 'Failed to end scatter to group master'
+            CHCKERR(err_msg)
+            call VecScatterDestroy(scatter_ctx,ierr)                            ! destroy scatter to group master
+            err_msg = 'Failed to destroy scatter to all context'
+            CHCKERR(err_msg)
+            
+            ! export solution vector to X_vec
+            call VecGetArrayF90(vec_seq,vec_pointer,ierr)
+            err_msg = 'Failed to get pointer to solution vector'
+            CHCKERR(err_msg)
+            if (Petsc_rank.eq.0) then
+                do kd = 1,n_r_X
+                    do jd = min_m_X,max_m_X
+                        vec_index = (kd-1) * n_m_X + (jd - min_m_X) + 1
+                        X_vec(jd,kd,id) = vec_pointer(vec_index)
+                    end do
+                end do
+                X_val(id) = val_r + val_i * PETSC_i
+            end if
         end do
-        !!!! NOW GATHER THE SOLUTION VECTOR IN ONE... YOU DON'T NEED THE IMAGINARY PART!!!
-        !!!! CONTINUE HERE !!!
-        call VecDestroy(vec_r,ierr)
-        CHCKERR('Failed to destroy vec_r')
-        call VecDestroy(vec_i,ierr)
-        CHCKERR('Failed to destroy vec_i')
-        call lvl_ud(-1)
         
+        call VecDestroy(vec_par,ierr)                                           ! destroy compatible vector
+        CHCKERR('Failed to destroy vec_par')
+        
+        call lvl_ud(-1)
         
         ! destroy and finalize
         call writo('finalize petsc...')
@@ -213,7 +282,6 @@ contains
         CHCKERR('Failed to destroy matrix A')
         call MatDestroy(B,ierr)
         CHCKERR('Failed to destroy matrix B')
-        
         call SlepcFinalize(ierr)
         CHCKERR('Failed to Finalize slepc')
     end function solve_EV_system_slepc

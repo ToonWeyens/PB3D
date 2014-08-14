@@ -14,6 +14,9 @@ module eq_ops
 contains
     ! calculate the equilibrium quantities on a grid determined by straight field
     ! lines.
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!! MAKE USE OF PARALLELISM HERE AS WELL !!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     integer function calc_eq(alpha) result(ierr)
         use eq_vars, only: calc_mesh, calc_flux_q, &
             &check_mesh, init_eq, calc_RZL, q_saf, q_saf_FD, flux_p, flux_p_FD,&
@@ -38,6 +41,7 @@ contains
         ierr = 0
         
         call writo('Start setting up equilibrium quantities')
+        write(*,*) 'USE PARALLELISM !!!'
         ! 1--------------------------------------------------------------------
         ! 1--------------------------------------------------------------------
         call lvl_ud(1)
