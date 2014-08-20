@@ -31,7 +31,6 @@ contains
         integer :: n_m_X                                                        ! number of poloidal modes m
         character(len=max_str_ln) :: err_msg                                    ! error message
         
-        
         ! initialize ierr
         ierr = 0
         
@@ -52,6 +51,8 @@ contains
         else
             call writo('resonance plot not requested')
         end if
+        ierr = check_m_and_n()
+        CHCKERR('')
         
         ! U_X_0
         if (allocated(U_X_0)) deallocate(U_X_0)
@@ -104,6 +105,39 @@ contains
         ! KV2
         if (allocated(KV2)) deallocate(KV2)
         allocate(KV2(n_par,n_r,n_m_X,n_m_X))
+    contains
+        ! checks whether nq-m is << n is satisfied in some of the plasma
+        integer function check_m_and_n() result(ierr)
+            use eq_vars, only: q_saf_FD
+            use X_vars, only: n_X
+            
+            character(*), parameter :: rout_name = 'check_m_and_n'
+            
+            ! local variables
+            integer :: id                                                       ! counter
+            real(dp) :: tol = 0.1                                               ! tolerance to be out of range of q values
+            real(dp) :: min_q, max_q                                            ! min. and max. values of q
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set min_q and max_q
+            min_q = minval(q_saf_FD(:,0))
+            max_q = maxval(q_saf_FD(:,0))
+            
+            ! for every  poloidal mode number m whether m/n  is inside the range
+            ! of q values
+            do id = 1, n_m_X
+                if (m_X(id)*1.0/n_X .lt.(1-tol)*min_q .or. &
+                    &m_X(id)*1.0/n_X .gt.(1+tol)*max_q) then
+                    call writo('for m_X = '//trim(i2str(m_X(id)))//', the ratio &
+                        &|nq-m|/n is never << 1')
+                    ierr = 1
+                    err_msg = 'Choose m and n so that (n*q-m)/n << 1'
+                    CHCKERR(err_msg)
+                end if
+            end do
+        end function check_m_and_n
     end function init_X_ops
     
     ! plot q-profile with nq-m = 0 indicated if requested
@@ -206,11 +240,11 @@ contains
             
             ! check whether to interpolate or extrapolate
             if (pt.lt.0) then                                                   ! point requested lower than 0
-                ! extrapolate variable from 0
-                res = q_saf(1,0) - m_X_for_function*1.0_dp/n_X + &
-                    &q_saf(0,1) * (pt-0.0_dp)
-            else if (pt.gt.1) then                                              ! point requested higher than 1
                 ! extrapolate variable from 1
+                res = q_saf(1,0) - m_X_for_function*1.0_dp/n_X + &
+                    &q_saf(1,1) * (pt-0.0_dp)
+            else if (pt.gt.1) then                                              ! point requested higher than 1
+                ! extrapolate variable from n_r
                 res = q_saf(n_r,0) - m_X_for_function*1.0_dp/n_X + &
                     &q_saf(n_r,1) * (pt-1.0_dp)
             else                                                                ! point requested between 0 and 1
@@ -218,7 +252,7 @@ contains
                 pt_copy = pt
                 
                 varin(1,:,1,1) = q_saf(:,0) - m_X_for_function*1.0_dp/n_X
-                istat = calc_interp(varin,varout,pt_copy)
+                istat = calc_interp(varin,[1,n_r],varout,pt_copy)
                 
                 res = varout(1,1,1)
             end if
@@ -241,17 +275,17 @@ contains
             
             ! check whether to interpolate or extrapolate
             if (pt.lt.0) then                                                   ! point requested lower than 0
-                ! extrapolate variable from 0
-                res = q_saf(1,1) + q_saf(0,2) * (pt-0.0_dp)
-            else if (pt.gt.1) then                                              ! point requested higher than 1
                 ! extrapolate variable from 1
+                res = q_saf(1,1) + q_saf(1,2) * (pt-0.0_dp)
+            else if (pt.gt.1) then                                              ! point requested higher than 1
+                ! extrapolate variable from n_r
                 res = q_saf(n_r,1) + q_saf(n_r,2) * (pt-1.0_dp)
             else                                                                ! point requested between 0 and 1
                 ! interpolate using calc_interp
                 pt_copy = pt
                 
                 varin(1,:,1,1) = q_saf(:,1)
-                istat = calc_interp(varin,varout,pt_copy)
+                istat = calc_interp(varin,[1,n_r],varout,pt_copy)
                 
                 res = varout(1,1,1)
             end if
@@ -334,7 +368,7 @@ contains
         
         ! set up common factor for PVi
         allocate(com_fac(n_par,n_r))
-        com_fac = h22/(mu_0*J*g33)
+        com_fac = h22/(mu_0*g33)
         
         ! calculate PVi
         do m = 1,n_m_X
@@ -370,6 +404,12 @@ contains
                 ! calculate PV1
                 PV1(:,:,k,m) = com_fac * DU_X_1(:,:,m) * &
                     &(conjg(DU_X_0(:,:,k)) - extra1 - extra2)
+                
+                !write(*,*) 'PV1'
+                !call print_GP_2D('RE PV2(:,:,'//trim(i2str(k))//','//&
+                    !&trim(i2str(m))//')','',realpart(transpose(PV1(:,:,k,m))))
+                !call print_GP_2D('IM PV2(:,:,'//trim(i2str(k))//','//&
+                    !&trim(i2str(m))//')','',imagpart(transpose(PV1(:,:,k,m))))
             end do
         end do
     end subroutine
@@ -450,8 +490,7 @@ contains
     ! normal points,  making use of  PV0, PV1 and  PV2, interpolated in  the n_r
     ! (equilibrium) values
     integer function solve_EV_system() result(ierr)
-        use X_vars, only: n_r_X, m_X, n_X, X_vec
-        use VMEC_vars, only: n_r
+        use X_vars, only: n_r_X, X_vec, min_m_X, max_m_X, min_r, max_r
         use num_vars, only: EV_style, group_rank
         use str_ops, only: i2str
         use slepc_ops, only: solve_EV_system_slepc
@@ -460,20 +499,57 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), allocatable :: x_plot(:,:)                                    ! x_axis of plot
+        integer :: id, jd, kd                                                   ! counters
+        real(dp), allocatable :: max_of_modes(:)                                ! maximum of each mode
+        real(dp) :: current_magn                                                ! maximum of each mode
+        real(dp), allocatable :: max_of_modes_r(:)                              ! flux surface where max of mode occurs
         
         ! initialize ierr
         ierr = 0
         
         select case (EV_style)
             case(1)                                                             ! slepc solver for EV problem
-                ierr = solve_EV_system_slepc(m_X,n_r_X,n_X,n_r-1._dp)
+                ierr = solve_EV_system_slepc()
                 CHCKERR('')
-                ! TEMPORARY!!
+                ! TEMPORARY!!!!
                 write(*,*) 'plotting results'
                 if (group_rank.eq.0) then
+                    ! initialize max. of modes
+                    allocate(max_of_modes(min_m_X:max_m_X))
+                    allocate(max_of_modes_r(min_m_X:max_m_X))
+                    max_of_modes = 0.0_dp
+                    max_of_modes_r = 0.0_dp
+                            
+                    ! loop over all normal points of all modes in perturbation grid
+                    do kd = 1,n_r_X
+                        do jd = min_m_X,max_m_X
+                            ! check for maximum of mode jd and normal point jd
+                            current_magn = sqrt(realpart(X_vec(jd,kd,1))**2&
+                                &+imagpart(X_vec(jd,kd,1))**2)
+                            if (current_magn.gt.max_of_modes(jd)) then
+                                max_of_modes(jd) = current_magn
+                                max_of_modes_r(jd) = min_r + (max_r-min_r) &
+                                    &* (kd-1.0)/(n_r_X-1.0)
+                            end if
+                        end do
+                    end do
+                    !call print_GP_2D('maximum of the modes','',max_of_modes)
+                    !call print_GP_2D('place of maximum of the modes','',&
+                        !&max_of_modes_r)
+                    
+                    deallocate(max_of_modes)
+                    deallocate(max_of_modes_r)
+                    
+                    ! set up x-axis
+                    if (allocated(x_plot)) deallocate(x_plot)
+                    allocate(x_plot(1:n_r_X,min_m_X:max_m_X))
+                    do id = 1,n_r_X
+                        x_plot(id,:) = min_r + (id-1.0)/(n_r_X-1)*(max_r-min_r)
+                    end do
                     call print_GP_2D('norm of solution','',&
                         &transpose(sqrt(realpart(X_vec(:,:,1))**2 + &
-                        &imagpart(X_vec(:,:,1))**2)))
+                        &imagpart(X_vec(:,:,1))**2)),x=x_plot)
                 end if
             case default
                 err_msg = 'No EV solver style associated with '//&
@@ -536,8 +612,8 @@ contains
             do kd = 1,n_r
                 n_frac = (n_X*q(kd,0)-m_X(jd))/n_X
                 U_X_1(:,kd,jd) = 1 + n_frac * g13(:,kd)/g33(:,kd)
-                DU_X_1(:,kd,jd) = n_frac * D3g13(:,kd)/g33(:,kd) - &
-                    &D3g33(:,kd)*g13(:,kd)/g33(:,kd)**2 + &
+                DU_X_1(:,kd,jd) = n_frac * (D3g13(:,kd)/g33(:,kd) - &
+                    &D3g33(:,kd)*g13(:,kd)/g33(:,kd)**2) + &
                     &iu*n_frac*n_X*U_X_1(:,kd,jd)
                 U_X_0(:,kd,jd) = -(h12(:,kd)/h22(:,kd) + q(kd,1)*theta(:,kd)) +&
                     &iu/(n_X*g33(:,kd)) * (g13(:,kd)*q(kd,1) + &
@@ -551,8 +627,20 @@ contains
                     &iu/(n_X*g33(:,kd)) * (D3g13(:,kd)*q(kd,1) + &
                     &2*D3J(:,kd)*J(:,kd)*mu_0*p(kd,1) + iu*n_frac*n_X * &
                     &( D3g13(:,kd)*q(kd,1)*theta(:,kd) + g13(:,kd)*q(kd,1) &
-                    &- D3g23(:,kd) )) * iu*n_frac*n_X*U_X_0(:,kd,jd)
+                    &- D3g23(:,kd) )) + iu*n_frac*n_X*U_X_0(:,kd,jd)
             end do
+            
+            !write(*,*) 'U1'
+            !call print_GP_2D('RE U1(:,:,'//trim(i2str(jd))//')','',&
+                !&realpart(transpose(U_X_1(:,:,jd))))
+            !call print_GP_2D('IM U1(:,:,'//trim(i2str(jd))//')','',&
+                !&imagpart(transpose(U_X_1(:,:,jd))))
+            
+            !write(*,*) 'DU1'
+            !call print_GP_2D('RE DU1(:,:,'//trim(i2str(jd))//')','',&
+                !&realpart(transpose(DU_X_1(:,:,jd))))
+            !call print_GP_2D('IM DU1(:,:,'//trim(i2str(jd))//')','',&
+                !&imagpart(transpose(DU_X_1(:,:,jd))))
         end do
     end subroutine
     
@@ -561,9 +649,9 @@ contains
     !   extra2 = mu_0*sigma*J*B^2/h^psi,psi
     !   extra3 = 2*p'*kn
     ! with
-    !   shear S = - d Theta^alpha/d_theta
-    !   parallel current sigma = B . nabla x B / B^2
-    !   normal curvature kn = nabla psi / h^psi,psi * nabla (p + B^2/2)
+    !   shear S = - d Theta^alpha/d_theta 1 / J
+    !   parallel current mu0 sigma = B . nabla x B / B^2
+    !   normal curvature kn = nabla psi / h^psi,psi * nabla (mu0 p + B^2/2)
     subroutine calc_extra
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
         use eq_vars, only: n_par, p => pres_FD
@@ -629,7 +717,7 @@ contains
         extra1 = -D3h12/h22 + D3h22*h12/h22**2
         
         ! calculate extra2
-        extra2 = g33/h22 * mu_0*sigma
+        extra2 = g33/h22 * mu_0*(sigma*J)
         
         ! calculate extra3
         do kd = 1,n_r

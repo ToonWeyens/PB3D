@@ -48,6 +48,7 @@ program PB3D
     integer :: ierr                                                             ! error
     
     !include "visitfortransimV2interface.inc"                                    ! For visit simulation support
+    write(*,*) 'FREE ALL ALLOCATED MEMORY ONCE UNNEEDED !!!!!!'
     
     !-------------------------------------------------------
     !   Initialize some routines

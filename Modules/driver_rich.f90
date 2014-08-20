@@ -181,7 +181,7 @@ contains
     subroutine calc_n_r_X
         use X_vars, only: n_r_X
         
-        n_r_X = 10
+        n_r_X = 1000
         call writo('TEMPORALLY SETTING n_r_X to '//trim(i2str(n_r_X))//'!!!')
     end subroutine
 end module driver_rich

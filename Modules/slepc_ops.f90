@@ -4,9 +4,10 @@
 module slepc_ops
 #include <PB3D_macros.h>
 #include <finclude/slepcepsdef.h>
+!#include <finclude/petscsys.h>
     use slepceps
     use num_vars, only: iu, mu_0, dp, max_str_ln
-    use output_ops, only: lvl_ud, writo, print_ar_2
+    use output_ops, only: lvl_ud, writo, print_ar_2, print_GP_2D
     use str_ops, only: r2strt, r2str, i2str
 
     implicit none
@@ -17,24 +18,19 @@ contains
     ! This subroutine sets up  the matrices A ad B of  the generalized EV system
     ! described in [ADD REF] and solves them using the slepc suite
     
-    integer function solve_EV_system_slepc(m_X,n_r_X,n_X,inv_step) result(ierr)
+    integer function solve_EV_system_slepc() result(ierr)
         use X_vars, only: PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, min_m_X, &
-            &max_m_X
+            &max_m_X, m_X, n_r_X, n_X, max_r, min_r
         use num_vars, only: MPI_comm_groups, group_n_procs, n_sol_requested
         use file_ops, only: opt_args
         
         character(*), parameter :: rout_name = 'solve_EV_system_slepc'
         
-        ! input / output
-        PetscInt, intent(in) :: n_r_X                                           ! nr. of normal points for perturbation quantities
-        PetscInt, intent(in) :: m_X(:)                                          ! number of poloidal modes m
-        PetscInt, intent(in) :: n_X                                             ! toroidal mode number
-        PetscReal, intent(in) :: inv_step                                       ! inverse step size
-        
         ! local variables
         ! petsc / MPI variables
         PetscMPIInt :: Petsc_rank, n_procs                                      ! rank and nr. of processors
         EPS :: solver                                                           ! EV solver
+        ST :: solver_ST                                                         ! Spectral Transformation type of solver
         PetscInt :: n_it                                                        ! nr. of iterations
         PetscInt :: n_conv                                                      ! nr. of converged solutions
         PetscInt :: n_ev, ncv, mpd                                              ! nr. of requested EV, max. dim of subspace and for projected problem
@@ -55,7 +51,7 @@ contains
         ! solution
         Vec :: vec_par                                                          ! solution EV parallel vector
         Vec :: vec_seq                                                          ! solution EV sequential vector
-        PetscReal :: val_r, val_i                                               ! real and imag. part of solution EV value
+        PetscScalar :: val                                                      ! solution EV value
         VecScatter :: scatter_ctx                                               ! context for scattering of solution vector to group master
         PetscScalar, pointer :: vec_pointer(:)                                  ! pointer to the solution vectors
         
@@ -63,10 +59,12 @@ contains
         PetscInt :: id, jd, kd                                                  ! counters
         PetscInt :: max_n_EV                                                    ! nr. of EV's saved, up to n_sol_requested
         PetscInt :: vec_index                                                   ! vector index to export out of Petsc
+        PetscReal :: step_size                                                  ! step size of perturbation grid
         
         ! initialize slepc
         call writo('initialize slepc...')
         call lvl_ud(1)
+        
         ! set PETSC_COMM_WORLD
         PETSC_COMM_WORLD = MPI_Comm_groups
         if (group_n_procs.gt.n_r_X) then                                        ! too many processors
@@ -112,8 +110,9 @@ contains
         n_m_X = size(m_X)                                                       ! number of poloidal modes (= size of one block)
         n_r_X_loc = n_r_X/n_procs                                               ! number of radial points on this processor
         if (mod(n_r_X,n_procs).gt.0) then                                       ! check if there is a remainder
-            if (mod(n_r_X,n_procs).gt.Petsc_rank) n_r_X_loc = n_r_X_loc + 1           ! add a point to the first ranks if there is a remainder
+            if (mod(n_r_X,n_procs).gt.Petsc_rank) n_r_X_loc = n_r_X_loc + 1     ! add a point to the first ranks if there is a remainder
         end if
+        step_size = (max_r-min_r)/(n_r_X - 1.0)
         
         ! set up the matrix
         call writo('set up matrices...')
@@ -122,47 +121,77 @@ contains
         
         ! create a  matrix A and B  with the appropriate number  of preallocated
         ! entries
+        !call MatCreate(PETSC_COMM_WORLD,A,ierr)
+        !call MatSetSizes(A,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,n_r_X*n_m_X,n_r_X*n_m_X,ierr)
+        !! PREALLOCATE !!!!!!!!!!!
+        !call MatSetFromOptions(A,ierr)
+        !call MatSetUp(A,ierr)
+        
+        !call MatCreate(PETSC_COMM_WORLD,B,ierr)
+        !call MatSetSizes(B,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,n_r_X*n_m_X,n_r_X*n_m_X,ierr)
+        !! PREALLOCATE !!!!!!!!!!!
+        !call MatSetFromOptions(B,ierr)
+        !call MatSetUp(B,ierr)
+        
         call MatCreateAIJ(PETSC_COMM_WORLD,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,&    ! Hermitian matrix as a first approximation
-            &n_r_X*n_m_X,n_r_X*n_m_X,2*n_m_X,PETSC_NULL_INTEGER,&
-            &2*n_m_X,PETSC_NULL_INTEGER,A,ierr)
+            &n_r_X*n_m_X,n_r_X*n_m_X,3*n_m_X,PETSC_NULL_INTEGER,&
+            &3*n_m_X,PETSC_NULL_INTEGER,A,ierr)
         CHCKERR('MatCreateAIJ failed for matrix A')
         call MatCreateAIJ(PETSC_COMM_WORLD,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,&    ! Hermitian matrix as a first approximation
-            &n_r_X*n_m_X,n_r_X*n_m_X,2*n_m_X,PETSC_NULL_INTEGER,&
-            &2*n_m_X,PETSC_NULL_INTEGER,B,ierr)
+            &n_r_X*n_m_X,n_r_X*n_m_X,3*n_m_X,PETSC_NULL_INTEGER,&
+            &3*n_m_X,PETSC_NULL_INTEGER,B,ierr)
         CHCKERR('MatCreateAIJ failed for matrix B')
         
         ! fill the elements of A and B
-        ierr = fill_mat(n_X,n_r_X,n_m_X,inv_step,PV0,PV1,PV2,A)
+        ierr = fill_mat(n_X,n_r_X,n_m_X,step_size,PV0,PV1,PV2,A)
         CHCKERR('')
         call writo('Matrix A set up')
-        ierr = fill_mat(n_X,n_r_X,n_m_X,inv_step,KV0,KV1,KV2,B)
+        ierr = fill_mat(n_X,n_r_X,n_m_X,step_size,KV0,KV1,KV2,B)
         CHCKERR('')
         call writo('Matrix B set up')
         
         call lvl_ud(-1)
         
-        ! visualize the matrices
-        !call PetscOptionsSetValue('-draw_pause','-1',ierr)
-        write(*,*) 'A ='
-        call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
-        !call MatView(A,PETSC_VIEWER_DRAW_WORLD,ierr)
-        read(*,*)
-        write(*,*) 'B ='
-        call MatView(B,PETSC_VIEWER_STDOUT_WORLD,ierr)
-        !call MatView(B,PETSC_VIEWER_DRAW_WORLD,ierr)
-        read(*,*)
+        !! visualize the matrices
+        !!call PetscOptionsSetValue('-draw_pause','-1',ierr)
+        !write(*,*) 'A ='
+        !call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
+        !!call MatView(A,PETSC_VIEWER_DRAW_WORLD,ierr)
+        !write(*,*) 'B ='
+        !call MatView(B,PETSC_VIEWER_STDOUT_WORLD,ierr)
+        !!call MatView(B,PETSC_VIEWER_DRAW_WORLD,ierr)
         
         ! solve EV problem
         call writo('solve the EV problem...')
         !call PetscOptionsSetValue('-eps_view','-1',ierr)
         call EPSCreate(PETSC_COMM_WORLD,solver,ierr)
         CHCKERR('EPSCreate failed')
+        
         call EPSSetOperators(solver,A,B,ierr)                                   ! generalized EV problem A X = lambda B X
-        CHCKERR('EPSetOperators failed')
         !call EPSSetOperators(solver,A,PETSC_NULL_OBJECT,ierr)                   ! normal EV problem A X = lambda X
-        !call EPSSetProblemType(solver,EPS_HEP,ierr)
+        CHCKERR('EPSetOperators failed')
+        
+        !call EPSSetProblemType(solver,EPS_GHEP,ierr)
+        !CHCKERR('Set problem type failed')
+        
+        !call EPSSetType(solver,EPSLAPACK,ierr)
+        !CHCKERR('Failed to set type to LAPACK')
+        
+        call EPSSetWhichEigenpairs(solver,EPS_LARGEST_REAL,ierr)
+        CHCKERR('Failed to set which eigenpairs')
+        
+        !call PetscObjectTypeCompareAny(solver,flg,EPSGD,EPSJD,EPSBLOPEX,"",ierr)
+        !CHCKERR('Failed to get solver type')
+        !if (.not.flg) then
+            !call EPSGetST(solver,solver_ST,ierr)
+            !CHCKERR('Failed to get EPS ST type')
+            !call STSetType(solver_ST,STSINVERT,ierr)
+            !CHCKERR('Failed to set EPS ST type')
+        !end if
+        
         call EPSSetFromOptions(solver,ierr)
         CHCKERR('EPSetFromOptions failed')
+        
         call EPSSolve(solver,ierr) 
         CHCKERR('EPS couldn''t find a solution')
         
@@ -207,7 +236,7 @@ contains
         end if
         
         ! print info
-        call writo('storing results with '//trim(i2str(max_n_EV))//' highest &
+        call writo('storing results for '//trim(i2str(max_n_EV))//' highest &
             &Eigenvalues...')
         
         call lvl_ud(1)
@@ -218,7 +247,7 @@ contains
         ! store them
         do id = 1,max_n_EV
             ! get EV solution
-            call EPSGetEigenpair(solver,id-1,val_r,val_i,vec_par,&
+            call EPSGetEigenpair(solver,id-1,val,PETSC_NULL_OBJECT,vec_par,&
                 &PETSC_NULL_OBJECT,ierr)                                        ! get solution EV vector and value (starts at index 0)
             CHCKERR('EPSGetEigenpair failed')
             call EPSComputeRelativeError(solver,id-1,error,ierr)                ! get error (starts at index 0)
@@ -229,9 +258,11 @@ contains
             call lvl_ud(1)
             
             ! print output
-            call writo('eigenvalue: '//trim(r2str(val_r))//' + '//&
-                &trim(r2str(val_i))//' i')
+            call writo('eigenvalue: '//trim(r2strt(realpart(val)))//' + '//&
+                &trim(r2strt(imagpart(val)))//' i')
             call writo('with rel. error: '//trim(r2str(error)))
+            !call EPSPrintSolution(solver,PETSC_NULL_OBJECT,ierr)
+            
             !call writo('Eigenvector = ')
             !call VecView(vec_par,PETSC_VIEWER_STDOUT_WORLD,ierr)
             !CHCKERR('Cannot view vector')
@@ -259,13 +290,14 @@ contains
             err_msg = 'Failed to get pointer to solution vector'
             CHCKERR(err_msg)
             if (Petsc_rank.eq.0) then
+                ! loop over all normal points in perturbation grid
                 do kd = 1,n_r_X
                     do jd = min_m_X,max_m_X
                         vec_index = (kd-1) * n_m_X + (jd - min_m_X) + 1
                         X_vec(jd,kd,id) = vec_pointer(vec_index)
                     end do
                 end do
-                X_val(id) = val_r + val_i * PETSC_i
+                X_val(id) = val
             end if
         end do
         
@@ -289,8 +321,17 @@ contains
     ! fills a matrix according  to [ADD REF]. Is used for both  the matrix A and
     ! B, corresponding  to the plasma  potential energy and  the (perpendicular)
     ! kinetic energy
+    ! The procedure is as follows:
+    !   1. tables are set up for (k,m) pairs, in the (par,r) equilibrium grid
+    !   2. at the first normal point  in the perturbation grid, belonging to the
+    !   current process, the tables are interpolated as a start
+    !   3. at  every normal  point in  the perturbation  grid, belonging  to the
+    !   current process,  the tables are interpolated  at the next point  in the
+    !   corresponding  perturbation  grid.  This  information, as  well  as  the
+    !   interpolated value  of the previous  point allow for the  calculation of
+    !   every quantity
     ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING, SO IT IS TREATED AS HERMITIAN !!!
-    integer function fill_mat(n_X,n_r_X,n_m_X,inv_step,V0,V1,V2,mat) result(ierr)
+    integer function fill_mat(n_X,n_r_X,n_m_X,step_size,V0,V1,V2,mat) result(ierr)
         use metric_ops, only: jac_F_FD
         use X_vars, only: min_r, max_r
         use VMEC_vars, only: n_r
@@ -299,23 +340,34 @@ contains
         
         character(*), parameter :: rout_name = 'fill_mat'
         
+        real(dp), allocatable :: x_plot(:,:)                                    ! x_axis of plot
+        
         ! input / output
         PetscInt, intent(in) :: n_X                                             ! toroidal mode number
         PetscInt, intent(in) :: n_r_X                                           ! nr. of normal points for perturbation quantities
         PetscInt, intent(in) :: n_m_X                                           ! nr. of poloidal modes
         PetscScalar, intent(in) :: V0(:,:,:,:), V1(:,:,:,:), V2(:,:,:,:)        ! either PVi or KVi
         Mat, intent(inout) :: mat                                               ! either A or B
-        PetscReal, intent(in) :: inv_step                                       ! inverse step size
+        PetscReal, intent(in) :: step_size                                      ! step size
         
         ! local variables
         PetscScalar, allocatable :: loc_block(:,:)                              ! block matrix for 1 normal point
         PetscScalar, allocatable :: intgrnd(:,:,:,:)                            ! constituents of loc_bloc, not interpolated
+        PetscScalar, allocatable :: term0(:,:,:,:)                              ! holds e^i(k-m) J V0 for (k,m) functions of (par,r)
+        PetscScalar, allocatable :: term1(:,:,:,:)                              ! holds e^i(k-m) J V1 for (k,m) functions of (par,r)
+        PetscScalar, allocatable :: term2(:,:,:,:)                              ! holds e^i(k-m) J V2 for (k,m) functions of (par,r)
+        PetscScalar, allocatable :: term0_int(:,:)                              ! interpolated and integrated version of term0
+        PetscScalar, allocatable :: term1_int(:,:)                              ! interpolated and integrated version of term1
+        PetscScalar, allocatable :: term2_int(:,:)                              ! interpolated and integrated version of term2
+        PetscScalar, allocatable :: term0_int_next(:,:)                         ! interpolated and integrated version of term0, at next point
+        PetscScalar, allocatable :: term1_int_next(:,:)                         ! interpolated and integrated version of term1, at next point
+        PetscScalar, allocatable :: term2_int_next(:,:)                         ! interpolated and integrated version of term2, at next point
         PetscScalar, allocatable :: intgrnd_int(:,:,:)                          ! constituents of loc_bloc, interpolated
         PetscScalar, allocatable :: exp_theta(:,:,:,:)                          ! exp(i (k-m) theta)
         PetscReal, allocatable :: theta_int(:,:,:)                              ! theta at interpolated position
         PetscScalar, allocatable :: integral(:)                                 ! the integral of the integrand
         PetscInt, allocatable :: loc_k(:), loc_m(:)                             ! the locations at which to add the blocks to the matrices
-        PetscReal :: norm_pt, norm_pt_5, norm_pt_1                              ! current normal point (0...1) and pt+1/2, pt+1
+        PetscReal :: norm_pt                                                    ! current normal point (min_r...max_r)
         PetscInt :: id, jd, m, k                                                ! counters
         PetscInt :: n_start, n_end                                              ! start row and end row
         PetscInt :: r_X_start, r_X_end                                          ! start block and end block (= n_start/n_m_X and equiv.)
@@ -324,18 +376,60 @@ contains
         ierr = 0
         
         allocate(intgrnd(n_par,n_r,n_m_X,n_m_X))
+        allocate(term0(n_par,n_r,n_m_X,n_m_X))
+        allocate(term1(n_par,n_r,n_m_X,n_m_X))
+        allocate(term2(n_par,n_r,n_m_X,n_m_X))
+        allocate(term0_int(n_m_X,n_m_X))
+        allocate(term1_int(n_m_X,n_m_X))
+        allocate(term2_int(n_m_X,n_m_X))
+        allocate(term0_int_next(n_m_X,n_m_X))
+        allocate(term1_int_next(n_m_X,n_m_X))
+        allocate(term2_int_next(n_m_X,n_m_X))
         allocate(intgrnd_int(n_par,n_m_X,n_m_X))
         allocate(loc_block(n_m_X,n_m_X))
         allocate(theta_int(n_par,1,1))                                          ! dimension 3 to be able to use the routine from utilities
         allocate(integral(n_par))
+        allocate(loc_k(n_m_X))
+        allocate(loc_m(n_m_X))
         allocate(exp_theta(n_par,n_r,n_m_X,n_m_X))
+        
+        ! set exp_theta for multiple use
         do m = 1,n_m_X
             do k = 1,n_m_X
                 exp_theta(:,:,k,m) = exp(PETSC_i*(k-m)*theta)
             end do
         end do
-        allocate(loc_k(n_m_X))
-        allocate(loc_m(n_m_X))
+        
+        ! set term1, term2 and term3
+        do m = 1,n_m_X
+            do k = 1,n_m_X
+                term0(:,:,k,m) = exp_theta(:,:,k,m) * jac_F_FD(:,:,0,0,0) * &
+                    &V0(:,:,k,m)
+                term1(:,:,k,m) = exp_theta(:,:,k,m) * jac_F_FD(:,:,0,0,0) * &
+                    &V1(:,:,k,m)
+                term2(:,:,k,m) = exp_theta(:,:,k,m) * jac_F_FD(:,:,0,0,0) * &
+                    &V2(:,:,k,m)
+            end do
+        end do
+        
+        if (allocated(x_plot)) deallocate(x_plot)
+        allocate(x_plot(1:n_r,1:n_par))
+        do id = 1,n_r
+            x_plot(id,:) = (id-1.0)/(n_r-1)
+        end do
+        
+        !write(*,*) 'term0 = '
+        !call print_GP_2D('RE term0','',realpart(transpose(term0(:,:,1,1))),x=x_plot)
+        !call print_GP_2D('IM term0','',imagpart(transpose(term0(:,:,1,1))),x=x_plot)
+        !write(*,*) 'term1 = '
+        !call print_GP_2D('RE term1','',realpart(transpose(term1(:,:,1,1))),x=x_plot)
+        !call print_GP_2D('IM term1','',imagpart(transpose(term1(:,:,1,1))),x=x_plot)
+        !write(*,*) 'term2 = '
+        !call print_GP_2D('RE term2','',realpart(transpose(term2(:,:,1,1))),x=x_plot)
+        !call print_GP_2D('IM term2','',imagpart(transpose(term2(:,:,1,1))),x=x_plot)
+        
+        ! deallocate exp_theta
+        deallocate(exp_theta)
         
         ! get ownership of the rows
         call MatGetOwnershipRange(mat,n_start,n_end,ierr)                       ! starting and ending row n_start and n_end
@@ -343,57 +437,30 @@ contains
         r_X_start = n_start/n_m_X
         r_X_end = n_end/n_m_X
         
+        ! get first interpolated point, corresponding to r_X_start
+        norm_pt   = min_r + (max_r-min_r) * r_X_start/(n_r_X-1.0)
+        ierr = interp_and_int(term0,norm_pt,term0_int_next)
+        CHCKERR('')
+        ierr = interp_and_int(term1,norm_pt,term1_int_next)
+        CHCKERR('')
+        ierr = interp_and_int(term2,norm_pt,term2_int_next)
+        CHCKERR('')
+        
         ! iterate over all rows of this rank
         do id = r_X_start, r_X_end-1
-            ! calculate the  normal points at which  a row is to  be added. This
-            ! should go from min_r to max_r,  making use of n_r_X points (so the
-            ! global block  row number id goes  from 0 to n_r_X-1).  This yields
-            ! the equation:
-            !   norm_pt - min_r         id
-            !   ---------------  =   --------- ,
-            !    max_r - min_r       n_r_X - 1
-            ! which gives a formula for norm_pt
-            norm_pt   = min_r + (max_r-min_r) * (id-0.0)/(n_r_X-1.0)            ! id
-            norm_pt_5 = min_r + (max_r-min_r) * (id+0.5)/(n_r_X-1.0)            ! id + 0.5
-            norm_pt_1 = min_r + (max_r-min_r) * (id+1.0)/(n_r_X-1.0)            ! id + 1
+            ! fill termi_int with termi_int_next of previous step
+            term0_int = term0_int_next
+            term1_int = term1_int_next
+            term2_int = term2_int_next
             
             ! ---------------!
             ! BLOCKS (id,id) !
             ! ---------------!
             loc_block = 0
             ! part ~ V0(i)
-            do m = 1,n_m_X
-                do k = 1,n_m_X
-                    intgrnd(:,:,k,m) = exp_theta(:,:,k,m) * &
-                        &jac_F_FD(:,:,0,0,0) * V0(:,:,k,m)                      ! integrand, not integrated
-                    ierr = calc_interp(intgrnd,intgrnd_int,norm_pt)             ! integrand, integrated
-                    CHCKERR('')
-                    ierr = calc_interp(reshape(theta,[n_par,n_r,1,1]),&
-                        &theta_int,norm_pt)                                     ! theta array at interpolated position
-                    CHCKERR('')
-                    ierr = calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
-                        &integral)                                              ! integral of entire function
-                    CHCKERR('')
-                    loc_block(k,m) = loc_block(k,m) + integral(n_par)           ! add total integral (at pos n_par)
-                end do
-            end do
+            loc_block = loc_block + term0_int
             ! part ~ V2(i)
-            do m = 1,n_m_X
-                do k = 1,n_m_X
-                    intgrnd(:,:,k,m) = 2 * exp_theta(:,:,k,m) * &
-                        &(inv_step/n_X)**2 * jac_F_FD(:,:,0,0,0) * &
-                        &V2(:,:,k,m)                                            ! integrand, not integrated
-                    ierr = calc_interp(intgrnd,intgrnd_int,norm_pt)             ! integrand, integrated
-                    CHCKERR('')
-                    ierr = calc_interp(reshape(theta,[n_par,n_r,1,1]),&
-                        &theta_int,norm_pt)                                     ! theta array at interpolated position
-                    CHCKERR('')
-                    ierr = calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
-                        &integral)                                              ! integral of entire function
-                    CHCKERR('')
-                    loc_block(k,m) = loc_block(k,m) + integral(n_par)           ! add total integral (at pos n_par)
-                end do
-            end do
+            loc_block = loc_block + term2_int * 2.0/(step_size*n_X)**2
             
             ! add block to the matrix A
             loc_k = [(jd, jd = 0,n_m_X-1)] + id*n_m_X
@@ -402,62 +469,31 @@ contains
                 &INSERT_VALUES,ierr)
             CHCKERR('Couldn''t add values to matrix')
             
-            ! -----------------!
-            ! BLOCKS (id,id+1) !
-            ! -----------------!
+            ! -----------------------------------------!
+            ! BLOCKS (id,id+1) and hermitian conjugate !
+            ! -----------------------------------------!
             if (id.ne.n_r_X-1) then                                             ! don't do the right block for last normal point
+                ! calculate next norm_pt by adding  the step size 1/(n_r_X+1) to
+                ! the previous norm_pt
+                norm_pt = norm_pt + step_size
+                
+                ! calculate next termi_int_next
+                ierr = interp_and_int(term0,norm_pt,term0_int_next)
+                CHCKERR('')
+                ierr = interp_and_int(term1,norm_pt,term1_int_next)
+                CHCKERR('')
+                ierr = interp_and_int(term2,norm_pt,term2_int_next)
+                CHCKERR('')
+                
                 loc_block = 0
                 ! part ~ V1*(i+1)
-                do m = 1,n_m_X
-                    do k = 1,n_m_X
-                        intgrnd(:,:,k,m) = exp_theta(:,:,k,m) * &
-                            &PETSC_i*inv_step/(2*n_X) * &
-                            &jac_F_FD(:,:,0,0,0) * conjg(V1(:,:,m,k))           ! integrand, not integrated
-                        ierr = calc_interp(intgrnd,intgrnd_int,norm_pt_1)       ! integrand, integrated
-                        CHCKERR('')
-                        ierr = calc_interp(reshape(theta,[n_par,n_r,1,1]),&
-                            &theta_int,norm_pt_1)                               ! theta array at interpolated position
-                        CHCKERR('')
-                        ierr = calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
-                            &integral)                                          ! integral of entire function
-                        CHCKERR('')
-                        loc_block(k,m) = loc_block(k,m) + integral(n_par)       ! add total integral (at pos n_par)
-                    end do
-                end do
+                loc_block = loc_block + conjg(transpose(term1_int_next)) * &
+                    &PETSC_i/(2*step_size*n_X)
                 ! part ~ V1(i)
-                do m = 1,n_m_X
-                    do k = 1,n_m_X
-                        intgrnd(:,:,k,m) = exp_theta(:,:,k,m) * &
-                            &PETSC_i*inv_step/(2*n_X) * &
-                            &jac_F_FD(:,:,0,0,0) * V1(:,:,k,m)                  ! integrand, not integrated
-                        ierr = calc_interp(intgrnd,intgrnd_int,norm_pt)         ! integrand, integrated
-                        CHCKERR('')
-                        ierr = calc_interp(reshape(theta,[n_par,n_r,1,1]),&
-                            &theta_int,norm_pt)                                 ! theta array at interpolated position
-                        CHCKERR('')
-                        ierr = calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
-                            &integral)                                          ! integral of entire function
-                        CHCKERR('')
-                        loc_block(k,m) = loc_block(k,m) + integral(n_par)       ! add total integral (at pos n_par)
-                    end do
-                end do
+                loc_block = loc_block + term1_int * PETSC_i/(2*step_size*n_X)
                 ! part ~ V2(i+1/2)
-                do m = 1,n_m_X
-                    do k = 1,n_m_X
-                        intgrnd(:,:,k,m) = - exp_theta(:,:,k,m) * &
-                            &(inv_step/n_X)**2 * jac_F_FD(:,:,0,0,0) * &
-                            &V2(:,:,k,m)                                        ! integrand, not integrated
-                        ierr = calc_interp(intgrnd,intgrnd_int,norm_pt_5)       ! integrand, integrated
-                        CHCKERR('')
-                        ierr = calc_interp(reshape(theta,[n_par,n_r,1,1]),&
-                            &theta_int,norm_pt_5)                               ! theta array at interpolated position
-                        CHCKERR('')
-                        ierr = calc_int(intgrnd_int(:,k,m),theta_int(:,1,1),&
-                            &integral)                                          ! integral of entire function
-                        CHCKERR('')
-                        loc_block(k,m) = loc_block(k,m) + integral(n_par)       ! add total integral (at pos n_par)
-                    end do
-                end do
+                loc_block = loc_block - (term2_int+term2_int_next)/2 * &
+                    &1.0/(step_size*n_X)**2
                 
                 ! add block to the matrix A
                 loc_k = [(jd, jd = 0,n_m_X-1)] + id*n_m_X
@@ -465,6 +501,11 @@ contains
                 call MatSetValues(mat,n_m_X,loc_k,n_m_X,loc_m,loc_block,&
                     &INSERT_VALUES,ierr)
                 CHCKERR('Couldn''t add values to matrix')
+                
+                ! add Hermitian conjugate
+                loc_block = conjg(transpose(loc_block))
+                call MatSetValues(mat,n_m_X,loc_m,n_m_X,loc_k,loc_block,&
+                    &INSERT_VALUES,ierr)
             end if
         end do
         
@@ -474,7 +515,51 @@ contains
         call MatAssemblyEnd(mat,MAT_FINAL_ASSEMBLY,ierr)
         CHCKERR('Coulnd''t end assembly of matrix')
         
-        call MatSetOption(mat,MAT_HERMITIAN,PETSC_TRUE,ierr)                    ! Hermitian to a first approximation
-        CHCKERR('Coulnd''t set option Hermitian')
+        !call MatSetOption(mat,MAT_HERMITIAN,PETSC_TRUE,ierr)                    ! Hermitian to a first approximation
+        !CHCKERR('Coulnd''t set option Hermitian')
+    contains
+        ! interpolates  at normal point  norm_pt and integrates in  the parallel
+        ! direction
+        integer function interp_and_int(term,norm_pt,term_int) result(ierr)
+            use utilities, only: calc_interp, calc_int
+            
+            character(*), parameter :: rout_name = 'interp_and_int'
+            
+            ! input / output
+            PetscScalar, intent(in) :: term(n_par,n_r,n_m_X,n_m_X)              ! input pairs of (k,m) in equilibrium table (par,r)
+            PetscReal, intent(in) :: norm_pt                                    ! point at which to interpolate
+            PetscScalar, intent(inout) :: term_int(n_m_X,n_m_X)                 ! output pairs of (k,m), interpolated and integrated
+            
+            ! local variables
+            PetscScalar :: term_interp(n_par,n_m_X,n_m_X)                       ! term at inteprolated position
+            PetscScalar :: term_int_full(n_par,n_m_X,n_m_X)                     ! term, interpolated and integrated but not yet evaluated
+            PetscReal, allocatable :: theta_interp(:,:,:)                       ! theta at interpolated position
+            PetscInt :: k, m                                                    ! counters
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! interpolate term at norm_pt
+            ierr = calc_interp(term,[1,n_r],term_interp,norm_pt)
+            CHCKERR('')
+            
+            ! interpolate theta at norm_pt
+            allocate(theta_interp(n_par,1,1))                                   ! dimension 3 to be able to use the routine from utilities
+            ierr = calc_interp(reshape(theta,[n_par,n_r,1,1]),[1,n_r],&
+                &theta_interp,norm_pt)
+            CHCKERR('')
+            
+            ! integrate term over theta for all pairs (k,m)
+            do m = 1,n_m_X
+                do k = 1,n_m_X
+                    ierr = calc_int(term_interp(:,k,m),theta_interp(:,1,1),&
+                        &term_int_full(:,k,m))
+                    CHCKERR('')
+                end do
+            end do
+            
+            ! evaluate integral at last point
+            term_int = term_int_full(n_par,:,:)
+        end function interp_and_int
     end function fill_mat
 end module

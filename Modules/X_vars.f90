@@ -47,7 +47,6 @@ contains
         call writo('calc_rho NOT YET IMPLEMENTED!!!')
         
         ! allocate rho
-        if (allocated(rho)) deallocate(rho)
         allocate(rho(n_par,n_r))
         
         ! TEMPORAL REPLACEMENT !!!

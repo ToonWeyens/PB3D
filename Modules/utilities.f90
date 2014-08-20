@@ -1000,84 +1000,40 @@ contains
         end select
     end function
     
-    ! simple linear interpolation of matrix varin at point pt where pt = 0..1 is
-    ! calculated in matrix varout
-    integer function calc_interp_real(varin,varout,pt) result(ierr)
+    ! Simple linear interpolation  of matrix varin, tabulated at  ptin, at point
+    ! ptout where ptout = 0..1 is calculated in matrix varout:
+    !   ptout - 0       pt_arr - ptin(1)
+    !   ---------  =   ----------------- ,
+    !     1 - 0        ptin(2) - ptin(1)
+    ! where pt_arr  is the index in  the array corresponding to  ptout, which is
+    ! then  rounded above  and  below to  yield the  indices  ind_lo and  ind_hi
+    ! between which to interpolate
+    ! The interpolation between ind_lo and ind_hi is done linearly:
+    !   varout = varin(ind_lo) + (pt_arr-ind_lo) * (varin(ind_hi)-varin(ind_lo))
+    ! because ind_hi - ind_lo = 1
+    ! note: this routine is also correct if ind_hi = ind_lo (for the last point)
+    integer function calc_interp_real(varin,ptin,varout,ptout) result(ierr)
         character(*), parameter :: rout_name = 'calc_interp_real'
         
         ! input / output
         real(dp), intent(in) :: varin(:,:,:,:)                                  ! input variable, not interpolated
+        integer, intent(in) :: ptin(2)                                          ! start and end points at which variable is tabulated
         real(dp), intent(inout) :: varout(:,:,:)                                ! output variable, interpolated
-        real(dp), intent(inout) :: pt                                           ! point at which to interpolate (0...1)
+        real(dp), intent(in) :: ptout                                           ! point at which to interpolate (0...1)
         
         ! local variables
+        real(dp) :: ptout_loc                                                   ! local copy of ptout
         integer :: ind_lo, ind_hi                                               ! lower and upper index
-        integer :: n_pt                                                         ! nr. of points
-        real(dp) :: frac                                                        ! fraction between lower and upper index (0..1)
-        real(dp) :: pt_conv                                                     ! converted pt, referring to array size instead of (0...1)
-        real(dp) :: margin = 1E-8_dp                                            ! margin for the comparisons
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! tests
-        if (size(varin,1).ne.size(varout,1) .or. size(varin,3).ne.&
-            &size(varout,2) .or. size(varin,4).ne.size(varout,3)) then
-            err_msg = 'The sizes of varin and varout have to match!'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        if (pt.lt.0) then
-            if (pt.lt.0-margin) then
-                err_msg = 'pt has to lie within 0..1, yet it is equal &
-                    &to '//trim(r2str(pt))
-                ierr = 1
-                CHCKERR(err_msg)
-            else
-                pt = 0.0_dp
-            end if
-        end if
-        if (pt.gt.1) then
-            if (pt.gt.1+margin) then
-                err_msg = 'pt has to lie within 0..1, yet it is equal &
-                    &to '//trim(r2str(pt))
-                ierr = 1
-                CHCKERR(err_msg)
-            else
-                pt = 1.0_dp
-            end if
-        end if
-        
-        ! find interpolation points
-        n_pt = size(varin,2)
-        pt_conv = 1+(n_pt-1)*pt
-        ind_lo = floor(pt_conv)
-        ind_hi = ceiling(pt_conv)
-        frac = pt_conv - ind_lo                                                 ! because ind_hi - ind_lo = 1
-        
-        ! interpolate
-        varout = varin(:,ind_lo,:,:) + frac * varin(:,ind_hi,:,:)
-    end function calc_interp_real
-    integer function calc_interp_complex(varin,varout,pt) result(ierr)
-        character(*), parameter :: rout_name = 'calc_interp_complex'
-        
-        ! input / output
-        complex(dp), intent(in) :: varin(:,:,:,:)                               ! input variable, not interpolated
-        complex(dp), intent(inout) :: varout(:,:,:)                             ! output variable, interpolated
-        real(dp), intent(inout) :: pt                                           ! point at which to interpolate (0...1)
-        
-        ! local variables
-        integer :: ind_lo, ind_hi                                               ! lower and upper index
-        integer :: n_pt                                                         ! nr. of points
-        complex(dp) :: frac                                                     ! fraction between lower and upper index (0..1)
-        real(dp) :: pt_conv                                                     ! converted pt, referring to array size instead of (0...1)
+        real(dp) :: pt_arr                                                      ! point in array referring to ptout
         real(dp) :: margin = 1E-4_dp                                            ! margin for the comparisons
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
+        ! set local copy of ptout
+        ptout_loc = ptout
+        
         ! tests
         if (size(varin,1).ne.size(varout,1) .or. size(varin,3).ne.&
             &size(varout,2) .or. size(varin,4).ne.size(varout,3)) then
@@ -1085,35 +1041,93 @@ contains
             ierr = 1
             CHCKERR(err_msg)
         end if
-        if (pt.lt.0) then
-            if (pt.lt.0-margin) then
-                err_msg = 'pt has to lie within 0..1, yet it is equal &
-                    &to '//trim(r2str(pt))
+        if (ptout_loc.lt.0) then
+            if (ptout_loc.lt.0-margin) then
+                err_msg = 'ptout has to lie within 0..1, yet it is equal &
+                    &to '//trim(r2str(ptout))
                 ierr = 1
                 CHCKERR(err_msg)
             else
-                pt = 0.0_dp
+                ptout_loc = 0.0_dp
             end if
         end if
-        if (pt.gt.1) then
-            if (pt.gt.1+margin) then
-                err_msg = 'pt has to lie within 0..1, yet it is equal &
-                    &to '//trim(r2str(pt))//'...'
+        if (ptout_loc.gt.1) then
+            if (ptout_loc.gt.1+margin) then
+                err_msg = 'ptout has to lie within 0..1, yet it is equal &
+                    &to '//trim(r2str(ptout))//'...'
                 ierr = 1
                 CHCKERR(err_msg)
             else
-                pt = 1.0_dp
+                ptout_loc = 1.0_dp
             end if
         end if
         
         ! find interpolation points
-        n_pt = size(varin,2)
-        pt_conv = 1+(n_pt-1)*pt
-        ind_lo = floor(pt_conv)
-        ind_hi = ceiling(pt_conv)
-        frac = pt_conv - ind_lo                                                 ! because ind_hi - ind_lo = 1
+        pt_arr = ptin(1) +(ptin(2)-ptin(1))*ptout_loc                           ! corresponding array index, not rounded
+        ind_lo = floor(pt_arr)                                                  ! lower bound
+        ind_hi = ceiling(pt_arr)                                                ! upper bound
         
         ! interpolate
-        varout = varin(:,ind_lo,:,:) + frac * varin(:,ind_hi,:,:)
+        varout = varin(:,ind_lo,:,:) + (pt_arr-ind_lo) * &
+            &(varin(:,ind_hi,:,:)-varin(:,ind_lo,:,:))
+    end function calc_interp_real
+    integer function calc_interp_complex(varin,ptin,varout,ptout) result(ierr)
+        character(*), parameter :: rout_name = 'calc_interp_complex'
+        
+        ! input / output
+        complex(dp), intent(in) :: varin(:,:,:,:)                               ! input variable, not interpolated
+        integer, intent(in) :: ptin(2)                                          ! start and end points at which variable is tabulated
+        complex(dp), intent(inout) :: varout(:,:,:)                             ! output variable, interpolated
+        real(dp), intent(in) :: ptout                                           ! point at which to interpolate (0...1)
+        
+        ! local variables
+        real(dp) :: ptout_loc                                                   ! local copy of ptout
+        integer :: ind_lo, ind_hi                                               ! lower and upper index
+        real(dp) :: pt_arr                                                      ! point in array referring to ptout
+        real(dp) :: margin = 1E-4_dp                                            ! margin for the comparisons
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local copy of ptout
+        ptout_loc = ptout
+        
+        ! tests
+        if (size(varin,1).ne.size(varout,1) .or. size(varin,3).ne.&
+            &size(varout,2) .or. size(varin,4).ne.size(varout,3)) then
+            err_msg = 'The sizes of varin and varout have to match!'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        if (ptout_loc.lt.0) then
+            if (ptout_loc.lt.0-margin) then
+                err_msg = 'ptout has to lie within 0..1, yet it is equal &
+                    &to '//trim(r2str(ptout))
+                ierr = 1
+                CHCKERR(err_msg)
+            else
+                ptout_loc = 0.0_dp
+            end if
+        end if
+        if (ptout_loc.gt.1) then
+            if (ptout_loc.gt.1+margin) then
+                err_msg = 'ptout has to lie within 0..1, yet it is equal &
+                    &to '//trim(r2str(ptout))//'...'
+                ierr = 1
+                CHCKERR(err_msg)
+            else
+                ptout_loc = 1.0_dp
+            end if
+        end if
+        
+        ! find interpolation points
+        pt_arr = ptin(1) +(ptin(2)-ptin(1))*ptout_loc                           ! corresponding array index, not rounded
+        ind_lo = floor(pt_arr)                                                  ! lower bound
+        ind_hi = ceiling(pt_arr)                                                ! upper bound
+        
+        ! interpolate
+        varout = varin(:,ind_lo,:,:) + (pt_arr-ind_lo) * &
+            &(varin(:,ind_hi,:,:)-varin(:,ind_lo,:,:))
     end function calc_interp_complex
 end module utilities

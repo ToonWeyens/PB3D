@@ -7,8 +7,8 @@ module output_ops
     use num_vars, only: dp, max_str_ln
     implicit none
     private
-    public init_output_ops, lvl_ud, writo, print_GP_2D, print_GP_3D, print_ar_1, &
-        &print_ar_2, draw_GP, print_err_msg, &
+    public init_output_ops, lvl_ud, writo, print_GP_2D, print_GP_3D, &
+        &print_ar_1, print_ar_2, draw_GP, print_err_msg, &
         &lvl, lvl_sep, format_out
 
     ! global variables

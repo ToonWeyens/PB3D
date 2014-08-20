@@ -3512,9 +3512,9 @@ contains
             call lvl_ud(1)
             
             point = 0.6_dp
-            ierr = calc_interp(varin_real,varout_real,point)
+            ierr = calc_interp(varin_real,[1,10],varout_real,point)
             CHCKERR('')
-            ierr = calc_interp(varin_complex,varout_complex,point)
+            ierr = calc_interp(varin_complex,[1,10],varout_complex,point)
             CHCKERR('')
             
             ! printing results

@@ -58,7 +58,7 @@ COMPILE = $(COMP_DIR) $(COMP_INC) $(PETSC_FC_INCLUDES) $(SLEPC_INCLUDE) $(COMP_F
 #   Link specifications
 ##############################################################################
 # link flags
-LINK_FLAGS = -fPIC
+LINK_FLAGS = -fPIC -pg
 
 # libraries
 LINK_LIB = $(HOME_BIN)/libstell.a -lgfortran -lnetcdff -lnetcdf -llapack -lblas
