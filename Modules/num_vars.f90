@@ -20,7 +20,7 @@ module num_vars
     integer, parameter :: n_seq_0 = 10                                          ! start of index of file numbers for opening
     integer, parameter :: max_args = 10                                         ! maximum number of input arguments
     integer, parameter :: max_opts = 8                                          ! maximum number of options in input arguments
-    integer, parameter, dimension(3) :: max_deriv = [4,4,4]                     ! highest derivatives that are tabulated for VMEC amplitudes R, Z, L in theta,zeta,r)
+    integer, parameter, dimension(3) :: max_deriv = [2,2,2]                     ! highest derivatives that are tabulated for VMEC amplitudes R, Z, L in theta,zeta,r)
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! will hold name of output file
     logical :: plot_q                                                           ! whether to plot the q-profile with nq-m = 0

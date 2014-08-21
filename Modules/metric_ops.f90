@@ -7,14 +7,14 @@ module metric_ops
     use num_vars, only: dp, max_deriv, max_str_ln
     use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
     use str_ops, only: r2str, i2str
-    use VMEC_vars, only: n_r
+    use eq_vars, only: n_r
     use utilities, only: check_deriv
     
     implicit none
     private
     public calc_T_VC, calc_g_C, calc_jac_C, calc_g_V, T_VC, calc_jac_V, &
         &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_F, &
-        &calc_f_deriv, &
+        &calc_f_deriv, dealloc_metric_vars, dealloc_metric_vars_final, &
         &g_V, jac_F, h_F, g_F, g_C, T_VF, T_FV, jac_V, det_T_VF, det_T_FV, &
         &g_F_FD, h_F_FD, jac_F_FD
 
@@ -74,85 +74,68 @@ module metric_ops
 contains
     ! initialize metric variables
     subroutine init_metric
-        use VMEC_vars, only: n_r
-        use eq_vars, only: n_par
+        use eq_vars, only: n_par, n_r
         
         ! g_C
-        if (allocated(g_C)) deallocate(g_C)
         allocate(g_C(n_par,n_r,3,3,0:max_deriv(1),0:max_deriv(2),&
             &0:max_deriv(3))); g_C = 0.0_dp
         
         ! g_V
-        if (allocated(g_V)) deallocate(g_V)
         allocate(g_V(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! g_F
-        if (allocated(g_F)) deallocate(g_F)
         allocate(g_F(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! h_F
-        if (allocated(h_F)) deallocate(h_F)
         allocate(h_F(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! g_F_FD
-        if (allocated(g_F_FD)) deallocate(g_F_FD)
         allocate(g_F_FD(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! h_F_FD
-        if (allocated(h_F_FD)) deallocate(h_F_FD)
         allocate(h_F_FD(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! T_VC
-        if (allocated(T_VC)) deallocate(T_VC)
         allocate(T_VC(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1)); T_VC = 0.0_dp
         
         ! T_VF
-        if (allocated(T_VF)) deallocate(T_VF)
         allocate(T_VF(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1)); T_VC = 0.0_dp
         
         ! T_FV
-        if (allocated(T_FV)) deallocate(T_FV)
         allocate(T_FV(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1)); T_VC = 0.0_dp
         
         ! det_T_VC
-        if (allocated(det_T_VC)) deallocate(det_T_VC)
         allocate(det_T_VC(n_par,n_r,0:max_deriv(1),0:max_deriv(2),&
             &0:max_deriv(3)))
         
         ! det_T_VF
-        if (allocated(det_T_VF)) deallocate(det_T_VF)
         allocate(det_T_VF(n_par,n_r,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! det_T_FV
-        if (allocated(det_T_FV)) deallocate(det_T_FV)
         allocate(det_T_FV(n_par,n_r,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! jac_C
-        if (allocated(jac_C)) deallocate(jac_C)
         allocate(jac_C(n_par,n_r,0:max_deriv(1),0:max_deriv(2),0:max_deriv(3)))
         
         ! jac_V
-        if (allocated(jac_V)) deallocate(jac_V)
         allocate(jac_V(n_par,n_r,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! jac_F
-        if (allocated(jac_F)) deallocate(jac_F)
         allocate(jac_F(n_par,n_r,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! jac_F_FD
-        if (allocated(jac_F_FD)) deallocate(jac_F_FD)
         allocate(jac_F_FD(n_par,n_r,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
     end subroutine
@@ -290,8 +273,7 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_g(g_A,T_BA,g_B,deriv,max_deriv) result(ierr)
-        use eq_vars, only: n_par
-        use VMEC_vars, only: n_r
+        use eq_vars, only: n_par, n_r
         
         character(*), parameter :: rout_name = 'calc_g'
         
@@ -575,9 +557,8 @@ contains
     ! coordinate system
     integer function calc_T_VF_ind(deriv) result(ierr)
         use num_vars, only: pi
-        use eq_vars, only: VMEC_L, q_saf, n_par, theta, flux_p
+        use eq_vars, only: VMEC_L, q_saf, n_par, theta, flux_p, n_r
         use utilities, only: arr_mult
-        use VMEC_vars, only: n_r
         
         character(*), parameter :: rout_name = 'calc_T_VF_ind'
         
@@ -674,8 +655,7 @@ contains
     !       already. If not, the results will be incorrect!
     integer function calc_inv_met_ind(X,Y,deriv) result(ierr)                   ! matrix version
         use utilities, only: calc_inv
-        use VMEC_vars, only: n_r
-        use eq_vars, only: n_par
+        use eq_vars, only: n_par, n_r
         
         character(*), parameter :: rout_name = 'calc_inv_met_ind'
         
@@ -748,8 +728,8 @@ contains
         end if
     end function calc_inv_met_ind
     integer function calc_inv_met_ind_0D(X,Y,deriv) result(ierr)                ! scalar version
-        use VMEC_vars, only: n_r
-        use eq_vars, only: n_par
+        use eq_vars, only: n_par, n_r
+        
         character(*), parameter :: rout_name = 'calc_inv_met_ind_0D'
         
         ! input / output
@@ -1093,145 +1073,20 @@ contains
             end do
         end do
     end function calc_f_deriv_3_arr_2D
-end module metric_ops
     
-    !! UNUSED ALTERNATIVE FOR calc_g_ALT: USING IMIN TECHNIQUE
-    !! Calculate the  metric coefficients in  the V(MEC) coordinate  system using
-    !! the metric  coefficients in  the C(ylindrical)  coordinate system  and the
-    !! trans- formation  matrices, general treatment using  the formula described
-    !! in [ADD REF TO DOC]
-    !! D_1^m1 D_2^m2 D_3^m3 g_B = sum_1 sum_2 sum_3 x
-    !!   C1 C2 C3 D^(i1,j1,k1) T_BA D^(i2,j2,k2) G_A D^(i3,j3,k3) (T_BA)^T
-    !! with
-    !!   kl = ml-il-jl
-    !! and with the sum_i  double summations, with the first one  going from 0 to
-    !! and mi the second one from floor((m-j+1)/2) to m-j
-    !! the coefficients Ci are calculated as mi!/(i!j!(m-i-j)!) x 
-    !!   1   for odd values of m-i
-    !!   1/2 for even values of m-i
-    !subroutine calc_g_ALT(T_BA,g_A,g_B,deriv,max_deriv)
-        !use eq_vars, only: n_par
-        !use VMEC_vars, only: n_r
-        
-        !! input / output
-        !integer, intent(in) :: deriv(3)
-        !integer, intent(in) :: max_deriv(3)
-        !real(dp), intent(in) :: T_BA(:,:,:,:,0:,0:,0:)
-        !real(dp), intent(in) :: g_A(:,:,:,:,0:,0:,0:)
-        !real(dp), intent(inout) :: g_B(:,:,:,:,0:,0:,0:)
-        
-        !! local variables
-        !integer :: id, kd                                                       ! counters
-        !integer :: i1, j1, i2, j2, i3, j3, k1, k2, k3                           ! counters
-        !integer :: imin1, imin2, imin3                                          ! min. for i variable in sum
-        !integer :: m1, m2, m3                                                   ! alias for deriv
-        !real(dp), allocatable :: C1(:), C2(:), C3(:)                            ! coeff. for (il)
-        
-        !! check the derivatives requested
-        !ierr = check_deriv(deriv,max_deriv,'calc_g')
-        
-        !! set ml
-        !m1 = deriv(1)
-        !m2 = deriv(2)
-        !m3 = deriv(3)
-        
-        !! initialize the requested derivative to zero
-        !g_B(:,:,:,:,m1,m2,m3) = 0.0_dp
-        
-        !! calculate the terms in the summation
-        !d1: do j1 = 0,m1                                                        ! derivatives in first coordinate
-            !call calc_C(m1,j1,imin1,C1)                                         ! calculate coeff. C1
-            !do i1 = m1-j1,imin1,-1
-                !d2: do j2 = 0,m2                                                ! derivatives in second coordinate
-                    !call calc_C(m2,j2,imin2,C2)                                 ! calculate coeff. C2
-                    !do i2 = m2-j2,imin2,-1
-                        !d3: do j3 = 0,m3                                        ! derivatives in third coordinate
-                            !call calc_C(m3,j3,imin3,C3)                         ! calculate coeff. C3
-                            !do i3 = m3-j3,imin3,-1
-                                !do kd = 1,n_r                                   ! all normal points
-                                    !do id = 1,n_par                             ! all parallel points
-                                        !k1 = m1 - j1 - i1
-                                        !k2 = m2 - j2 - i2
-                                        !k3 = m3 - j3 - i3
-            !! add this term to the summation
-            !g_B(id,kd,:,:,m1,m2,m3) = g_B(id,kd,:,:,m1,m2,m3) + &
-                !&C1(i1)*C2(i2)*C3(i3) * matmul(T_BA(id,kd,:,:,i1,i2,i3),&       ! (i i i)(j j j)(k k k)
-                !&matmul(g_A(id,kd,:,:,j1,j2,j3),&
-                !&transpose(T_BA(id,kd,:,:,k1,k2,k3)))) + &
-                !&C1(i1)*C2(i2)*C3(i3) * matmul(T_BA(id,kd,:,:,i1,i2,k3),&       ! (i i k)(j j j)(k k i)
-                !&matmul(g_A(id,kd,:,:,j1,j2,j3),&
-                !&transpose(T_BA(id,kd,:,:,k1,k2,i3)))) + &
-                !&C1(i1)*C2(i2)*C3(i3) * matmul(T_BA(id,kd,:,:,k1,i2,k3),&       ! (k i k)(j j j)(i k i)
-                !&matmul(g_A(id,kd,:,:,j1,j2,j3),&
-                !&transpose(T_BA(id,kd,:,:,i1,k2,i3)))) + &
-                !&C1(i1)*C2(i2)*C3(i3) * matmul(T_BA(id,kd,:,:,k1,i2,i3),&       ! (k i i)(j j j)(i i k)
-                !&matmul(g_A(id,kd,:,:,j1,j2,j3),&
-                !&transpose(T_BA(id,kd,:,:,i1,k2,k3))))
-                                    !end do
-                                !end do
-                            !end do
-                        !end do d3
-                    !end do
-                !end do d2
-            !end do
-        !end do d1
-        
-        !! add the transpose of what is already there
-        !do kd = 1,n_r
-            !do id = 1,n_par
-                !g_B(id,kd,:,:,m1,m2,m3) = g_B(id,kd,:,:,m1,m2,m3) + &
-                    !&transpose(g_B(id,kd,:,:,m1,m2,m3))
-            !end do
-        !end do
-    !contains
-        !! Calculate imin and  the coeff. C at  the all i values  for the current
-        !! value for j,  optionally making use of the coeff.  C at previous value
-        !! for j:
-        !! - If it is the very first value (0,m), then it is just equal to 1
-        !! - If  it is  the first value  in the current  i-summation, then  it is
-        !! calculated from the first coeff. of the previous i-summation:
-        !!   C(j,m) = C(j-1,m) * (m-j+1)/j
-        !! - If it is not the first  value in the current i-summation, then it is
-        !! calculated from the previous value of the current i-summation
-        !!   C(j,i) = C(j,i+1) * (i+1)/(m-i-j)
-        !! - If  it is  the last  value in  the current  i-summation, then  it is
-        !! divided by 2 if (m-j) is even (see [ADD REF])
-        !subroutine calc_C(m,j,imin,C)
-            !! input / output
-            !integer, intent(in) :: m, j
-            !integer, intent(inout) :: imin
-            !real(dp), intent(inout), allocatable :: C(:)
-            
-            !! local variables
-            !integer :: i                                                        ! counter
-            !real(dp) :: Cm_prev
-            
-            !! calculate minimum index for i
-            !imin = floor((m-j+1.0_dp)/2)
-        
-            !! if j>0, save the value Cm_prev 
-            !if (j.gt.0) Cm_prev = C(m-j+1)
-            
-            !! allocate C
-            !if (allocated(C)) deallocate (C)
-            !allocate(C(imin:m-j))
-            
-            !! first value i = m-j
-            !if (j.eq.0) then                                                    ! first coeff., for j = 0
-                !C(m) = 1.0_dp
-            !else                                                                ! first coeff., for j > 0 -> need value Cm_prev from previous array
-                !C(m-j) = (m-j+1.0_dp)/j * Cm_prev
-            !end if
-            
-            !! all other values i = m-1 .. imin
-            !do i = m-j-1,imin,-1
-                !C(i) = (i+1.0_dp)/(m-i-j) * C(i+1)
-            !end do
-            
-            !! divide coeff. by 2 if m-j even
-            !if (mod(m-j,2).eq.0) then
-                !C(imin) = C(imin)/2.0_dp
-            !end if
-        !end subroutine
-    !end subroutine
-
+    ! deallocates  metric  quantities  that  are  not  used  anymore  after  the
+    ! equilibrium phase
+    subroutine dealloc_metric_vars
+        deallocate(T_VC,T_VF,T_FV)
+        deallocate(det_T_VC,det_T_VF,det_T_FV)
+        deallocate(jac_C,jac_V,jac_F)
+        deallocate(g_C, g_V, g_F,h_F)
+    end subroutine dealloc_metric_vars
+    
+    ! deallocates  metric quantities  that are not  used anymore  after the
+    ! calculation for a certain alpha
+    subroutine dealloc_metric_vars_final
+        deallocate(g_F_FD,h_F_FD)
+        deallocate(jac_F_FD)
+    end subroutine dealloc_metric_vars_final
+end module metric_ops

@@ -12,8 +12,8 @@ module eq_vars
     implicit none
     private
     public calc_eqd_mesh, calc_mesh, calc_ang_B, calc_flux_q, check_mesh, &
-        &init_eq, calc_RZL, &
-        &theta, zeta, n_par, R, Z, lam_H, min_par, max_par, &
+        &init_eq, calc_RZL, dealloc_eq_vars, dealloc_eq_vars_final, &
+        &theta, zeta, n_par, n_r, R, Z, lam_H, min_par, max_par, &
         &q_saf, flux_p, flux_t, VMEC_R, VMEC_Z, VMEC_L, pres, &
         &q_saf_FD, flux_p_FD, flux_t_FD, pres_FD
 
@@ -30,60 +30,52 @@ module eq_vars
     real(dp), allocatable :: flux_p(:,:), flux_t(:,:), pres(:,:)                ! pol. flux, tor. flux and pressure, and normal derivative (FM)
     real(dp), allocatable :: flux_p_FD(:,:), flux_t_FD(:,:), pres_FD(:,:)       ! pol. flux, tor. flux and pressure, and normal derivative (FM), derivs. in flux coords.
     real(dp) :: min_par, max_par
-    integer :: n_par
+    integer :: n_par, n_r
     
     interface calc_RZL
         module procedure calc_RZL_ind, calc_RZL_arr
     end interface
 
 contains
-    ! initialize the variables VMEC_R, VMEC_Z and VMEC_L
+    ! initialize the variables n_r, VMEC_R, VMEC_Z and VMEC_L
     subroutine init_eq
         use num_vars, only: max_deriv
-        use VMEC_vars, only: n_r
+        use VMEC_vars, only: ns
+        
+        ! n_r
+        n_r = ns
         
         ! R
-        if (allocated(VMEC_R)) deallocate(VMEC_R)
         allocate(VMEC_R(n_par,n_r,0:max_deriv(1),0:max_deriv(2),0:max_deriv(3)))
         
         ! Z
-        if (allocated(VMEC_Z)) deallocate(VMEC_Z)
         allocate(VMEC_Z(n_par,n_r,0:max_deriv(1),0:max_deriv(2),0:max_deriv(3)))
         
         ! lambda
-        if (allocated(VMEC_L)) deallocate(VMEC_L)
         allocate(VMEC_L(n_par,n_r,0:max_deriv(1),0:max_deriv(2),0:max_deriv(3)))
         
         ! q_saf
-        if (allocated(q_saf)) deallocate(q_saf)
         allocate(q_saf(n_r,0:max_deriv(1)))
         
         ! q_saf_FD
-        if (allocated(q_saf_FD)) deallocate(q_saf_FD)
         allocate(q_saf_FD(n_r,0:max_deriv(1)))
         
         ! flux_p
-        if (allocated(flux_p)) deallocate(flux_p)
         allocate(flux_p(n_r,0:max_deriv(1)))
         
-        ! flux_p
-        if (allocated(flux_p_FD)) deallocate(flux_p_FD)
+        ! flux_p_FD
         allocate(flux_p_FD(n_r,0:max_deriv(1)))
         
         ! flux_t
-        if (allocated(flux_t)) deallocate(flux_t)
         allocate(flux_t(n_r,0:max_deriv(1)))
         
         ! flux_t_FD
-        if (allocated(flux_t_FD)) deallocate(flux_t_FD)
         allocate(flux_t_FD(n_r,0:max_deriv(1)))
         
         ! pres
-        if (allocated(pres)) deallocate(pres)
         allocate(pres(n_r,0:max_deriv(1)))
         
         ! pres_FD
-        if (allocated(pres_FD)) deallocate(pres_FD)
         allocate(pres_FD(n_r,0:max_deriv(1)))
     end subroutine
     
@@ -93,7 +85,7 @@ contains
     ! indices
     integer function calc_RZL_ind(deriv) result(ierr)
         use fourier_ops, only: calc_mesh_cs, f2r
-        use VMEC_vars, only: mpol, ntor, nfp, n_r, R_c, R_s, Z_c, Z_s, L_c, L_s
+        use VMEC_vars, only: mpol, ntor, nfp, R_c, R_s, Z_c, Z_s, L_c, L_s
         use utilities, only: check_deriv
         use num_vars, only: max_deriv
         
@@ -151,8 +143,7 @@ contains
 
     ! Calculates flux quantities and normal derivatives
     integer function calc_flux_q() result(ierr)
-        use VMEC_vars, only: &
-            &iotaf, n_r, phi, phi_r, presf
+        use VMEC_vars, only: iotaf, phi, phi_r, presf
         use utilities, only: VMEC_norm_deriv, calc_int
         use num_vars, only: max_deriv
         
@@ -210,7 +201,6 @@ contains
     ! the global  variable calc_mesh_style can  optionally force other  types of
     ! meshes, which is useful for tests
     integer function calc_mesh(alpha) result(ierr)
-        use VMEC_vars, only: n_r
         use num_vars, only: theta_var_along_B, calc_mesh_style
         
         character(*), parameter :: rout_name = 'calc_mesh'
@@ -227,9 +217,7 @@ contains
         ! initialize ierr
         ierr = 0
         
-        if (allocated(zeta)) deallocate(zeta)
         allocate(zeta(n_par,n_r)); zeta = 0.0_dp
-        if (allocated(theta)) deallocate(theta)
         allocate(theta(n_par,n_r)); theta = 0.0_dp
         
         allocate(work(n_r))
@@ -237,6 +225,9 @@ contains
         ! calculate the mesh
         select case (calc_mesh_style)
             case (0)                                                            ! along the magnetic field lines
+                ierr = check_periodicity(min_par,max_par)
+                CHCKERR('')
+                
                 if (theta_var_along_B) then                                     ! first calculate theta
                     do jd = 1,n_r
                         ierr = calc_eqd_mesh(theta(:,jd),n_par,min_par,max_par)
@@ -284,13 +275,49 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
+    contains
+        ! checks whether max_par - min_par indeed is a multiple of 2pi, which is
+        ! a requisite for the correct functioning  of the code, as the integrals
+        ! which are to be calculated in the parallel direction have to be closed
+        ! loop intervals in the parallel direction
+        integer function check_periodicity(min_par,max_par) result(ierr)
+            character(*), parameter :: rout_name = 'check_periodicity'
+            
+            ! input / output
+            real(dp), intent(in) :: min_par, max_par                            ! min. and max. of parallel angle
+            
+            ! local variables
+            real(dp) :: tol = 1E-5                                              ! tolerance
+            real(dp) :: modulus
+            character(len=max_str_ln) :: err_msg                                ! error message
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! check whether max_par > min_par
+            if (max_par.lt.min_par+2*pi*(1-tol)) then
+                ierr = 1
+                err_msg = 'max_par has to be at least min_par + 2 pi'
+                CHCKERR(err_msg)
+            end if
+            
+            ! calculate modulus
+            modulus = mod(max_par-min_par,2*pi)
+            modulus = min(modulus,2*pi-modulus)
+            
+            ! check whether tolerance is reached
+            if (modulus/(2*pi).gt.tol) then
+                ierr = 1
+                err_msg = 'max_par - min_par has to be a multiple of 2 pi'
+                CHCKERR(err_msg)
+            end if
+        end function check_periodicity
     end function calc_mesh
     
     ! check  whether   the  straight  field   line  mesh  has   been  calculated
     ! satisfactorily,  by  calculating  again  the zeta's  from  the  calculated
     ! theta's
     integer function check_mesh(alpha) result(ierr)
-        use VMEC_vars, only: n_r
         use num_vars, only: tol_NR, theta_var_along_B, max_str_ln, &
             &calc_mesh_style
         
@@ -401,7 +428,7 @@ contains
     !   find_theta = .false. : look for zeta as a function of theta
     integer function calc_ang_B(ang_B,find_theta,alpha_in,input_ang,guess) result(ierr)
         use num_vars, only: tol_NR
-        use VMEC_vars, only: mpol, ntor, n_r, L_c, L_s, iotaf, nfp
+        use VMEC_vars, only: mpol, ntor, L_c, L_s, iotaf, nfp
         use fourier_ops, only: calc_mesh_cs, f2r
         use utilities, only: calc_zero_NR, VMEC_conv_FHM
         
@@ -545,4 +572,19 @@ contains
             end if
         end function dfun_ang_B
     end function calc_ang_B
+    
+    ! deallocates  equilibrium quantities  that are not  used anymore  after the
+    ! equilibrium phase
+    subroutine dealloc_eq_vars
+        deallocate(VMEC_R,VMEC_Z,VMEC_L)
+        deallocate(flux_p,flux_p_FD,flux_t,flux_t_FD)
+    end subroutine dealloc_eq_vars
+    
+    ! deallocates  equilibrium quantities  that are not  used anymore  after the
+    ! calculation for a certain alpha
+    subroutine dealloc_eq_vars_final
+        deallocate(q_saf,q_saf_FD)
+        deallocate(pres,pres_FD)
+        deallocate(zeta,theta)
+    end subroutine dealloc_eq_vars_final
 end module eq_vars

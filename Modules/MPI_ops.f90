@@ -322,7 +322,7 @@ contains
     !   9   integer                     format_out
     !   10  integer                     style
     !   11  integer                     n_par
-    !   12  integer                     n_r
+    !   12  integer                     ns
     !   13  integer                     mpol
     !   14  integer                     ntor
     !   15  integer                     nfp
@@ -341,21 +341,21 @@ contains
     !   28  real_dp                     min_par
     !   29  real_dp                     max_par
     !   30  real_dp                     version
-    !   31  real_dp(n_r)                phi(n_r)
-    !   32  real_dp(n_r)                phi_r(n_r)
-    !   33  real_dp(n_r)                iotaf(n_r)
-    !   34  real_dp(n_r)                presf(n_r)
+    !   31  real_dp(ns)                 phi(ns) 
+    !   32  real_dp(ns)                 phi_r(ns) 
+    !   33  real_dp(ns)                 iotaf(ns) 
+    !   34  real_dp(ns)                 presf(ns) 
     !   35  real_dp(*)                  R_c(*)
     !   36  real_dp(*)                  R_s(*)
     !   37  real_dp(*)                  Z_c(*)
     !   38  real_dp(*)                  Z_s(*)
     !   39  real_dp(*)                  L_c(*)
     !   40  real_dp(*)                  L_s(*)
-    !   with (*) = (0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3))
+    !   with (*) = (0:mpol-1,-ntor:ntor,1:ns,0:max_deriv(3))
     ! [MPI] Collective call
     integer function broadcast_vars() result(ierr)
-        use VMEC_vars, only: mpol, ntor, n_r, lasym, lrfp, lfreeb, nfp, iotaf, &
-            &R_c, R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf, version
+        use VMEC_vars, only: mpol, ntor, lasym, lrfp, lfreeb, nfp, iotaf, &
+            &R_c, R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf, version, ns
         use num_vars, only: max_str_ln, dp, output_name, ltest, &
             &theta_var_along_B, EV_style, max_it_NR, max_it_r, n_alpha, &
             &n_procs_per_alpha, style, max_alpha, min_alpha, tol_NR, glob_rank, &
@@ -391,7 +391,7 @@ contains
             call MPI_Bcast(format_out,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(style,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(n_par,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(n_r,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(ns,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(mpol,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(ntor,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(nfp,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
@@ -437,7 +437,7 @@ contains
     contains
         ! broadcasts the size of an array, so this array can be allocated in the
         ! slave processes
-        ! The index of this array is (1:n_r)
+        ! The index of this array is (1:ns)
         subroutine bcast_size_1_I(arr)                                          ! version with 1 integer argument
             ! input / output
             integer, intent(inout), allocatable :: arr(:)
@@ -450,7 +450,7 @@ contains
             call MPI_Bcast(arr_size,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             if (glob_rank.ne.0) allocate(arr(1:arr_size))
         end subroutine bcast_size_1_I
-        ! The index of this array is (1:n_r)
+        ! The index of this array is (1:ns)
         subroutine bcast_size_1_R(arr)                                            ! version with 1 real argument
             ! input / output
             real(dp), intent(inout), allocatable :: arr(:)
@@ -463,7 +463,7 @@ contains
             call MPI_Bcast(arr_size,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             if (glob_rank.ne.0) allocate(arr(1:arr_size))
         end subroutine bcast_size_1_R
-        ! The index of this array is (0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3))
+        ! The index of this array is (0:mpol-1,-ntor:ntor,1:ns,0:max_deriv(3))
         subroutine bcast_size_4_R(arr)                                          ! version with 4 real arguments
             ! input / output
             real(dp), intent(inout), allocatable :: arr(:,:,:,:)

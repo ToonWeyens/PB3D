@@ -10,8 +10,8 @@ module utilities
     implicit none
     private
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, arr_mult, &
-        &VMEC_norm_deriv, VMEC_conv_FHM, check_deriv, calc_inv, calc_derivs, &
-        &derivs, calc_interp
+        &VMEC_norm_deriv, VMEC_conv_FHM, check_deriv, calc_inv, &
+        &init_utilities, derivs, calc_interp
     
     ! the possible derivatives of order i
     integer, allocatable :: derivs_0(:,:)                                       ! all possible derivatives of order 0
@@ -37,6 +37,80 @@ module utilities
         module procedure calc_interp_real, calc_interp_complex
     end interface
 contains
+    ! initialize utilities:
+    ! calculate all possible combinations of derivatives of a certain order
+    subroutine init_utilities
+        ! local variables
+        integer :: id, jd, kd, ld                                               ! counters
+        integer :: ci, cj, ck, cl                                               ! counters
+        
+        ! allocate
+        allocate(derivs_0(3,1))
+        allocate(derivs_1(3,3))
+        allocate(derivs_2(3,6))
+        allocate(derivs_3(3,10))
+        allocate(derivs_4(3,15))
+        
+        ci = 1
+        cj = 1
+        ck = 1
+        cl = 1
+        
+        derivs_0 = 0
+        derivs_1 = 0
+        derivs_2 = 0
+        derivs_3 = 0
+        derivs_4 = 0
+        
+        do id = 1,3
+            derivs_1(id,ci) = derivs_1(id,ci) + 1
+            ci = ci+1
+            do jd = 1,id
+                derivs_2(id,cj) = derivs_2(id,cj) + 1
+                derivs_2(jd,cj) = derivs_2(jd,cj) + 1
+                cj = cj+1
+                do kd = 1,jd
+                    derivs_3(id,ck) = derivs_3(id,ck) + 1
+                    derivs_3(jd,ck) = derivs_3(jd,ck) + 1
+                    derivs_3(kd,ck) = derivs_3(kd,ck) + 1
+                    ck = ck+1
+                    do ld = 1,kd
+                        derivs_4(id,cl) = derivs_4(id,cl) + 1
+                        derivs_4(jd,cl) = derivs_4(jd,cl) + 1
+                        derivs_4(kd,cl) = derivs_4(kd,cl) + 1
+                        derivs_4(ld,cl) = derivs_4(ld,cl) + 1
+                        cl = cl+1
+                    end do
+                end do
+            end do
+        end do
+    end subroutine
+    
+    function derivs(order)
+        ! input / output
+        integer, intent(in) :: order
+        integer, allocatable :: derivs(:,:)
+        
+        select case (order)
+            case (0)
+                allocate(derivs(3,size(derivs_0,2)))
+                derivs = derivs_0
+            case (1)
+                allocate(derivs(3,size(derivs_1,2)))
+                derivs = derivs_1
+            case (2)
+                allocate(derivs(3,size(derivs_2,2)))
+                derivs = derivs_2
+            case (3)
+                allocate(derivs(3,size(derivs_3,2)))
+                derivs = derivs_3
+            case (4)
+                allocate(derivs(3,size(derivs_4,2)))
+                derivs = derivs_4
+            case default
+        end select
+    end function
+    
     ! numerically derives a  function whose values are given on  a regular mesh,
     ! specified by  the inverse  step size to  an order specified  by ord  and a
     ! precision specified by prec (which is the  power of the step size to which
@@ -922,84 +996,6 @@ contains
         end do NR
     end function calc_zero_NR
 
-    ! calculate all possible combinations of derivatives of a certain order
-    subroutine calc_derivs
-        ! local variables
-        integer :: id, jd, kd, ld                                               ! counters
-        integer :: ci, cj, ck, cl                                               ! counters
-        
-        ! deallocate if needed
-        if (allocated(derivs_0)) deallocate(derivs_0)
-        if (allocated(derivs_1)) deallocate(derivs_1)
-        if (allocated(derivs_2)) deallocate(derivs_2)
-        if (allocated(derivs_3)) deallocate(derivs_3)
-        if (allocated(derivs_4)) deallocate(derivs_4)
-        allocate(derivs_0(3,1))
-        allocate(derivs_1(3,3))
-        allocate(derivs_2(3,6))
-        allocate(derivs_3(3,10))
-        allocate(derivs_4(3,15))
-        
-        ci = 1
-        cj = 1
-        ck = 1
-        cl = 1
-        
-        derivs_0 = 0
-        derivs_1 = 0
-        derivs_2 = 0
-        derivs_3 = 0
-        derivs_4 = 0
-        
-        do id = 1,3
-            derivs_1(id,ci) = derivs_1(id,ci) + 1
-            ci = ci+1
-            do jd = 1,id
-                derivs_2(id,cj) = derivs_2(id,cj) + 1
-                derivs_2(jd,cj) = derivs_2(jd,cj) + 1
-                cj = cj+1
-                do kd = 1,jd
-                    derivs_3(id,ck) = derivs_3(id,ck) + 1
-                    derivs_3(jd,ck) = derivs_3(jd,ck) + 1
-                    derivs_3(kd,ck) = derivs_3(kd,ck) + 1
-                    ck = ck+1
-                    do ld = 1,kd
-                        derivs_4(id,cl) = derivs_4(id,cl) + 1
-                        derivs_4(jd,cl) = derivs_4(jd,cl) + 1
-                        derivs_4(kd,cl) = derivs_4(kd,cl) + 1
-                        derivs_4(ld,cl) = derivs_4(ld,cl) + 1
-                        cl = cl+1
-                    end do
-                end do
-            end do
-        end do
-    end subroutine
-    
-    function derivs(order)
-        ! input / output
-        integer, intent(in) :: order
-        integer, allocatable :: derivs(:,:)
-        
-        select case (order)
-            case (0)
-                allocate(derivs(3,size(derivs_0,2)))
-                derivs = derivs_0
-            case (1)
-                allocate(derivs(3,size(derivs_1,2)))
-                derivs = derivs_1
-            case (2)
-                allocate(derivs(3,size(derivs_2,2)))
-                derivs = derivs_2
-            case (3)
-                allocate(derivs(3,size(derivs_3,2)))
-                derivs = derivs_3
-            case (4)
-                allocate(derivs(3,size(derivs_4,2)))
-                derivs = derivs_4
-            case default
-        end select
-    end function
-    
     ! Simple linear interpolation  of matrix varin, tabulated at  ptin, at point
     ! ptout where ptout = 0..1 is calculated in matrix varout:
     !   ptout - 0       pt_arr - ptin(1)

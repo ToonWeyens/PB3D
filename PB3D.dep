@@ -7,6 +7,7 @@ PB3D.o : \
     test.o \
     str_ops.o \
     time.o \
+    utilities.o \
     input_ops.o \
 
 test.o : \
@@ -39,6 +40,9 @@ driver_rich.o : \
     eq_ops.o \
     X_ops.o \
     X_vars.o \
+    slepc_ops.o \
+    metric_ops.o \
+    VMEC_vars.o \
 
 slepc_ops.o : \
     num_vars.o \
@@ -46,7 +50,6 @@ slepc_ops.o : \
     str_ops.o \
     utilities.o \
     file_ops.o \
-    VMEC_vars.o \
 
 X_ops.o : \
     num_vars.o \
@@ -63,6 +66,7 @@ X_ops.o : \
 X_vars.o : \
     num_vars.o \
     output_ops.o \
+    eq_vars.o \
 
 eq_ops.o : \
     num_vars.o \
@@ -70,6 +74,7 @@ eq_ops.o : \
     output_ops.o \
     metric_ops.o \
     utilities.o \
+    VMEC_vars.o \
     
 output_ops.o : \
     num_vars.o \
@@ -116,7 +121,6 @@ eq_vars.o : \
 
 metric_ops.o : \
     num_vars.o \
-    VMEC_vars.o \
     output_ops.o \
     str_ops.o \
     eq_vars.o \

@@ -30,7 +30,7 @@ contains
         ! petsc / MPI variables
         PetscMPIInt :: Petsc_rank, n_procs                                      ! rank and nr. of processors
         EPS :: solver                                                           ! EV solver
-        ST :: solver_ST                                                         ! Spectral Transformation type of solver
+        !ST :: solver_ST                                                         ! Spectral Transformation type of solver
         PetscInt :: n_it                                                        ! nr. of iterations
         PetscInt :: n_conv                                                      ! nr. of converged solutions
         PetscInt :: n_ev, ncv, mpd                                              ! nr. of requested EV, max. dim of subspace and for projected problem
@@ -152,6 +152,14 @@ contains
         
         call lvl_ud(-1)
         
+        ! allocate X_vec and X_val if group master
+        if (Petsc_rank.eq.0) then
+            allocate(X_vec(min_m_X:max_m_X,1:n_r_X,1:n_sol_requested))
+            X_vec = 0.0_dp
+            allocate(X_val(1:n_sol_requested))
+            X_val = 0.0_dp
+        end if
+        
         !! visualize the matrices
         !!call PetscOptionsSetValue('-draw_pause','-1',ierr)
         !write(*,*) 'A ='
@@ -177,6 +185,7 @@ contains
         !call EPSSetType(solver,EPSLAPACK,ierr)
         !CHCKERR('Failed to set type to LAPACK')
         
+        ! search for Eigenvalue with largest real value
         call EPSSetWhichEigenpairs(solver,EPS_LARGEST_REAL,ierr)
         CHCKERR('Failed to set which eigenpairs')
         
@@ -189,9 +198,15 @@ contains
             !CHCKERR('Failed to set EPS ST type')
         !end if
         
+        ! request n_sol_requested Eigenpairs
+        call EPSSetDimensions(solver,n_sol_requested,PETSC_DECIDE,&
+            &PETSC_DECIDE,ierr)
+        
+        ! set run-time options
         call EPSSetFromOptions(solver,ierr)
         CHCKERR('EPSetFromOptions failed')
         
+        ! solve EV problem
         call EPSSolve(solver,ierr) 
         CHCKERR('EPS couldn''t find a solution')
         
@@ -225,14 +240,6 @@ contains
             max_n_EV = n_conv
         else
             max_n_EV = n_sol_requested
-        end if
-        
-        ! allocate X_vec and X_val if group master if first time
-        if (Petsc_rank.eq.0) then
-            if (allocated(X_vec)) deallocate(X_vec)
-            allocate(X_vec(min_m_X:max_m_X,1:n_r_X,1:max_n_EV))
-            if (allocated(X_val)) deallocate(X_val)
-            allocate(X_val(1:max_n_EV))
         end if
         
         ! print info
@@ -307,7 +314,7 @@ contains
         call lvl_ud(-1)
         
         ! destroy and finalize
-        call writo('finalize petsc...')
+        call writo('finalize slepc...')
         call EPSDestroy(solver,ierr)
         CHCKERR('Failed to destroy EPS solver')
         call MatDestroy(A,ierr)
@@ -334,8 +341,7 @@ contains
     integer function fill_mat(n_X,n_r_X,n_m_X,step_size,V0,V1,V2,mat) result(ierr)
         use metric_ops, only: jac_F_FD
         use X_vars, only: min_r, max_r
-        use VMEC_vars, only: n_r
-        use eq_vars, only: n_par, theta
+        use eq_vars, only: n_par, theta, n_r
         use utilities, only: calc_interp, calc_int
         
         character(*), parameter :: rout_name = 'fill_mat'
@@ -352,7 +358,6 @@ contains
         
         ! local variables
         PetscScalar, allocatable :: loc_block(:,:)                              ! block matrix for 1 normal point
-        PetscScalar, allocatable :: intgrnd(:,:,:,:)                            ! constituents of loc_bloc, not interpolated
         PetscScalar, allocatable :: term0(:,:,:,:)                              ! holds e^i(k-m) J V0 for (k,m) functions of (par,r)
         PetscScalar, allocatable :: term1(:,:,:,:)                              ! holds e^i(k-m) J V1 for (k,m) functions of (par,r)
         PetscScalar, allocatable :: term2(:,:,:,:)                              ! holds e^i(k-m) J V2 for (k,m) functions of (par,r)
@@ -362,10 +367,7 @@ contains
         PetscScalar, allocatable :: term0_int_next(:,:)                         ! interpolated and integrated version of term0, at next point
         PetscScalar, allocatable :: term1_int_next(:,:)                         ! interpolated and integrated version of term1, at next point
         PetscScalar, allocatable :: term2_int_next(:,:)                         ! interpolated and integrated version of term2, at next point
-        PetscScalar, allocatable :: intgrnd_int(:,:,:)                          ! constituents of loc_bloc, interpolated
         PetscScalar, allocatable :: exp_theta(:,:,:,:)                          ! exp(i (k-m) theta)
-        PetscReal, allocatable :: theta_int(:,:,:)                              ! theta at interpolated position
-        PetscScalar, allocatable :: integral(:)                                 ! the integral of the integrand
         PetscInt, allocatable :: loc_k(:), loc_m(:)                             ! the locations at which to add the blocks to the matrices
         PetscReal :: norm_pt                                                    ! current normal point (min_r...max_r)
         PetscInt :: id, jd, m, k                                                ! counters
@@ -375,7 +377,7 @@ contains
         ! initialize ierr
         ierr = 0
         
-        allocate(intgrnd(n_par,n_r,n_m_X,n_m_X))
+        ! allocate variables
         allocate(term0(n_par,n_r,n_m_X,n_m_X))
         allocate(term1(n_par,n_r,n_m_X,n_m_X))
         allocate(term2(n_par,n_r,n_m_X,n_m_X))
@@ -385,10 +387,7 @@ contains
         allocate(term0_int_next(n_m_X,n_m_X))
         allocate(term1_int_next(n_m_X,n_m_X))
         allocate(term2_int_next(n_m_X,n_m_X))
-        allocate(intgrnd_int(n_par,n_m_X,n_m_X))
         allocate(loc_block(n_m_X,n_m_X))
-        allocate(theta_int(n_par,1,1))                                          ! dimension 3 to be able to use the routine from utilities
-        allocate(integral(n_par))
         allocate(loc_k(n_m_X))
         allocate(loc_m(n_m_X))
         allocate(exp_theta(n_par,n_r,n_m_X,n_m_X))
@@ -412,12 +411,10 @@ contains
             end do
         end do
         
-        if (allocated(x_plot)) deallocate(x_plot)
         allocate(x_plot(1:n_r,1:n_par))
         do id = 1,n_r
             x_plot(id,:) = (id-1.0)/(n_r-1)
         end do
-        
         !write(*,*) 'term0 = '
         !call print_GP_2D('RE term0','',realpart(transpose(term0(:,:,1,1))),x=x_plot)
         !call print_GP_2D('IM term0','',imagpart(transpose(term0(:,:,1,1))),x=x_plot)
@@ -427,9 +424,7 @@ contains
         !write(*,*) 'term2 = '
         !call print_GP_2D('RE term2','',realpart(transpose(term2(:,:,1,1))),x=x_plot)
         !call print_GP_2D('IM term2','',imagpart(transpose(term2(:,:,1,1))),x=x_plot)
-        
-        ! deallocate exp_theta
-        deallocate(exp_theta)
+        deallocate(x_plot)
         
         ! get ownership of the rows
         call MatGetOwnershipRange(mat,n_start,n_end,ierr)                       ! starting and ending row n_start and n_end
@@ -517,6 +512,14 @@ contains
         
         !call MatSetOption(mat,MAT_HERMITIAN,PETSC_TRUE,ierr)                    ! Hermitian to a first approximation
         !CHCKERR('Coulnd''t set option Hermitian')
+
+        ! deallocate variables
+        deallocate(term0,term1,term2)
+        deallocate(term0_int,term1_int,term2_int)
+        deallocate(term0_int_next,term1_int_next,term2_int_next)
+        deallocate(loc_block)
+        deallocate(loc_k,loc_m)
+        deallocate(exp_theta)
     contains
         ! interpolates  at normal point  norm_pt and integrates in  the parallel
         ! direction

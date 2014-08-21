@@ -18,15 +18,15 @@ contains
     !!!!!!!!!!!!!!!!!!!!!!!!! MAKE USE OF PARALLELISM HERE AS WELL !!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     integer function calc_eq(alpha) result(ierr)
-        use eq_vars, only: calc_mesh, calc_flux_q, &
+        use eq_vars, only: calc_mesh, calc_flux_q, dealloc_eq_vars, &
             &check_mesh, init_eq, calc_RZL, q_saf, q_saf_FD, flux_p, flux_p_FD,&
             &flux_t, flux_t_FD, pres, pres_FD
         use metric_ops, only: calc_g_C, calc_g_C, calc_T_VC, calc_g_V, &
             &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, &
-            &calc_jac_V, calc_jac_F, calc_f_deriv, &
+            &calc_jac_V, calc_jac_F, calc_f_deriv, dealloc_metric_vars, &
             &T_VF, T_FV, g_F, h_F, det_T_VF, det_T_FV, jac_F, g_F_FD, h_F_FD, &
             &jac_F_FD
-        use utilities, only: calc_derivs, derivs
+        use utilities, only: derivs
         use num_vars, only: max_deriv
         
         character(*), parameter :: rout_name = 'calc_eq'
@@ -82,14 +82,10 @@ contains
             ! 2----------------------------------------------------------------
             call lvl_ud(1)
             
-            !  calculate all  the  possible derivatives,  as  arguments for  the
-            ! following subroutine
-            call calc_derivs
-            
             ! calculate  the   cylindrical  variables   R,  Z  and   lambda  and
             ! derivatives
             call writo('Calculate R,Z,L...')
-            do id = 0,4
+            do id = 0,2
                 ierr = calc_RZL(derivs(id))
                 CHCKERR('')
             end do
@@ -100,49 +96,49 @@ contains
             
             ! calculate the metrics in the cylindrical coordinate system
             call writo('Calculate g_C...')                                      ! h_C is not necessary
-            do id = 0,3
+            do id = 0,1
                 ierr = calc_g_C(derivs(id))
                 CHCKERR('')
             end do
             
             ! calculate the jacobian in the cylindrical coordinate system
             call writo('Calculate jac_C...')
-            do id = 0,3
+            do id = 0,1
                 ierr = calc_jac_C(derivs(id))
                 CHCKERR('')
             end do
             
             ! calculate the transformation matrix C(ylindrical) -> V(mec)
             call writo('Calculate T_VC...')
-            do id = 0,3
+            do id = 0,1
                 ierr = calc_T_VC(derivs(id))
                 CHCKERR('')
             end do
             
             ! calculate the metric factors in the VMEC coordinate system
             call writo('Calculate g_V...')
-            do id = 0,3
+            do id = 0,1
                 ierr = calc_g_V(derivs(id))
                 CHCKERR('')
             end do
             
             ! calculate the jacobian in the VMEC coordinate system
             call writo('Calculate jac_V...')
-            do id = 0,3
+            do id = 0,1
                 ierr = calc_jac_V(derivs(id))
                 CHCKERR('')
             end do
             
             ! calculate the transformation matrix V(mec) -> F(lux)
             call writo('Calculate T_VF...')
-            do id = 0,3
+            do id = 0,1
                 ierr = calc_T_VF(derivs(id))
                 CHCKERR('')
             end do
             
             ! calculate the inverse of the transformation matrix T_VF
             call writo('Calculate T_FV...')
-            do id = 0,3
+            do id = 0,1
                 ierr = calc_inv_met(T_FV,T_VF,derivs(id))
                 CHCKERR('')
                 ierr = calc_inv_met(det_T_FV,det_T_VF,derivs(id))
@@ -151,21 +147,21 @@ contains
             
             ! calculate the metric factors in the Flux coordinate system
             call writo('Calculate g_F...')
-            do id = 0,3
+            do id = 0,1
                 ierr = calc_g_F(derivs(id))
                 CHCKERR('')
             end do
             
             ! calculate the inverse h_F of the metric factors g_F
             call writo('Calculate h_F...')
-            do id = 0,3
+            do id = 0,1
                 ierr = calc_inv_met(h_F,g_F,derivs(id))
                 CHCKERR('')
             end do
             
             ! calculate the jacobian in the Flux coordinate system
             call writo('Calculate jac_F...')
-            do id = 0,3
+            do id = 0,1
                 ierr = calc_jac_F(derivs(id))
                 CHCKERR('')
             end do
@@ -173,7 +169,7 @@ contains
             ! calculate the derivatives in Flux coordinates from the derivatives
             ! in VMEC coordinates
             call writo('Calculate derivatives in flux coordinates...')
-            do id = 0,3
+            do id = 0,1
                 ierr = calc_f_deriv(g_F,T_FV,g_F_FD,max_deriv-[1,1,1],&
                     &derivs(id))                                                ! g_F
                 CHCKERR('')
@@ -196,6 +192,11 @@ contains
                     &max_deriv(1)-1,id)                                         ! pres
                 CHCKERR('')
             end do
+            
+            ! deallocate unusd equilibrium quantities
+            call writo('Deallocate unused equilibrium and metric quantities...')
+            call dealloc_eq_vars
+            call dealloc_metric_vars
             
             call lvl_ud(-1)
             ! 2----------------------------------------------------------------

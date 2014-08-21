@@ -1107,8 +1107,8 @@ contains
     
     integer function test_calc_RZL() result(ierr)
         use eq_vars, only: calc_RZL, init_eq, calc_eqd_mesh, &
-            &VMEC_R, VMEC_Z, theta, zeta,  n_par
-        use VMEC_vars, only: n_r, rmax_surf, rmin_surf, zmax_surf
+            &VMEC_R, VMEC_Z, theta, zeta,  n_par, n_r
+        use VMEC_vars, only: rmax_surf, rmin_surf, zmax_surf
         
         character(*), parameter :: rout_name = 'test_calc_RZL'
         
@@ -1249,8 +1249,7 @@ contains
     integer function test_calc_T_VF() result(ierr)
         use eq_ops, only: calc_eq
         use metric_ops, only: T_VF
-        use eq_vars, only: q_saf, VMEC_L, flux_p, theta
-        use VMEC_vars, only: n_r
+        use eq_vars, only: q_saf, VMEC_L, flux_p, theta, n_r
         
         character(*), parameter :: rout_name = 'test_calc_T_VF'
         
@@ -1595,8 +1594,7 @@ contains
         use metric_ops, only: calc_f_deriv, &
             &h_F, h_F_FD, T_FV
         use eq_ops, only: calc_eq
-        use eq_vars, only: n_par, flux_p, flux_p_FD
-        use VMEC_vars, only: n_r
+        use eq_vars, only: n_par, flux_p, flux_p_FD, n_r
         
         character(*), parameter :: rout_name = 'test_calc_f_deriv'
         
@@ -1885,8 +1883,7 @@ contains
         use metric_ops, only: calc_inv_met, &
             &T_VF, T_FV
         use eq_ops, only: calc_eq
-        use eq_vars, only: n_par
-        use VMEC_vars, only: n_r
+        use eq_vars, only: n_par, n_r
         
         character(*), parameter :: rout_name = 'test_calc_inv_met'
         
@@ -2170,8 +2167,9 @@ contains
     
     integer function test_metric_transf() result(ierr)
         use eq_ops, only: calc_eq
-        use eq_vars, only: n_par, flux_p, VMEC_R, VMEC_Z, VMEC_L, theta, zeta
-        use VMEC_vars, only: n_r, mpol, ntor, jac_V_c_H, jac_V_s_H, nfp
+        use eq_vars, only: n_par, flux_p, VMEC_R, VMEC_Z, VMEC_L, theta, zeta, &
+            &n_r
+        use VMEC_vars, only: mpol, ntor, jac_V_c_H, jac_V_s_H, nfp
         use fourier_ops, only: calc_mesh_cs, f2r
         use metric_ops, only: jac_V, jac_F, T_FV, det_T_FV, g_F, h_F, g_V, &
             &calc_inv_met, T_VF
@@ -2408,8 +2406,9 @@ contains
     end function test_metric_transf
 
     integer function test_B() result(ierr)
-        use eq_vars, only: n_par, q_saf, flux_p, VMEC_L, theta, zeta, pres_FD
-        use VMEC_vars, only: n_r, B_V_s_H, B_V_c_H, mpol, ntor, B_V_sub_c_M, &
+        use eq_vars, only: n_par, q_saf, flux_p, VMEC_L, theta, zeta, pres_FD, &
+            &n_r
+        use VMEC_vars, only: B_V_s_H, B_V_c_H, mpol, ntor, B_V_sub_c_M, &
             &B_V_sub_s_M, nfp
         use metric_ops, only: calc_inv_met, g_V, g_F, jac_V, jac_F, T_FV, &
             &g_F_FD, jac_F_FD
@@ -2690,9 +2689,9 @@ contains
     end function test_B
 
     integer function test_ang_B() result(ierr)
-        use VMEC_vars, only: n_r, mpol, ntor
+        use VMEC_vars, only: mpol, ntor
         use eq_vars, only: calc_eqd_mesh, calc_mesh, &
-            &n_par, theta, zeta
+            &n_par, theta, zeta, n_r
         use num_vars, only: theta_var_along_B
         
         character(*), parameter :: rout_name = 'test_ang_B'
@@ -2857,8 +2856,7 @@ contains
     integer function test_arr_mult() result(ierr)
         use utilities, only: arr_mult
         use eq_vars, only: calc_eqd_mesh, calc_RZL, init_eq, calc_flux_q, &
-            &VMEC_R, vmec_Z, n_par, theta, zeta, q_saf, pres
-        use VMEC_vars, only: n_r
+            &VMEC_R, vmec_Z, n_par, theta, zeta, q_saf, pres, n_r
         !use num_vars, only: max_deriv
         
         character(*), parameter :: rout_name = 'test_arr_mult'

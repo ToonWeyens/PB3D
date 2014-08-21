@@ -40,15 +40,13 @@ program PB3D
     use file_ops, only: open_input, open_output, search_file, parse_args, &
         &init_file_ops
     use input_ops, only: read_input
+    use utilities, only: init_utilities
     use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, split_MPI, broadcast_vars
     
     implicit none
 
     ! local variables
     integer :: ierr                                                             ! error
-    
-    !include "visitfortransimV2interface.inc"                                    ! For visit simulation support
-    write(*,*) 'FREE ALL ALLOCATED MEMORY ONCE UNNEEDED !!!!!!'
     
     !-------------------------------------------------------
     !   Initialize some routines
@@ -57,6 +55,7 @@ program PB3D
     CHCKERR
     call init_output_ops                                                        ! initialize output operations
     call init_file_ops                                                          ! initialize output operations
+    call init_utilities                                                         ! initialize utilities
     call init_time                                                              ! initialize time
  
     !-------------------------------------------------------
