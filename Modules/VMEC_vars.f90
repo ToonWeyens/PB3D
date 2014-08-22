@@ -9,7 +9,7 @@ module VMEC_vars
     use output_ops, only: lvl_ud, writo, print_ar_1, print_ar_2
     use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
         &lasym, version => version_, lfreeb, &                                  ! stellerator symmetry, version number, free boundary or not
-        &ns, mpol, ntor, xn, xm, mnmax, nfp, &                                  ! mpol, ntor = # modes
+        &n_r => ns, mpol, ntor, xn, xm, mnmax, nfp, &                           ! mpol, ntor = # modes
         &phi, phi_r => phipf, &                                                 ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
         &iotaf, &                                                               ! iota = 1/q (FM)
         &presf, gmns, gmnc, &                                                   ! pressure (FM) jacobian (HM)
@@ -21,7 +21,7 @@ module VMEC_vars
     implicit none
     private
     public read_VMEC, dealloc_VMEC_vars, &
-        &mnmax, rmnc, mpol, ntor, nfp, ns, R_c, R_s, Z_c, Z_s, L_c, L_s, &
+        &mnmax, rmnc, mpol, ntor, nfp, n_r, R_c, R_s, Z_c, Z_s, L_c, L_s, &
         &presf, rmax_surf, rmin_surf, zmax_surf, iotaf, lasym, lrfp, lfreeb, &
         &VMEC_name, phi, phi_r, version, &
         &B_V_sub_s_M, B_V_sub_c_M, B_V_c_H, B_V_s_H, &
@@ -94,7 +94,7 @@ contains
             end if
             call writo('VMEC has '//trim(i2str(mpol))//' poloidal and '&
                 &//trim(i2str(ntor))//' toroidal modes, defined on '&
-                &//trim(i2str(ns))//' flux surfaces')
+                &//trim(i2str(n_r))//' flux surfaces')
             
             !!!!!! IASYM???
             call writo('¡¡¡ iasym IS NOT USED !!! FIND OUT WHAT IT IS FOR !!!')
@@ -119,44 +119,44 @@ contains
             
             ! Allocate and repack the Fourier coefficients to translate them for
             ! use in this code
-            allocate(R_c(0:mpol-1,-ntor:ntor,1:ns,0:max_deriv(3)))
-            allocate(R_s(0:mpol-1,-ntor:ntor,1:ns,0:max_deriv(3)))
-            allocate(Z_c(0:mpol-1,-ntor:ntor,1:ns,0:max_deriv(3)))
-            allocate(Z_s(0:mpol-1,-ntor:ntor,1:ns,0:max_deriv(3)))
-            allocate(L_c(0:mpol-1,-ntor:ntor,1:ns,0:max_deriv(3)))
-            allocate(L_s(0:mpol-1,-ntor:ntor,1:ns,0:max_deriv(3)))
-            allocate(L_c_H(0:mpol-1,-ntor:ntor,1:ns,0:max_deriv(3)))
-            allocate(L_s_H(0:mpol-1,-ntor:ntor,1:ns,0:max_deriv(3)))
+            allocate(R_c(0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3)))
+            allocate(R_s(0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3)))
+            allocate(Z_c(0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3)))
+            allocate(Z_s(0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3)))
+            allocate(L_c(0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3)))
+            allocate(L_s(0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3)))
+            allocate(L_c_H(0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3)))
+            allocate(L_s_H(0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3)))
             
             ! factors R_c,s; Z_c,s and L_C,s and HM varieties
-            R_c(:,:,:,0) = repack(rmnc,mnmax,ns,mpol,ntor,xm,xn)
-            R_s(:,:,:,0) = repack(rmns,mnmax,ns,mpol,ntor,xm,xn)
-            Z_c(:,:,:,0) = repack(zmnc,mnmax,ns,mpol,ntor,xm,xn)
-            Z_s(:,:,:,0) = repack(zmns,mnmax,ns,mpol,ntor,xm,xn)
-            L_c_H(:,:,:,0) = repack(lmnc,mnmax,ns,mpol,ntor,xm,xn)
-            L_s_H(:,:,:,0) = repack(lmns,mnmax,ns,mpol,ntor,xm,xn)
+            R_c(:,:,:,0) = repack(rmnc,mnmax,n_r,mpol,ntor,xm,xn)
+            R_s(:,:,:,0) = repack(rmns,mnmax,n_r,mpol,ntor,xm,xn)
+            Z_c(:,:,:,0) = repack(zmnc,mnmax,n_r,mpol,ntor,xm,xn)
+            Z_s(:,:,:,0) = repack(zmns,mnmax,n_r,mpol,ntor,xm,xn)
+            L_c_H(:,:,:,0) = repack(lmnc,mnmax,n_r,mpol,ntor,xm,xn)
+            L_s_H(:,:,:,0) = repack(lmns,mnmax,n_r,mpol,ntor,xm,xn)
             
             ! normal derivatives of these factors
             do kd = 1,max_deriv(1)
                 do jd = -ntor,ntor
                     do id = 0,mpol-1
                         ierr = VMEC_norm_deriv(R_c(id,jd,:,0),R_c(id,jd,:,kd),&
-                            &ns-1._dp,kd,1)
+                            &n_r-1._dp,kd,1)
                         CHCKERR('')
                         ierr = VMEC_norm_deriv(R_s(id,jd,:,0),R_s(id,jd,:,kd),&
-                            &ns-1._dp,kd,1)
+                            &n_r-1._dp,kd,1)
                         CHCKERR('')
                         ierr = VMEC_norm_deriv(Z_c(id,jd,:,0),Z_c(id,jd,:,kd),&
-                            &ns-1._dp,kd,1)
+                            &n_r-1._dp,kd,1)
                         CHCKERR('')
                         ierr = VMEC_norm_deriv(Z_s(id,jd,:,0),Z_s(id,jd,:,kd),&
-                            &ns-1._dp,kd,1)
+                            &n_r-1._dp,kd,1)
                         CHCKERR('')
                         ierr = VMEC_norm_deriv(L_c_H(id,jd,:,0),&
-                            &L_c_H(id,jd,:,kd),ns-1._dp,kd,1)
+                            &L_c_H(id,jd,:,kd),n_r-1._dp,kd,1)
                         CHCKERR('')
                         ierr = VMEC_norm_deriv(L_s_H(id,jd,:,0),&
-                            &L_s_H(id,jd,:,kd),ns-1._dp,kd,1)
+                            &L_s_H(id,jd,:,kd),n_r-1._dp,kd,1)
                         CHCKERR('')
                     end do
                 end do
@@ -177,29 +177,29 @@ contains
 #if ldebug
             ! for tests
             if (ltest) then
-                allocate(B_V_sub_c_M(0:mpol-1,-ntor:ntor,1:ns,3))
-                allocate(B_V_sub_s_M(0:mpol-1,-ntor:ntor,1:ns,3))
-                allocate(B_V_c_H(0:mpol-1,-ntor:ntor,1:ns))
-                allocate(B_V_s_H(0:mpol-1,-ntor:ntor,1:ns))
-                allocate(jac_V_c_H(0:mpol-1,-ntor:ntor,1:ns))
-                allocate(jac_V_s_H(0:mpol-1,-ntor:ntor,1:ns))
+                allocate(B_V_sub_c_M(0:mpol-1,-ntor:ntor,1:n_r,3))
+                allocate(B_V_sub_s_M(0:mpol-1,-ntor:ntor,1:n_r,3))
+                allocate(B_V_c_H(0:mpol-1,-ntor:ntor,1:n_r))
+                allocate(B_V_s_H(0:mpol-1,-ntor:ntor,1:n_r))
+                allocate(jac_V_c_H(0:mpol-1,-ntor:ntor,1:n_r))
+                allocate(jac_V_s_H(0:mpol-1,-ntor:ntor,1:n_r))
                 
-                B_V_sub_c_M(:,:,:,1) = repack(bsubsmnc,mnmax,ns,mpol,ntor,xm,&
+                B_V_sub_c_M(:,:,:,1) = repack(bsubsmnc,mnmax,n_r,mpol,ntor,xm,&
                     &xn)
-                B_V_sub_s_M(:,:,:,1) = repack(bsubsmns,mnmax,ns,mpol,ntor,xm,&
+                B_V_sub_s_M(:,:,:,1) = repack(bsubsmns,mnmax,n_r,mpol,ntor,xm,&
                     &xn)
-                B_V_sub_c_M(:,:,:,2) = repack(bsubumnc,mnmax,ns,mpol,ntor,xm,&
+                B_V_sub_c_M(:,:,:,2) = repack(bsubumnc,mnmax,n_r,mpol,ntor,xm,&
                     &xn)
-                B_V_sub_s_M(:,:,:,2) = repack(bsubumns,mnmax,ns,mpol,ntor,xm,&
+                B_V_sub_s_M(:,:,:,2) = repack(bsubumns,mnmax,n_r,mpol,ntor,xm,&
                     &xn)
-                B_V_sub_c_M(:,:,:,3) = repack(bsubvmnc,mnmax,ns,mpol,ntor,xm,&
+                B_V_sub_c_M(:,:,:,3) = repack(bsubvmnc,mnmax,n_r,mpol,ntor,xm,&
                     &xn)
-                B_V_sub_s_M(:,:,:,3) = repack(bsubvmns,mnmax,ns,mpol,ntor,xm,&
+                B_V_sub_s_M(:,:,:,3) = repack(bsubvmns,mnmax,n_r,mpol,ntor,xm,&
                     &xn)
-                B_V_c_H(:,:,:) = repack(bmnc,mnmax,ns,mpol,ntor,xm,xn)
-                B_V_s_H(:,:,:) = repack(bmns,mnmax,ns,mpol,ntor,xm,xn)
-                jac_V_c_H(:,:,:) = -repack(gmnc,mnmax,ns,mpol,ntor,xm,xn)
-                jac_V_s_H(:,:,:) = -repack(gmns,mnmax,ns,mpol,ntor,xm,xn)
+                B_V_c_H(:,:,:) = repack(bmnc,mnmax,n_r,mpol,ntor,xm,xn)
+                B_V_s_H(:,:,:) = repack(bmns,mnmax,n_r,mpol,ntor,xm,xn)
+                jac_V_c_H(:,:,:) = -repack(gmnc,mnmax,n_r,mpol,ntor,xm,xn)
+                jac_V_s_H(:,:,:) = -repack(gmns,mnmax,n_r,mpol,ntor,xm,xn)
             end if
 #endif
             

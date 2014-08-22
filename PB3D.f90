@@ -41,7 +41,7 @@ program PB3D
         &init_file_ops
     use input_ops, only: read_input
     use utilities, only: init_utilities
-    use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, split_MPI, broadcast_vars
+    use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, broadcast_vars
     
     implicit none
 
@@ -138,7 +138,7 @@ program PB3D
 #endif
     
     !-------------------------------------------------------
-    !   Start main driver
+    !   Main driver
     !-------------------------------------------------------
     call start_time
     call writo('Start main driver')

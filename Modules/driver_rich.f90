@@ -111,11 +111,12 @@ contains
     
     ! runs the calculations for one of the alpha's
     integer function run_for_alpha(alpha) result(ierr)
-        use num_vars, only: n_sol_requested, max_it_r, group_rank
+        use num_vars, only: n_sol_requested, max_it_r, group_rank, min_r_X, &
+            &max_r_X
         use eq_ops, only: calc_eq
         use eq_vars, only: dealloc_eq_vars_final
         use X_ops, only: prepare_matrix_X, solve_EV_system
-        use X_vars, only: dealloc_X_vars, X_val
+        use X_vars, only: dealloc_X_vars, X_vec, X_val
         use metric_ops, only: dealloc_metric_vars_final
         
         character(*), parameter :: rout_name = 'run_for_alpha'
@@ -126,7 +127,7 @@ contains
         ! local variables
         integer :: ir                                                           ! counter for richardson extrapolation
         integer :: id                                                           ! counter
-        logical :: converged                                                    ! is it converged?
+        logical :: conv_richard                                                 ! is it converged?
         complex(dp), allocatable :: X_val_rich(:,:)                             ! Richardson array of eigenvalues X_val
         
         ! initialize ierr
@@ -138,7 +139,7 @@ contains
         
         ! Initalize some variables for Richardson loop
         ir = 1
-        converged = .false.
+        conv_richard = .false.
         allocate(X_val_rich(1:n_sol_requested,1:max_it_r))
         
         ! Start Richardson loop
@@ -146,7 +147,7 @@ contains
         
         call lvl_ud(1)                                                          ! before richardson loop
         
-        Richard: do while (.not.converged .and. ir.le.max_it_r)
+        Richard: do while (.not.conv_richard .and. ir.le.max_it_r)
             call writo('Level ' // trim(i2str(ir)) // &
                 &' of Richardson''s extrapolation')
             call lvl_ud(1)                                                      ! beginning of one richardson loop
@@ -183,15 +184,33 @@ contains
                 end do
             end if
             
-            !!!!! PERFORM EXTRAPOLATION OF EV TO GET A GOOD APPROX !!!!
-            write(*,*) '!!! Extrapolate EV !!!!'
+            ! check if precision has been reached and if not, increment counter
+            call check_conv_richard(conv_richard)
+            if (.not.conv_richard) ir = ir + 1
+            
+            ! output the largest Eigenfunction for the last Richardson loop
+            if (conv_richard .or. ir.eq.max_it_r+1) then
+                if (group_rank.eq.0) then
+                    call writo('plotting the Eigenvectors')
+                    
+                    call lvl_ud(1)
+                    
+                    do id = 1,n_sol_requested
+                        call writo('plotting results for mode '//&
+                            &trim(i2str(id))//'/'//&
+                            &trim(i2str(n_sol_requested))//', with eigenvalue '&
+                            &//trim(r2strt(realpart(X_val(id))))//' + '//&
+                            &(r2strt(imagpart(X_val(id)))))
+                        call plot_X_vec(X_vec(:,:,id),min_r_X,max_r_X)
+                    end do
+                    
+                    call lvl_ud(-1)
+                end if
+            end if
             
             ! deallocate perturbation variables
-            call writo('Deallocating perturbation variables')
+            call writo('deallocating perturbation variables')
             call dealloc_X_vars
-            
-            ! increment counter
-            ir = ir + 1
             
             call lvl_ud(-1)                                                     ! end of one richardson loop
         end do Richard
@@ -199,12 +218,18 @@ contains
         call lvl_ud(-1)                                                         ! done with richardson
         call writo('Finished Richardson loop')
         
-        ! output
+        ! output the Eigenvalues for all Richardson levels
         call writo('Plot output')
         if (group_rank.eq.0) then
             call print_GP_2D('RE X_val(1)','',realpart(X_val_rich(1,:)))
             call print_GP_2D('IM X_val(1)','',imagpart(X_val_rich(1,:)))
+            
+            !!!!! PERFORM EXTRAPOLATION OF EV TO GET A GOOD APPROX !!!!
+            write(*,*) '!!! Extrapolate EV !!!!'
         end if
+        
+        ! deallocate Richardson loop variables
+        deallocate(X_val_rich)
         
         ! deallocate remaining equilibrium quantities
         call writo('Deallocate remaining quantities')
@@ -220,16 +245,79 @@ contains
     ! The recursion formula is therefore: n(dx/2) = 2n(dx) - 1
     subroutine calc_n_r_X(ir)
         use X_vars, only: n_r_X
+        use num_vars, only: min_n_r_X
         
         ! input / output
         integer, intent(in) :: ir
         
         if (ir.eq.1) then
-            n_r_X = 10
+            n_r_X = min_n_r_X
         else
             n_r_X = 2 * n_r_X - 1
         end if
         call writo(trim(i2str(n_r_X))//' normal points for this level')
         write(*,*) 'UPDATE THE MATRICES!!!!! DO NOT JUST DELETE THEM! THEY CAN BE REUSED!!!!!'
+    end subroutine
+    
+    ! checks for the convergence of the Richardson loop
+    subroutine check_conv_richard(converged)
+        logical, intent(inout) :: converged
+        
+        !!! NOT YET IMPLEMENTED
+        write(*,*) 'CHECK FOR CONVERGENCE NOT YET IMPLEMENTED !!!!!'
+    end subroutine
+    
+    ! plots an eigenfunction
+    subroutine plot_X_vec(X_vec,min_r_X,max_r_X)
+        ! input / output
+        complex(dp), intent(in) :: X_vec(:,:)
+        real(dp), intent(in) :: min_r_X, max_r_X
+        
+        ! local variables
+        integer :: n_m_X                                                        ! nr. of poloidal modes
+        integer :: n_r_X                                                        ! nr. of normal points in perturbation grid
+        real(dp), allocatable :: x_plot(:,:)                                    ! x_axis of plot
+        integer :: id, jd, kd                                                   ! counters
+        real(dp), allocatable :: max_of_modes(:)                                ! maximum of each mode
+        real(dp) :: current_magn                                                ! maximum of each mode
+        real(dp), allocatable :: max_of_modes_r(:)                              ! flux surface where max of mode occurs
+        
+        ! initialize some things
+        n_m_X = size(X_vec,1)
+        n_r_X = size(X_vec,2)
+        allocate(max_of_modes(n_m_X))
+        allocate(max_of_modes_r(n_m_X))
+        max_of_modes = 0.0_dp
+        max_of_modes_r = 0.0_dp
+                
+        ! loop over all normal points of all modes in perturbation grid
+        do kd = 1,n_r_X
+            do jd = 1,n_m_X
+                ! check for maximum of mode jd and normal point jd
+                current_magn = sqrt(realpart(X_vec(jd,kd))**2&
+                    &+imagpart(X_vec(jd,kd))**2)
+                if (current_magn.gt.max_of_modes(jd)) then
+                    max_of_modes(jd) = current_magn
+                    max_of_modes_r(jd) = min_r_X + (max_r_X-min_r_X) &
+                        &* (kd-1.0)/(n_r_X-1.0)
+                end if
+            end do
+        end do
+        !call print_GP_2D('maximum of the modes','',max_of_modes)
+        !call print_GP_2D('place of maximum of the modes','',&
+            !&max_of_modes_r)
+        
+        deallocate(max_of_modes)
+        deallocate(max_of_modes_r)
+        
+        ! set up x-axis
+        allocate(x_plot(1:n_r_X,1:n_m_X))
+        do id = 1,n_r_X
+            x_plot(id,:) = min_r_X + (id-1.0)/(n_r_X-1)*(max_r_X-min_r_X)
+        end do
+        call print_GP_2D('norm of solution','',&
+            &transpose(sqrt(realpart(X_vec(:,:))**2 + &
+            &imagpart(X_vec(:,:))**2)),x=x_plot)
+        deallocate(x_plot)
     end subroutine
 end module driver_rich

@@ -50,6 +50,8 @@ slepc_ops.o : \
     str_ops.o \
     utilities.o \
     file_ops.o \
+    MPI_ops.o \
+    VMEC_vars.o \
 
 X_ops.o : \
     num_vars.o \
@@ -67,6 +69,7 @@ X_vars.o : \
     num_vars.o \
     output_ops.o \
     eq_vars.o \
+    metric_ops.o \
 
 eq_ops.o : \
     num_vars.o \
@@ -134,6 +137,7 @@ MPI_ops.o : \
     X_vars.o \
     eq_vars.o \
     file_ops.o \
+    utilities.o \
 
 str_ops.o : \
     num_vars.o \

@@ -6,11 +6,12 @@ module MPI_ops
     use MPI
     use str_ops, only: i2str
     use output_ops, only: writo, lvl_ud
+    use num_vars, only: dp
     
     implicit none
     private
     public start_MPI, stop_MPI, split_MPI, abort_MPI, broadcast_vars, &
-        &merge_MPI, get_next_job
+        &merge_MPI, get_next_job, divide_grid
     
 contains
     ! start MPI and gather information
@@ -184,6 +185,10 @@ contains
         end if
         CHCKERR('Couldn''t create window to next_job')
         
+        ! calculate the r range for the equilibrium calculations
+        ierr = calc_r_range()
+        CHCKERR('')
+        
         ! set fence so that the global master holds next_job = 1 for sure
         call MPI_Win_fence(0,next_job_win,ierr)
         CHCKERR('Couldn''t set fence')
@@ -194,6 +199,71 @@ contains
             ierr = open_output()
             CHCKERR('')
         end if
+    contains
+        ! calculate min_r_eq  and max_r_eq for this  rank in the alpha  group so
+        ! that the  equilibrium quantities  are calculated  for only  the normal
+        ! range that is relevant for the perturbation calculations, which are to
+        ! be anticipated.
+        ! This is done as follows: if  the nr. of perturbation grid points n_r_X
+        ! goes to infinity,  the division under the processes  will approach the
+        ! ideal value  of 1/group_n_procs each.  For lower values of  n_r_X, the
+        ! first processes can carry an additional perturbation grid point if the
+        ! remainder of  the division is not  zero. The situation is  at its most
+        ! assymetric for the lowest value of n_r_X.
+        ! Therefore,  to be  able  to cover  all the  levels  in the  Richardson
+        ! extrapolation  (when n_r_X  is  subsequently  increased), the  minimum
+        ! of  the   equilibrium  range  of   each  processor  is  to   be  given
+        ! by  the  grid   point  that  includes  the  lowest   of  the  possible
+        ! perturbation  points,  at  n_r_X  going  to  infinity  (i.e.  r_min  +
+        ! group_rank*(r_max-r_min)/group_n_procs)   and  the   maximum  of   the
+        ! equilibrium range is  to be given by the grid  point that includes the
+        ! highest of  the possible perturbation  points, at n_r_X at  its lowest
+        ! value (i.e. given by divide_grid with  cumul true) plus 1, because the
+        ! perturbation  quantity of  perturbation  normal point  (i) depends  on
+        ! perturbation normal point (i+1)
+        ! Furthermore,  the conversion  between points  r_X on  the perturbation
+        ! range  (0..1) and  discrete grid  points r_eq  on the  equilbrium grid
+        ! (1..n_r), the subroutine  con2dis is used with  equilibrium limits set
+        ! to [1..n_r]
+        ! [MPI] Collective call
+        integer function calc_r_range() result(ierr)
+            use num_vars, only: min_n_r_X, group_n_procs, group_rank, min_r_X, &
+                &max_r_X
+            use utilities, only: con2dis, dis2con
+            use eq_vars, only: min_r_eq, max_r_eq
+            use VMEC_vars, only: n_r
+            
+            character(*), parameter :: rout_name = 'calc_r_range'
+            
+            ! local variables
+            real(dp) :: min_r_eq_X_con                                          ! min_r_eq in continuous perturbation grid
+            real(dp) :: min_r_eq_dis                                            ! min_r_eq in discrete equilibrium grid, unrounded
+            integer :: max_r_eq_X_dis                                           ! max_r_eq in discrete perturbation grid
+            real(dp) :: max_r_eq_X_con                                          ! max_r_eq in continuous perturbation grid
+            real(dp) :: max_r_eq_dis                                            ! max_r_eq in discrete equilibrium grid, unrounded
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! use min_r_X  and max_r_X,  with group_n_procs  to get  the minimum
+            ! bound for this rank
+            min_r_eq_X_con = min_r_X + &
+                &group_rank*(max_r_X-min_r_X)/group_n_procs                     ! min_r_eq in continuous perturbation grid (0..1)
+            call con2dis(min_r_eq_X_con,[0._dp,1._dp],min_r_eq_dis,[1,n_r])     ! min_r_eq in discrete equilibrium grid, unrounded
+            min_r_eq = floor(min_r_eq_dis)                                      ! rounded up
+            
+            ! use grid_max with min_n_r_X to calculate max_r_eq
+            ierr = divide_grid(MPI_Comm_groups,min_n_r_X,max_r_eq_X_dis,&
+                &cumul=.true.)                                                  ! max_r_eq in discrete perturbation grid (1..min_n_r_X)
+            CHCKERR('')
+            if (group_rank.ne.group_n_procs-1) &
+                &max_r_eq_X_dis = max_r_eq_X_dis + 1                            ! only add 1 if not last global point
+            call dis2con(max_r_eq_X_dis,[1,min_n_r_X],max_r_eq_X_con,&
+                &[0._dp,1._dp])                                                 ! max_r_eq in continuous perturbation grid (min_r_X..max_r_X)
+            max_r_eq_X_con = min_r_X + (max_r_X-min_r_X)*max_r_eq_X_con         ! max_r_eq in continuous perturbation grid (0..1)
+            call con2dis(max_r_eq_X_con,[0._dp,1._dp],max_r_eq_dis,[1,n_r])     ! max_r_eq in discrete equilibrium grid, unrounded
+            max_r_eq = ceiling(max_r_eq_dis)                                    ! round down
+        end function calc_r_range
     end function split_MPI
     
     ! merge the MPI groups back to MPI_COMM_WORLD
@@ -306,6 +376,60 @@ contains
         CHCKERR('MPI broadcast failed')
     end function get_next_job
     
+    ! divides a grid  of n points under  the ranks of MPI  Communicator comm and
+    ! assigns n_loc to each rank
+    integer function divide_grid(comm,n,n_loc,cumul) result(ierr)
+        character(*), parameter :: rout_name = 'divide_grid'
+        
+        ! input / output
+        integer, intent(in) :: comm                                             ! MPI communicator for the group
+        integer, intent(in) :: n                                                ! number of grid points to be divided
+        integer, intent(inout) :: n_loc                                         ! number of grid points for this rank
+        logical, intent(in), optional :: cumul                                  ! if .true., n_loc is given cumulative
+        
+        ! local variables
+        integer :: n_procs                                                      ! nr. of procs.
+        integer :: rank                                                         ! rank
+        logical :: cumul_loc                                                    ! local version of cumul
+        integer :: id                                                           ! counter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! initialize cumul_loc
+        if (present(cumul)) then
+            cumul_loc = cumul
+        else
+            cumul_loc = .false.
+        end if
+        
+        ! set n_procs and rank
+        call MPI_Comm_size(comm,n_procs,ierr)
+        CHCKERR('Failed to get MPI size')
+        call MPI_Comm_rank(comm,rank,ierr)
+        CHCKERR('Failed to get MPI rank')
+        
+        if (cumul_loc) then
+            n_loc = 0
+            do id = 0,rank
+                n_loc = n_loc + divide_grid_ind(id)
+            end do
+        else
+            n_loc = divide_grid_ind(rank)
+        end if
+    contains 
+        integer function divide_grid_ind(rank) result(n_loc)
+            ! input / output
+            integer, intent(in) :: rank                                         ! rank for which to be calculate divide_grid_ind
+            
+            n_loc = n/n_procs                                                   ! number of radial points on this processor
+            if (mod(n,n_procs).gt.0) then                                       ! check if there is a remainder
+                if (mod(n,n_procs).gt.rank) &
+                    &n_loc = n_loc + 1                                          ! add a point to the first ranks if there is a remainder
+            end if
+        end function divide_grid_ind
+    end function divide_grid
+        
     ! THIS SHOULD BE DONE WITH A STRUCT !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! BUT DON'T FORGET TO ALLOCATE BEFORE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Broadcasts all  the relevant variable that have been  determined so far in
@@ -322,7 +446,7 @@ contains
     !   9   integer                     format_out
     !   10  integer                     style
     !   11  integer                     n_par
-    !   12  integer                     ns
+    !   12  integer                     n_r
     !   13  integer                     mpol
     !   14  integer                     ntor
     !   15  integer                     nfp
@@ -333,36 +457,39 @@ contains
     !   20  integer                     min_m_X
     !   21  integer                     max_m_X
     !   22  integer                     n_sol_requested
-    !   23  real_dp                     min_alpha
-    !   24  real_dp                     max_alpha
-    !   25  real_dp                     min_r
-    !   26  real_dp                     max_r
-    !   27  real_dp                     tol_NR
-    !   28  real_dp                     min_par
-    !   29  real_dp                     max_par
-    !   30  real_dp                     version
-    !   31  real_dp(ns)                 phi(ns) 
-    !   32  real_dp(ns)                 phi_r(ns) 
-    !   33  real_dp(ns)                 iotaf(ns) 
-    !   34  real_dp(ns)                 presf(ns) 
-    !   35  real_dp(*)                  R_c(*)
-    !   36  real_dp(*)                  R_s(*)
-    !   37  real_dp(*)                  Z_c(*)
-    !   38  real_dp(*)                  Z_s(*)
-    !   39  real_dp(*)                  L_c(*)
-    !   40  real_dp(*)                  L_s(*)
-    !   with (*) = (0:mpol-1,-ntor:ntor,1:ns,0:max_deriv(3))
+    !   23  integer                     min_n_r_X
+    !   24  integer                     min_r_eq
+    !   25  integer                     max_r_eq
+    !   26  real_dp                     min_alpha
+    !   27  real_dp                     max_alpha
+    !   28  real_dp                     min_r_X
+    !   29  real_dp                     max_r_X
+    !   30  real_dp                     tol_NR
+    !   31  real_dp                     min_par
+    !   32  real_dp                     max_par
+    !   33  real_dp                     version
+    !   34  real_dp(n_r)                phi(n_r) 
+    !   35  real_dp(n_r)                phi_r(n_r) 
+    !   36  real_dp(n_r)                iotaf(n_r) 
+    !   37  real_dp(n_r)                presf(n_r) 
+    !   38  real_dp(*)                  R_c(*)
+    !   39  real_dp(*)                  R_s(*)
+    !   40  real_dp(*)                  Z_c(*)
+    !   41  real_dp(*)                  Z_s(*)
+    !   42  real_dp(*)                  L_c(*)
+    !   43  real_dp(*)                  L_s(*)
+    !   with (*) = (0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3))
     ! [MPI] Collective call
     integer function broadcast_vars() result(ierr)
         use VMEC_vars, only: mpol, ntor, lasym, lrfp, lfreeb, nfp, iotaf, &
-            &R_c, R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf, version, ns
-        use num_vars, only: max_str_ln, dp, output_name, ltest, &
+            &R_c, R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf, version, n_r
+        use num_vars, only: max_str_ln, output_name, ltest, &
             &theta_var_along_B, EV_style, max_it_NR, max_it_r, n_alpha, &
             &n_procs_per_alpha, style, max_alpha, min_alpha, tol_NR, glob_rank, &
-            &glob_n_procs, n_sol_requested
+            &glob_n_procs, n_sol_requested, min_n_r_X, min_r_X, max_r_X
         use output_ops, only: format_out
-        use X_vars, only: n_X, min_m_X, max_m_X, max_r, min_r
-        use eq_vars, only: n_par, max_par, min_par
+        use X_vars, only: n_X, min_m_X, max_m_X
+        use eq_vars, only: n_par, max_par, min_par, min_r_eq, max_r_eq
         
         character(*), parameter :: rout_name = 'broadcast_vars'
         
@@ -391,7 +518,7 @@ contains
             call MPI_Bcast(format_out,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(style,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(n_par,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(ns,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(n_r,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(mpol,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(ntor,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(nfp,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
@@ -402,10 +529,13 @@ contains
             call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(n_sol_requested,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(min_n_r_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(min_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(max_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(min_r,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(max_r,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(min_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(max_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(tol_NR,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_par,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_par,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
@@ -437,7 +567,7 @@ contains
     contains
         ! broadcasts the size of an array, so this array can be allocated in the
         ! slave processes
-        ! The index of this array is (1:ns)
+        ! The index of this array is (1:n_r)
         subroutine bcast_size_1_I(arr)                                          ! version with 1 integer argument
             ! input / output
             integer, intent(inout), allocatable :: arr(:)
@@ -450,7 +580,7 @@ contains
             call MPI_Bcast(arr_size,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             if (glob_rank.ne.0) allocate(arr(1:arr_size))
         end subroutine bcast_size_1_I
-        ! The index of this array is (1:ns)
+        ! The index of this array is (1:n_r)
         subroutine bcast_size_1_R(arr)                                            ! version with 1 real argument
             ! input / output
             real(dp), intent(inout), allocatable :: arr(:)
@@ -463,7 +593,7 @@ contains
             call MPI_Bcast(arr_size,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             if (glob_rank.ne.0) allocate(arr(1:arr_size))
         end subroutine bcast_size_1_R
-        ! The index of this array is (0:mpol-1,-ntor:ntor,1:ns,0:max_deriv(3))
+        ! The index of this array is (0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3))
         subroutine bcast_size_4_R(arr)                                          ! version with 4 real arguments
             ! input / output
             real(dp), intent(inout), allocatable :: arr(:,:,:,:)

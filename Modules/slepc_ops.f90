@@ -20,15 +20,16 @@ contains
     
     integer function solve_EV_system_slepc() result(ierr)
         use X_vars, only: PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, min_m_X, &
-            &max_m_X, m_X, n_r_X, n_X, max_r, min_r
-        use num_vars, only: MPI_comm_groups, group_n_procs, n_sol_requested
+            &max_m_X, m_X, n_r_X, n_X
+        use num_vars, only: MPI_comm_groups, group_n_procs, n_sol_requested, &
+            &group_rank, min_r_X, max_r_X
         use file_ops, only: opt_args
+        use MPI_ops, only: divide_grid
         
         character(*), parameter :: rout_name = 'solve_EV_system_slepc'
         
         ! local variables
         ! petsc / MPI variables
-        PetscMPIInt :: Petsc_rank, n_procs                                      ! rank and nr. of processors
         EPS :: solver                                                           ! EV solver
         !ST :: solver_ST                                                         ! Spectral Transformation type of solver
         PetscInt :: n_it                                                        ! nr. of iterations
@@ -65,7 +66,7 @@ contains
         call writo('initialize slepc...')
         call lvl_ud(1)
         
-        ! set PETSC_COMM_WORLD
+        ! use MPI_Comm_groups for PETSC_COMM_WORLD
         PETSC_COMM_WORLD = MPI_Comm_groups
         if (group_n_procs.gt.n_r_X) then                                        ! too many processors
             call writo('WARNING: using too many processors per group: '&
@@ -75,14 +76,11 @@ contains
                 &values, increasing n_r_X or increasing number of field &
                 &lines n_alpha')
         end if
-        
         call SlepcInitialize(PETSC_NULL_CHARACTER,ierr)                         ! initialize slepc
         CHCKERR('slepc failed to initialize')
-        call MPI_Comm_rank(PETSC_COMM_WORLD,Petsc_rank,ierr)                    ! rank
-        CHCKERR('MPI rank failed')
-        call MPI_Comm_size(PETSC_COMM_WORLD,n_procs,ierr)                       ! number of processors
-        CHCKERR('MPI size failed')
-        call writo('slepc started with '//trim(i2str(n_procs))&
+        
+        ! output
+        call writo('slepc started with '//trim(i2str(group_n_procs))&
             &//' processors')
         
         call lvl_ud(-1)
@@ -108,11 +106,9 @@ contains
         ! setting variables
         call writo('set variables...')
         n_m_X = size(m_X)                                                       ! number of poloidal modes (= size of one block)
-        n_r_X_loc = n_r_X/n_procs                                               ! number of radial points on this processor
-        if (mod(n_r_X,n_procs).gt.0) then                                       ! check if there is a remainder
-            if (mod(n_r_X,n_procs).gt.Petsc_rank) n_r_X_loc = n_r_X_loc + 1     ! add a point to the first ranks if there is a remainder
-        end if
-        step_size = (max_r-min_r)/(n_r_X - 1.0)
+        step_size = (max_r_X-min_r_X)/(n_r_X - 1.0)
+        ierr = divide_grid(MPI_Comm_groups,n_r_X,n_r_X_loc)                     ! calculate n_r_X_loc by dividing the n_r_X grid points
+        CHCKERR('')
         
         ! set up the matrix
         call writo('set up matrices...')
@@ -121,18 +117,6 @@ contains
         
         ! create a  matrix A and B  with the appropriate number  of preallocated
         ! entries
-        !call MatCreate(PETSC_COMM_WORLD,A,ierr)
-        !call MatSetSizes(A,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,n_r_X*n_m_X,n_r_X*n_m_X,ierr)
-        !! PREALLOCATE !!!!!!!!!!!
-        !call MatSetFromOptions(A,ierr)
-        !call MatSetUp(A,ierr)
-        
-        !call MatCreate(PETSC_COMM_WORLD,B,ierr)
-        !call MatSetSizes(B,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,n_r_X*n_m_X,n_r_X*n_m_X,ierr)
-        !! PREALLOCATE !!!!!!!!!!!
-        !call MatSetFromOptions(B,ierr)
-        !call MatSetUp(B,ierr)
-        
         call MatCreateAIJ(PETSC_COMM_WORLD,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,&    ! Hermitian matrix as a first approximation
             &n_r_X*n_m_X,n_r_X*n_m_X,3*n_m_X,PETSC_NULL_INTEGER,&
             &3*n_m_X,PETSC_NULL_INTEGER,A,ierr)
@@ -151,14 +135,6 @@ contains
         call writo('Matrix B set up')
         
         call lvl_ud(-1)
-        
-        ! allocate X_vec and X_val if group master
-        if (Petsc_rank.eq.0) then
-            allocate(X_vec(min_m_X:max_m_X,1:n_r_X,1:n_sol_requested))
-            X_vec = 0.0_dp
-            allocate(X_val(1:n_sol_requested))
-            X_val = 0.0_dp
-        end if
         
         !! visualize the matrices
         !!call PetscOptionsSetValue('-draw_pause','-1',ierr)
@@ -296,7 +272,7 @@ contains
             call VecGetArrayF90(vec_seq,vec_pointer,ierr)
             err_msg = 'Failed to get pointer to solution vector'
             CHCKERR(err_msg)
-            if (Petsc_rank.eq.0) then
+            if (group_rank.eq.0) then
                 ! loop over all normal points in perturbation grid
                 do kd = 1,n_r_X
                     do jd = min_m_X,max_m_X
@@ -340,9 +316,9 @@ contains
     ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING, SO IT IS TREATED AS HERMITIAN !!!
     integer function fill_mat(n_X,n_r_X,n_m_X,step_size,V0,V1,V2,mat) result(ierr)
         use metric_ops, only: jac_F_FD
-        use X_vars, only: min_r, max_r
-        use eq_vars, only: n_par, theta, n_r
-        use utilities, only: calc_interp, calc_int
+        use num_vars, only: min_r_X, max_r_X
+        use eq_vars, only: n_par, theta, n_r_eq
+        use utilities, only: dis2con
         
         character(*), parameter :: rout_name = 'fill_mat'
         
@@ -369,7 +345,7 @@ contains
         PetscScalar, allocatable :: term2_int_next(:,:)                         ! interpolated and integrated version of term2, at next point
         PetscScalar, allocatable :: exp_theta(:,:,:,:)                          ! exp(i (k-m) theta)
         PetscInt, allocatable :: loc_k(:), loc_m(:)                             ! the locations at which to add the blocks to the matrices
-        PetscReal :: norm_pt                                                    ! current normal point (min_r...max_r)
+        PetscReal :: norm_pt                                                    ! current normal point (min_r_X...max_r_X)
         PetscInt :: id, jd, m, k                                                ! counters
         PetscInt :: n_start, n_end                                              ! start row and end row
         PetscInt :: r_X_start, r_X_end                                          ! start block and end block (= n_start/n_m_X and equiv.)
@@ -378,9 +354,9 @@ contains
         ierr = 0
         
         ! allocate variables
-        allocate(term0(n_par,n_r,n_m_X,n_m_X))
-        allocate(term1(n_par,n_r,n_m_X,n_m_X))
-        allocate(term2(n_par,n_r,n_m_X,n_m_X))
+        allocate(term0(n_par,n_r_eq,n_m_X,n_m_X))
+        allocate(term1(n_par,n_r_eq,n_m_X,n_m_X))
+        allocate(term2(n_par,n_r_eq,n_m_X,n_m_X))
         allocate(term0_int(n_m_X,n_m_X))
         allocate(term1_int(n_m_X,n_m_X))
         allocate(term2_int(n_m_X,n_m_X))
@@ -390,7 +366,7 @@ contains
         allocate(loc_block(n_m_X,n_m_X))
         allocate(loc_k(n_m_X))
         allocate(loc_m(n_m_X))
-        allocate(exp_theta(n_par,n_r,n_m_X,n_m_X))
+        allocate(exp_theta(n_par,n_r_eq,n_m_X,n_m_X))
         
         ! set exp_theta for multiple use
         do m = 1,n_m_X
@@ -411,9 +387,10 @@ contains
             end do
         end do
         
-        allocate(x_plot(1:n_r,1:n_par))
-        do id = 1,n_r
-            x_plot(id,:) = (id-1.0)/(n_r-1)
+        ! plot for debugging
+        allocate(x_plot(1:n_r_eq,1:n_par))
+        do id = 1,n_r_eq
+            x_plot(id,:) = (id-1.0)/(n_r_eq-1)
         end do
         !write(*,*) 'term0 = '
         !call print_GP_2D('RE term0','',realpart(transpose(term0(:,:,1,1))),x=x_plot)
@@ -429,11 +406,11 @@ contains
         ! get ownership of the rows
         call MatGetOwnershipRange(mat,n_start,n_end,ierr)                       ! starting and ending row n_start and n_end
         CHCKERR('Couldn''t get ownership range of matrix')
-        r_X_start = n_start/n_m_X
-        r_X_end = n_end/n_m_X
+        r_X_start = n_start/n_m_X                                               ! count per block
+        r_X_end = n_end/n_m_X                                                   ! count per block
         
         ! get first interpolated point, corresponding to r_X_start
-        norm_pt   = min_r + (max_r-min_r) * r_X_start/(n_r_X-1.0)
+        call dis2con(r_X_start+1,[1,n_r_X],norm_pt,[min_r_X,max_r_X])
         ierr = interp_and_int(term0,norm_pt,term0_int_next)
         CHCKERR('')
         ierr = interp_and_int(term1,norm_pt,term1_int_next)
@@ -525,11 +502,13 @@ contains
         ! direction
         integer function interp_and_int(term,norm_pt,term_int) result(ierr)
             use utilities, only: calc_interp, calc_int
+            use eq_vars, only: min_r_eq, n_r_eq
+            use VMEC_vars, only: n_r
             
             character(*), parameter :: rout_name = 'interp_and_int'
             
             ! input / output
-            PetscScalar, intent(in) :: term(n_par,n_r,n_m_X,n_m_X)              ! input pairs of (k,m) in equilibrium table (par,r)
+            PetscScalar, intent(in) :: term(n_par,n_r_eq,n_m_X,n_m_X)           ! input pairs of (k,m) in equilibrium table (par,r)
             PetscReal, intent(in) :: norm_pt                                    ! point at which to interpolate
             PetscScalar, intent(inout) :: term_int(n_m_X,n_m_X)                 ! output pairs of (k,m), interpolated and integrated
             
@@ -543,13 +522,14 @@ contains
             ierr = 0
             
             ! interpolate term at norm_pt
-            ierr = calc_interp(term,[1,n_r],term_interp,norm_pt)
+            ierr = calc_interp(term,[1,n_r],term_interp,norm_pt,&
+                &r_offset=min_r_eq-1)
             CHCKERR('')
             
             ! interpolate theta at norm_pt
             allocate(theta_interp(n_par,1,1))                                   ! dimension 3 to be able to use the routine from utilities
-            ierr = calc_interp(reshape(theta,[n_par,n_r,1,1]),[1,n_r],&
-                &theta_interp,norm_pt)
+            ierr = calc_interp(reshape(theta,[n_par,n_r_eq,1,1]),[1,n_r],&
+                &theta_interp,norm_pt,r_offset=min_r_eq-1)
             CHCKERR('')
             
             ! integrate term over theta for all pairs (k,m)

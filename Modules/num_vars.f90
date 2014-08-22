@@ -11,7 +11,7 @@ module num_vars
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
         &glob_rank, glob_n_procs, group_rank, group_n_procs, group_nr, &
         &n_groups,  output_name, next_job, next_job_win, plot_q, &
-        &n_sol_requested
+        &n_sol_requested, min_n_r_X, min_r_X, max_r_X
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -67,4 +67,8 @@ module num_vars
     ! considering the various field lines for which to do the calculations
     integer :: n_alpha                                                          ! how many field lines
     real(dp) :: min_alpha, max_alpha                                            ! min. and max. value for alpha, should be (0...2pi)
+    
+    ! considering the perturbation grid
+    integer :: min_n_r_X                                                        ! min. of n_r_X (e.g. first value in Richardson loop)
+    real(dp) :: min_r_X, max_r_X                                                ! mimimum and maximum radius for perturbations
 end module num_vars

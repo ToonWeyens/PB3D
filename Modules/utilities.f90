@@ -11,7 +11,7 @@ module utilities
     private
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, arr_mult, &
         &VMEC_norm_deriv, VMEC_conv_FHM, check_deriv, calc_inv, &
-        &init_utilities, derivs, calc_interp
+        &init_utilities, derivs, calc_interp, con2dis, dis2con
     
     ! the possible derivatives of order i
     integer, allocatable :: derivs_0(:,:)                                       ! all possible derivatives of order 0
@@ -996,26 +996,60 @@ contains
         end do NR
     end function calc_zero_NR
 
-    ! Simple linear interpolation  of matrix varin, tabulated at  ptin, at point
-    ! ptout where ptout = 0..1 is calculated in matrix varout:
-    !   ptout - 0       pt_arr - ptin(1)
-    !   ---------  =   ----------------- ,
-    !     1 - 0        ptin(2) - ptin(1)
-    ! where pt_arr  is the index in  the array corresponding to  ptout, which is
-    ! then  rounded above  and  below to  yield the  indices  ind_lo and  ind_hi
-    ! between which to interpolate
+    ! convert  between points  on  a continuous  grid  (.e.g. perturbation  grid
+    ! (min_r_X..max_r_X))  and  on  a  discrete  grid  (.e.g.  equilibrium  grid
+    ! (1..n_r)),  taking  into  account  the   limits  on  the  continuous  grid
+    ! (lim_cont) and the limits on the discrete grid (lim_dis)
+    ! The formula used is:
+    !    pt_c - min_c     pt_d - min_d
+    !   ------------- =  ------------- ,
+    !   max_c - min_c    max_d - min_d
+    ! note: for con2dis,  the limits of the discrete grid  are given as discrete
+    ! values, while the output  pt_d is given back as a real  value, which is to
+    ! be rounded by the calling subroutine
+    subroutine con2dis(pt_c,lim_c,pt_d,lim_d)
+        ! input / output
+        real(dp), intent(in) :: pt_c                                            ! point on continous grid
+        real(dp), intent(in) :: lim_c(2)                                        ! [min_c,max_c]
+        real(dp), intent(inout) :: pt_d                                         ! point on discrete grid
+        integer, intent(in) :: lim_d(2)                                         ! [min_d,max_d]
+        
+        ! calculate
+        pt_d = lim_d(1) + (lim_d(2)-lim_d(1)) * (pt_c-lim_c(1)) / &
+            &(lim_c(2)-lim_c(1))
+    end subroutine con2dis
+    subroutine dis2con(pt_d,lim_d,pt_c,lim_c)
+        ! input / output
+        integer, intent(in) :: pt_d                                             ! point on discrete grid
+        integer, intent(in) :: lim_d(2)                                         ! [min_d,max_d]
+        real(dp), intent(inout) :: pt_c                                         ! point on continous grid
+        real(dp), intent(in) :: lim_c(2)                                        ! [min_c,max_c]
+        
+        ! calculate
+        pt_c = lim_c(1) + (lim_c(2)-lim_c(1)) * (pt_d-lim_d(1)) / &
+            &(lim_d(2)-lim_d(1))
+    end subroutine dis2con
+    
+    ! Simple  linear interpolation  of  matrix varin,  tabulated at  equilibrium
+    ! grid,  at point  ptout where  ptout =  0..1 with  result stored  in matrix
+    ! varout
+    ! pt_arr is  the index in  the array corresponding  to ptout, which  is then
+    ! rounded above  and below to  yield the  indices ind_lo and  ind_hi between
+    ! which to interpolate
     ! The interpolation between ind_lo and ind_hi is done linearly:
     !   varout = varin(ind_lo) + (pt_arr-ind_lo) * (varin(ind_hi)-varin(ind_lo))
     ! because ind_hi - ind_lo = 1
     ! note: this routine is also correct if ind_hi = ind_lo (for the last point)
-    integer function calc_interp_real(varin,ptin,varout,ptout) result(ierr)
+    integer function calc_interp_real(varin,limin,varout,ptout,r_offset) &
+        &result(ierr)
         character(*), parameter :: rout_name = 'calc_interp_real'
         
         ! input / output
         real(dp), intent(in) :: varin(:,:,:,:)                                  ! input variable, not interpolated
-        integer, intent(in) :: ptin(2)                                          ! start and end points at which variable is tabulated
+        integer, intent(in) :: limin(2)                                         ! start and end points at which variable is tabulated
         real(dp), intent(inout) :: varout(:,:,:)                                ! output variable, interpolated
         real(dp), intent(in) :: ptout                                           ! point at which to interpolate (0...1)
+        integer, intent(in), optional :: r_offset                               ! offset in the tables in the normal variable, wrt. 1
         
         ! local variables
         real(dp) :: ptout_loc                                                   ! local copy of ptout
@@ -1059,22 +1093,30 @@ contains
         end if
         
         ! find interpolation points
-        pt_arr = ptin(1) +(ptin(2)-ptin(1))*ptout_loc                           ! corresponding array index, not rounded
+        pt_arr = limin(1) +(limin(2)-limin(1))*ptout_loc                        ! corresponding array index, not rounded
         ind_lo = floor(pt_arr)                                                  ! lower bound
         ind_hi = ceiling(pt_arr)                                                ! upper bound
+        
+        ! include offset
+        if (present(r_offset)) then
+            ind_lo = ind_lo - r_offset
+            ind_hi = ind_hi - r_offset
+        end if
         
         ! interpolate
         varout = varin(:,ind_lo,:,:) + (pt_arr-ind_lo) * &
             &(varin(:,ind_hi,:,:)-varin(:,ind_lo,:,:))
     end function calc_interp_real
-    integer function calc_interp_complex(varin,ptin,varout,ptout) result(ierr)
+    integer function calc_interp_complex(varin,limin,varout,ptout,r_offset) &
+        &result(ierr)
         character(*), parameter :: rout_name = 'calc_interp_complex'
         
         ! input / output
         complex(dp), intent(in) :: varin(:,:,:,:)                               ! input variable, not interpolated
-        integer, intent(in) :: ptin(2)                                          ! start and end points at which variable is tabulated
+        integer, intent(in) :: limin(2)                                         ! start and end points at which variable is tabulated
         complex(dp), intent(inout) :: varout(:,:,:)                             ! output variable, interpolated
         real(dp), intent(in) :: ptout                                           ! point at which to interpolate (0...1)
+        integer, intent(in), optional :: r_offset                               ! offset in the tables in the normal variable, wrt. 1
         
         ! local variables
         real(dp) :: ptout_loc                                                   ! local copy of ptout
@@ -1118,12 +1160,17 @@ contains
         end if
         
         ! find interpolation points
-        pt_arr = ptin(1) +(ptin(2)-ptin(1))*ptout_loc                           ! corresponding array index, not rounded
+        pt_arr = limin(1) +(limin(2)-limin(1))*ptout_loc                        ! corresponding array index, not rounded
         ind_lo = floor(pt_arr)                                                  ! lower bound
         ind_hi = ceiling(pt_arr)                                                ! upper bound
         
         ! interpolate
-        varout = varin(:,ind_lo,:,:) + (pt_arr-ind_lo) * &
-            &(varin(:,ind_hi,:,:)-varin(:,ind_lo,:,:))
+        if (present(r_offset)) then                                             ! include offset
+            varout = varin(:,ind_lo-r_offset,:,:) + (pt_arr-ind_lo) * &
+                &(varin(:,ind_hi-r_offset,:,:)-varin(:,ind_lo-r_offset,:,:))
+        else
+            varout = varin(:,ind_lo,:,:) + (pt_arr-ind_lo) * &
+                &(varin(:,ind_hi,:,:)-varin(:,ind_lo,:,:))
+        end if
     end function calc_interp_complex
 end module utilities

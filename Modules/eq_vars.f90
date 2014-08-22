@@ -13,71 +13,74 @@ module eq_vars
     private
     public calc_eqd_mesh, calc_mesh, calc_ang_B, calc_flux_q, check_mesh, &
         &init_eq, calc_RZL, dealloc_eq_vars, dealloc_eq_vars_final, &
-        &theta, zeta, n_par, n_r, R, Z, lam_H, min_par, max_par, &
-        &q_saf, flux_p, flux_t, VMEC_R, VMEC_Z, VMEC_L, pres, &
-        &q_saf_FD, flux_p_FD, flux_t_FD, pres_FD
+        &theta, zeta, n_par, n_r_eq, R, Z, lam_H, min_par, max_par, &
+        &q_saf, q_saf_full, flux_p, flux_t, VMEC_R, VMEC_Z, VMEC_L, pres, &
+        &q_saf_FD, flux_p_FD, flux_t_FD, pres_FD, min_r_eq, max_r_eq
 
     ! R and Z and derivatives in real (as opposed to Fourier) space (see below)
     ! (index 1: variable, 2: r derivative, 2: theta derivative, 3: zeta derivative)
     real(dp), allocatable :: R(:,:,:), Z(:,:,:)                                 ! R, Z (FM)
-    real(dp), allocatable :: VMEC_R(:,:,:,:,:)                                  ! R in VMEC coordinates (n_par, n_r, [derivatives])
-    real(dp), allocatable :: VMEC_Z(:,:,:,:,:)                                  ! Z in VMEC coordinates (n_par, n_r, [derivatives])
-    real(dp), allocatable :: VMEC_L(:,:,:,:,:)                                  ! L(ambda) in VMEC coordinates (n_par, n_r, [derivatives])
+    real(dp), allocatable :: VMEC_R(:,:,:,:,:)                                  ! R in VMEC coordinates (n_par, n_r_eq, [derivatives])
+    real(dp), allocatable :: VMEC_Z(:,:,:,:,:)                                  ! Z in VMEC coordinates (n_par, n_r_eq, [derivatives])
+    real(dp), allocatable :: VMEC_L(:,:,:,:,:)                                  ! L(ambda) in VMEC coordinates (n_par, n_r_eq, [derivatives])
     real(dp), allocatable :: lam_H(:,:,:)                                       ! lambda in (HM)
-    real(dp), allocatable :: theta(:,:), zeta(:,:)                              ! grid points (n_par, n_r, 2) (FM)
+    real(dp), allocatable :: theta(:,:), zeta(:,:)                              ! grid points (n_par, n_r_eq, 2) (FM)
     real(dp), allocatable :: q_saf(:,:)                                         ! safety factor (FM)
+    real(dp), allocatable :: q_saf_full(:,:)                                    ! safety factor (FM) in full normal mesh, only for global master
     real(dp), allocatable :: q_saf_FD(:,:)                                      ! safety factor (FM), derivatives in Flux coords.
     real(dp), allocatable :: flux_p(:,:), flux_t(:,:), pres(:,:)                ! pol. flux, tor. flux and pressure, and normal derivative (FM)
     real(dp), allocatable :: flux_p_FD(:,:), flux_t_FD(:,:), pres_FD(:,:)       ! pol. flux, tor. flux and pressure, and normal derivative (FM), derivs. in flux coords.
     real(dp) :: min_par, max_par
-    integer :: n_par, n_r
+    integer :: n_par, n_r_eq                                                    ! nr. of parallel and normal points in thie process in alpha group
+    integer :: min_r_eq, max_r_eq                                               ! min. and max. r range of this process in alpha group
     
     interface calc_RZL
         module procedure calc_RZL_ind, calc_RZL_arr
     end interface
 
 contains
-    ! initialize the variables n_r, VMEC_R, VMEC_Z and VMEC_L
+    ! initialize the variables n_r_eq, VMEC_R, VMEC_Z and VMEC_L
     subroutine init_eq
         use num_vars, only: max_deriv
-        use VMEC_vars, only: ns
+        !use VMEC_vars, only: n_r
         
-        ! n_r
-        n_r = ns
+        ! calculate n_r_eq
+        !n_r_eq = n_r
+        n_r_eq = max_r_eq - min_r_eq + 1
         
         ! R
-        allocate(VMEC_R(n_par,n_r,0:max_deriv(1),0:max_deriv(2),0:max_deriv(3)))
+        allocate(VMEC_R(n_par,n_r_eq,0:max_deriv(1),0:max_deriv(2),0:max_deriv(3)))
         
         ! Z
-        allocate(VMEC_Z(n_par,n_r,0:max_deriv(1),0:max_deriv(2),0:max_deriv(3)))
+        allocate(VMEC_Z(n_par,n_r_eq,0:max_deriv(1),0:max_deriv(2),0:max_deriv(3)))
         
         ! lambda
-        allocate(VMEC_L(n_par,n_r,0:max_deriv(1),0:max_deriv(2),0:max_deriv(3)))
+        allocate(VMEC_L(n_par,n_r_eq,0:max_deriv(1),0:max_deriv(2),0:max_deriv(3)))
         
         ! q_saf
-        allocate(q_saf(n_r,0:max_deriv(1)))
+        allocate(q_saf(n_r_eq,0:max_deriv(1)))
         
         ! q_saf_FD
-        allocate(q_saf_FD(n_r,0:max_deriv(1)))
+        allocate(q_saf_FD(n_r_eq,0:max_deriv(1)))
         
         ! flux_p
-        allocate(flux_p(n_r,0:max_deriv(1)))
+        allocate(flux_p(n_r_eq,0:max_deriv(1)))
         
         ! flux_p_FD
-        allocate(flux_p_FD(n_r,0:max_deriv(1)))
+        allocate(flux_p_FD(n_r_eq,0:max_deriv(1)))
         
         ! flux_t
-        allocate(flux_t(n_r,0:max_deriv(1)))
+        allocate(flux_t(n_r_eq,0:max_deriv(1)))
         
         ! flux_t_FD
-        allocate(flux_t_FD(n_r,0:max_deriv(1)))
+        allocate(flux_t_FD(n_r_eq,0:max_deriv(1)))
         
         ! pres
-        allocate(pres(n_r,0:max_deriv(1)))
+        allocate(pres(n_r_eq,0:max_deriv(1)))
         
         ! pres_FD
-        allocate(pres_FD(n_r,0:max_deriv(1)))
-    end subroutine
+        allocate(pres_FD(n_r_eq,0:max_deriv(1)))
+    end subroutine init_eq
     
     ! calculate R, Z and Lambda and  derivatives in VMEC coordinates at the mesh
     ! points given by the variables VMEC_theta and VMEC_zeta and at every normal
@@ -95,7 +98,8 @@ contains
         integer, intent(in) :: deriv(3)
         
         ! local variables
-        integer :: id, kd
+        integer :: id, kd                                                       ! counters
+        integer :: kd_f                                                         ! full version of kd (= kd + min_r_eq - 1)
         real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
         
         ! initialize ierr
@@ -107,20 +111,21 @@ contains
         
         ! calculate the  variables R, Z,  and their angular derivatives  for all
         ! normal points and current angular point
-        perp: do kd = 1, n_r                                                    ! perpendicular: normal to the flux surfaces
+        perp: do kd = 1, n_r_eq                                                 ! perpendicular: normal to the flux surfaces
+            kd_f = kd + min_r_eq - 1
             par: do id = 1, n_par                                               ! parallel: along the magnetic field line
                 ierr = calc_mesh_cs(cs,mpol,ntor,nfp,theta(id,kd),zeta(id,kd))
                 CHCKERR('')
                 VMEC_R(id,kd,deriv(1),deriv(2),deriv(3)) = &
-                    &f2r(R_c(:,:,kd,deriv(1)),R_s(:,:,kd,deriv(1)),cs&
+                    &f2r(R_c(:,:,kd_f,deriv(1)),R_s(:,:,kd_f,deriv(1)),cs&
                     &,mpol,ntor,nfp,[deriv(2),deriv(3)],ierr)
                 CHCKERR('')
                 VMEC_Z(id,kd,deriv(1),deriv(2),deriv(3)) = &
-                    &f2r(Z_c(:,:,kd,deriv(1)),Z_s(:,:,kd,deriv(1)),cs&
+                    &f2r(Z_c(:,:,kd_f,deriv(1)),Z_s(:,:,kd_f,deriv(1)),cs&
                     &,mpol,ntor,nfp,[deriv(2),deriv(3)],ierr)
                 CHCKERR('')
                 VMEC_L(id,kd,deriv(1),deriv(2),deriv(3)) = &
-                    &f2r(L_c(:,:,kd,deriv(1)),L_s(:,:,kd,deriv(1)),cs&
+                    &f2r(L_c(:,:,kd_f,deriv(1)),L_s(:,:,kd_f,deriv(1)),cs&
                     &,mpol,ntor,nfp,[deriv(2),deriv(3)],ierr)
                 CHCKERR('')
             end do par
@@ -143,47 +148,63 @@ contains
 
     ! Calculates flux quantities and normal derivatives
     integer function calc_flux_q() result(ierr)
-        use VMEC_vars, only: iotaf, phi, phi_r, presf
+        use VMEC_vars, only: iotaf, phi, phi_r, presf, n_r
         use utilities, only: VMEC_norm_deriv, calc_int
-        use num_vars, only: max_deriv
+        use num_vars, only: max_deriv, glob_rank
         
         character(*), parameter :: rout_name = 'calc_flux_q'
         
         ! local variables
-        integer :: kd
+        integer :: kd                                                           ! counter
+        real(dp), allocatable :: flux_p_full(:)                                 ! version of flux_dp on full normal mesh (1..n_r)
+        real(dp), allocatable :: flux_p_int_full(:)                             ! version of integrated flux_dp on full normal mesh (1..n_r)
         
         ! initialize ierr
         ierr = 0
         
         ! safety factor q_saf: invert iota and derive
-        do kd = 1,n_r
-            q_saf(kd,0) = 1/iotaf(kd)
-        end do
+        q_saf(:,0) = 1/iotaf(min_r_eq:max_r_eq)
         do kd = 1,max_deriv(1)
             ierr = VMEC_norm_deriv(q_saf(:,0),q_saf(:,kd),n_r-1._dp,kd,1)
             CHCKERR('')
         end do
         
+        ! the global master needs q_saf for resonance plot and checking of m and
+        ! n
+        if (glob_rank.eq.0) then
+            allocate(q_saf_full(n_r,0:1))
+            q_saf_full(:,0) = 1/iotaf
+            ierr = VMEC_norm_deriv(q_saf_full(:,0),q_saf_full(:,1),n_r-1._dp,&
+                &1,1)
+            CHCKERR('')
+        end if
+        
         ! toroidal flux: copy from VMEC and derive
-        flux_t(:,0) = phi
-        flux_t(:,1) = phi_r
+        flux_t(:,0) = phi(min_r_eq:max_r_eq)
+        flux_t(:,1) = phi_r(min_r_eq:max_r_eq)
         do kd = 2,max_deriv(1)
             ierr = VMEC_norm_deriv(flux_t(:,1),flux_t(:,kd),n_r-1._dp,kd-1,1)
             CHCKERR('')
         end do
         
         ! poloidal flux: calculate using iotaf and phi, phi_r
+        ! need full normal mesh flux_p because of the integral
+        allocate(flux_p_full(n_r),flux_p_int_full(n_r))
+        flux_p_full = iotaf*phi_r
         flux_p = 0.0_dp
-        flux_p(:,1) = iotaf*phi_r
-        ierr = calc_int(flux_p(:,1),[(kd/(n_r-1.0_dp),kd=0,n_r-1)],flux_p(:,0))
+        flux_p(:,1) = flux_p_full(min_r_eq:max_r_eq)
+        ierr = calc_int(flux_p_full,[(kd/(n_r-1.0_dp),kd=0,n_r-1)],&
+            &flux_p_int_full)
         CHCKERR('')
+        flux_p(:,0) = flux_p_int_full(min_r_eq:max_r_eq)
+        deallocate(flux_p_full,flux_p_int_full)
         do kd = 2,max_deriv(1)
             ierr = VMEC_norm_deriv(flux_p(:,1),flux_p(:,kd),n_r-1._dp,kd-1,1)
             CHCKERR('')
         end do
         
         ! pressure: copy from VMEC and derive
-        pres(:,0) = presf
+        pres(:,0) = presf(min_r_eq:max_r_eq)
         do kd = 1, max_deriv(1)
             ierr = VMEC_norm_deriv(pres(:,0),pres(:,kd),n_r-1._dp,kd,1)
             CHCKERR('')
@@ -202,6 +223,7 @@ contains
     ! meshes, which is useful for tests
     integer function calc_mesh(alpha) result(ierr)
         use num_vars, only: theta_var_along_B, calc_mesh_style
+        use VMEC_vars, only: n_r
         
         character(*), parameter :: rout_name = 'calc_mesh'
         
@@ -320,6 +342,7 @@ contains
     integer function check_mesh(alpha) result(ierr)
         use num_vars, only: tol_NR, theta_var_along_B, max_str_ln, &
             &calc_mesh_style
+        use VMEC_vars, only: n_r
         
         character(*), parameter :: rout_name = 'check_mesh'
         
@@ -333,15 +356,16 @@ contains
         integer :: id
         character(len=max_str_ln) :: par_ang, dep_ang                           ! parallel angle and dependent angle, for output message
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), allocatable :: work(:)                                        ! work array
+        real(dp), allocatable :: work(:), work2(:,:)                            ! work arrays
         
         ! initialize ierr
         ierr = 0
         
         allocate(work(n_r))
+        allocate(work2(n_par,n_r))
         
         if (calc_mesh_style.eq.0) then                                          ! only do the check if the magnetic field lines are followed
-            if (theta_var_along_B) then                                             ! calculate theta again from zeta
+            if (theta_var_along_B) then                                         ! calculate theta again from zeta
                 do id = 1,n_par
                     var_in = zeta(id,:)
                     ierr = calc_ang_B(work,.true.,alpha,var_in)
@@ -350,7 +374,7 @@ contains
                 end do
                 par_ang = 'poloidal'; dep_ang = 'toroidal'
                 var_diff = theta(:,:) - var_calc
-            else                                                                    ! calculate zeta again from theta
+            else                                                                ! calculate zeta again from theta
                 do id = 1,n_par
                     var_in = theta(id,:)
                     ierr = calc_ang_B(work,.false.,alpha,var_in)
@@ -361,7 +385,8 @@ contains
                 var_diff = zeta(:,:) - var_calc
             end if
             
-            if (maxval(abs(var_diff)).gt.tol_NR*100) then
+            ! check the difference
+            if (maxval(abs(var_diff)).gt.tol_NR*100) then                       ! difference too large
                 err_msg = 'Calculating again the '//trim(par_ang)//&
                     &' grid points from the '//trim(dep_ang)//' grid points, &
                     &along the magnetic fields, does not result in the same &
@@ -369,6 +394,15 @@ contains
                     &to '//trim(r2strt(100*maxval(abs(var_diff))))//'%'
                 ierr = 1
                 CHCKERR(err_msg)
+            else                                                                ! difference within tolerance
+                ! limit the normal size of theta and zeta
+                work2 = theta
+                deallocate(theta); allocate(theta(n_par,n_r_eq))
+                theta = work2(:,min_r_eq:max_r_eq)
+                
+                work2 = zeta
+                deallocate(zeta); allocate(zeta(n_par,n_r_eq))
+                zeta = work2(:,min_r_eq:max_r_eq)
             end if
         end if
     end function check_mesh
@@ -426,9 +460,10 @@ contains
     ! the logical find_theta determines whether theta is sought or zeta:
     !   find_theta = .true. : look for theta as a function of zeta
     !   find_theta = .false. : look for zeta as a function of theta
-    integer function calc_ang_B(ang_B,find_theta,alpha_in,input_ang,guess) result(ierr)
+    integer function calc_ang_B(ang_B,find_theta,alpha_in,input_ang,guess) &
+        &result(ierr)
         use num_vars, only: tol_NR
-        use VMEC_vars, only: mpol, ntor, L_c, L_s, iotaf, nfp
+        use VMEC_vars, only: mpol, ntor, L_c, L_s, iotaf, nfp, n_r
         use fourier_ops, only: calc_mesh_cs, f2r
         use utilities, only: calc_zero_NR, VMEC_conv_FHM
         
@@ -583,7 +618,10 @@ contains
     ! deallocates  equilibrium quantities  that are not  used anymore  after the
     ! calculation for a certain alpha
     subroutine dealloc_eq_vars_final
+        use num_vars, only: glob_rank
+        
         deallocate(q_saf,q_saf_FD)
+        if (glob_rank.eq.0) deallocate(q_saf_full)
         deallocate(pres,pres_FD)
         deallocate(zeta,theta)
     end subroutine dealloc_eq_vars_final

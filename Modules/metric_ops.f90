@@ -7,7 +7,7 @@ module metric_ops
     use num_vars, only: dp, max_deriv, max_str_ln
     use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
     use str_ops, only: r2str, i2str
-    use eq_vars, only: n_r
+    use eq_vars, only: n_r_eq
     use utilities, only: check_deriv
     
     implicit none
@@ -74,69 +74,70 @@ module metric_ops
 contains
     ! initialize metric variables
     subroutine init_metric
-        use eq_vars, only: n_par, n_r
+        use eq_vars, only: n_par, n_r_eq
         
         ! g_C
-        allocate(g_C(n_par,n_r,3,3,0:max_deriv(1),0:max_deriv(2),&
+        allocate(g_C(n_par,n_r_eq,3,3,0:max_deriv(1),0:max_deriv(2),&
             &0:max_deriv(3))); g_C = 0.0_dp
         
         ! g_V
-        allocate(g_V(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(g_V(n_par,n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! g_F
-        allocate(g_F(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(g_F(n_par,n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! h_F
-        allocate(h_F(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(h_F(n_par,n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! g_F_FD
-        allocate(g_F_FD(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(g_F_FD(n_par,n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! h_F_FD
-        allocate(h_F_FD(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(h_F_FD(n_par,n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! T_VC
-        allocate(T_VC(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(T_VC(n_par,n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1)); T_VC = 0.0_dp
         
         ! T_VF
-        allocate(T_VF(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(T_VF(n_par,n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1)); T_VC = 0.0_dp
         
         ! T_FV
-        allocate(T_FV(n_par,n_r,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(T_FV(n_par,n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1)); T_VC = 0.0_dp
         
         ! det_T_VC
-        allocate(det_T_VC(n_par,n_r,0:max_deriv(1),0:max_deriv(2),&
+        allocate(det_T_VC(n_par,n_r_eq,0:max_deriv(1),0:max_deriv(2),&
             &0:max_deriv(3)))
         
         ! det_T_VF
-        allocate(det_T_VF(n_par,n_r,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(det_T_VF(n_par,n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! det_T_FV
-        allocate(det_T_FV(n_par,n_r,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(det_T_FV(n_par,n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! jac_C
-        allocate(jac_C(n_par,n_r,0:max_deriv(1),0:max_deriv(2),0:max_deriv(3)))
+        allocate(jac_C(n_par,n_r_eq,0:max_deriv(1),0:max_deriv(2),&
+            &0:max_deriv(3)))
         
         ! jac_V
-        allocate(jac_V(n_par,n_r,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(jac_V(n_par,n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! jac_F
-        allocate(jac_F(n_par,n_r,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(jac_F(n_par,n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! jac_F_FD
-        allocate(jac_F_FD(n_par,n_r,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        allocate(jac_F_FD(n_par,n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
     end subroutine
     
@@ -273,7 +274,7 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_g(g_A,T_BA,g_B,deriv,max_deriv) result(ierr)
-        use eq_vars, only: n_par, n_r
+        use eq_vars, only: n_par, n_r_eq
         
         character(*), parameter :: rout_name = 'calc_g'
         
@@ -315,7 +316,7 @@ contains
                         d3: do j3 = 0,m3                                        ! derivatives in third coordinate
                             call calc_C(m3,j3,C3)                               ! calculate coeff. C3
                             do i3 = m3-j3,0,-1
-                                do kd = 1,n_r                                   ! all normal points
+                                do kd = 1,n_r_eq                                ! all normal points
                                     do id = 1,n_par                             ! all parallel points
                                         k1 = m1 - j1 - i1
                                         k2 = m2 - j2 - i2
@@ -557,7 +558,7 @@ contains
     ! coordinate system
     integer function calc_T_VF_ind(deriv) result(ierr)
         use num_vars, only: pi
-        use eq_vars, only: VMEC_L, q_saf, n_par, theta, flux_p, n_r
+        use eq_vars, only: VMEC_L, q_saf, n_par, theta, flux_p, n_r_eq
         use utilities, only: arr_mult
         
         character(*), parameter :: rout_name = 'calc_T_VF_ind'
@@ -567,7 +568,8 @@ contains
         
         ! local variables
         integer :: id                                                           ! counter
-        real(dp) :: theta_s(n_par,n_r,0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1)   ! straight field line coordinate theta
+        real(dp) :: theta_s(n_par,n_r_eq,0:deriv(1)+1,0:deriv(2)+1,&
+            &0:deriv(3)+1)                                                      ! straight field line coordinate theta
         
         ! initialize ierr
         ierr = 0
@@ -655,7 +657,7 @@ contains
     !       already. If not, the results will be incorrect!
     integer function calc_inv_met_ind(X,Y,deriv) result(ierr)                   ! matrix version
         use utilities, only: calc_inv
-        use eq_vars, only: n_par, n_r
+        use eq_vars, only: n_par, n_r_eq
         
         character(*), parameter :: rout_name = 'calc_inv_met_ind'
         
@@ -704,7 +706,7 @@ contains
                             bin_fac(1) = bin_fac(1)*(m1-(r-1))/r
                         end if
                         if (z+t+r .lt. m1+m2+m3) then                           ! only add if not all r,t,z are equal to m1,m2,m3
-                            do kd = 1,n_r
+                            do kd = 1,n_r_eq
                                 do id = 1,n_par
                                     X(id,kd,:,:,m1,m2,m3) = &
                                         &X(id,kd,:,:,m1,m2,m3)-&
@@ -719,7 +721,7 @@ contains
             end do
             
             ! right-multiply by X(0,0,0)
-            do kd = 1,n_r
+            do kd = 1,n_r_eq
                 do id = 1,n_par
                     X(id,kd,:,:,m1,m2,m3) = matmul(X(id,kd,:,:,m1,m2,m3),&
                         &X(id,kd,:,:,0,0,0))
@@ -728,7 +730,7 @@ contains
         end if
     end function calc_inv_met_ind
     integer function calc_inv_met_ind_0D(X,Y,deriv) result(ierr)                ! scalar version
-        use eq_vars, only: n_par, n_r
+        use eq_vars, only: n_par, n_r_eq
         
         character(*), parameter :: rout_name = 'calc_inv_met_ind_0D'
         
@@ -778,7 +780,7 @@ contains
                             bin_fac(1) = bin_fac(1)*(m1-(r-1))/r
                         end if
                         if (z+t+r .lt. m1+m2+m3) then                           ! only add if not all r,t,z are equal to m1,m2,m3
-                            do kd = 1,n_r
+                            do kd = 1,n_r_eq
                                 do id = 1,n_par
                                     X(id,kd,m1,m2,m3) = X(id,kd,m1,m2,m3)-&
                                         &bin_fac(1)*bin_fac(2)*bin_fac(3)* &
@@ -791,7 +793,7 @@ contains
             end do
             
             ! right-multiply by X(0,0,0)
-            do kd = 1,n_r
+            do kd = 1,n_r_eq
                 do id = 1,n_par
                     X(id,kd,m1,m2,m3) = X(id,kd,m1,m2,m3)*X(id,kd,0,0,0)
                 end do
