@@ -4,8 +4,8 @@
 module num_vars
     implicit none
     private
-    public max_it, dp, qp, style, max_str_ln, n_seq_0, max_args, &
-        &max_opts, prog_name, max_it_r, ltest, pi, max_it_NR, tol_NR, &
+    public dp, qp, style, max_str_ln, n_seq_0, max_args, max_opts, prog_name, &
+        &max_it_r, tol_r, ltest, pi, max_it_NR, tol_NR, &
         &input_i, output_i, VMEC_i, min_alpha, max_alpha, n_alpha, &
         &theta_var_along_B, max_deriv, mu_0, calc_mesh_style, iu, EV_style, &
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
@@ -40,19 +40,21 @@ module num_vars
     integer :: next_job                                                         ! next job to be done
     integer :: next_job_win                                                     ! window to next_job
 
-    ! considering runtime
-    integer :: max_it_r                                                         ! number of levels for Richardson's extrapolation
-    integer :: max_it                                                           ! max. nr. iterations
-    integer :: style                                                            ! determines the method used for minimization
-        ! 1 [def] : Euler-Lagrange min., finite diff and Richardson's method
-    logical :: ltest                                                            ! whether or not to call the testing routines
-    integer :: calc_mesh_style
-    integer :: EV_style                                                         ! determines the method used for solving an EV problem
-
     ! physical and mathematical variables
     real(dp), parameter :: pi=4_dp*datan(1.0_dp)                                ! pi
     real(dp), parameter :: mu_0 = 4E-7_dp*pi                                    ! permeability of free space
     complex(dp), parameter :: iu = (0,1)                                        ! complex unit
+
+    ! considering runtime
+    integer :: style                                                            ! determines the method used for minimization
+        ! 1 [def] : Euler-Lagrange min., finite diff and Richardson's method
+    logical :: ltest                                                            ! whether or not to call the testing routines
+    integer :: calc_mesh_style                                                  ! how equilibrium mesh is calculated
+    integer :: EV_style                                                         ! determines the method used for solving an EV problem
+    
+    ! considering Richardson extrapolation
+    integer :: max_it_r                                                         ! number of levels for Richardson extrapolation
+    real(dp) :: tol_r                                                           ! tolerance for Richardson extrapolation
 
     ! considering finding the magnetic field lines
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations

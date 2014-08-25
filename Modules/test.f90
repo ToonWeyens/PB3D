@@ -5,9 +5,8 @@ module test
 #include <PB3D_macros.h>
     use num_vars, only: dp, max_str_ln, pi, mu_0, output_i, iu
     use output_ops, only: writo, lvl_ud, print_ar_1, print_ar_2, print_GP_2D, &
-        &print_GP_3D
+        &print_GP_3D, start_time, stop_time
     use input_ops, only: yes_no
-    use time, only: start_time, stop_time
     use str_ops, only: i2str, r2str, r2strt
 
     implicit none

@@ -23,7 +23,6 @@
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D
-    use time, only: init_time, start_time, passed_time
     use test, only: test_repack, test_print_GP, test_calc_mesh_cs, &
         &test_metric_transf, test_ang_B, test_calc_ext_var, test_B, &
         &test_VMEC_norm_deriv, test_VMEC_conv_FHM, test_calc_RZL, &
@@ -34,11 +33,12 @@ program PB3D
     use num_vars, only: ltest
 #endif
     use str_ops, only: r2str, i2str
-    use output_ops, only: init_output_ops, lvl_ud, writo
-    use VMEC_vars, only: read_VMEC                                              ! The plasma variables
-    use driver, only: run_driver                                                ! Main driver
+    use output_ops, only: init_output_ops, lvl_ud, writo, init_time, &
+        &start_time, passed_time, print_hello, print_goodbye
+    use VMEC_vars, only: read_VMEC
+    use driver, only: run_driver
     use file_ops, only: open_input, open_output, search_file, parse_args, &
-        &init_file_ops
+        &init_file_ops, close_output
     use input_ops, only: read_input
     use utilities, only: init_utilities
     use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, broadcast_vars
@@ -53,6 +53,7 @@ program PB3D
     !-------------------------------------------------------
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
+    call print_hello
     call init_output_ops                                                        ! initialize output operations
     call init_file_ops                                                          ! initialize output operations
     call init_utilities                                                         ! initialize utilities
@@ -62,7 +63,7 @@ program PB3D
     !   Read the user-provided input file and the VMEC output
     !-------------------------------------------------------
     call start_time
-    call writo('Start reading the input')
+    call writo('Initialization')
     call lvl_ud(1)
     ierr = parse_args()                                                         ! parse argument (options are used in open_input)
     CHCKERR
@@ -141,7 +142,7 @@ program PB3D
     !   Main driver
     !-------------------------------------------------------
     call start_time
-    call writo('Start main driver')
+    call writo('Main driver')
     call lvl_ud(1)
     ierr = run_driver()
     CHCKERR
@@ -153,13 +154,15 @@ program PB3D
     !-------------------------------------------------------
     !   cleaning up
     !-------------------------------------------------------
-    call writo('Start cleaning up')
+    call writo('Cleanup')
     call lvl_ud(1)
-    ! CLOSE THE OUTPUT FILES, 
+    call close_output
     ierr = stop_MPI()
     CHCKERR
     call lvl_ud(-1)
-
+    
+    call print_goodbye
+    
 contains
     ! stops the computations, aborting MPI, etc.
     ! as a special case, if ierr = 66, no error message is printed

@@ -11,7 +11,7 @@ module MPI_ops
     implicit none
     private
     public start_MPI, stop_MPI, split_MPI, abort_MPI, broadcast_vars, &
-        &merge_MPI, get_next_job, divide_grid
+        &merge_MPI, get_next_job, divide_grid, broadcast_logical
     
 contains
     ! start MPI and gather information
@@ -313,6 +313,7 @@ contains
         ! initialize ierr
         ierr = 0
         
+        call writo('Stopping MPI')
         call MPI_finalize(ierr)
         CHCKERR('MPI stop failed')
     end function stop_MPI
@@ -429,6 +430,22 @@ contains
             end if
         end function divide_grid_ind
     end function divide_grid
+    
+    ! broadcasts a logical variable inside an alpha group
+    ! [MPI] Collective call
+    integer function broadcast_logical(comm,flag) result(ierr)
+        character(*), parameter :: rout_name = 'divide_grid'
+        
+        ! input / output
+        integer, intent(in) :: comm                                             ! MPI communicator for the group
+        logical, intent(in) :: flag                                             ! logical to be broadcast
+        
+        ! initialize ierr
+        ierr = 0
+        
+        call MPI_Bcast(flag,1,MPI_LOGICAL,0,comm,ierr)
+        CHCKERR('MPI broadcast failed')
+    end function broadcast_logical
         
     ! THIS SHOULD BE DONE WITH A STRUCT !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! BUT DON'T FORGET TO ALLOCATE BEFORE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

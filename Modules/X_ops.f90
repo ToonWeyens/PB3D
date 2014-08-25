@@ -10,7 +10,7 @@ module X_ops
 
     implicit none
     private
-    public prepare_matrix_X, solve_EV_system
+    public prepare_matrix_X, solve_EV_system, plot_X_vec
 
 contains
     ! prepare the matrix elements by calculating KV and PV, which then will have
@@ -86,4 +86,58 @@ contains
                 CHCKERR(err_msg)
         end select
     end function solve_EV_system
+    
+    ! plots an eigenfunction
+    subroutine plot_X_vec(X_vec,min_r_X,max_r_X)
+        ! input / output
+        complex(dp), intent(in) :: X_vec(:,:)
+        real(dp), intent(in) :: min_r_X, max_r_X
+        
+        ! local variables
+        integer :: n_m_X                                                        ! nr. of poloidal modes
+        integer :: n_r_X                                                        ! nr. of normal points in perturbation grid
+        real(dp), allocatable :: x_plot(:,:)                                    ! x_axis of plot
+        integer :: id, jd, kd                                                   ! counters
+        real(dp), allocatable :: max_of_modes(:)                                ! maximum of each mode
+        real(dp) :: current_magn                                                ! maximum of each mode
+        real(dp), allocatable :: max_of_modes_r(:)                              ! flux surface where max of mode occurs
+        
+        ! initialize some things
+        n_m_X = size(X_vec,1)
+        n_r_X = size(X_vec,2)
+        allocate(max_of_modes(n_m_X))
+        allocate(max_of_modes_r(n_m_X))
+        max_of_modes = 0.0_dp
+        max_of_modes_r = 0.0_dp
+                
+        ! loop over all normal points of all modes in perturbation grid
+        do kd = 1,n_r_X
+            do jd = 1,n_m_X
+                ! check for maximum of mode jd and normal point jd
+                current_magn = sqrt(realpart(X_vec(jd,kd))**2&
+                    &+imagpart(X_vec(jd,kd))**2)
+                if (current_magn.gt.max_of_modes(jd)) then
+                    max_of_modes(jd) = current_magn
+                    max_of_modes_r(jd) = min_r_X + (max_r_X-min_r_X) &
+                        &* (kd-1.0)/(n_r_X-1.0)
+                end if
+            end do
+        end do
+        !call print_GP_2D('maximum of the modes','',max_of_modes)
+        !call print_GP_2D('place of maximum of the modes','',&
+            !&max_of_modes_r)
+        
+        deallocate(max_of_modes)
+        deallocate(max_of_modes_r)
+        
+        ! set up x-axis
+        allocate(x_plot(1:n_r_X,1:n_m_X))
+        do id = 1,n_r_X
+            x_plot(id,:) = min_r_X + (id-1.0)/(n_r_X-1)*(max_r_X-min_r_X)
+        end do
+        call print_GP_2D('norm of solution','',&
+            &transpose(sqrt(realpart(X_vec(:,:))**2 + &
+            &imagpart(X_vec(:,:))**2)),x=x_plot)
+        deallocate(x_plot)
+    end subroutine
 end module

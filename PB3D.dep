@@ -6,7 +6,6 @@ PB3D.o : \
     driver.o \
     test.o \
     str_ops.o \
-    time.o \
     utilities.o \
     input_ops.o \
 
@@ -16,7 +15,6 @@ test.o : \
     str_ops.o \
     fourier_ops.o \
     metric_ops.o \
-    time.o \
     VMEC_vars.o \
     eq_vars.o \
     utilities.o \
@@ -43,6 +41,7 @@ driver_rich.o : \
     slepc_ops.o \
     metric_ops.o \
     VMEC_vars.o \
+    utilities.o \
 
 slepc_ops.o : \
     num_vars.o \
@@ -140,10 +139,6 @@ MPI_ops.o : \
     utilities.o \
 
 str_ops.o : \
-    num_vars.o \
-
-time.o : \
-    output_ops.o \
     num_vars.o \
 
 num_vars.o : \

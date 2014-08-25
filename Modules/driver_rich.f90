@@ -4,7 +4,7 @@
 !------------------------------------------------------------------------------!
 module driver_rich
 #include <PB3D_macros.h>
-    use num_vars, only: max_it_r, dp, pi
+    use num_vars, only: max_it_r, dp, pi, max_str_ln
     use str_ops, only: i2str, r2str, r2strt
     use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud, print_GP_2D
     implicit none
@@ -115,7 +115,7 @@ contains
             &max_r_X
         use eq_ops, only: calc_eq
         use eq_vars, only: dealloc_eq_vars_final
-        use X_ops, only: prepare_matrix_X, solve_EV_system
+        use X_ops, only: prepare_matrix_X, solve_EV_system, plot_X_vec
         use X_vars, only: dealloc_X_vars, X_vec, X_val
         use metric_ops, only: dealloc_metric_vars_final
         
@@ -127,8 +127,8 @@ contains
         ! local variables
         integer :: ir                                                           ! counter for richardson extrapolation
         integer :: id                                                           ! counter
-        logical :: conv_richard                                                 ! is it converged?
-        complex(dp), allocatable :: X_val_rich(:,:)                             ! Richardson array of eigenvalues X_val
+        logical :: done_richard                                                 ! is it converged?
+        complex(dp), allocatable :: X_val_rich(:,:,:)                           ! Richardson array of eigenvalues X_val
         
         ! initialize ierr
         ierr = 0
@@ -139,18 +139,25 @@ contains
         
         ! Initalize some variables for Richardson loop
         ir = 1
-        conv_richard = .false.
-        allocate(X_val_rich(1:n_sol_requested,1:max_it_r))
+        done_richard = .false.
+        allocate(X_val_rich(1:max_it_r,1:max_it_r,1:n_sol_requested))
+        X_val_rich = 0.0_dp
         
         ! Start Richardson loop
-        call writo('Starting Richardson loop')
-        
+        if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
+            call writo('Starting perturbation calculation with Richardson &
+                &extrapolation')
+        else
+            call writo('Starting perturbation calculation')
+        end if
         call lvl_ud(1)                                                          ! before richardson loop
         
-        Richard: do while (.not.conv_richard .and. ir.le.max_it_r)
-            call writo('Level ' // trim(i2str(ir)) // &
-                &' of Richardson''s extrapolation')
-            call lvl_ud(1)                                                      ! beginning of one richardson loop
+        Richard: do while (.not.done_richard .and. ir.le.max_it_r)
+            if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
+                call writo('Level ' // trim(i2str(ir)) // &
+                    &' of Richardson extrapolation')
+                call lvl_ud(1)                                                  ! beginning of one richardson loop
+            end if
             
             !  calculate   number   of   radial   points   for   the
             ! perturbation in Richardson loops and save in n_r_X
@@ -177,20 +184,29 @@ contains
             CHCKERR('')
             call lvl_ud(-1)
             
-            ! save the output eigenvalue for this Richardson level
-            if (group_rank.eq.0) then
-                do id = 1,n_sol_requested
-                    X_val_rich(id,ir) = X_val(id)
-                end do
+            if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
+                ! update  the  variable  X_val_rich  with the  results  of  this
+                ! Richardson level
+                ierr = calc_rich_ex(ir,X_val,X_val_rich,done_richard)
+                CHCKERR('')
+                call writo('updating Richardson extrapolation variables')
+                call lvl_ud(1)
+                call lvl_ud(-1)
+            else
+                done_richard = .true.
             end if
             
-            ! check if precision has been reached and if not, increment counter
-            call check_conv_richard(conv_richard)
-            if (.not.conv_richard) ir = ir + 1
-            
             ! output the largest Eigenfunction for the last Richardson loop
-            if (conv_richard .or. ir.eq.max_it_r+1) then
+            if (done_richard .or. ir.eq.max_it_r+1) then
                 if (group_rank.eq.0) then
+                    if (ir.gt.1) then
+                        call writo('plotting the Eigenvalues')
+                        call print_GP_2D('X_val','',realpart(&
+                            &X_val_rich(1:ir,1,:)))
+                        !call print_GP_2D('X_val_rich','',&
+                            !&realpart([(X_val_rich(id,id,1),id=1,ir)]))
+                    end if
+                    
                     call writo('plotting the Eigenvectors')
                     
                     call lvl_ud(1)
@@ -200,7 +216,7 @@ contains
                             &trim(i2str(id))//'/'//&
                             &trim(i2str(n_sol_requested))//', with eigenvalue '&
                             &//trim(r2strt(realpart(X_val(id))))//' + '//&
-                            &(r2strt(imagpart(X_val(id)))))
+                            &trim(r2strt(imagpart(X_val(id))))//' i')
                         call plot_X_vec(X_vec(:,:,id),min_r_X,max_r_X)
                     end do
                     
@@ -212,20 +228,16 @@ contains
             call writo('deallocating perturbation variables')
             call dealloc_X_vars
             
-            call lvl_ud(-1)                                                     ! end of one richardson loop
+            if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
+                call lvl_ud(-1)                                                 ! end of one richardson loop
+            end if
         end do Richard
         
         call lvl_ud(-1)                                                         ! done with richardson
-        call writo('Finished Richardson loop')
-        
-        ! output the Eigenvalues for all Richardson levels
-        call writo('Plot output')
-        if (group_rank.eq.0) then
-            call print_GP_2D('RE X_val(1)','',realpart(X_val_rich(1,:)))
-            call print_GP_2D('IM X_val(1)','',imagpart(X_val_rich(1,:)))
-            
-            !!!!! PERFORM EXTRAPOLATION OF EV TO GET A GOOD APPROX !!!!
-            write(*,*) '!!! Extrapolate EV !!!!'
+        if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
+            call writo('Finished Richardson loop')
+        else
+            call writo('Finished perturbation calculation')
         end if
         
         ! deallocate Richardson loop variables
@@ -259,65 +271,87 @@ contains
         write(*,*) 'UPDATE THE MATRICES!!!!! DO NOT JUST DELETE THEM! THEY CAN BE REUSED!!!!!'
     end subroutine
     
-    ! checks for the convergence of the Richardson loop
-    subroutine check_conv_richard(converged)
-        logical, intent(inout) :: converged
+    ! calculates  the  coefficients  of   the  Eigenvalues  in   the  Richardson
+    ! extrapolation
+    ! This is done using the recursive formula
+    !   X_val_rich(ir,ir2,:) = X_val_rich(ir,ir2-1,:) +  1/(2^(2ir2) - 1) * 
+    !       (X_val_rich(ir,ir2-1,:) - X_val_rich(ir-1,ir2-1,:)),
+    ! as described in [ADD REF]
+    ! [MPI] parts only by group masters, other parts by all group members
+    integer function calc_rich_ex(ir,X_val,X_val_rich,done_richard) result(ierr)
+        use num_vars, only: group_rank, tol_r, MPI_Comm_groups
+        use MPI_ops, only: broadcast_logical
         
-        !!! NOT YET IMPLEMENTED
-        write(*,*) 'CHECK FOR CONVERGENCE NOT YET IMPLEMENTED !!!!!'
-    end subroutine
-    
-    ! plots an eigenfunction
-    subroutine plot_X_vec(X_vec,min_r_X,max_r_X)
+        character(*), parameter :: rout_name = 'calc_rich_ex'
+        
         ! input / output
-        complex(dp), intent(in) :: X_vec(:,:)
-        real(dp), intent(in) :: min_r_X, max_r_X
+        integer, intent(inout) :: ir                                            ! level of Richardson extrapolation (starting at 1)
+        complex(dp), intent(in) :: X_val(:)                                     ! EV for this Richardson level
+        complex(dp), intent(inout) :: X_val_rich(:,:,:)                         ! extrapolated coefficients
+        logical, intent(inout) :: done_richard                                  ! if Richardson loop has converged sufficiently
         
         ! local variables
-        integer :: n_m_X                                                        ! nr. of poloidal modes
-        integer :: n_r_X                                                        ! nr. of normal points in perturbation grid
-        real(dp), allocatable :: x_plot(:,:)                                    ! x_axis of plot
-        integer :: id, jd, kd                                                   ! counters
-        real(dp), allocatable :: max_of_modes(:)                                ! maximum of each mode
-        real(dp) :: current_magn                                                ! maximum of each mode
-        real(dp), allocatable :: max_of_modes_r(:)                              ! flux surface where max of mode occurs
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: ir2                                                          ! counter
+        complex(dp), allocatable :: corr(:)                                     ! correction
+        real(dp) :: max_corr                                                    ! maximum of maximum of correction
+        integer :: loc_max_corr(1)                                              ! location of maximum of correction
         
-        ! initialize some things
-        n_m_X = size(X_vec,1)
-        n_r_X = size(X_vec,2)
-        allocate(max_of_modes(n_m_X))
-        allocate(max_of_modes_r(n_m_X))
-        max_of_modes = 0.0_dp
-        max_of_modes_r = 0.0_dp
-                
-        ! loop over all normal points of all modes in perturbation grid
-        do kd = 1,n_r_X
-            do jd = 1,n_m_X
-                ! check for maximum of mode jd and normal point jd
-                current_magn = sqrt(realpart(X_vec(jd,kd))**2&
-                    &+imagpart(X_vec(jd,kd))**2)
-                if (current_magn.gt.max_of_modes(jd)) then
-                    max_of_modes(jd) = current_magn
-                    max_of_modes_r(jd) = min_r_X + (max_r_X-min_r_X) &
-                        &* (kd-1.0)/(n_r_X-1.0)
-                end if
+        if (group_rank.eq.0) then
+            ! initialize ierr
+            ierr = 0
+            
+            ! tests
+            if (size(X_val_rich,1).ne.size(X_val_rich,2) .or. &
+                &size(X_val_rich,3).ne.size(X_val) .or. &
+                &ir.gt.size(X_val_rich,1)) then
+                ierr = 1
+                err_msg = 'X_val_rich has to have correct dimensions'
+                CHCKERR(err_msg)
+            end if
+            
+            ! allocate correction
+            allocate(corr(size(X_val))); corr = 1.0E15
+            
+            ! do calculations if ir > 1
+            X_val_rich(ir,1,:) = X_val
+            do ir2 = 2,ir
+                corr = 1./(2**(2*ir2)-1.) * &
+                    &(X_val_rich(ir,ir2-1,:) - X_val_rich(ir-1,ir2-1,:))
+                X_val_rich(ir,ir2,:) = X_val_rich(ir,ir2-1,:) + corr
             end do
-        end do
-        !call print_GP_2D('maximum of the modes','',max_of_modes)
-        !call print_GP_2D('place of maximum of the modes','',&
-            !&max_of_modes_r)
+            
+            if (ir.gt.1) then                                                   ! only do this if in Richardson level higher than 1
+                ! get maximum and location of maximum for relative correction
+                max_corr = maxval(abs(corr/X_val_rich(ir,ir,:)))
+                loc_max_corr = maxloc(abs(corr/X_val_rich(ir,ir,:)))
+                call writo('maximum relative error: '//trim(r2strt(max_corr))//&
+                    &' for Eigenvalue '//trim(i2str(loc_max_corr(1))))
+                
+                ! check whether tolerance has been  reached for last value ir2 =
+                ! ir
+                if (maxval(abs(corr/X_val_rich(ir,ir,:))) .lt. tol_r) then
+                    done_richard = .true.
+                    call writo('tolerance '//trim(r2strt(tol_r))//&
+                        &' reached after '//trim(i2str(ir))//' iterations')
+                else
+                    call writo('tolerance '//trim(r2strt(tol_r))//' not yet &
+                        &reached')
+                end if
+            end if
+        end if
         
-        deallocate(max_of_modes)
-        deallocate(max_of_modes_r)
+        ierr = broadcast_logical(MPI_Comm_groups,done_richard)
+        CHCKERR('')
         
-        ! set up x-axis
-        allocate(x_plot(1:n_r_X,1:n_m_X))
-        do id = 1,n_r_X
-            x_plot(id,:) = min_r_X + (id-1.0)/(n_r_X-1)*(max_r_X-min_r_X)
-        end do
-        call print_GP_2D('norm of solution','',&
-            &transpose(sqrt(realpart(X_vec(:,:))**2 + &
-            &imagpart(X_vec(:,:))**2)),x=x_plot)
-        deallocate(x_plot)
-    end subroutine
+        ! check for convergence on every process
+        if (.not.done_richard) then
+            if (ir.lt.max_it_r) then                                            ! not yet at maximum Richardson iteration
+                ir = ir + 1
+            else                                                                ! maximum nr. of Richardson iterations reached
+                call writo('maximum number of Richardson iterations reached')
+                done_richard = .true.
+            end if
+        end if
+    end function calc_rich_ex
 end module driver_rich

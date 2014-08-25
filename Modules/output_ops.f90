@@ -3,19 +3,23 @@
 !   well as in output files                                                    !
 !------------------------------------------------------------------------------!
 module output_ops
-    use str_ops, only: i2str, r2str
+    use str_ops, only: i2str, r2str, r2strt
     use num_vars, only: dp, max_str_ln
     implicit none
     private
     public init_output_ops, lvl_ud, writo, print_GP_2D, print_GP_3D, &
-        &print_ar_1, print_ar_2, draw_GP, print_err_msg, &
+        &print_ar_1, print_ar_2, draw_GP, print_err_msg, init_time, &
+        &start_time, stop_time, passed_time, print_hello, print_goodbye, &
         &lvl, lvl_sep, format_out
 
     ! global variables
     integer :: lvl                                                              ! lvl determines the indenting. higher lvl = more indenting
     character(len=2) :: lvl_sep = ''                                            ! characters that separate different levels of output
-    integer :: format_out
-    character(len=5) :: plot_dir = 'Plots'
+    integer :: format_out                                                       ! format of output
+    character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
+    real(dp) :: deltat                                                          ! length of time interval
+    real(dp) :: t1, t2                                                          ! end points of time interval
+    logical :: running                                                          ! whether the timer is running
 
     ! interfaces
     interface print_GP_2D
@@ -29,18 +33,121 @@ contains
     ! initialize the variables for the module
     ! [MPI] All ranks
     subroutine init_output_ops
-        use num_vars, only: glob_rank
-        
         lvl = 1
         
-        ! print date and time
+        deltat = 0
+        t1 = 0
+        t2 = 0
+        running = .false. 
+    end subroutine
+    
+    ! prints first message
+    subroutine print_hello
+        use num_vars, only: glob_rank
+        
         if (glob_rank.eq.0) then
             write(*,*) 'Simulation started on '//get_date()//&
-                &', at '//get_time()
+                &', at '//get_clock()
             write(*,*) ''
+        end if
+    end subroutine print_hello
+
+    ! prints last message
+    subroutine print_goodbye
+        use num_vars, only: glob_rank
+        
+        if (glob_rank.eq.0) then
+            write(*,*) ''
+            write(*,*) 'Simulation finished on '//get_date()//&
+                &', at '//get_clock()
+        end if
+    end subroutine print_goodbye
+    
+    ! intialize the time passed to 0
+    ! [MPI] All ranks
+    subroutine init_time
+        deltat = 0
+        t1 = 0
+        t2 = 0
+        running = .false. 
+    end subroutine
+
+    ! start a timer
+    ! [MPI] All ranks
+    subroutine start_time
+        if (running) then
+            call writo('WARNING: Tried to start timer, but was already running')
+        else
+            call second0(t1)
+            running = .true.
         end if
     end subroutine
 
+    ! stop a timer
+    subroutine stop_time
+        if (running) then
+            call second0(t2)
+            
+            ! increase deltat
+            deltat = deltat+t2-t1
+
+            ! set t1 and t2 back to zero
+            t1 = 0
+            t2 = 0
+            running = .false.
+        else
+            call writo('WARNING: Tried to stop timer, but was already stopped')
+        end if
+    end subroutine
+
+    ! display the time that has passed between t1 and t2
+    ! automatically stops time and resets everything to zero
+    subroutine passed_time
+        character(len=max_str_ln) :: begin_str, end_str
+
+        ! stop at current time if running
+        if (running) call stop_time
+
+        begin_str = '(this took'
+        if (deltat.lt.0.1) then
+            end_str = ' less than 0.1 seconds)'
+        else
+            end_str = ' ' // trim(r2strt(deltat)) // ' seconds)'
+        end if
+        call writo(trim(begin_str) // trim(end_str))
+
+        ! restart deltat
+        call init_time
+    end subroutine
+    
+    ! returns the date
+    ! (from http://infohost.nmt.edu/tcc/help/lang/fortran/date.html)
+    function get_date() result(date)
+        ! input / output
+        character(len=10) :: date                                               ! date
+        
+        ! local variables
+        integer :: today(3)
+        
+        call idate(today)                                                       ! today(1)=day, (2)=month, (3)=year
+        
+        write (date,'(i2.2,"/",i2.2,"/",i4.4)')  today(2), today(1), today(3)
+    end function get_date
+    
+    ! returns the time
+    ! (from http://infohost.nmt.edu/tcc/help/lang/fortran/date.html)
+    function get_clock() result(time)
+        ! input / output
+        character(len=8) :: time                                                ! time
+        
+        ! local variables
+        integer :: now(3)
+        
+        call itime(now)                                                         ! now(1)=hour, (2)=minute, (3)=second
+        
+        write (time,'(i2.2,":",i2.2,":",i2.2)')  now
+    end function get_clock
+    
     ! prints an error  message that is either user-provided, or  the name of the
     ! calling routine
     subroutine print_err_msg(err_msg,routine_name)
@@ -423,8 +530,14 @@ contains
         end if
         !write(*,*) 'gnuplot_cmd = ', trim(gnuplot_cmd)
         
+        ! stop timer
+        call stop_time
+        
         ! call GNUPlot
         call system(gnuplot_cmd)
+        
+        ! start timer
+        call start_time
     end subroutine
     
     ! write output to optional file number 'file_i' using the correct 
@@ -480,7 +593,7 @@ contains
                 do id = 1,lvl-1                                                 ! start with lvl 1
                     output_str = lvl_sep // trim(output_str)
                 end do
-                output_str = get_time()//': '//trim(output_str)
+                output_str = get_clock()//': '//trim(output_str)
                 
                 ! construct header string of equal length as output strength
                 header_str = ''
@@ -563,34 +676,6 @@ contains
         output_str = trim(output_str) // ' |'
         write(*,*) output_str
     end subroutine
-    
-    ! returns the date
-    ! (from http://infohost.nmt.edu/tcc/help/lang/fortran/date.html)
-    function get_date() result(date)
-        ! input / output
-        character(len=10) :: date                                               ! date
-        
-        ! local variables
-        integer :: today(3)
-        
-        call idate(today)                                                       ! today(1)=day, (2)=month, (3)=year
-        
-        write (date,'(i2.2,"/",i2.2,"/",i4.4)')  today(2), today(1), today(3)
-    end function get_date
-    
-    ! returns the time
-    ! (from http://infohost.nmt.edu/tcc/help/lang/fortran/date.html)
-    function get_time() result(time)
-        ! input / output
-        character(len=8) :: time                                                ! time
-        
-        ! local variables
-        integer :: now(3)
-        
-        call itime(now)                                                         ! now(1)=hour, (2)=minute, (3)=second
-        
-        write (time,'(i2.2,":",i2.2,":",i2.2)')  now
-    end function get_time
 end module output_ops
 
     !! PREVIOUS OUTPUT ROUTINE, REPLACED BY PRINT_GP

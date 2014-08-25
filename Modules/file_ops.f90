@@ -12,7 +12,7 @@ module file_ops
     implicit none
     private
     public open_input, open_output, search_file, parse_args, init_file_ops, &   ! routines
-        &input_name, opt_args
+        &input_name, opt_args, close_output
 
     ! user-specified arguments
     integer :: numargs                                                          ! control the user-specified arguments
@@ -390,7 +390,26 @@ contains
                 &trim(i2str(output_i)))
         end function open_gnuplot
     end function open_output
-
+    
+    ! closes the output file
+    ! [MPI] only group masters
+    subroutine close_output
+        use num_vars, only: n_groups, group_rank, glob_rank, output_i, &
+            &output_name
+        
+        if (n_groups.gt.1) then
+            if (glob_rank.eq.0) then
+                call writo('Closing output files')
+                call writo('The outputs of the other groups i are saved in &
+                    &their proper output files "'//trim(output_name)//'_i"')
+            end if
+        else
+            call writo('Closing output file')
+        end if
+        
+        if (group_rank.eq.0) close(output_i)
+    end subroutine
+    
     ! looks for the full name of a file and tests for its existence
     ! output:   full name of file, empty string if non-existent
     subroutine search_file(i_unit,file_name,exts,con_symb,ext)

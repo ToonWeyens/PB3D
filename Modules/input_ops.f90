@@ -6,7 +6,7 @@ module input_ops
     use num_vars, only: &
         &dp, max_str_ln, style, min_alpha, max_alpha, n_alpha, max_it_NR, &
         &tol_NR, max_it_r, theta_var_along_B, input_i, n_seq_0, min_n_r_X, &
-        &calc_mesh_style, EV_style, n_procs_per_alpha, plot_q, &
+        &calc_mesh_style, EV_style, n_procs_per_alpha, plot_q, tol_r, &
         &n_sol_requested, min_r_X, max_r_X
     use eq_vars, only: &
         &min_par, max_par, n_par
@@ -20,8 +20,8 @@ module input_ops
 
     ! input options
     namelist /inputdata/ format_out, style, min_par, min_n_r_X, &
-        &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, &
-        &tol_NR, max_it_r, theta_var_along_B, n_X, min_m_X, max_m_X, min_r_X, &
+        &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
+        &max_it_r, tol_r, theta_var_along_B, n_X, min_m_X, max_m_X, min_r_X, &
         &max_r_X, EV_style, n_procs_per_alpha, plot_q, n_sol_requested
 
 contains
@@ -29,9 +29,8 @@ contains
     !   yes = .true.: yes is default answer
     !   yes = .false.: no is default answer
     logical function yes_no(yes)
-        use output_ops, only: &
+        use output_ops, only: start_time, stop_time, &
             &lvl_sep, lvl
-        use time, only: start_time, stop_time
         
         ! input / output
         logical :: yes
@@ -110,7 +109,8 @@ contains
             
             max_it_NR = 50                                                      ! maximum 50 Newton-Rhapson iterations
             tol_NR = 1.0E-10_dp                                                 ! wanted relative error in Newton-Rhapson iteration
-            max_it_r = 5                                                        ! maximum 5 levels of Richardson's extrapolation
+            max_it_r = 5                                                        ! maximum 5 levels of Richardson extrapolation
+            tol_r = 1E-5                                                        ! wanted relative error in Richardson extrapolation
             format_out = 1                                                      ! NETCDF output
             style = 1                                                           ! Richardson Extrapolation with normal discretization
             min_par = -4.0_dp*pi                                                ! minimum parallel angle
