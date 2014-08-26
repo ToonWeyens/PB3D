@@ -268,7 +268,6 @@ contains
             n_r_X = 2 * n_r_X - 1
         end if
         call writo(trim(i2str(n_r_X))//' normal points for this level')
-        write(*,*) 'UPDATE THE MATRICES!!!!! DO NOT JUST DELETE THEM! THEY CAN BE REUSED!!!!!'
     end subroutine
     
     ! calculates  the  coefficients  of   the  Eigenvalues  in   the  Richardson

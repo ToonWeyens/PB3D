@@ -48,6 +48,8 @@ contains
         PetscInt :: n_r_X_loc                                                   ! nr. of poloidal modes treated in this processor (=rows)
         Mat :: A                                                                ! matrix A in EV problem A X = lambda B X
         Mat :: B                                                                ! matrix B in EV problem A X = lambda B X
+        PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
+        PetscInt, allocatable :: o_nz(:)                                        ! nr. of off-diagonal non-zeros
         
         ! solution
         Vec :: vec_par                                                          ! solution EV parallel vector
@@ -61,6 +63,11 @@ contains
         PetscInt :: max_n_EV                                                    ! nr. of EV's saved, up to n_sol_requested
         PetscInt :: vec_index                                                   ! vector index to export out of Petsc
         PetscReal :: step_size                                                  ! step size of perturbation grid
+        
+        !! for tests
+        !Mat :: A_t                                                              ! Hermitian transpose of A
+        !Mat :: B_t                                                              ! Hermitian transpose of B
+        !PetscScalar :: one = 1.0                                                ! one
         
         ! initialize slepc
         call writo('initialize slepc...')
@@ -117,33 +124,68 @@ contains
         
         ! create a  matrix A and B  with the appropriate number  of preallocated
         ! entries
-        call MatCreateAIJ(PETSC_COMM_WORLD,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,&    ! Hermitian matrix as a first approximation
-            &n_r_X*n_m_X,n_r_X*n_m_X,3*n_m_X,PETSC_NULL_INTEGER,&
-            &3*n_m_X,PETSC_NULL_INTEGER,A,ierr)
+        ! the numbers of non-zeros in the diagonal and off-diagonal parts
+        allocate(d_nz(n_r_X_loc*n_m_X)); d_nz = 0
+        d_nz(1:n_m_X) = 2*n_m_X
+        d_nz(n_m_X+1:(n_r_X_loc-1)*n_m_X) = 3*n_m_X
+        d_nz((n_r_X_loc-1)*n_m_X+1:n_r_X_loc*n_m_X) = 2*n_m_X
+        allocate(o_nz(n_r_X_loc*n_m_X)); o_nz = 0
+        if(group_rank.ne.0) then
+            o_nz(1:n_m_X) = n_m_X
+        end if
+        if (group_rank.ne.group_n_procs-1) then
+            o_nz((n_r_X_loc-1)*n_m_X+1:n_r_X_loc*n_m_X) = n_m_X
+        end if
+        ! create matrix A
+        call MatCreateAIJ(PETSC_COMM_WORLD,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,&
+            &n_r_X*n_m_X,n_r_X*n_m_X,PETSC_NULL_INTEGER,d_nz,&
+            &PETSC_NULL_INTEGER,o_nz,A,ierr)
         CHCKERR('MatCreateAIJ failed for matrix A')
-        call MatCreateAIJ(PETSC_COMM_WORLD,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,&    ! Hermitian matrix as a first approximation
-            &n_r_X*n_m_X,n_r_X*n_m_X,3*n_m_X,PETSC_NULL_INTEGER,&
-            &3*n_m_X,PETSC_NULL_INTEGER,B,ierr)
-        CHCKERR('MatCreateAIJ failed for matrix B')
-        
-        ! fill the elements of A and B
+        ! deallocate d_nz and o_nz
+        deallocate(d_nz,o_nz)
+        ! fill the matrix A
         ierr = fill_mat(n_X,n_r_X,n_m_X,step_size,PV0,PV1,PV2,A)
         CHCKERR('')
         call writo('Matrix A set up')
+        
+        ! duplicate A into B
+        call MatDuplicate(A,MAT_SHARE_NONZERO_PATTERN,B,ierr)                   ! B has same structure as A
+        CHCKERR('failed to duplicate A into B')
+        ! fill the matrix B
         ierr = fill_mat(n_X,n_r_X,n_m_X,step_size,KV0,KV1,KV2,B)
         CHCKERR('')
         call writo('Matrix B set up')
         
         call lvl_ud(-1)
         
+        !! test if A and B hermitian
+        !call MatHermitianTranspose(A,MAT_INITIAL_MATRIX,A_t,ierr)
+        !CHCKERR('Hermitian transpose of A failed')
+        !call MatAXPY(A_t,-one,A,SAME_NONZERO_PATTERN,ierr)
+        !CHCKERR('A-A_t failed')
+        !call MatHermitianTranspose(B,MAT_INITIAL_MATRIX,B_t,ierr)
+        !CHCKERR('Hermitian transpose of B failed')
+        !call MatAXPY(B_t,-one,B,SAME_NONZERO_PATTERN,ierr)
+        !CHCKERR('B-B_t failed')
+        
         !! visualize the matrices
-        !!call PetscOptionsSetValue('-draw_pause','-1',ierr)
+        !call PetscOptionsSetValue('-draw_pause','-1',ierr)
         !write(*,*) 'A ='
         !call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
         !!call MatView(A,PETSC_VIEWER_DRAW_WORLD,ierr)
         !write(*,*) 'B ='
         !call MatView(B,PETSC_VIEWER_STDOUT_WORLD,ierr)
         !!call MatView(B,PETSC_VIEWER_DRAW_WORLD,ierr)
+        !write(*,*) 'A_t ='
+        !call MatView(A_t,PETSC_VIEWER_STDOUT_WORLD,ierr)
+        !write(*,*) 'B_t ='
+        !call MatView(B_t,PETSC_VIEWER_STDOUT_WORLD,ierr)
+        
+        !! destroy matrices
+        !call MatDestroy(A_t,ierr)
+        !CHCKERR('Failed to destroy matrix A_t')
+        !call MatDestroy(B_t,ierr)
+        !CHCKERR('Failed to destroy matrix B_t')
         
         ! solve EV problem
         call writo('solve the EV problem...')
@@ -478,6 +520,7 @@ contains
                 loc_block = conjg(transpose(loc_block))
                 call MatSetValues(mat,n_m_X,loc_m,n_m_X,loc_k,loc_block,&
                     &INSERT_VALUES,ierr)
+                CHCKERR('Couldn''t add values to matrix')
             end if
         end do
         
