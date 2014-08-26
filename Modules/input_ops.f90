@@ -109,7 +109,7 @@ contains
             
             max_it_NR = 50                                                      ! maximum 50 Newton-Rhapson iterations
             tol_NR = 1.0E-10_dp                                                 ! wanted relative error in Newton-Rhapson iteration
-            max_it_r = 5                                                        ! maximum 5 levels of Richardson extrapolation
+            max_it_r = 8                                                        ! maximum 5 levels of Richardson extrapolation
             tol_r = 1E-5                                                        ! wanted relative error in Richardson extrapolation
             format_out = 1                                                      ! NETCDF output
             style = 1                                                           ! Richardson Extrapolation with normal discretization
