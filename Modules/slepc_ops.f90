@@ -18,15 +18,22 @@ contains
     ! This subroutine sets up  the matrices A ad B of  the generalized EV system
     ! described in [ADD REF] and solves them using the slepc suite
     
-    integer function solve_EV_system_slepc() result(ierr)
-        use X_vars, only: PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, min_m_X, &
-            &max_m_X, m_X, n_r_X, n_X
+    integer function solve_EV_system_slepc(A_terms,B_terms,A_info,B_info) &
+        &result(ierr)
+        use X_vars, only: PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, m_X, &
+            &n_r_X, n_X, min_m_X, max_m_X
         use num_vars, only: MPI_comm_groups, group_n_procs, n_sol_requested, &
             &group_rank, min_r_X, max_r_X
         use file_ops, only: opt_args
         use MPI_ops, only: divide_grid
         
         character(*), parameter :: rout_name = 'solve_EV_system_slepc'
+        
+        ! input / output
+        PetscScalar, intent(inout), allocatable, optional :: A_terms(:,:,:,:)   ! termj_int of matrix A from previous Richardson loop
+        PetscScalar, intent(inout), allocatable, optional :: B_terms(:,:,:,:)   ! termj_int of matrix B from previous Richardson loop
+        PetscReal, intent(inout), optional :: A_info(2)                         ! info about A_terms: min of r and step_size
+        PetscReal, intent(inout), optional :: B_info(2)                         ! info about B_terms: min of r and step_size
         
         ! local variables
         ! petsc / MPI variables
@@ -144,7 +151,7 @@ contains
         ! deallocate d_nz and o_nz
         deallocate(d_nz,o_nz)
         ! fill the matrix A
-        ierr = fill_mat(n_X,n_r_X,n_m_X,step_size,PV0,PV1,PV2,A)
+        ierr = fill_mat(n_X,n_r_X,n_m_X,step_size,PV0,PV1,PV2,A,A_terms,A_info)
         CHCKERR('')
         call writo('Matrix A set up')
         
@@ -152,7 +159,7 @@ contains
         call MatDuplicate(A,MAT_SHARE_NONZERO_PATTERN,B,ierr)                   ! B has same structure as A
         CHCKERR('failed to duplicate A into B')
         ! fill the matrix B
-        ierr = fill_mat(n_X,n_r_X,n_m_X,step_size,KV0,KV1,KV2,B)
+        ierr = fill_mat(n_X,n_r_X,n_m_X,step_size,KV0,KV1,KV2,B,B_terms,B_info)
         CHCKERR('')
         call writo('Matrix B set up')
         
@@ -217,6 +224,13 @@ contains
         !end if
         
         ! request n_sol_requested Eigenpairs
+        if (n_sol_requested.gt.n_r_X*n_m_X) then
+            call writo('WARNING: more solutions requested than the dimensions &
+                &of the matrix. Increase either n_r_X or number of pol. modes')
+            n_sol_requested = n_r_X*n_m_X
+            call writo('n_sol_requested capped to '//&
+                &trim(i2str(n_sol_requested)))
+        end if
         call EPSSetDimensions(solver,n_sol_requested,PETSC_DECIDE,&
             &PETSC_DECIDE,ierr)
         
@@ -356,15 +370,14 @@ contains
     !   interpolated value  of the previous  point allow for the  calculation of
     !   every quantity
     ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING, SO IT IS TREATED AS HERMITIAN !!!
-    integer function fill_mat(n_X,n_r_X,n_m_X,step_size,V0,V1,V2,mat) result(ierr)
+    integer function fill_mat(n_X,n_r_X,n_m_X,step_size,V0,V1,V2,mat,mat_terms,&
+        &mat_info) result(ierr)
         use metric_ops, only: jac_F_FD
         use num_vars, only: min_r_X, max_r_X
         use eq_vars, only: n_par, theta, n_r_eq
         use utilities, only: dis2con
         
         character(*), parameter :: rout_name = 'fill_mat'
-        
-        real(dp), allocatable :: x_plot(:,:)                                    ! x_axis of plot
         
         ! input / output
         PetscInt, intent(in) :: n_X                                             ! toroidal mode number
@@ -373,8 +386,11 @@ contains
         PetscScalar, intent(in) :: V0(:,:,:,:), V1(:,:,:,:), V2(:,:,:,:)        ! either PVi or KVi
         Mat, intent(inout) :: mat                                               ! either A or B
         PetscReal, intent(in) :: step_size                                      ! step size
+        PetscScalar, intent(inout), allocatable, optional :: mat_terms(:,:,:,:) ! termj_int of matrix mat from previous Richardson loop
+        PetscReal, intent(inout), optional :: mat_info(2)                       ! info about mat_terms: min of r and step_size
         
-        ! local variables
+        ! local variables (not to be used in child routines)
+        character(len=max_str_ln) :: err_msg                                    ! error message
         PetscScalar, allocatable :: loc_block(:,:)                              ! block matrix for 1 normal point
         PetscScalar, allocatable :: term0(:,:,:,:)                              ! holds e^i(k-m) J V0 for (k,m) functions of (par,r)
         PetscScalar, allocatable :: term1(:,:,:,:)                              ! holds e^i(k-m) J V1 for (k,m) functions of (par,r)
@@ -387,13 +403,48 @@ contains
         PetscScalar, allocatable :: term2_int_next(:,:)                         ! interpolated and integrated version of term2, at next point
         PetscScalar, allocatable :: exp_theta(:,:,:,:)                          ! exp(i (k-m) theta)
         PetscInt, allocatable :: loc_k(:), loc_m(:)                             ! the locations at which to add the blocks to the matrices
-        PetscReal :: norm_pt                                                    ! current normal point (min_r_X...max_r_X)
         PetscInt :: id, jd, m, k                                                ! counters
         PetscInt :: n_start, n_end                                              ! start row and end row
         PetscInt :: r_X_start, r_X_end                                          ! start block and end block (= n_start/n_m_X and equiv.)
         
+        ! local variables (to be used in child routines)
+        PetscReal :: norm_pt                                                    ! current normal point (min_r_X...max_r_X)
+        PetscReal :: mat_info_in(2)                                             ! input of mat_info
+        PetscScalar, allocatable :: mat_terms_in(:,:,:,:)                       ! input of mat_terms
+        PetscBool :: norm_pt_found                                              ! if norm_pt is found in previous Richardson level
+        PetscInt :: found_id                                                    ! in which place norm_pt is found
+        
+        !! for output
+        !real(dp), allocatable :: x_plot(:,:)                                    ! x_axis of plot
+        
         ! initialize ierr
         ierr = 0
+        
+        ! tests
+        if (present(mat_terms)) then                                            ! mat terms present
+            if (.not.present(mat_info)) then                                    ! mat_info not present
+                ierr = 1
+                err_msg = 'mat_terms and info_terms have to be provided both'
+                CHCKERR(err_msg)
+            end if
+        else                                                                    ! mat terms not present
+            if (present(mat_info)) then                                         ! mat_terms present
+                ierr = 1
+                err_msg = 'mat_terms and info_terms have to be provided both'
+                CHCKERR(err_msg)
+            end if
+        end if
+        
+        ! save input mat_terms and mat_info
+        if (present(mat_terms)) then
+            if (allocated(mat_terms)) then                                      ! check for allocation of mat_terms
+                allocate(mat_terms_in(size(mat_terms,1),size(mat_terms,2),&
+                    &size(mat_terms,3),size(mat_terms,4)))                      ! allocate mat_terms_in with size of mat_terms
+                mat_terms_in = mat_terms                                        ! save mat_terms in mat_terms_in
+                mat_info_in = mat_info                                          ! save mat_info_in in mat_info
+                deallocate(mat_terms)                                           ! deallocate mat_terms to reallocate
+            end if
+        end if
         
         ! allocate variables
         allocate(term0(n_par,n_r_eq,n_m_X,n_m_X))
@@ -429,11 +480,14 @@ contains
             end do
         end do
         
-        ! plot for debugging
-        allocate(x_plot(1:n_r_eq,1:n_par))
-        do id = 1,n_r_eq
-            x_plot(id,:) = (id-1.0)/(n_r_eq-1)
-        end do
+        ! deallocate variables
+        deallocate(exp_theta)
+        
+        !! plot for debugging
+        !allocate(x_plot(1:n_r_eq,1:n_par))
+        !do id = 1,n_r_eq
+            !x_plot(id,:) = (id-1.0)/(n_r_eq-1)
+        !end do
         !write(*,*) 'term0 = '
         !call print_GP_2D('RE term0','',realpart(transpose(term0(:,:,1,1))),x=x_plot)
         !call print_GP_2D('IM term0','',imagpart(transpose(term0(:,:,1,1))),x=x_plot)
@@ -443,7 +497,7 @@ contains
         !write(*,*) 'term2 = '
         !call print_GP_2D('RE term2','',realpart(transpose(term2(:,:,1,1))),x=x_plot)
         !call print_GP_2D('IM term2','',imagpart(transpose(term2(:,:,1,1))),x=x_plot)
-        deallocate(x_plot)
+        !deallocate(x_plot)
         
         ! get ownership of the rows
         call MatGetOwnershipRange(mat,n_start,n_end,ierr)                       ! starting and ending row n_start and n_end
@@ -453,11 +507,22 @@ contains
         
         ! get first interpolated point, corresponding to r_X_start
         call dis2con(r_X_start+1,[1,n_r_X],norm_pt,[min_r_X,max_r_X])
-        ierr = interp_and_int(term0,norm_pt,term0_int_next)
+        
+        ! (re)allocate  mat_terms and set  mat_info with first normal  point and
+        ! step size
+        if (present(mat_terms)) then
+            allocate(mat_terms(n_m_X,n_m_X,r_X_end-r_X_start+1,3))
+            mat_info = [norm_pt,step_size]
+        end if
+        
+        ! check if this point is provided by the previous Richardson level
+        call find_norm_pt
+        ! calculate termj_int_next
+        ierr = get_term_int(term0,norm_pt,term0_int_next,0,1)
         CHCKERR('')
-        ierr = interp_and_int(term1,norm_pt,term1_int_next)
+        ierr = get_term_int(term1,norm_pt,term1_int_next,1,1)
         CHCKERR('')
-        ierr = interp_and_int(term2,norm_pt,term2_int_next)
+        ierr = get_term_int(term2,norm_pt,term2_int_next,2,1)
         CHCKERR('')
         
         ! iterate over all rows of this rank
@@ -491,12 +556,17 @@ contains
                 ! the previous norm_pt
                 norm_pt = norm_pt + step_size
                 
-                ! calculate next termi_int_next
-                ierr = interp_and_int(term0,norm_pt,term0_int_next)
+                ! check if this point is provided by the previous Richardson level
+                call find_norm_pt
+                ! calculate termj_int_next
+                ierr = get_term_int(term0,norm_pt,term0_int_next,0,&
+                    &id-r_X_start+2)
                 CHCKERR('')
-                ierr = interp_and_int(term1,norm_pt,term1_int_next)
+                ierr = get_term_int(term1,norm_pt,term1_int_next,1,&
+                    &id-r_X_start+2)
                 CHCKERR('')
-                ierr = interp_and_int(term2,norm_pt,term2_int_next)
+                ierr = get_term_int(term2,norm_pt,term2_int_next,2,&
+                    &id-r_X_start+2)
                 CHCKERR('')
                 
                 loc_block = 0
@@ -539,8 +609,70 @@ contains
         deallocate(term0_int_next,term1_int_next,term2_int_next)
         deallocate(loc_block)
         deallocate(loc_k,loc_m)
-        deallocate(exp_theta)
     contains
+        ! checks if a termj can be found in the previous Richardson level
+        ! uses  norm_pt, mat_info_in,  mat_terms_in, norm_pt_found  and found_id
+        ! from parent routine
+        subroutine find_norm_pt
+            ! local variables
+            PetscInt :: mat_size                                                ! size of mat_terms_in
+            PetscInt :: id                                                      ! counter
+            PetscReal :: tol = 1.E-5                                            ! tolerance
+            PetscReal :: norm_pt_terms                                          ! current normal point of mat_terms_in
+            
+            ! initialize norm_pt_found
+            norm_pt_found = .false.
+            
+            ! check if mat_terms_in is allocated
+            if (allocated(mat_terms_in)) then
+                ! set mat_size and initialize found_id and norm_pt_terms
+                mat_size = size(mat_terms_in,3)
+                found_id = -1
+                norm_pt_terms = mat_info_in(1)
+                
+                ! find the column
+                do id = 1,mat_size
+                    if (abs(norm_pt-norm_pt_terms).lt.tol) then                 ! norm_pt found
+                        found_id = id
+                        norm_pt_found = .true.
+                        return
+                    else                                                        ! norm_pt not found
+                        norm_pt_terms = norm_pt_terms + mat_info_in(2)          ! increase norm_pt_terms
+                    end if
+                end do
+            end if
+        end subroutine find_norm_pt
+        
+        ! decides  whether  termj has  to  be  interpolated and  integrated,  or
+        ! whether it can be taken from the input mat_terms_in
+        ! uses mat_terms_in, norm_pt_found and found_id from parent routine
+        integer function get_term_int(term,norm_pt,term_int,which_term,&
+            &mat_terms_index) result(ierr)
+            character(*), parameter :: rout_name = 'get_term_int'
+            
+            ! input / output
+            PetscScalar, intent(in) :: term(n_par,n_r_eq,n_m_X,n_m_X)           ! input pairs of (k,m) in equilibrium table (par,r)
+            PetscReal, intent(in) :: norm_pt                                    ! point at which to interpolate
+            PetscScalar, intent(inout) :: term_int(n_m_X,n_m_X)                 ! output pairs of (k,m), interpolated and integrated
+            PetscInt, intent(in) :: which_term                                  ! which input of mat_terms 0, 1 or 2
+            PetscInt, intent(in) :: mat_terms_index                             ! 1..size of terms
+            
+            ! initialize ierr
+            ierr = 0
+            
+            if (norm_pt_found) then
+                term_int = mat_terms_in(:,:,found_id,which_term+1)
+            else
+                ierr = interp_and_int(term,norm_pt,term_int)
+                CHCKERR('')
+            end if
+            
+            ! update mat_terms with first point
+            if (present(mat_terms)) then
+                mat_terms(:,:,mat_terms_index,which_term+1) = term_int
+            end if
+        end function get_term_int
+        
         ! interpolates  at normal point  norm_pt and integrates in  the parallel
         ! direction
         integer function interp_and_int(term,norm_pt,term_int) result(ierr)

@@ -11,7 +11,7 @@ module num_vars
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
         &glob_rank, glob_n_procs, group_rank, group_n_procs, group_nr, &
         &n_groups,  output_name, next_job, next_job_win, plot_q, &
-        &n_sol_requested, min_n_r_X, min_r_X, max_r_X
+        &n_sol_requested, min_n_r_X, min_r_X, max_r_X, nyq_fac, reuse_r
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -55,11 +55,13 @@ module num_vars
     ! considering Richardson extrapolation
     integer :: max_it_r                                                         ! number of levels for Richardson extrapolation
     real(dp) :: tol_r                                                           ! tolerance for Richardson extrapolation
+    logical :: reuse_r                                                          ! whether to reuse the matrices A and B from previous Richardson level
 
     ! considering finding the magnetic field lines
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
     real(dp) :: tol_NR                                                          ! tolerance for Newton-Rhapson
     logical :: theta_var_along_B                                                ! true if theta is used as the parallel variable
+    integer, parameter :: nyq_fac = 5                                           ! Nyquist factor to avoid aliasing in perturbation integrals
 
     ! input / output
     integer :: input_i                                                          ! file number of input file

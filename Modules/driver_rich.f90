@@ -112,7 +112,7 @@ contains
     ! runs the calculations for one of the alpha's
     integer function run_for_alpha(alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, group_rank, min_r_X, &
-            &max_r_X
+            &max_r_X, reuse_r
         use eq_ops, only: calc_eq
         use eq_vars, only: dealloc_eq_vars_final
         use X_ops, only: prepare_matrix_X, solve_EV_system, plot_X_vec
@@ -129,6 +129,10 @@ contains
         integer :: id                                                           ! counter
         logical :: done_richard                                                 ! is it converged?
         complex(dp), allocatable :: X_val_rich(:,:,:)                           ! Richardson array of eigenvalues X_val
+        complex(dp), allocatable :: A_terms(:,:,:,:)                            ! termj_int of matrix A from previous Richardson loop
+        complex(dp), allocatable :: B_terms(:,:,:,:)                            ! termj_int of matrix B from previous Richardson loop
+        real(dp) :: A_info(2)                                                   ! info about A_terms: min of r and step_size
+        real(dp) :: B_info(2)                                                   ! info about B_terms: min of r and step_size
         
         ! initialize ierr
         ierr = 0
@@ -180,7 +184,11 @@ contains
             ! AX = lambda BX and solve it
             call writo('treating the EV system')
             call lvl_ud(1)
-            ierr = solve_EV_system()
+            if (reuse_r) then
+                ierr = solve_EV_system(A_terms,B_terms,A_info,B_info)
+            else
+                ierr = solve_EV_system()
+            end if
             CHCKERR('')
             call lvl_ud(-1)
             

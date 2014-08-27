@@ -6,6 +6,7 @@ module eq_ops
 #include <PB3D_macros.h>
     use num_vars, only: pi, dp
     use output_ops, only: print_ar_2, lvl_ud, writo
+    use str_ops, only: i2str
     
     implicit none
     private
@@ -17,7 +18,7 @@ contains
     integer function calc_eq(alpha) result(ierr)
         use eq_vars, only: calc_mesh, calc_flux_q, dealloc_eq_vars, &
             &check_mesh, init_eq, calc_RZL, q_saf, q_saf_FD, flux_p, flux_p_FD,&
-            &flux_t, flux_t_FD, pres, pres_FD
+            &flux_t, flux_t_FD, pres, pres_FD, n_par
         use metric_ops, only: calc_g_C, calc_g_C, calc_T_VC, calc_g_V, &
             &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, &
             &calc_jac_V, calc_jac_F, calc_f_deriv, dealloc_metric_vars, &
@@ -37,7 +38,8 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('Start setting up equilibrium quantities')
+        call writo('Start setting up equilibrium quantities in '//&
+            &trim(i2str(n_par))//' discrete parallel points')
         ! 1--------------------------------------------------------------------
         ! 1--------------------------------------------------------------------
         call lvl_ud(1)
