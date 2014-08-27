@@ -60,12 +60,18 @@ contains
     ! set-up and  solve the  EV system  by discretizing  the equations  in n_r_X
     ! normal points,  making use of  PV0, PV1 and  PV2, interpolated in  the n_r
     ! (equilibrium) values
-    integer function solve_EV_system() result(ierr)
+    integer function solve_EV_system(A_terms,B_terms,A_info,B_info) result(ierr)
         use num_vars, only: EV_style
         use str_ops, only: i2str
         use slepc_ops, only: solve_EV_system_slepc
         
         character(*), parameter :: rout_name = 'solve_EV_system'
+        
+        ! input / output
+        complex(dp), intent(inout), allocatable, optional :: A_terms(:,:,:,:)   ! termj_int of matrix A from previous Richardson loop
+        complex(dp), intent(inout), allocatable, optional :: B_terms(:,:,:,:)   ! termj_int of matrix B from previous Richardson loop
+        real(dp), intent(inout), optional :: A_info(2)                          ! info about A_terms: min of r and step_size
+        real(dp), intent(inout), optional :: B_info(2)                          ! info about B_terms: min of r and step_size
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -76,7 +82,7 @@ contains
         select case (EV_style)
             case(1)                                                             ! slepc solver for EV problem
                 ! solve the system
-                ierr = solve_EV_system_slepc()
+                ierr = solve_EV_system_slepc(A_terms,B_terms,A_info,B_info)
                 CHCKERR('')
                 
             case default

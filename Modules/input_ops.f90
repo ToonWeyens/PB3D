@@ -2,12 +2,12 @@
 !   This module contains operations concerning giving input                    !
 !------------------------------------------------------------------------------!
 module input_ops
-    use str_ops, only: strh2l
+    use str_ops, only: strh2l, i2str
     use num_vars, only: &
         &dp, max_str_ln, style, min_alpha, max_alpha, n_alpha, max_it_NR, &
         &tol_NR, max_it_r, theta_var_along_B, input_i, n_seq_0, min_n_r_X, &
         &calc_mesh_style, EV_style, n_procs_per_alpha, plot_q, tol_r, &
-        &n_sol_requested, min_r_X, max_r_X
+        &n_sol_requested, min_r_X, max_r_X, reuse_r
     use eq_vars, only: &
         &min_par, max_par, n_par
     use output_ops, only: writo, lvl_ud, &
@@ -22,7 +22,7 @@ module input_ops
     namelist /inputdata/ format_out, style, min_par, min_n_r_X, &
         &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
         &max_it_r, tol_r, theta_var_along_B, n_X, min_m_X, max_m_X, min_r_X, &
-        &max_r_X, EV_style, n_procs_per_alpha, plot_q, n_sol_requested
+        &max_r_X, EV_style, n_procs_per_alpha, plot_q, n_sol_requested, reuse_r
 
 contains
     ! queries for yes or no, depending on the flag yes:
@@ -66,7 +66,7 @@ contains
     ! reads input from user-provided input file
     ! [MPI] only global master
     subroutine read_input
-        use num_vars, only: glob_rank
+        use num_vars, only: glob_rank, nyq_fac
         
         ! local variables
         integer :: istat                                                        ! error
@@ -100,6 +100,9 @@ contains
                 end if
             end if
             
+            ! adapt n_par if needed
+            call adapt_n_par
+            
             call lvl_ud(-1)
             call writo('Input values set')
         end if
@@ -111,11 +114,14 @@ contains
             tol_NR = 1.0E-10_dp                                                 ! wanted relative error in Newton-Rhapson iteration
             max_it_r = 8                                                        ! maximum 5 levels of Richardson extrapolation
             tol_r = 1E-5                                                        ! wanted relative error in Richardson extrapolation
+            reuse_r = .true.                                                    ! reuse A and B from previous Richardson level
             format_out = 1                                                      ! NETCDF output
             style = 1                                                           ! Richardson Extrapolation with normal discretization
+            min_m_X = 20                                                        ! lowest poloidal mode number m_X
+            max_m_X = 22                                                        ! highest poloidal mode number m_X
             min_par = -4.0_dp*pi                                                ! minimum parallel angle
             max_par = 4.0_dp*pi                                                 ! maximum parallel angle
-            n_par = 10                                                          ! number of parallel grid points
+            n_par = nyq_fac*(max_m_X-min_m_X)                                   ! number of parallel grid points
             min_alpha = 0.0_dp                                                  ! minimum field line label
             max_alpha = 2.0_dp*pi                                               ! maximum field line label
             n_alpha = 10                                                        ! number of different field lines
@@ -123,13 +129,28 @@ contains
             n_X = 20                                                            ! toroidal mode number of perturbation
             min_r_X = 0.1_dp                                                    ! minimum radius
             max_r_X = 1.0_dp                                                    ! maximum radius
-            min_m_X = 20                                                        ! lowest poloidal mode number m_X
-            max_m_X = 22                                                        ! highest poloidal mode number m_X
             EV_style = 1                                                        ! slepc solver for EV problem
             n_procs_per_alpha = 1                                               ! 1 processor per field line
             plot_q = .false.                                                    ! do not plot the q-profile with nq-m = 0
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
             min_n_r_X = 10                                                      ! at least 10 points in perturbation grid
         end subroutine
+        
+        ! checks whether n_par is chosen high enough so aliasing can be avoided.
+        ! aliasing occurs when there are not  enough points on the parallel grid
+        ! so  the  fast-moving  functions  e^(i(k-m)) V  don't  give  the  wrong
+        ! integrals in the perturbation part
+        subroutine adapt_n_par
+            ! local variables
+            integer :: n_par_old                                                ! old n_par
+            
+            if (n_par.lt.nyq_fac*(max_m_X-min_m_X)) then
+                n_par_old = n_par
+                n_par = nyq_fac*(max_m_X-min_m_X)
+                call writo('To avoid aliasing of the perturbation integrals, &
+                    &n_par is increased from '//trim(i2str(n_par_old))//&
+                    &' to '//trim(i2str(n_par)))
+            end if
+        end subroutine adapt_n_par
     end subroutine
 end module input_ops

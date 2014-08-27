@@ -458,43 +458,44 @@ contains
     !   4   logical                     lasym
     !   5   logical                     lrfp
     !   6   logical                     lfreeb
-    !   7   integer                     max_it_NR
-    !   8   integer                     max_it_r
-    !   9   integer                     format_out
-    !   10  integer                     style
-    !   11  integer                     n_par
-    !   12  integer                     n_r
-    !   13  integer                     mpol
-    !   14  integer                     ntor
-    !   15  integer                     nfp
-    !   16  integer                     EV_style
-    !   17  integer                     n_procs_per_alpha
-    !   18  integer                     n_alpha
-    !   19  integer                     n_X
-    !   20  integer                     min_m_X
-    !   21  integer                     max_m_X
-    !   22  integer                     n_sol_requested
-    !   23  integer                     min_n_r_X
-    !   24  integer                     min_r_eq
-    !   25  integer                     max_r_eq
-    !   26  real_dp                     min_alpha
-    !   27  real_dp                     max_alpha
-    !   28  real_dp                     min_r_X
-    !   29  real_dp                     max_r_X
-    !   30  real_dp                     tol_NR
-    !   31  real_dp                     min_par
-    !   32  real_dp                     max_par
-    !   33  real_dp                     version
-    !   34  real_dp(n_r)                phi(n_r) 
-    !   35  real_dp(n_r)                phi_r(n_r) 
-    !   36  real_dp(n_r)                iotaf(n_r) 
-    !   37  real_dp(n_r)                presf(n_r) 
-    !   38  real_dp(*)                  R_c(*)
-    !   39  real_dp(*)                  R_s(*)
-    !   40  real_dp(*)                  Z_c(*)
-    !   41  real_dp(*)                  Z_s(*)
-    !   42  real_dp(*)                  L_c(*)
-    !   43  real_dp(*)                  L_s(*)
+    !   7   logical                     reuse_r
+    !   8   integer                     max_it_NR
+    !   9   integer                     max_it_r
+    !   10  integer                     format_out
+    !   11  integer                     style
+    !   12  integer                     n_par
+    !   13  integer                     n_r
+    !   14  integer                     mpol
+    !   15  integer                     ntor
+    !   16  integer                     nfp
+    !   17  integer                     EV_style
+    !   18  integer                     n_procs_per_alpha
+    !   19  integer                     n_alpha
+    !   20  integer                     n_X
+    !   21  integer                     min_m_X
+    !   22  integer                     max_m_X
+    !   23  integer                     n_sol_requested
+    !   24  integer                     min_n_r_X
+    !   25  integer                     min_r_eq
+    !   26  integer                     max_r_eq
+    !   27  real_dp                     min_alpha
+    !   28  real_dp                     max_alpha
+    !   29  real_dp                     min_r_X
+    !   30  real_dp                     max_r_X
+    !   31  real_dp                     tol_NR
+    !   32  real_dp                     min_par
+    !   33  real_dp                     max_par
+    !   34  real_dp                     version
+    !   35  real_dp(n_r)                phi(n_r) 
+    !   36  real_dp(n_r)                phi_r(n_r) 
+    !   37  real_dp(n_r)                iotaf(n_r) 
+    !   38  real_dp(n_r)                presf(n_r) 
+    !   39  real_dp(*)                  R_c(*)
+    !   40  real_dp(*)                  R_s(*)
+    !   41  real_dp(*)                  Z_c(*)
+    !   42  real_dp(*)                  Z_s(*)
+    !   43  real_dp(*)                  L_c(*)
+    !   44  real_dp(*)                  L_s(*)
     !   with (*) = (0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3))
     ! [MPI] Collective call
     integer function broadcast_vars() result(ierr)
@@ -503,7 +504,7 @@ contains
         use num_vars, only: max_str_ln, output_name, ltest, &
             &theta_var_along_B, EV_style, max_it_NR, max_it_r, n_alpha, &
             &n_procs_per_alpha, style, max_alpha, min_alpha, tol_NR, glob_rank, &
-            &glob_n_procs, n_sol_requested, min_n_r_X, min_r_X, max_r_X
+            &glob_n_procs, n_sol_requested, min_n_r_X, min_r_X, max_r_X, reuse_r
         use output_ops, only: format_out
         use X_vars, only: n_X, min_m_X, max_m_X
         use eq_vars, only: n_par, max_par, min_par, min_r_eq, max_r_eq
@@ -529,6 +530,8 @@ contains
             call MPI_Bcast(lrfp,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(lfreeb,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            CHCKERR('MPI broadcast failed')
+            call MPI_Bcast(reuse_r,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_it_r,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)

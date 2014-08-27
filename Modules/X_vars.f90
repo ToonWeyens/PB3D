@@ -15,7 +15,7 @@ module X_vars
         &rho, n_x, m_X, n_r_X, U_X_0, U_X_1, DU_X_0, DU_X_1, sigma, extra1, &
         &extra2, extra3, PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, min_m_X, &
         &max_m_X
-
+    
     ! global variables
     real(dp), allocatable :: rho(:,:)                                           ! density
     integer :: n_X                                                              ! toroidal mode number

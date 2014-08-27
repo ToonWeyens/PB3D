@@ -331,13 +331,12 @@ contains
     end function
 
     ! integrates a function using the trapezoidal rule using constant step size:
-    !   int_1^n f(x) dx = (x(2)-x(1))/2 f(a) + (x(n)-x(n-1))/2 f(n) 
-    !                     + sum_k=2^(n-1){f(k)*(x(k+1)-x(k-1))/2},
+    !   int_1^n f(x) dx = sum_k=1^(n-1) {(f(k+1)+f(k))*(x(k+1)-x(k))/2},
     ! with n the number of points. So, n  points have to be specified as well as
     ! n values  for the function  to be interpolated. They  have to be  given in
     ! ascending order but the step size does not have to be constant
     ! this yields the following difference formula:
-    !   int_1^n f(x) dx = int_1^(n-1) f(x) dx + (f(n)+f(n+1))*(x(n+1)-x(n))/2,
+    !   int_1^n f(x) dx = int_1^(n-1) f(x) dx + (f(n)+f(n-1))*(x(n)-x(n-1))/2,
     ! which is used here
     integer function calc_int_real(var,x,var_int) result(ierr)
         character(*), parameter :: rout_name = 'calc_int_real'
