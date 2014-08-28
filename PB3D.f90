@@ -69,8 +69,9 @@ program PB3D
     CHCKERR
     ierr = open_input()                                                         ! open the input files
     CHCKERR
-    call read_input                                                             ! read input files
     ierr = read_VMEC()                                                          ! read VMEC file
+    CHCKERR
+    ierr = read_input()                                                         ! read input files
     CHCKERR
     ierr = open_output()                                                        ! open output file per alpha group
     CHCKERR

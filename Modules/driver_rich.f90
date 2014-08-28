@@ -116,7 +116,8 @@ contains
         use eq_ops, only: calc_eq
         use eq_vars, only: dealloc_eq_vars_final
         use X_ops, only: prepare_matrix_X, solve_EV_system, plot_X_vec
-        use X_vars, only: dealloc_X_vars, X_vec, X_val
+        use X_vars, only: dealloc_X_vars, X_vec, X_val, init_m, &
+            &dealloc_X_vars_final, n_r_X
         use metric_ops, only: dealloc_metric_vars_final
         
         character(*), parameter :: rout_name = 'run_for_alpha'
@@ -129,6 +130,7 @@ contains
         integer :: id                                                           ! counter
         logical :: done_richard                                                 ! is it converged?
         complex(dp), allocatable :: X_val_rich(:,:,:)                           ! Richardson array of eigenvalues X_val
+        real(dp), allocatable :: x_axis(:,:)                                    ! x axis for plot of Eigenvalues with n_r_X
         complex(dp), allocatable :: A_terms(:,:,:,:)                            ! termj_int of matrix A from previous Richardson loop
         complex(dp), allocatable :: B_terms(:,:,:,:)                            ! termj_int of matrix B from previous Richardson loop
         real(dp) :: A_info(2)                                                   ! info about A_terms: min of r and step_size
@@ -141,16 +143,25 @@ contains
         ierr = calc_eq(alpha)
         CHCKERR('')
         
+        ! initialize m
+        ierr = init_m()
+        CHCKERR('')
+        
         ! Initalize some variables for Richardson loop
         ir = 1
         done_richard = .false.
-        allocate(X_val_rich(1:max_it_r,1:max_it_r,1:n_sol_requested))
+        if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
+            allocate(X_val_rich(1:max_it_r,1:max_it_r,1:n_sol_requested))
+            allocate(x_axis(1:max_it_r,1:n_sol_requested))
+        end if
         X_val_rich = 0.0_dp
         
         ! Start Richardson loop
         if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
             call writo('Starting perturbation calculation with Richardson &
                 &extrapolation')
+            if (reuse_r) call writo('(the results from a Richardson level are &
+                &reused in the next)')
         else
             call writo('Starting perturbation calculation')
         end if
@@ -176,8 +187,7 @@ contains
             call writo('calculating magnitudes KV and PV at these &
                 &normal points')
             call lvl_ud(1)
-            ierr = prepare_matrix_X()
-            CHCKERR('')
+            call prepare_matrix_X
             call lvl_ud(-1)
             
             ! setup the matrices of the generalized EV system
@@ -193,6 +203,9 @@ contains
             call lvl_ud(-1)
             
             if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
+                ! update the x axis of the Eigenvalue plot
+                x_axis(ir,:) = 1.0_dp*n_r_X
+                
                 ! update  the  variable  X_val_rich  with the  results  of  this
                 ! Richardson level
                 ierr = calc_rich_ex(ir,X_val,X_val_rich,done_richard)
@@ -204,13 +217,15 @@ contains
                 done_richard = .true.
             end if
             
-            ! output the largest Eigenfunction for the last Richardson loop
+            ! output the evolution of the  Eigenvalues with the number of normal
+            ! points in the perturbation grid  and the largest Eigenfunction for
+            ! the last Richardson loop
             if (done_richard .or. ir.eq.max_it_r+1) then
                 if (group_rank.eq.0) then
-                    if (ir.gt.1) then
+                    if (max_it_r.gt.1) then
                         call writo('plotting the Eigenvalues')
                         call print_GP_2D('X_val','',realpart(&
-                            &X_val_rich(1:ir,1,:)))
+                            &X_val_rich(1:ir,1,:)),x=x_axis(1:ir,:))
                         !call print_GP_2D('X_val_rich','',&
                             !&realpart([(X_val_rich(id,id,1),id=1,ir)]))
                     end if
@@ -255,6 +270,7 @@ contains
         call writo('Deallocate remaining quantities')
         call dealloc_eq_vars_final
         call dealloc_metric_vars_final
+        call dealloc_X_vars_final
     end function run_for_alpha
     
     ! calculates the number of normal  points for the perturbation n_r_X for the

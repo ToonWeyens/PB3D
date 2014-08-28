@@ -478,24 +478,25 @@ contains
     !   24  integer                     min_n_r_X
     !   25  integer                     min_r_eq
     !   26  integer                     max_r_eq
-    !   27  real_dp                     min_alpha
-    !   28  real_dp                     max_alpha
-    !   29  real_dp                     min_r_X
-    !   30  real_dp                     max_r_X
-    !   31  real_dp                     tol_NR
-    !   32  real_dp                     min_par
-    !   33  real_dp                     max_par
-    !   34  real_dp                     version
-    !   35  real_dp(n_r)                phi(n_r) 
-    !   36  real_dp(n_r)                phi_r(n_r) 
-    !   37  real_dp(n_r)                iotaf(n_r) 
-    !   38  real_dp(n_r)                presf(n_r) 
-    !   39  real_dp(*)                  R_c(*)
-    !   40  real_dp(*)                  R_s(*)
-    !   41  real_dp(*)                  Z_c(*)
-    !   42  real_dp(*)                  Z_s(*)
-    !   43  real_dp(*)                  L_c(*)
-    !   44  real_dp(*)                  L_s(*)
+    !   27  integer                     nyq_fac
+    !   28  real_dp                     min_alpha
+    !   29  real_dp                     max_alpha
+    !   20  real_dp                     min_r_X
+    !   31  real_dp                     max_r_X
+    !   32  real_dp                     tol_NR
+    !   33  real_dp                     min_par
+    !   34  real_dp                     max_par
+    !   35  real_dp                     version
+    !   36  real_dp(n_r)                phi(n_r) 
+    !   37  real_dp(n_r)                phi_r(n_r) 
+    !   38  real_dp(n_r)                iotaf(n_r) 
+    !   39  real_dp(n_r)                presf(n_r) 
+    !   30  real_dp(*)                  R_c(*)
+    !   41  real_dp(*)                  R_s(*)
+    !   42  real_dp(*)                  Z_c(*)
+    !   43  real_dp(*)                  Z_s(*)
+    !   44  real_dp(*)                  L_c(*)
+    !   45  real_dp(*)                  L_s(*)
     !   with (*) = (0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3))
     ! [MPI] Collective call
     integer function broadcast_vars() result(ierr)
@@ -504,7 +505,8 @@ contains
         use num_vars, only: max_str_ln, output_name, ltest, &
             &theta_var_along_B, EV_style, max_it_NR, max_it_r, n_alpha, &
             &n_procs_per_alpha, style, max_alpha, min_alpha, tol_NR, glob_rank, &
-            &glob_n_procs, n_sol_requested, min_n_r_X, min_r_X, max_r_X, reuse_r
+            &glob_n_procs, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
+            &reuse_r, nyq_fac
         use output_ops, only: format_out
         use X_vars, only: n_X, min_m_X, max_m_X
         use eq_vars, only: n_par, max_par, min_par, min_r_eq, max_r_eq
@@ -552,6 +554,7 @@ contains
             call MPI_Bcast(min_n_r_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(nyq_fac,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)

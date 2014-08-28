@@ -11,7 +11,7 @@ module X_vars
     
     private
     public calc_rho, init_X, calc_PV, calc_KV, calc_U, calc_extra, &
-        &dealloc_X_vars, &
+        &dealloc_X_vars, dealloc_X_vars_final, init_m, &
         &rho, n_x, m_X, n_r_X, U_X_0, U_X_1, DU_X_0, DU_X_1, sigma, extra1, &
         &extra2, extra3, PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, min_m_X, &
         &max_m_X
@@ -39,31 +39,21 @@ module X_vars
     complex(dp), allocatable :: X_val(:)                                        ! Eigenvalue solution
     
 contains
-    ! initialize the variables of this module
-    ! ¡¡¡ THIS SHOULD BE  CHANGED TO TAKE INTO ACCOUNT THAT  U_X AND DU_X ARE
-    ! HERMITIAN SO ONLY  M*(M+1)/2 ELEMENTS ARE NEEDED INSTEAD  OF M^2. HOWEVER,
-    ! TAKE INTO ACCOUNT AS WELL THE MPI STORAGE MATRIX FORMATS !!!
-    integer function init_X() result(ierr)
-        use eq_vars, only: n_par, n_r_eq
-        use num_vars, only: plot_q, group_rank, n_sol_requested
+    ! initialize the variable m and check and/or plot it
+    integer function init_m() result(ierr)
+        use num_vars, only: plot_q
         
-        character(*), parameter :: rout_name = 'init_X'
+        character(*), parameter :: rout_name = 'init_m'
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id                                                           ! counter
         integer :: n_m_X                                                        ! number of poloidal modes m
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
-        ! initialize
         n_m_X = max_m_X - min_m_X + 1
-        if (n_m_X.lt.1) then
-            ierr = 1
-            err_msg = 'max_m_X has to be larger or equal to min_m_X'
-            CHCKERR(err_msg)
-        end if
         
         ! setup m_X
         allocate(m_X(n_m_X))
@@ -75,6 +65,56 @@ contains
         end if
         ierr = check_m_and_n()
         CHCKERR('')
+    contains
+        ! checks whether nq-m is << n is satisfied in some of the plasma
+        integer function check_m_and_n() result(ierr)
+            use eq_vars, only: q_saf_full
+            use num_vars, only: glob_rank
+            
+            character(*), parameter :: rout_name = 'check_m_and_n'
+            
+            ! local variables
+            integer :: id                                                       ! counter
+            real(dp) :: tol = 0.1                                               ! tolerance to be out of range of q values
+            real(dp) :: min_q, max_q                                            ! min. and max. values of q
+            
+            ! initialize ierr
+            ierr = 0
+            
+            if (glob_rank.eq.0) then
+                ! set min_q and max_q
+                min_q = minval(q_saf_full(:,0))
+                max_q = maxval(q_saf_full(:,0))
+                
+                ! for every  poloidal mode number m whether m/n  is inside the range
+                ! of q values
+                do id = 1, n_m_X
+                    if (m_X(id)*1.0/n_X .lt.(1-tol)*min_q .or. &
+                        &m_X(id)*1.0/n_X .gt.(1+tol)*max_q) then
+                        call writo('for m_X = '//trim(i2str(m_X(id)))//', the ratio &
+                            &|nq-m|/n is never << 1')
+                        ierr = 1
+                        err_msg = 'Choose m and n so that (n*q-m)/n << 1'
+                        CHCKERR(err_msg)
+                    end if
+                end do
+            end if
+        end function check_m_and_n
+    end function init_m
+    
+    ! initialize the variables of this module
+    ! ¡¡¡ THIS SHOULD BE  CHANGED TO TAKE INTO ACCOUNT THAT  U_X AND DU_X ARE
+    ! HERMITIAN SO ONLY  M*(M+1)/2 ELEMENTS ARE NEEDED INSTEAD  OF M^2. HOWEVER,
+    ! TAKE INTO ACCOUNT AS WELL THE MPI STORAGE MATRIX FORMATS !!!
+    subroutine init_X
+        use eq_vars, only: n_par, n_r_eq
+        use num_vars, only: group_rank, n_sol_requested
+        
+        ! local variables
+        integer :: n_m_X                                                        ! number of poloidal modes m
+        
+        ! set n_m_X
+        n_m_X = max_m_X - min_m_X + 1
         
         ! U_X_0
         allocate(U_X_0(n_par,n_r_eq,n_m_X))
@@ -113,42 +153,7 @@ contains
             allocate(X_val(1:n_sol_requested))
             X_val = 0.0_dp
         end if
-    contains
-        ! checks whether nq-m is << n is satisfied in some of the plasma
-        integer function check_m_and_n() result(ierr)
-            use eq_vars, only: q_saf_full
-            use num_vars, only: glob_rank
-            
-            character(*), parameter :: rout_name = 'check_m_and_n'
-            
-            ! local variables
-            integer :: id                                                       ! counter
-            real(dp) :: tol = 0.1                                               ! tolerance to be out of range of q values
-            real(dp) :: min_q, max_q                                            ! min. and max. values of q
-            
-            ! initialize ierr
-            ierr = 0
-            
-            if (glob_rank.eq.0) then
-                ! set min_q and max_q
-                min_q = minval(q_saf_full(:,0))
-                max_q = maxval(q_saf_full(:,0))
-                
-                ! for every  poloidal mode number m whether m/n  is inside the range
-                ! of q values
-                do id = 1, n_m_X
-                    if (m_X(id)*1.0/n_X .lt.(1-tol)*min_q .or. &
-                        &m_X(id)*1.0/n_X .gt.(1+tol)*max_q) then
-                        call writo('for m_X = '//trim(i2str(m_X(id)))//', the ratio &
-                            &|nq-m|/n is never << 1')
-                        ierr = 1
-                        err_msg = 'Choose m and n so that (n*q-m)/n << 1'
-                        CHCKERR(err_msg)
-                    end if
-                end do
-            end if
-        end function check_m_and_n
-    end function init_X
+    end subroutine init_X
     
     ! plot q-profile with nq-m = 0 indicated if requested
     subroutine resonance_plot
@@ -305,7 +310,7 @@ contains
     ! TO BE IMPLEMENTED. TEMPORARILY SET TO 1 EVERYWHERE !!!
     subroutine calc_rho(n_par,n_r_eq)
         ! input variables
-        integer, intent(in) :: n_par, n_r_eq                                       ! dimensions of the size to be allocated for the rho matrix
+        integer, intent(in) :: n_par, n_r_eq                                    ! dimensions of the size to be allocated for the rho matrix
         
         call writo('calc_rho NOT YET IMPLEMENTED!!!')
         
@@ -647,11 +652,16 @@ contains
         use num_vars, only: group_rank
         
         deallocate(rho)
-        deallocate(m_X)
         deallocate(U_X_0,U_X_1,DU_X_0,DU_X_1)
         deallocate(PV0,PV1,PV2,KV0,KV1,KV2)
         if (group_rank.eq.0) then
             deallocate(X_vec,X_val)
         end if
     end subroutine dealloc_X_vars
+    
+    ! deallocates  perturbation quantities that  are not used anymore  after the
+    ! calculations for a certain alpha
+    subroutine dealloc_X_vars_final
+        deallocate(m_X)
+    end subroutine dealloc_X_vars_final
 end module

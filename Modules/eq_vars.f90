@@ -42,10 +42,8 @@ contains
     ! initialize the variables n_r_eq, VMEC_R, VMEC_Z and VMEC_L
     subroutine init_eq
         use num_vars, only: max_deriv
-        !use VMEC_vars, only: n_r
         
         ! calculate n_r_eq
-        !n_r_eq = n_r
         n_r_eq = max_r_eq - min_r_eq + 1
         
         ! R
@@ -247,9 +245,6 @@ contains
         ! calculate the mesh
         select case (calc_mesh_style)
             case (0)                                                            ! along the magnetic field lines
-                ierr = check_periodicity(min_par,max_par)
-                CHCKERR('')
-                
                 if (theta_var_along_B) then                                     ! first calculate theta
                     do jd = 1,n_r
                         ierr = calc_eqd_mesh(theta(:,jd),n_par,min_par,max_par)
@@ -297,43 +292,6 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
-    contains
-        ! checks whether max_par - min_par indeed is a multiple of 2pi, which is
-        ! a requisite for the correct functioning  of the code, as the integrals
-        ! which are to be calculated in the parallel direction have to be closed
-        ! loop intervals in the parallel direction
-        integer function check_periodicity(min_par,max_par) result(ierr)
-            character(*), parameter :: rout_name = 'check_periodicity'
-            
-            ! input / output
-            real(dp), intent(in) :: min_par, max_par                            ! min. and max. of parallel angle
-            
-            ! local variables
-            real(dp) :: tol = 1E-5                                              ! tolerance
-            real(dp) :: modulus
-            character(len=max_str_ln) :: err_msg                                ! error message
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! check whether max_par > min_par
-            if (max_par.lt.min_par+2*pi*(1-tol)) then
-                ierr = 1
-                err_msg = 'max_par has to be at least min_par + 2 pi'
-                CHCKERR(err_msg)
-            end if
-            
-            ! calculate modulus
-            modulus = mod(max_par-min_par,2*pi)
-            modulus = min(modulus,2*pi-modulus)
-            
-            ! check whether tolerance is reached
-            if (modulus/(2*pi).gt.tol) then
-                ierr = 1
-                err_msg = 'max_par - min_par has to be a multiple of 2 pi'
-                CHCKERR(err_msg)
-            end if
-        end function check_periodicity
     end function calc_mesh
     
     ! check  whether   the  straight  field   line  mesh  has   been  calculated

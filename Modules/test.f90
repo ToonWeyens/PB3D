@@ -572,8 +572,7 @@ contains
             ! calculate equilibrium
             call lvl_ud(1)
             call writo('calculating P')
-            ierr = prepare_matrix_X()
-            CHCKERR('')
+            call prepare_matrix_X
             call lvl_ud(-1)
             
             ! visualize PV

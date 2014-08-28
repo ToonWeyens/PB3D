@@ -15,19 +15,13 @@ module X_ops
 contains
     ! prepare the matrix elements by calculating KV and PV, which then will have
     ! to be integrated, with a complex exponential weighting function
-    integer function prepare_matrix_X() result(ierr)
+    subroutine prepare_matrix_X
         use X_vars, only: init_X, calc_PV, calc_KV, calc_U, calc_extra
-        
-        character(*), parameter :: rout_name = 'prepare_matrix_X'
-        
-        ! initialize ierr
-        ierr = 0
         
         ! initialize the variables
         call writo('Initalizing variables...')
         call lvl_ud(1)
-        ierr = init_X()
-        CHCKERR('')
+        call init_X
         call lvl_ud(-1)
         
         ! calculate U and DU
@@ -55,7 +49,7 @@ contains
         call lvl_ud(1)
         call calc_KV
         call lvl_ud(-1)
-    end function prepare_matrix_X
+    end subroutine prepare_matrix_X
     
     ! set-up and  solve the  EV system  by discretizing  the equations  in n_r_X
     ! normal points,  making use of  PV0, PV1 and  PV2, interpolated in  the n_r

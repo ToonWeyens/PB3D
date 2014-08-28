@@ -61,7 +61,7 @@ module num_vars
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
     real(dp) :: tol_NR                                                          ! tolerance for Newton-Rhapson
     logical :: theta_var_along_B                                                ! true if theta is used as the parallel variable
-    integer, parameter :: nyq_fac = 5                                           ! Nyquist factor to avoid aliasing in perturbation integrals
+    integer :: nyq_fac                                                          ! Nyquist factor to avoid aliasing in perturbation integrals
 
     ! input / output
     integer :: input_i                                                          ! file number of input file

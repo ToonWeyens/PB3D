@@ -64,6 +64,7 @@ contains
         PetscScalar :: val                                                      ! solution EV value
         VecScatter :: scatter_ctx                                               ! context for scattering of solution vector to group master
         PetscScalar, pointer :: vec_pointer(:)                                  ! pointer to the solution vectors
+        PetscInt :: n_sol                                                       ! how many solutions can be requested (normally n_sol_requested)
         
         ! other variables
         PetscInt :: id, jd, kd                                                  ! counters
@@ -196,6 +197,9 @@ contains
         
         ! solve EV problem
         call writo('solve the EV problem...')
+        
+        call lvl_ud(1)
+        
         !call PetscOptionsSetValue('-eps_view','-1',ierr)
         call EPSCreate(PETSC_COMM_WORLD,solver,ierr)
         CHCKERR('EPSCreate failed')
@@ -225,13 +229,15 @@ contains
         
         ! request n_sol_requested Eigenpairs
         if (n_sol_requested.gt.n_r_X*n_m_X) then
-            call writo('WARNING: more solutions requested than the dimensions &
-                &of the matrix. Increase either n_r_X or number of pol. modes')
-            n_sol_requested = n_r_X*n_m_X
-            call writo('n_sol_requested capped to '//&
-                &trim(i2str(n_sol_requested)))
+            call writo('WARNING: max. nr. of solutions requested capped to &
+                &problem dimension ('//trim(i2str(n_r_X*n_m_X))//')')
+            call writo('Increase either min_n_r_X or number of pol. modes or &
+                &decrease n_sol_requested')
+            n_sol = n_r_X*n_m_X
+        else
+            n_sol = n_sol_requested
         end if
-        call EPSSetDimensions(solver,n_sol_requested,PETSC_DECIDE,&
+        call EPSSetDimensions(solver,n_sol,PETSC_DECIDE,&
             &PETSC_DECIDE,ierr)
         
         ! set run-time options
@@ -241,6 +247,8 @@ contains
         ! solve EV problem
         call EPSSolve(solver,ierr) 
         CHCKERR('EPS couldn''t find a solution')
+        
+        call lvl_ud(-1)
         
         ! output
         call writo('summarize solution...')
@@ -268,10 +276,12 @@ contains
         
         ! store results
         ! set maximum nr of solutions to be saved
-        if (n_sol_requested.gt.n_conv) then
+        if (n_sol.gt.n_conv) then
+            call writo('WARNING: max. nr. of solutions found only '//&
+                &trim(i2str(n_conv)))
             max_n_EV = n_conv
         else
-            max_n_EV = n_sol_requested
+            max_n_EV = n_sol
         end if
         
         ! print info
