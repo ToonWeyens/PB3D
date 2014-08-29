@@ -63,6 +63,7 @@ X_ops.o : \
     slepc_ops.o \
     str_ops.o \
     str_ops.o \
+    MPI_ops.o \
 
 X_vars.o : \
     num_vars.o \

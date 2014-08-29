@@ -14,7 +14,7 @@ module X_vars
         &dealloc_X_vars, dealloc_X_vars_final, init_m, &
         &rho, n_x, m_X, n_r_X, U_X_0, U_X_1, DU_X_0, DU_X_1, sigma, extra1, &
         &extra2, extra3, PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, min_m_X, &
-        &max_m_X
+        &max_m_X, group_n_r_X
     
     ! global variables
     real(dp), allocatable :: rho(:,:)                                           ! density
@@ -23,6 +23,7 @@ module X_vars
     integer :: max_m_X                                                          ! highest poloidal mode number m_X
     integer, allocatable :: m_X(:)                                              ! vector of poloidal mode numbers
     integer :: n_r_X                                                            ! number of normal points for perturbations
+    integer :: group_n_r_X                                                      ! number of normal points for perturbations on this proces
     complex(dp), allocatable :: U_X_0(:,:,:), U_X_1(:,:,:)                      ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
     complex(dp), allocatable :: DU_X_0(:,:,:), DU_X_1(:,:,:)                    ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
     real(dp), allocatable :: sigma(:,:)                                         ! parallel current
@@ -145,14 +146,6 @@ contains
         
         ! KV2
         allocate(KV2(n_par,n_r_eq,n_m_X,n_m_X))
-        
-        ! X_vec X_val if group master
-        if (group_rank.eq.0) then
-            allocate(X_vec(min_m_X:max_m_X,1:n_r_X,1:n_sol_requested))
-            X_vec = 0.0_dp
-            allocate(X_val(1:n_sol_requested))
-            X_val = 0.0_dp
-        end if
     end subroutine init_X
     
     ! plot q-profile with nq-m = 0 indicated if requested
@@ -654,9 +647,7 @@ contains
         deallocate(rho)
         deallocate(U_X_0,U_X_1,DU_X_0,DU_X_1)
         deallocate(PV0,PV1,PV2,KV0,KV1,KV2)
-        if (group_rank.eq.0) then
-            deallocate(X_vec,X_val)
-        end if
+        deallocate(X_vec,X_val)
     end subroutine dealloc_X_vars
     
     ! deallocates  perturbation quantities that  are not used anymore  after the

@@ -111,8 +111,7 @@ contains
     
     ! runs the calculations for one of the alpha's
     integer function run_for_alpha(alpha) result(ierr)
-        use num_vars, only: n_sol_requested, max_it_r, group_rank, min_r_X, &
-            &max_r_X, reuse_r
+        use num_vars, only: n_sol_requested, max_it_r, group_rank, reuse_r
         use eq_ops, only: calc_eq
         use eq_vars, only: dealloc_eq_vars_final
         use X_ops, only: prepare_matrix_X, solve_EV_system, plot_X_vec
@@ -152,9 +151,9 @@ contains
         done_richard = .false.
         if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
             allocate(X_val_rich(1:max_it_r,1:max_it_r,1:n_sol_requested))
+            X_val_rich = 0.0_dp
             allocate(x_axis(1:max_it_r,1:n_sol_requested))
         end if
-        X_val_rich = 0.0_dp
         
         ! Start Richardson loop
         if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
@@ -224,27 +223,29 @@ contains
                 if (group_rank.eq.0) then
                     if (max_it_r.gt.1) then
                         call writo('plotting the Eigenvalues')
+                        
                         call print_GP_2D('X_val','',realpart(&
                             &X_val_rich(1:ir,1,:)),x=x_axis(1:ir,:))
                         !call print_GP_2D('X_val_rich','',&
                             !&realpart([(X_val_rich(id,id,1),id=1,ir)]))
                     end if
-                    
-                    call writo('plotting the Eigenvectors')
-                    
-                    call lvl_ud(1)
-                    
-                    do id = 1,n_sol_requested
-                        call writo('plotting results for mode '//&
-                            &trim(i2str(id))//'/'//&
-                            &trim(i2str(n_sol_requested))//', with eigenvalue '&
-                            &//trim(r2strt(realpart(X_val(id))))//' + '//&
-                            &trim(r2strt(imagpart(X_val(id))))//' i')
-                        call plot_X_vec(X_vec(:,:,id),min_r_X,max_r_X)
-                    end do
-                    
-                    call lvl_ud(-1)
                 end if
+                
+                call writo('plotting the Eigenvectors')
+                
+                call lvl_ud(1)
+                
+                do id = 1,n_sol_requested
+                    call writo('plotting results for mode '//&
+                        &trim(i2str(id))//'/'//&
+                        &trim(i2str(n_sol_requested))//', with eigenvalue '&
+                        &//trim(r2strt(realpart(X_val(id))))//' + '//&
+                        &trim(r2strt(imagpart(X_val(id))))//' i')
+                    ierr = plot_X_vec(X_vec(:,:,id))
+                    CHCKERR('')
+                end do
+                
+                call lvl_ud(-1)
             end if
             
             ! deallocate perturbation variables
@@ -264,7 +265,9 @@ contains
         end if
         
         ! deallocate Richardson loop variables
-        deallocate(X_val_rich)
+        if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
+            deallocate(X_val_rich)
+        end if
         
         ! deallocate remaining equilibrium quantities
         call writo('Deallocate remaining quantities')
@@ -300,10 +303,9 @@ contains
     !   X_val_rich(ir,ir2,:) = X_val_rich(ir,ir2-1,:) +  1/(2^(2ir2) - 1) * 
     !       (X_val_rich(ir,ir2-1,:) - X_val_rich(ir-1,ir2-1,:)),
     ! as described in [ADD REF]
-    ! [MPI] parts only by group masters, other parts by all group members
+    ! [MPI] All ranks
     integer function calc_rich_ex(ir,X_val,X_val_rich,done_richard) result(ierr)
-        use num_vars, only: group_rank, tol_r, MPI_Comm_groups
-        use MPI_ops, only: broadcast_logical
+        use num_vars, only: tol_r
         
         character(*), parameter :: rout_name = 'calc_rich_ex'
         
@@ -320,54 +322,48 @@ contains
         real(dp) :: max_corr                                                    ! maximum of maximum of correction
         integer :: loc_max_corr(1)                                              ! location of maximum of correction
         
-        if (group_rank.eq.0) then
-            ! initialize ierr
-            ierr = 0
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (size(X_val_rich,1).ne.size(X_val_rich,2) .or. &
+            &size(X_val_rich,3).ne.size(X_val) .or. &
+            &ir.gt.size(X_val_rich,1)) then
+            ierr = 1
+            err_msg = 'X_val_rich has to have correct dimensions'
+            CHCKERR(err_msg)
+        end if
+        
+        ! allocate correction
+        allocate(corr(size(X_val))); corr = 1.0E15
+        
+        ! do calculations if ir > 1
+        X_val_rich(ir,1,:) = X_val
+        do ir2 = 2,ir
+            corr = 1./(2**(2*ir2)-1.) * &
+                &(X_val_rich(ir,ir2-1,:) - X_val_rich(ir-1,ir2-1,:))
+            X_val_rich(ir,ir2,:) = X_val_rich(ir,ir2-1,:) + corr
+        end do
+        
+        if (ir.gt.1) then                                                       ! only do this if in Richardson level higher than 1
+            ! get maximum and location of maximum for relative correction
+            max_corr = maxval(abs(corr/X_val_rich(ir,ir,:)))
+            loc_max_corr = maxloc(abs(corr/X_val_rich(ir,ir,:)))
+            call writo('maximum relative error: '//trim(r2strt(max_corr))//&
+                &' for Eigenvalue '//trim(i2str(loc_max_corr(1))))
             
-            ! tests
-            if (size(X_val_rich,1).ne.size(X_val_rich,2) .or. &
-                &size(X_val_rich,3).ne.size(X_val) .or. &
-                &ir.gt.size(X_val_rich,1)) then
-                ierr = 1
-                err_msg = 'X_val_rich has to have correct dimensions'
-                CHCKERR(err_msg)
-            end if
-            
-            ! allocate correction
-            allocate(corr(size(X_val))); corr = 1.0E15
-            
-            ! do calculations if ir > 1
-            X_val_rich(ir,1,:) = X_val
-            do ir2 = 2,ir
-                corr = 1./(2**(2*ir2)-1.) * &
-                    &(X_val_rich(ir,ir2-1,:) - X_val_rich(ir-1,ir2-1,:))
-                X_val_rich(ir,ir2,:) = X_val_rich(ir,ir2-1,:) + corr
-            end do
-            
-            if (ir.gt.1) then                                                   ! only do this if in Richardson level higher than 1
-                ! get maximum and location of maximum for relative correction
-                max_corr = maxval(abs(corr/X_val_rich(ir,ir,:)))
-                loc_max_corr = maxloc(abs(corr/X_val_rich(ir,ir,:)))
-                call writo('maximum relative error: '//trim(r2strt(max_corr))//&
-                    &' for Eigenvalue '//trim(i2str(loc_max_corr(1))))
-                
-                ! check whether tolerance has been  reached for last value ir2 =
-                ! ir
-                if (maxval(abs(corr/X_val_rich(ir,ir,:))) .lt. tol_r) then
-                    done_richard = .true.
-                    call writo('tolerance '//trim(r2strt(tol_r))//&
-                        &' reached after '//trim(i2str(ir))//' iterations')
-                else
-                    call writo('tolerance '//trim(r2strt(tol_r))//' not yet &
-                        &reached')
-                end if
+            ! check whether tolerance has been reached for last value ir2 = ir
+            if (maxval(abs(corr/X_val_rich(ir,ir,:))) .lt. tol_r) then
+                done_richard = .true.
+                call writo('tolerance '//trim(r2strt(tol_r))//&
+                    &' reached after '//trim(i2str(ir))//' iterations')
+            else
+                call writo('tolerance '//trim(r2strt(tol_r))//' not yet &
+                    &reached')
             end if
         end if
         
-        ierr = broadcast_logical(MPI_Comm_groups,done_richard)
-        CHCKERR('')
-        
-        ! check for convergence on every process
+        ! check for convergence
         if (.not.done_richard) then
             if (ir.lt.max_it_r) then                                            ! not yet at maximum Richardson iteration
                 ir = ir + 1

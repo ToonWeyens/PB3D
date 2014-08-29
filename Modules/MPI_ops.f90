@@ -6,12 +6,12 @@ module MPI_ops
     use MPI
     use str_ops, only: i2str
     use output_ops, only: writo, lvl_ud
-    use num_vars, only: dp
+    use num_vars, only: dp, max_str_ln
     
     implicit none
     private
     public start_MPI, stop_MPI, split_MPI, abort_MPI, broadcast_vars, &
-        &merge_MPI, get_next_job, divide_grid, broadcast_logical
+        &merge_MPI, get_next_job, divide_grid, get_ser_X_vec
     
 contains
     ! start MPI and gather information
@@ -40,7 +40,7 @@ contains
     ! many processors to use per field line
     ! [MPI] Collective call
     integer function split_MPI() result(ierr)
-        use num_vars, only: n_procs_per_alpha, n_procs, n_alpha, max_str_ln, &
+        use num_vars, only: n_procs_per_alpha, n_procs, n_alpha, &
             &MPI_Comm_groups, glob_rank, glob_n_procs, group_rank, next_job, &
             &group_n_procs, group_nr, n_groups,  MPI_Comm_masters, &
             &next_job_win
@@ -270,7 +270,7 @@ contains
     ! [MPI] Collective call
     integer function merge_MPI() result(ierr)
         use num_vars, only: MPI_Comm_groups, MPI_Comm_masters, n_groups, &
-            &group_rank, next_job_win, glob_rank, max_str_ln
+            &group_rank, next_job_win, glob_rank
         
         character(*), parameter :: rout_name = 'merge_MPI'
         
@@ -334,8 +334,8 @@ contains
     ! maximum value. Returns this value
     ! [MPI] Collective call
     integer function get_next_job(next_job) result(ierr)
-        use num_vars, only: group_rank, max_str_ln, next_job_win, &
-            &MPI_Comm_groups, n_alpha, group_nr
+        use num_vars, only: group_rank, next_job_win, MPI_Comm_groups, &
+            &n_alpha, group_nr
         
         character(*), parameter :: rout_name = 'get_next_job'
         
@@ -376,6 +376,56 @@ contains
         call MPI_Bcast(next_job,1,MPI_INTEGER,0,MPI_Comm_groups,ierr)
         CHCKERR('MPI broadcast failed')
     end function get_next_job
+    
+    ! gather solution Eigenvector X_vec in serial version on group master
+    ! [MPI] Collective call
+    integer function get_ser_X_vec(X_vec,ser_X_vec,n_m_X) result(ierr)
+        use num_vars, only: MPI_Comm_groups, group_rank, group_n_procs
+        use X_vars, only: group_n_r_X
+        
+        character(*), parameter :: rout_name = 'get_X_vec'
+        
+        ! input / output
+        complex(dp), intent(in) :: X_vec(:,:)                                   ! parallel vector
+        complex(dp), intent(inout) :: ser_X_vec(:,:)                            ! serial vector
+        integer, intent(in) :: n_m_X                                            ! nr. poloidal modes
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer, allocatable :: recvcounts(:)                                   ! counts of nr. of elements received from each processor
+        integer, allocatable :: displs(:)                                       ! displacements elements received from each processor
+        integer :: id                                                           ! counter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! gather  group_n_r_X of  all groups  onto main  processor, to  serve as
+        ! recvcounts on group master
+        if (group_rank.eq.0) then
+            allocate(recvcounts(group_n_procs))
+            allocate(displs(group_n_procs))
+        else
+            allocate(recvcounts(0))
+            allocate(displs(0))
+        end if
+        call MPI_Gather(group_n_r_X,1,MPI_INTEGER,recvcounts,1,MPI_INTEGER,0,&
+            &MPI_Comm_groups,ierr)
+        err_msg = 'Failed to gather solution Eigenvector'
+        recvcounts = recvcounts * n_m_X
+        
+        ! deduce displacemnts by summing recvcounts
+        if (group_rank.eq.0) then
+            displs(1) = 0
+            do id = 2,group_n_procs
+                displs(id) = displs(id-1) + recvcounts(id-1)
+            end do
+        end if
+        
+        call MPI_Gatherv(X_vec,group_n_r_X*n_m_X,MPI_DOUBLE_COMPLEX,ser_X_vec,&
+            &recvcounts,displs,MPI_DOUBLE_COMPLEX,0,MPI_Comm_groups,ierr)
+        err_msg = 'Failed to gather solution Eigenvector'
+        CHCKERR(err_msg)
+    end function get_ser_X_vec
     
     ! divides a grid  of n points under  the ranks of MPI  Communicator comm and
     ! assigns n_loc to each rank
@@ -431,22 +481,6 @@ contains
         end function divide_grid_ind
     end function divide_grid
     
-    ! broadcasts a logical variable inside an alpha group
-    ! [MPI] Collective call
-    integer function broadcast_logical(comm,flag) result(ierr)
-        character(*), parameter :: rout_name = 'divide_grid'
-        
-        ! input / output
-        integer, intent(in) :: comm                                             ! MPI communicator for the group
-        logical, intent(in) :: flag                                             ! logical to be broadcast
-        
-        ! initialize ierr
-        ierr = 0
-        
-        call MPI_Bcast(flag,1,MPI_LOGICAL,0,comm,ierr)
-        CHCKERR('MPI broadcast failed')
-    end function broadcast_logical
-        
     ! THIS SHOULD BE DONE WITH A STRUCT !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! BUT DON'T FORGET TO ALLOCATE BEFORE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Broadcasts all  the relevant variable that have been  determined so far in
@@ -484,19 +518,20 @@ contains
     !   20  real_dp                     min_r_X
     !   31  real_dp                     max_r_X
     !   32  real_dp                     tol_NR
-    !   33  real_dp                     min_par
-    !   34  real_dp                     max_par
-    !   35  real_dp                     version
-    !   36  real_dp(n_r)                phi(n_r) 
-    !   37  real_dp(n_r)                phi_r(n_r) 
-    !   38  real_dp(n_r)                iotaf(n_r) 
-    !   39  real_dp(n_r)                presf(n_r) 
-    !   30  real_dp(*)                  R_c(*)
-    !   41  real_dp(*)                  R_s(*)
-    !   42  real_dp(*)                  Z_c(*)
-    !   43  real_dp(*)                  Z_s(*)
-    !   44  real_dp(*)                  L_c(*)
-    !   45  real_dp(*)                  L_s(*)
+    !   33  real_dp                     tol_r
+    !   34  real_dp                     min_par
+    !   35  real_dp                     max_par
+    !   36  real_dp                     version
+    !   37  real_dp(n_r)                phi(n_r) 
+    !   38  real_dp(n_r)                phi_r(n_r) 
+    !   39  real_dp(n_r)                iotaf(n_r) 
+    !   30  real_dp(n_r)                presf(n_r) 
+    !   31  real_dp(*)                  R_c(*)
+    !   42  real_dp(*)                  R_s(*)
+    !   43  real_dp(*)                  Z_c(*)
+    !   44  real_dp(*)                  Z_s(*)
+    !   45  real_dp(*)                  L_c(*)
+    !   46  real_dp(*)                  L_s(*)
     !   with (*) = (0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3))
     ! [MPI] Collective call
     integer function broadcast_vars() result(ierr)
@@ -506,7 +541,7 @@ contains
             &theta_var_along_B, EV_style, max_it_NR, max_it_r, n_alpha, &
             &n_procs_per_alpha, style, max_alpha, min_alpha, tol_NR, glob_rank, &
             &glob_n_procs, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
-            &reuse_r, nyq_fac
+            &reuse_r, nyq_fac, tol_r
         use output_ops, only: format_out
         use X_vars, only: n_X, min_m_X, max_m_X
         use eq_vars, only: n_par, max_par, min_par, min_r_eq, max_r_eq
@@ -560,6 +595,7 @@ contains
             call MPI_Bcast(min_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(tol_NR,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(tol_r,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_par,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_par,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(version,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)

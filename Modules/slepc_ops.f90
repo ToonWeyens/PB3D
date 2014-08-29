@@ -21,11 +21,10 @@ contains
     integer function solve_EV_system_slepc(A_terms,B_terms,A_info,B_info) &
         &result(ierr)
         use X_vars, only: PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, m_X, &
-            &n_r_X, n_X, min_m_X, max_m_X
+            &n_r_X, n_X, group_n_r_X
         use num_vars, only: MPI_comm_groups, group_n_procs, n_sol_requested, &
             &group_rank, min_r_X, max_r_X
         use file_ops, only: opt_args
-        use MPI_ops, only: divide_grid
         
         character(*), parameter :: rout_name = 'solve_EV_system_slepc'
         
@@ -38,7 +37,6 @@ contains
         ! local variables
         ! petsc / MPI variables
         EPS :: solver                                                           ! EV solver
-        !ST :: solver_ST                                                         ! Spectral Transformation type of solver
         PetscInt :: n_it                                                        ! nr. of iterations
         PetscInt :: n_conv                                                      ! nr. of converged solutions
         PetscInt :: n_ev, ncv, mpd                                              ! nr. of requested EV, max. dim of subspace and for projected problem
@@ -46,30 +44,24 @@ contains
         PetscReal :: error                                                      ! error of EPS solver
         PetscReal :: tol                                                        ! tolerance of EPS solver
         PetscInt ::  max_it                                                     ! maximum number of iterations
-        character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln) :: option_name                                ! options
         PetscBool :: flg                                                        ! flag to catch options
         
         ! perturbation quantities
         PetscInt :: n_m_X                                                       ! nr. of poloidal modes
-        PetscInt :: n_r_X_loc                                                   ! nr. of poloidal modes treated in this processor (=rows)
         Mat :: A                                                                ! matrix A in EV problem A X = lambda B X
         Mat :: B                                                                ! matrix B in EV problem A X = lambda B X
         PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
         PetscInt, allocatable :: o_nz(:)                                        ! nr. of off-diagonal non-zeros
         
         ! solution
-        Vec :: vec_par                                                          ! solution EV parallel vector
-        Vec :: vec_seq                                                          ! solution EV sequential vector
-        PetscScalar :: val                                                      ! solution EV value
-        VecScatter :: scatter_ctx                                               ! context for scattering of solution vector to group master
-        PetscScalar, pointer :: vec_pointer(:)                                  ! pointer to the solution vectors
+        Vec :: sol_vec                                                          ! solution EV parallel vector
         PetscInt :: n_sol                                                       ! how many solutions can be requested (normally n_sol_requested)
+        PetscInt :: one = 1                                                     ! one
         
         ! other variables
-        PetscInt :: id, jd, kd                                                  ! counters
+        PetscInt :: id                                                          ! counter
         PetscInt :: max_n_EV                                                    ! nr. of EV's saved, up to n_sol_requested
-        PetscInt :: vec_index                                                   ! vector index to export out of Petsc
         PetscReal :: step_size                                                  ! step size of perturbation grid
         
         !! for tests
@@ -122,8 +114,12 @@ contains
         call writo('set variables...')
         n_m_X = size(m_X)                                                       ! number of poloidal modes (= size of one block)
         step_size = (max_r_X-min_r_X)/(n_r_X - 1.0)
-        ierr = divide_grid(MPI_Comm_groups,n_r_X,n_r_X_loc)                     ! calculate n_r_X_loc by dividing the n_r_X grid points
-        CHCKERR('')
+        
+        ! X_vec and X_val
+        allocate(X_vec(1:n_m_X,1:group_n_r_X,1:n_sol_requested))
+        X_vec = 0.0_dp
+        allocate(X_val(1:n_sol_requested))
+        X_val = 0.0_dp
         
         ! set up the matrix
         call writo('set up matrices...')
@@ -133,19 +129,19 @@ contains
         ! create a  matrix A and B  with the appropriate number  of preallocated
         ! entries
         ! the numbers of non-zeros in the diagonal and off-diagonal parts
-        allocate(d_nz(n_r_X_loc*n_m_X)); d_nz = 0
+        allocate(d_nz(group_n_r_X*n_m_X)); d_nz = 0
         d_nz(1:n_m_X) = 2*n_m_X
-        d_nz(n_m_X+1:(n_r_X_loc-1)*n_m_X) = 3*n_m_X
-        d_nz((n_r_X_loc-1)*n_m_X+1:n_r_X_loc*n_m_X) = 2*n_m_X
-        allocate(o_nz(n_r_X_loc*n_m_X)); o_nz = 0
+        d_nz(n_m_X+1:(group_n_r_X-1)*n_m_X) = 3*n_m_X
+        d_nz((group_n_r_X-1)*n_m_X+1:group_n_r_X*n_m_X) = 2*n_m_X
+        allocate(o_nz(group_n_r_X*n_m_X)); o_nz = 0
         if(group_rank.ne.0) then
             o_nz(1:n_m_X) = n_m_X
         end if
         if (group_rank.ne.group_n_procs-1) then
-            o_nz((n_r_X_loc-1)*n_m_X+1:n_r_X_loc*n_m_X) = n_m_X
+            o_nz((group_n_r_X-1)*n_m_X+1:group_n_r_X*n_m_X) = n_m_X
         end if
         ! create matrix A
-        call MatCreateAIJ(PETSC_COMM_WORLD,n_r_X_loc*n_m_X,n_r_X_loc*n_m_X,&
+        call MatCreateAIJ(PETSC_COMM_WORLD,group_n_r_X*n_m_X,group_n_r_X*n_m_X,&
             &n_r_X*n_m_X,n_r_X*n_m_X,PETSC_NULL_INTEGER,d_nz,&
             &PETSC_NULL_INTEGER,o_nz,A,ierr)
         CHCKERR('MatCreateAIJ failed for matrix A')
@@ -157,6 +153,9 @@ contains
         call writo('Matrix A set up')
         
         ! duplicate A into B
+        ! (the  advantage of  letting communication  and calculation  overlap by
+        ! calculating matrix B while assembling A is offset by the extra cost of
+        ! not being able to use MatDuplicate. This is also easier)
         call MatDuplicate(A,MAT_SHARE_NONZERO_PATTERN,B,ierr)                   ! B has same structure as A
         CHCKERR('failed to duplicate A into B')
         ! fill the matrix B
@@ -218,15 +217,6 @@ contains
         call EPSSetWhichEigenpairs(solver,EPS_LARGEST_REAL,ierr)
         CHCKERR('Failed to set which eigenpairs')
         
-        !call PetscObjectTypeCompareAny(solver,flg,EPSGD,EPSJD,EPSBLOPEX,"",ierr)
-        !CHCKERR('Failed to get solver type')
-        !if (.not.flg) then
-            !call EPSGetST(solver,solver_ST,ierr)
-            !CHCKERR('Failed to get EPS ST type')
-            !call STSetType(solver_ST,STSINVERT,ierr)
-            !CHCKERR('Failed to set EPS ST type')
-        !end if
-        
         ! request n_sol_requested Eigenpairs
         if (n_sol_requested.gt.n_r_X*n_m_X) then
             call writo('WARNING: max. nr. of solutions requested capped to &
@@ -283,21 +273,26 @@ contains
         else
             max_n_EV = n_sol
         end if
-        
+       ! 
         ! print info
         call writo('storing results for '//trim(i2str(max_n_EV))//' highest &
             &Eigenvalues...')
         
         call lvl_ud(1)
         
-        call MatGetVecs(A,vec_par,PETSC_NULL_OBJECT,ierr)                       ! get compatible parallel vector to matrix A
-        CHCKERR('MatGetVecs failed')
+        !call MatGetVecs(A,sol_vec,PETSC_NULL_OBJECT,ierr)                       ! get compatible parallel vector to matrix A
+        !CHCKERR('MatGetVecs failed')
+        call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,group_n_r_X*n_m_X,&
+            &n_r_X*n_m_X,PETSC_NULL_SCALAR,sol_vec,ierr)
+        CHCKERR('Failed to create MPI vector with arrays')
         
         ! store them
         do id = 1,max_n_EV
-            ! get EV solution
-            call EPSGetEigenpair(solver,id-1,val,PETSC_NULL_OBJECT,vec_par,&
-                &PETSC_NULL_OBJECT,ierr)                                        ! get solution EV vector and value (starts at index 0)
+            ! get EV solution in vector X_vec
+            call VecPlaceArray(sol_vec,X_vec(:,:,id),ierr)
+            CHCKERR('Failed to place array')
+            call EPSGetEigenpair(solver,id-1,X_val(id),PETSC_NULL_OBJECT,&
+                &sol_vec,PETSC_NULL_OBJECT,ierr)                                ! get solution EV vector and value (starts at index 0)
             CHCKERR('EPSGetEigenpair failed')
             call EPSComputeRelativeError(solver,id-1,error,ierr)                ! get error (starts at index 0)
             CHCKERR('EPSComputeRelativeError failed')
@@ -307,51 +302,24 @@ contains
             call lvl_ud(1)
             
             ! print output
-            call writo('eigenvalue: '//trim(r2strt(realpart(val)))//' + '//&
-                &trim(r2strt(imagpart(val)))//' i')
+            call writo('eigenvalue: '//trim(r2strt(realpart(X_val(id))))//&
+                &' + '//trim(r2strt(imagpart(X_val(id))))//' i')
             call writo('with rel. error: '//trim(r2str(error)))
             !call EPSPrintSolution(solver,PETSC_NULL_OBJECT,ierr)
             
             !call writo('Eigenvector = ')
-            !call VecView(vec_par,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            !call VecView(sol_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
             !CHCKERR('Cannot view vector')
             
             call lvl_ud(-1)
             
-            ! get solution vector to group master
-            call VecScatterCreateToZero(vec_par,scatter_ctx,vec_seq,ierr)       ! create scatter to group master
-            err_msg = 'Failed to create scatter to all context'
-            CHCKERR(err_msg)
-            call VecScatterBegin(scatter_ctx,vec_par,vec_seq,INSERT_VALUES,&
-                &SCATTER_FORWARD,ierr)                                          ! begin scatter to group master
-            err_msg = 'Failed to begin scatter to group master'
-            CHCKERR(err_msg)
-            call VecScatterEnd(scatter_ctx,vec_par,vec_seq,INSERT_VALUES,&
-                &SCATTER_FORWARD,ierr)                                          ! end scatter to group master
-            err_msg = 'Failed to end scatter to group master'
-            CHCKERR(err_msg)
-            call VecScatterDestroy(scatter_ctx,ierr)                            ! destroy scatter to group master
-            err_msg = 'Failed to destroy scatter to all context'
-            CHCKERR(err_msg)
-            
-            ! export solution vector to X_vec
-            call VecGetArrayF90(vec_seq,vec_pointer,ierr)
-            err_msg = 'Failed to get pointer to solution vector'
-            CHCKERR(err_msg)
-            if (group_rank.eq.0) then
-                ! loop over all normal points in perturbation grid
-                do kd = 1,n_r_X
-                    do jd = min_m_X,max_m_X
-                        vec_index = (kd-1) * n_m_X + (jd - min_m_X) + 1
-                        X_vec(jd,kd,id) = vec_pointer(vec_index)
-                    end do
-                end do
-                X_val(id) = val
-            end if
+            ! reset vector
+            call VecResetArray(sol_vec,ierr)
+            CHCKERR('Failed to reset array')
         end do
         
-        call VecDestroy(vec_par,ierr)                                           ! destroy compatible vector
-        CHCKERR('Failed to destroy vec_par')
+        call VecDestroy(sol_vec,ierr)                                           ! destroy compatible vector
+        CHCKERR('Failed to destroy sol_vec')
         
         call lvl_ud(-1)
         
