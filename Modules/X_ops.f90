@@ -10,13 +10,20 @@ module X_ops
 
     implicit none
     private
-    public prepare_matrix_X, solve_EV_system, plot_X_vec
+    public prepare_X, solve_EV_system, plot_X_vec
 
 contains
     ! prepare the matrix elements by calculating KV and PV, which then will have
     ! to be integrated, with a complex exponential weighting function
-    subroutine prepare_matrix_X
-        use X_vars, only: init_X, calc_PV, calc_KV, calc_U, calc_extra
+    subroutine prepare_X
+        use X_vars, only: init_X, calc_PV, calc_KV, calc_U, calc_extra, &
+            &calc_V_int, dealloc_X_vars, &
+            &PV0, PV1, PV2, KV0, KV1, KV2, PV_int, KV_int
+        
+        call writo('Calculating table of field line averages &
+            &<V e^i(k-m)theta>')
+        
+        call lvl_ud(1)
         
         ! initialize the variables
         call writo('Initalizing variables...')
@@ -49,17 +56,39 @@ contains
         call lvl_ud(1)
         call calc_KV
         call lvl_ud(-1)
-    end subroutine prepare_matrix_X
+        
+        ! Calculate PV_int = <PVi e^(k-m)theta>
+        call writo('Taking field average of PV')
+        call lvl_ud(1)
+        call calc_V_int(PV0,PV_int(:,:,:,1))
+        call calc_V_int(PV1,PV_int(:,:,:,2))
+        call calc_V_int(PV2,PV_int(:,:,:,3))
+        call lvl_ud(-1)
+        
+        ! Calculate KV_int = <KVi e^(k-m)theta>
+        call writo('Taking field average of KV')
+        call lvl_ud(1)
+        call calc_V_int(KV0,KV_int(:,:,:,1))
+        call calc_V_int(KV1,KV_int(:,:,:,2))
+        call calc_V_int(KV2,KV_int(:,:,:,3))
+        call lvl_ud(-1)
+        
+        ! deallocate equilibrium variables
+        call writo('deallocating unused variables')
+        call dealloc_X_vars
+        
+        call lvl_ud(-1)
+        
+        call writo('Done calculating')
+    end subroutine prepare_X
     
     ! set-up and  solve the  EV system  by discretizing  the equations  in n_r_X
     ! normal points,  making use of  PV0, PV1 and  PV2, interpolated in  the n_r
     ! (equilibrium) values
     integer function solve_EV_system(A_terms,B_terms,A_info,B_info) result(ierr)
-        use num_vars, only: EV_style, MPI_Comm_groups
+        use num_vars, only: EV_style
         use str_ops, only: i2str
         use slepc_ops, only: solve_EV_system_slepc
-        use MPI_ops, only: divide_grid
-        use X_vars, only: n_r_X, group_n_r_X
         
         character(*), parameter :: rout_name = 'solve_EV_system'
         
@@ -74,10 +103,6 @@ contains
         
         ! initialize ierr
         ierr = 0
-        
-        ! divide perturbation grid under group processes
-        ierr = divide_grid(MPI_Comm_groups,n_r_X,group_n_r_X)                   ! calculate group_n_r_X by dividing the n_r_X grid points
-        CHCKERR('')
         
         select case (EV_style)
             case(1)                                                             ! slepc solver for EV problem
@@ -96,36 +121,34 @@ contains
     ! plots an eigenfunction
     ! [MPI] Collective call
     integer function plot_X_vec(X_vec) result(ierr)
-        use num_vars, only: group_rank, min_r_X, max_r_X
-        use X_vars, only: n_r_X
+        use num_vars, only: grp_rank, min_r_X, max_r_X
+        use X_vars, only: n_r_X, n_m_X
         use MPI_ops, only: get_ser_X_vec
         
         character(*), parameter :: rout_name = 'plot_X_vec'
         
         ! input / output
-        complex(dp), intent(in) :: X_vec(:,:)                                   ! MPI Eigenvector
+        complex(dp), intent(in) :: X_vec(n_m_X,n_r_X)                           ! MPI Eigenvector
         
         ! local variables
-        integer :: n_m_X                                                        ! nr. of poloidal modes
         real(dp), allocatable :: x_plot(:,:)                                    ! x_axis of plot
         complex(dp), allocatable :: ser_X_vec(:,:)                              ! serial version of X_vec
         integer :: id                                                           ! counter
-        !integer :: jd, kd                                                       ! counters
-        !real(dp), allocatable :: max_of_modes(:)                                ! maximum of each mode
-        !real(dp) :: current_magn                                                ! maximum of each mode
-        !real(dp), allocatable :: max_of_modes_r(:)                              ! flux surface where max of mode occurs
+        integer :: jd, kd                                                       ! counters
+        real(dp), allocatable :: max_of_modes(:)                                ! maximum of each mode
+        real(dp) :: current_magn                                                ! maximum of each mode
+        real(dp), allocatable :: max_of_modes_r(:)                              ! flux surface where max of mode occurs
         
         ! initialize ierr
         ierr = 0
         
         ! initialize some things
-        n_m_X = size(X_vec,1)
-        if (group_rank.eq.0) then                                               ! only for group masters
+        if (grp_rank.eq.0) then                                                 ! only for group masters
             allocate(ser_X_vec(n_m_X,n_r_X))
-            !allocate(max_of_modes(n_m_X))
-            !allocate(max_of_modes_r(n_m_X))
-            !max_of_modes = 0.0_dp
-            !max_of_modes_r = 0.0_dp
+            allocate(max_of_modes(n_m_X))
+            allocate(max_of_modes_r(n_m_X))
+            max_of_modes = 0.0_dp
+            max_of_modes_r = 0.0_dp
         else
             allocate(ser_X_vec(0,0))
         end if
@@ -135,26 +158,26 @@ contains
         CHCKERR('')
         
         ! calculations for group master
-        if (group_rank.eq.0) then                                               ! only for group masters
+        if (grp_rank.eq.0) then                                                 ! only for group masters
             ! loop over all normal points of all modes in perturbation grid
-            !do kd = 1,n_r_X
-                !do jd = 1,n_m_X
-                    !! check for maximum of mode jd and normal point jd
-                    !current_magn = sqrt(realpart(ser_X_vec(jd,kd))**2&
-                        !&+imagpart(ser_X_vec(jd,kd))**2)
-                    !if (current_magn.gt.max_of_modes(jd)) then
-                        !max_of_modes(jd) = current_magn
-                        !max_of_modes_r(jd) = min_r_X + (max_r_X-min_r_X) &
-                            !&* (kd-1.0)/(n_r_X-1.0)
-                    !end if
-                !end do
-            !end do
-            !call print_GP_2D('maximum of the modes','',max_of_modes)
-            !call print_GP_2D('place of maximum of the modes','',&
-                !&max_of_modes_r)
+            do kd = 1,n_r_X
+                do jd = 1,n_m_X
+                    ! check for maximum of mode jd and normal point jd
+                    current_magn = sqrt(realpart(ser_X_vec(jd,kd))**2&
+                        &+imagpart(ser_X_vec(jd,kd))**2)
+                    if (current_magn.gt.max_of_modes(jd)) then
+                        max_of_modes(jd) = current_magn
+                        max_of_modes_r(jd) = min_r_X + (max_r_X-min_r_X) &
+                            &* (kd-1.0)/(n_r_X-1.0)
+                    end if
+                end do
+            end do
+            call print_GP_2D('maximum of the modes','',max_of_modes)
+            call print_GP_2D('place of maximum of the modes','',&
+                &max_of_modes_r)
             
-            !deallocate(max_of_modes)
-            !deallocate(max_of_modes_r)
+            deallocate(max_of_modes)
+            deallocate(max_of_modes_r)
             
             ! set up x-axis
             allocate(x_plot(1:n_m_X,1:n_r_X))

@@ -22,8 +22,8 @@ contains
     !       Here, the tasks are split and allocated dynamically by the master to 
     !       the other groups
     integer function run_rich_driver() result(ierr)
-        use num_vars, only: min_alpha, max_alpha, n_alpha, glob_rank, &
-            &group_nr, max_alpha
+        use num_vars, only: min_alpha, max_alpha, n_alpha, glb_rank, grp_nr, &
+            &max_alpha
         use eq_vars, only: calc_eqd_mesh
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
         use X_vars, only: n_X, min_m_X, max_m_X
@@ -74,7 +74,7 @@ contains
                 ! display message
                 call writo('Job '//trim(i2str(next_job))//': Calculations for &
                     &field line alpha = '//trim(r2strt(alpha(next_job)))//&
-                    &', allocated to group '//trim(i2str(group_nr)))
+                    &', allocated to group '//trim(i2str(grp_nr)))
                 
                 call lvl_ud(1)                                                  ! starting calculation for current fied line
                 
@@ -86,7 +86,7 @@ contains
                 call lvl_ud(-1)                                                 ! done with calculation for current field line
                 call writo('Job '//trim(i2str(next_job))//': Calculations for &
                     &field line alpha = '//trim(r2strt(alpha(next_job)))//&
-                    &', completed by group '//trim(i2str(group_nr)))
+                    &', completed by group '//trim(i2str(grp_nr)))
             else
                 call writo('Finished all jobs')
                 exit field_lines
@@ -97,7 +97,7 @@ contains
         call dealloc_VMEC_vars
         
         ! merge  the subcommunicator into communicator MPI_COMM_WORLD
-        if (glob_rank.eq.0) then
+        if (glb_rank.eq.0) then
             call writo('Stability analysis concluded at all '//&
                 &trim(i2str(n_alpha))//' fieldlines')
             call writo('Merging groups for dynamical load balancing back &
@@ -111,12 +111,11 @@ contains
     
     ! runs the calculations for one of the alpha's
     integer function run_for_alpha(alpha) result(ierr)
-        use num_vars, only: n_sol_requested, max_it_r, group_rank, reuse_r
+        use num_vars, only: n_sol_requested, max_it_r, grp_rank, reuse_r
         use eq_ops, only: calc_eq
         use eq_vars, only: dealloc_eq_vars_final
-        use X_ops, only: prepare_matrix_X, solve_EV_system, plot_X_vec
-        use X_vars, only: dealloc_X_vars, X_vec, X_val, init_m, &
-            &dealloc_X_vars_final, n_r_X
+        use X_ops, only: prepare_X, solve_EV_system, plot_X_vec
+        use X_vars, only: X_vec, X_val, init_m, dealloc_X_vars_final, n_r_X
         use metric_ops, only: dealloc_metric_vars_final
         
         character(*), parameter :: rout_name = 'run_for_alpha'
@@ -146,6 +145,11 @@ contains
         ierr = init_m()
         CHCKERR('')
         
+        ! prepare the  matrix elements by calculating  the integrated magnitudes
+        ! KV_int and  PV_int for each of  the n_r equilibrium normal  points and
+        ! for the modes (k,m)
+        call prepare_X
+        
         ! Initalize some variables for Richardson loop
         ir = 1
         done_richard = .false.
@@ -173,24 +177,15 @@ contains
                 call lvl_ud(1)                                                  ! beginning of one richardson loop
             end if
             
-            !  calculate   number   of   radial   points   for   the
-            ! perturbation in Richardson loops and save in n_r_X
+            !  calculate  number  of  radial  points  for  the  perturbation  in
+            ! Richardson loops and save in n_r_X
             call writo('calculating the normal points')
             call lvl_ud(1)
             call calc_n_r_X(ir)
             call lvl_ud(-1)
             
-            ! prepare  the   matrix  elements  by   calculating  the
-            ! magnitudes KV and  PV for each of  the n_r equilibrium
-            ! normal points and for the modes (k,m)
-            call writo('calculating magnitudes KV and PV at these &
-                &normal points')
-            call lvl_ud(1)
-            call prepare_matrix_X
-            call lvl_ud(-1)
-            
-            ! setup the matrices of the generalized EV system
-            ! AX = lambda BX and solve it
+            ! setup the matrices of the generalized EV system AX = lambda BX and
+            ! solve it
             call writo('treating the EV system')
             call lvl_ud(1)
             if (reuse_r) then
@@ -212,7 +207,7 @@ contains
                 call writo('updating Richardson extrapolation variables')
                 call lvl_ud(1)
                 call lvl_ud(-1)
-            else
+            else                                                                ! if not, Richardson is done
                 done_richard = .true.
             end if
             
@@ -220,7 +215,7 @@ contains
             ! points in the perturbation grid  and the largest Eigenfunction for
             ! the last Richardson loop
             if (done_richard .or. ir.eq.max_it_r+1) then
-                if (group_rank.eq.0) then
+                if (grp_rank.eq.0) then
                     if (max_it_r.gt.1) then
                         call writo('plotting the Eigenvalues')
                         
@@ -236,21 +231,18 @@ contains
                 call lvl_ud(1)
                 
                 do id = 1,n_sol_requested
-                    call writo('plotting results for mode '//&
-                        &trim(i2str(id))//'/'//&
-                        &trim(i2str(n_sol_requested))//', with eigenvalue '&
+                    call writo('plotting results for mode '//trim(i2str(id))//&
+                        &'/'//trim(i2str(n_sol_requested))//&
+                        &', with eigenvalue '&
                         &//trim(r2strt(realpart(X_val(id))))//' + '//&
                         &trim(r2strt(imagpart(X_val(id))))//' i')
+                    
                     ierr = plot_X_vec(X_vec(:,:,id))
                     CHCKERR('')
                 end do
                 
                 call lvl_ud(-1)
             end if
-            
-            ! deallocate perturbation variables
-            call writo('deallocating perturbation variables')
-            call dealloc_X_vars
             
             if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
                 call lvl_ud(-1)                                                 ! end of one richardson loop

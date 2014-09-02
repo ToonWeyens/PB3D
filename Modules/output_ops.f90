@@ -43,9 +43,9 @@ contains
     
     ! prints first message
     subroutine print_hello
-        use num_vars, only: glob_rank
+        use num_vars, only: glb_rank
         
-        if (glob_rank.eq.0) then
+        if (glb_rank.eq.0) then
             write(*,*) 'Simulation started on '//get_date()//&
                 &', at '//get_clock()
             write(*,*) ''
@@ -54,9 +54,9 @@ contains
 
     ! prints last message
     subroutine print_goodbye
-        use num_vars, only: glob_rank
+        use num_vars, only: glb_rank
         
-        if (glob_rank.eq.0) then
+        if (glb_rank.eq.0) then
             write(*,*) ''
             write(*,*) 'Simulation finished on '//get_date()//&
                 &', at '//get_clock()
@@ -151,13 +151,13 @@ contains
     ! prints an error  message that is either user-provided, or  the name of the
     ! calling routine
     subroutine print_err_msg(err_msg,routine_name)
-        use num_vars, only: glob_rank
+        use num_vars, only: glb_rank
         character(len=*) :: err_msg, routine_name
         
         if (trim(err_msg).eq.'') then
             lvl = 2
             call writo('>> calling routine: '//trim(routine_name)//' of rank '&
-                &//trim(i2str(glob_rank)))
+                &//trim(i2str(glb_rank)))
         else
             call writo('ERROR in '//trim(routine_name)//': '//trim(err_msg))
         end if
@@ -551,26 +551,34 @@ contains
     !       to  the global  rank. This  way,  the group  rank always  determines
     !       whether a  process outputs  or not,  also when  there are  no groups
     !       (yet)
-    subroutine writo(input_str,file_i)
-        use num_vars, only: group_rank, glob_rank, output_i
+    subroutine writo(input_str,file_i,persistent)
+        use num_vars, only: grp_rank, glb_rank, output_i
         
         ! input / output
         character(len=*), intent(in) :: input_str                               ! the name that is searched for
         integer, optional, intent(in) :: file_i                                 ! optionally set the number of output file
+        logical, optional, intent(in) :: persistent                             ! output even if not group master
         
         ! local variables
         character(len=max_str_ln) :: output_str                                 ! the name that is searched for
         character(len=max_str_ln) :: header_str                                 ! the name that is searched for
-        integer :: id, i_part, max_len_part, num_parts, st_part, en_part
-        integer :: loc_file_i
+        integer :: id, i_part                                                   ! counters
+        integer :: max_len_part, num_parts, st_part, en_part                    ! variables controlling strings
+        integer :: loc_file_i                                                   ! file output
+        logical :: ignore                                                       ! normally, everybody but group master is ignored
         
-        if (group_rank.eq.0) then                                               ! only group master (= global master if no groups)
+        ! setup ignore
+        ignore = .true.                                                         ! ignore by default
+        if (grp_rank.eq.0) ignore = .false.                                     ! group masters can 
+        if (present(persistent)) ignore = .not.persistent                       ! persistent can override this
+        
+        if (.not.ignore) then                                                   ! only group master (= global master if no groups) or persistent
             ! set  loc_file_i,  depending on  whether  it is  given, or  whether
             ! non-global group master calling
             if (present(file_i)) then
                 loc_file_i = file_i
             else
-                if (glob_rank.ne.0) then
+                if (glb_rank.ne.0) then
                     loc_file_i = output_i
                 else
                     loc_file_i = 0

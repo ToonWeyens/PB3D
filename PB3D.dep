@@ -10,16 +10,6 @@ PB3D.o : \
     input_ops.o \
 
 test.o : \
-    num_vars.o \
-    output_ops.o \
-    str_ops.o \
-    fourier_ops.o \
-    metric_ops.o \
-    VMEC_vars.o \
-    eq_vars.o \
-    utilities.o \
-    X_ops.o \
-    X_vars.o \
 
 driver.o : \
     num_vars.o \

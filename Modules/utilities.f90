@@ -11,7 +11,7 @@ module utilities
     private
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, arr_mult, &
         &VMEC_norm_deriv, VMEC_conv_FHM, check_deriv, calc_inv, &
-        &init_utilities, derivs, calc_interp, con2dis, dis2con
+        &init_utilities, derivs, calc_interp, con2dis, dis2con, round_with_tol
     
     ! the possible derivatives of order i
     integer, allocatable :: derivs_0(:,:)                                       ! all possible derivatives of order 0
@@ -354,6 +354,7 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! set n_max
         n_max = size(var)
         
         ! tests
@@ -378,7 +379,7 @@ contains
         end do
     end function calc_int_real
     integer function calc_int_complex(var,x,var_int) result(ierr)
-        character(*), parameter :: rout_name = 'calc_int_complex'
+        character(*), parameter :: rout_name = 'calc_int_complex_2D'
         
         ! input / output
         complex(dp) :: var_int(:)
@@ -393,12 +394,14 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! set n_max
         n_max = size(var)
         
         ! tests
         if (size(x).ne.n_max) then
             err_msg = 'The arrays of points and values are not of the same &
                 &length'
+            ierr = 1
             CHCKERR(err_msg)
         else if (n_max.lt.2) then
             err_msg = 'Asking calc_int to integrate with '//trim(i2str(n_max))&
@@ -1070,41 +1073,22 @@ contains
             ierr = 1
             CHCKERR(err_msg)
         end if
-        if (ptout_loc.lt.0) then
-            if (ptout_loc.lt.0-margin) then
-                err_msg = 'ptout has to lie within 0..1, yet it is equal &
-                    &to '//trim(r2str(ptout))
-                ierr = 1
-                CHCKERR(err_msg)
-            else
-                ptout_loc = 0.0_dp
-            end if
-        end if
-        if (ptout_loc.gt.1) then
-            if (ptout_loc.gt.1+margin) then
-                err_msg = 'ptout has to lie within 0..1, yet it is equal &
-                    &to '//trim(r2str(ptout))//'...'
-                ierr = 1
-                CHCKERR(err_msg)
-            else
-                ptout_loc = 1.0_dp
-            end if
-        end if
+        ierr = round_with_tol(ptout_loc,0.0_dp,1.0_dp,margin)
+        CHCKERR('')
         
         ! find interpolation points
         pt_arr = limin(1) +(limin(2)-limin(1))*ptout_loc                        ! corresponding array index, not rounded
         ind_lo = floor(pt_arr)                                                  ! lower bound
         ind_hi = ceiling(pt_arr)                                                ! upper bound
         
-        ! include offset
-        if (present(r_offset)) then
-            ind_lo = ind_lo - r_offset
-            ind_hi = ind_hi - r_offset
-        end if
-        
         ! interpolate
-        varout = varin(:,ind_lo,:,:) + (pt_arr-ind_lo) * &
-            &(varin(:,ind_hi,:,:)-varin(:,ind_lo,:,:))
+        if (present(r_offset)) then                                             ! include offset
+            varout = varin(:,ind_lo-r_offset,:,:) + (pt_arr-ind_lo) * &
+                &(varin(:,ind_hi-r_offset,:,:)-varin(:,ind_lo-r_offset,:,:))
+        else
+            varout = varin(:,ind_lo,:,:) + (pt_arr-ind_lo) * &
+                &(varin(:,ind_hi,:,:)-varin(:,ind_lo,:,:))
+        end if
     end function calc_interp_real
     integer function calc_interp_complex(varin,limin,varout,ptout,r_offset) &
         &result(ierr)
@@ -1137,26 +1121,8 @@ contains
             ierr = 1
             CHCKERR(err_msg)
         end if
-        if (ptout_loc.lt.0) then
-            if (ptout_loc.lt.0-margin) then
-                err_msg = 'ptout has to lie within 0..1, yet it is equal &
-                    &to '//trim(r2str(ptout))
-                ierr = 1
-                CHCKERR(err_msg)
-            else
-                ptout_loc = 0.0_dp
-            end if
-        end if
-        if (ptout_loc.gt.1) then
-            if (ptout_loc.gt.1+margin) then
-                err_msg = 'ptout has to lie within 0..1, yet it is equal &
-                    &to '//trim(r2str(ptout))//'...'
-                ierr = 1
-                CHCKERR(err_msg)
-            else
-                ptout_loc = 1.0_dp
-            end if
-        end if
+        ierr = round_with_tol(ptout_loc,0.0_dp,1.0_dp,margin)
+        CHCKERR('')
         
         ! find interpolation points
         pt_arr = limin(1) +(limin(2)-limin(1))*ptout_loc                        ! corresponding array index, not rounded
@@ -1172,4 +1138,49 @@ contains
                 &(varin(:,ind_hi,:,:)-varin(:,ind_lo,:,:))
         end if
     end function calc_interp_complex
+    
+    integer function round_with_tol(val,lim_lo,lim_hi,tol) result(ierr)
+        character(*), parameter :: rout_name = 'round_with_tol'
+        
+        ! input / output
+        real(dp), intent(inout) :: val                                          ! value to be rounded
+        real(dp), intent(in) :: lim_lo, lim_hi                                  ! limits on val
+        real(dp), intent(in), optional :: tol                                   ! tolerance
+        
+        ! local variables
+        real(dp) :: loc_tol                                                     ! local value of tol
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set loc_tol
+        if (present(tol)) then
+            loc_tol = tol
+        else
+            loc_tol = 1E-5_dp
+        end if
+        
+        ! set possible error message
+        err_msg = 'value has to lie within 0..1, yet it is equal to '//&
+            &trim(r2str(val))//'...'
+        
+        ! round
+        if (val.lt.lim_lo) then
+            if (val.lt.lim_lo-loc_tol) then
+                ierr = 1
+                CHCKERR(err_msg)
+            else
+                val = lim_lo
+            end if
+        end if
+        if (val.gt.lim_hi) then
+            if (val.gt.lim_hi+loc_tol) then
+                ierr = 1
+                CHCKERR(err_msg)
+            else
+                val = lim_hi
+            end if
+        end if
+    end function round_with_tol
 end module utilities

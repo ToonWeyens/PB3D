@@ -47,7 +47,7 @@ contains
     ! The input arguments are saved in command_arg
     ! [MPI] only global master
     integer function parse_args() result(ierr)
-        use num_vars, only: prog_name, glob_rank
+        use num_vars, only: prog_name, glb_rank
         
         character(*), parameter :: rout_name = 'parse_args'
         
@@ -59,7 +59,7 @@ contains
         
         ierr = 0                                                                ! no errors (yet)
         
-        if (glob_rank.eq.0) then                                                ! following only for master process
+        if (glb_rank.eq.0) then                                                 ! following only for master process
             ! Messages for the user
             open_error(1) = ""                                                  ! incorrect usage
             open_error(2) = "Usage: " // trim(prog_name) // &
@@ -123,7 +123,7 @@ contains
     ! open the input file
     ! [MPI] Only global master
     integer function open_input() result(ierr)
-        use num_vars, only: VMEC_i, input_i, ltest, glob_rank, output_name
+        use num_vars, only: VMEC_i, input_i, ltest, glb_rank, output_name
         use VMEC_vars, only: VMEC_name
         
         character(*), parameter :: rout_name = 'open_input'
@@ -140,7 +140,7 @@ contains
         
         ierr = 0                                                                ! no errors (yet)
      
-        if (glob_rank.eq.0) then                                                ! following only for master process
+        if (glb_rank.eq.0) then                                                 ! following only for master process
             ! Messages for the user
             internal_input_error(1) = "input file number ok but name empty"     ! problems opening the input file
             internal_input_error(2) = "input file number negative but name&
@@ -283,8 +283,8 @@ contains
     ! open an output file
     ! [MPI] only group masters
     integer function open_output() result(ierr)
-        use num_vars, only: output_i, n_seq_0, glob_rank, group_nr, &
-            &glob_rank, group_rank, output_name
+        use num_vars, only: output_i, n_seq_0, glb_rank, grp_nr, glb_rank, &
+            &grp_rank, output_name
         use output_ops, only: format_out
         
         character(*), parameter :: rout_name = 'open_output'
@@ -296,37 +296,37 @@ contains
         ! initialize ierr
         ierr = 0
         
-        if (group_rank.eq.0) then                                               ! only group_masters
-            if (glob_rank.eq.0) call writo('Attempting to open output files')   ! but only global master outputs
+        if (grp_rank.eq.0) then                                                 ! only group masters
+            if (glb_rank.eq.0) call writo('Attempting to open output files')    ! but only global master outputs
             call lvl_ud(1)
             
             ! apend group number to output name if not also global master
-            if (glob_rank.ne.0) output_name = trim(output_name)//'_'//&
-                &trim(i2str(group_nr))
+            if (glb_rank.ne.0) output_name = trim(output_name)//'_'//&
+                &trim(i2str(grp_nr))
             
             ! select output format
             select case (format_out)
                 case (1)                                                        ! NETCDF
-                    if (glob_rank.eq.0) call writo('Output format chosen: &
+                    if (glb_rank.eq.0) call writo('Output format chosen: &
                         &NETCDF')
                     ierr = open_NETCDF()
                     CHCKERR('')
                 case (2)                                                        ! matlab
-                    if (glob_rank.eq.0) call writo('Output format chosen: &
+                    if (glb_rank.eq.0) call writo('Output format chosen: &
                         &matlab')
                     ierr = open_matlab()
                     CHCKERR('')
                 case (3)                                                        ! DISLIN
-                    if (glob_rank.eq.0) call writo('Output format chosen: &
+                    if (glb_rank.eq.0) call writo('Output format chosen: &
                         &DISLIN')
                     ! no need to do anything
                 case (4)                                                        ! GNUplot
-                    if (glob_rank.eq.0) call writo('Output format chosen: &
+                    if (glb_rank.eq.0) call writo('Output format chosen: &
                         &GNUplot')
                     ierr = open_gnuplot()
                     CHCKERR('')
                 case default
-                    if (glob_rank.eq.0) call writo('WARNING: output format "'&
+                    if (glb_rank.eq.0) call writo('WARNING: output format "'&
                         &// trim(i2str(format_out)) // &
                         &'" is not valid. Standard output chosen')
                     ierr = open_NETCDF()
@@ -334,7 +334,7 @@ contains
             end select
             CHCKERR('')
             call lvl_ud(-1)
-            if (glob_rank.eq.0) call writo('Output files opened')
+            if (glb_rank.eq.0) call writo('Output files opened')
         end if
     contains
         ! Open the NETCDF file
@@ -350,7 +350,7 @@ contains
                 err_msg = 'Cannot open NETCDF output file'
                 CHCKERR(err_msg)
             else
-                if (glob_rank.eq.0) call writo('NETCDF output file "'//&
+                if (glb_rank.eq.0) call writo('NETCDF output file "'//&
                     &trim(full_output_name) //'" opened at number '//&
                     &trim(i2str(output_i)))
             end if
@@ -368,7 +368,7 @@ contains
             call safe_open(output_i,ierr,full_output_name,'replace',&
                 &'formatted',delim_in='none')
             CHCKERR('Cannot open matlab output file')
-            if (glob_rank.eq.0) call writo('matlab output file "'//&
+            if (glb_rank.eq.0) call writo('matlab output file "'//&
                 &trim(full_output_name)//'" opened at number '//&
                 &trim(i2str(output_i)))
         end function open_matlab
@@ -385,7 +385,7 @@ contains
             call safe_open(output_i,ierr,full_output_name,'replace',&
                 &'formatted',delim_in='none')
             CHCKERR('Cannot open GNUplot output file')
-            if (glob_rank.eq.0) call writo('GNUplot output file "'//&
+            if (glb_rank.eq.0) call writo('GNUplot output file "'//&
                 &trim(full_output_name)//'" opened at number '//&
                 &trim(i2str(output_i)))
         end function open_gnuplot
@@ -394,11 +394,11 @@ contains
     ! closes the output file
     ! [MPI] only group masters
     subroutine close_output
-        use num_vars, only: n_groups, group_rank, glob_rank, output_i, &
+        use num_vars, only: n_groups, grp_rank, glb_rank, output_i, &
             &output_name
         
         if (n_groups.gt.1) then
-            if (glob_rank.eq.0) then
+            if (glb_rank.eq.0) then
                 call writo('Closing output files')
                 call writo('The outputs of the other groups i are saved in &
                     &their proper output files "'//trim(output_name)//'_i"')
@@ -407,7 +407,7 @@ contains
             call writo('Closing output file')
         end if
         
-        if (group_rank.eq.0) close(output_i)
+        if (grp_rank.eq.0) close(output_i)
     end subroutine
     
     ! looks for the full name of a file and tests for its existence

@@ -4,26 +4,28 @@
 module X_vars
 #include <PB3D_macros.h>
     use num_vars, only: dp, mu_0, max_str_ln, iu
-    use output_ops, only: lvl_ud, writo, print_GP_2D
+    use output_ops, only: lvl_ud, writo, print_GP_2D, print_ar_1
     use str_ops, only: r2strt, i2str
     
     implicit none
     
     private
-    public calc_rho, init_X, calc_PV, calc_KV, calc_U, calc_extra, &
-        &dealloc_X_vars, dealloc_X_vars_final, init_m, &
+    public init_X, calc_PV, calc_KV, calc_U, calc_extra, &
+        &dealloc_X_vars, dealloc_X_vars_final, init_m, calc_V_int, &
         &rho, n_x, m_X, n_r_X, U_X_0, U_X_1, DU_X_0, DU_X_1, sigma, extra1, &
         &extra2, extra3, PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, min_m_X, &
-        &max_m_X, group_n_r_X
+        &max_m_X, grp_n_r_X, n_m_X, PV_int, KV_int, grp_min_r_X, grp_max_r_X
     
     ! global variables
-    real(dp), allocatable :: rho(:,:)                                           ! density
+    real(dp), allocatable :: rho(:)                                             ! density
     integer :: n_X                                                              ! toroidal mode number
     integer :: min_m_X                                                          ! lowest poloidal mode number m_X
     integer :: max_m_X                                                          ! highest poloidal mode number m_X
+    integer :: n_m_X                                                            ! number of poloidal modes m
     integer, allocatable :: m_X(:)                                              ! vector of poloidal mode numbers
     integer :: n_r_X                                                            ! number of normal points for perturbations
-    integer :: group_n_r_X                                                      ! number of normal points for perturbations on this proces
+    integer :: grp_n_r_X                                                        ! number of normal points for perturbations on this process
+    integer :: grp_min_r_X, grp_max_r_X                                         ! min. and max. r range of this process in alpha group
     complex(dp), allocatable :: U_X_0(:,:,:), U_X_1(:,:,:)                      ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
     complex(dp), allocatable :: DU_X_0(:,:,:), DU_X_1(:,:,:)                    ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
     real(dp), allocatable :: sigma(:,:)                                         ! parallel current
@@ -36,8 +38,11 @@ module X_vars
     complex(dp), allocatable :: KV0(:,:,:,:)                                    ! ~KV^0 coefficient
     complex(dp), allocatable :: KV1(:,:,:,:)                                    ! ~KV^1 coefficient
     complex(dp), allocatable :: KV2(:,:,:,:)                                    ! ~KV^2 coefficient
+    complex(dp), allocatable :: PV_int(:,:,:,:)                                 ! <~PV e^i(k-m)theta> coefficient
+    complex(dp), allocatable :: KV_int(:,:,:,:)                                 ! <~KV e^i(k-m)theta> coefficient
     complex(dp), allocatable :: X_vec(:,:,:)                                    ! Eigenvector solution
     complex(dp), allocatable :: X_val(:)                                        ! Eigenvalue solution
+    complex(dp), allocatable :: exp_theta(:,:,:,:)                              ! exp(i (k-m) theta)
     
 contains
     ! initialize the variable m and check and/or plot it
@@ -49,11 +54,11 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id                                                           ! counter
-        integer :: n_m_X                                                        ! number of poloidal modes m
         
         ! initialize ierr
         ierr = 0
         
+        ! set n_m_X
         n_m_X = max_m_X - min_m_X + 1
         
         ! setup m_X
@@ -62,7 +67,7 @@ contains
         if (plot_q) then
             call resonance_plot
         else
-            call writo('resonance plot not requested')
+            call writo('Resonance plot not requested')
         end if
         ierr = check_m_and_n()
         CHCKERR('')
@@ -70,7 +75,7 @@ contains
         ! checks whether nq-m is << n is satisfied in some of the plasma
         integer function check_m_and_n() result(ierr)
             use eq_vars, only: q_saf_full
-            use num_vars, only: glob_rank
+            use num_vars, only: glb_rank
             
             character(*), parameter :: rout_name = 'check_m_and_n'
             
@@ -82,7 +87,7 @@ contains
             ! initialize ierr
             ierr = 0
             
-            if (glob_rank.eq.0) then
+            if (glb_rank.eq.0) then
                 ! set min_q and max_q
                 min_q = minval(q_saf_full(:,0))
                 max_q = maxval(q_saf_full(:,0))
@@ -108,52 +113,62 @@ contains
     ! HERMITIAN SO ONLY  M*(M+1)/2 ELEMENTS ARE NEEDED INSTEAD  OF M^2. HOWEVER,
     ! TAKE INTO ACCOUNT AS WELL THE MPI STORAGE MATRIX FORMATS !!!
     subroutine init_X
-        use eq_vars, only: n_par, n_r_eq
-        use num_vars, only: group_rank, n_sol_requested
+        use eq_vars, only: n_par, grp_n_r_eq, theta
         
         ! local variables
-        integer :: n_m_X                                                        ! number of poloidal modes m
-        
-        ! set n_m_X
-        n_m_X = max_m_X - min_m_X + 1
+        integer :: m, k                                                         ! counter
         
         ! U_X_0
-        allocate(U_X_0(n_par,n_r_eq,n_m_X))
+        allocate(U_X_0(n_par,grp_n_r_eq,n_m_X))
         
         ! U_X_1
-        allocate(U_X_1(n_par,n_r_eq,n_m_X))
+        allocate(U_X_1(n_par,grp_n_r_eq,n_m_X))
         
         ! DU_X_0
-        allocate(DU_X_0(n_par,n_r_eq,n_m_X))
+        allocate(DU_X_0(n_par,grp_n_r_eq,n_m_X))
         
         ! DU_X_1
-        allocate(DU_X_1(n_par,n_r_eq,n_m_X))
+        allocate(DU_X_1(n_par,grp_n_r_eq,n_m_X))
         
         ! PV0
-        allocate(PV0(n_par,n_r_eq,n_m_X,n_m_X))
+        allocate(PV0(n_par,grp_n_r_eq,n_m_X,n_m_X))
         
         ! PV1
-        allocate(PV1(n_par,n_r_eq,n_m_X,n_m_X))
+        allocate(PV1(n_par,grp_n_r_eq,n_m_X,n_m_X))
         
         ! PV2
-        allocate(PV2(n_par,n_r_eq,n_m_X,n_m_X))
+        allocate(PV2(n_par,grp_n_r_eq,n_m_X,n_m_X))
         
         ! KV0
-        allocate(KV0(n_par,n_r_eq,n_m_X,n_m_X))
+        allocate(KV0(n_par,grp_n_r_eq,n_m_X,n_m_X))
         
         ! KV1
-        allocate(KV1(n_par,n_r_eq,n_m_X,n_m_X))
+        allocate(KV1(n_par,grp_n_r_eq,n_m_X,n_m_X))
         
         ! KV2
-        allocate(KV2(n_par,n_r_eq,n_m_X,n_m_X))
+        allocate(KV2(n_par,grp_n_r_eq,n_m_X,n_m_X))
+        
+        ! exp_theta
+        allocate(exp_theta(n_par,grp_n_r_eq,n_m_X,n_m_X))
+        do m = 1,n_m_X
+            do k = 1,n_m_X
+                exp_theta(:,:,k,m) = exp(iu*(k-m)*theta)
+            end do
+        end do
+        
+        ! PV_int
+        allocate(PV_int(n_m_X,n_m_X,grp_n_r_eq,3))
+        
+        ! KV_int
+        allocate(KV_int(n_m_X,n_m_X,grp_n_r_eq,3))
     end subroutine init_X
     
     ! plot q-profile with nq-m = 0 indicated if requested
     subroutine resonance_plot
-        use num_vars, only: glob_rank, tol_NR
-        use utilities, only: calc_zero_NR, calc_interp
+        use num_vars, only: glb_rank, tol_NR
+        use utilities, only: calc_zero_NR
         use eq_vars, only: q_saf_full
-        use VMEC_vars, only: n_r
+        use VMEC_vars, only: n_r_eq
         
         ! local variables (also used in child functions)
         integer :: m_X_for_function                                             ! used in q_fun to determine flux surface at which q = m/n
@@ -165,12 +180,8 @@ contains
         real(dp) :: q_solution                                                  ! solution for q = m/n
         real(dp) :: old_tol_NR                                                  ! to backup tol_NR
         integer :: istat                                                        ! status
-        integer :: n_m_X                                                        ! number of poloidal modes m
         
-        if (glob_rank.eq.0) then
-            ! initialize
-            n_m_X = max_m_X - min_m_X + 1
-            
+        if (glb_rank.eq.0) then
             ! backup tol_NR
             old_tol_NR = tol_NR
             
@@ -178,15 +189,15 @@ contains
             ! discrete data that is not perfectly continous
             tol_NR = 5E-3_dp
             
-            call writo('plotting safety factor q and resonant surfaces q = m/n')
+            call writo('Plotting safety factor q and resonant surfaces q = m/n')
             call lvl_ud(1)
             
             call writo('calculating resonant surfaces q = m/n')
             call lvl_ud(1)
             
-            allocate(x_vars(n_r,n_m_X+1))
-            allocate(y_vars(n_r,n_m_X+1))
-            x_vars(:,1) = [((id-1.0_dp)/(n_r-1.0_dp), id = 1,n_r)]
+            allocate(x_vars(n_r_eq,n_m_X+1))
+            allocate(y_vars(n_r_eq,n_m_X+1))
+            x_vars(:,1) = [((id-1.0_dp)/(n_r_eq-1.0_dp), id = 1,n_r_eq)]
             !y_vars = minval(q_saf_full(:,0))
             y_vars = 0
             y_vars(:,1) = q_saf_full(:,0)
@@ -207,12 +218,12 @@ contains
                     if (q_solution.gt.1.0_dp) then
                         call writo('Poloidal mode '//trim(i2str(m_X(jd)))//&
                             &' does not resonate in plasma')
-                        y_vars(n_r,kd) = maxval(q_saf_full(:,0))
+                        y_vars(n_r_eq,kd) = maxval(q_saf_full(:,0))
                     else
                         call writo('Poloidal mode '//trim(i2str(m_X(jd)))//&
                             &' resonates in plasma at normalized &
                             &radius '//trim(r2strt(q_solution)))
-                        y_vars(n_r,kd) = m_X(jd)*1.0_dp/n_X
+                        y_vars(n_r_eq,kd) = m_X(jd)*1.0_dp/n_X
                     end if
                     x_vars(:,kd) = q_solution
                     kd = kd + 1
@@ -226,6 +237,7 @@ contains
                 &x=x_vars(:,1:kd-1))
             
             call lvl_ud(-1)
+            call writo('Done plotting')
             
             tol_NR = old_tol_NR
         end if
@@ -238,7 +250,7 @@ contains
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
             
             ! local variables
-            real(dp) :: varin(1,n_r,1,1)                                        ! so calc_interp can be used
+            real(dp) :: varin(1,n_r_eq,1,1)                                     ! so calc_interp can be used
             real(dp) :: varout(1,1,1)                                           ! so calc_interp can be used
             real(dp) :: pt_copy                                                 ! copy of pt to use with calc_interp
             
@@ -251,15 +263,15 @@ contains
                 res = q_saf_full(1,0) - m_X_for_function*1.0_dp/n_X + &
                     &q_saf_full(1,1) * (pt-0.0_dp)
             else if (pt.gt.1) then                                              ! point requested higher than 1
-                ! extrapolate variable from n_r
-                res = q_saf_full(n_r,0) - m_X_for_function*1.0_dp/n_X + &
-                    &q_saf_full(n_r,1) * (pt-1.0_dp)
+                ! extrapolate variable from n_r_eq
+                res = q_saf_full(n_r_eq,0) - m_X_for_function*1.0_dp/n_X + &
+                    &q_saf_full(n_r_eq,1) * (pt-1.0_dp)
             else                                                                ! point requested between 0 and 1
                 ! interpolate using calc_interp
                 pt_copy = pt
                 
                 varin(1,:,1,1) = q_saf_full(:,0) - m_X_for_function*1.0_dp/n_X
-                istat = calc_interp(varin,[1,n_r],varout,pt_copy)
+                istat = calc_interp(varin,[1,n_r_eq],varout,pt_copy)
                 
                 res = varout(1,1,1)
             end if
@@ -273,7 +285,7 @@ contains
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
             
             ! local variables
-            real(dp) :: varin(1,n_r,1,1)                                        ! so calc_interp can be used
+            real(dp) :: varin(1,n_r_eq,1,1)                                     ! so calc_interp can be used
             real(dp) :: varout(1,1,1)                                           ! so calc_interp can be used
             real(dp) :: pt_copy                                                 ! copy of pt to use with calc_interp
             
@@ -285,14 +297,14 @@ contains
                 ! extrapolate variable from 1
                 res = q_saf_full(1,1) + q_saf_full(1,2) * (pt-0.0_dp)
             else if (pt.gt.1) then                                              ! point requested higher than 1
-                ! extrapolate variable from n_r
-                res = q_saf_full(n_r,1) + q_saf_full(n_r,2) * (pt-1.0_dp)
+                ! extrapolate variable from n_r_eq
+                res = q_saf_full(n_r_eq,1) + q_saf_full(n_r_eq,2) * (pt-1.0_dp)
             else                                                                ! point requested between 0 and 1
                 ! interpolate using calc_interp
                 pt_copy = pt
                 
                 varin(1,:,1,1) = q_saf_full(:,1)
-                istat = calc_interp(varin,[1,n_r],varout,pt_copy)
+                istat = calc_interp(varin,[1,n_r_eq],varout,pt_copy)
                 
                 res = varout(1,1,1)
             end if
@@ -301,27 +313,34 @@ contains
     
     ! calculate rho from user input
     ! TO BE IMPLEMENTED. TEMPORARILY SET TO 1 EVERYWHERE !!!
-    subroutine calc_rho(n_par,n_r_eq)
-        ! input variables
-        integer, intent(in) :: n_par, n_r_eq                                    ! dimensions of the size to be allocated for the rho matrix
-        
-        call writo('calc_rho NOT YET IMPLEMENTED!!!')
-        
-        ! allocate rho
-        allocate(rho(n_par,n_r_eq))
-        
-        ! TEMPORAL REPLACEMENT !!!
-        rho = 1.0E-7_dp
-        call writo('TEMPORALLY SETTING rho to '//trim(r2strt(rho(1,1)))//'!!!')
-    end subroutine
-    
-    ! calculate ~PV_(k,m)^i at all n_r_eq values (see [ADD REF] for details)
-    subroutine calc_PV
-        use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
-        use eq_vars, only: n_par, q => q_saf_FD, n_r_eq
+    subroutine calc_rho
+        use eq_vars, only: pres, grp_n_r_eq, grp_min_r_eq
+        use VMEC_vars, only: gam
         
         ! local variables
-        integer :: n_m_X                                                        ! number of poloidal modes m
+        integer :: kd                                                           ! counter
+        
+        ! allocate rho
+        allocate(rho(grp_n_r_eq))
+        
+        do kd = 1,grp_n_r_eq
+            if (pres(kd,0).gt.0) then
+                rho(kd) = pres(kd,0)**gam
+            else
+                call writo('WARNING: pressure was negative at point '//&
+                    &trim(i2str(grp_min_r_eq+kd))//'/'//&
+                    &trim(i2str(grp_min_r_eq+grp_n_r_eq)),persistent=.true.)
+                rho(kd) = pres(kd-1,0)**gam
+            end if
+        end do
+    end subroutine
+    
+    ! calculate ~PV_(k,m)^i at all grp_n_r_eq values (see [ADD REF] for details)
+    subroutine calc_PV
+        use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
+        use eq_vars, only: n_par, q => q_saf_FD, grp_n_r_eq
+        
+        ! local variables
         integer :: m, k, kd                                                     ! counters
         real(dp), allocatable :: com_fac(:,:)                                   ! common factor |nabla psi|^2/(mu_0*J^2*B^2)
         
@@ -333,19 +352,16 @@ contains
         ! upper metric factors
         real(dp), allocatable :: h22(:,:)                                       ! h^alpha,psi
         
-        ! initialize
-        n_m_X = size(m_X)
-        
         ! set up submatrices
         ! jacobian
-        allocate(J(n_par,n_r_eq)); J = jac_F_FD(:,:,0,0,0)
+        allocate(J(n_par,grp_n_r_eq)); J = jac_F_FD(:,:,0,0,0)
         ! lower metric factors
-        allocate(g33(n_par,n_r_eq)); g33 = g_F_FD(:,:,3,3,0,0,0)
+        allocate(g33(n_par,grp_n_r_eq)); g33 = g_F_FD(:,:,3,3,0,0,0)
         ! upper metric factors
-        allocate(h22(n_par,n_r_eq)); h22 = h_F_FD(:,:,2,2,0,0,0)
+        allocate(h22(n_par,grp_n_r_eq)); h22 = h_F_FD(:,:,2,2,0,0,0)
         
         ! set up common factor for PVi
-        allocate(com_fac(n_par,n_r_eq))
+        allocate(com_fac(n_par,grp_n_r_eq))
         com_fac = h22/(mu_0*g33)
         
         ! calculate PVi
@@ -357,7 +373,7 @@ contains
                     &sigma/J * (extra1 + extra2) - extra3
                 
                 ! add (nq-k)*(nq-m)/(mu_0 J^2 |nabla psi|^2) to PV0
-                do kd = 1,n_r_eq
+                do kd = 1,grp_n_r_eq
                     PV0(:,kd,k,m) = PV0(:,kd,k,m) + &
                         &(n_X*q(kd,0)-m_X(m))*(n_X*q(kd,0)-m_X(k)) / &
                         &( mu_0*J(:,kd)**2*h22(:,kd) )
@@ -395,15 +411,14 @@ contains
         deallocate(sigma,extra1,extra2,extra3)
     end subroutine calc_PV
     
-    ! calculate ~KV_(k,m)^i at all n_r_eq values (see [ADD REF] for details)
+    ! calculate ~KV_(k,m)^i at all grp_n_r_eq values (see [ADD REF] for details)
     subroutine calc_KV
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
-        use eq_vars, only: n_par, n_r_eq
+        use eq_vars, only: n_par, grp_n_r_eq
         
         ! local variables
-        integer :: m, k                                                         ! counters
+        integer :: m, k, kd                                                     ! counters
         real(dp), allocatable :: com_fac(:,:)                                   ! common factor |nabla psi|^2/(mu_0*J^2*B^2)
-        integer :: n_m_X                                                        ! number of poloidal modes m
         
         ! submatrices
         ! jacobian
@@ -413,19 +428,16 @@ contains
         ! upper metric factors
         real(dp), allocatable :: h22(:,:)                                       ! h^alpha,psi
         
-        ! initialize
-        n_m_X = size(m_X)
-        
         ! set up submatrices
         ! jacobian
-        allocate(J(n_par,n_r_eq)); J = jac_F_FD(:,:,0,0,0)
+        allocate(J(n_par,grp_n_r_eq)); J = jac_F_FD(:,:,0,0,0)
         ! lower metric factors
-        allocate(g33(n_par,n_r_eq)); g33 = g_F_FD(:,:,3,3,0,0,0)
+        allocate(g33(n_par,grp_n_r_eq)); g33 = g_F_FD(:,:,3,3,0,0,0)
         ! upper metric factors
-        allocate(h22(n_par,n_r_eq)); h22 = h_F_FD(:,:,2,2,0,0,0)
+        allocate(h22(n_par,grp_n_r_eq)); h22 = h_F_FD(:,:,2,2,0,0,0)
         
         ! set up common factor
-        allocate(com_fac(n_par,n_r_eq))
+        allocate(com_fac(n_par,grp_n_r_eq))
         com_fac = J*h22/g33
         
         ! for  Hermitian KV0  and  KV2,  only half  of  the  terms  have  to  be
@@ -438,12 +450,14 @@ contains
                 
                 ! calculate KV2
                 KV2(:,:,k,m) = com_fac * U_X_1(:,:,m) * conjg(U_X_1(:,:,k))
-                
-                ! multiply by rho
-                KV0(:,:,k,m) = KV0(:,:,k,m)*rho
-                KV2(:,:,k,m) = KV2(:,:,k,m)*rho
             end do
         end do
+        ! multiply by rho
+        do kd = 1,grp_n_r_eq
+            KV0(:,kd,:,:) = KV0(:,kd,:,:)*rho(kd)
+            KV2(:,kd,:,:) = KV2(:,kd,:,:)*rho(kd)
+        end do
+        
         ! fill the Hermitian conjugates
         do m = 1,n_m_X
             do k = m+1,n_m_X
@@ -457,19 +471,20 @@ contains
             do k = 1,n_m_X
                 ! calculate KV1
                 KV1(:,:,k,m) = com_fac * U_X_1(:,:,m) * conjg(U_X_0(:,:,k))
-                
-                ! multiply by rho
-                KV1(:,:,k,m) = KV1(:,:,k,m)*rho
             end do
+        end do
+        ! multiply by rho
+        do kd = 1,grp_n_r_eq
+            KV1(:,kd,:,:) = KV1(:,kd,:,:)*rho(kd)
         end do
     end subroutine
     
-    ! calculate U_m^0,  U_m^1 at n_r_eq  values of the normal  coordinate, n_par
+    ! calculate U_m^0,  U_m^1 at grp_n_r_eq  values of the normal  coordinate, n_par
     ! values  of the  parallel  coordinate and  M values  of  the poloidal  mode
     ! number, with m = size(m_X)
     subroutine calc_U
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
-        use eq_vars, only: q => q_saf_FD, theta, n_par, p => pres_FD, n_r_eq
+        use eq_vars, only: q => q_saf_FD, theta, n_par, p => pres_FD, grp_n_r_eq
         
         ! local variables
         integer :: jd, kd                                                       ! counters
@@ -494,25 +509,25 @@ contains
         
         ! set up submatrices
         ! jacobian
-        allocate(J(n_par,n_r_eq)); J = jac_F_FD(:,:,0,0,0)
-        allocate(D3J(n_par,n_r_eq)); D3J = jac_F_FD(:,:,0,0,1)
+        allocate(J(n_par,grp_n_r_eq)); J = jac_F_FD(:,:,0,0,0)
+        allocate(D3J(n_par,grp_n_r_eq)); D3J = jac_F_FD(:,:,0,0,1)
         ! lower metric factors
-        allocate(g13(n_par,n_r_eq)); g13 = g_F_FD(:,:,1,3,0,0,0)
-        allocate(D3g13(n_par,n_r_eq)); D3g13 = g_F_FD(:,:,1,3,0,0,1)
-        allocate(g23(n_par,n_r_eq)); g23 = g_F_FD(:,:,2,3,0,0,0)
-        allocate(D3g23(n_par,n_r_eq)); D3g23 = g_F_FD(:,:,2,3,0,0,1)
-        allocate(g33(n_par,n_r_eq)); g33 = g_F_FD(:,:,3,3,0,0,0)
-        allocate(D3g33(n_par,n_r_eq)); D3g33 = g_F_FD(:,:,3,3,0,0,1)
+        allocate(g13(n_par,grp_n_r_eq)); g13 = g_F_FD(:,:,1,3,0,0,0)
+        allocate(D3g13(n_par,grp_n_r_eq)); D3g13 = g_F_FD(:,:,1,3,0,0,1)
+        allocate(g23(n_par,grp_n_r_eq)); g23 = g_F_FD(:,:,2,3,0,0,0)
+        allocate(D3g23(n_par,grp_n_r_eq)); D3g23 = g_F_FD(:,:,2,3,0,0,1)
+        allocate(g33(n_par,grp_n_r_eq)); g33 = g_F_FD(:,:,3,3,0,0,0)
+        allocate(D3g33(n_par,grp_n_r_eq)); D3g33 = g_F_FD(:,:,3,3,0,0,1)
         ! upper metric factors
-        allocate(h12(n_par,n_r_eq)); h12 = h_F_FD(:,:,1,2,0,0,0)
-        allocate(D3h12(n_par,n_r_eq)); D3h12 = h_F_FD(:,:,1,2,0,0,1)
-        allocate(h22(n_par,n_r_eq)); h22 = h_F_FD(:,:,2,2,0,0,0)
-        allocate(D3h22(n_par,n_r_eq)); D3h22 = h_F_FD(:,:,2,2,0,0,1)
+        allocate(h12(n_par,grp_n_r_eq)); h12 = h_F_FD(:,:,1,2,0,0,0)
+        allocate(D3h12(n_par,grp_n_r_eq)); D3h12 = h_F_FD(:,:,1,2,0,0,1)
+        allocate(h22(n_par,grp_n_r_eq)); h22 = h_F_FD(:,:,2,2,0,0,0)
+        allocate(D3h22(n_par,grp_n_r_eq)); D3h22 = h_F_FD(:,:,2,2,0,0,1)
         
         ! loop over the M elements of U_X and DU
         do jd = 1,size(m_X)
             ! loop over all normal points
-            do kd = 1,n_r_eq
+            do kd = 1,grp_n_r_eq
                 n_frac = (n_X*q(kd,0)-m_X(jd))/n_X
                 U_X_1(:,kd,jd) = 1 + n_frac * g13(:,kd)/g33(:,kd)
                 DU_X_1(:,kd,jd) = n_frac * (D3g13(:,kd)/g33(:,kd) - &
@@ -557,7 +572,7 @@ contains
     !   normal curvature kn = nabla psi / h^psi,psi * nabla (mu0 p + B^2/2)
     subroutine calc_extra
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
-        use eq_vars, only: n_par, p => pres_FD, n_r_eq
+        use eq_vars, only: n_par, p => pres_FD, grp_n_r_eq
         
         ! local variables
         integer :: kd                                                           ! counter
@@ -588,33 +603,33 @@ contains
         
         ! set up submatrices
         ! jacobian
-        allocate(J(n_par,n_r_eq)); J = jac_F_FD(:,:,0,0,0)
-        allocate(D1J(n_par,n_r_eq)); D1J = jac_F_FD(:,:,1,0,0)
-        allocate(D2J(n_par,n_r_eq)); D2J = jac_F_FD(:,:,0,1,0)
-        allocate(D3J(n_par,n_r_eq)); D3J = jac_F_FD(:,:,0,0,1)
+        allocate(J(n_par,grp_n_r_eq)); J = jac_F_FD(:,:,0,0,0)
+        allocate(D1J(n_par,grp_n_r_eq)); D1J = jac_F_FD(:,:,1,0,0)
+        allocate(D2J(n_par,grp_n_r_eq)); D2J = jac_F_FD(:,:,0,1,0)
+        allocate(D3J(n_par,grp_n_r_eq)); D3J = jac_F_FD(:,:,0,0,1)
         ! lower metric factors
-        allocate(g13(n_par,n_r_eq)); g13 = g_F_FD(:,:,1,3,0,0,0)
-        allocate(D2g13(n_par,n_r_eq)); D2g13 = g_F_FD(:,:,1,3,0,1,0)
-        allocate(D3g13(n_par,n_r_eq)); D3g13 = g_F_FD(:,:,1,3,0,0,1)
-        allocate(g23(n_par,n_r_eq)); g23 = g_F_FD(:,:,2,3,0,0,0)
-        allocate(D1g23(n_par,n_r_eq)); D1g23 = g_F_FD(:,:,2,3,1,0,0)
-        allocate(D3g23(n_par,n_r_eq)); D3g23 = g_F_FD(:,:,2,3,0,0,1)
-        allocate(g33(n_par,n_r_eq)); g33 = g_F_FD(:,:,3,3,0,0,0)
-        allocate(D1g33(n_par,n_r_eq)); D1g33 = g_F_FD(:,:,3,3,1,0,0)
-        allocate(D2g33(n_par,n_r_eq)); D2g33 = g_F_FD(:,:,3,3,0,1,0)
-        allocate(D3g33(n_par,n_r_eq)); D3g33 = g_F_FD(:,:,3,3,0,0,1)
+        allocate(g13(n_par,grp_n_r_eq)); g13 = g_F_FD(:,:,1,3,0,0,0)
+        allocate(D2g13(n_par,grp_n_r_eq)); D2g13 = g_F_FD(:,:,1,3,0,1,0)
+        allocate(D3g13(n_par,grp_n_r_eq)); D3g13 = g_F_FD(:,:,1,3,0,0,1)
+        allocate(g23(n_par,grp_n_r_eq)); g23 = g_F_FD(:,:,2,3,0,0,0)
+        allocate(D1g23(n_par,grp_n_r_eq)); D1g23 = g_F_FD(:,:,2,3,1,0,0)
+        allocate(D3g23(n_par,grp_n_r_eq)); D3g23 = g_F_FD(:,:,2,3,0,0,1)
+        allocate(g33(n_par,grp_n_r_eq)); g33 = g_F_FD(:,:,3,3,0,0,0)
+        allocate(D1g33(n_par,grp_n_r_eq)); D1g33 = g_F_FD(:,:,3,3,1,0,0)
+        allocate(D2g33(n_par,grp_n_r_eq)); D2g33 = g_F_FD(:,:,3,3,0,1,0)
+        allocate(D3g33(n_par,grp_n_r_eq)); D3g33 = g_F_FD(:,:,3,3,0,0,1)
         ! upper metric factors
-        allocate(h12(n_par,n_r_eq)); h12 = h_F_FD(:,:,1,2,0,0,0)
-        allocate(D3h12(n_par,n_r_eq)); D3h12 = h_F_FD(:,:,1,2,0,0,1)
-        allocate(h22(n_par,n_r_eq)); h22 = h_F_FD(:,:,2,2,0,0,0)
-        allocate(D3h22(n_par,n_r_eq)); D3h22 = h_F_FD(:,:,2,2,0,0,1)
-        allocate(h23(n_par,n_r_eq)); h23 = h_F_FD(:,:,2,3,0,0,0)
+        allocate(h12(n_par,grp_n_r_eq)); h12 = h_F_FD(:,:,1,2,0,0,0)
+        allocate(D3h12(n_par,grp_n_r_eq)); D3h12 = h_F_FD(:,:,1,2,0,0,1)
+        allocate(h22(n_par,grp_n_r_eq)); h22 = h_F_FD(:,:,2,2,0,0,0)
+        allocate(D3h22(n_par,grp_n_r_eq)); D3h22 = h_F_FD(:,:,2,2,0,0,1)
+        allocate(h23(n_par,grp_n_r_eq)); h23 = h_F_FD(:,:,2,3,0,0,0)
         
         ! allocatee sigma and extra terms. Later they are deallocated in calc_PV
-        allocate(sigma(n_par,n_r_eq))
-        allocate(extra1(n_par,n_r_eq))
-        allocate(extra2(n_par,n_r_eq))
-        allocate(extra3(n_par,n_r_eq))
+        allocate(sigma(n_par,grp_n_r_eq))
+        allocate(extra1(n_par,grp_n_r_eq))
+        allocate(extra2(n_par,grp_n_r_eq))
+        allocate(extra3(n_par,grp_n_r_eq))
         
         ! calculate sigma
         sigma = 1/(mu_0*J*g33) * (g13*(D2g33-D3g23) + g23*(D3g13-D1g33) &
@@ -627,7 +642,7 @@ contains
         extra2 = g33/h22 * mu_0*(sigma*J)
         
         ! calculate extra3
-        do kd = 1,n_r_eq
+        do kd = 1,grp_n_r_eq
             extra3(:,kd) = p(kd,1) * ( J(:,kd)**2*mu_0*p(kd,1)/g33(:,kd) + &
                 &1/h22(:,kd) * ( &
                 &h12(:,kd) * ( D1g33(:,kd)/g33(:,kd) - 2*D1J(:,kd)/J(:,kd) ) + &
@@ -636,23 +651,72 @@ contains
         end do
         
         ! calculate rho from input
-        call calc_rho(n_par,n_r_eq)
+        call calc_rho
     end subroutine
+    
+    ! calculates the magnetic integral <V e^i(k-m)theta>, defined as the matrix
+    !   <V e^i(k-m)theta> = [ oint J V(k,m) e^i(k-m)theta dtheta ]
+    ! note: V is changed on exit
+    subroutine calc_V_int(V,V_int)
+        use eq_vars, only: n_par, grp_n_r_eq, theta
+        use metric_ops, only: jac_F_FD
+        use utilities, only: calc_int
+        
+        ! input / output
+        complex(dp), intent(inout) :: V(n_par,grp_n_r_eq,n_m_X,n_m_X)           ! input V(n_par,n_r,n_m_X,n_m_X)
+        complex(dp), intent(inout) :: V_int(n_m_X,n_m_X,grp_n_r_eq)             ! output <V e^i(k-m)theta> at normal equilibrium grid points
+        
+        ! local variables
+        integer :: k, m, jd, kd                                                 ! counters
+        ! TEMPORARY !!!!!!!!!!!!!
+        complex(dp) :: V_COPY(n_par,grp_n_r_eq,n_m_X,n_m_X)                     ! copy of input V(n_par,n_r,n_m_X,n_m_X)
+        V_COPY = V
+        
+        do m = 1,n_m_X
+            do k = 1,n_m_X
+                ! multiply V by Jacobian and exponential
+                !V(:,:,k,m) = exp_theta(:,:,k,m) * jac_F_FD(:,:,0,0,0) * &
+                    !&V(:,:,k,m)
+                V_COPY(:,:,k,m) = exp_theta(:,:,k,m) * jac_F_FD(:,:,0,0,0) * &
+                    &V_COPY(:,:,k,m)
+            end do
+        end do
+        
+        ! integrate  term over theta for  all equilibrium grid points  using the
+        ! recursive formula int_1^n f(x) dx 
+        !   = int_1^(n-1) f(x) dx + (f(n)+f(n-1))*(x(n)-x(n-1))/2
+        V_int = 0.0_dp
+        ! loop over all normal points on this process
+        do kd = 1,grp_n_r_eq
+            ! parallel integration loop
+            do jd = 2, n_par
+                !V_int(:,:,kd) = V_int(:,:,kd) + (V(jd,kd,:,:)+V(jd-1,kd,:,:))/2&
+                    !& * (theta(jd,kd)-theta(jd-1,kd))
+                V_int(:,:,kd) = V_int(:,:,kd) + (V_COPY(jd,kd,:,:)+V_COPY(jd-1,kd,:,:))/2&
+                    & * (theta(jd,kd)-theta(jd-1,kd))
+            end do
+        end do
+        
+        !!allocate(KV_int(n_m_X,n_m_X,grp_n_r_eq,3))
+    end subroutine calc_V_int
     
     ! deallocates  perturbation quantities that  are not used anymore  after the
     ! equilibrium phase
     subroutine dealloc_X_vars
-        use num_vars, only: group_rank
-        
         deallocate(rho)
         deallocate(U_X_0,U_X_1,DU_X_0,DU_X_1)
-        deallocate(PV0,PV1,PV2,KV0,KV1,KV2)
-        deallocate(X_vec,X_val)
+        ! TEMPORARY MOVED TO FINAL !!!!!!!
+        !deallocate(PV0,PV1,PV2,KV0,KV1,KV2)
+        deallocate(exp_theta)
     end subroutine dealloc_X_vars
     
     ! deallocates  perturbation quantities that  are not used anymore  after the
     ! calculations for a certain alpha
     subroutine dealloc_X_vars_final
+        ! TEMPORARY !!!!!!!
+        deallocate(PV0,PV1,PV2,KV0,KV1,KV2)
         deallocate(m_X)
+        deallocate(X_vec,X_val)
+        deallocate(PV_int,KV_int)
     end subroutine dealloc_X_vars_final
 end module

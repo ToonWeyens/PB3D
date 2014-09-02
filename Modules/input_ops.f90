@@ -68,7 +68,7 @@ contains
     ! reads input from user-provided input file
     ! [MPI] only global master
     integer function read_input() result(ierr)
-        use num_vars, only: glob_rank, nyq_fac
+        use num_vars, only: glb_rank, nyq_fac
         
         character(*), parameter :: rout_name = 'read_input'
         
@@ -78,7 +78,7 @@ contains
         ! initialize ierr
         ierr = 0
         
-        if (glob_rank.eq.0) then                                                ! only global master
+        if (glb_rank.eq.0) then                                                 ! only global master
             if (input_i.ge.0) then                                              ! if open_input opened a file
                 call writo('Setting up user-provided input "' &       
                     &// trim(input_name) // '"')
@@ -211,7 +211,7 @@ contains
         ! (arbitrary), but preferibly at least  10 (arbitrary). min_n_r_X has to
         ! be at least 2 (for 2 grid points)
         integer function adapt_X() result(ierr)
-            use VMEC_vars, only: n_r
+            use VMEC_vars, only: n_r_eq
             
             character(*), parameter :: rout_name = 'adapt_X'
             
@@ -243,8 +243,8 @@ contains
             end if
             
             ! check min_r_X
-            if (min_r_X.lt.one/(n_r-1)) then
-                min_r_X = one/(n_r-1)
+            if (min_r_X.lt.one/(n_r_eq-1)) then
+                min_r_X = one/(n_r_eq-1)
                 call writo('WARNING: min_r_X has been increased to '//&
                     &trim(r2strt(min_r_X)))
             end if
@@ -258,10 +258,10 @@ contains
             
             ! check  if min_r_X  < max_r_X  with at  least one  equilbrium point
             ! between them
-            if (min_r_X+1./(n_r-1).ge.max_r_X) then
+            if (min_r_X+1./(n_r_eq-1).ge.max_r_X) then
                 ierr = 1
                 err_msg = 'max_r_X - min_r_X has to be at least '//&
-                    &trim(r2strt(1._dp/(n_r-1)))
+                    &trim(r2strt(1._dp/(n_r_eq-1)))
                 CHCKERR(err_msg)
             end if
         end function adapt_X

@@ -15,7 +15,7 @@ module test
         &test_ang_B, test_calc_ext_var, test_B, test_VMEC_norm_deriv, &
         &test_arr_mult, test_VMEC_conv_FHM, test_calc_RZL, test_calc_T_VF, &
         &test_calc_inv_met, test_calc_det, test_inv, test_calc_f_deriv, &
-        &test_calc_g,test_f2r, test_prepare_matrix_X, test_slepc, &
+        &test_calc_g,test_f2r, test_prepare_X, test_slepc, &
         &test_calc_interp
     
 contains
@@ -195,8 +195,8 @@ contains
     end function test_f2r
     
     subroutine test_repack
-        ! VMEC variable has structure (1:mnmax, 1:n_r_eq)
-        ! output variable should have (1:n_r_eq, 0:mpol-1, -ntor:ntor)
+        ! VMEC variable has structure (1:mnmax, 1:grp_n_r_eq)
+        ! output variable should have (1:grp_n_r_eq, 0:mpol-1, -ntor:ntor)
         use fourier_ops, only: repack
         
         integer :: n_rB, mpolB, ntorB, mnmaxB
@@ -550,17 +550,17 @@ contains
         end subroutine
     end subroutine test_print_GP
 
-    integer function test_prepare_matrix_X() result(ierr)
-        use X_ops, only: prepare_matrix_X
+    integer function test_prepare_X() result(ierr)
+        use X_ops, only: prepare_X
         use X_vars, only: PV0, PV1, PV2
         use eq_ops, only: calc_eq
         
-        character(*), parameter :: rout_name = 'test_prepare_matrix_X'
+        character(*), parameter :: rout_name = 'test_prepare_X'
         
         ! initialize ierr
         ierr = 0
         
-        call writo('test prepare_matrix_X?')
+        call writo('test prepare_X?')
         if(yes_no(.false.)) then
             ! calculate equilibrium
             call writo('calculating equilibrium')
@@ -572,7 +572,7 @@ contains
             ! calculate equilibrium
             call lvl_ud(1)
             call writo('calculating P')
-            call prepare_matrix_X
+            call prepare_X
             call lvl_ud(-1)
             
             ! visualize PV
@@ -594,7 +594,7 @@ contains
             call writo('Stopping')
             stop
         end if
-    end function test_prepare_matrix_X
+    end function test_prepare_X
     
     integer function test_calc_mesh_cs() result(ierr)
         use fourier_ops, only: calc_mesh_cs
@@ -1105,7 +1105,7 @@ contains
     
     integer function test_calc_RZL() result(ierr)
         use eq_vars, only: calc_RZL, init_eq, calc_eqd_mesh, &
-            &VMEC_R, VMEC_Z, theta, zeta,  n_par, n_r_eq
+            &VMEC_R, VMEC_Z, theta, zeta,  n_par, grp_n_r_eq
         use VMEC_vars, only: rmax_surf, rmin_surf, zmax_surf
         
         character(*), parameter :: rout_name = 'test_calc_RZL'
@@ -1127,12 +1127,12 @@ contains
             call writo('calculations with constant zeta, varying theta')
             call lvl_ud(1)
             if (allocated(zeta)) deallocate(zeta)
-            allocate(zeta(n_par,n_r_eq)); zeta = 0.0_dp
+            allocate(zeta(n_par,grp_n_r_eq)); zeta = 0.0_dp
             if (allocated(theta)) deallocate(theta)
-            allocate(theta(n_par,n_r_eq)); theta = 0.0_dp
+            allocate(theta(n_par,grp_n_r_eq)); theta = 0.0_dp
             
             zeta = 0.4*pi/2
-            do jd = 1,n_r_eq
+            do jd = 1,grp_n_r_eq
                 ierr = calc_eqd_mesh(theta(:,jd),n_par, 0.0_dp*pi, 3.0_dp*pi)
                 CHCKERR('')
             end do
@@ -1247,12 +1247,12 @@ contains
     integer function test_calc_T_VF() result(ierr)
         use eq_ops, only: calc_eq
         use metric_ops, only: T_VF
-        use eq_vars, only: q_saf, VMEC_L, flux_p, theta, n_r_eq
+        use eq_vars, only: q_saf, VMEC_L, flux_p, theta, grp_n_r_eq
         
         character(*), parameter :: rout_name = 'test_calc_T_VF'
         
         ! local variables
-        real(dp) :: T_loc(1:n_r_eq,3,3)
+        real(dp) :: T_loc(1:grp_n_r_eq,3,3)
         integer :: id, jd
         integer :: case_nr
         integer :: deriv(3)
@@ -1592,12 +1592,12 @@ contains
         use metric_ops, only: calc_f_deriv, &
             &h_F, h_F_FD, T_FV
         use eq_ops, only: calc_eq
-        use eq_vars, only: n_par, flux_p, flux_p_FD, n_r_eq
+        use eq_vars, only: n_par, flux_p, flux_p_FD, grp_n_r_eq
         
         character(*), parameter :: rout_name = 'test_calc_f_deriv'
         
         ! local variables
-        real(dp) :: alt_calc(n_par, n_r_eq)
+        real(dp) :: alt_calc(n_par, grp_n_r_eq)
         integer :: id, jd, kd
         integer :: der1(3)
         integer :: der2(3)
@@ -1881,14 +1881,14 @@ contains
         use metric_ops, only: calc_inv_met, &
             &T_VF, T_FV
         use eq_ops, only: calc_eq
-        use eq_vars, only: n_par, n_r_eq
+        use eq_vars, only: n_par, grp_n_r_eq
         
         character(*), parameter :: rout_name = 'test_calc_inv_met'
         
         ! local variables
         integer :: id, kd                                                       ! counters
         real(dp) :: TxT(3,3)
-        real(dp) :: trace(n_par,n_r_eq)
+        real(dp) :: trace(n_par,grp_n_r_eq)
         
         ! initialize ierr
         ierr = 0
@@ -1906,7 +1906,7 @@ contains
             
             call writo('testing zeroth order')
             call lvl_ud(1)
-            do kd = 1,n_r_eq
+            do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     TxT = matmul(T_VF(id,kd,:,:,0,0,0),T_FV(id,kd,:,:,0,0,0))
                     trace(id,kd) = TxT(1,1)+TxT(2,2)+TxT(3,3)
@@ -1919,7 +1919,7 @@ contains
             
             call writo('testing first order: r derivative')
             call lvl_ud(1)
-            do kd = 1,n_r_eq
+            do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     TxT = matmul(T_VF(id,kd,:,:,1,0,0),T_FV(id,kd,:,:,0,0,0)) &
                         &+ matmul(T_VF(id,kd,:,:,0,0,0),T_FV(id,kd,:,:,1,0,0))
@@ -1933,7 +1933,7 @@ contains
             
             call writo('testing first order: t derivative')
             call lvl_ud(1)
-            do kd = 1,n_r_eq
+            do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     TxT = matmul(T_VF(id,kd,:,:,0,1,0),T_FV(id,kd,:,:,0,0,0)) &
                         &+ matmul(T_VF(id,kd,:,:,0,0,0),T_FV(id,kd,:,:,0,1,0))
@@ -1947,7 +1947,7 @@ contains
             
             call writo('testing first order: z derivative')
             call lvl_ud(1)
-            do kd = 1,n_r_eq
+            do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     TxT = matmul(T_VF(id,kd,:,:,0,0,1),T_FV(id,kd,:,:,0,0,0)) &
                         &+ matmul(T_VF(id,kd,:,:,0,0,0),T_FV(id,kd,:,:,0,0,1))
@@ -1961,7 +1961,7 @@ contains
             
             call writo('testing second order: tt derivative')
             call lvl_ud(1)
-            do kd = 1,n_r_eq
+            do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     TxT = matmul(T_VF(id,kd,:,:,0,2,0),T_FV(id,kd,:,:,0,0,0)) &
                         &+2*matmul(T_VF(id,kd,:,:,0,1,0),T_FV(id,kd,:,:,0,1,0))&
@@ -1976,7 +1976,7 @@ contains
             
             call writo('testing third order: rtt derivative')
             call lvl_ud(1)
-            do kd = 1,n_r_eq
+            do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     TxT = matmul(T_VF(id,kd,:,:,1,2,0),T_FV(id,kd,:,:,0,0,0)) &
                         &+matmul(T_VF(id,kd,:,:,0,2,0),T_FV(id,kd,:,:,1,0,0))&
@@ -2166,8 +2166,8 @@ contains
     integer function test_metric_transf() result(ierr)
         use eq_ops, only: calc_eq
         use eq_vars, only: n_par, flux_p, VMEC_R, VMEC_Z, VMEC_L, theta, zeta, &
-            &n_r_eq
-        use VMEC_vars, only: mpol, ntor, jac_V_c_H, jac_V_s_H, nfp, n_r
+            &grp_n_r_eq
+        use VMEC_vars, only: mpol, ntor, jac_V_c_H, jac_V_s_H, nfp, n_r_eq
         use fourier_ops, only: calc_mesh_cs, f2r
         use metric_ops, only: jac_V, jac_F, T_FV, det_T_FV, g_F, h_F, g_V, &
             &calc_inv_met, T_VF
@@ -2177,12 +2177,12 @@ contains
         character(*), parameter :: rout_name = 'test_metric_transf'
         
         ! local variables
-        real(dp) :: jac_ALT(1:n_par,1:n_r_eq)                                   ! VMEC calculated jac, FM
-        real(dp) :: jac_ALT_H(1:n_par,1:n_r_eq)                                 ! VMEC calculated jac, HM
-        real(dp) :: h_F_ALT(1:n_par,1:n_r_eq)                                   ! alternative of h_F (or derivatives)
+        real(dp) :: jac_ALT(1:n_par,1:grp_n_r_eq)                               ! VMEC calculated jac, FM
+        real(dp) :: jac_ALT_H(1:n_par,1:grp_n_r_eq)                             ! VMEC calculated jac, HM
+        real(dp) :: h_F_ALT(1:n_par,1:grp_n_r_eq)                               ! alternative of h_F (or derivatives)
         integer :: id, jd, kd                                                   ! counter
-        real(dp) :: h_V(1:n_par,1:n_r_eq,3,3,0:0,0:0,0:0)                       ! h_V
-        real(dp) :: gxh(1:n_par,1:n_r_eq)                                       ! norm of g*h
+        real(dp) :: h_V(1:n_par,1:grp_n_r_eq,3,3,0:0,0:0,0:0)                   ! h_V
+        real(dp) :: gxh(1:n_par,1:grp_n_r_eq)                                   ! norm of g*h
         real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
         real(dp) :: zeta_in
         
@@ -2210,18 +2210,18 @@ contains
                 call writo('calculating jac_V directly to compare it with the &
                     &calculation in the code')
                 ! jac_V calculated
-                do kd = 1,n_r_eq
+                do kd = 1,grp_n_r_eq
                     jac_ALT(:,kd) = VMEC_R(:,kd,0,0,0)*(VMEC_R(:,kd,1,0,0)*&
                         &VMEC_Z(:,kd,0,1,0)-VMEC_R(:,kd,0,1,0)*&
                         &VMEC_Z(:,kd,1,0,0))
                 end do
                 call print_GP_3D('jac_V (1:calc, 2:direct calc, 3: diff)','',&
                     &reshape([jac_V(:,:,0,0,0),jac_ALT,&
-                    &jac_V(:,:,0,0,0)-jac_ALT],[n_par,n_r_eq,3]))
+                    &jac_V(:,:,0,0,0)-jac_ALT],[n_par,grp_n_r_eq,3]))
                 
                 call writo('comparing jac_V with jac_V provided by VMEC (FM)')
                 ! jac_V from VMEC
-                do kd = 1,n_r_eq
+                do kd = 1,grp_n_r_eq
                     do id = 1,n_par
                         ierr = calc_mesh_cs(cs,mpol,ntor,nfp,theta(id,kd),&
                             &zeta(id,kd))
@@ -2238,7 +2238,7 @@ contains
                 end do
                 call print_GP_3D('jac_V (1: calc, 2: VMEC, 3: diff)','',&
                     &reshape([jac_V(:,:,0,0,0),jac_ALT,&
-                    &jac_V(:,:,0,0,0)-jac_ALT],[n_par,n_r_eq,3]))
+                    &jac_V(:,:,0,0,0)-jac_ALT],[n_par,grp_n_r_eq,3]))
                 call print_GP_3D('jac_V calc-VMEC [log]','',&
                     &log10(max(2*abs(jac_V(:,:,0,0,0)-jac_ALT(:,:))/&
                     &(jac_V(:,:,0,0,0)+jac_ALT),1E-10_dp)))
@@ -2246,17 +2246,17 @@ contains
                 call writo('comparing jac_V with jac_V provided by VMEC (HM)')
                 ! calculate half mesh jac_V
                 do id = 1,n_par
-                    jac_ALT(id,2:n_r_eq) = (n_r-1._dp)*0.25*&
-                        &(VMEC_R(id,1:n_r_eq-1,0,0,0)+VMEC_R(id,2:n_r_eq,0,0,0))&
-                        &*((VMEC_R(id,2:n_r_eq,0,0,0)-VMEC_R(id,1:n_r_eq-1,0,0,0))&
-                        &  *(VMEC_Z(id,1:n_r_eq-1,0,1,0)+VMEC_Z(id,2:n_r_eq,0,1,0)) &
-                        &-(VMEC_Z(id,2:n_r_eq,0,0,0)-VMEC_Z(id,1:n_r_eq-1,0,0,0))&
-                        &  *(VMEC_R(id,1:n_r_eq-1,0,1,0)+VMEC_R(id,2:n_r_eq,0,1,0)))
+                    jac_ALT(id,2:grp_n_r_eq) = (n_r_eq-1._dp)*0.25*&
+                        &(VMEC_R(id,1:grp_n_r_eq-1,0,0,0)+VMEC_R(id,2:grp_n_r_eq,0,0,0))&
+                        &*((VMEC_R(id,2:grp_n_r_eq,0,0,0)-VMEC_R(id,1:grp_n_r_eq-1,0,0,0))&
+                        &  *(VMEC_Z(id,1:grp_n_r_eq-1,0,1,0)+VMEC_Z(id,2:grp_n_r_eq,0,1,0)) &
+                        &-(VMEC_Z(id,2:grp_n_r_eq,0,0,0)-VMEC_Z(id,1:grp_n_r_eq-1,0,0,0))&
+                        &  *(VMEC_R(id,1:grp_n_r_eq-1,0,1,0)+VMEC_R(id,2:grp_n_r_eq,0,1,0)))
                 end do
                 jac_ALT(:,1) = 0.0_dp
                 call print_GP_3D('(HM) jac_V (1: calc, 2: VMEC, 3: diff)','',&
                     &reshape([jac_ALT,jac_ALT_H,&
-                    &jac_ALT-jac_ALT_H],[n_par,n_r_eq,3]))
+                    &jac_ALT-jac_ALT_H],[n_par,grp_n_r_eq,3]))
                 call print_GP_3D('(HM) jac_V calc-VMEC [log]','',&
                     &log10(max(2*abs(jac_ALT-jac_ALT_H(:,:))/&
                     &(jac_ALT+jac_ALT_H),1E-10_dp)))
@@ -2271,7 +2271,7 @@ contains
             if(yes_no(.false.)) then
                 !   jac_F = (flux_p'/2pi * (1+L_t))^-1 * R * (R'Z_t - R' Z_t)
                 call lvl_ud(1)
-                do kd = 1,n_r_eq
+                do kd = 1,grp_n_r_eq
                     jac_ALT(:,kd) = VMEC_R(:,kd,0,0,0)*(VMEC_R(:,kd,1,0,0)*&
                         &VMEC_Z(:,kd,0,1,0)-VMEC_R(:,kd,0,1,0)*&
                         &VMEC_Z(:,kd,1,0,0))/(flux_p(kd,1)/(2*pi)*&
@@ -2279,7 +2279,7 @@ contains
                 end do
                 call print_GP_3D('jac_F (1:calc, 2:direct calc, 3: diff)','',&
                     &reshape([jac_F(:,:,0,0,0),jac_ALT,&
-                    &jac_F(:,:,0,0,0)-jac_ALT],[n_par,n_r_eq,3]))
+                    &jac_F(:,:,0,0,0)-jac_ALT],[n_par,grp_n_r_eq,3]))
                 call lvl_ud(-1)
             end if
             
@@ -2294,7 +2294,7 @@ contains
                     !CHCKERR('')
                     !call print_GP_2D('Dr^'//trim(i2str(kd))//' J_F(par=par) &
                         !&(1: an, 2: num)','',&
-                        !&reshape([jac_F(par,:,kd,0,0),jac_ALT(par,:)],[n_r_eq,2]))
+                        !&reshape([jac_F(par,:,kd,0,0),jac_ALT(par,:)],[grp_n_r_eq,2]))
                     !call print_GP_2D('diff with num Dr^'//trim(i2str(kd))//' &
                         !&J_F(par='//trim(i2str(par))//') [log]','',&
                         !&log10(max(2*abs(jac_ALT(par,:)-&
@@ -2320,7 +2320,7 @@ contains
                 ! calculate h_V from g_V
                 ierr = calc_inv_met(h_V,g_V,[0,0,0])
                 CHCKERR('')
-                do kd = 1,n_r_eq
+                do kd = 1,grp_n_r_eq
                     do id = 1,n_par
                         !call writo('h_V('//trim(i2str(id))//','//&
                             !&trim(i2str(kd))//') = ')
@@ -2341,7 +2341,7 @@ contains
                 read(*,*)
                 
                 call writo('flux coordinate system')
-                do kd = 1,n_r_eq
+                do kd = 1,grp_n_r_eq
                     do id = 1,n_par
                         gxh(id,kd) = sum(matmul(h_F(id,kd,:,:,0,0,0),&
                             &g_F(id,kd,:,:,0,0,0))-&
@@ -2358,7 +2358,7 @@ contains
             if(yes_no(.false.)) then
                 call lvl_ud(1)
                 call writo('flux coordinate system')
-                do kd = 1,n_r_eq
+                do kd = 1,grp_n_r_eq
                     do id = 1,n_par
                         gxh(id,kd) = sum(matmul(T_FV(id,kd,:,:,0,0,0),&
                             &T_VF(id,kd,:,:,0,0,0))-&
@@ -2377,21 +2377,21 @@ contains
                     do id = 1,3
                         call writo('checking r derivatives')
                         call print_GP_3D('h_F('//trim(i2str(id))//','//&
-                            &trim(i2str(kd))//')','',h_F(:,2:n_r_eq,id,kd,0,0,0))
+                            &trim(i2str(kd))//')','',h_F(:,2:grp_n_r_eq,id,kd,0,0,0))
                         do jd =1,n_par
-                            ierr = VMEC_norm_deriv(h_F(jd,2:n_r_eq,id,kd,0,0,0),&
-                                &h_F_ALT(jd,2:n_r_eq),n_r-1._dp,1,1)
+                            ierr = VMEC_norm_deriv(h_F(jd,2:grp_n_r_eq,id,kd,0,0,0),&
+                                &h_F_ALT(jd,2:grp_n_r_eq),n_r_eq-1._dp,1,1)
                             CHCKERR('')
                         end do
                         call print_GP_3D('Dr h_F('//trim(i2str(id))//','//&
                             &trim(i2str(kd))//') (1: an, 2: num, 3:diff)',&
-                            &'',reshape([h_F(:,2:n_r_eq,id,kd,1,0,0),&
-                            &h_F_ALT(:,2:n_r_eq),h_F(:,2:n_r_eq,id,kd,1,0,0)-&
-                            &h_F_ALT(:,2:n_r_eq)],[n_par,n_r_eq-1,3]))
+                            &'',reshape([h_F(:,2:grp_n_r_eq,id,kd,1,0,0),&
+                            &h_F_ALT(:,2:grp_n_r_eq),h_F(:,2:grp_n_r_eq,id,kd,1,0,0)-&
+                            &h_F_ALT(:,2:grp_n_r_eq)],[n_par,grp_n_r_eq-1,3]))
                         call print_GP_3D('Dr h_F an-num [log]','',log10(&
-                            &max(abs(2*(h_F_ALT(:,2:n_r_eq)-&
-                            &h_F(:,2:n_r_eq,id,kd,1,0,0))/(maxval(h_F_ALT(:,2:n_r_eq)+&
-                            &h_F(:,2:n_r_eq,id,kd,1,0,0)))),1E-10_dp)))
+                            &max(abs(2*(h_F_ALT(:,2:grp_n_r_eq)-&
+                            &h_F(:,2:grp_n_r_eq,id,kd,1,0,0))/(maxval(h_F_ALT(:,2:grp_n_r_eq)+&
+                            &h_F(:,2:grp_n_r_eq,id,kd,1,0,0)))),1E-10_dp)))
                     end do
                 end do
             end if
@@ -2405,7 +2405,7 @@ contains
 
     integer function test_B() result(ierr)
         use eq_vars, only: n_par, q_saf, flux_p, VMEC_L, theta, zeta, pres_FD, &
-            &n_r_eq
+            &grp_n_r_eq
         use VMEC_vars, only: B_V_s_H, B_V_c_H, mpol, ntor, B_V_sub_c_M, &
             &B_V_sub_s_M, nfp
         use metric_ops, only: calc_inv_met, g_V, g_F, jac_V, jac_F, T_FV, &
@@ -2418,18 +2418,18 @@ contains
         character(*), parameter :: rout_name = 'test_B'
         
         integer :: id, jd, kd                                                   ! counters
-        real(dp) :: B(1:n_par,1:n_r_eq)                                         ! magn. field
-        real(dp) :: B_ALT(1:n_par,1:n_r_eq)                                     ! magn. field alternative
-        real(dp) :: B_ALT_2(1:n_par,1:n_r_eq)                                   ! magn. field alternative 2
-        real(dp) :: B_V_sub(1:n_par,1:n_r_eq,3)                                 ! cov. components of B in VMEC coords
-        real(dp) :: B_V_sub_ALT(1:n_par,1:n_r_eq,3)                             ! VMEC output
-        real(dp) :: B_F_sub(1:n_par,1:n_r_eq,3)                                 ! cov. components of B in flux coords
-        real(dp) :: B_F_sub_ALT(1:n_par,1:n_r_eq,3)                             ! conversion of VMEC output
+        real(dp) :: B(1:n_par,1:grp_n_r_eq)                                     ! magn. field
+        real(dp) :: B_ALT(1:n_par,1:grp_n_r_eq)                                 ! magn. field alternative
+        real(dp) :: B_ALT_2(1:n_par,1:grp_n_r_eq)                               ! magn. field alternative 2
+        real(dp) :: B_V_sub(1:n_par,1:grp_n_r_eq,3)                             ! cov. components of B in VMEC coords
+        real(dp) :: B_V_sub_ALT(1:n_par,1:grp_n_r_eq,3)                         ! VMEC output
+        real(dp) :: B_F_sub(1:n_par,1:grp_n_r_eq,3)                             ! cov. components of B in flux coords
+        real(dp) :: B_F_sub_ALT(1:n_par,1:grp_n_r_eq,3)                         ! conversion of VMEC output
         real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
-        real(dp) :: h_V(1:n_par,1:n_r_eq,3,3,0:0,0:0,0:0)                       ! h_V
-        real(dp) :: dum(1:n_par,1:n_r_eq)
-        real(dp) :: dum2(1:n_par,1:n_r_eq)
-        real(dp) :: dum3(1:n_par,1:n_r_eq)
+        real(dp) :: h_V(1:n_par,1:grp_n_r_eq,3,3,0:0,0:0,0:0)                   ! h_V
+        real(dp) :: dum(1:n_par,1:grp_n_r_eq)
+        real(dp) :: dum2(1:n_par,1:grp_n_r_eq)
+        real(dp) :: dum3(1:n_par,1:grp_n_r_eq)
         
         ! initialize ierr
         ierr = 0
@@ -2454,12 +2454,12 @@ contains
                 do jd = 1,3
                     call print_GP_2D('B_'//trim(i2str(jd))//'(par=5) &
                         &(1: calc, 2: VMEC)','',&
-                        &reshape([B_V_sub(5,:,jd),B_V_sub_ALT(5,:,jd)],[n_r_eq,2]))
+                        &reshape([B_V_sub(5,:,jd),B_V_sub_ALT(5,:,jd)],[grp_n_r_eq,2]))
                     call print_GP_2D('B_'//trim(i2str(jd))//' - B_ALT_'//&
                         &trim(i2str(jd))//'(par=5) from VMEC, REL error [log]',&
-                        &'',log10(max(abs(2*(B_V_sub(5,2:n_r_eq,jd)-&
-                        &B_V_sub_ALT(5,2:n_r_eq,jd))/(B_V_sub(5,2:n_r_eq,jd)+&
-                        &B_V_sub_ALT(5,2:n_r_eq,jd))),1E-10_dp)))
+                        &'',log10(max(abs(2*(B_V_sub(5,2:grp_n_r_eq,jd)-&
+                        &B_V_sub_ALT(5,2:grp_n_r_eq,jd))/(B_V_sub(5,2:grp_n_r_eq,jd)+&
+                        &B_V_sub_ALT(5,2:grp_n_r_eq,jd))),1E-10_dp)))
                 end do
                 call lvl_ud(-1)
             end if
@@ -2486,12 +2486,12 @@ contains
                 do jd = 1,3
                     call print_GP_2D('B_'//trim(i2str(jd))//'(par=5) &
                         &(1: calc from g_F, 2: VMEC)','',&
-                        &reshape([B_F_sub(5,:,jd),B_F_sub_ALT(5,:,jd)],[n_r_eq,2]))
+                        &reshape([B_F_sub(5,:,jd),B_F_sub_ALT(5,:,jd)],[grp_n_r_eq,2]))
                     call print_GP_2D('B_'//trim(i2str(jd))//' - B_ALT_'//&
                         &trim(i2str(jd))//'(par=5) from VMEC, REL error [log]',&
-                        &'',log10(max(abs(2*(B_F_sub(5,2:n_r_eq,jd)-&
-                        &B_F_sub_ALT(5,2:n_r_eq,jd))/(B_F_sub(5,2:n_r_eq,jd)+&
-                        &B_F_sub_ALT(5,2:n_r_eq,jd))),1E-10_dp)))
+                        &'',log10(max(abs(2*(B_F_sub(5,2:grp_n_r_eq,jd)-&
+                        &B_F_sub_ALT(5,2:grp_n_r_eq,jd))/(B_F_sub(5,2:grp_n_r_eq,jd)+&
+                        &B_F_sub_ALT(5,2:grp_n_r_eq,jd))),1E-10_dp)))
                 end do
                 call lvl_ud(-1)
             end if
@@ -2499,7 +2499,7 @@ contains
             call writo('check magn. of. magnetic field?')
             if(yes_no(.false.)) then
                 call writo('comparison with g_V(1,2)/J^2')
-                do kd = 1,n_r_eq
+                do kd = 1,grp_n_r_eq
                     do id = 1,n_par
                         ierr = calc_mesh_cs(cs,mpol,ntor,nfp,theta(id,kd),&
                             &zeta(id,kd))
@@ -2514,10 +2514,10 @@ contains
                 end do
                 call print_GP_2D('B(par=5) &
                     &(1: calc from g_F, 2: VMEC)','',reshape([B(5,:),&
-                    &B_ALT(5,:)],[n_r_eq,2]))
+                    &B_ALT(5,:)],[grp_n_r_eq,2]))
                 call print_GP_2D('B - B_ALT (par=5) from VMEC, REL error [log]'&
-                    &,'',log10(max(abs(2*(B(5,2:n_r_eq)-B_ALT(5,2:n_r_eq))/&
-                    &(B(5,2:n_r_eq)+B_ALT(5,2:n_r_eq))),1E-10_dp)))
+                    &,'',log10(max(abs(2*(B(5,2:grp_n_r_eq)-B_ALT(5,2:grp_n_r_eq))/&
+                    &(B(5,2:grp_n_r_eq)+B_ALT(5,2:grp_n_r_eq))),1E-10_dp)))
                 
                 call writo('comparison with B_i B_j h^ij')
                 ! calculate h_V from g_V
@@ -2541,10 +2541,10 @@ contains
                     CHCKERR('')
                 end do
                 call print_GP_2D('B(par=5) (1: calc from B_i B^j, 2: VMEC)',&
-                    &'',reshape([B(5,:),B_ALT(5,:)],[n_r_eq,2]))
+                    &'',reshape([B(5,:),B_ALT(5,:)],[grp_n_r_eq,2]))
                 call print_GP_2D('B - B_ALT (par=5) from VMEC, REL error [log]'&
-                    &,'',log10(max(abs(2*(B(5,2:n_r_eq)-B_ALT(5,2:n_r_eq))/&
-                    &(B(5,2:n_r_eq)+B_ALT(5,2:n_r_eq))),1E-10_dp)))
+                    &,'',log10(max(abs(2*(B(5,2:grp_n_r_eq)-B_ALT(5,2:grp_n_r_eq))/&
+                    &(B(5,2:grp_n_r_eq)+B_ALT(5,2:grp_n_r_eq))),1E-10_dp)))
             end if
             
             call writo('test whether D_alpha B_theta = D_theta B_alpha?')
@@ -2624,13 +2624,13 @@ contains
                         &jac_F_FD(:,:,0,0,0)**2
                     dum2(:,1) = 0.0_dp
                     call print_GP_2D('1: D_theta B_psi, 2: D_psi B_theta','',&
-                        &reshape([dum(5,:),dum2(5,:)],[n_r_eq,2]))
+                        &reshape([dum(5,:),dum2(5,:)],[grp_n_r_eq,2]))
                     
                     do id = 1,n_par
                         dum3(id,:) = mu_0*jac_F_FD(id,:,0,0,0)*pres_FD(:,1)
                     end do
                     call print_GP_2D('1: D_theta B_psi-D_psi B_theta, 2: calc',&
-                        &'',reshape([dum(5,:)-dum2(5,:),dum3(5,:)],[n_r_eq,2]))
+                        &'',reshape([dum(5,:)-dum2(5,:),dum3(5,:)],[grp_n_r_eq,2]))
                     call print_GP_2D('diff','',dum(5,:)-dum2(5,:)-dum3(5,:))
                 call lvl_ud(-1)
             end if
@@ -2648,7 +2648,7 @@ contains
             integer :: deriv(2)
             
             ! local variables
-            real(dp) :: tempvar(1:n_par,1:n_r_eq)                               ! for HM to FM conversions
+            real(dp) :: tempvar(1:n_par,1:grp_n_r_eq)                           ! for HM to FM conversions
             
             ! initialize ierr
             ierr = 0
@@ -2656,7 +2656,7 @@ contains
             if (deriv(1).ne.0 .or. deriv(2).ne.0) call writo('WARNING: In calc&
                 &_B_V_covar, the returned value of "B_V_sub" is NOT correct')
             
-            do kd = 1,n_r_eq
+            do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     ierr = calc_mesh_cs(cs,mpol,ntor,nfp,theta(id,kd),&
                         &zeta(id,kd))
@@ -2689,7 +2689,7 @@ contains
     integer function test_ang_B() result(ierr)
         use VMEC_vars, only: mpol, ntor
         use eq_vars, only: calc_eqd_mesh, calc_mesh, &
-            &n_par, theta, zeta, n_r_eq
+            &n_par, theta, zeta, grp_n_r_eq
         use num_vars, only: theta_var_along_B
         
         character(*), parameter :: rout_name = 'test_ang_B'
@@ -2729,9 +2729,9 @@ contains
             CHCKERR('')
             
             call print_GP_2D('zeta(theta)','',zeta,x=theta)
-            !do kd = 1,n_r_eq
+            !do kd = 1,grp_n_r_eq
                 !call print_GP_2D('zeta(theta) at r = '//trim(i2str(kd))//'/'//&
-                    !&trim(i2str(n_r_eq)),'',zeta(:,kd),x=theta(:,kd))
+                    !&trim(i2str(grp_n_r_eq)),'',zeta(:,kd),x=theta(:,kd))
             !end do
             
             call lvl_ud(-1)
@@ -2754,10 +2754,10 @@ contains
             end if
                 
             do
-                call writo('At which n_r_eq do you want to plot the solutions? [1..'&
-                    &//trim(i2str(n_r_eq))//']')
+                call writo('At which grp_n_r_eq do you want to plot the solutions? [1..'&
+                    &//trim(i2str(grp_n_r_eq))//']')
                 read(*,*) kd
-                if (kd.ge.1 .and. kd.le.n_r_eq) then
+                if (kd.ge.1 .and. kd.le.grp_n_r_eq) then
                     exit
                 else
                     call writo('Please choose an acceptable value')
@@ -2791,7 +2791,7 @@ contains
                 
                 call print_GP_2D('zeta - q (theta+lambda) - alpha_0 at &
                     &(r,theta,zeta) = ('//&
-                    &trim(r2strt((kd-1._dp)/(n_r_eq-1._dp)))//','//&
+                    &trim(r2strt((kd-1._dp)/(grp_n_r_eq-1._dp)))//','//&
                     &trim(r2strt(theta(id,kd)))//', '//&
                     &trim(r2strt(zeta(id,kd)))//')','',plot_var(2,:),&
                     &x=plot_var(1,:))
@@ -2854,7 +2854,7 @@ contains
     integer function test_arr_mult() result(ierr)
         use utilities, only: arr_mult
         use eq_vars, only: calc_eqd_mesh, calc_RZL, init_eq, calc_flux_q, &
-            &VMEC_R, vmec_Z, n_par, theta, zeta, q_saf, pres, n_r_eq
+            &VMEC_R, vmec_Z, n_par, theta, zeta, q_saf, pres, grp_n_r_eq
         !use num_vars, only: max_deriv
         
         character(*), parameter :: rout_name = 'test_arr_mult'
@@ -2915,7 +2915,7 @@ contains
             character(*), parameter :: rout_name = 'test_f2r'
             
             ! local variables
-            real(dp) :: RZ(n_par,n_r_eq), RZ_num(n_r_eq)
+            real(dp) :: RZ(n_par,grp_n_r_eq), RZ_num(grp_n_r_eq)
             integer :: id, jd, kd
             
             ! initialize ierr
@@ -2925,14 +2925,14 @@ contains
             call writo('calculate RZL')
             call lvl_ud(1)
             if (allocated(zeta)) deallocate(zeta)
-            allocate(zeta(n_par,n_r_eq)); zeta = 0.0_dp
+            allocate(zeta(n_par,grp_n_r_eq)); zeta = 0.0_dp
             if (allocated(theta)) deallocate(theta)
-            allocate(theta(n_par,n_r_eq)); theta = 0.0_dp
+            allocate(theta(n_par,grp_n_r_eq)); theta = 0.0_dp
             
             call init_eq
             
             zeta = 0.4*pi/2
-            do jd = 1,n_r_eq
+            do jd = 1,grp_n_r_eq
                 ierr = calc_eqd_mesh(theta(:,jd),n_par,0.0_dp*pi,3.0_dp*pi)
                 CHCKERR('')
             end do
@@ -2955,7 +2955,7 @@ contains
             CHCKERR('')
             RZ_num = VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,0,0)
             call print_GP_2D('RZ (calc,num) at par = 5','',&
-                &reshape([RZ(5,:),RZ_num],[n_r_eq,2]))
+                &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff RZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             call lvl_ud(-1)
@@ -2970,7 +2970,7 @@ contains
             RZ_num = VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,1,0,0)
             call print_GP_2D('DrRZ (calc,num) at par = 5','',&
-                &reshape([RZ(5,:),RZ_num],[n_r_eq,2]))
+                &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Dtheta
@@ -2980,7 +2980,7 @@ contains
             RZ_num = VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,1,0)
             call print_GP_2D('DtRZ (calc,num) at par = 5','',&
-                &reshape([RZ(5,:),RZ_num],[n_r_eq,2]))
+                &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DtRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Dzeta
@@ -2990,7 +2990,7 @@ contains
             RZ_num = VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,0,1)
             call print_GP_2D('DzRZ (calc,num) at par = 5','',&
-                &reshape([RZ(5,:),RZ_num],[n_r_eq,2]))
+                &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DzRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             call lvl_ud(-1)
@@ -3006,7 +3006,7 @@ contains
                 &2.0_dp * VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,1,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,2,0,0)
             call print_GP_2D('DrrRZ (calc,num) at par = 5','',&
-                &reshape([RZ(5,:),RZ_num],[n_r_eq,2]))
+                &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrrRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Drtheta
@@ -3018,7 +3018,7 @@ contains
                 &VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,1,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,1,1,0)
             call print_GP_2D('DrtRZ (calc,num) at par = 5','',&
-                &reshape([RZ(5,:),RZ_num],[n_r_eq,2]))
+                &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrtRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Drzeta
@@ -3030,7 +3030,7 @@ contains
                 &VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,1,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,1,0,1)
             call print_GP_2D('DrzRZ (calc,num) at par = 5','',&
-                &reshape([RZ(5,:),RZ_num],[n_r_eq,2]))
+                &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrzRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Dthetatheta
@@ -3041,7 +3041,7 @@ contains
                 &2.0_dp * VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,0,1,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,2,0)
             call print_GP_2D('DttRZ (calc,num) at par = 5','',&
-                &reshape([RZ(5,:),RZ_num],[n_r_eq,2]))
+                &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DttRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Dtzeta
@@ -3053,7 +3053,7 @@ contains
                 &VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,0,1,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,1,1)
             call print_GP_2D('DtzRZ (calc,num) at par = 5','',&
-                &reshape([RZ(5,:),RZ_num],[n_r_eq,2]))
+                &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DtzRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Dzetazeta
@@ -3064,7 +3064,7 @@ contains
                 &2.0_dp * VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,0,0,1) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,0,2)
             call print_GP_2D('DzzRZ (calc,num) at par = 5','',&
-                &reshape([RZ(5,:),RZ_num],[n_r_eq,2]))
+                &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DzzRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             call lvl_ud(-1)
@@ -3100,7 +3100,7 @@ contains
                 &3.0_dp * VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,1,2,2) + &
                 &1.0_dp * VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,1,2,3)
             call print_GP_2D('DrttzzzRZ (calc,num) at par = 5','',&
-                &reshape([RZ(5,:),RZ_num],[n_r_eq,2]))
+                &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrttzzzRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             call lvl_ud(-1)
@@ -3110,7 +3110,7 @@ contains
             character(*), parameter :: rout_name = 'case_3_1'
             
             ! local variables
-            real(dp) :: Rq(n_par,n_r_eq), Rq_num(n_r_eq)
+            real(dp) :: Rq(n_par,grp_n_r_eq), Rq_num(grp_n_r_eq)
             integer :: id, jd, kd
             
             ! initialize ierr
@@ -3120,14 +3120,14 @@ contains
             call writo('calculate RZL')
             call lvl_ud(1)
             if (allocated(zeta)) deallocate(zeta)
-            allocate(zeta(n_par,n_r_eq)); zeta = 0.0_dp
+            allocate(zeta(n_par,grp_n_r_eq)); zeta = 0.0_dp
             if (allocated(theta)) deallocate(theta)
-            allocate(theta(n_par,n_r_eq)); theta = 0.0_dp
+            allocate(theta(n_par,grp_n_r_eq)); theta = 0.0_dp
             
             call init_eq
             
             zeta = 0.4*pi/2
-            do jd = 1,n_r_eq
+            do jd = 1,grp_n_r_eq
                 ierr = calc_eqd_mesh(theta(:,jd),n_par, 0.0_dp*pi, 3.0_dp*pi)
             CHCKERR('')
             end do
@@ -3156,7 +3156,7 @@ contains
             CHCKERR('')
             Rq_num = VMEC_R(5,:,0,0,0)*q_saf(:,0)
             call print_GP_2D('Rq (calc,num) at par = 5','',&
-                &reshape([Rq(5,:),Rq_num],[n_r_eq,2]))
+                &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Rq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             call lvl_ud(-1)
@@ -3171,7 +3171,7 @@ contains
             Rq_num = VMEC_R(5,:,1,0,0)*q_saf(:,0) + &
                 &VMEC_R(5,:,0,0,0)*q_saf(:,1)
             call print_GP_2D('DrRq (calc,num) at par = 5','',&
-                &reshape([Rq(5,:),Rq_num],[n_r_eq,2]))
+                &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Dtheta
@@ -3181,7 +3181,7 @@ contains
             Rq_num = VMEC_R(5,:,0,1,0)*q_saf(:,0) + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DtRq (calc,num) at par = 5','',&
-                &reshape([Rq(5,:),Rq_num],[n_r_eq,2]))
+                &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DtRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Dzeta
@@ -3191,7 +3191,7 @@ contains
             Rq_num = VMEC_R(5,:,0,0,1)*q_saf(:,0) + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DzRq (calc,num) at par = 5','',&
-                &reshape([Rq(5,:),Rq_num],[n_r_eq,2]))
+                &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DzRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             call lvl_ud(-1)
@@ -3207,7 +3207,7 @@ contains
                 &2.0_dp * VMEC_R(5,:,1,0,0)*q_saf(:,1) + &
                 &VMEC_R(5,:,0,0,0)*q_saf(:,2)
             call print_GP_2D('DrrRq (calc,num) at par = 5','',&
-                &reshape([Rq(5,:),Rq_num],[n_r_eq,2]))
+                &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrrRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Drtheta
@@ -3219,7 +3219,7 @@ contains
                 &VMEC_R(5,:,0,1,0)*q_saf(:,1) + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DrtRq (calc,num) at par = 5','',&
-                &reshape([Rq(5,:),Rq_num],[n_r_eq,2]))
+                &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrtRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Drzeta
@@ -3231,7 +3231,7 @@ contains
                 &VMEC_R(5,:,0,0,1)*q_saf(:,1) + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DrzRq (calc,num) at par = 5','',&
-                &reshape([Rq(5,:),Rq_num],[n_r_eq,2]))
+                &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrzRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Dthetatheta
@@ -3242,7 +3242,7 @@ contains
                 &2.0_dp * VMEC_R(5,:,0,1,0)*0.0_dp + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DttRq (calc,num) at par = 5','',&
-                &reshape([Rq(5,:),Rq_num],[n_r_eq,2]))
+                &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DttRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Dtzeta
@@ -3254,7 +3254,7 @@ contains
                 &VMEC_R(5,:,0,0,1)*0.0_dp + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DtzRq (calc,num) at par = 5','',&
-                &reshape([Rq(5,:),Rq_num],[n_r_eq,2]))
+                &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DtzRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Dzetazeta
@@ -3265,7 +3265,7 @@ contains
                 &2.0_dp * VMEC_R(5,:,0,0,1)*0.0_dp + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DzzRq (calc,num) at par = 5','',&
-                &reshape([Rq(5,:),Rq_num],[n_r_eq,2]))
+                &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DzzRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             call lvl_ud(-1)
@@ -3301,7 +3301,7 @@ contains
                 &3.0_dp * VMEC_R(5,:,0,0,1)*0.0_dp + &
                 &1.0_dp * VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DrttzzzRq (calc,num) at par = 5','',&
-                &reshape([Rq(5,:),Rq_num],[n_r_eq,2]))
+                &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrttzzzRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             call lvl_ud(-1)
@@ -3311,7 +3311,7 @@ contains
             character(*), parameter :: rout_name = 'case_1_1'
             
             ! local variables
-            real(dp) :: pq(n_r_eq), pq_num(n_r_eq)
+            real(dp) :: pq(grp_n_r_eq), pq_num(grp_n_r_eq)
             integer :: jd
             
             ! initialize ierr
@@ -3321,14 +3321,14 @@ contains
             call writo('calculate RZL')
             call lvl_ud(1)
             if (allocated(zeta)) deallocate(zeta)
-            allocate(zeta(n_par,n_r_eq)); zeta = 0.0_dp
+            allocate(zeta(n_par,grp_n_r_eq)); zeta = 0.0_dp
             if (allocated(theta)) deallocate(theta)
-            allocate(theta(n_par,n_r_eq)); theta = 0.0_dp
+            allocate(theta(n_par,grp_n_r_eq)); theta = 0.0_dp
             
             call init_eq
             
             zeta = 0.4*pi/2
-            do jd = 1,n_r_eq
+            do jd = 1,grp_n_r_eq
                 ierr = calc_eqd_mesh(theta(:,jd),n_par,0.0_dp*pi,3.0_dp*pi)
                 CHCKERR('')
             end do
@@ -3348,7 +3348,7 @@ contains
             CHCKERR('')
             pq_num = pres(:,0)*q_saf(:,0)
             call print_GP_2D('pq (calc,num) = 5','',&
-                &reshape([pq,pq_num],[n_r_eq,2]))
+                &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff pq (calc-num) = 5','',&
                 &pq-pq_num)
             call lvl_ud(-1)
@@ -3363,7 +3363,7 @@ contains
             pq_num = pres(:,1)*q_saf(:,0) + &
                 &pres(:,0)*q_saf(:,1)
             call print_GP_2D('Drpq (calc,num) = 5','',&
-                &reshape([pq,pq_num],[n_r_eq,2]))
+                &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Drpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Dtheta
@@ -3373,7 +3373,7 @@ contains
             pq_num = 0.0_dp*q_saf(:,0) + &
                 &pres(:,0)*0.0_dp
             call print_GP_2D('Dtpq (calc,num) = 5','',&
-                &reshape([pq,pq_num],[n_r_eq,2]))
+                &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Dtpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Dzeta
@@ -3383,7 +3383,7 @@ contains
             pq_num = 0.0_dp*q_saf(:,0) + &
                 &pres(:,0)*0.0_dp
             call print_GP_2D('Dzpq (calc,num) = 5','',&
-                &reshape([pq,pq_num],[n_r_eq,2]))
+                &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Dzpq (calc-num) = 5','',&
                 &pq-pq_num)
             call lvl_ud(-1)
@@ -3399,7 +3399,7 @@ contains
                 &2.0_dp * pres(:,1)*q_saf(:,1) + &
                 &pres(:,0)*q_saf(:,2)
             call print_GP_2D('Drrpq (calc,num) = 5','',&
-                &reshape([pq,pq_num],[n_r_eq,2]))
+                &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Drrpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Drtheta
@@ -3408,7 +3408,7 @@ contains
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Drtpq (calc,num) = 5','',&
-                &reshape([pq,pq_num],[n_r_eq,2]))
+                &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Drtpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Drzeta
@@ -3417,7 +3417,7 @@ contains
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Drzpq (calc,num) = 5','',&
-                &reshape([pq,pq_num],[n_r_eq,2]))
+                &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Drzpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Dthetatheta
@@ -3426,7 +3426,7 @@ contains
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Dttpq (calc,num) = 5','',&
-                &reshape([pq,pq_num],[n_r_eq,2]))
+                &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Dttpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Dtzeta
@@ -3435,7 +3435,7 @@ contains
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Dtzpq (calc,num) = 5','',&
-                &reshape([pq,pq_num],[n_r_eq,2]))
+                &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Dtzpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Dzetazeta
@@ -3444,7 +3444,7 @@ contains
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Dzzpq (calc,num) = 5','',&
-                &reshape([pq,pq_num],[n_r_eq,2]))
+                &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Dzzpq (calc-num) = 5','',&
                 &pq-pq_num)
             call lvl_ud(-1)
@@ -3457,7 +3457,7 @@ contains
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Drttzzzpq (calc,num) = 5','',&
-                &reshape([pq,pq_num],[n_r_eq,2]))
+                &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Drttzzzpq (calc-num) = 5','',&
                 &pq-pq_num)
             call lvl_ud(-1)

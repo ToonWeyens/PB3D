@@ -28,7 +28,7 @@ program PB3D
         &test_VMEC_norm_deriv, test_VMEC_conv_FHM, test_calc_RZL, &
         &test_arr_mult, test_calc_T_VF, test_calc_inv_met, test_calc_det, &
         &test_inv, test_calc_f_deriv, test_calc_g, test_f2r, &
-        &test_prepare_matrix_X, test_slepc, test_calc_interp
+        &test_prepare_X, test_slepc, test_calc_interp
 #if ldebug
     use num_vars, only: ltest
 #endif
@@ -118,7 +118,7 @@ program PB3D
         !CHCKERR
         !ierr = test_slepc()
         !CHCKERR
-        !ierr = test_prepare_matrix_X()
+        !ierr = test_prepare_X()
         !CHCKERR
         !ierr = test_B()
         !CHCKERR
@@ -168,7 +168,7 @@ contains
     ! stops the computations, aborting MPI, etc.
     ! as a special case, if ierr = 66, no error message is printed
     subroutine sudden_stop(ierr)
-        use num_vars, only: glob_rank
+        use num_vars, only: glb_rank
         
         ! input / output
         integer, intent(in) :: ierr                                             ! error to output
@@ -178,9 +178,9 @@ contains
         
         if (ierr.ne.66) then
             call writo('>> calling routine: PB3D (main) of rank '//&
-                &trim(i2str(glob_rank)))
+                &trim(i2str(glb_rank)))
             call writo('ERROR CODE '//trim(i2str(ierr))//&
-                &'. Aborting MPI rank '//trim(i2str(glob_rank)))
+                &'. Aborting MPI rank '//trim(i2str(glb_rank)))
             call lvl_ud(1)
             ierr_abort = abort_MPI()
         else

@@ -9,9 +9,9 @@ module num_vars
         &input_i, output_i, VMEC_i, min_alpha, max_alpha, n_alpha, &
         &theta_var_along_B, max_deriv, mu_0, calc_mesh_style, iu, EV_style, &
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
-        &glob_rank, glob_n_procs, group_rank, group_n_procs, group_nr, &
-        &n_groups,  output_name, next_job, next_job_win, plot_q, &
-        &n_sol_requested, min_n_r_X, min_r_X, max_r_X, nyq_fac, reuse_r
+        &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups,  &
+        &output_name, next_job, next_job_win, plot_q, n_sol_requested, &
+        &min_n_r_X, min_r_X, max_r_X, nyq_fac, reuse_r
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -31,11 +31,11 @@ module num_vars
     integer, allocatable :: n_procs(:)                                          ! hwo many processors per group of alpha
     integer :: MPI_Comm_groups                                                  ! communicator for the groups of alpha
     integer :: MPI_Comm_masters                                                 ! communicator for the masters of the groups of alpha
-    integer :: glob_rank                                                        ! global MPI rank
-    integer :: glob_n_procs                                                     ! global nr. MPI processes
-    integer :: group_rank                                                       ! alpha group MPI rank
-    integer :: group_n_procs                                                    ! alpha gropu nr. MPI processes
-    integer :: group_nr                                                         ! group nr.
+    integer :: glb_rank                                                         ! global MPI rank
+    integer :: glb_n_procs                                                      ! global nr. MPI processes
+    integer :: grp_rank                                                         ! alpha group MPI rank
+    integer :: grp_n_procs                                                      ! alpha gropu nr. MPI processes
+    integer :: grp_nr                                                           ! group nr.
     integer :: n_groups                                                         ! nr. of groups
     integer :: next_job                                                         ! next job to be done
     integer :: next_job_win                                                     ! window to next_job

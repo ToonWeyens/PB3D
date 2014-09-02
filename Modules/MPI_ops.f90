@@ -17,7 +17,7 @@ contains
     ! start MPI and gather information
     ! [MPI] Collective call
     integer function start_MPI() result(ierr)
-        use num_vars, only: glob_rank, glob_n_procs, group_rank
+        use num_vars, only: glb_rank, glb_n_procs, grp_rank
         character(*), parameter :: rout_name = 'start_MPI'
         
         ! initialize ierr
@@ -26,13 +26,13 @@ contains
         ! start MPI
         call MPI_init(ierr)                                                     ! initialize MPI
         CHCKERR('MPI init failed')
-        call MPI_Comm_rank(MPI_COMM_WORLD,glob_rank,ierr)                       ! global rank
+        call MPI_Comm_rank(MPI_COMM_WORLD,glb_rank,ierr)                        ! global rank
         CHCKERR('MPI rank failed')
-        call MPI_Comm_size(MPI_COMM_WORLD,glob_n_procs,ierr)                    ! nr. processes
+        call MPI_Comm_size(MPI_COMM_WORLD,glb_n_procs,ierr)                     ! nr. processes
         CHCKERR('MPI size failed')
         
         ! no alpha groups yet, so set group rank to global rank
-        group_rank = glob_rank
+        grp_rank = glb_rank
     end function start_MPI
     
     ! determine   how   to   split    the   communicator   MPI_COMM_WORLD   into
@@ -40,10 +40,9 @@ contains
     ! many processors to use per field line
     ! [MPI] Collective call
     integer function split_MPI() result(ierr)
-        use num_vars, only: n_procs_per_alpha, n_procs, n_alpha, &
-            &MPI_Comm_groups, glob_rank, glob_n_procs, group_rank, next_job, &
-            &group_n_procs, group_nr, n_groups,  MPI_Comm_masters, &
-            &next_job_win
+        use num_vars, only: n_procs_per_alpha, n_procs, n_alpha, min_n_r_X, &
+            &MPI_Comm_groups, glb_rank, glb_n_procs, grp_rank, next_job, &
+            &grp_n_procs, grp_nr, n_groups,  MPI_Comm_masters, next_job_win
         use file_ops, only: open_output
         
         character(*), parameter :: rout_name = 'split_MPI'
@@ -52,9 +51,9 @@ contains
         integer :: remainder                                                    ! remainder of division
         integer :: id                                                           ! counter
         integer :: sum_groups                                                   ! sum of previous colros
-        logical :: group_found                                                  ! when searching for group of local process
+        logical :: grp_found                                                    ! when searching for group of local process
         character(len=max_str_ln) :: str_1, str_2, str_3                        ! strings used in user messages
-        integer, allocatable :: glob_group_master_rank(:)                       ! global ranks of the group masters
+        integer, allocatable :: glb_grp_master_rank(:)                          ! global ranks of the group masters
         integer :: world_group                                                  ! MPI group associated to MPI_COMM_WORLD
         integer :: master_group                                                 ! MPI group associated to alpha group masters
         integer :: intsize                                                      ! size of MPI real
@@ -69,16 +68,16 @@ contains
         ! the first groups
         
         ! set n_procs to n_procs per alpha
-        if (glob_n_procs.lt.n_procs_per_alpha) n_procs_per_alpha = glob_n_procs ! too few processors for even one group
+        if (glb_n_procs.lt.n_procs_per_alpha) n_procs_per_alpha = glb_n_procs   ! too few processors for even one group
         
-        n_groups = glob_n_procs/n_procs_per_alpha                               ! how many groups of alpha
+        n_groups = glb_n_procs/n_procs_per_alpha                                ! how many groups of alpha
         if (n_groups.gt.n_alpha) n_groups = n_alpha                             ! too many groups for alpha's -> limit
         
         allocate(n_procs(n_groups))                                             ! allocate n_procs
         n_procs = n_procs_per_alpha
         
         ! add an extra process if the remainder is not zero
-        remainder = glob_n_procs - n_groups*n_procs_per_alpha
+        remainder = glb_n_procs - n_groups*n_procs_per_alpha
         id = 1
         do while (remainder.gt.0)
             n_procs(id) = n_procs(id)+1
@@ -91,10 +90,10 @@ contains
         end do
         
         ! user messages
-        if (glob_n_procs.eq.1) then
-            str_1 = '1 process'
+        if (glb_n_procs.eq.1) then
+            str_1 = '1 Process'
         else
-            str_1 = trim(i2str(glob_n_procs))//' processes'
+            str_1 = trim(i2str(glb_n_procs))//' Processes'
         end if
         if (n_groups.eq.1) then
             str_2 = '1 group'
@@ -119,45 +118,52 @@ contains
         else
             str_2 = trim(i2str(n_alpha))//' field lines'
         end if
-        if (glob_n_procs.eq.1) then
+        if (glb_n_procs.eq.1) then
             str_3 = ' in serial'
         else
             str_3 = ' in parallel'
         end if
         call writo(trim(str_1)//' a total of '//trim(str_2)//trim(str_3))       ! how many field lines to solve
         
-        ! determine  group nr. of  local process, group rank and  group_n_procs
-        group_nr = 0                                                            ! start group nr at 0, in MPI spirit
-        group_found = .false.                                                   ! group not yet found
+        ! determine  group nr. of  local process, group rank and  grp_n_procs
+        grp_nr = 0                                                              ! start group nr at 0, in MPI spirit
+        grp_found = .false.                                                     ! group not yet found
         sum_groups = 0                                                          ! start sum of ranks at 0
-        group_rank = glob_rank                                                  ! start group_rank at global rank
-        do while (.not.group_found)
-            sum_groups = sum_groups + n_procs(group_nr+1)                       ! upper bound of nr. processes of groups from 0 to group_nr+1
-            if (glob_rank+1.le.sum_groups) then                                 ! group found
-                group_found = .true.
-                group_n_procs = n_procs(group_nr+1)
+        grp_rank = glb_rank                                                     ! start grp_rank at global rank
+        do while (.not.grp_found)
+            sum_groups = sum_groups + n_procs(grp_nr+1)                         ! upper bound of nr. processes of groups from 0 to grp_nr+1
+            if (glb_rank+1.le.sum_groups) then                                  ! group found
+                grp_found = .true.
+                grp_n_procs = n_procs(grp_nr+1)
             else                                                                ! group not found: try next group
-                group_rank = group_rank - n_procs(group_nr+1)                   ! subtract n_procs in this group from group_rank
-                group_nr = group_nr + 1                                         ! increment group nr.
+                grp_rank = grp_rank - n_procs(grp_nr+1)                         ! subtract n_procs in this group from grp_rank
+                grp_nr = grp_nr + 1                                             ! increment group nr.
             end if
         end do
         
         ! split MPI_COMM_WORLD according to n_procs
-        call MPI_Comm_split(MPI_COMM_WORLD,group_nr,group_rank,MPI_Comm_groups,&
-            &ierr)
+        call MPI_Comm_split(MPI_COMM_WORLD,grp_nr,grp_rank,MPI_Comm_groups,ierr)
         CHCKERR('Failed to split in groups')
+        
+        ! increment n_r_X if lower than grp_n_procs
+        if (grp_n_procs.gt.min_n_r_X) then
+            call writo('WARNING: The starting nr. of normal points of the &
+                &perturbation is increased from '//trim(i2str(min_n_r_X))//&
+                &' to '//trim(i2str(grp_n_procs))//' because there are too &
+                &many processes')
+            min_n_r_X = grp_n_procs
+        end if
         
         ! take subset of MPI_COMM_WORLD  containing all group masters with their
         ! ranks according to the group rank
-        allocate(glob_group_master_rank(0:n_groups-1))                          ! allocate glob_group_master_rank
-        glob_group_master_rank(0) = 0                                           ! master of first group is also global master
+        allocate(glb_grp_master_rank(0:n_groups-1))                             ! allocate glb_grp_master_rank
+        glb_grp_master_rank(0) = 0                                              ! master of first group is also global master
         do id = 1,n_groups-1
-            glob_group_master_rank(id) = glob_group_master_rank(id-1) + &
-                &n_procs(id)
+            glb_grp_master_rank(id) = glb_grp_master_rank(id-1) + n_procs(id)
         end do
         call MPI_Comm_group(MPI_COMM_WORLD,world_group,ierr)                    ! get group of MPI_COMM_WORLD
         CHCKERR('Failed to get global group')
-        call MPI_Group_incl(world_group,n_groups,glob_group_master_rank,&
+        call MPI_group_incl(world_group,n_groups,glb_grp_master_rank,&
             &master_group,ierr)                                                 ! take master subset
         CHCKERR('Failed to create group of group masters')
         call MPI_Comm_create(MPI_COMM_WORLD,master_group,MPI_Comm_masters,ierr) ! create communicator for master subset
@@ -166,7 +172,7 @@ contains
         !!!! MPI_Comm_masters NOT NECESSARY ANYMORE !!!!
         
         ! set starting next_job to 1 on global master
-        if (glob_rank.eq.0) then
+        if (glb_rank.eq.0) then
             next_job = 1
         else
             next_job = 0
@@ -176,7 +182,7 @@ contains
         call MPI_Type_extent(MPI_INTEGER,intsize,ierr) 
         err_msg = 'Couldn''t determine the extent of MPI_REAL'
         CHCKERR(err_msg)
-        if (group_rank.eq.0) then
+        if (grp_rank.eq.0) then
             call MPI_Win_create(next_job,1*size_one,intsize,MPI_INFO_NULL,&
                 &MPI_COMM_WORLD,next_job_win,ierr)
         else
@@ -186,7 +192,7 @@ contains
         CHCKERR('Couldn''t create window to next_job')
         
         ! calculate the r range for the equilibrium calculations
-        ierr = calc_r_range()
+        ierr = calc_eq_r_range()
         CHCKERR('')
         
         ! set fence so that the global master holds next_job = 1 for sure
@@ -195,18 +201,18 @@ contains
         
         ! open an output file for the groups that are not the master group (i.e.
         ! the group containing the global master)
-        if (group_nr.ne.0) then
+        if (grp_nr.ne.0) then
             ierr = open_output()
             CHCKERR('')
         end if
     contains
-        ! calculate min_r_eq  and max_r_eq for this  rank in the alpha  group so
-        ! that the  equilibrium quantities  are calculated  for only  the normal
-        ! range that is relevant for the perturbation calculations, which are to
-        ! be anticipated.
+        ! calculate grp_min_r_eq  and grp_max_r_eq  for this  rank in  the alpha
+        ! group so that  the equilibrium quantities are calculated  for only the
+        ! normal range that is relevant for the perturbation calculations, which
+        ! are to be anticipated.
         ! This is done as follows: if  the nr. of perturbation grid points n_r_X
         ! goes to infinity,  the division under the processes  will approach the
-        ! ideal value  of 1/group_n_procs each.  For lower values of  n_r_X, the
+        ! ideal  value of  1/grp_n_procs each.  For lower  values of  n_r_X, the
         ! first processes can carry an additional perturbation grid point if the
         ! remainder of  the division is not  zero. The situation is  at its most
         ! assymetric for the lowest value of n_r_X.
@@ -215,62 +221,67 @@ contains
         ! of  the   equilibrium  range  of   each  processor  is  to   be  given
         ! by  the  grid   point  that  includes  the  lowest   of  the  possible
         ! perturbation  points,  at  n_r_X  going  to  infinity  (i.e.  r_min  +
-        ! group_rank*(r_max-r_min)/group_n_procs)   and  the   maximum  of   the
-        ! equilibrium range is  to be given by the grid  point that includes the
-        ! highest of  the possible perturbation  points, at n_r_X at  its lowest
-        ! value (i.e. given by divide_grid with  cumul true) plus 1, because the
-        ! perturbation  quantity of  perturbation  normal point  (i) depends  on
-        ! perturbation normal point (i+1)
+        ! grp_rank*(r_max-r_min)/grp_n_procs) and the maximum of the equilibrium
+        ! range is to  be given by the  grid point that includes  the highest of
+        ! the possible perturbation  points, at n_r_X at its  lowest value (i.e.
+        ! given by divide_grid with cumul true) plus 1, because the perturbation
+        ! quantity  of perturbation  normal  point (i)  depends on  perturbation
+        ! normal point (i+1)
         ! Furthermore,  the conversion  between points  r_X on  the perturbation
         ! range  (0..1) and  discrete grid  points r_eq  on the  equilbrium grid
-        ! (1..n_r), the subroutine  con2dis is used with  equilibrium limits set
-        ! to [1..n_r]
+        ! (1..n_r_eq), the  subroutine con2dis  is used with  equilibrium limits
+        ! set to [1..n_r_eq]
         ! [MPI] Collective call
-        integer function calc_r_range() result(ierr)
-            use num_vars, only: min_n_r_X, group_n_procs, group_rank, min_r_X, &
+        integer function calc_eq_r_range() result(ierr)
+            use num_vars, only: min_n_r_X, grp_n_procs, grp_rank, min_r_X, &
                 &max_r_X
             use utilities, only: con2dis, dis2con
-            use eq_vars, only: min_r_eq, max_r_eq
-            use VMEC_vars, only: n_r
+            use eq_vars, only: grp_min_r_eq, grp_max_r_eq
+            use VMEC_vars, only: n_r_eq
+            use X_vars, only: grp_max_r_X
             
-            character(*), parameter :: rout_name = 'calc_r_range'
+            character(*), parameter :: rout_name = 'calc_eq_r_range'
             
             ! local variables
-            real(dp) :: min_r_eq_X_con                                          ! min_r_eq in continuous perturbation grid
-            real(dp) :: min_r_eq_dis                                            ! min_r_eq in discrete equilibrium grid, unrounded
-            integer :: max_r_eq_X_dis                                           ! max_r_eq in discrete perturbation grid
-            real(dp) :: max_r_eq_X_con                                          ! max_r_eq in continuous perturbation grid
-            real(dp) :: max_r_eq_dis                                            ! max_r_eq in discrete equilibrium grid, unrounded
+            real(dp) :: grp_min_r_eq_X_con                                      ! grp_min_r_eq in continuous perturbation grid
+            real(dp) :: grp_min_r_eq_dis                                        ! grp_min_r_eq in discrete equilibrium grid, unrounded
+            integer :: grp_max_r_eq_X_dis                                       ! grp_max_r_eq in discrete perturbation grid
+            real(dp) :: grp_max_r_eq_X_con                                      ! grp_max_r_eq in continuous perturbation grid
+            real(dp) :: grp_max_r_eq_dis                                        ! grp_max_r_eq in discrete equilibrium grid, unrounded
             
             ! initialize ierr
             ierr = 0
             
-            ! use min_r_X  and max_r_X,  with group_n_procs  to get  the minimum
-            ! bound for this rank
-            min_r_eq_X_con = min_r_X + &
-                &group_rank*(max_r_X-min_r_X)/group_n_procs                     ! min_r_eq in continuous perturbation grid (0..1)
-            call con2dis(min_r_eq_X_con,[0._dp,1._dp],min_r_eq_dis,[1,n_r])     ! min_r_eq in discrete equilibrium grid, unrounded
-            min_r_eq = floor(min_r_eq_dis)                                      ! rounded up
+            write(*,*) '!!! CHANGE calc_eq_r_range in MPI_OPS: GIVE MORE WORK &
+                &TO LAST PROCS, NOT FIRST !!!!!!!'
+            ! use min_r_X and max_r_X, with grp_n_procs to get the minimum bound
+            ! for this rank
+            grp_min_r_eq_X_con = min_r_X + &
+                &grp_rank*(max_r_X-min_r_X)/grp_n_procs                         ! grp_min_r_eq in continuous perturbation grid (0..1)
+            call con2dis(grp_min_r_eq_X_con,[0._dp,1._dp],grp_min_r_eq_dis,&
+                &[1,n_r_eq])                                                    ! grp_min_r_eq in discrete equilibrium grid, unrounded
+            grp_min_r_eq = floor(grp_min_r_eq_dis)                              ! rounded up
             
-            ! use grid_max with min_n_r_X to calculate max_r_eq
-            ierr = divide_grid(MPI_Comm_groups,min_n_r_X,max_r_eq_X_dis,&
-                &cumul=.true.)                                                  ! max_r_eq in discrete perturbation grid (1..min_n_r_X)
+            ! use grid_max with min_n_r_X to calculate grp_max_r_eq
+            ierr = divide_grid(min_n_r_X)                                       ! divide the grid for the min_n_r_X tot. normal points
             CHCKERR('')
-            if (group_rank.ne.group_n_procs-1) &
-                &max_r_eq_X_dis = max_r_eq_X_dis + 1                            ! only add 1 if not last global point
-            call dis2con(max_r_eq_X_dis,[1,min_n_r_X],max_r_eq_X_con,&
-                &[0._dp,1._dp])                                                 ! max_r_eq in continuous perturbation grid (min_r_X..max_r_X)
-            max_r_eq_X_con = min_r_X + (max_r_X-min_r_X)*max_r_eq_X_con         ! max_r_eq in continuous perturbation grid (0..1)
-            call con2dis(max_r_eq_X_con,[0._dp,1._dp],max_r_eq_dis,[1,n_r])     ! max_r_eq in discrete equilibrium grid, unrounded
-            max_r_eq = ceiling(max_r_eq_dis)                                    ! round down
-        end function calc_r_range
+            grp_max_r_eq_X_dis = grp_max_r_X                                    ! grp_max_r_eq in discrete perturbation grid (1..min_n_r_X)
+            if (grp_rank.ne.grp_n_procs-1) &
+                &grp_max_r_eq_X_dis = grp_max_r_eq_X_dis + 1                    ! only add 1 if not last global point
+            call dis2con(grp_max_r_eq_X_dis,[1,min_n_r_X],grp_max_r_eq_X_con,&
+                &[0._dp,1._dp])                                                 ! grp_max_r_eq in continuous perturbation grid (min_r_X..max_r_X)
+            grp_max_r_eq_X_con = min_r_X + (max_r_X-min_r_X)*grp_max_r_eq_X_con ! grp_max_r_eq in continuous perturbation grid (0..1)
+            call con2dis(grp_max_r_eq_X_con,[0._dp,1._dp],grp_max_r_eq_dis,&
+                &[1,n_r_eq])                                                    ! grp_max_r_eq in discrete equilibrium grid, unrounded
+            grp_max_r_eq = ceiling(grp_max_r_eq_dis)                            ! round down
+        end function calc_eq_r_range
     end function split_MPI
     
     ! merge the MPI groups back to MPI_COMM_WORLD
     ! [MPI] Collective call
     integer function merge_MPI() result(ierr)
         use num_vars, only: MPI_Comm_groups, MPI_Comm_masters, n_groups, &
-            &group_rank, next_job_win, glob_rank
+            &grp_rank, next_job_win, glb_rank
         
         character(*), parameter :: rout_name = 'merge_MPI'
         
@@ -288,15 +299,15 @@ contains
         call MPI_Comm_free(MPI_Comm_groups,ierr)
         CHCKERR('Unable to free communicator for groups')
         if (n_groups.gt.1) then
-            if (group_rank.eq.0) then
+            if (grp_rank.eq.0) then
                 call MPI_Comm_free(MPI_Comm_masters,ierr)
                 err_msg = 'Unable to free communicator for masters'
                 CHCKERR(err_msg)
             end if
         end if
         
-        ! reset meaningless group_rank to glob_rank (for output, etc...)
-        group_rank = glob_rank
+        ! reset meaningless grp_rank to glb_rank (for output, etc...)
+        grp_rank = glb_rank
         
         ! barrier
         call MPI_Barrier(MPI_COMM_WORLD,ierr)
@@ -334,8 +345,8 @@ contains
     ! maximum value. Returns this value
     ! [MPI] Collective call
     integer function get_next_job(next_job) result(ierr)
-        use num_vars, only: group_rank, next_job_win, MPI_Comm_groups, &
-            &n_alpha, group_nr
+        use num_vars, only: grp_rank, next_job_win, MPI_Comm_groups, &
+            &n_alpha, grp_nr
         
         character(*), parameter :: rout_name = 'get_next_job'
         
@@ -350,19 +361,19 @@ contains
         ierr = 0
         
         ! test whether it is a master that calls this routine
-        if (group_rank.eq.0) then
+        if (grp_rank.eq.0) then
             call MPI_Win_lock(MPI_LOCK_EXCLUSIVE,0,0,next_job_win,ierr)
-            err_msg = 'Group '//trim(i2str(group_nr))//&
+            err_msg = 'Group '//trim(i2str(grp_nr))//&
                 &' coulnd''t lock window on global master'
             CHCKERR(err_msg)
             call MPI_Get_accumulate(1,1,MPI_INTEGER,next_job,1,&
                 &MPI_INTEGER,0,null_disp,1,MPI_INTEGER,MPI_SUM,&
                 &next_job_win,ierr)
-            err_msg = 'Group '//trim(i2str(group_nr))//&
+            err_msg = 'Group '//trim(i2str(grp_nr))//&
                 &' coulnd''t increment next_job on global master'
             CHCKERR(err_msg)
             call MPI_Win_unlock(0,next_job_win,ierr)
-            err_msg = 'Group '//trim(i2str(group_nr))//&
+            err_msg = 'Group '//trim(i2str(grp_nr))//&
                 &' coulnd''t unlock window on global master'
             CHCKERR(err_msg)
             
@@ -380,8 +391,8 @@ contains
     ! gather solution Eigenvector X_vec in serial version on group master
     ! [MPI] Collective call
     integer function get_ser_X_vec(X_vec,ser_X_vec,n_m_X) result(ierr)
-        use num_vars, only: MPI_Comm_groups, group_rank, group_n_procs
-        use X_vars, only: group_n_r_X
+        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
+        use X_vars, only: grp_n_r_X
         
         character(*), parameter :: rout_name = 'get_X_vec'
         
@@ -399,79 +410,85 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! gather  group_n_r_X of  all groups  onto main  processor, to  serve as
+        ! gather  grp_n_r_X of  all  groups  onto main  processor,  to serve  as
         ! recvcounts on group master
-        if (group_rank.eq.0) then
-            allocate(recvcounts(group_n_procs))
-            allocate(displs(group_n_procs))
+        if (grp_rank.eq.0) then
+            allocate(recvcounts(grp_n_procs))
+            allocate(displs(grp_n_procs))
         else
             allocate(recvcounts(0))
             allocate(displs(0))
         end if
-        call MPI_Gather(group_n_r_X,1,MPI_INTEGER,recvcounts,1,MPI_INTEGER,0,&
+        call MPI_Gather(grp_n_r_X,1,MPI_INTEGER,recvcounts,1,MPI_INTEGER,0,&
             &MPI_Comm_groups,ierr)
         err_msg = 'Failed to gather solution Eigenvector'
         recvcounts = recvcounts * n_m_X
         
         ! deduce displacemnts by summing recvcounts
-        if (group_rank.eq.0) then
+        if (grp_rank.eq.0) then
             displs(1) = 0
-            do id = 2,group_n_procs
+            do id = 2,grp_n_procs
                 displs(id) = displs(id-1) + recvcounts(id-1)
             end do
         end if
         
-        call MPI_Gatherv(X_vec,group_n_r_X*n_m_X,MPI_DOUBLE_COMPLEX,ser_X_vec,&
+        call MPI_Gatherv(X_vec,grp_n_r_X*n_m_X,MPI_DOUBLE_COMPLEX,ser_X_vec,&
             &recvcounts,displs,MPI_DOUBLE_COMPLEX,0,MPI_Comm_groups,ierr)
         err_msg = 'Failed to gather solution Eigenvector'
         CHCKERR(err_msg)
     end function get_ser_X_vec
     
-    ! divides a grid  of n points under  the ranks of MPI  Communicator comm and
-    ! assigns n_loc to each rank
-    integer function divide_grid(comm,n,n_loc,cumul) result(ierr)
+    ! divides a  grid of  n_r_X points  under the  ranks of  MPI_Comm_groups and
+    ! assigns grp_n_r_X and grp_min_r_X and grp_max_r_X to each rank
+    integer function divide_grid(n_r_X_in) result(ierr)
+        use num_vars, only: MPI_Comm_groups
+        use X_vars, only: n_r_X, grp_n_r_X, grp_min_r_X, grp_max_r_X, &
+            &grp_min_r_X, grp_max_r_X
+        use utilities, only: dis2con
+        
         character(*), parameter :: rout_name = 'divide_grid'
         
         ! input / output
-        integer, intent(in) :: comm                                             ! MPI communicator for the group
-        integer, intent(in) :: n                                                ! number of grid points to be divided
-        integer, intent(inout) :: n_loc                                         ! number of grid points for this rank
-        logical, intent(in), optional :: cumul                                  ! if .true., n_loc is given cumulative
+        integer, intent(in), optional :: n_r_X_in                               ! custom user-provided number n_r_X
         
         ! local variables
         integer :: n_procs                                                      ! nr. of procs.
         integer :: rank                                                         ! rank
-        logical :: cumul_loc                                                    ! local version of cumul
         integer :: id                                                           ! counter
+        integer :: n_r_X_loc                                                    ! local value of n_r_X, either user-provided or from X_vars
         
         ! initialize ierr
         ierr = 0
         
-        ! initialize cumul_loc
-        if (present(cumul)) then
-            cumul_loc = cumul
+        ! set n_r_X_loc
+        if (present(n_r_X_in)) then
+            n_r_X_loc = n_r_X_in
         else
-            cumul_loc = .false.
+            n_r_X_loc = n_r_X
         end if
         
         ! set n_procs and rank
-        call MPI_Comm_size(comm,n_procs,ierr)
+        call MPI_Comm_size(MPI_Comm_groups,n_procs,ierr)
         CHCKERR('Failed to get MPI size')
-        call MPI_Comm_rank(comm,rank,ierr)
+        call MPI_Comm_rank(MPI_Comm_groups,rank,ierr)
         CHCKERR('Failed to get MPI rank')
         
-        if (cumul_loc) then
-            n_loc = 0
-            do id = 0,rank
-                n_loc = n_loc + divide_grid_ind(id)
-            end do
-        else
-            n_loc = divide_grid_ind(rank)
-        end if
+        ! calculate n_loc for this rank
+        grp_n_r_X = divide_grid_ind(rank,n_r_X_loc,n_procs)
+        
+        ! calculate the starting index of this rank
+        grp_min_r_X = 1
+        do id = 0,rank-1
+            grp_min_r_X = grp_min_r_X + divide_grid_ind(id,n_r_X_loc,n_procs)
+        end do
+        ! calculate the end index of this rank
+        grp_max_r_X = grp_min_r_X - 1 + grp_n_r_X
     contains 
-        integer function divide_grid_ind(rank) result(n_loc)
+        integer function divide_grid_ind(rank,n,n_procs) result(n_loc)
             ! input / output
             integer, intent(in) :: rank                                         ! rank for which to be calculate divide_grid_ind
+            integer, intent(in) :: n                                            ! tot. nr. of points to be divided under n_procs
+            integer, intent(in) :: n_procs                                      ! nr. of processes
             
             n_loc = n/n_procs                                                   ! number of radial points on this processor
             if (mod(n,n_procs).gt.0) then                                       ! check if there is a remainder
@@ -510,8 +527,8 @@ contains
     !   22  integer                     max_m_X
     !   23  integer                     n_sol_requested
     !   24  integer                     min_n_r_X
-    !   25  integer                     min_r_eq
-    !   26  integer                     max_r_eq
+    !   25  integer                     grp_min_r_eq
+    !   26  integer                     grp_max_r_eq
     !   27  integer                     nyq_fac
     !   28  real_dp                     min_alpha
     !   29  real_dp                     max_alpha
@@ -522,36 +539,37 @@ contains
     !   34  real_dp                     min_par
     !   35  real_dp                     max_par
     !   36  real_dp                     version
-    !   37  real_dp(n_r)                phi(n_r) 
-    !   38  real_dp(n_r)                phi_r(n_r) 
-    !   39  real_dp(n_r)                iotaf(n_r) 
-    !   30  real_dp(n_r)                presf(n_r) 
-    !   31  real_dp(*)                  R_c(*)
-    !   42  real_dp(*)                  R_s(*)
-    !   43  real_dp(*)                  Z_c(*)
-    !   44  real_dp(*)                  Z_s(*)
-    !   45  real_dp(*)                  L_c(*)
-    !   46  real_dp(*)                  L_s(*)
+    !   37  real_dp                     gam
+    !   38  real_dp(n_r)                phi(n_r) 
+    !   39  real_dp(n_r)                phi_r(n_r) 
+    !   30  real_dp(n_r)                iotaf(n_r) 
+    !   31  real_dp(n_r)                presf(n_r) 
+    !   32  real_dp(*)                  R_c(*)
+    !   43  real_dp(*)                  R_s(*)
+    !   44  real_dp(*)                  Z_c(*)
+    !   45  real_dp(*)                  Z_s(*)
+    !   46  real_dp(*)                  L_c(*)
+    !   47  real_dp(*)                  L_s(*)
     !   with (*) = (0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3))
     ! [MPI] Collective call
     integer function broadcast_vars() result(ierr)
-        use VMEC_vars, only: mpol, ntor, lasym, lrfp, lfreeb, nfp, iotaf, &
-            &R_c, R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf, version, n_r
+        use VMEC_vars, only: mpol, ntor, lasym, lrfp, lfreeb, nfp, iotaf, gam, &
+            &R_c, R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf, version, n_r_eq
         use num_vars, only: max_str_ln, output_name, ltest, &
             &theta_var_along_B, EV_style, max_it_NR, max_it_r, n_alpha, &
-            &n_procs_per_alpha, style, max_alpha, min_alpha, tol_NR, glob_rank, &
-            &glob_n_procs, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
+            &n_procs_per_alpha, style, max_alpha, min_alpha, tol_NR, glb_rank, &
+            &glb_n_procs, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
             &reuse_r, nyq_fac, tol_r
         use output_ops, only: format_out
         use X_vars, only: n_X, min_m_X, max_m_X
-        use eq_vars, only: n_par, max_par, min_par, min_r_eq, max_r_eq
+        use eq_vars, only: n_par, max_par, min_par, grp_min_r_eq, grp_max_r_eq
         
         character(*), parameter :: rout_name = 'broadcast_vars'
         
         ! initialize ierr
         ierr = 0
         
-        if (glob_n_procs.gt.1) then                                             ! need to broadcast from global rank 0 to other processes
+        if (glb_n_procs.gt.1) then                                              ! need to broadcast from global rank 0 to other processes
             ! print message
             call writo('Broadcasting variables determined by input')
             call lvl_ud(1)
@@ -575,7 +593,7 @@ contains
             call MPI_Bcast(format_out,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(style,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(n_par,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(n_r,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(n_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(mpol,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(ntor,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(nfp,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
@@ -587,8 +605,8 @@ contains
             call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(n_sol_requested,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_n_r_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(min_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(max_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(grp_min_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(grp_max_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(nyq_fac,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
@@ -599,6 +617,7 @@ contains
             call MPI_Bcast(min_par,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_par,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(version,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(gam,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call bcast_size_1_R(phi)
             call MPI_Bcast(phi,size(phi),MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call bcast_size_1_R(phi_r)
@@ -626,7 +645,7 @@ contains
     contains
         ! broadcasts the size of an array, so this array can be allocated in the
         ! slave processes
-        ! The index of this array is (1:n_r)
+        ! The index of this array is (1:n_r_eq)
         subroutine bcast_size_1_I(arr)                                          ! version with 1 integer argument
             ! input / output
             integer, intent(inout), allocatable :: arr(:)
@@ -634,25 +653,25 @@ contains
             ! local variables
             integer :: arr_size                                                 ! sent ahead so arrays can be allocated
             
-            if (glob_rank.eq.0) arr_size = size(arr)
+            if (glb_rank.eq.0) arr_size = size(arr)
             
             call MPI_Bcast(arr_size,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            if (glob_rank.ne.0) allocate(arr(1:arr_size))
+            if (glb_rank.ne.0) allocate(arr(1:arr_size))
         end subroutine bcast_size_1_I
-        ! The index of this array is (1:n_r)
-        subroutine bcast_size_1_R(arr)                                            ! version with 1 real argument
+        ! The index of this array is (1:n_r_eq)
+        subroutine bcast_size_1_R(arr)                                          ! version with 1 real argument
             ! input / output
             real(dp), intent(inout), allocatable :: arr(:)
             
             ! local variables
             integer :: arr_size                                                 ! sent ahead so arrays can be allocated
             
-            if (glob_rank.eq.0) arr_size = size(arr)
+            if (glb_rank.eq.0) arr_size = size(arr)
             
             call MPI_Bcast(arr_size,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            if (glob_rank.ne.0) allocate(arr(1:arr_size))
+            if (glb_rank.ne.0) allocate(arr(1:arr_size))
         end subroutine bcast_size_1_R
-        ! The index of this array is (0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3))
+        ! The array index is (0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3))
         subroutine bcast_size_4_R(arr)                                          ! version with 4 real arguments
             ! input / output
             real(dp), intent(inout), allocatable :: arr(:,:,:,:)
@@ -660,11 +679,11 @@ contains
             ! local variables
             integer :: arr_size(4)                                              ! sent ahead so arrays can be allocated
             
-            if (glob_rank.eq.0) arr_size = [size(arr,1),size(arr,2),&
+            if (glb_rank.eq.0) arr_size = [size(arr,1),size(arr,2),&
                 &size(arr,3),size(arr,4)]
             
             call MPI_Bcast(arr_size,4,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            if (glob_rank.ne.0) allocate(arr(0:arr_size(1)-1,&
+            if (glb_rank.ne.0) allocate(arr(0:arr_size(1)-1,&
                 &-(arr_size(2)-1)/2:(arr_size(2)-1)/2,1:arr_size(3),&
                 &0:arr_size(4)-1))
         end subroutine bcast_size_4_R

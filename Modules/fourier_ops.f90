@@ -132,7 +132,7 @@ contains
     ! [MPI] only global master
     !       (this is a precaution: only the global master should use it)
     function repack(var_VMEC,mnmax,n_r,mpol,ntor,xm,xn)
-        use num_vars, only: glob_rank
+        use num_vars, only: glb_rank
         
         integer, intent(in) :: mnmax, n_r, mpol, ntor
         real(dp), intent(in) :: xm(mnmax), xn(mnmax)
@@ -142,7 +142,7 @@ contains
             
         real(dp) :: repack(0:mpol-1,-ntor:ntor,1:n_r)
             
-        if (allocated(var_VMEC) .and. glob_rank.eq.0) then                      ! only global rank
+        if (allocated(var_VMEC) .and. glb_rank.eq.0) then                       ! only global rank
             ! check if the  values in xm and xn don't  exceed the maximum number
             ! of poloidal and toroidal modes (xm  and xn are of length mnmax and
             ! contain the pol/tor mode number)
