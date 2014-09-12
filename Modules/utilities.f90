@@ -1047,9 +1047,9 @@ contains
         character(*), parameter :: rout_name = 'calc_interp_real'
         
         ! input / output
-        real(dp), intent(in) :: varin(:,:,:,:)                                  ! input variable, not interpolated
+        real(dp), intent(in) :: varin(:)                                        ! input variable, not interpolated
         integer, intent(in) :: limin(2)                                         ! start and end points at which variable is tabulated
-        real(dp), intent(inout) :: varout(:,:,:)                                ! output variable, interpolated
+        real(dp), intent(inout) :: varout                                       ! output variable, interpolated
         real(dp), intent(in) :: ptout                                           ! point at which to interpolate (0...1)
         integer, intent(in), optional :: r_offset                               ! offset in the tables in the normal variable, wrt. 1
         
@@ -1058,7 +1058,6 @@ contains
         integer :: ind_lo, ind_hi                                               ! lower and upper index
         real(dp) :: pt_arr                                                      ! point in array referring to ptout
         real(dp) :: margin = 1E-4_dp                                            ! margin for the comparisons
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -1067,12 +1066,6 @@ contains
         ptout_loc = ptout
         
         ! tests
-        if (size(varin,1).ne.size(varout,1) .or. size(varin,3).ne.&
-            &size(varout,2) .or. size(varin,4).ne.size(varout,3)) then
-            err_msg = 'The sizes of varin and varout have to match!'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
         ierr = round_with_tol(ptout_loc,0.0_dp,1.0_dp,margin)
         CHCKERR('')
         
@@ -1083,11 +1076,11 @@ contains
         
         ! interpolate
         if (present(r_offset)) then                                             ! include offset
-            varout = varin(:,ind_lo-r_offset,:,:) + (pt_arr-ind_lo) * &
-                &(varin(:,ind_hi-r_offset,:,:)-varin(:,ind_lo-r_offset,:,:))
+            varout = varin(ind_lo-r_offset) + (pt_arr-ind_lo) * &
+                &(varin(ind_hi-r_offset)-varin(ind_lo-r_offset))
         else
-            varout = varin(:,ind_lo,:,:) + (pt_arr-ind_lo) * &
-                &(varin(:,ind_hi,:,:)-varin(:,ind_lo,:,:))
+            varout = varin(ind_lo) + (pt_arr-ind_lo) * &
+                &(varin(ind_hi)-varin(ind_lo))
         end if
     end function calc_interp_real
     integer function calc_interp_complex(varin,limin,varout,ptout,r_offset) &
@@ -1095,9 +1088,9 @@ contains
         character(*), parameter :: rout_name = 'calc_interp_complex'
         
         ! input / output
-        complex(dp), intent(in) :: varin(:,:,:,:)                               ! input variable, not interpolated
+        complex(dp), intent(in) :: varin(:)                                     ! input variable, not interpolated
         integer, intent(in) :: limin(2)                                         ! start and end points at which variable is tabulated
-        complex(dp), intent(inout) :: varout(:,:,:)                             ! output variable, interpolated
+        complex(dp), intent(inout) :: varout                                    ! output variable, interpolated
         real(dp), intent(in) :: ptout                                           ! point at which to interpolate (0...1)
         integer, intent(in), optional :: r_offset                               ! offset in the tables in the normal variable, wrt. 1
         
@@ -1106,7 +1099,6 @@ contains
         integer :: ind_lo, ind_hi                                               ! lower and upper index
         real(dp) :: pt_arr                                                      ! point in array referring to ptout
         real(dp) :: margin = 1E-4_dp                                            ! margin for the comparisons
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -1115,12 +1107,6 @@ contains
         ptout_loc = ptout
         
         ! tests
-        if (size(varin,1).ne.size(varout,1) .or. size(varin,3).ne.&
-            &size(varout,2) .or. size(varin,4).ne.size(varout,3)) then
-            err_msg = 'The sizes of varin and varout have to match!'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
         ierr = round_with_tol(ptout_loc,0.0_dp,1.0_dp,margin)
         CHCKERR('')
         
@@ -1131,11 +1117,11 @@ contains
         
         ! interpolate
         if (present(r_offset)) then                                             ! include offset
-            varout = varin(:,ind_lo-r_offset,:,:) + (pt_arr-ind_lo) * &
-                &(varin(:,ind_hi-r_offset,:,:)-varin(:,ind_lo-r_offset,:,:))
+            varout = varin(ind_lo-r_offset) + (pt_arr-ind_lo) * &
+                &(varin(ind_hi-r_offset)-varin(ind_lo-r_offset))
         else
-            varout = varin(:,ind_lo,:,:) + (pt_arr-ind_lo) * &
-                &(varin(:,ind_hi,:,:)-varin(:,ind_lo,:,:))
+            varout = varin(ind_lo) + (pt_arr-ind_lo) * &
+                &(varin(ind_hi)-varin(ind_lo))
         end if
     end function calc_interp_complex
     

@@ -10,6 +10,7 @@ module output_ops
     public init_output_ops, lvl_ud, writo, print_GP_2D, print_GP_3D, &
         &print_ar_1, print_ar_2, draw_GP, print_err_msg, init_time, &
         &start_time, stop_time, passed_time, print_hello, print_goodbye, &
+        &draw_GP_animated, &
         &lvl, lvl_sep, format_out
 
     ! global variables
@@ -214,7 +215,7 @@ contains
                 call print_GP_2D_arr(fun_name,file_name,reshape(y,[npoints,1]))
             end if
         end if
-    end subroutine
+    end subroutine print_GP_2D_ind
     subroutine print_GP_2D_arr(fun_name,file_name_i,y,x,draw)                   ! multiple plots
         use num_vars, only: n_seq_0
         use safe_open_mod, only: safe_open
@@ -277,12 +278,12 @@ contains
         ! close output file
         close(nr)
         
-        ! if draw is present and equal to .false., cancell calling draw_GP
+        ! if draw is present and equal to .false., cancel calling draw_GP
         if (present(draw)) then
             if (.not.draw) return
         end if
         call draw_GP(fun_name,trim(file_name),nplt,.true.,.true.)
-    end subroutine
+    end subroutine print_GP_2D_arr
     
     ! print 3D output on a file or on the screen, using GNUPlot
     ! The variables fun_name and file_name hold the  name of the plot and of the
@@ -350,7 +351,7 @@ contains
                 end if
             end if
         end if
-    end subroutine
+    end subroutine print_GP_3D_ind
     subroutine print_GP_3D_arr(fun_name,file_name_i,z,y,x,draw)                 ! multiple plots
         use num_vars, only: n_seq_0
         use safe_open_mod, only: safe_open
@@ -438,12 +439,12 @@ contains
         ! close output file
         close(nr)
         
-        ! if draw is present and equal to .false., cancell calling draw_GP
+        ! if draw is present and equal to .false., cancel calling draw_GP
         if (present(draw)) then
             if (.not.draw) return
         end if
         call draw_GP(fun_name,trim(file_name),nplt,.false.,.true.)
-    end subroutine
+    end subroutine print_GP_3D_arr
     
     ! use GNUPlot to draw a plot
     ! The variables  fun_name and file_name  hold the name  of the plot  and the
@@ -480,7 +481,8 @@ contains
                     gnuplot_cmd = trim(gnuplot_cmd) // ' '''//trim(file_name)//&
                         &''' using '//trim(i2str(iplt))//':'//&
                         &trim(i2str(nplt+iplt))//' title '''//trim(fun_name)//&
-                        &'_'//trim(i2str(iplt))//''' with lines'
+                    &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
+                    &')'' with lines'
                     if (iplt.lt.nplt) gnuplot_cmd = trim(gnuplot_cmd)//','
                 end do
             else
@@ -489,8 +491,9 @@ contains
                     gnuplot_cmd = trim(gnuplot_cmd) // ' '''//trim(file_name)//&
                         &''' using '//trim(i2str(iplt))//':'//&
                         &trim(i2str(nplt+iplt))//':'//&
-                        &trim(i2str(2*nplt+iplt))//' title '''//&
-                        &trim(fun_name)//'_'//trim(i2str(iplt))//''' with lines'
+                        &trim(i2str(2*nplt+iplt))//' title '''//trim(fun_name)//&
+                    &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
+                    &')'' with lines'
                     if (iplt.lt.nplt) gnuplot_cmd = trim(gnuplot_cmd)//','
                 end do
             end if
@@ -511,7 +514,8 @@ contains
                     gnuplot_cmd = trim(gnuplot_cmd) // ' '''//trim(file_name)//&
                         &''' using '//trim(i2str(iplt))//':'//&
                         &trim(i2str(nplt+iplt))//' title '''//trim(fun_name)//&
-                        &'_'//trim(i2str(iplt))//''' with lines'
+                    &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
+                    &')'' with lines'
                     if (iplt.lt.nplt) gnuplot_cmd = trim(gnuplot_cmd)//','
                 end do
             else
@@ -520,13 +524,17 @@ contains
                     gnuplot_cmd = trim(gnuplot_cmd) // ' '''//trim(file_name)//&
                         &''' using '//trim(i2str(iplt))//':'//&
                         &trim(i2str(nplt+iplt))//':'//&
-                        &trim(i2str(2*nplt+iplt))//' title '''//&
-                        &trim(fun_name)//'_'//trim(i2str(iplt))//''' with lines'
+                        &trim(i2str(2*nplt+iplt))//' title '''//trim(fun_name)//&
+                    &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
+                    &')'' with lines'
                     if (iplt.lt.nplt) gnuplot_cmd = trim(gnuplot_cmd)//','
                 end do
             end if
             ! finishing the GNUPlot command
             gnuplot_cmd = trim(gnuplot_cmd)//';"'
+            
+            call writo('Created plot in output file '''//trim(plot_dir)//&
+                &'/'//trim(fun_name)//'.pdf''')
         end if
         !write(*,*) 'gnuplot_cmd = ', trim(gnuplot_cmd)
         
@@ -538,6 +546,96 @@ contains
         
         ! start timer
         call start_time
+    end subroutine
+    
+    ! use GNUPlot to draw an animated plot in an animated gif
+    ! The variables  fun_name and file_name  hold the name  of the plot  and the
+    ! name of the file in which the plot is to be found. is_2D indicates whether
+    ! the plot is 2D or 3D. The plot is saved in a file called [fun_name].gif
+    subroutine draw_GP_animated(fun_name,file_name,nplt,is_2D,ranges)
+        use safe_open_mod, only: safe_open
+        
+        ! input / output
+        character(len=*), intent(in) :: file_name
+        character(len=*), intent(in) :: fun_name
+        integer, intent(in) :: nplt
+        logical, intent(in) :: is_2D                                            ! True if 2D, false if 3D
+        real(dp), intent(in), optional :: ranges(:,:)                           ! x and y range, and z range (if 3D) of plot
+        
+        ! local variables
+        character(len=1000*max_str_ln) :: gnuplot_cmd
+        integer :: iplt
+        
+        ! create the GNUPlot command
+        ! basic GNUPlot commands
+        gnuplot_cmd = 'gnuplot -e "set grid; set border 4095 front &
+            &linetype -1 linewidth 1.000; set terminal gif animate delay '//&
+            &trim(i2str(max(250/nplt,1)))//'; &
+            &set output '''//trim(plot_dir)//'/'//trim(fun_name)//&
+            &'.gif'';'
+        ! individual plots
+        if (is_2D) then
+            if (present(ranges)) then
+                if (size(ranges,1).eq.2 .and. size(ranges,2).eq.2) then
+                    gnuplot_cmd = trim(gnuplot_cmd)//' set xrange ['//&
+                        &trim(r2str(ranges(1,1)))//':'//&
+                        &trim(r2str(ranges(1,2)))//'];'
+                    gnuplot_cmd = trim(gnuplot_cmd)//' set yrange ['//&
+                        &trim(r2str(ranges(2,1)))//':'//&
+                        &trim(r2str(ranges(2,2)))//'];'
+                else
+                    call writo('WARNING: invalid ranges given to &
+                        &draw_GP_animated')
+                end if
+            end if
+            do iplt = 1,nplt
+                gnuplot_cmd = trim(gnuplot_cmd) // ' plot'
+                gnuplot_cmd = trim(gnuplot_cmd) // ' '''//trim(file_name)//&
+                    &''' using '//trim(i2str(iplt))//':'//&
+                    &trim(i2str(nplt+iplt))//' title '''//trim(fun_name)//&
+                    &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
+                    &')'' with lines'
+                if (iplt.lt.nplt) gnuplot_cmd = trim(gnuplot_cmd)//';'
+            end do
+        else
+            write(*,*) 'NOT YET TESTED !!!!!!!!!!!!!!!!!!'
+            if (present(ranges)) then
+                if (size(ranges,1).eq.3 .and. size(ranges,2).eq.2) then
+                    gnuplot_cmd = trim(gnuplot_cmd)//' set xrange ['//&
+                        &trim(r2str(ranges(1,1)))//':'//&
+                        &trim(r2str(ranges(1,2)))//'];'
+                    gnuplot_cmd = trim(gnuplot_cmd)//' set yrange ['//&
+                        &trim(r2str(ranges(2,1)))//':'//&
+                        &trim(r2str(ranges(2,2)))//'];'
+                    gnuplot_cmd = trim(gnuplot_cmd)//' set zrange ['//&
+                        &trim(r2str(ranges(3,1)))//':'//&
+                        &trim(r2str(ranges(3,2)))//'];'
+                else
+                    call writo('WARNING: invalid ranges given to &
+                        &draw_GP_animated')
+                end if
+            end if
+            do iplt = 1,nplt
+                gnuplot_cmd = trim(gnuplot_cmd) // ' splot'
+                gnuplot_cmd = trim(gnuplot_cmd) // ' '''//trim(file_name)//&
+                    &''' using '//trim(i2str(iplt))//':'//&
+                    &trim(i2str(nplt+iplt))//':'//&
+                    &trim(i2str(2*nplt+iplt))//' title '''//trim(fun_name)//&
+                    &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
+                    &')'' with lines'
+                if (iplt.lt.nplt) gnuplot_cmd = trim(gnuplot_cmd)//';'
+            end do
+        end if
+        ! finishing the GNUPlot command
+        gnuplot_cmd = trim(gnuplot_cmd)//'; set output" 2> /dev/null'
+        call writo('Created animated plot in output file '''//trim(plot_dir)&
+            &//'/'//trim(fun_name)//'.gif''')
+        !write(*,*) 'gnuplot_cmd = ', trim(gnuplot_cmd)
+        
+        ! no need to stop the time
+        
+        ! call GNUPlot
+        call system(gnuplot_cmd)
     end subroutine
     
     ! write output to optional file number 'file_i' using the correct 

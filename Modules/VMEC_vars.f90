@@ -8,7 +8,7 @@ module VMEC_vars
     use str_ops, only: r2str, i2str
     use output_ops, only: lvl_ud, writo, print_ar_1, print_ar_2
     use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
-        &lasym, version => version_, lfreeb, &                                  ! stellerator symmetry, version number, free boundary or not
+        &lasym, VMEC_version => version_, lfreeb, &                             ! stellerator symmetry, version number, free boundary or not
         &n_r_eq => ns, mpol, ntor, xn, xm, mnmax, nfp, &                        ! mpol, ntor = # modes
         &phi, phi_r => phipf, &                                                 ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
         &iotaf, &                                                               ! iota = 1/q (FM)
@@ -17,14 +17,14 @@ module VMEC_vars
         &bmns, bmnc, &                                                          ! magnitude of B (HM)
         &lmns, lmnc, rmns, rmnc, zmns, zmnc, &                                  ! lambda (HM), R (FM), Z(FM)
         &rmax_surf, rmin_surf, zmax_surf, &                                     ! max and min values of R, Z
-        &lrfp, &                                                                ! whether or not the poloidal flux is used as radial variable
+        &use_pol_flux => lrfp, &                                                ! whether or not the poloidal flux is used as radial variable
         &gam => gamma                                                           ! gamma in adiabatic law
     implicit none
     private
     public read_VMEC, dealloc_VMEC_vars, &
         &mnmax, rmnc, mpol, ntor, nfp, n_r_eq, R_c, R_s, Z_c, Z_s, L_c, L_s, &
-        &presf, rmax_surf, rmin_surf, zmax_surf, iotaf, lasym, lrfp, lfreeb, &
-        &VMEC_name, phi, phi_r, version, gam, &
+        &presf, rmax_surf, rmin_surf, zmax_surf, iotaf, lasym, use_pol_flux, &
+        &lfreeb, VMEC_name, phi, phi_r, VMEC_version, gam, &
         &B_V_sub_s_M, B_V_sub_c_M, B_V_c_H, B_V_s_H, &
         &jac_V_c_H, jac_V_s_H
 
@@ -72,7 +72,7 @@ contains
             CHCKERR('Can''t read the VMEC file')
             close(VMEC_i)                                                       ! close the VMEC file
             
-            call writo('VMEC version is ' // trim(r2str(version)))
+            call writo('VMEC version is ' // trim(r2str(VMEC_version)))
             if (lfreeb) then
                 call writo('Free boundary VMEC')
                 err_msg = 'Free boundary VMEC is not yet supported by PB3D...'
@@ -81,11 +81,11 @@ contains
             else
                 call writo('Fixed boundary VMEC')
             end if
-            if (lrfp) then
-                err_msg = 'Cannot run yet using the poloidal flux as normal &
-                    &coordinate '
-                ierr = 1
-                CHCKERR(err_msg)
+            if (use_pol_flux) then
+                call writo('Using the poloidal flux as normal coordinate ')
+                call writo('WARNING: NOT TESTED !!!')
+            else
+                call writo('Using the toroidal flux as normal coordinate ')
             end if
             if (lasym) then
                 call writo('No stellerator symmetry')

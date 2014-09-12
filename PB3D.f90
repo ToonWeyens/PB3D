@@ -42,6 +42,7 @@ program PB3D
     use input_ops, only: read_input
     use utilities, only: init_utilities
     use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, broadcast_vars
+    use eq_vars, only: calc_norm_const
     
     implicit none
 
@@ -75,6 +76,7 @@ program PB3D
     CHCKERR
     ierr = open_output()                                                        ! open output file per alpha group
     CHCKERR
+    call calc_norm_const                                                        ! set up normalization constants
     ierr = broadcast_vars()                                                     ! broadcast to other processors
     CHCKERR
     call writo('')
@@ -90,6 +92,8 @@ program PB3D
         call start_time
         call writo('Start tests')
         call lvl_ud(1)
+        ierr = test_B()
+        CHCKERR
         !ierr = test_ang_B()
         !CHCKERR
         !ierr = test_repack()
@@ -119,8 +123,6 @@ program PB3D
         !ierr = test_slepc()
         !CHCKERR
         !ierr = test_prepare_X()
-        !CHCKERR
-        !ierr = test_B()
         !CHCKERR
         !ierr = test_calc_inv_met()
         !CHCKERR

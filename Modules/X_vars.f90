@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module X_vars
 #include <PB3D_macros.h>
-    use num_vars, only: dp, mu_0, max_str_ln, iu
+    use num_vars, only: dp, max_str_ln, iu
     use output_ops, only: lvl_ud, writo, print_GP_2D, print_ar_1
     use str_ops, only: r2strt, i2str
     
@@ -12,7 +12,7 @@ module X_vars
     private
     public init_X, calc_PV, calc_KV, calc_U, calc_extra, &
         &dealloc_X_vars, dealloc_X_vars_final, init_m, calc_V_int, &
-        &rho, n_x, m_X, n_r_X, U_X_0, U_X_1, DU_X_0, DU_X_1, sigma, extra1, &
+        &rho, n_x, m_X, n_r_X, U_X_0, U_X_1, DU_X_0, DU_X_1, extra1, &
         &extra2, extra3, PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, min_m_X, &
         &max_m_X, grp_n_r_X, n_m_X, PV_int, KV_int, grp_min_r_X, grp_max_r_X
     
@@ -28,7 +28,7 @@ module X_vars
     integer :: grp_min_r_X, grp_max_r_X                                         ! min. and max. r range of this process in alpha group
     complex(dp), allocatable :: U_X_0(:,:,:), U_X_1(:,:,:)                      ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
     complex(dp), allocatable :: DU_X_0(:,:,:), DU_X_1(:,:,:)                    ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
-    real(dp), allocatable :: sigma(:,:)                                         ! parallel current
+    real(dp), allocatable :: mu0sigma(:,:)                                      ! parallel current
     real(dp), allocatable :: extra1(:,:)                                        ! extra terms in PV_0 (see routine calc_extra)
     real(dp), allocatable :: extra2(:,:)                                        ! extra terms in PV_0 (see routine calc_extra)
     real(dp), allocatable :: extra3(:,:)                                        ! extra terms in PV_0 (see routine calc_extra)
@@ -74,7 +74,7 @@ contains
     contains
         ! checks whether nq-m is << n is satisfied in some of the plasma
         integer function check_m_and_n() result(ierr)
-            use eq_vars, only: q_saf_full
+            use eq_vars, only: q_saf_full                                       ! q_saf_full is NOT normalized
             use num_vars, only: glb_rank
             
             character(*), parameter :: rout_name = 'check_m_and_n'
@@ -167,7 +167,7 @@ contains
     subroutine resonance_plot
         use num_vars, only: glb_rank, tol_NR
         use utilities, only: calc_zero_NR
-        use eq_vars, only: q_saf_full
+        use eq_vars, only: q_saf_full                                           ! q_saf_full is NOT normalized
         use VMEC_vars, only: n_r_eq
         
         ! local variables (also used in child functions)
@@ -250,8 +250,7 @@ contains
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
             
             ! local variables
-            real(dp) :: varin(1,n_r_eq,1,1)                                     ! so calc_interp can be used
-            real(dp) :: varout(1,1,1)                                           ! so calc_interp can be used
+            real(dp) :: varin(n_r_eq)                                           ! so calc_interp can be used
             real(dp) :: pt_copy                                                 ! copy of pt to use with calc_interp
             
             ! initialize res
@@ -270,10 +269,8 @@ contains
                 ! interpolate using calc_interp
                 pt_copy = pt
                 
-                varin(1,:,1,1) = q_saf_full(:,0) - m_X_for_function*1.0_dp/n_X
-                istat = calc_interp(varin,[1,n_r_eq],varout,pt_copy)
-                
-                res = varout(1,1,1)
+                varin = q_saf_full(:,0) - m_X_for_function*1.0_dp/n_X
+                istat = calc_interp(varin,[1,n_r_eq],res,pt_copy)
             end if
         end function q_fun
         
@@ -285,8 +282,7 @@ contains
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
             
             ! local variables
-            real(dp) :: varin(1,n_r_eq,1,1)                                     ! so calc_interp can be used
-            real(dp) :: varout(1,1,1)                                           ! so calc_interp can be used
+            real(dp) :: varin(n_r_eq)                                           ! so calc_interp can be used
             real(dp) :: pt_copy                                                 ! copy of pt to use with calc_interp
             
             ! initialize res
@@ -303,34 +299,36 @@ contains
                 ! interpolate using calc_interp
                 pt_copy = pt
                 
-                varin(1,:,1,1) = q_saf_full(:,1)
-                istat = calc_interp(varin,[1,n_r_eq],varout,pt_copy)
-                
-                res = varout(1,1,1)
+                varin = q_saf_full(:,1)
+                istat = calc_interp(varin,[1,n_r_eq],res,pt_copy)
             end if
         end function q_dfun
     end subroutine resonance_plot
     
     ! calculate rho from user input
-    ! TO BE IMPLEMENTED. TEMPORARILY SET TO 1 EVERYWHERE !!!
     subroutine calc_rho
         use eq_vars, only: pres, grp_n_r_eq, grp_min_r_eq
         use VMEC_vars, only: gam
         
         ! local variables
         integer :: kd                                                           ! counter
+        real(dp) :: expon                                                       ! exponent = 1/gam
         
         ! allocate rho
         allocate(rho(grp_n_r_eq))
         
+        ! set exp
+        expon = 1.0_dp/gam
+        
+        ! loop over all normal points
         do kd = 1,grp_n_r_eq
             if (pres(kd,0).gt.0) then
-                rho(kd) = pres(kd,0)**gam
+                rho(kd) = pres(kd,0)**expon
             else
                 call writo('WARNING: pressure was negative at point '//&
                     &trim(i2str(grp_min_r_eq+kd))//'/'//&
                     &trim(i2str(grp_min_r_eq+grp_n_r_eq)),persistent=.true.)
-                rho(kd) = pres(kd-1,0)**gam
+                rho(kd) = rho(kd-1)
             end if
         end do
     end subroutine
@@ -338,11 +336,12 @@ contains
     ! calculate ~PV_(k,m)^i at all grp_n_r_eq values (see [ADD REF] for details)
     subroutine calc_PV
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
-        use eq_vars, only: n_par, q => q_saf_FD, grp_n_r_eq
+        use eq_vars, only: n_par, q => q_saf_FD, grp_n_r_eq, A_0
+        use VMEC_vars, only: use_pol_flux
         
         ! local variables
         integer :: m, k, kd                                                     ! counters
-        real(dp), allocatable :: com_fac(:,:)                                   ! common factor |nabla psi|^2/(mu_0*J^2*B^2)
+        real(dp), allocatable :: com_fac(:,:)                                   ! common factor |nabla psi|^2/(J^2*B^2)
         
         ! submatrices
         ! jacobian
@@ -362,7 +361,7 @@ contains
         
         ! set up common factor for PVi
         allocate(com_fac(n_par,grp_n_r_eq))
-        com_fac = h22/(mu_0*g33)
+        com_fac = h22/g33
         
         ! calculate PVi
         do m = 1,n_m_X
@@ -370,13 +369,13 @@ contains
                 ! calculate PV0
                 PV0(:,:,k,m) = com_fac * (DU_X_0(:,:,m) - extra1 - extra2 ) * &
                     &(conjg(DU_X_0(:,:,k)) - extra1 - extra2) - &
-                    &sigma/J * (extra1 + extra2) - extra3
+                    &mu0sigma/J * (extra1 + extra2) - extra3
                 
-                ! add (nq-k)*(nq-m)/(mu_0 J^2 |nabla psi|^2) to PV0
+                ! add (nq-k)*(nq-m)/(J^2 |nabla psi|^2) to PV0
                 do kd = 1,grp_n_r_eq
                     PV0(:,kd,k,m) = PV0(:,kd,k,m) + &
-                        &(n_X*q(kd,0)-m_X(m))*(n_X*q(kd,0)-m_X(k)) / &
-                        &( mu_0*J(:,kd)**2*h22(:,kd) )
+                        &(n_X*A_0*q(kd,0)-m_X(m))*(n_X*A_0*q(kd,0)-m_X(k)) / &
+                        &( J(:,kd)**2*h22(:,kd) )
                 end do
                 
                 ! calculate PV2
@@ -407,18 +406,27 @@ contains
             end do
         end do
         
-        ! deallocate sigma and the extra's
-        deallocate(sigma,extra1,extra2,extra3)
+        ! multiply PVi by q_saf^i if using toroidal coord. as flux coord.
+        if (.not.use_pol_flux) then
+            do kd = 1,grp_n_r_eq
+                PV1(:,kd,:,:) = PV1(:,kd,:,:)*q(kd,0)
+                PV2(:,kd,:,:) = PV2(:,kd,:,:)*q(kd,0)**2
+            end do
+        end if
+        
+        ! deallocate mu0sigma and the extra's
+        deallocate(mu0sigma,extra1,extra2,extra3)
     end subroutine calc_PV
     
     ! calculate ~KV_(k,m)^i at all grp_n_r_eq values (see [ADD REF] for details)
     subroutine calc_KV
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
-        use eq_vars, only: n_par, grp_n_r_eq
+        use eq_vars, only: n_par, q => q_saf_FD, grp_n_r_eq
+        use VMEC_vars, only: use_pol_flux
         
         ! local variables
         integer :: m, k, kd                                                     ! counters
-        real(dp), allocatable :: com_fac(:,:)                                   ! common factor |nabla psi|^2/(mu_0*J^2*B^2)
+        real(dp), allocatable :: com_fac(:,:)                                   ! common factor |nabla psi|^2/(J^2*B^2)
         
         ! submatrices
         ! jacobian
@@ -438,7 +446,7 @@ contains
         
         ! set up common factor
         allocate(com_fac(n_par,grp_n_r_eq))
-        com_fac = J*h22/g33
+        com_fac = J**2*h22/g33
         
         ! for  Hermitian KV0  and  KV2,  only half  of  the  terms  have  to  be
         ! calculated
@@ -477,6 +485,14 @@ contains
         do kd = 1,grp_n_r_eq
             KV1(:,kd,:,:) = KV1(:,kd,:,:)*rho(kd)
         end do
+        
+        ! multiply KVi by q_saf^i if using toroidal coord. as flux coord.
+        if (.not.use_pol_flux) then
+            do kd = 1,grp_n_r_eq
+                KV1(:,kd,:,:) = KV1(:,kd,:,:)*q(kd,0)
+                KV2(:,kd,:,:) = KV2(:,kd,:,:)*q(kd,0)**2
+            end do
+        end if
     end subroutine
     
     ! calculate U_m^0,  U_m^1 at grp_n_r_eq  values of the normal  coordinate, n_par
@@ -484,7 +500,8 @@ contains
     ! number, with m = size(m_X)
     subroutine calc_U
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
-        use eq_vars, only: q => q_saf_FD, theta, n_par, p => pres_FD, grp_n_r_eq
+        use eq_vars, only: q => q_saf_FD, theta, n_par, &
+            &p => pres_FD, grp_n_r_eq, A_0
         
         ! local variables
         integer :: jd, kd                                                       ! counters
@@ -528,24 +545,24 @@ contains
         do jd = 1,size(m_X)
             ! loop over all normal points
             do kd = 1,grp_n_r_eq
-                n_frac = (n_X*q(kd,0)-m_X(jd))/n_X
-                U_X_1(:,kd,jd) = 1 + n_frac * g13(:,kd)/g33(:,kd)
-                DU_X_1(:,kd,jd) = n_frac * (D3g13(:,kd)/g33(:,kd) - &
-                    &D3g33(:,kd)*g13(:,kd)/g33(:,kd)**2) + &
-                    &iu*n_frac*n_X*U_X_1(:,kd,jd)
-                U_X_0(:,kd,jd) = -(h12(:,kd)/h22(:,kd) + q(kd,1)*theta(:,kd)) +&
-                    &iu/(n_X*g33(:,kd)) * (g13(:,kd)*q(kd,1) + &
-                    &J(:,kd)**2*mu_0*p(kd,1) + iu*n_frac*n_X * &
+                n_frac = (n_X*A_0*q(kd,0)-m_X(jd))/(n_X*A_0)
+                U_X_0(:,kd,jd) = -(h12(:,kd)/h22(:,kd) + q(kd,1)*theta(:,kd))&
+                    &+ iu/(n_X*A_0*g33(:,kd)) * (g13(:,kd)*q(kd,1) + &
+                    &J(:,kd)**2*p(kd,1) + iu*n_frac*n_X*A_0 * &
                     &( g13(:,kd)*q(kd,1)*theta(:,kd) - g23(:,kd) ))
                 DU_X_0(:,kd,jd) = -(D3h12(:,kd)/h22(:,kd) - &
                     &D3h22(:,kd)*h12(:,kd)/h22(:,kd)**2 + q(kd,1)) - &
-                    &iu*D3g33(:,kd)/(n_X*g33(:,kd)**2) * (g13(:,kd)*q(kd,1) + &
-                    &J(:,kd)**2*mu_0*p(kd,1) + iu*n_frac*n_X * &
+                    &iu*D3g33(:,kd)/(n_X*A_0*g33(:,kd)**2) * (g13(:,kd)*q(kd,1)&
+                    &+ J(:,kd)**2*p(kd,1) + iu*n_frac*n_X*A_0 * &
                     &( g13(:,kd)*q(kd,1)*theta(:,kd) - g23(:,kd) )) + &
-                    &iu/(n_X*g33(:,kd)) * (D3g13(:,kd)*q(kd,1) + &
-                    &2*D3J(:,kd)*J(:,kd)*mu_0*p(kd,1) + iu*n_frac*n_X * &
+                    &iu/(n_X*A_0*g33(:,kd)) * (D3g13(:,kd)*q(kd,1) + &
+                    &2*D3J(:,kd)*J(:,kd)*p(kd,1) + iu*n_frac*n_X*A_0 * &
                     &( D3g13(:,kd)*q(kd,1)*theta(:,kd) + g13(:,kd)*q(kd,1) &
-                    &- D3g23(:,kd) )) + iu*n_frac*n_X*U_X_0(:,kd,jd)
+                    &- D3g23(:,kd) )) + iu*n_frac*n_X*A_0*U_X_0(:,kd,jd)
+                U_X_1(:,kd,jd) = 1 + n_frac * g13(:,kd)/g33(:,kd)
+                DU_X_1(:,kd,jd) = n_frac * (D3g13(:,kd)/g33(:,kd) - &
+                    &D3g33(:,kd)*g13(:,kd)/g33(:,kd)**2) + &
+                    &iu*n_frac*n_X*A_0*U_X_1(:,kd,jd)
             end do
             
             !write(*,*) 'U1'
@@ -564,11 +581,11 @@ contains
     
     ! calculate extra1, extra2 and extra3
     !   extra1 = S*J
-    !   extra2 = mu_0*sigma*J*B^2/h^psi,psi
+    !   extra2 = mu0sigma*J*B^2/h^psi,psi
     !   extra3 = 2*p'*kn
     ! with
     !   shear S = - d Theta^alpha/d_theta 1 / J
-    !   parallel current mu0 sigma = B . nabla x B / B^2
+    !   parallel current mu0sigma = B . nabla x B / B^2
     !   normal curvature kn = nabla psi / h^psi,psi * nabla (mu0 p + B^2/2)
     subroutine calc_extra
         use metric_ops, only: g_F_FD, h_F_FD, jac_F_FD
@@ -625,25 +642,25 @@ contains
         allocate(D3h22(n_par,grp_n_r_eq)); D3h22 = h_F_FD(:,:,2,2,0,0,1)
         allocate(h23(n_par,grp_n_r_eq)); h23 = h_F_FD(:,:,2,3,0,0,0)
         
-        ! allocatee sigma and extra terms. Later they are deallocated in calc_PV
-        allocate(sigma(n_par,grp_n_r_eq))
+        ! allocate mu0sigma and extra terms. Later they are deallocated in calc_PV
+        allocate(mu0sigma(n_par,grp_n_r_eq))
         allocate(extra1(n_par,grp_n_r_eq))
         allocate(extra2(n_par,grp_n_r_eq))
         allocate(extra3(n_par,grp_n_r_eq))
         
-        ! calculate sigma
-        sigma = 1/(mu_0*J*g33) * (g13*(D2g33-D3g23) + g23*(D3g13-D1g33) &
+        ! calculate mu0sigma
+        mu0sigma = 1/(J*g33) * (g13*(D2g33-D3g23) + g23*(D3g13-D1g33) &
             &+ g33*(D1g23-D2g13))
         
         ! calculate extra1
         extra1 = -D3h12/h22 + D3h22*h12/h22**2
         
         ! calculate extra2
-        extra2 = g33/h22 * mu_0*(sigma*J)
+        extra2 = g33/h22 * mu0sigma / J
         
         ! calculate extra3
         do kd = 1,grp_n_r_eq
-            extra3(:,kd) = p(kd,1) * ( J(:,kd)**2*mu_0*p(kd,1)/g33(:,kd) + &
+            extra3(:,kd) = p(kd,1) * ( J(:,kd)**2*p(kd,1)/g33(:,kd) + &
                 &1/h22(:,kd) * ( &
                 &h12(:,kd) * ( D1g33(:,kd)/g33(:,kd) - 2*D1J(:,kd)/J(:,kd) ) + &
                 &h22(:,kd) * ( D2g33(:,kd)/g33(:,kd) - 2*D2J(:,kd)/J(:,kd) ) + &

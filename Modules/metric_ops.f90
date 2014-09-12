@@ -14,6 +14,7 @@ module metric_ops
     private
     public calc_T_VC, calc_g_C, calc_jac_C, calc_g_V, T_VC, calc_jac_V, &
         &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_F, &
+        &normalize_metric_vars, &
         &calc_f_deriv, dealloc_metric_vars, dealloc_metric_vars_final, &
         &g_V, jac_F, h_F, g_F, g_C, T_VF, T_FV, jac_V, det_T_VF, det_T_FV, &
         &g_F_FD, h_F_FD, jac_F_FD
@@ -1075,6 +1076,57 @@ contains
             end do
         end do
     end function calc_f_deriv_3_arr_2D
+    
+    ! normalizes metric coefficients  and jacobian in flux  coordinates, as well
+    ! as the  poloidal and toroidal flux  (even though currently it  is not used
+    ! after this point)
+    subroutine normalize_metric_vars
+        use eq_vars, only: R_0, A_0, B_0, psi_0
+        
+        ! local variables
+        real(dp) :: g_0(3,3)                                                    ! normalization factor for the covariant metric factors
+        real(dp) :: a                                                           ! minor radius
+        integer :: id, jd, d1, d2                                               ! counter
+        
+        ! set minor radius a
+        a = R_0 / A_0
+        
+        ! set up g_0
+        g_0(1,1) = a * a
+        g_0(1,2) = 1 / B_0
+        g_0(1,3) = a * R_0
+        g_0(2,1) = g_0(1,2)
+        g_0(2,2) = 1/(a * B_0) * 1/(a * B_0)
+        g_0(2,3) = 1/(a * B_0) * R_0
+        g_0(3,1) = g_0(1,3)
+        g_0(3,2) = g_0(2,3)
+        g_0(3,3) = R_0 * R_0
+        
+        ! normalize the metric coefficients
+        do d2 = 1,3
+            do d1 = 1,3
+                g_F_FD(:,:,d1,d2,:,:,:) = g_F_FD(:,:,d1,d2,:,:,:) / g_0(d1,d2)
+                h_F_FD(:,:,d1,d2,:,:,:) = h_F_FD(:,:,d1,d2,:,:,:) * g_0(d1,d2)
+            end do
+        end do
+        do id = 1,size(g_F_FD,5)-1                                              ! derivatives in psi are scaled by psi_0
+            g_F_FD(:,:,:,:,id,:,:) = g_F_FD(:,:,:,:,id,:,:) * A_0**id
+            h_F_FD(:,:,:,:,id,:,:) = h_F_FD(:,:,:,:,id,:,:) * A_0**id
+        end do
+        do jd = 1,size(g_F_FD,6)-1                                              ! derivatives in alpha are scaled by A
+            g_F_FD(:,:,:,:,:,jd,:) = g_F_FD(:,:,:,:,:,jd,:) * psi_0**jd 
+            h_F_FD(:,:,:,:,:,jd,:) = h_F_FD(:,:,:,:,:,jd,:) * psi_0**jd
+        end do
+        
+        ! normalize the Jacobian
+        jac_F_FD = jac_F_FD * B_0/R_0
+        do id = 1,size(jac_F_FD,3)-1                                            ! derivatives in psi are scaled by psi_0
+            jac_F_FD(:,:,id,:,:) = jac_F_FD(:,:,id,:,:) * A_0**id
+        end do
+        do jd = 1,size(jac_F_FD,4)-1                                            ! derivatives in alpha are scaled by A
+            jac_F_FD(:,:,:,jd,:) = jac_F_FD(:,:,:,jd,:) * psi_0**jd
+        end do
+    end subroutine normalize_metric_vars
     
     ! deallocates  metric  quantities  that  are  not  used  anymore  after  the
     ! equilibrium phase

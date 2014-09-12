@@ -8,9 +8,9 @@ module input_ops
         &dp, max_str_ln, style, min_alpha, max_alpha, n_alpha, max_it_NR, &
         &tol_NR, max_it_r, theta_var_along_B, input_i, n_seq_0, min_n_r_X, &
         &calc_mesh_style, EV_style, n_procs_per_alpha, plot_q, tol_r, &
-        &n_sol_requested, min_r_X, max_r_X, reuse_r, nyq_fac, pi
+        &n_sol_requested, min_r_X, max_r_X, reuse_r, nyq_fac, pi, max_n_plots
     use eq_vars, only: &
-        &min_par, max_par, n_par
+        &min_par, max_par, n_par, rho_0
     use output_ops, only: writo, lvl_ud, &
         &format_out
     use file_ops, only: input_name
@@ -24,7 +24,7 @@ module input_ops
         &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
         &max_it_r, tol_r, theta_var_along_B, n_X, min_m_X, max_m_X, min_r_X, &
         &max_r_X, EV_style, n_procs_per_alpha, plot_q, n_sol_requested, &
-        &reuse_r, nyq_fac
+        &reuse_r, nyq_fac, rho_0, max_n_plots
 
 contains
     ! queries for yes or no, depending on the flag yes:
@@ -130,6 +130,10 @@ contains
                     ierr = adapt_alpha()
                     CHCKERR('')
                     
+                    ! adapt normalization variables if needed
+                    ierr = adapt_normalization()
+                    CHCKERR('')
+                    
                     call lvl_ud(-1)
                 else                                                            ! cannot read input data
                     call writo('Cannot open user-provided file "' // &
@@ -157,6 +161,7 @@ contains
             n_procs_per_alpha = 1                                               ! 1 processor per field line
             plot_q = .false.                                                    ! do not plot the q-profile with nq-m = 0
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
+            max_n_plots = 4                                                     ! maximum nr. of modes for which to plot output in plot_X_vec
             ! variables concerning poloidal mode numbers m
             min_m_X = 20                                                        ! lowest poloidal mode number m_X
             max_m_X = 22                                                        ! highest poloidal mode number m_X
@@ -175,6 +180,8 @@ contains
             max_r_X = 1.0_dp                                                    ! maximum radius
             EV_style = 1                                                        ! slepc solver for EV problem
             min_n_r_X = 10                                                      ! at least 10 points in perturbation grid
+            ! variables concerning normalization
+            rho_0 = 10E-6_dp                                                    ! for fusion, particle density of around 1E21, mp around 1E-27
         end subroutine
         
         ! checks whether the variables concerning run-time are chosen correctly.
@@ -189,6 +196,11 @@ contains
                 n_sol_requested = 1
                 call writo('WARNING: n_sol_requested has been increased to '&
                     &//trim(i2str(n_sol_requested)))
+            end if
+            if (max_n_plots.lt.0) then
+                max_n_plots = 0
+                call writo('WARNING: max_n_plots cannot be negative and is &
+                    &set to 0')
             end if
         end subroutine adapt_run
         
@@ -352,5 +364,23 @@ contains
                 n_alpha = 1
             end if
         end function adapt_alpha
+        
+        ! checks whether normalization variables are chosen correctly. rho_0 has
+        ! to be positive
+        integer function adapt_normalization() result(ierr)
+            character(*), parameter :: rout_name = 'adapt_normalization'
+            
+            ! local variables
+            character(len=max_str_ln) :: err_msg                                ! error message
+            
+            ! initialize ierr
+            ierr = 0
+            
+            if (rho_0.le.0) then
+                ierr = 1
+                err_msg = 'rho_0 has to be positive'
+                CHCKERR(err_msg)
+            end if
+        end function adapt_normalization
     end function read_input
 end module input_ops

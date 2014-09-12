@@ -17,15 +17,17 @@ contains
     ! lines.
     integer function calc_eq(alpha) result(ierr)
         use eq_vars, only: calc_mesh, calc_flux_q, dealloc_eq_vars, &
-            &check_mesh, init_eq, calc_RZL, q_saf, q_saf_FD, flux_p, flux_p_FD,&
-            &flux_t, flux_t_FD, pres, pres_FD, n_par
+            &normalize_eq_vars, &
+            &check_and_limit_mesh, init_eq, calc_RZL, q_saf, q_saf_FD, flux_p, &
+            &flux_p_FD,flux_t, flux_t_FD, pres, pres_FD, n_par
         use metric_ops, only: calc_g_C, calc_g_C, calc_T_VC, calc_g_V, &
             &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, &
             &calc_jac_V, calc_jac_F, calc_f_deriv, dealloc_metric_vars, &
+            &normalize_metric_vars, &
             &T_VF, T_FV, g_F, h_F, det_T_VF, det_T_FV, jac_F, g_F_FD, h_F_FD, &
             &jac_F_FD
         use utilities, only: derivs
-        use num_vars, only: max_deriv
+        use num_vars, only: max_deriv, ltest
         
         character(*), parameter :: rout_name = 'calc_eq'
         
@@ -70,7 +72,7 @@ contains
             
             ! check whether the mesh has been calculated correctly
             ! if so, limit the normal range of theta and zeta to the local range
-            ierr = check_mesh(alpha)
+            ierr = check_and_limit_mesh(alpha)
             CHCKERR('')
             
             call lvl_ud(-1)
@@ -192,10 +194,17 @@ contains
                 CHCKERR('')
             end do
             
-            ! deallocate unusd equilibrium quantities
-            call writo('Deallocate unused equilibrium and metric quantities...')
-            call dealloc_eq_vars
-            call dealloc_metric_vars
+            ! normalize the quantities
+            call writo('Normalize the equilibrium and metric quantities...')
+            call normalize_eq_vars
+            call normalize_metric_vars
+            
+            ! deallocate unused equilibrium quantities
+            if (.not.ltest) then
+                call writo('Deallocate unused equilibrium and metric quantities...')
+                call dealloc_eq_vars
+                call dealloc_metric_vars
+            end if
             
             call lvl_ud(-1)
             ! 2----------------------------------------------------------------
@@ -206,4 +215,5 @@ contains
         ! 1--------------------------------------------------------------------
         call writo('Done setting up equilibrium quantities')
     end function calc_eq
+    
 end module eq_ops

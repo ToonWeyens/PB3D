@@ -113,6 +113,7 @@ contains
     integer function run_for_alpha(alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, grp_rank, reuse_r
         use eq_ops, only: calc_eq
+        use output_ops, only: draw_GP
         use eq_vars, only: dealloc_eq_vars_final
         use X_ops, only: prepare_X, solve_EV_system, plot_X_vec
         use X_vars, only: X_vec, X_val, init_m, dealloc_X_vars_final, n_r_X
@@ -125,7 +126,7 @@ contains
         
         ! local variables
         integer :: ir                                                           ! counter for richardson extrapolation
-        integer :: id                                                           ! counter
+        integer :: id, jd                                                       ! counter
         logical :: done_richard                                                 ! is it converged?
         complex(dp), allocatable :: X_val_rich(:,:,:)                           ! Richardson array of eigenvalues X_val
         real(dp), allocatable :: x_axis(:,:)                                    ! x axis for plot of Eigenvalues with n_r_X
@@ -219,10 +220,12 @@ contains
                     if (max_it_r.gt.1) then
                         call writo('plotting the Eigenvalues')
                         
-                        call print_GP_2D('X_val','',realpart(&
+                        ! output on screen
+                        call print_GP_2D('X_val','Eigenvalues.dat',realpart(&
                             &X_val_rich(1:ir,1,:)),x=x_axis(1:ir,:))
-                        !call print_GP_2D('X_val_rich','',&
-                            !&realpart([(X_val_rich(id,id,1),id=1,ir)]))
+                        ! same output in file as well
+                        call draw_GP('Eigenvalues','Eigenvalues.dat',&
+                            &n_sol_requested,.true.,.false.)
                     end if
                 end if
                 
@@ -237,7 +240,7 @@ contains
                         &//trim(r2strt(realpart(X_val(id))))//' + '//&
                         &trim(r2strt(imagpart(X_val(id))))//' i')
                     
-                    ierr = plot_X_vec(X_vec(:,:,id))
+                    ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id)
                     CHCKERR('')
                 end do
                 

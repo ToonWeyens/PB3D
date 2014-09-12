@@ -6,7 +6,7 @@ module slepc_ops
 #include <finclude/slepcepsdef.h>
 !#include <finclude/petscsys.h>
     use slepceps
-    use num_vars, only: iu, mu_0, dp, max_str_ln
+    use num_vars, only: iu, dp, max_str_ln
     use output_ops, only: lvl_ud, writo, print_ar_2, print_GP_2D, print_GP_3D
     use str_ops, only: r2strt, r2str, i2str
 
@@ -26,6 +26,8 @@ contains
             &grp_rank, min_r_X, max_r_X
         use file_ops, only: opt_args
         use MPI_ops, only: divide_grid
+        use num_vars, only: mu_0
+        use eq_vars, only: B_0, R_0, rho_0
         
         character(*), parameter :: rout_name = 'solve_EV_system_slepc'
         
@@ -122,6 +124,7 @@ contains
         
         ! setting variables
         call writo('set variables...')
+        ! The step size is either the (normalized) poloidal or toroidal flux
         step_size = (max_r_X-min_r_X)/(n_r_X - 1.0)
         
         ! set up the matrix
@@ -327,6 +330,10 @@ contains
             call writo('for solution '//trim(i2str(id))//&
                 &'/'//trim(i2str(n_conv))//':')
             
+            ! go  back to  real  values from  normalization  by multiplying  the
+            ! Eigenvalues by 1/T0^2 = B_0^2 / (mu_0 rho_0 R_0^2)
+            X_val(id) = X_val(id) * B_0**2 / (mu_0*rho_0*R_0**2)
+            
             call lvl_ud(1)
             
             ! print output
@@ -379,9 +386,10 @@ contains
     integer function fill_mat(step_size,V_int_tab,mat,V_interp_inout,tab_info) &
         &result(ierr)
         use num_vars, only: min_r_X, max_r_X, grp_rank, grp_n_procs
-        use eq_vars, only: grp_n_r_eq
+        use eq_vars, only: grp_n_r_eq, A_0, flux_p_FD, flux_t_FD
         use utilities, only: dis2con
         use X_vars, only: grp_min_r_X, grp_max_r_X, n_X, n_r_X, n_m_X
+        use VMEC_vars, only: use_pol_flux
         
         character(*), parameter :: rout_name = 'fill_mat'
         
@@ -399,6 +407,7 @@ contains
         PetscScalar, allocatable :: V_interp(:,:,:)                             ! interpolated V_int
         PetscScalar, allocatable :: V_interp_next(:,:,:)                        ! interpolated V_int at next normal point
         PetscInt, allocatable :: loc_k(:), loc_m(:)                             ! the locations at which to add the blocks to the matrices
+        PetscReal :: step_size_FD                                               ! step size in flux coordinates
         PetscInt :: id, jd                                                      ! counters
         
         ! for tests
@@ -481,6 +490,15 @@ contains
             tab_info = [norm_pt,step_size]
         end if
         
+        ! set up step_size_FD
+        if (use_pol_flux) then
+            step_size_FD = step_size * (flux_p_FD(grp_n_r_eq,0)-flux_p_FD(1,0)) / &
+                &(grp_n_r_eq-1)
+        else
+            step_size_FD = step_size * (flux_t_FD(grp_n_r_eq,0)-flux_t_FD(1,0)) / &
+                &(grp_n_r_eq-1)
+        end if
+        
         ! get the interpolated terms in V_interp
         ierr = get_V_interp(V_int_tab,norm_pt,V_interp_in,V_interp_next,&
             &V_interp_inout,tab_info_in(1),tab_info_in(2),1)
@@ -498,7 +516,8 @@ contains
             ! part ~ V0(i)
             loc_block = loc_block + V_interp(:,:,1)
             ! part ~ V2(i)
-            loc_block = loc_block + V_interp(:,:,3) * 2.0/(step_size*n_X)**2
+            loc_block = loc_block + V_interp(:,:,3) * &
+                &2.0/(step_size_FD*n_X*A_0)**2
             
             ! add block to the matrix A
             loc_k = [(jd, jd = 0,n_m_X-1)] + id*n_m_X
@@ -524,15 +543,15 @@ contains
                 loc_block = 0
                 ! part ~ V1*(i+1)
                 loc_block = loc_block + conjg(transpose(V_interp_next(:,:,2)))&
-                    & * PETSC_i/(2*step_size*n_X)
+                    & * PETSC_i/(2*step_size_FD*n_X*A_0)
                 ! part ~ V1(i)
                 loc_block = loc_block + V_interp(:,:,2) * &
-                    &PETSC_i/(2*step_size*n_X)
+                    &PETSC_i/(2*step_size_FD*n_X*A_0)
                 ! part ~ V2(i+1/2)
                 loc_block = loc_block - (V_interp(:,:,3) + &
-                    &V_interp_next(:,:,3))/2 * 1.0/(step_size*n_X)**2
+                    &V_interp_next(:,:,3))/2 * 1.0/(step_size_FD*n_X*A_0)**2
                 
-                ! add block to the matrix A
+                ! add block to the matrix
                 loc_k = [(jd, jd = 0,n_m_X-1)] + id*n_m_X
                 loc_m = loc_k+n_m_X
                 call MatSetValues(mat,n_m_X,loc_k,n_m_X,loc_m,loc_block,&
@@ -635,7 +654,10 @@ contains
                     ierr = round_with_tol(norm_pt,0.0_dp,1.0_dp)
                     CHCKERR('')
                     
-                    ! get the table indices between which to interpolate
+                    ! get the  table indices  between which to  interpolate. The
+                    ! tables are set up in  the equilibrium grid, which uses the
+                    ! same normal  coordinate as the  discretization (determined
+                    ! by VMEC through use_pol_flux)
                     call con2dis(norm_pt,[0._dp,1._dp],norm_pt_dis,[1,n_r_eq])  ! convert norm_pt to the index in the array V_int
                     
                     ! round up and down and set offset

@@ -2405,7 +2405,7 @@ contains
 
     integer function test_B() result(ierr)
         use eq_vars, only: n_par, q_saf, flux_p, VMEC_L, theta, zeta, pres_FD, &
-            &grp_n_r_eq
+            &grp_n_r_eq, grp_min_r_eq
         use VMEC_vars, only: B_V_s_H, B_V_c_H, mpol, ntor, B_V_sub_c_M, &
             &B_V_sub_s_M, nfp
         use metric_ops, only: calc_inv_met, g_V, g_F, jac_V, jac_F, T_FV, &
@@ -2414,22 +2414,25 @@ contains
         use utilities, only: VMEC_norm_deriv, VMEC_conv_FHM
         use eq_ops, only: calc_eq
         use num_vars, only: calc_mesh_style
+        use MPI_ops, only: split_MPI
         
         character(*), parameter :: rout_name = 'test_B'
         
+        ! local variables
+        integer :: kds                                                          ! shifted kd
         integer :: id, jd, kd                                                   ! counters
-        real(dp) :: B(1:n_par,1:grp_n_r_eq)                                     ! magn. field
-        real(dp) :: B_ALT(1:n_par,1:grp_n_r_eq)                                 ! magn. field alternative
-        real(dp) :: B_ALT_2(1:n_par,1:grp_n_r_eq)                               ! magn. field alternative 2
-        real(dp) :: B_V_sub(1:n_par,1:grp_n_r_eq,3)                             ! cov. components of B in VMEC coords
-        real(dp) :: B_V_sub_ALT(1:n_par,1:grp_n_r_eq,3)                         ! VMEC output
-        real(dp) :: B_F_sub(1:n_par,1:grp_n_r_eq,3)                             ! cov. components of B in flux coords
-        real(dp) :: B_F_sub_ALT(1:n_par,1:grp_n_r_eq,3)                         ! conversion of VMEC output
-        real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
-        real(dp) :: h_V(1:n_par,1:grp_n_r_eq,3,3,0:0,0:0,0:0)                   ! h_V
-        real(dp) :: dum(1:n_par,1:grp_n_r_eq)
-        real(dp) :: dum2(1:n_par,1:grp_n_r_eq)
-        real(dp) :: dum3(1:n_par,1:grp_n_r_eq)
+        real(dp), allocatable :: B(:,:)                                         ! magn. field
+        real(dp), allocatable :: B_ALT(:,:)                                     ! magn. field alternative
+        real(dp), allocatable :: B_ALT_2(:,:)                                   ! magn. field alternative 2
+        real(dp), allocatable :: B_V_sub(:,:,:)                                 ! cov. components of B in VMEC coords
+        real(dp), allocatable :: B_V_sub_ALT(:,:,:)                             ! VMEC output
+        real(dp), allocatable :: B_F_sub(:,:,:)                                 ! cov. components of B in flux coords
+        real(dp), allocatable :: B_F_sub_ALT(:,:,:)                             ! conversion of VMEC output
+        real(dp), allocatable :: cs(:,:,:)                                      ! (co)sines for all pol m and tor n
+        real(dp), allocatable :: h_V(:,:,:,:,:,:,:)                             ! h_V
+        real(dp), allocatable :: dum(:,:)
+        real(dp), allocatable :: dum2(:,:)
+        real(dp), allocatable :: dum3(:,:)
         
         ! initialize ierr
         ierr = 0
@@ -2442,9 +2445,25 @@ contains
             call writo('calculating equilibrium with constant zeta')
             call lvl_ud(1)
             calc_mesh_style = 2
+            ierr = split_MPI()
+            CHCKERR('')
             ierr = calc_eq(0.12*pi)
             CHCKERR('')
             call lvl_ud(-1)
+            
+            ! allocate variables
+            allocate(B(1:n_par,1:grp_n_r_eq))
+            allocate(B_ALT(1:n_par,1:grp_n_r_eq))
+            allocate(B_ALT_2(1:n_par,1:grp_n_r_eq))
+            allocate(B_V_sub(1:n_par,1:grp_n_r_eq,3))
+            allocate(B_V_sub_ALT(1:n_par,1:grp_n_r_eq,3))
+            allocate(B_F_sub(1:n_par,1:grp_n_r_eq,3))
+            allocate(B_F_sub_ALT(1:n_par,1:grp_n_r_eq,3))
+            allocate(cs(0:mpol-1,-ntor:ntor,2))
+            allocate(h_V(1:n_par,1:grp_n_r_eq,3,3,0:0,0:0,0:0))
+            allocate(dum(1:n_par,1:grp_n_r_eq))
+            allocate(dum2(1:n_par,1:grp_n_r_eq))
+            allocate(dum3(1:n_par,1:grp_n_r_eq))
             
             call writo('check covar. comp. of magnetic field in VMEC coords?')
             if(yes_no(.false.)) then
@@ -2500,11 +2519,12 @@ contains
             if(yes_no(.false.)) then
                 call writo('comparison with g_V(1,2)/J^2')
                 do kd = 1,grp_n_r_eq
+                    kds = kd + grp_min_r_eq - 1
                     do id = 1,n_par
                         ierr = calc_mesh_cs(cs,mpol,ntor,nfp,theta(id,kd),&
                             &zeta(id,kd))
                         CHCKERR('')
-                        B_ALT(id,kd) = f2r(B_V_c_H(:,:,kd),B_V_s_H(:,:,kd),cs,&
+                        B_ALT(id,kd) = f2r(B_V_c_H(:,:,kds),B_V_s_H(:,:,kds),cs,&
                             &mpol,ntor,nfp,[0,0],ierr)
                         CHCKERR('')
                         B(id,kd) = sqrt(g_F(id,kd,3,3,0,0,0))/&
@@ -2612,6 +2632,7 @@ contains
             call writo('test whether D_theta B_psi - D_psi B_theta = mu_0 J &
                 &p''?')
             if(yes_no(.false.)) then
+            write(*,*) 'ADAPT THIS!!!!! MU_0 GOES AWAY FOR NORMALIZED QUANTITIES !!!!!!!!!!'
                 call lvl_ud(1)
                     ! dum = D_theta B_psi
                     dum = g_F_FD(:,:,3,2,0,0,1)/jac_F_FD(:,:,0,0,0)- &
@@ -2657,13 +2678,14 @@ contains
                 &_B_V_covar, the returned value of "B_V_sub" is NOT correct')
             
             do kd = 1,grp_n_r_eq
+                kds = kd + grp_min_r_eq - 1
                 do id = 1,n_par
                     ierr = calc_mesh_cs(cs,mpol,ntor,nfp,theta(id,kd),&
                         &zeta(id,kd))
                     CHCKERR('')
                     do jd = 1,3
-                        B_V_sub_ALT(id,kd,jd) = f2r(B_V_sub_c_M(:,:,kd,jd),&
-                            &B_V_sub_s_M(:,:,kd,jd),cs,mpol,ntor,nfp,deriv,ierr)
+                        B_V_sub_ALT(id,kd,jd) = f2r(B_V_sub_c_M(:,:,kds,jd),&
+                            &B_V_sub_s_M(:,:,kds,jd),cs,mpol,ntor,nfp,deriv,ierr)
                         CHCKERR('')
                         B_V_sub(id,kd,jd) = flux_p(kd,1)/&
                             &(2*pi*jac_V(id,kd,0,0,0)) * &
@@ -3508,10 +3530,18 @@ contains
             call lvl_ud(1)
             
             point = 0.6_dp
-            ierr = calc_interp(varin_real,[1,10],varout_real,point)
-            CHCKERR('')
-            ierr = calc_interp(varin_complex,[1,10],varout_complex,point)
-            CHCKERR('')
+            do id = 1,4
+                do kd = 1,2
+                    do ld = 1,2
+                        ierr = calc_interp(varin_real(id,:,kd,ld),[1,10],&
+                            &varout_real(id,kd,ld),point)
+                        CHCKERR('')
+                        ierr = calc_interp(varin_complex(id,:,kd,ld),[1,10],&
+                            &varout_complex(id,kd,ld),point)
+                        CHCKERR('')
+                    end do
+                end do
+            end do
             
             ! printing results
             call writo('real output variable at (1,2):')

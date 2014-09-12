@@ -11,7 +11,7 @@ module num_vars
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
         &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups,  &
         &output_name, next_job, next_job_win, plot_q, n_sol_requested, &
-        &min_n_r_X, min_r_X, max_r_X, nyq_fac, reuse_r
+        &min_n_r_X, min_r_X, max_r_X, nyq_fac, reuse_r, max_n_plots
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -67,6 +67,7 @@ module num_vars
     integer :: input_i                                                          ! file number of input file
     integer :: VMEC_i                                                           ! file number of VMEC file
     integer :: output_i                                                         ! file number of output file
+    integer :: max_n_plots                                                      ! max. nr. of modes for which to output a plot
     
     ! considering the various field lines for which to do the calculations
     integer :: n_alpha                                                          ! how many field lines
@@ -74,5 +75,5 @@ module num_vars
     
     ! considering the perturbation grid
     integer :: min_n_r_X                                                        ! min. of n_r_X (e.g. first value in Richardson loop)
-    real(dp) :: min_r_X, max_r_X                                                ! mimimum and maximum radius for perturbations
+    real(dp) :: min_r_X, max_r_X                                                ! min. and max. normal coord. for pert. (either pol. or tor., depending on use_pol_flux from VMEC)
 end module num_vars

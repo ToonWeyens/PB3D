@@ -4,20 +4,21 @@
     min_par = -3.1415926535897932384626433832795028841971693993751058
     max_par = 3.1415926535897932384626433832795028841971693993751058
     n_alpha = 1
-    min_r_X = 0.1
+    min_r_X = 0.01
     max_r_X = 1.0
     max_it_NR = 500
-    max_it_r = 20
-    tol_r = 1.0E-6
+    max_it_r = 1
+    tol_r = 1.0E-5
     theta_var_along_B = .true.
     n_procs_per_alpha = 2
-    n_X = 10
-    min_m_X = 80
-    max_m_X = 90
-    plot_q = .false.
-    n_sol_requested = 3
-    min_n_r_X = 20
+    n_X = 200
+    min_m_X = 1930
+    max_m_X = 1950
+    plot_q = .true.
+    n_sol_requested = 5
+    min_n_r_X = 500
     reuse_r = .true.
+    max_n_plots = 0
 /
 
 pi  = 3.1415926535897932384626433832795028841971693993751058
