@@ -1041,6 +1041,7 @@ contains
     ! The interpolation between ind_lo and ind_hi is done linearly:
     !   varout = varin(ind_lo) + (pt_arr-ind_lo) * (varin(ind_hi)-varin(ind_lo))
     ! because ind_hi - ind_lo = 1
+    ! The variable r_offset is optionally used if the table does not start at 1
     ! note: this routine is also correct if ind_hi = ind_lo (for the last point)
     integer function calc_interp_real(varin,limin,varout,ptout,r_offset) &
         &result(ierr)

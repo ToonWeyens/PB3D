@@ -8,11 +8,11 @@ module input_ops
         &dp, max_str_ln, style, min_alpha, max_alpha, n_alpha, max_it_NR, &
         &tol_NR, max_it_r, theta_var_along_B, input_i, n_seq_0, min_n_r_X, &
         &calc_mesh_style, EV_style, n_procs_per_alpha, plot_q, tol_r, &
-        &n_sol_requested, min_r_X, max_r_X, reuse_r, nyq_fac, pi, max_n_plots
+        &n_sol_requested, min_r_X, max_r_X, nyq_fac, pi, max_n_plots
     use eq_vars, only: &
         &min_par, max_par, n_par, rho_0
     use output_ops, only: writo, lvl_ud, &
-        &format_out
+        &format_out, no_plots
     use file_ops, only: input_name
     use X_vars, only: n_X, min_m_X, max_m_X
     implicit none
@@ -24,7 +24,7 @@ module input_ops
         &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
         &max_it_r, tol_r, theta_var_along_B, n_X, min_m_X, max_m_X, min_r_X, &
         &max_r_X, EV_style, n_procs_per_alpha, plot_q, n_sol_requested, &
-        &reuse_r, nyq_fac, rho_0, max_n_plots
+        &nyq_fac, rho_0, max_n_plots, no_plots
 
 contains
     ! queries for yes or no, depending on the flag yes:
@@ -109,6 +109,10 @@ contains
                     ! adapt run-time variables if needed
                     call adapt_run
                     
+                    ! adapt alpha variables if needed
+                    ierr = adapt_alpha()
+                    CHCKERR('')
+                    
                     ! adapt n_par if needed
                     call adapt_n_par
                     
@@ -124,10 +128,6 @@ contains
                     
                     ! adapt m variables if needed
                     ierr = adapt_m()
-                    CHCKERR('')
-                    
-                    ! adapt alpha variables if needed
-                    ierr = adapt_alpha()
                     CHCKERR('')
                     
                     ! adapt normalization variables if needed
@@ -155,13 +155,13 @@ contains
             max_it_r = 8                                                        ! maximum 5 levels of Richardson extrapolation
             tol_r = 1E-5                                                        ! wanted relative error in Richardson extrapolation
             ! runtime variables
-            reuse_r = .true.                                                    ! reuse A and B from previous Richardson level
             format_out = 1                                                      ! NETCDF output
             style = 1                                                           ! Richardson Extrapolation with normal discretization
             n_procs_per_alpha = 1                                               ! 1 processor per field line
             plot_q = .false.                                                    ! do not plot the q-profile with nq-m = 0
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
             max_n_plots = 4                                                     ! maximum nr. of modes for which to plot output in plot_X_vec
+            no_plots = .false.                                                  ! show plots
             ! variables concerning poloidal mode numbers m
             min_m_X = 20                                                        ! lowest poloidal mode number m_X
             max_m_X = 22                                                        ! highest poloidal mode number m_X
@@ -209,8 +209,9 @@ contains
         ! so  the  fast-moving  functions  e^(i(k-m)) V  don't  give  the  wrong
         ! integrals in the perturbation part
         subroutine adapt_n_par
-            if (n_par.lt.nyq_fac*(max_m_X-min_m_X)) then
-                n_par = nyq_fac*(max_m_X-min_m_X)
+            if (n_par.lt.nyq_fac*(max_m_X-min_m_X)*(max_par-min_par)/(2*pi)) &
+                &then
+                n_par = int(nyq_fac*(max_m_X-min_m_X)*(max_par-min_par)/(2*pi))
                 call writo('WARNING: To avoid aliasing of the perturbation &
                     &integrals, n_par is increased to '//trim(i2str(n_par)))
             end if

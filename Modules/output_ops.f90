@@ -3,7 +3,7 @@
 !   well as in output files                                                    !
 !------------------------------------------------------------------------------!
 module output_ops
-    use str_ops, only: i2str, r2str, r2strt
+    use str_ops, only: i2str, r2strt, r2str
     use num_vars, only: dp, max_str_ln
     implicit none
     private
@@ -11,7 +11,7 @@ module output_ops
         &print_ar_1, print_ar_2, draw_GP, print_err_msg, init_time, &
         &start_time, stop_time, passed_time, print_hello, print_goodbye, &
         &draw_GP_animated, &
-        &lvl, lvl_sep, format_out
+        &lvl, lvl_sep, format_out, no_plots
 
     ! global variables
     integer :: lvl                                                              ! lvl determines the indenting. higher lvl = more indenting
@@ -21,6 +21,7 @@ module output_ops
     real(dp) :: deltat                                                          ! length of time interval
     real(dp) :: t1, t2                                                          ! end points of time interval
     logical :: running                                                          ! whether the timer is running
+    logical :: no_plots                                                         ! true if no plots should be made
 
     ! interfaces
     interface print_GP_2D
@@ -234,6 +235,12 @@ contains
         integer :: ostat
         character(len=max_str_ln) :: file_name
         
+        ! return if no_plots
+        if (no_plots) then
+            call writo('WARNING: plot ignored because no_plots is on')
+            return
+        end if
+        
         ! set nplt, npnt
         npnt = size(y,1)
         nplt = size(y,2)
@@ -372,6 +379,12 @@ contains
         integer :: ostat
         character(len=max_str_ln) :: file_name
         
+        ! return if no_plots
+        if (no_plots) then
+            call writo('WARNING: plot ignored because no_plots is on')
+            return
+        end if
+        
         ! set nplt, npnt
         npntx = size(z,1)
         npnty = size(z,2)
@@ -465,6 +478,12 @@ contains
         character(len=1000*max_str_ln) :: gnuplot_cmd
         integer :: iplt
         
+        ! return if no_plots
+        if (no_plots) then
+            call writo('WARNING: plot ignored because no_plots is on')
+            return
+        end if
+        
         ! create the GNUPlot command
         if (plot_on_screen) then
             ! basic GNUPlot commands
@@ -533,7 +552,7 @@ contains
             ! finishing the GNUPlot command
             gnuplot_cmd = trim(gnuplot_cmd)//';"'
             
-            call writo('Created plot in output file '''//trim(plot_dir)//&
+            call writo('Create plot in output file '''//trim(plot_dir)//&
                 &'/'//trim(fun_name)//'.pdf''')
         end if
         !write(*,*) 'gnuplot_cmd = ', trim(gnuplot_cmd)
@@ -566,11 +585,17 @@ contains
         character(len=1000*max_str_ln) :: gnuplot_cmd
         integer :: iplt
         
+        ! return if no_plots
+        if (no_plots) then
+            call writo('WARNING: plot ignored because no_plots is on')
+            return
+        end if
+        
         ! create the GNUPlot command
         ! basic GNUPlot commands
         gnuplot_cmd = 'gnuplot -e "set grid; set border 4095 front &
             &linetype -1 linewidth 1.000; set terminal gif animate delay '//&
-            &trim(i2str(max(250/nplt,1)))//'; &
+            &trim(i2str(max(250/nplt,1)))//' size 1280, 720; &
             &set output '''//trim(plot_dir)//'/'//trim(fun_name)//&
             &'.gif'';'
         ! individual plots
@@ -598,7 +623,6 @@ contains
                 if (iplt.lt.nplt) gnuplot_cmd = trim(gnuplot_cmd)//';'
             end do
         else
-            write(*,*) 'NOT YET TESTED !!!!!!!!!!!!!!!!!!'
             if (present(ranges)) then
                 if (size(ranges,1).eq.3 .and. size(ranges,2).eq.2) then
                     gnuplot_cmd = trim(gnuplot_cmd)//' set xrange ['//&
@@ -615,6 +639,11 @@ contains
                         &draw_GP_animated')
                 end if
             end if
+            gnuplot_cmd = trim(gnuplot_cmd) // &
+                &'set style line 1 linecolor rgb ''#cccccc''; set pm3d at b;'
+            gnuplot_cmd = trim(gnuplot_cmd) // ' set view 45,45;'
+            gnuplot_cmd = trim(gnuplot_cmd) // ' set cbrange ['//&
+                &trim(r2str(ranges(3,1)))//':'//trim(r2str(ranges(3,2)))//'];'
             do iplt = 1,nplt
                 gnuplot_cmd = trim(gnuplot_cmd) // ' splot'
                 gnuplot_cmd = trim(gnuplot_cmd) // ' '''//trim(file_name)//&
@@ -622,13 +651,13 @@ contains
                     &trim(i2str(nplt+iplt))//':'//&
                     &trim(i2str(2*nplt+iplt))//' title '''//trim(fun_name)//&
                     &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
-                    &')'' with lines'
+                    &')'' with lines linestyle 1'
                 if (iplt.lt.nplt) gnuplot_cmd = trim(gnuplot_cmd)//';'
             end do
         end if
         ! finishing the GNUPlot command
         gnuplot_cmd = trim(gnuplot_cmd)//'; set output" 2> /dev/null'
-        call writo('Created animated plot in output file '''//trim(plot_dir)&
+        call writo('Create animated plot in output file '''//trim(plot_dir)&
             &//'/'//trim(fun_name)//'.gif''')
         !write(*,*) 'gnuplot_cmd = ', trim(gnuplot_cmd)
         

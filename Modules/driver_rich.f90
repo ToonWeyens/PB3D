@@ -111,8 +111,9 @@ contains
     
     ! runs the calculations for one of the alpha's
     integer function run_for_alpha(alpha) result(ierr)
-        use num_vars, only: n_sol_requested, max_it_r, grp_rank, reuse_r
+        use num_vars, only: n_sol_requested, max_it_r, grp_rank
         use eq_ops, only: calc_eq
+        use eq_vars, only: theta, n_par
         use output_ops, only: draw_GP
         use eq_vars, only: dealloc_eq_vars_final
         use X_ops, only: prepare_X, solve_EV_system, plot_X_vec
@@ -126,14 +127,10 @@ contains
         
         ! local variables
         integer :: ir                                                           ! counter for richardson extrapolation
-        integer :: id, jd                                                       ! counter
+        integer :: id                                                           ! counter
         logical :: done_richard                                                 ! is it converged?
         complex(dp), allocatable :: X_val_rich(:,:,:)                           ! Richardson array of eigenvalues X_val
         real(dp), allocatable :: x_axis(:,:)                                    ! x axis for plot of Eigenvalues with n_r_X
-        complex(dp), allocatable :: A_terms(:,:,:,:)                            ! termj_int of matrix A from previous Richardson loop
-        complex(dp), allocatable :: B_terms(:,:,:,:)                            ! termj_int of matrix B from previous Richardson loop
-        real(dp) :: A_info(2)                                                   ! info about A_terms: min of r and step_size
-        real(dp) :: B_info(2)                                                   ! info about B_terms: min of r and step_size
         
         ! initialize ierr
         ierr = 0
@@ -164,8 +161,6 @@ contains
         if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
             call writo('Starting perturbation calculation with Richardson &
                 &extrapolation')
-            if (reuse_r) call writo('(the results from a Richardson level are &
-                &reused in the next)')
         else
             call writo('Starting perturbation calculation')
         end if
@@ -189,11 +184,7 @@ contains
             ! solve it
             call writo('treating the EV system')
             call lvl_ud(1)
-            if (reuse_r) then
-                ierr = solve_EV_system(A_terms,B_terms,A_info,B_info)
-            else
-                ierr = solve_EV_system()
-            end if
+            ierr = solve_EV_system()
             CHCKERR('')
             call lvl_ud(-1)
             
@@ -240,7 +231,9 @@ contains
                         &//trim(r2strt(realpart(X_val(id))))//' + '//&
                         &trim(r2strt(imagpart(X_val(id))))//' i')
                     
-                    ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id)
+                    !ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id)
+                    ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id,&
+                        &[theta(1,1),theta(n_par,1)])
                     CHCKERR('')
                 end do
                 

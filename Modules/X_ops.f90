@@ -5,7 +5,7 @@
 module X_ops
 #include <PB3D_macros.h>
     use num_vars, only: dp, iu, max_str_ln, pi
-    use output_ops, only: lvl_ud, writo, print_ar_2, print_GP_2D
+    use output_ops, only: lvl_ud, writo, print_ar_2, print_GP_2D, print_GP_3D
     use str_ops, only: i2str, r2strt
 
     implicit none
@@ -85,18 +85,12 @@ contains
     ! set-up and  solve the  EV system  by discretizing  the equations  in n_r_X
     ! normal points,  making use of  PV0, PV1 and  PV2, interpolated in  the n_r
     ! (equilibrium) values
-    integer function solve_EV_system(A_terms,B_terms,A_info,B_info) result(ierr)
+    integer function solve_EV_system() result(ierr)
         use num_vars, only: EV_style
         use str_ops, only: i2str
         use slepc_ops, only: solve_EV_system_slepc
         
         character(*), parameter :: rout_name = 'solve_EV_system'
-        
-        ! input / output
-        complex(dp), intent(inout), allocatable, optional :: A_terms(:,:,:,:)   ! termj_int of matrix A from previous Richardson loop
-        complex(dp), intent(inout), allocatable, optional :: B_terms(:,:,:,:)   ! termj_int of matrix B from previous Richardson loop
-        real(dp), intent(inout), optional :: A_info(2)                          ! info about A_terms: min of r and step_size
-        real(dp), intent(inout), optional :: B_info(2)                          ! info about B_terms: min of r and step_size
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -107,7 +101,7 @@ contains
         select case (EV_style)
             case(1)                                                             ! slepc solver for EV problem
                 ! solve the system
-                ierr = solve_EV_system_slepc(A_terms,B_terms,A_info,B_info)
+                ierr = solve_EV_system_slepc()
                 CHCKERR('')
                 
             case default
@@ -127,29 +121,41 @@ contains
         use num_vars, only: grp_rank, min_r_X, max_r_X, max_n_plots
         use output_ops, only: draw_GP, draw_GP_animated
         use X_vars, only: n_r_X, n_m_X, n_X, m_X
+        use VMEC_vars, only: n_r_eq
         use MPI_ops, only: get_ser_X_vec
         use eq_vars, only: q_saf_full
+        use utilities, only: calc_interp, dis2con
         
         character(*), parameter :: rout_name = 'plot_X_vec'
         
         ! input / output
         complex(dp), intent(in) :: X_vec(n_m_X,n_r_X)                           ! MPI Eigenvector
         complex(dp), intent(in) :: X_val                                        ! Eigenvalue
-        integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
-        real(dp), intent(in), optional :: theta(:)                              ! the parallel range [2pi]
+        integer, intent(in) :: X_id                                             ! nr. of Eigenvalue (for output name)
+        real(dp), intent(in), optional :: theta(2)                              ! the parallel range [2pi]
         
         ! local variables
-        real(dp), allocatable :: x_plot(:,:,:)                                  ! x_axis of plot
-        real(dp), allocatable :: y_plot(:,:,:)                                  ! y values of plot
+        real(dp), allocatable :: x_plot(:,:,:,:)                                ! x_axis of plot
+        real(dp), allocatable :: y_plot(:,:,:,:)                                ! y values of plot
+        real(dp), allocatable :: z_plot(:,:,:,:)                                ! z values of plot
         complex(dp), allocatable :: ser_X_vec(:,:)                              ! serial version of X_vec
-        integer :: id, jd, kd                                                   ! counter
+        integer :: id, jd, kd, ld                                               ! counter
         real(dp), allocatable :: max_of_modes(:)                                ! maximum of each mode
-        real(dp), allocatable :: max_of_modes_r(:)                              ! flux surface where max of mode occurs
+        real(dp), allocatable :: max_of_modes_x(:)                              ! flux surface where max of mode occurs
+        real(dp), allocatable :: max_of_modes_y(:)                              ! parallel point where max of mode occurs
         complex(dp) :: omega                                                    ! eigenvalue
         integer :: n_t                                                          ! nr. of time steps in quarter period
         integer :: n_n_t                                                        ! how many quarter periods
+        integer :: n_theta = 50                                                 ! how many parallel points
+        integer :: max_n_norm = 50                                              ! max nr of normal points to plot
+        integer :: n_norm                                                       ! nr. of normal points
+        real(dp) :: inc_norm                                                    ! normal increment for plots
+        real(dp) :: kd_loc                                                      ! local version of kd (normal counter)
         character(len=max_str_ln) :: plot_title                                 ! title for plots
-        real(dp) :: ranges(3,2)                                                 ! the range of the plots
+        real(dp), allocatable :: ranges(:,:)                                    ! the range of the plots
+        real(dp), allocatable :: theta_loc(:)                                   ! local version of theta
+        real(dp) :: q_saf_loc                                                   ! safety factor at current normal point
+        real(dp) :: norm_pt                                                     ! normal point
         
         ! initialize ierr
         ierr = 0
@@ -183,84 +189,146 @@ contains
                 n_t = 5                                                         ! 5 points per quarter period
             end if
             
+            ! set up n_norm and inc_norm
+            n_norm = min(n_r_X,max_n_norm)
+            inc_norm = max(1.0_dp,(n_r_X-1.0_dp)/(max_n_norm-1))
+            
+            ! set up  theta, depending on whether it has  been provided as input
+            ! or not
+            if (present(theta)) then
+                allocate(theta_loc(n_theta))
+                theta_loc = [(theta(1) + (jd-1.0_dp)/(n_theta-1.0_dp) * &
+                    &(theta(2)-theta(1)),jd=1,n_theta)]
+            else
+                n_theta = 1
+                allocate(theta_loc(n_theta))
+                theta_loc = 0.0_dp
+            end if
+            
             ! set up x-axis values
-            allocate(x_plot(1:n_r_X,1:n_m_X,n_n_t*n_t))
-            do id = 1,n_r_X
-                x_plot(id,:,:) = min_r_X + (id-1.0)/(n_r_X-1)*(max_r_X-min_r_X)
+            allocate(x_plot(n_norm,n_theta,n_m_X,n_n_t*n_t))
+            do id = 1,n_norm
+                x_plot(id,:,:,:) = min_r_X + (id-1.0)/(n_norm-1)*(max_r_X-min_r_X)
             end do
             
-            ! set up y-axis values (not same for all time steps)
-            ! allocate variables
-            allocate(y_plot(n_r_X,n_m_X,n_n_t*n_t))
-            allocate(max_of_modes(n_m_X))
-            allocate(max_of_modes_r(n_m_X))
-            max_of_modes = 0.0_dp
-            max_of_modes_r = 0.0_dp
+            ! set up y-axis values
+            allocate(y_plot(n_norm,n_theta,n_m_X,n_n_t*n_t))
+            if (present(theta)) then
+                do id = 1,n_theta
+                    y_plot(:,id,:,:) = theta_loc(id)
+                end do
+            else
+                y_plot = 0.0_dp
+            end if
             
-            ! check whether 2D or 3D plot
-            if (present(theta)) then                                            ! 3D plot
-            else                                                                ! 2D plot
-                ! plot for all time steps the Eigenfunction at theta = 0
-                do id = 1,n_n_t*n_t
-                    ! loop over all normal points of all modes
-                    do kd = 1,n_r_X
-                        ! loop over all modes
-                        do jd = 1,n_m_X
-                            ! check for maximum of mode jd and normal point jd
-                            y_plot(kd,jd,id) = realpart(ser_X_vec(jd,kd) * &
-                                &exp(omega/abs(omega)*(id-1)/(n_t-1)*2*pi))
+            ! set up z-axis values (not same for all time steps)
+            ! allocate variables
+            allocate(z_plot(n_norm,n_theta,n_m_X,n_n_t*n_t))
+            allocate(max_of_modes(n_m_X))
+            allocate(max_of_modes_x(n_m_X))
+            allocate(max_of_modes_y(n_m_X))
+            max_of_modes = 0.0_dp
+            max_of_modes_x = 0.0_dp
+            max_of_modes_y = 0.0_dp
+            
+            z_plot = 10
+            ! plot for all time steps the Eigenfunction at theta = 0
+            do id = 1,n_n_t*n_t
+                ! loop over all normal points of all modes
+                kd_loc = 1.0_dp
+                do kd = 1,n_norm
+                    ! loop over all modes
+                    do ld = 1,n_m_X
+                        do jd = 1,n_theta
+                            call dis2con(kd,[1,n_norm],norm_pt,[min_r_X,max_r_X])
+                            ierr = calc_interp(q_saf_full(:,0),[1,n_r_eq],&
+                                &q_saf_loc,norm_pt)
+                            CHCKERR('')
+                            z_plot(kd,jd,ld,id) = realpart(&
+                                &ser_X_vec(ld,nint(kd_loc)) * &
+                                &exp(omega/abs(omega)*(id-1.0_dp)/(n_t*n_n_t-1)&
+                                & + iu*(n_X*q_saf_loc-m_X(ld))*theta_loc(jd)))
                             if (id.eq.1 .or. id.eq.n_t+1) then
-                                if (y_plot(kd,jd,id).gt.max_of_modes(jd)) then
-                                    max_of_modes(jd) = y_plot(kd,jd,id)
-                                    max_of_modes_r(jd) = min_r_X + &
-                                        &(max_r_X-min_r_X)*(kd-1.0)/(n_r_X-1.0)
+                                if (z_plot(kd,jd,ld,id).gt.max_of_modes(ld)) then
+                                    max_of_modes(ld) = z_plot(kd,jd,ld,id)
+                                    max_of_modes_x(ld) = x_plot(kd,jd,ld,id)
+                                    max_of_modes_y(ld) = y_plot(kd,jd,ld,id)
                                 end if
                             end if
                         end do
                     end do
-                    if (id.eq.1 .or. id.eq.n_t+1) then
-                        !! plot places of maximum
-                        if (id.eq.1) then
-                            !call writo('Information about the maximum of the &
-                                !&modes for time t=0')
-                            plot_title = 'Eigenvalue '//trim(i2str(X_id))//&
-                                &' - Eigenvector (t = 0)'
-                        else if (id.eq.n_t+1) then
-                            !call writo('Information about the maximum of the &
-                                !&modes for time t=T_0/4')
-                            plot_title = 'Eigenvalue '//trim(i2str(X_id))//&
-                                &' - Eigenvector (t = T_0/4)'
-                        end if
-                        !call print_GP_2D('maximum of the modes','',max_of_modes)
-                        !call print_GP_2D('place of maximum of the modes','',&
-                            !&max_of_modes_r)
-                        ! plot the modes on screen
-                        call print_GP_2D(plot_title,'Eigenvector.dat',&
-                            &y_plot(:,:,id),x=x_plot(:,:,id),draw=.true.)
-                        ! plot them in file as well
-                        call draw_GP(plot_title,'Eigenvector.dat',&
-                            &n_m_X,.true.,.false.)
-                    end if
+                    kd_loc = kd_loc + inc_norm
                 end do
-            end if
+                if (id.eq.1 .or. id.eq.n_t+1) then
+                    !! plot places of maximum
+                    if (id.eq.1) then
+                        !call writo('Information about the maximum of the &
+                            !&modes for time t=0')
+                        plot_title = 'Eigenvalue '//trim(i2str(X_id))//&
+                            &' - Eigenvector (t = 0)'
+                    else if (id.eq.n_t+1) then
+                        !call writo('Information about the maximum of the &
+                            !&modes for time t=T_0/4')
+                        plot_title = 'Eigenvalue '//trim(i2str(X_id))//&
+                            &' - Eigenvector (t = 0.25 T_0)'
+                    end if
+                    !call print_GP_2D('maximum of the modes','',max_of_modes)
+                    !call print_GP_2D('normal flux surface where max. of modes &
+                        !&occurs','',max_of_modes_x)
+                    !call print_GP_2D('parallel point where max. of modes &
+                        !&occurs','',max_of_modes_y)
+                    ! plot the modes on screen
+                    if (present(theta)) then
+                        call print_GP_3D(plot_title,'Eigenvector.dat',&
+                            &z_plot(:,:,:,id),y=y_plot(:,:,:,id),&
+                            &x=x_plot(:,:,:,id),draw=.true.)
+                    else
+                        call print_GP_2D(plot_title,'Eigenvector.dat',&
+                            &z_plot(:,1,:,id),x=x_plot(:,1,:,id),draw=.true.)
+                    end if
+                    ! plot them in file as well
+                    call draw_GP(plot_title,'Eigenvector.dat',&
+                        &n_m_X,.not.present(theta),.false.)
+                end if
+            end do
             
             deallocate(max_of_modes)
-            deallocate(max_of_modes_r)
+            deallocate(max_of_modes_x)
+            
+            ! allocate ranges
+            if (present(theta)) then
+                allocate(ranges(3,2))
+            else
+                allocate(ranges(2,2))
+            end if
             
             if (n_m_X.gt.1) then
                 ! plot the individual modes in time
-                do jd = 1,min(n_m_X,max_n_plots)
-                    ! set plot_title and ranges
+                do ld = 1,min(n_m_X,max_n_plots)
+                    ! set plot_title
                     plot_title = 'Eigenvalue '//trim(i2str(X_id))//' - &
-                        &mode '//trim(i2str(jd))//' of '//trim(i2str(n_m_X))
-                    ranges(1,:) = [minval(x_plot(:,jd,:)),&
-                        &maxval(x_plot(:,jd,:))]
-                    ranges(2,:) = [minval(y_plot(:,jd,:)),&
-                        &maxval(y_plot(:,jd,:))]
-                    call print_GP_2D(trim(plot_title),'mode'//trim(i2str(jd)),&
-                        &y_plot(:,jd,:),x=x_plot(:,jd,:),draw=.false.)
+                        &mode '//trim(i2str(ld))//' of '//trim(i2str(n_m_X))
+                    if (present(theta)) then
+                        ranges(1,:) = [minval(x_plot(:,:,ld,:)),&
+                            &maxval(x_plot(:,:,ld,:))]
+                        ranges(2,:) = [minval(y_plot(:,:,ld,:)),&
+                            &maxval(y_plot(:,:,ld,:))]
+                        ranges(3,:) = [minval(z_plot(:,:,ld,:)),&
+                            &maxval(z_plot(:,:,ld,:))]
+                        call print_GP_3D(trim(plot_title),'mode'//&
+                            &trim(i2str(ld)),z_plot(:,:,ld,:),&
+                            &y=y_plot(:,:,ld,:),x=x_plot(:,:,ld,:),draw=.false.)
+                    else
+                        ranges(1,:) = [minval(x_plot(:,:,ld,:)),&
+                            &maxval(x_plot(:,:,ld,:))]
+                        ranges(2,:) = [minval(z_plot(:,:,ld,:)),&
+                            &maxval(z_plot(:,:,ld,:))]
+                        call print_GP_2D(trim(plot_title),'mode'//&
+                            &trim(i2str(ld)),z_plot(:,1,ld,:),&
+                            &x=x_plot(:,1,ld,:),draw=.false.)
+                    end if
                     call draw_GP_animated(trim(plot_title),'mode'//&
-                        &trim(i2str(jd)),n_n_t*n_t,.true.,ranges(1:2,:))
+                        &trim(i2str(ld)),n_n_t*n_t,.false.,ranges)
                 end do
                 if (n_m_X.eq.max_n_plots+1) then
                     call writo('WARNING: Skipping plot for mode '//&
@@ -272,20 +340,32 @@ contains
             end if
             
             ! plot the global mode in time
-            do jd = 2,n_m_X
-                y_plot(:,1,:) = y_plot(:,1,:) + y_plot(:,jd,:)
+            do ld = 2,n_m_X
+                z_plot(:,:,1,:) = z_plot(:,:,1,:) + z_plot(:,:,ld,:)
             end do
             plot_title = 'Eigenvalue '//trim(i2str(X_id))//' - global mode'
-            ranges(1,:) = [minval(x_plot(:,1,:)),maxval(x_plot(:,1,:))]
-            ranges(2,:) = [minval(y_plot(:,1,:)),maxval(y_plot(:,1,:))]
-            call print_GP_2D(trim(plot_title),'global mode',&
-                &y_plot(:,1,:),x=x_plot(:,1,:),draw=.false.)
+            if (present(theta)) then
+                ranges(1,:) = [minval(x_plot(:,:,1,:)),maxval(x_plot(:,:,1,:))]
+                ranges(2,:) = [minval(y_plot(:,:,1,:)),maxval(y_plot(:,:,1,:))]
+                ranges(3,:) = [minval(z_plot(:,:,1,:)),maxval(z_plot(:,:,1,:))]
+                call print_GP_3D(trim(plot_title),'global mode',&
+                    &z_plot(:,:,1,:),y=y_plot(:,:,1,:),&
+                    &x=x_plot(:,:,1,:),draw=.false.)
+            else
+                ranges(1,:) = [minval(x_plot(:,:,1,:)),maxval(x_plot(:,:,1,:))]
+                ranges(2,:) = [minval(z_plot(:,:,1,:)),maxval(z_plot(:,:,1,:))]
+                call print_GP_2D(trim(plot_title),'global mode',&
+                    &z_plot(:,1,1,:),x=x_plot(:,1,1,:),draw=.false.)
+            end if
             call draw_GP_animated(trim(plot_title),'global mode',&
-                &n_n_t*n_t,.true.,ranges(1:2,:))
+                &n_n_t*n_t,.not.present(theta),ranges)
             
             ! deallocate variables
+            deallocate(ranges)
             deallocate(ser_X_vec)
             deallocate(x_plot)
+            deallocate(y_plot)
+            deallocate(z_plot)
         end if
         
         call lvl_ud(-1)

@@ -18,8 +18,7 @@ contains
     ! This subroutine sets up  the matrices A ad B of  the generalized EV system
     ! described in [ADD REF] and solves them using the slepc suite
     
-    integer function solve_EV_system_slepc(A_terms,B_terms,A_info,B_info) &
-        &result(ierr)
+    integer function solve_EV_system_slepc() result(ierr)
         use X_vars, only: X_vec, X_val, n_r_X, grp_n_r_X, n_m_X,  n_r_X, &
             &grp_n_r_X, PV_int, KV_int
         use num_vars, only: MPI_comm_groups, grp_n_procs, n_sol_requested, &
@@ -30,12 +29,6 @@ contains
         use eq_vars, only: B_0, R_0, rho_0
         
         character(*), parameter :: rout_name = 'solve_EV_system_slepc'
-        
-        ! input / output
-        PetscScalar, intent(inout), allocatable, optional :: A_terms(:,:,:,:)   ! termj_int of matrix A from previous Richardson loop
-        PetscScalar, intent(inout), allocatable, optional :: B_terms(:,:,:,:)   ! termj_int of matrix B from previous Richardson loop
-        PetscReal, intent(inout), optional :: A_info(2)                         ! info about A_terms: min of r and step_size
-        PetscReal, intent(inout), optional :: B_info(2)                         ! info about B_terms: min of r and step_size
         
         ! local variables
         ! petsc / MPI variables
@@ -56,8 +49,11 @@ contains
         PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
         PetscInt, allocatable :: o_nz(:)                                        ! nr. of off-diagonal non-zeros
         
-        ! solution
+        ! guess   
         Vec :: guess_vec                                                        ! guess to solution EV parallel vector
+        PetscInt :: n_start, n_end                                              ! start and end row of ownership
+        PetscInt :: n_guess_prev                                                ! nr. elements in previous vector to put in guess
+        PetscInt, allocatable :: guess_id(:)                                    ! indices of elements in guess
         
         ! solution
         Vec :: sol_vec                                                          ! solution EV parallel vector
@@ -159,7 +155,7 @@ contains
         ! deallocate d_nz and o_nz
         deallocate(d_nz,o_nz)
         ! fill the matrix A
-        ierr = fill_mat(step_size,PV_int,A,A_terms,A_info)
+        ierr = fill_mat(step_size,PV_int,A)
         CHCKERR('')
         call writo('Matrix A set up')
         
@@ -170,7 +166,7 @@ contains
         call MatDuplicate(A,MAT_SHARE_NONZERO_PATTERN,B,ierr)                   ! B has same structure as A
         CHCKERR('failed to duplicate A into B')
         ! fill the matrix B
-        ierr = fill_mat(step_size,KV_int,B,B_terms,B_info)
+        ierr = fill_mat(step_size,KV_int,B)
         CHCKERR('')
         call writo('Matrix B set up')
         
@@ -247,8 +243,18 @@ contains
             call MatGetVecs(A,guess_vec,PETSC_NULL_OBJECT,ierr)                 ! get compatible parallel vector to matrix A
             CHCKERR('Failed to create guess vector')
             
+            call VecGetOwnershipRange(guess_vec,n_start,n_end,ierr)             ! starting and ending row n_start and n_end
+            CHCKERR('Failed to get ownership')
+            !write(*,*) 'rank, start, end-start+1, size(X_vec)', grp_rank, n_start, &
+                !&n_end-n_start+1, size(X_vec)
+            
             ! set values of guess_vec
-            !call VecSetValues(guess_vec,PetscInt ni,const PetscInt ix[],const PetscScalar y[],INSERT_VALUES,ierr)
+            n_guess_prev = 2*size(X_vec)
+            guess_id = [(id,id=1,n_guess_prev,2)]
+            !write(*,*) 'rank, n_guess_prev, guess_id = ', grp_rank, n_guess_prev, guess_id
+            !call VecSetValues(guess_vec,n_guess_prev,guess_id,X_vec(:,:,1),&
+                !&INSERT_VALUES,ierr)
+            CHCKERR('Failed to set guess values')
             
             ! deallocate X_vec and X_val
             deallocate(X_vec,X_val)
@@ -383,8 +389,7 @@ contains
     !   interpolated value  of the previous  point allow for the  calculation of
     !   every quantity
     ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING, SO IT IS TREATED AS HERMITIAN !!!
-    integer function fill_mat(step_size,V_int_tab,mat,V_interp_inout,tab_info) &
-        &result(ierr)
+    integer function fill_mat(step_size,V_int_tab,mat) result(ierr)
         use num_vars, only: min_r_X, max_r_X, grp_rank, grp_n_procs
         use eq_vars, only: grp_n_r_eq, A_0, flux_p_FD, flux_t_FD
         use utilities, only: dis2con
@@ -397,10 +402,7 @@ contains
         PetscScalar, intent(in) :: V_int_tab(:,:,:,:)                           ! either PV_int or KV_int tables in grp_n_r_eq normal points
         Mat, intent(inout) :: mat                                               ! either A or B
         PetscReal, intent(in) :: step_size                                      ! step size of current Richardson level
-        PetscScalar, intent(inout), allocatable, optional :: &
-            &V_interp_inout(:,:,:,:)                                            ! V_interp at normal points of previous Richardson loop
-        PetscReal, intent(inout), optional :: tab_info(2)                       ! info about V_interp_inout: min of r and step_size
-        
+       r
         ! local variables (not to be used in child routines)
         character(len=max_str_ln) :: err_msg                                    ! error message
         PetscScalar, allocatable :: loc_block(:,:)                              ! (n_m_X x n_m_X) block matrix for 1 normal point
@@ -411,7 +413,7 @@ contains
         PetscInt :: id, jd                                                      ! counters
         
         ! for tests
-        PetscInt :: r_X_start, r_X_end                                          ! start block and end block (= n_start/n_m_X and equiv.)
+        PetscInt :: r_X_start, r_X_end                                          ! start block and end block
         
         ! local variables (to be used in child routines)
         PetscReal :: norm_pt                                                    ! current normal point (min_r_X...max_r_X)
@@ -420,33 +422,6 @@ contains
         
         ! initialize ierr
         ierr = 0
-        
-        ! tests
-        if (present(V_interp_inout)) then                                            ! mat terms present
-            if (.not.present(tab_info)) then                                    ! tab_info not present
-                ierr = 1
-                err_msg = 'V_interp_inout and info_terms have to be provided both'
-                CHCKERR(err_msg)
-            end if
-        else                                                                    ! mat terms not present
-            if (present(tab_info)) then                                         ! V_interp_inout present
-                ierr = 1
-                err_msg = 'V_interp_inout and info_terms have to be provided both'
-                CHCKERR(err_msg)
-            end if
-        end if
-        
-        ! save input V_interp_inout and tab_info
-        if (present(V_interp_inout)) then
-            if (allocated(V_interp_inout)) then                                 ! check for allocation of V_interp_inout
-                allocate(V_interp_in(size(V_interp_inout,1),&
-                    &size(V_interp_inout,2),size(V_interp_inout,3),&
-                    &size(V_interp_inout,4)))                                   ! allocate V_interp_in with size of V_interp_inout
-                V_interp_in = V_interp_inout                                    ! save V_interp_inout in V_interp_in
-                tab_info_in = tab_info                                          ! save tab_info_in in tab_info
-                deallocate(V_interp_inout)                                      ! deallocate V_interp_inout to reallocate later
-            end if
-        end if
         
         ! allocate variables
         allocate(V_interp(n_m_X,n_m_X,3))
@@ -457,7 +432,7 @@ contains
         
         !  test  whether  the  matrix   range  coincides  with  grp_min_r_X  and
         ! grp_max_r_X
-        call MatGetOwnershipRange(mat,r_X_start,r_X_end,ierr)                   ! starting and ending row n_start and n_end
+        call MatGetOwnershipRange(mat,r_X_start,r_X_end,ierr)                   ! starting and ending row r_X_start and r_X_end
         CHCKERR('Couldn''t get ownership range of matrix')
         r_X_start = r_X_start/n_m_X                                             ! count per block
         r_X_end = r_X_end/n_m_X                                                 ! count per block
@@ -477,19 +452,6 @@ contains
         ! get first interpolated point, corresponding to r_X_start
         call dis2con(grp_min_r_X,[1,n_r_X],norm_pt,[min_r_X,max_r_X])
         
-        ! (re)allocate  V_interp_inout and set  tab_info with first normal  point and
-        ! step size
-        if (present(V_interp_inout)) then
-            if (grp_rank.ne.grp_n_procs-1) then
-                allocate(V_interp_inout(n_m_X,n_m_X,grp_max_r_X-grp_min_r_X+2,&
-                    &3))
-            else
-                allocate(V_interp_inout(n_m_X,n_m_X,grp_max_r_X-grp_min_r_X+1,&
-                    &3))
-            end if
-            tab_info = [norm_pt,step_size]
-        end if
-        
         ! set up step_size_FD
         if (use_pol_flux) then
             step_size_FD = step_size * (flux_p_FD(grp_n_r_eq,0)-flux_p_FD(1,0)) / &
@@ -500,8 +462,7 @@ contains
         end if
         
         ! get the interpolated terms in V_interp
-        ierr = get_V_interp(V_int_tab,norm_pt,V_interp_in,V_interp_next,&
-            &V_interp_inout,tab_info_in(1),tab_info_in(2),1)
+        ierr = get_V_interp(V_int_tab,norm_pt,V_interp_next)
         CHCKERR('')
         
         ! iterate over all rows of this rank
@@ -535,9 +496,7 @@ contains
                 norm_pt = norm_pt + step_size
                 
                 ! get the interpolated terms in V_interp
-                ierr = get_V_interp(V_int_tab,norm_pt,V_interp_in,&
-                    &V_interp_next,V_interp_inout,tab_info_in(1),&
-                    &tab_info_in(2),id-grp_min_r_X+3)
+                ierr = get_V_interp(V_int_tab,norm_pt,V_interp_next)
                 CHCKERR('')
                 
                 loc_block = 0
@@ -584,8 +543,7 @@ contains
         ! whether it  can be taken  from the  input V_interp_in. Also  saves the
         ! calculated terms in V_interp_out for use in next Richardson iteration
         ! note: uses found_id, norm_pt_found from parent routine
-        integer function get_V_interp(V_int_tab,norm_pt,V_interp_in,V_interp,&
-            &V_interp_out,min_tab,step_size,out_id) result(ierr)
+        integer function get_V_interp(V_int_tab,norm_pt,V_interp) result(ierr)
             use utilities, only: con2dis, round_with_tol
             use VMEC_vars, only: n_r_eq
             use eq_vars, only: grp_min_r_eq
@@ -595,12 +553,7 @@ contains
             ! input / output
             PetscScalar, intent(in) :: V_int_tab(n_m_X,n_m_X,grp_n_r_eq,3)      ! table of (k,m) integrated values at (1..grp_n_r_eq)
             PetscReal, intent(inout) :: norm_pt                                 ! point at which to interpolate
-            PetscScalar, intent(in), allocatable :: V_interp_in(:,:,:,:)        ! saved V_interp, from the previous Richardson level
             PetscScalar, intent(inout) :: V_interp(n_m_X,n_m_X,3)               ! output pairs of (k,m), interpolated and integrated at norm_pt
-            PetscScalar, intent(inout), allocatable :: V_interp_out(:,:,:,:)    ! saved V_interp, for the next Richardson level
-            PetscReal, intent(in) :: min_tab                                    ! minimum of table V_interp_in
-            PetscReal, intent(in) :: step_size                                  ! step size in table V_interp_in
-            integer, intent(in) :: out_id                                       ! index at which to store V_interp_out
             
             ! local variables
             PetscInt :: id                                                      ! counter
@@ -616,66 +569,28 @@ contains
             ! initialize ierr
             ierr = 0
             
-            ! if  possible, find  the  normal point  in  the table  V_interp_in,
-            ! corresponding to the calculated  V_interp from previous Richardson
-            ! levels
-            
-            ! initialize norm_pt_found and found_id
-            norm_pt_found = .false.
-            found_id = -1
-            
-            ! check if V_interp_inout_in is allocated
-            if (allocated(V_interp_in)) then
-                ! set V_interp_size and initialize found_id and norm_pt_tab
-                V_interp_size = size(V_interp_in,3)
-                norm_pt_tab = min_tab
-                
-                ! find the column
-                terms_in_tab: do id = 1,V_interp_size
-                    if (abs(norm_pt-norm_pt_tab).lt.tol) then                   ! norm_pt found
-                        found_id = id
-                        norm_pt_found = .true.
-                        exit terms_in_tab
-                    else                                                        ! norm_pt not found
-                        norm_pt_tab = norm_pt_tab + step_size                   ! increase norm_pt_terms
-                    end if
-                end do terms_in_tab
-            end if
-            
-            ! set V_interp through the  table V_interp_in if found, or calculate
-            ! if not
-            
             ! loop over all terms 0,1,2 (with index 1,2,3 in variables)
             do id = 1,3
-                if (norm_pt_found) then                                         ! take V_interp from last Richardson level
-                    V_interp(:,:,id) = V_interp_in(:,:,found_id,id)
-                else                                                            ! calculate V_interp
-                    ! round norm_pt if necessary
-                    ierr = round_with_tol(norm_pt,0.0_dp,1.0_dp)
-                    CHCKERR('')
-                    
-                    ! get the  table indices  between which to  interpolate. The
-                    ! tables are set up in  the equilibrium grid, which uses the
-                    ! same normal  coordinate as the  discretization (determined
-                    ! by VMEC through use_pol_flux)
-                    call con2dis(norm_pt,[0._dp,1._dp],norm_pt_dis,[1,n_r_eq])  ! convert norm_pt to the index in the array V_int
-                    
-                    ! round up and down and set offset
-                    norm_pt_lo = floor(norm_pt_dis)
-                    norm_pt_hi = ceiling(norm_pt_dis)
-                    offset =  grp_min_r_eq - 1
-                    
-                    ! interpolate, also correct if norm_pt_hi = norm_pt_lo
-                    V_interp(:,:,id) = V_int_tab(:,:,norm_pt_lo-offset,id) + &
-                        &(V_int_tab(:,:,norm_pt_hi-offset,id)-&
-                        &V_int_tab(:,:,norm_pt_lo-offset,id))*&
-                        &(norm_pt_dis-norm_pt_lo)                               ! because norm_pt_hi - norm_pt_lo = 1
-                end if
+                ! round norm_pt if necessary
+                ierr = round_with_tol(norm_pt,0.0_dp,1.0_dp)
+                CHCKERR('')
                 
-                ! update V_interp_inout with first point
-                if (present(V_interp_inout)) then
-                    V_interp_out(:,:,out_id,id) = V_interp(:,:,id)
-                end if
+                ! get the table indices between which to interpolate. The tables
+                ! are set up in the equilibrium grid, which uses the same normal
+                ! coordinate as  the discretization (determined by  VMEC through
+                ! use_pol_flux)
+                call con2dis(norm_pt,[0._dp,1._dp],norm_pt_dis,[1,n_r_eq])      ! convert norm_pt to the index in the array V_int
+                
+                ! round up and down and set offset
+                norm_pt_lo = floor(norm_pt_dis)
+                norm_pt_hi = ceiling(norm_pt_dis)
+                offset =  grp_min_r_eq - 1
+                
+                ! interpolate, also correct if norm_pt_hi = norm_pt_lo
+                V_interp(:,:,id) = V_int_tab(:,:,norm_pt_lo-offset,id) + &
+                    &(V_int_tab(:,:,norm_pt_hi-offset,id)-&
+                    &V_int_tab(:,:,norm_pt_lo-offset,id))*&
+                    &(norm_pt_dis-norm_pt_lo)                                   ! because norm_pt_hi - norm_pt_lo = 1
             end do
         end function get_V_interp
     end function fill_mat
