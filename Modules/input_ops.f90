@@ -12,7 +12,7 @@ module input_ops
     use eq_vars, only: &
         &min_par, max_par, n_par, rho_0
     use output_ops, only: writo, lvl_ud, &
-        &format_out, no_plots
+        &format_out
     use file_ops, only: input_name
     use X_vars, only: n_X, min_m_X, max_m_X
     implicit none
@@ -24,7 +24,7 @@ module input_ops
         &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
         &max_it_r, tol_r, theta_var_along_B, n_X, min_m_X, max_m_X, min_r_X, &
         &max_r_X, EV_style, n_procs_per_alpha, plot_q, n_sol_requested, &
-        &nyq_fac, rho_0, max_n_plots, no_plots
+        &nyq_fac, rho_0, max_n_plots
 
 contains
     ! queries for yes or no, depending on the flag yes:
@@ -161,7 +161,6 @@ contains
             plot_q = .false.                                                    ! do not plot the q-profile with nq-m = 0
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
             max_n_plots = 4                                                     ! maximum nr. of modes for which to plot output in plot_X_vec
-            no_plots = .false.                                                  ! show plots
             ! variables concerning poloidal mode numbers m
             min_m_X = 20                                                        ! lowest poloidal mode number m_X
             max_m_X = 22                                                        ! highest poloidal mode number m_X

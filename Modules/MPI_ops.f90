@@ -506,51 +506,53 @@ contains
     !   4   logical                     lasym
     !   5   logical                     use_pol_flux
     !   6   logical                     lfreeb
-    !   8   integer                     max_it_NR
-    !   8   integer                     max_it_r
-    !   9   integer                     format_out
-    !   10  integer                     style
-    !   11  integer                     n_par
-    !   12  integer                     n_r
-    !   13  integer                     mpol
-    !   14  integer                     ntor
-    !   15  integer                     nfp
-    !   16  integer                     EV_style
-    !   17  integer                     n_procs_per_alpha
-    !   18  integer                     n_alpha
-    !   19  integer                     n_X
-    !   20  integer                     min_m_X
-    !   21  integer                     max_m_X
-    !   22  integer                     n_sol_requested
-    !   23  integer                     min_n_r_X
-    !   24  integer                     grp_min_r_eq
-    !   25  integer                     grp_max_r_eq
-    !   26  integer                     nyq_fac
-    !   27  real_dp                     min_alpha
-    !   28  real_dp                     max_alpha
-    !   29  real_dp                     min_r_X
-    !   20  real_dp                     max_r_X
-    !   31  real_dp                     tol_NR
-    !   32  real_dp                     tol_r
-    !   33  real_dp                     min_par
-    !   34  real_dp                     max_par
-    !   35  real_dp                     gam
-    !   36  real_dp                     R_0
-    !   37  real_dp                     A_0
-    !   38  real_dp                     pres_0
-    !   39  real_dp                     B_0
-    !   40  real_dp                     psi_0
-    !   41  real_dp                     rho_0
-    !   42  real_dp(n_r)                phi(n_r) 
-    !   43  real_dp(n_r)                phi_r(n_r) 
-    !   44  real_dp(n_r)                iotaf(n_r) 
-    !   45  real_dp(n_r)                presf(n_r) 
-    !   46  real_dp(*)                  R_c(*)
-    !   47  real_dp(*)                  R_s(*)
-    !   48  real_dp(*)                  Z_c(*)
-    !   49  real_dp(*)                  Z_s(*)
-    !   50  real_dp(*)                  L_c(*)
-    !   51  real_dp(*)                  L_s(*)
+    !   7   logical                     no_guess
+    !   8   logical                     no_plots
+    !   9   integer                     max_it_NR
+    !   10  integer                     max_it_r
+    !   11  integer                     format_out
+    !   12  integer                     style
+    !   13  integer                     n_par
+    !   14  integer                     n_r
+    !   15  integer                     mpol
+    !   16  integer                     ntor
+    !   17  integer                     nfp
+    !   18  integer                     EV_style
+    !   19  integer                     n_procs_per_alpha
+    !   20  integer                     n_alpha
+    !   21  integer                     n_X
+    !   22  integer                     min_m_X
+    !   23  integer                     max_m_X
+    !   24  integer                     n_sol_requested
+    !   25  integer                     min_n_r_X
+    !   26  integer                     grp_min_r_eq
+    !   27  integer                     grp_max_r_eq
+    !   28  integer                     nyq_fac
+    !   29  real_dp                     min_alpha
+    !   20  real_dp                     max_alpha
+    !   31  real_dp                     min_r_X
+    !   32  real_dp                     max_r_X
+    !   33  real_dp                     tol_NR
+    !   34  real_dp                     tol_r
+    !   35  real_dp                     min_par
+    !   36  real_dp                     max_par
+    !   37  real_dp                     gam
+    !   38  real_dp                     R_0
+    !   39  real_dp                     A_0
+    !   40  real_dp                     pres_0
+    !   41  real_dp                     B_0
+    !   42  real_dp                     psi_0
+    !   43  real_dp                     rho_0
+    !   44  real_dp(n_r)                phi(n_r) 
+    !   45  real_dp(n_r)                phi_r(n_r) 
+    !   46  real_dp(n_r)                iotaf(n_r) 
+    !   47  real_dp(n_r)                presf(n_r) 
+    !   48  real_dp(*)                  R_c(*)
+    !   49  real_dp(*)                  R_s(*)
+    !   50  real_dp(*)                  Z_c(*)
+    !   51  real_dp(*)                  Z_s(*)
+    !   52  real_dp(*)                  L_c(*)
+    !   53  real_dp(*)                  L_s(*)
     !   with (*) = (0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3))
     ! [MPI] Collective call
     integer function broadcast_vars() result(ierr)
@@ -560,8 +562,8 @@ contains
             &theta_var_along_B, EV_style, max_it_NR, max_it_r, n_alpha, &
             &n_procs_per_alpha, style, max_alpha, min_alpha, tol_NR, glb_rank, &
             &glb_n_procs, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
-            &nyq_fac, tol_r
-        use output_ops, only: format_out
+            &nyq_fac, tol_r, no_guess
+        use output_ops, only: format_out, no_plots
         use X_vars, only: n_X, min_m_X, max_m_X
         use eq_vars, only: n_par, max_par, min_par, grp_min_r_eq, &
             &grp_max_r_eq, R_0, A_0, pres_0, B_0, psi_0, rho_0
@@ -582,6 +584,8 @@ contains
             call MPI_Bcast(lasym,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(use_pol_flux,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(lfreeb,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(no_guess,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_it_r,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(format_out,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)

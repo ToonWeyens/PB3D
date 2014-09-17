@@ -5,13 +5,13 @@ module num_vars
     implicit none
     private
     public dp, qp, style, max_str_ln, n_seq_0, max_args, max_opts, prog_name, &
-        &max_it_r, tol_r, ltest, pi, max_it_NR, tol_NR, &
+        &max_it_r, tol_r, ltest, pi, max_it_NR, tol_NR, no_guess, &
         &input_i, output_i, VMEC_i, min_alpha, max_alpha, n_alpha, &
         &theta_var_along_B, max_deriv, mu_0, calc_mesh_style, iu, EV_style, &
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
         &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups,  &
         &output_name, next_job, next_job_win, plot_q, n_sol_requested, &
-        &min_n_r_X, min_r_X, max_r_X, nyq_fac, max_n_plots
+        &min_n_r_X, min_r_X, max_r_X, nyq_fac, max_n_plots, alpha_job_nr
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -51,10 +51,12 @@ module num_vars
     logical :: ltest                                                            ! whether or not to call the testing routines
     integer :: calc_mesh_style                                                  ! how equilibrium mesh is calculated
     integer :: EV_style                                                         ! determines the method used for solving an EV problem
+    integer :: alpha_job_nr                                                     ! which alpha job is being calculated
     
     ! considering Richardson extrapolation
     integer :: max_it_r                                                         ! number of levels for Richardson extrapolation
     real(dp) :: tol_r                                                           ! tolerance for Richardson extrapolation
+    logical :: no_guess = .false.                                               ! disable guessing Eigenfunction from previous level of Richardson
 
     ! considering finding the magnetic field lines
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations

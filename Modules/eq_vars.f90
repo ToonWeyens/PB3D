@@ -153,7 +153,7 @@ contains
     integer function calc_flux_q() result(ierr)
         use VMEC_vars, only: iotaf, phi, phi_r, presf, n_r_eq
         use utilities, only: VMEC_norm_deriv, calc_int
-        use num_vars, only: max_deriv, glb_rank
+        use num_vars, only: max_deriv, grp_rank
         
         character(*), parameter :: rout_name = 'calc_flux_q'
         
@@ -173,9 +173,9 @@ contains
             CHCKERR('')
         end do
         
-        ! the global master needs q_saf for resonance plot and checking of m and
-        ! n, and also plot_X_vec needs it
-        if (glb_rank.eq.0) then
+        ! the  group masters  need q_saf  for plot_X_vec  and the  global master
+        ! needs it for the resonance plot and checking of m and n
+        if (grp_rank.eq.0) then
             allocate(q_saf_full(n_r_eq,0:1))
             q_saf_full(:,0) = 1/iotaf
             ierr = VMEC_norm_deriv(q_saf_full(:,0),q_saf_full(:,1),n_r_eq-1._dp,&
@@ -653,11 +653,11 @@ contains
     ! deallocates  equilibrium quantities  that are not  used anymore  after the
     ! calculation for a certain alpha
     subroutine dealloc_eq_vars_final
-        use num_vars, only: glb_rank
+        use num_vars, only: grp_rank
         
         deallocate(flux_p_FD,flux_t_FD)
         deallocate(q_saf,q_saf_FD)
-        if (glb_rank.eq.0) deallocate(q_saf_full)
+        if (grp_rank.eq.0) deallocate(q_saf_full)
         deallocate(pres,pres_FD)
         deallocate(zeta,theta)
     end subroutine dealloc_eq_vars_final

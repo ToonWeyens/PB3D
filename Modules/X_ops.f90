@@ -85,12 +85,15 @@ contains
     ! set-up and  solve the  EV system  by discretizing  the equations  in n_r_X
     ! normal points,  making use of  PV0, PV1 and  PV2, interpolated in  the n_r
     ! (equilibrium) values
-    integer function solve_EV_system() result(ierr)
+    integer function solve_EV_system(use_guess) result(ierr)
         use num_vars, only: EV_style
         use str_ops, only: i2str
         use slepc_ops, only: solve_EV_system_slepc
         
         character(*), parameter :: rout_name = 'solve_EV_system'
+        
+        ! input / output
+        logical, intent(in) :: use_guess                                        ! whether to use a guess or not
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -101,7 +104,7 @@ contains
         select case (EV_style)
             case(1)                                                             ! slepc solver for EV problem
                 ! solve the system
-                ierr = solve_EV_system_slepc()
+                ierr = solve_EV_system_slepc(use_guess)
                 CHCKERR('')
                 
             case default
@@ -118,7 +121,8 @@ contains
     ! animated plot is produced as well in a .gif output file
     ! [MPI] Collective call
     integer function plot_X_vec(X_vec,X_val,X_id,theta) result(ierr)
-        use num_vars, only: grp_rank, min_r_X, max_r_X, max_n_plots
+        use num_vars, only: grp_rank, min_r_X, max_r_X, max_n_plots, &
+            &alpha_job_nr
         use output_ops, only: draw_GP, draw_GP_animated
         use X_vars, only: n_r_X, n_m_X, n_X, m_X
         use VMEC_vars, only: n_r_eq
@@ -264,12 +268,14 @@ contains
                     if (id.eq.1) then
                         !call writo('Information about the maximum of the &
                             !&modes for time t=0')
-                        plot_title = 'Eigenvalue '//trim(i2str(X_id))//&
+                        plot_title = 'JOB '//trim(i2str(alpha_job_nr))//&
+                            &' - Eigenvalue '//trim(i2str(X_id))//&
                             &' - Eigenvector (t = 0)'
                     else if (id.eq.n_t+1) then
                         !call writo('Information about the maximum of the &
                             !&modes for time t=T_0/4')
-                        plot_title = 'Eigenvalue '//trim(i2str(X_id))//&
+                        plot_title = 'JOB '//trim(i2str(alpha_job_nr))//&
+                            &' - Eigenvalue '//trim(i2str(X_id))//&
                             &' - Eigenvector (t = 0.25 T_0)'
                     end if
                     !call print_GP_2D('maximum of the modes','',max_of_modes)
@@ -279,16 +285,18 @@ contains
                         !&occurs','',max_of_modes_y)
                     ! plot the modes on screen
                     if (present(theta)) then
-                        call print_GP_3D(plot_title,'Eigenvector.dat',&
-                            &z_plot(:,:,:,id),y=y_plot(:,:,:,id),&
-                            &x=x_plot(:,:,:,id),draw=.true.)
+                        call print_GP_3D(plot_title,'Eigenvector_'//&
+                            &trim(i2str(alpha_job_nr))//'.dat',z_plot(:,:,:,id)&
+                            &,y=y_plot(:,:,:,id),x=x_plot(:,:,:,id),draw=.true.)
                     else
-                        call print_GP_2D(plot_title,'Eigenvector.dat',&
-                            &z_plot(:,1,:,id),x=x_plot(:,1,:,id),draw=.true.)
+                        call print_GP_2D(plot_title,'Eigenvector_'//&
+                            &trim(i2str(alpha_job_nr))//'.dat',z_plot(:,1,:,id)&
+                            &,x=x_plot(:,1,:,id),draw=.true.)
                     end if
                     ! plot them in file as well
-                    call draw_GP(plot_title,'Eigenvector.dat',&
-                        &n_m_X,.not.present(theta),.false.)
+                    call draw_GP(plot_title,'Eigenvector_'//&
+                        &trim(i2str(alpha_job_nr))//'.dat',n_m_X,&
+                        &.not.present(theta),.false.)
                 end if
             end do
             
@@ -306,8 +314,8 @@ contains
                 ! plot the individual modes in time
                 do ld = 1,min(n_m_X,max_n_plots)
                     ! set plot_title
-                    plot_title = 'Eigenvalue '//trim(i2str(X_id))//' - &
-                        &mode '//trim(i2str(ld))//' of '//trim(i2str(n_m_X))
+                    plot_title = 'JOB '//trim(i2str(alpha_job_nr))//&
+                        &' - mode '//trim(i2str(ld))//' of '//trim(i2str(n_m_X))
                     if (present(theta)) then
                         ranges(1,:) = [minval(x_plot(:,:,ld,:)),&
                             &maxval(x_plot(:,:,ld,:))]
@@ -315,20 +323,20 @@ contains
                             &maxval(y_plot(:,:,ld,:))]
                         ranges(3,:) = [minval(z_plot(:,:,ld,:)),&
                             &maxval(z_plot(:,:,ld,:))]
-                        call print_GP_3D(trim(plot_title),'mode'//&
-                            &trim(i2str(ld)),z_plot(:,:,ld,:),&
+                        call print_GP_3D(trim(plot_title),'temp_mode_'//&
+                            &trim(i2str(alpha_job_nr)),z_plot(:,:,ld,:),&
                             &y=y_plot(:,:,ld,:),x=x_plot(:,:,ld,:),draw=.false.)
                     else
                         ranges(1,:) = [minval(x_plot(:,:,ld,:)),&
                             &maxval(x_plot(:,:,ld,:))]
                         ranges(2,:) = [minval(z_plot(:,:,ld,:)),&
                             &maxval(z_plot(:,:,ld,:))]
-                        call print_GP_2D(trim(plot_title),'mode'//&
-                            &trim(i2str(ld)),z_plot(:,1,ld,:),&
+                        call print_GP_2D(trim(plot_title),'temp_mode_'//&
+                            &trim(i2str(alpha_job_nr)),z_plot(:,1,ld,:),&
                             &x=x_plot(:,1,ld,:),draw=.false.)
                     end if
-                    call draw_GP_animated(trim(plot_title),'mode'//&
-                        &trim(i2str(ld)),n_n_t*n_t,.false.,ranges)
+                    call draw_GP_animated(trim(plot_title),'temp_mode_'//&
+                        &trim(i2str(alpha_job_nr)),n_n_t*n_t,.false.,ranges)
                 end do
                 if (n_m_X.eq.max_n_plots+1) then
                     call writo('WARNING: Skipping plot for mode '//&
@@ -343,22 +351,23 @@ contains
             do ld = 2,n_m_X
                 z_plot(:,:,1,:) = z_plot(:,:,1,:) + z_plot(:,:,ld,:)
             end do
-            plot_title = 'Eigenvalue '//trim(i2str(X_id))//' - global mode'
+            plot_title = 'JOB '//trim(i2str(alpha_job_nr))//' - global mode'
             if (present(theta)) then
                 ranges(1,:) = [minval(x_plot(:,:,1,:)),maxval(x_plot(:,:,1,:))]
                 ranges(2,:) = [minval(y_plot(:,:,1,:)),maxval(y_plot(:,:,1,:))]
                 ranges(3,:) = [minval(z_plot(:,:,1,:)),maxval(z_plot(:,:,1,:))]
-                call print_GP_3D(trim(plot_title),'global mode',&
-                    &z_plot(:,:,1,:),y=y_plot(:,:,1,:),&
-                    &x=x_plot(:,:,1,:),draw=.false.)
+                call print_GP_3D(trim(plot_title),'temp_mode_'//&
+                    &trim(i2str(alpha_job_nr)),z_plot(:,:,1,:),&
+                    &y=y_plot(:,:,1,:),x=x_plot(:,:,1,:),draw=.false.)
             else
                 ranges(1,:) = [minval(x_plot(:,:,1,:)),maxval(x_plot(:,:,1,:))]
                 ranges(2,:) = [minval(z_plot(:,:,1,:)),maxval(z_plot(:,:,1,:))]
-                call print_GP_2D(trim(plot_title),'global mode',&
-                    &z_plot(:,1,1,:),x=x_plot(:,1,1,:),draw=.false.)
+                call print_GP_2D(trim(plot_title),'temp_mode_'//&
+                    &trim(i2str(alpha_job_nr)),z_plot(:,1,1,:),&
+                    &x=x_plot(:,1,1,:),draw=.false.)
             end if
-            call draw_GP_animated(trim(plot_title),'global mode',&
-                &n_n_t*n_t,.not.present(theta),ranges)
+            call draw_GP_animated(trim(plot_title),'temp_mode_'//&
+                &trim(i2str(alpha_job_nr)),n_n_t*n_t,.not.present(theta),ranges)
             
             ! deallocate variables
             deallocate(ranges)

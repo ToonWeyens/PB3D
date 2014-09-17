@@ -18,9 +18,9 @@ contains
     ! This subroutine sets up  the matrices A ad B of  the generalized EV system
     ! described in [ADD REF] and solves them using the slepc suite
     
-    integer function solve_EV_system_slepc() result(ierr)
+    integer function solve_EV_system_slepc(use_guess) result(ierr)
         use X_vars, only: X_vec, X_val, n_r_X, grp_n_r_X, n_m_X,  n_r_X, &
-            &grp_n_r_X, PV_int, KV_int
+            &grp_n_r_X, PV_int, KV_int, grp_min_r_X
         use num_vars, only: MPI_comm_groups, grp_n_procs, n_sol_requested, &
             &grp_rank, min_r_X, max_r_X
         use file_ops, only: opt_args
@@ -29,6 +29,9 @@ contains
         use eq_vars, only: B_0, R_0, rho_0
         
         character(*), parameter :: rout_name = 'solve_EV_system_slepc'
+        
+        ! input / output
+        PetscBool, intent(in) :: use_guess                                      ! whether to use a guess or not
         
         ! local variables
         ! petsc / MPI variables
@@ -50,10 +53,13 @@ contains
         PetscInt, allocatable :: o_nz(:)                                        ! nr. of off-diagonal non-zeros
         
         ! guess   
-        Vec :: guess_vec                                                        ! guess to solution EV parallel vector
-        PetscInt :: n_start, n_end                                              ! start and end row of ownership
-        PetscInt :: n_guess_prev                                                ! nr. elements in previous vector to put in guess
+        Vec, allocatable :: guess_vec(:)                                        ! guess to solution EV parallel vector
+        PetscInt :: n_prev_guess                                                ! nr. elements in previous vector to put in guess
         PetscInt, allocatable :: guess_id(:)                                    ! indices of elements in guess
+        PetscInt, save :: guess_start_id = -10                                  ! start of index of previous vector, saved for next iteration
+        PetscInt, save :: prev_n_EV                                             ! nr. of solutions of previous vector
+        PetscInt :: istat                                                       ! status for commands
+        !PetscViewer :: guess_viewer                                             ! viewer for guess object
         
         ! solution
         Vec :: sol_vec                                                          ! solution EV parallel vector
@@ -61,7 +67,7 @@ contains
         PetscInt :: one = 1                                                     ! one
         
         ! other variables
-        PetscInt :: id                                                          ! counter
+        PetscInt :: id, jd, kd                                                  ! counters
         PetscInt :: max_n_EV                                                    ! nr. of EV's saved, up to n_sol_requested
         PetscReal :: step_size                                                  ! step size of perturbation grid
         
@@ -157,7 +163,7 @@ contains
         ! fill the matrix A
         ierr = fill_mat(step_size,PV_int,A)
         CHCKERR('')
-        call writo('Matrix A set up')
+        call writo('matrix A set up')
         
         ! duplicate A into B
         ! (the  advantage of  letting communication  and calculation  overlap by
@@ -168,7 +174,7 @@ contains
         ! fill the matrix B
         ierr = fill_mat(step_size,KV_int,B)
         CHCKERR('')
-        call writo('Matrix B set up')
+        call writo('matrix B set up')
         
         call lvl_ud(-1)
         
@@ -239,33 +245,67 @@ contains
         
         ! set guess for EV if X_vec is allocated
         if (allocated(X_vec)) then
-            ! create vecctor guess_vec
-            call MatGetVecs(A,guess_vec,PETSC_NULL_OBJECT,ierr)                 ! get compatible parallel vector to matrix A
-            CHCKERR('Failed to create guess vector')
-            
-            call VecGetOwnershipRange(guess_vec,n_start,n_end,ierr)             ! starting and ending row n_start and n_end
-            CHCKERR('Failed to get ownership')
-            !write(*,*) 'rank, start, end-start+1, size(X_vec)', grp_rank, n_start, &
-                !&n_end-n_start+1, size(X_vec)
-            
-            ! set values of guess_vec
-            n_guess_prev = 2*size(X_vec)
-            guess_id = [(id,id=1,n_guess_prev,2)]
-            !write(*,*) 'rank, n_guess_prev, guess_id = ', grp_rank, n_guess_prev, guess_id
-            !call VecSetValues(guess_vec,n_guess_prev,guess_id,X_vec(:,:,1),&
-                !&INSERT_VALUES,ierr)
-            CHCKERR('Failed to set guess values')
+            if (use_guess) then
+                ! allocate guess vectors
+                allocate(guess_vec(prev_n_EV))
+                
+                ! create vecctor guess_vec
+                do kd = 1,prev_n_EV
+                    call MatGetVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,istat)    ! get compatible parallel vectors to matrix A
+                    call VecSetOption(guess_vec(kd),&
+                        &VEC_IGNORE_NEGATIVE_INDICES,PETSC_TRUE,istat)          ! ignore negative indices for compacter notation
+                end do
+                
+                ! set the indices and nr. of values to set in guess_vec
+                n_prev_guess = size(X_vec,2)
+                allocate(guess_id(n_prev_guess*n_m_X))
+                do id = 0,n_prev_guess-1
+                    do jd = 1,n_m_X
+                        guess_id(id*n_m_X+jd) = (guess_start_id-1)*n_m_X*2 + &
+                            &id*n_m_X*2 + jd
+                    end do
+                end do
+                
+                do kd = 1,prev_n_EV
+                    ! set even values of guess_vec
+                    call VecSetValues(guess_vec(kd),n_prev_guess*n_m_X,&
+                        &guess_id-1,X_vec(:,:,kd),INSERT_VALUES,istat)
+                    ! set odd values of guess_vec
+                    call VecSetValues(guess_vec(kd),n_prev_guess*n_m_X,&
+                        &guess_id-1-n_m_X,X_vec(:,:,kd),INSERT_VALUES,istat)
+                        
+                    ! assemble the guess vector
+                    call VecAssemblyBegin(guess_vec(kd),istat)
+                    call VecAssemblyEnd(guess_vec(kd),istat)
+                end do
+                    
+                ! set guess
+                call EPSSetInitialSpace(solver,prev_n_EV,guess_vec,istat)
+                
+                ! destroy guess vector
+                call VecDestroy(guess_vec,istat)                                ! destroy guess vector
+                
+                ! check the status
+                if (istat.ne.0) then
+                    call writo('WARNING: unable to set guess for Eigenvector, &
+                        &working with random guess')
+                else
+                    call writo('initial guess set up from previous Richardson &
+                        &level')
+                end if
+            end if
             
             ! deallocate X_vec and X_val
             deallocate(X_vec,X_val)
         end if
+        
+        call writo('run slepc solver')
         
         ! X_vec and X_val
         allocate(X_vec(1:n_m_X,1:grp_n_r_X,1:n_sol_requested))
         X_vec = 0.0_dp
         allocate(X_val(1:n_sol_requested))
         X_val = 0.0_dp
-        
         
         ! set run-time options
         call EPSSetFromOptions(solver,ierr)
@@ -336,7 +376,23 @@ contains
             call writo('for solution '//trim(i2str(id))//&
                 &'/'//trim(i2str(n_conv))//':')
             
-            ! go  back to  real  values from  normalization  by multiplying  the
+            !! visualize guess
+            !if (allocated(X_vec) .and. id.le.prev_n_EV) then
+                !call PetscViewerDrawOpen(0,PETSC_NULL_CHARACTER,&
+                    !&'guess vector '//trim(i2str(id))//' with '//&
+                    !&trim(i2str(n_r_X))//' points',0,0,1000,1000,&
+                    !&guess_viewer,istat)
+                !call VecView(guess_vec(id),guess_viewer,istat)
+                !call VecDestroy(guess_vec(id),istat)                            ! destroy guess vector
+            !end if
+            !! visualize solution
+            !call PetscViewerDrawOpen(PETSC_COMM_WORLD,PETSC_NULL_CHARACTER,&
+                !&'solution '//trim(i2str(id))//' vector with '//&
+                !&trim(i2str(n_r_X))//' points',0,&
+                !&0,1000,1000,guess_viewer,istat)
+            !call VecView(sol_vec,guess_viewer,istat)
+            
+            ! go back to  physical values from normalization  by multiplying the
             ! Eigenvalues by 1/T0^2 = B_0^2 / (mu_0 rho_0 R_0^2)
             X_val(id) = X_val(id) * B_0**2 / (mu_0*rho_0*R_0**2)
             
@@ -358,6 +414,10 @@ contains
             call VecResetArray(sol_vec,ierr)
             CHCKERR('Failed to reset array')
         end do
+        
+        ! set guess_start_id and prev_n_EV
+        guess_start_id = grp_min_r_X
+        prev_n_EV = max_n_EV
         
         call VecDestroy(sol_vec,ierr)                                           ! destroy compatible vector
         CHCKERR('Failed to destroy sol_vec')
@@ -390,7 +450,7 @@ contains
     !   every quantity
     ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING, SO IT IS TREATED AS HERMITIAN !!!
     integer function fill_mat(step_size,V_int_tab,mat) result(ierr)
-        use num_vars, only: min_r_X, max_r_X, grp_rank, grp_n_procs
+        use num_vars, only: min_r_X, max_r_X
         use eq_vars, only: grp_n_r_eq, A_0, flux_p_FD, flux_t_FD
         use utilities, only: dis2con
         use X_vars, only: grp_min_r_X, grp_max_r_X, n_X, n_r_X, n_m_X
@@ -402,7 +462,7 @@ contains
         PetscScalar, intent(in) :: V_int_tab(:,:,:,:)                           ! either PV_int or KV_int tables in grp_n_r_eq normal points
         Mat, intent(inout) :: mat                                               ! either A or B
         PetscReal, intent(in) :: step_size                                      ! step size of current Richardson level
-       r
+        
         ! local variables (not to be used in child routines)
         character(len=max_str_ln) :: err_msg                                    ! error message
         PetscScalar, allocatable :: loc_block(:,:)                              ! (n_m_X x n_m_X) block matrix for 1 normal point
@@ -417,8 +477,6 @@ contains
         
         ! local variables (to be used in child routines)
         PetscReal :: norm_pt                                                    ! current normal point (min_r_X...max_r_X)
-        PetscReal :: tab_info_in(2)                                             ! input of tab_info
-        PetscScalar, allocatable :: V_interp_in(:,:,:,:)                        ! saved V_interp_inout, from the previous Richardson level
         
         ! initialize ierr
         ierr = 0
@@ -559,11 +617,6 @@ contains
             PetscInt :: id                                                      ! counter
             PetscReal :: norm_pt_dis                                            ! equivalent of norm_pt in table of equilibrium normal points
             PetscInt :: norm_pt_lo, norm_pt_hi                                  ! rounded up or down norm_pt_dis
-            PetscBool :: norm_pt_found                                          ! if norm_pt is found in previous Richardson level
-            PetscInt :: found_id                                                ! in which place norm_pt is found
-            PetscReal :: tol = 1.E-5                                            ! tolerance
-            PetscInt :: V_interp_size                                           ! size of V_interp_in
-            PetscReal :: norm_pt_tab                                            ! current normal point of V_interp_in
             PetscInt :: offset                                                  ! offset in the table V_int
             
             ! initialize ierr

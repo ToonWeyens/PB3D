@@ -40,7 +40,9 @@ contains
         opt_args(1) = '-o'                                                      ! in which file to output
         opt_args(2) = '-t'
         opt_args(3) = '--test'
-        inc_args = [1,0,0]
+        opt_args(4) = '--no_guess'
+        opt_args(5) = '--no_plots'
+        inc_args = [1,0,0,0,0]
     end subroutine
 
     ! parses the command line arguments
@@ -123,8 +125,10 @@ contains
     ! open the input file
     ! [MPI] Only global master
     integer function open_input() result(ierr)
-        use num_vars, only: VMEC_i, input_i, ltest, glb_rank, output_name
+        use num_vars, only: VMEC_i, input_i, ltest, glb_rank, output_name, &
+            &no_guess
         use VMEC_vars, only: VMEC_name
+        use output_ops, only: no_plots
         
         character(*), parameter :: rout_name = 'open_input'
         
@@ -274,6 +278,15 @@ contains
                     call writo('WARNING: option test not available. &
                         &Recompile with cpp flag ''ldebug''...')
 #endif
+                case (4)                                                        ! disable guessing Eigenfunction from previous Richardson level
+                    call writo('option no_guess chosen: Eigenfunction not &
+                        &guessed from previous Richardson level')
+                    call writo('(should be used for debugging only as it &
+                        &can lower performance)')
+                    no_guess = .true.
+                case (5)                                                        ! disable plotting
+                    call writo('option no_plots chosen: plotting disabled')
+                    no_plots = .true.
                 case default
                     call writo('WARNING: Invalid option number')
             end select
@@ -285,13 +298,15 @@ contains
     integer function open_output() result(ierr)
         use num_vars, only: output_i, n_seq_0, glb_rank, grp_nr, glb_rank, &
             &grp_rank, output_name
-        use output_ops, only: format_out
+        use output_ops, only: format_out, temp_output, temp_output_active, &
+            &temp_output_id, temp_output_omitted
         
         character(*), parameter :: rout_name = 'open_output'
         
         ! local variables (also used in child functions)
         character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln) :: full_output_name                           ! including the extension
+        integer :: id                                                           ! counter
         
         ! initialize ierr
         ierr = 0
@@ -304,35 +319,64 @@ contains
             if (glb_rank.ne.0) output_name = trim(output_name)//'_'//&
                 &trim(i2str(grp_nr))
             
-            ! select output format
-            select case (format_out)
-                case (1)                                                        ! NETCDF
-                    if (glb_rank.eq.0) call writo('Output format chosen: &
-                        &NETCDF')
-                    ierr = open_NETCDF()
-                    CHCKERR('')
-                case (2)                                                        ! matlab
-                    if (glb_rank.eq.0) call writo('Output format chosen: &
-                        &matlab')
-                    ierr = open_matlab()
-                    CHCKERR('')
-                case (3)                                                        ! DISLIN
-                    if (glb_rank.eq.0) call writo('Output format chosen: &
-                        &DISLIN')
-                    ! no need to do anything
-                case (4)                                                        ! GNUplot
-                    if (glb_rank.eq.0) call writo('Output format chosen: &
-                        &GNUplot')
-                    ierr = open_gnuplot()
-                    CHCKERR('')
-                case default
-                    if (glb_rank.eq.0) call writo('WARNING: output format "'&
-                        &// trim(i2str(format_out)) // &
-                        &'" is not valid. Standard output chosen')
-                    ierr = open_NETCDF()
-                    CHCKERR('')
-            end select
-            CHCKERR('')
+            ! open output file for the log
+            output_i = n_seq_0                                                  ! start at the number indicated by n_seq_0
+            full_output_name = trim(output_name) // '.txt'
+            call safe_open(output_i,ierr,full_output_name,'replace',&
+                &'formatted',delim_in='none')
+            CHCKERR('Cannot open log output file')
+            temp_output_active = .false.                                        ! no more temporary output
+            
+            ! write temporary output to log output file
+            do id = 1,temp_output_id-1
+                write(output_i,*) temp_output(id)
+            end do
+            
+            ! print message
+            if (glb_rank.eq.0) then
+                call writo('log output file "'//trim(full_output_name)//&
+                &'" opened at number '//trim(i2str(output_i)))
+                
+                call writo('temporary output copied into log file')
+                
+                ! check for correct completion
+                if (temp_output_omitted.ne.0) call writo('WARNING: '//&
+                    &trim(i2str(temp_output_omitted))//' log entries have been &
+                    &omited in total')
+            end if
+            
+            ! deallocate temporary output
+            deallocate(temp_output)
+            
+            !! select output format
+            !select case (format_out)
+                !case (1)                                                        ! NETCDF
+                    !if (glb_rank.eq.0) call writo('Output format chosen: &
+                        !&NETCDF')
+                    !ierr = open_NETCDF()
+                    !CHCKERR('')
+                !case (2)                                                        ! matlab
+                    !if (glb_rank.eq.0) call writo('Output format chosen: &
+                        !&matlab')
+                    !ierr = open_matlab()
+                    !CHCKERR('')
+                !case (3)                                                        ! DISLIN
+                    !if (glb_rank.eq.0) call writo('Output format chosen: &
+                        !&DISLIN')
+                    !! no need to do anything
+                !case (4)                                                        ! GNUplot
+                    !if (glb_rank.eq.0) call writo('Output format chosen: &
+                        !&GNUplot')
+                    !ierr = open_gnuplot()
+                    !CHCKERR('')
+                !case default
+                    !if (glb_rank.eq.0) call writo('WARNING: output format "'&
+                        !&// trim(i2str(format_out)) // &
+                        !&'" is not valid. Standard output chosen')
+                    !ierr = open_NETCDF()
+                    !CHCKERR('')
+            !end select
+            !CHCKERR('')
             call lvl_ud(-1)
             if (glb_rank.eq.0) call writo('Output files opened')
         end if
@@ -399,9 +443,9 @@ contains
         
         if (n_groups.gt.1) then
             if (glb_rank.eq.0) then
+                call writo('The output logs of the other groups i are saved in &
+                    &"'//trim(output_name)//'_i".txt')
                 call writo('Closing output files')
-                call writo('The outputs of the other groups i are saved in &
-                    &their proper output files "'//trim(output_name)//'_i"')
             end if
         else
             call writo('Closing output file')

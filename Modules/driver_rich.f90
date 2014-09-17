@@ -23,16 +23,13 @@ contains
     !       the other groups
     integer function run_rich_driver() result(ierr)
         use num_vars, only: min_alpha, max_alpha, n_alpha, glb_rank, grp_nr, &
-            &max_alpha
+            &max_alpha, alpha_job_nr
         use eq_vars, only: calc_eqd_mesh
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
         use X_vars, only: n_X, min_m_X, max_m_X
         use VMEC_vars, only: dealloc_VMEC_vars
         
         character(*), parameter :: rout_name = 'run_rich_driver'
-        
-        ! local variables
-        integer :: next_job                                                     ! holds next job of current group, filled with get_next_job
         
         ! initialize ierr
         ierr = 0
@@ -66,26 +63,28 @@ contains
         ! loop over all fied lines
         field_lines: do
             ! get next job for current group
-            ierr = get_next_job(next_job)
+            ierr = get_next_job(alpha_job_nr)
             CHCKERR('')
             
             ! Do the calculations for a field line alpha
-            if (next_job.gt.0) then
+            if (alpha_job_nr.gt.0) then
                 ! display message
-                call writo('Job '//trim(i2str(next_job))//': Calculations for &
-                    &field line alpha = '//trim(r2strt(alpha(next_job)))//&
+                call writo('Job '//trim(i2str(alpha_job_nr))//': Calculations &
+                    &for field line alpha = '//&
+                    &trim(r2strt(alpha(alpha_job_nr)))//&
                     &', allocated to group '//trim(i2str(grp_nr)))
                 
                 call lvl_ud(1)                                                  ! starting calculation for current fied line
                 
                 ! calculate
-                ierr = run_for_alpha(alpha(next_job))
+                ierr = run_for_alpha(alpha(alpha_job_nr))
                 CHCKERR('')
                 
                 ! display message
                 call lvl_ud(-1)                                                 ! done with calculation for current field line
-                call writo('Job '//trim(i2str(next_job))//': Calculations for &
-                    &field line alpha = '//trim(r2strt(alpha(next_job)))//&
+                call writo('Job '//trim(i2str(alpha_job_nr))//&
+                    &': Calculations for field line alpha = '//&
+                    &trim(r2strt(alpha(alpha_job_nr)))//&
                     &', completed by group '//trim(i2str(grp_nr)))
             else
                 call writo('Finished all jobs')
@@ -111,7 +110,8 @@ contains
     
     ! runs the calculations for one of the alpha's
     integer function run_for_alpha(alpha) result(ierr)
-        use num_vars, only: n_sol_requested, max_it_r, grp_rank
+        use num_vars, only: n_sol_requested, max_it_r, grp_rank, no_guess, &
+            &alpha_job_nr
         use eq_ops, only: calc_eq
         use eq_vars, only: theta, n_par
         use output_ops, only: draw_GP
@@ -131,6 +131,8 @@ contains
         logical :: done_richard                                                 ! is it converged?
         complex(dp), allocatable :: X_val_rich(:,:,:)                           ! Richardson array of eigenvalues X_val
         real(dp), allocatable :: x_axis(:,:)                                    ! x axis for plot of Eigenvalues with n_r_X
+        logical :: use_guess                                                    ! whether a guess is formed from previous level of Richardson
+        character(len=max_str_ln) :: plot_title                                 ! title for plots
         
         ! initialize ierr
         ierr = 0
@@ -166,6 +168,9 @@ contains
         end if
         call lvl_ud(1)                                                          ! before richardson loop
         
+        ! initialize use_guess for first Richardson loop
+        use_guess = .true.
+        
         Richard: do while (.not.done_richard .and. ir.le.max_it_r)
             if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
                 call writo('Level ' // trim(i2str(ir)) // &
@@ -180,11 +185,14 @@ contains
             call calc_n_r_X(ir)
             call lvl_ud(-1)
             
+            ! set use_guess to .false. if no_guess
+            if (no_guess) use_guess = .false.
+            
             ! setup the matrices of the generalized EV system AX = lambda BX and
             ! solve it
             call writo('treating the EV system')
             call lvl_ud(1)
-            ierr = solve_EV_system()
+            ierr = solve_EV_system(use_guess)
             CHCKERR('')
             call lvl_ud(-1)
             
@@ -194,7 +202,7 @@ contains
                 
                 ! update  the  variable  X_val_rich  with the  results  of  this
                 ! Richardson level
-                ierr = calc_rich_ex(ir,X_val,X_val_rich,done_richard)
+                ierr = calc_rich_ex(ir,X_val,X_val_rich,done_richard,use_guess)
                 CHCKERR('')
                 call writo('updating Richardson extrapolation variables')
                 call lvl_ud(1)
@@ -212,10 +220,14 @@ contains
                         call writo('plotting the Eigenvalues')
                         
                         ! output on screen
-                        call print_GP_2D('X_val','Eigenvalues.dat',realpart(&
+                        plot_title = 'JOB '//trim(i2str(alpha_job_nr))//' - &
+                            &Eigenvalues as function of nr. of normal points'
+                        call print_GP_2D(plot_title,'Eigenvalues_'//&
+                            &trim(i2str(alpha_job_nr))//'.dat',realpart(&
                             &X_val_rich(1:ir,1,:)),x=x_axis(1:ir,:))
                         ! same output in file as well
-                        call draw_GP('Eigenvalues','Eigenvalues.dat',&
+                        call draw_GP(plot_title,'Eigenvalues_'//&
+                            &trim(i2str(alpha_job_nr))//'.dat',&
                             &n_sol_requested,.true.,.false.)
                     end if
                 end if
@@ -292,7 +304,8 @@ contains
     !       (X_val_rich(ir,ir2-1,:) - X_val_rich(ir-1,ir2-1,:)),
     ! as described in [ADD REF]
     ! [MPI] All ranks
-    integer function calc_rich_ex(ir,X_val,X_val_rich,done_richard) result(ierr)
+    integer function calc_rich_ex(ir,X_val,X_val_rich,done_richard,&
+            &use_guess_for_next_level) result(ierr)
         use num_vars, only: tol_r
         
         character(*), parameter :: rout_name = 'calc_rich_ex'
@@ -302,12 +315,14 @@ contains
         complex(dp), intent(in) :: X_val(:)                                     ! EV for this Richardson level
         complex(dp), intent(inout) :: X_val_rich(:,:,:)                         ! extrapolated coefficients
         logical, intent(inout) :: done_richard                                  ! if Richardson loop has converged sufficiently
+        logical, intent(inout) :: use_guess_for_next_level                      ! if a guessed is used for next Richardson level
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: ir2                                                          ! counter
         complex(dp), allocatable :: corr(:)                                     ! correction
         real(dp) :: max_corr                                                    ! maximum of maximum of correction
+        real(dp), save :: prev_max_corr                                         ! max_corr at previous Richardson level
         integer :: loc_max_corr(1)                                              ! location of maximum of correction
         
         ! initialize ierr
@@ -349,6 +364,12 @@ contains
                 call writo('tolerance '//trim(r2strt(tol_r))//' not yet &
                     &reached')
             end if
+            
+            ! determine use_guess_for_next_level
+            use_guess_for_next_level = max_corr.lt.prev_max_corr                ! set guess for next level to true if max_corr is decreasing
+            prev_max_corr = max_corr                                            ! save max_corr for next level
+        else
+            use_guess_for_next_level = .true.                                   ! for first Richardson level, set guess for next level to true
         end if
         
         ! check for convergence

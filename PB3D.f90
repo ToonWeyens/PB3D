@@ -159,9 +159,9 @@ program PB3D
     !-------------------------------------------------------
     call writo('Cleanup')
     call lvl_ud(1)
-    call close_output
     ierr = stop_MPI()
     CHCKERR
+    call close_output
     call lvl_ud(-1)
     
     call print_goodbye
