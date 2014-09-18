@@ -10,123 +10,181 @@ module fourier_ops
 
     implicit none
     private
-    public repack, calc_mesh_cs, f2r
+    public repack, calc_trigon_factors, fourier2real
 
 contains
-    ! Inverse Fourier transformation, VMEC style Also calculates the poloidal or
-    ! toroidal derivatives, as indicated by the variable deriv(2)
-    ! (Normal derivative is done discretely, outside of this function)
-    function f2r(fun_cos,fun_sin,ang_factor,mpol,ntor,nfp,deriv,ierr)
-        character(*), parameter :: rout_name = 'f2r'
+    ! Calculate the trigoniometric cosine and  sine factors on a mesh (0:mpol-1,
+    ! -ntor:ntor) at given arrays 2D for theta_V and zeta_V
+    ! Use -zeta  instead of zeta since  zeta is tabulated as  a flux coordinate,
+    ! while here the VMEC coordinate is needed
+    integer function calc_trigon_factors(theta,zeta,trigon_factors) &
+        &result(ierr)
+        use VMEC_vars, only: mpol, ntor, nfp
+        
+        character(*), parameter :: rout_name = 'calc_trigon_factors'
         
         ! input / output
-        integer, intent(in) :: mpol, ntor
-        integer, intent(in), optional :: deriv(2)
-        real(dp) :: f2r
-        real(dp), intent(in) :: fun_cos(0:mpol-1,-ntor:ntor)                    ! cos part of Fourier variables (coeff. of the sum)
-        real(dp), intent(in) :: fun_sin(0:mpol-1,-ntor:ntor)                    ! sin part of Fourier variables (coeff. of the sum)
-        real(dp), intent(in) :: ang_factor(0:mpol-1,-ntor:ntor,2)               ! (co)sine factors on mesh
-        integer, intent(in) :: nfp                                              ! common denominator nfp in toroidal mode numbers
-        integer, intent(inout) :: ierr                                          ! error
+        real(dp), intent(in) :: theta(:,:)                                      ! poloidal angles
+        real(dp), intent(in) :: zeta(:,:)                                       ! toroidal angles
+        real(dp), intent(inout), allocatable :: trigon_factors(:,:,:,:,:)       ! trigonometric factor cosine and sine at these angles
         
         ! local variables
-        integer :: m,n                                                          ! counters for mode numbers
-        integer :: id                                                           ! counters
-        real(dp) :: fac_cos, fac_sin                                            ! factor in front of cos and sin, after taking derivatives
-        real(dp) :: fac_cos_temp, fac_sin_temp                                  ! when calculating factors for angular derivatives
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: n_par_loc,n_r_loc                                            ! sizes of 2D real output array
+        real(dp), allocatable :: cos_theta(:,:,:)                               ! cos(m theta) for all m
+        real(dp), allocatable :: sin_theta(:,:,:)                               ! sin(m theta) for all m
+        real(dp), allocatable :: cos_zeta(:,:,:)                                ! cos(n nfp theta) for all n
+        real(dp), allocatable :: sin_zeta(:,:,:)                                ! sin(n nfp theta) for all n
+        integer :: n, m                                                         ! counters
         
         ! initialize ierr
         ierr = 0
         
-        ! some tests
-        if (mpol.lt.1 .and. ntor.lt. 1) then 
-            err_msg = 'The number of modes has to be at least 1'
+        ! set n_par_loc and n_r_loc
+        n_par_loc = size(theta,1)
+        n_r_loc = size(theta,2)
+        
+        ! tests
+        if (size(zeta,1).ne.n_par_loc .or. size(zeta,2).ne.n_r_loc) then
             ierr = 1
+            err_msg = 'theta and zeta need to have the same size'
             CHCKERR(err_msg)
         end if
         
-        ! initiate
-        f2r = 0.0_dp
+        ! setup cos_theta, sin_theta, cos_zeta and sin_zeta
+        allocate(cos_theta(mpol,n_par_loc,n_r_loc))
+        allocate(sin_theta(mpol,n_par_loc,n_r_loc))
+        allocate(cos_zeta(2*ntor+1,n_par_loc,n_r_loc))
+        allocate(sin_zeta(2*ntor+1,n_par_loc,n_r_loc))
+        
+        do m = 0,mpol-1
+            cos_theta(m+1,:,:) = cos(m*theta)
+            sin_theta(m+1,:,:) = sin(m*theta)
+        end do
+        do n = -ntor,ntor
+            cos_zeta(n+ntor+1,:,:) = cos(n*nfp*(-zeta))
+            sin_zeta(n+ntor+1,:,:) = sin(n*nfp*(-zeta))
+        end do
+        
+        ! initialize trigon_factors
+        allocate(trigon_factors(mpol,2*ntor+1,n_par_loc,n_r_loc,2))
+        trigon_factors = 0.0_dp
+        
+        ! calculate cos(m theta - n nfp zeta) = cos(m theta) cos(n nfp zeta) + 
+        !   sin(m theta) sin(n nfp zeta) and
+        ! sin(m theta - n nfp zeta) = sin(m theta) cos(n nfp zeta) -
+        !   cos(m theta) sin(n nfp zeta)
+        do n = -ntor,ntor
+            do m = 0,mpol-1
+                trigon_factors(m+1,n+ntor+1,:,:,1) = &
+                    &cos_theta(m+1,:,:)*cos_zeta(n+ntor+1,:,:) + &
+                    &sin_theta(m+1,:,:)*sin_zeta(n+ntor+1,:,:)
+                trigon_factors(m+1,n+ntor+1,:,:,2) = &
+                    &sin_theta(m+1,:,:)*cos_zeta(n+ntor+1,:,:) - &
+                    &cos_theta(m+1,:,:)*sin_zeta(n+ntor+1,:,:)
+            end do
+        end do
+    end function calc_trigon_factors
+    
+    ! Inverse Fourier transformation, from VMEC. Also calculates the poloidal or
+    ! toroidal derivatives, as indicated by the variable deriv(2)
+    ! (Normal derivative  is done on the variables in  Fourier space, and should
+    ! be provided here if needed)
+    integer function fourier2real(var_fourier_c,var_fourier_s,trigon_factors,&
+        &var_real,deriv) result(ierr)
+        use VMEC_vars, only: mpol, ntor, nfp
+        
+        character(*), parameter :: rout_name = 'fourier2real'
+        
+        ! input / output
+        real(dp), intent(in) :: var_fourier_c(:,:,:)                            ! cos factor of variable in Fourier space
+        real(dp), intent(in) :: var_fourier_s(:,:,:)                            ! sin factor of variable in Fourier space
+        real(dp), intent(in) :: trigon_factors(:,:,:,:,:)                       ! trigonometric factor cosine and sine at these angles
+        real(dp), intent(inout) :: var_real(:,:)                                ! variable in real space
+        integer, intent(in), optional :: deriv(2)                               ! optional derivatives in angular coordinates
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: n_par_loc,n_r_loc                                            ! sizes of 2D real output array
+        integer :: m,n                                                          ! counters for mode numbers
+        integer :: id                                                           ! counters
+        real(dp), allocatable :: fac_cos(:), fac_sin(:)                         ! factor in front of cos and sin, after taking derivatives
+        real(dp), allocatable :: fac_trigon_temp(:)                             ! temporary variable that holds fac_cos or fac_sin
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set n_par_loc and n_r_loc
+        n_par_loc = size(trigon_factors,3)
+        n_r_loc = size(trigon_factors,4)
+        
+        ! tests
+        if (size(trigon_factors,5).ne.2) then
+            ierr = 1
+            err_msg = 'trigon_factors need to contain sines and cosines'
+            CHCKERR(err_msg)
+        end if
+        if (size(trigon_factors,1).ne.mpol .or. &
+            &size(trigon_factors,2).ne.(2*ntor+1)) then
+            ierr = 1
+            err_msg = 'trigon_factors needs to be defined for the right number &
+                &of modes'
+            CHCKERR(err_msg)
+        end if
+        if (size(var_fourier_c,3).ne.n_r_loc .or. &
+            &size(var_fourier_s,3).ne.n_r_loc) then
+            ierr = 1
+            err_msg = 'var_fourier_c and _s need to have the right number of &
+                &normal points'
+            CHCKERR(err_msg)
+        end if
+        
+        ! initialize fac_cos, fac_sin and fac_trigon_temp
+        allocate(fac_cos(n_r_loc),fac_sin(n_r_loc))                             ! factor in front of cos and sin, after taking derivatives
+        allocate(fac_trigon_temp(n_r_loc))                                      ! temporary variable that holds fac_cos or fac_sin
+        
+        ! initialize
+        var_real = 0.0_dp
         
         ! sum over modes
         do n = -ntor,ntor
             do m = 0,mpol-1
                 ! initialize factors in front of cos and sin
-                fac_cos = fun_cos(m,n)
-                fac_sin = fun_sin(m,n)
+                fac_cos = var_fourier_c(m+1,n+ntor+1,:)
+                fac_sin = var_fourier_s(m+1,n+ntor+1,:)
                 
                 ! angular derivatives
                 if (present(deriv)) then 
                     ! apply possible poloidal derivatives
                     do id = 1,deriv(1)
-                        fac_cos_temp = m * fac_sin
-                        fac_sin_temp = - m * fac_cos
-                        fac_cos = fac_cos_temp
-                        fac_sin = fac_sin_temp
+                        fac_trigon_temp = - m * fac_cos
+                        fac_cos = m * fac_sin
+                        fac_sin = fac_trigon_temp
                     end do
                     ! apply possible toroidal derivatives
                     do id = 1,deriv(2)
-                        fac_cos_temp = - n * nfp * fac_sin
-                        fac_sin_temp = n * nfp * fac_cos
-                        fac_cos = fac_cos_temp
-                        fac_sin = fac_sin_temp
+                        fac_trigon_temp = n * nfp * fac_cos
+                        fac_cos = - n * nfp * fac_sin
+                        fac_sin = fac_trigon_temp
                     end do
                 end if
                 
-                ! orthonormalization has been taken  care of by considering only
-                ! half the summation in the poloidal variable
-                f2r = f2r + fac_cos*ang_factor(m,n,1) &
-                    &+ fac_sin*ang_factor(m,n,2)
+                ! sum
+                do id = 1,n_par_loc
+                    var_real(id,:) = var_real(id,:) + &
+                        &fac_cos(:)*trigon_factors(m+1,n+ntor+1,id,:,1) + &
+                        &fac_sin(:)*trigon_factors(m+1,n+ntor+1,id,:,2)
+                end do
             end do
         end do
-    end function f2r
- 
-    ! Calculate the cosine and sine factors  on a mesh (0:mpol-1, -ntor:ntor) at
-    ! a given poloidal and toroidal position (theta,zeta)
-    ! The first index contains the cosine  factors and the second one the sines.
-    ! CHANGE THIS USING THE GONIOMETRIC IDENTITIES TO SAVE COMPUTING TIME
-    integer function calc_mesh_cs(mesh_cs,mpol,ntor,nfp,theta,zeta) result(ierr)
-        character(*), parameter :: rout_name = 'mesh_cs'
-        
-        ! input / output
-        integer, intent(in) :: mpol, ntor
-        real(dp), intent(inout) :: mesh_cs(0:mpol-1,-ntor:ntor,2)
-        real(dp), intent(in) :: theta, zeta
-        integer, intent(in) :: nfp
-        
-        ! local variables
-        integer :: m, n
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! test the given inputs
-        if (mpol.lt.1) then
-            err_msg = 'mpol has to be at least 1'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        
-        mesh_cs = 0.0_dp
-        
-        do n = -ntor,ntor
-            do m = 0,mpol-1
-                ! cos factor
-                mesh_cs(m,n,1) = cos(m*theta - n*nfp*zeta)
-                ! sin factor
-                mesh_cs(m,n,2) = sin(m*theta - n*nfp*zeta)
-            end do
-        end do
-    end function calc_mesh_cs
+    end function fourier2real
 
     ! Repack  variables  representing the  Fourier  composition  such as  R,  Z,
     ! lambda, ...  In VMEC these  are stored as  (1:mnmax, 1:ns) with  mnmax the
     ! total  number of  all modes.  Here  they are  to be  stored as  (0:mpol-1,
     ! -ntor:ntor, 1:ns), which  is valid due to the symmetry  of the modes (only
-    ! one of either theta  or zeta has to be able to change  sign because of the
-    ! (anti)-symmetry of the (co)sine.
+    ! one of either theta_V  or zeta_V has to be able to  change sign because of
+    ! the (anti)-symmetry of the (co)sine.
     ! It is  possible that the  input variable is  not allocated. In  this case,
     ! output zeros
     ! [MPI] only global master
@@ -134,14 +192,15 @@ contains
     function repack(var_VMEC,mnmax,n_r,mpol,ntor,xm,xn)
         use num_vars, only: glb_rank
         
+        ! input / output
         integer, intent(in) :: mnmax, n_r, mpol, ntor
         real(dp), intent(in) :: xm(mnmax), xn(mnmax)
         real(dp), allocatable :: var_VMEC(:,:)
-            
-        integer :: mode, m, n
-            
         real(dp) :: repack(0:mpol-1,-ntor:ntor,1:n_r)
             
+        ! local variables
+        integer :: mode, m, n
+        
         if (allocated(var_VMEC) .and. glb_rank.eq.0) then                       ! only global rank
             ! check if the  values in xm and xn don't  exceed the maximum number
             ! of poloidal and toroidal modes (xm  and xn are of length mnmax and
@@ -158,7 +217,7 @@ contains
                 n = nint(xn(mode))
                 ! if the modes don't fit, cycle
                 if (m.gt.mpol .or. abs(n).gt.ntor) then
-                    call writo('WARNING: In f2r, m > mpol or n > ntor!')
+                    call writo('WARNING: In repack, m > mpol or n > ntor!')
                     cycle
                 end if
                 

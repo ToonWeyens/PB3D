@@ -17,11 +17,22 @@ contains
     ! to be integrated, with a complex exponential weighting function
     subroutine prepare_X
         use X_vars, only: init_X, calc_PV, calc_KV, calc_U, calc_extra, &
-            &calc_V_int, dealloc_X_vars, &
+            &calc_V_int, dealloc_X, &
             &PV0, PV1, PV2, KV0, KV1, KV2, PV_int, KV_int
+        use num_vars, only: use_pol_flux
+        
+        ! local variables
+        character(len=5) :: ang_par_F_name                                      ! error message
+        
+        ! set up ang_par_F_name
+        if (use_pol_flux) then
+            ang_par_F_name = 'theta'
+        else
+            ang_par_F_name = 'zeta'
+        end if
         
         call writo('Calculating table of field line averages &
-            &<V e^i(k-m)theta>')
+            &<V e^i[(k-m)'//trim(ang_par_F_name)//']>')
         
         call lvl_ud(1)
         
@@ -57,7 +68,7 @@ contains
         call calc_KV
         call lvl_ud(-1)
         
-        ! Calculate PV_int = <PVi e^(k-m)theta>
+        ! Calculate PV_int = <PVi e^(k-m)ang_par_F>
         call writo('Taking field average of PV')
         call lvl_ud(1)
         call calc_V_int(PV0,PV_int(:,:,:,1))
@@ -65,7 +76,7 @@ contains
         call calc_V_int(PV2,PV_int(:,:,:,3))
         call lvl_ud(-1)
         
-        ! Calculate KV_int = <KVi e^(k-m)theta>
+        ! Calculate KV_int = <KVi e^(k-m)ang_par_F>
         call writo('Taking field average of KV')
         call lvl_ud(1)
         call calc_V_int(KV0,KV_int(:,:,:,1))
@@ -75,7 +86,7 @@ contains
         
         ! deallocate equilibrium variables
         call writo('deallocating unused variables')
-        call dealloc_X_vars
+        call dealloc_X
         
         call lvl_ud(-1)
         
@@ -116,267 +127,366 @@ contains
     end function solve_EV_system
     
     ! plots an eigenfunction in either 1D (normal coord.) or 2D (normal coord. &
-    ! par coord.), depending on whether the variable theta is provided
+    ! par coord.), depending on whether the variable par_range_F is provided
     ! The  individual modes are  plotted at t  = 0 and  t = (pi/2)/omega  and an
     ! animated plot is produced as well in a .gif output file
     ! [MPI] Collective call
-    integer function plot_X_vec(X_vec,X_val,X_id,theta) result(ierr)
+    integer function plot_X_vec(X_vec,X_val,X_id,par_range_F) result(ierr)
         use num_vars, only: grp_rank, min_r_X, max_r_X, max_n_plots, &
-            &alpha_job_nr
+            &grp_n_procs, use_pol_flux
         use output_ops, only: draw_GP, draw_GP_animated
-        use X_vars, only: n_r_X, n_m_X, n_X, m_X
-        use VMEC_vars, only: n_r_eq
-        use MPI_ops, only: get_ser_X_vec
-        use eq_vars, only: q_saf_full
-        use utilities, only: calc_interp, dis2con
+        use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X, grp_min_r_X
+        use VMEC_vars, only: n_r_eq, VMEC_use_pol_flux
+        use MPI_ops, only: get_ser_X_vec, get_ghost_X_vec
+        use eq_vars, only: q_saf_FD, rot_t_FD, A_0, grp_n_r_eq, grp_min_r_eq, &
+            &max_flux, max_flux_VMEC, flux_p_FD, flux_t_FD
+        use utilities, only: dis2con, con2dis, interp_fun_1D
         
         character(*), parameter :: rout_name = 'plot_X_vec'
         
         ! input / output
-        complex(dp), intent(in) :: X_vec(n_m_X,n_r_X)                           ! MPI Eigenvector
+        complex(dp), intent(in) :: X_vec(:,:)                                   ! MPI Eigenvector
         complex(dp), intent(in) :: X_val                                        ! Eigenvalue
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue (for output name)
-        real(dp), intent(in), optional :: theta(2)                              ! the parallel range [2pi]
+        real(dp), intent(in), optional :: par_range_F(2)                        ! the parallel range [2pi]
         
         ! local variables
-        real(dp), allocatable :: x_plot(:,:,:,:)                                ! x_axis of plot
-        real(dp), allocatable :: y_plot(:,:,:,:)                                ! y values of plot
-        real(dp), allocatable :: z_plot(:,:,:,:)                                ! z values of plot
-        complex(dp), allocatable :: ser_X_vec(:,:)                              ! serial version of X_vec
+        real(dp), allocatable :: x_plot(:,:,:,:)                                ! x values of plot, parallel version
+        real(dp), allocatable :: y_plot(:,:,:,:)                                ! y values of plot, parallel version
+        real(dp), allocatable :: z_plot(:,:,:,:)                                ! z values of plot, parallel version
+        real(dp), allocatable :: z_magn_plot(:,:,:)                             ! z values of plot of magnitude, parallel version
         integer :: id, jd, kd, ld                                               ! counter
-        real(dp), allocatable :: max_of_modes(:)                                ! maximum of each mode
-        real(dp), allocatable :: max_of_modes_x(:)                              ! flux surface where max of mode occurs
-        real(dp), allocatable :: max_of_modes_y(:)                              ! parallel point where max of mode occurs
         complex(dp) :: omega                                                    ! eigenvalue
         integer :: n_t                                                          ! nr. of time steps in quarter period
         integer :: n_n_t                                                        ! how many quarter periods
-        integer :: n_theta = 50                                                 ! how many parallel points
-        integer :: max_n_norm = 50                                              ! max nr of normal points to plot
-        integer :: n_norm                                                       ! nr. of normal points
-        real(dp) :: inc_norm                                                    ! normal increment for plots
-        real(dp) :: kd_loc                                                      ! local version of kd (normal counter)
+        integer :: n_par_F = 50                                                 ! how many parallel points
+        real(dp) :: kd_loc_eq                                                   ! kd_loc in equilibrium grid
+        real(dp) :: kd_loc_i                                                    ! unrounded index corresponding to kd_loc in tables
         character(len=max_str_ln) :: plot_title                                 ! title for plots
-        real(dp), allocatable :: ranges(:,:)                                    ! the range of the plots
-        real(dp), allocatable :: theta_loc(:)                                   ! local version of theta
-        real(dp) :: q_saf_loc                                                   ! safety factor at current normal point
-        real(dp) :: norm_pt                                                     ! normal point
+        character(len=max_str_ln) :: file_name                                  ! file name for plots
+        real(dp), allocatable :: ang_par_F_loc(:)                               ! local version of ang_par_F
+        complex(dp), allocatable :: X_vec_interp(:)                             ! X_vec at an interpolated normal position
+        complex(dp), allocatable :: first_X_vec_interp(:)                       ! first X_vec_interp
+        real(dp), allocatable :: fac_n(:), fac_m(:)                             ! multiplicative factors for n and m
+        real(dp) :: fac_n_interp, fac_m_interp                                  ! fac_n and fac_m at interpolated normal position
+        real(dp) :: first_fac_n_interp, first_fac_m_interp                      ! first fac_n_interp and fac_m_interp
+        character(len=max_str_ln), allocatable :: file_names(:)                 ! names of file of plots of different ranks
+        real(dp), pointer :: flux(:), flux_VMEC(:)                              ! either pol. or tor. flux
+        real(dp), allocatable :: r_plot(:)                                      ! local normal values at which to interpolate for the plot
+        integer :: grp_n_norm                                                   ! nr. of normal points in plot for this rank
+        complex(dp) :: fac_i_interp(1)                                          ! complex copy of fac_n_interp or fac_m_interp
+        real(dp), allocatable :: ranges(:,:)                                    ! ranges for animated plot
         
         ! initialize ierr
         ierr = 0
         
-        ! initialize other quantities
-        if (grp_rank.eq.0) then                                                 ! only for group masters
-            allocate(ser_X_vec(n_m_X,n_r_X))
-        else
-            allocate(ser_X_vec(0,0))
-        end if
-        
-        ! get serial version of X_vec on group master
-        ierr = get_ser_X_vec(X_vec,ser_X_vec,n_m_X)
-        CHCKERR('')
-        
         call lvl_ud(1)
         
-        ! calculations for group master
-        if (grp_rank.eq.0) then                                                 ! only for group masters
-            ! get omega
-            omega = sqrt(X_val)
-            
-            ! if  omega  is  predominantly  real,  the  Eigenfunction  explodes,
-            ! so  limit  n_n_t to  1.  If  it  is predominantly  imaginary,  the
-            ! Eigenfunction oscillates, so choose n_n_t = 8 for 2 whole periods
-            if (abs(realpart(omega)/imagpart(omega)).gt.1) then
-                n_n_t = 1                                                       ! 1 quarter period
-                n_t = 20                                                        ! 20 points per quarter period
-            else
-                n_n_t = 8                                                       ! 8 quarter periods
-                n_t = 5                                                         ! 5 points per quarter period
-            end if
-            
-            ! set up n_norm and inc_norm
-            n_norm = min(n_r_X,max_n_norm)
-            inc_norm = max(1.0_dp,(n_r_X-1.0_dp)/(max_n_norm-1))
-            
-            ! set up  theta, depending on whether it has  been provided as input
-            ! or not
-            if (present(theta)) then
-                allocate(theta_loc(n_theta))
-                theta_loc = [(theta(1) + (jd-1.0_dp)/(n_theta-1.0_dp) * &
-                    &(theta(2)-theta(1)),jd=1,n_theta)]
-            else
-                n_theta = 1
-                allocate(theta_loc(n_theta))
-                theta_loc = 0.0_dp
-            end if
-            
-            ! set up x-axis values
-            allocate(x_plot(n_norm,n_theta,n_m_X,n_n_t*n_t))
-            do id = 1,n_norm
-                x_plot(id,:,:,:) = min_r_X + (id-1.0)/(n_norm-1)*(max_r_X-min_r_X)
-            end do
-            
-            ! set up y-axis values
-            allocate(y_plot(n_norm,n_theta,n_m_X,n_n_t*n_t))
-            if (present(theta)) then
-                do id = 1,n_theta
-                    y_plot(:,id,:,:) = theta_loc(id)
-                end do
-            else
-                y_plot = 0.0_dp
-            end if
-            
-            ! set up z-axis values (not same for all time steps)
-            ! allocate variables
-            allocate(z_plot(n_norm,n_theta,n_m_X,n_n_t*n_t))
-            allocate(max_of_modes(n_m_X))
-            allocate(max_of_modes_x(n_m_X))
-            allocate(max_of_modes_y(n_m_X))
-            max_of_modes = 0.0_dp
-            max_of_modes_x = 0.0_dp
-            max_of_modes_y = 0.0_dp
-            
-            z_plot = 10
-            ! plot for all time steps the Eigenfunction at theta = 0
-            do id = 1,n_n_t*n_t
-                ! loop over all normal points of all modes
-                kd_loc = 1.0_dp
-                do kd = 1,n_norm
-                    ! loop over all modes
-                    do ld = 1,n_m_X
-                        do jd = 1,n_theta
-                            call dis2con(kd,[1,n_norm],norm_pt,[min_r_X,max_r_X])
-                            ierr = calc_interp(q_saf_full(:,0),[1,n_r_eq],&
-                                &q_saf_loc,norm_pt)
-                            CHCKERR('')
-                            z_plot(kd,jd,ld,id) = realpart(&
-                                &ser_X_vec(ld,nint(kd_loc)) * &
-                                &exp(omega/abs(omega)*(id-1.0_dp)/(n_t*n_n_t-1)&
-                                & + iu*(n_X*q_saf_loc-m_X(ld))*theta_loc(jd)))
-                            if (id.eq.1 .or. id.eq.n_t+1) then
-                                if (z_plot(kd,jd,ld,id).gt.max_of_modes(ld)) then
-                                    max_of_modes(ld) = z_plot(kd,jd,ld,id)
-                                    max_of_modes_x(ld) = x_plot(kd,jd,ld,id)
-                                    max_of_modes_y(ld) = y_plot(kd,jd,ld,id)
-                                end if
-                            end if
-                        end do
-                    end do
-                    kd_loc = kd_loc + inc_norm
-                end do
-                if (id.eq.1 .or. id.eq.n_t+1) then
-                    !! plot places of maximum
-                    if (id.eq.1) then
-                        !call writo('Information about the maximum of the &
-                            !&modes for time t=0')
-                        plot_title = 'JOB '//trim(i2str(alpha_job_nr))//&
-                            &' - Eigenvalue '//trim(i2str(X_id))//&
-                            &' - Eigenvector (t = 0)'
-                    else if (id.eq.n_t+1) then
-                        !call writo('Information about the maximum of the &
-                            !&modes for time t=T_0/4')
-                        plot_title = 'JOB '//trim(i2str(alpha_job_nr))//&
-                            &' - Eigenvalue '//trim(i2str(X_id))//&
-                            &' - Eigenvector (t = 0.25 T_0)'
-                    end if
-                    !call print_GP_2D('maximum of the modes','',max_of_modes)
-                    !call print_GP_2D('normal flux surface where max. of modes &
-                        !&occurs','',max_of_modes_x)
-                    !call print_GP_2D('parallel point where max. of modes &
-                        !&occurs','',max_of_modes_y)
-                    ! plot the modes on screen
-                    if (present(theta)) then
-                        call print_GP_3D(plot_title,'Eigenvector_'//&
-                            &trim(i2str(alpha_job_nr))//'.dat',z_plot(:,:,:,id)&
-                            &,y=y_plot(:,:,:,id),x=x_plot(:,:,:,id),draw=.true.)
-                    else
-                        call print_GP_2D(plot_title,'Eigenvector_'//&
-                            &trim(i2str(alpha_job_nr))//'.dat',z_plot(:,1,:,id)&
-                            &,x=x_plot(:,1,:,id),draw=.true.)
-                    end if
-                    ! plot them in file as well
-                    call draw_GP(plot_title,'Eigenvector_'//&
-                        &trim(i2str(alpha_job_nr))//'.dat',n_m_X,&
-                        &.not.present(theta),.false.)
-                end if
-            end do
-            
-            deallocate(max_of_modes)
-            deallocate(max_of_modes_x)
-            
-            ! allocate ranges
-            if (present(theta)) then
+        ! 1. initialize some quantities
+        
+        ! set up fac_n and fac_m
+        allocate(fac_n(grp_n_r_eq),fac_m(grp_n_r_eq))
+        if (use_pol_flux) then
+            fac_n = q_saf_FD(:,0) * A_0                                         ! n_0 = 1/A_0
+            fac_m = 1.0_dp
+        else
+            fac_n = 1.0_dp
+            fac_m = rot_t_FD(:,0)
+        end if
+        
+        ! allocate ranges if group master
+        if (grp_rank.eq.0) then
+            if (present(par_range_F)) then
                 allocate(ranges(3,2))
             else
                 allocate(ranges(2,2))
             end if
-            
-            if (n_m_X.gt.1) then
-                ! plot the individual modes in time
-                do ld = 1,min(n_m_X,max_n_plots)
-                    ! set plot_title
-                    plot_title = 'JOB '//trim(i2str(alpha_job_nr))//&
-                        &' - mode '//trim(i2str(ld))//' of '//trim(i2str(n_m_X))
-                    if (present(theta)) then
-                        ranges(1,:) = [minval(x_plot(:,:,ld,:)),&
-                            &maxval(x_plot(:,:,ld,:))]
-                        ranges(2,:) = [minval(y_plot(:,:,ld,:)),&
-                            &maxval(y_plot(:,:,ld,:))]
-                        ranges(3,:) = [minval(z_plot(:,:,ld,:)),&
-                            &maxval(z_plot(:,:,ld,:))]
-                        call print_GP_3D(trim(plot_title),'temp_mode_'//&
-                            &trim(i2str(alpha_job_nr)),z_plot(:,:,ld,:),&
-                            &y=y_plot(:,:,ld,:),x=x_plot(:,:,ld,:),draw=.false.)
-                    else
-                        ranges(1,:) = [minval(x_plot(:,:,ld,:)),&
-                            &maxval(x_plot(:,:,ld,:))]
-                        ranges(2,:) = [minval(z_plot(:,:,ld,:)),&
-                            &maxval(z_plot(:,:,ld,:))]
-                        call print_GP_2D(trim(plot_title),'temp_mode_'//&
-                            &trim(i2str(alpha_job_nr)),z_plot(:,1,ld,:),&
-                            &x=x_plot(:,1,ld,:),draw=.false.)
-                    end if
-                    call draw_GP_animated(trim(plot_title),'temp_mode_'//&
-                        &trim(i2str(alpha_job_nr)),n_n_t*n_t,.false.,ranges)
-                end do
-                if (n_m_X.eq.max_n_plots+1) then
-                    call writo('WARNING: Skipping plot for mode '//&
-                        &trim(i2str(max_n_plots+1)))
-                else if (n_m_X.gt.max_n_plots+1) then
-                    call writo('WARNING: Skipping plots for modes '//&
-                        &trim(i2str(max_n_plots+1))//'..'//trim(i2str(n_m_X)))
-                end if
-            end if
-            
-            ! plot the global mode in time
-            do ld = 2,n_m_X
-                z_plot(:,:,1,:) = z_plot(:,:,1,:) + z_plot(:,:,ld,:)
+        end if
+        
+        ! if  omega  is  predominantly  real,  the  Eigenfunction  explodes,
+        ! so  limit  n_n_t to  1.  If  it  is predominantly  imaginary,  the
+        ! Eigenfunction oscillates, so choose n_n_t = 8 for 2 whole periods
+        omega = sqrt(X_val)
+        if (abs(realpart(omega)/imagpart(omega)).gt.1) then
+            n_n_t = 1                                                           ! 1 quarter period
+            n_t = 20                                                            ! 20 points per quarter period
+        else
+            n_n_t = 8                                                           ! 8 quarter periods
+            n_t = 5                                                             ! 5 points per quarter period
+        end if
+        
+        ! set up the angular variable ang_par_F_loc, depending on whether it has
+        ! been provided as input or not
+        if (present(par_range_F)) then
+            allocate(ang_par_F_loc(n_par_F))
+            ang_par_F_loc = &
+                &[(par_range_F(1) + (jd-1.0_dp)/(n_par_F-1.0_dp) * &
+                &(par_range_F(2)-par_range_F(1)),jd=1,n_par_F)]
+        else
+            n_par_F = 1
+            allocate(ang_par_F_loc(n_par_F))
+            ang_par_F_loc = 0.0_dp
+        end if
+        
+        ! 2. calculate the x and z parts of the plot in parallel
+        
+        ! calculate starting and ending normal index of array
+        call calc_r_plot(r_plot,grp_n_norm)
+        
+        ! allocate variables
+        allocate(x_plot(grp_n_norm,n_par_F,size_X,n_n_t*n_t))
+        allocate(y_plot(grp_n_norm,n_par_F,size_X,n_n_t*n_t))
+        allocate(z_plot(grp_n_norm,n_par_F,size_X,n_n_t*n_t))
+        allocate(z_magn_plot(grp_n_norm,n_par_F,n_n_t*n_t))
+        allocate(X_vec_interp(size_X))
+        allocate(first_X_vec_interp(size_X))
+        
+        ! set up y-axis in parallel
+        if (present(par_range_F)) then
+            do id = 1,n_par_F
+                y_plot(:,id,:,:) = ang_par_F_loc(id)
             end do
-            plot_title = 'JOB '//trim(i2str(alpha_job_nr))//' - global mode'
-            if (present(theta)) then
-                ranges(1,:) = [minval(x_plot(:,:,1,:)),maxval(x_plot(:,:,1,:))]
-                ranges(2,:) = [minval(y_plot(:,:,1,:)),maxval(y_plot(:,:,1,:))]
-                ranges(3,:) = [minval(z_plot(:,:,1,:)),maxval(z_plot(:,:,1,:))]
-                call print_GP_3D(trim(plot_title),'temp_mode_'//&
-                    &trim(i2str(alpha_job_nr)),z_plot(:,:,1,:),&
-                    &y=y_plot(:,:,1,:),x=x_plot(:,:,1,:),draw=.false.)
-            else
-                ranges(1,:) = [minval(x_plot(:,:,1,:)),maxval(x_plot(:,:,1,:))]
-                ranges(2,:) = [minval(z_plot(:,:,1,:)),maxval(z_plot(:,:,1,:))]
-                call print_GP_2D(trim(plot_title),'temp_mode_'//&
-                    &trim(i2str(alpha_job_nr)),z_plot(:,1,1,:),&
-                    &x=x_plot(:,1,1,:),draw=.false.)
+        else
+            y_plot = 0.0_dp
+        end if
+        
+        ! set up flux and flux_VMEC
+        if (use_pol_flux) then
+            flux => flux_p_FD(:,0)
+        else
+            flux => flux_t_FD(:,0)
+        end if
+        if (VMEC_use_pol_flux) then
+            flux_VMEC => flux_p_FD(:,0)
+        else
+            flux_VMEC => flux_t_FD(:,0)
+        end if
+        
+        ! set up x-axis and z-axis values in parallel
+        z_magn_plot = 0.0_dp
+        ! loop over all time steps
+        do id = 1,n_n_t*n_t
+            ! loop over all normal points
+            do kd = 1,grp_n_norm
+                ! set up x_plot
+                x_plot(kd,:,:,:) = r_plot(kd)
+                
+                ! set up the interpolated values of X_vec, fac_n and fac_m
+                if (kd.lt.grp_n_norm .and. grp_rank+1.lt.grp_n_procs &
+                    &.or. grp_rank+1.eq.grp_n_procs) then                       ! last point is treated differently
+                    ! set up interp. X_vec (tabulated in perturbation grid)
+                    call con2dis(r_plot(kd),[min_r_X,max_r_X],kd_loc_i,&
+                        &[1,n_r_X])
+                    kd_loc_i = kd_loc_i - grp_min_r_X + 1                       ! include offset of perturbation tables
+                    X_vec_interp = X_vec(:,floor(kd_loc_i)) + &
+                        &(kd_loc_i-floor(kd_loc_i)) * &
+                        &(X_vec(:,ceiling(kd_loc_i))-X_vec(:,floor(kd_loc_i)))
+                    
+                    ! set up  interp. fac_n and fac_m  (tabulated in equilibrium
+                    ! grid)
+                    ierr = interp_fun_1D(kd_loc_eq,flux_VMEC/max_flux_VMEC,&
+                        &r_plot(kd),flux/max_flux)
+                    CHCKERR('')
+                    call con2dis(kd_loc_eq,[0._dp,1._dp],kd_loc_i,[1,n_r_eq])
+                    kd_loc_i = kd_loc_i - grp_min_r_eq + 1                      ! include offset of equilibrium tables
+                    fac_n_interp = fac_n(floor(kd_loc_i)) + &
+                        &(kd_loc_i-floor(kd_loc_i)) * &
+                        &(fac_n(ceiling(kd_loc_i))-fac_n(floor(kd_loc_i)))
+                    fac_m_interp = fac_m(floor(kd_loc_i)) + &
+                        &(kd_loc_i-floor(kd_loc_i)) * &
+                        &(fac_m(ceiling(kd_loc_i))-fac_m(floor(kd_loc_i)))
+                end if
+                
+                ! save first interpolated X_vec, fac_n and fac_m
+                if (kd.eq.1) then
+                    first_X_vec_interp = X_vec_interp
+                    first_fac_n_interp = fac_n_interp
+                    first_fac_m_interp = fac_m_interp
+                end if
+                
+                ! exchange X_vec_interp, fac_n and fac_m at last points
+                if (kd.eq.grp_n_norm) then
+                    ! X_vec_interp
+                    call exch_ghost_values(first_X_vec_interp)
+                    if (grp_rank+1.lt.grp_n_procs) &
+                        &X_vec_interp = first_X_vec_interp
+                    
+                    ! fac_n_interp
+                    fac_i_interp = first_fac_n_interp
+                    call exch_ghost_values(fac_i_interp)
+                    if (grp_rank+1.lt.grp_n_procs) &
+                        &fac_n_interp = realpart(fac_i_interp(1))
+                    
+                    ! fac_m_interp
+                    fac_i_interp = first_fac_m_interp
+                    call exch_ghost_values(fac_i_interp)
+                    if (grp_rank+1.lt.grp_n_procs) &
+                        &fac_m_interp = realpart(fac_i_interp(1))
+                end if
+                
+                ! loop over all modes and all parallel points to set up z_plot
+                do ld = 1,size_X
+                    do jd = 1,n_par_F
+                        z_plot(kd,jd,ld,id) = &
+                            &realpart(X_vec_interp(ld) * &
+                            &exp(omega/abs(omega)*(id-1.0_dp)/(n_t*n_n_t-1)&    ! time dependency
+                            &    + iu*(n_X(ld)*fac_n_interp-&
+                            &          m_X(ld)*fac_m_interp)&
+                            &    * ang_par_F_loc(jd)))
+                    end do
+                    z_magn_plot(kd,:,id) = z_magn_plot(kd,:,id) + &
+                        &z_plot(kd,:,ld,id)
+                end do
+            end do
+        end do
+        
+        ! 3. for  every mode, write plot  output data in data files  and plot by
+        ! group master
+        if (size_X.gt.1) then
+            ! plot the individual modes in time
+            do ld = 1,min(size_X,max_n_plots)
+                ! set plot_title and file name and write data
+                plot_title = 'EV '//trim(i2str(X_id))//&
+                    &' - mode '//trim(i2str(ld))//' of '//trim(i2str(size_X))
+                file_name = 'mode_'//trim(i2str(X_id))//'_'//&
+                    &trim(i2str(ld))//'_'//trim(i2str(grp_rank))
+                if (present(par_range_F)) then
+                    call print_GP_3D(trim(plot_title),trim(file_name),&
+                        &z_plot(:,:,ld,:),y=y_plot(:,:,ld,:),&
+                        &x=x_plot(:,:,ld,:),draw=.false.)
+                else
+                    call print_GP_2D(trim(plot_title),trim(file_name),&
+                        &z_plot(:,1,ld,:),x=x_plot(:,1,ld,:),&
+                        &draw=.false.)
+                end if
+                    
+                ! plot by group master
+                if (grp_rank.eq.0) then
+                    ! set up file names in array
+                    allocate(file_names(grp_n_procs))
+                    do id = 1,grp_n_procs
+                        file_names(id) = 'mode_'//trim(i2str(X_id))//&
+                            &'_'//trim(i2str(ld))//'_'//trim(i2str(id-1))
+                    end do
+                    
+                    ! draw animation
+                    call draw_GP_animated(trim(plot_title),file_names,n_n_t*n_t,&
+                        &.false.)
+                    
+                    ! deallocate
+                    deallocate(file_names)
+                end if
+            end do
+            if (size_X.eq.max_n_plots+1) then
+                call writo('Skipping plot for mode '//&
+                    &trim(i2str(max_n_plots+1)))
+            else if (size_X.gt.max_n_plots+1) then
+                call writo('Skipping plots for modes '//&
+                    &trim(i2str(max_n_plots+1))//'..'//trim(i2str(size_X)))
             end if
-            call draw_GP_animated(trim(plot_title),'temp_mode_'//&
-                &trim(i2str(alpha_job_nr)),n_n_t*n_t,.not.present(theta),ranges)
+        end if
+        
+        ! 4. do the same for the global mode
+        ! set plot_title and file name and write data
+        plot_title = 'EV '//trim(i2str(X_id))//' - global mode'
+        file_name = 'global_mode_'//trim(i2str(X_id))//'_'//&
+            &trim(i2str(grp_rank))
+        if (present(par_range_F)) then
+            call print_GP_3D(trim(plot_title),trim(file_name),&
+                &z_magn_plot(:,:,:),y=y_plot(:,:,1,:),&
+                &x=x_plot(:,:,1,:),draw=.false.)
+        else
+            call print_GP_2D(trim(plot_title),trim(file_name),&
+                &z_magn_plot(:,1,:),x=x_plot(:,1,1,:),&
+                &draw=.false.)
+        end if
+        
+        ! plot by group master
+        if (grp_rank.eq.0) then
+            ! set up file names in array
+            allocate(file_names(grp_n_procs))
+            do id = 1,grp_n_procs
+                file_names(id) = 'global_mode_'//trim(i2str(X_id))&
+                    &//'_'//trim(i2str(id-1))
+            end do
             
-            ! deallocate variables
-            deallocate(ranges)
-            deallocate(ser_X_vec)
-            deallocate(x_plot)
-            deallocate(y_plot)
-            deallocate(z_plot)
+            ! draw animation
+            call draw_GP_animated(trim(plot_title),file_names,n_n_t*n_t,&
+                &.false.)
+            
+            ! deallocate
+            deallocate(file_names)
         end if
         
         call lvl_ud(-1)
+        
+    contains
+        ! calculates the array of normal  points where to interpolate to produce
+        ! the plot
+        subroutine calc_r_plot(r_plot,grp_n_norm)
+            ! input / output
+            real(dp), intent(inout), allocatable :: r_plot(:)                   ! local normal values at which to interpolate for the plot
+            integer, intent(inout) :: grp_n_norm                                ! nr. of normal points for this rank
+            
+            ! local variables
+            integer :: start_i_norm, end_i_norm                                 ! starting and ending index of normal points for this rank
+            integer :: max_n_norm = 50                                          ! max nr of normal points to plot
+            integer :: n_norm                                                   ! nr. of normal points
+            real(dp) :: inc_norm                                                ! normal increment for plots
+            integer :: kd                                                       ! counter
+            
+            ! set  up how  many  normal  points for  this  rank  n_norm and  the
+            ! increment between normal points inc_norm
+            ! (taking all the normal points could be way too many)
+            n_norm = min(n_r_X,max_n_norm)
+            inc_norm = (max_r_X-min_r_X)/(n_norm-1)
+            
+            ! calculate the  starting and ending index,  first determining which
+            ! is the range where normal interpolation can take place
+            start_i_norm = ceiling((grp_r_X(1)-min_r_X)/inc_norm + 1)
+            end_i_norm = floor((grp_r_X(size(grp_r_X))-min_r_X)/inc_norm + 1)   ! size(grp_r_X) can be grp_n_r_X or grp_n_r_X + 1 (ghost region in X grid)
+            if (grp_rank+1.lt.grp_n_procs) end_i_norm = end_i_norm + 1
+            
+            ! set grp_n_norm
+            grp_n_norm = end_i_norm-start_i_norm+1
+            
+            ! allocate r_plot with the correct size
+            allocate(r_plot(grp_n_norm)); 
+            
+            ! set r_plot
+            r_plot = [(min_r_X + (start_i_norm+kd-2)*inc_norm,kd=1,grp_n_norm)]
+            if (r_plot(grp_n_norm).gt.1.0_dp) r_plot(grp_n_norm) = 1.0_dp
+        end subroutine calc_r_plot
+        
+        ! exhange the ghost values of a vector
+        subroutine exch_ghost_values(vec)
+            ! input / output
+            complex(dp), intent(inout) :: vec(:)                                ! input vector, later overwritten with exchanged value
+            
+            ! local variables
+            complex(dp), allocatable :: exch_vec(:,:)                           ! to exchange the input vector
+            integer :: n_modes                                                  ! number of modes to exchange
+            
+            ! set up n_modes
+            n_modes = size(vec)
+            
+            ! allocate the exchange vectors
+            if (grp_rank.eq.0) then
+                allocate(exch_vec(n_modes,1))
+            else if (grp_rank+1.eq.grp_n_procs) then
+                allocate(exch_vec(n_modes,1))
+                exch_vec(:,1) = vec                                             ! fill with vec
+            else
+                allocate(exch_vec(n_modes,2))
+                exch_vec(:,1) = vec                                             ! fill with vec
+            end if
+            
+            ! exchange the last interpolated X_vec
+            ierr = get_ghost_X_vec(exch_vec,1)
+            CHCKERR('')
+            
+            ! copy value to new interpolated X_vec
+            vec = exch_vec(:,size(exch_vec,2))
+        end subroutine exch_ghost_values
     end function plot_X_vec
 end module

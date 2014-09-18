@@ -16,18 +16,18 @@ contains
     ! calculate the equilibrium quantities on a grid determined by straight field
     ! lines.
     integer function calc_eq(alpha) result(ierr)
-        use eq_vars, only: calc_mesh, calc_flux_q, dealloc_eq_vars, &
-            &normalize_eq_vars, &
-            &check_and_limit_mesh, init_eq, calc_RZL, q_saf, q_saf_FD, flux_p, &
-            &flux_p_FD,flux_t, flux_t_FD, pres, pres_FD, n_par
+        use eq_vars, only: calc_mesh, calc_flux_q, dealloc_eq, calc_RZL, &
+            &normalize_eq_vars, prepare_RZL, check_and_limit_mesh, init_eq, &
+            &q_saf_V, q_saf_FD, rot_t_V, rot_t_FD, flux_p_V, &
+            &flux_p_FD,flux_t_V, flux_t_FD, pres, pres_FD, n_par
         use metric_ops, only: calc_g_C, calc_g_C, calc_T_VC, calc_g_V, &
             &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, &
-            &calc_jac_V, calc_jac_F, calc_f_deriv, dealloc_metric_vars, &
+            &calc_jac_V, calc_jac_F, calc_f_deriv, dealloc_metric, &
             &normalize_metric_vars, &
-            &T_VF, T_FV, g_F, h_F, det_T_VF, det_T_FV, jac_F, g_F_FD, h_F_FD, &
-            &jac_F_FD
+            &T_VF, T_FV, g_F, h_F, det_T_VF, det_T_FV, jac_F, g_FD, h_FD, &
+            &jac_FD
         use utilities, only: derivs
-        use num_vars, only: max_deriv, ltest
+        use num_vars, only: max_deriv, ltest, use_pol_flux
         
         character(*), parameter :: rout_name = 'calc_eq'
         
@@ -65,13 +65,17 @@ contains
             ! 2----------------------------------------------------------------
             call lvl_ud(1)
             
-            ! calculate mesh points (theta, zeta) that follow the magnetic field
-            ! line
+            ! calculate  angular mesh  points (theta_V,zeta_V)  that follow  the
+            ! magnetic field line determined by alpha
+            ! Note: The normal mesh is determined by VMEC, it can either use the
+            ! toroidal flux or the  poloidal flux (VMEC_use_pol_flux). This does
+            ! NOT have to coincide with use_pol_flux used by PB3D
             ierr = calc_mesh(alpha)
             CHCKERR('')
             
             ! check whether the mesh has been calculated correctly
-            ! if so, limit the normal range of theta and zeta to the local range
+            ! if so, limit  the normal range of theta_V and  zeta_V to the local
+            ! range
             ierr = check_and_limit_mesh(alpha)
             CHCKERR('')
             
@@ -86,6 +90,8 @@ contains
             ! calculate  the   cylindrical  variables   R,  Z  and   lambda  and
             ! derivatives
             call writo('Calculate R,Z,L...')
+            ierr = prepare_RZL()
+            CHCKERR('')
             do id = 0,2
                 ierr = calc_RZL(derivs(id))
                 CHCKERR('')
@@ -171,27 +177,50 @@ contains
             ! in VMEC coordinates
             call writo('Calculate derivatives in flux coordinates...')
             do id = 0,1
-                ierr = calc_f_deriv(g_F,T_FV,g_F_FD,max_deriv-[1,1,1],&
-                    &derivs(id))                                                ! g_F
+                ! g_FD
+                ierr = calc_f_deriv(g_F,T_FV,g_FD,max_deriv-[1,1,1],&
+                    &derivs(id))
                 CHCKERR('')
-                ierr = calc_f_deriv(h_F,T_FV,h_F_FD,max_deriv-[1,1,1],&
-                    &derivs(id))                                                ! h_F
+                
+                ! h_FD
+                ierr = calc_f_deriv(h_F,T_FV,h_FD,max_deriv-[1,1,1],&
+                    &derivs(id))
                 CHCKERR('')
-                ierr = calc_f_deriv(jac_F,T_FV,jac_F_FD,max_deriv-[1,1,1],&
-                    &derivs(id))                                                ! jac_F
+                
+                ! jac_FD
+                ierr = calc_f_deriv(jac_F,T_FV,jac_FD,max_deriv-[1,1,1],&
+                    &derivs(id))
                 CHCKERR('')
-                ierr = calc_f_deriv(q_saf,T_FV(1,:,2,1,:,0,0),q_saf_FD(:,id),&
-                    &max_deriv(1)-1,id)                                         ! q_saf
-                CHCKERR('')
-                ierr = calc_f_deriv(flux_p,T_FV(1,:,2,1,:,0,0),flux_p_FD(:,id),&
-                    &max_deriv(1)-1,id)                                         ! flux_p
-                CHCKERR('')
-                ierr = calc_f_deriv(flux_t,T_FV(1,:,2,1,:,0,0),flux_t_FD(:,id),&
-                    &max_deriv(1)-1,id)                                         ! flux_t
-                CHCKERR('')
+                
+                ! pres_FD
                 ierr = calc_f_deriv(pres,T_FV(1,:,2,1,:,0,0),pres_FD(:,id),&
-                    &max_deriv(1)-1,id)                                         ! pres
+                    &max_deriv(1)-1,id)
                 CHCKERR('')
+                    
+                ! flux_p_FD
+                ierr = calc_f_deriv(flux_p_V,T_FV(1,:,2,1,:,0,0),&
+                    &flux_p_FD(:,id),max_deriv(1)-1,id)
+                CHCKERR('')
+                    
+                ! flux_t_FD
+                ierr = calc_f_deriv(flux_t_V,T_FV(1,:,2,1,:,0,0),&
+                    &flux_t_FD(:,id),max_deriv(1)-1,id)
+                CHCKERR('')
+                flux_t_FD = - flux_t_FD                                         ! conversion LH -> RH coord. system
+                
+                if (use_pol_flux) then
+                    ! q_saf_FD
+                    ierr = calc_f_deriv(q_saf_V,T_FV(1,:,2,1,:,0,0),&
+                        &q_saf_FD(:,id),max_deriv(1)-1,id)
+                    CHCKERR('')
+                    q_saf_FD = - q_saf_FD                                       ! conversion LH -> RH coord. system
+                else
+                    ! rot_t_FD
+                    ierr = calc_f_deriv(rot_t_V,T_FV(1,:,2,1,:,0,0),&
+                        &rot_t_FD(:,id),max_deriv(1)-1,id)
+                    CHCKERR('')
+                    rot_t_FD = - rot_t_FD                                       ! conversion LH -> RH coord. system
+                end if
             end do
             
             ! normalize the quantities
@@ -202,8 +231,8 @@ contains
             ! deallocate unused equilibrium quantities
             if (.not.ltest) then
                 call writo('Deallocate unused equilibrium and metric quantities...')
-                call dealloc_eq_vars
-                call dealloc_metric_vars
+                call dealloc_eq
+                call dealloc_metric
             end if
             
             call lvl_ud(-1)
