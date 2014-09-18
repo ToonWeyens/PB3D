@@ -4,14 +4,14 @@
 module utilities
 #include <PB3D_macros.h>
     use num_vars, only: dp, iu, max_str_ln
-    use output_ops, only: writo, print_ar_1, print_ar_2
+    use output_ops, only: writo, print_ar_1, print_ar_2, print_GP_2D
     use str_ops, only: i2str, r2strt, r2str
     
     implicit none
     private
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, arr_mult, &
-        &VMEC_norm_deriv, VMEC_conv_FHM, check_deriv, calc_inv, &
-        &init_utilities, derivs, calc_interp, con2dis, dis2con, round_with_tol
+        &VMEC_norm_deriv, VMEC_conv_FHM, check_deriv, calc_inv, interp_fun_1D, &
+        &init_utilities, derivs, con2dis, dis2con, round_with_tol
     
     ! the possible derivatives of order i
     integer, allocatable :: derivs_0(:,:)                                       ! all possible derivatives of order 0
@@ -32,9 +32,6 @@ module utilities
     end interface
     interface calc_int
         module procedure calc_int_real, calc_int_complex
-    end interface
-    interface calc_interp
-        module procedure calc_interp_real, calc_interp_complex
     end interface
 contains
     ! initialize utilities:
@@ -985,9 +982,8 @@ contains
             zero_NR = zero_NR + corr
             
             ! check for convergence
-            ! CHANGE THIS TO RELATIVE
             if (abs(corr).lt.tol_NR) then
-                exit
+                return
             else if (jd .eq. max_it_NR) then
                 err_msg = 'Not converged after '//trim(i2str(jd))//&
                     &' iterations, with residual = '//trim(r2str(corr))
@@ -1031,100 +1027,6 @@ contains
         pt_c = lim_c(1) + (lim_c(2)-lim_c(1)) * (pt_d-lim_d(1)) / &
             &(lim_d(2)-lim_d(1))
     end subroutine dis2con
-    
-    ! Simple  linear interpolation  of  matrix varin,  tabulated at  equilibrium
-    ! grid,  at point  ptout where  ptout =  0..1 with  result stored  in matrix
-    ! varout
-    ! pt_arr is  the index in  the array corresponding  to ptout, which  is then
-    ! rounded above  and below to  yield the  indices ind_lo and  ind_hi between
-    ! which to interpolate
-    ! The interpolation between ind_lo and ind_hi is done linearly:
-    !   varout = varin(ind_lo) + (pt_arr-ind_lo) * (varin(ind_hi)-varin(ind_lo))
-    ! because ind_hi - ind_lo = 1
-    ! The variable r_offset is optionally used if the table does not start at 1
-    ! note: this routine is also correct if ind_hi = ind_lo (for the last point)
-    integer function calc_interp_real(varin,limin,varout,ptout,r_offset) &
-        &result(ierr)
-        character(*), parameter :: rout_name = 'calc_interp_real'
-        
-        ! input / output
-        real(dp), intent(in) :: varin(:)                                        ! input variable, not interpolated
-        integer, intent(in) :: limin(2)                                         ! start and end points at which variable is tabulated
-        real(dp), intent(inout) :: varout                                       ! output variable, interpolated
-        real(dp), intent(in) :: ptout                                           ! point at which to interpolate (0...1)
-        integer, intent(in), optional :: r_offset                               ! offset in the tables in the normal variable, wrt. 1
-        
-        ! local variables
-        real(dp) :: ptout_loc                                                   ! local copy of ptout
-        integer :: ind_lo, ind_hi                                               ! lower and upper index
-        real(dp) :: pt_arr                                                      ! point in array referring to ptout
-        real(dp) :: margin = 1E-4_dp                                            ! margin for the comparisons
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local copy of ptout
-        ptout_loc = ptout
-        
-        ! tests
-        ierr = round_with_tol(ptout_loc,0.0_dp,1.0_dp,margin)
-        CHCKERR('')
-        
-        ! find interpolation points
-        pt_arr = limin(1) +(limin(2)-limin(1))*ptout_loc                        ! corresponding array index, not rounded
-        ind_lo = floor(pt_arr)                                                  ! lower bound
-        ind_hi = ceiling(pt_arr)                                                ! upper bound
-        
-        ! interpolate
-        if (present(r_offset)) then                                             ! include offset
-            varout = varin(ind_lo-r_offset) + (pt_arr-ind_lo) * &
-                &(varin(ind_hi-r_offset)-varin(ind_lo-r_offset))
-        else
-            varout = varin(ind_lo) + (pt_arr-ind_lo) * &
-                &(varin(ind_hi)-varin(ind_lo))
-        end if
-    end function calc_interp_real
-    integer function calc_interp_complex(varin,limin,varout,ptout,r_offset) &
-        &result(ierr)
-        character(*), parameter :: rout_name = 'calc_interp_complex'
-        
-        ! input / output
-        complex(dp), intent(in) :: varin(:)                                     ! input variable, not interpolated
-        integer, intent(in) :: limin(2)                                         ! start and end points at which variable is tabulated
-        complex(dp), intent(inout) :: varout                                    ! output variable, interpolated
-        real(dp), intent(in) :: ptout                                           ! point at which to interpolate (0...1)
-        integer, intent(in), optional :: r_offset                               ! offset in the tables in the normal variable, wrt. 1
-        
-        ! local variables
-        real(dp) :: ptout_loc                                                   ! local copy of ptout
-        integer :: ind_lo, ind_hi                                               ! lower and upper index
-        real(dp) :: pt_arr                                                      ! point in array referring to ptout
-        real(dp) :: margin = 1E-4_dp                                            ! margin for the comparisons
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local copy of ptout
-        ptout_loc = ptout
-        
-        ! tests
-        ierr = round_with_tol(ptout_loc,0.0_dp,1.0_dp,margin)
-        CHCKERR('')
-        
-        ! find interpolation points
-        pt_arr = limin(1) +(limin(2)-limin(1))*ptout_loc                        ! corresponding array index, not rounded
-        ind_lo = floor(pt_arr)                                                  ! lower bound
-        ind_hi = ceiling(pt_arr)                                                ! upper bound
-        
-        ! interpolate
-        if (present(r_offset)) then                                             ! include offset
-            varout = varin(ind_lo-r_offset) + (pt_arr-ind_lo) * &
-                &(varin(ind_hi-r_offset)-varin(ind_lo-r_offset))
-        else
-            varout = varin(ind_lo) + (pt_arr-ind_lo) * &
-                &(varin(ind_hi)-varin(ind_lo))
-        end if
-    end function calc_interp_complex
     
     integer function round_with_tol(val,lim_lo,lim_hi,tol) result(ierr)
         character(*), parameter :: rout_name = 'round_with_tol'
@@ -1170,4 +1072,89 @@ contains
             end if
         end if
     end function round_with_tol
+    
+    ! interpolate a  1D function  y(x) by  providing the array  y and  x_in. The
+    ! result is stored in  y_out. The array x can be  optionally passed. If not,
+    ! it is assumed to be the linear space between 0 and 1
+    ! Note: This function is assumed to be monotomous. If not, the latest result
+    ! is returned
+    integer function interp_fun_1D(y_out,y,x_in,x) result(ierr)
+        character(*), parameter :: rout_name = 'interp_fun_1D'
+        
+        ! input / output
+        real(dp), intent(inout) :: y_out                                        ! output y_out
+        real(dp), intent(in) :: y(:)                                            ! y(x)
+        real(dp), intent(in) :: x_in                                            ! input x_in
+        real(dp), intent(in), optional :: x(:)                                  ! x(x)
+        
+        ! local variables
+        integer :: n_pt                                                         ! nr. points in y
+        real(dp) :: x_diff                                                      ! difference between x and x_in
+        integer :: id                                                           ! counter
+        real(dp) :: ind                                                         ! unrounded x-index
+        integer :: ind_lo                                                       ! lower index of x_in in x(x)
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp) :: tol = 1.0E-6_dp                                             ! relative tolerance
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up n_pt
+        n_pt = size(y)
+        
+        ! tests
+        if (present(x)) then
+            if (size(x).ne.n_pt) then
+                err_msg = 'x and y need to have the same size'
+                ierr = 1
+                CHCKERR(err_msg)
+            end if
+        end if
+        
+        ! initialize ind_lo
+        ind_lo = -1
+        
+        ! find the lower range of the index in the x array
+        if (present(x)) then
+            ! check first point
+            if (abs((x_in-x(1))/maxval(x)).lt.tol) then
+                ind_lo = 1
+            else
+                x_diff = x(1)-x_in
+                ! find indices in x where that enclose x_in
+                do id = 2,n_pt
+                    ! check if x_diff has changed sign
+                    if ((x(id)-x_in)/x_diff.lt.tol) ind_lo = id-1               ! use tol instead of 0.0 to allow for x(id)-x_in = 0.0
+                    ! update x_diff
+                    x_diff = x(id)-x_in
+                end do
+            end if
+            
+            ! test if result has been found
+            if (ind_lo.lt.1) then
+                ! maybe last point?
+                if (abs((x(n_pt)-x_in)/maxval(abs(x))).lt.tol) then
+                    ind_lo = n_pt-1
+                else
+                    err_msg = 'x-value not found in x-range'
+                    ierr = 1
+                    CHCKERR(err_msg)
+                end if
+            end if
+        else
+            call con2dis(x_in,[0._dp,1._dp],ind,[1,n_pt])
+            ind_lo = floor(ind)
+            if (ind_lo.eq.n_pt) ind_lo = ind_lo-1                               ! to avoid problems at last point
+        end if
+        
+        ! calculate y_out
+        if (present(x)) then
+            y_out = y(ind_lo) + (y(ind_lo+1)-y(ind_lo)) * &
+                &(x_in-x(ind_lo))/(x(ind_lo+1)-x(ind_lo))
+        else
+            y_out = y(ind_lo) + (y(ind_lo+1)-y(ind_lo)) * &
+                &(ind-ind_lo)
+        end if
+        !write(*,*) 'x_in, ind_lo, y_out = ', x_in, ind_lo, y_out
+    end function interp_fun_1D
 end module utilities

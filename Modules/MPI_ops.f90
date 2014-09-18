@@ -5,13 +5,13 @@ module MPI_ops
 #include <PB3D_macros.h>
     use MPI
     use str_ops, only: i2str
-    use output_ops, only: writo, lvl_ud
+    use output_ops, only: writo, lvl_ud, print_GP_2D, print_ar_1
     use num_vars, only: dp, max_str_ln
     
     implicit none
     private
     public start_MPI, stop_MPI, split_MPI, abort_MPI, broadcast_vars, &
-        &merge_MPI, get_next_job, divide_grid, get_ser_X_vec
+        &merge_MPI, get_next_job, divide_grid, get_ser_X_vec, get_ghost_X_vec
     
 contains
     ! start MPI and gather information
@@ -234,44 +234,88 @@ contains
         ! [MPI] Collective call
         integer function calc_eq_r_range() result(ierr)
             use num_vars, only: min_n_r_X, grp_n_procs, grp_rank, min_r_X, &
-                &max_r_X
-            use utilities, only: con2dis, dis2con
+                &max_r_X, use_pol_flux
+            use utilities, only: con2dis, dis2con, calc_int, interp_fun_1D
             use eq_vars, only: grp_min_r_eq, grp_max_r_eq
-            use VMEC_vars, only: n_r_eq
+            use VMEC_vars, only: n_r_eq, phi, phi_r, iotaf, VMEC_use_pol_flux
             use X_vars, only: grp_max_r_X
             
             character(*), parameter :: rout_name = 'calc_eq_r_range'
             
             ! local variables
+            real(dp), allocatable :: flux(:), flux_VMEC(:)                      ! either pol. or tor. flux, in VMEC coord.
+            integer :: kd                                                       ! counter
             real(dp) :: grp_min_r_eq_X_con                                      ! grp_min_r_eq in continuous perturbation grid
-            real(dp) :: grp_min_r_eq_dis                                        ! grp_min_r_eq in discrete equilibrium grid, unrounded
+            real(dp) :: grp_min_r_eq_eq_con                                     ! grp_min_r_eq in continuous equilibrium grid
+            real(dp) :: grp_min_r_eq_eq_dis                                     ! grp_min_r_eq in discrete equilibrium grid, unrounded
             integer :: grp_max_r_eq_X_dis                                       ! grp_max_r_eq in discrete perturbation grid
             real(dp) :: grp_max_r_eq_X_con                                      ! grp_max_r_eq in continuous perturbation grid
+            real(dp) :: grp_max_r_eq_eq_con                                     ! grp_max_r_eq in continuous equilibrium grid
             real(dp) :: grp_max_r_eq_dis                                        ! grp_max_r_eq in discrete equilibrium grid, unrounded
             
             ! initialize ierr
             ierr = 0
             
-            ! use min_r_X and max_r_X, with grp_n_procs to get the minimum bound
-            ! for this rank
-            grp_min_r_eq_X_con = min_r_X + &
-                &grp_rank*(max_r_X-min_r_X)/grp_n_procs                         ! grp_min_r_eq in continuous perturbation grid (0..1)
-            call con2dis(grp_min_r_eq_X_con,[0._dp,1._dp],grp_min_r_eq_dis,&
-                &[1,n_r_eq])                                                    ! grp_min_r_eq in discrete equilibrium grid, unrounded
-            grp_min_r_eq = floor(grp_min_r_eq_dis)                              ! rounded up
+            ! set up flux and flux_VMEC
+            allocate(flux(n_r_eq),flux_VMEC(n_r_eq))
+            if (use_pol_flux) then
+                ierr = calc_int(-iotaf*phi_r,&
+                    &[(kd*1.0_dp/(n_r_eq-1.0_dp),kd=0,n_r_eq-1)],flux)
+                CHCKERR('')
+            else
+                flux = phi
+            end if
+            if (VMEC_use_pol_flux) then
+                ierr = calc_int(-iotaf*phi_r,&
+                    &[(kd*1.0_dp/(n_r_eq-1.0_dp),kd=0,n_r_eq-1)],flux_VMEC)
+                CHCKERR('')
+            else
+                flux_VMEC = phi
+            end if
             
-            ! use grid_max with min_n_r_X to calculate grp_max_r_eq
+            ! normalize flux and flux_VMEC to (0..1)
+            flux = flux/flux(n_r_eq)
+            flux_VMEC = flux_VMEC/flux_VMEC(n_r_eq)
+            
+            ! use min_r_X and max_r_X, with grp_n_procs to get the minimum bound
+            ! grp_min_r_eq for this rank
+            ! 1. continuous perturbation grid (0..1)
+            grp_min_r_eq_X_con = min_r_X + &
+                &grp_rank*(max_r_X-min_r_X)/grp_n_procs
+            ! 2. continuous equilibrium grid (0..1)
+            ierr = interp_fun_1D(grp_min_r_eq_eq_con,flux_VMEC,&
+                &grp_min_r_eq_X_con,flux)
+            CHCKERR('')
+            ! 3. discrete equilibrium grid, unrounded
+            call con2dis(grp_min_r_eq_eq_con,[0._dp,1._dp],grp_min_r_eq_eq_dis,&
+                &[1,n_r_eq])
+            ! 4. discrete equilibrium grid, rounded down
+            grp_min_r_eq = floor(grp_min_r_eq_eq_dis)
+            
+            
+            ! use min_r_X and max_r_X to calculate grp_max_r_eq
+            ! 1. divide_grid for min_n_r_X normal points
             ierr = divide_grid(min_n_r_X)                                       ! divide the grid for the min_n_r_X tot. normal points
             CHCKERR('')
-            grp_max_r_eq_X_dis = grp_max_r_X                                    ! grp_max_r_eq in discrete perturbation grid (1..min_n_r_X)
+            ! 2. discrete perturbation grid (1..min_n_r_X)
+            grp_max_r_eq_X_dis = grp_max_r_X
+            ! 3. add one if not last global point
             if (grp_rank.ne.grp_n_procs-1) &
-                &grp_max_r_eq_X_dis = grp_max_r_eq_X_dis + 1                    ! only add 1 if not last global point
+                &grp_max_r_eq_X_dis = grp_max_r_eq_X_dis + 1
+            ! 4. continuous perturbation grid (min_r_X..max_r_X)
             call dis2con(grp_max_r_eq_X_dis,[1,min_n_r_X],grp_max_r_eq_X_con,&
-                &[0._dp,1._dp])                                                 ! grp_max_r_eq in continuous perturbation grid (min_r_X..max_r_X)
-            grp_max_r_eq_X_con = min_r_X + (max_r_X-min_r_X)*grp_max_r_eq_X_con ! grp_max_r_eq in continuous perturbation grid (0..1)
-            call con2dis(grp_max_r_eq_X_con,[0._dp,1._dp],grp_max_r_eq_dis,&
-                &[1,n_r_eq])                                                    ! grp_max_r_eq in discrete equilibrium grid, unrounded
-            grp_max_r_eq = ceiling(grp_max_r_eq_dis)                            ! round down
+                &[0._dp,1._dp])
+            ! 5. continous perturbation grid (0..1)
+            grp_max_r_eq_X_con = min_r_X + (max_r_X-min_r_X)*grp_max_r_eq_X_con
+            ! 6. continuous equilibrium grid (0..1)
+            ierr = interp_fun_1D(grp_max_r_eq_eq_con,flux_VMEC,&
+                &grp_max_r_eq_X_con,flux)
+            CHCKERR('')
+            ! 7. discrete equilibrium grid, unrounded
+            call con2dis(grp_max_r_eq_eq_con,[0._dp,1._dp],grp_max_r_eq_dis,&
+                &[1,n_r_eq])
+            ! 8. discrete equlibrium grid, rounded up
+            grp_max_r_eq = ceiling(grp_max_r_eq_dis)
         end function calc_eq_r_range
     end function split_MPI
     
@@ -388,16 +432,15 @@ contains
     
     ! gather solution Eigenvector X_vec in serial version on group master
     ! [MPI] Collective call
-    integer function get_ser_X_vec(X_vec,ser_X_vec,n_m_X) result(ierr)
+    integer function get_ser_X_vec(X_vec,ser_X_vec) result(ierr)
         use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
-        use X_vars, only: grp_n_r_X
+        use X_vars, only: grp_n_r_X, size_X
         
         character(*), parameter :: rout_name = 'get_X_vec'
         
         ! input / output
         complex(dp), intent(in) :: X_vec(:,:)                                   ! parallel vector
         complex(dp), intent(inout) :: ser_X_vec(:,:)                            ! serial vector
-        integer, intent(in) :: n_m_X                                            ! nr. poloidal modes
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -420,7 +463,7 @@ contains
         call MPI_Gather(grp_n_r_X,1,MPI_INTEGER,recvcounts,1,MPI_INTEGER,0,&
             &MPI_Comm_groups,ierr)
         err_msg = 'Failed to gather solution Eigenvector'
-        recvcounts = recvcounts * n_m_X
+        recvcounts = recvcounts * size_X
         
         ! deduce displacemnts by summing recvcounts
         if (grp_rank.eq.0) then
@@ -430,17 +473,67 @@ contains
             end do
         end if
         
-        call MPI_Gatherv(X_vec,grp_n_r_X*n_m_X,MPI_DOUBLE_COMPLEX,ser_X_vec,&
+        call MPI_Gatherv(X_vec,grp_n_r_X*size_X,MPI_DOUBLE_COMPLEX,ser_X_vec,&
             &recvcounts,displs,MPI_DOUBLE_COMPLEX,0,MPI_Comm_groups,ierr)
         err_msg = 'Failed to gather solution Eigenvector'
         CHCKERR(err_msg)
     end function get_ser_X_vec
     
+    ! fill the  ghost regions  in  X_vec. Every  message  is  identified by  its
+    ! sending process
+    ! [MPI] Collective call
+    integer function get_ghost_X_vec(X_vec,size_ghost) result(ierr)
+        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
+        
+        character(*), parameter :: rout_name = 'get_X_vec'
+        
+        ! input / output
+        complex(dp), intent(in) :: X_vec(:,:)                                   ! parallel vector
+        integer, intent(in) :: size_ghost                                       ! width of ghost region
+        
+        ! local variables
+        integer :: n_modes                                                      ! number of modes
+        integer :: tot_size                                                     ! total size (including ghost region)
+        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! initialize number of modes and total size
+        n_modes = size(X_vec,1)
+        tot_size = size(X_vec,2)
+        
+        ! ghost regions only make sense if there is more than 1 process
+        if (grp_n_procs.gt.1) then
+            if (grp_rank.eq.0) then                                             ! first rank only receives
+                call MPI_Recv(X_vec(:,tot_size-size_ghost+1:tot_size),&
+                    &size_ghost*n_modes,MPI_DOUBLE_COMPLEX,grp_rank+1,&
+                    &grp_rank+1,MPI_Comm_groups,istat,ierr)
+                CHCKERR('Failed to receive')
+            else if (grp_rank+1.eq.grp_n_procs) then                            ! last rank only sends
+                call MPI_Send(X_vec(:,1:size_ghost),size_ghost*n_modes,&
+                    &MPI_DOUBLE_COMPLEX,grp_rank-1,grp_rank,MPI_Comm_groups,&
+                    &ierr)
+                CHCKERR('Failed to send')
+            else                                                                ! middle ranks send and receive
+                call MPI_Sendrecv(X_vec(:,1:size_ghost),size_ghost*n_modes,&
+                    &MPI_DOUBLE_COMPLEX,grp_rank-1,grp_rank,&
+                    &X_vec(:,tot_size-size_ghost+1:tot_size),size_ghost*n_modes,&
+                    &MPI_DOUBLE_COMPLEX,grp_rank+1,grp_rank+1,MPI_Comm_groups,&
+                    &istat,ierr)
+                CHCKERR('Failed to send and receive')
+            end if
+        end if
+    end function get_ghost_X_vec
+    
     ! divides a  grid of  n_r_X points  under the  ranks of  MPI_Comm_groups and
-    ! assigns grp_n_r_X and grp_min_r_X and grp_max_r_X to each rank
+    ! assigns grp_n_r_X and grp_min_r_X and  grp_max_r_X to each rank. Also sets
+    ! up  grp_r_X, which contains the  normal variable in the  perturbation grid
+    ! for this rank (global range (min_r_X..max_r_X))
     integer function divide_grid(n_r_X_in) result(ierr)
-        use num_vars, only: MPI_Comm_groups
-        use X_vars, only: n_r_X, grp_n_r_X, grp_min_r_X, grp_max_r_X
+        use num_vars, only: MPI_Comm_groups, min_r_X, max_r_X, grp_rank, &
+            &grp_n_procs
+        use X_vars, only: n_r_X, grp_n_r_X, grp_min_r_X, grp_max_r_X, grp_r_X
         use utilities, only: dis2con
         
         character(*), parameter :: rout_name = 'divide_grid'
@@ -453,6 +546,7 @@ contains
         integer :: rank                                                         ! rank
         integer :: id                                                           ! counter
         integer :: n_r_X_loc                                                    ! local value of n_r_X, either user-provided or from X_vars
+        integer :: grp_n_r_X_one                                                ! either grp_n_r_X + 1 (first ranks) or grp_n_r_X (last rank)
         
         ! initialize ierr
         ierr = 0
@@ -480,6 +574,20 @@ contains
         end do
         ! calculate the end index of this rank
         grp_max_r_X = grp_min_r_X - 1 + grp_n_r_X
+        
+        ! set up grp_r_X
+        ! Note: for the first ranks, the upper index is one higher than might be
+        ! expected because  the routine fill_matrix needs  information about the
+        ! next point
+        if (allocated(grp_r_X)) deallocate(grp_r_X)
+        if (grp_rank+1.lt.grp_n_procs) then
+            grp_n_r_X_one = grp_n_r_X + 1
+        else
+            grp_n_r_X_one = grp_n_r_X
+        end if
+        allocate(grp_r_X(grp_n_r_X_one))
+        grp_r_X = [(min_r_X + (grp_min_r_X+id-2.0_dp)/(n_r_X_loc-1.0_dp)*&
+            &(max_r_X-min_r_X),id=1,grp_n_r_X_one)]
     contains 
         integer function divide_grid_ind(rank,n,n_procs) result(n_loc)
             ! input / output
@@ -502,71 +610,74 @@ contains
     ! The messages consist of (from open_input, default_input and read_VMEC):
     !   1   character(len=max_str_ln)   output_name
     !   2   logical                     ltest
-    !   3   logical                     theta_var_along_B
     !   4   logical                     lasym
     !   5   logical                     use_pol_flux
-    !   6   logical                     lfreeb
-    !   7   logical                     no_guess
-    !   8   logical                     no_plots
-    !   9   integer                     max_it_NR
-    !   10  integer                     max_it_r
-    !   11  integer                     format_out
-    !   12  integer                     style
-    !   13  integer                     n_par
-    !   14  integer                     n_r
-    !   15  integer                     mpol
-    !   16  integer                     ntor
-    !   17  integer                     nfp
-    !   18  integer                     EV_style
-    !   19  integer                     n_procs_per_alpha
-    !   20  integer                     n_alpha
-    !   21  integer                     n_X
+    !   6   logical                     VMEC_use_pol_flux
+    !   7   logical                     lfreeb
+    !   8   logical                     no_guess
+    !   9   logical                     no_plots
+    !   10  integer                     max_it_NR
+    !   11  integer                     max_it_r
+    !   12  integer                     format_out
+    !   13  integer                     style
+    !   14  integer                     n_par
+    !   15  integer                     n_r
+    !   16  integer                     mpol
+    !   17  integer                     ntor
+    !   18  integer                     nfp
+    !   19  integer                     EV_style
+    !   20  integer                     n_procs_per_alpha
+    !   21  integer                     n_alpha
     !   22  integer                     min_m_X
     !   23  integer                     max_m_X
-    !   24  integer                     n_sol_requested
-    !   25  integer                     min_n_r_X
-    !   26  integer                     grp_min_r_eq
-    !   27  integer                     grp_max_r_eq
-    !   28  integer                     nyq_fac
-    !   29  real_dp                     min_alpha
-    !   20  real_dp                     max_alpha
-    !   31  real_dp                     min_r_X
-    !   32  real_dp                     max_r_X
-    !   33  real_dp                     tol_NR
-    !   34  real_dp                     tol_r
-    !   35  real_dp                     min_par
-    !   36  real_dp                     max_par
-    !   37  real_dp                     gam
-    !   38  real_dp                     R_0
-    !   39  real_dp                     A_0
-    !   40  real_dp                     pres_0
-    !   41  real_dp                     B_0
-    !   42  real_dp                     psi_0
-    !   43  real_dp                     rho_0
-    !   44  real_dp(n_r)                phi(n_r) 
-    !   45  real_dp(n_r)                phi_r(n_r) 
-    !   46  real_dp(n_r)                iotaf(n_r) 
-    !   47  real_dp(n_r)                presf(n_r) 
-    !   48  real_dp(*)                  R_c(*)
-    !   49  real_dp(*)                  R_s(*)
-    !   50  real_dp(*)                  Z_c(*)
-    !   51  real_dp(*)                  Z_s(*)
-    !   52  real_dp(*)                  L_c(*)
-    !   53  real_dp(*)                  L_s(*)
+    !   24  integer                     min_n_X
+    !   25  integer                     max_n_X
+    !   26  integer                     n_sol_requested
+    !   27  integer                     min_n_r_X
+    !   28  integer                     grp_min_r_eq
+    !   29  integer                     grp_max_r_eq
+    !   30  integer                     nyq_fac
+    !   31  integer                     max_n_plots
+    !   32  real_dp                     min_alpha
+    !   33  real_dp                     max_alpha
+    !   34  real_dp                     min_r_X
+    !   35  real_dp                     max_r_X
+    !   36  real_dp                     tol_NR
+    !   37  real_dp                     tol_r
+    !   38  real_dp                     min_par
+    !   39  real_dp                     max_par
+    !   40  real_dp                     gam
+    !   41  real_dp                     R_0
+    !   42  real_dp                     A_0
+    !   43  real_dp                     pres_0
+    !   44  real_dp                     B_0
+    !   45  real_dp                     psi_p_0
+    !   46  real_dp                     rho_0
+    !   47  real_dp(n_r)                phi(n_r) 
+    !   48  real_dp(n_r)                phi_r(n_r) 
+    !   49  real_dp(n_r)                iotaf(n_r) 
+    !   50  real_dp(n_r)                presf(n_r) 
+    !   51  real_dp(*)                  R_c(*)
+    !   52  real_dp(*)                  R_s(*)
+    !   53  real_dp(*)                  Z_c(*)
+    !   54  real_dp(*)                  Z_s(*)
+    !   55  real_dp(*)                  L_c(*)
+    !   56  real_dp(*)                  L_s(*)
     !   with (*) = (0:mpol-1,-ntor:ntor,1:n_r,0:max_deriv(3))
     ! [MPI] Collective call
     integer function broadcast_vars() result(ierr)
-        use VMEC_vars, only: mpol, ntor, lasym, use_pol_flux, lfreeb, nfp, &
-            &iotaf, gam, R_c, R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf, n_r_eq
+        use VMEC_vars, only: mpol, ntor, lasym, lfreeb, nfp, iotaf, gam, R_c, &
+            &R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf, n_r_eq, &
+            &VMEC_use_pol_flux
         use num_vars, only: max_str_ln, output_name, ltest, &
-            &theta_var_along_B, EV_style, max_it_NR, max_it_r, n_alpha, &
-            &n_procs_per_alpha, style, max_alpha, min_alpha, tol_NR, glb_rank, &
-            &glb_n_procs, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
-            &nyq_fac, tol_r, no_guess
+            &EV_style, max_it_NR, max_it_r, n_alpha, n_procs_per_alpha, style, &
+            &max_alpha, min_alpha, tol_NR, glb_rank, glb_n_procs, no_guess, &
+            &n_sol_requested, min_n_r_X, min_r_X, max_r_X, nyq_fac, tol_r, &
+            &use_pol_flux, max_n_plots
         use output_ops, only: format_out, no_plots
-        use X_vars, only: n_X, min_m_X, max_m_X
+        use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
         use eq_vars, only: n_par, max_par, min_par, grp_min_r_eq, &
-            &grp_max_r_eq, R_0, A_0, pres_0, B_0, psi_0, rho_0
+            &grp_max_r_eq, R_0, A_0, pres_0, B_0, psi_p_0, rho_0
         
         character(*), parameter :: rout_name = 'broadcast_vars'
         
@@ -580,9 +691,9 @@ contains
             
             call MPI_Bcast(output_name,max_str_ln,MPI_CHARACTER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(ltest,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(theta_var_along_B,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(lasym,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(use_pol_flux,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(VMEC_use_pol_flux,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(lfreeb,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(no_guess,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
@@ -598,14 +709,16 @@ contains
             call MPI_Bcast(EV_style,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(n_procs_per_alpha,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(n_alpha,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(n_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(min_n_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(max_n_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(n_sol_requested,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_n_r_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(grp_min_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(grp_max_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(nyq_fac,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(max_n_plots,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
@@ -619,7 +732,7 @@ contains
             call MPI_Bcast(A_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(pres_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(B_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(psi_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(psi_p_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(rho_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call bcast_size_1_R(phi)
             call MPI_Bcast(phi,size(phi),MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)

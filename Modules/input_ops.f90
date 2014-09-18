@@ -4,27 +4,11 @@
 module input_ops
 #include <PB3D_macros.h>
     use str_ops, only: strh2l, i2str, r2strt
-    use num_vars, only: &
-        &dp, max_str_ln, style, min_alpha, max_alpha, n_alpha, max_it_NR, &
-        &tol_NR, max_it_r, theta_var_along_B, input_i, n_seq_0, min_n_r_X, &
-        &calc_mesh_style, EV_style, n_procs_per_alpha, plot_q, tol_r, &
-        &n_sol_requested, min_r_X, max_r_X, nyq_fac, pi, max_n_plots
-    use eq_vars, only: &
-        &min_par, max_par, n_par, rho_0
-    use output_ops, only: writo, lvl_ud, &
-        &format_out
-    use file_ops, only: input_name
-    use X_vars, only: n_X, min_m_X, max_m_X
+    use num_vars, only: dp, max_str_ln
+    
     implicit none
     private
     public yes_no, read_input
-
-    ! input options
-    namelist /inputdata/ format_out, style, min_par, min_n_r_X, &
-        &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
-        &max_it_r, tol_r, theta_var_along_B, n_X, min_m_X, max_m_X, min_r_X, &
-        &max_r_X, EV_style, n_procs_per_alpha, plot_q, n_sol_requested, &
-        &nyq_fac, rho_0, max_n_plots
 
 contains
     ! queries for yes or no, depending on the flag yes:
@@ -68,12 +52,31 @@ contains
     ! reads input from user-provided input file
     ! [MPI] only global master
     integer function read_input() result(ierr)
-        use num_vars, only: glb_rank, nyq_fac
+        use num_vars, only: &
+            &style, min_alpha, max_alpha, n_alpha, max_it_NR, tol_NR, &
+            &max_it_r, input_i, n_seq_0, min_n_r_X, use_pol_flux, &
+            &calc_mesh_style, EV_style, n_procs_per_alpha, plot_q, tol_r, &
+            &n_sol_requested, min_r_X, max_r_X, nyq_fac, pi, max_n_plots, &
+            &glb_rank, nyq_fac
+        use eq_vars, only: &
+            &min_par, max_par, n_par, rho_0
+        use output_ops, only: writo, lvl_ud, &
+            &format_out
+        use file_ops, only: input_name
+        use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X
         
         character(*), parameter :: rout_name = 'read_input'
         
         ! local variables
         integer :: istat                                                        ! error
+        integer :: prim_X, min_sec_X, max_sec_X                                 ! n_X and m_X (pol. flux) or m_X and n_X (tor. flux)
+        
+        ! input options
+        namelist /inputdata/ format_out, style, min_par, min_n_r_X, &
+            &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
+            &max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
+            &max_r_X, EV_style, n_procs_per_alpha, plot_q, n_sol_requested, &
+            &nyq_fac, rho_0, max_n_plots, use_pol_flux
         
         ! initialize ierr
         ierr = 0
@@ -98,6 +101,8 @@ contains
             ! read user input
             if (input_i.ge.n_seq_0) then                                        ! otherwise, defaults are loaded
                 read (input_i, nml=inputdata, iostat=istat)                     ! read input data
+                
+                ! check input if successful read
                 if (istat.eq.0) then                                            ! input file succesfully read
                     call writo('Overwriting with user-provided file "' // &
                         &trim(input_name) // '"')
@@ -147,6 +152,7 @@ contains
     contains
         subroutine default_input
             use num_vars, only: pi
+            use VMEC_vars, only: VMEC_use_pol_flux
             
             ! concerning Newton-Rhapson
             max_it_NR = 50                                                      ! maximum 50 Newton-Rhapson iterations
@@ -162,19 +168,19 @@ contains
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
             max_n_plots = 4                                                     ! maximum nr. of modes for which to plot output in plot_X_vec
             ! variables concerning poloidal mode numbers m
-            min_m_X = 20                                                        ! lowest poloidal mode number m_X
-            max_m_X = 22                                                        ! highest poloidal mode number m_X
             min_par = -4.0_dp*pi                                                ! minimum parallel angle
             max_par = 4.0_dp*pi                                                 ! maximum parallel angle
             nyq_fac = 5                                                         ! need at least 5 points per period for perturbation quantitites
-            n_par = nyq_fac*(max_m_X-min_m_X)                                   ! number of parallel grid points
+            prim_X = 20                                                         ! main mode number of perturbation
+            min_sec_X = prim_X                                                  ! min. of. secondary mode number of perturbation
+            max_sec_X = prim_X                                                  ! max. of. secondary mode number of perturbation
+            n_par = 20                                                          ! number of parallel grid points
+            use_pol_flux = VMEC_use_pol_flux                                    ! use same normal flux coordinate as VMEC
             ! variables concerning alpha
             min_alpha = 0.0_dp                                                  ! minimum field line label
             max_alpha = 2.0_dp*pi                                               ! maximum field line label
             n_alpha = 10                                                        ! number of different field lines
-            theta_var_along_B = .true.                                          ! theta is used as the default parallel variable
             ! variables concerning perturbation
-            n_X = 20                                                            ! toroidal mode number of perturbation
             min_r_X = 0.1_dp                                                    ! minimum radius
             max_r_X = 1.0_dp                                                    ! maximum radius
             EV_style = 1                                                        ! slepc solver for EV problem
@@ -208,9 +214,10 @@ contains
         ! so  the  fast-moving  functions  e^(i(k-m)) V  don't  give  the  wrong
         ! integrals in the perturbation part
         subroutine adapt_n_par
-            if (n_par.lt.nyq_fac*(max_m_X-min_m_X)*(max_par-min_par)/(2*pi)) &
-                &then
-                n_par = int(nyq_fac*(max_m_X-min_m_X)*(max_par-min_par)/(2*pi))
+            if (n_par.lt.nyq_fac*(max_sec_X-min_sec_X+1)*(max_par-min_par)/&
+                &(2*pi)) then
+                n_par = int(nyq_fac*(max_sec_X-min_sec_X+1)*(max_par-min_par)/&
+                    &(2*pi))
                 call writo('WARNING: To avoid aliasing of the perturbation &
                     &integrals, n_par is increased to '//trim(i2str(n_par)))
             end if
@@ -219,9 +226,10 @@ contains
         ! checks whether variables concerning  perturbation are correct. min_r_X
         ! should not be  too close to zero because  the equilibrium calculations
         ! yield an infinity at the magnetic  axis. max_r_X cannot be larger than
-        ! 1.0  and has  to be  larger than  min_r_X. n_X  has to  be at  least 5
-        ! (arbitrary), but preferibly at least  10 (arbitrary). min_n_r_X has to
-        ! be at least 2 (for 2 grid points)
+        ! 1.0 and has to  be larger than min_r_X
+        ! the absolute  value of prim_X  has to be  at least 5  (arbitrary), but
+        ! preferibly at least 10 (arbitrary)
+        ! min_n_r_X has  to be at  least 2 (for 2 grid points)
         integer function adapt_X() result(ierr)
             use VMEC_vars, only: n_r_eq
             
@@ -230,21 +238,23 @@ contains
             ! local variables
             character(len=max_str_ln) :: err_msg                                ! error message
             real(dp) :: one = 1.00000001_dp                                     ! one plus a little margin
-            integer :: abs_min_n_X = 5                                          ! absolute minimum for the high-n theory
-            integer :: rec_min_n_X = 10                                         ! recomended minimum for the high-n theory
+            integer :: abs_min_prim_X = 5                                       ! absolute minimum for the high-n theory
+            integer :: rec_min_prim_X = 10                                      ! recomended minimum for the high-n theory
             
             ! initialize ierr
             ierr = 0
             
-            ! check n_X
-            if (n_X.lt.abs_min_n_X) then
-                n_X = abs_min_n_X
-                call writo('WARNING: n_X has been increased to '//&
-                    &trim(i2str(abs_min_n_X))//' but should be at least '//&
-                    &trim(i2str(rec_min_n_X))//' for correct results')
-            else if (n_X.lt.rec_min_n_X) then
-                call writo('WARNING: n_X should be at least '//&
-                    &trim(i2str(rec_min_n_X))//' for correct results')
+            ! check prim_X
+            if (abs(prim_X).lt.abs_min_prim_X) then
+                prim_X = sign(abs_min_prim_X,prim_X)
+                call writo('WARNING: prim_X has been changed to '//&
+                    &trim(i2str(abs_min_prim_X))//' but its absolute value &
+                    &should be at least '//trim(i2str(rec_min_prim_X))//&
+                    &' for correct results')
+            else if (abs(prim_X).lt.rec_min_prim_X) then
+                call writo('WARNING: The absolute value of prim_X should be at &
+                    &least '//trim(i2str(rec_min_prim_X))//' for correct &
+                    &results')
             end if
             
             ! check min_n_r_X
@@ -297,8 +307,10 @@ contains
         end subroutine adapt_NR
         
         ! checks whether the variables concerning the poloidal mode number m are
-        ! correct. max_m_X has to be greater  than min_m_X and nyq_fac has to be
-        ! cat least 1
+        ! correct. max_sec_X has to be greater than min_sec_X and nyq_fac has to
+        ! be at least 1
+        ! sets up min_n_X, max_n_X, min_m_X, max_m_X using prim_X and min_sec_X,
+        ! max_sec_X
         integer function adapt_m() result (ierr)
             character(*), parameter :: rout_name = 'adapt_m'
             
@@ -308,10 +320,10 @@ contains
             ! initialize ierr
             ierr = 0
             
-            ! check min_m_X, max_m_X
-            if (max_m_X.lt.min_m_X) then
+            ! check min_sec_X, max_sec_X
+            if (max_sec_X.lt.min_sec_X) then
                 ierr = 1
-                err_msg = 'max_m_X has to be larger or equal to min_m_X'
+                err_msg = 'max_sec_X has to be larger or equal to min_sec_X'
                 CHCKERR(err_msg)
             end if
             
@@ -319,6 +331,19 @@ contains
             if (nyq_fac.lt.1) then
                 call writo('WARNING: nyq_fac has been increased to 1')
                 nyq_fac = 1
+            end if
+            
+            ! set up min_n_X, max_n_X, min_m_X, max_m_X
+            if (use_pol_flux) then
+                min_n_X = prim_X
+                max_n_X = prim_X
+                min_m_X = min_sec_X
+                max_m_X = max_sec_X
+            else
+                min_m_X = prim_X
+                max_m_X = prim_X
+                min_n_X = min_sec_X
+                max_n_X = max_sec_X
             end if
         end function adapt_m
         

@@ -6,7 +6,7 @@ module VMEC_vars
     use num_vars, only: &
         &dp, max_str_ln, pi
     use str_ops, only: r2str, i2str
-    use output_ops, only: lvl_ud, writo, print_ar_1, print_ar_2
+    use output_ops, only: lvl_ud, writo, print_ar_1, print_ar_2, print_GP_2D
     use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
         &lasym, VMEC_version => version_, lfreeb, &                             ! stellerator symmetry, version number, free boundary or not
         &n_r_eq => ns, mpol, ntor, xn, xm, mnmax, nfp, &                        ! mpol, ntor = # modes
@@ -17,14 +17,14 @@ module VMEC_vars
         &bmns, bmnc, &                                                          ! magnitude of B (HM)
         &lmns, lmnc, rmns, rmnc, zmns, zmnc, &                                  ! lambda (HM), R (FM), Z(FM)
         &rmax_surf, rmin_surf, zmax_surf, &                                     ! max and min values of R, Z
-        &use_pol_flux => lrfp, &                                                ! whether or not the poloidal flux is used as radial variable
+        &VMEC_use_pol_flux => lrfp, &                                           ! whether or not the poloidal flux is used as radial variable
         &gam => gamma                                                           ! gamma in adiabatic law
     implicit none
     private
-    public read_VMEC, dealloc_VMEC_vars, &
+    public read_VMEC, dealloc_VMEC, &
         &mnmax, rmnc, mpol, ntor, nfp, n_r_eq, R_c, R_s, Z_c, Z_s, L_c, L_s, &
-        &presf, rmax_surf, rmin_surf, zmax_surf, iotaf, lasym, use_pol_flux, &
-        &lfreeb, VMEC_name, phi, phi_r, VMEC_version, gam, &
+        &presf, rmax_surf, rmin_surf, zmax_surf, iotaf, lasym, &
+        &VMEC_use_pol_flux, lfreeb, VMEC_name, phi, phi_r, VMEC_version, gam, &
         &B_V_sub_s_M, B_V_sub_c_M, B_V_c_H, B_V_s_H, &
         &jac_V_c_H, jac_V_s_H
 
@@ -81,12 +81,6 @@ contains
             else
                 call writo('Fixed boundary VMEC')
             end if
-            if (use_pol_flux) then
-                call writo('Using the poloidal flux as normal coordinate ')
-                call writo('WARNING: NOT TESTED !!!')
-            else
-                call writo('Using the toroidal flux as normal coordinate ')
-            end if
             if (lasym) then
                 call writo('No stellerator symmetry')
             else
@@ -96,9 +90,6 @@ contains
             call writo('VMEC has '//trim(i2str(mpol))//' poloidal and '&
                 &//trim(i2str(ntor))//' toroidal modes, defined on '&
                 &//trim(i2str(n_r_eq))//' flux surfaces')
-            
-            !!!!!! IASYM???
-            call writo('¡¡¡ iasym IS NOT USED !!! FIND OUT WHAT IT IS FOR !!!')
             
             call writo('Running tests')
             call lvl_ud(1)
@@ -121,21 +112,25 @@ contains
             ! Allocate and repack the Fourier coefficients to translate them for
             ! use in this code
             allocate(R_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
-            allocate(R_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
-            allocate(Z_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
             allocate(Z_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
-            allocate(L_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
             allocate(L_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
-            allocate(L_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
             allocate(L_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
+            !if (lasym) then                                                     ! following only needed in assymetric situations
+                allocate(R_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
+                allocate(Z_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
+                allocate(L_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
+                allocate(L_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
+            !end if
             
             ! factors R_c,s; Z_c,s and L_C,s and HM varieties
             R_c(:,:,:,0) = repack(rmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            R_s(:,:,:,0) = repack(rmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            Z_c(:,:,:,0) = repack(zmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
             Z_s(:,:,:,0) = repack(zmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            L_c_H(:,:,:,0) = repack(lmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
             L_s_H(:,:,:,0) = repack(lmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            !if (lasym) then                                                     ! following only needed in assymetric situations
+                R_s(:,:,:,0) = repack(rmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+                Z_c(:,:,:,0) = repack(zmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+                L_c_H(:,:,:,0) = repack(lmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            !end if
             
             ! normal derivatives of these factors
             do kd = 1,max_deriv(1)
@@ -144,21 +139,23 @@ contains
                         ierr = VMEC_norm_deriv(R_c(id,jd,:,0),R_c(id,jd,:,kd),&
                             &n_r_eq-1._dp,kd,1)
                         CHCKERR('')
-                        ierr = VMEC_norm_deriv(R_s(id,jd,:,0),R_s(id,jd,:,kd),&
-                            &n_r_eq-1._dp,kd,1)
-                        CHCKERR('')
-                        ierr = VMEC_norm_deriv(Z_c(id,jd,:,0),Z_c(id,jd,:,kd),&
-                            &n_r_eq-1._dp,kd,1)
-                        CHCKERR('')
                         ierr = VMEC_norm_deriv(Z_s(id,jd,:,0),Z_s(id,jd,:,kd),&
                             &n_r_eq-1._dp,kd,1)
-                        CHCKERR('')
-                        ierr = VMEC_norm_deriv(L_c_H(id,jd,:,0),&
-                            &L_c_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                         CHCKERR('')
                         ierr = VMEC_norm_deriv(L_s_H(id,jd,:,0),&
                             &L_s_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                         CHCKERR('')
+                        !if (lasym) then                                         ! following only needed in assymetric situations
+                            ierr = VMEC_norm_deriv(R_s(id,jd,:,0),&
+                                &R_s(id,jd,:,kd),n_r_eq-1._dp,kd,1)
+                            CHCKERR('')
+                            ierr = VMEC_norm_deriv(Z_c(id,jd,:,0),&
+                                &Z_c(id,jd,:,kd),n_r_eq-1._dp,kd,1)
+                            CHCKERR('')
+                            ierr = VMEC_norm_deriv(L_c_H(id,jd,:,0),&
+                                &L_c_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
+                            CHCKERR('')
+                        !end if
                     end do
                 end do
             end do
@@ -167,10 +164,14 @@ contains
             do kd = 0,max_deriv(1)
                 do jd = -ntor,ntor
                     do id = 0,mpol-1
-                        ierr = VMEC_conv_FHM(L_c_H(id,jd,:,kd),L_c(id,jd,:,kd),&
-                            &.false.)
                         ierr = VMEC_conv_FHM(L_s_H(id,jd,:,kd),L_s(id,jd,:,kd),&
                             &.false.)
+                        CHCKERR('')
+                        !if (lasym) then                                         ! following only needed in assymetric situations
+                            ierr = VMEC_conv_FHM(L_c_H(id,jd,:,kd),&
+                                &L_c(id,jd,:,kd),.false.)
+                            CHCKERR('')
+                        !end if
                     end do
                 end do
             end do
@@ -210,7 +211,7 @@ contains
     end function read_VMEC
     
     ! deallocates VMEC quantities that are not used anymore
-    subroutine dealloc_VMEC_vars
+    subroutine dealloc_VMEC
         deallocate(phi,phi_r)
         deallocate(iotaf)
         deallocate(presf)
@@ -242,5 +243,5 @@ contains
         if (allocated(B_V_s_H)) deallocate(B_V_s_H)
         if (allocated(jac_V_c_H)) deallocate(jac_V_c_H)
         if (allocated(jac_V_s_H)) deallocate(jac_V_s_H)
-    end subroutine dealloc_VMEC_vars
+    end subroutine dealloc_VMEC
 end module VMEC_vars

@@ -1,178 +1,161 @@
            --------------                                                                            
- 16:56:25: Initialization                                                                            
+ 14:10:35: Initialization                                                                            
            --------------                                                                            
- 16:56:25:   Parsing command line arguments                                                          
- 16:56:25:   Command line arguments parsed                                                           
- 16:56:25:   Attempting to open files                                                                
- 16:56:25:     Literal file "test" not found. Trying combinations                                    
- 16:56:25:       trying input.test                                                                   
- 16:56:25:       trying input-test                                                                   
- 16:56:25:     Input file "input-test" opened at number 10                                           
- 16:56:25:     Literal file "cdxu" not found. Trying combinations                                    
- 16:56:25:       trying wout.cdxu.nc                                                                 
- 16:56:25:       trying wout-cdxu.nc                                                                 
- 16:56:25:       trying wout_cdxu.nc                                                                 
- 16:56:25:     VMEC file "wout_cdxu.nc" opened at number 11                                          
- 16:56:25:   Files opened                                                                            
- 16:56:25:   Reading data from VMEC output "wout_cdxu.nc"                                            
- 16:56:25:     VMEC version is 8.4900000000000002                                                    
- 16:56:25:     Fixed boundary VMEC                                                                   
- 16:56:25:     Using the toroidal flux as normal coordinate                                          
- 16:56:25:     Stellerator symmetry applicable                                                       
- 16:56:25:     ¡¡¡ ITS USAGE COULD BE IMPLEMENTED !!!                                             
- 16:56:25:     VMEC has 14 poloidal and 0 toroidal modes, defined on 100 flux surfaces               
- 16:56:25:     ¡¡¡ iasym IS NOT USED !!! FIND OUT WHAT IT IS FOR !!!                              
- 16:56:25:     Running tests                                                                         
- 16:56:25:     Updating variables                                                                    
- 16:56:25:   Data from VMEC output successfully read                                                 
- 16:56:25:   Reading the grid parameters                                                             
- 16:56:25:   Grid parameters successfully read                                                       
- 16:56:25:   Setting up user-provided input "input-test"                                             
- 16:56:25:     Initialize all the inputs with default values                                         
- 16:56:25:     Overwriting with user-provided file "input-test"                                      
- 16:56:25:     Checking user-provided file                                                           
- 16:56:25:       WARNING: To avoid aliasing of the perturbation integrals, n_par is increased to 50  
- 16:56:25:   Input values set                                                                        
- 16:56:25:   Attempting to open output files                                                         
- 16:56:25:     log output file "PB3D_out.txt" opened at number 11                                    
- 16:56:25:     temporary output copied into log file                                                 
- 16:56:25:   Output files opened                                                                     
- 16:56:25:   Broadcasting variables determined by input                                              
- 16:56:25:   Variables broadcasted                                                                   
- 16:56:25:                                                                                           
- 16:56:25:   (this took less than 1 second)                                                          
- 16:56:25:                                                                                           
+ 14:10:35:   Parsing command line arguments                                                          
+ 14:10:35:   Command line arguments parsed                                                           
+ 14:10:35:   Attempting to open files                                                                
+ 14:10:35:     Literal file "test" not found. Trying combinations                                    
+ 14:10:35:       trying input.test                                                                   
+ 14:10:35:       trying input-test                                                                   
+ 14:10:35:     Input file "input-test" opened at number 10                                           
+ 14:10:35:     Literal file "cdxu" not found. Trying combinations                                    
+ 14:10:35:       trying wout.cdxu.nc                                                                 
+ 14:10:35:       trying wout-cdxu.nc                                                                 
+ 14:10:35:       trying wout_cdxu.nc                                                                 
+ 14:10:35:     VMEC file "wout_cdxu.nc" opened at number 11                                          
+ 14:10:35:   Files opened                                                                            
+ 14:10:35:   Reading data from VMEC output "wout_cdxu.nc"                                            
+ 14:10:35:     VMEC version is 8.4900000000000002                                                    
+ 14:10:35:     Fixed boundary VMEC                                                                   
+ 14:10:35:     Stellerator symmetry applicable                                                       
+ 14:10:35:     ¡¡¡ ITS USAGE COULD BE IMPLEMENTED !!!                                             
+ 14:10:35:     VMEC has 14 poloidal and 0 toroidal modes, defined on 100 flux surfaces               
+ 14:10:35:     Running tests                                                                         
+ 14:10:35:     Updating variables                                                                    
+ 14:10:35:   Data from VMEC output successfully read                                                 
+ 14:10:35:   Reading the grid parameters                                                             
+ 14:10:35:   Grid parameters successfully read                                                       
+ 14:10:35:   Setting up user-provided input "input-test"                                             
+ 14:10:35:     Initialize all the inputs with default values                                         
+ 14:10:35:     Overwriting with user-provided file "input-test"                                      
+ 14:10:35:     Checking user-provided file                                                           
+ 14:10:35:       WARNING: To avoid aliasing of the perturbation integrals, n_par is increased to 35  
+ 14:10:35:   Input values set                                                                        
+ 14:10:35:   Attempting to open output files                                                         
+ 14:10:35:     log output file "PB3D_out.txt" opened at number 11                                    
+ 14:10:35:     temporary output copied into log file                                                 
+ 14:10:35:   Output files opened                                                                     
+ 14:10:35:                                                                                           
+ 14:10:35:   (this took less than 1 second)                                                          
+ 14:10:35:                                                                                           
            -----------                                                                               
- 16:56:25: Main driver                                                                               
+ 14:10:35: Main driver                                                                               
            -----------                                                                               
- 16:56:25:   Numerical method chosen:                                                                
- 16:56:25:     Richardson's extrapolation and normal discretization, generalized eigenvalue problem  
- 16:56:25:   The calculations will be done for 1 values of alpha with:                               
- 16:56:25:     toroidal mode number n = 20                                                           
- 16:56:25:     poloidal mode number m = 180..190                                                     
- 16:56:25:   Setting up groups for dynamical load balancing                                          
- 16:56:25:     4 Processes in total, for 1 group of at least 2 processes                             
- 16:56:25:     This group dynamically solves a total of 1 field line in parallel                     
- 16:56:25:   Job 1: Calculations for field line alpha = 0.00E+00, allocated to group 0               
- 16:56:25:     Start setting up equilibrium quantities in 50 discrete parallel points                
- 16:56:25:       Start initializing variables                                                        
- 16:56:25:         Initialize equilibrium quantities...                                              
- 16:56:25:         Initialize metric quantities...                                                   
- 16:56:26:       Variables initialized                                                               
- 16:56:26:       Start determining the equilibrium grid                                              
- 16:56:26:       Equilibrium grid determined                                                         
- 16:56:26:       Calculating equilibrium quantities on equilibrium grid                              
- 16:56:26:         Calculate R,Z,L...                                                                
- 16:56:26:         Calculate g_C...                                                                  
- 16:56:26:         Calculate jac_C...                                                                
- 16:56:26:         Calculate T_VC...                                                                 
- 16:56:26:         Calculate g_V...                                                                  
- 16:56:26:         Calculate jac_V...                                                                
- 16:56:26:         Calculate T_VF...                                                                 
- 16:56:26:         Calculate T_FV...                                                                 
- 16:56:26:         Calculate g_F...                                                                  
- 16:56:26:         Calculate h_F...                                                                  
- 16:56:26:         Calculate jac_F...                                                                
- 16:56:26:         Calculate derivatives in flux coordinates...                                      
- 16:56:26:         Normalize the equilibrium and metric quantities...                                
- 16:56:26:         Deallocate unused equilibrium and metric quantities...                            
- 16:56:26:       Equilibrium quantities calculated on equilibrium grid                               
- 16:56:26:     Done setting up equilibrium quantities                                                
- 16:56:26:     Resonance plot not requested                                                          
- 16:56:26:     Calculating table of field line averages <V e^i(k-m)theta>                            
- 16:56:26:       Initalizing variables...                                                            
- 16:56:26:       Calculating U and DU...                                                             
- 16:56:26:       Calculating extra equilibrium quantities...                                         
- 16:56:26:       Calculating PV0, PV1 and PV2...                                                     
- 16:56:26:       Calculating KV0, KV1 and KV2...                                                     
- 16:56:26:       Taking field average of PV                                                          
- 16:56:26:       Taking field average of KV                                                          
- 16:56:26:       deallocating unused variables                                                       
- 16:56:26:     Done calculating                                                                      
- 16:56:26:     Starting perturbation calculation with Richardson extrapolation                       
- 16:56:26:       Level 1 of Richardson extrapolation                                                 
- 16:56:26:         calculating the normal points                                                     
- 16:56:26:           50 normal points for this level                                                 
- 16:56:26:         treating the EV system                                                            
- 16:56:26:           initialize slepc...                                                             
- 16:56:26:             slepc started with 4 processors                                               
- 16:56:26:           run tests...                                                                    
- 16:56:26:           set variables...                                                                
- 16:56:26:           set up matrices...                                                              
- 16:56:26:             matrix A set up                                                               
- 16:56:26:             matrix B set up                                                               
- 16:56:26:           solve the EV problem...                                                         
- 16:56:26:             run slepc solver                                                              
- 16:56:26:           summarize solution...                                                           
- 16:56:26:             krylovschur solver with tolerance 1.00E-08 and maximum 100 iterations         
- 16:56:26:             2 converged solutions after 17 iterations, with 2 requested solution          
- 16:56:26:           storing results for 2 highest Eigenvalues...                                    
- 16:56:26:             for solution 1/2:                                                             
- 16:56:26:               eigenvalue: 2.42E+13 + -1.37E+03 i                                          
- 16:56:26:               with rel. error: 1.4491866888966188E-004                                    
- 16:56:26:             for solution 2/2:                                                             
- 16:56:26:               eigenvalue: 2.20E+13 + -9.41E+02 i                                          
- 16:56:26:               with rel. error: 2.4844578090302974E-003                                    
- 16:56:26:           finalize slepc...                                                               
- 16:56:26:         updating Richardson extrapolation variables                                       
- 16:56:26:       Level 2 of Richardson extrapolation                                                 
- 16:56:26:         calculating the normal points                                                     
- 16:56:26:           99 normal points for this level                                                 
- 16:56:26:         treating the EV system                                                            
- 16:56:26:           initialize slepc...                                                             
- 16:56:26:             slepc started with 4 processors                                               
- 16:56:26:           run tests...                                                                    
- 16:56:26:           set variables...                                                                
- 16:56:26:           set up matrices...                                                              
- 16:56:26:             matrix A set up                                                               
- 16:56:26:             matrix B set up                                                               
- 16:56:26:           solve the EV problem...                                                         
- 16:56:26:             initial guess set up from previous Richardson level                           
- 16:56:26:             run slepc solver                                                              
- 16:56:28:           summarize solution...                                                           
- 16:56:28:             krylovschur solver with tolerance 1.00E-08 and maximum 128 iterations         
- 16:56:28:             2 converged solutions after 59 iterations, with 2 requested solution          
- 16:56:28:           storing results for 2 highest Eigenvalues...                                    
- 16:56:28:             for solution 1/2:                                                             
- 16:56:28:               eigenvalue: 2.24E+13 + 8.69E+02 i                                           
- 16:56:28:               with rel. error: 3.7892776095195134E-004                                    
- 16:56:28:             for solution 2/2:                                                             
- 16:56:28:               eigenvalue: 2.20E+13 + -7.66E+03 i                                          
- 16:56:28:               with rel. error: 3.9461988480066386E-004                                    
- 16:56:28:           finalize slepc...                                                               
- 16:56:28:         maximum relative error: 5.63E-03 for Eigenvalue 1                                 
- 16:56:28:         tolerance 5.00E-05 not yet reached                                                
- 16:56:28:         maximum number of Richardson iterations reached                                   
- 16:56:28:         updating Richardson extrapolation variables                                       
- 16:56:28:         plotting the Eigenvalues                                                          
- 16:56:30:         Create plot in output file 'Plots/JOB 1 - Eigenvalues as function of nr. normal po
- 16:56:30:         ints.pdf'                                                                         
- 16:56:30:         plotting the Eigenvectors                                                         
- 16:56:30:           plotting results for mode 1/2, with eigenvalue 2.24E+13 + 8.69E+02 i            
- 16:56:32:             Create plot in output file 'Plots/JOB 1 - Eigenvalue 1 - Eigenvector (t = 0).p
- 16:56:32:             df'                                                                           
- 16:56:36:             Create animated plot in output file 'Plots/JOB 1 - mode 1 of 11.gif'          
- 16:56:38:             Create animated plot in output file 'Plots/JOB 1 - mode 2 of 11.gif'          
- 16:56:39:             WARNING: Skipping plots for modes 3..11                                       
- 16:56:39:             Create animated plot in output file 'Plots/JOB 1 - global mode.gif'           
- 16:56:40:           plotting results for mode 2/2, with eigenvalue 2.20E+13 + -7.66E+03 i           
- 16:57:02:             Create plot in output file 'Plots/JOB 1 - Eigenvalue 2 - Eigenvector (t = 0).p
- 16:57:02:             df'                                                                           
- 16:57:06:             Create animated plot in output file 'Plots/JOB 1 - mode 1 of 11.gif'          
- 16:57:08:             Create animated plot in output file 'Plots/JOB 1 - mode 2 of 11.gif'          
- 16:57:09:             WARNING: Skipping plots for modes 3..11                                       
- 16:57:10:             Create animated plot in output file 'Plots/JOB 1 - global mode.gif'           
- 16:57:11:     Finished Richardson loop                                                              
- 16:57:11:     Deallocate remaining quantities                                                       
- 16:57:11:   Job 1: Calculations for field line alpha = 0.00E+00, completed by group 0               
- 16:57:11:   Finished all jobs                                                                       
- 16:57:11:   Stability analysis concluded at all 1 fieldlines                                        
- 16:57:11:   Merging groups for dynamical load balancing back together                               
- 16:57:11:                                                                                           
- 16:57:11:   (this took 17 seconds)                                                                  
- 16:57:11:                                                                                           
+ 14:10:35:   Numerical method chosen:                                                                
+ 14:10:35:     Richardson's extrapolation and normal discretization, generalized eigenvalue problem  
+ 14:10:35:   The calculations will be done                                                           
+ 14:10:35:     using the toroidal flux as the normal variable                                        
+ 14:10:35:     for 1 values of alpha                                                                 
+ 14:10:35:     with poloidal mode number m = -180                                                    
+ 14:10:35:     and toroidal mode number n = 19..25                                                   
+ 14:10:35:   Setting up groups for dynamical load balancing                                          
+ 14:10:35:     1 Process in total, for 1 group                                                       
+ 14:10:35:     This group dynamically solves a total of 1 field line in serial                       
+ 14:10:35:   Job 1: Calculations for field line alpha = 0.00E+00, allocated to group 0               
+ 14:10:35:     Start setting up equilibrium quantities in 35 discrete parallel points                
+ 14:10:35:       Start initializing variables                                                        
+ 14:10:35:         Initialize equilibrium quantities...                                              
+ 14:10:35:         Initialize metric quantities...                                                   
+ 14:10:35:       Variables initialized                                                               
+ 14:10:35:       Start determining the equilibrium grid                                              
+ 14:10:36:         angular grid set up with coordinate zeta oriented along the magnetic field        
+ 14:10:36:         normal grid set with toroidal flux as normal coordinate                           
+ 14:10:36:       Equilibrium grid determined                                                         
+ 14:10:36:       Calculating equilibrium quantities on equilibrium grid                              
+ 14:10:36:         Calculate R,Z,L...                                                                
+ 14:10:36:         Calculate g_C...                                                                  
+ 14:10:36:         Calculate jac_C...                                                                
+ 14:10:36:         Calculate T_VC...                                                                 
+ 14:10:36:         Calculate g_V...                                                                  
+ 14:10:36:         Calculate jac_V...                                                                
+ 14:10:36:         Calculate T_VF...                                                                 
+ 14:10:36:         Calculate T_FV...                                                                 
+ 14:10:36:         Calculate g_F...                                                                  
+ 14:10:36:         Calculate h_F...                                                                  
+ 14:10:36:         Calculate jac_F...                                                                
+ 14:10:36:         Calculate derivatives in flux coordinates...                                      
+ 14:10:36:         Normalize the equilibrium and metric quantities...                                
+ 14:10:36:         Deallocate unused equilibrium and metric quantities...                            
+ 14:10:36:       Equilibrium quantities calculated on equilibrium grid                               
+ 14:10:36:     Done setting up equilibrium quantities                                                
+ 14:10:36:     Plotting rotational transform iota and resonant surfaces iota = n/m                   
+ 14:10:36:       calculating resonant surfaces                                                       
+ 14:10:36:         Mode (n,m) = (19,-180) resonates in plasma at normalized flux surface 9.91E-01    
+ 14:10:36:         Mode (n,m) = (20,-180) resonates in plasma at normalized flux surface 9.80E-01    
+ 14:10:36:         Mode (n,m) = (21,-180) resonates in plasma at normalized flux surface 9.68E-01    
+ 14:10:36:         Mode (n,m) = (22,-180) resonates in plasma at normalized flux surface 9.56E-01    
+ 14:10:36:         Mode (n,m) = (23,-180) resonates in plasma at normalized flux surface 9.44E-01    
+ 14:10:36:         Mode (n,m) = (24,-180) resonates in plasma at normalized flux surface 9.33E-01    
+ 14:10:36:         Mode (n,m) = (25,-180) resonates in plasma at normalized flux surface 9.21E-01    
+ 14:10:36:       Plotting results                                                                    
+ 14:10:37:       Created plot in output file 'Plots/rotational transform iota.gif'                   
+ 14:10:37:     Done plotting                                                                         
+ 14:10:37:     Checking mode numbers                                                                 
+ 14:10:37:     Mode numbers checked                                                                  
+ 14:10:37:     Calculating table of field line averages <V e^i[(k-m)zeta]>                           
+ 14:10:37:       Initalizing variables...                                                            
+ 14:10:37:       Calculating U and DU...                                                             
+ 14:10:37:       Calculating extra equilibrium quantities...                                         
+ 14:10:37:         WARNING: pressure was negative at point 101/101                                   
+ 14:10:37:       Calculating PV0, PV1 and PV2...                                                     
+ 14:10:37:       Calculating KV0, KV1 and KV2...                                                     
+ 14:10:37:       Taking field average of PV                                                          
+ 14:10:37:       Taking field average of KV                                                          
+ 14:10:37:       deallocating unused variables                                                       
+ 14:10:37:     Done calculating                                                                      
+ 14:10:37:     Starting perturbation calculation                                                     
+ 14:10:37:       calculating the normal points                                                       
+ 14:10:37:         100 normal points for this level                                                  
+ 14:10:37:       treating the EV system                                                              
+ 14:10:37:         initialize slepc...                                                               
+ 14:10:37:           slepc started with 1 processors                                                 
+ 14:10:37:         run tests...                                                                      
+ 14:10:37:         set up matrices...                                                                
+ 14:10:37:           matrix A set up                                                                 
+ 14:10:37:           matrix B set up                                                                 
+ 14:10:37:         solve the EV problem...                                                           
+ 14:10:37:           run slepc solver                                                                
+ 14:10:37:         summarize solution...                                                             
+ 14:10:37:           krylovschur solver with tolerance 1.00E-08 and maximum 100 iterations           
+ 14:10:37:           2 converged solutions after 3 iterations, with 2 requested solution             
+ 14:10:37:         storing results for 2 highest Eigenvalues...                                      
+ 14:10:37:           for solution 1/2:                                                               
+ 14:10:37:             eigenvalue: 4.16E+14 + -3.42E-01 i                                            
+ 14:10:37:             with rel. error: 2.7926276749239047E-015                                      
+ 14:10:37:           for solution 2/2:                                                               
+ 14:10:37:             eigenvalue: 7.04E+13 + 1.67E+01 i                                             
+ 14:10:37:             with rel. error: 2.1332357017038582E-010                                      
+ 14:10:37:         finalize slepc...                                                                 
+ 14:10:37:       plotting the Eigenvectors                                                           
+ 14:10:37:         plotting results for mode 1/2, with eigenvalue 4.16E+14 + -3.42E-01 i             
+ 14:10:39:           Created animated plot in output file 'Plots/EV 1 - mode 1 of 7.gif'             
+ 14:10:40:           Created animated plot in output file 'Plots/EV 1 - mode 2 of 7.gif'             
+ 14:10:41:           Created animated plot in output file 'Plots/EV 1 - mode 3 of 7.gif'             
+ 14:10:43:           Created animated plot in output file 'Plots/EV 1 - mode 4 of 7.gif'             
+ 14:10:44:           Created animated plot in output file 'Plots/EV 1 - mode 5 of 7.gif'             
+ 14:10:45:           Created animated plot in output file 'Plots/EV 1 - mode 6 of 7.gif'             
+ 14:10:45:           Skipping plot for mode 7                                                        
+ 14:10:47:           Created animated plot in output file 'Plots/EV 1 - global mode.gif'             
+ 14:10:47:         plotting results for mode 2/2, with eigenvalue 7.04E+13 + 1.67E+01 i              
+ 14:10:48:           Created animated plot in output file 'Plots/EV 2 - mode 1 of 7.gif'             
+ 14:10:49:           Created animated plot in output file 'Plots/EV 2 - mode 2 of 7.gif'             
+ 14:10:51:           Created animated plot in output file 'Plots/EV 2 - mode 3 of 7.gif'             
+ 14:10:52:           Created animated plot in output file 'Plots/EV 2 - mode 4 of 7.gif'             
+ 14:10:53:           Created animated plot in output file 'Plots/EV 2 - mode 5 of 7.gif'             
+ 14:10:55:           Created animated plot in output file 'Plots/EV 2 - mode 6 of 7.gif'             
+ 14:10:55:           Skipping plot for mode 7                                                        
+ 14:10:56:           Created animated plot in output file 'Plots/EV 2 - global mode.gif'             
+ 14:10:56:     Finished perturbation calculation                                                     
+ 14:10:56:     Deallocate remaining quantities                                                       
+ 14:10:56:   Job 1: Calculations for field line alpha = 0.00E+00, completed by group 0               
+ 14:10:56:   Finished all jobs                                                                       
+ 14:10:56:   Stability analysis concluded at all 1 fieldlines                                        
+ 14:10:56:   Merging groups for dynamical load balancing back together                               
+ 14:10:56:                                                                                           
+ 14:10:56:   (this took 19 seconds)                                                                  
+ 14:10:56:                                                                                           
            -------                                                                                   
- 16:57:11: Cleanup                                                                                   
+ 14:10:56: Cleanup                                                                                   
            -------                                                                                   
- 16:57:11:   Stopping MPI                                                                            
- 16:57:11:   Closing output file                                                                     
+ 14:10:56:   Stopping MPI                                                                            
+ 14:10:56:   Closing output file                                                                     

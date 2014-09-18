@@ -23,24 +23,42 @@ contains
     !       the other groups
     integer function run_rich_driver() result(ierr)
         use num_vars, only: min_alpha, max_alpha, n_alpha, glb_rank, grp_nr, &
-            &max_alpha, alpha_job_nr
+            &max_alpha, alpha_job_nr, use_pol_flux
         use eq_vars, only: calc_eqd_mesh
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
-        use X_vars, only: n_X, min_m_X, max_m_X
-        use VMEC_vars, only: dealloc_VMEC_vars
+        use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
+        use VMEC_vars, only: dealloc_VMEC
         
         character(*), parameter :: rout_name = 'run_rich_driver'
+        
+        ! local variables
+        character(len=8) :: flux_name                                           ! toroidal or poloidal
         
         ! initialize ierr
         ierr = 0
         
+        ! set up flux_name
+        if (use_pol_flux) then
+            flux_name = 'poloidal'
+        else
+            flux_name = 'toroidal'
+        end if
+        
         ! output concerning n_alpha
-        call writo('The calculations will be done for '//&
-            &trim(i2str(n_alpha))//' values of alpha with:')
+        call writo('The calculations will be done')
         call lvl_ud(1)
-        call writo('toroidal mode number n = '//trim(i2str(n_X)))
-        call writo('poloidal mode number m = '//trim(i2str(min_m_X))//'..'//&
-            &trim(i2str(max_m_X)))
+        call writo('using the '//trim(flux_name)//' flux as the normal &
+            &variable')
+        call writo('for '//trim(i2str(n_alpha))//' values of alpha')
+        if (use_pol_flux) then
+            call writo('with toroidal mode number n = '//trim(i2str(min_n_X)))
+            call writo('and poloidal mode number m = '//trim(i2str(min_m_X))//&
+                &'..'//trim(i2str(max_m_X)))
+        else
+            call writo('with poloidal mode number m = '//trim(i2str(min_m_X)))
+            call writo('and toroidal mode number n = '//trim(i2str(min_n_X))//&
+                &'..'//trim(i2str(max_n_X)))
+        end if
         call lvl_ud(-1)
         
         ! determine the magnetic field lines for which to run the calculations 
@@ -93,7 +111,7 @@ contains
         end do field_lines
         
         ! deallocate VMEC variables
-        call dealloc_VMEC_vars
+        call dealloc_VMEC
         
         ! merge  the subcommunicator into communicator MPI_COMM_WORLD
         if (glb_rank.eq.0) then
@@ -113,12 +131,12 @@ contains
         use num_vars, only: n_sol_requested, max_it_r, grp_rank, no_guess, &
             &alpha_job_nr
         use eq_ops, only: calc_eq
-        use eq_vars, only: theta, n_par
+        use eq_vars, only: ang_par_F, n_par
         use output_ops, only: draw_GP
-        use eq_vars, only: dealloc_eq_vars_final
+        use eq_vars, only: dealloc_eq_final
         use X_ops, only: prepare_X, solve_EV_system, plot_X_vec
-        use X_vars, only: X_vec, X_val, init_m, dealloc_X_vars_final, n_r_X
-        use metric_ops, only: dealloc_metric_vars_final
+        use X_vars, only: X_vec, X_val, init_m, dealloc_X_final, n_r_X
+        use metric_ops, only: dealloc_metric_final
         
         character(*), parameter :: rout_name = 'run_for_alpha'
         
@@ -243,9 +261,8 @@ contains
                         &//trim(r2strt(realpart(X_val(id))))//' + '//&
                         &trim(r2strt(imagpart(X_val(id))))//' i')
                     
-                    !ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id)
                     ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id,&
-                        &[theta(1,1),theta(n_par,1)])
+                        &[ang_par_F(1,1),ang_par_F(n_par,1)])
                     CHCKERR('')
                 end do
                 
@@ -271,9 +288,9 @@ contains
         
         ! deallocate remaining equilibrium quantities
         call writo('Deallocate remaining quantities')
-        call dealloc_eq_vars_final
-        call dealloc_metric_vars_final
-        call dealloc_X_vars_final
+        call dealloc_eq_final
+        call dealloc_metric_final
+        call dealloc_X_final
     end function run_for_alpha
     
     ! calculates the number of normal  points for the perturbation n_r_X for the

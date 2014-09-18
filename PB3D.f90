@@ -23,12 +23,12 @@
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D
-    use test, only: test_repack, test_print_GP, test_calc_mesh_cs, &
+    use test, only: test_repack, test_print_GP, &
         &test_metric_transf, test_ang_B, test_calc_ext_var, test_B, &
         &test_VMEC_norm_deriv, test_VMEC_conv_FHM, test_calc_RZL, &
         &test_arr_mult, test_calc_T_VF, test_calc_inv_met, test_calc_det, &
-        &test_inv, test_calc_f_deriv, test_calc_g, test_f2r, &
-        &test_prepare_X, test_slepc, test_calc_interp
+        &test_inv, test_calc_f_deriv, test_calc_g, test_fourier2real, &
+        &test_prepare_X, test_slepc
 #if ldebug
     use num_vars, only: ltest
 #endif
@@ -104,7 +104,7 @@ program PB3D
         !CHCKERR
         !ierr = test_calc_ext_var()
         !CHCKERR
-        !ierr = test_f2r()
+        !ierr = test_fourier2real()
         !CHCKERR
         !ierr = test_calc_det()
         !CHCKERR
@@ -117,8 +117,6 @@ program PB3D
         !ierr = test_arr_mult()
         !CHCKERR
         !ierr = test_metric_transf()
-        !CHCKERR
-        !ierr = test_calc_interp()
         !CHCKERR
         !ierr = test_slepc()
         !CHCKERR

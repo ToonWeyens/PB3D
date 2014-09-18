@@ -15,28 +15,28 @@ module metric_ops
     public calc_T_VC, calc_g_C, calc_jac_C, calc_g_V, T_VC, calc_jac_V, &
         &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_F, &
         &normalize_metric_vars, &
-        &calc_f_deriv, dealloc_metric_vars, dealloc_metric_vars_final, &
+        &calc_f_deriv, dealloc_metric, dealloc_metric_final, &
         &g_V, jac_F, h_F, g_F, g_C, T_VF, T_FV, jac_V, det_T_VF, det_T_FV, &
-        &g_F_FD, h_F_FD, jac_F_FD
+        &g_FD, h_FD, jac_FD
 
     ! upper (h) and lower (g) metric factors
     ! (index 1,2: along B, perp to flux surfaces, index 4,5: 3x3 matrix)
-    real(dp), allocatable :: g_C(:,:,:,:,:,:,:)                                 ! in the C(ylindrical) coordinate system (FM)
-    real(dp), allocatable :: g_V(:,:,:,:,:,:,:)                                 ! in the V(MEC) coordinate system (FM)
-    real(dp), allocatable :: g_F(:,:,:,:,:,:,:), h_F(:,:,:,:,:,:,:)             ! in the F(lux) coordinate system (FM) with derivatves in the V(MEC) system
-    real(dp), allocatable :: g_F_FD(:,:,:,:,:,:,:), h_F_FD(:,:,:,:,:,:,:)       ! in the F(lux) coordinate system (FM) with derivatives in the F(lux) system
+    real(dp), allocatable :: g_C(:,:,:,:,:,:,:)                                 ! in the C(ylindrical) coordinate system
+    real(dp), allocatable :: g_V(:,:,:,:,:,:,:)                                 ! in the V(MEC) coordinate system
+    real(dp), allocatable :: g_F(:,:,:,:,:,:,:), h_F(:,:,:,:,:,:,:)             ! in the F(lux) coordinate system with derivatves in the V(MEC) system
+    real(dp), allocatable :: g_FD(:,:,:,:,:,:,:), h_FD(:,:,:,:,:,:,:)           ! in the F(lux) coordinate system with derivatives in the F(lux) system
     ! upper and lower transformation matrices
     ! (index 1,2: along B, perp to flux surfaces, index 4,5: 3x3 matrix)
-    real(dp), allocatable :: T_VC(:,:,:,:,:,:,:)                                ! C(ylindrical) to V(MEC) (FM) (lower)
-    real(dp), allocatable :: T_VF(:,:,:,:,:,:,:)                                ! V(MEC) to F(lux) (FM) (upper)
-    real(dp), allocatable :: T_FV(:,:,:,:,:,:,:)                                ! V(MEC) to F(lux) (FM) (lower)
+    real(dp), allocatable :: T_VC(:,:,:,:,:,:,:)                                ! C(ylindrical) to V(MEC) (lower)
+    real(dp), allocatable :: T_VF(:,:,:,:,:,:,:)                                ! V(MEC) to F(lux) (upper)
+    real(dp), allocatable :: T_FV(:,:,:,:,:,:,:)                                ! V(MEC) to F(lux) (lower)
     real(dp), allocatable :: det_T_VC(:,:,:,:,:)                                ! determinant of T_VC
     real(dp), allocatable :: det_T_VF(:,:,:,:,:)                                ! determinant of T_VF
     real(dp), allocatable :: det_T_FV(:,:,:,:,:)                                ! determinant of T_FV
-    real(dp), allocatable :: jac_C(:,:,:,:,:)                                   ! jacobian of C(ylindrical) coordinate system (FM)
-    real(dp), allocatable :: jac_V(:,:,:,:,:)                                   ! jacobian of V(MEC) coordinate system (FM)
-    real(dp), allocatable :: jac_F(:,:,:,:,:)                                   ! jacobian of F(lux) coordinate system (FM) with derivatives in the V(MEC) system
-    real(dp), allocatable :: jac_F_FD(:,:,:,:,:)                                ! jacobian of F(lux) coordinate system (FM) with derivatives in the F(lux) system
+    real(dp), allocatable :: jac_C(:,:,:,:,:)                                   ! jacobian of C(ylindrical) coordinate system
+    real(dp), allocatable :: jac_V(:,:,:,:,:)                                   ! jacobian of V(MEC) coordinate system
+    real(dp), allocatable :: jac_F(:,:,:,:,:)                                   ! jacobian of F(lux) coordinate system with derivatives in the V(MEC) system
+    real(dp), allocatable :: jac_FD(:,:,:,:,:)                                  ! jacobian of F(lux) coordinate system with derivatives in the F(lux) system
         
     ! interfaces
     interface calc_g_C
@@ -93,12 +93,12 @@ contains
         allocate(h_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
-        ! g_F_FD
-        allocate(g_F_FD(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        ! g_FD
+        allocate(g_FD(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
-        ! h_F_FD
-        allocate(h_F_FD(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        ! h_FD
+        allocate(h_FD(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
         ! T_VC
@@ -137,8 +137,8 @@ contains
         allocate(jac_F(n_par,grp_n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
-        ! jac_F_FD
-        allocate(jac_F_FD(n_par,grp_n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+        ! jac_FD
+        allocate(jac_FD(n_par,grp_n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
     end subroutine
     
@@ -163,9 +163,6 @@ contains
         if (sum(deriv).eq.0) then
             g_C(:,:,1,1,deriv(1),deriv(2),deriv(3)) = 1.0_dp
             g_C(:,:,3,3,deriv(1),deriv(2),deriv(3)) = 1.0_dp
-        else
-            g_C(:,:,1,1,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-            g_C(:,:,3,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         end if
         ierr = arr_mult(VMEC_R,VMEC_R,g_C(:,:,2,2,deriv(1),deriv(2),deriv(3)),&
             &deriv)
@@ -268,12 +265,10 @@ contains
     ! with
     !   kl = ml-il-jl
     ! and with the sum_i  double summations, with the first one  going from 0 to
-    ! and mi the second one from 0 to m-j
-    ! the coefficients Ci are calculated as mi!/(i!j!(m-i-j)!) x 
-    !   1   for odd values of m-i
-    !   1/2 for even values of m-i
+    ! mi and the second one from m-j to 0
+    ! the coefficients Ci are calculated as mi!/(i!j!(m-i-j)!)
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
-    !       already. If not, the results will be incorrect!
+    !       already. If not, the results will be incorrect. This is not checked!
     integer function calc_g(g_A,T_BA,g_B,deriv,max_deriv) result(ierr)
         use eq_vars, only: n_par, grp_n_r_eq
         
@@ -393,7 +388,6 @@ contains
         ierr = check_deriv(deriv,max_deriv,'calc_J_C')
         CHCKERR('')
         
-        jac_C(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         jac_C(:,:,deriv(1),deriv(2),deriv(3)) = &
             &VMEC_R(:,:,deriv(1),deriv(2),deriv(3))
     end function calc_jac_C_ind
@@ -413,7 +407,7 @@ contains
     end function calc_jac_C_arr
     
     ! calculate the jacobian in VMEC coordinates from 
-    !   jac_V = T_VC jac_C
+    !   jac_V = det(T_VC) jac_C
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_jac_V_ind(deriv) result(ierr)
@@ -453,7 +447,7 @@ contains
     end function calc_jac_V_arr
     
     ! calculate the jacobian in Flux coordinates from 
-    !   jac_F = T_FV jac_V
+    !   jac_F = det(T_FV) jac_V
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_jac_F_ind(deriv) result(ierr)
@@ -510,33 +504,33 @@ contains
         ! initialize
         T_VC(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         
-        ! calculate transformation matrix T_V^C (FM)
+        ! calculate transformation matrix T_V^C
         T_VC(:,:,1,1,deriv(1),deriv(2),deriv(3)) = &
             &VMEC_R(:,:,deriv(1)+1,deriv(2),deriv(3))
-        T_VC(:,:,1,2,deriv(1),deriv(2),deriv(3)) = 0
+        !T_VC(:,:,1,2,deriv(1),deriv(2),deriv(3)) = 0
         T_VC(:,:,1,3,deriv(1),deriv(2),deriv(3)) = &
             &VMEC_Z(:,:,deriv(1)+1,deriv(2),deriv(3))
         T_VC(:,:,2,1,deriv(1),deriv(2),deriv(3)) = &
             &VMEC_R(:,:,deriv(1),deriv(2)+1,deriv(3))
-        T_VC(:,:,2,2,deriv(1),deriv(2),deriv(3)) = 0
+        !T_VC(:,:,2,2,deriv(1),deriv(2),deriv(3)) = 0
         T_VC(:,:,2,3,deriv(1),deriv(2),deriv(3)) = &
             &VMEC_Z(:,:,deriv(1),deriv(2)+1,deriv(3))
         T_VC(:,:,3,1,deriv(1),deriv(2),deriv(3)) = &
             &VMEC_R(:,:,deriv(1),deriv(2),deriv(3)+1)
         if (sum(deriv).eq.0) then
-            T_VC(:,:,3,2,deriv(1),deriv(2),deriv(3)) = -1.0_dp
-        else
-            T_VC(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 0
+            T_VC(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 1.0_dp
+        !else
+            !T_VC(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 0
         end if
         T_VC(:,:,3,3,deriv(1),deriv(2),deriv(3)) = &
             &VMEC_Z(:,:,deriv(1),deriv(2),deriv(3)+1)
         
         ! determinant
         det_T_VC(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        ierr = arr_mult(VMEC_R(:,:,1:,0:,0:),VMEC_Z(:,:,0:,1:,0:),&
+        ierr = arr_mult(VMEC_R(:,:,0:,1:,0:),VMEC_Z(:,:,1:,0:,0:),&
             &det_T_VC(:,:,deriv(1),deriv(2),deriv(3)),deriv)
         CHCKERR('')
-        ierr = arr_mult(-VMEC_R(:,:,0:,1:,0:),VMEC_Z(:,:,1:,0:,0:),&
+        ierr = arr_mult(-VMEC_R(:,:,1:,0:,0:),VMEC_Z(:,:,0:,1:,0:),&
             &det_T_VC(:,:,deriv(1),deriv(2),deriv(3)),deriv)
         CHCKERR('')
     end function calc_T_VC_ind
@@ -558,8 +552,9 @@ contains
     ! calculate  the transformation  matrix  between  C(ylindrical) and  V(mec)
     ! coordinate system
     integer function calc_T_VF_ind(deriv) result(ierr)
-        use num_vars, only: pi
-        use eq_vars, only: VMEC_L, q_saf, n_par, theta, flux_p, grp_n_r_eq
+        use num_vars, only: pi, use_pol_flux
+        use eq_vars, only: VMEC_L, q_saf_V, rot_t_V, n_par, theta_V, zeta_V, &
+            &flux_p_V, flux_t_V, grp_n_r_eq
         use utilities, only: arr_mult
         
         character(*), parameter :: rout_name = 'calc_T_VF_ind'
@@ -569,8 +564,8 @@ contains
         
         ! local variables
         integer :: id                                                           ! counter
-        real(dp) :: theta_s(n_par,grp_n_r_eq,0:deriv(1)+1,0:deriv(2)+1,&
-            &0:deriv(3)+1)                                                      ! straight field line coordinate theta
+        real(dp), allocatable :: theta_s(:,:,:,:,:)                             ! theta_F and derivatives
+        real(dp), allocatable :: zeta_s(:,:,:,:,:)                              ! - zeta_F and derivatives
         
         ! initialize ierr
         ierr = 0
@@ -579,63 +574,124 @@ contains
         ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_T_VF')
         CHCKERR('')
         
-        ! initialize
-        theta_s = 0.0_dp
+        ! initialize T_VF
         T_VF(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         
-        ! calculate theta_s
-        ! start from theta
-        theta_s(:,:,0,0,0) = theta                                              ! underived
-        theta_s(:,:,0,1,0) = 1.0_dp                                             ! first derivative in theta
+        ! set up theta_s
+        allocate(theta_s(n_par,grp_n_r_eq,0:deriv(1)+1,0:deriv(2)+1,&
+            &0:deriv(3)+1))
+        theta_s = 0.0_dp
+        ! start from theta_V
+        theta_s(:,:,0,0,0) = theta_V
+        theta_s(:,:,0,1,0) = 1.0_dp
         ! add the deformation described by lambda
-        theta_s = theta_s + VMEC_L(:,:,0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1)
-        
-        ! calculate transformation matrix T_V^F (FM)
-        ! (1,1)
-        ierr = arr_mult(theta_s,-q_saf(:,1:),&
-            &T_VF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv)
-        CHCKERR('')
-        ierr = arr_mult(VMEC_L(:,:,1:,0:,0:),-q_saf,&
-            &T_VF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv)
-        CHCKERR('')
-        ! (1,2)
-        if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-            do id = 1,n_par
-                T_VF(id,:,1,2,deriv(1),0,0) = flux_p(:,deriv(1)+1)/(2*pi)
-            end do
+        theta_s = theta_s + VMEC_L(:,:,0:deriv(1)+1,0:deriv(2)+1,&
+            &0:deriv(3)+1)
+            
+        if (use_pol_flux) then
+            ! calculate transformation matrix T_V^F
+            ! (1,1)
+            ierr = arr_mult(theta_s,q_saf_V(:,1:),&
+                &T_VF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv)
+            CHCKERR('')
+            ierr = arr_mult(VMEC_L(:,:,1:,0:,0:),q_saf_V,&
+                &T_VF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv)
+            CHCKERR('')
+            ! (1,2)
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                do id = 1,n_par
+                    T_VF(id,:,1,2,deriv(1),0,0) = flux_p_V(:,deriv(1)+1)/(2*pi)
+                end do
+            !else
+                !T_VF(:,:,1,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+            ! (1,3)
+            T_VF(:,:,1,3,deriv(1),deriv(2),deriv(3)) = &
+                &VMEC_L(:,:,deriv(1)+1,deriv(2),deriv(3))
+            ! (2,1)
+            ierr = arr_mult(theta_s(:,:,0:,1:,0:),q_saf_V,&
+                &T_VF(:,:,2,1,deriv(1),deriv(2),deriv(3)),deriv)
+            CHCKERR('')
+            ! (2,2)
+            !T_VF(:,:,2,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ! (2,3)
+            T_VF(:,:,2,3,deriv(1),deriv(2),deriv(3)) = &
+                &theta_s(:,:,deriv(1),deriv(2)+1,deriv(3))
+            ! (3,1)
+            if (sum(deriv).eq.0) then
+                T_VF(:,:,3,1,0,0,0) = -1.0_dp
+            end if
+            ierr = arr_mult(VMEC_L(:,:,0:,0:,1:),q_saf_V,&
+                &T_VF(:,:,3,1,deriv(1),deriv(2),deriv(3)),deriv)
+            CHCKERR('')
+            ! (3,2)
+            !T_VF(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ! (3,3)
+            T_VF(:,:,3,3,deriv(1),deriv(2),deriv(3)) = &
+                &VMEC_L(:,:,deriv(1),deriv(2),deriv(3)+1)
+            
+            ! determinant
+            det_T_VF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ierr = arr_mult(-theta_s(:,:,0:,1:,0:),flux_p_V(:,1:)/(2*pi),&
+                &det_T_VF(:,:,deriv(1),deriv(2),deriv(3)),deriv)
+            CHCKERR('')
         else
-            T_VF(:,:,1,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ! set up theta_s
+            allocate(zeta_s(n_par,grp_n_r_eq,0:deriv(1)+1,0:deriv(2)+1,&
+                &0:deriv(3)+1))
+            zeta_s = 0.0_dp
+            ! start from theta_V
+            zeta_s(:,:,0,0,0) = zeta_V
+            zeta_s(:,:,0,0,1) = 1.0_dp
+            
+            ! calculate transformation matrix T_V^F
+            ! (1,1)
+            T_VF(:,:,1,1,deriv(1),deriv(2),deriv(3)) = &
+                &-theta_s(:,:,deriv(1)+1,deriv(2),deriv(3))
+            ierr = arr_mult(zeta_s,rot_t_V(:,1:),&
+                &T_VF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv)
+            CHCKERR('')
+            ! (1,2)
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                do id = 1,n_par
+                    T_VF(id,:,1,2,deriv(1),0,0) = -flux_t_V(:,deriv(1)+1)/(2*pi)
+                end do
+            !else
+                !T_VF(:,:,1,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+            ! (1,3)
+            !T_VF(:,:,1,3,deriv(1),deriv(2),deriv(3)) = 0
+            ! (2,1)
+            T_VF(:,:,2,1,deriv(1),deriv(2),deriv(3)) = &
+                &-theta_s(:,:,deriv(1),deriv(2)+1,deriv(3))
+            ! (2,2)
+            !T_VF(:,:,2,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ! (2,3)
+            !T_VF(:,:,2,3,deriv(1),deriv(2),deriv(3)) = 0
+            ! (3,1)
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                do id = 1,n_par
+                    T_VF(id,:,3,1,deriv(1),0,0) = rot_t_V(:,deriv(1))
+                end do
+            end if
+            T_VF(:,:,3,1,deriv(1),deriv(2),deriv(3)) = &
+                &T_VF(:,:,3,1,deriv(1),deriv(2),deriv(3)) &
+                &-theta_s(:,:,deriv(1),deriv(2),deriv(3)+1)
+            ! (3,2)
+            !T_VF(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ! (3,3)
+            if (sum(deriv).eq.0) then
+                T_VF(:,:,3,3,0,0,0) = -1.0_dp
+            !else
+                !T_VF(:,:,3,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+            
+            ! determinant
+            det_T_VF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ierr = arr_mult(theta_s(:,:,0:,1:,0:),flux_t_V(:,1:)/(2*pi),&
+                &det_T_VF(:,:,deriv(1),deriv(2),deriv(3)),deriv)
+            CHCKERR('')
         end if
-        ! (1,3)
-        T_VF(:,:,1,3,deriv(1),deriv(2),deriv(3)) = &
-            &VMEC_L(:,:,deriv(1)+1,deriv(2),deriv(3))
-        ! (2,1)
-        ierr = arr_mult(theta_s(:,:,0:,1:,0:),-q_saf,&
-            &T_VF(:,:,2,1,deriv(1),deriv(2),deriv(3)),deriv)
-        CHCKERR('')
-        ! (2,2)
-        T_VF(:,:,2,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        ! (2,3)
-        T_VF(:,:,2,3,deriv(1),deriv(2),deriv(3)) = &
-            &theta_s(:,:,deriv(1),deriv(2)+1,deriv(3))
-        ! (3,1)
-        if (sum(deriv).eq.0) then
-            T_VF(:,:,3,1,0,0,0) = 1.0_dp
-        end if
-        ierr = arr_mult(VMEC_L(:,:,0:,0:,1:),-q_saf,&
-            &T_VF(:,:,3,1,deriv(1),deriv(2),deriv(3)),deriv)
-        CHCKERR('')
-        ! (3,2)
-        T_VF(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        ! (3,3)
-        T_VF(:,:,3,3,deriv(1),deriv(2),deriv(3)) = &
-            &VMEC_L(:,:,deriv(1),deriv(2),deriv(3)+1)
-        
-        ! determinant
-        det_T_VF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        ierr = arr_mult(theta_s(:,:,0:,1:,0:)/(2*pi),flux_p(:,1:),&
-            &det_T_VF(:,:,deriv(1),deriv(2),deriv(3)),deriv)
-        CHCKERR('')
     end function calc_T_VF_ind
     integer function calc_T_VF_arr(deriv) result(ierr)
         character(*), parameter :: rout_name = 'calc_T_VF_arr'
@@ -1081,66 +1137,90 @@ contains
     ! as the  poloidal and toroidal flux  (even though currently it  is not used
     ! after this point)
     subroutine normalize_metric_vars
-        use eq_vars, only: R_0, A_0, B_0, psi_0
+        use eq_vars, only: R_0, A_0, B_0, psi_p_0
+        use num_vars, only: use_pol_flux
         
         ! local variables
         real(dp) :: g_0(3,3)                                                    ! normalization factor for the covariant metric factors
         real(dp) :: a                                                           ! minor radius
         integer :: id, jd, d1, d2                                               ! counter
+        real(dp) :: psi_0                                                       ! either psi_p_0 (pol. flux) or psi_p_0*A_0 (tor. flux)
+        real(dp) :: alpha_0                                                     ! either A_0 (pol. flux) or 1 (tor. flux)
         
         ! set minor radius a
         a = R_0 / A_0
         
         ! set up g_0
-        g_0(1,1) = a * a
-        g_0(1,2) = 1 / B_0
-        g_0(1,3) = a * R_0
-        g_0(2,1) = g_0(1,2)
-        g_0(2,2) = 1/(a * B_0) * 1/(a * B_0)
-        g_0(2,3) = 1/(a * B_0) * R_0
-        g_0(3,1) = g_0(1,3)
-        g_0(3,2) = g_0(2,3)
-        g_0(3,3) = R_0 * R_0
+        if (use_pol_flux) then
+            g_0(1,1) = a * a
+            g_0(1,2) = 1 / B_0
+            g_0(1,3) = a * R_0
+            g_0(2,1) = g_0(1,2)
+            g_0(2,2) = 1/(a * B_0) * 1/(a * B_0)
+            g_0(2,3) = 1/(a * B_0) * R_0
+            g_0(3,1) = g_0(1,3)
+            g_0(3,2) = g_0(2,3)
+            g_0(3,3) = R_0 * R_0
+        else
+            g_0(1,1) = R_0 * R_0
+            g_0(1,2) = 1 / B_0
+            g_0(1,3) = R_0 * R_0
+            g_0(2,1) = g_0(1,2)
+            g_0(2,2) = 1/(R_0 * B_0) * 1/(R_0 * B_0)
+            g_0(2,3) = 1/B_0
+            g_0(3,1) = g_0(1,3)
+            g_0(3,2) = g_0(2,3)
+            g_0(3,3) = R_0 * R_0
+        end if
+        
+        ! set up psi_0 and alpha_0
+        if (use_pol_flux) then
+            psi_0 = psi_p_0
+            alpha_0 = A_0
+        else
+            psi_0 = psi_p_0 * A_0
+            alpha_0 = 1.0_dp
+        end if
         
         ! normalize the metric coefficients
         do d2 = 1,3
             do d1 = 1,3
-                g_F_FD(:,:,d1,d2,:,:,:) = g_F_FD(:,:,d1,d2,:,:,:) / g_0(d1,d2)
-                h_F_FD(:,:,d1,d2,:,:,:) = h_F_FD(:,:,d1,d2,:,:,:) * g_0(d1,d2)
+                g_FD(:,:,d1,d2,:,:,:) = g_FD(:,:,d1,d2,:,:,:) / g_0(d1,d2)
+                h_FD(:,:,d1,d2,:,:,:) = h_FD(:,:,d1,d2,:,:,:) * g_0(d1,d2)
             end do
         end do
-        do id = 1,size(g_F_FD,5)-1                                              ! derivatives in psi are scaled by psi_0
-            g_F_FD(:,:,:,:,id,:,:) = g_F_FD(:,:,:,:,id,:,:) * A_0**id
-            h_F_FD(:,:,:,:,id,:,:) = h_F_FD(:,:,:,:,id,:,:) * A_0**id
+        do id = 1,size(g_FD,5)-1                                                ! derivatives in psi are scaled by psi_p_0
+            g_FD(:,:,:,:,id,:,:) = g_FD(:,:,:,:,id,:,:) * alpha_0**id
+            h_FD(:,:,:,:,id,:,:) = h_FD(:,:,:,:,id,:,:) * alpha_0**id
         end do
-        do jd = 1,size(g_F_FD,6)-1                                              ! derivatives in alpha are scaled by A
-            g_F_FD(:,:,:,:,:,jd,:) = g_F_FD(:,:,:,:,:,jd,:) * psi_0**jd 
-            h_F_FD(:,:,:,:,:,jd,:) = h_F_FD(:,:,:,:,:,jd,:) * psi_0**jd
+        do jd = 1,size(g_FD,6)-1                                                ! derivatives in alpha are scaled by A
+            g_FD(:,:,:,:,:,jd,:) = g_FD(:,:,:,:,:,jd,:) * psi_0**jd 
+            h_FD(:,:,:,:,:,jd,:) = h_FD(:,:,:,:,:,jd,:) * psi_0**jd
         end do
         
         ! normalize the Jacobian
-        jac_F_FD = jac_F_FD * B_0/R_0
-        do id = 1,size(jac_F_FD,3)-1                                            ! derivatives in psi are scaled by psi_0
-            jac_F_FD(:,:,id,:,:) = jac_F_FD(:,:,id,:,:) * A_0**id
+        jac_FD = jac_FD * B_0/R_0
+        do id = 1,size(jac_FD,3)-1                                              ! derivatives in psi are scaled by psi_p_0
+            jac_FD(:,:,id,:,:) = jac_FD(:,:,id,:,:) * alpha_0**id
         end do
-        do jd = 1,size(jac_F_FD,4)-1                                            ! derivatives in alpha are scaled by A
-            jac_F_FD(:,:,:,jd,:) = jac_F_FD(:,:,:,jd,:) * psi_0**jd
+        do jd = 1,size(jac_FD,4)-1                                              ! derivatives in alpha are scaled by A
+            jac_FD(:,:,:,jd,:) = jac_FD(:,:,:,jd,:) * psi_0**jd
         end do
     end subroutine normalize_metric_vars
     
     ! deallocates  metric  quantities  that  are  not  used  anymore  after  the
     ! equilibrium phase
-    subroutine dealloc_metric_vars
+    subroutine dealloc_metric
         deallocate(T_VC,T_VF,T_FV)
         deallocate(det_T_VC,det_T_VF,det_T_FV)
         deallocate(jac_C,jac_V,jac_F)
         deallocate(g_C, g_V, g_F,h_F)
-    end subroutine dealloc_metric_vars
+    end subroutine dealloc_metric
     
     ! deallocates  metric quantities  that are not  used anymore  after the
     ! calculation for a certain alpha
-    subroutine dealloc_metric_vars_final
-        deallocate(g_F_FD,h_F_FD)
-        deallocate(jac_F_FD)
-    end subroutine dealloc_metric_vars_final
+    subroutine dealloc_metric_final
+        deallocate(g_FD,h_FD)
+        deallocate(jac_FD)
+    end subroutine dealloc_metric_final
 end module metric_ops

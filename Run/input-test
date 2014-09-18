@@ -7,19 +7,29 @@
     min_r_X = 0.1
     max_r_X = 1.0
     max_it_NR = 500
-    max_it_r = 2
-    tol_r = 5.0E-5
-    theta_var_along_B = .true.
-    n_procs_per_alpha = 2
-    n_X = 20
-    min_m_X = 180
-    max_m_X = 190
-    plot_q = .false.
+    max_it_r = 9
+    tol_r = 5.0E-6
+    n_procs_per_alpha = 1
+    prim_X = -180
+    min_sec_X = 19
+    max_sec_X = 25
+    use_pol_flux = .false.
+    plot_q = .true.
     n_sol_requested = 2
-    min_n_r_X = 50
-    max_n_plots = 2
+    min_n_r_X = 100
+    max_n_plots = 6
 /
 
-pi  = 3.1415926535897932384626433832795028841971693993751058
-2pi = 6.2831853071795864769252867665590057683943387987502116
-4pi = 12.566370614359172953850573533118011536788677597500423
+    pi  = 3.1415926535897932384626433832795028841971693993751058
+    2pi = 6.2831853071795864769252867665590057683943387987502116
+    4pi = 12.566370614359172953850573533118011536788677597500423
+    
+    prim_X = -180
+    min_sec_X = 19
+    max_sec_X = 25
+    use_pol_flux = .false.
+    
+    prim_X = -20
+    min_sec_X = 180
+    max_sec_X = 190
+    use_pol_flux = .true.

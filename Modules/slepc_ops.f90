@@ -17,14 +17,13 @@ module slepc_ops
 contains
     ! This subroutine sets up  the matrices A ad B of  the generalized EV system
     ! described in [ADD REF] and solves them using the slepc suite
-    
     integer function solve_EV_system_slepc(use_guess) result(ierr)
-        use X_vars, only: X_vec, X_val, n_r_X, grp_n_r_X, n_m_X,  n_r_X, &
+        use X_vars, only: X_vec, X_val, n_r_X, grp_n_r_X, size_X,  n_r_X, &
             &grp_n_r_X, PV_int, KV_int, grp_min_r_X
         use num_vars, only: MPI_comm_groups, grp_n_procs, n_sol_requested, &
-            &grp_rank, min_r_X, max_r_X
+            &grp_rank
         use file_ops, only: opt_args
-        use MPI_ops, only: divide_grid
+        use MPI_ops, only: divide_grid, get_ghost_X_vec
         use num_vars, only: mu_0
         use eq_vars, only: B_0, R_0, rho_0
         
@@ -66,10 +65,13 @@ contains
         PetscInt :: n_sol                                                       ! how many solutions can be requested (normally n_sol_requested)
         PetscInt :: one = 1                                                     ! one
         
+        ! for interpolation of tables
+        PetscReal, allocatable :: grp_r_eq(:)                                   ! unrounded index in tables V_int
+        PetscInt :: offset                                                      ! offset in the table V_int
+        
         ! other variables
         PetscInt :: id, jd, kd                                                  ! counters
         PetscInt :: max_n_EV                                                    ! nr. of EV's saved, up to n_sol_requested
-        PetscReal :: step_size                                                  ! step size of perturbation grid
         
         !! for tests
         !Mat :: A_t                                                              ! Hermitian transpose of A
@@ -124,44 +126,44 @@ contains
                 &PETSC_NULL_CHARACTER,trim(option_name),flg,ierr)
         end do
         
-        ! setting variables
-        call writo('set variables...')
-        ! The step size is either the (normalized) poloidal or toroidal flux
-        step_size = (max_r_X-min_r_X)/(n_r_X - 1.0)
-        
         ! set up the matrix
         call writo('set up matrices...')
         
         call lvl_ud(1)
         
+        ! set  up arrays  grp_r_eq and  offset that  determine how  to fill  the
+        ! matrices
+        ierr = get_interp_data(grp_r_eq,offset)
+        CHCKERR('')
+        
         ! create a  matrix A and B  with the appropriate number  of preallocated
         ! entries
         ! the numbers of non-zeros in the diagonal and off-diagonal parts
-        allocate(d_nz(grp_n_r_X*n_m_X)); d_nz = 0
-        allocate(o_nz(grp_n_r_X*n_m_X)); o_nz = 0
+        allocate(d_nz(grp_n_r_X*size_X)); d_nz = 0
+        allocate(o_nz(grp_n_r_X*size_X)); o_nz = 0
         if (grp_n_r_X.eq.1) then                                                ! 1 normal point in the process
-            d_nz = n_m_X
-            o_nz = 2*n_m_X
+            d_nz = size_X
+            o_nz = 2*size_X
         else                                                                    ! more than 1 normal point in the process
-            d_nz(1:n_m_X) = 2*n_m_X
-            d_nz(n_m_X+1:(grp_n_r_X-1)*n_m_X) = 3*n_m_X
-            d_nz((grp_n_r_X-1)*n_m_X+1:grp_n_r_X*n_m_X) = 2*n_m_X
+            d_nz(1:size_X) = 2*size_X
+            d_nz(size_X+1:(grp_n_r_X-1)*size_X) = 3*size_X
+            d_nz((grp_n_r_X-1)*size_X+1:grp_n_r_X*size_X) = 2*size_X
             if(grp_rank.ne.0) then
-                o_nz(1:n_m_X) = n_m_X
+                o_nz(1:size_X) = size_X
             end if
             if (grp_rank.ne.grp_n_procs-1) then
-                o_nz((grp_n_r_X-1)*n_m_X+1:grp_n_r_X*n_m_X) = n_m_X
+                o_nz((grp_n_r_X-1)*size_X+1:grp_n_r_X*size_X) = size_X
             end if
         end if
         ! create matrix A
-        call MatCreateAIJ(PETSC_COMM_WORLD,grp_n_r_X*n_m_X,grp_n_r_X*n_m_X,&
-            &n_r_X*n_m_X,n_r_X*n_m_X,PETSC_NULL_INTEGER,d_nz,&
+        call MatCreateAIJ(PETSC_COMM_WORLD,grp_n_r_X*size_X,grp_n_r_X*size_X,&
+            &n_r_X*size_X,n_r_X*size_X,PETSC_NULL_INTEGER,d_nz,&
             &PETSC_NULL_INTEGER,o_nz,A,ierr)
         CHCKERR('MatCreateAIJ failed for matrix A')
         ! deallocate d_nz and o_nz
         deallocate(d_nz,o_nz)
         ! fill the matrix A
-        ierr = fill_mat(step_size,PV_int,A)
+        ierr = fill_mat(PV_int,A,grp_r_eq,offset)
         CHCKERR('')
         call writo('matrix A set up')
         
@@ -172,7 +174,7 @@ contains
         call MatDuplicate(A,MAT_SHARE_NONZERO_PATTERN,B,ierr)                   ! B has same structure as A
         CHCKERR('failed to duplicate A into B')
         ! fill the matrix B
-        ierr = fill_mat(step_size,KV_int,B)
+        ierr = fill_mat(KV_int,B,grp_r_eq,offset)
         CHCKERR('')
         call writo('matrix B set up')
         
@@ -231,12 +233,12 @@ contains
         CHCKERR('Failed to set which eigenpairs')
         
         ! request n_sol_requested Eigenpairs
-        if (n_sol_requested.gt.n_r_X*n_m_X) then
+        if (n_sol_requested.gt.n_r_X*size_X) then
             call writo('WARNING: max. nr. of solutions requested capped to &
-                &problem dimension ('//trim(i2str(n_r_X*n_m_X))//')')
+                &problem dimension ('//trim(i2str(n_r_X*size_X))//')')
             call writo('Increase either min_n_r_X or number of pol. modes or &
                 &decrease n_sol_requested')
-            n_sol = n_r_X*n_m_X
+            n_sol = n_r_X*size_X
         else
             n_sol = n_sol_requested
         end if
@@ -258,21 +260,21 @@ contains
                 
                 ! set the indices and nr. of values to set in guess_vec
                 n_prev_guess = size(X_vec,2)
-                allocate(guess_id(n_prev_guess*n_m_X))
+                allocate(guess_id(n_prev_guess*size_X))
                 do id = 0,n_prev_guess-1
-                    do jd = 1,n_m_X
-                        guess_id(id*n_m_X+jd) = (guess_start_id-1)*n_m_X*2 + &
-                            &id*n_m_X*2 + jd
+                    do jd = 1,size_X
+                        guess_id(id*size_X+jd) = (guess_start_id-1)*size_X*2 + &
+                            &id*size_X*2 + jd
                     end do
                 end do
                 
                 do kd = 1,prev_n_EV
                     ! set even values of guess_vec
-                    call VecSetValues(guess_vec(kd),n_prev_guess*n_m_X,&
+                    call VecSetValues(guess_vec(kd),n_prev_guess*size_X,&
                         &guess_id-1,X_vec(:,:,kd),INSERT_VALUES,istat)
                     ! set odd values of guess_vec
-                    call VecSetValues(guess_vec(kd),n_prev_guess*n_m_X,&
-                        &guess_id-1-n_m_X,X_vec(:,:,kd),INSERT_VALUES,istat)
+                    call VecSetValues(guess_vec(kd),n_prev_guess*size_X,&
+                        &guess_id-1-size_X,X_vec(:,:,kd),INSERT_VALUES,istat)
                         
                     ! assemble the guess vector
                     call VecAssemblyBegin(guess_vec(kd),istat)
@@ -302,7 +304,11 @@ contains
         call writo('run slepc solver')
         
         ! X_vec and X_val
-        allocate(X_vec(1:n_m_X,1:grp_n_r_X,1:n_sol_requested))
+        if (grp_rank+1.lt.grp_n_procs) then
+            allocate(X_vec(1:size_X,1:grp_n_r_X+1,1:n_sol_requested))           ! extra point in normal dimension as ghost region
+        else
+            allocate(X_vec(1:size_X,1:grp_n_r_X,1:n_sol_requested))             ! no ghost region for last rank
+        end if
         X_vec = 0.0_dp
         allocate(X_val(1:n_sol_requested))
         X_val = 0.0_dp
@@ -359,18 +365,20 @@ contains
         
         !call MatGetVecs(A,sol_vec,PETSC_NULL_OBJECT,ierr)                       ! get compatible parallel vector to matrix A
         !CHCKERR('MatGetVecs failed')
-        call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,grp_n_r_X*n_m_X,&
-            &n_r_X*n_m_X,PETSC_NULL_SCALAR,sol_vec,ierr)
+        call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,grp_n_r_X*size_X,&
+            &n_r_X*size_X,PETSC_NULL_SCALAR,sol_vec,ierr)
         CHCKERR('Failed to create MPI vector with arrays')
         
         ! store them
         do id = 1,max_n_EV
             ! get EV solution in vector X_vec
-            call VecPlaceArray(sol_vec,X_vec(:,:,id),ierr)
+            call VecPlaceArray(sol_vec,X_vec(:,1:grp_n_r_X,id),ierr)            ! place array sol_vec in X_vec
             CHCKERR('Failed to place array')
             call EPSGetEigenpair(solver,id-1,X_val(id),PETSC_NULL_OBJECT,&
                 &sol_vec,PETSC_NULL_OBJECT,ierr)                                ! get solution EV vector and value (starts at index 0)
             CHCKERR('EPSGetEigenpair failed')
+            ierr = get_ghost_X_vec(X_vec(:,:,id),1)
+            CHCKERR('')
             call EPSComputeRelativeError(solver,id-1,error,ierr)                ! get error (starts at index 0)
             CHCKERR('EPSComputeRelativeError failed')
             call writo('for solution '//trim(i2str(id))//&
@@ -424,6 +432,9 @@ contains
         
         call lvl_ud(-1)
         
+        ! deallocate quantities
+        deallocate(grp_r_eq)
+        
         ! destroy and finalize
         call writo('finalize slepc...')
         call EPSDestroy(solver,ierr)
@@ -440,7 +451,8 @@ contains
     ! B, corresponding  to the plasma  potential energy and  the (perpendicular)
     ! kinetic energy
     ! The procedure is as follows:
-    !   1. tables are set up for (k,m) pairs, in the (par,r) equilibrium grid
+    !   1. tables are set  up for (k,m) (pol. flux) or  (l,n) pairs (tor. flux),
+    !   in the (par,r) equilibrium grid
     !   2. at the first normal point  in the perturbation grid, belonging to the
     !   current process, the tables are interpolated as a start
     !   3. at  every normal  point in  the perturbation  grid, belonging  to the
@@ -448,29 +460,32 @@ contains
     !   corresponding  perturbation  grid.  This  information, as  well  as  the
     !   interpolated value  of the previous  point allow for the  calculation of
     !   every quantity
-    ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING, SO IT IS TREATED AS HERMITIAN !!!
-    integer function fill_mat(step_size,V_int_tab,mat) result(ierr)
+    ! Note: the factors i/n or i/m are already included in V_int_tab
+    ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING !!!!!!
+    integer function fill_mat(V_int_tab,mat,grp_r_eq,offset) result(ierr)
         use num_vars, only: min_r_X, max_r_X
-        use eq_vars, only: grp_n_r_eq, A_0, flux_p_FD, flux_t_FD
+        use eq_vars, only: max_flux
         use utilities, only: dis2con
-        use X_vars, only: grp_min_r_X, grp_max_r_X, n_X, n_r_X, n_m_X
-        use VMEC_vars, only: use_pol_flux
+        use X_vars, only: grp_min_r_X, grp_max_r_X, n_r_X, size_X
         
         character(*), parameter :: rout_name = 'fill_mat'
         
         ! input / output
         PetscScalar, intent(in) :: V_int_tab(:,:,:,:)                           ! either PV_int or KV_int tables in grp_n_r_eq normal points
         Mat, intent(inout) :: mat                                               ! either A or B
-        PetscReal, intent(in) :: step_size                                      ! step size of current Richardson level
+        PetscReal, intent(in) :: grp_r_eq(:)                                    ! unrounded index in tables V_int
+        PetscInt, intent(in) :: offset                                          ! offset in the table V_int
         
         ! local variables (not to be used in child routines)
         character(len=max_str_ln) :: err_msg                                    ! error message
-        PetscScalar, allocatable :: loc_block(:,:)                              ! (n_m_X x n_m_X) block matrix for 1 normal point
+        PetscScalar, allocatable :: loc_block(:,:)                              ! (size_X x size_X) block matrix for 1 normal point
         PetscScalar, allocatable :: V_interp(:,:,:)                             ! interpolated V_int
         PetscScalar, allocatable :: V_interp_next(:,:,:)                        ! interpolated V_int at next normal point
+        PetscScalar, allocatable :: V_interp_next_OLD(:,:,:)                        ! interpolated V_int at next normal point
         PetscInt, allocatable :: loc_k(:), loc_m(:)                             ! the locations at which to add the blocks to the matrices
-        PetscReal :: step_size_FD                                               ! step size in flux coordinates
+        PetscReal :: step_size                                                  ! step size in flux coordinates
         PetscInt :: id, jd                                                      ! counters
+        PetscInt :: grp_r_eq_lo, grp_r_eq_hi                                    ! rounded up or down norm_pt_eq_dis
         
         ! for tests
         PetscInt :: r_X_start, r_X_end                                          ! start block and end block
@@ -482,18 +497,19 @@ contains
         ierr = 0
         
         ! allocate variables
-        allocate(V_interp(n_m_X,n_m_X,3))
-        allocate(V_interp_next(n_m_X,n_m_X,3))
-        allocate(loc_block(n_m_X,n_m_X))
-        allocate(loc_k(n_m_X))
-        allocate(loc_m(n_m_X))
+        allocate(V_interp(size_X,size_X,3))
+        allocate(V_interp_next(size_X,size_X,3))
+        allocate(V_interp_next_OLD(size_X,size_X,3))
+        allocate(loc_block(size_X,size_X))
+        allocate(loc_k(size_X))
+        allocate(loc_m(size_X))
         
         !  test  whether  the  matrix   range  coincides  with  grp_min_r_X  and
         ! grp_max_r_X
         call MatGetOwnershipRange(mat,r_X_start,r_X_end,ierr)                   ! starting and ending row r_X_start and r_X_end
         CHCKERR('Couldn''t get ownership range of matrix')
-        r_X_start = r_X_start/n_m_X                                             ! count per block
-        r_X_end = r_X_end/n_m_X                                                 ! count per block
+        r_X_start = r_X_start/size_X                                            ! count per block
+        r_X_end = r_X_end/size_X                                                ! count per block
         if (grp_min_r_X.ne.r_X_start+1) then
             ierr = 1
             err_msg = 'start of matrix in this process does not coincide with &
@@ -510,18 +526,19 @@ contains
         ! get first interpolated point, corresponding to r_X_start
         call dis2con(grp_min_r_X,[1,n_r_X],norm_pt,[min_r_X,max_r_X])
         
-        ! set up step_size_FD
-        if (use_pol_flux) then
-            step_size_FD = step_size * (flux_p_FD(grp_n_r_eq,0)-flux_p_FD(1,0)) / &
-                &(grp_n_r_eq-1)
-        else
-            step_size_FD = step_size * (flux_t_FD(grp_n_r_eq,0)-flux_t_FD(1,0)) / &
-                &(grp_n_r_eq-1)
-        end if
+        ! set up step_size
+        step_size = (max_r_X-min_r_X)/(n_r_X-1.0) * max_flux
         
-        ! get the interpolated terms in V_interp
-        ierr = get_V_interp(V_int_tab,norm_pt,V_interp_next)
-        CHCKERR('')
+        ! get the  interpolated terms in V_interp (also correct  if grp_r_eq_hi =
+        ! grp_r_eq_lo)
+        grp_r_eq_lo = floor(grp_r_eq(1))
+        grp_r_eq_hi = ceiling(grp_r_eq(1))
+        do jd = 1,3
+            V_interp_next(:,:,jd) = V_int_tab(:,:,grp_r_eq_lo-offset,jd) + &
+                &(V_int_tab(:,:,grp_r_eq_hi-offset,jd)-&
+                &V_int_tab(:,:,grp_r_eq_lo-offset,jd))*&
+                &(grp_r_eq(1)-grp_r_eq_lo)                                      ! because grp_r_eq_hi - norm_pt_lo = 1
+        end do
         
         ! iterate over all rows of this rank
         do id = grp_min_r_X-1, grp_max_r_X-1                                    ! (indices start with 0 here)
@@ -535,13 +552,13 @@ contains
             ! part ~ V0(i)
             loc_block = loc_block + V_interp(:,:,1)
             ! part ~ V2(i)
-            loc_block = loc_block + V_interp(:,:,3) * &
-                &2.0/(step_size_FD*n_X*A_0)**2
+            loc_block = loc_block - V_interp(:,:,3) * &
+                &2.0_dp/(step_size)**2
             
             ! add block to the matrix A
-            loc_k = [(jd, jd = 0,n_m_X-1)] + id*n_m_X
+            loc_k = [(jd, jd = 0,size_X-1)] + id*size_X
             loc_m = loc_k
-            call MatSetValues(mat,n_m_X,loc_k,n_m_X,loc_m,loc_block,&
+            call MatSetValues(mat,size_X,loc_k,size_X,loc_m,loc_block,&
                 &INSERT_VALUES,ierr)
             CHCKERR('Couldn''t add values to matrix')
             
@@ -551,33 +568,39 @@ contains
             if (id.ne.n_r_X-1) then                                             ! don't do the right block for last normal point
                 ! calculate next norm_pt by adding  the step size 1/(n_r_X+1) to
                 ! the previous norm_pt
-                norm_pt = norm_pt + step_size
+                norm_pt = norm_pt + (max_r_X-min_r_X)/(n_r_X-1.0)
                 
                 ! get the interpolated terms in V_interp
-                ierr = get_V_interp(V_int_tab,norm_pt,V_interp_next)
-                CHCKERR('')
+                grp_r_eq_lo = floor(grp_r_eq(id-grp_min_r_X+3))
+                grp_r_eq_hi = ceiling(grp_r_eq(id-grp_min_r_X+3))
+                do jd = 1,3
+                    V_interp_next(:,:,jd) = &
+                        &V_int_tab(:,:,grp_r_eq_lo-offset,jd) + &
+                        &(V_int_tab(:,:,grp_r_eq_hi-offset,jd)-&
+                        &V_int_tab(:,:,grp_r_eq_lo-offset,jd))*&
+                        &(grp_r_eq(id-grp_min_r_X+3)-grp_r_eq_lo)               ! because grp_r_eq_hi - norm_pt_lo = 1
+                end do
                 
                 loc_block = 0
                 ! part ~ V1*(i+1)
                 loc_block = loc_block + conjg(transpose(V_interp_next(:,:,2)))&
-                    & * PETSC_i/(2*step_size_FD*n_X*A_0)
+                    & * 1.0_dp/(2*step_size)
                 ! part ~ V1(i)
-                loc_block = loc_block + V_interp(:,:,2) * &
-                    &PETSC_i/(2*step_size_FD*n_X*A_0)
+                loc_block = loc_block + V_interp(:,:,2) * 1.0_dp/(2*step_size)
                 ! part ~ V2(i+1/2)
-                loc_block = loc_block - (V_interp(:,:,3) + &
-                    &V_interp_next(:,:,3))/2 * 1.0/(step_size_FD*n_X*A_0)**2
+                loc_block = loc_block + (V_interp(:,:,3) + &
+                    &V_interp_next(:,:,3))/2 * 1.0/(step_size)**2
                 
                 ! add block to the matrix
-                loc_k = [(jd, jd = 0,n_m_X-1)] + id*n_m_X
-                loc_m = loc_k+n_m_X
-                call MatSetValues(mat,n_m_X,loc_k,n_m_X,loc_m,loc_block,&
+                loc_k = [(jd, jd = 0,size_X-1)] + id*size_X
+                loc_m = loc_k+size_X
+                call MatSetValues(mat,size_X,loc_k,size_X,loc_m,loc_block,&
                     &INSERT_VALUES,ierr)
                 CHCKERR('Couldn''t add values to matrix')
                 
                 ! add Hermitian conjugate
                 loc_block = conjg(transpose(loc_block))
-                call MatSetValues(mat,n_m_X,loc_m,n_m_X,loc_k,loc_block,&
+                call MatSetValues(mat,size_X,loc_m,size_X,loc_k,loc_block,&
                     &INSERT_VALUES,ierr)
                 CHCKERR('Couldn''t add values to matrix')
             end if
@@ -591,60 +614,77 @@ contains
         
         !call MatSetOption(mat,MAT_HERMITIAN,PETSC_TRUE,ierr)                    ! Hermitian to a first approximation
         !CHCKERR('Coulnd''t set option Hermitian')
-
+        
         ! deallocate variables
         deallocate(V_interp,V_interp_next)
         deallocate(loc_block)
         deallocate(loc_k,loc_m)
-    contains
-        ! decides  whether V_interp  has to  be interpolated  from V_int_tab  or
-        ! whether it  can be taken  from the  input V_interp_in. Also  saves the
-        ! calculated terms in V_interp_out for use in next Richardson iteration
-        ! note: uses found_id, norm_pt_found from parent routine
-        integer function get_V_interp(V_int_tab,norm_pt,V_interp) result(ierr)
-            use utilities, only: con2dis, round_with_tol
-            use VMEC_vars, only: n_r_eq
-            use eq_vars, only: grp_min_r_eq
-            
-            character(*), parameter :: rout_name = 'get_V_interp'
-            
-            ! input / output
-            PetscScalar, intent(in) :: V_int_tab(n_m_X,n_m_X,grp_n_r_eq,3)      ! table of (k,m) integrated values at (1..grp_n_r_eq)
-            PetscReal, intent(inout) :: norm_pt                                 ! point at which to interpolate
-            PetscScalar, intent(inout) :: V_interp(n_m_X,n_m_X,3)               ! output pairs of (k,m), interpolated and integrated at norm_pt
-            
-            ! local variables
-            PetscInt :: id                                                      ! counter
-            PetscReal :: norm_pt_dis                                            ! equivalent of norm_pt in table of equilibrium normal points
-            PetscInt :: norm_pt_lo, norm_pt_hi                                  ! rounded up or down norm_pt_dis
-            PetscInt :: offset                                                  ! offset in the table V_int
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! loop over all terms 0,1,2 (with index 1,2,3 in variables)
-            do id = 1,3
-                ! round norm_pt if necessary
-                ierr = round_with_tol(norm_pt,0.0_dp,1.0_dp)
-                CHCKERR('')
-                
-                ! get the table indices between which to interpolate. The tables
-                ! are set up in the equilibrium grid, which uses the same normal
-                ! coordinate as  the discretization (determined by  VMEC through
-                ! use_pol_flux)
-                call con2dis(norm_pt,[0._dp,1._dp],norm_pt_dis,[1,n_r_eq])      ! convert norm_pt to the index in the array V_int
-                
-                ! round up and down and set offset
-                norm_pt_lo = floor(norm_pt_dis)
-                norm_pt_hi = ceiling(norm_pt_dis)
-                offset =  grp_min_r_eq - 1
-                
-                ! interpolate, also correct if norm_pt_hi = norm_pt_lo
-                V_interp(:,:,id) = V_int_tab(:,:,norm_pt_lo-offset,id) + &
-                    &(V_int_tab(:,:,norm_pt_hi-offset,id)-&
-                    &V_int_tab(:,:,norm_pt_lo-offset,id))*&
-                    &(norm_pt_dis-norm_pt_lo)                                   ! because norm_pt_hi - norm_pt_lo = 1
-            end do
-        end function get_V_interp
     end function fill_mat
+    
+    ! calculates  V_interp  from the  tabulated  values  in the  equilibrium
+    ! grid,  the  coordinate   of  which  is  determined   by  the  variable
+    ! VMEC_use_pol_flux
+    integer function get_interp_data(grp_r_eq,offset) &
+            &result(ierr)
+        use utilities, only: con2dis, round_with_tol, interp_fun_1D
+        use VMEC_vars, only: n_r_eq, VMEC_use_pol_flux
+        use eq_vars, only: grp_min_r_eq, max_flux, max_flux_VMEC, flux_p_FD, &
+            &flux_t_FD
+        use X_vars, only: grp_r_X
+        use num_vars, only: use_pol_flux
+        
+        character(*), parameter :: rout_name = 'get_interp_data'
+        
+        ! input / output
+        PetscReal, allocatable, intent(inout) :: grp_r_eq(:)                    ! unrounded index in tables V_int
+        PetscInt, intent(inout) :: offset                                       ! offset in the table V_int
+        
+        ! local variables
+        PetscReal :: r_X_loc                                                    ! local copy of grp_r_X
+        PetscReal :: grp_r_eq_eq_con                                            ! equivalent of grp_r_eq in table of equilibrium normal points
+        PetscReal, pointer :: flux(:), flux_VMEC(:)                             ! either pol. or tor. flux
+        PetscInt :: kd                                                          ! counter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up flux and flux_VMEC
+        if (use_pol_flux) then
+            flux => flux_p_FD(:,0)
+        else
+            flux => flux_t_FD(:,0)
+        end if
+        if (VMEC_use_pol_flux) then
+            flux_VMEC => flux_p_FD(:,0)
+        else
+            flux_VMEC => flux_t_FD(:,0)
+        end if
+        
+        ! allocate grp_r_eq_lo and hi and offset
+        allocate(grp_r_eq(size(grp_r_X)))
+        
+        ! loop over all normal points
+        do kd = 1,size(grp_r_X)
+            ! set local copy of grp_r_X
+            r_X_loc = grp_r_X(kd)
+            
+            ! round r_X_loc if necessary
+            ierr = round_with_tol(r_X_loc,0.0_dp,1.0_dp)
+            CHCKERR('')
+            
+            ! get the table indices between which to interpolate. The tables are
+            ! set  up  in  the  equilibrium grid,  which  not  necessarily  uses
+            ! the  same  normal  coordinate as  the  discretization.  Therefore,
+            ! conversion is necessary
+            ! 1. continuous equilibrium grid (0..1)
+            ierr = interp_fun_1D(grp_r_eq_eq_con,flux_VMEC/max_flux_VMEC,&
+                &r_X_loc,flux/max_flux)
+            CHCKERR('')
+            ! 2. discrete equilibrium grid, unrounded
+            call con2dis(grp_r_eq_eq_con,[0._dp,1._dp],grp_r_eq(kd),[1,n_r_eq])
+            
+            ! set offset
+            offset =  grp_min_r_eq - 1
+        end do
+    end function get_interp_data
 end module
