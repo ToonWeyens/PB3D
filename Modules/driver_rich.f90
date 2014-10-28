@@ -6,7 +6,8 @@ module driver_rich
 #include <PB3D_macros.h>
     use num_vars, only: max_it_r, dp, pi, max_str_ln
     use str_ops, only: i2str, r2str, r2strt
-    use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud, print_GP_2D
+    use message_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
+    use output_ops, only: print_GP_2D
     implicit none
     private
     public run_rich_driver

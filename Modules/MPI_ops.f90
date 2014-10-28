@@ -5,7 +5,7 @@ module MPI_ops
 #include <PB3D_macros.h>
     use MPI
     use str_ops, only: i2str
-    use output_ops, only: writo, lvl_ud, print_GP_2D, print_ar_1
+    use message_ops, only: writo, lvl_ud, print_ar_1
     use num_vars, only: dp, max_str_ln
     
     implicit none
@@ -616,9 +616,9 @@ contains
     !   7   logical                     lfreeb
     !   8   logical                     no_guess
     !   9   logical                     no_plots
-    !   10  integer                     max_it_NR
-    !   11  integer                     max_it_r
-    !   12  integer                     format_out
+    !   10  logical                     plot_grid
+    !   11  integer                     max_it_NR
+    !   12  integer                     max_it_r
     !   13  integer                     style
     !   14  integer                     n_par
     !   15  integer                     n_r
@@ -673,8 +673,7 @@ contains
             &EV_style, max_it_NR, max_it_r, n_alpha, n_procs_per_alpha, style, &
             &max_alpha, min_alpha, tol_NR, glb_rank, glb_n_procs, no_guess, &
             &n_sol_requested, min_n_r_X, min_r_X, max_r_X, nyq_fac, tol_r, &
-            &use_pol_flux, max_n_plots
-        use output_ops, only: format_out, no_plots
+            &use_pol_flux, max_n_plots, plot_grid, no_plots
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
         use eq_vars, only: n_par, max_par, min_par, grp_min_r_eq, &
             &grp_max_r_eq, R_0, A_0, pres_0, B_0, psi_p_0, rho_0
@@ -697,9 +696,9 @@ contains
             call MPI_Bcast(lfreeb,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(no_guess,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(plot_grid,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_it_r,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(format_out,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(style,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(n_par,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(n_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)

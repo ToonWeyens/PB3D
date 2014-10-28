@@ -4,7 +4,8 @@
 module X_vars
 #include <PB3D_macros.h>
     use num_vars, only: dp, max_str_ln, iu
-    use output_ops, only: lvl_ud, writo, print_GP_2D, print_ar_1, draw_GP
+    use message_ops, only: lvl_ud, writo, print_ar_1
+    use output_ops, only: print_GP_2D, draw_GP
     use str_ops, only: r2strt, i2str
     
     implicit none
@@ -51,7 +52,7 @@ module X_vars
 contains
     ! initialize the variable m and check and/or plot it
     integer function init_m() result(ierr)
-        use num_vars, only: plot_q, use_pol_flux
+        use num_vars, only: plot_jq, use_pol_flux
         
         character(*), parameter :: rout_name = 'init_m'
         
@@ -80,7 +81,7 @@ contains
         end if
         
         ! plot resonances if requested
-        if (plot_q) then
+        if (plot_jq) then
             call resonance_plot
         else
             call writo('Resonance plot not requested')

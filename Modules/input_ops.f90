@@ -15,7 +15,7 @@ contains
     !   yes = .true.: yes is default answer
     !   yes = .false.: no is default answer
     logical function yes_no(yes)
-        use output_ops, only: start_time, stop_time, &
+        use message_ops, only: start_time, stop_time, &
             &lvl_sep, lvl
         
         ! input / output
@@ -55,13 +55,12 @@ contains
         use num_vars, only: &
             &style, min_alpha, max_alpha, n_alpha, max_it_NR, tol_NR, &
             &max_it_r, input_i, n_seq_0, min_n_r_X, use_pol_flux, &
-            &calc_mesh_style, EV_style, n_procs_per_alpha, plot_q, tol_r, &
-            &n_sol_requested, min_r_X, max_r_X, nyq_fac, pi, max_n_plots, &
-            &glb_rank, nyq_fac
+            &calc_mesh_style, EV_style, n_procs_per_alpha, plot_jq, tol_r, &
+            &n_sol_requested, min_r_X, max_r_X, nyq_fac, max_n_plots, &
+            &glb_rank, nyq_fac, plot_grid
         use eq_vars, only: &
             &min_par, max_par, n_par, rho_0
-        use output_ops, only: writo, lvl_ud, &
-            &format_out
+        use message_ops, only: writo, lvl_ud
         use file_ops, only: input_name
         use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X
         
@@ -72,11 +71,11 @@ contains
         integer :: prim_X, min_sec_X, max_sec_X                                 ! n_X and m_X (pol. flux) or m_X and n_X (tor. flux)
         
         ! input options
-        namelist /inputdata/ format_out, style, min_par, min_n_r_X, &
+        namelist /inputdata/ style, min_par, min_n_r_X, &
             &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
             &max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
-            &max_r_X, EV_style, n_procs_per_alpha, plot_q, n_sol_requested, &
-            &nyq_fac, rho_0, max_n_plots, use_pol_flux
+            &max_r_X, EV_style, n_procs_per_alpha, plot_jq, n_sol_requested, &
+            &nyq_fac, rho_0, max_n_plots, use_pol_flux, plot_grid
         
         ! initialize ierr
         ierr = 0
@@ -115,8 +114,7 @@ contains
                     call adapt_run
                     
                     ! adapt alpha variables if needed
-                    ierr = adapt_alpha()
-                    CHCKERR('')
+                    call adapt_n_alpha
                     
                     ! adapt n_par if needed
                     call adapt_n_par
@@ -161,15 +159,15 @@ contains
             max_it_r = 8                                                        ! maximum 5 levels of Richardson extrapolation
             tol_r = 1E-5                                                        ! wanted relative error in Richardson extrapolation
             ! runtime variables
-            format_out = 1                                                      ! NETCDF output
             style = 1                                                           ! Richardson Extrapolation with normal discretization
             n_procs_per_alpha = 1                                               ! 1 processor per field line
-            plot_q = .false.                                                    ! do not plot the q-profile with nq-m = 0
+            plot_jq = .false.                                                   ! do not plot the q-profile with nq-m = 0
+            plot_grid = .false.                                                 ! do not plot the grid
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
             max_n_plots = 4                                                     ! maximum nr. of modes for which to plot output in plot_X_vec
             ! variables concerning poloidal mode numbers m
-            min_par = -4.0_dp*pi                                                ! minimum parallel angle
-            max_par = 4.0_dp*pi                                                 ! maximum parallel angle
+            min_par = -4.0_dp                                                   ! minimum parallel angle [pi]
+            max_par = 4.0_dp                                                    ! maximum parallel angle [pi]
             nyq_fac = 5                                                         ! need at least 5 points per period for perturbation quantitites
             prim_X = 20                                                         ! main mode number of perturbation
             min_sec_X = prim_X                                                  ! min. of. secondary mode number of perturbation
@@ -214,10 +212,9 @@ contains
         ! so  the  fast-moving  functions  e^(i(k-m)) V  don't  give  the  wrong
         ! integrals in the perturbation part
         subroutine adapt_n_par
-            if (n_par.lt.nyq_fac*(max_sec_X-min_sec_X+1)*(max_par-min_par)/&
-                &(2*pi)) then
-                n_par = int(nyq_fac*(max_sec_X-min_sec_X+1)*(max_par-min_par)/&
-                    &(2*pi))
+            if (n_par.lt.nyq_fac*(max_sec_X-min_sec_X)*(max_par-min_par)/2) &
+                &then
+                n_par = int(nyq_fac*(max_sec_X-min_sec_X)*(max_par-min_par)/2)
                 call writo('WARNING: To avoid aliasing of the perturbation &
                     &integrals, n_par is increased to '//trim(i2str(n_par)))
             end if
@@ -347,48 +344,13 @@ contains
             end if
         end function adapt_m
         
-        ! checks whether max_par - min_par indeed is a multiple of 2pi, which is
-        ! a requisite for the correct functioning  of the code, as the integrals
-        ! which are to be calculated in the parallel direction have to be closed
-        ! loop intervals in the parallel direction
-        integer function adapt_alpha() result(ierr)
-            character(*), parameter :: rout_name = 'adapt_alpha'
-            
-            ! local variables
-            real(dp) :: tol = 1E-5                                              ! tolerance
-            real(dp) :: modulus
-            character(len=max_str_ln) :: err_msg                                ! error message
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! do the following checks only if calc_mesh_style = 0
-            if (calc_mesh_style.eq.0) then
-                ! check whether max_par > min_par
-                if (max_par.lt.min_par+2*pi*(1-tol)) then
-                    ierr = 1
-                    err_msg = 'max_par has to be at least min_par + 2 pi'
-                    CHCKERR(err_msg)
-                end if
-                
-                ! calculate modulus
-                modulus = mod(max_par-min_par,2*pi)
-                modulus = min(modulus,2*pi-modulus)
-                
-                ! check whether tolerance is reached
-                if (modulus/(2*pi).gt.tol) then
-                    ierr = 1
-                    err_msg = 'max_par - min_par has to be a multiple of 2 pi'
-                    CHCKERR(err_msg)
-                end if
-            end if
-            
-            ! adapt n_alpha
+        ! checks whether n_alpha is chosen high enough
+        subroutine adapt_n_alpha
             if (n_alpha.lt.1) then
                 call writo('WARNING: n_alpha has been increased to 1')
                 n_alpha = 1
             end if
-        end function adapt_alpha
+        end subroutine adapt_n_alpha
         
         ! checks whether normalization variables are chosen correctly. rho_0 has
         ! to be positive

@@ -5,7 +5,7 @@
 module metric_ops 
 #include <PB3D_macros.h>
     use num_vars, only: dp, max_deriv, max_str_ln
-    use output_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
+    use message_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
     use str_ops, only: r2str, i2str
     use eq_vars, only: grp_n_r_eq
     use utilities, only: check_deriv

@@ -7,7 +7,7 @@ module slepc_ops
 !#include <finclude/petscsys.h>
     use slepceps
     use num_vars, only: iu, dp, max_str_ln
-    use output_ops, only: lvl_ud, writo, print_ar_2, print_GP_2D, print_GP_3D
+    use message_ops, only: lvl_ud, writo, print_ar_2
     use str_ops, only: r2strt, r2str, i2str
 
     implicit none

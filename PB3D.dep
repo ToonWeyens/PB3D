@@ -8,13 +8,14 @@ PB3D.o : \
     str_ops.o \
     utilities.o \
     input_ops.o \
+    message_ops.o \
 
 test.o : \
 
 driver.o : \
     num_vars.o \
     driver_rich.o \
-    output_ops.o \
+    message_ops.o \
     str_ops.o \
 
 driver_rich.o : \
@@ -23,6 +24,7 @@ driver_rich.o : \
     file_ops.o \
     str_ops.o \
     output_ops.o \
+    message_ops.o \
     eq_vars.o \
     metric_ops.o \
     eq_ops.o \
@@ -35,7 +37,7 @@ driver_rich.o : \
 
 slepc_ops.o : \
     num_vars.o \
-    output_ops.o \
+    message_ops.o \
     str_ops.o \
     utilities.o \
     file_ops.o \
@@ -49,6 +51,7 @@ X_ops.o : \
     utilities.o \
     VMEC_vars.o \
     output_ops.o \
+    message_ops.o \
     X_vars.o \
     slepc_ops.o \
     str_ops.o \
@@ -58,6 +61,7 @@ X_ops.o : \
 X_vars.o : \
     num_vars.o \
     output_ops.o \
+    message_ops.o \
     eq_vars.o \
     metric_ops.o \
 
@@ -65,16 +69,22 @@ eq_ops.o : \
     num_vars.o \
     eq_vars.o \
     output_ops.o \
+    message_ops.o \
     metric_ops.o \
     utilities.o \
     VMEC_vars.o \
     
-output_ops.o : \
+message_ops.o : \
     num_vars.o \
     str_ops.o \
 
+output_ops.o : \
+    num_vars.o \
+    str_ops.o \
+    message_ops.o \
+
 input_ops.o : \
-    output_ops.o \
+    message_ops.o \
     str_ops.o \
     num_vars.o \
     eq_vars.o \
@@ -82,39 +92,39 @@ input_ops.o : \
     X_vars.o \
 
 fourier_ops.o : \
-    output_ops.o \
+    message_ops.o \
     num_vars.o \
 
 file_ops.o : \
     num_vars.o \
     str_ops.o \
     eq_vars.o \
-    output_ops.o \
+    message_ops.o \
     VMEC_vars.o \
 
 VMEC_vars.o : \
     num_vars.o \
     str_ops.o \
-    output_ops.o \
+    message_ops.o \
     fourier_ops.o \
     utilities.o \
 
 utilities.o : \
     num_vars.o \
-    output_ops.o \
+    message_ops.o \
     str_ops.o \
 
 eq_vars.o : \
     num_vars.o \
     str_ops.o \
-    output_ops.o \
+    message_ops.o \
     fourier_ops.o \
     VMEC_vars.o \
     utilities.o \
 
 metric_ops.o : \
     num_vars.o \
-    output_ops.o \
+    message_ops.o \
     str_ops.o \
     eq_vars.o \
     utilities.o \
@@ -122,7 +132,7 @@ metric_ops.o : \
 MPI_ops.o : \
     num_vars.o \
     str_ops.o \
-    output_ops.o \
+    message_ops.o \
     VMEC_vars.o \
     X_vars.o \
     eq_vars.o \

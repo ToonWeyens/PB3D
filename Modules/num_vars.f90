@@ -5,13 +5,13 @@ module num_vars
     implicit none
     private
     public dp, qp, style, max_str_ln, n_seq_0, max_args, max_opts, prog_name, &
-        &max_it_r, tol_r, ltest, pi, max_it_NR, tol_NR, no_guess, &
+        &max_it_r, tol_r, ltest, pi, max_it_NR, tol_NR, no_guess, no_plots, &
         &input_i, output_i, VMEC_i, min_alpha, max_alpha, n_alpha, &
         &max_deriv, mu_0, calc_mesh_style, iu, EV_style, n_procs_per_alpha, &
         &n_procs, MPI_Comm_groups, MPI_Comm_masters, glb_rank, glb_n_procs, &
         &grp_rank, grp_n_procs, grp_nr, n_groups, output_name, next_job, &
-        &next_job_win, plot_q, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
-        &nyq_fac, max_n_plots, alpha_job_nr, use_pol_flux
+        &next_job_win, plot_jq, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
+        &nyq_fac, max_n_plots, alpha_job_nr, use_pol_flux, plot_grid
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -23,7 +23,6 @@ module num_vars
     integer, parameter, dimension(3) :: max_deriv = [2,2,2]                     ! highest derivatives that are tabulated for VMEC amplitudes R, Z, L in theta,zeta,r)
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! will hold name of output file
-    logical :: plot_q                                                           ! whether to plot the q-profile with nq-m = 0
     integer :: n_sol_requested                                                  ! how many solutions requested
 
     ! MPI variables
@@ -53,6 +52,8 @@ module num_vars
     integer :: EV_style                                                         ! determines the method used for solving an EV problem
     integer :: alpha_job_nr                                                     ! which alpha job is being calculated
     logical :: use_pol_flux                                                     ! whether or not the poloidal flux is used as radial variable
+    logical :: plot_jq                                                          ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0
+    logical :: plot_grid                                                        ! whether to plot the grid in real coordinates
     
     ! considering Richardson extrapolation
     integer :: max_it_r                                                         ! number of levels for Richardson extrapolation
@@ -69,6 +70,7 @@ module num_vars
     integer :: VMEC_i                                                           ! file number of VMEC file
     integer :: output_i                                                         ! file number of output file
     integer :: max_n_plots                                                      ! max. nr. of modes for which to output a plot
+    logical :: no_plots = .false.                                               ! true if no plots should be made
     
     ! considering the various field lines for which to do the calculations
     integer :: n_alpha                                                          ! how many field lines

@@ -1,6 +1,7 @@
 ObjectFiles = \
 num_vars.o \
 MPI_ops.o \
+message_ops.o \
 str_ops.o \
 utilities.o \
 output_ops.o \

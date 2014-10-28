@@ -9,7 +9,7 @@ module driver
     use driver_rich, only: run_rich_driver
     use num_vars, only: style, max_str_ln
     use str_ops, only: i2str
-    use output_ops, only: writo, lvl_ud
+    use message_ops, only: writo, lvl_ud
     implicit none
     private
     public run_driver

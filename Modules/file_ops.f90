@@ -7,7 +7,7 @@ module file_ops
     use num_vars, only: dp, max_str_ln, max_args
     use safe_open_mod, only: safe_open
     use str_ops, only: i2str
-    use output_ops, only: lvl_ud, writo, &
+    use message_ops, only: lvl_ud, writo, &
         &lvl
     implicit none
     private
@@ -126,9 +126,8 @@ contains
     ! [MPI] Only global master
     integer function open_input() result(ierr)
         use num_vars, only: VMEC_i, input_i, ltest, glb_rank, output_name, &
-            &no_guess
+            &no_guess, no_plots
         use VMEC_vars, only: VMEC_name
-        use output_ops, only: no_plots
         
         character(*), parameter :: rout_name = 'open_input'
         
@@ -298,13 +297,12 @@ contains
     integer function open_output() result(ierr)
         use num_vars, only: output_i, n_seq_0, glb_rank, grp_nr, glb_rank, &
             &grp_rank, output_name
-        use output_ops, only: format_out, temp_output, temp_output_active, &
+        use message_ops, only: temp_output, temp_output_active, &
             &temp_output_id, temp_output_omitted
         
         character(*), parameter :: rout_name = 'open_output'
         
         ! local variables (also used in child functions)
-        character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln) :: full_output_name                           ! including the extension
         integer :: id                                                           ! counter
         
@@ -348,91 +346,9 @@ contains
             ! deallocate temporary output
             deallocate(temp_output)
             
-            !! select output format
-            !select case (format_out)
-                !case (1)                                                        ! NETCDF
-                    !if (glb_rank.eq.0) call writo('Output format chosen: &
-                        !&NETCDF')
-                    !ierr = open_NETCDF()
-                    !CHCKERR('')
-                !case (2)                                                        ! matlab
-                    !if (glb_rank.eq.0) call writo('Output format chosen: &
-                        !&matlab')
-                    !ierr = open_matlab()
-                    !CHCKERR('')
-                !case (3)                                                        ! DISLIN
-                    !if (glb_rank.eq.0) call writo('Output format chosen: &
-                        !&DISLIN')
-                    !! no need to do anything
-                !case (4)                                                        ! GNUplot
-                    !if (glb_rank.eq.0) call writo('Output format chosen: &
-                        !&GNUplot')
-                    !ierr = open_gnuplot()
-                    !CHCKERR('')
-                !case default
-                    !if (glb_rank.eq.0) call writo('WARNING: output format "'&
-                        !&// trim(i2str(format_out)) // &
-                        !&'" is not valid. Standard output chosen')
-                    !ierr = open_NETCDF()
-                    !CHCKERR('')
-            !end select
-            !CHCKERR('')
             call lvl_ud(-1)
             if (glb_rank.eq.0) call writo('Output files opened')
         end if
-    contains
-        ! Open the NETCDF file
-        integer function open_NETCDF() result(ierr)
-            character(*), parameter :: rout_name = 'open_NETCDF'
-            
-            ! initialize ierr
-            ierr = 0
-             
-            full_output_name = trim(output_name) // '.nc'
-            ierr = nf90_create(trim(full_output_name), 0, output_i)             ! 0: overwrite if exists
-            if (ierr.ne.0) then
-                err_msg = 'Cannot open NETCDF output file'
-                CHCKERR(err_msg)
-            else
-                if (glb_rank.eq.0) call writo('NETCDF output file "'//&
-                    &trim(full_output_name) //'" opened at number '//&
-                    &trim(i2str(output_i)))
-            end if
-        end function open_NETCDF
-            
-        ! Open a .m file
-        integer function open_matlab() result(ierr)
-            character(*), parameter :: rout_name = 'open_matlab'
-            
-            ! initialize ierr
-            ierr = 0
-            
-            output_i = n_seq_0                                                  ! start at the number indicated by n_seq_0
-            full_output_name = trim(output_name) // '.m'
-            call safe_open(output_i,ierr,full_output_name,'replace',&
-                &'formatted',delim_in='none')
-            CHCKERR('Cannot open matlab output file')
-            if (glb_rank.eq.0) call writo('matlab output file "'//&
-                &trim(full_output_name)//'" opened at number '//&
-                &trim(i2str(output_i)))
-        end function open_matlab
-        
-        ! Open a .dat file
-        integer function open_gnuplot() result(ierr)
-            character(*), parameter :: rout_name = 'open_gnuplot'
-            
-            ! initialize ierr
-            ierr = 0
-            
-            output_i = n_seq_0                                                  ! start at the number indicated by n_seq_0
-            full_output_name = trim(output_name) // '.dat'
-            call safe_open(output_i,ierr,full_output_name,'replace',&
-                &'formatted',delim_in='none')
-            CHCKERR('Cannot open GNUplot output file')
-            if (glb_rank.eq.0) call writo('GNUplot output file "'//&
-                &trim(full_output_name)//'" opened at number '//&
-                &trim(i2str(output_i)))
-        end function open_gnuplot
     end function open_output
     
     ! closes the output file

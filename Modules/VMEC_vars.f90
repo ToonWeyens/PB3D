@@ -6,7 +6,7 @@ module VMEC_vars
     use num_vars, only: &
         &dp, max_str_ln, pi
     use str_ops, only: r2str, i2str
-    use output_ops, only: lvl_ud, writo, print_ar_1, print_ar_2, print_GP_2D
+    use message_ops, only: lvl_ud, writo, print_ar_1, print_ar_2
     use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
         &lasym, VMEC_version => version_, lfreeb, &                             ! stellerator symmetry, version number, free boundary or not
         &n_r_eq => ns, mpol, ntor, xn, xm, mnmax, nfp, &                        ! mpol, ntor = # modes

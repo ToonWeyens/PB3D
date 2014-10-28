@@ -4,7 +4,7 @@
 !------------------------------------------------------------------------------!
 module fourier_ops
 #include <PB3D_macros.h>
-    use output_ops, only: writo, print_ar_1, print_ar_2
+    use message_ops, only: writo, print_ar_1, print_ar_2
     use num_vars, only: dp, max_str_ln
     use str_ops, only: i2str
 

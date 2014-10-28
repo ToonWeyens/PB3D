@@ -5,7 +5,8 @@
 module X_ops
 #include <PB3D_macros.h>
     use num_vars, only: dp, iu, max_str_ln, pi
-    use output_ops, only: lvl_ud, writo, print_ar_2, print_GP_2D, print_GP_3D
+    use message_ops, only: lvl_ud, writo, print_ar_2
+    use output_ops, only: print_GP_2D, print_GP_3D
     use str_ops, only: i2str, r2strt
 
     implicit none
@@ -134,7 +135,7 @@ contains
     integer function plot_X_vec(X_vec,X_val,X_id,par_range_F) result(ierr)
         use num_vars, only: grp_rank, min_r_X, max_r_X, max_n_plots, &
             &grp_n_procs, use_pol_flux
-        use output_ops, only: draw_GP, draw_GP_animated
+        use output_ops, only: draw_GP, draw_GP_animated, merge_GP
         use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X, grp_min_r_X
         use VMEC_vars, only: n_r_eq, VMEC_use_pol_flux
         use MPI_ops, only: get_ser_X_vec, get_ghost_X_vec
@@ -349,7 +350,7 @@ contains
                 plot_title = 'EV '//trim(i2str(X_id))//&
                     &' - mode '//trim(i2str(ld))//' of '//trim(i2str(size_X))
                 file_name = 'mode_'//trim(i2str(X_id))//'_'//&
-                    &trim(i2str(ld))//'_'//trim(i2str(grp_rank))
+                    &trim(i2str(ld))//'_'//trim(i2str(grp_rank))//'.dat'
                 if (present(par_range_F)) then
                     call print_GP_3D(trim(plot_title),trim(file_name),&
                         &z_plot(:,:,ld,:),y=y_plot(:,:,ld,:),&
@@ -365,8 +366,8 @@ contains
                     ! set up file names in array
                     allocate(file_names(grp_n_procs))
                     do id = 1,grp_n_procs
-                        file_names(id) = 'mode_'//trim(i2str(X_id))//&
-                            &'_'//trim(i2str(ld))//'_'//trim(i2str(id-1))
+                        file_names(id) = 'mode_'//trim(i2str(X_id))//'_'//&
+                            &trim(i2str(ld))//'_'//trim(i2str(id-1)//'.dat')
                     end do
                     
                     ! draw animation
@@ -389,29 +390,32 @@ contains
         ! 4. do the same for the global mode
         ! set plot_title and file name and write data
         plot_title = 'EV '//trim(i2str(X_id))//' - global mode'
-        file_name = 'global_mode_'//trim(i2str(X_id))//'_'//&
-            &trim(i2str(grp_rank))
+        file_name = 'global_mode_'//trim(i2str(X_id))//'.dat'
         if (present(par_range_F)) then
-            call print_GP_3D(trim(plot_title),trim(file_name),&
+            call print_GP_3D(trim(plot_title),trim(file_name)//&
+                &'_'//trim(i2str(grp_rank)),&
                 &z_magn_plot(:,:,:),y=y_plot(:,:,1,:),&
                 &x=x_plot(:,:,1,:),draw=.false.)
         else
-            call print_GP_2D(trim(plot_title),trim(file_name),&
+            call print_GP_2D(trim(plot_title),trim(file_name)//&
+                &'_'//trim(i2str(grp_rank)),&
                 &z_magn_plot(:,1,:),x=x_plot(:,1,1,:),&
                 &draw=.false.)
         end if
         
         ! plot by group master
         if (grp_rank.eq.0) then
-            ! set up file names in array
+            ! set up file names in file
             allocate(file_names(grp_n_procs))
             do id = 1,grp_n_procs
-                file_names(id) = 'global_mode_'//trim(i2str(X_id))&
-                    &//'_'//trim(i2str(id-1))
+                file_names(id) = trim(file_name)//'_'//trim(i2str(id-1))
             end do
             
+            ! merge files
+            call merge_GP(file_names,file_name,delete=.true.)
+            
             ! draw animation
-            call draw_GP_animated(trim(plot_title),file_names,n_n_t*n_t,&
+            call draw_GP_animated(trim(plot_title),file_name,n_n_t*n_t,&
                 &.false.)
             
             ! deallocate

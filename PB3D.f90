@@ -33,7 +33,7 @@ program PB3D
     use num_vars, only: ltest
 #endif
     use str_ops, only: r2str, i2str
-    use output_ops, only: init_output_ops, lvl_ud, writo, init_time, &
+    use message_ops, only: init_message_ops, lvl_ud, writo, init_time, &
         &start_time, passed_time, print_hello, print_goodbye
     use VMEC_vars, only: read_VMEC
     use driver, only: run_driver
@@ -55,8 +55,8 @@ program PB3D
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
     call print_hello
-    call init_output_ops                                                        ! initialize output operations
-    call init_file_ops                                                          ! initialize output operations
+    call init_message_ops                                                       ! initialize message operations
+    call init_file_ops                                                          ! initialize file operations
     call init_utilities                                                         ! initialize utilities
     call init_time                                                              ! initialize time
  

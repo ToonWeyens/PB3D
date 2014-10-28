@@ -6,7 +6,8 @@
 module eq_vars
 #include <PB3D_macros.h>
     use num_vars, only: dp, pi, max_str_ln
-    use output_ops, only: writo, lvl_ud, print_ar_2, print_ar_1,  print_GP_2D
+    use message_ops, only: writo, lvl_ud, print_ar_2, print_ar_1
+    use output_ops, only: print_GP_3D, draw_GP, draw_GP_animated
     use str_ops, only: r2strt, i2str, r2str
 
     implicit none
@@ -41,7 +42,7 @@ module eq_vars
     real(dp), allocatable, target :: flux_p_FD(:,:), flux_t_FD(:,:)             ! pol. and tor. flux, and norm. Deriv. with values and Derivs. in flux coords.
     real(dp), allocatable :: flux_p_V_full(:,:), flux_t_V_full(:,:)             ! pol. flux, tor. flux, and norm. Deriv. values and Derivs. in VMEC coords.
     real(dp) :: max_flux, max_flux_VMEC                                         ! max. flux (pol. or tor.) (min.flux is trivially equal to 0)
-    real(dp) :: min_par, max_par                                                ! min. and max. of parallel coordinate
+    real(dp) :: min_par, max_par                                                ! min. and max. of parallel coordinate [pi]
     real(dp) :: R_0, A_0, pres_0, B_0, psi_p_0, rho_0                           ! normalization constants for nondimensionalization
     integer :: n_par, grp_n_r_eq                                                ! nr. of parallel and normal points in this process in alpha group
     integer :: grp_min_r_eq, grp_max_r_eq                                       ! min. and max. r range of this process in alpha group
@@ -384,7 +385,8 @@ contains
                 call writo('Defining grid with theta_V = '//&
                     &trim(r2strt(theta_V(1,1)))//&
                     &' and zeta_V equidistant from '//&
-                    &trim(r2strt(min_par))//' to '//trim(r2strt(max_par)))
+                    &trim(r2strt(min_par))//' pi to '//trim(r2strt(max_par))//&
+                    &' pi')
             ! grid with constant zeta_V, equidistant theta_V
             case (2)
                 zeta_V = alpha
@@ -395,7 +397,8 @@ contains
                 call writo('Defining grid with zeta_V = '//&
                     &trim(r2strt(zeta_V(1,1)))//&
                     &' and theta_V equidistant from '//&
-                    &trim(r2strt(min_par))//' to '//trim(r2strt(max_par)))
+                    &trim(r2strt(min_par))//' pi to '//trim(r2strt(max_par))//&
+                    &' pi')
             ! grid style error
             case default
                 err_msg = 'No style is associated with '&
@@ -435,12 +438,13 @@ contains
             allocate(work(n_r_eq))
             
             do id = 1,n_par
+                !write(*,*) 'calculating ', id, '/', n_par
                 var_in = theta_V(id,:)
                 ierr = calc_ang_B(work,.false.,alpha,var_in)
                 var_calc(id,:) =  work
                 CHCKERR('')
             end do
-            var_diff = zeta_V(:,:) - var_calc
+            var_diff = zeta_V - var_calc
             
             ! check the difference
             if (maxval(abs(var_diff)).gt.tol_NR*100) then                       ! difference too large
@@ -508,7 +512,7 @@ contains
         
         ! input and output
         real(dp), intent(inout) :: eqd_mesh(:)                                  ! output
-        real(dp), intent(in) :: min_ang, max_ang                                ! min. and max. of angles
+        real(dp), intent(in) :: min_ang, max_ang                                ! min. and max. of angles [pi]
         integer, intent(in) :: n_ang                                            ! nr. of points
         
         ! local variables
@@ -539,9 +543,9 @@ contains
         ! There are (n_ang-1) pieces in the total interval but the last one 
         ! is not needed as the functions are all periodic
         
-        delta_ang = (max_ang-min_ang)/(n_ang)
+        delta_ang = (max_ang-min_ang)/(n_ang) * pi
         
-        eqd_mesh(1) = min_ang
+        eqd_mesh(1) = min_ang*pi
         do id = 2,n_ang
             eqd_mesh(id) = eqd_mesh(id-1) + delta_ang
         end do
