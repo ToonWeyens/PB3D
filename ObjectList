@@ -7,6 +7,8 @@ utilities.o \
 output_ops.o \
 input_ops.o \
 VMEC_vars.o \
+HDF5_vars.o \
+HEL_vars.o \
 eq_vars.o \
 metric_ops.o \
 file_ops.o \
@@ -15,6 +17,7 @@ X_vars.o \
 fourier_ops.o \
 eq_ops.o \
 driver_rich.o \
+slepc_vars.o \
 slepc_ops.o \
 driver.o \
 test.o \

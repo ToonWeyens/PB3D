@@ -3,25 +3,26 @@
 !   well as in output files                                                    !
 !------------------------------------------------------------------------------!
 module output_ops
+#include <PB3D_macros.h>
     use str_ops, only: i2str, r2strt, r2str
-    use num_vars, only: dp, max_str_ln, no_plots
-    use message_ops, only: writo, stop_time, start_time
+    use num_vars, only: dp, max_str_ln, no_plots, iu, plot_dir, data_dir, &
+        &script_dir, xmf_fmt
+    use message_ops, only: writo, stop_time, start_time, lvl_ud
+    
     implicit none
     private
-    public print_GP_2D, print_GP_3D, draw_GP, draw_GP_animated, merge_GP
+    public print_GP_2D, print_GP_3D, draw_GP, draw_GP_animated, merge_GP, &
+        &print_HDF5_3D
     
-    ! global variables
-    character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
-    character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots
-    character(len=4) :: data_dir = 'Data'                                       ! directory where to save data for plots
-    integer :: plot_i_current = 0                                               ! current plot handle
-
     ! interfaces
     interface print_GP_2D
         module procedure print_GP_2D_ind, print_GP_2D_arr
     end interface
     interface print_GP_3D
         module procedure print_GP_3D_ind, print_GP_3D_arr
+    end interface
+    interface print_HDF5_3D
+        module procedure print_HDF5_3D_ind, print_HDF5_3D_arr
     end interface
     interface draw_GP
         module procedure draw_GP_ind, draw_GP_arr
@@ -94,7 +95,6 @@ contains
             if (size(x,1).ne.size(y,1) .or. size(x,2).ne.size(y,2)) then
                 call writo('WARNING: In print_GP_2D, the size of x and y has &
                     &to be the same... Skipping plot')
-                return
             end if
         end if
         
@@ -582,8 +582,8 @@ contains
                 end if
             else
                 ! initialize ranges
-                ranges_loc(:,1) = 1.E14_dp                                      ! minimum value
-                ranges_loc(:,2) = -1.E14_dp                                     ! maximum value
+                ranges_loc(:,1) = huge(1._dp)                                   ! minimum value
+                ranges_loc(:,2) = -huge(1._dp)                                  ! maximum value
                 
                 do ifl = 1,nfl
                     call get_ranges(file_names(ifl),ranges_loc)
@@ -810,4 +810,316 @@ contains
             end if
         end if
     end subroutine
+
+    ! Prints  variables "vars" with names  "var_names" in a HDF5  file with name
+    ! "file_name" and accompanying XDMF file.
+    ! Optionally,  the (curvilinear) grid can  be provided through "X",  "Y" and
+    ! "Z".
+    ! Additionally, the total grid size has  to be provided in "tot_dim", and if
+    ! the routine  is called in  parallel, the  group dimensions and  offsets as
+    ! well, in "grp_dim" and "grp_offset". 
+    ! Optionally,  the  dimension which  corresponds  to  time can  be  provided
+    ! (default: 4)  in "time_id"  (ignored if outside  range (0..1)).  Also, the
+    ! time series  can be made into  an animation with "anim"  and a description
+    ! can be provided.
+    subroutine print_HDF5_3D_arr(var_names,file_name,vars,tot_dim,grp_dim,&
+        &grp_offset,X,Y,Z,time_id,anim,description)                             ! array version
+        use HDF5_vars, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
+            &print_HDF5_geom, print_HDF5_3D_data_item, print_HDF5_att, &
+            &print_HDF5_grid, close_HDF5_file, &
+            &XML_str_type, HDF5_file_type
+        
+        ! input / output
+        character(len=*), intent(in) :: var_names(:)                            ! names of variables to be plot
+        character(len=*), intent(in) :: file_name                               ! file name
+        real(dp), intent(in), target :: vars(:,:,:,:)                           ! variables to plot
+        integer, intent(in) :: tot_dim(4)                                       ! total dimensions of the arrays
+        integer, intent(in), optional :: grp_dim(4)                             ! group dimensions of the arrays
+        integer, intent(in), optional :: grp_offset(4)                          ! offset of group dimensions
+        real(dp), intent(in), target, optional :: X(:,:,:,:)                    ! curvlinear grid X points
+        real(dp), intent(in), target, optional :: Y(:,:,:,:)                    ! curvlinear grid Y points
+        real(dp), intent(in), target, optional :: Z(:,:,:,:)                    ! curvlinear grid Z points
+        integer, intent(in), optional :: time_id                                ! index of time dimension
+        logical, intent(in), optional :: anim                                   ! .true. if animation
+        character(len=*), intent(in), optional :: description                   ! description
+        
+        ! local variables
+        integer :: istat                                                        ! status
+        integer :: time_id_loc                                                  ! local copy of time_id
+        integer :: anim_loc                                                     ! 2 if animation, 3 if not
+        type(HDF5_file_type) :: file_info                                       ! file info
+        integer :: n_time                                                       ! nr. of points in time
+        integer :: id, jd                                                       ! counter
+        integer :: tot_dim_3D(3)                                                ! tot_dim except time
+        integer :: grp_dim_3D(3)                                                ! grp_dim except time
+        integer :: grp_offset_3D(3)                                             ! grp_offset except time
+        type(XML_str_type) :: time_col_grid                                     ! grid with time collection
+        type(XML_str_type), allocatable :: grids(:)                             ! the grids in the time collection
+        type(XML_str_type) :: top                                               ! topology
+        type(XML_str_type) :: XYZ(3)                                            ! data items for geometry
+        type(XML_str_type) :: geom                                              ! geometry
+        type(XML_str_type) :: att(1)                                            ! attribute
+        logical :: time_mask(4) = .false.                                       ! to select out the time dimension
+        real(dp), pointer :: var_ptr(:,:,:)                                     ! pointer to vars, X, Y or z
+        
+        
+        ! set up local time_id and anim
+        if (present(time_id)) then
+            time_id_loc = time_id
+        else
+            time_id_loc = 4                                                     ! default time dimension: last index
+        end if
+        anim_loc = 3                                                            ! default spatial collection (no animation)
+        if (present(anim)) then
+            if(anim) anim_loc = 2                                               ! time collection
+        end if
+        
+        ! set real dimensions
+        time_mask(time_id_loc) = .true.
+        tot_dim_3D = pack(tot_dim,.not.time_mask)
+        if (present(grp_dim)) then
+            grp_dim_3D = pack(grp_dim,.not.time_mask)
+        else
+            grp_dim_3D = tot_dim_3D
+        end if
+        if (present(grp_offset)) then
+            grp_offset_3D = pack(grp_offset,.not.time_mask)
+        else
+            grp_offset_3D = 0
+        end if
+        
+        ! set up nr. of plots
+        n_time = size(vars,time_id_loc)
+        
+        ! open HDF5 file
+        istat = open_HDF5_file(file_info,file_name,description)
+        CHCKSTT
+        
+        ! create grid for time collection
+        allocate(grids(n_time))
+        
+        ! loop over all points in time
+        do id = 1,n_time
+            ! print topology
+            call print_HDF5_top(top,2,tot_dim_3D)
+            
+            ! print data item for X
+            if (present(X)) then
+                if (time_id_loc.eq.1) then
+                    var_ptr => X(id,:,:,:)
+                else if (time_id_loc.eq.2) then
+                    var_ptr => X(:,id,:,:)
+                else if (time_id_loc.eq.3) then
+                    var_ptr => X(:,:,id,:)
+                else if (time_id_loc.eq.4) then
+                    var_ptr => X(:,:,:,id)
+                else
+                    istat = 1
+                    CHCKSTT
+                end if
+            else
+                allocate(var_ptr(grp_dim_3D(1),grp_dim_3D(2),grp_dim_3D(3)))
+                do jd = 1,grp_dim_3D(1)
+                    var_ptr(jd,:,:) = jd
+                end do
+            end if
+            istat = print_HDF5_3D_data_item(XYZ(1),file_info,&
+                &'X_'//trim(i2str(id)),var_ptr,tot_dim_3D,grp_dim_3D,&
+                &grp_offset_3D)
+            CHCKSTT
+            
+            ! print data item for Y
+            if (present(Y)) then
+                if (time_id_loc.eq.1) then
+                    var_ptr => Y(id,:,:,:)
+                else if (time_id_loc.eq.2) then
+                    var_ptr => Y(:,id,:,:)
+                else if (time_id_loc.eq.3) then
+                    var_ptr => Y(:,:,id,:)
+                else if (time_id_loc.eq.4) then
+                    var_ptr => Y(:,:,:,id)
+                else
+                    istat = 1
+                    CHCKSTT
+                end if
+            else
+                allocate(var_ptr(grp_dim_3D(1),grp_dim_3D(2),grp_dim_3D(3)))
+                do jd = 1,grp_dim_3D(2)
+                    var_ptr(:,jd,:) = jd
+                end do
+            end if
+            istat = print_HDF5_3D_data_item(XYZ(2),file_info,&
+                &'Y_'//trim(i2str(id)),var_ptr,tot_dim_3D,grp_dim_3D,&
+                &grp_offset_3D)
+            CHCKSTT
+            
+            ! print data item for Z
+            if (present(Z)) then
+                if (time_id_loc.eq.1) then
+                    var_ptr => Z(id,:,:,:)
+                else if (time_id_loc.eq.2) then
+                    var_ptr => Z(:,id,:,:)
+                else if (time_id_loc.eq.3) then
+                    var_ptr => Z(:,:,id,:)
+                else if (time_id_loc.eq.4) then
+                    var_ptr => Z(:,:,:,id)
+                else
+                    istat = 1
+                    CHCKSTT
+                end if
+            else
+                allocate(var_ptr(grp_dim_3D(1),grp_dim_3D(2),grp_dim_3D(3)))
+                do jd = 1,grp_dim_3D(3)
+                    var_ptr(:,:,jd) = jd
+                end do
+            end if
+            istat = print_HDF5_3D_data_item(XYZ(3),file_info,&
+                &'Z_'//trim(i2str(id)),var_ptr,tot_dim_3D,grp_dim_3D,&
+                &grp_offset_3D)
+            CHCKSTT
+            
+            ! print geometry with X, Y and Z data item
+            call print_HDF5_geom(geom,2,XYZ,.true.)
+            
+            ! print data item for plot variable
+            if (time_id_loc.eq.1) then
+                var_ptr => vars(id,:,:,:)
+            else if (time_id_loc.eq.2) then
+                var_ptr => vars(:,id,:,:)
+            else if (time_id_loc.eq.3) then
+                var_ptr => vars(:,:,id,:)
+            else if (time_id_loc.eq.4) then
+                var_ptr => vars(:,:,:,id)
+            else
+                istat = 1
+                CHCKSTT
+            end if
+            istat = print_HDF5_3D_data_item(XYZ(1),file_info,'var_'//&
+                &trim(i2str(id)),var_ptr,tot_dim_3D,grp_dim_3D,grp_offset_3D)   ! reuse XYZ(1)
+            CHCKSTT
+            
+            ! print attribute with this data item
+            call print_HDF5_att(att(1),XYZ(1),'var_'//trim(i2str(id)),1,.true.)
+            
+            ! create a grid with the topology, the geometry and the attribute
+            istat = print_HDF5_grid(grids(id),var_names(id),1,&
+                &grid_time=id*1._dp,grid_top=top,grid_geom=geom,&
+                &grid_atts=att,reset=.true.)
+            CHCKSTT
+        end do
+        
+        ! create grid collection from individual grids and reset them
+        istat = print_HDF5_grid(time_col_grid,'time collection',anim_loc,&
+            &grid_grids=grids,reset=.true.)
+        CHCKSTT
+        
+        ! add collection grid to HDF5 file and reset it
+        call add_HDF5_item(file_info,time_col_grid,reset=.true.)
+        
+        ! close HDF5 file
+        istat = close_HDF5_file(file_info)
+        CHCKSTT
+    end subroutine print_HDF5_3D_arr
+    subroutine print_HDF5_3D_ind(var_name,file_name,var,tot_dim,grp_dim,&
+        &grp_offset,X,Y,Z,description)                                          ! individual version
+        use HDF5_vars, only: open_HDF5_file, add_HDF5_item, &
+            &XML_str_type, HDF5_file_type, print_HDF5_top, print_HDF5_geom, &
+            &print_HDF5_3D_data_item, print_HDF5_att, print_HDF5_grid, &
+            &close_HDF5_file
+        
+        ! input / output
+        character(len=*), intent(in) :: var_name                                ! name of variable to be plot
+        character(len=*), intent(in) :: file_name                               ! file name
+        real(dp), intent(in), target :: var(:,:,:)                              ! variable to plot
+        integer, intent(in) :: tot_dim(3)                                       ! total dimensions of the arrays
+        integer, intent(in), optional :: grp_dim(3)                             ! group dimensions of the arrays
+        integer, intent(in), optional :: grp_offset(3)                          ! offset of group dimensions
+        real(dp), intent(in), target, optional :: X(:,:,:)                      ! curvlinear grid X points
+        real(dp), intent(in), target, optional :: Y(:,:,:)                      ! curvlinear grid Y points
+        real(dp), intent(in), target, optional :: Z(:,:,:)                      ! curvlinear grid Z points
+        character(len=*), intent(in), optional :: description                   ! description
+        
+        ! local variables
+        integer :: istat                                                        ! status
+        type(HDF5_file_type) :: file_info                                       ! file info
+        integer :: id                                                           ! counter
+        type(XML_str_type) :: grid                                              ! grid
+        type(XML_str_type) :: top                                               ! topology
+        type(XML_str_type) :: XYZ(3)                                            ! data items for geometry
+        type(XML_str_type) :: geom                                              ! geometry
+        type(XML_str_type) :: att(1)                                            ! attribute
+        real(dp), pointer :: var_ptr(:,:,:)                                     ! pointer to vars, X, Y or z
+        
+        ! set up file info
+        file_info%name = file_name
+        
+        ! open HDF5 file
+        istat = open_HDF5_file(file_info,description)
+        CHCKSTT
+        
+        ! print topology
+        call print_HDF5_top(top,2,tot_dim)
+            
+        ! print data item for X
+        if (present(X)) then
+            var_ptr => X
+        else
+            allocate(var_ptr(size(var,1),size(var,2),size(var,3)))
+            do id = 1,size(var,1)
+                var_ptr(id,:,:) = id
+            end do
+        end if
+        istat = print_HDF5_3D_data_item(XYZ(1),file_info,'X',var_ptr,&
+            &tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
+        CHCKSTT
+        
+        ! print data item for Y
+        if (present(Y)) then
+            var_ptr => Y
+        else
+            allocate(var_ptr(size(var,1),size(var,2),size(var,3)))
+            do id = 1,size(var,1)
+                var_ptr(:,id,:) = id
+            end do
+        end if
+        istat = print_HDF5_3D_data_item(XYZ(2),file_info,'Y',var_ptr,&
+            &tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
+        CHCKSTT
+        
+        ! print data item for Z
+        if (present(Z)) then
+            var_ptr => Z
+        else
+            allocate(var_ptr(size(var,1),size(var,2),size(var,3)))
+            do id = 1,size(var,1)
+                var_ptr(:,:,id) = id
+            end do
+        end if
+        istat = print_HDF5_3D_data_item(XYZ(3),file_info,'Z',var_ptr,&
+            &tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
+        CHCKSTT
+        
+        ! print geometry with X, Y and Z data item
+        call print_HDF5_geom(geom,2,XYZ,.true.)
+        
+        ! print data item for plot variable
+        istat = print_HDF5_3D_data_item(XYZ(1),file_info,var_name,&
+            &var,tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)             ! reuse XYZ(1)
+        CHCKSTT
+        
+        ! print attribute with this data item
+        call print_HDF5_att(att(1),XYZ(1),var_name,1,.true.)
+        
+        ! create a grid with the topology, the geometry and the attribute
+        istat = print_HDF5_grid(grid,var_name,1,grid_top=top,&
+            &grid_geom=geom,grid_atts=att,reset=.true.)
+        CHCKSTT
+        
+        ! add grid to HDF5 file and reset it
+        call add_HDF5_item(file_info,grid,reset=.true.)
+        
+        ! close HDF5 file
+        istat = close_HDF5_file(file_info)
+        CHCKSTT
+    end subroutine print_HDF5_3D_ind
 end module output_ops

@@ -35,6 +35,7 @@ program PB3D
     use str_ops, only: r2str, i2str
     use message_ops, only: init_message_ops, lvl_ud, writo, init_time, &
         &start_time, passed_time, print_hello, print_goodbye
+    use HDF5_vars, only: init_HDF5
     use VMEC_vars, only: read_VMEC
     use driver, only: run_driver
     use file_ops, only: open_input, open_output, search_file, parse_args, &
@@ -59,6 +60,7 @@ program PB3D
     call init_file_ops                                                          ! initialize file operations
     call init_utilities                                                         ! initialize utilities
     call init_time                                                              ! initialize time
+    call init_HDF5                                                              ! initialize HDF5
  
     !-------------------------------------------------------
     !   Read the user-provided input file and the VMEC output

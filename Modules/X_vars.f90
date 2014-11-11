@@ -442,7 +442,7 @@ contains
     
     ! calculate rho from user input
     subroutine calc_rho
-        use eq_vars, only: pres, grp_n_r_eq, grp_min_r_eq
+        use eq_vars, only: pres_V, grp_n_r_eq, grp_min_r_eq
         use VMEC_vars, only: gam
         
         ! local variables
@@ -457,8 +457,8 @@ contains
         
         ! loop over all normal points
         do kd = 1,grp_n_r_eq
-            if (pres(kd,0).gt.0) then
-                rho(kd) = pres(kd,0)**expon
+            if (pres_V(kd,0).gt.0) then
+                rho(kd) = pres_V(kd,0)**expon
             else
                 call writo('WARNING: pressure was negative at point '//&
                     &trim(i2str(grp_min_r_eq+kd))//'/'//&
@@ -473,7 +473,7 @@ contains
     ! (see [ADD REF] for details)
     subroutine calc_PV
         use metric_ops, only: g_FD, h_FD, jac_FD
-        use eq_vars, only: n_par, q_saf_FD, rot_t_FD, grp_n_r_eq, A_0
+        use eq_vars, only: n_par, q_saf_FD, rot_t_FD, grp_n_r_eq
         use num_vars, only: use_pol_flux
         
         ! local variables
@@ -504,7 +504,7 @@ contains
         ! set up fac_n and fac_m
         allocate(fac_n(grp_n_r_eq),fac_m(grp_n_r_eq))
         if (use_pol_flux) then
-            fac_n = q_saf_FD(:,0) * A_0                                         ! n_0 = 1/A_0
+            fac_n = q_saf_FD(:,0)
             fac_m = 1.0_dp
         else
             fac_n = 1.0_dp
@@ -637,7 +637,7 @@ contains
         use num_vars, only: use_pol_flux
         use metric_ops, only: g_FD, h_FD, jac_FD
         use eq_vars, only: rot_t_FD, q_saf_FD, ang_par_F, n_par, p => pres_FD, &
-            &grp_n_r_eq, A_0
+            &grp_n_r_eq
         
         ! local variables
         integer :: jd, kd                                                       ! counters
@@ -667,9 +667,9 @@ contains
         allocate(djq(grp_n_r_eq),fac_n(grp_n_r_eq),fac_m(grp_n_r_eq),mn(size_X))
         if (use_pol_flux) then
             djq = q_saf_FD(:,1)
-            fac_n = q_saf_FD(:,0) * A_0                                         ! n_0 = 1/A_0
+            fac_n = q_saf_FD(:,0)
             fac_m = 1.0_dp
-            mn = n_X * A_0
+            mn = n_X
         else
             djq = -rot_t_FD(:,1)
             fac_n = 1.0_dp

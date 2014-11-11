@@ -1,1 +1,0 @@
-../../Simulations/w7x_stel/wout_w7x.03.00llfix_99.nc

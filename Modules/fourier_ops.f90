@@ -10,13 +10,13 @@ module fourier_ops
 
     implicit none
     private
-    public repack, calc_trigon_factors, fourier2real
+    public calc_trigon_factors, fourier2real
 
 contains
     ! Calculate the trigoniometric cosine and  sine factors on a mesh (0:mpol-1,
     ! -ntor:ntor) at given arrays 2D for theta_V and zeta_V
-    ! Use -zeta  instead of zeta since  zeta is tabulated as  a flux coordinate,
-    ! while here the VMEC coordinate is needed
+    ! Note:  use  -zeta instead  of  zeta  since zeta  is  tabulated  as a  flux
+    ! coordinate, while here the VMEC coordinate is needed
     integer function calc_trigon_factors(theta,zeta,trigon_factors) &
         &result(ierr)
         use VMEC_vars, only: mpol, ntor, nfp
@@ -178,53 +178,4 @@ contains
             end do
         end do
     end function fourier2real
-
-    ! Repack  variables  representing the  Fourier  composition  such as  R,  Z,
-    ! lambda, ...  In VMEC these  are stored as  (1:mnmax, 1:ns) with  mnmax the
-    ! total  number of  all modes.  Here  they are  to be  stored as  (0:mpol-1,
-    ! -ntor:ntor, 1:ns), which  is valid due to the symmetry  of the modes (only
-    ! one of either theta_V  or zeta_V has to be able to  change sign because of
-    ! the (anti)-symmetry of the (co)sine.
-    ! It is  possible that the  input variable is  not allocated. In  this case,
-    ! output zeros
-    ! [MPI] only global master
-    !       (this is a precaution: only the global master should use it)
-    function repack(var_VMEC,mnmax,n_r,mpol,ntor,xm,xn)
-        use num_vars, only: glb_rank
-        
-        ! input / output
-        integer, intent(in) :: mnmax, n_r, mpol, ntor
-        real(dp), intent(in) :: xm(mnmax), xn(mnmax)
-        real(dp), allocatable :: var_VMEC(:,:)
-        real(dp) :: repack(0:mpol-1,-ntor:ntor,1:n_r)
-            
-        ! local variables
-        integer :: mode, m, n
-        
-        if (allocated(var_VMEC) .and. glb_rank.eq.0) then                       ! only global rank
-            ! check if the  values in xm and xn don't  exceed the maximum number
-            ! of poloidal and toroidal modes (xm  and xn are of length mnmax and
-            ! contain the pol/tor mode number)
-            if (maxval(xm).gt.mpol .or. maxval(abs(xn)).gt.ntor) then
-                call writo('WARNING: In repack, less modes are used than in the&
-                    & VMEC format')
-            end if
-                
-            repack = 0.0_dp
-            ! copy the VMEC modes using the PB3D format
-            do mode = 1,mnmax
-                m = nint(xm(mode))
-                n = nint(xn(mode))
-                ! if the modes don't fit, cycle
-                if (m.gt.mpol .or. abs(n).gt.ntor) then
-                    call writo('WARNING: In repack, m > mpol or n > ntor!')
-                    cycle
-                end if
-                
-                repack(m,n,:) = var_VMEC(mode,:)
-            end do
-        else
-            repack = 0.0_dp
-        end if
-    end function repack
 end module fourier_ops

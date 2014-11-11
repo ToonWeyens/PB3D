@@ -21,10 +21,10 @@ module VMEC_vars
         &gam => gamma                                                           ! gamma in adiabatic law
     implicit none
     private
-    public read_VMEC, dealloc_VMEC, &
+    public read_VMEC, dealloc_VMEC, repack, &
         &mnmax, rmnc, mpol, ntor, nfp, n_r_eq, R_c, R_s, Z_c, Z_s, L_c, L_s, &
         &presf, rmax_surf, rmin_surf, zmax_surf, iotaf, lasym, &
-        &VMEC_use_pol_flux, lfreeb, VMEC_name, phi, phi_r, VMEC_version, gam, &
+        &VMEC_use_pol_flux, lfreeb, phi, phi_r, VMEC_version, gam, &
         &B_V_sub_s_M, B_V_sub_c_M, B_V_c_H, B_V_s_H, &
         &jac_V_c_H, jac_V_s_H
 
@@ -37,17 +37,13 @@ module VMEC_vars
         &B_V_sub_c_M(:,:,:,:), B_V_sub_s_M(:,:,:,:), &                          ! Coeff. of B_i in (co)sine series (last index: r,theta,phi) (FM, HM, HM)
         &B_V_c_H(:,:,:), B_V_s_H(:,:,:), &                                      ! Coeff. of magnitude of B (HM)
         &jac_V_c_H(:,:,:), jac_V_s_H(:,:,:)                                     ! Jacobian in VMEC coordinates (HM)
-    
-    character(len=max_str_ln) :: VMEC_name                                      ! will hold name of the VMEC input file
-    
 
 contains
     ! Reads the VMEC equilibrium data
     ! [MPI] only global master
     integer function read_VMEC() result(ierr)
-        use fourier_ops, only: repack
         use utilities, only: VMEC_norm_deriv, VMEC_conv_FHM
-        use num_vars, only: max_deriv, VMEC_i, glb_rank
+        use num_vars, only: max_deriv, eq_i, glb_rank, eq_name
 #if ldebug
         use num_vars, only: ltest
 #endif
@@ -64,13 +60,14 @@ contains
         
         if (glb_rank.eq.0) then                                                 ! only global master
             call writo('Reading data from VMEC output "' &
-                &// trim(VMEC_name) // '"')
+                &// trim(eq_name) // '"')
             call lvl_ud(1)
             
             ! read VMEC output using LIBSTELL
-            call read_wout_file(VMEC_name, ierr)
+            !call read_wout_file(eq_name, ierr)                                ! DOESN'T WORK WITH VMEC .TXT OUTPUT -> use file number
+            call read_wout_file(eq_i, ierr)                                     ! read the VMEC file number
             CHCKERR('Can''t read the VMEC file')
-            close(VMEC_i)                                                       ! close the VMEC file
+            close(eq_i)                                                         ! close the VMEC file
             
             call writo('VMEC version is ' // trim(r2str(VMEC_version)))
             if (lfreeb) then
@@ -244,4 +241,53 @@ contains
         if (allocated(jac_V_c_H)) deallocate(jac_V_c_H)
         if (allocated(jac_V_s_H)) deallocate(jac_V_s_H)
     end subroutine dealloc_VMEC
+
+    ! Repack  variables  representing the  Fourier  composition  such as  R,  Z,
+    ! lambda, ...  In VMEC these  are stored as  (1:mnmax, 1:ns) with  mnmax the
+    ! total  number of  all modes.  Here  they are  to be  stored as  (0:mpol-1,
+    ! -ntor:ntor, 1:ns), which  is valid due to the symmetry  of the modes (only
+    ! one of either theta_V  or zeta_V has to be able to  change sign because of
+    ! the (anti)-symmetry of the (co)sine.
+    ! It is  possible that the  input variable is  not allocated. In  this case,
+    ! output zeros
+    ! [MPI] only global master
+    !       (this is a precaution: only the global master should use it)
+    function repack(var_VMEC,mnmax,n_r,mpol,ntor,xm,xn)
+        use num_vars, only: glb_rank
+        
+        ! input / output
+        integer, intent(in) :: mnmax, n_r, mpol, ntor
+        real(dp), intent(in) :: xm(mnmax), xn(mnmax)
+        real(dp), allocatable :: var_VMEC(:,:)
+        real(dp) :: repack(0:mpol-1,-ntor:ntor,1:n_r)
+            
+        ! local variables
+        integer :: mode, m, n
+        
+        if (allocated(var_VMEC) .and. glb_rank.eq.0) then                       ! only global rank
+            ! check if the  values in xm and xn don't  exceed the maximum number
+            ! of poloidal and toroidal modes (xm  and xn are of length mnmax and
+            ! contain the pol/tor mode number)
+            if (maxval(xm).gt.mpol .or. maxval(abs(xn)).gt.ntor) then
+                call writo('WARNING: In repack, less modes are used than in the&
+                    & VMEC format')
+            end if
+                
+            repack = 0.0_dp
+            ! copy the VMEC modes using the PB3D format
+            do mode = 1,mnmax
+                m = nint(xm(mode))
+                n = nint(xn(mode))
+                ! if the modes don't fit, cycle
+                if (m.gt.mpol .or. abs(n).gt.ntor) then
+                    call writo('WARNING: In repack, m > mpol or n > ntor!')
+                    cycle
+                end if
+                
+                repack(m,n,:) = var_VMEC(mode,:)
+            end do
+        else
+            repack = 0.0_dp
+        end if
+    end function repack
 end module VMEC_vars

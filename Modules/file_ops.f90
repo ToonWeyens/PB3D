@@ -47,9 +47,9 @@ contains
 
     ! parses the command line arguments
     ! The input arguments are saved in command_arg
-    ! [MPI] only global master
+    ! [MPI] all processes
     integer function parse_args() result(ierr)
-        use num_vars, only: prog_name, glb_rank
+        use num_vars, only: prog_name
         
         character(*), parameter :: rout_name = 'parse_args'
         
@@ -61,98 +61,85 @@ contains
         
         ierr = 0                                                                ! no errors (yet)
         
-        if (glb_rank.eq.0) then                                                 ! following only for master process
-            ! Messages for the user
-            open_error(1) = ""                                                  ! incorrect usage
-            open_error(2) = "Usage: " // trim(prog_name) // &
-                &" USER_INPUT VMEC_INPUT [OPTIONS]"
-            open_error(3) = "Try './" // trim(prog_name) // " --help' or &
-                &'./" // trim(prog_name) // " -h' for more &
-                &information."
-            open_help(1) = open_error(2)                                        ! help with usage
-            open_help(2) = ""
-            open_help(3) = "    USER_INPUT       input provided by the user"
-            open_help(4) = "    VMEC_INPUT       output from VMEC, in NETCDF &
-                &format"
-            open_help(5) = "    [OPTIONS]        (optional) command-line &
-                &options"
-            open_help(6) = ""
-            open_help(7) = "(both can be entered in shortened form)"
-            open_warning(1) = "WARNING: More than " // trim(i2str(max_args)) &
-                &// " arguments given."    ! too many input arguments
-            open_warning(2) = " -> extra arguments ignored"
-            
-            call writo("Parsing command line arguments")
-            
-            ! Find number of arguments and first argument
-            command_arg = ""                                                    ! has to be initialized to function correctly
-            call getcarg(1, command_arg(1), numargs)
-            
-            ! If help with usage requested
-            if (command_arg(1).eq.'-h' .or. command_arg(1).eq.'--help') then
-                do id = 1,size(open_help)
-                    call writo(open_help(id))
-                end do
-                ierr = 66
-                CHCKERR('')
-            endif
-            
-            ! If not enough arguments
-            if (numargs.lt.2) then
-                do id = 1,size(open_error)
-                    call writo(open_error(id))
-                end do
-                ierr = 66
-                CHCKERR('')
-            end if
-            
-            ! Get the rest of the arguments
-            if (numargs.gt.max_args) then                                       ! ignore extra input arguments
-                do id = 1,size(open_warning)
-                    call writo(open_warning(id))
-                end do
-                numargs=max_args
-            end if
-            
-            do iseq = 2, numargs
-                call getcarg(iseq, command_arg(iseq), numargs)
+        ! Messages for the user
+        open_error(1) = ""                                                      ! incorrect usage
+        open_error(2) = "Usage: " // trim(prog_name) // &
+            &" USER_INPUT EQUILIBRIUM_INPUT [OPTIONS]"
+        open_error(3) = "Try './" // trim(prog_name) // " --help' or &
+            &'./" // trim(prog_name) // " -h' for more &
+            &information."
+        open_help(1) = open_error(2)                                            ! help with usage
+        open_help(2) = ""
+        open_help(3) = "    USER_INPUT          input provided by the user"
+        open_help(4) = "    EQUILIBRIUM_INPUT   output from VMEC or HELENA,&
+            & in .txt format"
+        open_help(5) = "    [OPTIONS]           (optional) command-line &
+            &options"
+        open_help(6) = ""
+        open_help(7) = "(both can be entered in shortened form)"
+        open_warning(1) = "WARNING: More than " // trim(i2str(max_args)) &
+            &// " arguments given."    ! too many input arguments
+        open_warning(2) = " -> extra arguments ignored"
+        
+        call writo("Parsing command line arguments")
+        
+        ! Find number of arguments and first argument
+        command_arg = ""                                                        ! has to be initialized to function correctly
+        call getcarg(1, command_arg(1), numargs)
+        
+        ! If help with usage requested
+        if (command_arg(1).eq.'-h' .or. command_arg(1).eq.'--help') then
+            do id = 1,size(open_help)
+                call writo(open_help(id))
             end do
-            
-            call writo("Command line arguments parsed")
+            ierr = 66
+            CHCKERR('')
+        endif
+        
+        ! If not enough arguments
+        if (numargs.lt.2) then
+            do id = 1,size(open_error)
+                call writo(open_error(id))
+            end do
+            ierr = 66
+            CHCKERR('')
         end if
+        
+        ! Get the rest of the arguments
+        if (numargs.gt.max_args) then                                           ! ignore extra input arguments
+            do id = 1,size(open_warning)
+                call writo(open_warning(id))
+            end do
+            numargs=max_args
+        end if
+        
+        do iseq = 2, numargs
+            call getcarg(iseq, command_arg(iseq), numargs)
+        end do
+        
+        call writo("Command line arguments parsed")
     end function parse_args
 
-    ! open the input file
+    ! open the input files
     ! [MPI] Only global master
     integer function open_input() result(ierr)
-        use num_vars, only: VMEC_i, input_i, ltest, glb_rank, output_name, &
-            &no_guess, no_plots
-        use VMEC_vars, only: VMEC_name
+        use num_vars, only: eq_i, input_i, ltest, glb_rank, &
+            &output_name, no_guess, no_plots, eq_style, eq_name
         
         character(*), parameter :: rout_name = 'open_input'
         
         ! local variables
         integer :: id                                                           ! counter
-        character(len=max_str_ln) :: internal_input_error(2)                    ! internal error: returned negative file handle but not an empty name
-        character(len=max_str_ln) :: internal_VMEC_error(3)                     ! internal error: returned negative file handle but not an empty name
-     
+        character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln) :: input_exts(1)                              ! all the possible extensions of the name provided by user for the input file
         character(len=max_str_ln) :: input_con_symb(3)                          ! all the possible connectors used to check for the input file
-        character(len=max_str_ln) :: VMEC_exts(1)                               ! all the possible extensions of the name provided by user for the input file
-        character(len=max_str_ln) :: VMEC_con_symb(3)                           ! all the possible connectors used to check for the input file
+        character(len=max_str_ln) :: eq_exts(1)                                 ! all the possible extensions of the name provided by user for the equilibrium file
+        character(len=max_str_ln) :: eq_con_symb(3)                             ! all the possible connectors used to check for the equilibrium file
+        character(len=4) :: first_word                                          ! first word of equilibrium file
         
         ierr = 0                                                                ! no errors (yet)
      
         if (glb_rank.eq.0) then                                                 ! following only for master process
-            ! Messages for the user
-            internal_input_error(1) = "input file number ok but name empty"     ! problems opening the input file
-            internal_input_error(2) = "input file number negative but name&
-                & not empty!"
-            internal_VMEC_error(1) = "VMEC file number ok but name empty"       ! problems opening the input file
-            internal_VMEC_error(2) = "VMEC file number negative but name&
-                & not empty!"
-            internal_VMEC_error(3) = "no VMEC file found"                       ! problems opening the input file
-         
             call writo("Attempting to open files")
             call lvl_ud(1)
             ! check for correct input file and use default if needed
@@ -165,40 +152,59 @@ contains
                     call writo('No input file found. Default used')
                 else 
                     ierr = 1
-                    CHCKERR(internal_input_error(2))
+                    err_msg = 'input file number negative but name not empty!'
+                    CHCKERR(err_msg)
                 end if
             else
                 if (input_name.eq."") then
                     ierr = 1
-                    CHCKERR(internal_input_error(1))
+                    err_msg = 'input file number ok but name empty'
+                    CHCKERR(err_msg)
                 else
                     call writo('Input file "' // trim(input_name) &
                         &// '" opened at number ' // trim(i2str(input_i)))
                 end if
             end if
             
-            ! check for VMEC file and print error if not found (no default!)
-            VMEC_name = command_arg(2)
-            VMEC_exts = ["wout"]
-            VMEC_con_symb = [".","-","_"]
-            call search_file(VMEC_i,VMEC_name,VMEC_exts,VMEC_con_symb,'.nc')
-            if (VMEC_i.lt.0) then
-                if (VMEC_name.eq."") then
+            !  check for  equilibrium  file and  print error  if  not found  (no
+            ! default!)
+            eq_name = command_arg(2)
+            eq_exts = ["wout"]
+            eq_con_symb = [".","-","_"]
+            !call search_file(eq_i,eq_name,eq_exts,eq_con_symb,'.nc')
+            call search_file(eq_i,eq_name,eq_exts,eq_con_symb,'.txt')
+            if (eq_i.lt.0) then
+                if (eq_name.eq."") then
+                    err_msg = 'no equilibrium file found'
                     ierr = 1
-                    CHCKERR(internal_VMEC_error(3))                             ! no default for VMEC input
+                    CHCKERR(err_msg)                                            ! no default for equilibrium input
                 else 
                     ierr = 1
-                    CHCKERR(internal_VMEC_error(2))
+                    err_msg = 'equilibrium file number negative but name not empty!'
+                    CHCKERR(err_msg)
                 end if
             else
-                if (VMEC_name.eq."") then
+                if (eq_name.eq."") then
                     ierr = 1
-                    CHCKERR(internal_VMEC_error(1))
+                    err_msg = 'equilibrium file number ok but name empty'
+                    CHCKERR(err_msg)
                 else
-                    call writo('VMEC file "' // trim(VMEC_name) &
-                        &// '" opened at number ' // trim(i2str(VMEC_i)))
+                    call writo('equilibrium file "' // trim(eq_name) &
+                        &// '" opened at number ' // trim(i2str(eq_i)))
                 end if
             end if
+            
+            ! determine which equilibrium style (1: VMEC, 2: HELENA)
+            read(eq_i,*,IOSTAT=ierr) first_word                                 ! read first word of equilibrium file
+            err_msg = 'Unable to read first word of equilibrium file'
+            CHCKERR(err_msg)
+            if (first_word.eq.'VMEC') then                                      ! It is a VMEC file
+                eq_style = 1
+            else                                                                ! TEMPORARILY ASSUME IT'S A HELENA FILE
+                write(*,*) '!!! BETTER IDENTIFY HELENA FILES !!!'
+                eq_style = 2
+            end if
+            backspace(UNIT=eq_i)                                                ! go back one line in the equilibrium file
             
             ! set options
             if (numargs.gt.2) then                                              ! options given

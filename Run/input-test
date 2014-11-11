@@ -1,6 +1,6 @@
 &INPUTDATA
     style = 1
-    n_par = 20
+    n_par = 50
     min_par = -2
     max_par = 2
     n_alpha = 1
@@ -9,13 +9,17 @@
     max_it_NR = 500
     max_it_r = 1
     tol_r = 5.0E-6
-    n_procs_per_alpha = 1
+    n_procs_per_alpha = 2
     prim_X = -20
-    n_sol_requested = 2
+    min_sec_X = 190
+    max_sec_X = 190
+    use_pol_flux = .true.
+    n_sol_requested = 1
     min_n_r_X = 100
-    max_n_plots = 0
+    max_n_plots = 2
     plot_jq = .false.
     plot_grid = .true.
+    output_style = 2
 /
     
     prim_X = -180

@@ -194,7 +194,7 @@ contains
     subroutine test_repack
         ! VMEC variable has structure (1:mnmax, 1:grp_n_r_eq)
         ! output variable should have (1:grp_n_r_eq, 0:mpol-1, -ntor:ntor)
-        use fourier_ops, only: repack
+        use VMEC_vars, only: repack
         
         integer :: n_rB, mpolB, ntorB, mnmaxB
         real(dp), allocatable :: xmB(:), xnB(:)
@@ -2820,7 +2820,7 @@ contains
         use utilities, only: arr_mult
         use eq_vars, only: calc_eqd_mesh, calc_RZL, init_eq, calc_flux_q, &
             &VMEC_R, vmec_Z, n_par, theta => theta_V, zeta => zeta_V, q_saf_V, &
-            &pres, grp_n_r_eq
+            &pres_V, grp_n_r_eq
         !use num_vars, only: max_deriv
         
         character(*), parameter :: rout_name = 'test_arr_mult'
@@ -3300,19 +3300,19 @@ contains
             end do
             call lvl_ud(-1)
             
-            call writo('calculate q_saf_V and pres')
+            call writo('calculate q_saf_V and pres_V')
             call lvl_ud(1)
             ierr = calc_flux_q()
             CHCKERR('')
             call lvl_ud(-1)
             
             ! multiply
-            call writo('multiply pres and q_saf_V')
+            call writo('multiply pres_V and q_saf_V')
             call lvl_ud(1)
             pq = 0.0_dp
-            ierr = arr_mult(pres,q_saf_V,pq,[0,0,0])
+            ierr = arr_mult(pres_V,q_saf_V,pq,[0,0,0])
             CHCKERR('')
-            pq_num = pres(:,0)*q_saf_V(:,0)
+            pq_num = pres_V(:,0)*q_saf_V(:,0)
             call print_GP_2D('pq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff pq (calc-num) = 5','',&
@@ -3324,30 +3324,30 @@ contains
             call lvl_ud(1)
             ! Dr
             pq = 0.0_dp
-            ierr = arr_mult(pres,q_saf_V,pq,[1,0,0])
+            ierr = arr_mult(pres_V,q_saf_V,pq,[1,0,0])
             CHCKERR('')
-            pq_num = pres(:,1)*q_saf_V(:,0) + &
-                &pres(:,0)*q_saf_V(:,1)
+            pq_num = pres_V(:,1)*q_saf_V(:,0) + &
+                &pres_V(:,0)*q_saf_V(:,1)
             call print_GP_2D('Drpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Drpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Dtheta
             pq = 0.0_dp
-            ierr = arr_mult(pres,q_saf_V,pq,[0,1,0])
+            ierr = arr_mult(pres_V,q_saf_V,pq,[0,1,0])
             CHCKERR('')
             pq_num = 0.0_dp*q_saf_V(:,0) + &
-                &pres(:,0)*0.0_dp
+                &pres_V(:,0)*0.0_dp
             call print_GP_2D('Dtpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Dtpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Dzeta
             pq = 0.0_dp
-            ierr = arr_mult(pres,q_saf_V,pq,[0,0,1])
+            ierr = arr_mult(pres_V,q_saf_V,pq,[0,0,1])
             CHCKERR('')
             pq_num = 0.0_dp*q_saf_V(:,0) + &
-                &pres(:,0)*0.0_dp
+                &pres_V(:,0)*0.0_dp
             call print_GP_2D('Dzpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Dzpq (calc-num) = 5','',&
@@ -3359,18 +3359,18 @@ contains
             call lvl_ud(1)
             ! Drr
             pq = 0.0_dp
-            ierr = arr_mult(pres,q_saf_V,pq,[2,0,0])
+            ierr = arr_mult(pres_V,q_saf_V,pq,[2,0,0])
             CHCKERR('')
-            pq_num = pres(:,2)*q_saf_V(:,0) + &
-                &2.0_dp * pres(:,1)*q_saf_V(:,1) + &
-                &pres(:,0)*q_saf_V(:,2)
+            pq_num = pres_V(:,2)*q_saf_V(:,0) + &
+                &2.0_dp * pres_V(:,1)*q_saf_V(:,1) + &
+                &pres_V(:,0)*q_saf_V(:,2)
             call print_GP_2D('Drrpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Drrpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Drtheta
             pq = 0.0_dp
-            ierr = arr_mult(pres,q_saf_V,pq,[1,1,0])
+            ierr = arr_mult(pres_V,q_saf_V,pq,[1,1,0])
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Drtpq (calc,num) = 5','',&
@@ -3379,7 +3379,7 @@ contains
                 &pq-pq_num)
             ! Drzeta
             pq = 0.0_dp
-            ierr = arr_mult(pres,q_saf_V,pq,[2,0,1])
+            ierr = arr_mult(pres_V,q_saf_V,pq,[2,0,1])
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Drzpq (calc,num) = 5','',&
@@ -3388,7 +3388,7 @@ contains
                 &pq-pq_num)
             ! Dthetatheta
             pq = 0.0_dp
-            ierr = arr_mult(pres,q_saf_V,pq,[0,2,0])
+            ierr = arr_mult(pres_V,q_saf_V,pq,[0,2,0])
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Dttpq (calc,num) = 5','',&
@@ -3397,7 +3397,7 @@ contains
                 &pq-pq_num)
             ! Dtzeta
             pq = 0.0_dp
-            ierr = arr_mult(pres,q_saf_V,pq,[0,1,1])
+            ierr = arr_mult(pres_V,q_saf_V,pq,[0,1,1])
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Dtzpq (calc,num) = 5','',&
@@ -3406,7 +3406,7 @@ contains
                 &pq-pq_num)
             ! Dzetazeta
             pq = 0.0_dp
-            ierr = arr_mult(pres,q_saf_V,pq,[0,0,2])
+            ierr = arr_mult(pres_V,q_saf_V,pq,[0,0,2])
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Dzzpq (calc,num) = 5','',&
@@ -3419,7 +3419,7 @@ contains
             call writo('higher order derive pq')
             call lvl_ud(1)
             pq = 0.0_dp
-            ierr = arr_mult(pres,q_saf_V,pq,[1,2,3])
+            ierr = arr_mult(pres_V,q_saf_V,pq,[1,2,3])
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Drttzzzpq (calc,num) = 5','',&

@@ -1134,30 +1134,23 @@ contains
     end function calc_f_deriv_3_arr_2D
     
     ! normalizes metric coefficients  and jacobian in flux  coordinates, as well
-    ! as the  poloidal and toroidal flux  (even though currently it  is not used
-    ! after this point)
+    ! as the  poloidal and toroidal flux
     subroutine normalize_metric_vars
-        use eq_vars, only: R_0, A_0, B_0, psi_p_0
+        use eq_vars, only: R_0, B_0, psi_0
         use num_vars, only: use_pol_flux
         
         ! local variables
         real(dp) :: g_0(3,3)                                                    ! normalization factor for the covariant metric factors
-        real(dp) :: a                                                           ! minor radius
-        integer :: id, jd, d1, d2                                               ! counter
-        real(dp) :: psi_0                                                       ! either psi_p_0 (pol. flux) or psi_p_0*A_0 (tor. flux)
-        real(dp) :: alpha_0                                                     ! either A_0 (pol. flux) or 1 (tor. flux)
-        
-        ! set minor radius a
-        a = R_0 / A_0
+        integer :: jd, d1, d2                                                   ! counter
         
         ! set up g_0
         if (use_pol_flux) then
-            g_0(1,1) = a * a
+            g_0(1,1) = R_0 * R_0
             g_0(1,2) = 1 / B_0
-            g_0(1,3) = a * R_0
+            g_0(1,3) = R_0 * R_0
             g_0(2,1) = g_0(1,2)
-            g_0(2,2) = 1/(a * B_0) * 1/(a * B_0)
-            g_0(2,3) = 1/(a * B_0) * R_0
+            g_0(2,2) = 1/(R_0 * B_0) * 1/(R_0 * B_0)
+            g_0(2,3) = 1/(R_0 * B_0) * R_0
             g_0(3,1) = g_0(1,3)
             g_0(3,2) = g_0(2,3)
             g_0(3,3) = R_0 * R_0
@@ -1173,25 +1166,12 @@ contains
             g_0(3,3) = R_0 * R_0
         end if
         
-        ! set up psi_0 and alpha_0
-        if (use_pol_flux) then
-            psi_0 = psi_p_0
-            alpha_0 = A_0
-        else
-            psi_0 = psi_p_0 * A_0
-            alpha_0 = 1.0_dp
-        end if
-        
         ! normalize the metric coefficients
         do d2 = 1,3
             do d1 = 1,3
                 g_FD(:,:,d1,d2,:,:,:) = g_FD(:,:,d1,d2,:,:,:) / g_0(d1,d2)
                 h_FD(:,:,d1,d2,:,:,:) = h_FD(:,:,d1,d2,:,:,:) * g_0(d1,d2)
             end do
-        end do
-        do id = 1,size(g_FD,5)-1                                                ! derivatives in psi are scaled by psi_p_0
-            g_FD(:,:,:,:,id,:,:) = g_FD(:,:,:,:,id,:,:) * alpha_0**id
-            h_FD(:,:,:,:,id,:,:) = h_FD(:,:,:,:,id,:,:) * alpha_0**id
         end do
         do jd = 1,size(g_FD,6)-1                                                ! derivatives in alpha are scaled by A
             g_FD(:,:,:,:,:,jd,:) = g_FD(:,:,:,:,:,jd,:) * psi_0**jd 
@@ -1200,9 +1180,6 @@ contains
         
         ! normalize the Jacobian
         jac_FD = jac_FD * B_0/R_0
-        do id = 1,size(jac_FD,3)-1                                              ! derivatives in psi are scaled by psi_p_0
-            jac_FD(:,:,id,:,:) = jac_FD(:,:,id,:,:) * alpha_0**id
-        end do
         do jd = 1,size(jac_FD,4)-1                                              ! derivatives in alpha are scaled by A
             jac_FD(:,:,:,jd,:) = jac_FD(:,:,:,jd,:) * psi_0**jd
         end do

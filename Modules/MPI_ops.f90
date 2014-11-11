@@ -11,7 +11,8 @@ module MPI_ops
     implicit none
     private
     public start_MPI, stop_MPI, split_MPI, abort_MPI, broadcast_vars, &
-        &merge_MPI, get_next_job, divide_grid, get_ser_X_vec, get_ghost_X_vec
+        &merge_MPI, get_next_job, divide_grid, get_ser_X_vec, get_ghost_X_vec, &
+        &wait_MPI
     
 contains
     ! start MPI and gather information
@@ -292,7 +293,6 @@ contains
             ! 4. discrete equilibrium grid, rounded down
             grp_min_r_eq = floor(grp_min_r_eq_eq_dis)
             
-            
             ! use min_r_X and max_r_X to calculate grp_max_r_eq
             ! 1. divide_grid for min_n_r_X normal points
             ierr = divide_grid(min_n_r_X)                                       ! divide the grid for the min_n_r_X tot. normal points
@@ -354,9 +354,20 @@ contains
         ! barrier
         call MPI_Barrier(MPI_COMM_WORLD,ierr)
         CHCKERR('Coulnd''t set barrier')
-        
-        !!! ALSO CLOSE THEIR OUTPUT FILES, MAYBE DELETE?!?!?!
     end function merge_MPI
+    
+    ! MPI Barrier
+    integer function wait_MPI() result(ierr)
+        use num_vars, only: MPI_Comm_groups
+        
+        character(*), parameter :: rout_name = 'wait_MPI'
+        
+        ! initialize ierr
+        ierr = 0
+        
+        call MPI_Barrier(MPI_Comm_groups,ierr)
+        CHCKERR('MPI Barrier failed')
+    end function wait_MPI
     
     ! stop MPI
     ! [MPI] Collective call
@@ -578,7 +589,7 @@ contains
         ! set up grp_r_X
         ! Note: for the first ranks, the upper index is one higher than might be
         ! expected because  the routine fill_matrix needs  information about the
-        ! next point
+        ! next perturbation point (so this is an asymetric ghost region)
         if (allocated(grp_r_X)) deallocate(grp_r_X)
         if (grp_rank+1.lt.grp_n_procs) then
             grp_n_r_X_one = grp_n_r_X + 1
@@ -638,20 +649,20 @@ contains
     !   29  integer                     grp_max_r_eq
     !   30  integer                     nyq_fac
     !   31  integer                     max_n_plots
-    !   32  real_dp                     min_alpha
-    !   33  real_dp                     max_alpha
-    !   34  real_dp                     min_r_X
-    !   35  real_dp                     max_r_X
-    !   36  real_dp                     tol_NR
-    !   37  real_dp                     tol_r
-    !   38  real_dp                     min_par
-    !   39  real_dp                     max_par
-    !   40  real_dp                     gam
-    !   41  real_dp                     R_0
-    !   42  real_dp                     A_0
+    !   32  integer                     output_style
+    !   33  real_dp                     min_alpha
+    !   34  real_dp                     max_alpha
+    !   35  real_dp                     min_r_X
+    !   36  real_dp                     max_r_X
+    !   37  real_dp                     tol_NR
+    !   38  real_dp                     tol_r
+    !   39  real_dp                     min_par
+    !   30  real_dp                     max_par
+    !   41  real_dp                     gam
+    !   42  real_dp                     R_0
     !   43  real_dp                     pres_0
     !   44  real_dp                     B_0
-    !   45  real_dp                     psi_p_0
+    !   45  real_dp                     psi_0
     !   46  real_dp                     rho_0
     !   47  real_dp(n_r)                phi(n_r) 
     !   48  real_dp(n_r)                phi_r(n_r) 
@@ -673,10 +684,10 @@ contains
             &EV_style, max_it_NR, max_it_r, n_alpha, n_procs_per_alpha, style, &
             &max_alpha, min_alpha, tol_NR, glb_rank, glb_n_procs, no_guess, &
             &n_sol_requested, min_n_r_X, min_r_X, max_r_X, nyq_fac, tol_r, &
-            &use_pol_flux, max_n_plots, plot_grid, no_plots
+            &use_pol_flux, max_n_plots, plot_grid, no_plots, output_style
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
         use eq_vars, only: n_par, max_par, min_par, grp_min_r_eq, &
-            &grp_max_r_eq, R_0, A_0, pres_0, B_0, psi_p_0, rho_0
+            &grp_max_r_eq, R_0, pres_0, B_0, psi_0, rho_0
         
         character(*), parameter :: rout_name = 'broadcast_vars'
         
@@ -718,6 +729,7 @@ contains
             call MPI_Bcast(grp_max_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(nyq_fac,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_n_plots,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(output_style,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(max_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(min_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
@@ -728,10 +740,9 @@ contains
             call MPI_Bcast(max_par,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(gam,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(R_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(A_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(pres_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(B_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
-            call MPI_Bcast(psi_p_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(psi_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call MPI_Bcast(rho_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             call bcast_size_1_R(phi)
             call MPI_Bcast(phi,size(phi),MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)

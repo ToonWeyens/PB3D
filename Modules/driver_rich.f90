@@ -96,7 +96,7 @@ contains
                 call lvl_ud(1)                                                  ! starting calculation for current fied line
                 
                 ! calculate
-                ierr = run_for_alpha(alpha(alpha_job_nr))
+                ierr = run_for_alpha(alpha_job_nr,alpha(alpha_job_nr))
                 CHCKERR('')
                 
                 ! display message
@@ -128,7 +128,7 @@ contains
     end function run_rich_driver
     
     ! runs the calculations for one of the alpha's
-    integer function run_for_alpha(alpha) result(ierr)
+    integer function run_for_alpha(job_nr,alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, grp_rank, no_guess, &
             &alpha_job_nr
         use eq_ops, only: calc_eq
@@ -142,6 +142,7 @@ contains
         character(*), parameter :: rout_name = 'run_for_alpha'
         
         ! input / output
+        integer, intent(in) :: job_nr                                           ! job nr.
         real(dp), intent(in) :: alpha                                           ! alpha at which to run the calculations
         
         ! local variables
@@ -262,7 +263,7 @@ contains
                         &//trim(r2strt(realpart(X_val(id))))//' + '//&
                         &trim(r2strt(imagpart(X_val(id))))//' i')
                     
-                    ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id,&
+                    ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id,job_nr,&
                         &[ang_par_F(1,1),ang_par_F(n_par,1)])
                     CHCKERR('')
                 end do

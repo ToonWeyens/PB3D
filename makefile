@@ -60,9 +60,13 @@ COMPILE = $(COMP_DIR) $(COMP_INC) $(PETSC_FC_INCLUDES) $(SLEPC_INCLUDE) $(COMP_F
 # link flags
 LINK_FLAGS = -fPIC -pg
 
-# libraries
-LINK_LIB = $(HOME_BIN)/libstell.a -lgfortran -lnetcdff -lnetcdf -llapack -lblas
-#LINK_LIB = $(HOME_BIN)/libstell.a -L/usr/lib -lgfortran -lnetcdff -lnetcdf -llapack -lblas
+# libraries (for HDF5, see http://hpc.ucla.edu/hoffman2/software/hdf.php#hdf5f90)
+#LINK_LIB = $(HOME_BIN)/libstell.a -lgfortran -lnetcdff -lnetcdf -llapack -lblas -lhdf5_fortran -lhdf5 -lhdf5_fortran
+LINK_LIB = $(HOME_BIN)/libstell.a -lgfortran -llapack -lblas \
+	   -L/opt/HDF5/lib /opt/HDF5/lib/libhdf5hl_fortran.a /opt/HDF5/lib/libhdf5_hl.a \
+           /opt/HDF5/lib/libhdf5_fortran.a /opt/HDF5/lib/libhdf5.a -Wl,-z,relro \
+           -lpthread -lz -ldl -lm # -Wl,-Bsymbolic-functions -Wl,-rpath -Wl,/usr/lib/x86_64-linux-gnu
+
 
 # link command
 LINK    = $(LINK_DIR) $(LINK_FLAGS)

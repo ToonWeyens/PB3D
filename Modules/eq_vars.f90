@@ -7,18 +7,18 @@ module eq_vars
 #include <PB3D_macros.h>
     use num_vars, only: dp, pi, max_str_ln
     use message_ops, only: writo, lvl_ud, print_ar_2, print_ar_1
-    use output_ops, only: print_GP_3D, draw_GP, draw_GP_animated
+    use output_ops, only: print_GP_3D, draw_GP, draw_GP_animated, print_GP_2D
     use str_ops, only: r2strt, i2str, r2str
 
     implicit none
     private
     public calc_eqd_mesh, calc_mesh, calc_ang_B, calc_flux_q, prepare_RZL, &
-        &check_and_limit_mesh, init_eq, calc_RZL, dealloc_eq, &
+        &check_and_limit_mesh, init_eq, calc_RZL, dealloc_eq, calc_XYZ_grid, &
         &dealloc_eq_final, normalize_eq_vars, calc_norm_const, &
         &theta_V, zeta_V, n_par, grp_n_r_eq, lam_H, min_par, max_par, &
         &q_saf_V, q_saf_V_full, flux_p_V, flux_t_V, VMEC_R, VMEC_Z, VMEC_L, &
-        &pres, q_saf_FD, flux_p_FD, flux_t_FD, pres_FD, grp_min_r_eq, &
-        &grp_max_r_eq, R_0, A_0, pres_0, B_0, psi_p_0, rho_0, ang_par_F, &
+        &pres_V, q_saf_FD, flux_p_FD, flux_t_FD, pres_FD, grp_min_r_eq, &
+        &grp_max_r_eq, R_0, pres_0, B_0, psi_0, rho_0, ang_par_F, &
         &rot_t_FD, rot_t_V, flux_p_V_full, flux_t_V_full, rot_t_V_full, &
         &max_flux, max_flux_VMEC
 
@@ -37,13 +37,14 @@ module eq_vars
     real(dp), allocatable :: rot_t_V(:,:)                                       ! rot. transform in VMEC coordinates
     real(dp), allocatable :: rot_t_V_full(:,:)                                  ! rot. transform in full normal mesh in flux coordinates
     real(dp), allocatable :: rot_t_FD(:,:)                                      ! rot. transform, Deriv. in Flux coords.
-    real(dp), allocatable :: flux_p_V(:,:), flux_t_V(:,:), pres(:,:)            ! pol. flux, tor. flux and pressure, and norm. Deriv. in VMEC coords.
+    real(dp), allocatable :: flux_p_V(:,:), flux_t_V(:,:), pres_V(:,:)          ! pol. flux, tor. flux and pressure, and norm. Deriv. in VMEC coords.
     real(dp), allocatable :: pres_FD(:,:)                                       ! pressure, and norm. Deriv. with values and Derivs. in flux coords.
     real(dp), allocatable, target :: flux_p_FD(:,:), flux_t_FD(:,:)             ! pol. and tor. flux, and norm. Deriv. with values and Derivs. in flux coords.
     real(dp), allocatable :: flux_p_V_full(:,:), flux_t_V_full(:,:)             ! pol. flux, tor. flux, and norm. Deriv. values and Derivs. in VMEC coords.
     real(dp) :: max_flux, max_flux_VMEC                                         ! max. flux (pol. or tor.) (min.flux is trivially equal to 0)
     real(dp) :: min_par, max_par                                                ! min. and max. of parallel coordinate [pi]
-    real(dp) :: R_0, A_0, pres_0, B_0, psi_p_0, rho_0                           ! normalization constants for nondimensionalization
+    real(dp) :: R_0, pres_0, rho_0                                              ! independent normalization constants for nondimensionalization
+    real(dp) :: B_0, psi_0                                                      ! derived normalization constants for nondimensionalization
     integer :: n_par, grp_n_r_eq                                                ! nr. of parallel and normal points in this process in alpha group
     integer :: grp_min_r_eq, grp_max_r_eq                                       ! min. and max. r range of this process in alpha group
     
@@ -72,8 +73,8 @@ contains
         allocate(VMEC_L(n_par,grp_n_r_eq,0:max_deriv(1),0:max_deriv(2),&
             &0:max_deriv(3)))
         
-        ! pres
-        allocate(pres(grp_n_r_eq,0:max_deriv(1)))
+        ! pres_V
+        allocate(pres_V(grp_n_r_eq,0:max_deriv(1)))
         
         ! pres_FD
         allocate(pres_FD(grp_n_r_eq,0:max_deriv(1)))
@@ -139,7 +140,7 @@ contains
     ! point. The derivatives  are indicated by the variable "deriv"  which has 3
     ! indices
     integer function calc_RZL_ind(deriv) result(ierr)
-        use fourier_ops, only: calc_trigon_factors, fourier2real
+        use fourier_ops, only: fourier2real
         use VMEC_vars, only: R_c, R_s, Z_c, Z_s, L_c, L_s
         use utilities, only: check_deriv
         use num_vars, only: max_deriv
@@ -206,9 +207,9 @@ contains
         ierr = 0
         
         ! pressure: copy from VMEC and derive
-        pres(:,0) = presf(grp_min_r_eq:grp_max_r_eq)
+        pres_V(:,0) = presf(grp_min_r_eq:grp_max_r_eq)
         do kd = 1, max_deriv(1)
-            ierr = VMEC_norm_deriv(pres(:,0),pres(:,kd),n_r_eq-1._dp,kd,1)
+            ierr = VMEC_norm_deriv(pres_V(:,0),pres_V(:,kd),n_r_eq-1._dp,kd,1)
             CHCKERR('')
         end do
         
@@ -438,7 +439,6 @@ contains
             allocate(work(n_r_eq))
             
             do id = 1,n_par
-                !write(*,*) 'calculating ', id, '/', n_par
                 var_in = theta_V(id,:)
                 ierr = calc_ang_B(work,.false.,alpha,var_in)
                 var_calc(id,:) =  work
@@ -740,68 +740,44 @@ contains
         
         ! local variables
         integer :: id                                                           ! counter
-        real(dp) :: psi_0                                                       ! either psi_p_0 (pol. flux) or psi_p_0*A_0 (tor. flux)
         
         ! scale the quantities
         pres_FD = pres_FD/pres_0
-        flux_p_FD = flux_p_FD/psi_p_0
-        flux_t_FD = flux_t_FD/(psi_p_0*A_0)
-        if (use_pol_flux) then
-            q_saf_FD = q_saf_FD/A_0
-            max_flux = max_flux/psi_p_0
-        else
-            rot_t_FD = rot_t_FD 
-            max_flux = max_flux/(psi_p_0*A_0)
-        end if
-        if (VMEC_use_pol_flux) then
-            max_flux_VMEC = max_flux_VMEC/psi_p_0
-        else
-            max_flux_VMEC = max_flux_VMEC/(psi_p_0*A_0)
-        end if
+        flux_p_FD = flux_p_FD/psi_0
+        flux_t_FD = flux_t_FD/psi_0
+        max_flux = max_flux/psi_0
+        max_flux_VMEC = max_flux_VMEC/psi_0
         
-        ! set up psi_0
-        if (use_pol_flux) then
-            psi_0 = psi_p_0
-        else
-            psi_0 = psi_p_0 * A_0
-        end if
-        
-        ! scale  the  derivatives  by  psi_p_0  if poloidal  flux  is  used,  or
-        ! psi_p_0*A_0 if toroidal flux is used
-        if (use_pol_flux) then
-            do id = 1,size(pres_FD,2)-1
-                pres_FD(:,id) = pres_FD(:,id) * psi_0**(id)
+        ! scale  the  derivatives  by  psi_p_0
+        do id = 1,size(pres_FD,2)-1
+            pres_FD(:,id) = pres_FD(:,id) * psi_0**(id)
+            flux_p_FD(:,id) = flux_p_FD(:,id) * psi_0**(id)
+            flux_t_FD(:,id) = flux_t_FD(:,id) * psi_0**(id)
+            if (use_pol_flux) then
                 q_saf_FD(:,id) = q_saf_FD(:,id) * psi_0**(id)
-                flux_p_FD(:,id) = flux_p_FD(:,id) * psi_0**(id)
-            end do
-        else
-            do id = 1,size(pres_FD,2)-1
-                pres_FD(:,id) = pres_FD(:,id) * psi_0**(id)
+            else
                 rot_t_FD(:,id) = rot_t_FD(:,id) * psi_0**(id)
-                flux_t_FD(:,id) = flux_t_FD(:,id) * psi_0**(id)
-            end do
-        end if
+            end if
+        end do
     end subroutine normalize_eq_vars
     
     ! sets up normalization constants:
-    !   R_0:     major radius (= average R on axis)
-    !   A_0:     major / minor radius
-    !   pres_0:  pressure on axis
-    !   B_0:     average poloidal field on axis
-    !   psi_p_0:   reference poloidal flux
+    !   R_0:    major radius (= average R on axis)
+    !   rho_0:  mass density on axis (set up through input variable)
+    !   pres_0: pressure on axis
+    !   B_0:    average magnetic field (= sqrt(mu_0 pres_0))
+    !   psi_0:  reference flux (= R_0^2 B_0)
     ! [MPI] only global master
     subroutine calc_norm_const
         use num_vars, only: mu_0, glb_rank
-        use VMEC_vars, only: R_c, zmax_surf, presf
+        use VMEC_vars, only: R_c, presf
         
         if (glb_rank.eq.0) then
-            ! calculate  the  major radius  as the  average value  of VMEC_R  on the
+            ! calculate the major  radius as the average value of  VMEC_R on the
             ! magnetic axis
             R_0 = R_c(0,0,1,0)
             
-            ! calculate  the aspect ratio as  the major radius divided  by the minor
-            ! radius
-            A_0 = R_0 / zmax_surf
+            ! rho_0 is set up through an input variable with the same name
             
             ! calculate pres_0 as pressure on axis
             pres_0 = presf(1)
@@ -809,9 +785,8 @@ contains
             ! calculate the reference value for B_0 from B_0 = sqrt(mu_0 pres_0)
             B_0 = sqrt(pres_0 * mu_0)
             
-            ! calculate reference pol. flux
-            ! (reference tor. flux is multiplied by A_0)
-            psi_p_0 = (R_0**2 * B_0) / A_0
+            ! calculate reference flux
+            psi_0 = (R_0**2 * B_0)
         end if
     end subroutine calc_norm_const
     
@@ -829,7 +804,7 @@ contains
     subroutine dealloc_eq_final
         use num_vars, only: grp_rank, use_pol_flux
         
-        deallocate(pres,pres_FD)
+        deallocate(pres_V,pres_FD)
         if (use_pol_flux) then
             deallocate(q_saf_V,q_saf_FD)
         else
@@ -847,4 +822,175 @@ contains
         end if
         deallocate(zeta_V,theta_V,ang_par_F)
     end subroutine dealloc_eq_final
+    
+    ! calculates X,Y  and Z on  a grid in the  VMEC poloidal and  toroidal angle
+    ! theta_V and  zeta_V, for every normal  point in either the  equilibrium or
+    ! the perturbation grid,  indicated by the variable  eq_grid. The dimensions
+    ! are (n_theta,n_zeta,n_r)
+    ! This  routine also optionally  calculates lambda on  the grid, as  this is
+    ! also needed some times.
+    ! Note:  If  eq_grid  =  .false.,  the flux  arrays  have  to  be  correctly
+    ! initialized for this routine to work
+    integer function calc_XYZ_grid(theta,zeta,r_range,eq_grid,X,Y,Z,L) &
+        &result(ierr)
+        use fourier_ops, only: calc_trigon_factors, fourier2real
+        use VMEC_vars, only: R_c, R_s, Z_c, Z_s, L_c, L_s, mpol, ntor, &
+            &VMEC_use_pol_flux
+        use num_vars, only: use_pol_flux
+        use utilities, only: interp_fun_1D
+        
+        character(*), parameter :: rout_name = 'calc_XYZ_grid'
+        
+        ! input / output
+        real(dp), intent(in) :: theta(:,:,:), zeta(:,:,:)                       ! points at which to calculate the grid
+        real(dp), intent(in) :: r_range(2)                                      ! min. and max. normal range in eq. range or pert. range
+        logical, intent(in) :: eq_grid                                          ! .true. if eq. grid is used, .false. if pert. grid
+        real(dp), intent(inout), allocatable :: X(:,:,:), Y(:,:,:), Z(:,:,:)    ! X, Y and Z of grid
+        real(dp), intent(inout), allocatable, optional :: L(:,:,:)              ! lambda of grid
+        
+        ! local variables
+        real(dp), allocatable :: trigon_factors(:,:,:,:,:)                      ! trigonometric factor cosine for the inverse fourier transf.
+        real(dp), allocatable :: R(:,:,:)                                       ! R in Cylindrical coordinates
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: n_theta, n_zeta, n_r                                         ! dimensions of the grid
+        integer :: id                                                           ! counters
+        real(dp), allocatable :: R_c_int(:,:,:), R_s_int(:,:,:)                 ! interpolated version of R_c and R_s
+        real(dp), allocatable :: Z_c_int(:,:,:), Z_s_int(:,:,:)                 ! interpolated version of Z_c and Z_s
+        real(dp), allocatable :: L_c_int(:,:,:), L_s_int(:,:,:)                 ! interpolated version of L_c and L_s
+        real(dp) :: r_loc                                                       ! current r value in range specified by eq_grid
+        real(dp) :: r_loc_eq                                                    ! current r value in equilibrium range
+        real(dp), pointer :: flux(:), flux_VMEC(:)                              ! either pol. or tor. flux
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! test
+        if (size(theta,1).ne.size(zeta,1) .or. size(theta,2).ne.size(zeta,2) &
+            &.or. size(theta,3).ne.size(zeta,3)) then
+            ierr = 1
+            err_msg =  'Theta and Zeta need to have the same dimensions'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set up flux and flux_VMEC
+        if (.not.eq_grid) then
+            if (use_pol_flux) then
+                flux => flux_p_FD(:,0)
+            else
+                flux => flux_t_FD(:,0)
+            end if
+            if (VMEC_use_pol_flux) then
+                flux_VMEC => flux_p_FD(:,0)
+            else
+                flux_VMEC => flux_t_FD(:,0)
+            end if
+        end if
+        
+        ! set up n_theta, n_zeta and n_r
+        n_theta = size(theta,1)
+        n_zeta = size(theta,2)
+        n_r = size(theta,3)
+        
+        ! initialize R and Z
+        allocate(R(n_theta,n_zeta,n_r),Z(n_theta,n_zeta,n_r))
+        allocate(X(n_theta,n_zeta,n_r),Y(n_theta,n_zeta,n_r))
+        if (present(L)) allocate(L(n_theta,n_zeta,n_r))
+        
+        ! set up interpolated R_c_int, ..
+        allocate(R_c_int(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(R_s_int(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(Z_c_int(0:mpol-1,-ntor:ntor,1:n_r))
+        allocate(Z_s_int(0:mpol-1,-ntor:ntor,1:n_r))
+        if (present(L)) then
+            allocate(L_c_int(0:mpol-1,-ntor:ntor,1:n_r))
+            allocate(L_s_int(0:mpol-1,-ntor:ntor,1:n_r))
+        end if
+        
+        ! interpolate for every requested normal point
+        r_loc = r_range(1)
+        do id = 1,n_r                                                           ! loop over all normal points
+            ! convert r_loc to r_loc_eq if necessary
+            if (eq_grid) then
+                r_loc_eq = r_loc
+            else
+                ierr = interp_fun_1D(r_loc_eq,flux_VMEC/max_flux_VMEC,&
+                    &r_loc,flux/max_flux)
+                CHCKERR('')
+            end if
+            ! interpolate R_c, ... tables to fill R_c_int, ...
+            call interp_VMEC_table(R_c(:,:,:,0),R_c_int(:,:,id),r_loc_eq)
+            call interp_VMEC_table(R_s(:,:,:,0),R_s_int(:,:,id),r_loc_eq)
+            call interp_VMEC_table(Z_c(:,:,:,0),Z_c_int(:,:,id),r_loc_eq)
+            call interp_VMEC_table(Z_s(:,:,:,0),Z_s_int(:,:,id),r_loc_eq)
+            if (present(L)) then
+                call interp_VMEC_table(L_c(:,:,:,0),L_c_int(:,:,id),r_loc_eq)
+                call interp_VMEC_table(L_s(:,:,:,0),L_s_int(:,:,id),r_loc_eq)
+            end if
+            ! increment r_loc
+            r_loc = r_loc + 1._dp*(r_range(2)-r_range(1))/(n_r-1)
+        end do
+        
+        ! inverse fourier transform with trigonometric factors
+        do id = 1,n_theta
+            ! calculate trigonometric factors
+            ierr = calc_trigon_factors(theta(id,:,:),zeta(id,:,:),&
+                &trigon_factors)
+            CHCKERR('')
+            ierr = fourier2real(R_c_int,R_s_int,trigon_factors,R(id,:,:),[0,0])
+            CHCKERR('')
+            ierr = fourier2real(Z_c_int,Z_s_int,trigon_factors,Z(id,:,:),[0,0])
+            CHCKERR('')
+            if (present(L)) then
+                ierr = fourier2real(L_c_int,L_s_int,trigon_factors,L(id,:,:),&
+                    &[0,0])
+                CHCKERR('')
+            end if
+            
+            ! transform cylindrical to cartesian
+            ! (the geometrical zeta is the inverse of VMEC zeta)
+            X(id,:,:) = R(id,:,:)*cos(-zeta(id,:,:))
+            Y(id,:,:) = R(id,:,:)*sin(-zeta(id,:,:))
+            
+            ! deallocate
+            deallocate(trigon_factors)
+        end do
+        
+        ! deallocate
+        deallocate(R_c_int,R_s_int,Z_c_int,Z_s_int)
+        if (present(L)) deallocate(L_c_int,L_s_int)
+        deallocate(R)
+    contains
+        ! interpolates an equilibrium table (R_c, Z_s, ...)
+        subroutine interp_VMEC_table(var_in,var_out,pt_in)
+            use utilities, only: con2dis
+            use VMEC_vars, only: n_r_eq
+            
+            ! input / output
+            real(dp), intent(in) :: var_in(:,:,:)                               ! R_c, Z_s, ... VMEC table
+            real(dp), intent(inout) :: var_out(:,:)                             ! interpolated version of R_c, Z_s, ...
+            real(dp), intent(in) :: pt_in                                       ! point at which to interpolate (in equilibrium range)
+            
+            ! local variables
+            integer :: id_lo, id_hi                                             ! low and high indices for the interpolation
+            real(dp) :: pt_dis                                                  ! discrete, unrounded equivalent of pt_in in eq. grid
+            
+            ! convert pt_in to discrete equilibrium grid, unrounded
+            call con2dis(pt_in,[0._dp,1._dp],pt_dis,[1,n_r_eq])
+            
+            ! round up and down
+            id_lo = floor(pt_dis)
+            id_hi = ceiling(pt_dis)
+            
+            ! limit both to the total range of the VMEC tables
+            ! (they can fall outside the range due to numerical errors)
+            if (id_lo.lt.1) id_lo = 1
+            if (id_hi.lt.1) id_hi = 1
+            if (id_lo.gt.n_r_eq) id_lo = n_r_eq
+            if (id_hi.gt.n_r_eq) id_hi = n_r_eq
+            
+            ! interpolate var_in 
+            var_out = var_in(:,:,id_lo) + (pt_dis-id_lo) * &
+                &(var_in(:,:,id_hi)-var_in(:,:,id_lo))                          ! because id_hi - id_lo = 1
+        end subroutine interp_VMEC_table
+    end function calc_XYZ_grid
 end module eq_vars

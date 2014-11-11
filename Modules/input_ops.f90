@@ -57,7 +57,7 @@ contains
             &max_it_r, input_i, n_seq_0, min_n_r_X, use_pol_flux, &
             &calc_mesh_style, EV_style, n_procs_per_alpha, plot_jq, tol_r, &
             &n_sol_requested, min_r_X, max_r_X, nyq_fac, max_n_plots, &
-            &glb_rank, nyq_fac, plot_grid
+            &glb_rank, nyq_fac, plot_grid, output_style
         use eq_vars, only: &
             &min_par, max_par, n_par, rho_0
         use message_ops, only: writo, lvl_ud
@@ -75,7 +75,7 @@ contains
             &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
             &max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
             &max_r_X, EV_style, n_procs_per_alpha, plot_jq, n_sol_requested, &
-            &nyq_fac, rho_0, max_n_plots, use_pol_flux, plot_grid
+            &nyq_fac, rho_0, max_n_plots, use_pol_flux, plot_grid, output_style
         
         ! initialize ierr
         ierr = 0
@@ -149,7 +149,6 @@ contains
         end if
     contains
         subroutine default_input
-            use num_vars, only: pi
             use VMEC_vars, only: VMEC_use_pol_flux
             
             ! concerning Newton-Rhapson
@@ -165,6 +164,7 @@ contains
             plot_grid = .false.                                                 ! do not plot the grid
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
             max_n_plots = 4                                                     ! maximum nr. of modes for which to plot output in plot_X_vec
+            output_style = 1                                                    ! GNUPlot output
             ! variables concerning poloidal mode numbers m
             min_par = -4.0_dp                                                   ! minimum parallel angle [pi]
             max_par = 4.0_dp                                                    ! maximum parallel angle [pi]
@@ -175,8 +175,8 @@ contains
             n_par = 20                                                          ! number of parallel grid points
             use_pol_flux = VMEC_use_pol_flux                                    ! use same normal flux coordinate as VMEC
             ! variables concerning alpha
-            min_alpha = 0.0_dp                                                  ! minimum field line label
-            max_alpha = 2.0_dp*pi                                               ! maximum field line label
+            min_alpha = 0.0_dp                                                  ! minimum field line label [pi]
+            max_alpha = 2.0_dp                                                  ! maximum field line label [pi]
             n_alpha = 10                                                        ! number of different field lines
             ! variables concerning perturbation
             min_r_X = 0.1_dp                                                    ! minimum radius
@@ -189,6 +189,7 @@ contains
         
         ! checks whether the variables concerning run-time are chosen correctly.
         ! n_procs_per_alpha and n_sol_requested have to be at least 1
+        ! output_style has to be 1 (GNUPlot) or 2 (HDF5) (see output_ops)
         subroutine adapt_run
             if (n_procs_per_alpha.lt.1) then
                 n_procs_per_alpha = 1
@@ -204,6 +205,10 @@ contains
                 max_n_plots = 0
                 call writo('WARNING: max_n_plots cannot be negative and is &
                     &set to 0')
+            end if
+            if (output_style.lt.1 .or. output_style.gt.2) then
+                output_style = 1
+                call writo('WARNING: output_style set to default (1: GNUPlot)')
             end if
         end subroutine adapt_run
         
