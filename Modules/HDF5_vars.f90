@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module HDF5_vars
 #include <PB3D_macros.h>
-    use num_vars, only: max_str_ln, dp, plot_dir, data_dir, script_dir, xmf_fmt
+    use num_vars, only: max_str_ln, dp, plot_dir, data_dir, script_dir
     use message_ops, only: writo
     use str_ops, only: i2str, r2str, r2strt
     use HDF5
@@ -17,6 +17,7 @@ module HDF5_vars
     
     ! global variables
     integer, parameter :: max_xml_ln = 300                                      ! max. length of xml string
+    character(len=6) :: xmf_fmt = '(999A)'                                      ! format to write the xmf file
     logical :: debug = .false.                                                   ! set to true to debug information
     
     ! XML strings used in XDMF
@@ -81,6 +82,7 @@ contains
     
     ! Opens an HDF5 file and accompanying xmf file and returns the handles.
     ! Optionally, a description of the file can be provided.
+    ! [MPI] Parts by all processes, parts only by group leader
     integer function open_HDF5_file(file_info,file_name,description) &
         &result(ierr)
         use num_vars, only: MPI_Comm_groups, grp_rank
@@ -128,18 +130,19 @@ contains
         
         ! user output
         call writo('HDF5 file "'//trim(full_file_name)//'" created')
-        
-        ! open accompanying xmf file
-        full_file_name = data_dir//'/'//trim(file_name)//'.xmf'
-        call safe_open(file_info%XDMF_i,ierr,full_file_name,'replace',&
-            &'formatted',delim_in='none')
-        CHCKERR('Failed to open xmf file')
-        
-        ! user output
-        call writo('XDMF file "'//trim(full_file_name)//'" created')
-        
-        ! write header if group leader
+            
+        ! only if group leader
         if (grp_rank.eq.0) then
+            ! open accompanying xmf file
+            full_file_name = data_dir//'/'//trim(file_name)//'.xmf'
+            call safe_open(file_info%XDMF_i,ierr,full_file_name,'replace',&
+                &'formatted',delim_in='none')
+            CHCKERR('Failed to open xmf file')
+            
+            ! user output
+            call writo('XDMF file "'//trim(full_file_name)//'" created')
+            
+            ! write header if group leader
             write(file_info%XDMF_i,xmf_fmt) '<?xml version="1.0" ?>'
             write(file_info%XDMF_i,xmf_fmt) '<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" &
                 &[]>'
@@ -155,6 +158,7 @@ contains
     end function open_HDF5_file
     
     ! Closes an HDF5 file and writes the accompanying xmf file
+    ! [MPI] Parts by all processes, parts only by group leader
     integer function close_HDF5_file(file_info) result(ierr)
         use num_vars, only: grp_rank
         
@@ -164,6 +168,7 @@ contains
         type(HDF5_file_type) :: file_info                                       ! info about HDF5 file
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln) :: full_file_name                             ! full file name
         integer(HID_T) :: HDF5_i                                                ! file identifier 
         
@@ -180,31 +185,39 @@ contains
         
         ! close FORTRAN interfaces and HDF5 library.
         call H5Close_f(ierr)
-        CHCKERR('Failed to close FORTRAN HDF5 interface')
+        err_msg = 'Failed to close FORTRAN HDF5 interface'
+        CHCKERR(err_msg)
         
         ! user output
         call writo('HDF5 file "'//trim(full_file_name)//'" closed')
-        
-        ! close header if group leader
+            
+        ! only if group leader
         if (grp_rank.eq.0) then
-            write(file_info%XDMF_i,xmf_fmt) '</Domain>'
-            write(file_info%XDMF_i,xmf_fmt) '</Xdmf>'
+            ! close header
+            if (grp_rank.eq.0) then
+                write(file_info%XDMF_i,xmf_fmt) '</Domain>'
+                write(file_info%XDMF_i,xmf_fmt) '</Xdmf>'
+            end if
+            
+            ! set full file name
+            full_file_name = data_dir//'/'//trim(file_info%name)//'.xmf'
+            
+            ! close accompanying xmf file
+            close(file_info%XDMF_i,IOSTAT=ierr)
+            CHCKERR('Failed to close xmf file')
+            
+            ! user output
+            call writo('XDMF file "'//trim(full_file_name)//'" closed')
         end if
-        
-        ! set full file name
-        full_file_name = data_dir//'/'//trim(file_info%name)//'.xmf'
-        
-        ! close accompanying xmf file
-        close(file_info%XDMF_i,IOSTAT=ierr)
-        CHCKERR('Failed to close xmf file')
-        
-        ! user output
-        call writo('XDMF file "'//trim(full_file_name)//'" closed')
     end function close_HDF5_file
     
     ! Add an XDMF item to a HDF5 file
-    ! Note: This should only be used with grids
+    ! Note:  This  should  only  be  used  with  grids  (or for  topologies  and
+    ! geometries that are used throughout)
+    ! [MPI] Only group leader
     subroutine add_HDF5_item(file_info,XDMF_item,reset)
+        use num_vars, only: grp_rank
+        
         ! input / output
         type(HDF5_file_type) :: file_info                                       ! info about HDF5 file
         type(XML_str_type) :: XDMF_item                                         ! XDMF item to add
@@ -215,29 +228,35 @@ contains
         integer :: item_len                                                     ! length of item
         logical :: reset_loc                                                    ! local copy of reset
         
-        ! set item_len
-        item_len = size(XDMF_item%xml_str)
-        
-        ! set local reset
-        if (present(reset)) then
-            reset_loc = reset
-        else
-            reset_loc = .false.
+        ! only if group leader
+        if (grp_rank.eq.0) then
+            ! set item_len
+            item_len = size(XDMF_item%xml_str)
+            
+            ! set local reset
+            if (present(reset)) then
+                reset_loc = reset
+            else
+                reset_loc = .false.
+            end if
+            
+            ! write the strings to the file
+            do id = 1,item_len
+                write(file_info%XDMF_i,xmf_fmt) XDMF_item%xml_str(id)
+            end do
+            
+            ! reset if requested
+            if (reset_loc) call reset_HDF5_item(XDMF_item)
         end if
-        
-        ! write the strings to the file
-        do id = 1,item_len
-            write(file_info%XDMF_i,xmf_fmt) XDMF_item%xml_str(id)
-        end do
-        
-        ! reset if requested
-        if (reset_loc) call reset_HDF5_item(XDMF_item)
     end subroutine add_HDF5_item
     
     ! resets an HDF5 XDMF item
     ! Note: individual version cannot make use of array version because then the
     ! deallocation does not work properly>
+    ! [MPI] Only group leader
     subroutine reset_HDF5_item_arr(XDMF_items)                                  ! array vesion
+        use num_vars, only: grp_rank
+        
         ! input / output
         type(XML_str_type) :: XDMF_items(:)                                     ! XDMF items to reset
         
@@ -248,36 +267,47 @@ contains
         ! set n_items
         n_items = size(XDMF_items)
         
-        ! reset the items
-        do id = 1,n_items
-            if (.not.allocated(XDMF_items(id)%xml_str)) then
-                call writo('WARNING: Could not reset HDF5 XDMF item "'&
-                    &//trim(XDMF_items(id)%name)//'"')
-            else
-                if (debug) write(*,*) 'reset "'//trim(XDMF_items(id)%name)//'"'
-                XDMF_items(id)%name = ''
-                deallocate(XDMF_items(id)%xml_str)
-            end if
-        end do
+        ! only if group leader
+        if (grp_rank.eq.0) then
+            do id = 1,n_items
+                if (.not.allocated(XDMF_items(id)%xml_str)) then
+                    call writo('WARNING: Could not reset HDF5 XDMF item "'&
+                        &//trim(XDMF_items(id)%name)//'"')
+                else
+                    if (debug) write(*,*) 'reset "'//&
+                        &trim(XDMF_items(id)%name)//'"'
+                    XDMF_items(id)%name = ''
+                    deallocate(XDMF_items(id)%xml_str)
+                end if
+            end do
+        end if
     end subroutine reset_HDF5_item_arr
     subroutine reset_HDF5_item_ind(XDMF_item)                                   ! individual vesion
+        use num_vars, only: grp_rank
+        
         ! input / output
         type(XML_str_type) :: XDMF_item                                         ! XDMF item to reset
         
-        ! reset the item
-        if (.not.allocated(XDMF_item%xml_str)) then
-            call writo('WARNING: Could not reset HDF5 XDMF item "'&
-                &//trim(XDMF_item%name)//'"')
-        else
-            if (debug) write(*,*) 'reset "'//trim(XDMF_item%name)//'"'
-            XDMF_item%name = ''
-            deallocate(XDMF_item%xml_str)
+        ! only if group leader
+        if (grp_rank.eq.0) then
+            if (.not.allocated(XDMF_item%xml_str)) then
+                call writo('WARNING: Could not reset HDF5 XDMF item "'&
+                    &//trim(XDMF_item%name)//'"')
+            else
+                if (debug) write(*,*) 'reset "'//trim(XDMF_item%name)//'"'
+                XDMF_item%name = ''
+                deallocate(XDMF_item%xml_str)
+            end if
         end if
     end subroutine reset_HDF5_item_ind
     
     ! prints an HDF5 data item
+    ! If this is a parallel data item, the group dimension and offset have to be
+    ! specified as well.
+    ! [MPI] Parts by all processes, parts only by group leader
     integer function print_HDF5_3D_data_item(dataitem_id,file_info,var_name,&
         &var,tot_dim,grp_dim,grp_offset) result(ierr)
+        use num_vars, only: grp_rank
         
         character(*), parameter :: rout_name = 'print_HDF5_3D_data_item'
         
@@ -374,18 +404,22 @@ contains
         call H5Dclose_f(dset_id,ierr)
         CHCKERR('Failed to close data set')
         
-        ! set XDMF dataitem ID
-        dataitem_id%name = 'DataItem - '//trim(var_name)
-        allocate(dataitem_id%xml_str(3))
-        dataitem_id%xml_str(1) = '<DataItem Dimensions="'//&
-            &trim(i2str(tot_dim(3)))//' '//&
-            &trim(i2str(tot_dim(2)))//' '//&
-            &trim(i2str(tot_dim(1)))//&
-            &'" NumberType="Float" Precision="8" Format="HDF">'
-        dataitem_id%xml_str(2) = trim(file_info%name)//'.h5:/'//trim(var_name)
-        dataitem_id%xml_str(3) = '</DataItem>'
-        
-        if (debug) write(*,*) 'created data item "'//trim(dataitem_id%name)//'"'
+        ! set XDMF dataitem ID if group leader
+        if (grp_rank.eq.0) then
+            dataitem_id%name = 'DataItem - '//trim(var_name)
+            allocate(dataitem_id%xml_str(3))
+            dataitem_id%xml_str(1) = '<DataItem Dimensions="'//&
+                &trim(i2str(tot_dim(3)))//' '//&
+                &trim(i2str(tot_dim(2)))//' '//&
+                &trim(i2str(tot_dim(1)))//&
+                &'" NumberType="Float" Precision="8" Format="HDF">'
+            dataitem_id%xml_str(2) = trim(file_info%name)//'.h5:/'//&
+                &trim(var_name)
+            dataitem_id%xml_str(3) = '</DataItem>'
+            
+            if (debug) write(*,*) 'created data item "'//&
+                &trim(dataitem_id%name)//'"'
+        end if
     contains
         ! check whether the  dimensions provided are a  valid parallel indicator
         ! or not
@@ -431,7 +465,10 @@ contains
     end function print_HDF5_3D_data_item
     
     ! prints an HDF5 attribute
+    ! [MPI] Only group leader
     subroutine print_HDF5_att(att_id,att_dataitem,att_name,att_center,reset)
+        use num_vars, only: grp_rank
+        
         ! input / output
         type(XML_str_type) :: att_id                                            ! ID of attribute
         type(XML_str_type) :: att_dataitem                                      ! dataitem of attribute
@@ -444,36 +481,42 @@ contains
         integer :: id                                                           ! counter
         logical :: reset_loc                                                    ! local copy of reset
         
-        ! set dataitem_len
-        dataitem_len = size(att_dataitem%xml_str)
-        
-        ! set local reset
-        if (present(reset)) then
-            reset_loc = reset
-        else
-            reset_loc = .false.
+        ! only if group leader
+        if (grp_rank.eq.0) then
+            ! set dataitem_len
+            dataitem_len = size(att_dataitem%xml_str)
+            
+            ! set local reset
+            if (present(reset)) then
+                reset_loc = reset
+            else
+                reset_loc = .false.
+            end if
+            
+            ! set XDMF attribute ID
+            att_id%name = 'Attribute - '//trim(att_name)
+            allocate(att_id%xml_str(dataitem_len+2))
+            att_id%xml_str(1) = '<Attribute Name="'//trim(att_name)//&
+                &'" AttributeType="Scalar" Center="'//&
+                &trim(XDMF_center_types(att_center))//'">'
+            do id = 1,dataitem_len
+                att_id%xml_str(id+1) = att_dataitem%xml_str(id)
+            end do
+            att_id%xml_str(dataitem_len+2) = '</Attribute>'
+            
+            if (debug) write(*,*) 'created attribute "'//trim(att_id%name)//'"'
+            
+            ! reset if requested
+            if (reset_loc) call reset_HDF5_item(att_dataitem)
         end if
-        
-        ! set XDMF dataitem ID
-        att_id%name = 'Attribute - '//trim(att_name)
-        allocate(att_id%xml_str(dataitem_len+2))
-        att_id%xml_str(1) = '<Attribute Name="'//trim(att_name)//&
-            &'" AttributeType="Scalar" Center="'//&
-            &trim(XDMF_center_types(att_center))//'">'
-        do id = 1,dataitem_len
-            att_id%xml_str(id+1) = att_dataitem%xml_str(id)
-        end do
-        att_id%xml_str(dataitem_len+2) = '</Attribute>'
-        
-        if (debug) write(*,*) 'created attribute "'//trim(att_id%name)//'"'
-        
-        ! reset if requested
-        if (reset_loc) call reset_HDF5_item(att_dataitem)
     end subroutine print_HDF5_att
     
     ! prints an HDF5 topology
     ! Note: currently only structured grids supported
+    ! [MPI] Only group leader
     subroutine print_HDF5_top(top_id,top_type,top_n_elem)
+        use num_vars, only: grp_rank
+        
         ! input / output
         type(XML_str_type) ::  top_id                                           ! ID of topology
         integer, intent(in) :: top_type                                         ! type
@@ -484,26 +527,33 @@ contains
         integer :: n_dims                                                       ! nr. of dimensions
         character(len=max_str_ln) :: work_str                                   ! work string
         
-        ! set n_dims
-        n_dims = size(top_n_elem)
-        
-        ! fill work string
-        work_str = ''
-        do id = n_dims,1,-1
-            work_str = trim(work_str)//' '//trim(i2str(top_n_elem(id)))
-        end do
-        
-        ! set XDMF topology ID
-        top_id%name = 'Topology'
-        allocate(top_id%xml_str(1))
-        top_id%xml_str(1) = '<Topology TopologyType="'//&
-            &trim(XDMF_top_types(top_type))//'" NumberOfElements="'//&
-            &trim(work_str)//'"/>'
-        if (debug) write(*,*) 'created topology "'//trim(top_id%name)//'"'
+        ! only if group leader
+        if (grp_rank.eq.0) then
+            ! set n_dims
+            n_dims = size(top_n_elem)
+            
+            ! fill work string
+            work_str = ''
+            do id = n_dims,1,-1
+                work_str = trim(work_str)//' '//trim(i2str(top_n_elem(id)))
+            end do
+            
+            ! set XDMF topology ID
+            top_id%name = 'Topology'
+            allocate(top_id%xml_str(1))
+            top_id%xml_str(1) = '<Topology TopologyType="'//&
+                &trim(XDMF_top_types(top_type))//'" NumberOfElements="'//&
+                &trim(work_str)//'"/>'
+            
+            if (debug) write(*,*) 'created topology "'//trim(top_id%name)//'"'
+        end if
     end subroutine print_HDF5_top
     
     ! prints an HDF5 geometry
+    ! [MPI] Only group leader
     subroutine print_HDF5_geom(geom_id,geom_type,geom_dataitems,reset)
+        use num_vars, only: grp_rank
+        
         ! input / output
         type(XML_str_type) ::  geom_id                                          ! ID of geometry
         integer, intent(in) :: geom_type                                        ! type of geometry
@@ -517,45 +567,55 @@ contains
         integer :: n_dataitems                                                  ! nr. of data items
         logical :: reset_loc                                                    ! local copy of reset
         
-        ! set n_dataitems
-        n_dataitems = size(geom_dataitems)
-        
-        ! set dataitem_len for every data item
-        allocate(dataitem_len(n_dataitems))
-        do id = 1,n_dataitems
-            dataitem_len(id) = size(geom_dataitems(id)%xml_str)
-        end do
-        
-        ! set local reset
-        if (present(reset)) then
-            reset_loc = reset
-        else
-            reset_loc = .false.
-        end if
-        
-        ! set XDMF geometry ID
-        geom_id%name = 'Geometry'
-        allocate(geom_id%xml_str(sum(dataitem_len)+2))
-        geom_id%xml_str(1) = '<Geometry GeometryType="'//&
-            &trim(XDMF_geom_types(geom_type))//'">'
-        id_sum = 2                                                              ! starting index
-        do id = 1,n_dataitems
-            do jd = 1,dataitem_len(id)
-                geom_id%xml_str(id_sum) = geom_dataitems(id)%xml_str(jd)
-                id_sum = id_sum + 1
+        ! only if group leader
+        if (grp_rank.eq.0) then
+            ! set n_dataitems
+            n_dataitems = size(geom_dataitems)
+            
+            ! set dataitem_len for every data item
+            allocate(dataitem_len(n_dataitems))
+            do id = 1,n_dataitems
+                dataitem_len(id) = size(geom_dataitems(id)%xml_str)
             end do
-        end do
-        geom_id%xml_str(id_sum) = '</Geometry>'
-        
-        if (debug) write(*,*) 'created geometry "'//trim(geom_id%name)//'"'
-        
-        ! reset if requested
-        if (reset_loc) call reset_HDF5_item(geom_dataitems)
+            
+            ! set local reset
+            if (present(reset)) then
+                reset_loc = reset
+            else
+                reset_loc = .false.
+            end if
+            
+            ! set XDMF geometry ID
+            geom_id%name = 'Geometry'
+            allocate(geom_id%xml_str(sum(dataitem_len)+2))
+            geom_id%xml_str(1) = '<Geometry GeometryType="'//&
+                &trim(XDMF_geom_types(geom_type))//'">'
+            id_sum = 2                                                          ! starting index
+            do id = 1,n_dataitems
+                do jd = 1,dataitem_len(id)
+                    geom_id%xml_str(id_sum) = geom_dataitems(id)%xml_str(jd)
+                    id_sum = id_sum + 1
+                end do
+            end do
+            geom_id%xml_str(id_sum) = '</Geometry>'
+            
+            if (debug) write(*,*) 'created geometry "'//trim(geom_id%name)//'"'
+            
+            ! reset if requested
+            if (reset_loc) call reset_HDF5_item(geom_dataitems)
+        end if
     end subroutine print_HDF5_geom
     
     ! prints an HDF5 grid
+    ! If  this is  is  a uniform  grid,  the  geometry and  topology  has to  be
+    ! specified, or else  it will be assumed  that it is already  present in the
+    ! XDMF domain, and  reused. If the grid  is a collection grid,  the grids in
+    ! the  collection have  to  be specified.  Optionally, also  a  time can  be
+    ! specified (for the grids in a collection grid).
+    ! [MPI] Only group leader
     integer function print_HDF5_grid(grid_id,grid_name,grid_type,grid_time,&
         &grid_top,grid_geom,grid_atts,grid_grids,reset) result(ierr)
+        use num_vars, only: grp_rank
         
         character(*), parameter :: rout_name = 'print_HDF5_grid'
         
@@ -586,116 +646,142 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! test whether the correct arguments are provided
-        if (grid_type.eq.1) then                                                ! uniform grid
-            if (.not.present(grid_top) .or. .not.present(grid_geom)) then
+        ! only if group leader
+        if (grp_rank.eq.0) then
+            ! test whether the correct arguments are provided
+            if (grid_type.eq.1) then                                            ! uniform grid
+                ! no  requirements: topology and/or  geometry can be  defined in
+                ! domain for use throughout
+            else if (grid_type.eq.2 .or. grid_type.eq.3) then                   ! collection grid
+                if (.not.present(grid_grids)) then
+                    ierr = 1
+                    err_msg = 'For grid collections, the grids in the &
+                        &collection have to be specified'
+                    CHCKERR(err_msg)
+                end if
+            else
                 ierr = 1
-                err_msg = 'For uniform grids, the topology and geometry has to &
-                    &be specified'
+                err_msg = 'Grid type '//trim(i2str(grid_type))//' not supported'
                 CHCKERR(err_msg)
             end if
-        else if (grid_type.eq.2 .or. grid_type.eq.3) then
-            if (.not.present(grid_grids)) then
-                ierr = 1
-                err_msg = 'For grid collections, the grids in the collection &
-                    &have to be specified'
-                CHCKERR(err_msg)
+            
+            ! set geom_len, atts_len and grids_len
+            time_len = 0
+            if (present(grid_time)) time_len = 1
+            top_len = 0
+            if (present(grid_top)) then
+                top_len = size(grid_top%xml_str)
+            else
+                if (grid_type.eq.1) top_len = 1                                 ! use of general domain topology
             end if
-        else
-            ierr = 1
-            err_msg = 'Grid type '//trim(i2str(grid_type))//' not supported'
-            CHCKERR(err_msg)
-        end if
-        
-        ! set geom_len, atts_len and grids_len
-        time_len = 0
-        if (present(grid_time)) time_len = 1
-        top_len = 0
-        if (present(grid_top)) top_len = size(grid_top%xml_str)
-        geom_len = 0
-        if (present(grid_geom)) geom_len = size(grid_geom%xml_str)
-        n_atts = 0
-        if (present(grid_atts)) then
-            n_atts = size(grid_atts)
-            allocate(atts_len(n_atts))
-            atts_len = 0
-            do id = 1,n_atts
-                atts_len(id) = size(grid_atts(id)%xml_str)
-            end do
-        end if
-        n_grids = 0
-        if (present(grid_grids)) then
-            n_grids = size(grid_grids)
-            allocate(grids_len(n_grids))
-            grids_len = 0
-            do id = 1,n_grids
-                grids_len(id) = size(grid_grids(id)%xml_str)
-            end do
-        end if
-        
-        ! set local reset
-        if (present(reset)) then
-            reset_loc = reset
-        else
-            reset_loc = .false.
-        end if
-        
-        ! set XDMF grid ID
-        id_sum = 2                                                              ! starting index
-        if (grid_type.eq.1) then                                                ! uniform
-            grid_id%name = 'Uniform Grid - '//trim(grid_name)
-            allocate(grid_id%xml_str(time_len+top_len+geom_len+sum(atts_len)+2))
-            grid_id%xml_str(1) = '<Grid Name="'//trim(grid_name)//&
-                &'" GridType="Uniform">'
-            if (present(grid_time)) then                                        ! time
-                grid_id%xml_str(id_sum) = '<Time Value="'//&
-                    &trim(r2str(grid_time))//'" />'
-                id_sum = id_sum + 1
+            geom_len = 0
+            if (present(grid_geom)) then
+                geom_len = size(grid_geom%xml_str)
+            else
+                if (grid_type.eq.1) geom_len = 1                                ! use of general domain geometry
             end if
-            do jd = 1,top_len                                                   ! topology
-                grid_id%xml_str(id_sum) = grid_top%xml_str(jd)
-                id_sum = id_sum + 1
-            end do
-            do jd = 1,geom_len                                                  ! geometry
-                grid_id%xml_str(id_sum) = grid_geom%xml_str(jd)
-                id_sum = id_sum + 1
-            end do
-            do id = 1,n_atts                                                    ! attributes
-                do jd = 1,atts_len(id)
-                    grid_id%xml_str(id_sum) = grid_atts(id)%xml_str(jd)
-                    id_sum = id_sum + 1
+            n_atts = 0
+            if (present(grid_atts)) then
+                n_atts = size(grid_atts)
+                allocate(atts_len(n_atts))
+                atts_len = 0
+                do id = 1,n_atts
+                    atts_len(id) = size(grid_atts(id)%xml_str)
                 end do
-            end do
-        else                                                                    ! collection
-            grid_id%name = 'Collection Grid - '//trim(grid_name)
-            allocate(grid_id%xml_str(time_len+sum(grids_len)+2))
-            grid_id%xml_str(1) = '<Grid Name="'//trim(grid_name)//&
-                &'" GridType="Collection" CollectionType="'//&
-                &trim(XDMF_grid_types(grid_type))//'">'
-            if (present(grid_time)) then                                        ! time
-                grid_id%xml_str(id_sum) = '<Time Value="'//&
-                    &trim(r2str(grid_time))//'" />'
-                id_sum = id_sum + 1
+            else
+                allocate(atts_len(0))
+                atts_len = 0
             end if
-            do id = 1,n_grids                                                   ! grids
-                do jd = 1,grids_len(id)
-                    grid_id%xml_str(id_sum) = grid_grids(id)%xml_str(jd)
-                    id_sum = id_sum + 1
+            n_grids = 0
+            if (present(grid_grids)) then
+                n_grids = size(grid_grids)
+                allocate(grids_len(n_grids))
+                grids_len = 0
+                do id = 1,n_grids
+                    grids_len(id) = size(grid_grids(id)%xml_str)
                 end do
-            end do
-        end if
-        grid_id%xml_str(id_sum) = '</Grid>'
-        
-        if (debug) write(*,*) 'created grid "'//trim(grid_id%name)//'"'
-        
-        ! reset if requested
-        if (reset_loc) then
-            if (grid_type.eq.1)  then
-                if (present(grid_top)) call reset_HDF5_item(grid_top)
-                if (present(grid_geom)) call reset_HDF5_item(grid_geom)
-                if (present(grid_atts)) call reset_HDF5_item(grid_atts)
-            else if (grid_type.eq.2 .or. grid_type.eq.3) then
-                if (present(grid_grids)) call reset_HDF5_item(grid_grids)
+            else
+                allocate(grids_len(0))
+                grids_len = 0
+            end if
+            
+            ! set local reset
+            if (present(reset)) then
+                reset_loc = reset
+            else
+                reset_loc = .false.
+            end if
+            
+            ! set XDMF grid ID
+            id_sum = 2                                                          ! starting index
+            if (grid_type.eq.1) then                                            ! uniform
+                grid_id%name = 'Uniform Grid - '//trim(grid_name)
+                allocate(&
+                    &grid_id%xml_str(time_len+top_len+geom_len+sum(atts_len)+2))
+                grid_id%xml_str(1) = '<Grid Name="'//trim(grid_name)//&
+                    &'" GridType="Uniform">'
+                if (present(grid_time)) then                                    ! time
+                    grid_id%xml_str(id_sum) = '<Time Value="'//&
+                        &trim(r2str(grid_time))//'" />'
+                    id_sum = id_sum + 1
+                end if
+                if (present(grid_top)) then
+                    do jd = 1,top_len                                           ! topology
+                        grid_id%xml_str(id_sum) = grid_top%xml_str(jd)
+                        id_sum = id_sum + 1
+                    end do
+                else
+                    grid_id%xml_str(id_sum) = '<Topology Reference="/Xdmf/&
+                        &Domain/Topology[1]"/>'
+                    id_sum = id_sum + 1
+                end if
+                if (present(grid_geom)) then
+                    do jd = 1,geom_len                                          ! geometry
+                        grid_id%xml_str(id_sum) = grid_geom%xml_str(jd)
+                        id_sum = id_sum + 1
+                    end do
+                else
+                    grid_id%xml_str(id_sum) = '<Geometry Reference="/Xdmf/&
+                        &Domain/Geometry[1]"/>'
+                    id_sum = id_sum + 1
+                end if
+                do id = 1,n_atts                                                ! attributes
+                    do jd = 1,atts_len(id)
+                        grid_id%xml_str(id_sum) = grid_atts(id)%xml_str(jd)
+                        id_sum = id_sum + 1
+                    end do
+                end do
+            else                                                                ! collection
+                grid_id%name = 'Collection Grid - '//trim(grid_name)
+                allocate(grid_id%xml_str(time_len+sum(grids_len)+2))
+                grid_id%xml_str(1) = '<Grid Name="'//trim(grid_name)//&
+                    &'" GridType="Collection" CollectionType="'//&
+                    &trim(XDMF_grid_types(grid_type))//'">'
+                if (present(grid_time)) then                                    ! time
+                    grid_id%xml_str(id_sum) = '<Time Value="'//&
+                        &trim(r2str(grid_time))//'" />'
+                    id_sum = id_sum + 1
+                end if
+                do id = 1,n_grids                                               ! grids
+                    do jd = 1,grids_len(id)
+                        grid_id%xml_str(id_sum) = grid_grids(id)%xml_str(jd)
+                        id_sum = id_sum + 1
+                    end do
+                end do
+            end if
+            grid_id%xml_str(id_sum) = '</Grid>'
+            
+            if (debug) write(*,*) 'created grid "'//trim(grid_id%name)//'"'
+            
+            ! reset if requested
+            if (reset_loc) then
+                if (grid_type.eq.1)  then
+                    if (present(grid_top)) call reset_HDF5_item(grid_top)
+                    if (present(grid_geom)) call reset_HDF5_item(grid_geom)
+                    if (present(grid_atts)) call reset_HDF5_item(grid_atts)
+                else if (grid_type.eq.2 .or. grid_type.eq.3) then
+                    if (present(grid_grids)) call reset_HDF5_item(grid_grids)
+                end if
             end if
         end if
     end function print_HDF5_grid

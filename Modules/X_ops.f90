@@ -7,7 +7,7 @@ module X_ops
     use num_vars, only: dp, iu, max_str_ln, pi
     use message_ops, only: lvl_ud, writo, print_ar_2
     use output_ops, only: print_GP_2D, print_GP_3D
-    use str_ops, only: i2str, r2strt
+    use str_ops, only: i2str, r2strt, r2str
 
     implicit none
     private
@@ -142,17 +142,32 @@ contains
         real(dp), intent(in), optional :: par_range_F(2)                        ! parallel range [2pi]
         character(len=max_str_ln) :: err_msg                                    ! error message
         
+        ! local variables
+        integer :: n_t(2)                                                       ! nr. of time steps in quarter period, nr. of quarter periods
+        complex(dp) :: omega                                                    ! sqrt of Eigenvalue
+        
         ! initialize ierr
         ierr = 0
+        
+        ! if omega is  predominantly real, the Eigenfunction  explodes, so limit
+        ! n_t(2)  to 1.  If  it is  predominantly  imaginary, the  Eigenfunction
+        ! oscillates, so choose n_t(2) = 8 for 2 whole periods
+        omega = sqrt(X_val)
+        if (abs(realpart(omega)/imagpart(omega)).gt.1) then
+            n_t(2) = 1                                                          ! 1 quarter period
+            n_t(1) = 10                                                         ! 10 points per quarter period
+        else
+            n_t(2) = 8                                                          ! 8 quarter periods
+            n_t(1) = 5                                                          ! 5 points per quarter period
+        end if
         
         ! delegate to child routines
         select case(output_style)
             case(1)                                                             ! GNUPlot output
-                ierr = plot_X_vec_GP(X_vec,X_val,X_id,job_id,&
-                    &par_range_F)
+                ierr = plot_X_vec_GP(X_vec,omega,X_id,job_id,n_t,par_range_F)
                 CHCKERR('')
             case(2)                                                             ! HDF5 output
-                ierr = plot_X_vec_HDF5(X_vec,X_val,X_id,job_id,.false.)
+                ierr = plot_X_vec_HDF5(X_vec,X_val,X_id,job_id,n_t,.false.)
                 CHCKERR('')
             case default
                 err_msg = 'No style associated with '//trim(i2str(output_style))
@@ -161,136 +176,16 @@ contains
         end select
     end function plot_X_vec
     
-    ! HDF5 version of plot_X_vec
-    ! Plots an  eigenfunction in  3D real  space by determining  a grid  in VMEC
-    ! coordinates that covers  the entire device (But they are  tabulated in the
-    ! perturbation normal  grid) and then  calculating the real  perturbation on
-    ! that grid  by inverting the Fourier  transform that defined the  modes for
-    ! which are  solved. These modes  are discretized on the  perturbation grid,
-    ! which has to be translated to the VMEC equilibrium grid
-    integer function plot_X_vec_HDF5(X_vec,X_val,X_id,job_id,follow_B) &
-        &result(ierr)
-        use X_vars, only: grp_min_r_X, grp_n_r_X, n_r_X, grp_r_X, grp_n_r_X, &
-            &size_X, n_X, m_X
-        use output_ops, only: print_HDF5_3D
-        use eq_vars, only: calc_XYZ_grid
-        use num_vars, only: HDF5_3D_type
-        
-        character(*), parameter :: rout_name = 'plot_X_vec_HDF5'
-        
-        ! input / output
-        complex(dp), intent(in) :: X_vec(:,:)                                   ! MPI Eigenvector
-        complex(dp), intent(in) :: X_val                                        ! Eigenvalue
-        integer, intent(in) :: X_id                                             ! nr. of Eigenvalue (for output name)
-        integer, intent(in) :: job_id                                           ! nr. of alpha job
-        logical, intent(in), optional :: follow_B                               ! .true. if to be plot only along B
-        
-        ! local variables
-        character(len=max_str_ln) :: plot_title                                 ! title of plot
-        integer :: id, kd                                                       ! counters
-        integer :: n_theta_plot = 40                                            ! nr. of poloidal points in plot
-        integer :: n_zeta_plot = 160                                            ! nr. of toroidal points in plot
-        integer :: n_r_plot                                                     ! nr. of normal points in plot
-        real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)            ! theta_V and zeta_V for flux surface plot
-        real(dp), allocatable :: x_plot(:,:,:)                                  ! x values of plot
-        real(dp), allocatable :: y_plot(:,:,:)                                  ! y values of plot
-        real(dp), allocatable :: z_plot(:,:,:)                                  ! z values of plot
-        real(dp), allocatable :: l_plot(:,:,:)                                  ! lambda values of plot
-        real(dp), allocatable :: f_plot(:,:,:)                                  ! the function to plot
-        logical :: follow_B_loc                                                 ! local copy of follow_B
-        
-        ! initialize ierr
-        ierr = 0
-        
-        call lvl_ud(1)
-        
-        ! set up local follow_B
-        follow_B_loc = .false.
-        if (present(follow_B)) then
-            if (follow_B) follow_B_loc = follow_B
-        end if
-        
-        !! set up n_r_plot: nr. of normal grid points in perturbation grid
-        !n_r_plot = size(X_vec,2)
-        
-        !! initialize theta_plot and zeta_plot
-        !if (follow_B) then
-            !write(*,*) '!!!!! IMPLEMENT THIS, USING THE SAME TECHNIQUE AS IN X_OPS, 347'
-            !ierr = 1
-            !CHCKERR('NOT YET IMPLEMENTED')
-        !else
-            !allocate(theta_plot(n_theta_plot,n_zeta_plot,n_r_plot))
-            !do id = 1,n_theta_plot
-                !theta_plot(id,:,:) = (id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)
-            !end do
-            !allocate(zeta_plot(n_theta_plot,n_zeta_plot,n_r_plot))
-            !do id = 1,n_zeta_plot
-                !zeta_plot(:,id,:) = (id-1.0_dp)*pi/(n_zeta_plot-1.0_dp)
-            !end do
-        !end if
-        
-        !! calculate X,Y and Z using the VMEC theta_plot and zeta_plot, tabulated
-        !! in the perturbation normal grid indicated by grp_r_X
-        !ierr = calc_XYZ_grid(theta_plot,zeta_plot,&
-            !&[grp_r_X(1),grp_r_X(grp_n_r_X)],.false.,&
-            !&x_plot,y_plot,z_plot,l_plot)
-        !CHCKERR('')
-        
-        !! calculate the function to plot: global mode
-        !allocate(f_plot(n_theta_plot,n_zeta_plot,n_r_plot))
-        !f_plot = 0.0_dp
-        !do id = 1,size_X
-            !do kd = 1,n_r_plot
-                !! Need to  translate from  VMEC coordinates  (theta_V,zeta_V) to
-                !! flux  coordinates  (theta_F,zeta_F)  for the  inverse  Fourier
-                !! transform of the Eigenvalue Fourier modes to real space
-                !f_plot(:,:,kd) = f_plot(:,:,kd) + realpart(X_vec(id,kd) * &
-                    !&exp(n_X(id)*zeta_plot(:,:,kd) - &
-                    !&m_X(id)*(theta_plot(:,:,kd)+l_plot(:,:,kd))))
-            !end do
-        !end do
-        
-        !!call print_GP_3D('Z','',z_plot,x=x_plot,y=y_plot)                       ! for checking
-        
-        !! set file info
-        !EV_HDF5%name = 'global_mode_'//trim(i2str(X_id))
-        !EV_HDF5%tot_dim = [n_theta_plot,n_zeta_plot,n_r_X]
-        
-        !! open HDF5 files
-        !plot_title = 'job '//trim(i2str(job_id))//' - EV '//trim(i2str(X_id))
-        !ierr = open_HDF5_3D(EV_HDF5,&
-            !&grp_dim=[n_theta_plot,n_zeta_plot,grp_n_r_X],&
-            !&grp_offset=[0,0,grp_min_r_X-1],X=x_plot,Y=y_plot,Z=z_plot,&
-            !&description=trim(plot_title))
-        !CHCKERR('')
-        
-        !call print_HDF5_3D_arr(var_names,file_name,vars,tot_dim,grp_dim,&
-            !&grp_offset,X,Y,Z,time_id,anim,description)                             ! array version
-        
-        !! add the global mode to the plot
-        !ierr = print_HDF5_3D(EV_HDF5,'X_vec',f_plot)
-        !CHCKERR('')
-        
-        !! close HDF5 files
-        !ierr = close_HDF5_3D(EV_HDF5)
-        !CHCKERR('')
-        
-        ! deallocate
-        deallocate(x_plot,y_plot,z_plot,l_plot,f_plot)
-        
-        call lvl_ud(-1)
-    end function plot_X_vec_HDF5
-    
     ! GNUPlot version of plot_X_vec
     ! plots an  eigenfunction in either 1D  (normal coord. in perturb.  grid) or
     ! 2D  (normal  coord. &  par  coord.),  depending  on whether  the  variable
     ! par_range_F is provided The individual modes are  plotted at t = 0 and t =
     ! (pi/2)/omega and  an animated plot  is produced as  well in a  .gif output
     ! file
-    integer function plot_X_vec_GP(X_vec,X_val,X_id,job_id,par_range_F) &
+    integer function plot_X_vec_GP(X_vec,omega,X_id,job_id,n_t,par_range_F) &
         &result(ierr)
         use num_vars, only: grp_rank, min_r_X, max_r_X, max_n_plots, &
-            &grp_n_procs, use_pol_flux, output_style
+            &grp_n_procs, use_pol_flux
         use output_ops, only: draw_GP, draw_GP_animated, merge_GP
         use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X, grp_min_r_X
         use VMEC_vars, only: n_r_eq, VMEC_use_pol_flux
@@ -303,9 +198,10 @@ contains
         
         ! input / output
         complex(dp), intent(in) :: X_vec(:,:)                                   ! MPI Eigenvector
-        complex(dp), intent(in) :: X_val                                        ! Eigenvalue
+        complex(dp), intent(in) :: omega                                        ! sqrt of Eigenvalue
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue (for output name)
         integer, intent(in) :: job_id                                           ! nr. of alpha job
+        integer, intent(in) :: n_t(2)                                           ! nr. of time steps in quarter period, nr. of quarter periods
         real(dp), intent(in), optional :: par_range_F(2)                        ! parallel range [2pi]
         
         ! local variables
@@ -315,9 +211,6 @@ contains
         real(dp), allocatable :: z_plot(:,:,:,:)                                ! z values of plot, parallel version
         real(dp), allocatable :: z_magn_plot(:,:,:)                             ! z values of plot of magnitude, parallel version
         integer :: id, jd, kd, ld                                               ! counter
-        complex(dp) :: omega                                                    ! eigenvalue
-        integer :: n_t                                                          ! nr. of time steps in quarter period
-        integer :: n_n_t                                                        ! how many quarter periods
         integer :: n_par_F = 50                                                 ! how many parallel points
         real(dp) :: kd_loc_eq                                                   ! kd_loc in equilibrium grid
         real(dp) :: kd_loc_i                                                    ! unrounded index corresponding to kd_loc in tables
@@ -335,7 +228,6 @@ contains
         integer :: n_norm                                                       ! max nr of normal points to plot
         integer :: grp_n_norm                                                   ! nr. of normal points in plot for this rank
         complex(dp) :: fac_i_interp(1)                                          ! complex copy of fac_n_interp or fac_m_interp
-        logical :: plot_extra_ghost                                             ! for GNUPlot, overlapping plots have to be produced
         
         ! initialize ierr
         ierr = 0
@@ -343,10 +235,6 @@ contains
         call lvl_ud(1)
         
         ! 1. initialize some quantities
-        
-        ! set up plot_extra_ghost for correct parallel GNUPlotting
-        plot_extra_ghost = .false.
-        if (output_style.eq.1) plot_extra_ghost = .true.
         
         ! set up fac_n and fac_m
         allocate(fac_n(grp_n_r_eq),fac_m(grp_n_r_eq))
@@ -356,18 +244,6 @@ contains
         else
             fac_n = 1.0_dp
             fac_m = rot_t_FD(:,0)
-        end if
-        
-        ! if  omega  is  predominantly  real,  the  Eigenfunction  explodes,
-        ! so  limit  n_n_t to  1.  If  it  is predominantly  imaginary,  the
-        ! Eigenfunction oscillates, so choose n_n_t = 8 for 2 whole periods
-        omega = sqrt(X_val)
-        if (abs(realpart(omega)/imagpart(omega)).gt.1) then
-            n_n_t = 1                                                           ! 1 quarter period
-            n_t = 20                                                            ! 20 points per quarter period
-        else
-            n_n_t = 8                                                           ! 8 quarter periods
-            n_t = 5                                                             ! 5 points per quarter period
         end if
         
         ! set up the angular variable ang_par_F_loc, depending on whether it has
@@ -383,10 +259,10 @@ contains
             ang_par_F_loc = 0.0_dp
         end if
         
-        ! 2. calculate the x and z parts of the plot in parallel
+        ! 2. calculate the x, y and z parts of the plot in parallel
         
         ! calculate starting and ending normal index of array
-        call calc_r_plot(r_plot,n_norm,grp_n_norm,plot_extra_ghost)
+        call calc_r_plot(r_plot,n_norm,grp_n_norm,.true.)
         
         ! allocate variables
         if (grp_rank.lt.grp_n_procs-1) then
@@ -394,10 +270,10 @@ contains
         else
             allocate(X_vec_extended(size(X_vec,1),size(X_vec,2)))
         end if
-        allocate(x_plot(grp_n_norm,n_par_F,size_X,n_n_t*n_t))
-        allocate(y_plot(grp_n_norm,n_par_F,size_X,n_n_t*n_t))
-        allocate(z_plot(grp_n_norm,n_par_F,size_X,n_n_t*n_t))
-        allocate(z_magn_plot(grp_n_norm,n_par_F,n_n_t*n_t))
+        allocate(x_plot(grp_n_norm,n_par_F,size_X,product(n_t)))
+        allocate(y_plot(grp_n_norm,n_par_F,size_X,product(n_t)))
+        allocate(z_plot(grp_n_norm,n_par_F,size_X,product(n_t)))
+        allocate(z_magn_plot(grp_n_norm,n_par_F,product(n_t)))
         allocate(X_vec_interp(size_X))
         allocate(first_X_vec_interp(size_X))
         
@@ -430,7 +306,7 @@ contains
         ! set up x-axis and z-axis values in parallel
         z_magn_plot = 0.0_dp
         ! loop over all time steps
-        do id = 1,n_n_t*n_t
+        do id = 1,product(n_t)
             ! loop over all normal points
             do kd = 1,grp_n_norm
                 ! set up x_plot
@@ -495,7 +371,7 @@ contains
                     do jd = 1,n_par_F
                         z_plot(kd,jd,ld,id) = &
                             &realpart(X_vec_interp(ld) * &
-                            &exp(omega/abs(omega)*(id-1.0_dp)/(n_t*n_n_t-1)&    ! time dependency
+                            &exp(omega/abs(omega)*0.5*pi*(id-1.0_dp)/(n_t(1)-1)&
                             &    + iu*(n_X(ld)*fac_n_interp-&
                             &          m_X(ld)*fac_m_interp)&
                             &    * ang_par_F_loc(jd)))
@@ -543,8 +419,8 @@ contains
                     call merge_GP(file_names,file_name,delete=.true.)
                     
                     ! draw animation
-                    call draw_GP_animated(trim(plot_title),file_name,n_n_t*n_t,&
-                        &.false.)
+                    call draw_GP_animated(trim(plot_title),file_name,&
+                        &product(n_t),.false.)
                     
                     ! deallocate
                     deallocate(file_names)
@@ -588,7 +464,7 @@ contains
             call merge_GP(file_names,file_name,delete=.true.)
             
             ! draw animation
-            call draw_GP_animated(trim(plot_title),file_name,n_n_t*n_t,&
+            call draw_GP_animated(trim(plot_title),file_name,product(n_t),&
                 &.false.)
             
             ! deallocate
@@ -681,4 +557,208 @@ contains
             vec = exch_vec(:,size(exch_vec,2))
         end subroutine exch_ghost_values
     end function plot_X_vec_GP
+    
+    ! HDF5 version of plot_X_vec
+    ! Plots an  eigenfunction in  3D real  space by determining  a grid  in VMEC
+    ! coordinates that covers  the entire device (But they are  tabulated in the
+    ! perturbation normal  grid) and then  calculating the real  perturbation on
+    ! that grid  by inverting the Fourier  transform that defined the  modes for
+    ! which are  solved.
+    ! Alternatively, by using the optional argument "follow_B", the modes can be
+    ! plot along  the magnetic  field lines  which have been  used to  solve the
+    ! system of equations. (TO BE IMPLEMENTED)
+    integer function plot_X_vec_HDF5(X_vec,omega,X_id,job_id,n_t,follow_B) &
+        &result(ierr)
+        use X_vars, only: grp_min_r_X, grp_n_r_X, n_r_X, grp_r_X, grp_n_r_X, &
+            &size_X, n_X, m_X
+        use output_ops, only: print_HDF5_3D
+        use eq_vars, only: calc_XYZ_grid
+        use HDF5_vars, only: open_HDF5_file, print_HDF5_top, print_HDF5_geom, &
+            &print_HDF5_3D_data_item, print_HDF5_grid, add_HDF5_item, &
+            &close_HDF5_file, print_HDF5_att, &
+            &HDF5_file_type, XML_str_type
+        
+        character(*), parameter :: rout_name = 'plot_X_vec_HDF5'
+        
+        ! input / output
+        complex(dp), intent(in) :: X_vec(:,:)                                   ! MPI Eigenvector
+        complex(dp), intent(in) :: omega                                        ! sqrt of Eigenvalue
+        integer, intent(in) :: X_id                                             ! nr. of Eigenvalue (for output name)
+        integer, intent(in) :: job_id                                           ! nr. of alpha job
+        integer, intent(in) :: n_t(2)                                           ! nr. of time steps in quarter period, nr. of quarter periods
+        logical, intent(in), optional :: follow_B                               ! .true. if to be plot only along B
+        
+        ! local variables
+        integer :: id, kd, ld                                                   ! counters
+        integer :: n_theta_plot = 80                                            ! nr. of poloidal points in plot
+        integer :: n_zeta_plot = 160                                            ! nr. of toroidal points in plot
+        real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)            ! theta_V and zeta_V for flux surface plot
+        real(dp), allocatable :: x_plot(:,:,:)                                  ! x values of plot
+        real(dp), allocatable :: y_plot(:,:,:)                                  ! y values of plot
+        real(dp), allocatable :: z_plot(:,:,:)                                  ! z values of plot
+        real(dp), allocatable :: l_plot(:,:,:)                                  ! lambda values of plot
+        real(dp), allocatable :: f_plot(:,:,:)                                  ! the function to plot
+        logical :: follow_B_loc                                                 ! local copy of follow_B
+        integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total dimensions, group dimensions and group offset
+        type(HDF5_file_type) :: file_info                                       ! HDF5 file info
+        type(XML_str_type) :: time_col_grid                                     ! grid with time collection
+        type(XML_str_type), allocatable :: grids(:)                             ! the grids in the time collection
+        type(XML_str_type) :: top                                               ! topology
+        type(XML_str_type) :: XYZ(3)                                            ! data items for geometry
+        type(XML_str_type) :: geom                                              ! geometry
+        type(XML_str_type) :: att(1)                                            ! attribute
+        character(len=max_str_ln) :: var_name                                   ! name of variable that is plot
+        
+        ! initialize ierr
+        ierr = 0
+        
+        call lvl_ud(1)
+        
+        ! user output
+        call writo('Starting the plot')
+        
+        ! set up local follow_B
+        follow_B_loc = .false.
+        if (present(follow_B)) then
+            if (follow_B) follow_B_loc = follow_B
+        end if
+        
+        ! set up total dimensions, group dimensions and group offset
+        tot_dim = [n_theta_plot,n_zeta_plot,n_r_X]
+        grp_dim = [n_theta_plot,n_zeta_plot,grp_n_r_X]
+        grp_offset = [0,0,grp_min_r_X-1]
+        
+        ! set up var_name
+        var_name = 'Solution vector X_vec'
+        
+        ! initialize theta_plot and zeta_plot
+        if (follow_B) then
+            ierr = 1
+            CHCKERR('NOT YET IMPLEMENTED')
+            !!!!! SHOULD BE EQUAL TO THE GRID PLOT, WITH ADDITIONALLY THE SOLUTION VECTOR !!!!
+        else
+            allocate(theta_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
+            do id = 1,n_theta_plot
+                theta_plot(id,:,:) = (id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)
+            end do
+            allocate(zeta_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
+            do id = 1,n_zeta_plot
+                zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
+            end do
+        end if
+        
+        ! calculate X,Y and Z using the VMEC theta_plot and zeta_plot, tabulated
+        ! in the perturbation normal grid indicated by grp_r_X
+        ierr = calc_XYZ_grid(theta_plot,zeta_plot,&
+            &[grp_r_X(1),grp_r_X(grp_n_r_X)],.false.,&
+            &x_plot,y_plot,z_plot,l_plot)
+        CHCKERR('')
+        
+        !call print_GP_3D('test_plot','',z_plot,X=x_plot,Y=y_plot)               ! for testing
+        
+        ! calculate the function to plot: global mode
+        allocate(f_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
+        
+        ! open HDF5 file
+        ierr = open_HDF5_file(file_info,'X_vec_'//trim(i2str(job_id)),&
+            &'Job '//trim(i2str(job_id))//' - Solution vector X_vec &
+            &for Eigenvalue '//trim(i2str(X_id)))
+        CHCKERR('')
+        
+        ! print topology
+        call print_HDF5_top(top,2,tot_dim)
+        
+        ! add topology to HDF5 file and reset it
+        call add_HDF5_item(file_info,top,reset=.true.)
+        
+        ! print data item for X
+        ierr = print_HDF5_3D_data_item(XYZ(1),file_info,&
+            &'X_'//trim(i2str(id)),x_plot,tot_dim,grp_dim=grp_dim,&
+            &grp_offset=grp_offset)
+        CHCKERR('')
+        
+        ! print data item for Y
+        ierr = print_HDF5_3D_data_item(XYZ(2),file_info,&
+            &'Y_'//trim(i2str(id)),y_plot,tot_dim,grp_dim=grp_dim,&
+            &grp_offset=grp_offset)
+        CHCKERR('')
+        
+        ! print data item for Z
+        ierr = print_HDF5_3D_data_item(XYZ(3),file_info,&
+            &'Z_'//trim(i2str(id)),z_plot,tot_dim,grp_dim=grp_dim,&
+            &grp_offset=grp_offset)
+        CHCKERR('')
+        
+        ! print geometry with X, Y and Z data item
+        call print_HDF5_geom(geom,2,XYZ,.true.)
+        
+        ! add geometry to HDF5 file and reset it
+        call add_HDF5_item(file_info,geom,reset=.true.)
+        
+        ! create grid for time collection
+        allocate(grids(product(n_t)))
+        
+        ! user output
+        call writo('Calculating plot for '//trim(i2str(product(n_t)))//&
+            &' time steps')
+        
+        call lvl_ud(1)
+            
+        ! For  each time step, produce the 3D plot
+        do id = 1,product(n_t)
+            ! print data item for plot variable f_plot
+            f_plot = 0.0_dp
+            ! for all normal points
+            do kd = 1,grp_n_r_X
+                ! for all modes
+                do ld = 1,size_X
+                    ! Need to  translate from VMEC  coordinates (theta_V,zeta_V)
+                    ! to  flux  coordinates  (theta_F,zeta_F)  for  the  inverse
+                    ! Fourier transform of the  Eigenvalue Fourier modes to real
+                    ! space
+                    f_plot(:,:,kd) = f_plot(:,:,kd) + realpart(X_vec(ld,kd) * &
+                        &exp(omega/abs(omega)*0.5*pi*(id-1.0_dp)/(n_t(1)-1) + &
+                        &iu * (n_X(ld)*(-zeta_plot(:,:,kd)) - &
+                        &m_X(ld)*(theta_plot(:,:,kd)+l_plot(:,:,kd)))))
+                end do
+            end do
+            
+            ierr = print_HDF5_3D_data_item(XYZ(1),file_info,'var_'//&
+                &trim(i2str(id)),f_plot,tot_dim,grp_dim=grp_dim,&
+                &grp_offset=grp_offset)                                         ! reuse XYZ(1)
+            CHCKERR('')
+            
+            ! print attribute with this data item
+            call print_HDF5_att(att(1),XYZ(1),'X_vec',1,.true.)
+            
+            ! create a grid with the topology, the geometry and the attribute
+            ierr = print_HDF5_grid(grids(id),var_name,1,&
+                &grid_time=0.5*pi*(id-1.0_dp)/(n_t(1)-1),grid_atts=att,&
+                &reset=.true.)
+            CHCKERR('')
+            
+            ! user output
+            call writo('Finished plot for time step '//trim(i2str(id))//&
+                &'/'//trim(i2str(product(n_t))))
+        end do
+        
+        call lvl_ud(-1)
+        
+        ! create grid collection from individual grids and reset them
+        ierr = print_HDF5_grid(time_col_grid,'time collection',2,&
+            &grid_grids=grids,reset=.true.)
+        CHCKERR('')
+        
+        ! add collection grid to HDF5 file and reset it
+        call add_HDF5_item(file_info,time_col_grid,reset=.true.)
+        
+        ! close HDF5 file
+        ierr = close_HDF5_file(file_info)
+        CHCKERR('')
+        
+        ! deallocate
+        deallocate(x_plot,y_plot,z_plot,l_plot,f_plot)
+        
+        call lvl_ud(-1)
+    end function plot_X_vec_HDF5
 end module

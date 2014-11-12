@@ -12,8 +12,7 @@ module num_vars
         &grp_rank, grp_n_procs, grp_nr, n_groups, output_name, next_job, &
         &next_job_win, plot_jq, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
         &nyq_fac, max_n_plots, alpha_job_nr, use_pol_flux, plot_grid, &
-        &output_style, HDF5_3D_type, eq_style, eq_name, plot_dir, data_dir, &
-        &script_dir, xmf_fmt
+        &output_style, eq_style, eq_name, plot_dir, data_dir, script_dir
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -76,18 +75,9 @@ module num_vars
     integer :: max_n_plots                                                      ! max. nr. of modes for which to output a plot
     logical :: no_plots = .false.                                               ! true if no plots should be made
     integer :: output_style                                                     ! style of output (GNUPlot, HDF5, ...)
-    type :: HDF5_3D_type                                                        ! type containing the information about HDF5 files
-        integer :: HDF5_i                                                       ! HDF5 file handle
-        integer :: XDMF_i                                                       ! XDMF file handle
-        character(len=max_str_ln) :: name                                       ! name of files (without extensions ".h5" and ".xmf")
-        integer :: tot_dim(3)                                                   ! total dimensions of 3D array
-        integer :: grp_dim(3)                                                   ! dimensions of 3D array in this group
-        integer :: grp_off(3)                                                   ! offset of 3D array in this group
-    end type HDF5_3D_type
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots
     character(len=4) :: data_dir = 'Data'                                       ! directory where to save data for plots
-    character(len=6) :: xmf_fmt = '(999A)'                                      ! format to write the xmf file
     
     ! considering the various field lines for which to do the calculations
     integer :: n_alpha                                                          ! how many field lines

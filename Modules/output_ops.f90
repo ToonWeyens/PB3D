@@ -6,7 +6,7 @@ module output_ops
 #include <PB3D_macros.h>
     use str_ops, only: i2str, r2strt, r2str
     use num_vars, only: dp, max_str_ln, no_plots, iu, plot_dir, data_dir, &
-        &script_dir, xmf_fmt
+        &script_dir
     use message_ops, only: writo, stop_time, start_time, lvl_ud
     
     implicit none
@@ -822,7 +822,7 @@ contains
     ! (default: 4)  in "time_id"  (ignored if outside  range (0..1)).  Also, the
     ! time series  can be made into  an animation with "anim"  and a description
     ! can be provided.
-    subroutine print_HDF5_3D_arr(var_names,file_name,vars,tot_dim,grp_dim,&
+    subroutine print_HDF5_3D_arr(var_name,file_name,vars,tot_dim,grp_dim,&
         &grp_offset,X,Y,Z,time_id,anim,description)                             ! array version
         use HDF5_vars, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
             &print_HDF5_geom, print_HDF5_3D_data_item, print_HDF5_att, &
@@ -830,7 +830,7 @@ contains
             &XML_str_type, HDF5_file_type
         
         ! input / output
-        character(len=*), intent(in) :: var_names(:)                            ! names of variables to be plot
+        character(len=*), intent(in) :: var_name                                ! name of variable to be plot
         character(len=*), intent(in) :: file_name                               ! file name
         real(dp), intent(in), target :: vars(:,:,:,:)                           ! variables to plot
         integer, intent(in) :: tot_dim(4)                                       ! total dimensions of the arrays
@@ -861,6 +861,7 @@ contains
         type(XML_str_type) :: att(1)                                            ! attribute
         logical :: time_mask(4) = .false.                                       ! to select out the time dimension
         real(dp), pointer :: var_ptr(:,:,:)                                     ! pointer to vars, X, Y or z
+        character(len=max_str_ln) :: full_var_name                              ! full variable name
         
         
         ! set up local time_id and anim
@@ -999,10 +1000,15 @@ contains
             CHCKSTT
             
             ! print attribute with this data item
-            call print_HDF5_att(att(1),XYZ(1),'var_'//trim(i2str(id)),1,.true.)
+            call print_HDF5_att(att(1),XYZ(1),var_name,1,.true.)
             
             ! create a grid with the topology, the geometry and the attribute
-            istat = print_HDF5_grid(grids(id),var_names(id),1,&
+            if (anim_loc.eq.2) then                                             ! time collection
+                full_var_name = var_name
+            else                                                                ! spatial collection: need different names for grids
+                full_var_name = var_name//'_'//trim(i2str(id))
+            end if
+            istat = print_HDF5_grid(grids(id),full_var_name,1,&
                 &grid_time=id*1._dp,grid_top=top,grid_geom=geom,&
                 &grid_atts=att,reset=.true.)
             CHCKSTT

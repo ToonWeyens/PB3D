@@ -424,9 +424,9 @@ contains
             call lvl_ud(1)
             
             ! set names
-            plot_title(1) = 'Magnetic Flux Surfaces'
+            plot_title(1) = 'Magnetic Flux Surface'
             file_name(1) = 'Flux_surfaces.dat'
-            plot_title(2) = 'Magnetic field'
+            plot_title(2) = 'Magnetic Field Line'
             file_name(2) = 'B_field.dat'
             
             ! write flux surfaces
@@ -453,9 +453,8 @@ contains
         end subroutine plot_grid_real_GP
         integer function plot_grid_real_HDF5(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)&
             & result(ierr)                                                      ! HDF5 version
-            use num_vars, only: HDF5_3D_type
-            use HDF5_vars, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
-                &print_HDF5_geom, print_HDF5_3D_data_item, print_HDF5_att, &
+            use HDF5_vars, only: open_HDF5_file, add_HDF5_item, &
+                &print_HDF5_top, print_HDF5_geom, print_HDF5_3D_data_item, &
                 &print_HDF5_grid, close_HDF5_file, &
                 &XML_str_type, HDF5_file_type
             
@@ -467,7 +466,7 @@ contains
             character(len=*), intent(in) :: anim_name                           ! name of animation
             
             ! local variables
-            character(len=max_str_ln), allocatable :: plot_title(:,:)           ! plot title for different radius
+            character(len=max_str_ln) :: plot_title(2)                          ! plot title for flux surface and for field lines
             integer :: id                                                       ! counter
             type(HDF5_file_type) :: file_info                                   ! file info
             type(XML_str_type) :: grids(2)                                      ! grid in spatial collection (flux surface, field line)
@@ -492,13 +491,8 @@ contains
             n_r = size(X_1,3)                                                   ! should be same for all other X_i, Y_i and Z_i
             
             ! set up plot titles
-            allocate(plot_title(n_r-1,2))
-            do id = 1,n_r-1
-                plot_title(id,1) = 'normal point '//trim(i2str(id))//'/'//&
-                    &trim(i2str(n_r-1))//' for surface'
-                plot_title(id,2) = 'normal point '//trim(i2str(id))//'/'//&
-                    &trim(i2str(n_r-1))//' for field line'
-            end do
+            plot_title(1) = 'Magnetic Flux Surface'
+            plot_title(2) = 'Magnetic Field Line'
             
             ! open HDF5 file
             ierr = open_HDF5_file(file_info,'field_lines_in_flux_surfaces',&
@@ -534,7 +528,7 @@ contains
                 call print_HDF5_geom(geom,2,XYZ,.true.)
                 
                 ! create a grid with the topology and the geometry
-                ierr = print_HDF5_grid(grids(1),plot_title(id,1),1,&
+                ierr = print_HDF5_grid(grids(1),plot_title(1),1,&
                     &grid_top=top,grid_geom=geom,reset=.true.)
                 CHCKERR('')
                 
@@ -562,7 +556,7 @@ contains
                 call print_HDF5_geom(geom,2,XYZ,.true.)
                 
                 ! create a grid with the topology and the geometry
-                ierr = print_HDF5_grid(grids(2),plot_title(id,2),1,&
+                ierr = print_HDF5_grid(grids(2),plot_title(2),1,&
                     &grid_top=top,grid_geom=geom,reset=.true.)
                 CHCKERR('')
                 
