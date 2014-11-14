@@ -360,13 +360,12 @@ contains
         
         ! calculates the variables grp_r_eq and  offset, which are later used to
         ! calculate V_interp from the tabulated  values in the equilibrium grid,
-        ! the oordinate of which is determined by the variable VMEC_use_pol_flux
+        ! the oordinate of which is determined by the variable eq_use_pol_flux
         integer function get_interp_data(grp_r_eq,offset) &
                 &result(ierr)
             use utilities, only: con2dis, round_with_tol, interp_fun_1D
-            use VMEC_vars, only: n_r_eq, VMEC_use_pol_flux
-            use eq_vars, only: grp_min_r_eq, max_flux, max_flux_VMEC, &
-                &flux_p_FD, flux_t_FD
+            use eq_vars, only: grp_min_r_eq, max_flux, max_flux_eq, &
+                &flux_p_FD, flux_t_FD, n_r_eq, eq_use_pol_flux
             use X_vars, only: grp_r_X
             use num_vars, only: use_pol_flux
             
@@ -391,7 +390,7 @@ contains
             else
                 flux => flux_t_FD(:,0)
             end if
-            if (VMEC_use_pol_flux) then
+            if (eq_use_pol_flux) then
                 flux_VMEC => flux_p_FD(:,0)
             else
                 flux_VMEC => flux_t_FD(:,0)
@@ -414,7 +413,7 @@ contains
                 ! the same  normal coordinate as the  discretization. Therefore,
                 ! conversion is necessary
                 ! 1. continuous equilibrium grid (0..1)
-                ierr = interp_fun_1D(grp_r_eq_eq_con,flux_VMEC/max_flux_VMEC,&
+                ierr = interp_fun_1D(grp_r_eq_eq_con,flux_VMEC/max_flux_eq,&
                     &r_X_loc,flux/max_flux)
                 CHCKERR('')
                 ! 2. discrete equilibrium grid, unrounded
@@ -460,8 +459,9 @@ contains
         !call EPSSetType(solver,EPSLAPACK,ierr)
         !CHCKERR('Failed to set type to LAPACK')
         
-        ! search for Eigenvalue with largest real value
-        call EPSSetWhichEigenpairs(solver,EPS_LARGEST_REAL,ierr)
+        ! search for  Eigenvalue with smallest real value (so  imaginary part of
+        ! sqrt(EV) = omega is largest)
+        call EPSSetWhichEigenpairs(solver,EPS_SMALLEST_REAL,ierr)
         CHCKERR('Failed to set which eigenpairs')
         
         ! request n_sol_requested Eigenpairs

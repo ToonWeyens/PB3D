@@ -9,7 +9,7 @@ module VMEC_vars
     use message_ops, only: lvl_ud, writo, print_ar_1, print_ar_2
     use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
         &lasym, VMEC_version => version_, lfreeb, &                             ! stellerator symmetry, version number, free boundary or not
-        &n_r_eq => ns, mpol, ntor, xn, xm, mnmax, nfp, &                        ! mpol, ntor = # modes
+        &n_r_VMEC => ns, mpol, ntor, xn, xm, mnmax, nfp, &                      ! mpol, ntor = # modes
         &phi, phi_r => phipf, &                                                 ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
         &iotaf, &                                                               ! iota = 1/q (FM)
         &presf, gmns, gmnc, &                                                   ! pressure (FM) jacobian (HM)
@@ -17,14 +17,14 @@ module VMEC_vars
         &bmns, bmnc, &                                                          ! magnitude of B (HM)
         &lmns, lmnc, rmns, rmnc, zmns, zmnc, &                                  ! lambda (HM), R (FM), Z(FM)
         &rmax_surf, rmin_surf, zmax_surf, &                                     ! max and min values of R, Z
-        &VMEC_use_pol_flux => lrfp, &                                           ! whether or not the poloidal flux is used as radial variable
+        &lrfp, &                                                                ! whether or not the poloidal flux is used as radial variable
         &gam => gamma                                                           ! gamma in adiabatic law
     implicit none
     private
     public read_VMEC, dealloc_VMEC, repack, &
-        &mnmax, rmnc, mpol, ntor, nfp, n_r_eq, R_c, R_s, Z_c, Z_s, L_c, L_s, &
+        &mnmax, rmnc, mpol, ntor, nfp, R_c, R_s, Z_c, Z_s, L_c, L_s, &
         &presf, rmax_surf, rmin_surf, zmax_surf, iotaf, lasym, &
-        &VMEC_use_pol_flux, lfreeb, phi, phi_r, VMEC_version, gam, &
+        &lfreeb, phi, phi_r, VMEC_version, gam, &
         &B_V_sub_s_M, B_V_sub_c_M, B_V_c_H, B_V_s_H, &
         &jac_V_c_H, jac_V_s_H
 
@@ -41,13 +41,17 @@ module VMEC_vars
 contains
     ! Reads the VMEC equilibrium data
     ! [MPI] only global master
-    integer function read_VMEC() result(ierr)
-        use utilities, only: VMEC_norm_deriv, VMEC_conv_FHM
+    integer function read_VMEC(n_r_eq,eq_use_pol_flux) result(ierr)
+        use utilities, only: norm_deriv, conv_FHM
         use num_vars, only: max_deriv, eq_i, glb_rank, eq_name
 #if ldebug
         use num_vars, only: ltest
 #endif
         character(*), parameter :: rout_name = 'read_VMEC'
+        
+        ! input / output
+        integer, intent(inout) :: n_r_eq                                        ! nr. of normal points in equilibrium grid
+        logical, intent(inout) :: eq_use_pol_flux                               ! .true. if equilibrium is based on poloidal flux
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
@@ -63,11 +67,17 @@ contains
                 &// trim(eq_name) // '"')
             call lvl_ud(1)
             
+            ! rewind input file
+            rewind(eq_i)
+            
             ! read VMEC output using LIBSTELL
-            !call read_wout_file(eq_name, ierr)                                ! DOESN'T WORK WITH VMEC .TXT OUTPUT -> use file number
             call read_wout_file(eq_i, ierr)                                     ! read the VMEC file number
-            CHCKERR('Can''t read the VMEC file')
+            CHCKERR('Failed to read the VMEC file')
             close(eq_i)                                                         ! close the VMEC file
+            
+            ! set some variables
+            n_r_eq = n_r_VMEC
+            eq_use_pol_flux = lrfp
             
             call writo('VMEC version is ' // trim(r2str(VMEC_version)))
             if (lfreeb) then
@@ -133,23 +143,23 @@ contains
             do kd = 1,max_deriv(1)
                 do jd = -ntor,ntor
                     do id = 0,mpol-1
-                        ierr = VMEC_norm_deriv(R_c(id,jd,:,0),R_c(id,jd,:,kd),&
+                        ierr = norm_deriv(R_c(id,jd,:,0),R_c(id,jd,:,kd),&
                             &n_r_eq-1._dp,kd,1)
                         CHCKERR('')
-                        ierr = VMEC_norm_deriv(Z_s(id,jd,:,0),Z_s(id,jd,:,kd),&
+                        ierr = norm_deriv(Z_s(id,jd,:,0),Z_s(id,jd,:,kd),&
                             &n_r_eq-1._dp,kd,1)
                         CHCKERR('')
-                        ierr = VMEC_norm_deriv(L_s_H(id,jd,:,0),&
+                        ierr = norm_deriv(L_s_H(id,jd,:,0),&
                             &L_s_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                         CHCKERR('')
                         !if (lasym) then                                         ! following only needed in assymetric situations
-                            ierr = VMEC_norm_deriv(R_s(id,jd,:,0),&
+                            ierr = norm_deriv(R_s(id,jd,:,0),&
                                 &R_s(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                             CHCKERR('')
-                            ierr = VMEC_norm_deriv(Z_c(id,jd,:,0),&
+                            ierr = norm_deriv(Z_c(id,jd,:,0),&
                                 &Z_c(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                             CHCKERR('')
-                            ierr = VMEC_norm_deriv(L_c_H(id,jd,:,0),&
+                            ierr = norm_deriv(L_c_H(id,jd,:,0),&
                                 &L_c_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                             CHCKERR('')
                         !end if
@@ -161,11 +171,11 @@ contains
             do kd = 0,max_deriv(1)
                 do jd = -ntor,ntor
                     do id = 0,mpol-1
-                        ierr = VMEC_conv_FHM(L_s_H(id,jd,:,kd),L_s(id,jd,:,kd),&
+                        ierr = conv_FHM(L_s_H(id,jd,:,kd),L_s(id,jd,:,kd),&
                             &.false.)
                         CHCKERR('')
                         !if (lasym) then                                         ! following only needed in assymetric situations
-                            ierr = VMEC_conv_FHM(L_c_H(id,jd,:,kd),&
+                            ierr = conv_FHM(L_c_H(id,jd,:,kd),&
                                 &L_c(id,jd,:,kd),.false.)
                             CHCKERR('')
                         !end if

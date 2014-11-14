@@ -25,7 +25,7 @@
 program PB3D
     use test, only: test_repack, test_print_GP, &
         &test_metric_transf, test_ang_B, test_calc_ext_var, test_B, &
-        &test_VMEC_norm_deriv, test_VMEC_conv_FHM, test_calc_RZL, &
+        &test_norm_deriv, test_conv_FHM, test_calc_RZL, &
         &test_arr_mult, test_calc_T_VF, test_calc_inv_met, test_calc_det, &
         &test_inv, test_calc_f_deriv, test_calc_g, test_fourier2real, &
         &test_prepare_X, test_slepc
@@ -36,7 +36,6 @@ program PB3D
     use message_ops, only: init_message_ops, lvl_ud, writo, init_time, &
         &start_time, passed_time, print_hello, print_goodbye
     use HDF5_vars, only: init_HDF5
-    use VMEC_vars, only: read_VMEC
     use driver, only: run_driver
     use file_ops, only: open_input, open_output, search_file, parse_args, &
         &init_file_ops, close_output
@@ -44,6 +43,7 @@ program PB3D
     use utilities, only: init_utilities
     use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, broadcast_vars
     use eq_vars, only: calc_norm_const
+    use eq_ops, only: read_eq
     
     implicit none
 
@@ -72,13 +72,14 @@ program PB3D
     CHCKERR
     ierr = open_input()                                                         ! open the input files
     CHCKERR
-    ierr = read_VMEC()                                                          ! read VMEC file
+    ierr = read_eq()                                                            ! read equilibrium file
     CHCKERR
     ierr = read_input()                                                         ! read input files
     CHCKERR
     ierr = open_output()                                                        ! open output file per alpha group
     CHCKERR
-    call calc_norm_const                                                        ! set up normalization constants
+    ierr = calc_norm_const()                                                    ! set up normalization constants
+    CHCKERR
     ierr = broadcast_vars()                                                     ! broadcast to other processors
     CHCKERR
     call writo('')
@@ -130,9 +131,9 @@ program PB3D
         !CHCKERR
         ierr = test_calc_RZL()
         CHCKERR
-        !ierr = test_VMEC_conv_FHM()
+        !ierr = test_conv_FHM()
         !CHCKERR
-        !ierr = test_VMEC_norm_deriv()
+        !ierr = test_norm_deriv()
         !CHCKERR
         call writo('')
         call passed_time

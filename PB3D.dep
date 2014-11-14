@@ -10,6 +10,8 @@ PB3D.o : \
     input_ops.o \
     message_ops.o \
     HDF5_vars.o \
+    eq_ops.o \
+    eq_vars.o \
 
 test.o : \
 
@@ -142,6 +144,7 @@ eq_vars.o : \
     message_ops.o \
     fourier_ops.o \
     VMEC_vars.o \
+    HEL_vars.o \
     utilities.o \
 
 metric_ops.o : \
@@ -150,6 +153,7 @@ metric_ops.o : \
     str_ops.o \
     eq_vars.o \
     utilities.o \
+    HEL_vars.o \
 
 MPI_ops.o : \
     num_vars.o \

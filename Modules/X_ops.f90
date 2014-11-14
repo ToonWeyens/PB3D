@@ -149,11 +149,11 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! if omega is  predominantly real, the Eigenfunction  explodes, so limit
-        ! n_t(2)  to 1.  If  it is  predominantly  imaginary, the  Eigenfunction
-        ! oscillates, so choose n_t(2) = 8 for 2 whole periods
+        ! if omega  is predominantly  imaginary, the Eigenfunction  explodes, so
+        ! limit  n_t(2) to  1. If  it is  predominantly real,  the Eigenfunction
+        ! oscilates, so choose n_t(2) = 8 for 2 whole periods
         omega = sqrt(X_val)
-        if (abs(realpart(omega)/imagpart(omega)).gt.1) then
+        if (abs(realpart(omega)/imagpart(omega)).lt.1) then
             n_t(2) = 1                                                          ! 1 quarter period
             n_t(1) = 10                                                         ! 10 points per quarter period
         else
@@ -188,10 +188,10 @@ contains
             &grp_n_procs, use_pol_flux
         use output_ops, only: draw_GP, draw_GP_animated, merge_GP
         use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X, grp_min_r_X
-        use VMEC_vars, only: n_r_eq, VMEC_use_pol_flux
         use MPI_ops, only: get_ser_X_vec, get_ghost_X_vec, wait_MPI
         use eq_vars, only: q_saf_FD, rot_t_FD, grp_n_r_eq, grp_min_r_eq, &
-            &max_flux, max_flux_VMEC, flux_p_FD, flux_t_FD
+            &max_flux, max_flux_eq, flux_p_FD, flux_t_FD, n_r_eq, &
+            &eq_use_pol_flux
         use utilities, only: dis2con, con2dis, interp_fun_1D
         
         character(*), parameter :: rout_name = 'plot_X_vec_GP'
@@ -297,7 +297,7 @@ contains
         else
             flux => flux_t_FD(:,0)
         end if
-        if (VMEC_use_pol_flux) then
+        if (eq_use_pol_flux) then
             flux_VMEC => flux_p_FD(:,0)
         else
             flux_VMEC => flux_t_FD(:,0)
@@ -326,7 +326,7 @@ contains
                     
                     ! set up  interp. fac_n and fac_m  (tabulated in equilibrium
                     ! grid)
-                    ierr = interp_fun_1D(kd_loc_eq,flux_VMEC/max_flux_VMEC,&
+                    ierr = interp_fun_1D(kd_loc_eq,flux_VMEC/max_flux_eq,&
                         &r_plot(kd),flux/max_flux)
                     CHCKERR('')
                     call con2dis(kd_loc_eq,[0._dp,1._dp],kd_loc_i,[1,n_r_eq])
@@ -370,9 +370,9 @@ contains
                 do ld = 1,size_X
                     do jd = 1,n_par_F
                         z_plot(kd,jd,ld,id) = &
-                            &realpart(X_vec_interp(ld) * &
-                            &exp(omega/abs(omega)*0.5*pi*(id-1.0_dp)/(n_t(1)-1)&
-                            &    + iu*(n_X(ld)*fac_n_interp-&
+                            &realpart(X_vec_interp(ld) * exp(iu * &
+                            &(omega/abs(omega)*0.5*pi*(id-1.0_dp)/(n_t(1)-1)&
+                            &    + iu*n_X(ld)*fac_n_interp-&
                             &          m_X(ld)*fac_m_interp)&
                             &    * ang_par_F_loc(jd)))
                     end do
@@ -660,9 +660,9 @@ contains
         allocate(f_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
         
         ! open HDF5 file
-        ierr = open_HDF5_file(file_info,'X_vec_'//trim(i2str(job_id)),&
-            &'Job '//trim(i2str(job_id))//' - Solution vector X_vec &
-            &for Eigenvalue '//trim(i2str(X_id)))
+        ierr = open_HDF5_file(file_info,'X_vec_'//trim(i2str(job_id))//&
+            &'_'//trim(i2str(X_id)),'Job '//trim(i2str(job_id))//&
+            &' - Solution vector X_vec for Eigenvalue '//trim(i2str(X_id)))
         CHCKERR('')
         
         ! print topology
@@ -717,8 +717,9 @@ contains
                     ! Fourier transform of the  Eigenvalue Fourier modes to real
                     ! space
                     f_plot(:,:,kd) = f_plot(:,:,kd) + realpart(X_vec(ld,kd) * &
-                        &exp(omega/abs(omega)*0.5*pi*(id-1.0_dp)/(n_t(1)-1) + &
-                        &iu * (n_X(ld)*(-zeta_plot(:,:,kd)) - &
+                        &exp(iu * &
+                        &(omega/abs(omega)*0.5*pi*(id-1.0_dp)/(n_t(1)-1) + &
+                        &n_X(ld)*(-zeta_plot(:,:,kd)) - &
                         &m_X(ld)*(theta_plot(:,:,kd)+l_plot(:,:,kd)))))
                 end do
             end do

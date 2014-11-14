@@ -236,20 +236,35 @@ contains
             ! the last Richardson loop
             if (done_richard .or. ir.eq.max_it_r+1) then
                 if (grp_rank.eq.0) then
+                    call writo('plotting the Eigenvalues')
+                    call lvl_ud(1)
                     if (max_it_r.gt.1) then
-                        call writo('plotting the Eigenvalues')
+                        call writo('plotting Eigenvalues as function of nr. of &
+                            &normal points')
                         
                         ! output on screen
                         plot_title = 'JOB '//trim(i2str(alpha_job_nr))//' - &
                             &Eigenvalues as function of nr. of normal points'
                         call print_GP_2D(plot_title,'Eigenvalues_'//&
-                            &trim(i2str(alpha_job_nr))//'.dat',realpart(&
-                            &X_val_rich(1:ir,1,:)),x=x_axis(1:ir,:))
+                            &trim(i2str(alpha_job_nr))//'_richardson.dat',&
+                            &realpart(X_val_rich(1:ir,1,:)),x=x_axis(1:ir,:))
                         ! same output in file as well
                         call draw_GP(plot_title,'Eigenvalues_'//&
-                            &trim(i2str(alpha_job_nr))//'.dat',&
+                            &trim(i2str(alpha_job_nr))//'_richardson.dat',&
                             &n_sol_requested,.true.,.false.)
                     end if
+                    call writo('plotting final Eigenvalues')
+                    
+                    ! output on screen
+                    plot_title = 'JOB '//trim(i2str(alpha_job_nr))//' - &
+                        &final Eigenvalues'
+                    call print_GP_2D(plot_title,'Eigenvalues_'//&
+                        &trim(i2str(alpha_job_nr))//'.dat',realpart(X_val))
+                    ! same output in file as well
+                    call draw_GP(plot_title,'Eigenvalues_'//&
+                        &trim(i2str(alpha_job_nr))//'.dat',1,.true.,.false.)
+                    
+                    call lvl_ud(-1)
                 end if
                 
                 call writo('plotting the Eigenvectors')

@@ -10,7 +10,7 @@ module utilities
     implicit none
     private
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, arr_mult, &
-        &VMEC_norm_deriv, VMEC_conv_FHM, check_deriv, calc_inv, interp_fun_1D, &
+        &norm_deriv, conv_FHM, check_deriv, calc_inv, interp_fun_1D, &
         &init_utilities, derivs, con2dis, dis2con, round_with_tol
     
     ! the possible derivatives of order i
@@ -108,15 +108,15 @@ contains
         end select
     end function
     
-    ! numerically derives a  function whose values are given on  a regular mesh,
+    ! numerically derivates a function whose values are given on a regular mesh,
     ! specified by  the inverse  step size to  an order specified  by ord  and a
     ! precision specified by prec (which is the  power of the step size to which
     ! the result is still correct. E.g.:  for forward differences, prec = 0, and
     ! for central differences prec=1)
-    integer function VMEC_norm_deriv(var,dvar,inv_step,ord,prec) result(ierr)
+    integer function norm_deriv(var,dvar,inv_step,ord,prec) result(ierr)
         use num_vars, only: max_deriv
         
-        character(*), parameter :: rout_name = 'VMEC_norm_deriv'
+        character(*), parameter :: rout_name = 'norm_deriv'
         
         ! input / output
         real(dp), intent(in) :: var(:), inv_step
@@ -140,8 +140,9 @@ contains
             CHCKERR(err_msg)
         end if
         if (ord.lt.1 .or. ord.gt.max_deriv(3)) then
-            err_msg = 'VMEC_norm_deriv can only derive from order 1 &
-                &up to order '//trim(i2str(max_deriv(3)))
+            err_msg = 'norm_deriv can only derive from order 1 &
+                &up to order '//trim(i2str(max_deriv(3)))//', not '//&
+                &trim(i2str(ord))
             ierr = 1
             CHCKERR(err_msg)
         end if
@@ -253,17 +254,17 @@ contains
                 case default
                     ! This you should never reach!
                     err_msg = 'Derivation of order '//trim(i2str(ord))//&
-                        &' not possible in VMEC_norm_deriv'
+                        &' not possible in norm_deriv'
                     ierr = 1
                     CHCKERR(err_msg)
             end select
         end subroutine
-    end function VMEC_norm_deriv
+    end function norm_deriv
 
     ! numerically interpolates a function that is given on either FM to HM or to
     ! FM. If FM2HM is .true., the starting variable is FM, if .false., it is HM
-    integer function VMEC_conv_FHM(var,cvar,FM2HM) result(ierr)
-        character(*), parameter :: rout_name = 'VMEC_conv_FHM'
+    integer function conv_FHM(var,cvar,FM2HM) result(ierr)
+        character(*), parameter :: rout_name = 'conv_FHM'
         
         ! input / output
         real(dp), intent(in) :: var(:)
@@ -318,7 +319,7 @@ contains
         do id = 1, 3
             if (deriv(id).gt.max_deriv(id)) then
                 err_msg = 'Asking '//trim(sr_name)//' for a derivative&
-                    & in the '//trim(i2str(id))//'th VMEC coordinate of order '&
+                    & in the '//trim(i2str(id))//'th dimension of order '&
                     &//trim(i2str(deriv(id)))//', while the maximum order is '&
                     &//trim(i2str(max_deriv(id)))
                 ierr = 1

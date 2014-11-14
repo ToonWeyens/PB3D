@@ -13,8 +13,8 @@ module test
     implicit none
     private
     public test_repack, test_print_GP, test_metric_transf, test_ang_B, &
-        &test_calc_ext_var, test_B, test_VMEC_norm_deriv, test_arr_mult, &
-        &test_VMEC_conv_FHM, test_calc_RZL, test_calc_T_VF, test_calc_inv_met, &
+        &test_calc_ext_var, test_B, test_norm_deriv, test_arr_mult, &
+        &test_conv_FHM, test_calc_RZL, test_calc_T_VF, test_calc_inv_met, &
         &test_calc_det, test_inv, test_calc_f_deriv, test_calc_g, &
         &test_fourier2real, test_prepare_X, test_slepc
     
@@ -593,10 +593,10 @@ contains
         end if
     end function test_prepare_X
     
-    integer function test_VMEC_norm_deriv() result(ierr)
-        use utilities, only: VMEC_norm_deriv
+    integer function test_norm_deriv() result(ierr)
+        use utilities, only: norm_deriv
         
-        character(*), parameter :: rout_name = 'test_VMEC_norm_deriv'
+        character(*), parameter :: rout_name = 'test_norm_deriv'
         
         ! local variables
         integer :: loc_max, id, kd
@@ -617,7 +617,7 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test VMEC_norm_deriv?')
+        call writo('test norm_deriv?')
         if(yes_no(.false.)) then
             output_i = 0
             
@@ -770,19 +770,19 @@ contains
                         var4_an = 4*3*2*1
                         var5_an = 0.0_dp
                     case default
-                        call writo('ERROR: in test_VMEC_norm_deriv, how did &
+                        call writo('ERROR: in test_norm_deriv, how did &
                             &you get here?!??!')
                         stop
                 end select
                 
                 ! numerical derivatives
-                ierr = VMEC_norm_deriv(varin,var1_nm,1.0_dp/step_size(id),1,1)
+                ierr = norm_deriv(varin,var1_nm,1.0_dp/step_size(id),1,1)
                 CHCKERR('')
-                ierr = VMEC_norm_deriv(varin,var2_nm,1.0_dp/step_size(id),2,1)
+                ierr = norm_deriv(varin,var2_nm,1.0_dp/step_size(id),2,1)
                 CHCKERR('')
-                ierr = VMEC_norm_deriv(varin,var3_nm,1.0_dp/step_size(id),3,1)
+                ierr = norm_deriv(varin,var3_nm,1.0_dp/step_size(id),3,1)
                 CHCKERR('')
-                ierr = VMEC_norm_deriv(varin,var4_nm,1.0_dp/step_size(id),4,1)
+                ierr = norm_deriv(varin,var4_nm,1.0_dp/step_size(id),4,1)
                 CHCKERR('')
                 
                 ! max and mean errors
@@ -861,7 +861,7 @@ contains
             call writo('Stopping')
             stop
         end if
-    end function test_VMEC_norm_deriv
+    end function test_norm_deriv
     
     integer function test_calc_ext_var() result(ierr)
         use utilities, only : calc_ext_var
@@ -932,10 +932,10 @@ contains
         end if
     end function test_calc_ext_var
     
-    integer function test_VMEC_conv_FHM() result(ierr)
-        use utilities, only: VMEC_conv_FHM
+    integer function test_conv_FHM() result(ierr)
+        use utilities, only: conv_FHM
         
-        character(*), parameter :: rout_name = 'test_VMEC_conv_FHM'
+        character(*), parameter :: rout_name = 'test_conv_FHM'
         
         ! local variables
         integer :: id, kd
@@ -949,7 +949,7 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test VMEC_conv_FHM?')
+        call writo('test conv_FHM?')
         if(yes_no(.false.)) then
             output_i = 0
             call writo('Testing whether h2f*f2h = 1')
@@ -997,9 +997,9 @@ contains
                     varin(kd) = sin(float(kd)/n_r) + 0.5*cos(3*float(kd)/n_r)
                 end do
                 
-                ierr = VMEC_conv_FHM(varin,varout,.true.)
+                ierr = conv_FHM(varin,varout,.true.)
                 CHCKERR('')
-                ierr = VMEC_conv_FHM(varout,varoutout,.false.)
+                ierr = conv_FHM(varout,varoutout,.false.)
                 CHCKERR('')
                 do kd = 1,n_r
                     vardiff(kd) = 2*(varin(kd)-varoutout(kd))/&
@@ -1049,7 +1049,7 @@ contains
             call writo('Stopping')
             stop
         end if
-    end function test_VMEC_conv_FHM
+    end function test_conv_FHM
     
     integer function test_calc_RZL() result(ierr)
         use eq_vars, only: calc_RZL, init_eq, calc_eqd_mesh, &
@@ -2119,7 +2119,7 @@ contains
         !use VMEC_vars, only: mpol, ntor, jac_V_c_H, jac_V_s_H, nfp, n_r_eq
         !use metric_ops, only: jac_V, jac_F, T_FV, det_T_FV, g_F, h_F, g_V, &
             !&calc_inv_met, T_VF
-        !use utilities, only: VMEC_norm_deriv, calc_det, VMEC_conv_FHM
+        !use utilities, only: norm_deriv, calc_det, conv_FHM
         !use num_vars, only: calc_mesh_style
         
         !character(*), parameter :: rout_name = 'test_metric_transf'
@@ -2178,7 +2178,7 @@ contains
                 !CHCKERR('')
                 !! HM to FM
                 !do id = 1,n_par
-                    !ierr = VMEC_conv_FHM(jac_ALT_H(id,:),jac_ALT(id,:),.false.)
+                    !ierr = conv_FHM(jac_ALT_H(id,:),jac_ALT(id,:),.false.)
                     !CHCKERR('')
                 !end do
                 !call print_GP_3D('jac_V (1: calc, 2: VMEC, 3: diff)','',&
@@ -2234,7 +2234,7 @@ contains
                     !!&jac_F(par,:,0,0,0))
                 !!do kd = 1,2
                     !!call writo('checking r^'//trim(i2str(kd))//' deriv.')
-                    !!ierr = VMEC_norm_deriv(jac_F(par,:,0,0,0),&
+                    !!ierr = norm_deriv(jac_F(par,:,0,0,0),&
                         !!&jac_ALT(par,:),n_r-1._dp,kd,1)
                     !!CHCKERR('')
                     !!call print_GP_2D('Dr^'//trim(i2str(kd))//' J_F(par=par) &
@@ -2324,7 +2324,7 @@ contains
                         !call print_GP_3D('h_F('//trim(i2str(id))//','//&
                             !&trim(i2str(kd))//')','',h_F(:,2:grp_n_r_eq,id,kd,0,0,0))
                         !do jd =1,n_par
-                            !ierr = VMEC_norm_deriv(h_F(jd,2:grp_n_r_eq,id,kd,0,0,0),&
+                            !ierr = norm_deriv(h_F(jd,2:grp_n_r_eq,id,kd,0,0,0),&
                                 !&h_F_ALT(jd,2:grp_n_r_eq),n_r_eq-1._dp,1,1)
                             !CHCKERR('')
                         !end do
@@ -2357,7 +2357,7 @@ contains
             !&B_V_sub_s_M, nfp
         use metric_ops, only: g_V, jac_V, g_F, jac_F, T_FV, calc_inv_met
         !use metric_ops, only: g_FD, jac_FD
-        use utilities, only: VMEC_norm_deriv, VMEC_conv_FHM
+        use utilities, only: norm_deriv, conv_FHM
         use eq_ops, only: calc_eq
         use num_vars, only: calc_mesh_style
         use MPI_ops, only: split_MPI
@@ -2496,7 +2496,7 @@ contains
                 B_ALT_2 = sqrt(B_ALT_2)
                 ! conversion FM -> HM and store in B
                 do id = 1,n_par
-                    ierr = VMEC_conv_FHM(B_ALT_2(id,:),B(id,:),.true.)
+                    ierr = conv_FHM(B_ALT_2(id,:),B(id,:),.true.)
                     CHCKERR('')
                 end do
                 call print_GP_2D('B(par=5) (1: calc from B_i B^j, 2: VMEC)',&
@@ -2642,7 +2642,7 @@ contains
             ! convert HM to FM (only theta and zeta component)
             do jd = 2,3
                 do id = 1,n_par
-                    ierr = VMEC_conv_FHM(B_V_sub_ALT(id,:,jd),tempvar(id,:),&
+                    ierr = conv_FHM(B_V_sub_ALT(id,:,jd),tempvar(id,:),&
                         &.false.)
                     CHCKERR('')
                 end do

@@ -234,8 +234,7 @@ contains
         use num_vars, only: glb_rank, tol_NR, use_pol_flux
         use utilities, only: calc_zero_NR, interp_fun_1D
         use eq_vars, only: q_saf_V_full, rot_t_V_full, &                        ! q_saf_V_full and rot_t_V_full are NOT normalized
-            &flux_p_V_full, flux_t_V_full
-        use VMEC_vars, only: n_r_eq
+            &flux_p_V_full, flux_t_V_full, n_r_eq
         
         ! local variables (also used in child functions)
         real(dp) :: mnfrac_for_function                                         ! fraction m/n or n/m to determine resonant flux surface
@@ -844,6 +843,7 @@ contains
         
         ! local variables
         integer :: k, m, jd, kd                                                 ! counters
+        write(*,*) 'CALC_V_INT SHOULD WORK WITH FAST FOURIER TRANSFORM!!!'
         
         do m = 1,size_X
             do k = 1,size_X

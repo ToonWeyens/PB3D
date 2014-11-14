@@ -1,13 +1,13 @@
 !------------------------------------------------------------------------------!
 !   Main driver of program Peeling Ballooning in 3D, chooses between available !
-!   drivers, according to the value of the parameter style:                    !
+!   drivers, according to the value of the parameter minim_style:              !
 !       1. driver_rich, using Richardson's extrapolation and normal            !
 !           discretization                                                     !
 !------------------------------------------------------------------------------!
 module driver
 #include <PB3D_macros.h>
     use driver_rich, only: run_rich_driver
-    use num_vars, only: style, max_str_ln
+    use num_vars, only: minim_style, max_str_ln
     use str_ops, only: i2str
     use message_ops, only: writo, lvl_ud
     implicit none
@@ -26,11 +26,11 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! run the appropriate driver depending on "style"
-        select case (style)
+        ! run the appropriate driver depending on "minim_style"
+        select case (minim_style)
             ! Richardson's exptrapolation and normal discretization
             case (1)
-                call writo('Numerical method chosen:')
+                call writo('Minimization method chosen:')
                 call lvl_ud(1)
                 call writo('Richardson''s extrapolation and &
                     &normal discretization, generalized eigenvalue problem')
@@ -38,8 +38,8 @@ contains
                 ierr = run_rich_driver()
                 CHCKERR('')
             case default
-                err_msg = 'Style "' // trim(i2str(style)) // '" is not&
-                    & valid'
+                err_msg = 'Minimization style "'//trim(i2str(minim_style))//&
+                    &'" is not valid'
                 ierr = 1
                 CHCKERR(err_msg)
         end select

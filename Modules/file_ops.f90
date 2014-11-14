@@ -201,7 +201,7 @@ contains
             if (first_word.eq.'VMEC') then                                      ! It is a VMEC file
                 eq_style = 1
             else                                                                ! TEMPORARILY ASSUME IT'S A HELENA FILE
-                write(*,*) '!!! BETTER IDENTIFY HELENA FILES !!!'
+                !!!! HELENA FILES SHOULD BE BETTER RECOGNIZED !!!!
                 eq_style = 2
             end if
             backspace(UNIT=eq_i)                                                ! go back one line in the equilibrium file

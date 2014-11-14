@@ -11,7 +11,7 @@ module eq_ops
     
     implicit none
     private
-    public calc_eq
+    public calc_eq, read_eq
 
 contains
     ! calculate  the equilibrium  quantities on  a grid  determined by  straight
@@ -28,11 +28,11 @@ contains
         use metric_ops, only: calc_g_C, calc_g_C, calc_T_VC, calc_g_V, &
             &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, &
             &calc_jac_V, calc_jac_F, calc_f_deriv, dealloc_metric, &
-            &normalize_metric_vars, &
+            &normalize_metric_vars, calc_jac_H, calc_T_HF, calc_h_H, &
             &T_VF, T_FV, g_F, h_F, det_T_VF, det_T_FV, jac_F, g_FD, h_FD, &
-            &jac_FD
+            &jac_FD, T_HF, T_FH, det_T_HF, det_T_FH, g_H, h_H
         use utilities, only: derivs
-        use num_vars, only: max_deriv, ltest, use_pol_flux, plot_grid
+        use num_vars, only: max_deriv, ltest, use_pol_flux, plot_grid, eq_style
         
         character(*), parameter :: rout_name = 'calc_eq'
         
@@ -41,6 +41,7 @@ contains
         
         ! local variables
         integer :: id
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -56,11 +57,13 @@ contains
             
             ! initialize equilibrium quantities
             call writo('Initialize equilibrium quantities...')
-            call init_eq
+            ierr = init_eq()
+            CHCKERR('')
             
             ! initialize metric quantities
             call writo('Initialize metric quantities...')
-            call init_metric
+            ierr = init_metric()
+            CHCKERR('')
             
             call lvl_ud(-1)
             ! 2----------------------------------------------------------------
@@ -81,8 +84,23 @@ contains
             
             ! plot grid if requested
             if (plot_grid) then
-                ierr = plot_grid_real(theta_V,zeta_V,0._dp,1._dp,.true.)        ! theta_V and zeta_V are tabulated in equilibrium grid
-                CHCKERR('')
+                ! choose which equilibrium style is being used:
+                !   1:  VMEC
+                !   2:  HELENA
+                select case (eq_style)
+                    case (1)                                                    ! VMEC
+                        ierr = plot_grid_real(theta_V,zeta_V,0._dp,1._dp,&
+                            &.true.)                                            ! theta_V and zeta_V are tabulated in equilibrium grid
+                        CHCKERR('')
+                    case (2)                                                    ! HELENA
+                        ierr = 1
+                        CHCKERR('NOT YET IMPLEMENTED!!!!!')
+                    case default
+                        err_msg = 'No equilibrium style associated with '//&
+                            &trim(i2str(eq_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
+                end select
             end if
             
             ! check whether the mesh has been calculated correctly
@@ -99,70 +117,138 @@ contains
             ! 2----------------------------------------------------------------
             call lvl_ud(1)
             
-            ! calculate  the   cylindrical  variables   R,  Z  and   lambda  and
-            ! derivatives
-            call writo('Calculate R,Z,L...')
-            ierr = prepare_RZL()
-            CHCKERR('')
-            do id = 0,2
-                ierr = calc_RZL(derivs(id))
-                CHCKERR('')
-            end do
-            
-            ! calculate flux quantities
-            ierr = calc_flux_q()
-            CHCKERR('')
-            
-            ! calculate the metrics in the cylindrical coordinate system
-            call writo('Calculate g_C...')                                      ! h_C is not necessary
-            do id = 0,1
-                ierr = calc_g_C(derivs(id))
-                CHCKERR('')
-            end do
-            
-            ! calculate the jacobian in the cylindrical coordinate system
-            call writo('Calculate jac_C...')
-            do id = 0,1
-                ierr = calc_jac_C(derivs(id))
-                CHCKERR('')
-            end do
-            
-            ! calculate the transformation matrix C(ylindrical) -> V(mec)
-            call writo('Calculate T_VC...')
-            do id = 0,1
-                ierr = calc_T_VC(derivs(id))
-                CHCKERR('')
-            end do
-            
-            ! calculate the metric factors in the VMEC coordinate system
-            call writo('Calculate g_V...')
-            do id = 0,1
-                ierr = calc_g_V(derivs(id))
-                CHCKERR('')
-            end do
-            
-            ! calculate the jacobian in the VMEC coordinate system
-            call writo('Calculate jac_V...')
-            do id = 0,1
-                ierr = calc_jac_V(derivs(id))
-                CHCKERR('')
-            end do
-            
-            ! calculate the transformation matrix V(mec) -> F(lux)
-            call writo('Calculate T_VF...')
-            do id = 0,1
-                ierr = calc_T_VF(derivs(id))
-                CHCKERR('')
-            end do
-            
-            ! calculate the inverse of the transformation matrix T_VF
-            call writo('Calculate T_FV...')
-            do id = 0,1
-                ierr = calc_inv_met(T_FV,T_VF,derivs(id))
-                CHCKERR('')
-                ierr = calc_inv_met(det_T_FV,det_T_VF,derivs(id))
-                CHCKERR('')
-            end do
+            ! choose which equilibrium style is being used:
+            !   1:  VMEC
+            !   2:  HELENA
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ! calculate the  cylindrical variables  R, Z and  lambda and
+                    ! derivatives
+                    call writo('Calculate R,Z,L...')
+                    ierr = prepare_RZL()
+                    CHCKERR('')
+                    do id = 0,2
+                        ierr = calc_RZL(derivs(id))
+                        CHCKERR('')
+                    end do
+                    
+                    ! calculate flux quantities
+                    ierr = calc_flux_q()
+                    CHCKERR('')
+                    
+                    ! calculate the metrics in the cylindrical coordinate system
+                    call writo('Calculate g_C...')                              ! h_C is not necessary
+                    do id = 0,1
+                        ierr = calc_g_C(derivs(id))
+                        CHCKERR('')
+                    end do
+                    
+                    ! calculate  the  jacobian  in  the  cylindrical  coordinate
+                    ! system
+                    call writo('Calculate jac_C...')
+                    do id = 0,1
+                        ierr = calc_jac_C(derivs(id))
+                        CHCKERR('')
+                    end do
+                    
+                    ! calculate   the  transformation  matrix  C(ylindrical)  ->
+                    ! V(MEC)
+                    call writo('Calculate T_VC...')
+                    do id = 0,1
+                        ierr = calc_T_VC(derivs(id))
+                        CHCKERR('')
+                    end do
+                    
+                    ! calculate the metric factors in the VMEC coordinate system
+                    call writo('Calculate g_V...')
+                    do id = 0,1
+                        ierr = calc_g_V(derivs(id))
+                        CHCKERR('')
+                    end do
+                    
+                    ! calculate the jacobian in the VMEC coordinate system
+                    call writo('Calculate jac_V...')
+                    do id = 0,1
+                        ierr = calc_jac_V(derivs(id))
+                        CHCKERR('')
+                    end do
+                    
+                    ! calculate the transformation matrix V(MEC) -> F(lux)
+                    call writo('Calculate T_VF...')
+                    do id = 0,1
+                        ierr = calc_T_VF(derivs(id))
+                        CHCKERR('')
+                    end do
+                    
+                    ! calculate the inverse of the transformation matrix T_VF
+                    call writo('Calculate T_FV...')
+                    do id = 0,1
+                        ierr = calc_inv_met(T_FV,T_VF,derivs(id))
+                        CHCKERR('')
+                        ierr = calc_inv_met(det_T_FV,det_T_VF,derivs(id))
+                        CHCKERR('')
+                    end do
+                case (2)                                                        ! HELENA
+                    ! calculate flux quantities
+                    ierr = calc_flux_q()
+                    CHCKERR('')
+                    
+                    ! TO BE DONE: 
+                    ! (WORKING IN THE (PSI,THETA,ZETA) SYSTEM)
+                    ! 1. calculate h11, h12 and h33 and derivatives from gem11, gem12 and gem33
+                    ! 2. calcualte h22 from h22 = 1/h11 * ((F/qR^2h33)^2 + (h12)^2)
+                    ! 3. invert h_H to g_H
+                    ! 4. calculate jac_H from qR^2/F
+                    ! !!!! DERIVATIVES SHOULD BE DONE WITH SPLINES, AS THE GRID IS NON-EQUIDISTANT !!!!
+                    
+                    !!!! DON'T LOOK AT WHAT'S BELOW HERE... !!!!!!!!!!!
+                    
+                    ! calculate the jacobian in the HELENA coordinate system
+                    ! Note: This makes  use of R^2 and qoF, which  both of which
+                    ! which therefore has to be calculated first
+                    call writo('Calculate jac_H...')
+                    do id = 0,1
+                        ierr = calc_jac_H(derivs(id))
+                        CHCKERR('')
+                    end do
+                    
+                    ! calculate  the  metric  factors in  the HELENA  coordinate
+                    ! system
+                    call writo('Calculate h_H...')
+                    do id = 0,1
+                        ierr = calc_h_H(derivs(id))
+                        CHCKERR('')
+                    end do
+                    
+                    ! calculate the inverse g_H of the metric factors h_H
+                    call writo('Calculate g_H...')
+                    do id = 0,1
+                        ierr = calc_inv_met(g_H,h_H,derivs(id))
+                        CHCKERR('')
+                    end do
+                    
+                    ! calculate the transformation matrix H(ELENA) -> F(lux)
+                    call writo('Calculate T_HF...')
+                    do id = 0,1
+                        ierr = calc_T_HF(derivs(id))
+                        CHCKERR('')
+                    end do
+                    
+                    ! calculate the inverse of the transformation matrix T_VH
+                    call writo('Calculate T_FH...')
+                    do id = 0,1
+                        ierr = calc_inv_met(T_FH,T_HF,derivs(id))
+                        CHCKERR('')
+                        ierr = calc_inv_met(det_T_FH,det_T_HF,derivs(id))
+                        CHCKERR('')
+                    end do
+                    
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
             
             ! calculate the metric factors in the Flux coordinate system
             call writo('Calculate g_F...')
@@ -259,9 +345,10 @@ contains
     
     ! reads the equilibrium input file
     integer function read_eq() result(ierr)
-        use num_vars, only: eq_style
+        use num_vars, only: eq_style, glb_rank
         use VMEC_vars, only: read_VMEC
         use HEL_vars, only: read_HEL
+        use eq_vars, only: n_r_eq, eq_use_pol_flux
         
         character(*), parameter :: rout_name = 'read_eq'
         
@@ -271,22 +358,25 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! choose which equilibrium style is being used:
-        !   1:  VMEC
-        !   2:  HELENA
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ierr = read_VMEC()
-                CHCKERR('')
-            case (2)                                                            ! HELENA
-                ierr = read_HEL()
-                CHCKERR('')
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
+        ! only do this for the group master
+        if (glb_rank.eq.0) then
+            ! choose which equilibrium style is being used:
+            !   1:  VMEC
+            !   2:  HELENA
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ierr = read_VMEC(n_r_eq,eq_use_pol_flux)
+                    CHCKERR('')
+                case (2)                                                        ! HELENA
+                    ierr = read_HEL(n_r_eq,eq_use_pol_flux)
+                    CHCKERR('')
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+        end if
     end function read_eq
     
     ! plots the grid in real space

@@ -4,9 +4,9 @@
 module num_vars
     implicit none
     private
-    public dp, qp, style, max_str_ln, n_seq_0, max_args, max_opts, prog_name, &
-        &max_it_r, tol_r, ltest, pi, max_it_NR, tol_NR, no_guess, no_plots, &
-        &input_i, output_i, eq_i, min_alpha, max_alpha, n_alpha, &
+    public dp, qp, minim_style, max_str_ln, n_seq_0, max_args, max_opts, &
+        &prog_name, max_it_r, tol_r, ltest, pi, max_it_NR, tol_NR, no_guess, &
+        &no_plots, input_i, output_i, eq_i, min_alpha, max_alpha, n_alpha, &
         &max_deriv, mu_0, calc_mesh_style, iu, EV_style, n_procs_per_alpha, &
         &n_procs, MPI_Comm_groups, MPI_Comm_masters, glb_rank, glb_n_procs, &
         &grp_rank, grp_n_procs, grp_nr, n_groups, output_name, next_job, &
@@ -46,7 +46,7 @@ module num_vars
     complex(dp), parameter :: iu = (0,1)                                        ! complex unit
 
     ! considering runtime
-    integer :: style                                                            ! determines the method used for minimization
+    integer :: minim_style                                                      ! determines the method used for minimization
         ! 1 [def] : Euler-Lagrange min., finite diff and Richardson's method
     logical :: ltest                                                            ! whether or not to call the testing routines
     integer :: calc_mesh_style                                                  ! how equilibrium mesh is calculated

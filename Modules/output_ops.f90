@@ -861,7 +861,6 @@ contains
         type(XML_str_type) :: att(1)                                            ! attribute
         logical :: time_mask(4) = .false.                                       ! to select out the time dimension
         real(dp), pointer :: var_ptr(:,:,:)                                     ! pointer to vars, X, Y or z
-        character(len=max_str_ln) :: full_var_name                              ! full variable name
         
         
         ! set up local time_id and anim
@@ -1000,15 +999,10 @@ contains
             CHCKSTT
             
             ! print attribute with this data item
-            call print_HDF5_att(att(1),XYZ(1),var_name,1,.true.)
+            call print_HDF5_att(att(1),XYZ(1),'var',1,.true.)
             
             ! create a grid with the topology, the geometry and the attribute
-            if (anim_loc.eq.2) then                                             ! time collection
-                full_var_name = var_name
-            else                                                                ! spatial collection: need different names for grids
-                full_var_name = var_name//'_'//trim(i2str(id))
-            end if
-            istat = print_HDF5_grid(grids(id),full_var_name,1,&
+            istat = print_HDF5_grid(grids(id),var_name,1,&
                 &grid_time=id*1._dp,grid_top=top,grid_geom=geom,&
                 &grid_atts=att,reset=.true.)
             CHCKSTT

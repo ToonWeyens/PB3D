@@ -53,7 +53,7 @@ contains
     ! [MPI] only global master
     integer function read_input() result(ierr)
         use num_vars, only: &
-            &style, min_alpha, max_alpha, n_alpha, max_it_NR, tol_NR, &
+            &minim_style, min_alpha, max_alpha, n_alpha, max_it_NR, tol_NR, &
             &max_it_r, input_i, n_seq_0, min_n_r_X, use_pol_flux, &
             &calc_mesh_style, EV_style, n_procs_per_alpha, plot_jq, tol_r, &
             &n_sol_requested, min_r_X, max_r_X, nyq_fac, max_n_plots, &
@@ -71,7 +71,7 @@ contains
         integer :: prim_X, min_sec_X, max_sec_X                                 ! n_X and m_X (pol. flux) or m_X and n_X (tor. flux)
         
         ! input options
-        namelist /inputdata/ style, min_par, min_n_r_X, &
+        namelist /inputdata/ minim_style, min_par, min_n_r_X, &
             &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
             &max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
             &max_r_X, EV_style, n_procs_per_alpha, plot_jq, n_sol_requested, &
@@ -149,7 +149,7 @@ contains
         end if
     contains
         subroutine default_input
-            use VMEC_vars, only: VMEC_use_pol_flux
+            use eq_vars, only: eq_use_pol_flux
             
             ! concerning Newton-Rhapson
             max_it_NR = 50                                                      ! maximum 50 Newton-Rhapson iterations
@@ -158,7 +158,7 @@ contains
             max_it_r = 8                                                        ! maximum 5 levels of Richardson extrapolation
             tol_r = 1E-5                                                        ! wanted relative error in Richardson extrapolation
             ! runtime variables
-            style = 1                                                           ! Richardson Extrapolation with normal discretization
+            minim_style = 1                                                     ! Richardson Extrapolation with normal discretization
             n_procs_per_alpha = 1                                               ! 1 processor per field line
             plot_jq = .false.                                                   ! do not plot the q-profile with nq-m = 0
             plot_grid = .false.                                                 ! do not plot the grid
@@ -173,7 +173,7 @@ contains
             min_sec_X = prim_X                                                  ! min. of. secondary mode number of perturbation
             max_sec_X = prim_X                                                  ! max. of. secondary mode number of perturbation
             n_par = 20                                                          ! number of parallel grid points
-            use_pol_flux = VMEC_use_pol_flux                                    ! use same normal flux coordinate as VMEC
+            use_pol_flux = eq_use_pol_flux                                      ! use same normal flux coordinate as the equilibrium
             ! variables concerning alpha
             min_alpha = 0.0_dp                                                  ! minimum field line label [pi]
             max_alpha = 2.0_dp                                                  ! maximum field line label [pi]
@@ -217,11 +217,46 @@ contains
         ! so  the  fast-moving  functions  e^(i(k-m)) V  don't  give  the  wrong
         ! integrals in the perturbation part
         subroutine adapt_n_par
-            if (n_par.lt.nyq_fac*(max_sec_X-min_sec_X)*(max_par-min_par)/2) &
-                &then
-                n_par = int(nyq_fac*(max_sec_X-min_sec_X)*(max_par-min_par)/2)
-                call writo('WARNING: To avoid aliasing of the perturbation &
-                    &integrals, n_par is increased to '//trim(i2str(n_par)))
+            use num_vars, only: eq_style
+            use HEL_vars, only: nchi, ias
+            
+            ! local variables
+            integer :: n_par_old                                                ! backup of n_par
+            real(dp) :: min_par_old, max_par_old                                ! backup of min_par_old, max_par_old
+            real(dp) :: tol = 1.0E-8_dp                                         ! tolerance for rounding to integers
+            
+            if (eq_style.eq.2) then                                             ! HELENA input: n_par is dictated by nchi
+                ! set back ups
+                n_par_old = n_par
+                min_par_old = min_par
+                max_par_old = max_par
+                ! round min_par and max_par to nearest integers
+                min_par = floor(min_par)
+                max_par = ceiling(max_par)
+                if (abs(max_par-min_par).lt.1._dp) max_par = max_par + 1
+                if (abs(min_par-min_par_old).gt.tol .or. &
+                    &abs(max_par-max_par_old).gt.tol) &
+                    &call writo('WARNING: For HELENA output, min_par and &
+                    &max_par are rounded to the integer values '//&
+                    &trim(i2str(floor(min_par)))//' and '//&
+                    &trim(i2str(ceiling(max_par))))
+                if (ias.eq.0) then                                              ! top-bottom symmetry in HELENA
+                    n_par = nint(max_par-min_par) * (nchi-1)                    ! nchi - 1 per half circle
+                else                                                            ! no top-bottom symmetry in HELENA
+                    n_par = nint(max_par-min_par) * nchi / 2                    ! nchi / 2 per half circle
+                end if
+                if (n_par.ne.n_par_old) then
+                    call writo('WARNING: Nr. of parallel points dictated by &
+                        &HELENA: '//trim(i2str(n_par)))
+                end if
+            else                                                                ! not HELENA input: n_par can be chosen independently
+                if (n_par.lt.nyq_fac*(max_sec_X-min_sec_X)*&
+                    &(max_par-min_par)/2) then
+                    n_par = int(nyq_fac*(max_sec_X-min_sec_X)*&
+                        &(max_par-min_par)/2)
+                    call writo('WARNING: To avoid aliasing of the perturbation &
+                        &integrals, n_par is increased to '//trim(i2str(n_par)))
+                end if
             end if
         end subroutine adapt_n_par
         
@@ -233,7 +268,7 @@ contains
         ! preferibly at least 10 (arbitrary)
         ! min_n_r_X has  to be at  least 2 (for 2 grid points)
         integer function adapt_X() result(ierr)
-            use VMEC_vars, only: n_r_eq
+            use eq_vars, only: n_r_eq
             
             character(*), parameter :: rout_name = 'adapt_X'
             

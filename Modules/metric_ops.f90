@@ -13,16 +13,17 @@ module metric_ops
     implicit none
     private
     public calc_T_VC, calc_g_C, calc_jac_C, calc_g_V, T_VC, calc_jac_V, &
-        &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_F, &
-        &normalize_metric_vars, &
+        &calc_jac_H, calc_T_HF, init_metric, calc_T_VF, calc_h_H, &
+        &calc_inv_met, calc_g_F, calc_jac_F, normalize_metric_vars, &
         &calc_f_deriv, dealloc_metric, dealloc_metric_final, &
         &g_V, jac_F, h_F, g_F, g_C, T_VF, T_FV, jac_V, det_T_VF, det_T_FV, &
-        &g_FD, h_FD, jac_FD
+        &g_FD, h_FD, jac_FD, T_FH, T_HF, det_T_FH, det_T_HF, h_H, g_H
 
     ! upper (h) and lower (g) metric factors
     ! (index 1,2: along B, perp to flux surfaces, index 4,5: 3x3 matrix)
     real(dp), allocatable :: g_C(:,:,:,:,:,:,:)                                 ! in the C(ylindrical) coordinate system
     real(dp), allocatable :: g_V(:,:,:,:,:,:,:)                                 ! in the V(MEC) coordinate system
+    real(dp), allocatable :: g_H(:,:,:,:,:,:,:), h_H(:,:,:,:,:,:,:)             ! in the V(MEC) coordinate system
     real(dp), allocatable :: g_F(:,:,:,:,:,:,:), h_F(:,:,:,:,:,:,:)             ! in the F(lux) coordinate system with derivatves in the V(MEC) system
     real(dp), allocatable :: g_FD(:,:,:,:,:,:,:), h_FD(:,:,:,:,:,:,:)           ! in the F(lux) coordinate system with derivatives in the F(lux) system
     ! upper and lower transformation matrices
@@ -30,9 +31,13 @@ module metric_ops
     real(dp), allocatable :: T_VC(:,:,:,:,:,:,:)                                ! C(ylindrical) to V(MEC) (lower)
     real(dp), allocatable :: T_VF(:,:,:,:,:,:,:)                                ! V(MEC) to F(lux) (upper)
     real(dp), allocatable :: T_FV(:,:,:,:,:,:,:)                                ! V(MEC) to F(lux) (lower)
+    real(dp), allocatable :: T_HF(:,:,:,:,:,:,:)                                ! H(ELENA) to F(lux) (upper)
+    real(dp), allocatable :: T_FH(:,:,:,:,:,:,:)                                ! H(ELENA) to F(lux) (lower)
     real(dp), allocatable :: det_T_VC(:,:,:,:,:)                                ! determinant of T_VC
     real(dp), allocatable :: det_T_VF(:,:,:,:,:)                                ! determinant of T_VF
     real(dp), allocatable :: det_T_FV(:,:,:,:,:)                                ! determinant of T_FV
+    real(dp), allocatable :: det_T_HF(:,:,:,:,:)                                ! determinant of T_HF
+    real(dp), allocatable :: det_T_FH(:,:,:,:,:)                                ! determinant of T_FH
     real(dp), allocatable :: jac_C(:,:,:,:,:)                                   ! jacobian of C(ylindrical) coordinate system
     real(dp), allocatable :: jac_V(:,:,:,:,:)                                   ! jacobian of V(MEC) coordinate system
     real(dp), allocatable :: jac_F(:,:,:,:,:)                                   ! jacobian of F(lux) coordinate system with derivatives in the V(MEC) system
@@ -45,6 +50,9 @@ module metric_ops
     interface calc_g_V
         module procedure calc_g_V_ind, calc_g_V_arr
     end interface
+    interface calc_h_H
+        module procedure calc_h_H_ind, calc_h_H_arr
+    end interface
     interface calc_g_F
         module procedure calc_g_F_ind, calc_g_F_arr
     end interface
@@ -54,6 +62,9 @@ module metric_ops
     interface calc_jac_V
         module procedure calc_jac_V_ind, calc_jac_V_arr
     end interface
+    interface calc_jac_H
+        module procedure calc_jac_H_ind, calc_jac_H_arr
+    end interface
     interface calc_jac_F
         module procedure calc_jac_F_ind, calc_jac_F_arr
     end interface
@@ -62,6 +73,9 @@ module metric_ops
     end interface
     interface calc_T_VF
         module procedure calc_T_VF_ind, calc_T_VF_arr
+    end interface
+    interface calc_T_HF
+        module procedure calc_T_HF_ind, calc_T_HF_arr
     end interface
     interface calc_inv_met
         module procedure calc_inv_met_ind, calc_inv_met_arr, &
@@ -74,25 +88,19 @@ module metric_ops
 
 contains
     ! initialize metric variables
-    subroutine init_metric
+    integer function init_metric() result(ierr)
+        use num_vars, only: eq_style
         use eq_vars, only: n_par, grp_n_r_eq
         
-        ! g_C
-        allocate(g_C(n_par,grp_n_r_eq,3,3,0:max_deriv(1),0:max_deriv(2),&
-            &0:max_deriv(3))); g_C = 0.0_dp
+        character(*), parameter :: rout_name = 'init_metric'
         
-        ! g_V
-        allocate(g_V(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1))
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
-        ! g_F
-        allocate(g_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1))
+        ! initialize ierr
+        ierr = 0
         
-        ! h_F
-        allocate(h_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1))
-        
+        ! initialize variables that are used for all equilibrium styles
         ! g_FD
         allocate(g_FD(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
@@ -101,46 +109,102 @@ contains
         allocate(h_FD(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
         
-        ! T_VC
-        allocate(T_VC(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1)); T_VC = 0.0_dp
-        
-        ! T_VF
-        allocate(T_VF(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1)); T_VC = 0.0_dp
-        
-        ! T_FV
-        allocate(T_FV(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1)); T_VC = 0.0_dp
-        
-        ! det_T_VC
-        allocate(det_T_VC(n_par,grp_n_r_eq,0:max_deriv(1),0:max_deriv(2),&
-            &0:max_deriv(3)))
-        
-        ! det_T_VF
-        allocate(det_T_VF(n_par,grp_n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1))
-        
-        ! det_T_FV
-        allocate(det_T_FV(n_par,grp_n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1))
-        
-        ! jac_C
-        allocate(jac_C(n_par,grp_n_r_eq,0:max_deriv(1),0:max_deriv(2),&
-            &0:max_deriv(3)))
-        
-        ! jac_V
-        allocate(jac_V(n_par,grp_n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1))
-        
-        ! jac_F
-        allocate(jac_F(n_par,grp_n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1))
-        
         ! jac_FD
         allocate(jac_FD(n_par,grp_n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
-    end subroutine
+        
+        ! initialize variables that are  specifici to which equilibrium style is
+        ! being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! g_C
+                allocate(g_C(n_par,grp_n_r_eq,3,3,0:max_deriv(1),&
+                    &0:max_deriv(2),0:max_deriv(3))); g_C = 0.0_dp
+                
+                ! g_V
+                allocate(g_V(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                
+                ! g_F
+                allocate(g_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                
+                ! h_F
+                allocate(h_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                
+                ! T_VC
+                allocate(T_VC(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1)); T_VC = 0.0_dp
+                
+                ! T_VF
+                allocate(T_VF(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1)); T_VF = 0.0_dp
+                
+                ! T_FV
+                allocate(T_FV(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1)); T_FV = 0.0_dp
+                
+                ! det_T_VC
+                allocate(det_T_VC(n_par,grp_n_r_eq,0:max_deriv(1),&
+                    &0:max_deriv(2),0:max_deriv(3)))
+                
+                ! det_T_VF
+                allocate(det_T_VF(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                
+                ! det_T_FV
+                allocate(det_T_FV(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                
+                ! jac_C
+                allocate(jac_C(n_par,grp_n_r_eq,0:max_deriv(1),0:max_deriv(2),&
+                    &0:max_deriv(3)))
+                
+                ! jac_V
+                allocate(jac_V(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                
+                ! jac_F
+                allocate(jac_F(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+            case (2)                                                            ! HELENA
+                ! g_F
+                allocate(g_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                
+                ! h_F
+                allocate(h_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                
+                ! T_HF
+                allocate(T_HF(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1)); T_HF = 0.0_dp
+                
+                ! T_FH
+                allocate(T_FH(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1)); T_FH = 0.0_dp
+                
+                ! det_T_HF
+                allocate(det_T_HF(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                
+                ! det_T_FH
+                allocate(det_T_FH(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                
+                ! jac_F
+                allocate(jac_F(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+    end function init_metric
     
     ! calculate the lower metric elements in the C(ylindrical) coordinate system
     integer function calc_g_C_ind(deriv) result(ierr)
@@ -220,6 +284,48 @@ contains
             CHCKERR('')
         end do
     end function calc_g_V_arr
+    
+    ! calculate the metric coefficients  in the H(ELENA) coordinate system using
+    ! the HELENA output
+    integer function calc_h_H_ind(deriv) result(ierr)
+        use num_vars, only: max_deriv
+        use HEL_vars, only: h_H_11, h_H_12, h_H_33
+        
+        character(*), parameter :: rout_name = 'calc_h_H_ind'
+        
+        ! input / output
+        integer, intent(in) :: deriv(3)
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_h_H')
+        CHCKERR('')
+        
+        h_H(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+        !if (sum(deriv).eq.0) then
+            !g_C(:,:,1,1,deriv(1),deriv(2),deriv(3)) = 1.0_dp
+            !g_C(:,:,3,3,deriv(1),deriv(2),deriv(3)) = 1.0_dp
+        !end if
+        !ierr = arr_mult(VMEC_R,VMEC_R,g_C(:,:,2,2,deriv(1),deriv(2),deriv(3)),&
+            !&deriv)
+        !CHCKERR('')
+    end function calc_h_H_ind
+    integer function calc_h_H_arr(deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_h_H_arr'
+        
+        ! input / output
+        integer, intent(in) :: deriv(:,:)
+        
+        ! local variables
+        integer :: id
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_h_H_ind(deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_h_H_arr
 
     ! calculate the  metric coefficients in  the F(lux) coordinate  system using
     ! the metric  coefficients in  the V(MEC) coordinate  system and  the trans-
@@ -232,6 +338,7 @@ contains
         ! input / output
         integer, intent(in) :: deriv(3)
         
+        write(*,*) 'HERE YOU SHOULD CHOOSE BETWEEN VMEC AND HELENA'
         ! initialize ierr
         ierr = 0
         
@@ -446,6 +553,39 @@ contains
         end do
     end function calc_jac_V_arr
     
+    ! calculate the jacobian in HELENA coordinates directly from J = q R^2/F
+    integer function calc_jac_H_ind(deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_jac_H_ind'
+        
+        ! input / output
+        integer, intent(in) :: deriv(3)
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_J_V')
+        CHCKERR('')
+        
+        ! calculate determinant
+        !jac_H(:,:,deriv(1),deriv(2),deriv(3)) = 
+        ! NEED R^2, F DERIVATIVES...
+    end function calc_jac_H_ind
+    integer function calc_jac_H_arr(deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_jac_H_arr'
+        
+        ! input / output
+        integer, intent(in) :: deriv(:,:)
+        
+        ! local variables
+        integer :: id
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_jac_H_ind(deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_jac_H_arr
+    
     ! calculate the jacobian in Flux coordinates from 
     !   jac_F = det(T_FV) jac_V
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
@@ -549,8 +689,8 @@ contains
         end do
     end function calc_T_VC_arr
 
-    ! calculate  the transformation  matrix  between  C(ylindrical) and  V(mec)
-    ! coordinate system
+    ! calculate the  transformation matrix  between V(mec) and  F(lux) oordinate
+    ! system
     integer function calc_T_VF_ind(deriv) result(ierr)
         use num_vars, only: pi, use_pol_flux
         use eq_vars, only: VMEC_L, q_saf_V, rot_t_V, n_par, theta_V, zeta_V, &
@@ -636,7 +776,7 @@ contains
                 &det_T_VF(:,:,deriv(1),deriv(2),deriv(3)),deriv)
             CHCKERR('')
         else
-            ! set up theta_s
+            ! set up zeta_s
             allocate(zeta_s(n_par,grp_n_r_eq,0:deriv(1)+1,0:deriv(2)+1,&
                 &0:deriv(3)+1))
             zeta_s = 0.0_dp
@@ -707,6 +847,159 @@ contains
             CHCKERR('')
         end do
     end function calc_T_VF_arr
+    
+    ! calculate the transformation matrix  between H(ELENA) and F(lux) oordinate
+    ! system
+    integer function calc_T_HF_ind(deriv) result(ierr)
+        use num_vars, only: pi, use_pol_flux
+        use eq_vars, only: VMEC_L, q_saf_H, rot_t_H, n_par, theta_H, zeta_H, &
+            &flux_p_H, flux_t_H, grp_n_r_eq
+        use utilities, only: arr_mult
+        
+        character(*), parameter :: rout_name = 'calc_T_HF_ind'
+        
+        ! input / output
+        integer, intent(in) :: deriv(3)
+            
+        ! local variables
+        integer :: id                                                           ! counter
+        real(dp), allocatable :: theta_s(:,:,:,:,:)                             ! theta_F and derivatives
+        real(dp), allocatable :: zeta_s(:,:,:,:,:)                              ! - zeta_F and derivatives
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_T_HF')
+        CHCKERR('')
+        
+        ! initialize T_HF
+        T_HF(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+        
+        ! set up theta_s
+        allocate(theta_s(n_par,grp_n_r_eq,0:deriv(1)+1,0:deriv(2)+1,&
+            &0:deriv(3)+1))
+        theta_s = 0.0_dp
+        theta_s(:,:,0,0,0) = theta_H
+        theta_s(:,:,0,1,0) = 1.0_dp
+            
+        if (use_pol_flux) then
+            ! calculate transformation matrix T_H^F
+            ! (1,1)
+            ierr = arr_mult(theta_s,-q_saf_H(:,1:),&
+                &T_HF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv)
+            CHCKERR('')
+            ! (1,2)
+            if (sum(deriv).eq.0) then
+                T_HF(:,:,1,2,0,0,0) = 1.0_dp
+            !else
+                !T_HF(:,:,1,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+            ! (1,3)
+            !T_HF(:,:,1,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ! (2,1)
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                T_HF(id,:,2,1,deriv(1),0,0) = -q_saf_H(:,deriv(1))
+            !else
+                !T_HF(id,:,2,1,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+            ! (2,2)
+            !T_HF(:,:,2,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ! (2,3)
+            if (sum(deriv).eq.0) then
+                T_HF(:,:,2,3,0,0,0) = 1.0_dp
+            !else
+                !T_HF(:,:,2,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+            ! (3,1)
+            if (sum(deriv).eq.0) then
+                T_HF(:,:,3,1,0,0,0) = 1.0_dp
+            !else
+                !T_HF(:,:,3,1,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+            ! (3,2)
+            !T_HF(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ! (3,3)
+            !T_HF(:,:,3,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            
+            ! determinant
+            det_T_HF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            if (sum(deriv).eq.0) then
+                det_T_HF(:,:,0,0,0) = 1.0_dp
+            else
+                det_T_HF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+        else
+            ! set up zeta_s
+            allocate(zeta_s(n_par,grp_n_r_eq,0:deriv(1)+1,0:deriv(2)+1,&
+                &0:deriv(3)+1))
+            zeta_s = 0.0_dp
+            ! start from theta_H
+            zeta_s(:,:,0,0,0) = zeta_H
+            zeta_s(:,:,0,0,1) = 1.0_dp
+            
+            ! calculate transformation matrix T_H^F
+            ! (1,1)
+            ierr = arr_mult(zeta_s,rot_t_H(:,1:),&
+                &T_HF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv)
+            CHCKERR('')
+            ! (1,2)
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                T_HF(id,:,1,2,deriv(1),0,0) = q_saf_H(:,deriv(1))
+            !else
+                !T_HF(id,:,1,2,deriv(1),deriv(2),deriv(3)) = &
+                    !&-q_saf_H(:,deriv(1))
+            end if
+            ! (1,3)
+            !T_HF(:,:,1,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ! (2,1)
+            if (sum(deriv).eq.0) then
+                T_HF(id,:,2,1,deriv(1),0,0) = -1.0_dp
+            !else
+                !T_HF(id,:,2,1,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+            ! (2,2)
+            !T_HF(:,:,2,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ! (2,3)
+            !T_HF(:,:,2,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ! (3,1)
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                T_HF(id,:,3,1,deriv(1),0,0) = rot_t_H(:,deriv(1))
+            !else
+                !T_HF(id,:,3,1,deriv(1),deriv(2),deriv(3)) = &
+                    !&-q_saf_H(:,deriv(1))
+            end if
+            ! (3,2)
+            !T_HF(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ! (3,3)
+            if (sum(deriv).eq.0) then
+                T_HF(id,:,3,3,deriv(1),0,0) = -1.0_dp
+            !else
+                !T_HF(id,:,3,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+            
+            ! determinant
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                det_T_HF(id,:,deriv(1),0,0) = q_saf_H(:,deriv(1))
+            else
+                det_T_HF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+        end if
+    end function calc_T_HF_ind
+    integer function calc_T_HF_arr(deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_T_HF_arr'
+        
+        ! input / output
+        integer, intent(in) :: deriv(:,:)
+        
+        ! local variables
+        integer :: id
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_T_HF_ind(deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_T_HF_arr
     
     ! calculate D_1^m1 D_2^m2 D_3^m3 X from D_1^i1 D_2^i2 D_3^3 X and 
     ! D_1^j1 D_2^j2 D_3^j3 Y where XY = 1, i,j = 0..m, according to [ADD REF]
