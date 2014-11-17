@@ -12,7 +12,8 @@ module num_vars
         &grp_rank, grp_n_procs, grp_nr, n_groups, output_name, next_job, &
         &next_job_win, plot_jq, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
         &nyq_fac, max_n_plots, alpha_job_nr, use_pol_flux, plot_grid, &
-        &output_style, eq_style, eq_name, plot_dir, data_dir, script_dir
+        &output_style, eq_style, eq_name, plot_dir, data_dir, script_dir, &
+        &spline_type
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -45,7 +46,7 @@ module num_vars
     real(dp), parameter :: mu_0 = 4E-7_dp*pi                                    ! permeability of free space
     complex(dp), parameter :: iu = (0,1)                                        ! complex unit
 
-    ! considering runtime
+    ! concerning runtime
     integer :: minim_style                                                      ! determines the method used for minimization
         ! 1 [def] : Euler-Lagrange min., finite diff and Richardson's method
     logical :: ltest                                                            ! whether or not to call the testing routines
@@ -57,12 +58,12 @@ module num_vars
     logical :: plot_jq                                                          ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates
     
-    ! considering Richardson extrapolation
+    ! concerning Richardson extrapolation
     integer :: max_it_r                                                         ! number of levels for Richardson extrapolation
     real(dp) :: tol_r                                                           ! tolerance for Richardson extrapolation
     logical :: no_guess = .false.                                               ! disable guessing Eigenfunction from previous level of Richardson
 
-    ! considering finding the magnetic field lines
+    ! concerning finding the magnetic field lines
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
     real(dp) :: tol_NR                                                          ! tolerance for Newton-Rhapson
     integer :: nyq_fac                                                          ! Nyquist factor to avoid aliasing in perturbation integrals
@@ -79,11 +80,25 @@ module num_vars
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots
     character(len=4) :: data_dir = 'Data'                                       ! directory where to save data for plots
     
-    ! considering the various field lines for which to do the calculations
+    ! concerning the various field lines for which to do the calculations
     integer :: n_alpha                                                          ! how many field lines
     real(dp) :: min_alpha, max_alpha                                            ! min. and max. value for alpha, should be (0...2pi)
     
-    ! considering the perturbation grid
+    ! concerning the perturbation grid
     integer :: min_n_r_X                                                        ! min. of n_r_X (e.g. first value in Richardson loop)
     real(dp) :: min_r_X, max_r_X                                                ! min. and max. normal coord. for pert. (either pol. or tor., depending on use_pol_flux from VMEC)
+    
+    ! concerning  spline interpolation
+    ! The type of the spline is determined by "spline_type":
+    !   1:  cubic
+    ! The coefficients that are stored here are:
+    !   x:  the abscissa at which the spline was calculated
+    !   y:  the ordinates at which the spline was calculated
+    !   z:  the calculated second order derivatives at the points x
+    type :: spline_type
+        integer :: spline_type                                                  ! determines type of spline
+        real(dp), allocatable :: x(:)                                           ! abscissa
+        real(dp), allocatable :: y(:)                                           ! ordinate
+        real(dp), allocatable :: z(:)                                           ! second order derivatives of spline
+    end type spline_type
 end module num_vars

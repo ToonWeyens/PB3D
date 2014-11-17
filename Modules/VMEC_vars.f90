@@ -42,7 +42,7 @@ contains
     ! Reads the VMEC equilibrium data
     ! [MPI] only global master
     integer function read_VMEC(n_r_eq,eq_use_pol_flux) result(ierr)
-        use utilities, only: norm_deriv, conv_FHM
+        use utilities, only: calc_deriv, conv_FHM
         use num_vars, only: max_deriv, eq_i, glb_rank, eq_name
 #if ldebug
         use num_vars, only: ltest
@@ -143,23 +143,23 @@ contains
             do kd = 1,max_deriv(1)
                 do jd = -ntor,ntor
                     do id = 0,mpol-1
-                        ierr = norm_deriv(R_c(id,jd,:,0),R_c(id,jd,:,kd),&
+                        ierr = calc_deriv(R_c(id,jd,:,0),R_c(id,jd,:,kd),&
                             &n_r_eq-1._dp,kd,1)
                         CHCKERR('')
-                        ierr = norm_deriv(Z_s(id,jd,:,0),Z_s(id,jd,:,kd),&
+                        ierr = calc_deriv(Z_s(id,jd,:,0),Z_s(id,jd,:,kd),&
                             &n_r_eq-1._dp,kd,1)
                         CHCKERR('')
-                        ierr = norm_deriv(L_s_H(id,jd,:,0),&
+                        ierr = calc_deriv(L_s_H(id,jd,:,0),&
                             &L_s_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                         CHCKERR('')
                         !if (lasym) then                                         ! following only needed in assymetric situations
-                            ierr = norm_deriv(R_s(id,jd,:,0),&
+                            ierr = calc_deriv(R_s(id,jd,:,0),&
                                 &R_s(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                             CHCKERR('')
-                            ierr = norm_deriv(Z_c(id,jd,:,0),&
+                            ierr = calc_deriv(Z_c(id,jd,:,0),&
                                 &Z_c(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                             CHCKERR('')
-                            ierr = norm_deriv(L_c_H(id,jd,:,0),&
+                            ierr = calc_deriv(L_c_H(id,jd,:,0),&
                                 &L_c_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                             CHCKERR('')
                         !end if

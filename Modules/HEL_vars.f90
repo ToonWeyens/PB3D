@@ -10,7 +10,7 @@ module HEL_vars
     implicit none
     private
     public read_HEL, dealloc_HEL, &
-        &R_H, p0, qs, flux_H, nchi, chi, ias, h_H_11, h_H_12, h_H_33
+        &R_H, p0, qs, flux_H, nchi, chi, ias, h_H_11, h_H_12, h_H_33, RBphi
     
     ! global variables
     real(dp) :: R_H = 1.0_dp                                                    ! R of magnetic axis (normalization constant)
@@ -19,6 +19,7 @@ module HEL_vars
     real(dp), allocatable :: qs(:)                                              ! safety factor
     real(dp), allocatable :: flux_H(:)                                          ! normal coordinate values
     real(dp), allocatable :: chi(:)                                             ! poloidal angle
+    real(dp), allocatable :: RBphi(:)                                           ! R B_phi
     real(dp), allocatable :: h_H_11(:,:)                                        ! upper metric factor 11 (gem11)
     real(dp), allocatable :: h_H_12(:,:)                                        ! upper metric factor 12 (gem12)
     real(dp), allocatable :: h_H_33(:,:)                                        ! upper metric factor 33 (1/gem33)
@@ -59,7 +60,6 @@ contains
         integer :: id, kd                                                       ! counters
         real(dp), allocatable :: dqs(:)                                         ! derivative of q
         real(dp), allocatable :: curj(:)                                        ! toroidal current
-        real(dp), allocatable :: RBphi(:)                                       ! R B_phi
         real(dp), allocatable :: xout(:,:)                                      ! major radius R
         real(dp), allocatable :: yout(:,:)                                      ! height Z
         real(dp), allocatable :: vx(:), vy(:)                                   ! R and Z of surface
@@ -122,13 +122,12 @@ contains
             CHCKERR(err_msg)
             
             allocate(h_H_11(nchi,n_r_eq))
-            allocate(h_H_12(nchi,n_r_eq))
-            allocate(h_H_33(nchi,n_r_eq))
             read(eq_i,*,IOSTAT=ierr) (h_H_11(mod(id-1,nchi)+1,(id-1)/nchi+1),&
                 &id=nchi+1,n_r_eq*nchi)                                         ! (gem11)
             CHCKERR(err_msg)
             h_H_11(:,1) = 0._dp                                                 ! first normal point is not given, so set to zero
             
+            allocate(h_H_12(nchi,n_r_eq))
             read(eq_i,*,IOSTAT=ierr) (h_H_12(mod(id-1,nchi)+1,(id-1)/nchi+1),&
                 &id=nchi+1,n_r_eq*nchi)                                         ! (gem12)
             CHCKERR(err_msg)
@@ -141,6 +140,7 @@ contains
             cpsurf = cpsurf * R_H**2 * B_H                                      ! back to real space
             flux_H = flux_H**2 * cpsurf                                         ! rescale poloidal flux
             
+            allocate(h_H_33(nchi,n_r_eq))
             read(eq_i,*,IOSTAT=ierr) (h_H_33(mod(id-1,nchi)+1,(id-1)/nchi+1),&
                 &id=nchi+1,n_r_eq*nchi)                                         ! (gem11)
             h_H_33(:,:) = 1/h_H_33(:,:)                                         ! HELENA gives R^2, but need 1/R^2

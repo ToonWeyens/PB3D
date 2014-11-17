@@ -256,7 +256,7 @@ contains
     ! system
     integer function calc_flux_q() result(ierr)
         use num_vars, only: eq_style, max_deriv, grp_rank, use_pol_flux
-        use utilities, only: norm_deriv, calc_int
+        use utilities, only: calc_deriv, calc_int
         
         character(*), parameter :: rout_name = 'calc_flux_q_VMEC'
         
@@ -297,7 +297,7 @@ contains
             ! pressure: copy from VMEC and derive
             pres_V(:,0) = presf(grp_min_r_eq:grp_max_r_eq)
             do kd = 1, max_deriv(1)
-                ierr = norm_deriv(pres_V(:,0),pres_V(:,kd),n_r_eq-1._dp,kd,1)
+                ierr = calc_deriv(pres_V(:,0),pres_V(:,kd),n_r_eq-1._dp,kd,1)
                 CHCKERR('')
             end do
             
@@ -313,7 +313,7 @@ contains
             flux_p_V(:,1) = Dflux_p_full(grp_min_r_eq:grp_max_r_eq)
             flux_p_V(:,0) = flux_p_int_full(grp_min_r_eq:grp_max_r_eq)
             do kd = 2,max_deriv(1)
-                ierr = norm_deriv(flux_p_V(:,1),flux_p_V(:,kd),&
+                ierr = calc_deriv(flux_p_V(:,1),flux_p_V(:,kd),&
                     &n_r_eq-1._dp,kd-1,1)
                 CHCKERR('')
             end do
@@ -322,7 +322,7 @@ contains
             flux_t_V(:,0) = phi(grp_min_r_eq:grp_max_r_eq)
             flux_t_V(:,1) = phi_r(grp_min_r_eq:grp_max_r_eq)
             do kd = 2,max_deriv(1)
-                ierr = norm_deriv(flux_t_V(:,1),flux_t_V(:,kd),n_r_eq-1._dp,&
+                ierr = calc_deriv(flux_t_V(:,1),flux_t_V(:,kd),n_r_eq-1._dp,&
                     &kd-1,1)
                 CHCKERR('')
             end do
@@ -331,7 +331,7 @@ contains
                 ! safety factor
                 q_saf_V(:,0) = 1.0_dp/iotaf(grp_min_r_eq:grp_max_r_eq)
                 do kd = 1,max_deriv(1)
-                    ierr = norm_deriv(q_saf_V(:,0),q_saf_V(:,kd),n_r_eq-1._dp,&
+                    ierr = calc_deriv(q_saf_V(:,0),q_saf_V(:,kd),n_r_eq-1._dp,&
                         &kd,1)
                     CHCKERR('')
                 end do
@@ -342,7 +342,7 @@ contains
                 ! rot. transform
                 rot_t_V(:,0) = iotaf(grp_min_r_eq:grp_max_r_eq)
                 do kd = 1,max_deriv(1)
-                    ierr = norm_deriv(rot_t_V(:,0),rot_t_V(:,kd),n_r_eq-1._dp,&
+                    ierr = calc_deriv(rot_t_V(:,0),rot_t_V(:,kd),n_r_eq-1._dp,&
                         &kd,1)
                     CHCKERR('')
                 end do
@@ -367,7 +367,7 @@ contains
                 flux_t_V_full(:,0) = phi
                 flux_t_V_full(:,1) = phi_r
                 do kd = 2,max_deriv(1)
-                    ierr = norm_deriv(flux_t_V_full(:,1),flux_t_V_full(:,kd),&
+                    ierr = calc_deriv(flux_t_V_full(:,1),flux_t_V_full(:,kd),&
                         &n_r_eq-1._dp,kd-1,1)
                     CHCKERR('')
                 end do
@@ -376,7 +376,7 @@ contains
                 flux_p_V_full(:,0) = flux_p_int_full
                 flux_p_V_full(:,1) = Dflux_p_full
                 do kd = 2,max_deriv(1)
-                    ierr = norm_deriv(flux_p_V_full(:,1),&
+                    ierr = calc_deriv(flux_p_V_full(:,1),&
                         &flux_p_V_full(:,kd),n_r_eq-1._dp,kd-1,1)
                     CHCKERR('')
                 end do
@@ -384,7 +384,7 @@ contains
                 ! q_saf_V_full
                 q_saf_V_full(:,0) = 1.0_dp/iotaf
                 do kd = 1,max_deriv(1)
-                    ierr = norm_deriv(q_saf_V_full(:,0),&
+                    ierr = calc_deriv(q_saf_V_full(:,0),&
                         &q_saf_V_full(:,kd),n_r_eq-1._dp,kd,1)
                     CHCKERR('')
                 end do
@@ -392,7 +392,7 @@ contains
                 ! rot_t_V_full
                 rot_t_V_full(:,0) = iotaf
                 do kd = 1,max_deriv(1)
-                    ierr = norm_deriv(rot_t_V_full(:,0),&
+                    ierr = calc_deriv(rot_t_V_full(:,0),&
                         &rot_t_V_full(:,kd),n_r_eq-1._dp,kd,1)
                     CHCKERR('')
                 end do
@@ -422,14 +422,14 @@ contains
             ! pressure: copy from HELENA and derive
             pres_H(:,0) = p0(grp_min_r_eq:grp_max_r_eq)
             do kd = 1, max_deriv(1)
-                ierr = norm_deriv(pres_H(:,0),pres_H(:,kd),n_r_eq-1._dp,kd,1)
+                ierr = calc_deriv(pres_H(:,0),pres_H(:,kd),n_r_eq-1._dp,kd,1)
                 CHCKERR('')
             end do
             
             ! set up helper variables to calculate toroidal flux
             ! calculate normal derivative of flux_H
             allocate(flux_H_r(n_r_eq))
-            ierr = norm_deriv(flux_H,flux_H_r,n_r_eq-1._dp,1,1)
+            ierr = calc_deriv(flux_H,flux_H_r,n_r_eq-1._dp,1,1)
             CHCKERR('')
             allocate(Dflux_t_full(n_r_eq),flux_t_int_full(n_r_eq))
             Dflux_t_full = qs*flux_H_r
@@ -442,7 +442,7 @@ contains
             flux_t_H(:,1) = Dflux_t_full(grp_min_r_eq:grp_max_r_eq)
             flux_t_H(:,0) = flux_t_int_full(grp_min_r_eq:grp_max_r_eq)
             do kd = 2,max_deriv(1)
-                ierr = norm_deriv(flux_t_H(:,1),flux_t_H(:,kd),&
+                ierr = calc_deriv(flux_t_H(:,1),flux_t_H(:,kd),&
                     &n_r_eq-1._dp,kd,1)
                 CHCKERR('')
             end do
@@ -450,7 +450,7 @@ contains
             ! poloidal flux: copy from HELENA and derive
             flux_p_H(:,0) = flux_H(grp_min_r_eq:grp_max_r_eq)
             do kd = 1,max_deriv(1)
-                ierr = norm_deriv(flux_p_H(:,1),flux_p_H(:,kd),n_r_eq-1._dp,&
+                ierr = calc_deriv(flux_p_H(:,1),flux_p_H(:,kd),n_r_eq-1._dp,&
                     &kd,1)
                 CHCKERR('')
             end do
@@ -459,7 +459,7 @@ contains
                 ! safety factor
                 q_saf_H(:,0) = qs(grp_min_r_eq:grp_max_r_eq)
                 do kd = 1,max_deriv(1)
-                    ierr = norm_deriv(q_saf_H(:,0),q_saf_H(:,kd),n_r_eq-1._dp,&
+                    ierr = calc_deriv(q_saf_H(:,0),q_saf_H(:,kd),n_r_eq-1._dp,&
                         &kd,1)
                     CHCKERR('')
                 end do
@@ -470,7 +470,7 @@ contains
                 ! rot. transform
                 rot_t_H(:,0) = 1.0_dp/qs(grp_min_r_eq:grp_max_r_eq)
                 do kd = 1,max_deriv(1)
-                    ierr = norm_deriv(rot_t_H(:,0),rot_t_H(:,kd),n_r_eq-1._dp,&
+                    ierr = calc_deriv(rot_t_H(:,0),rot_t_H(:,kd),n_r_eq-1._dp,&
                         &kd,1)
                     CHCKERR('')
                 end do
@@ -491,7 +491,7 @@ contains
                 flux_t_H_full(:,0) = flux_t_int_full
                 flux_t_H_full(:,1) = Dflux_t_full
                 do kd = 2,max_deriv(1)
-                    ierr = norm_deriv(flux_t_H_full(:,1),&
+                    ierr = calc_deriv(flux_t_H_full(:,1),&
                         &flux_t_H_full(:,kd),n_r_eq-1._dp,kd-1,1)
                     CHCKERR('')
                 end do
@@ -499,7 +499,7 @@ contains
                 ! flux_p_H_full
                 flux_p_H_full(:,0) = flux_H
                 do kd = 1,max_deriv(1)
-                    ierr = norm_deriv(flux_p_H_full(:,1),flux_p_H_full(:,kd),&
+                    ierr = calc_deriv(flux_p_H_full(:,1),flux_p_H_full(:,kd),&
                         &n_r_eq-1._dp,kd,1)
                     CHCKERR('')
                 end do
@@ -507,7 +507,7 @@ contains
                 ! q_saf_H_full
                 q_saf_H_full(:,0) = qs
                 do kd = 1,max_deriv(1)
-                    ierr = norm_deriv(q_saf_H_full(:,0),&
+                    ierr = calc_deriv(q_saf_H_full(:,0),&
                         &q_saf_H_full(:,kd),n_r_eq-1._dp,kd,1)
                     CHCKERR('')
                 end do
@@ -515,7 +515,7 @@ contains
                 ! rot_t_H_full
                 rot_t_H_full(:,0) = 1.0_dp/qs
                 do kd = 1,max_deriv(1)
-                    ierr = norm_deriv(rot_t_H_full(:,0),&
+                    ierr = calc_deriv(rot_t_H_full(:,0),&
                         &rot_t_H_full(:,kd),n_r_eq-1._dp,kd,1)
                     CHCKERR('')
                 end do

@@ -40,6 +40,7 @@ module metric_ops
     real(dp), allocatable :: det_T_FH(:,:,:,:,:)                                ! determinant of T_FH
     real(dp), allocatable :: jac_C(:,:,:,:,:)                                   ! jacobian of C(ylindrical) coordinate system
     real(dp), allocatable :: jac_V(:,:,:,:,:)                                   ! jacobian of V(MEC) coordinate system
+    real(dp), allocatable :: jac_H(:,:,:,:,:)                                   ! jacobian of H(ELENA) coordinate system
     real(dp), allocatable :: jac_F(:,:,:,:,:)                                   ! jacobian of F(lux) coordinate system with derivatives in the V(MEC) system
     real(dp), allocatable :: jac_FD(:,:,:,:,:)                                  ! jacobian of F(lux) coordinate system with derivatives in the F(lux) system
         
@@ -101,6 +102,14 @@ contains
         ierr = 0
         
         ! initialize variables that are used for all equilibrium styles
+        ! g_F
+        allocate(g_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+            &0:max_deriv(3)-1))
+        
+        ! h_F
+        allocate(h_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
+            &0:max_deriv(3)-1))
+        
         ! g_FD
         allocate(g_FD(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
@@ -108,6 +117,10 @@ contains
         ! h_FD
         allocate(h_FD(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
             &0:max_deriv(3)-1))
+        
+        ! jac_F
+        allocate(jac_F(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
+            &0:max_deriv(2)-1,0:max_deriv(3)-1))
         
         ! jac_FD
         allocate(jac_FD(n_par,grp_n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
@@ -125,14 +138,6 @@ contains
                 
                 ! g_V
                 allocate(g_V(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
-                
-                ! g_F
-                allocate(g_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
-                
-                ! h_F
-                allocate(h_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
                     &0:max_deriv(2)-1,0:max_deriv(3)-1))
                 
                 ! T_VC
@@ -166,19 +171,7 @@ contains
                 ! jac_V
                 allocate(jac_V(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
                     &0:max_deriv(2)-1,0:max_deriv(3)-1))
-                
-                ! jac_F
-                allocate(jac_F(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
             case (2)                                                            ! HELENA
-                ! g_F
-                allocate(g_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
-                
-                ! h_F
-                allocate(h_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
-                
                 ! T_HF
                 allocate(T_HF(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
                     &0:max_deriv(2)-1,0:max_deriv(3)-1)); T_HF = 0.0_dp
@@ -195,8 +188,8 @@ contains
                 allocate(det_T_FH(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
                     &0:max_deriv(2)-1,0:max_deriv(3)-1))
                 
-                ! jac_F
-                allocate(jac_F(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
+                ! jac_H
+                allocate(jac_H(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
                     &0:max_deriv(2)-1,0:max_deriv(3)-1))
             case default
                 err_msg = 'No equilibrium style associated with '//&
@@ -555,10 +548,15 @@ contains
     
     ! calculate the jacobian in HELENA coordinates directly from J = q R^2/F
     integer function calc_jac_H_ind(deriv) result(ierr)
+        use HEL_vars, only:  qs, h_H_33, RBphi
+        
         character(*), parameter :: rout_name = 'calc_jac_H_ind'
         
         ! input / output
         integer, intent(in) :: deriv(3)
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -568,8 +566,17 @@ contains
         CHCKERR('')
         
         ! calculate determinant
-        !jac_H(:,:,deriv(1),deriv(2),deriv(3)) = 
-        ! NEED R^2, F DERIVATIVES...
+        if (deriv(3).ne.0) then
+            jac_H(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+        else if (deriv(1).eq.1) then
+        else if (deriv(2).eq.1) then
+        else
+            ierr = 1
+            err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
+                &trim(i2str(deriv(2)))//','//trim(i2str(deriv(3)))//'&
+                &) not supported'
+            CHCKERR(err_msg)
+        end if
     end function calc_jac_H_ind
     integer function calc_jac_H_arr(deriv) result(ierr)
         character(*), parameter :: rout_name = 'calc_jac_H_arr'

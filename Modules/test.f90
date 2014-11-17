@@ -5,7 +5,7 @@ module test
 #include <PB3D_macros.h>
     use num_vars, only: dp, max_str_ln, pi, mu_0, output_i, iu
     use output_ops, only: print_GP_2D, print_GP_3D
-    use message_ops, only: writo, lvl_ud, print_ar_1, print_ar_2, start_time, &
+    use message_ops, only: print_ar_1, print_ar_2, start_time, &
         &stop_time
     use input_ops, only: yes_no
     use str_ops, only: i2str, r2str, r2strt
@@ -13,7 +13,7 @@ module test
     implicit none
     private
     public test_repack, test_print_GP, test_metric_transf, test_ang_B, &
-        &test_calc_ext_var, test_B, test_norm_deriv, test_arr_mult, &
+        &test_calc_ext_var, test_B, test_calc_deriv, test_arr_mult, &
         &test_conv_FHM, test_calc_RZL, test_calc_T_VF, test_calc_inv_met, &
         &test_calc_det, test_inv, test_calc_f_deriv, test_calc_g, &
         &test_fourier2real, test_prepare_X, test_slepc
@@ -41,9 +41,8 @@ contains
         !! initialize ierr
         !ierr = 0
         
-        !call writo('test fourier2real?')
+        !write(*,*) 'test fourier2real?'
         !if(yes_no(.false.)) then
-            !call lvl_ud(1)
             
             !output_i = 0
             !mpol = 3
@@ -74,8 +73,7 @@ contains
             !cosvar(:,1) = [1,2,1]
             !sinvar(:,1) = [1,3,4]
             
-            !call writo('zeroth order')
-            !call lvl_ud(1)
+            !write(*,*) 'zeroth order'
             !! invert Fourier series
             !ierr = calc_trigon_factors(theta,zeta,trigon_factors)
             !CHCKERR('')
@@ -98,10 +96,8 @@ contains
             
             !! difference
             !call print_GP_2D('difference','',realvar-realvar_ALT)
-            !call lvl_ud(-1)
             
-            !call writo('D_theta')
-            !call lvl_ud(1)
+            !write(*,*) 'D_theta'
             !! invert Fourier series
             !do id = 1,n
                 !ierr = calc_mesh_cs(cs,mpol,ntor,nfp,theta(id),zeta(id))
@@ -126,10 +122,8 @@ contains
             
             !! difference
             !call print_GP_2D('difference','',realvar-realvar_ALT)
-            !call lvl_ud(-1)
             
-            !call writo('D_zeta')
-            !call lvl_ud(1)
+            !write(*,*) 'D_zeta'
             !! invert Fourier series
             !do id = 1,n
                 !ierr = calc_mesh_cs(cs,mpol,ntor,nfp,theta(id),zeta(id))
@@ -154,10 +148,8 @@ contains
             
             !! difference
             !call print_GP_2D('difference','',realvar-realvar_ALT)
-            !call lvl_ud(-1)
             
-            !call writo('D^2_theta D_zeta')
-            !call lvl_ud(1)
+            !write(*,*) 'D^2_theta D_zeta'
             !! invert Fourier series
             !do id = 1,n
                 !ierr = calc_mesh_cs(cs,mpol,ntor,nfp,theta(id),zeta(id))
@@ -182,11 +174,9 @@ contains
             
             !! difference
             !call print_GP_2D('difference','',realvar-realvar_ALT)
-            !call lvl_ud(-1)
             
-            !call lvl_ud(-1)
             
-            !call writo('Stopping')
+            !write(*,*) 'Stopping'
             !stop
         !end if
     end function test_fourier2real
@@ -201,9 +191,8 @@ contains
         real(dp), allocatable :: varinB(:,:)
         real(dp), allocatable :: varoutB(:,:,:)
             
-        call writo('test repack?')
+        write(*,*) 'test repack?'
         if(yes_no(.false.)) then
-            call lvl_ud(1)
             n_rB = 2
             mpolB = 2
             ntorB = 3
@@ -229,12 +218,11 @@ contains
             write(*,*) 'varoutB(1,:,1) = ', varoutB(1,:,1)
             write(*,*) 'varoutB(0,:,2) = ', varoutB(0,:,2)
             write(*,*) 'varoutB(1,:,2) = ', varoutB(1,:,2)
-            call lvl_ud(-1)
             
-            call writo('Paused... press enter')
+            write(*,*) 'Paused... press enter'
             read(*,*)
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     end subroutine test_repack
@@ -255,20 +243,19 @@ contains
         real(dp), allocatable :: z_3(:,:,:)
         integer :: iplt, ipnt, ipntx, ipnty
         
-        call writo('test print_GP?')
+        write(*,*) 'test print_GP?'
         if(yes_no(.false.)) then
-            call writo('Testing print_GP')
-            call lvl_ud(1)
+            write(*,*) 'Testing print_GP'
             
             do
-                call writo('Which type of test do you want to perform?')
-                call writo('    2: 2D array') 
-                call writo('    3: 3D array')
+                write(*,*) 'Which type of test do you want to perform?'
+                write(*,*) '    2: 2D array'
+                write(*,*) '    3: 3D array'
                 read(*,*) test_type
                 if (test_type.ge.2 .and. test_type.le.3) then
                     exit
                 else
-                    call writo('please select a valid test type')
+                    write(*,*) 'please select a valid test type'
                 end if
             end do
             
@@ -278,22 +265,20 @@ contains
                 case(3)
                     call test_3D
                 case default
-                    call writo('ERROR: In test_print_GP, no test type &
-                        &associated with '//trim(i2str(test_type))//'...')
+                    write(*,*) 'ERROR: In test_print_GP, no test type &
+                        &associated with '//trim(i2str(test_type))//'...'
                     stop
             end select
             
             
-            call lvl_ud(-1)
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     contains
         subroutine test_2D
             ! one function, no x values
-            call writo('plotting data without x values')
-            call lvl_ud(1)
+            write(*,*) 'plotting data without x values'
             ! allocate
             npnt = 20
             allocate(y_1(npnt))
@@ -305,11 +290,9 @@ contains
             call print_GP_2D('cos(3*x)','test1',y_1)
             ! deallocate
             deallocate(y_1)
-            call lvl_ud(-1)
             
             ! one function, with x values
-            call writo('plotting data with x values')
-            call lvl_ud(1)
+            write(*,*) 'plotting data with x values'
             ! allocate
             npnt = 20
             allocate(x_1(npnt))
@@ -324,11 +307,9 @@ contains
             ! deallocate
             deallocate(x_1)
             deallocate(y_1)
-            call lvl_ud(-1)
             
             ! many functions, without x values
-            call writo('plotting multiple data without x values')
-            call lvl_ud(1)
+            write(*,*) 'plotting multiple data without x values'
             ! allocate
             npnt = 20
             nplt = 5
@@ -344,11 +325,9 @@ contains
             call print_GP_2D('cos(i*3*x)','',y_2)
             ! deallocate
             deallocate(y_2)
-            call lvl_ud(-1)
             
             ! many functions, with x values
-            call writo('plotting multiple data with x values')
-            call lvl_ud(1)
+            write(*,*) 'plotting multiple data with x values'
             ! allocate
             npnt = 20
             nplt = 5
@@ -367,13 +346,11 @@ contains
             ! deallocate
             deallocate(x_2)
             deallocate(y_2)
-            call lvl_ud(-1)
         end subroutine
             
         subroutine test_3D
             ! one function, no x values
-            call writo('plotting data without x and y values')
-            call lvl_ud(1)
+            write(*,*) 'plotting data without x and y values'
             ! allocate
             npntx = 20
             npnty = 30
@@ -389,11 +366,9 @@ contains
             call print_GP_3D('sin(x)*cos(3*y)','',z_2)
             ! deallocate
             deallocate(z_2)
-            call lvl_ud(-1)
             
             ! one function, with x values
-            call writo('plotting data with x, without y values')
-            call lvl_ud(1)
+            write(*,*) 'plotting data with x, without y values'
             ! allocate
             npntx = 20
             npnty = 30
@@ -412,11 +387,9 @@ contains
             ! deallocate
             deallocate(x_2)
             deallocate(z_2)
-            call lvl_ud(-1)
             
             ! one function, with y values
-            call writo('plotting data with y, without x values')
-            call lvl_ud(1)
+            write(*,*) 'plotting data with y, without x values'
             ! allocate
             npntx = 20
             npnty = 30
@@ -435,11 +408,9 @@ contains
             ! deallocate
             deallocate(y_2)
             deallocate(z_2)
-            call lvl_ud(-1)
             
             ! many functions, without x and y values
-            call writo('plotting multiple data without x and y values')
-            call lvl_ud(1)
+            write(*,*) 'plotting multiple data without x and y values'
             ! allocate
             nplt = 3
             npntx = 20
@@ -458,11 +429,9 @@ contains
             call print_GP_3D('sin(x)*cos(3*y)*i','',z_3)
             ! deallocate
             deallocate(z_3)
-            call lvl_ud(-1)
             
             !! many functions, with x values
-            call writo('plotting multiple data with x values')
-            call lvl_ud(1)
+            write(*,*) 'plotting multiple data with x values'
             ! allocate
             nplt = 3
             npntx = 20
@@ -484,11 +453,9 @@ contains
             ! deallocate
             deallocate(z_3)
             deallocate(x_3)
-            call lvl_ud(-1)
             
             !! many functions, with y values
-            call writo('plotting multiple data with y values')
-            call lvl_ud(1)
+            write(*,*) 'plotting multiple data with y values'
             ! allocate
             nplt = 3
             npntx = 20
@@ -511,11 +478,9 @@ contains
             ! deallocate
             deallocate(z_3)
             deallocate(y_3)
-            call lvl_ud(-1)
             
             !! many functions, with x and y values
-            call writo('plotting multiple data with x and y values')
-            call lvl_ud(1)
+            write(*,*) 'plotting multiple data with x and y values'
             ! allocate
             nplt = 3
             npntx = 20
@@ -543,7 +508,6 @@ contains
             deallocate(z_3)
             deallocate(y_3)
             deallocate(x_3)
-            call lvl_ud(-1)
         end subroutine
     end subroutine test_print_GP
 
@@ -557,93 +521,114 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test prepare_X?')
+        write(*,*) 'test prepare_X?'
         if(yes_no(.false.)) then
             ! calculate equilibrium
-            call writo('calculating equilibrium')
-            call lvl_ud(1)
+            write(*,*) 'calculating equilibrium'
             ierr = calc_eq(0.2*pi)
             CHCKERR('')
-            call lvl_ud(-1)
             
             ! calculate equilibrium
-            call lvl_ud(1)
-            call writo('calculating P')
+            write(*,*) 'calculating P'
             call prepare_X
-            call lvl_ud(-1)
             
             ! visualize PV
-            call writo('Real PV0 (5,5) =')
+            write(*,*) 'Real PV0 (5,5) ='
             call print_ar_2(realpart(PV0(5,5,:,:)))
-            call writo('Imag PV0 (5,5) =')
+            write(*,*) 'Imag PV0 (5,5) ='
             call print_ar_2(imagpart(PV0(5,5,:,:)))
             
-            call writo('Real PV1 (5,5) =')
+            write(*,*) 'Real PV1 (5,5) ='
             call print_ar_2(realpart(PV1(5,5,:,:)))
-            call writo('Imag PV1 (5,5) =')
+            write(*,*) 'Imag PV1 (5,5) ='
             call print_ar_2(imagpart(PV1(5,5,:,:)))
             
-            call writo('Real PV2 (5,5) =')
+            write(*,*) 'Real PV2 (5,5) ='
             call print_ar_2(realpart(PV2(5,5,:,:)))
-            call writo('Imag PV2 (5,5) =')
+            write(*,*) 'Imag PV2 (5,5) ='
             call print_ar_2(imagpart(PV2(5,5,:,:)))
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     end function test_prepare_X
     
-    integer function test_norm_deriv() result(ierr)
-        use utilities, only: norm_deriv
+    integer function test_calc_deriv() result(ierr)
+        use utilities, only: calc_deriv
         
-        character(*), parameter :: rout_name = 'test_norm_deriv'
+        character(*), parameter :: rout_name = 'test_calc_deriv'
         
         ! local variables
         integer :: loc_max, id, kd
-        integer :: n_steps
+        integer :: n_steps, grid_type
+        real(dp) :: x_loc
         real(dp) :: start_step
         real(dp), allocatable :: varin(:)
         real(dp), allocatable :: var1_an(:), var2_an(:), var3_an(:), &
             &var4_an(:), var5_an(:)
         real(dp), allocatable :: var1_nm(:), var2_nm(:), var3_nm(:), &
             &var4_nm(:), var5_nm(:)
-        logical :: ind_plots
+        logical :: ind_plots, eqd_plots
         real(dp), allocatable :: step_size(:)
         real(dp), allocatable :: max_error(:,:)
         real(dp), allocatable :: mean_error(:,:)
-        real(dp), allocatable :: plot_var(:,:)
+        real(dp), allocatable :: plot_y(:,:)
+        real(dp), allocatable :: plot_x(:,:)
         integer :: input_type
+        real(dp), allocatable :: x(:)                                           ! abscissa
+        integer :: max_deriv
         
         ! initialize ierr
         ierr = 0
         
-        call writo('test norm_deriv?')
+        write(*,*) 'test calc_deriv?'
         if(yes_no(.false.)) then
             output_i = 0
             
             ! read user input
             do
-                call writo('how many steps ?')
+                write(*,*) 'how many steps ?'
                 read(*,*) n_steps
                 if (n_steps.lt.10) then
-                    call writo('Choose a value larger than 10')
+                    write(*,*) 'choose a value larger than 10'
                     cycle
                 else
                     exit
                 end if
             end do
             do
-                call  writo('starting (max) step size ?')
+                write(*,*) 'starting (max) step size ?'
                 read(*,*) start_step
                 if (start_step.gt.1E-1_dp) then
-                    call writo('Choose a value smaller than 0.1')
+                    write(*,*) 'Choose a value smaller than 0.1'
                     cycle
                 else
                     exit
                 end if
             end do
+            write(*,*) 'equidistant plot? [yes]'
+            if(yes_no(.true.)) then
+                eqd_plots = .true.
+                max_deriv = 5
+            else
+                eqd_plots = .false.
+                max_deriv = 1
+            end if
+            if (.not.eqd_plots) then
+                do
+                    write(*,*) 'which type of x-axis?'
+                        write(*,*) '1: quadratic x = ((x-1)/(N-1))^2'
+                    read(*,*) grid_type
+                    if (grid_type.lt.1 .or. grid_type.gt.1) then
+                        write(*,*) 'choose a value from the range 1-1'
+                        cycle
+                    else
+                        exit
+                    end if
+                end do
+            end if
             
-            call writo('Individual plots?')
+            write(*,*) 'Individual plots?'
             if(yes_no(.false.)) then
                 ind_plots = .true.
             else
@@ -651,18 +636,16 @@ contains
             end if
             
             do
-                call writo('which function?')
-                call lvl_ud(1)
-                    call writo('1: sin(pi*x) + 0.25*cos(2*pi*x)')
-                    call writo('2: 1/800 * (0.5+0.5*x^2-0.005*x^3+0.0.0000001*x^4)')
-                    call writo('3: x^7')
-                    call writo('4: x^6')
-                    call writo('5: x^5')
-                    call writo('6: x^4')
-                call lvl_ud(-1)
+                write(*,*) 'which function?'
+                    write(*,*) '1: sin(pi*x) + 0.25*cos(2*pi*x)'
+                    write(*,*) '2: 0.5+x-2*x^3+x^4'
+                    write(*,*) '3: x^7'
+                    write(*,*) '4: x^6'
+                    write(*,*) '5: x^5'
+                    write(*,*) '6: x^4'
                 read(*,*) input_type
                 if (input_type.lt.1 .or. input_type.gt.6) then
-                    call writo('Choose a value from the range 1-6')
+                    write(*,*) 'Choose a value from the range 1-6'
                     cycle
                 else
                     exit
@@ -671,19 +654,37 @@ contains
             
             ! initialize
             allocate(step_size(n_steps)); step_size = 0.0_dp
-            allocate(max_error(n_steps,5)); max_error = 0.0_dp
-            allocate(mean_error(n_steps,5)); mean_error = 0.0_dp
-            allocate(plot_var(2,n_steps)); plot_var = 0.0_dp
+            allocate(max_error(n_steps,max_deriv)); max_error = 0.0_dp
+            allocate(mean_error(n_steps,max_deriv)); mean_error = 0.0_dp
+            allocate(plot_x(n_steps,2)); plot_x = 0.0_dp
+            allocate(plot_y(n_steps,2)); plot_y = 0.0_dp
             
-            call lvl_ud(1)
                 
             ! n_steps calculations up to min_step
             do id = 1,n_steps
-                loc_max = nint(id/start_step)
-                step_size(id) = 2*pi/loc_max
+                loc_max = nint(id/start_step)                                   ! how many points for this step id
                 
-                call writo(trim(i2str(id))//'/'//trim(i2str(n_steps))//&
-                    &': calculating using '//trim(i2str(loc_max))//' points')
+                if (allocated(x)) deallocate(x)
+                step_size(id) = 1._dp/(loc_max-1._dp)                           ! equidistant step size for loc_max points
+                
+                if (eqd_plots) then
+                    write(*,*) 'setting up equidistant grid'
+                    x = [((kd-1._dp)*step_size(id),kd=1,loc_max)]
+                else
+                    write(*,*) 'setting up regular grid'
+                    allocate(x(loc_max))
+                    select case (grid_type)
+                        case(1)
+                            x = [(((kd-1._dp)*step_size(id))**2,kd=1,loc_max)]
+                        case default
+                            write(*,*) 'ERROR: you cannot have regular a grid &
+                                &of type '//trim(i2str(grid_type))
+                            exit
+                    end select
+                end if
+                
+                write(*,*) trim(i2str(id))//'/'//trim(i2str(n_steps))// &
+                    &': calculating using '//trim(i2str(loc_max))//' points'
                 
                 ! set up input function
                 if (allocated(varin)) deallocate(varin)
@@ -712,156 +713,144 @@ contains
                 
                 select case (input_type)
                     case (1)
-                        varin = [(sin((kd-1)*pi/(loc_max-1))&
-                            &+0.25*cos((kd-1)*pi/(loc_max-1)),kd=1,loc_max)]
-                        var1_an = (0.5)**1*[(cos(pi*(kd-1)/(loc_max-1))&
-                            &-0.25*sin(pi*(kd-1)/(loc_max-1)),kd=1,loc_max)]
-                        var2_an = (0.5)**2*[(-sin(pi*(kd-1)/(loc_max-1))&
-                            &-0.25*cos(pi*(kd-1)/(loc_max-1)),kd=1,loc_max)]
-                        var3_an = (0.5)**3*[(-cos(pi*(kd-1)/(loc_max-1))&
-                            &+0.25*sin(pi*(kd-1)/(loc_max-1)),kd=1,loc_max)]
-                        var4_an = (0.5)**4*[(sin(pi*(kd-1)/(loc_max-1))&
-                            &+0.25*cos(pi*(kd-1)/(loc_max-1)),kd=1,loc_max)]
-                        var5_an = (0.5)**5*[(cos(pi*(kd-1)/(loc_max-1))&
-                            &-0.25*sin(pi*(kd-1)/(loc_max-1)),kd=1,loc_max)]
+                        varin = sin(pi*x)+0.25*cos(2*pi*x)
+                        var1_an =  (pi)**1*cos(pi*x)-0.25*(2*pi)**1*sin(2*pi*x)
+                        var2_an = -(pi)**2*sin(pi*x)-0.25*(2*pi)**2*cos(2*pi*x)
+                        var3_an = -(pi)**3*cos(pi*x)+0.25*(2*pi)**3*sin(2*pi*x)
+                        var4_an =  (pi)**4*sin(pi*x)+0.25*(2*pi)**4*cos(2*pi*x)
+                        var5_an =  (pi)**5*cos(pi*x)-0.25*(2*pi)**5*sin(2*pi*x)
                     case (2)
-                        varin = 1.0_dp/800*[(0.5+0.5*(kd*step_size(id))**2&
-                            &-0.005*(kd*step_size(id))**3&
-                            &+0.0000001*(kd*step_size(id))**4,kd=1,loc_max)]
-                        var1_an = 1.0_dp/800*[((kd*step_size(id))&
-                            &-0.015*(kd*step_size(id))**2&
-                            &+0.0000004*(kd*step_size(id))**3,kd=1,loc_max)]
-                        var2_an = 1.0_dp/800*[(1-0.03*(kd*step_size(id))&
-                            &+0.0000012*(kd*step_size(id))**2,kd=1,loc_max)]
-                        var3_an = 1.0_dp/800*[(-0.03+0.0000024*(kd*step_size(id))&
-                            &,kd=1,loc_max)]
-                        var4_an = 1.0_dp/800*[(0.0000024,kd=1,loc_max)]
+                        varin = 0.5+x-2*x**3+x**4
+                        var1_an = 1-6*x**2+4*x**3
+                        var2_an = -12*x+12*x**2
+                        var3_an = -12+24*x
+                        var4_an = 24._dp
                         var5_an = 0.0_dp
                     case(3)
-                    write(*,*) 'step_size = ', step_size(id)
-                        varin = [((kd*step_size(id))**7,kd=1,loc_max)]
-                        var1_an = 7*[((kd*step_size(id))**6,kd=1,loc_max)]
-                        var2_an = 7*6*[((kd*step_size(id))**5,kd=1,loc_max)]
-                        var3_an = 7*6*5*[((kd*step_size(id))**4,kd=1,loc_max)]
-                        var4_an = 7*6*5*4*&
-                            &[((kd*step_size(id))**3,kd=1,loc_max)]
-                        var5_an = 7*6*5*4*3*&
-                            &[((kd*step_size(id))**2,kd=1,loc_max)]
+                        varin = x**7
+                        var1_an = 7*x**6
+                        var2_an = 6*7*x**5
+                        var3_an = 5*6*7*x**4
+                        var4_an = 4*5*6*7*x**3
+                        var5_an = 3*4*5*6*7*x**2
                     case(4)
-                        varin = [((kd*step_size(id))**6,kd=1,loc_max)]
-                        var1_an = 6*[((kd*step_size(id))**5,kd=1,loc_max)]
-                        var2_an = 6*5*[((kd*step_size(id))**4,kd=1,loc_max)]
-                        var3_an = 6*5*4*[((kd*step_size(id))**3,kd=1,loc_max)]
-                        var4_an = 6*5*4*3*&
-                            &[((kd*step_size(id))**2,kd=1,loc_max)]
-                        var5_an = 6*5*4*3*2*[((kd*step_size(id)),kd=1,loc_max)]
+                        varin = x**6
+                        var1_an = 6*x**5
+                        var2_an = 5*6*x**4
+                        var3_an = 4*5*6*x**3
+                        var4_an = 3*4*5*6*x**2
+                        var5_an = 2*3*4*5*6*x**1
                     case(5)
-                        varin = [((kd*step_size(id))**5,kd=1,loc_max)]
-                        var1_an = 5*[((kd*step_size(id))**4,kd=1,loc_max)]
-                        var2_an = 5*4*[((kd*step_size(id))**3,kd=1,loc_max)]
-                        var3_an = 5*4*3*[((kd*step_size(id))**2,kd=1,loc_max)]
-                        var4_an = 5*4*3*2*[((kd*step_size(id)),kd=1,loc_max)]
-                        var5_an = 5*4*3*2*1
+                        varin = x**5
+                        var1_an = 5*x**4
+                        var2_an = 4*5*x**3
+                        var3_an = 3*4*5*x**2
+                        var4_an = 2*3*4*5*x**1
+                        var5_an = 1*2*3*4*5._dp
                     case(6)
-                        varin = [((kd*step_size(id))**4,kd=1,loc_max)]
-                        var1_an = 4*[((kd*step_size(id))**3,kd=1,loc_max)]
-                        var2_an = 4*3*[((kd*step_size(id))**2,kd=1,loc_max)]
-                        var3_an = 4*3*2*[((kd*step_size(id))**1,kd=1,loc_max)]
-                        var4_an = 4*3*2*1
-                        var5_an = 0.0_dp
+                        varin = x**4
+                        var1_an = 4*x**3
+                        var2_an = 3*4*x**2
+                        var3_an = 2*3*4*x**1
+                        var4_an = 1*2*3*4._dp
+                        var5_an = 0._dp
                     case default
-                        call writo('ERROR: in test_norm_deriv, how did &
-                            &you get here?!??!')
+                        write(*,*) 'ERROR: in test_calc_deriv, how did &
+                            &you get here?!??!'
                         stop
                 end select
                 
                 ! numerical derivatives
-                ierr = norm_deriv(varin,var1_nm,1.0_dp/step_size(id),1,1)
-                CHCKERR('')
-                ierr = norm_deriv(varin,var2_nm,1.0_dp/step_size(id),2,1)
-                CHCKERR('')
-                ierr = norm_deriv(varin,var3_nm,1.0_dp/step_size(id),3,1)
-                CHCKERR('')
-                ierr = norm_deriv(varin,var4_nm,1.0_dp/step_size(id),4,1)
-                CHCKERR('')
+                if (eqd_plots) then
+                    ierr = calc_deriv(varin,var1_nm,1.0_dp/step_size(id),1,1)
+                    CHCKERR('')
+                    ierr = calc_deriv(varin,var2_nm,1.0_dp/step_size(id),2,1)
+                    CHCKERR('')
+                    ierr = calc_deriv(varin,var3_nm,1.0_dp/step_size(id),3,1)
+                    CHCKERR('')
+                    ierr = calc_deriv(varin,var4_nm,1.0_dp/step_size(id),4,1)
+                    CHCKERR('')
+                    ierr = calc_deriv(varin,var5_nm,1.0_dp/step_size(id),5,1)
+                    CHCKERR('')
+                else
+                    ierr = calc_deriv(varin,var1_nm,x,1,1)                      ! only derivatives of degree 1 implemented
+                    CHCKERR('')
+                end if
                 
                 ! max and mean errors
                 max_error(id,1) = maxval(abs(var1_an-var1_nm))/ &
                     &maxval(abs(var1_an))
-                max_error(id,2) = maxval(abs(var2_an-var2_nm))/ &
-                    &maxval(abs(var2_an))
-                max_error(id,3) = maxval(abs(var3_an-var3_nm))/ &
-                    &maxval(abs(var3_an))
-                max_error(id,4) = maxval(abs(var4_an-var4_nm))/ &
-                    &maxval(abs(var4_an))
-                
                 mean_error(id,1) = sum(abs(var1_an-var1_nm))/loc_max/ &
                     &maxval(abs(var1_an))
-                mean_error(id,2) = sum(abs(var2_an-var2_nm))/loc_max/ &
-                    &maxval(abs(var2_an))
-                mean_error(id,3) = sum(abs(var3_an-var3_nm))/loc_max/ &
-                    &maxval(abs(var3_an))
-                mean_error(id,4) = sum(abs(var4_an-var4_nm))/loc_max/ &
-                    &maxval(abs(var4_an))
+                if (eqd_plots) then
+                    max_error(id,2) = maxval(abs(var2_an-var2_nm))/ &
+                        &maxval(abs(var2_an))
+                    max_error(id,3) = maxval(abs(var3_an-var3_nm))/ &
+                        &maxval(abs(var3_an))
+                    max_error(id,4) = maxval(abs(var4_an-var4_nm))/ &
+                        &maxval(abs(var4_an))
+                    max_error(id,5) = maxval(abs(var5_an-var5_nm))/ &
+                        &maxval(abs(var5_an))
+                    
+                    mean_error(id,2) = sum(abs(var2_an-var2_nm))/loc_max/ &
+                        &maxval(abs(var2_an))
+                    mean_error(id,3) = sum(abs(var3_an-var3_nm))/loc_max/ &
+                        &maxval(abs(var3_an))
+                    mean_error(id,4) = sum(abs(var4_an-var4_nm))/loc_max/ &
+                        &maxval(abs(var4_an))
+                    mean_error(id,5) = sum(abs(var5_an-var5_nm))/loc_max/ &
+                        &maxval(abs(var5_an))
+                end if
                 
                 ! plots
                 if (ind_plots) then
-                    call print_GP_2D('input variable','',varin)
+                    call print_GP_2D('input variable','',varin,x=x)
                     
-                    call print_GP_2D('analytical deriv. ord. 1','',var1_an)
-                    call print_GP_2D('numerical deriv. ord. 1','',var1_nm)
+                    call print_GP_2D('analytical deriv. ord. 1','',var1_an,x=x)
+                    call print_GP_2D('numerical deriv. ord. 1','',var1_nm,x=x)
                     call print_GP_2D('diff deriv. ord. 1','',(var1_an-var1_nm)&
-                        &/maxval(abs(var1_an)))
+                        &/maxval(abs(var1_an)),x=x)
                     
-                    call print_GP_2D('analytical deriv. ord. 2','',var2_an)
-                    call print_GP_2D('numerical deriv. ord. 2','',var2_nm)
-                    call print_GP_2D('diff deriv. ord. 2','',(var2_an-var2_nm)&
-                        &/maxval(abs(var2_an)))
-                    
-                    call print_GP_2D('analytical deriv. ord. 3','',var3_an)
-                    call print_GP_2D('numerical deriv. ord. 3','',var3_nm)
-                    call print_GP_2D('diff deriv. ord. 3','',(var3_an-var3_nm)&
-                        &/maxval(abs(var3_an)))
-                    
-                    call print_GP_2D('analytical deriv. ord. 4','',var4_an)
-                    call print_GP_2D('numerical deriv. ord. 4','',var4_nm)
-                    call print_GP_2D('diff deriv. ord. 4','',(var4_an-var4_nm)&
-                        &/maxval(abs(var4_an)))
+                    if (eqd_plots) then
+                        call print_GP_2D('analytical deriv. ord. 2','',var2_an,x=x)
+                        call print_GP_2D('numerical deriv. ord. 2','',var2_nm,x=x)
+                        call print_GP_2D('diff deriv. ord. 2','',(var2_an-var2_nm)&
+                            &/maxval(abs(var2_an)),x=x)
+                        
+                        call print_GP_2D('analytical deriv. ord. 3','',var3_an,x=x)
+                        call print_GP_2D('numerical deriv. ord. 3','',var3_nm,x=x)
+                        call print_GP_2D('diff deriv. ord. 3','',(var3_an-var3_nm)&
+                            &/maxval(abs(var3_an)),x=x)
+                        
+                        call print_GP_2D('analytical deriv. ord. 4','',var4_an,x=x)
+                        call print_GP_2D('numerical deriv. ord. 4','',var4_nm,x=x)
+                        call print_GP_2D('diff deriv. ord. 4','',(var4_an-var4_nm)&
+                            &/maxval(abs(var4_an)),x=x)
+                    end if
                 end if
             end do
             
             ! plot errors
-            do id = 1,4
-                plot_var(1,:) = step_size
-                plot_var(2,:) = max_error(:,id)
-                call print_GP_2D('f(Delta) = max. error as function of step &
-                    &size Delta, for deriv. of order '//trim(i2str(id)),'',&
-                    &plot_var(2,:),x=plot_var(1,:))
-                plot_var(1,:) = log10(step_size)
-                plot_var(2,:) = log10(max_error(:,id))
-                call print_GP_2D('f(Delta) = max. error as function of step &
-                    &size Delta [log-log], for deriv. of order '//&
-                    &trim(i2str(id)),'',plot_var(2,:),x=plot_var(1,:))
-            end do
-            do id = 1,4
-                plot_var(1,:) = step_size
-                plot_var(2,:) = mean_error(:,id)
-                call print_GP_2D('f(Delta) = mean. error as function of step &
-                    &size Delta, for deriv. of order '//trim(i2str(id)),'',&
-                    &plot_var(2,:),x=plot_var(1,:))
-                plot_var(1,:) = log10(step_size)
-                plot_var(2,:) = log10(mean_error(:,id))
-                call print_GP_2D('f(Delta) = mean. error as function of step &
-                    &size Delta [log-log], for deriv. of order '//&
-                    &trim(i2str(id)),'',plot_var(2,:),x=plot_var(1,:))
+            do id = 1,max_deriv
+                plot_x(:,1) = step_size
+                plot_x(:,2) = step_size
+                plot_y(:,1) = max_error(:,id)
+                plot_y(:,2) = mean_error(:,id)
+                call print_GP_2D('max. and mean error for deriv. of order '&
+                    &//trim(i2str(id)),'',plot_y,x=plot_x)
+                plot_x(:,1) = log10(step_size)
+                plot_x(:,2) = log10(step_size)
+                plot_y(:,1) = log10(max_error(:,id))
+                plot_y(:,2) = log10(mean_error(:,id))
+                call print_GP_2D('max. and mean error [log-log], for deriv. of &
+                    &order '//trim(i2str(id)),'',plot_y,x=plot_x)
             end do
             
-            call lvl_ud(-1)
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
-    end function test_norm_deriv
+    end function test_calc_deriv
     
     integer function test_calc_ext_var() result(ierr)
         use utilities, only : calc_ext_var
@@ -877,10 +866,10 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test calc_ext_var')
+        write(*,*) 'test calc_ext_var'
         if(yes_no(.false.)) then
             output_i = 0
-            call writo('Testing whether extrapolation is working correctly')
+            write(*,*) 'Testing whether extrapolation is working correctly'
             
             n_r = 100
             allocate(x(n_r))
@@ -906,7 +895,7 @@ contains
                     &[(x(jd),jd=kd,kd+2)],x(kd),1)
                 CHCKERR('')
             end do
-            call writo('Don''t worry about the last 3 points!!!')
+            write(*,*) 'Don''t worry about the last 3 points!!!'
             call print_GP_2D('function: sin(x)+0.5*cos(3x)','',varin,x=x)
             call print_GP_2D('num interp. of function: sin(x)+0.5*cos(3x)','',&
                 &var_num,x=x_int)
@@ -927,7 +916,7 @@ contains
                 !write(*,*) 'varin   = ', varin(kd)
             !end do
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     end function test_calc_ext_var
@@ -949,32 +938,31 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test conv_FHM?')
+        write(*,*) 'test conv_FHM?'
         if(yes_no(.false.)) then
             output_i = 0
-            call writo('Testing whether h2f*f2h = 1')
-            call writo('The relative difference between an original FM variable&
+            write(*,*) 'Testing whether h2f*f2h = 1'
+            write(*,*) 'The relative difference between an original FM variable&
                 & var and h2f*f2h*var, should be decreasing with increasing &
-                &number of radial points')
-            call writo('')
-            call writo('Do you want the individual plots?')
+                &number of radial points'
+            write(*,*) ''
+            write(*,*) 'Do you want the individual plots?'
             ind_plot = yes_no(.false.)
-            call writo('')
+            write(*,*) ''
             do
-                call writo('n_max = ?')
+                write(*,*) 'n_max = ?'
                 read(*,*) n_max
                 if (n_max.lt.4*length) then
-                    call writo('n_max has to be larger than or equal to '&
-                        &//trim(i2str(4*length))//'...')
+                    write(*,*) 'n_max has to be larger than or equal to '&
+                        &//trim(i2str(4*length))//'...'
                 else 
                     exit
                 end if
             end do
-            call writo('logarithmic plot?')
+            write(*,*) 'logarithmic plot?'
             log_plot = yes_no(.false.)
-            call writo('')
+            write(*,*) ''
             
-            call lvl_ud(1)
             
             step = n_max/length
             
@@ -1021,8 +1009,8 @@ contains
                     call print_GP_2D('rel. difference with '//trim(i2str(n_r))&
                         &//' radial points ('//trim(i2str(id))//'/'//&
                         &trim(i2str(length))//')','',vardiff)
-                    call writo('max = '//trim(r2strt(maxerr(id)))&
-                        &//', average: '//trim(r2strt(averr(id))))
+                    write(*,*) 'max = '//trim(r2strt(maxerr(id)))&
+                        &//', average: '//trim(r2strt(averr(id)))
                 end if
             end do
             
@@ -1042,11 +1030,10 @@ contains
             call print_GP_2D('average error as a function of numer of points',&
                 &'',plotvar(2,:),x=plotvar(1,:))
                 
-            call writo('Paused... press enter')
+            write(*,*) 'Paused... press enter'
             read(*,*)
-            call lvl_ud(-1)
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     end function test_conv_FHM
@@ -1064,16 +1051,13 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test calc_RZL?')
+        write(*,*) 'test calc_RZL?'
         if(yes_no(.false.)) then
             output_i = 0
-            call writo('initializing')
-            call lvl_ud(1)
-            call init_eq
-            call lvl_ud(-1)
+            write(*,*) 'initializing'
+            ierr = init_eq()
             
-            call writo('calculations with constant zeta, varying theta_V')
-            call lvl_ud(1)
+            write(*,*) 'calculations with constant zeta, varying theta_V'
             if (allocated(zeta_V)) deallocate(zeta_V)
             allocate(zeta_V(n_par,grp_n_r_eq)); zeta_V = 0.0_dp
             if (allocated(theta_V)) deallocate(theta_V)
@@ -1099,10 +1083,8 @@ contains
             CHCKERR('')
             ierr = calc_RZL([0,0,3])
             CHCKERR('')
-            call lvl_ud(-1)
             
-            call writo('Plotting R')
-            call lvl_ud(1)
+            write(*,*) 'Plotting R'
             call print_GP_3D('R','',VMEC_R(:,:,0,0,0))
             call print_GP_2D('R at r = 5','',VMEC_R(:,5,0,0,0),x=theta_V(:,5))
             do jd = 1,3
@@ -1113,10 +1095,8 @@ contains
                 call print_GP_2D('R_zeta^'//trim(i2str(jd))//' at r = 5','',&
                     &VMEC_R(:,5,0,0,jd),x=theta_V(:,5))
             end do
-            call lvl_ud(-1)
             
-            call writo('Plotting Z')
-            call lvl_ud(1)
+            write(*,*) 'Plotting Z'
             call print_GP_3D('Z','',VMEC_Z(:,:,0,0,0))
             call print_GP_2D('Z at r = 5','',VMEC_Z(:,5,0,0,0),x=theta_V(:,5))
             do jd = 1,3
@@ -1127,27 +1107,22 @@ contains
                 call print_GP_2D('Z_zeta^'//trim(i2str(jd))//' at r = 5','',&
                     &VMEC_Z(:,5,0,0,jd),x=theta_V(:,5))
             end do
-            call lvl_ud(-1)
             
             ! test whether VMEC given bounds are respected
             if (rmax_surf.gt.0.0_dp) then
-                call writo('Checking the bounds of R')
-                call lvl_ud(1)
+                write(*,*) 'Checking the bounds of R'
                 call within_bounds(VMEC_R(:,:,0,0,0),rmin_surf,rmax_surf)
-                call lvl_ud(-1)
             else
-                call writo('Not possible to check the bounds of R')
+                write(*,*) 'Not possible to check the bounds of R'
             end if
             if (zmax_surf.gt.0.0_dp) then
-                call writo('Checking the bounds of Z')
-                call lvl_ud(1)
+                write(*,*) 'Checking the bounds of Z'
                 call within_bounds(VMEC_Z(:,:,0,0,0),-zmax_surf,zmax_surf)
-                call lvl_ud(-1)
             else
-                call writo('Not possible to check the bounds of Z')
+                write(*,*) 'Not possible to check the bounds of Z'
             end if
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     contains
@@ -1173,20 +1148,20 @@ contains
             max_frac = 2*(maxval(var)-max_VMEC)/abs(maxval(var)+max_VMEC)       ! positive if out of bounds
             
             if (min_frac.lt.-margin) then                                       ! too low minimum
-                call writo('WARNING: minimum of variable in real angular space &
+                write(*,*) 'WARNING: minimum of variable in real angular space &
                     & is lower than VMEC provided minimum by '//&
-                    &trim(r2strt(100*min_frac))//'%...')
-                call writo(' -> Maybe use an even number of poloidal points, &
-                    &or more angular mesh points in general?')
-                call writo(' -> Maybe run VMEC with more accuracy?')
+                    &trim(r2strt(100*min_frac))//'%...'
+                write(*,*) ' -> Maybe use an even number of poloidal points, &
+                    &or more angular mesh points in general?'
+                write(*,*) ' -> Maybe run VMEC with more accuracy?'
             else if (max_frac.gt.margin) then                                   ! too high maximum
-                call writo('WARNING: maximum of variable in real angular space &
+                write(*,*) 'WARNING: maximum of variable in real angular space &
                     & is greater than VMEC provided maximum by '//&
-                    &trim(r2strt(100*max_frac))//'%...')
-                call writo(' -> Maybe use more angular mesh points')
-                call writo(' -> Maybe run VMEC with more accuracy?')
+                    &trim(r2strt(100*max_frac))//'%...'
+                write(*,*) ' -> Maybe use more angular mesh points'
+                write(*,*) ' -> Maybe run VMEC with more accuracy?'
             else 
-                call writo('within bounds')
+                write(*,*) 'within bounds'
                 return
             end if
         end subroutine
@@ -1209,32 +1184,29 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test calc_T_VF?')
+        write(*,*) 'test calc_T_VF?'
         if(yes_no(.false.)) then
             output_i = 0
             do 
-                call writo('Which case do you want?')
-                call writo('    1: 0th order')
-                call writo('    2: 1st order, r derivative')
-                call writo('    3: 1st order, theta derivative')
-                call writo('    4: 1st order, zeta derivative')
-                call writo('    5: 4th order, rthetathetazeta derivative')
+                write(*,*) 'Which case do you want?'
+                write(*,*) '    1: 0th order'
+                write(*,*) '    2: 1st order, r derivative'
+                write(*,*) '    3: 1st order, theta derivative'
+                write(*,*) '    4: 1st order, zeta derivative'
+                write(*,*) '    5: 4th order, rthetathetazeta derivative'
                 read(*,*) case_nr
                 if(case_nr.lt.1 .or. case_nr.gt.5) then
-                    call writo('You have to choose from the available options')
+                    write(*,*) 'You have to choose from the available options'
                 else
                     exit
                 end if
             end do
             
-            call writo('calculating equilibrium')
-            call lvl_ud(1)
+            write(*,*) 'calculating equilibrium'
             ierr = calc_eq(0.2*pi)
             CHCKERR('')
-            call lvl_ud(-1)
             
-            call writo('calculating case')
-            call lvl_ud(1)
+            write(*,*) 'calculating case'
             select case (case_nr)
                 case(1)
                     deriv = [0,0,0]
@@ -1252,16 +1224,14 @@ contains
                     deriv = [1,2,1]
                     call case_5
                 case default
-                    call writo('ERROR: In test_T_VF, case '//&
+                    write(*,*) 'ERROR: In test_T_VF, case '//&
                         &trim(i2str(case_nr))//' is not associated with &
-                        &anything. How did you get here???')
+                        &anything. How did you get here???'
                     stop
             end select
-            call lvl_ud(-1)
-            call writo('case calculated')
+            write(*,*) 'case calculated'
             
-            call writo('plotting case')
-            call lvl_ud(1)
+            write(*,*) 'plotting case'
             do id = 1,3
                 do jd = 1,3
                     call print_GP_2D('T_VF('//trim(i2str(id))//','//&
@@ -1275,10 +1245,9 @@ contains
                         &deriv(2),deriv(3))))
                 end do
             end do
-            call lvl_ud(-1)
-            call writo('case plotted')
+            write(*,*) 'case plotted'
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     contains
@@ -1373,23 +1342,19 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test calc_g?')
+        write(*,*) 'test calc_g?'
         if(yes_no(.false.)) then
-            call lvl_ud(1)
             
-            call writo('calculating equilibrium')
-            call lvl_ud(1)
+            write(*,*) 'calculating equilibrium'
             ierr = calc_eq(0.2*pi)
             CHCKERR('')
-            call lvl_ud(-1)
             
-            call writo('check g_V?')
+            write(*,*) 'check g_V?'
             if(yes_no(.false.)) then
-                call lvl_ud(1)
-                call writo('g_V(5,5) = ')
+                write(*,*) 'g_V(5,5) = '
                 call print_ar_2(g_V(5,5,:,:,0,0,0))
                 
-                call writo('g_V(5,5), manually')
+                write(*,*) 'g_V(5,5), manually'
                 g(1,1) = VMEC_R(5,5,1,0,0)*VMEC_R(5,5,1,0,0) + &
                     &VMEC_Z(5,5,1,0,0)*VMEC_Z(5,5,1,0,0)
                 g(1,2) = VMEC_R(5,5,1,0,0)*VMEC_R(5,5,0,1,0) + &
@@ -1407,31 +1372,29 @@ contains
                 g(3,1) = g(1,3)
                 g(3,2) = g(2,3)
                 call print_ar_2(g)
-                call writo('rel diff')
+                write(*,*) 'rel diff'
                 call print_ar_2(2*(g_V(5,5,:,:,0,0,0)-g)/(g_V(5,5,:,:,0,0,0)+g))
-                call lvl_ud(-1)
             end if
             
             do
-                call writo('check D g_V?')
+                write(*,*) 'check D g_V?'
                 if(yes_no(.false.)) then
-                    call lvl_ud(1)
                     do
-                        call writo('derive in which coordinate? [1-3]')
+                        write(*,*) 'derive in which coordinate? [1-3]'
                         read(*,*) id_d
                         if (id_d.ge.1 .and. id_d.le.3) then
                             exit
                         else
-                            call writo('Choose between [1-3]')
+                            write(*,*) 'Choose between [1-3]'
                         end if
                     end do
                     d = 0
                     d(id_d) = 1
                     
-                    call writo('D_'//trim(i2str(id_d))//' g_V(5,5) = ')
+                    write(*,*) 'D_'//trim(i2str(id_d))//' g_V(5,5) = '
                     call print_ar_2(g_V(5,5,:,:,d(1),d(2),d(3)))
                     
-                    call writo('D_'//trim(i2str(id_d))//' g_V(5,5), manually')
+                    write(*,*) 'D_'//trim(i2str(id_d))//' g_V(5,5), manually'
                     g(1,1) = VMEC_R(5,5,d(1)+1,d(2),d(3))*VMEC_R(5,5,1,0,0) + &
                         &VMEC_R(5,5,1,0,0)*VMEC_R(5,5,d(1)+1,d(2),d(3)) + &
                         &VMEC_Z(5,5,d(1)+1,d(2),d(3))*VMEC_Z(5,5,1,0,0) + &
@@ -1461,24 +1424,22 @@ contains
                     g(3,1) = g(1,3)
                     g(3,2) = g(2,3)
                     call print_ar_2(g(:,:))
-                    call writo('rel diff')
+                    write(*,*) 'rel diff'
                     call print_ar_2(2*(g_V(5,5,:,:,d(1),d(2),d(3))-g)/&
                         &(g_V(5,5,:,:,d(1),d(2),d(3))+g))
-                    call lvl_ud(-1)
                 else
                     exit
                 end if
             end do
                 
-            call writo('check g_F?')
+            write(*,*) 'check g_F?'
             if(yes_no(.false.)) then
-                call lvl_ud(1)
-                call writo('g_F(5,5) = ')
+                write(*,*) 'g_F(5,5) = '
                 call print_ar_2(g_F(5,5,:,:,0,0,0))
                 
-                call writo('THIS IS ONLY VALID FOR AXISYMMETRIC CASES')
-                call writo('AND ONLY ELEMENT (1,3) IS VALID')
-                call writo('g_F(5,5), manually')
+                write(*,*) 'THIS IS ONLY VALID FOR AXISYMMETRIC CASES'
+                write(*,*) 'AND ONLY ELEMENT (1,3) IS VALID'
+                write(*,*) 'g_F(5,5), manually'
                 g = 0.0_dp
                 !g(1,3) = -VMEC_L(5,5,0,0,1)*(1-q_saf_V(5,0)*VMEC_L(5,5,0,0,1))/&
                     !&(1+VMEC_L(5,5,0,1,0))**2*g_V(5,5,2,2,0,0,0) + q_saf_V(5,0)* &
@@ -1486,33 +1447,31 @@ contains
                     !&(1+VMEC_L(5,5,0,1,0))*g_V(5,5,2,3,0,0,0)
                 g(1,3) = q_saf_V(5,0)*g_V(5,5,3,3,0,0,0)
                 call print_ar_2(g)
-                call writo('rel diff')
+                write(*,*) 'rel diff'
                 call print_ar_2(2*(g_F(5,5,:,:,0,0,0)-g)/(g_F(5,5,:,:,0,0,0)+g))
-                call lvl_ud(-1)
             end if
             
             do
-                call writo('check D g_F?')
+                write(*,*) 'check D g_F?'
                 if(yes_no(.false.)) then
-                    call lvl_ud(1)
                     do
-                        call writo('derive in which coordinate? [1-3]')
+                        write(*,*) 'derive in which coordinate? [1-3]'
                         read(*,*) id_d
                         if (id_d.ge.1 .and. id_d.le.3) then
                             exit
                         else
-                            call writo('Choose between [1-3]')
+                            write(*,*) 'Choose between [1-3]'
                         end if
                     end do
                     d = 0
                     d(id_d) = 1
                     
-                    call writo('THIS IS ONLY VALID FOR AXISYMMETRIC CASES')
-                    call writo('AND ONLY ELEMENT (1,3) IS VALID')
-                    call writo('D_'//trim(i2str(id_d))//' g_F(5,5) = ')
+                    write(*,*) 'THIS IS ONLY VALID FOR AXISYMMETRIC CASES'
+                    write(*,*) 'AND ONLY ELEMENT (1,3) IS VALID'
+                    write(*,*) 'D_'//trim(i2str(id_d))//' g_F(5,5) = '
                     call print_ar_2(g_F(5,5,:,:,d(1),d(2),d(3)))
                     
-                    call writo('D_'//trim(i2str(id_d))//' g_F(5,5), manually')
+                    write(*,*) 'D_'//trim(i2str(id_d))//' g_F(5,5), manually'
                     g = 0.0_dp
                     if (id_d.eq.1) then
                         g(1,3) = q_saf_V(5,1)*g_V(5,5,3,3,0,0,0) + &
@@ -1521,18 +1480,16 @@ contains
                         g(1,3) = q_saf_V(5,0)*g_V(5,5,3,3,d(1),d(2),d(3))
                     end if
                     call print_ar_2(g)
-                    call writo('rel diff')
+                    write(*,*) 'rel diff'
                     call print_ar_2(2*(g_F(5,5,:,:,d(1),d(2),d(3))-g)/&
                         &(g_F(5,5,:,:,d(1),d(2),d(3))+g))
-                    call lvl_ud(-1)
                 else
                     exit
                 end if
             end do
                 
-            call lvl_ud(-1)
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     end function test_calc_g
@@ -1555,96 +1512,79 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test calc_f_deriv?')
+        write(*,*) 'test calc_f_deriv?'
         if(yes_no(.false.)) then
-            call lvl_ud(1)
             
-            call writo('calculating equilibrium')
-            call lvl_ud(1)
+            write(*,*) 'calculating equilibrium'
             ierr = calc_eq(0.2*pi)
             CHCKERR('')
-            call lvl_ud(-1)
             
-            call writo('testing flux quantities')
-            call lvl_ud(1)
+            write(*,*) 'testing flux quantities'
             read(*,*)
             
-            call writo('testing zeroth order')
-            call lvl_ud(1)
-            call writo('flux_p_FD = ')
+            write(*,*) 'testing zeroth order'
+            write(*,*) 'flux_p_FD = '
             call print_ar_1(flux_p_FD(:,0))
-            call writo('alternative calculation = ')
+            write(*,*) 'alternative calculation = '
             alt_calc(1,:) = flux_p_V(:,0)
             call print_ar_1(alt_calc(1,:))
-            call writo('rel difference = ')
+            write(*,*) 'rel difference = '
             call print_ar_1(2*abs(flux_p_FD(:,0)-alt_calc(1,:))/&
                 &(flux_p_FD(:,0)+alt_calc(1,:)))
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing first order')
-            call lvl_ud(1)
-            call writo('D_psi flux_p_FD = ')
+            write(*,*) 'testing first order'
+            write(*,*) 'D_psi flux_p_FD = '
             call print_ar_1(flux_p_FD(:,1))
-            call writo('alternative calculation = ')
+            write(*,*) 'alternative calculation = '
             alt_calc(1,:) = 2*pi
             call print_ar_1(alt_calc(1,:))
-            call writo('rel difference = ')
+            write(*,*) 'rel difference = '
             call print_ar_1(2*abs(flux_p_FD(:,1)-alt_calc(1,:))/&
                 &(flux_p_FD(:,1)+alt_calc(1,:)))
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing second order')
-            call lvl_ud(1)
-            call writo('D^2_psi flux_p_FD = ')
+            write(*,*) 'testing second order'
+            write(*,*) 'D^2_psi flux_p_FD = '
             call print_ar_1(flux_p_FD(:,2))
-            call writo('alternative calculation = ')
+            write(*,*) 'alternative calculation = '
             alt_calc(1,:) = 0
             call print_ar_1(alt_calc(1,:))
-            call writo('rel difference = ')
+            write(*,*) 'rel difference = '
             call print_ar_1(2*abs(flux_p_FD(:,2)-alt_calc(1,:))/&
                 &(flux_p_FD(:,2)+alt_calc(1,:)))
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing third order')
-            call lvl_ud(1)
-            call writo('D^3_psi flux_p_FD = ')
+            write(*,*) 'testing third order'
+            write(*,*) 'D^3_psi flux_p_FD = '
             call print_ar_1(flux_p_FD(:,3))
-            call writo('alternative calculation = ')
+            write(*,*) 'alternative calculation = '
             alt_calc(1,:) = 0
             call print_ar_1(alt_calc(1,:))
-            call writo('rel difference = ')
+            write(*,*) 'rel difference = '
             call print_ar_1(2*abs(flux_p_FD(:,3)-alt_calc(1,:))/&
                 &(flux_p_FD(:,3)+alt_calc(1,:)))
-            call lvl_ud(-1)
             read(*,*)
             
-            call lvl_ud(-1)
             
-            call writo('testing normal quantities')
-            call lvl_ud(1)
+            write(*,*) 'testing normal quantities'
             read(*,*)
             
-            call writo('testing zeroth order')
-            call lvl_ud(1)
-            call writo('h_FD(3,1) = ')
+            write(*,*) 'testing zeroth order'
+            write(*,*) 'h_FD(3,1) = '
             call print_ar_2(h_FD(:,:,3,1,0,0,0))
-            call writo('alternative calculation = ')
+            write(*,*) 'alternative calculation = '
             alt_calc = h_F(:,:,3,1,0,0,0)
             call print_ar_2(alt_calc)
-            call writo('rel difference = ')
+            write(*,*) 'rel difference = '
             call print_ar_2(2*abs(h_FD(:,:,3,1,0,0,0)-alt_calc)/&
                 &(h_FD(:,:,3,1,0,0,0)+alt_calc))
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing first order psi')
-            call lvl_ud(1)
-            call writo('D_psi h_FD(3,1) = ')
+            write(*,*) 'testing first order psi'
+            write(*,*) 'D_psi h_FD(3,1) = '
             call print_ar_2(h_FD(:,:,3,1,0,1,0))
-            call writo('alternative calculation = ')
+            write(*,*) 'alternative calculation = '
             alt_calc = 0.0_dp
             do id = 1,3
                 der1 = 0
@@ -1653,17 +1593,15 @@ contains
                     &h_F(:,:,3,1,der1(1),der1(2),der1(3))
             end do
             call print_ar_2(alt_calc)
-            call writo('rel difference = ')
+            write(*,*) 'rel difference = '
             call print_ar_2(2*abs(h_FD(:,:,3,1,0,1,0)-alt_calc)/&
                 &(h_FD(:,:,3,1,0,1,0)+alt_calc))
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing second order psi,psi')
-            call lvl_ud(1)
-            call writo('D_psi,psi h_FD(3,1) = ')
+            write(*,*) 'testing second order psi,psi'
+            write(*,*) 'D_psi,psi h_FD(3,1) = '
             call print_ar_2(h_FD(:,:,3,1,0,2,0))
-            call writo('alternative calculation = ')
+            write(*,*) 'alternative calculation = '
             alt_calc = 0.0_dp
             do id = 1,3
                 do jd = 1,3
@@ -1679,17 +1617,15 @@ contains
                 end do
             end do
             call print_ar_2(alt_calc)
-            call writo('rel difference = ')
+            write(*,*) 'rel difference = '
             call print_ar_2(2*abs(h_FD(:,:,3,1,0,2,0)-alt_calc)/&
                 &(h_FD(:,:,3,1,0,2,0)+alt_calc))
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing second order psi,theta')
-            call lvl_ud(1)
-            call writo('D_psi,psi h_FD(3,1) = ')
+            write(*,*) 'testing second order psi,theta'
+            write(*,*) 'D_psi,psi h_FD(3,1) = '
             call print_ar_2(h_FD(:,:,3,1,0,1,1))
-            call writo('alternative calculation = ')
+            write(*,*) 'alternative calculation = '
             alt_calc = 0.0_dp
             do id = 1,3
                 do jd = 1,3
@@ -1705,17 +1641,15 @@ contains
                 end do
             end do
             call print_ar_2(alt_calc)
-            call writo('rel difference = ')
+            write(*,*) 'rel difference = '
             call print_ar_2(2*abs(h_FD(:,:,3,1,0,1,1)-alt_calc)/&
                 &(h_FD(:,:,3,1,0,1,1)+alt_calc))
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing second order theta,psi')
-            call lvl_ud(1)
-            call writo('D_psi,psi h_FD(3,1) = ')
+            write(*,*) 'testing second order theta,psi'
+            write(*,*) 'D_psi,psi h_FD(3,1) = '
             call print_ar_2(h_FD(:,:,3,1,0,1,1))
-            call writo('alternative calculation = ')
+            write(*,*) 'alternative calculation = '
             alt_calc = 0.0_dp
             do id = 1,3
                 do jd = 1,3
@@ -1731,17 +1665,15 @@ contains
                 end do
             end do
             call print_ar_2(alt_calc)
-            call writo('rel difference = ')
+            write(*,*) 'rel difference = '
             call print_ar_2(2*abs(h_FD(:,:,3,1,0,1,1)-alt_calc)/&
                 &(h_FD(:,:,3,1,0,1,1)+alt_calc))
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing third order psi,psi,theta')
-            call lvl_ud(1)
-            call writo('D_psi,psi,theta h_FD(3,1) = ')
+            write(*,*) 'testing third order psi,psi,theta'
+            write(*,*) 'D_psi,psi,theta h_FD(3,1) = '
             call print_ar_2(h_FD(:,:,3,1,0,2,1))
-            call writo('alternative calculation = ')
+            write(*,*) 'alternative calculation = '
             alt_calc = 0.0_dp
             do id = 1,3
                 do jd = 1,3
@@ -1774,11 +1706,11 @@ contains
                 end do
             end do
             call print_ar_2(alt_calc)
-            call writo('rel difference = ')
+            write(*,*) 'rel difference = '
             call print_ar_2(2*abs(h_FD(:,:,3,1,0,2,1)-alt_calc)/&
                 &(h_FD(:,:,3,1,0,2,1)+alt_calc))
             read(*,*)
-            call writo('changing the order of the derivatives : ')
+            write(*,*) 'changing the order of the derivatives : '
             alt_calc = 0.0_dp
             do id = 1,3
                 do jd = 1,3
@@ -1811,17 +1743,14 @@ contains
                 end do
             end do
             call print_ar_2(alt_calc)
-            call writo('rel difference = ')
+            write(*,*) 'rel difference = '
             call print_ar_2(2*abs(h_FD(:,:,3,1,0,2,1)-alt_calc)/&
                 &(h_FD(:,:,3,1,0,2,1)+alt_calc))
             read(*,*)
-            call lvl_ud(-1)
             
-            call lvl_ud(-1)
             
-            call lvl_ud(-1)
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     end function test_calc_f_deriv
@@ -1842,32 +1771,26 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test calc_inv_met?')
+        write(*,*) 'test calc_inv_met?'
         if(yes_no(.false.)) then
-            call writo('Testing whether T_VF is equal to T_FV')
-            call lvl_ud(1)
+            write(*,*) 'Testing whether T_VF is equal to T_FV'
             
-            call writo('calculating equilibrium')
-            call lvl_ud(1)
+            write(*,*) 'calculating equilibrium'
             ierr = calc_eq(0.2*pi)
             CHCKERR('')
-            call lvl_ud(-1)
             
-            call writo('testing zeroth order')
-            call lvl_ud(1)
+            write(*,*) 'testing zeroth order'
             do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     TxT = matmul(T_VF(id,kd,:,:,0,0,0),T_FV(id,kd,:,:,0,0,0))
                     trace(id,kd) = TxT(1,1)+TxT(2,2)+TxT(3,3)
                 end do
             end do
-            call writo('trace of T_VF*T_FV = ')
+            write(*,*) 'trace of T_VF*T_FV = '
             call print_ar_2(trace)
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing first order: r derivative')
-            call lvl_ud(1)
+            write(*,*) 'testing first order: r derivative'
             do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     TxT = matmul(T_VF(id,kd,:,:,1,0,0),T_FV(id,kd,:,:,0,0,0)) &
@@ -1875,13 +1798,11 @@ contains
                     trace(id,kd) = sum(TxT)
                 end do
             end do
-            call writo('norm of Dr(T_VF*T_FV) = ')
+            write(*,*) 'norm of Dr(T_VF*T_FV) = '
             call print_ar_2(trace)
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing first order: t derivative')
-            call lvl_ud(1)
+            write(*,*) 'testing first order: t derivative'
             do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     TxT = matmul(T_VF(id,kd,:,:,0,1,0),T_FV(id,kd,:,:,0,0,0)) &
@@ -1889,13 +1810,11 @@ contains
                     trace(id,kd) = sum(TxT)
                 end do
             end do
-            call writo('norm of Dt(T_VF*T_FV) = ')
+            write(*,*) 'norm of Dt(T_VF*T_FV) = '
             call print_ar_2(trace)
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing first order: z derivative')
-            call lvl_ud(1)
+            write(*,*) 'testing first order: z derivative'
             do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     TxT = matmul(T_VF(id,kd,:,:,0,0,1),T_FV(id,kd,:,:,0,0,0)) &
@@ -1903,13 +1822,11 @@ contains
                     trace(id,kd) = sum(TxT)
                 end do
             end do
-            call writo('norm of Dz(T_VF*T_FV) = ')
+            write(*,*) 'norm of Dz(T_VF*T_FV) = '
             call print_ar_2(trace)
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing second order: tt derivative')
-            call lvl_ud(1)
+            write(*,*) 'testing second order: tt derivative'
             do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     TxT = matmul(T_VF(id,kd,:,:,0,2,0),T_FV(id,kd,:,:,0,0,0)) &
@@ -1918,13 +1835,11 @@ contains
                     trace(id,kd) = sum(TxT)
                 end do
             end do
-            call writo('norm of Dtt(T_VF*T_FV) = ')
+            write(*,*) 'norm of Dtt(T_VF*T_FV) = '
             call print_ar_2(trace)
-            call lvl_ud(-1)
             read(*,*)
             
-            call writo('testing third order: rtt derivative')
-            call lvl_ud(1)
+            write(*,*) 'testing third order: rtt derivative'
             do kd = 1,grp_n_r_eq
                 do id = 1,n_par
                     TxT = matmul(T_VF(id,kd,:,:,1,2,0),T_FV(id,kd,:,:,0,0,0)) &
@@ -1936,14 +1851,12 @@ contains
                     trace(id,kd) = sum(TxT)
                 end do
             end do
-            call writo('norm of Drtt(T_VF*T_FV) = ')
+            write(*,*) 'norm of Drtt(T_VF*T_FV) = '
             call print_ar_2(trace)
-            call lvl_ud(-1)
             read(*,*)
             
-            call lvl_ud(-1)
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     end function test_calc_inv_met
@@ -1959,20 +1872,18 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test calc_det?')
+        write(*,*) 'test calc_det?'
         if(yes_no(.false.)) then
-            call writo('Testing whether calc_det is correctly calculated')
-            call lvl_ud(1)
+            write(*,*) 'Testing whether calc_det is correctly calculated'
             do
-                call writo('Select 1: 0D or 2: 2D')
+                write(*,*) 'Select 1: 0D or 2: 2D'
                 read(*,*) test_nr
                 if (test_nr.gt.0 .and. test_nr.lt.3) then
                     exit
                 else
-                    call writo('You have to make a correct selection')
+                    write(*,*) 'You have to make a correct selection'
                 end if
             end do
-            call lvl_ud(1)
             
             select case (test_nr)
                 case (1)
@@ -1983,10 +1894,8 @@ contains
                     CHCKERR('')
             end select
             
-            call lvl_ud(-1)
-            call lvl_ud(-1)
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     contains
@@ -2002,14 +1911,14 @@ contains
             
             ! define a 3x3 matrix
             A = transpose(reshape([1,2,3,0,3,5,7,8,0],[3,3]))
-            call writo('calculating determinant of:')
+            write(*,*) 'calculating determinant of:'
             call print_ar_2(A)
             
             detA = 0.0_dp
             ierr = calc_det(detA,A)
             CHCKERR('')
-            call writo('det(A) = '//trim(r2str(detA)))
-            call writo('compare with analyitcal result: -33')
+            write(*,*) 'det(A) = '//trim(r2str(detA))
+            write(*,*) 'compare with analyitcal result: -33'
         end function test_0
         
         integer function test_2() result(ierr)
@@ -2047,11 +1956,11 @@ contains
             CHCKERR('')
             
             ! difference
-            call writo('determinants calculated individually:')
+            write(*,*) 'determinants calculated individually:'
             call print_ar_2(detA)
-            call writo('determinants calculated global:')
+            write(*,*) 'determinants calculated global:'
             call print_ar_2(detA_ALT)
-            call writo('difference')
+            write(*,*) 'difference'
             call print_ar_2(detA-detA_ALT)
         end function test_2
     end function test_calc_det
@@ -2068,10 +1977,9 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test inv?')
+        write(*,*) 'test inv?'
         if(yes_no(.false.)) then
-            call writo('Testing whether inv works correctly')
-            call lvl_ud(1)
+            write(*,*) 'Testing whether inv works correctly'
             
             ! initialize
             allocate(A(2,5,4,4)); A = 0.0_dp
@@ -2093,21 +2001,20 @@ contains
             ! multiply
             do kd = 1,5
                 do id = 1,2
-                    call writo('(id,kd) = ('//trim(i2str(id))//','&
-                        &//trim(i2str(kd))//')')
-                    call writo('matrix A = ')
+                    write(*,*) '(id,kd) = ('//trim(i2str(id))//','&
+                        &//trim(i2str(kd))//')'
+                    write(*,*) 'matrix A = '
                     call print_ar_2(A(id,kd,:,:))
-                    call writo('inverse of A = ')
+                    write(*,*) 'inverse of A = '
                     call print_ar_2(A_inv(id,kd,:,:))
-                    call writo('product = ')
+                    write(*,*) 'product = '
                     call print_ar_2(matmul(A(id,kd,:,:),A_inv(id,kd,:,:)))
-                    call writo('')
+                    write(*,*) ''
                     read(*,*)
                 end do
             end do
-            call lvl_ud(-1)
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     end function test_inv
@@ -2119,7 +2026,7 @@ contains
         !use VMEC_vars, only: mpol, ntor, jac_V_c_H, jac_V_s_H, nfp, n_r_eq
         !use metric_ops, only: jac_V, jac_F, T_FV, det_T_FV, g_F, h_F, g_V, &
             !&calc_inv_met, T_VF
-        !use utilities, only: norm_deriv, calc_det, conv_FHM
+        !use utilities, only: calc_deriv, calc_det, conv_FHM
         !use num_vars, only: calc_mesh_style
         
         !character(*), parameter :: rout_name = 'test_metric_transf'
@@ -2138,25 +2045,21 @@ contains
         !! initialize ierr
         !ierr = 0
         
-        !call writo('test metric_transf?')
+        !write(*,*) 'test metric_transf?'
         !if(yes_no(.false.)) then
-            !call lvl_ud(1)
             
             !output_i = 0
             
-            !call writo('calculating equilibrium with constant zeta')
-            !call lvl_ud(1)
-            !call writo('At which toroidal point zeta do you want the plot?')
+            !write(*,*) 'calculating equilibrium with constant zeta'
+            !write(*,*) 'At which toroidal point zeta do you want the plot?'
             !read(*,*) zeta_in
             !calc_mesh_style = 2
             !ierr = calc_eq(zeta_in)
             !CHCKERR('')
-            !call lvl_ud(-1)
             
-            !call writo('check J_V?')
+            !write(*,*) 'check J_V?'
             !if(yes_no(.false.)) then
-                !call lvl_ud(1)
-                !call writo('calculating jac_V directly to compare it with the &
+                !write(*,*) 'calculating jac_V directly to compare it with the 
                     !&calculation in the code')
                 !! jac_V calculated
                 !do kd = 1,grp_n_r_eq
@@ -2168,7 +2071,7 @@ contains
                     !&reshape([jac_V(:,:,0,0,0),jac_ALT,&
                     !&jac_V(:,:,0,0,0)-jac_ALT],[n_par,grp_n_r_eq,3]))
                 
-                !call writo('comparing jac_V with jac_V provided by VMEC (FM)')
+                !write(*,*) 'comparing jac_V with jac_V provided by VMEC (FM)'
                 !! jac_V from VMEC
                 !write(*,*) 'WRONG: YOU HAVE TO TAKE ONLY A PART OF THE NORMAL RANGE!!!'
                 !ierr = calc_trigon_factors(theta,zeta,trigon_factors)
@@ -2188,7 +2091,7 @@ contains
                     !&log10(max(2*abs(jac_V(:,:,0,0,0)-jac_ALT(:,:))/&
                     !&(jac_V(:,:,0,0,0)+jac_ALT),1E-10_dp)))
                 
-                !call writo('comparing jac_V with jac_V provided by VMEC (HM)')
+                !write(*,*) 'comparing jac_V with jac_V provided by VMEC (HM)'
                 !! calculate half mesh jac_V
                 !do id = 1,n_par
                     !jac_ALT(id,2:grp_n_r_eq) = (n_r_eq-1._dp)*0.25*&
@@ -2209,13 +2112,11 @@ contains
                     !&jac_ALT-jac_ALT_H)
                 !call print_GP_2D('(HM) jac_V calc-VMEC','',&
                     !&transpose(jac_ALT-jac_ALT_H))
-                !call lvl_ud(-1)
             !end if
             
-            !call writo('check J_F?')
+            !write(*,*) 'check J_F?'
             !if(yes_no(.false.)) then
                 !!   jac_F = (flux_p_V'/2pi * (1+L_t))^-1 * R * (R'Z_t - R' Z_t)
-                !call lvl_ud(1)
                 !do kd = 1,grp_n_r_eq
                     !jac_ALT(:,kd) = VMEC_R(:,kd,0,0,0)*(VMEC_R(:,kd,1,0,0)*&
                         !&VMEC_Z(:,kd,0,1,0)-VMEC_R(:,kd,0,1,0)*&
@@ -2225,16 +2126,15 @@ contains
                 !call print_GP_3D('jac_F (1:calc, 2:direct calc, 3: diff)','',&
                     !&reshape([jac_F(:,:,0,0,0),jac_ALT,&
                     !&jac_F(:,:,0,0,0)-jac_ALT],[n_par,grp_n_r_eq,3]))
-                !call lvl_ud(-1)
             !end if
             
-            !!call writo('check r and rr derivatives?')
+            !!write(*,*) 'check r and rr derivatives?'
             !!if(yes_no(.false.)) then
                 !!call print_GP_2D('J_F(par-'//trim(i2str(par))//')','',&
                     !!&jac_F(par,:,0,0,0))
                 !!do kd = 1,2
-                    !!call writo('checking r^'//trim(i2str(kd))//' deriv.')
-                    !!ierr = norm_deriv(jac_F(par,:,0,0,0),&
+                    !!write(*,*) 'checking r^'//trim(i2str(kd))//' deriv.'
+                    !!ierr = calc_deriv(jac_F(par,:,0,0,0),&
                         !!&jac_ALT(par,:),n_r-1._dp,kd,1)
                     !!CHCKERR('')
                     !!call print_GP_2D('Dr^'//trim(i2str(kd))//' J_F(par=par) &
@@ -2248,32 +2148,29 @@ contains
                 !!end do
             !!end if
             
-            !call writo('check jacobians as determinants?')
+            !write(*,*) 'check jacobians as determinants?'
             !if(yes_no(.false.)) then
-                !call lvl_ud(1)
                 !ierr = calc_det(jac_ALT,T_FV(:,:,:,:,0,0,0))
                 !CHCKERR('')
                 !call print_ar_2(jac_ALT-det_T_FV(:,:,0,0,0))
                 !read(*,*)
-                !call lvl_ud(-1)
             !end if
             
-            !call writo('check g*h?')
+            !write(*,*) 'check g*h?'
             !if(yes_no(.false.)) then
-                !call lvl_ud(1)
-                !call writo('VMEC coordinate system')
+                !write(*,*) 'VMEC coordinate system'
                 !! calculate h_V from g_V
                 !ierr = calc_inv_met(h_V,g_V,[0,0,0])
                 !CHCKERR('')
                 !do kd = 1,grp_n_r_eq
                     !do id = 1,n_par
-                        !!call writo('h_V('//trim(i2str(id))//','//&
+                        !!write(*,*) 'h_V('//trim(i2str(id))//','//
                             !!&trim(i2str(kd))//') = ')
                         !!call print_ar_2(h_V(id,kd,:,:,0,0,0))
-                        !!call writo('g_V('//trim(i2str(id))//','//&
+                        !!write(*,*) 'g_V('//trim(i2str(id))//','//
                             !!&trim(i2str(kd))//') = ')
                         !!call print_ar_2(g_V(id,kd,:,:,0,0,0))
-                        !!call writo('h_V*g_V')
+                        !!write(*,*) 'h_V*g_V'
                         !!call print_ar_2(matmul(h_V(id,kd,:,:,0,0,0),&
                             !!&g_V(id,kd,:,:,0,0,0)))
                         !gxh(id,kd) = sum(matmul(h_V(id,kd,:,:,0,0,0),&
@@ -2281,11 +2178,11 @@ contains
                             !&reshape([1,0,0,0,1,0,0,0,1],[3,3]))
                     !end do
                 !end do
-                !call writo('g_V * h_V = ')
+                !write(*,*) 'g_V * h_V = '
                 !call print_ar_2(gxh)
                 !read(*,*)
                 
-                !call writo('flux coordinate system')
+                !write(*,*) 'flux coordinate system'
                 !do kd = 1,grp_n_r_eq
                     !do id = 1,n_par
                         !gxh(id,kd) = sum(matmul(h_F(id,kd,:,:,0,0,0),&
@@ -2293,16 +2190,14 @@ contains
                             !&reshape([1,0,0,0,1,0,0,0,1],[3,3]))
                     !end do
                 !end do
-                !call writo('g_F * h_F = ')
+                !write(*,*) 'g_F * h_F = '
                 !call print_ar_2(gxh)
                 !read(*,*)
-                !call lvl_ud(-1)
             !end if
             
-            !call writo('check T_XY*T_YX?')
+            !write(*,*) 'check T_XY*T_YX?'
             !if(yes_no(.false.)) then
-                !call lvl_ud(1)
-                !call writo('flux coordinate system')
+                !write(*,*) 'flux coordinate system'
                 !do kd = 1,grp_n_r_eq
                     !do id = 1,n_par
                         !gxh(id,kd) = sum(matmul(T_FV(id,kd,:,:,0,0,0),&
@@ -2310,21 +2205,20 @@ contains
                             !&reshape([1,0,0,0,1,0,0,0,1],[3,3]))
                     !end do
                 !end do
-                !call writo('T_FV * T_VF = ')
+                !write(*,*) 'T_FV * T_VF = '
                 !call print_ar_2(gxh)
                 !read(*,*)
-                !call lvl_ud(-1)
             !end if
             
-            !call writo('check h_F?')
+            !write(*,*) 'check h_F?'
             !if(yes_no(.false.)) then
                 !do kd = 1,3
                     !do id = 1,3
-                        !call writo('checking r derivatives')
+                        !write(*,*) 'checking r derivatives'
                         !call print_GP_3D('h_F('//trim(i2str(id))//','//&
                             !&trim(i2str(kd))//')','',h_F(:,2:grp_n_r_eq,id,kd,0,0,0))
                         !do jd =1,n_par
-                            !ierr = norm_deriv(h_F(jd,2:grp_n_r_eq,id,kd,0,0,0),&
+                            !ierr = calc_deriv(h_F(jd,2:grp_n_r_eq,id,kd,0,0,0),&
                                 !&h_F_ALT(jd,2:grp_n_r_eq),n_r_eq-1._dp,1,1)
                             !CHCKERR('')
                         !end do
@@ -2341,9 +2235,8 @@ contains
                 !end do
             !end if
                 
-            !call lvl_ud(-1)
             
-            !call writo('Stopping')
+            !write(*,*) 'Stopping'
             !stop
         !end if
     end function test_metric_transf
@@ -2357,7 +2250,7 @@ contains
             !&B_V_sub_s_M, nfp
         use metric_ops, only: g_V, jac_V, g_F, jac_F, T_FV, calc_inv_met
         !use metric_ops, only: g_FD, jac_FD
-        use utilities, only: norm_deriv, conv_FHM
+        use utilities, only: calc_deriv, conv_FHM
         use eq_ops, only: calc_eq
         use num_vars, only: calc_mesh_style
         use MPI_ops, only: split_MPI
@@ -2383,18 +2276,15 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test B?')
+        write(*,*) 'test B?'
         if(yes_no(.false.)) then
-            call lvl_ud(1)
             
-            call writo('calculating equilibrium with constant zeta')
-            call lvl_ud(1)
+            write(*,*) 'calculating equilibrium with constant zeta'
             calc_mesh_style = 2
             ierr = split_MPI()
             CHCKERR('')
             ierr = calc_eq(0.12*pi)
             CHCKERR('')
-            call lvl_ud(-1)
             
             ! allocate variables
             allocate(B(1:n_par,1:grp_n_r_eq))
@@ -2409,9 +2299,8 @@ contains
             allocate(dum2(1:n_par,1:grp_n_r_eq))
             allocate(dum3(1:n_par,1:grp_n_r_eq))
             
-            call writo('check covar. comp. of magnetic field in VMEC coords?')
+            write(*,*) 'check covar. comp. of magnetic field in VMEC coords?'
             if(yes_no(.false.)) then
-                call lvl_ud(1)
                 ierr = calc_B_V_covar([0,0])
                 CHCKERR('')
                 do jd = 1,3
@@ -2424,18 +2313,16 @@ contains
                         &B_V_sub_ALT(5,2:grp_n_r_eq,jd))/(B_V_sub(5,2:grp_n_r_eq,jd)+&
                         &B_V_sub_ALT(5,2:grp_n_r_eq,jd))),1E-10_dp)))
                 end do
-                call lvl_ud(-1)
             end if
             
-            call writo('check covar. comp. of magnetic field in flux coords?')
+            write(*,*) 'check covar. comp. of magnetic field in flux coords?'
             if(yes_no(.false.)) then
-                call lvl_ud(1)
-                call writo('calculating B_F_sub from g_theta,i')
+                write(*,*) 'calculating B_F_sub from g_theta,i'
                 do jd = 1,3
                     B_F_sub(:,:,jd) = g_F(:,:,3,jd,0,0,0)/jac_F(:,:,0,0,0)
                 end do
                 
-                call writo('calculating B_F_sub_ALT from B_V_sub_ALT from VMEC')
+                write(*,*) 'calculating B_F_sub_ALT from B_V_sub_ALT from VMEC'
                 ierr = calc_B_V_covar([0,0])                                    ! calculating B_V_sub_ALT
                 CHCKERR('')
                 do jd = 1,3
@@ -2456,12 +2343,11 @@ contains
                         &B_F_sub_ALT(5,2:grp_n_r_eq,jd))/(B_F_sub(5,2:grp_n_r_eq,jd)+&
                         &B_F_sub_ALT(5,2:grp_n_r_eq,jd))),1E-10_dp)))
                 end do
-                call lvl_ud(-1)
             end if
             
-            call writo('check magn. of. magnetic field?')
+            write(*,*) 'check magn. of. magnetic field?'
             if(yes_no(.false.)) then
-                call writo('comparison with g_V(1,2)/J^2')
+                write(*,*) 'comparison with g_V(1,2)/J^2'
                 ierr = calc_trigon_factors(theta_V,zeta_V,trigon_factors)
                 CHCKERR('')
                 ierr = fourier2real(&
@@ -2479,7 +2365,7 @@ contains
                     &,'',log10(max(abs(2*(B(5,2:grp_n_r_eq)-B_ALT(5,2:grp_n_r_eq))/&
                     &(B(5,2:grp_n_r_eq)+B_ALT(5,2:grp_n_r_eq))),1E-10_dp)))
                 
-                call writo('comparison with B_i B_j h^ij')
+                write(*,*) 'comparison with B_i B_j h^ij'
                 ! calculate h_V from g_V
                 ierr = calc_inv_met(h_V,g_V,[0,0,0])
                 CHCKERR('')
@@ -2506,19 +2392,18 @@ contains
                     &(B(5,2:grp_n_r_eq)+B_ALT(5,2:grp_n_r_eq))),1E-10_dp)))
             end if
             
-            call writo('test whether D_alpha B_theta = D_theta B_alpha?')
+            write(*,*) 'test whether D_alpha B_theta = D_theta B_alpha?'
             if(yes_no(.false.)) then
-                call lvl_ud(1)
                 
-                call writo('plot B_zeta')
+                write(*,*) 'plot B_zeta'
                 dum(:,5) = flux_p_V(5,1)/(2*pi*jac_V(:,5,0,0,0)) * &
                     &(-q_saf_V(5,0)*(1+VMEC_L(:,5,0,1,0))*g_V(:,5,3,3,0,0,0) - &
                     &(1-q_saf_V(5,0)*VMEC_L(:,5,0,0,1))*g_V(:,5,3,2,0,0,0))
-                call writo('theta (should be increasing in the first dim.) = ')
+                write(*,*) 'theta (should be increasing in the first dim.) = '
                 call print_ar_2(theta_V)
-                call writo('zeta (should be constant) = ')
+                write(*,*) 'zeta (should be constant) = '
                 call print_ar_2(zeta_V)
-                call writo('B_zeta from VMEC = ')
+                write(*,*) 'B_zeta from VMEC = '
                 ierr = calc_B_V_covar([0,0])                                    ! calculating B_V_sub_ALT
                 CHCKERR('')
                 call print_ar_2(B_V_sub_ALT(:,:,3))
@@ -2527,7 +2412,7 @@ contains
                 call print_GP_2D('B_zeta difference, calc-VMEC','',&
                     &dum(:,5)-B_V_sub_ALT(:,5,3))
             
-                !call writo('plot D_theta B_zeta')
+                !write(*,*) 'plot D_theta B_zeta'
                 !dum(:,5) = flux_p_V(5,1)/(2*pi*jac_V(:,5,0,0,0)) * &
                     !&(-jac_V(:,5,0,1,0)/jac_V(:,5,0,0,0) * &
                     !&(q_saf_V(5,0)*(1+VMEC_L(:,5,0,1,0))*g_V(:,5,3,3,0,0,0) + &
@@ -2545,36 +2430,34 @@ contains
                 !call print_GP_2D('D_theta B_zeta REL difference, calc-VMEC','',&
                     !&abs(dum(:,5)-B_V_sub_ALT(:,5,3))/maxval(dum(:,5)))
                 
-                !call writo('D_alpha B_theta = ')
+                !write(*,*) 'D_alpha B_theta = '
                 !dum = g_FD(:,:,3,3,1,0,0)/jac_FD(:,:,0,0,0)- &
                     !&g_FD(:,:,3,3,0,0,0)*jac_FD(:,:,1,0,0)/&
                     !&jac_FD(:,:,0,0,0)**2
                 !call print_ar_2(dum)
-                !call writo('D_theta B_alpha = ')
+                !write(*,*) 'D_theta B_alpha = '
                 !dum2 = g_FD(:,:,3,1,0,0,1)/jac_FD(:,:,0,0,0)- &
                     !&g_FD(:,:,3,1,0,0,0)*jac_FD(:,:,0,0,1)/&
                     !&jac_FD(:,:,0,0,0)**2
                 !call print_ar_2(dum2)
-                !call writo('D_alpha B_theta - D_theta B_alpha &
+                !write(*,*) 'D_alpha B_theta - D_theta B_alpha 
                     !&[rel. error] = ')
                 !call print_ar_2(2*abs((dum-dum2)/(dum+dum2)))
                 !call print_GP_2D('rel error at par = 5, [log]','',&
                     !&log10(max(abs((dum(5,:)-dum2(5,:))/(dum(5,:)+&
                     !&dum2(5,:))),1E-10_dp)))
-                !!call writo('D_theta B_alpha converted to VMEC coords = ')
+                !!write(*,*) 'D_theta B_alpha converted to VMEC coords = '
                 !!ierr = calc_B_V_covar([1,0])                                    ! so B_V_sub_ALT contains the theta derivatives
                 !!CHCKERR('')
                 !!call print_ar_2(1/(1+VMEC_L(:,:,0,1,0))*B_V_sub_ALT(:,:,3))
                 !read(*,*)
                 
-                call lvl_ud(-1)
             end if
             
-            !call writo('test whether D_theta B_psi - D_psi B_theta = mu_0 J &
-                !&p''?')
+            !write(*,*) 'test whether D_theta B_psi - D_psi B_theta = mu_0 J &
+                !&p''?'
             !if(yes_no(.false.)) then
             !write(*,*) 'ADAPT THIS!!!!! MU_0 GOES AWAY FOR NORMALIZED QUANTITIES !!!!!!!!!!'
-                !call lvl_ud(1)
                     !! dum = D_theta B_psi
                     !dum = g_FD(:,:,3,2,0,0,1)/jac_FD(:,:,0,0,0)- &
                         !&g_FD(:,:,3,2,0,0,0)*jac_FD(:,:,0,0,1)/&
@@ -2594,12 +2477,10 @@ contains
                     !call print_GP_2D('1: D_theta B_psi-D_psi B_theta, 2: calc',&
                         !&'',reshape([dum(5,:)-dum2(5,:),dum3(5,:)],[grp_n_r_eq,2]))
                     !call print_GP_2D('diff','',dum(5,:)-dum2(5,:)-dum3(5,:))
-                !call lvl_ud(-1)
             !end if
             
-            call lvl_ud(-1)
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     contains
@@ -2617,9 +2498,9 @@ contains
             ! initialize ierr
             ierr = 0
             
-            if (deriv(1).ne.0 .or. deriv(2).ne.0) call writo('WARNING: In calc&
+            if (deriv(1).ne.0 .or. deriv(2).ne.0) write(*,*) 'WARNING: In calc&
                 &_B_V_covar, the returned value of "B_V_sub" is NOT correct &
-                &because derivatives are asked')
+                &because derivatives are asked'
             
             ierr = calc_trigon_factors(theta_V,zeta_V,trigon_factors)
             CHCKERR('')
@@ -2674,15 +2555,14 @@ contains
         !! initialize ierr
         !ierr = 0
         
-        !call writo('test ang_B?')
+        !write(*,*) 'test ang_B?'
         !if(yes_no(.false.)) then
             !output_i = 0
-            !call writo('Plot zeta(theta)')
+            !write(*,*) 'Plot zeta(theta)'
             
-            !call lvl_ud(1)
             
             !! CALCULATE THETA(ZETA)
-            !call writo('Calculating theta(zeta)')
+            !write(*,*) 'Calculating theta(zeta)'
             !alpha = 1.2_dp*pi
             
             !! decrease the number of parallel points
@@ -2699,12 +2579,10 @@ contains
                     !!&trim(i2str(grp_n_r_eq)),'',zeta(:,kd),x=theta(:,kd))
             !!end do
             
-            !call lvl_ud(-1)
             
             !! CALCULATE F FOR A RANGE OF PARALLEL VALUES
-            !call writo('Calculating f for a range of parallel values')
+            !write(*,*) 'Calculating f for a range of parallel values'
             
-            !call lvl_ud(1)
             !n_plot = 100
             
             !! initialize
@@ -2719,13 +2597,13 @@ contains
             !end if
                 
             !do
-                !call writo('At which grp_n_r_eq do you want to plot the solutions? [1..'&
-                    !&//trim(i2str(grp_n_r_eq))//']')
+                !write(*,*) 'At which grp_n_r_eq do you want to plot the solutions? [1..'&
+                    !&//trim(i2str(grp_n_r_eq))//']'
                 !read(*,*) kd
                 !if (kd.ge.1 .and. kd.le.grp_n_r_eq) then
                     !exit
                 !else
-                    !call writo('Please choose an acceptable value')
+                    !write(*,*) 'Please choose an acceptable value'
                 !end if
             !end do
 
@@ -2761,15 +2639,14 @@ contains
                     !&trim(r2strt(zeta(id,kd)))//')','',plot_var(2,:),&
                     !&x=plot_var(1,:))
                 
-                !call writo('Paused... plot next?')
+                !write(*,*) 'Paused... plot next?'
                 !if(.not.yes_no(.true.)) then
                     !exit
                 !end if
             !end do par
             
-            !call lvl_ud(-1)
             
-            !call writo('Stopping')
+            !write(*,*) 'Stopping'
             !stop
         !end if
     !contains
@@ -2831,28 +2708,26 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test arr_mult?')
+        write(*,*) 'test arr_mult?'
         if(yes_no(.false.)) then
             output_i = 0
-            call writo('Testing whether arr_mult correctly multiplies two &
-                &functions, taking into account derivatives')
-            call lvl_ud(1)
+            write(*,*) 'Testing whether arr_mult correctly multiplies two &
+                &functions, taking into account derivatives'
             do 
                 case_nr = 1
-                call writo('Choose which case to test')
-                call writo('    1. arr_1 in 3 coords and arr_2 in 3 coords [def]')
-                call writo('    2. arr_1 in 3 coords and arr_2 in 1 coords')
-                call writo('    3. arr_1 in 1 coords and arr_2 in 1 coords')
+                write(*,*) 'Choose which case to test'
+                write(*,*) '    1. arr_1 in 3 coords and arr_2 in 3 coords [def]'
+                write(*,*) '    2. arr_1 in 3 coords and arr_2 in 1 coords'
+                write(*,*) '    3. arr_1 in 1 coords and arr_2 in 1 coords'
                 read(*,*) case_nr
                 if (case_nr.eq.1 .or. case_nr.eq.2 .or. case_nr.eq.3) then
                     exit
                 else
-                    call writo('You have to choose one of the three &
-                        &possibilities...')
+                    write(*,*) 'You have to choose one of the three &
+                        &possibilities...'
                 end if
             end do
             
-            call lvl_ud(1)
             select case (case_nr)
                 case(1)
                     ierr = case_3_3()
@@ -2864,16 +2739,14 @@ contains
                     ierr = case_1_1()
                     CHCKERR('')
                 case default
-                    call writo('ERROR: no case number associated with '&
-                        &//trim(i2str(case_nr)))
-                    call writo('How did you get here???')
+                    write(*,*) 'ERROR: no case number associated with '&
+                        &//trim(i2str(case_nr))
+                    write(*,*) 'How did you get here???'
                     stop
             end select
             
-            call lvl_ud(-1)
-            call lvl_ud(-1)
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     contains
@@ -2888,14 +2761,13 @@ contains
             ierr = 0
             
             ! calculate equilibrium quantities
-            call writo('calculate RZL')
-            call lvl_ud(1)
+            write(*,*) 'calculate RZL'
             if (allocated(zeta)) deallocate(zeta)
             allocate(zeta(n_par,grp_n_r_eq)); zeta = 0.0_dp
             if (allocated(theta)) deallocate(theta)
             allocate(theta(n_par,grp_n_r_eq)); theta = 0.0_dp
             
-            call init_eq
+            ierr = init_eq()
             
             zeta = 0.4*pi/2
             do jd = 1,grp_n_r_eq
@@ -2911,11 +2783,9 @@ contains
                     end do
                 end do
             end do
-            call lvl_ud(-1)
             
             ! multiply
-            call writo('multiply R and Z')
-            call lvl_ud(1)
+            write(*,*) 'multiply R and Z'
             RZ = 0.0_dp
             ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,0])
             CHCKERR('')
@@ -2924,11 +2794,9 @@ contains
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff RZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
-            call lvl_ud(-1)
             
             ! derive multiplied values
-            call writo('derive RZ')
-            call lvl_ud(1)
+            write(*,*) 'derive RZ'
             ! Dr
             RZ = 0.0_dp
             ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[1,0,0])
@@ -2959,11 +2827,9 @@ contains
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DzRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
-            call lvl_ud(-1)
             
             ! double derive multiplied values
-            call writo('double derive RZ')
-            call lvl_ud(1)
+            write(*,*) 'double derive RZ'
             ! Drr
             RZ = 0.0_dp
             ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[2,0,0])
@@ -3033,11 +2899,9 @@ contains
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DzzRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
-            call lvl_ud(-1)
             
             ! higher order derive multiplied values
-            call writo('higher order derive RZ')
-            call lvl_ud(1)
+            write(*,*) 'higher order derive RZ'
             RZ = 0.0_dp
             ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[1,2,3])
             CHCKERR('')
@@ -3069,7 +2933,6 @@ contains
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrttzzzRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
-            call lvl_ud(-1)
         end function case_3_3
         
         integer function case_3_1() result(ierr)
@@ -3083,14 +2946,13 @@ contains
             ierr = 0
             
             ! calculate equilibrium quantities
-            call writo('calculate RZL')
-            call lvl_ud(1)
+            write(*,*) 'Calculate RZL'
             if (allocated(zeta)) deallocate(zeta)
             allocate(zeta(n_par,grp_n_r_eq)); zeta = 0.0_dp
             if (allocated(theta)) deallocate(theta)
             allocate(theta(n_par,grp_n_r_eq)); theta = 0.0_dp
             
-            call init_eq
+            ierr = init_eq()
             
             zeta = 0.4*pi/2
             do jd = 1,grp_n_r_eq
@@ -3106,17 +2968,13 @@ contains
                     end do
                 end do
             end do
-            call lvl_ud(-1)
             
-            call writo('calculate q_saf_V')
-            call lvl_ud(1)
+            write(*,*) 'calculate q_saf_V'
             ierr = calc_flux_q()
             CHCKERR('')
-            call lvl_ud(-1)
             
             ! multiply
-            call writo('multiply R and q_saf_V')
-            call lvl_ud(1)
+            write(*,*) 'multiply R and q_saf_V'
             Rq = 0.0_dp
             ierr = arr_mult(VMEC_R,q_saf_V,Rq,[0,0,0])
             CHCKERR('')
@@ -3125,11 +2983,9 @@ contains
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Rq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
-            call lvl_ud(-1)
             
             ! derive multiplied values
-            call writo('derive Rq')
-            call lvl_ud(1)
+            write(*,*) 'derive Rq'
             ! Dr
             Rq = 0.0_dp
             ierr = arr_mult(VMEC_R,q_saf_V,Rq,[1,0,0])
@@ -3160,11 +3016,9 @@ contains
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DzRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
-            call lvl_ud(-1)
             
             ! double derive multiplied values
-            call writo('double derive Rq')
-            call lvl_ud(1)
+            write(*,*) 'double derive Rq'
             ! Drr
             Rq = 0.0_dp
             ierr = arr_mult(VMEC_R,q_saf_V,Rq,[2,0,0])
@@ -3234,11 +3088,9 @@ contains
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DzzRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
-            call lvl_ud(-1)
             
             ! higher order derive multiplied values
-            call writo('higher order derive Rq')
-            call lvl_ud(1)
+            write(*,*) 'higher order derive Rq'
             Rq = 0.0_dp
             ierr = arr_mult(VMEC_R,q_saf_V,Rq,[1,2,3])
             CHCKERR('')
@@ -3270,7 +3122,6 @@ contains
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrttzzzRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
-            call lvl_ud(-1)
         end function case_3_1
         
         integer function case_1_1() result(ierr)
@@ -3284,31 +3135,26 @@ contains
             ierr = 0
             
             ! calculate equilibrium quantities
-            call writo('calculate RZL')
-            call lvl_ud(1)
+            write(*,*) 'calculate RZL'
             if (allocated(zeta)) deallocate(zeta)
             allocate(zeta(n_par,grp_n_r_eq)); zeta = 0.0_dp
             if (allocated(theta)) deallocate(theta)
             allocate(theta(n_par,grp_n_r_eq)); theta = 0.0_dp
             
-            call init_eq
+            ierr = init_eq()
             
             zeta = 0.4*pi/2
             do jd = 1,grp_n_r_eq
                 ierr = calc_eqd_mesh(theta(:,jd),n_par,0.0_dp*pi,3.0_dp*pi)
                 CHCKERR('')
             end do
-            call lvl_ud(-1)
             
-            call writo('calculate q_saf_V and pres_V')
-            call lvl_ud(1)
+            write(*,*) 'calculate q_saf_V and pres_V'
             ierr = calc_flux_q()
             CHCKERR('')
-            call lvl_ud(-1)
             
             ! multiply
-            call writo('multiply pres_V and q_saf_V')
-            call lvl_ud(1)
+            write(*,*) 'multiply pres_V and q_saf_V'
             pq = 0.0_dp
             ierr = arr_mult(pres_V,q_saf_V,pq,[0,0,0])
             CHCKERR('')
@@ -3317,11 +3163,9 @@ contains
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff pq (calc-num) = 5','',&
                 &pq-pq_num)
-            call lvl_ud(-1)
             
             ! derive multiplied values
-            call writo('derive pq')
-            call lvl_ud(1)
+            write(*,*) 'derive pq'
             ! Dr
             pq = 0.0_dp
             ierr = arr_mult(pres_V,q_saf_V,pq,[1,0,0])
@@ -3352,11 +3196,9 @@ contains
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Dzpq (calc-num) = 5','',&
                 &pq-pq_num)
-            call lvl_ud(-1)
             
             ! double derive multiplied values
-            call writo('double derive pq')
-            call lvl_ud(1)
+            write(*,*) 'double derive pq'
             ! Drr
             pq = 0.0_dp
             ierr = arr_mult(pres_V,q_saf_V,pq,[2,0,0])
@@ -3413,11 +3255,9 @@ contains
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Dzzpq (calc-num) = 5','',&
                 &pq-pq_num)
-            call lvl_ud(-1)
             
             ! higher order derive multiplied values
-            call writo('higher order derive pq')
-            call lvl_ud(1)
+            write(*,*) 'higher order derive pq'
             pq = 0.0_dp
             ierr = arr_mult(pres_V,q_saf_V,pq,[1,2,3])
             CHCKERR('')
@@ -3426,7 +3266,6 @@ contains
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Drttzzzpq (calc-num) = 5','',&
                 &pq-pq_num)
-            call lvl_ud(-1)
         end function case_1_1
     end function test_arr_mult
     
@@ -3452,9 +3291,8 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('test slepc?')
+        write(*,*) 'test slepc?'
         if(yes_no(.false.)) then
-            call lvl_ud(1)
             
             call SlepcInitialize(PETSC_NULL_CHARACTER,ierr)
             CHCKERR('')
@@ -3616,9 +3454,8 @@ contains
             call SlepcFinalize(ierr)
             CHCKERR('')
             
-            call lvl_ud(-1)
             
-            call writo('Stopping')
+            write(*,*) 'Stopping'
             stop
         end if
     end function test_slepc

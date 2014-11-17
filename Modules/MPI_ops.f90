@@ -239,7 +239,7 @@ contains
             use num_vars, only: min_n_r_X, grp_n_procs, grp_rank, min_r_X, &
                 &max_r_X, use_pol_flux, eq_style
             use utilities, only: con2dis, dis2con, calc_int, interp_fun_1D, &
-                &norm_deriv
+                &calc_deriv
             use eq_vars, only: grp_min_r_eq, grp_max_r_eq, n_r_eq, &
                 &eq_use_pol_flux
             use VMEC_vars, only: phi, phi_r, iotaf
@@ -290,7 +290,7 @@ contains
                 case (2)                                                        ! HELENA
                     ! calculate normal derivative of flux_H
                     allocate(flux_H_r(n_r_eq))
-                    ierr = norm_deriv(flux_H,flux_H_r,n_r_eq-1._dp,1,1)
+                    ierr = calc_deriv(flux_H,flux_H_r,n_r_eq-1._dp,1,1)
                     CHCKERR('')
                     ! set up perturbation flux
                     if (use_pol_flux) then

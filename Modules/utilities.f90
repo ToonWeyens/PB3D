@@ -10,8 +10,9 @@ module utilities
     implicit none
     private
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, arr_mult, &
-        &norm_deriv, conv_FHM, check_deriv, calc_inv, interp_fun_1D, &
-        &init_utilities, derivs, con2dis, dis2con, round_with_tol
+        &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun_1D, &
+        &init_utilities, derivs, con2dis, dis2con, round_with_tol, &
+        &calc_spline_3
     
     ! the possible derivatives of order i
     integer, allocatable :: derivs_0(:,:)                                       ! all possible derivatives of order 0
@@ -33,6 +34,10 @@ module utilities
     interface calc_int
         module procedure calc_int_real, calc_int_complex
     end interface
+    interface calc_deriv
+        module procedure calc_deriv_equidistant, calc_deriv_regular
+    end interface
+    
 contains
     ! initialize utilities:
     ! calculate all possible combinations of derivatives of a certain order
@@ -108,15 +113,15 @@ contains
         end select
     end function
     
-    ! numerically derivates a function whose values are given on a regular mesh,
-    ! specified by  the inverse  step size to  an order specified  by ord  and a
-    ! precision specified by prec (which is the  power of the step size to which
-    ! the result is still correct. E.g.:  for forward differences, prec = 0, and
-    ! for central differences prec=1)
-    integer function norm_deriv(var,dvar,inv_step,ord,prec) result(ierr)
-        use num_vars, only: max_deriv
+    ! numerically derives  a function  whose values are  given on  a equidistant
+    ! mesh, specified by the inverse step size  to an order specified by ord and
+    ! a precision  specified by  prec (which is  the power of  the step  size to
+    ! which the result  is still correct. E.g.: for forward  differences, prec =
+    ! 0, and for central differences prec=1)
+    integer function calc_deriv_equidistant(var,dvar,inv_step,ord,prec) &
+        &result(ierr)                                                           ! equidistant version
         
-        character(*), parameter :: rout_name = 'norm_deriv'
+        character(*), parameter :: rout_name = 'calc_deriv_equidistant'
         
         ! input / output
         real(dp), intent(in) :: var(:), inv_step
@@ -126,6 +131,7 @@ contains
         ! local variables
         integer :: max_n
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: max_order = 5                                                ! maximum order
         
         ! initialize ierr
         ierr = 0
@@ -139,9 +145,9 @@ contains
             ierr = 1
             CHCKERR(err_msg)
         end if
-        if (ord.lt.1 .or. ord.gt.max_deriv(3)) then
-            err_msg = 'norm_deriv can only derive from order 1 &
-                &up to order '//trim(i2str(max_deriv(3)))//', not '//&
+        if (ord.lt.1 .or. ord.gt.max_order) then
+            err_msg = 'Can only derive from order 1 &
+                &up to order '//trim(i2str(max_order))//', not '//&
                 &trim(i2str(ord))
             ierr = 1
             CHCKERR(err_msg)
@@ -254,12 +260,176 @@ contains
                 case default
                     ! This you should never reach!
                     err_msg = 'Derivation of order '//trim(i2str(ord))//&
-                        &' not possible in norm_deriv'
+                        &' not possible in calc_deriv_equidistant'
                     ierr = 1
                     CHCKERR(err_msg)
             end select
         end subroutine
-    end function norm_deriv
+    end function calc_deriv_equidistant
+    
+    ! numerically derives  a function whose values  are given on a  regular, but
+    ! not  equidistant, mesh,  to  an order  specified by  ord  and a  precision
+    ! specified by prec (which is the power of the step size to which the result
+    ! is still correct. E.g.: for forward differences, prec = 0, and for central
+    ! differences prec=1)
+    integer function calc_deriv_regular(var,dvar,x,ord,prec) result(ierr)       ! regular, non-equidistant version
+        character(*), parameter :: rout_name = 'calc_deriv_regular'
+        
+        ! input / output
+        real(dp), intent(in) :: var(:)
+        real(dp), intent(in) :: x(:)
+        real(dp), intent(inout) :: dvar(:)
+        integer, intent(in) :: ord, prec
+        
+        ! local variables
+        integer :: max_n
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: max_order = 1                                                ! maximum order
+        real(dp), allocatable :: delta(:)                                       ! delta(i) = x(i+1)-x(i) (called delta_(i+1/2) in text)
+        
+        ! initialize ierr
+        ierr = 0
+        
+        max_n = size(var)
+        
+        ! tests
+        if (size(dvar).ne.max_n) then
+            err_msg = 'Derived vector has to be of the same length as input &
+                &vector'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        if (size(x).ne.max_n) then
+            err_msg = 'Abscissa vector has to be of the same length as &
+                &ordinate vector'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        if (ord.lt.1 .or. ord.gt.max_order) then
+            err_msg = 'Can only derive from order 1 up to order '//&
+                &trim(i2str(max_order))//', not '//trim(i2str(ord))
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        
+        ! set up delta
+        allocate(delta(max_n-1))
+        delta(1:max_n-1) = x(2:max_n) - x(1:max_n-1)
+        
+        ! choose correct precision
+        select case (prec)
+            case (1)
+                call prec1
+            case default
+                err_msg = 'Precision of order '//trim(i2str(prec))//&
+                    &' not implemented'
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+    contains
+        subroutine prec1
+            ! test whether enough points are given
+            if (max_n-2.lt.ord) then
+                err_msg = 'For a derivative of order '//&
+                    &trim(i2str(ord))//', with precision '//trim(i2str(prec))&
+                    &//', at least '//trim(i2str(ord+2))//&
+                    &' input values have to be passed'
+                ierr = 1
+                CHCKERR(err_msg)
+            end if
+            
+            ! apply derivation rules precise up to order 1
+            select case (ord)
+                case(1)                                                         ! first derivative
+                    ! first point
+                    dvar(1) = (-(2*delta(1)+delta(2))*delta(2)*var(1)+&
+                        &(delta(1)+delta(2))**2*var(2)-delta(1)**2*var(3)) / &
+                        &(delta(1)*(delta(1)+delta(2))*delta(2))
+                    ! middle points
+                    dvar(2:max_n-1) = (-delta(2:max_n-1)**2*var(1:max_n-2)+&
+                        &(delta(2:max_n-1)**2-delta(1:max_n-2)**2)*var(2:max_n-1)+ &
+                        &delta(1:max_n-2)**2*var(3:max_n)) / &
+                        &(delta(1:max_n-2)*(delta(1:max_n-2)+delta(2:max_n-1))*&
+                        &delta(2:max_n-1))
+                    ! last point
+                    dvar(max_n) = (delta(max_n-1)**2*var(max_n-2)-&
+                        &(delta(max_n-1)+delta(max_n-2))**2*var(max_n-1)+&
+                        &(2*delta(max_n-1)+delta(max_n-2))*delta(max_n-2)*&
+                        &var(max_n)) / (delta(max_n-1)*&
+                        &(delta(max_n-1)+delta(max_n-2))*delta(max_n-2))
+                case default
+                    ! This you should never reach!
+                    err_msg = 'Derivation of order '//trim(i2str(ord))//&
+                        &' not possible in calc_deriv_equidistant'
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+        end subroutine
+    end function calc_deriv_regular
+    
+    ! Calculates the coefficients of a cubic  spline through a number of points,
+    ! which  can  later  be  used  to  calculate  the  interpolating  values  or
+    ! derivatives thereof.
+    ! The information about the spline is saved in the spline_info object.
+    ! Based on http://www.math.ntnu.no/emner/TMA4215/2008h/cubicsplines.pdf
+    !!!! FOR NOW, JUST USE CUBIC SPLINE IN 1 D AND DON'T THINK ABOUT THE OTHER DIMENSIONS !!!!
+    integer function calc_spline_3(x,y,spline_info) result(ierr)
+        use num_vars, only: spline_type
+        
+        character(*), parameter :: rout_name = 'calc_spline_3'
+        
+        ! input / output
+        real(dp), intent(in) :: x(:), y(:)                                      ! abscissa and ordenate
+        type(spline_type), intent(inout) :: spline_info                         ! stores the spline information
+        
+        ! local variables
+        integer :: n_pt                                                         ! nr. of points
+        real(dp), allocatable :: h(:)                                           ! h(i) = x(i+1)-x(i)
+        real(dp), allocatable :: b(:)                                           ! b(i) = (y(i+1)-y(i))/h(i)
+        real(dp), allocatable :: v(:)                                           ! v(i) = 2(h(i-1)+h(i))
+        real(dp), allocatable :: u(:)                                           ! u(i) = 6(b(i)-b(i-1))
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set n_pt
+        n_pt = size(x)
+        
+        ! tests
+        if (size(y).ne.n_pt) then
+            err_msg = 'x and y need to have the same dimensions'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        
+        if (allocated(spline_info%x) .or. allocated(spline_info%y) .or. &
+            &allocated(spline_info%z)) then
+            call writo('WARING: spline_info was already in use and will be &
+                &overwritten')
+            if (allocated(spline_info%x)) deallocate(spline_info%x)
+            if (allocated(spline_info%y)) deallocate(spline_info%y)
+            if (allocated(spline_info%z)) deallocate(spline_info%z)
+        end if
+        
+        ! set up objects in spline_info
+        allocate(spline_info%x(n_pt))
+        allocate(spline_info%y(n_pt))
+        allocate(spline_info%z(n_pt))
+        spline_info%x = x
+        spline_info%y = y
+        
+        ! precalculations in order to get z
+        allocate(h(n_pt),b(n_pt),u(n_pt),v(n_pt))
+        h(1:n_pt-1) = x(2:n_pt)-x(1:n_pt-1)                                     ! h(n_pt) has no meaning
+        b(1:n_pt-1) = (y(2:n_pt)-y(1:n_pt-1))/h(1:n_pt-1)                       ! b(n_pt) has no meaning
+        v(2:n_pt) = 2*(h(2:n_pt)+h(1:n_pt-1))                                   ! v(1) has no meaning
+        u(2:n_pt) = 6*(b(2:n_pt)+b(1:n_pt-1))                                   ! u(1) has no meaning
+        
+        ierr = 1
+        err_msg = 'SPLINES NOT YET IMPLEMENTED!!!'
+        CHCKERR(err_msg)
+    end function calc_spline_3
 
     ! numerically interpolates a function that is given on either FM to HM or to
     ! FM. If FM2HM is .true., the starting variable is FM, if .false., it is HM
@@ -296,7 +466,7 @@ contains
             cvar(2:max_n-1) = (var(2:max_n-1)+var(3:max_n))/2.0_dp
             cvar(max_n) = (-var(max_n-1)+3.0_dp*var(max_n))/2.0_dp
         end if
-    end function
+    end function conv_FHM
     
     ! checks  whether the  derivatives requested  for a  certain subroutine  are
     ! valid

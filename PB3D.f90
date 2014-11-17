@@ -25,7 +25,7 @@
 program PB3D
     use test, only: test_repack, test_print_GP, &
         &test_metric_transf, test_ang_B, test_calc_ext_var, test_B, &
-        &test_norm_deriv, test_conv_FHM, test_calc_RZL, &
+        &test_calc_deriv, test_conv_FHM, test_calc_RZL, &
         &test_arr_mult, test_calc_T_VF, test_calc_inv_met, test_calc_det, &
         &test_inv, test_calc_f_deriv, test_calc_g, test_fourier2real, &
         &test_prepare_X, test_slepc
@@ -95,8 +95,8 @@ program PB3D
         call start_time
         call writo('Start tests')
         call lvl_ud(1)
-        ierr = test_B()
-        CHCKERR
+        !ierr = test_B()
+        !CHCKERR
         !ierr = test_ang_B()
         !CHCKERR
         !ierr = test_repack()
@@ -129,12 +129,12 @@ program PB3D
         !CHCKERR
         !ierr = test_calc_T_VF()
         !CHCKERR
-        ierr = test_calc_RZL()
-        CHCKERR
+        !ierr = test_calc_RZL()
+        !CHCKERR
         !ierr = test_conv_FHM()
         !CHCKERR
-        !ierr = test_norm_deriv()
-        !CHCKERR
+        ierr = test_calc_deriv()
+        CHCKERR
         call writo('')
         call passed_time
         call writo('')
