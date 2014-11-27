@@ -223,7 +223,7 @@ contains
         real(dp) :: fac_n_interp, fac_m_interp                                  ! fac_n and fac_m at interpolated normal position
         real(dp) :: first_fac_n_interp, first_fac_m_interp                      ! first fac_n_interp and fac_m_interp
         character(len=max_str_ln), allocatable :: file_names(:)                 ! names of file of plots of different ranks
-        real(dp), pointer :: flux(:), flux_VMEC(:)                              ! either pol. or tor. flux
+        real(dp), pointer :: flux(:), flux_eq(:)                                ! either pol. or tor. flux
         real(dp), allocatable :: r_plot(:)                                      ! local normal values at which to interpolate for the plot
         integer :: n_norm                                                       ! max nr of normal points to plot
         integer :: grp_n_norm                                                   ! nr. of normal points in plot for this rank
@@ -291,16 +291,16 @@ contains
             y_plot = 0.0_dp
         end if
         
-        ! set up flux and flux_VMEC
+        ! set up flux and flux_eq
         if (use_pol_flux) then
             flux => flux_p_FD(:,0)
         else
             flux => flux_t_FD(:,0)
         end if
         if (eq_use_pol_flux) then
-            flux_VMEC => flux_p_FD(:,0)
+            flux_eq => flux_p_FD(:,0)
         else
-            flux_VMEC => flux_t_FD(:,0)
+            flux_eq => flux_t_FD(:,0)
         end if
         
         ! set up x-axis and z-axis values in parallel
@@ -326,7 +326,7 @@ contains
                     
                     ! set up  interp. fac_n and fac_m  (tabulated in equilibrium
                     ! grid)
-                    ierr = interp_fun_1D(kd_loc_eq,flux_VMEC/max_flux_eq,&
+                    ierr = interp_fun_1D(kd_loc_eq,flux_eq/max_flux_eq,&
                         &r_plot(kd),flux/max_flux)
                     CHCKERR('')
                     call con2dis(kd_loc_eq,[0._dp,1._dp],kd_loc_i,[1,n_r_eq])

@@ -612,15 +612,16 @@ contains
                 max_deriv = 5
             else
                 eqd_plots = .false.
-                max_deriv = 1
+                max_deriv = 2
             end if
             if (.not.eqd_plots) then
                 do
                     write(*,*) 'which type of x-axis?'
-                        write(*,*) '1: quadratic x = ((x-1)/(N-1))^2'
+                        write(*,*) '1: linear x = (x-1)/(N-1)'
+                        write(*,*) '2: quadratic x = ((x-1)/(N-1))^2'
                     read(*,*) grid_type
-                    if (grid_type.lt.1 .or. grid_type.gt.1) then
-                        write(*,*) 'choose a value from the range 1-1'
+                    if (grid_type.lt.1 .or. grid_type.gt.2) then
+                        write(*,*) 'choose a value from the range 1-2'
                         cycle
                     else
                         exit
@@ -675,6 +676,8 @@ contains
                     allocate(x(loc_max))
                     select case (grid_type)
                         case(1)
+                            x = [((kd-1._dp)*step_size(id),kd=1,loc_max)]
+                        case(2)
                             x = [(((kd-1._dp)*step_size(id))**2,kd=1,loc_max)]
                         case default
                             write(*,*) 'ERROR: you cannot have regular a grid &
@@ -773,7 +776,9 @@ contains
                     ierr = calc_deriv(varin,var5_nm,1.0_dp/step_size(id),5,1)
                     CHCKERR('')
                 else
-                    ierr = calc_deriv(varin,var1_nm,x,1,1)                      ! only derivatives of degree 1 implemented
+                    ierr = calc_deriv(varin,var1_nm,x,1,1)                      ! only derivatives of degree 1 and 2 implemented
+                    CHCKERR('')
+                    ierr = calc_deriv(varin,var2_nm,x,2,1)                      ! only derivatives of degree 1 and 2 implemented
                     CHCKERR('')
                 end if
                 
@@ -782,9 +787,11 @@ contains
                     &maxval(abs(var1_an))
                 mean_error(id,1) = sum(abs(var1_an-var1_nm))/loc_max/ &
                     &maxval(abs(var1_an))
+                max_error(id,2) = maxval(abs(var2_an-var2_nm))/ &
+                    &maxval(abs(var2_an))
+                mean_error(id,2) = sum(abs(var2_an-var2_nm))/loc_max/ &
+                    &maxval(abs(var2_an))
                 if (eqd_plots) then
-                    max_error(id,2) = maxval(abs(var2_an-var2_nm))/ &
-                        &maxval(abs(var2_an))
                     max_error(id,3) = maxval(abs(var3_an-var3_nm))/ &
                         &maxval(abs(var3_an))
                     max_error(id,4) = maxval(abs(var4_an-var4_nm))/ &
@@ -792,8 +799,6 @@ contains
                     max_error(id,5) = maxval(abs(var5_an-var5_nm))/ &
                         &maxval(abs(var5_an))
                     
-                    mean_error(id,2) = sum(abs(var2_an-var2_nm))/loc_max/ &
-                        &maxval(abs(var2_an))
                     mean_error(id,3) = sum(abs(var3_an-var3_nm))/loc_max/ &
                         &maxval(abs(var3_an))
                     mean_error(id,4) = sum(abs(var4_an-var4_nm))/loc_max/ &
@@ -811,12 +816,12 @@ contains
                     call print_GP_2D('diff deriv. ord. 1','',(var1_an-var1_nm)&
                         &/maxval(abs(var1_an)),x=x)
                     
+                    call print_GP_2D('analytical deriv. ord. 2','',var2_an,x=x)
+                    call print_GP_2D('numerical deriv. ord. 2','',var2_nm,x=x)
+                    call print_GP_2D('diff deriv. ord. 2','',(var2_an-var2_nm)&
+                        &/maxval(abs(var2_an)),x=x)
+                    
                     if (eqd_plots) then
-                        call print_GP_2D('analytical deriv. ord. 2','',var2_an,x=x)
-                        call print_GP_2D('numerical deriv. ord. 2','',var2_nm,x=x)
-                        call print_GP_2D('diff deriv. ord. 2','',(var2_an-var2_nm)&
-                            &/maxval(abs(var2_an)),x=x)
-                        
                         call print_GP_2D('analytical deriv. ord. 3','',var3_an,x=x)
                         call print_GP_2D('numerical deriv. ord. 3','',var3_nm,x=x)
                         call print_GP_2D('diff deriv. ord. 3','',(var3_an-var3_nm)&

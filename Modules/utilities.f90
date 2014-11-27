@@ -284,7 +284,7 @@ contains
         ! local variables
         integer :: max_n
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: max_order = 1                                                ! maximum order
+        integer :: max_order = 2                                                ! maximum order
         real(dp), allocatable :: delta(:)                                       ! delta(i) = x(i+1)-x(i) (called delta_(i+1/2) in text)
         
         ! initialize ierr
@@ -357,6 +357,43 @@ contains
                         &(2*delta(max_n-1)+delta(max_n-2))*delta(max_n-2)*&
                         &var(max_n)) / (delta(max_n-1)*&
                         &(delta(max_n-1)+delta(max_n-2))*delta(max_n-2))
+                case(2)                                                         ! second derivative
+                    ! first point
+                    dvar(1) = 2*(delta(2)*(delta(2)+delta(3))*delta(3)*&
+                        &(3*delta(1)+2*delta(2)+delta(3))*var(1)-&
+                        &(delta(1)+delta(2))*(delta(1)+delta(2)+delta(3))*&
+                        &delta(3)*(2*delta(1)+2*delta(2)+delta(3))*var(2)+&
+                        &(delta(2)+delta(3))*(delta(1)+delta(2)+delta(3))*&
+                        &delta(1)*(2*delta(1)+delta(2)+delta(3))*var(3)-&
+                        &delta(1)*(delta(1)+delta(2))*delta(2)*&
+                        &(2*delta(1)+delta(2))*var(4)) / &
+                        &(delta(1)*delta(2)*delta(3)*(delta(1)+delta(2))*&
+                        &(delta(2)+delta(3))*(delta(1)+delta(2)+delta(3)))
+                    ! middle points
+                    dvar(2:max_n-1) = 2*(delta(2:max_n-1)*var(1:max_n-2)-&
+                        &(delta(1:max_n-2)+delta(2:max_n-1))*var(2:max_n-1)+ &
+                        &delta(1:max_n-2)*var(3:max_n)) / &
+                        &(delta(1:max_n-2)*(delta(1:max_n-2)+delta(2:max_n-1))*&
+                        &delta(2:max_n-1))
+                    ! last point
+                    dvar(max_n) = 2*(delta(max_n-2)*&
+                        &(delta(max_n-2)+delta(max_n-3))*delta(max_n-3)*&
+                        &(3*delta(max_n-1)+2*delta(max_n-2)+delta(max_n-3))*&
+                        &var(max_n)-(delta(max_n-1)+delta(max_n-2))*&
+                        &(delta(max_n-1)+delta(max_n-2)+delta(max_n-3))*&
+                        &delta(max_n-3)*(2*delta(max_n-1)+2*delta(max_n-2)+&
+                        &delta(max_n-3))*var(max_n-1)+&
+                        &(delta(max_n-2)+delta(max_n-3))*&
+                        &(delta(max_n-1)+delta(max_n-2)+delta(max_n-3))*&
+                        &delta(max_n-1)*(2*delta(max_n-1)+delta(max_n-2)+&
+                        &delta(max_n-3))*var(max_n-2)-&
+                        &delta(max_n-1)*(delta(max_n-1)+delta(max_n-2))*&
+                        &delta(max_n-2)*&
+                        &(2*delta(max_n-1)+delta(max_n-2))*var(max_n-3)) / &
+                        &(delta(max_n-1)*delta(max_n-2)*delta(max_n-3)*&
+                        &(delta(max_n-1)+delta(max_n-2))*&
+                        &(delta(max_n-2)+delta(max_n-3))*&
+                        &(delta(max_n-1)+delta(max_n-2)+delta(max_n-3)))
                 case default
                     ! This you should never reach!
                     err_msg = 'Derivation of order '//trim(i2str(ord))//&
@@ -498,7 +535,7 @@ contains
         end do
     end function
 
-    ! integrates a function using the trapezoidal rule using constant step size:
+    ! integrates a function using the trapezoidal rule:
     !   int_1^n f(x) dx = sum_k=1^(n-1) {(f(k+1)+f(k))*(x(k+1)-x(k))/2},
     ! with n the number of points. So, n  points have to be specified as well as
     ! n values  for the function  to be interpolated. They  have to be  given in
@@ -717,12 +754,14 @@ contains
         ierr = 0
         
         ! tests
-        if (size(arr_1,1).ne.size(arr_2,1) .or. size(arr_1,2).ne.size(arr_2,2)) then
+        if (size(arr_1,1).ne.size(arr_2,1) .or. size(arr_1,2).ne.size(arr_2,2))&
+            & then
             err_msg = 'Arrays 1 and 2 need to have the same size'
             ierr = 1
             CHCKERR(err_msg)
         end if
-        if (size(arr_1,1).ne.size(arr_3,1) .or. size(arr_1,2).ne.size(arr_3,2)) then
+        if (size(arr_1,1).ne.size(arr_3,1) .or. size(arr_1,2).ne.size(arr_3,2))&
+            & then
             err_msg = 'Arrays 1 and 2 need to have the same size as the &
                 &resulting array 3'
             ierr = 1
@@ -883,8 +922,9 @@ contains
         end if
     end function arr_mult_1_1
 
-    ! calculate determinant of a matrix which is defined on a 2D grid
-    ! the size should be small, as the direct formula is used.
+    ! Calculate determinant of a  matrix which is defined on a  2D grid (first 2
+    ! indices). The  size of the matrix  (last two indices) should  be small, as
+    ! the direct formula employing cofactors is used.
     integer recursive function calc_det_2D(detA,A) result (ierr)
         character(*), parameter :: rout_name = 'calc_det_2D'
         

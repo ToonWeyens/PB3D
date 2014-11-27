@@ -9,6 +9,7 @@ module metric_ops
     use str_ops, only: r2str, i2str
     use eq_vars, only: grp_n_r_eq
     use utilities, only: check_deriv
+    use output_ops, only: print_GP_3D, print_GP_2D
     
     implicit none
     private
@@ -172,6 +173,14 @@ contains
                 allocate(jac_V(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
                     &0:max_deriv(2)-1,0:max_deriv(3)-1))
             case (2)                                                            ! HELENA
+                ! h_H
+                allocate(h_H(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                
+                ! g_H
+                allocate(g_H(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
+                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                
                 ! T_HF
                 allocate(T_HF(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
                     &0:max_deriv(2)-1,0:max_deriv(3)-1)); T_HF = 0.0_dp
@@ -282,12 +291,19 @@ contains
     ! the HELENA output
     integer function calc_h_H_ind(deriv) result(ierr)
         use num_vars, only: max_deriv
-        use HEL_vars, only: h_H_11, h_H_12, h_H_33
+        use HEL_vars, only: h_H_11, h_H_12, h_H_33, flux_H
+        use eq_vars, only: grp_min_r_eq, grp_max_r_eq, n_par, theta_H
+        use utilities, only: calc_deriv, calc_det
         
         character(*), parameter :: rout_name = 'calc_h_H_ind'
         
         ! input / output
         integer, intent(in) :: deriv(3)
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: id, kd                                                       ! counters
+        !real(dp), allocatable :: jac_H_alt(:,:)                                 ! jac_H calculated alternatively
         
         ! initialize ierr
         ierr = 0
@@ -296,14 +312,67 @@ contains
         ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_h_H')
         CHCKERR('')
         
+        ! initialize h_H
         h_H(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        !if (sum(deriv).eq.0) then
-            !g_C(:,:,1,1,deriv(1),deriv(2),deriv(3)) = 1.0_dp
-            !g_C(:,:,3,3,deriv(1),deriv(2),deriv(3)) = 1.0_dp
-        !end if
-        !ierr = arr_mult(VMEC_R,VMEC_R,g_C(:,:,2,2,deriv(1),deriv(2),deriv(3)),&
-            !&deriv)
-        !CHCKERR('')
+        
+        if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
+            !h_H(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+        else if (sum(deriv).eq.0) then                                          ! no derivatives
+            h_H(:,:,1,1,0,0,0) = h_H_11(:,grp_min_r_eq:grp_max_r_eq)
+            h_H(:,:,1,2,0,0,0) = h_H_12(:,grp_min_r_eq:grp_max_r_eq)
+            h_H(:,:,2,1,0,0,0) = h_H(:,:,1,2,0,0,0)
+            h_H(:,:,3,3,0,0,0) = h_H_33(:,grp_min_r_eq:grp_max_r_eq)
+            h_H(:,:,2,2,0,0,0) = 1._dp/h_H_11(:,grp_min_r_eq:grp_max_r_eq) * &
+                &(1._dp/(jac_H(:,:,0,0,0)**2*&
+                &h_H_33(:,grp_min_r_eq:grp_max_r_eq)) + &
+                &h_H_12(:,grp_min_r_eq:grp_max_r_eq)**2)
+            !! check if 1/jac^2 is recovered as determinant
+            !allocate(jac_H_alt(size(jac_H,1),size(jac_H,2)))
+            !ierr = calc_det(jac_H_alt,h_H(:,:,:,:,0,0,0))
+            !CHCKERR('')
+            !call print_GP_3D('jac_H','',reshape([1._dp/(jac_H(:,:,0,0,0)**2),&
+                !&jac_H_alt],[shape(jac_H_alt),2]))
+            !call print_GP_3D('jac_H (diff)','',1._dp/(jac_H(:,:,0,0,0)**2)-&
+                !&jac_H_alt)
+        else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
+            do id = 1,n_par
+                ierr = calc_deriv(h_H(id,:,1,1,0,0,0),h_H(id,:,1,1,1,0,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(id,:,1,2,0,0,0),h_H(id,:,1,2,1,0,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(id,:,2,2,0,0,0),h_H(id,:,2,2,1,0,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(id,:,3,3,0,0,0),h_H(id,:,3,3,1,0,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                CHCKERR('')
+            end do
+            h_H(:,:,2,1,1,0,0) = h_H(:,:,1,2,1,0,0)
+        else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
+            do kd = 1,grp_n_r_eq
+                ierr = calc_deriv(h_H(:,kd,1,1,0,0,0),h_H(:,kd,1,1,0,1,0),&
+                    &theta_H(:,kd),1,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(:,kd,1,2,0,0,0),h_H(:,kd,1,2,0,1,0),&
+                    &theta_H(:,kd),1,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(:,kd,2,2,0,0,0),h_H(:,kd,2,2,0,1,0),&
+                    &theta_H(:,kd),1,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(:,kd,3,3,0,0,0),h_H(:,kd,3,3,0,1,0),&
+                    &theta_H(:,kd),1,1)
+                CHCKERR('')
+            end do
+            h_H(:,:,2,1,0,1,0) = h_H(:,:,1,2,0,1,0)
+        else
+            ierr = 1
+            err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
+                &trim(i2str(deriv(2)))//','//trim(i2str(deriv(3)))//'&
+                &) not supported'
+            CHCKERR(err_msg)
+        end if
     end function calc_h_H_ind
     integer function calc_h_H_arr(deriv) result(ierr)
         character(*), parameter :: rout_name = 'calc_h_H_arr'
@@ -321,17 +390,19 @@ contains
     end function calc_h_H_arr
 
     ! calculate the  metric coefficients in  the F(lux) coordinate  system using
-    ! the metric  coefficients in  the V(MEC) coordinate  system and  the trans-
-    ! formation matrices
+    ! the  metric coefficients  in  the equilibrium  coordinate  system and  the
+    ! trans- formation matrices
     integer function calc_g_F_ind(deriv) result(ierr)
-        use num_vars, only: max_deriv
+        use num_vars, only: max_deriv, eq_style
         
         character(*), parameter :: rout_name = 'calc_g_F_ind'
         
         ! input / output
         integer, intent(in) :: deriv(3)
         
-        write(*,*) 'HERE YOU SHOULD CHOOSE BETWEEN VMEC AND HELENA'
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
         ! initialize ierr
         ierr = 0
         
@@ -339,8 +410,22 @@ contains
         ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_g_F')
         CHCKERR('')
         
-        ierr = calc_g(g_V,T_FV,g_F,deriv,max_deriv-[1,1,1])
-        CHCKERR('')
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ierr = calc_g(g_V,T_FV,g_F,deriv,max_deriv-[1,1,1])
+                CHCKERR('')
+            case (2)                                                            ! HELENA
+                ierr = calc_g(g_H,T_FH,g_F,deriv,max_deriv-[1,1,1])
+                CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
     end function calc_g_F_ind
     integer function calc_g_F_arr(deriv) result(ierr)
         character(*), parameter :: rout_name = 'calc_g_F_arr'
@@ -547,8 +632,13 @@ contains
     end function calc_jac_V_arr
     
     ! calculate the jacobian in HELENA coordinates directly from J = q R^2/F
+    ! NOTE: It is assumed that the  lower order derivatives have been calculated
+    !       already. If not, the results will be incorrect!
     integer function calc_jac_H_ind(deriv) result(ierr)
-        use HEL_vars, only:  qs, h_H_33, RBphi
+        use HEL_vars, only:  qs, h_H_33, RBphi, flux_H, chi_H
+        use utilities, only: calc_deriv
+        use eq_vars, only: n_par, grp_n_r_eq, grp_min_r_eq, min_par, max_par, &
+            &theta_H, grp_min_r_eq, grp_max_r_eq
         
         character(*), parameter :: rout_name = 'calc_jac_H_ind'
         
@@ -556,20 +646,36 @@ contains
         integer, intent(in) :: deriv(3)
         
         ! local variables
+        integer :: id, kd                                                       ! counters
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_J_V')
+        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_J_H')
         CHCKERR('')
         
         ! calculate determinant
-        if (deriv(3).ne.0) then
+        if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
             jac_H(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        else if (deriv(1).eq.1) then
-        else if (deriv(2).eq.1) then
+        else if (sum(deriv).eq.0) then                                          ! no derivatives
+            do kd = 1,grp_n_r_eq
+                jac_H(:,kd,0,0,0) = 1.0_dp/(h_H_33(:,grp_min_r_eq-1+kd)*&
+                    &qs(grp_min_r_eq-1+kd)*RBphi(grp_min_r_eq-1+kd))
+            end do
+        else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
+            do id = 1,n_par
+                ierr = calc_deriv(jac_H(id,:,0,0,0),jac_H(id,:,1,0,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                CHCKERR('')
+            end do
+        else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
+            do kd = 1,grp_n_r_eq
+                ierr = calc_deriv(jac_H(:,kd,0,0,0),jac_H(:,kd,0,1,0),&
+                    &theta_H(:,kd),1,1)
+                CHCKERR('')
+            end do
         else
             ierr = 1
             err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
@@ -598,12 +704,16 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_jac_F_ind(deriv) result(ierr)
+        use num_vars, only: eq_style
         use utilities, only: arr_mult
         
         character(*), parameter :: rout_name = 'calc_jac_F_ind'
         
         ! input / output
         integer, intent(in) :: deriv(3)
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -612,11 +722,27 @@ contains
         ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_J_V')
         CHCKERR('')
         
-        ! calculate determinant
+        ! initialize jac_F
         jac_F(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        ierr = arr_mult(jac_V,det_T_FV,jac_F(:,:,deriv(1),deriv(2),deriv(3)),&
-            &deriv)
-        CHCKERR('')
+        
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ierr = arr_mult(jac_V,det_T_FV,&
+                    &jac_F(:,:,deriv(1),deriv(2),deriv(3)),deriv)
+                CHCKERR('')
+            case (2)                                                            ! HELENA
+                ierr = arr_mult(jac_H,det_T_FH,&
+                    &jac_F(:,:,deriv(1),deriv(2),deriv(3)),deriv)
+                CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
     end function calc_jac_F_ind
     integer function calc_jac_F_arr(deriv) result(ierr)
         character(*), parameter :: rout_name = 'calc_jac_F_arr'
@@ -906,9 +1032,11 @@ contains
             !T_HF(:,:,1,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             ! (2,1)
             if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-                T_HF(id,:,2,1,deriv(1),0,0) = -q_saf_H(:,deriv(1))
+                do id = 1,n_par
+                    T_HF(id,:,2,1,deriv(1),0,0) = -q_saf_H(:,deriv(1))
+                end do
             !else
-                !T_HF(id,:,2,1,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+                !T_HF(:,:,2,1,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             end if
             ! (2,2)
             !T_HF(:,:,2,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
@@ -933,8 +1061,8 @@ contains
             det_T_HF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             if (sum(deriv).eq.0) then
                 det_T_HF(:,:,0,0,0) = 1.0_dp
-            else
-                det_T_HF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            !else
+                !det_T_HF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             end if
         else
             ! set up zeta_s
@@ -952,18 +1080,19 @@ contains
             CHCKERR('')
             ! (1,2)
             if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-                T_HF(id,:,1,2,deriv(1),0,0) = q_saf_H(:,deriv(1))
+                do id = 1,n_par
+                    T_HF(id,:,1,2,deriv(1),0,0) = flux_t_H(:,deriv(1)+1)/(2*pi)
+                end do
             !else
-                !T_HF(id,:,1,2,deriv(1),deriv(2),deriv(3)) = &
-                    !&-q_saf_H(:,deriv(1))
+                !T_HF(:,:,1,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             end if
             ! (1,3)
             !T_HF(:,:,1,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             ! (2,1)
             if (sum(deriv).eq.0) then
-                T_HF(id,:,2,1,deriv(1),0,0) = -1.0_dp
+                T_HF(:,:,2,1,deriv(1),0,0) = -1.0_dp
             !else
-                !T_HF(id,:,2,1,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+                !T_HF(:,:,2,1,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             end if
             ! (2,2)
             !T_HF(:,:,2,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
@@ -971,25 +1100,29 @@ contains
             !T_HF(:,:,2,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             ! (3,1)
             if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-                T_HF(id,:,3,1,deriv(1),0,0) = rot_t_H(:,deriv(1))
+                do id = 1,n_par
+                    T_HF(id,:,3,1,deriv(1),0,0) = rot_t_H(:,deriv(1))
+                end do
             !else
-                !T_HF(id,:,3,1,deriv(1),deriv(2),deriv(3)) = &
-                    !&-q_saf_H(:,deriv(1))
+                !T_HF(:,:,3,1,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             end if
             ! (3,2)
             !T_HF(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             ! (3,3)
             if (sum(deriv).eq.0) then
-                T_HF(id,:,3,3,deriv(1),0,0) = -1.0_dp
+                T_HF(:,:,3,3,deriv(1),0,0) = 1.0_dp
             !else
-                !T_HF(id,:,3,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+                !T_HF(:,:,3,3,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             end if
             
             ! determinant
+            det_T_HF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-                det_T_HF(id,:,deriv(1),0,0) = q_saf_H(:,deriv(1))
-            else
-                det_T_HF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+                do id = 1,n_par
+                    det_T_HF(id,:,deriv(1),0,0) = flux_t_H(:,deriv(1)+1)/(2*pi)
+                end do
+            !else
+                !det_T_HF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             end if
         end if
     end function calc_T_HF_ind

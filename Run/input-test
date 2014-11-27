@@ -1,6 +1,6 @@
 &INPUTDATA
     n_par = 50
-    min_par = -2
+    min_par = -3
     max_par = 2
     n_alpha = 1
     min_r_X = 0.1

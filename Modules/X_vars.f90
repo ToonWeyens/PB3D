@@ -844,6 +844,7 @@ contains
         ! local variables
         integer :: k, m, jd, kd                                                 ! counters
         write(*,*) 'CALC_V_INT SHOULD WORK WITH FAST FOURIER TRANSFORM!!!'
+        write(*,*) 'ALSO, IT SHOULD WORK FOR FOR NON-EQUIDISTANT GRIDS !!!'
         
         do m = 1,size_X
             do k = 1,size_X

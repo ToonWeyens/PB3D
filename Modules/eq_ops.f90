@@ -23,8 +23,10 @@ contains
     integer function calc_eq(alpha) result(ierr)
         use eq_vars, only: calc_mesh, calc_flux_q, dealloc_eq, calc_RZL, &
             &normalize_eq_vars, prepare_RZL, check_and_limit_mesh, init_eq, &
+            &adapt_HEL_to_eq, &
             &q_saf_V, q_saf_FD, rot_t_V, rot_t_FD, flux_p_V, theta_V, &
-            &flux_p_FD,flux_t_V, flux_t_FD, pres_V, pres_FD, n_par, zeta_V
+            &flux_p_FD,flux_t_V, flux_t_FD, pres_V, pres_FD, n_par, zeta_V, &
+            &theta_H, zeta_H
         use metric_ops, only: calc_g_C, calc_g_C, calc_T_VC, calc_g_V, &
             &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, &
             &calc_jac_V, calc_jac_F, calc_f_deriv, dealloc_metric, &
@@ -82,6 +84,12 @@ contains
             ierr = calc_mesh(alpha)
             CHCKERR('')
             
+            ! adapt the HELENA variables to the equilibrium mesh
+            if (eq_style.eq.2) then
+                ierr = adapt_HEL_to_eq()
+                CHCKERR('')
+            end if
+            
             ! plot grid if requested
             if (plot_grid) then
                 ! choose which equilibrium style is being used:
@@ -93,8 +101,9 @@ contains
                             &.true.)                                            ! theta_V and zeta_V are tabulated in equilibrium grid
                         CHCKERR('')
                     case (2)                                                    ! HELENA
-                        ierr = 1
-                        CHCKERR('NOT YET IMPLEMENTED!!!!!')
+                        ierr = plot_grid_real(theta_H,zeta_H,0._dp,1._dp,&
+                            &.true.)                                            ! theta_H and zeta_H are tabulated in equilibrium grid
+                        CHCKERR('')
                     case default
                         err_msg = 'No equilibrium style associated with '//&
                             &trim(i2str(eq_style))
@@ -193,19 +202,7 @@ contains
                     ierr = calc_flux_q()
                     CHCKERR('')
                     
-                    ! TO BE DONE: 
-                    ! (WORKING IN THE (PSI,THETA,ZETA) SYSTEM)
-                    ! 1. calculate h11, h12 and h33 and derivatives from gem11, gem12 and gem33
-                    ! 2. calcualte h22 from h22 = 1/h11 * ((F/qR^2h33)^2 + (h12)^2)
-                    ! 3. invert h_H to g_H
-                    ! 4. calculate jac_H from qR^2/F
-                    ! !!!! DERIVATIVES SHOULD BE DONE WITH SPLINES, AS THE GRID IS NON-EQUIDISTANT !!!!
-                    
-                    !!!! DON'T LOOK AT WHAT'S BELOW HERE... !!!!!!!!!!!
-                    
                     ! calculate the jacobian in the HELENA coordinate system
-                    ! Note: This makes  use of R^2 and qoF, which  both of which
-                    ! which therefore has to be calculated first
                     call writo('Calculate jac_H...')
                     do id = 0,1
                         ierr = calc_jac_H(derivs(id))
@@ -380,7 +377,7 @@ contains
     end function read_eq
     
     ! plots the grid in real space
-    ! The variables  theta_V and zeta_V follow  the magnetic field lines  in the
+    ! The  variables theta  and  zeta follow  the magnetic  field  lines in  the
     ! equilibrium grid  and are tabulated along  the magnetic field lines  for a
     ! series  of flux  surfaces. The  start  and end  index of  the normal  flux
     ! surfaces in either  the equilibrium grid or the perturbation  grid have to
@@ -398,8 +395,8 @@ contains
         character(*), parameter :: rout_name = 'plot_grid_real'
         
         ! input / output
-        real(dp), intent(in) :: theta(:,:)                                      ! theta in VMEC coordinates
-        real(dp), intent(in) :: zeta(:,:)                                       ! zeta in VMEC coordinates
+        real(dp), intent(in) :: theta(:,:)                                      ! theta in VMEC or HELENA coordinates
+        real(dp), intent(in) :: zeta(:,:)                                       ! zeta in VMEC or HELENA coordinates
         real(dp), intent(in) :: min_r, max_r                                    ! minimum and maximum normal range
         logical, intent(in) :: eq_grid                                          ! .true. if eq. grid is used
         

@@ -378,22 +378,22 @@ contains
             ! local variables
             PetscReal :: r_X_loc                                                ! local copy of grp_r_X
             PetscReal :: grp_r_eq_eq_con                                        ! equivalent of grp_r_eq in table of equilibrium normal points
-            PetscReal, pointer :: flux(:), flux_VMEC(:)                         ! either pol. or tor. flux
+            PetscReal, pointer :: flux(:), flux_eq(:)                           ! either pol. or tor. flux
             PetscInt :: kd                                                      ! counter
             
             ! initialize ierr
             ierr = 0
             
-            ! set up flux and flux_VMEC
+            ! set up flux and flux_eq
             if (use_pol_flux) then
                 flux => flux_p_FD(:,0)
             else
                 flux => flux_t_FD(:,0)
             end if
             if (eq_use_pol_flux) then
-                flux_VMEC => flux_p_FD(:,0)
+                flux_eq => flux_p_FD(:,0)
             else
-                flux_VMEC => flux_t_FD(:,0)
+                flux_eq => flux_t_FD(:,0)
             end if
             
             ! allocate grp_r_eq_lo and hi and offset
@@ -413,7 +413,7 @@ contains
                 ! the same  normal coordinate as the  discretization. Therefore,
                 ! conversion is necessary
                 ! 1. continuous equilibrium grid (0..1)
-                ierr = interp_fun_1D(grp_r_eq_eq_con,flux_VMEC/max_flux_eq,&
+                ierr = interp_fun_1D(grp_r_eq_eq_con,flux_eq/max_flux_eq,&
                     &r_X_loc,flux/max_flux)
                 CHCKERR('')
                 ! 2. discrete equilibrium grid, unrounded

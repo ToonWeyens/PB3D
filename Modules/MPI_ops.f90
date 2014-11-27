@@ -290,23 +290,20 @@ contains
                 case (2)                                                        ! HELENA
                     ! calculate normal derivative of flux_H
                     allocate(flux_H_r(n_r_eq))
-                    ierr = calc_deriv(flux_H,flux_H_r,n_r_eq-1._dp,1,1)
+                    ierr = calc_deriv(flux_H,flux_H_r,flux_H,1,1)
                     CHCKERR('')
                     ! set up perturbation flux
                     if (use_pol_flux) then
                         flux = flux_H
                     else
-                        ierr = calc_int(qs*flux_H_r,&
-                            &[(kd*1.0_dp/(n_r_eq-1.0_dp),kd=0,n_r_eq-1)],flux)
+                        ierr = calc_int(qs*flux_H_r,flux_H,flux)
                         CHCKERR('')
                     end if
                     ! set up equilibrium flux
                     if (eq_use_pol_flux) then
                         flux_eq = flux_H
                     else
-                        ierr = calc_int(qs*flux_H_r,&
-                            &[(kd*1.0_dp/(n_r_eq-1.0_dp),kd=0,n_r_eq-1)],&
-                            &flux_eq)
+                        ierr = calc_int(qs*flux_H_r,flux_H,flux_eq)
                         CHCKERR('')
                     end if
                 case default

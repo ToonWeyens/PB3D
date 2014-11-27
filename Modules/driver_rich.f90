@@ -65,7 +65,7 @@ contains
         ! determine the magnetic field lines for which to run the calculations 
         ! (equidistant mesh)
         allocate(alpha(n_alpha))
-        ierr = calc_eqd_mesh(alpha,n_alpha,min_alpha,max_alpha)                 ! just evenly spread them over 0..2*pi
+        ierr = calc_eqd_mesh(alpha,n_alpha,min_alpha,max_alpha,.true.)          ! evenly spread alpha's over 0..2*pi
         CHCKERR('')
         
         ! split  the  communicator MPI_COMM_WORLD into subcommunicators

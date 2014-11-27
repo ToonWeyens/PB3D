@@ -217,46 +217,18 @@ contains
         ! so  the  fast-moving  functions  e^(i(k-m)) V  don't  give  the  wrong
         ! integrals in the perturbation part
         subroutine adapt_n_par
-            use num_vars, only: eq_style
-            use HEL_vars, only: nchi, ias
-            
             ! local variables
             integer :: n_par_old                                                ! backup of n_par
+            integer :: nchi_pi                                                  ! how many points for half a poloidal turn
             real(dp) :: min_par_old, max_par_old                                ! backup of min_par_old, max_par_old
             real(dp) :: tol = 1.0E-8_dp                                         ! tolerance for rounding to integers
             
-            if (eq_style.eq.2) then                                             ! HELENA input: n_par is dictated by nchi
-                ! set back ups
-                n_par_old = n_par
-                min_par_old = min_par
-                max_par_old = max_par
-                ! round min_par and max_par to nearest integers
-                min_par = floor(min_par)
-                max_par = ceiling(max_par)
-                if (abs(max_par-min_par).lt.1._dp) max_par = max_par + 1
-                if (abs(min_par-min_par_old).gt.tol .or. &
-                    &abs(max_par-max_par_old).gt.tol) &
-                    &call writo('WARNING: For HELENA output, min_par and &
-                    &max_par are rounded to the integer values '//&
-                    &trim(i2str(floor(min_par)))//' and '//&
-                    &trim(i2str(ceiling(max_par))))
-                if (ias.eq.0) then                                              ! top-bottom symmetry in HELENA
-                    n_par = nint(max_par-min_par) * (nchi-1)                    ! nchi - 1 per half circle
-                else                                                            ! no top-bottom symmetry in HELENA
-                    n_par = nint(max_par-min_par) * nchi / 2                    ! nchi / 2 per half circle
-                end if
-                if (n_par.ne.n_par_old) then
-                    call writo('WARNING: Nr. of parallel points dictated by &
-                        &HELENA: '//trim(i2str(n_par)))
-                end if
-            else                                                                ! not HELENA input: n_par can be chosen independently
-                if (n_par.lt.nyq_fac*(max_sec_X-min_sec_X)*&
-                    &(max_par-min_par)/2) then
-                    n_par = int(nyq_fac*(max_sec_X-min_sec_X)*&
-                        &(max_par-min_par)/2)
-                    call writo('WARNING: To avoid aliasing of the perturbation &
-                        &integrals, n_par is increased to '//trim(i2str(n_par)))
-                end if
+            if (n_par.lt.nyq_fac*(max_sec_X-min_sec_X)*&
+                &(max_par-min_par)/2) then
+                n_par = int(nyq_fac*(max_sec_X-min_sec_X)*&
+                    &(max_par-min_par)/2) + 1
+                call writo('WARNING: To avoid aliasing of the perturbation &
+                    &integrals, n_par is increased to '//trim(i2str(n_par)))
             end if
         end subroutine adapt_n_par
         
