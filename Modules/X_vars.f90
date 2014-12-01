@@ -6,7 +6,7 @@ module X_vars
     use num_vars, only: dp, max_str_ln, iu
     use message_ops, only: lvl_ud, writo, print_ar_1
     use output_ops, only: print_GP_2D, draw_GP
-    use str_ops, only: r2strt, i2str
+    use str_ops, only: r2str, i2str, r2strt
     
     implicit none
     
@@ -94,8 +94,9 @@ contains
         ! checks whether nq-m  << n or n-iotam << m is satisfied  in some of the
         ! plasma
         integer function check_m_and_n() result(ierr)
-            use eq_vars, only: q_saf_V_full, rot_t_V_full                       ! q_saf_V_full and rot_t_V_full are NOT normalized
-            use num_vars, only: glb_rank, use_pol_flux
+            use eq_vars, only: q_saf_V_full, rot_t_V_full, q_saf_H_full, &
+                &rot_t_H_full                                                   ! full variables are NOT normalized
+            use num_vars, only: glb_rank, use_pol_flux, eq_style
             
             character(*), parameter :: rout_name = 'check_m_and_n'
             
@@ -110,13 +111,32 @@ contains
             if (glb_rank.eq.0) then
                 call writo('Checking mode numbers')
                 ! set min_jq and max_jq in flux coordinate system
-                if (use_pol_flux) then
-                    min_jq = minval(-q_saf_V_full(:,0))
-                    max_jq = maxval(-q_saf_V_full(:,0))
-                else
-                    min_jq = minval(-rot_t_V_full(:,0))
-                    max_jq = maxval(-rot_t_V_full(:,0))
-                end if
+                ! choose which equilibrium style is being used:
+                !   1:  VMEC
+                !   2:  HELENA
+                select case (eq_style)
+                    case (1)                                                    ! VMEC
+                        if (use_pol_flux) then
+                            min_jq = minval(-q_saf_V_full(:,0))                 ! - to convert LH VMEC coords. to RH Flux coords.
+                            max_jq = maxval(-q_saf_V_full(:,0))
+                        else
+                            min_jq = minval(-rot_t_V_full(:,0))
+                            max_jq = maxval(-rot_t_V_full(:,0))
+                        end if
+                    case (2)                                                    ! HELENA
+                        if (use_pol_flux) then
+                            min_jq = minval(q_saf_H_full(:,0))
+                            max_jq = maxval(q_saf_H_full(:,0))
+                        else
+                            min_jq = minval(rot_t_H_full(:,0))
+                            max_jq = maxval(rot_t_H_full(:,0))
+                        end if
+                    case default
+                        err_msg = 'No equilibrium style associated with '//&
+                            &trim(i2str(eq_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
+                end select
                 
                 min_jq = min_jq - tol*abs(min_jq)
                 max_jq = max_jq + tol*abs(max_jq)
@@ -231,10 +251,11 @@ contains
     ! plot  q-profile  or iota-profile  in  flux coordinates  with nq-m  = 0  or
     ! n-iotam = 0 indicate if requested
     subroutine resonance_plot
-        use num_vars, only: glb_rank, tol_NR, use_pol_flux
+        use num_vars, only: glb_rank, use_pol_flux, eq_style
         use utilities, only: calc_zero_NR, interp_fun_1D
-        use eq_vars, only: q_saf_V_full, rot_t_V_full, &                        ! q_saf_V_full and rot_t_V_full are NOT normalized
-            &flux_p_V_full, flux_t_V_full, n_r_eq
+        use eq_vars, only: q_saf_V_full, rot_t_V_full, flux_p_V_full, &
+            &flux_t_V_full, q_saf_H_full, rot_t_H_full, flux_p_H_full, &
+            &flux_t_H_full, n_r_eq                                              ! full variables are NOT normalized
         
         ! local variables (also used in child functions)
         real(dp) :: mnfrac_for_function                                         ! fraction m/n or n/m to determine resonant flux surface
@@ -246,17 +267,50 @@ contains
         real(dp), allocatable :: y_vars(:,:)                                    ! for plotting
         real(dp) :: jq_solution                                                 ! solution for q = m/n or iota = n/m
         real(dp) :: jq_solution_transf                                          ! transformed solution to flux coordinates
-        real(dp) :: old_tol_NR                                                  ! to backup tol_NR
         integer :: istat                                                        ! status
         character(len=max_str_ln) :: plot_title, file_name                      ! name of plot, of file
+        real(dp), allocatable :: q_saf(:,:), rot_t(:,:)                         ! saf. fac., rot. transf. in Equilibrium coords.
+        real(dp), allocatable :: flux_p(:), flux_t(:)                           ! pol. flux, tor. flux in Equilibrium coords.
+        integer :: pmone                                                        ! plus or minus one
         
         if (glb_rank.eq.0) then
-            ! backup tol_NR
-            old_tol_NR = tol_NR
-            
-            ! set  lower  tolerance  for  Newton-Rhapson  because  working  with
-            ! discrete data that is not perfectly continous
-            tol_NR = 5E-3_dp
+            ! set up flux_p, flux_t, q_saf and rot_t
+            ! choose which equilibrium style is being used:
+            !   1:  VMEC
+            !   2:  HELENA
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    if (use_pol_flux) then
+                        allocate(flux_p(size(flux_p_V_full,1)))
+                        flux_p = flux_p_V_full(:,0)
+                        allocate(q_saf(size(q_saf_V_full,1),0:2))
+                        q_saf = q_saf_V_full(:,0:2)
+                    else
+                        allocate(flux_t(size(flux_t_V_full,1)))
+                        flux_t = flux_t_V_full(:,0)
+                        allocate(rot_t(size(rot_t_V_full,1),0:2))
+                        rot_t = rot_t_V_full(:,0:2)
+                    end if
+                    pmone = -1                                                  ! conversion of VMEC LH to Flux RH
+                case (2)                                                        ! HELENA
+                    if (use_pol_flux) then
+                        allocate(flux_p(size(flux_p_H_full,1)))
+                        flux_p = flux_p_H_full(:,0)
+                        allocate(q_saf(size(q_saf_H_full,1),0:2))
+                        q_saf = q_saf_H_full(:,0:2)
+                    else
+                        allocate(flux_t(size(flux_t_H_full,1)))
+                        flux_t = flux_t_H_full(:,0)
+                        allocate(rot_t(size(rot_t_H_full,1),0:2))
+                        rot_t = rot_t_H_full(:,0:2)
+                    end if
+                    pmone = 1                                                   ! no conversion of HELENA HH to Flux RH
+                case default
+                    call writo('No equilibrium style associated with '//&
+                        &trim(i2str(eq_style)))
+                    call writo('Aborting')
+                    return
+            end select
             
             if (use_pol_flux) then
                 call writo('Plotting safety factor q and resonant surfaces &
@@ -276,13 +330,13 @@ contains
             allocate(jq_for_function(n_r_eq,0:2))
             
             if (use_pol_flux) then
-                x_vars(:,1) = flux_p_V_full(:,0)
-                y_vars(:,1) = -q_saf_V_full(:,0)                                ! convert to flux coordinates
-                jq_for_function = -q_saf_V_full(:,0:2)                          ! (need -1 to convert form Flux to VMEC)
+                x_vars(:,1) = flux_p/abs(flux_p(n_r_eq))
+                y_vars(:,1) = pmone*q_saf(:,0)
+                jq_for_function = q_saf
             else
-                x_vars(:,1) = flux_t_V_full(:,0)
-                y_vars(:,1) = -rot_t_V_full(:,0)                                ! convert to flux coordinates
-                jq_for_function = -rot_t_V_full(:,0:2)                          ! (need -1 to convert form Flux to VMEC)
+                x_vars(:,1) = flux_t/abs(flux_t(n_r_eq))
+                y_vars(:,1) = pmone*rot_t(:,0)
+                jq_for_function = rot_t
             end if
             
             kd = 2
@@ -293,9 +347,9 @@ contains
                 
                 ! set up mnfrac_for_function
                 if (use_pol_flux) then
-                    mnfrac_for_function = m_X(jd)*1.0_dp/n_X(jd)
+                    mnfrac_for_function = pmone*m_X(jd)*1.0_dp/n_X(jd)
                 else
-                    mnfrac_for_function = n_X(jd)*1.0_dp/m_X(jd)
+                    mnfrac_for_function = pmone*n_X(jd)*1.0_dp/m_X(jd)
                 end if
                 
                 ! calculate zero using Newton-Rhapson
@@ -316,32 +370,30 @@ contains
                             &//trim(i2str(m_X(jd)))//') does not resonate &
                             &in plasma')
                         if (use_pol_flux) then
-                            y_vars(n_r_eq,kd) = -q_saf_V_full(n_r_eq,0)         ! convert to flux coordinates
+                            y_vars(n_r_eq,kd) = q_saf(n_r_eq,0)
                         else
-                            y_vars(n_r_eq,kd) = -rot_t_V_full(n_r_eq,0)         ! convert to flux coordinates
+                            y_vars(n_r_eq,kd) = rot_t(n_r_eq,0)
                         end if
                     else
+                        ! convert solution to flux coordinates
+                        if (use_pol_flux) then
+                            istat = interp_fun_1D(jq_solution_transf,&
+                                &flux_p/abs(flux_p(n_r_eq)),jq_solution)
+                        else
+                            istat = interp_fun_1D(jq_solution_transf,&
+                                &flux_t/abs(flux_t(n_r_eq)),jq_solution)
+                        end if
+                        x_vars(:,kd) = jq_solution_transf
                         call writo('Mode (n,m) = ('//trim(i2str(n_X(jd)))//','&
                             &//trim(i2str(m_X(jd)))//') resonates in plasma &
                             &at normalized flux surface '//&
-                            &trim(r2strt(jq_solution)))
+                            &trim(r2str(jq_solution_transf)))
                         if (use_pol_flux) then
                             y_vars(n_r_eq,kd) = m_X(jd)*1.0_dp/n_X(jd)
                         else
                             y_vars(n_r_eq,kd) = n_X(jd)*1.0_dp/m_X(jd)
                         end if
                     end if
-                    
-                    ! convert solution to flux coordinates
-                    if (use_pol_flux) then
-                        istat = interp_fun_1D(jq_solution_transf,&
-                            &flux_p_V_full(:,0),jq_solution)
-                    else
-                        istat = interp_fun_1D(jq_solution_transf,&
-                            &flux_t_V_full(:,0),jq_solution)
-                    end if
-                    
-                    x_vars(:,kd) = jq_solution_transf
                     kd = kd + 1
                 end if
             end do
@@ -350,13 +402,6 @@ contains
             if (istat.ne.0) then
                 call writo('WARNING: Failed to produce plot')
                 return
-            end if
-            
-            ! rescale x axis
-            if (use_pol_flux) then
-                x_vars = x_vars/flux_p_V_full(n_r_eq,0)
-            else
-                x_vars = x_vars/flux_t_V_full(n_r_eq,0)
             end if
             
             call lvl_ud(-1)
@@ -377,12 +422,10 @@ contains
             
             call lvl_ud(-1)
             call writo('Done plotting')
-            
-            tol_NR = old_tol_NR
         end if
     contains
-        ! returns q-m/n or  iota-n/m in VMEC coordinates, used to  solve for q =
-        ! m/n or iota = n/m
+        ! Returns q-m/n  or iota-n/m in  Equilibrium coordinates, used  to solve
+        ! for q = m/n or iota = n/m.
         real(dp) function jq_fun(pt) result(res)
             ! input / output
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
@@ -409,8 +452,7 @@ contains
             end if
         end function jq_fun
         
-        ! returns d(q-m/n)/dr VMEC coordinates, used to solve for q = m/n
-        ! (the toroidal mode number in VMEC coordinates is equal to -n_X)
+        ! returns d(q-m/n)/dr Equilibrium coordinates, used to solve for q = m/n
         ! WARNING: This  routine requires that jq_for_function's  derivatives be
         ! calculated up to order 2. This is NOT checked!
         real(dp) function jq_dfun(pt) result(res)
@@ -440,32 +482,56 @@ contains
     end subroutine resonance_plot
     
     ! calculate rho from user input
-    subroutine calc_rho
-        use eq_vars, only: pres_V, grp_n_r_eq, grp_min_r_eq
+    integer function calc_rho() result(ierr)
+        use num_vars, only: eq_style
+        use eq_vars, only: pres_FD, grp_n_r_eq, grp_min_r_eq, n_r_eq
         use VMEC_vars, only: gam
+        
+        character(*), parameter :: rout_name = 'calc_rho'
         
         ! local variables
         integer :: kd                                                           ! counter
         real(dp) :: expon                                                       ! exponent = 1/gam
+        real(dp), parameter :: tol = 1.0E-10_dp                                 ! tolerance for negative pressure
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! allocate rho
         allocate(rho(grp_n_r_eq))
         
-        ! set exp
-        expon = 1.0_dp/gam
-        
-        ! loop over all normal points
-        do kd = 1,grp_n_r_eq
-            if (pres_V(kd,0).gt.0) then
-                rho(kd) = pres_V(kd,0)**expon
-            else
-                call writo('WARNING: pressure was negative at point '//&
-                    &trim(i2str(grp_min_r_eq+kd))//'/'//&
-                    &trim(i2str(grp_min_r_eq+grp_n_r_eq)),persistent=.true.)
-                rho(kd) = rho(kd-1)
-            end if
-        end do
-    end subroutine calc_rho
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! set exp
+                expon = 1.0_dp/gam
+                
+                ! loop over all normal points
+                do kd = 1,grp_n_r_eq
+                    if (pres_FD(kd,0).gt.0) then
+                        rho(kd) = pres_FD(kd,0)**expon
+                    else
+                        rho(kd) = rho(kd-1)
+                        if (pres_FD(kd,0).lt.-tol) &
+                        call writo('WARNING: pressure was negative ('//&
+                            &trim(r2strt(pres_FD(kd,0)))//') at point '&
+                            &//trim(i2str(grp_min_r_eq-1+kd))//'/'//&
+                            &trim(i2str(n_r_eq))//' so density is set to '//&
+                            &trim(r2str(rho(kd))),persistent=.true.)
+                    end if
+                end do
+            case (2)                                                            ! HELENA
+                rho = 1.0_dp                                                    ! arbitrarily constant (normalized value)
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+    end function calc_rho
     
     ! calculate  ~PV_(k,m)^i  (pol.  flux)  or ~PV_(l,n)^i  (tor.  flux) at  all
     ! grp_n_r_eq values
@@ -621,8 +687,8 @@ contains
         ! multiply by rho
         do kd = 1,grp_n_r_eq
             KV0(:,kd,:,:) = KV0(:,kd,:,:)*rho(kd)
-            KV2(:,kd,:,:) = KV2(:,kd,:,:)*rho(kd)
             KV1(:,kd,:,:) = KV1(:,kd,:,:)*rho(kd)
+            KV2(:,kd,:,:) = KV2(:,kd,:,:)*rho(kd)
         end do
     end subroutine calc_KV
     
@@ -742,9 +808,11 @@ contains
     !   shear S = - d Theta^alpha/d_theta 1 / J
     !   parallel current mu0sigma = B . nabla x B / B^2
     !   normal curvature kn = nabla psi / h^psi,psi * nabla (mu0 p + B^2/2)
-    subroutine calc_extra
+    integer function calc_extra() result(ierr)
         use metric_ops, only: g_FD, h_FD, jac_FD
         use eq_vars, only: n_par, p => pres_FD, grp_n_r_eq
+        
+        character(*), parameter :: rout_name = 'calc_extra'
         
         ! local variables
         integer :: kd                                                           ! counter
@@ -772,6 +840,9 @@ contains
         real(dp), allocatable :: h22(:,:)                                       ! h^psi,psi
         real(dp), allocatable :: D3h22(:,:)                                     ! D_theta h^psi,psi
         real(dp), allocatable :: h23(:,:)                                       ! h^psi,theta
+        
+        ! initialize ierr
+        ierr = 0
         
         ! set up submatrices
         ! jacobian
@@ -823,8 +894,9 @@ contains
         end do
         
         ! calculate rho from input
-        call calc_rho
-    end subroutine calc_extra
+        ierr = calc_rho()
+        CHCKERR('')
+    end function calc_extra
     
     ! calculates  magnetic  integral  <V e^[i(k-m)ang_par_F]>,  defined  as  the
     ! matrix  
@@ -835,7 +907,6 @@ contains
     subroutine calc_V_int(V,V_int)
         use eq_vars, only: n_par, grp_n_r_eq, ang_par_F
         use metric_ops, only: jac_FD
-        use utilities, only: calc_int
         
         ! input / output
         complex(dp), intent(inout) :: V(n_par,grp_n_r_eq,size_X,size_X)         ! input V(n_par,n_r,size_X,size_X)
@@ -844,7 +915,6 @@ contains
         ! local variables
         integer :: k, m, jd, kd                                                 ! counters
         write(*,*) 'CALC_V_INT SHOULD WORK WITH FAST FOURIER TRANSFORM!!!'
-        write(*,*) 'ALSO, IT SHOULD WORK FOR FOR NON-EQUIDISTANT GRIDS !!!'
         
         do m = 1,size_X
             do k = 1,size_X

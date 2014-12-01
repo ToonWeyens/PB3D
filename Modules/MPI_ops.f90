@@ -181,7 +181,8 @@ contains
             next_job = 0
         end if
         
-        ! create a window to the variable next_job in the global master
+        ! create  a window  to the  variable next_job in  the global  master for
+        ! asynchronous access
         call MPI_Type_extent(MPI_INTEGER,intsize,ierr) 
         err_msg = 'Couldn''t determine the extent of MPI_REAL'
         CHCKERR(err_msg)
@@ -213,12 +214,13 @@ contains
         ! group so that  the equilibrium quantities are calculated  for only the
         ! normal range that is relevant for the perturbation calculations, which
         ! are to be anticipated.
-        ! This is done as follows: if  the nr. of perturbation grid points n_r_X
-        ! goes to infinity,  the division under the processes  will approach the
-        ! ideal  value of  1/grp_n_procs each.  For lower  values of  n_r_X, the
-        ! first processes can carry an additional perturbation grid point if the
-        ! remainder of  the division is not  zero. The situation is  at its most
-        ! assymetric for the lowest value of n_r_X.
+        ! This is done as follows, assuming an equidistant perturbation grid (in
+        ! the perturbation  normal variable):  if the  nr. of  perturbation grid
+        ! points n_r_X goes  to infinity, the division under  the processes will
+        ! approach the  ideal value of  1/grp_n_procs each. For lower  values of
+        ! n_r_X, the first  processes can carry an  additional perturbation grid
+        ! point if the  remainder of the division is not  zero. The situation is
+        ! at its most asymetric for the lowest value of n_r_X.
         ! Therefore,  to be  able  to cover  all the  levels  in the  Richardson
         ! extrapolation  (when n_r_X  is  subsequently  increased), the  minimum
         ! of  the   equilibrium  range  of   each  processor  is  to   be  given
@@ -226,14 +228,14 @@ contains
         ! perturbation  points,  at  n_r_X  going  to  infinity  (i.e.  r_min  +
         ! grp_rank*(r_max-r_min)/grp_n_procs) and the maximum of the equilibrium
         ! range is to  be given by the  grid point that includes  the highest of
-        ! the possible perturbation  points, at n_r_X at its  lowest value (i.e.
-        ! given by divide_grid with cumul true) plus 1, because the perturbation
-        ! quantity  of perturbation  normal  point (i)  depends on  perturbation
-        ! normal point (i+1)
+        ! the  possible  perturbation  points,  at n_r_X  at  its  lowest  value
+        ! (i.e.  given by  divide_grid with  cumul .true.)  plus 1,  because the
+        ! perturbation  quantity of  perturbation  normal point  (i) depends  on
+        ! perturbation normal point (i+1)
         ! Furthermore,  the conversion  between points  r_X on  the perturbation
         ! range  (0..1) and  discrete grid  points r_eq  on the  equilbrium grid
-        ! (1..n_r_eq), the  subroutine con2dis  is used with  equilibrium limits
-        ! set to [1..n_r_eq]
+        ! (1..n_r_eq), the  subroutine con2dis  is used with  equilibrium values
+        ! tabulated in flux_eq (normalized)
         ! [MPI] Collective call
         integer function calc_eq_r_range() result(ierr)
             use num_vars, only: min_n_r_X, grp_n_procs, grp_rank, min_r_X, &
@@ -251,7 +253,6 @@ contains
             ! local variables
             real(dp), allocatable :: flux(:), flux_eq(:)                        ! either pol. or tor. flux, in VMEC coord.
             real(dp), allocatable :: flux_H_r(:)                                ! normal derivative of flux_H
-            integer :: kd                                                       ! counter
             real(dp) :: grp_min_r_eq_X_con                                      ! grp_min_r_eq in continuous perturbation grid
             real(dp) :: grp_min_r_eq_eq_con                                     ! grp_min_r_eq in continuous equilibrium grid
             real(dp) :: grp_min_r_eq_eq_dis                                     ! grp_min_r_eq in discrete equilibrium grid, unrounded
@@ -272,16 +273,15 @@ contains
                 case (1)                                                        ! VMEC
                     ! set up perturbation flux
                     if (use_pol_flux) then
-                        ierr = calc_int(-iotaf*phi_r,&
-                            &[(kd*1.0_dp/(n_r_eq-1.0_dp),kd=0,n_r_eq-1)],flux)
+                        ierr = calc_int(-iotaf*phi_r,1.0_dp/(n_r_eq-1.0_dp),&
+                            &flux)
                         CHCKERR('')
                     else
                         flux = phi
                     end if
                     ! set up equilibrium flux
                     if (eq_use_pol_flux) then
-                        ierr = calc_int(-iotaf*phi_r,&
-                            &[(kd*1.0_dp/(n_r_eq-1.0_dp),kd=0,n_r_eq-1)],&
+                        ierr = calc_int(-iotaf*phi_r,1.0_dp/(n_r_eq-1.0_dp),&
                             &flux_eq)
                         CHCKERR('')
                     else
@@ -314,6 +314,8 @@ contains
             end select
             
             ! normalize flux and flux_eq to (0..1)
+            ! Note:  max_flux is  not yet  determined, so  use flux(n_r_eq)  and
+            ! flux_eq(n_r_eq), knowing that this is the full global range
             flux = flux/flux(n_r_eq)
             flux_eq = flux_eq/flux_eq(n_r_eq)
             
@@ -327,8 +329,7 @@ contains
                 &grp_min_r_eq_X_con,flux)
             CHCKERR('')
             ! 3. discrete equilibrium grid, unrounded
-            call con2dis(grp_min_r_eq_eq_con,[0._dp,1._dp],grp_min_r_eq_eq_dis,&
-                &[1,n_r_eq])
+            call con2dis(grp_min_r_eq_eq_con,grp_min_r_eq_eq_dis,flux_eq)
             ! 4. discrete equilibrium grid, rounded down
             grp_min_r_eq = floor(grp_min_r_eq_eq_dis)
             
@@ -341,19 +342,16 @@ contains
             ! 3. add one to max if not last global point
             if (grp_rank.ne.grp_n_procs-1) &
                 &grp_max_r_eq_X_dis = grp_max_r_eq_X_dis + 1
-            ! 4. continuous perturbation grid (min_r_X..max_r_X)
-            call dis2con(grp_max_r_eq_X_dis,[1,min_n_r_X],grp_max_r_eq_X_con,&
-                &[0._dp,1._dp])
-            ! 5. continous perturbation grid (0..1)
-            grp_max_r_eq_X_con = min_r_X + (max_r_X-min_r_X)*grp_max_r_eq_X_con
-            ! 6. continuous equilibrium grid (0..1)
+            ! 4. continous perturbation grid (0..1)
+            call dis2con(grp_max_r_eq_X_dis,grp_max_r_eq_X_con,[1,min_n_r_X],&
+                &[min_r_X,max_r_X])                                             ! the perturbation grid is equidistant
+            ! 5. continuous equilibrium grid (0..1)
             ierr = interp_fun_1D(grp_max_r_eq_eq_con,flux_eq,&
                 &grp_max_r_eq_X_con,flux)
             CHCKERR('')
-            ! 7. discrete equilibrium grid, unrounded
-            call con2dis(grp_max_r_eq_eq_con,[0._dp,1._dp],grp_max_r_eq_dis,&
-                &[1,n_r_eq])
-            ! 8. discrete equlibrium grid, rounded up
+            ! 6. discrete equilibrium grid, unrounded
+            call con2dis(grp_max_r_eq_eq_con,grp_max_r_eq_dis,flux_eq)
+            ! 7. discrete equlibrium grid, rounded up
             grp_max_r_eq = ceiling(grp_max_r_eq_dis)
             
             deallocate(flux,flux_eq)
@@ -586,7 +584,7 @@ contains
         use num_vars, only: MPI_Comm_groups, min_r_X, max_r_X, grp_rank, &
             &grp_n_procs
         use X_vars, only: n_r_X, grp_n_r_X, grp_min_r_X, grp_max_r_X, grp_r_X
-        use utilities, only: dis2con
+        use utilities, only: round_with_tol
         
         character(*), parameter :: rout_name = 'divide_grid'
         
@@ -640,6 +638,10 @@ contains
         allocate(grp_r_X(grp_n_r_X_one))
         grp_r_X = [(min_r_X + (grp_min_r_X+id-2.0_dp)/(n_r_X_loc-1.0_dp)*&
             &(max_r_X-min_r_X),id=1,grp_n_r_X_one)]
+        
+        ! round with standard tolerance
+        ierr = round_with_tol(grp_r_X,0.0_dp,1.0_dp)
+        CHCKERR('')
     contains 
         integer function divide_grid_ind(rank,n,n_procs) result(n_loc)
             ! input / output
@@ -670,7 +672,8 @@ contains
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
         use eq_vars, only: n_par, max_par, min_par, grp_min_r_eq, n_r_eq, &
             &grp_max_r_eq, R_0, pres_0, B_0, psi_0, rho_0, eq_use_pol_flux
-        use HEL_vars, only: qs, flux_H, p0, ias
+        use HEL_vars, only: R_0_H, B_0_H, p0, qs, flux_H, nchi, chi_H, ias, &
+            &h_H_11, h_H_12, h_H_33, RBphi, R_H, Z_H
         
         character(*), parameter :: rout_name = 'broadcast_vars'
         
@@ -842,9 +845,17 @@ contains
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                 case (2)                                                        ! HELENA
+                    call MPI_Bcast(nchi,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+                    CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(ias,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                     call bcast_size_1_R(flux_H)
+                    CHCKERR('MPI broadcast failed')
+                    call MPI_Bcast(R_0_H,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_COMM_WORLD,ierr)
+                    CHCKERR('MPI broadcast failed')
+                    call MPI_Bcast(B_0_H,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(flux_H,size(flux_H),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
@@ -857,6 +868,41 @@ contains
                     call bcast_size_1_R(p0)
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(p0,size(p0),MPI_DOUBLE_PRECISION,0,&
+                        &MPI_COMM_WORLD,ierr)
+                    CHCKERR('MPI broadcast failed')
+                    call bcast_size_1_R(chi_H)
+                    CHCKERR('MPI broadcast failed')
+                    call MPI_Bcast(chi_H,size(chi_H),MPI_DOUBLE_PRECISION,0,&
+                        &MPI_COMM_WORLD,ierr)
+                    CHCKERR('MPI broadcast failed')
+                    call bcast_size_1_R(RBphi)
+                    CHCKERR('MPI broadcast failed')
+                    call MPI_Bcast(RBphi,size(RBphi),MPI_DOUBLE_PRECISION,0,&
+                        &MPI_COMM_WORLD,ierr)
+                    CHCKERR('MPI broadcast failed')
+                    call bcast_size_2_R(R_H)
+                    CHCKERR('MPI broadcast failed')
+                    call MPI_Bcast(R_H,size(R_H),MPI_DOUBLE_PRECISION,0,&
+                        &MPI_COMM_WORLD,ierr)
+                    CHCKERR('MPI broadcast failed')
+                    call bcast_size_2_R(Z_H)
+                    CHCKERR('MPI broadcast failed')
+                    call MPI_Bcast(Z_H,size(Z_H),MPI_DOUBLE_PRECISION,0,&
+                        &MPI_COMM_WORLD,ierr)
+                    CHCKERR('MPI broadcast failed')
+                    call bcast_size_2_R(h_H_11)
+                    CHCKERR('MPI broadcast failed')
+                    call MPI_Bcast(h_H_11,size(h_H_11),MPI_DOUBLE_PRECISION,0,&
+                        &MPI_COMM_WORLD,ierr)
+                    CHCKERR('MPI broadcast failed')
+                    call bcast_size_2_R(h_H_12)
+                    CHCKERR('MPI broadcast failed')
+                    call MPI_Bcast(h_H_12,size(h_H_12),MPI_DOUBLE_PRECISION,0,&
+                        &MPI_COMM_WORLD,ierr)
+                    CHCKERR('MPI broadcast failed')
+                    call bcast_size_2_R(h_H_33)
+                    CHCKERR('MPI broadcast failed')
+                    call MPI_Bcast(h_H_33,size(h_H_33),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                 case default
@@ -898,6 +944,19 @@ contains
             call MPI_Bcast(arr_size,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             if (glb_rank.ne.0) allocate(arr(1:arr_size))
         end subroutine bcast_size_1_R
+        ! The array index is (1:n_par,1:n_r_eq)
+        subroutine bcast_size_2_R(arr)                                          ! version with 2 real arguments
+            ! input / output
+            real(dp), intent(inout), allocatable :: arr(:,:)
+            
+            ! local variables
+            integer :: arr_size(2)                                              ! sent ahead so arrays can be allocated
+            
+            if (glb_rank.eq.0) arr_size = [size(arr,1),size(arr,2)]
+            
+            call MPI_Bcast(arr_size,2,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            if (glb_rank.ne.0) allocate(arr(1:arr_size(1),1:arr_size(2)))
+        end subroutine bcast_size_2_R
         ! The array index is (0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3))
         subroutine bcast_size_4_R(arr)                                          ! version with 4 real arguments
             ! input / output

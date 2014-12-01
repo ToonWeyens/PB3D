@@ -36,6 +36,7 @@ driver_rich.o : \
     slepc_ops.o \
     metric_ops.o \
     VMEC_vars.o \
+    HEL_vars.o \
     utilities.o \
 
 slepc_ops.o : \

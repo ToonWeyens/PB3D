@@ -31,9 +31,9 @@ module metric_ops
     ! (index 1,2: along B, perp to flux surfaces, index 4,5: 3x3 matrix)
     real(dp), allocatable :: T_VC(:,:,:,:,:,:,:)                                ! C(ylindrical) to V(MEC) (lower)
     real(dp), allocatable :: T_VF(:,:,:,:,:,:,:)                                ! V(MEC) to F(lux) (upper)
-    real(dp), allocatable :: T_FV(:,:,:,:,:,:,:)                                ! V(MEC) to F(lux) (lower)
+    real(dp), allocatable, target :: T_FV(:,:,:,:,:,:,:)                        ! V(MEC) to F(lux) (lower)
     real(dp), allocatable :: T_HF(:,:,:,:,:,:,:)                                ! H(ELENA) to F(lux) (upper)
-    real(dp), allocatable :: T_FH(:,:,:,:,:,:,:)                                ! H(ELENA) to F(lux) (lower)
+    real(dp), allocatable, target :: T_FH(:,:,:,:,:,:,:)                        ! H(ELENA) to F(lux) (lower)
     real(dp), allocatable :: det_T_VC(:,:,:,:,:)                                ! determinant of T_VC
     real(dp), allocatable :: det_T_VF(:,:,:,:,:)                                ! determinant of T_VF
     real(dp), allocatable :: det_T_FV(:,:,:,:,:)                                ! determinant of T_FV
@@ -635,10 +635,10 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_jac_H_ind(deriv) result(ierr)
-        use HEL_vars, only:  qs, h_H_33, RBphi, flux_H, chi_H
+        use HEL_vars, only:  qs, h_H_33, RBphi, flux_H
         use utilities, only: calc_deriv
-        use eq_vars, only: n_par, grp_n_r_eq, grp_min_r_eq, min_par, max_par, &
-            &theta_H, grp_min_r_eq, grp_max_r_eq
+        use eq_vars, only: n_par, grp_n_r_eq, grp_min_r_eq, theta_H, &
+            &grp_min_r_eq, grp_max_r_eq
         
         character(*), parameter :: rout_name = 'calc_jac_H_ind'
         
@@ -985,8 +985,8 @@ contains
     ! system
     integer function calc_T_HF_ind(deriv) result(ierr)
         use num_vars, only: pi, use_pol_flux
-        use eq_vars, only: VMEC_L, q_saf_H, rot_t_H, n_par, theta_H, zeta_H, &
-            &flux_p_H, flux_t_H, grp_n_r_eq
+        use eq_vars, only: q_saf_H, rot_t_H, n_par, theta_H, zeta_H, flux_t_H, &
+            &grp_n_r_eq
         use utilities, only: arr_mult
         
         character(*), parameter :: rout_name = 'calc_T_HF_ind'
@@ -1620,12 +1620,40 @@ contains
     
     ! deallocates  metric  quantities  that  are  not  used  anymore  after  the
     ! equilibrium phase
-    subroutine dealloc_metric
-        deallocate(T_VC,T_VF,T_FV)
-        deallocate(det_T_VC,det_T_VF,det_T_FV)
-        deallocate(jac_C,jac_V,jac_F)
-        deallocate(g_C, g_V, g_F,h_F)
-    end subroutine dealloc_metric
+    integer function dealloc_metric() result(ierr)
+        use num_vars, only: eq_style
+        
+        character(*), parameter :: rout_name = 'dealloc_metric'
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! deallocate general variables
+        deallocate(jac_F,h_F)
+        
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                deallocate(T_VC,T_VF,T_FV)
+                deallocate(det_T_VC,det_T_VF,det_T_FV)
+                deallocate(jac_C,jac_V)
+                deallocate(g_C,g_V)
+            case (2)                                                            ! HELENA
+                deallocate(T_HF,T_FH)
+                deallocate(det_T_HF,det_T_FH)
+                deallocate(jac_H,g_H)
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+    end function dealloc_metric
     
     ! deallocates  metric quantities  that are not  used anymore  after the
     ! calculation for a certain alpha

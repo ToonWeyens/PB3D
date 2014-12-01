@@ -24,16 +24,18 @@ contains
     !       the other groups
     integer function run_rich_driver() result(ierr)
         use num_vars, only: min_alpha, max_alpha, n_alpha, glb_rank, grp_nr, &
-            &max_alpha, alpha_job_nr, use_pol_flux
+            &max_alpha, alpha_job_nr, use_pol_flux, eq_style
         use eq_vars, only: calc_eqd_mesh
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
         use VMEC_vars, only: dealloc_VMEC
+        use HEL_vars, only: dealloc_HEL
         
         character(*), parameter :: rout_name = 'run_rich_driver'
         
         ! local variables
         character(len=8) :: flux_name                                           ! toroidal or poloidal
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -111,8 +113,21 @@ contains
             end if
         end do field_lines
         
-        ! deallocate VMEC variables
-        call dealloc_VMEC
+        ! deallocate equilibrium variables
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                call dealloc_VMEC
+            case (2)                                                            ! HELENA
+                call dealloc_HEL
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
         
         ! merge  the subcommunicator into communicator MPI_COMM_WORLD
         if (glb_rank.eq.0) then
@@ -168,7 +183,8 @@ contains
         ! prepare the  matrix elements by calculating  the integrated magnitudes
         ! KV_int and  PV_int for each of  the n_r equilibrium normal  points and
         ! for the modes (k,m)
-        call prepare_X
+        ierr = prepare_X()
+        CHCKERR('')
         
         ! Initalize some variables for Richardson loop
         ir = 1
@@ -305,7 +321,8 @@ contains
         
         ! deallocate remaining equilibrium quantities
         call writo('Deallocate remaining quantities')
-        call dealloc_eq_final
+        ierr = dealloc_eq_final()
+        CHCKERR('')
         call dealloc_metric_final
         call dealloc_X_final
     end function run_for_alpha

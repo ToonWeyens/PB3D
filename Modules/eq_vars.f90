@@ -22,7 +22,8 @@ module eq_vars
         &grp_max_r_eq, R_0, pres_0, B_0, psi_0, rho_0, ang_par_F, &
         &rot_t_FD, rot_t_V, flux_p_V_full, flux_t_V_full, rot_t_V_full, &
         &max_flux, max_flux_eq, eq_use_pol_flux, q_saf_H, rot_t_H, theta_H, &
-        &zeta_H, flux_p_H, flux_t_H
+        &zeta_H, pres_H, flux_p_H, flux_t_H, q_saf_H_full, rot_t_H_full, &
+        &flux_p_H_full, flux_t_H_full
 
     ! global variables
     ! Note: The indices in [derivatives] are:
@@ -37,18 +38,18 @@ module eq_vars
     real(dp), allocatable :: theta_V(:,:), zeta_V(:,:)                          ! grid points (n_par, grp_n_r_eq, 2) in VMEC coords
     real(dp), allocatable :: theta_H(:,:), zeta_H(:,:)                          ! grid points (n_par, grp_n_r_eq, 2) in HELENA coords
     real(dp), allocatable :: ang_par_F(:,:)                                     ! parallel angle in flux coordinates (either zeta_F or theta_F)
-    real(dp), allocatable :: q_saf_V(:,:)                                       ! safety factor in VMEC coordinates
-    real(dp), allocatable :: q_saf_H(:,:)                                       ! safety factor in HELENA coordinates
+    real(dp), allocatable, target :: q_saf_V(:,:)                               ! safety factor in VMEC coordinates
+    real(dp), allocatable, target :: q_saf_H(:,:)                               ! safety factor in HELENA coordinates
     real(dp), allocatable :: q_saf_V_full(:,:)                                  ! safety factor in full normal mesh in VMEC coordinates
     real(dp), allocatable :: q_saf_H_full(:,:)                                  ! safety factor in full normal mesh in HELENA coordinates
     real(dp), allocatable :: q_saf_FD(:,:)                                      ! safety factor, Deriv. in Flux coords.
-    real(dp), allocatable :: rot_t_V(:,:)                                       ! rot. transform in VMEC coordinates
-    real(dp), allocatable :: rot_t_H(:,:)                                       ! rot. transform in HELENA coordinates
+    real(dp), allocatable, target :: rot_t_V(:,:)                               ! rot. transform in VMEC coordinates
+    real(dp), allocatable, target :: rot_t_H(:,:)                               ! rot. transform in HELENA coordinates
     real(dp), allocatable :: rot_t_V_full(:,:)                                  ! rot. transform in full normal mesh in VMEC coordinates
     real(dp), allocatable :: rot_t_H_full(:,:)                                  ! rot. transform in full normal mesh in HELENA coordinates
     real(dp), allocatable :: rot_t_FD(:,:)                                      ! rot. transform, Deriv. in Flux coords.
-    real(dp), allocatable :: flux_p_V(:,:), flux_t_V(:,:), pres_V(:,:)          ! pol. flux, tor. flux and pressure, and norm. Deriv. in VMEC coords.
-    real(dp), allocatable :: flux_p_H(:,:), flux_t_H(:,:), pres_H(:,:)          ! pol. flux, tor. flux and pressure, and norm. Deriv. in HELENA coords.
+    real(dp), allocatable, target :: flux_p_V(:,:), flux_t_V(:,:), pres_V(:,:)  ! pol. flux, tor. flux and pressure, and norm. Deriv. in VMEC coords.
+    real(dp), allocatable, target :: flux_p_H(:,:), flux_t_H(:,:), pres_H(:,:)  ! pol. flux, tor. flux and pressure, and norm. Deriv. in HELENA coords.
     real(dp), allocatable :: pres_FD(:,:)                                       ! pressure, and norm. Deriv. with values and Derivs. in flux coords.
     real(dp), allocatable, target :: flux_p_FD(:,:), flux_t_FD(:,:)             ! pol. and tor. flux, and norm. Deriv. with values and Derivs. in flux coords.
     real(dp), allocatable :: flux_p_V_full(:,:), flux_t_V_full(:,:)             ! pol. flux, tor. flux, and norm. Deriv. values and Derivs. in VMEC coords.
@@ -261,7 +262,7 @@ contains
     ! correct poloidal HELENA range and possibly multiples.
     integer function adapt_HEL_to_eq() result(ierr)
         use num_vars, only: pi
-        use HEL_vars, only: h_H_11, h_H_12, h_H_33, ias, chi_H, R_H, Z_H
+        use HEL_vars, only: h_H_11, h_H_12, h_H_33, ias, chi_H
         use utilities, only: interp_fun_1D
         
         character(*), parameter :: rout_name = 'adapt_HEL_to_eq'
@@ -270,8 +271,6 @@ contains
         real(dp), allocatable :: old_h_H_11(:,:)                                ! upper metric factor 11 (gem11)
         real(dp), allocatable :: old_h_H_12(:,:)                                ! upper metric factor 12 (gem12)
         real(dp), allocatable :: old_h_H_33(:,:)                                ! upper metric factor 33 (1/gem33)
-        real(dp), allocatable :: old_R_H(:,:)                                   ! R (xout)
-        real(dp), allocatable :: old_Z_H(:,:)                                   ! Z (yout)
         integer :: id, kd                                                       ! counters
         real(dp) :: par_loc                                                     ! local parallel (= poloidal) point
         
@@ -285,17 +284,11 @@ contains
         old_h_H_12 = h_H_12
         allocate(old_h_H_33(size(h_H_33,1),size(h_H_33,2)))
         old_h_H_33 = h_H_33
-        allocate(old_R_H(size(R_H,1),size(R_H,2)))
-        old_R_H = R_H
-        allocate(old_Z_H(size(Z_H,1),size(Z_H,2)))
-        old_Z_H = Z_H
         
         ! reallocate the new arrays
         deallocate(h_H_11); allocate(h_H_11(n_par,n_r_eq))
         deallocate(h_H_12); allocate(h_H_12(n_par,n_r_eq))
         deallocate(h_H_33); allocate(h_H_33(n_par,n_r_eq))
-        deallocate(R_H); allocate(R_H(n_par,n_r_eq))
-        deallocate(Z_H); allocate(Z_H(n_par,n_r_eq))
         
         ! For every poloidal point, check  which half poloidal circle it belongs
         ! to.  If this  is a  bottom part  and HELENA  is symmetric  (ias =  0),
@@ -315,12 +308,12 @@ contains
                         par_loc = par_loc + 2*pi
                     end do
                 else if (par_loc.gt.2*pi) then
-                    do while (par_loc.gt.2._dp)
+                    do while (par_loc.gt.2._dp*pi)
                         par_loc = par_loc - 2*pi
                     end do
                 end if
-                ! Interpolate  the HELENA  variables,  taking  into account  the
-                ! possible symmetry
+                ! Interpolate  the  HELENA  variables  poloidally,  taking  into
+                ! account the possible symmetry
                 if (ias.eq.0 .and. par_loc.gt.pi) then
                     ierr = interp_fun_1D(h_H_11(id,kd),old_h_H_11(:,kd),&
                         &2*pi-par_loc,x=chi_H)
@@ -330,12 +323,6 @@ contains
                     CHCKERR('')
                     ierr = interp_fun_1D(h_H_33(id,kd),old_h_H_33(:,kd),&
                         &2*pi-par_loc,x=chi_H)
-                    CHCKERR('')
-                    ierr = interp_fun_1D(R_H(id,kd),old_R_H(:,kd),&
-                        &2*pi-par_loc,x=chi_H)
-                    CHCKERR('')
-                    ierr = interp_fun_1D(Z_H(id,kd),-old_Z_H(:,kd),&
-                        &2*pi-par_loc,x=chi_H)                                  ! change of sign
                     CHCKERR('')
                 else
                     ierr = interp_fun_1D(h_H_11(id,kd),old_h_H_11(:,kd),&
@@ -347,19 +334,12 @@ contains
                     ierr = interp_fun_1D(h_H_33(id,kd),old_h_H_33(:,kd),&
                         &par_loc,x=chi_H)
                     CHCKERR('')
-                    ierr = interp_fun_1D(R_H(id,kd),old_R_H(:,kd),&
-                        &par_loc,x=chi_H)
-                    CHCKERR('')
-                    ierr = interp_fun_1D(Z_H(id,kd),old_Z_H(:,kd),&
-                        &par_loc,x=chi_H)
-                    CHCKERR('')
                 end if
             end do
         end do
         
         ! deallocate old arrays
         deallocate(old_h_H_11,old_h_H_12,old_h_H_33)
-        deallocate(old_R_H,old_Z_H)
     end function adapt_HEL_to_eq
     
     ! calculates flux quantities  and normal derivatives in  the VMEC coordinate
@@ -414,8 +394,7 @@ contains
             ! set up helper variables to calculate poloidal flux
             allocate(Dflux_p_full(n_r_eq),flux_p_int_full(n_r_eq))
             Dflux_p_full = iotaf*phi_r
-            ierr = calc_int(Dflux_p_full,&
-                &[(kd*1.0_dp/(n_r_eq-1.0_dp),kd=0,n_r_eq-1)],flux_p_int_full)
+            ierr = calc_int(Dflux_p_full,1.0_dp/(n_r_eq-1.0_dp),flux_p_int_full)
             CHCKERR('')
             
             ! poloidal flux: calculate using iotaf and phi, phi_r
@@ -775,6 +754,7 @@ contains
         ! theta_H,  zeta_H and  ang_par_F  defined on  the  entire normal  mesh.
         integer function calc_mesh_HEL(alpha) result(ierr)
             use HEL_vars, only: qs
+            use num_vars, only: use_pol_flux
             
             character(*), parameter :: rout_name = 'calc_mesh_HEL'
             
@@ -802,11 +782,19 @@ contains
             end do
             
             ! calculate theta_H and zeta_H from alpha and ang_par_F
-            theta_H = ang_par_F                                                 ! theta_F is parallel coordinate
-            do id = 1,n_par
-                zeta_H(id,:) = - ang_par_F(id,:)*qs(:)
-            end do
-            zeta_H = zeta_H + alpha
+            if (use_pol_flux) then                                              ! theta_H is parallel coordinate
+                theta_H = ang_par_F
+                do id = 1,n_par
+                    zeta_H(id,:) = ang_par_F(id,:)*qs(:)
+                end do
+                zeta_H = zeta_H + alpha
+            else                                                                ! zeta_H is parallel coordinate
+                zeta_H = ang_par_F
+                do id = 1,n_par
+                    theta_H(id,:) = ang_par_F(id,:)/qs(:)
+                end do
+                theta_H = theta_H - alpha
+            end if
         end function calc_mesh_HEL
     end function calc_mesh
     
@@ -1295,36 +1283,102 @@ contains
     
     ! deallocates  equilibrium quantities  that are not  used anymore  after the
     ! equilibrium phase
-    subroutine dealloc_eq
-        deallocate(VMEC_R,VMEC_Z,VMEC_L)
-        deallocate(flux_p_V)
-        deallocate(flux_t_V)
-        deallocate(trigon_factors)
-    end subroutine dealloc_eq
+    integer function dealloc_eq() result(ierr)
+        use num_vars, only: eq_style
+        
+        character(*), parameter :: rout_name = 'dealloc_eq'
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                deallocate(VMEC_R,VMEC_Z,VMEC_L)
+                deallocate(flux_p_V)
+                deallocate(flux_t_V)
+                deallocate(trigon_factors)
+            case (2)                                                            ! HELENA
+                deallocate(flux_p_H)
+                deallocate(flux_t_H)
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+    end function dealloc_eq
     
     ! deallocates  equilibrium quantities  that are not  used anymore  after the
     ! calculation for a certain alpha
-    subroutine dealloc_eq_final
-        use num_vars, only: grp_rank, use_pol_flux
+    integer function dealloc_eq_final() result(ierr)
+        use num_vars, only: grp_rank, use_pol_flux, eq_style
         
-        deallocate(pres_V,pres_FD)
+        character(*), parameter :: rout_name = 'dealloc_eq_final'
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! deallocate general variables
+        deallocate(pres_FD)
+        deallocate(flux_p_FD,flux_t_FD)
         if (use_pol_flux) then
-            deallocate(q_saf_V,q_saf_FD)
+            deallocate(q_saf_FD)
         else
-            deallocate(rot_t_V,rot_t_FD)
+            deallocate(rot_t_FD)
         end if
-        deallocate(flux_p_FD)
-        deallocate(flux_t_FD)
         
-        ! group masters
-        if (grp_rank.eq.0) then
-            deallocate(flux_p_V_full)
-            deallocate(flux_t_V_full)
-            deallocate(q_saf_V_full)
-            deallocate(rot_t_V_full)
-        end if
-        deallocate(zeta_V,theta_V,ang_par_F)
-    end subroutine dealloc_eq_final
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                deallocate(pres_V)
+                if (use_pol_flux) then
+                    deallocate(q_saf_V)
+                else
+                    deallocate(rot_t_V)
+                end if
+                
+                ! group masters
+                if (grp_rank.eq.0) then
+                    deallocate(flux_p_V_full)
+                    deallocate(flux_t_V_full)
+                    deallocate(q_saf_V_full)
+                    deallocate(rot_t_V_full)
+                end if
+                deallocate(zeta_V,theta_V,ang_par_F)
+            case (2)                                                            ! HELENA
+                deallocate(pres_H)
+                if (use_pol_flux) then
+                    deallocate(q_saf_H)
+                else
+                    deallocate(rot_t_H)
+                end if
+                
+                ! group masters
+                if (grp_rank.eq.0) then
+                    deallocate(flux_p_H_full)
+                    deallocate(flux_t_H_full)
+                    deallocate(q_saf_H_full)
+                    deallocate(rot_t_H_full)
+                end if
+                deallocate(zeta_H,theta_H,ang_par_F)
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+    end function dealloc_eq_final
     
     ! calculates X,Y  and Z on a  grid in the equilibrium  poloidal and toroidal
     ! angle theta and zeta, for every  normal point in either the equilibrium or
@@ -1334,11 +1388,11 @@ contains
     ! lambda on the grid, as this is  also needed some times. If HELENA is used,
     ! this variable is trivially zero.
     ! Note:  If  eq_grid  =  .false.,  the flux  arrays  have  to  be  correctly
-    ! initialized for this routine to work
+    ! initialized for this routine to work.
     integer function calc_XYZ_grid(theta,zeta,r_range,eq_grid,X,Y,Z,L) &
         &result(ierr)
         use num_vars, only: use_pol_flux, eq_style
-        use utilities, only: interp_fun_1D
+        use utilities, only: interp_fun_1D, round_with_tol
         
         character(*), parameter :: rout_name = 'calc_XYZ_grid'
         
@@ -1400,6 +1454,10 @@ contains
             r_loc = r_loc + 1._dp*(r_range(2)-r_range(1))/(n_r-1)
         end do
         
+        ! round with standard tolerance
+        ierr = round_with_tol(r_eq,0.0_dp,1.0_dp)
+        CHCKERR('')
+        
         ! choose which equilibrium style is being used:
         !   1:  VMEC
         !   2:  HELENA
@@ -1433,7 +1491,7 @@ contains
             real(dp), intent(inout), allocatable, optional :: L(:,:,:)          ! lambda of grid
             
             ! local variables
-            integer :: kd                                                       ! counter
+            integer :: id, kd, m, n                                             ! counters
             integer :: n_theta, n_zeta, n_r                                     ! dimensions of the grid
             real(dp), allocatable :: R_c_int(:,:,:), R_s_int(:,:,:)             ! interpolated version of R_c and R_s
             real(dp), allocatable :: Z_c_int(:,:,:), Z_s_int(:,:,:)             ! interpolated version of Z_c and Z_s
@@ -1466,34 +1524,50 @@ contains
             
             ! interpolate VMEC tables for every requested normal point
             do kd = 1,n_r                                                       ! loop over all normal points
-                ! interpolate R_c, ... tables to fill R_c_int, ...
-                call interp_3D_eq_table(R_c(:,:,:,0),R_c_int(:,:,kd),r_eq(kd))
-                call interp_3D_eq_table(R_s(:,:,:,0),R_s_int(:,:,kd),r_eq(kd))
-                call interp_3D_eq_table(Z_c(:,:,:,0),Z_c_int(:,:,kd),r_eq(kd))
-                call interp_3D_eq_table(Z_s(:,:,:,0),Z_s_int(:,:,kd),r_eq(kd))
-                if (present(L)) then
-                    call interp_3D_eq_table(L_c(:,:,:,0),L_c_int(:,:,kd),&
-                        &r_eq(kd))
-                    call interp_3D_eq_table(L_s(:,:,:,0),L_s_int(:,:,kd),&
-                        &r_eq(kd))
-                end if
+                ! interpolate the VMEC tables in normal direction
+                ! Note: VMEC uses an equidistant grid, here normalized from 0 to
+                ! 1
+                do n = -ntor,ntor
+                    do m = 0,mpol-1
+                        ierr = interp_fun_1D(R_c_int(m,n,kd),R_c(m,n,:,0),&
+                            &r_eq(kd))
+                        CHCKERR('')
+                        ierr = interp_fun_1D(R_s_int(m,n,kd),R_s(m,n,:,0),&
+                            &r_eq(kd))
+                        CHCKERR('')
+                        ierr = interp_fun_1D(Z_c_int(m,n,kd),Z_c(m,n,:,0),&
+                            &r_eq(kd))
+                        CHCKERR('')
+                        ierr = interp_fun_1D(Z_s_int(m,n,kd),Z_s(m,n,:,0),&
+                            &r_eq(kd))
+                        CHCKERR('')
+                        if (present(L)) then
+                            ierr = interp_fun_1D(L_c_int(m,n,kd),L_c(m,n,:,0),&
+                                &r_eq(kd))
+                            CHCKERR('')
+                            ierr = interp_fun_1D(L_s_int(m,n,kd),L_s(m,n,:,0),&
+                                &r_eq(kd))
+                            CHCKERR('')
+                        end if
+                    end do
+                end do
             end do
             
             ! inverse fourier transform with trigonometric factors
-            do kd = 1,n_theta
+            do id = 1,n_theta
                 ! calculate trigonometric factors
-                ierr = calc_trigon_factors(theta(kd,:,:),zeta(kd,:,:),&
+                ierr = calc_trigon_factors(theta(id,:,:),zeta(id,:,:),&
                     &trigon_factors)
                 CHCKERR('')
-                ierr = fourier2real(R_c_int,R_s_int,trigon_factors,R(kd,:,:),&
+                ierr = fourier2real(R_c_int,R_s_int,trigon_factors,R(id,:,:),&
                         &[0,0])
                 CHCKERR('')
-                ierr = fourier2real(Z_c_int,Z_s_int,trigon_factors,Z(kd,:,:),&
+                ierr = fourier2real(Z_c_int,Z_s_int,trigon_factors,Z(id,:,:),&
                         &[0,0])
                 CHCKERR('')
                 if (present(L)) then
                     ierr = fourier2real(L_c_int,L_s_int,trigon_factors,&
-                        &L(kd,:,:),[0,0])
+                        &L(id,:,:),[0,0])
                     CHCKERR('')
                 end if
                 
@@ -1514,7 +1588,7 @@ contains
         
         ! HELENA version
         integer function calc_XYZ_grid_HEL(theta,zeta,r_eq,X,Y,Z) result(ierr)
-            use HEL_vars, only: R_H, Z_H
+            use HEL_vars, only: R_H, Z_H, chi_H, ias, flux_H
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_HEL'
             
@@ -1529,6 +1603,7 @@ contains
             integer :: n_theta, n_zeta, n_r                                     ! dimensions of the grid
             real(dp), allocatable :: R_H_int(:), Z_H_int(:)                     ! R and Z at interpolated normal value
             real(dp), allocatable :: R(:,:,:)                                   ! R in Cylindrical coordinates
+            real(dp) :: theta_loc                                               ! local copy of theta
             
             ! initialize ierr
             ierr = 0
@@ -1548,18 +1623,54 @@ contains
             ! interpolate HELENA output  R_H and Z_H for  every requested normal
             ! point
             do kd = 1,n_r                                                       ! loop over all normal points
-                call interp_2D_eq_table(R_H,R_H_int,r_eq(kd))
-                call interp_2D_eq_table(Z_H,Z_H_int,r_eq(kd))
-                ! interpolate at the requested toroidal points
+                ! interpolate the HELENA tables in normal direction
+                ! Note:  HELENA   uses  a regular,  non-equidistant  grid,  here
+                ! normalized from 0 to 1 in flux_H/flux_H(n_r)
+                do id = 1,size(R_H,1)
+                    ierr = interp_fun_1D(R_H_int(id),R_H(id,:),r_eq(kd),&
+                        &x=flux_H/flux_H(n_r))
+                    CHCKERR('')
+                end do
+                do id = 1,size(Z_H,1)
+                    ierr = interp_fun_1D(Z_H_int(id),Z_H(id,:),r_eq(kd),&
+                        &x=flux_H/flux_H(n_r))
+                    CHCKERR('')
+                end do
+                ! loop over toroidal points
                 do jd = 1,n_zeta
                     ! interpolate at the requested poloidal points
+                    ! Note: R_H  and Z_H are  not adapted to the  parallel grid,
+                    ! but tabulated in the original HELENA poloidal grid
                     do id = 1,n_theta
-                        ierr = interp_fun_1D(R(id,jd,kd),R_H_int,&
-                            &theta(id,jd,kd),theta_H(:,kd))
-                        CHCKERR('')
-                        ierr = interp_fun_1D(Z(id,jd,kd),Z_H_int,&
-                            &theta(id,jd,kd),theta_H(:,kd))
-                        CHCKERR('')
+                        theta_loc = theta(id,jd,kd)
+                        ! add or subtract 2pi to  the parallel angle until it is
+                        ! at least 0 to get principal range 0..2pi
+                        if (theta_loc.lt.0._dp) then
+                            do while (theta_loc.lt.0._dp)
+                                theta_loc = theta_loc + 2*pi
+                            end do
+                        else if (theta_loc.gt.2*pi) then
+                            do while (theta_loc.gt.2._dp*pi)
+                                theta_loc = theta_loc - 2*pi
+                            end do
+                        end if
+                        ! Interpolate  the HELENA  variables poloidally,  taking
+                        ! into account the possible symmetry
+                        if (ias.eq.0 .and. theta_loc.gt.pi) then
+                            ierr = interp_fun_1D(R(id,jd,kd),R_H_int,&
+                                &2*pi-theta_loc,x=chi_H)
+                            CHCKERR('')
+                            ierr = interp_fun_1D(Z(id,jd,kd),-Z_H_int,&
+                                &2*pi-theta_loc,x=chi_H)                        ! Z at second half of period is inverted
+                            CHCKERR('')
+                        else
+                            ierr = interp_fun_1D(R(id,jd,kd),R_H_int,theta_loc,&
+                                &x=chi_H)
+                            CHCKERR('')
+                            ierr = interp_fun_1D(Z(id,jd,kd),Z_H_int,theta_loc,&
+                                &x=chi_H)
+                            CHCKERR('')
+                        end if
                     end do
                 end do
             end do
@@ -1571,69 +1682,5 @@ contains
             ! deallocate
             deallocate(R)
         end function calc_XYZ_grid_HEL
-        
-        ! interpolates a 2D equilibrium table in second dimension
-        subroutine interp_2D_eq_table(var_in,var_out,pt_in)
-            use utilities, only: con2dis
-            
-            ! input / output
-            real(dp), intent(in) :: var_in(:,:)                                 ! R_H, Z_H, ... HELENA table
-            real(dp), intent(inout) :: var_out(:)                               ! interpolated version of R_H, Z_H, ...
-            real(dp), intent(in) :: pt_in                                       ! point at which to interpolate (in equilibrium range)
-            
-            ! local variables
-            integer :: id_lo, id_hi                                             ! low and high indices for the interpolation
-            real(dp) :: pt_dis                                                  ! discrete, unrounded equivalent of pt_in in eq. grid
-            
-            ! convert pt_in to discrete equilibrium grid, unrounded
-            call con2dis(pt_in,[0._dp,1._dp],pt_dis,[1,n_r_eq])
-            
-            ! round up and down
-            id_lo = floor(pt_dis)
-            id_hi = ceiling(pt_dis)
-            
-            ! limit both to the total range of the VMEC tables
-            ! (they can fall outside the range due to numerical errors)
-            if (id_lo.lt.1) id_lo = 1
-            if (id_hi.lt.1) id_hi = 1
-            if (id_lo.gt.n_r_eq) id_lo = n_r_eq
-            if (id_hi.gt.n_r_eq) id_hi = n_r_eq
-            
-            ! interpolate var_in 
-            var_out = var_in(:,id_lo) + (pt_dis-id_lo) * &
-                &(var_in(:,id_hi)-var_in(:,id_lo))                              ! because id_hi - id_lo = 1
-        end subroutine interp_2D_eq_table
-        
-        ! interpolates a 3D equilibrium table in third dimension
-        subroutine interp_3D_eq_table(var_in,var_out,pt_in)
-            use utilities, only: con2dis
-            
-            ! input / output
-            real(dp), intent(in) :: var_in(:,:,:)                               ! R_c, Z_s, ... VMEC table
-            real(dp), intent(inout) :: var_out(:,:)                             ! interpolated version of R_c, Z_s, ...
-            real(dp), intent(in) :: pt_in                                       ! point at which to interpolate (in equilibrium range)
-            
-            ! local variables
-            integer :: id_lo, id_hi                                             ! low and high indices for the interpolation
-            real(dp) :: pt_dis                                                  ! discrete, unrounded equivalent of pt_in in eq. grid
-            
-            ! convert pt_in to discrete equilibrium grid, unrounded
-            call con2dis(pt_in,[0._dp,1._dp],pt_dis,[1,n_r_eq])
-            
-            ! round up and down
-            id_lo = floor(pt_dis)
-            id_hi = ceiling(pt_dis)
-            
-            ! limit both to the total range of the VMEC tables
-            ! (they can fall outside the range due to numerical errors)
-            if (id_lo.lt.1) id_lo = 1
-            if (id_hi.lt.1) id_hi = 1
-            if (id_lo.gt.n_r_eq) id_lo = n_r_eq
-            if (id_hi.gt.n_r_eq) id_hi = n_r_eq
-            
-            ! interpolate var_in 
-            var_out = var_in(:,:,id_lo) + (pt_dis-id_lo) * &
-                &(var_in(:,:,id_hi)-var_in(:,:,id_lo))                          ! because id_hi - id_lo = 1
-        end subroutine interp_3D_eq_table
     end function calc_XYZ_grid
 end module eq_vars

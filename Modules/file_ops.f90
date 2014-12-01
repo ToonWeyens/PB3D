@@ -135,7 +135,9 @@ contains
         character(len=max_str_ln) :: input_con_symb(3)                          ! all the possible connectors used to check for the input file
         character(len=max_str_ln) :: eq_exts(1)                                 ! all the possible extensions of the name provided by user for the equilibrium file
         character(len=max_str_ln) :: eq_con_symb(3)                             ! all the possible connectors used to check for the equilibrium file
-        character(len=4) :: first_word                                          ! first word of equilibrium file
+        character(len=4) :: first_word                                          ! first word of equilibrium file (VMEC)
+        integer :: first_ints(2)                                                ! first two input integers of input file (HELENA)
+        integer :: istat                                                        ! status
         
         ierr = 0                                                                ! no errors (yet)
      
@@ -194,17 +196,31 @@ contains
                 end if
             end if
             
-            ! determine which equilibrium style (1: VMEC, 2: HELENA)
+            ! Determine which equilibrium style (1: VMEC, 2: HELENA)
+            ! set eq_style to a nonsensical value
+            eq_style = -1
+            ! Check for VMEC
             read(eq_i,*,IOSTAT=ierr) first_word                                 ! read first word of equilibrium file
+            backspace(UNIT=eq_i)                                                ! go back one line in the equilibrium file
             err_msg = 'Unable to read first word of equilibrium file'
             CHCKERR(err_msg)
             if (first_word.eq.'VMEC') then                                      ! It is a VMEC file
                 eq_style = 1
-            else                                                                ! TEMPORARILY ASSUME IT'S A HELENA FILE
-                !!!! HELENA FILES SHOULD BE BETTER RECOGNIZED !!!!
+            end if
+            ! Check for HELENA
+            read(eq_i,*,IOSTAT=istat) first_ints
+            backspace(UNIT=eq_i)                                                ! go back one line in the equilibrium file
+            if (istat.eq.0) then
                 eq_style = 2
             end if
-            backspace(UNIT=eq_i)                                                ! go back one line in the equilibrium file
+            ! Check if something was found
+            if (eq_style.lt.1 .or. eq_style.gt.2) then
+                ierr = 1
+                call writo('Unable to recognize type of input file')
+                call writo('If you are trying to open HELENA files, you need &
+                    &to have a version that outputs the variable IAS')
+                CHCKERR('')
+            end if
             
             ! set options
             if (numargs.gt.2) then                                              ! options given

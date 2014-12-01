@@ -31,11 +31,20 @@ module utilities
     interface calc_inv
         module procedure calc_inv_0D, calc_inv_2D
     end interface
-    interface calc_int
-        module procedure calc_int_real, calc_int_complex
-    end interface
     interface calc_deriv
         module procedure calc_deriv_equidistant, calc_deriv_regular
+    end interface
+    interface calc_int
+        module procedure calc_int_equidistant, calc_int_regular
+    end interface
+    interface round_with_tol
+        module procedure round_with_tol_arr, round_with_tol_ind
+    end interface
+    interface con2dis
+        module procedure con2dis_equidistant, con2dis_regular
+    end interface
+    interface dis2con
+        module procedure dis2con_equidistant, dis2con_regular
     end interface
     
 contains
@@ -397,7 +406,7 @@ contains
                 case default
                     ! This you should never reach!
                     err_msg = 'Derivation of order '//trim(i2str(ord))//&
-                        &' not possible in calc_deriv_equidistant'
+                        &' not possible in calc_deriv_regular'
                     ierr = 1
                     CHCKERR(err_msg)
             end select
@@ -535,7 +544,7 @@ contains
         end do
     end function
 
-    ! integrates a function using the trapezoidal rule:
+    ! Integrates a function using the trapezoidal rule:
     !   int_1^n f(x) dx = sum_k=1^(n-1) {(f(k+1)+f(k))*(x(k+1)-x(k))/2},
     ! with n the number of points. So, n  points have to be specified as well as
     ! n values  for the function  to be interpolated. They  have to be  given in
@@ -543,13 +552,13 @@ contains
     ! this yields the following difference formula:
     !   int_1^n f(x) dx = int_1^(n-1) f(x) dx + (f(n)+f(n-1))*(x(n)-x(n-1))/2,
     ! which is used here
-    integer function calc_int_real(var,x,var_int) result(ierr)
-        character(*), parameter :: rout_name = 'calc_int_real'
+    integer function calc_int_regular(var,x,var_int) result(ierr)
+        character(*), parameter :: rout_name = 'calc_int_regular'
         
         ! input / output
-        real(dp) :: var_int(:)
-        real(dp) :: var(:)
-        real(dp) :: x(:)
+        real(dp), intent(inout) :: var_int(:)                                   ! integrated variable
+        real(dp), intent(in) :: var(:)                                          ! variable to be integrated
+        real(dp), intent(in) :: x(:)                                            ! abscissa
         
         ! local variables
         integer :: n_max
@@ -569,7 +578,7 @@ contains
             ierr = 1
             CHCKERR(err_msg)
         else if (n_max.lt.2) then
-            err_msg = 'Asking calc_int to integrate with '//trim(i2str(n_max))&
+            err_msg = 'Asking to integrate with '//trim(i2str(n_max))&
                 &//' points. Need at least 2'
             ierr = 1
             CHCKERR(err_msg)
@@ -582,14 +591,19 @@ contains
             var_int(kd) = var_int(kd-1) + &
                 &(var(kd)+var(kd-1))/2 * (x(kd)-x(kd-1))
         end do
-    end function calc_int_real
-    integer function calc_int_complex(var,x,var_int) result(ierr)
-        character(*), parameter :: rout_name = 'calc_int_complex_2D'
+    end function calc_int_regular
+    
+    ! Integrates a function using the trapezoidal rule:
+    !   int_1^n f(x) dx = sum_k=1^(n-1) {(f(k+1)+f(k))*delta_x/2},
+    ! with n  the number of points,  which are assumed to be  equidistant with a
+    ! given step size delta_x.
+    integer function calc_int_equidistant(var,step_size,var_int) result(ierr)
+        character(*), parameter :: rout_name = 'calc_int_equidistant'
         
         ! input / output
-        complex(dp) :: var_int(:)
-        complex(dp) :: var(:)
-        real(dp) :: x(:)
+        real(dp), intent(inout) :: var_int(:)                                   ! integrated variable
+        real(dp), intent(in) :: var(:)                                          ! variable to be integrated
+        real(dp), intent(in) :: step_size                                       ! step size of abscissa
         
         ! local variables
         integer :: n_max
@@ -603,13 +617,8 @@ contains
         n_max = size(var)
         
         ! tests
-        if (size(x).ne.n_max) then
-            err_msg = 'The arrays of points and values are not of the same &
-                &length'
-            ierr = 1
-            CHCKERR(err_msg)
-        else if (n_max.lt.2) then
-            err_msg = 'Asking calc_int to integrate with '//trim(i2str(n_max))&
+        if (n_max.lt.2) then
+            err_msg = 'Asking to integrate with '//trim(i2str(n_max))&
                 &//' points. Need at least 2'
             ierr = 1
             CHCKERR(err_msg)
@@ -619,10 +628,9 @@ contains
         var_int = 0.0_dp
         
         do kd = 2, n_max
-            var_int(kd) = var_int(kd-1) + &
-                &(var(kd)+var(kd-1))/2 * (x(kd)-x(kd-1))
+            var_int(kd) = var_int(kd-1) + (var(kd)+var(kd-1))/2 * step_size
         end do
-    end function calc_int_complex
+    end function calc_int_equidistant
     
     ! extrapolates  a   function,  using  linear  or   quadratic  interpolation,
     ! depending on  the number of  points and values  given. The data  should be
@@ -1205,45 +1213,120 @@ contains
         end do NR
     end function calc_zero_NR
 
-    ! convert  between points  on  a continuous  grid  (.e.g. perturbation  grid
-    ! (min_r_X..max_r_X))  and  on  a  discrete  grid  (.e.g.  equilibrium  grid
-    ! (1..n_r)),  taking  into  account  the   limits  on  the  continuous  grid
-    ! (lim_cont) and the limits on the discrete grid (lim_dis)
-    ! The formula used is:
-    !    pt_c - min_c     pt_d - min_d
-    !   ------------- =  ------------- ,
-    !   max_c - min_c    max_d - min_d
-    ! note: for con2dis,  the limits of the discrete grid  are given as discrete
-    ! values, while the output  pt_d is given back as a real  value, which is to
-    ! be rounded by the calling subroutine
-    subroutine con2dis(pt_c,lim_c,pt_d,lim_d)
+    ! Convert  between  points  from  a  continuous grid  to  a  discrete  grid,
+    ! providing either  the the limits on  the grid (lim_c and  lim_d), in which
+    ! case the grid is assumed to be equidistant, or the grid values themselves,
+    ! in which case the grid just has to be regular.
+    ! The output is a  real value where the floored integer is  the index in the
+    ! discrete grid  and the remainder  corresponds to the fraction  towards the
+    ! next index.  If no solution  is found, a  negative value is  outputted, as
+    ! well as a message.
+    subroutine con2dis_equidistant(pt_c,pt_d,lim_c,lim_d)                       ! equidistant version
         ! input / output
         real(dp), intent(in) :: pt_c                                            ! point on continous grid
-        real(dp), intent(in) :: lim_c(2)                                        ! [min_c,max_c]
         real(dp), intent(inout) :: pt_d                                         ! point on discrete grid
+        real(dp), intent(in) :: lim_c(2)                                        ! [min_c,max_c]
         integer, intent(in) :: lim_d(2)                                         ! [min_d,max_d]
         
-        ! calculate
+        ! Calculate, using the formula:
+        !    pt_c - min_c     pt_d - min_d
+        !   ------------- =  ------------- ,
+        !   max_c - min_c    max_d - min_d
         pt_d = lim_d(1) + (lim_d(2)-lim_d(1)) * (pt_c-lim_c(1)) / &
             &(lim_c(2)-lim_c(1))
-    end subroutine con2dis
-    subroutine dis2con(pt_d,lim_d,pt_c,lim_c)
+    end subroutine con2dis_equidistant
+    subroutine con2dis_regular(pt_c,pt_d,var_c)                                 ! regular grid version
+        ! input / output
+        real(dp), intent(in) :: pt_c                                            ! point on continous grid
+        real(dp), intent(inout) :: pt_d                                         ! point on discrete grid
+        real(dp), intent(in) :: var_c(:)                                        ! continous grid values
+        
+        ! local variables
+        real(dp), allocatable :: var_c_inv(:)                                   ! inverted var_c
+        integer :: size_c                                                       ! size of var_c
+        integer :: ind_lo, ind_hi                                               ! lower and upper index comprising pt_c
+        integer :: id                                                           ! counter
+        
+        ! set up var_c_inv
+        size_c = size(var_c)
+        allocate(var_c_inv(size_c))
+        var_c_inv = var_c(size_c:1:-1)
+        
+        ! find the lower and upper index comprising pt_c
+        ind_lo = 0
+        ind_hi = size_c+1
+        do id = 1,size_c
+            if (var_c(id).le.pt_c) ind_lo = id
+            if (var_c_inv(id).ge.pt_c) ind_hi = size_c+1-id
+        end do
+        
+        ! tests
+        if (ind_lo.eq.0 .or. ind_hi.eq.size_c+1) then                           ! not within range
+            call writo('pt_c not within range',persistent=.true.)
+            pt_d = -1._dp
+            return
+        end if
+        
+        ! set output
+        if (ind_lo.lt.ind_hi) then                                              ! valid output that does not correspond to a point on grid
+            pt_d = ind_lo + (pt_c-var_c(ind_lo))/(var_c(ind_hi)-var_c(ind_lo))
+        else if (ind_lo.eq.ind_hi) then                                         ! valid output that does correspond to a point on grid
+            pt_d = ind_lo
+        else                                                                    ! invalid output
+            call writo('ind_lo cannot be higher than ind_hi',persistent=.true.)
+            pt_d = -1._dp
+            return
+        end if
+        
+        ! deallocate
+        deallocate(var_c_inv)
+    end subroutine con2dis_regular
+    
+    ! Convert  between  points  from  a  discrete grid  to  a  continuous  grid,
+    ! providing either  the the limits on  the grid (lim_c and  lim_d), in which
+    ! case the grid is assumed to be equidistant, or the grid values themselves,
+    ! in which case the grid just has to be regular.
+    ! The output is a real value. If  the discrete value lies outside the range,
+    ! in the case of a regular grid, a negative value is outputted, as well as a
+    ! message.
+    subroutine dis2con_equidistant(pt_d,pt_c,lim_d,lim_c)                       ! equidistant version
         ! input / output
         integer, intent(in) :: pt_d                                             ! point on discrete grid
-        integer, intent(in) :: lim_d(2)                                         ! [min_d,max_d]
         real(dp), intent(inout) :: pt_c                                         ! point on continous grid
+        integer, intent(in) :: lim_d(2)                                         ! [min_d,max_d]
         real(dp), intent(in) :: lim_c(2)                                        ! [min_c,max_c]
         
-        ! calculate
+        ! Calculate, using the formula:
+        !    pt_c - min_c     pt_d - min_d
+        !   ------------- =  ------------- ,
+        !   max_c - min_c    max_d - min_d
         pt_c = lim_c(1) + (lim_c(2)-lim_c(1)) * (pt_d-lim_d(1)) / &
             &(lim_d(2)-lim_d(1))
-    end subroutine dis2con
+    end subroutine dis2con_equidistant
+    subroutine dis2con_regular(pt_d,pt_c,var_c)                                 ! regular grid version
+        ! input / output
+        integer, intent(in) :: pt_d                                             ! point on discrete grid
+        real(dp), intent(inout) :: pt_c                                         ! point on continous grid
+        real(dp), intent(in) :: var_c(:)                                        ! continous grid values
+        
+        ! Check whether the discrete value lies inside the range
+        if (pt_d.lt.1 .or. pt_d.gt.size(var_c)) then
+            call writo('pt_c not within range',persistent=.true.)
+            pt_c = -1._dp
+            return
+        end if
+        
+        ! Return the continuous variable
+        pt_c = var_c(pt_d)
+    end subroutine dis2con_regular
     
-    integer function round_with_tol(val,lim_lo,lim_hi,tol) result(ierr)
-        character(*), parameter :: rout_name = 'round_with_tol'
+    ! rounds  an  arry of  values  to limits,  with  a tolerance  1E-5 that  can
+    ! optionally be modified
+    integer function round_with_tol_arr(vals,lim_lo,lim_hi,tol) result(ierr)    ! array version
+        character(*), parameter :: rout_name = 'round_with_tol_arr'
         
         ! input / output
-        real(dp), intent(inout) :: val                                          ! value to be rounded
+        real(dp), intent(inout) :: vals(:)                                      ! values to be rounded
         real(dp), intent(in) :: lim_lo, lim_hi                                  ! limits on val
         real(dp), intent(in), optional :: tol                                   ! tolerance
         
@@ -1262,33 +1345,43 @@ contains
         end if
         
         ! set possible error message
-        err_msg = 'value has to lie within 0..1, yet it is equal to '//&
-            &trim(r2str(val))//'...'
+        err_msg = 'value has to lie within 0..1'
         
-        ! round
-        if (val.lt.lim_lo) then
-            if (val.lt.lim_lo-loc_tol) then
-                ierr = 1
-                CHCKERR(err_msg)
-            else
-                val = lim_lo
-            end if
+        if (minval(vals-lim_lo+loc_tol).lt.0) then
+            ierr = 1
+            CHCKERR(err_msg)
+        else if (maxval(vals-lim_hi-loc_tol).gt.0) then
+            ierr = 1
+            CHCKERR(err_msg)
+        else
+            where (vals.lt.lim_lo) vals = lim_lo
+            where (vals.gt.lim_hi) vals = lim_hi
         end if
-        if (val.gt.lim_hi) then
-            if (val.gt.lim_hi+loc_tol) then
-                ierr = 1
-                CHCKERR(err_msg)
-            else
-                val = lim_hi
-            end if
-        end if
-    end function round_with_tol
+    end function round_with_tol_arr
+    integer function round_with_tol_ind(val,lim_lo,lim_hi,tol) result(ierr)     ! individual version
+        character(*), parameter :: rout_name = 'round_with_tol_ind'
+        
+        ! input / output
+        real(dp), intent(inout) :: val                                          ! value to be rounded
+        real(dp), intent(in) :: lim_lo, lim_hi                                  ! limits on val
+        real(dp), intent(in), optional :: tol                                   ! tolerance
+        
+        ! local variables
+        real(dp) :: vals(1)                                                     ! array copy of val
+        
+        ! initialize ierr
+        ierr = 0
+        
+        vals(1) = val
+        
+        ierr = round_with_tol_arr(vals,lim_lo,lim_hi,tol)
+        CHCKERR('')
+    end function round_with_tol_ind
     
-    ! interpolate a  1D function  y(x) by  providing the array  y and  x_in. The
+    ! Interpolate a  1D function  y(x) by  providing the array  y and  x_in. The
     ! result is stored in  y_out. The array x can be  optionally passed. If not,
-    ! it is assumed to be the linear space between 0 and 1
-    ! Note: This function is assumed to be monotomous. If not, the latest result
-    ! is returned
+    ! it is assumed to be the (equidistant) linear space between 0 and 1.
+    ! Note: This function is assumed to be monotomous. If not, an error results.
     integer function interp_fun_1D(y_out,y,x_in,x) result(ierr)
         character(*), parameter :: rout_name = 'interp_fun_1D'
         
@@ -1300,12 +1393,9 @@ contains
         
         ! local variables
         integer :: n_pt                                                         ! nr. points in y
-        real(dp) :: x_diff                                                      ! difference between x and x_in
-        integer :: id                                                           ! counter
         real(dp) :: ind                                                         ! unrounded x-index
-        integer :: ind_lo                                                       ! lower index of x_in in x(x)
+        integer :: ind_lo, ind_hi                                               ! lower and higher index of x_in in x(x)
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp) :: tol = 1.0E-6_dp                                             ! relative tolerance
         
         ! initialize ierr
         ierr = 0
@@ -1322,50 +1412,25 @@ contains
             end if
         end if
         
-        ! initialize ind_lo
-        ind_lo = -1
-        
         ! find the lower range of the index in the x array
         if (present(x)) then
-            ! check first point
-            if (abs((x_in-x(1))/maxval(x)).lt.tol) then
-                ind_lo = 1
-            else
-                x_diff = x(1)-x_in
-                ! find indices in x where that enclose x_in
-                do id = 2,n_pt
-                    ! check if x_diff has changed sign
-                    if ((x(id)-x_in)/x_diff.lt.tol) ind_lo = id-1               ! use tol instead of 0.0 to allow for x(id)-x_in = 0.0
-                    ! update x_diff
-                    x_diff = x(id)-x_in
-                end do
-            end if
-            
-            ! test if result has been found
-            if (ind_lo.lt.1) then
-                ! maybe last point?
-                if (abs((x(n_pt)-x_in)/maxval(abs(x))).lt.tol) then
-                    ind_lo = n_pt-1
-                else
-                    err_msg = 'x-value not found in x-range'
-                    ierr = 1
-                    CHCKERR(err_msg)
-                end if
-            end if
+            call con2dis(x_in,ind,x)
         else
-            call con2dis(x_in,[0._dp,1._dp],ind,[1,n_pt])
-            ind_lo = floor(ind)
-            if (ind_lo.eq.n_pt) ind_lo = ind_lo-1                               ! to avoid problems at last point
+            call con2dis(x_in,ind,[0._dp,1._dp],[1,n_pt])
         end if
         
-        ! calculate y_out
-        if (present(x)) then
-            y_out = y(ind_lo) + (y(ind_lo+1)-y(ind_lo)) * &
-                &(x_in-x(ind_lo))/(x(ind_lo+1)-x(ind_lo))
-        else
-            y_out = y(ind_lo) + (y(ind_lo+1)-y(ind_lo)) * &
-                &(ind-ind_lo)
+        ! test if result has been found
+        if (ind.le.0) then
+            ierr = 1
+            CHCKERR('con2dis above')
         end if
-        !write(*,*) 'x_in, ind_lo, y_out = ', x_in, ind_lo, y_out
+        
+        ! set ind_lo and ind_hi
+        ind_lo = floor(ind)
+        ind_hi = ceiling(ind)
+        
+        ! calculate y_out
+        y_out = y(ind_lo) + (y(ind_hi)-y(ind_lo)) * &
+            &(ind-ind_lo)
     end function interp_fun_1D
 end module utilities

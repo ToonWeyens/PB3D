@@ -16,14 +16,19 @@ module X_ops
 contains
     ! prepare the matrix elements by calculating KV and PV, which then will have
     ! to be integrated, with a complex exponential weighting function
-    subroutine prepare_X
+    integer function prepare_X() result(ierr)
         use X_vars, only: init_X, calc_PV, calc_KV, calc_U, calc_extra, &
             &calc_V_int, dealloc_X, &
             &PV0, PV1, PV2, KV0, KV1, KV2, PV_int, KV_int
         use num_vars, only: use_pol_flux
         
+        character(*), parameter :: rout_name = 'prepare_X'
+        
         ! local variables
         character(len=5) :: ang_par_F_name                                      ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! set up ang_par_F_name
         if (use_pol_flux) then
@@ -52,7 +57,8 @@ contains
         ! calculate extra equilibrium quantities
         call writo('Calculating extra equilibrium quantities...')
         call lvl_ud(1)
-        call calc_extra
+        ierr = calc_extra()
+        CHCKERR('')
         call lvl_ud(-1)
         
         ! Calculate PV0, PV1  and PV2 for all (k,m) pairs  and n_r (equilibrium)
@@ -92,7 +98,7 @@ contains
         call lvl_ud(-1)
         
         call writo('Done calculating')
-    end subroutine prepare_X
+    end function prepare_X
     
     ! set-up and  solve the  EV system  by discretizing  the equations  in n_r_X
     ! normal points,  making use of  PV0, PV1 and  PV2, interpolated in  the n_r
@@ -157,7 +163,7 @@ contains
             n_t(2) = 1                                                          ! 1 quarter period
             n_t(1) = 10                                                         ! 10 points per quarter period
         else
-            n_t(2) = 8                                                          ! 8 quarter periods
+            n_t(2) = 4                                                          ! 4 quarter periods
             n_t(1) = 5                                                          ! 5 points per quarter period
         end if
         
@@ -187,12 +193,11 @@ contains
         use num_vars, only: grp_rank, min_r_X, max_r_X, max_n_plots, &
             &grp_n_procs, use_pol_flux
         use output_ops, only: draw_GP, draw_GP_animated, merge_GP
-        use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X, grp_min_r_X
+        use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X
         use MPI_ops, only: get_ser_X_vec, get_ghost_X_vec, wait_MPI
-        use eq_vars, only: q_saf_FD, rot_t_FD, grp_n_r_eq, grp_min_r_eq, &
-            &max_flux, max_flux_eq, flux_p_FD, flux_t_FD, n_r_eq, &
-            &eq_use_pol_flux
-        use utilities, only: dis2con, con2dis, interp_fun_1D
+        use eq_vars, only: q_saf_FD, rot_t_FD, grp_n_r_eq, max_flux, &
+            &max_flux_eq, flux_p_FD, flux_t_FD, eq_use_pol_flux
+        use utilities, only: con2dis, interp_fun_1D
         
         character(*), parameter :: rout_name = 'plot_X_vec_GP'
         
@@ -316,9 +321,7 @@ contains
                 if (kd.lt.grp_n_norm .and. grp_rank+1.lt.grp_n_procs &
                     &.or. grp_rank+1.eq.grp_n_procs) then                       ! last point is treated differently
                     ! set up interp. X_vec (tabulated in perturbation grid)
-                    call con2dis(r_plot(kd),[min_r_X,max_r_X],kd_loc_i,&
-                        &[1,n_r_X])
-                    kd_loc_i = kd_loc_i - grp_min_r_X + 1                       ! include offset of perturbation tables
+                    call con2dis(r_plot(kd),kd_loc_i,grp_r_X)                   ! perturbation values tabulated at grp_r_X for this group
                     X_vec_interp = X_vec_extended(:,floor(kd_loc_i)) + &
                         &(kd_loc_i-floor(kd_loc_i)) * &
                         &(X_vec_extended(:,ceiling(kd_loc_i))-&
@@ -329,8 +332,7 @@ contains
                     ierr = interp_fun_1D(kd_loc_eq,flux_eq/max_flux_eq,&
                         &r_plot(kd),flux/max_flux)
                     CHCKERR('')
-                    call con2dis(kd_loc_eq,[0._dp,1._dp],kd_loc_i,[1,n_r_eq])
-                    kd_loc_i = kd_loc_i - grp_min_r_eq + 1                      ! include offset of equilibrium tables
+                    call con2dis(kd_loc_eq,kd_loc_i,flux_eq/max_flux_eq)        ! equilibrium values tabulated at flux_eq for this group, normalized with max_flux_eq
                     fac_n_interp = fac_n(floor(kd_loc_i)) + &
                         &(kd_loc_i-floor(kd_loc_i)) * &
                         &(fac_n(ceiling(kd_loc_i))-fac_n(floor(kd_loc_i)))
@@ -572,6 +574,7 @@ contains
         use X_vars, only: grp_min_r_X, grp_n_r_X, n_r_X, grp_r_X, grp_n_r_X, &
             &size_X, n_X, m_X
         use output_ops, only: print_HDF5_3D
+        use num_vars, only: eq_style
         use eq_vars, only: calc_XYZ_grid
         use HDF5_vars, only: open_HDF5_file, print_HDF5_top, print_HDF5_geom, &
             &print_HDF5_3D_data_item, print_HDF5_grid, add_HDF5_item, &
@@ -590,8 +593,8 @@ contains
         
         ! local variables
         integer :: id, kd, ld                                                   ! counters
-        integer :: n_theta_plot = 80                                            ! nr. of poloidal points in plot
-        integer :: n_zeta_plot = 160                                            ! nr. of toroidal points in plot
+        integer :: n_theta_plot = 201                                           ! nr. of poloidal points in plot
+        integer :: n_zeta_plot = 101                                            ! nr. of toroidal points in plot
         real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)            ! theta_V and zeta_V for flux surface plot
         real(dp), allocatable :: x_plot(:,:,:)                                  ! x values of plot
         real(dp), allocatable :: y_plot(:,:,:)                                  ! y values of plot
@@ -608,6 +611,7 @@ contains
         type(XML_str_type) :: geom                                              ! geometry
         type(XML_str_type) :: att(1)                                            ! attribute
         character(len=max_str_ln) :: var_name                                   ! name of variable that is plot
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -647,8 +651,8 @@ contains
             end do
         end if
         
-        ! calculate X,Y and Z using the VMEC theta_plot and zeta_plot, tabulated
-        ! in the perturbation normal grid indicated by grp_r_X
+        ! calculate X,Y  and Z using  the Equilibrium theta_plot  and zeta_plot,
+        ! tabulated in the perturbation normal grid indicated by grp_r_X
         ierr = calc_XYZ_grid(theta_plot,zeta_plot,&
             &[grp_r_X(1),grp_r_X(grp_n_r_X)],.false.,&
             &x_plot,y_plot,z_plot,l_plot)
@@ -709,20 +713,46 @@ contains
             ! print data item for plot variable f_plot
             f_plot = 0.0_dp
             ! for all normal points
-            do kd = 1,grp_n_r_X
-                ! for all modes
-                do ld = 1,size_X
-                    ! Need to  translate from VMEC  coordinates (theta_V,zeta_V)
-                    ! to  flux  coordinates  (theta_F,zeta_F)  for  the  inverse
-                    ! Fourier transform of the  Eigenvalue Fourier modes to real
-                    ! space
-                    f_plot(:,:,kd) = f_plot(:,:,kd) + realpart(X_vec(ld,kd) * &
-                        &exp(iu * &
-                        &(omega/abs(omega)*0.5*pi*(id-1.0_dp)/(n_t(1)-1) + &
-                        &n_X(ld)*(-zeta_plot(:,:,kd)) - &
-                        &m_X(ld)*(theta_plot(:,:,kd)+l_plot(:,:,kd)))))
-                end do
-            end do
+            ! choose which equilibrium style is being used:
+            !   1:  VMEC
+            !   2:  HELENA
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    do kd = 1,grp_n_r_X
+                        ! for all modes
+                        do ld = 1,size_X
+                            ! Need   to   translate    from   VMEC   coordinates
+                            ! (theta_V,zeta_V)      to     flux      coordinates
+                            ! (theta_F,zeta_F) for the inverse Fourier transform
+                            ! of the Eigenvalue Fourier modes to real space
+                            f_plot(:,:,kd) = f_plot(:,:,kd) + &
+                                &realpart(X_vec(ld,kd) * exp(iu * &
+                                &(omega/abs(omega)*0.5*pi*&
+                                &(id-1.0_dp)/(n_t(1)-1) + &
+                                &n_X(ld)*(-zeta_plot(:,:,kd)) - &
+                                &m_X(ld)*(theta_plot(:,:,kd)+l_plot(:,:,kd)))))
+                        end do
+                    end do
+                case (2)                                                        ! HELENA
+                    do kd = 1,grp_n_r_X
+                        ! for all modes
+                        do ld = 1,size_X
+                            ! HELENA coordinates  (theta_H,zeta_H) coincide with
+                            ! flux coordinates (theta_F,zeta_F)
+                            f_plot(:,:,kd) = f_plot(:,:,kd) + &
+                                &realpart(X_vec(ld,kd) * exp(iu * &
+                                &(omega/abs(omega)*0.5*pi*&
+                                &(id-1.0_dp)/(n_t(1)-1) + &
+                                &n_X(ld)*(zeta_plot(:,:,kd)) - &
+                                &m_X(ld)*(theta_plot(:,:,kd)))))
+                        end do
+                    end do
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
             
             ierr = print_HDF5_3D_data_item(XYZ(1),file_info,'var_'//&
                 &trim(i2str(id)),f_plot,tot_dim,grp_dim=grp_dim,&
@@ -758,7 +788,8 @@ contains
         CHCKERR('')
         
         ! deallocate
-        deallocate(x_plot,y_plot,z_plot,l_plot,f_plot)
+        deallocate(x_plot,y_plot,z_plot,f_plot)
+        if (eq_style.eq.1) deallocate(l_plot)                                   ! only if using VMEC
         
         call lvl_ud(-1)
     end function plot_X_vec_HDF5

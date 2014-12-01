@@ -6,7 +6,8 @@ module eq_ops
 #include <PB3D_macros.h>
     use num_vars, only: pi, dp, max_str_ln
     use message_ops, only: print_ar_2, lvl_ud, writo
-    use output_ops, only: print_GP_3D, draw_GP_animated, draw_GP, print_HDF5_3D
+    use output_ops, only: print_GP_3D, draw_GP_animated, draw_GP, &
+        &print_HDF5_3D, print_GP_2D
     use str_ops, only: i2str
     
     implicit none
@@ -26,7 +27,7 @@ contains
             &adapt_HEL_to_eq, &
             &q_saf_V, q_saf_FD, rot_t_V, rot_t_FD, flux_p_V, theta_V, &
             &flux_p_FD,flux_t_V, flux_t_FD, pres_V, pres_FD, n_par, zeta_V, &
-            &theta_H, zeta_H
+            &theta_H, zeta_H, q_saf_H, rot_t_H, pres_H, flux_p_H, flux_t_H
         use metric_ops, only: calc_g_C, calc_g_C, calc_T_VC, calc_g_V, &
             &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, &
             &calc_jac_V, calc_jac_F, calc_f_deriv, dealloc_metric, &
@@ -44,6 +45,10 @@ contains
         ! local variables
         integer :: id
         character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), pointer :: T_FE(:,:,:,:,:,:,:)                                ! E(quilibrium) (VMEC or HELENA) to F(lux) (lower)
+        real(dp), pointer :: q_saf_E(:,:)                                       ! safety factor in E(equilibrium) coordinates
+        real(dp), pointer :: rot_t_E(:,:)                                       ! rot. transform in E(equilibrium) coordinates
+        real(dp), pointer :: flux_p_E(:,:), flux_t_E(:,:), pres_E(:,:)          ! pol. flux, tor. flux and pressure, and norm. Deriv. in E(quilibrium) coords.
         
         ! initialize ierr
         ierr = 0
@@ -197,6 +202,17 @@ contains
                         ierr = calc_inv_met(det_T_FV,det_T_VF,derivs(id))
                         CHCKERR('')
                     end do
+                    
+                    ! point T_FE, q_saf_E, rot_t_E, pres_E, flux_p_E, flux_t_E
+                    T_FE => T_FV
+                    pres_E => pres_V
+                    flux_p_E => flux_p_V
+                    flux_t_E => flux_t_V
+                    if (use_pol_flux) then
+                        q_saf_E => q_saf_V
+                    else
+                        rot_t_E => rot_t_V
+                    end if
                 case (2)                                                        ! HELENA
                     ! calculate flux quantities
                     ierr = calc_flux_q()
@@ -240,6 +256,16 @@ contains
                         CHCKERR('')
                     end do
                     
+                    ! point T_FE, q_saf_E, rot_t_E, pres_E, flux_p_E, flux_t_E
+                    T_FE => T_FH
+                    pres_E => pres_H
+                    flux_p_E => flux_p_H
+                    flux_t_E => flux_t_H
+                    if (use_pol_flux) then
+                        q_saf_E => q_saf_H
+                    else
+                        rot_t_E => rot_t_H
+                    end if
                 case default
                     err_msg = 'No equilibrium style associated with '//&
                         &trim(i2str(eq_style))
@@ -273,48 +299,48 @@ contains
             call writo('Calculate derivatives in flux coordinates...')
             do id = 0,1
                 ! g_FD
-                ierr = calc_f_deriv(g_F,T_FV,g_FD,max_deriv-[1,1,1],&
+                ierr = calc_f_deriv(g_F,T_FE,g_FD,max_deriv-[1,1,1],&
                     &derivs(id))
                 CHCKERR('')
                 
                 ! h_FD
-                ierr = calc_f_deriv(h_F,T_FV,h_FD,max_deriv-[1,1,1],&
+                ierr = calc_f_deriv(h_F,T_FE,h_FD,max_deriv-[1,1,1],&
                     &derivs(id))
                 CHCKERR('')
                 
                 ! jac_FD
-                ierr = calc_f_deriv(jac_F,T_FV,jac_FD,max_deriv-[1,1,1],&
+                ierr = calc_f_deriv(jac_F,T_FE,jac_FD,max_deriv-[1,1,1],&
                     &derivs(id))
                 CHCKERR('')
                 
                 ! pres_FD
-                ierr = calc_f_deriv(pres_V,T_FV(1,:,2,1,:,0,0),pres_FD(:,id),&
+                ierr = calc_f_deriv(pres_E,T_FE(1,:,2,1,:,0,0),pres_FD(:,id),&
                     &max_deriv(1)-1,id)
                 CHCKERR('')
                     
                 ! flux_p_FD
-                ierr = calc_f_deriv(flux_p_V,T_FV(1,:,2,1,:,0,0),&
+                ierr = calc_f_deriv(flux_p_E,T_FE(1,:,2,1,:,0,0),&
                     &flux_p_FD(:,id),max_deriv(1)-1,id)
                 CHCKERR('')
                     
                 ! flux_t_FD
-                ierr = calc_f_deriv(flux_t_V,T_FV(1,:,2,1,:,0,0),&
+                ierr = calc_f_deriv(flux_t_E,T_FE(1,:,2,1,:,0,0),&
                     &flux_t_FD(:,id),max_deriv(1)-1,id)
                 CHCKERR('')
-                flux_t_FD = - flux_t_FD                                         ! conversion LH -> RH coord. system
+                if (eq_style.eq.1) flux_t_FD = - flux_t_FD                      ! conversion VMEC LH -> RH coord. system
                 
                 if (use_pol_flux) then
                     ! q_saf_FD
-                    ierr = calc_f_deriv(q_saf_V,T_FV(1,:,2,1,:,0,0),&
+                    ierr = calc_f_deriv(q_saf_E,T_FE(1,:,2,1,:,0,0),&
                         &q_saf_FD(:,id),max_deriv(1)-1,id)
                     CHCKERR('')
-                    q_saf_FD = - q_saf_FD                                       ! conversion LH -> RH coord. system
+                    if (eq_style.eq.1) q_saf_FD = - q_saf_FD                    ! conversion VMEC LH -> RH coord. system
                 else
                     ! rot_t_FD
-                    ierr = calc_f_deriv(rot_t_V,T_FV(1,:,2,1,:,0,0),&
+                    ierr = calc_f_deriv(rot_t_E,T_FE(1,:,2,1,:,0,0),&
                         &rot_t_FD(:,id),max_deriv(1)-1,id)
                     CHCKERR('')
-                    rot_t_FD = - rot_t_FD                                       ! conversion LH -> RH coord. system
+                    if (eq_style.eq.1) rot_t_FD = - rot_t_FD                    ! conversion VMEC LH -> RH coord. system
                 end if
             end do
             
@@ -326,8 +352,10 @@ contains
             ! deallocate unused equilibrium quantities
             if (.not.ltest) then
                 call writo('Deallocate unused equilibrium and metric quantities...')
-                call dealloc_eq
-                call dealloc_metric
+                ierr = dealloc_eq()
+                CHCKERR('')
+                ierr = dealloc_metric()
+                CHCKERR('')
             end if
             
             call lvl_ud(-1)

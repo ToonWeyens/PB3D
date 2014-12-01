@@ -94,7 +94,6 @@ contains
         PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
         PetscInt, allocatable :: o_nz(:)                                        ! nr. of off-diagonal non-zeros
         PetscReal, allocatable :: grp_r_eq(:)                                   ! unrounded index in tables V_int
-        PetscInt :: offset                                                      ! offset in the table V_int
         
         !! for tests
         !Mat :: A_t                                                              ! Hermitian transpose of A
@@ -106,9 +105,9 @@ contains
         
         call lvl_ud(1)
         
-        ! set  up arrays  grp_r_eq and  offset that  determine how  to fill  the
+        ! set  up arrays  grp_r_eq that  determine how  to fill  the
         ! matrices
-        ierr = get_interp_data(grp_r_eq,offset)
+        ierr = get_interp_data(grp_r_eq)
         CHCKERR('')
         
         ! create a  matrix A and B  with the appropriate number  of preallocated
@@ -141,7 +140,7 @@ contains
         deallocate(d_nz,o_nz)
         
         ! fill the matrix A
-        ierr = fill_mat(PV_int,A,grp_r_eq,offset)
+        ierr = fill_mat(PV_int,A,grp_r_eq)
         CHCKERR('')
         call writo('matrix A set up')
         
@@ -152,7 +151,7 @@ contains
         call MatDuplicate(A,MAT_SHARE_NONZERO_PATTERN,B,ierr)                   ! B has same structure as A
         CHCKERR('failed to duplicate A into B')
         ! fill the matrix B
-        ierr = fill_mat(KV_int,B,grp_r_eq,offset)
+        ierr = fill_mat(KV_int,B,grp_r_eq)
         CHCKERR('')
         call writo('matrix B set up')
         
@@ -205,10 +204,9 @@ contains
         !   calculation of every quantity
         ! Note: the factors i/n or i/m are already included in V_int_tab
         ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING !!!!!!
-        integer function fill_mat(V_int_tab,mat,grp_r_eq,offset) result(ierr)
+        integer function fill_mat(V_int_tab,mat,grp_r_eq) result(ierr)
             use num_vars, only: min_r_X, max_r_X
             use eq_vars, only: max_flux
-            use utilities, only: dis2con
             use X_vars, only: grp_min_r_X, grp_max_r_X, n_r_X, size_X
             
             character(*), parameter :: rout_name = 'fill_mat'
@@ -217,7 +215,6 @@ contains
             PetscScalar, intent(in) :: V_int_tab(:,:,:,:)                       ! either PV_int or KV_int tables in grp_n_r_eq normal points
             Mat, intent(inout) :: mat                                           ! either A or B
             PetscReal, intent(in) :: grp_r_eq(:)                                ! unrounded index in tables V_int
-            PetscInt, intent(in) :: offset                                      ! offset in the table V_int
             
             ! local variables (not to be used in child routines)
             character(len=max_str_ln) :: err_msg                                ! error message
@@ -272,9 +269,9 @@ contains
             grp_r_eq_lo = floor(grp_r_eq(1))
             grp_r_eq_hi = ceiling(grp_r_eq(1))
             do jd = 1,3
-                V_interp_next(:,:,jd) = V_int_tab(:,:,grp_r_eq_lo-offset,jd) + &
-                    &(V_int_tab(:,:,grp_r_eq_hi-offset,jd)-&
-                    &V_int_tab(:,:,grp_r_eq_lo-offset,jd))*&
+                V_interp_next(:,:,jd) = V_int_tab(:,:,grp_r_eq_lo,jd) + &
+                    &(V_int_tab(:,:,grp_r_eq_hi,jd)-&
+                    &V_int_tab(:,:,grp_r_eq_lo,jd))*&
                     &(grp_r_eq(1)-grp_r_eq_lo)                                  ! because grp_r_eq_hi - grp_r_eq_lo = 1
             end do
             
@@ -309,9 +306,9 @@ contains
                     grp_r_eq_hi = ceiling(grp_r_eq(id-grp_min_r_X+3))
                     do jd = 1,3
                         V_interp_next(:,:,jd) = &
-                            &V_int_tab(:,:,grp_r_eq_lo-offset,jd) + &
-                            &(V_int_tab(:,:,grp_r_eq_hi-offset,jd)-&
-                            &V_int_tab(:,:,grp_r_eq_lo-offset,jd))*&
+                            &V_int_tab(:,:,grp_r_eq_lo,jd) + &
+                            &(V_int_tab(:,:,grp_r_eq_hi,jd)-&
+                            &V_int_tab(:,:,grp_r_eq_lo,jd))*&
                             &(grp_r_eq(id-grp_min_r_X+3)-grp_r_eq_lo)           ! because grp_r_eq_hi - grp_r_eq_lo = 1
                     end do
                     
@@ -358,14 +355,13 @@ contains
             deallocate(loc_k,loc_m)
         end function fill_mat
         
-        ! calculates the variables grp_r_eq and  offset, which are later used to
-        ! calculate V_interp from the tabulated  values in the equilibrium grid,
-        ! the oordinate of which is determined by the variable eq_use_pol_flux
-        integer function get_interp_data(grp_r_eq,offset) &
-                &result(ierr)
-            use utilities, only: con2dis, round_with_tol, interp_fun_1D
-            use eq_vars, only: grp_min_r_eq, max_flux, max_flux_eq, &
-                &flux_p_FD, flux_t_FD, n_r_eq, eq_use_pol_flux
+        ! calculates the  variable grp_r_eq,  which is  later used  to calculate
+        ! V_interp  from  the tabulated  values  in  the equilibrium  grid,  the
+        ! oordinate of which is determined by the variable eq_use_pol_flux
+        integer function get_interp_data(grp_r_eq) result(ierr)
+            use utilities, only: con2dis, interp_fun_1D
+            use eq_vars, only: max_flux, max_flux_eq, flux_p_FD, flux_t_FD, &
+                &eq_use_pol_flux
             use X_vars, only: grp_r_X
             use num_vars, only: use_pol_flux
             
@@ -373,7 +369,6 @@ contains
             
             ! input / output
             PetscReal, allocatable, intent(inout) :: grp_r_eq(:)                ! unrounded index in tables V_int
-            PetscInt, intent(inout) :: offset                                   ! offset in the table V_int
             
             ! local variables
             PetscReal :: r_X_loc                                                ! local copy of grp_r_X
@@ -396,17 +391,13 @@ contains
                 flux_eq => flux_t_FD(:,0)
             end if
             
-            ! allocate grp_r_eq_lo and hi and offset
+            ! allocate grp_r_eq_lo and hi
             allocate(grp_r_eq(size(grp_r_X)))
             
             ! loop over all normal points
             do kd = 1,size(grp_r_X)
                 ! set local copy of grp_r_X
                 r_X_loc = grp_r_X(kd)
-                
-                ! round r_X_loc if necessary
-                ierr = round_with_tol(r_X_loc,0.0_dp,1.0_dp)
-                CHCKERR('')
                 
                 ! get the table indices between which to interpolate. The tables
                 ! are set up in the equilibrium grid, which not necessarily uses
@@ -417,11 +408,7 @@ contains
                     &r_X_loc,flux/max_flux)
                 CHCKERR('')
                 ! 2. discrete equilibrium grid, unrounded
-                call con2dis(grp_r_eq_eq_con,[0._dp,1._dp],grp_r_eq(kd),&
-                    &[1,n_r_eq])
-                
-                ! set offset
-                offset =  grp_min_r_eq - 1
+                call con2dis(grp_r_eq_eq_con,grp_r_eq(kd),flux_eq/max_flux_eq)
             end do
         end function get_interp_data
     end function setup_matrices

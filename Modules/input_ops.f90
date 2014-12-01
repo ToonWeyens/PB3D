@@ -217,16 +217,11 @@ contains
         ! so  the  fast-moving  functions  e^(i(k-m)) V  don't  give  the  wrong
         ! integrals in the perturbation part
         subroutine adapt_n_par
-            ! local variables
-            integer :: n_par_old                                                ! backup of n_par
-            integer :: nchi_pi                                                  ! how many points for half a poloidal turn
-            real(dp) :: min_par_old, max_par_old                                ! backup of min_par_old, max_par_old
-            real(dp) :: tol = 1.0E-8_dp                                         ! tolerance for rounding to integers
-            
-            if (n_par.lt.nyq_fac*(max_sec_X-min_sec_X)*&
+            if (n_par.lt.nyq_fac*max(max_sec_X-min_sec_X,1)*&
                 &(max_par-min_par)/2) then
-                n_par = int(nyq_fac*(max_sec_X-min_sec_X)*&
-                    &(max_par-min_par)/2) + 1
+                n_par = int(nyq_fac*max(max_sec_X-min_sec_X,1)*&
+                    &(max_par-min_par)/2)
+                if (mod(n_par,2).eq.0) n_par = n_par+1                          ! odd numbers are usually better
                 call writo('WARNING: To avoid aliasing of the perturbation &
                     &integrals, n_par is increased to '//trim(i2str(n_par)))
             end if

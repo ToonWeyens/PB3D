@@ -60,7 +60,6 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        character(len=max_str_ln) :: err_msg_ias                                ! error message concerning ias
         integer :: id, kd                                                       ! counters
         real(dp), allocatable :: dqs(:)                                         ! derivative of q
         real(dp), allocatable :: curj(:)                                        ! toroidal current
@@ -82,15 +81,13 @@ contains
             
             ! set error messages
             err_msg = 'Failed to read HELENA output file'
-            err_msg_ias = 'You need to have a version of HELENA that outputs &
-                &the variable IAS'
             
             ! rewind input file
             rewind(eq_i)
             
             ! read mapped equilibrium from disk
             read(eq_i,*,IOSTAT=ierr) n_r_eq,ias                                 ! nr. normal points (JS0), top-bottom symmetry
-            CHCKERR(err_msg_ias)
+            CHCKERR(err_msg)
             n_r_eq = n_r_eq + 1                                                 ! HELENA outputs nr. of normal points - 1
             
             allocate(flux_H(n_r_eq))                                            ! flux, derived from normal coordinate
@@ -297,6 +294,15 @@ contains
     
     ! deallocates HELENA quantities that are not used anymore
     subroutine dealloc_HEL
-        write(*,*) 'IMPLEMENT DEALLOC_HEL !!!!!!!!!!!!!!!!!!!!!!'
+        deallocate(chi_H)
+        deallocate(flux_H)
+        deallocate(p0)
+        deallocate(qs)
+        deallocate(RBphi)
+        deallocate(h_H_11)
+        deallocate(h_H_12)
+        deallocate(h_H_33)
+        deallocate(R_H)
+        deallocate(Z_H)
     end subroutine dealloc_HEL
 end module HEL_vars
