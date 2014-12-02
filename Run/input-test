@@ -10,13 +10,13 @@
     tol_r = 5.0E-6
     n_procs_per_alpha = 2
     prim_X = -180
-    min_sec_X = 19
-    max_sec_X = 25
+    min_sec_X = 20
+    max_sec_X = 40
     use_pol_flux = .false.
     n_sol_requested = 50
     min_n_r_X = 50
     max_n_plots = 2
-    plot_jq = .false.
+    plot_jq = .true.
     plot_grid = .false.
     output_style = 2
 /

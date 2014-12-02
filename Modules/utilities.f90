@@ -1262,7 +1262,7 @@ contains
         
         ! tests
         if (ind_lo.eq.0 .or. ind_hi.eq.size_c+1) then                           ! not within range
-            call writo('pt_c not within range',persistent=.true.)
+            call writo('WARNING: pt_c not within range',persistent=.true.)
             pt_d = -1._dp
             return
         end if
@@ -1273,7 +1273,8 @@ contains
         else if (ind_lo.eq.ind_hi) then                                         ! valid output that does correspond to a point on grid
             pt_d = ind_lo
         else                                                                    ! invalid output
-            call writo('ind_lo cannot be higher than ind_hi',persistent=.true.)
+            call writo('WARNING: ind_lo cannot be higher than ind_hi',&
+                &persistent=.true.)
             pt_d = -1._dp
             return
         end if
@@ -1311,7 +1312,7 @@ contains
         
         ! Check whether the discrete value lies inside the range
         if (pt_d.lt.1 .or. pt_d.gt.size(var_c)) then
-            call writo('pt_c not within range',persistent=.true.)
+            call writo('WARNING: pt_c not within range',persistent=.true.)
             pt_c = -1._dp
             return
         end if
@@ -1422,7 +1423,7 @@ contains
         ! test if result has been found
         if (ind.le.0) then
             ierr = 1
-            CHCKERR('con2dis above')
+            CHCKERR('see WARNING from con2dis above')
         end if
         
         ! set ind_lo and ind_hi

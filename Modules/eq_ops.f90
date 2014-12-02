@@ -102,12 +102,10 @@ contains
                 !   2:  HELENA
                 select case (eq_style)
                     case (1)                                                    ! VMEC
-                        ierr = plot_grid_real(theta_V,zeta_V,0._dp,1._dp,&
-                            &.true.)                                            ! theta_V and zeta_V are tabulated in equilibrium grid
+                        ierr = plot_grid_real(theta_V,zeta_V,0._dp,1._dp)
                         CHCKERR('')
                     case (2)                                                    ! HELENA
-                        ierr = plot_grid_real(theta_H,zeta_H,0._dp,1._dp,&
-                            &.true.)                                            ! theta_H and zeta_H are tabulated in equilibrium grid
+                        ierr = plot_grid_real(theta_H,zeta_H,0._dp,1._dp)
                         CHCKERR('')
                     case default
                         err_msg = 'No equilibrium style associated with '//&
@@ -408,14 +406,11 @@ contains
     ! The  variables theta  and  zeta follow  the magnetic  field  lines in  the
     ! equilibrium grid  and are tabulated along  the magnetic field lines  for a
     ! series  of flux  surfaces. The  start  and end  index of  the normal  flux
-    ! surfaces in either  the equilibrium grid or the perturbation  grid have to
-    ! be provided with min_r and max_r  and the variable eq_grid indicates which
-    ! grid to use.
+    ! surfaces in the equilibrium grid has  to be provided with min_r and max_r.
     ! Ideally, this routine should be run  with the full equilibrium grid normal
-    ! extent, which  implies for example, min_r  = min_r_X, max_r =  max_r_X and
-    ! eq_grid = .false. or min_r = 0, max_r = 1 and eq_grid = .true.
+    ! extent, which implies for example, min_r = 0, max_r = 1.
     ! [MPI] Collective call
-    integer function plot_grid_real(theta,zeta,min_r,max_r,eq_grid) &
+    integer function plot_grid_real(theta,zeta,min_r,max_r) &
         &result(ierr)
         use eq_vars, only: n_par, calc_XYZ_grid
         use num_vars, only: output_style
@@ -426,7 +421,6 @@ contains
         real(dp), intent(in) :: theta(:,:)                                      ! theta in VMEC or HELENA coordinates
         real(dp), intent(in) :: zeta(:,:)                                       ! zeta in VMEC or HELENA coordinates
         real(dp), intent(in) :: min_r, max_r                                    ! minimum and maximum normal range
-        logical, intent(in) :: eq_grid                                          ! .true. if eq. grid is used
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -474,8 +468,7 @@ contains
         end do
         
         ! calculate X,Y and Z
-        ierr = calc_XYZ_grid(theta_plot,zeta_plot,[min_r,max_r],eq_grid,&
-            &X_1,Y_1,Z_1)
+        ierr = calc_XYZ_grid(theta_plot,zeta_plot,[min_r,max_r],X_1,Y_1,Z_1)
         CHCKERR('')
         
         ! deallocate
@@ -492,8 +485,7 @@ contains
         end do
         
         ! calculate X,Y and Z
-        ierr = calc_XYZ_grid(theta_plot,zeta_plot,[min_r,max_r],eq_grid,&
-            &X_2,Y_2,Z_2)
+        ierr = calc_XYZ_grid(theta_plot,zeta_plot,[min_r,max_r],X_2,Y_2,Z_2)
         CHCKERR('')
         
         ! deallocate
@@ -504,7 +496,7 @@ contains
             case(1)                                                             ! GNUPlot output
                 call plot_grid_real_GP(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)
             case(2)                                                             ! HDF5 output
-                ierr = plot_grid_real_HDF5(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)
+                ierr = plot_grid_real_hdf5(x_1,x_2,y_1,y_2,z_1,z_2,anim_name)
                 CHCKERR('')
             case default
                 err_msg = 'No style associated with '//trim(i2str(output_style))

@@ -82,7 +82,8 @@ contains
         
         ! plot resonances if requested
         if (plot_jq) then
-            call resonance_plot
+            ierr = resonance_plot()
+            CHCKERR('')
         else
             call writo('Resonance plot not requested')
         end if
@@ -250,12 +251,14 @@ contains
     
     ! plot  q-profile  or iota-profile  in  flux coordinates  with nq-m  = 0  or
     ! n-iotam = 0 indicate if requested
-    subroutine resonance_plot
-        use num_vars, only: glb_rank, use_pol_flux, eq_style
+    integer function resonance_plot() result(ierr)
+        use num_vars, only: glb_rank, use_pol_flux, eq_style, output_style, pi
         use utilities, only: calc_zero_NR, interp_fun_1D
         use eq_vars, only: q_saf_V_full, rot_t_V_full, flux_p_V_full, &
             &flux_t_V_full, q_saf_H_full, rot_t_H_full, flux_p_H_full, &
             &flux_t_H_full, n_r_eq                                              ! full variables are NOT normalized
+        
+        character(*), parameter :: rout_name = 'resonance_plot'
         
         ! local variables (also used in child functions)
         real(dp) :: mnfrac_for_function                                         ! fraction m/n or n/m to determine resonant flux surface
@@ -269,9 +272,13 @@ contains
         real(dp) :: jq_solution_transf                                          ! transformed solution to flux coordinates
         integer :: istat                                                        ! status
         character(len=max_str_ln) :: plot_title, file_name                      ! name of plot, of file
+        character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: q_saf(:,:), rot_t(:,:)                         ! saf. fac., rot. transf. in Equilibrium coords.
         real(dp), allocatable :: flux_p(:), flux_t(:)                           ! pol. flux, tor. flux in Equilibrium coords.
         integer :: pmone                                                        ! plus or minus one
+        
+        ! initialize ierr
+        ierr = 0
         
         if (glb_rank.eq.0) then
             ! set up flux_p, flux_t, q_saf and rot_t
@@ -375,19 +382,24 @@ contains
                             y_vars(n_r_eq,kd) = rot_t(n_r_eq,0)
                         end if
                     else
-                        ! convert solution to flux coordinates
-                        if (use_pol_flux) then
-                            istat = interp_fun_1D(jq_solution_transf,&
-                                &flux_p/abs(flux_p(n_r_eq)),jq_solution)
-                        else
-                            istat = interp_fun_1D(jq_solution_transf,&
-                                &flux_t/abs(flux_t(n_r_eq)),jq_solution)
+                        ! convert solution to flux coordinates if GNUPlot output
+                        if (output_style.eq.1) then
+                            if (use_pol_flux) then
+                                istat = interp_fun_1D(jq_solution_transf,&
+                                    &flux_p/abs(flux_p(n_r_eq)),jq_solution)
+                            else
+                                istat = interp_fun_1D(jq_solution_transf,&
+                                    &flux_t/abs(flux_t(n_r_eq)),jq_solution)
+                            end if
+                            x_vars(:,kd) = jq_solution_transf
+                            call writo('Mode (n,m) = ('//trim(i2str(n_X(jd)))//&
+                                &','//trim(i2str(m_X(jd)))//') resonates in &
+                                &plasma at normalized flux surface '//&
+                                &trim(r2str(jq_solution_transf)))
+                        else                                                    ! HDF5 output needs equilibrium tabulated values
+                            x_vars(:,kd) = jq_solution
                         end if
-                        x_vars(:,kd) = jq_solution_transf
-                        call writo('Mode (n,m) = ('//trim(i2str(n_X(jd)))//','&
-                            &//trim(i2str(m_X(jd)))//') resonates in plasma &
-                            &at normalized flux surface '//&
-                            &trim(r2str(jq_solution_transf)))
+                        ! the y axis is always in perturbation grid
                         if (use_pol_flux) then
                             y_vars(n_r_eq,kd) = m_X(jd)*1.0_dp/n_X(jd)
                         else
@@ -414,11 +426,23 @@ contains
                 plot_title = 'rotational transform iota'
                 file_name = 'rot_t.dat'
             end if
-            ! plot on screen
-            call print_GP_2D(plot_title,file_name,y_vars(:,1:kd-1),&
-                &x=x_vars(:,1:kd-1))
-            ! plot in file as well
-            call draw_GP(plot_title,file_name,kd-1,.true.,.false.)
+            select case(output_style)
+                case(1)                                                         ! GNUPlot output
+                    ! plot on screen
+                    call print_GP_2D(plot_title,file_name,y_vars(:,1:kd-1),&
+                        &x=x_vars(:,1:kd-1))
+                    
+                    ! plot in file as well
+                    call draw_GP(plot_title,file_name,kd-1,.true.,.false.)
+                case(2)                                                         ! HDF5 output
+                    ierr = plot_resonance_plot_HDF5()
+                    CHCKERR('')
+                case default
+                    err_msg = 'No style associated with '//&
+                        &trim(i2str(output_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
             
             call lvl_ud(-1)
             call writo('Done plotting')
@@ -479,7 +503,77 @@ contains
                 istat = interp_fun_1D(res,varin,pt)
             end if
         end function jq_dfun
-    end subroutine resonance_plot
+        
+        ! plots the resonance plot in 3D in HDF5 format
+        integer function plot_resonance_plot_HDF5() result(ierr)
+            use eq_vars, only: calc_XYZ_grid
+            use output_ops, only: print_HDF5_3D
+            
+            character(*), parameter :: rout_name = 'plot_resonance_plot_HDF5'
+            
+            ! local variables
+            integer :: id                                                       ! counter
+            integer :: n_theta_plot = 81                                        ! nr. of poloidal points in plot
+            integer :: n_zeta_plot = 81                                         ! nr. of toroidal points in plot
+            real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)        ! pol. and tor. angle of plot
+            real(dp), allocatable :: X_plot(:,:,:,:), Y_plot(:,:,:,:), &
+                &Z_plot(:,:,:,:)                                                ! X, Y and Z of plot of all surfaces
+            real(dp), allocatable :: X_plot_ind(:,:,:), Y_plot_ind(:,:,:), &
+                &Z_plot_ind(:,:,:)                                              ! X, Y and Z of plots of individual surfaces
+            integer :: plot_dim(4)                                              ! plot dimensions (total = group because only group masters)
+            real(dp), allocatable :: vars(:,:,:,:)                              ! variable to plot
+            
+            ! initialize ierr
+            ierr = 0
+                
+            ! set up pol. and tor. angle for plot
+            allocate(theta_plot(n_theta_plot,n_zeta_plot,1))
+            allocate(zeta_plot(n_theta_plot,n_zeta_plot,1))
+            do id = 1,n_theta_plot
+                theta_plot(id,:,:) = (id-1.0_dp)*2*pi/&
+                    &(n_theta_plot-1.0_dp)
+            end do
+            do id = 1,n_zeta_plot
+                zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/&
+                    &(n_zeta_plot-1.0_dp)
+            end do
+            
+            ! set up vars
+            allocate(vars(n_theta_plot,n_zeta_plot,1,size_X))
+            do id = 1,size_X
+                vars(:,:,:,id) = y_vars(n_r_eq,id+1)
+            end do
+            
+            ! set dimensions
+            plot_dim = [n_theta_plot,n_zeta_plot,1,size_X]
+            
+            ! set up plot X, Y and Z
+            allocate(X_plot(n_theta_plot,n_zeta_plot,1,size_X))
+            allocate(Y_plot(n_theta_plot,n_zeta_plot,1,size_X))
+            allocate(Z_plot(n_theta_plot,n_zeta_plot,1,size_X))
+            
+            ! loop over all resonant surfaces to calculate X, Y and Z values
+            do id = 1,size_X
+                ! calculate the X, Y and Z values for this flux surface
+                ierr = calc_XYZ_grid(theta_plot,zeta_plot,&
+                    &[x_vars(n_r_eq,id+1),x_vars(n_r_eq,id+1)],&
+                    &X_plot_ind,Y_plot_ind,Z_plot_ind)
+                CHCKERR('')
+                
+                ! save the individual variable in the total variables
+                X_plot(:,:,:,id) = X_plot_ind
+                Y_plot(:,:,:,id) = Y_plot_ind
+                Z_plot(:,:,:,id) = Z_plot_ind
+                
+                ! deallocate the individual variables
+                deallocate(X_plot_ind,Y_plot_ind,Z_plot_ind)
+            end do
+            
+            call print_HDF5_3D(plot_title,file_name,vars,plot_dim,plot_dim,&
+                &[0,0,0,0],X=X_plot,Y=Y_plot,Z=Z_plot,anim=.false.,&
+                &description='resonant surfaces')
+        end function plot_resonance_plot_HDF5
+    end function resonance_plot
     
     ! calculate rho from user input
     integer function calc_rho() result(ierr)

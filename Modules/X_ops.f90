@@ -574,12 +574,14 @@ contains
         use X_vars, only: grp_min_r_X, grp_n_r_X, n_r_X, grp_r_X, grp_n_r_X, &
             &size_X, n_X, m_X
         use output_ops, only: print_HDF5_3D
-        use num_vars, only: eq_style
-        use eq_vars, only: calc_XYZ_grid
+        use num_vars, only: eq_style, use_pol_flux
+        use eq_vars, only: calc_XYZ_grid, &
+            &flux_p_FD, flux_t_FD, eq_use_pol_flux, max_flux, max_flux_eq
         use HDF5_vars, only: open_HDF5_file, print_HDF5_top, print_HDF5_geom, &
             &print_HDF5_3D_data_item, print_HDF5_grid, add_HDF5_item, &
             &close_HDF5_file, print_HDF5_att, &
             &HDF5_file_type, XML_str_type
+        use utilities, only: interp_fun_1D
         
         character(*), parameter :: rout_name = 'plot_X_vec_HDF5'
         
@@ -612,6 +614,8 @@ contains
         type(XML_str_type) :: att(1)                                            ! attribute
         character(len=max_str_ln) :: var_name                                   ! name of variable that is plot
         character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), pointer :: flux(:), flux_eq(:)                                ! either pol. or tor. flux
+        real(dp) :: min_r_eq, max_r_eq                                          ! minimum and maximum of normal range in equilibrium grid
         
         ! initialize ierr
         ierr = 0
@@ -651,10 +655,31 @@ contains
             end do
         end if
         
+        ! set up flux and flux_eq
+        if (use_pol_flux) then
+            flux => flux_p_FD(:,0)
+        else
+            flux => flux_t_FD(:,0)
+        end if
+        if (eq_use_pol_flux) then
+            flux_eq => flux_p_FD(:,0)
+        else
+            flux_eq => flux_t_FD(:,0)
+        end if
+        
+        ! convert  the  perturbation  normal  range  given  by  grp_r_X   to  an
+        ! equilibrium normal range with limits min_r_eq and max_r_eq
+        ierr = interp_fun_1D(min_r_eq,flux_eq/max_flux_eq,&
+            &grp_r_X(1),flux/max_flux)
+        CHCKERR('')
+        ierr = interp_fun_1D(max_r_eq,flux_eq/max_flux_eq,&
+            &grp_r_X(grp_n_r_X),flux/max_flux)
+        CHCKERR('')
+        
         ! calculate X,Y  and Z using  the Equilibrium theta_plot  and zeta_plot,
-        ! tabulated in the perturbation normal grid indicated by grp_r_X
-        ierr = calc_XYZ_grid(theta_plot,zeta_plot,&
-            &[grp_r_X(1),grp_r_X(grp_n_r_X)],.false.,&
+        ! tabulated  in the  equilibrium normal  grid with  limits min_r_eq  and
+        ! max_r_eq
+        ierr = calc_XYZ_grid(theta_plot,zeta_plot,[min_r_eq,max_r_eq],&
             &x_plot,y_plot,z_plot,l_plot)
         CHCKERR('')
         

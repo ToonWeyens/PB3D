@@ -1381,17 +1381,15 @@ contains
     end function dealloc_eq_final
     
     ! calculates X,Y  and Z on a  grid in the equilibrium  poloidal and toroidal
-    ! angle theta and zeta, for every  normal point in either the equilibrium or
-    ! the perturbation grid,  indicated by the variable  eq_grid. The dimensions
-    ! are (n_theta,n_zeta,n_r)
+    ! angle theta and zeta, for every normal point in also the equilibrium grid.
+    ! The dimensions are (n_theta,n_zeta,n_r)
     ! If VMEC is the equilibrium  model, this routine also optionally calculates
     ! lambda on the grid, as this is  also needed some times. If HELENA is used,
-    ! this variable is trivially zero.
-    ! Note:  If  eq_grid  =  .false.,  the flux  arrays  have  to  be  correctly
-    ! initialized for this routine to work.
-    integer function calc_XYZ_grid(theta,zeta,r_range,eq_grid,X,Y,Z,L) &
+    ! this variable is not allocated.
+    ! Note: The variables X, Y, Z and optionally L have to be unallocated.
+    integer function calc_XYZ_grid(theta,zeta,r_range,X,Y,Z,L) &
         &result(ierr)
-        use num_vars, only: use_pol_flux, eq_style
+        use num_vars, only: eq_style
         use utilities, only: interp_fun_1D, round_with_tol
         
         character(*), parameter :: rout_name = 'calc_XYZ_grid'
@@ -1399,7 +1397,6 @@ contains
         ! input / output
         real(dp), intent(in) :: theta(:,:,:), zeta(:,:,:)                       ! points at which to calculate the grid
         real(dp), intent(in) :: r_range(2)                                      ! min. and max. normal range in eq. range or pert. range
-        logical, intent(in) :: eq_grid                                          ! .true. if eq. grid is used, .false. if pert. grid
         real(dp), intent(inout), allocatable :: X(:,:,:), Y(:,:,:), Z(:,:,:)    ! X, Y and Z of grid
         real(dp), intent(inout), allocatable, optional :: L(:,:,:)              ! lambda of grid
         
@@ -1407,8 +1404,6 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: kd                                                           ! counter
         integer :: n_r                                                          ! nr. of normal points
-        real(dp), pointer :: flux(:), flux_eq(:)                                ! either pol. or tor. flux
-        real(dp) :: r_loc                                                       ! current r value in range
         real(dp), allocatable :: r_eq(:)                                        ! range of r values in equilibrium grid
         
         ! initialize ierr
@@ -1422,36 +1417,12 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! set up flux and flux_eq
-        if (.not.eq_grid) then
-            if (use_pol_flux) then
-                flux => flux_p_FD(:,0)
-            else
-                flux => flux_t_FD(:,0)
-            end if
-            if (eq_use_pol_flux) then
-                flux_eq => flux_p_FD(:,0)
-            else
-                flux_eq => flux_t_FD(:,0)
-            end if
-        end if
-        
         ! set up r values in equilibrium grid
         n_r = size(theta,3)
         allocate(r_eq(n_r))
-        r_loc = r_range(1)
-        do kd = 1,n_r                                                           ! loop over all normal points
-            ! convert r_loc to r_loc_eq if necessary
-            if (eq_grid) then
-                r_eq(kd) = r_loc
-            else
-                ierr = interp_fun_1D(r_eq(kd),flux_eq/max_flux_eq,&
-                    &r_loc,flux/max_flux)
-                CHCKERR('')
-            end if
-            
-            ! increment r_loc
-            r_loc = r_loc + 1._dp*(r_range(2)-r_range(1))/(n_r-1)
+        r_eq(1) = r_range(1)
+        do kd = 2,n_r
+            r_eq(kd) = r_eq(kd-1) + (r_range(2)-r_range(1))/(n_r-1)
         end do
         
         ! round with standard tolerance

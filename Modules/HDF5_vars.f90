@@ -81,10 +81,11 @@ contains
     end subroutine init_HDF5
     
     ! Opens an HDF5 file and accompanying xmf file and returns the handles.
-    ! Optionally, a description of the file can be provided.
+    ! Optionally, a description of the file  can be provided. Also, the plot can
+    ! be done for only one process, setting the variable "ind_plot" to .true.
     ! [MPI] Parts by all processes, parts only by group leader
-    integer function open_HDF5_file(file_info,file_name,description) &
-        &result(ierr)
+    integer function open_HDF5_file(file_info,file_name,description,&
+        &ind_plot) result(ierr)
         use num_vars, only: MPI_Comm_groups, grp_rank
         use safe_open_mod, only: safe_open
         use MPI
@@ -95,14 +96,22 @@ contains
         type(HDF5_file_type) :: file_info                                       ! info about HDF5 file
         character(len=*), intent(in) :: file_name                               ! name of HDF5 file
         character(len=*), intent(in), optional  :: description                  ! description of file
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
         character(len=max_str_ln) :: full_file_name                             ! full file name
         integer(HID_T) :: HDF5_i                                                ! file identifier 
         integer(HID_T) :: plist_id                                              ! property list identifier 
+        integer :: MPI_Comm                                                     ! MPI Communicator used
         
         ! initialize ierr
         ierr = 0
+        
+        ! set up MPI Communicator
+        MPI_Comm = MPI_Comm_groups                                              ! default group communicator
+        if (present(ind_plot)) then
+            if (ind_plot) MPI_Comm = MPI_Comm_self                              ! individual plot
+        end if
         
         ! set up full file name
         full_file_name = data_dir//'/'//trim(file_name)//'.h5'
@@ -111,10 +120,10 @@ contains
         call H5open_f(ierr) 
         CHCKERR('Failed to initialize HDF5')
         
-        ! setup file access property list with parallel I/O access.
+        ! setup file access property list with parallel I/O access if needed
         call H5Pcreate_f(H5P_FILE_ACCESS_F,plist_id,ierr)
         CHCKERR('Failed to create property list')
-        call H5Pset_fapl_mpio_f(plist_id,MPI_Comm_groups,MPI_INFO_NULL,ierr)
+        call H5Pset_fapl_mpio_f(plist_id,MPI_Comm,MPI_INFO_NULL,ierr)
         CHCKERR('Failed to set file access property')
         
         ! create the file collectively.

@@ -892,7 +892,12 @@ contains
         n_time = size(vars,time_id_loc)
         
         ! open HDF5 file
-        istat = open_HDF5_file(file_info,file_name,description)
+        if (tot_dim(time_id_loc).eq.grp_dim(time_id_loc)) then
+            istat = open_HDF5_file(file_info,file_name,description,&
+                &ind_plot=.true.)
+        else
+            istat = open_HDF5_file(file_info,file_name,description)
+        end if
         CHCKSTT
         
         ! create grid for time collection
@@ -1009,7 +1014,7 @@ contains
         end do
         
         ! create grid collection from individual grids and reset them
-        istat = print_HDF5_grid(time_col_grid,'time collection',anim_loc,&
+        istat = print_HDF5_grid(time_col_grid,'collection',anim_loc,&
             &grid_grids=grids,reset=.true.)
         CHCKSTT
         
