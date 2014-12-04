@@ -461,10 +461,10 @@ contains
         else
             if (istat.eq.0) then
                 call writo('Created plot in output file '''//&
-                    &trim(plot_dir)//'/'//trim(fun_name)//'.gif''')
+                    &trim(plot_dir)//'/'//trim(fun_name)//'.pdf''')
             else
                 call writo('Failed to create plot in output file '''//&
-                    &trim(plot_dir)//'/'//trim(fun_name)//'.gif''')
+                    &trim(plot_dir)//'/'//trim(fun_name)//'.pdf''')
             end if
         end if
         
@@ -818,19 +818,22 @@ contains
     ! Additionally, the total grid size has  to be provided in "tot_dim", and if
     ! the routine  is called in  parallel, the  group dimensions and  offsets as
     ! well, in "grp_dim" and "grp_offset". 
-    ! Optionally,  the  dimension which  corresponds  to  time can  be  provided
-    ! (default: 4)  in "time_id"  (ignored if outside  range (0..1)).  Also, the
-    ! time series  can be made into  an animation with "anim"  and a description
-    ! can be provided.
-    subroutine print_HDF5_3D_arr(var_name,file_name,vars,tot_dim,grp_dim,&
-        &grp_offset,X,Y,Z,time_id,anim,description)                             ! array version
+    ! Optionally, one of the dimensions (col_id, default 4) can be associated to
+    ! a collection dimension using "col" different from 1:
+    !   col = 1: no collection, just plots of different variables
+    !   col = 2: time collection
+    !   col = 3: spatial collection
+    ! Note: If a time animation is made,  the variable names need to be the same
+    ! for time point. If not, inconsistent behavior results.
+    subroutine print_HDF5_3D_arr(var_names,file_name,vars,tot_dim,grp_dim,&
+        &grp_offset,X,Y,Z,col_id,col,description)                               ! array version
         use HDF5_vars, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
             &print_HDF5_geom, print_HDF5_3D_data_item, print_HDF5_att, &
             &print_HDF5_grid, close_HDF5_file, &
             &XML_str_type, HDF5_file_type
         
         ! input / output
-        character(len=*), intent(in) :: var_name                                ! name of variable to be plot
+        character(len=*), intent(in) :: var_names(:)                            ! names of variable to be plot
         character(len=*), intent(in) :: file_name                               ! file name
         real(dp), intent(in), target :: vars(:,:,:,:)                           ! variables to plot
         integer, intent(in) :: tot_dim(4)                                       ! total dimensions of the arrays
@@ -839,84 +842,94 @@ contains
         real(dp), intent(in), target, optional :: X(:,:,:,:)                    ! curvlinear grid X points
         real(dp), intent(in), target, optional :: Y(:,:,:,:)                    ! curvlinear grid Y points
         real(dp), intent(in), target, optional :: Z(:,:,:,:)                    ! curvlinear grid Z points
-        integer, intent(in), optional :: time_id                                ! index of time dimension
-        logical, intent(in), optional :: anim                                   ! .true. if animation
+        integer, intent(in), optional :: col_id                                 ! index of time dimension
+        integer, intent(in), optional :: col                                    ! whether a collection is made
         character(len=*), intent(in), optional :: description                   ! description
         
         ! local variables
         integer :: istat                                                        ! status
-        integer :: time_id_loc                                                  ! local copy of time_id
-        integer :: anim_loc                                                     ! 2 if animation, 3 if not
+        integer :: col_id_loc                                                   ! local copy of col_id
+        integer :: col_loc                                                      ! local copy of col
         type(HDF5_file_type) :: file_info                                       ! file info
-        integer :: n_time                                                       ! nr. of points in time
+        integer :: n_plot                                                       ! nr. of plots
         integer :: id, jd                                                       ! counter
-        integer :: tot_dim_3D(3)                                                ! tot_dim except time
-        integer :: grp_dim_3D(3)                                                ! grp_dim except time
-        integer :: grp_offset_3D(3)                                             ! grp_offset except time
-        type(XML_str_type) :: time_col_grid                                     ! grid with time collection
+        integer :: tot_dim_3D(3)                                                ! tot_dim except collection
+        integer :: grp_dim_3D(3)                                                ! grp_dim except collection
+        integer :: grp_offset_3D(3)                                             ! grp_offset except collection
+        type(XML_str_type) :: col_grid                                          ! grid with collection
         type(XML_str_type), allocatable :: grids(:)                             ! the grids in the time collection
         type(XML_str_type) :: top                                               ! topology
         type(XML_str_type) :: XYZ(3)                                            ! data items for geometry
         type(XML_str_type) :: geom                                              ! geometry
         type(XML_str_type) :: att(1)                                            ! attribute
-        logical :: time_mask(4) = .false.                                       ! to select out the time dimension
+        logical :: col_mask(4) = .false.                                        ! to select out the collection dimension
         real(dp), pointer :: var_ptr(:,:,:)                                     ! pointer to vars, X, Y or z
+        character(len=max_str_ln), allocatable :: var_names_loc(:)              ! local copy of var_names
         
         
-        ! set up local time_id and anim
-        if (present(time_id)) then
-            time_id_loc = time_id
-        else
-            time_id_loc = 4                                                     ! default time dimension: last index
-        end if
-        anim_loc = 3                                                            ! default spatial collection (no animation)
-        if (present(anim)) then
-            if(anim) anim_loc = 2                                               ! time collection
-        end if
+        ! set up local col_id and col
+        col_id_loc = 4                                                          ! default collection dimension: last index
+        if (present(col_id)) col_id_loc = col_id
+        col_loc = 1                                                             ! default no spatial collection
+        if (present(col)) col_loc = col
         
         ! set real dimensions
-        time_mask(time_id_loc) = .true.
-        tot_dim_3D = pack(tot_dim,.not.time_mask)
+        col_mask(col_id_loc) = .true.
+        tot_dim_3D = pack(tot_dim,.not.col_mask)
         if (present(grp_dim)) then
-            grp_dim_3D = pack(grp_dim,.not.time_mask)
+            grp_dim_3D = pack(grp_dim,.not.col_mask)
         else
             grp_dim_3D = tot_dim_3D
         end if
         if (present(grp_offset)) then
-            grp_offset_3D = pack(grp_offset,.not.time_mask)
+            grp_offset_3D = pack(grp_offset,.not.col_mask)
         else
             grp_offset_3D = 0
         end if
         
         ! set up nr. of plots
-        n_time = size(vars,time_id_loc)
+        n_plot = size(vars,col_id_loc)
+        
+        ! set up local var_names
+        allocate(var_names_loc(n_plot))
+        if (size(var_names).eq.n_plot) then                                     ! the right number of variable names provided
+            var_names_loc = var_names
+        else if (size(var_names).gt.n_plot) then                                ! too many variable names provided
+            var_names_loc = var_names(1:n_plot)
+            call writo('WARNING: Too many variable names provided')
+        else                                                                    ! not enough variable names provided
+            var_names_loc(1:size(var_names)) = var_names
+            var_names_loc(size(var_names)+1:n_plot) = ''
+            call writo('WARNING: Not enough variable names provided')
+        end if
         
         ! open HDF5 file
-        if (tot_dim(time_id_loc).eq.grp_dim(time_id_loc)) then
+        if (tot_dim(1).eq.grp_dim(1) .and. tot_dim(2).eq.grp_dim(2) .and. &
+            &tot_dim(3).eq.grp_dim(3) .and. tot_dim(4).eq.grp_dim(4)) then
             istat = open_HDF5_file(file_info,file_name,description,&
-                &ind_plot=.true.)
+                &ind_plot=.true.)                                               ! individual plot
         else
-            istat = open_HDF5_file(file_info,file_name,description)
+            istat = open_HDF5_file(file_info,file_name,description)             ! group plot
         end if
         CHCKSTT
         
-        ! create grid for time collection
-        allocate(grids(n_time))
+        ! create grid for collection
+        allocate(grids(n_plot))
         
-        ! loop over all points in time
-        do id = 1,n_time
+        ! loop over all plots
+        do id = 1,n_plot
             ! print topology
             call print_HDF5_top(top,2,tot_dim_3D)
             
             ! print data item for X
             if (present(X)) then
-                if (time_id_loc.eq.1) then
+                if (col_id_loc.eq.1) then
                     var_ptr => X(id,:,:,:)
-                else if (time_id_loc.eq.2) then
+                else if (col_id_loc.eq.2) then
                     var_ptr => X(:,id,:,:)
-                else if (time_id_loc.eq.3) then
+                else if (col_id_loc.eq.3) then
                     var_ptr => X(:,:,id,:)
-                else if (time_id_loc.eq.4) then
+                else if (col_id_loc.eq.4) then
                     var_ptr => X(:,:,:,id)
                 else
                     istat = 1
@@ -935,13 +948,13 @@ contains
             
             ! print data item for Y
             if (present(Y)) then
-                if (time_id_loc.eq.1) then
+                if (col_id_loc.eq.1) then
                     var_ptr => Y(id,:,:,:)
-                else if (time_id_loc.eq.2) then
+                else if (col_id_loc.eq.2) then
                     var_ptr => Y(:,id,:,:)
-                else if (time_id_loc.eq.3) then
+                else if (col_id_loc.eq.3) then
                     var_ptr => Y(:,:,id,:)
-                else if (time_id_loc.eq.4) then
+                else if (col_id_loc.eq.4) then
                     var_ptr => Y(:,:,:,id)
                 else
                     istat = 1
@@ -960,13 +973,13 @@ contains
             
             ! print data item for Z
             if (present(Z)) then
-                if (time_id_loc.eq.1) then
+                if (col_id_loc.eq.1) then
                     var_ptr => Z(id,:,:,:)
-                else if (time_id_loc.eq.2) then
+                else if (col_id_loc.eq.2) then
                     var_ptr => Z(:,id,:,:)
-                else if (time_id_loc.eq.3) then
+                else if (col_id_loc.eq.3) then
                     var_ptr => Z(:,:,id,:)
-                else if (time_id_loc.eq.4) then
+                else if (col_id_loc.eq.4) then
                     var_ptr => Z(:,:,:,id)
                 else
                     istat = 1
@@ -987,13 +1000,13 @@ contains
             call print_HDF5_geom(geom,2,XYZ,.true.)
             
             ! print data item for plot variable
-            if (time_id_loc.eq.1) then
+            if (col_id_loc.eq.1) then
                 var_ptr => vars(id,:,:,:)
-            else if (time_id_loc.eq.2) then
+            else if (col_id_loc.eq.2) then
                 var_ptr => vars(:,id,:,:)
-            else if (time_id_loc.eq.3) then
+            else if (col_id_loc.eq.3) then
                 var_ptr => vars(:,:,id,:)
-            else if (time_id_loc.eq.4) then
+            else if (col_id_loc.eq.4) then
                 var_ptr => vars(:,:,:,id)
             else
                 istat = 1
@@ -1006,20 +1019,35 @@ contains
             ! print attribute with this data item
             call print_HDF5_att(att(1),XYZ(1),'var',1,.true.)
             
-            ! create a grid with the topology, the geometry and the attribute
-            istat = print_HDF5_grid(grids(id),var_name,1,&
-                &grid_time=id*1._dp,grid_top=top,grid_geom=geom,&
-                &grid_atts=att,reset=.true.)
-            CHCKSTT
+            ! create a  grid with the topology, the geometry,  the attribute and
+            ! time if time collection
+            if (col_loc.eq.2) then
+                istat = print_HDF5_grid(grids(id),var_names_loc(id),1,&
+                    &grid_time=id*1._dp,grid_top=top,grid_geom=geom,&
+                    &grid_atts=att,reset=.true.)
+                CHCKSTT
+            else
+                istat = print_HDF5_grid(grids(id),var_names_loc(id),1,&
+                    &grid_top=top,grid_geom=geom,grid_atts=att,reset=.true.)
+                CHCKSTT
+            end if
         end do
         
-        ! create grid collection from individual grids and reset them
-        istat = print_HDF5_grid(time_col_grid,'collection',anim_loc,&
-            &grid_grids=grids,reset=.true.)
-        CHCKSTT
-        
-        ! add collection grid to HDF5 file and reset it
-        call add_HDF5_item(file_info,time_col_grid,reset=.true.)
+        ! either create collection or just use individual grids
+        if (col_loc.eq.1) then
+            ! add individual grids to HDF5 file and reset them
+            do id = 1,n_plot
+                call add_HDF5_item(file_info,grids(id),reset=.true.)
+            end do
+        else
+            ! create grid collection from individual grids and reset them
+            istat = print_HDF5_grid(col_grid,'collection',col_loc,&
+                &grid_grids=grids,reset=.true.)
+            CHCKSTT
+            
+            ! add collection grid to HDF5 file and reset it
+            call add_HDF5_item(file_info,col_grid,reset=.true.)
+        end if
         
         ! close HDF5 file
         istat = close_HDF5_file(file_info)
@@ -1059,7 +1087,13 @@ contains
         file_info%name = file_name
         
         ! open HDF5 file
-        istat = open_HDF5_file(file_info,description)
+        if (tot_dim(1).eq.grp_dim(1) .and. tot_dim(2).eq.grp_dim(2) .and. &
+            &tot_dim(3).eq.grp_dim(3)) then
+            istat = open_HDF5_file(file_info,file_name,description,&
+                &ind_plot=.true.)                                               ! individual plot
+        else
+            istat = open_HDF5_file(file_info,file_name,description)             ! group plot
+        end if
         CHCKSTT
         
         ! print topology

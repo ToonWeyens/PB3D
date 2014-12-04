@@ -1377,6 +1377,8 @@ contains
         
         ierr = round_with_tol_arr(vals,lim_lo,lim_hi,tol)
         CHCKERR('')
+        
+        val = vals(1)
     end function round_with_tol_ind
     
     ! Interpolate a  1D function  y(x) by  providing the array  y and  x_in. The

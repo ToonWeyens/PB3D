@@ -57,7 +57,7 @@ contains
             &max_it_r, input_i, n_seq_0, min_n_r_X, use_pol_flux, &
             &calc_mesh_style, EV_style, n_procs_per_alpha, plot_jq, tol_r, &
             &n_sol_requested, min_r_X, max_r_X, nyq_fac, max_n_plots, &
-            &glb_rank, nyq_fac, plot_grid, output_style
+            &glb_rank, nyq_fac, plot_grid, plot_flux_q, output_style
         use eq_vars, only: &
             &min_par, max_par, n_par, rho_0
         use message_ops, only: writo, lvl_ud
@@ -75,7 +75,8 @@ contains
             &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
             &max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
             &max_r_X, EV_style, n_procs_per_alpha, plot_jq, n_sol_requested, &
-            &nyq_fac, rho_0, max_n_plots, use_pol_flux, plot_grid, output_style
+            &nyq_fac, rho_0, max_n_plots, use_pol_flux, plot_grid, &
+            &output_style, plot_flux_q
         
         ! initialize ierr
         ierr = 0
@@ -162,6 +163,7 @@ contains
             n_procs_per_alpha = 1                                               ! 1 processor per field line
             plot_jq = .false.                                                   ! do not plot the q-profile with nq-m = 0
             plot_grid = .false.                                                 ! do not plot the grid
+            plot_flux_q = .false.                                               ! do not plot the flux quantities
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
             max_n_plots = 4                                                     ! maximum nr. of modes for which to plot output in plot_X_vec
             output_style = 1                                                    ! GNUPlot output

@@ -184,6 +184,19 @@ contains
         !call MatDestroy(B_t,ierr)
         !CHCKERR('Failed to destroy matrix B_t')
         
+        ! set boundary conditions
+        ierr = set_mat_BC(A,B)
+        CHCKERR('')
+        
+        !! visualize the matrices
+        !call PetscOptionsSetValue('-draw_pause','-1',ierr)
+        !write(*,*) 'A ='
+        !call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
+        !!call MatView(A,PETSC_VIEWER_DRAW_WORLD,ierr)
+        !write(*,*) 'B ='
+        !call MatView(B,PETSC_VIEWER_STDOUT_WORLD,ierr)
+        !!call MatView(B,PETSC_VIEWER_DRAW_WORLD,ierr)
+        
         ! deallocate quantities
         deallocate(grp_r_eq)
         
@@ -262,7 +275,7 @@ contains
             end if
             
             ! set up step_size
-            step_size = (max_r_X-min_r_X)/(n_r_X-1.0) * max_flux
+            step_size = (max_r_X-min_r_X)/(n_r_X-1.0) * max_flux                ! equidistant perturbation grid
             
             ! get  the   interpolated  terms   in  V_interp  (also   correct  if
             ! grp_r_eq_hi = grp_r_eq_lo)
@@ -279,6 +292,16 @@ contains
             do id = grp_min_r_X-1, grp_max_r_X-1                                ! (indices start with 0 here)
                 ! fill V_interp with V_interp_next of previous step
                 V_interp = V_interp_next
+                
+                !if (id.eq.grp_max_r_X-1 .and. grp_n_procs.eq.2 .and. grp_rank.eq.0) then
+                    !write(*,*) '2p V_interp', grp_rank, V_interp
+                !else if (id.eq.grp_min_r_X-1 .and. grp_n_procs.eq.2 .and. grp_rank.eq.1) then
+                    !write(*,*) '2p V_interp', grp_rank, V_interp
+                !else if (id.eq.grp_max_r_X/2-1 .and. grp_n_procs.eq.1) then
+                    !write(*,*) '1p V_interp', grp_rank, V_interp
+                !else if (id.eq.grp_max_r_X/2 .and. grp_n_procs.eq.1) then
+                    !write(*,*) '1p V_interp', grp_rank, V_interp
+                !end if
                 
                 ! ---------------!
                 ! BLOCKS (id,id) !
@@ -340,7 +363,7 @@ contains
                 end if
             end do
             
-            ! assemble the matrix and view it
+            ! assemble the matrix
             call MatAssemblyBegin(mat,MAT_FINAL_ASSEMBLY,ierr)
             CHCKERR('Coulnd''t begin assembly of matrix')
             call MatAssemblyEnd(mat,MAT_FINAL_ASSEMBLY,ierr)
@@ -354,6 +377,120 @@ contains
             deallocate(loc_block)
             deallocate(loc_k,loc_m)
         end function fill_mat
+        
+        ! Sets the  boundary conditions by overwriting  the Hermitian components
+        ! written in fill_mat.
+        ! The  boundary condition  deep in  the  plasma, which  states that  the
+        ! perturbation is  zero there,  is implemented  by setting  the diagonal
+        ! elements off block (0,0) to a very large value.
+        ! The boundary condition at the plasma surface IS STILL AN OPEN QUESTION
+        ! Note:  Only matrix  A should  have its  elements set  to a  very large
+        ! value, not both A and B.
+        integer function set_mat_BC(A,B) result(ierr)
+            use X_vars, only: size_X
+            
+            character(*), parameter :: rout_name = 'set_mat_BC'
+            
+            ! input / output
+            Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
+            
+            ! local variables
+            PetscScalar, allocatable :: loc_block_null(:,:)                      ! (size_X,size_X) block matrix for 1 normal point, one
+            PetscScalar, allocatable :: loc_block_zero(:,:)                     ! (size_X,size_X) block matrix for 1 normal point, zero
+            PetscInt, allocatable :: loc_k(:), loc_m(:)                         ! the locations at which to add the blocks to the matrices
+            PetscInt :: id                                                      ! counter
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! initialize local blocks
+            allocate(loc_block_null(size_X,size_X))
+            loc_block_null = 0.0_dp
+            do id = 1,size_X
+                loc_block_null(id,id) = 1.0_dp
+            end do
+            allocate(loc_block_zero(size_X,size_X))
+            loc_block_zero = 0.0_dp
+            do id = 1,size_X
+                loc_block_zero(id,id) = 0._dp
+            end do
+            
+            ! -------------!
+            ! BLOCKS (0,0) !
+            ! -------------!
+            if (grp_rank.eq.0) then
+                ! set indices where to insert the block
+                loc_k = [(id, id = 0,size_X-1)]                                 ! first diagonal
+                loc_m = loc_k
+                
+                ! set the values of A (infinity)
+                call MatSetValues(A,size_X,loc_k,size_X,loc_m,loc_block_null,&
+                    &INSERT_VALUES,ierr)
+                CHCKERR('')
+                
+                ! set the values of B (zero)
+                call MatSetValues(B,size_X,loc_k,size_X,loc_m,loc_block_zero,&
+                    &INSERT_VALUES,ierr)
+                CHCKERR('')
+                
+                ! set indices where to insert the block
+                loc_k = [(id, id = 0,size_X-1)]                                 ! first diagonal
+                loc_m = loc_k + size_X
+                
+                ! set the values of A (zero)
+                call MatSetValues(A,size_X,loc_k,size_X,loc_m,loc_block_zero,&
+                    &INSERT_VALUES,ierr)
+                CHCKERR('')
+                
+                ! set the values of B (zero)
+                call MatSetValues(B,size_X,loc_k,size_X,loc_m,loc_block_zero,&
+                    &INSERT_VALUES,ierr)
+                CHCKERR('')
+            end if
+            
+            ! -------------------------!
+            ! BLOCKS (n_r_X-1,n_r_X-1) !
+            ! -------------------------!
+            if (grp_rank.eq.grp_n_procs-1) then
+                ! set indices where to insert the block
+                loc_k = [(id, id = 0,size_X-1)] + (n_r_X-1)*size_X              ! last diagonal
+                loc_m = loc_k
+                
+                ! set the values of A (infinity)
+                call MatSetValues(A,size_X,loc_k,size_X,loc_m,loc_block_null,&
+                    &INSERT_VALUES,ierr)
+                CHCKERR('')
+                
+                ! set the values of B (zero)
+                call MatSetValues(B,size_X,loc_k,size_X,loc_m,loc_block_zero,&
+                    &INSERT_VALUES,ierr)
+                CHCKERR('')
+                
+                ! set indices where to insert the block
+                loc_k = [(id, id = 0,size_X-1)] + (n_r_X-1)*size_X              ! last diagonal
+                loc_m = loc_k - size_X
+                
+                ! set the values of A (zero)
+                call MatSetValues(A,size_X,loc_k,size_X,loc_m,loc_block_zero,&
+                    &INSERT_VALUES,ierr)
+                CHCKERR('')
+                
+                ! set the values of B (zero)
+                call MatSetValues(B,size_X,loc_k,size_X,loc_m,loc_block_zero,&
+                    &INSERT_VALUES,ierr)
+                CHCKERR('')
+            end if
+            
+            ! assemble the matrices
+            call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr)
+            CHCKERR('Coulnd''t begin assembly of matrix')
+            call MatAssemblyBegin(B,MAT_FINAL_ASSEMBLY,ierr)
+            CHCKERR('Coulnd''t begin assembly of matrix')
+            call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr)
+            CHCKERR('Coulnd''t end assembly of matrix')
+            call MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY,ierr)
+            CHCKERR('Coulnd''t end assembly of matrix')
+        end function set_mat_BC
         
         ! calculates the  variable grp_r_eq,  which is  later used  to calculate
         ! V_interp  from  the tabulated  values  in  the equilibrium  grid,  the

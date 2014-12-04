@@ -1632,7 +1632,7 @@ contains
         ierr = 0
         
         ! deallocate general variables
-        deallocate(jac_F,h_F)
+        deallocate(jac_F,h_F,g_F)
         
         ! choose which equilibrium style is being used:
         !   1:  VMEC
@@ -1646,7 +1646,7 @@ contains
             case (2)                                                            ! HELENA
                 deallocate(T_HF,T_FH)
                 deallocate(det_T_HF,det_T_FH)
-                deallocate(jac_H,g_H)
+                deallocate(jac_H,g_H,h_H)
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))

@@ -83,7 +83,7 @@ contains
     ! Opens an HDF5 file and accompanying xmf file and returns the handles.
     ! Optionally, a description of the file  can be provided. Also, the plot can
     ! be done for only one process, setting the variable "ind_plot" to .true.
-    ! [MPI] Parts by all processes, parts only by group leader
+    ! [MPI] Parts by all processes, parts only by group master
     integer function open_HDF5_file(file_info,file_name,description,&
         &ind_plot) result(ierr)
         use num_vars, only: MPI_Comm_groups, grp_rank
@@ -140,7 +140,7 @@ contains
         ! user output
         call writo('HDF5 file "'//trim(full_file_name)//'" created')
             
-        ! only if group leader
+        ! only if group master
         if (grp_rank.eq.0) then
             ! open accompanying xmf file
             full_file_name = data_dir//'/'//trim(file_name)//'.xmf'
@@ -151,7 +151,7 @@ contains
             ! user output
             call writo('XDMF file "'//trim(full_file_name)//'" created')
             
-            ! write header if group leader
+            ! write header if group master
             write(file_info%XDMF_i,xmf_fmt) '<?xml version="1.0" ?>'
             write(file_info%XDMF_i,xmf_fmt) '<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" &
                 &[]>'
@@ -167,7 +167,7 @@ contains
     end function open_HDF5_file
     
     ! Closes an HDF5 file and writes the accompanying xmf file
-    ! [MPI] Parts by all processes, parts only by group leader
+    ! [MPI] Parts by all processes, parts only by group master
     integer function close_HDF5_file(file_info) result(ierr)
         use num_vars, only: grp_rank
         
@@ -200,7 +200,7 @@ contains
         ! user output
         call writo('HDF5 file "'//trim(full_file_name)//'" closed')
             
-        ! only if group leader
+        ! only if group master
         if (grp_rank.eq.0) then
             ! close header
             if (grp_rank.eq.0) then
@@ -223,7 +223,7 @@ contains
     ! Add an XDMF item to a HDF5 file
     ! Note:  This  should  only  be  used  with  grids  (or for  topologies  and
     ! geometries that are used throughout)
-    ! [MPI] Only group leader
+    ! [MPI] Only group master
     subroutine add_HDF5_item(file_info,XDMF_item,reset)
         use num_vars, only: grp_rank
         
@@ -237,7 +237,7 @@ contains
         integer :: item_len                                                     ! length of item
         logical :: reset_loc                                                    ! local copy of reset
         
-        ! only if group leader
+        ! only if group master
         if (grp_rank.eq.0) then
             ! set item_len
             item_len = size(XDMF_item%xml_str)
@@ -262,7 +262,7 @@ contains
     ! resets an HDF5 XDMF item
     ! Note: individual version cannot make use of array version because then the
     ! deallocation does not work properly>
-    ! [MPI] Only group leader
+    ! [MPI] Only group master
     subroutine reset_HDF5_item_arr(XDMF_items)                                  ! array vesion
         use num_vars, only: grp_rank
         
@@ -276,7 +276,7 @@ contains
         ! set n_items
         n_items = size(XDMF_items)
         
-        ! only if group leader
+        ! only if group master
         if (grp_rank.eq.0) then
             do id = 1,n_items
                 if (.not.allocated(XDMF_items(id)%xml_str)) then
@@ -297,7 +297,7 @@ contains
         ! input / output
         type(XML_str_type) :: XDMF_item                                         ! XDMF item to reset
         
-        ! only if group leader
+        ! only if group master
         if (grp_rank.eq.0) then
             if (.not.allocated(XDMF_item%xml_str)) then
                 call writo('WARNING: Could not reset HDF5 XDMF item "'&
@@ -313,7 +313,7 @@ contains
     ! prints an HDF5 data item
     ! If this is a parallel data item, the group dimension and offset have to be
     ! specified as well.
-    ! [MPI] Parts by all processes, parts only by group leader
+    ! [MPI] Parts by all processes, parts only by group master
     integer function print_HDF5_3D_data_item(dataitem_id,file_info,var_name,&
         &var,tot_dim,grp_dim,grp_offset) result(ierr)
         use num_vars, only: grp_rank
@@ -413,7 +413,7 @@ contains
         call H5Dclose_f(dset_id,ierr)
         CHCKERR('Failed to close data set')
         
-        ! set XDMF dataitem ID if group leader
+        ! set XDMF dataitem ID if group master
         if (grp_rank.eq.0) then
             dataitem_id%name = 'DataItem - '//trim(var_name)
             allocate(dataitem_id%xml_str(3))
@@ -474,7 +474,7 @@ contains
     end function print_HDF5_3D_data_item
     
     ! prints an HDF5 attribute
-    ! [MPI] Only group leader
+    ! [MPI] Only group master
     subroutine print_HDF5_att(att_id,att_dataitem,att_name,att_center,reset)
         use num_vars, only: grp_rank
         
@@ -490,7 +490,7 @@ contains
         integer :: id                                                           ! counter
         logical :: reset_loc                                                    ! local copy of reset
         
-        ! only if group leader
+        ! only if group master
         if (grp_rank.eq.0) then
             ! set dataitem_len
             dataitem_len = size(att_dataitem%xml_str)
@@ -522,7 +522,7 @@ contains
     
     ! prints an HDF5 topology
     ! Note: currently only structured grids supported
-    ! [MPI] Only group leader
+    ! [MPI] Only group master
     subroutine print_HDF5_top(top_id,top_type,top_n_elem)
         use num_vars, only: grp_rank
         
@@ -536,7 +536,7 @@ contains
         integer :: n_dims                                                       ! nr. of dimensions
         character(len=max_str_ln) :: work_str                                   ! work string
         
-        ! only if group leader
+        ! only if group master
         if (grp_rank.eq.0) then
             ! set n_dims
             n_dims = size(top_n_elem)
@@ -559,7 +559,7 @@ contains
     end subroutine print_HDF5_top
     
     ! prints an HDF5 geometry
-    ! [MPI] Only group leader
+    ! [MPI] Only group master
     subroutine print_HDF5_geom(geom_id,geom_type,geom_dataitems,reset)
         use num_vars, only: grp_rank
         
@@ -576,7 +576,7 @@ contains
         integer :: n_dataitems                                                  ! nr. of data items
         logical :: reset_loc                                                    ! local copy of reset
         
-        ! only if group leader
+        ! only if group master
         if (grp_rank.eq.0) then
             ! set n_dataitems
             n_dataitems = size(geom_dataitems)
@@ -621,7 +621,7 @@ contains
     ! XDMF domain, and  reused. If the grid  is a collection grid,  the grids in
     ! the  collection have  to  be specified.  Optionally, also  a  time can  be
     ! specified (for the grids in a collection grid).
-    ! [MPI] Only group leader
+    ! [MPI] Only group master
     integer function print_HDF5_grid(grid_id,grid_name,grid_type,grid_time,&
         &grid_top,grid_geom,grid_atts,grid_grids,reset) result(ierr)
         use num_vars, only: grp_rank
@@ -655,7 +655,7 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! only if group leader
+        ! only if group master
         if (grp_rank.eq.0) then
             ! test whether the correct arguments are provided
             if (grid_type.eq.1) then                                            ! uniform grid

@@ -7,7 +7,7 @@ module driver_rich
     use num_vars, only: max_it_r, dp, pi, max_str_ln
     use str_ops, only: i2str, r2str, r2strt
     use message_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
-    use output_ops, only: print_GP_2D
+    use output_ops, only: print_GP_2D, print_GP_3D
     implicit none
     private
     public run_rich_driver
@@ -151,7 +151,7 @@ contains
         use output_ops, only: draw_GP
         use eq_vars, only: dealloc_eq_final
         use X_ops, only: prepare_X, solve_EV_system, plot_X_vec
-        use X_vars, only: X_vec, X_val, init_m, dealloc_X_final, n_r_X
+        use X_vars, only: X_vec, X_val, init_m, dealloc_X_final, n_r_X, size_X
         use metric_ops, only: dealloc_metric_final
         
         character(*), parameter :: rout_name = 'run_for_alpha'
@@ -168,6 +168,7 @@ contains
         real(dp), allocatable :: x_axis(:,:)                                    ! x axis for plot of Eigenvalues with n_r_X
         logical :: use_guess                                                    ! whether a guess is formed from previous level of Richardson
         character(len=max_str_ln) :: plot_title                                 ! title for plots
+        integer :: n_sol_saved                                                  ! how many solutions saved
         
         ! initialize ierr
         ierr = 0
@@ -228,7 +229,7 @@ contains
             ! solve it
             call writo('treating the EV system')
             call lvl_ud(1)
-            ierr = solve_EV_system(use_guess)
+            ierr = solve_EV_system(use_guess,n_sol_saved)
             CHCKERR('')
             call lvl_ud(-1)
             
@@ -259,7 +260,7 @@ contains
                             &normal points')
                         
                         ! output on screen
-                        plot_title = 'JOB '//trim(i2str(alpha_job_nr))//' - &
+                        plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
                             &Eigenvalues as function of nr. of normal points'
                         call print_GP_2D(plot_title,'Eigenvalues_'//&
                             &trim(i2str(alpha_job_nr))//'_richardson.dat',&
@@ -272,10 +273,11 @@ contains
                     call writo('plotting final Eigenvalues')
                     
                     ! output on screen
-                    plot_title = 'JOB '//trim(i2str(alpha_job_nr))//' - &
+                    plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
                         &final Eigenvalues'
                     call print_GP_2D(plot_title,'Eigenvalues_'//&
-                        &trim(i2str(alpha_job_nr))//'.dat',realpart(X_val))
+                        &trim(i2str(alpha_job_nr))//'.dat',&
+                        &realpart(X_val(1:n_sol_saved)))
                     ! same output in file as well
                     call draw_GP(plot_title,'Eigenvalues_'//&
                         &trim(i2str(alpha_job_nr))//'.dat',1,.true.,.false.)
@@ -287,12 +289,15 @@ contains
                 
                 call lvl_ud(1)
                 
-                do id = 1,n_sol_requested
+                do id = 1,n_sol_saved
                     call writo('plotting results for mode '//trim(i2str(id))//&
-                        &'/'//trim(i2str(n_sol_requested))//&
+                        &'/'//trim(i2str(n_sol_saved))//&
                         &', with eigenvalue '&
                         &//trim(r2strt(realpart(X_val(id))))//' + '//&
                         &trim(r2strt(imagpart(X_val(id))))//' i')
+                    
+                    ! plot the harmonics
+                    call plot_harmonics(X_vec(:,:,id),id)
                     
                     ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id,job_nr,&
                         &[ang_par_F(1,1),ang_par_F(n_par,1)])
@@ -325,6 +330,106 @@ contains
         CHCKERR('')
         call dealloc_metric_final
         call dealloc_X_final
+    contains
+        ! plots the harmonics and their maximum
+        subroutine plot_harmonics(X_vec,X_id)
+            use MPI_ops, only: wait_MPI, get_ghost_X_vec, get_ser_var
+            use output_ops, only: merge_GP
+            use num_vars, only: grp_n_procs
+            use X_vars, only: grp_r_X
+            
+            ! input / output
+            complex(dp), intent(in) :: X_vec(:,:)                               ! MPI Eigenvector
+            integer, intent(in) :: X_id                                         ! nr. of Eigenvalue (for output name)
+            
+            ! local variables
+            integer :: id, kd                                                   ! counters
+            character(len=max_str_ln) :: file_name                              ! name of file of plots of this proc.
+            character(len=max_str_ln), allocatable :: file_names(:)             ! names of file of plots of different procs.
+            real(dp), allocatable :: x_plot(:,:)                                ! x values of plot
+            complex(dp), allocatable :: X_vec_extended(:,:)                     ! MPI Eigenvector extended with assymetric ghost region
+            real(dp), allocatable :: X_vec_max(:)                               ! maximum position index of X_vec of rank
+            real(dp), allocatable :: ser_X_vec_max(:)                           ! maximum position index of X_vec of whole group
+            
+            ! set up extended X_vec with ghost values
+            allocate(X_vec_extended(size_X,size(grp_r_X)))
+            X_vec_extended(:,1:size(X_vec,2)) = X_vec
+            ierr = get_ghost_X_vec(X_vec_extended,1)
+            CHCKERR('')
+            
+            ! set up x_plot
+            allocate(x_plot(size(grp_r_X),size_X))
+            do kd = 1,size_X
+                x_plot(:,kd) = grp_r_X
+            end do
+            
+            ! set up file name of this rank and plot title
+            file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//'.dat'
+            plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
+                &trim(i2str(X_id))
+            
+            ! print amplitude of harmonics of eigenvector for each rank
+            call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
+                &trim(i2str(grp_rank)),abs(transpose(X_vec_extended(:,:))),&
+                &x=x_plot,draw=.false.)
+            
+            ! wait for all processes
+            ierr = wait_MPI()
+            CHCKERR('')
+            
+            ! plot by group master
+            if (grp_rank.eq.0) then
+                ! set up file names in array
+                allocate(file_names(grp_n_procs))
+                do kd = 1,grp_n_procs
+                    file_names(kd) = trim(file_name)//'_'//trim(i2str(kd-1))
+                end do
+                
+                ! merge files
+                call merge_GP(file_names,file_name,delete=.true.)
+                
+                ! draw plot
+                call draw_GP(trim(plot_title),file_name,size_X,.true.,.false.)
+                
+                ! deallocate
+                deallocate(file_names)
+            end if
+            
+            ! find maximum of each mode
+            allocate(X_vec_max(size_X))
+            X_vec_max = 0.0_dp
+            do kd = 1,size_X
+                X_vec_max(kd) = grp_r_X(maxloc(abs(X_vec(kd,:)),1))
+            end do
+            
+            ! gather all parllel X_vec_max arrays in one serial array
+            ierr = get_ser_var(X_vec_max,ser_X_vec_max)
+            CHCKERR('')
+            
+            ! find the maximum of the different ranks and put it in X_vec_max of
+            ! group master
+            if (grp_rank.eq.0) then
+                do kd = 1,size_X
+                    X_vec_max(kd) = maxval([(ser_X_vec_max(kd+id*size_X),&
+                        &id=0,grp_n_procs-1)])
+                end do
+            
+                ! set up file name of this rank and plot title
+                file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//'_max.dat'
+                plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
+                    &trim(i2str(X_id))//' - maximum of modes'
+                
+                ! plot the maximum
+                call print_GP_2D(trim(plot_title),trim(file_name),&
+                    &[(kd*1._dp,kd=1,size_X)],x=X_vec_max,draw=.false.)
+                
+                ! draw plot
+                call draw_GP(trim(plot_title),file_name,1,.true.,.false.)
+            end if
+            
+            ! deallocate
+            deallocate(x_plot,X_vec_extended)
+        end subroutine plot_harmonics
     end function run_for_alpha
     
     ! calculates the number of normal  points for the perturbation n_r_X for the

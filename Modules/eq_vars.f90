@@ -277,6 +277,7 @@ contains
         ! initialize ierr
         ierr = 0
         
+        write(*,*) 'HELENA SHOULD BE ADAPTED ONLY ONCE !!!!'
         ! set old arrays
         allocate(old_h_H_11(size(h_H_11,1),size(h_H_11,2)))
         old_h_H_11 = h_H_11
@@ -345,7 +346,8 @@ contains
     ! calculates flux quantities  and normal derivatives in  the VMEC coordinate
     ! system
     integer function calc_flux_q() result(ierr)
-        use num_vars, only: eq_style, max_deriv, grp_rank, use_pol_flux
+        use num_vars, only: eq_style, max_deriv, grp_rank, use_pol_flux, &
+            &glb_rank, plot_flux_q
         use utilities, only: calc_deriv, calc_int
         
         character(*), parameter :: rout_name = 'calc_flux_q_VMEC'
@@ -369,6 +371,14 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
+        
+        ! plot flux quantities if requested
+        if (plot_flux_q .and. glb_rank.eq.0) then
+            ierr = flux_q_plot()
+            CHCKERR('')
+        else
+            call writo('Flux quantities plot not requested')
+        end if
     contains
         ! VMEC version
         integer function calc_flux_q_VMEC() result(ierr)
@@ -616,6 +626,220 @@ contains
             end if
         end function calc_flux_q_HEL
     end function calc_flux_q
+    
+    ! plots the flux quantities in the perturbation grid
+    !   safety factor q_saf
+    !   rotational transform rot
+    !   pressure pres
+    !   poloidal flux flux_p
+    !   toroidal flux flux_t
+    integer function flux_q_plot() result(ierr)
+        use num_vars, only: eq_style, use_pol_flux, output_style
+        use VMEC_vars, only: presf
+        use HEL_vars, only: p0, flux_H
+        
+        character(*), parameter :: rout_name = 'flux_q_plot'
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        integer :: n_vars = 5                                                   ! nr. of variables to plot
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), allocatable :: x_plot_2D(:,:)                                 ! x values of 2D plot
+        real(dp), allocatable :: y_plot_2D(:,:)                                 ! y values of 2D plot
+        character(len=max_str_ln), allocatable :: plot_titles(:)                ! plot titles
+        character(len=max_str_ln), allocatable :: file_names(:)                 ! file_names
+        real(dp), allocatable :: r_plot(:)                                      ! normal r for plot
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Plotting flux quantities')
+        
+        call lvl_ud(1)
+        
+        ! initialize x_plot_2D and y_plot_2D
+        allocate(x_plot_2D(n_r_eq,n_vars))
+        allocate(y_plot_2D(n_r_eq,n_vars))
+        
+        ! set up plot titles and file names
+        allocate(plot_titles(n_vars))
+        allocate(file_names(2))
+        plot_titles(1) = 'safety factor []'
+        plot_titles(2) = 'rotational transform []'
+        plot_titles(3) = 'pressure [pa]'
+        plot_titles(4) = 'poloidal flux [Tm^2]'
+        plot_titles(5) = 'toroidal flux [Tm^2]'
+        file_names(1) = 'pres'
+        file_names(2) = 'flux'
+        
+        ! fill the 2D version of the plot
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                y_plot_2D(:,1) = q_saf_V_full(:,0)
+                y_plot_2D(:,2) = rot_t_V_full(:,0)
+                y_plot_2D(:,3) = presf
+                y_plot_2D(:,4) = flux_p_V_full(:,0)
+                y_plot_2D(:,5) = flux_t_V_full(:,0)
+                if (use_pol_flux) then
+                    x_plot_2D(:,1) = flux_p_V_full(:,0)/max_flux
+                else
+                    x_plot_2D(:,1) = flux_t_V_full(:,0)/max_flux
+                end if
+                do id = 2,n_vars
+                    x_plot_2D(:,id) = x_plot_2D(:,1)
+                end do
+            case (2)                                                            ! HELENA
+                y_plot_2D(:,1) = q_saf_H_full(:,0)
+                y_plot_2D(:,2) = rot_t_H_full(:,0)
+                y_plot_2D(:,3) = p0
+                y_plot_2D(:,4) = flux_p_H_full(:,0)
+                y_plot_2D(:,5) = flux_t_H_full(:,0)
+                if (use_pol_flux) then
+                    x_plot_2D(:,1) = flux_p_H_full(:,0)/max_flux
+                else
+                    x_plot_2D(:,1) = flux_t_H_full(:,0)/max_flux
+                end if
+                do id = 2,n_vars
+                    x_plot_2D(:,id) = x_plot_2D(:,1)
+                end do
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        
+        ! plot the output
+        ! choose which output style is being used:
+        !   1:  GNUPlot
+        !   2:  HDF5
+        select case (output_style)
+            case (1)                                                            ! GNUPlot
+                ! plot  the  2D output  (except  q_saf and  rot_t,  as they  are
+                ! plotalready ted in plot_jq)
+                call writo('The safety factor and rotational transform are not &
+                    &plotted here. Instead, use the input variable "plot_jq".')
+                call print_GP_2D(plot_titles(3),file_names(1)//'.dat',&
+                    &y_plot_2D(:,3),x_plot_2D(:,3),draw=.false.)
+                call draw_GP(plot_titles(3),file_names(1),1,.true.,.false.)
+                call print_GP_2D(trim(plot_titles(4))//', '//&
+                    &trim(plot_titles(5)),file_names(2),y_plot_2D(:,4:5),&
+                    &x_plot_2D(:,4:5),draw=.false.)
+                call draw_GP(trim(plot_titles(4))//', '//trim(plot_titles(5)),&
+                    &file_names(2),2,.true.,.false.)
+            case (2)                                                            ! HDF5
+                ! set up r_plot
+                allocate(r_plot(n_r_eq))
+                ! choose which equilibrium style is being used:
+                !   1:  VMEC
+                !   2:  HELENA
+                select case (eq_style)
+                    case (1)                                                    ! VMEC
+                        r_plot = [((id-1._dp)/(n_r_eq-1),id=1,n_r_eq)]          ! normal variable is equidistant normal poloidal flux
+                    case (2)                                                    ! HELENA
+                        r_plot = flux_H/flux_H(n_r_eq)                          ! output from HELENA
+                    case default
+                        err_msg = 'No equilibrium style associated with '//&
+                            &trim(i2str(eq_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
+                end select
+                
+                ierr = flux_q_plot_HDF5(r_plot)
+                CHCKERR('')
+            case default
+                err_msg = 'No output style associated with '//&
+                    &trim(i2str(output_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        
+        ! deallocate
+        deallocate(x_plot_2D,y_plot_2D)
+        
+        call lvl_ud(-1)
+    contains
+        ! convert 2D plot to real plot in 3D and output in HDF5
+        integer function flux_q_plot_HDF5(r_plot) result(ierr)
+            use output_ops, only: print_HDF5_3D
+            
+            character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
+            
+            ! input / output
+            real(dp), intent(in) :: r_plot(:)                                   ! normal r for 3D plot
+            
+            ! local variables
+            integer :: kd                                                       ! counter
+            real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)        ! theta and zeta for 3D plot
+            integer :: n_theta_plot = 201                                       ! nr. of poloidal points in plot
+            integer :: n_zeta_plot = 101                                        ! nr. of toroidal points in plot
+            real(dp), allocatable :: x_plot_3D(:,:,:)                           ! x values of 3D plot
+            real(dp), allocatable :: y_plot_3D(:,:,:)                           ! y values of 3D plot
+            real(dp), allocatable :: z_plot_3D(:,:,:)                           ! z values of 3D plot
+            real(dp), allocatable :: x_plot(:,:,:,:)                            ! x values of total plot
+            real(dp), allocatable :: y_plot(:,:,:,:)                            ! y values of total plot
+            real(dp), allocatable :: z_plot(:,:,:,:)                            ! z values of total plot
+            real(dp), allocatable :: f_plot(:,:,:,:)                            ! values of variable of total plot
+            integer :: n_r_plot                                                 ! how many normal points
+            integer :: plot_dim(4)                                              ! total plot dimensions
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! intitialize n_r_plot
+            n_r_plot = size(r_plot)
+            
+            ! initialize theta_plot and zeta_plot
+            allocate(theta_plot(n_theta_plot,n_zeta_plot,n_r_plot))
+            do id = 1,n_theta_plot
+                theta_plot(id,:,:) = pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)
+            end do
+            allocate(zeta_plot(n_theta_plot,n_zeta_plot,n_r_plot))
+            do id = 1,n_zeta_plot
+                zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
+            end do
+            
+            ! calculate X,Y and Z
+            ierr = calc_XYZ_grid(theta_plot,zeta_plot,r_plot,&
+                &x_plot_3D,y_plot_3D,z_plot_3D)
+            CHCKERR('')
+            
+            ! set up plot_dim
+            plot_dim = [n_theta_plot,n_zeta_plot,n_r_plot,n_vars]
+            
+            ! set up total plot variables
+            allocate(x_plot(n_theta_plot,n_zeta_plot,n_r_plot,n_vars))
+            allocate(y_plot(n_theta_plot,n_zeta_plot,n_r_plot,n_vars))
+            allocate(z_plot(n_theta_plot,n_zeta_plot,n_r_plot,n_vars))
+            allocate(f_plot(n_theta_plot,n_zeta_plot,n_r_plot,n_vars))
+            do id = 1,n_vars
+                x_plot(:,:,:,id) = x_plot_3D
+                y_plot(:,:,:,id) = y_plot_3D
+                z_plot(:,:,:,id) = z_plot_3D
+            end do
+            do kd = 1,n_r_plot
+                f_plot(:,:,kd,1) = y_plot_2D(kd,1)                              ! safey factor
+                f_plot(:,:,kd,2) = y_plot_2D(kd,2)                              ! rotational transform
+                f_plot(:,:,kd,3) = y_plot_2D(kd,3)                              ! pressure
+                f_plot(:,:,kd,4) = y_plot_2D(kd,4)                              ! poloidal flux
+                f_plot(:,:,kd,5) = y_plot_2D(kd,5)                              ! toroidal flux
+            end do
+            
+            ! print the output using HDF5
+            call print_HDF5_3D(plot_titles,'flux_quantities',f_plot,plot_dim,&
+                &plot_dim,[0,0,0,0],x_plot,y_plot,z_plot,col=1,&
+                &description='Flux quantities')
+            
+            ! deallocate
+            deallocate(theta_plot,zeta_plot)
+            deallocate(x_plot_3D,y_plot_3D,z_plot_3D)
+            deallocate(x_plot,y_plot,z_plot,f_plot)
+        end function flux_q_plot_HDF5
+    end function flux_q_plot
 
     ! Calculate the angular mesh with  the normal variable being the equilibrium
     ! normal variable.
@@ -1387,7 +1611,7 @@ contains
     ! lambda on the grid, as this is  also needed some times. If HELENA is used,
     ! this variable is not allocated.
     ! Note: The variables X, Y, Z and optionally L have to be unallocated.
-    integer function calc_XYZ_grid(theta,zeta,r_range,X,Y,Z,L) &
+    integer function calc_XYZ_grid(theta,zeta,norm_r,X,Y,Z,L) &
         &result(ierr)
         use num_vars, only: eq_style
         use utilities, only: interp_fun_1D, round_with_tol
@@ -1395,49 +1619,36 @@ contains
         character(*), parameter :: rout_name = 'calc_XYZ_grid'
         
         ! input / output
-        real(dp), intent(in) :: theta(:,:,:), zeta(:,:,:)                       ! points at which to calculate the grid
-        real(dp), intent(in) :: r_range(2)                                      ! min. and max. normal range in eq. range or pert. range
+        real(dp), intent(in) :: theta(:,:,:), zeta(:,:,:), norm_r(:)            ! points at which to calculate the grid
         real(dp), intent(inout), allocatable :: X(:,:,:), Y(:,:,:), Z(:,:,:)    ! X, Y and Z of grid
         real(dp), intent(inout), allocatable, optional :: L(:,:,:)              ! lambda of grid
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: kd                                                           ! counter
-        integer :: n_r                                                          ! nr. of normal points
-        real(dp), allocatable :: r_eq(:)                                        ! range of r values in equilibrium grid
         
         ! initialize ierr
         ierr = 0
         
         ! test
-        if (size(theta,1).ne.size(zeta,1) .or. size(theta,2).ne.size(zeta,2) &
-            &.or. size(theta,3).ne.size(zeta,3)) then
+        if (size(theta,1).ne.size(zeta,1) .or. &
+            &size(theta,2).ne.size(zeta,2) .or. &
+            &size(theta,3).ne.size(zeta,3) .or. &
+            &size(theta,3).ne.size(norm_r)) then
             ierr = 1
-            err_msg =  'Theta and Zeta need to have the same dimensions'
+            err_msg =  'theta, zeta and norm_r need to have the correct &
+                &dimensions'
             CHCKERR(err_msg)
         end if
-        
-        ! set up r values in equilibrium grid
-        n_r = size(theta,3)
-        allocate(r_eq(n_r))
-        r_eq(1) = r_range(1)
-        do kd = 2,n_r
-            r_eq(kd) = r_eq(kd-1) + (r_range(2)-r_range(1))/(n_r-1)
-        end do
-        
-        ! round with standard tolerance
-        ierr = round_with_tol(r_eq,0.0_dp,1.0_dp)
-        CHCKERR('')
         
         ! choose which equilibrium style is being used:
         !   1:  VMEC
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ierr = calc_XYZ_grid_VMEC(theta,zeta,r_eq,X,Y,Z,L)
+                ierr = calc_XYZ_grid_VMEC(theta,zeta,norm_r,X,Y,Z,L)
                 CHCKERR('')
             case (2)                                                            ! HELENA
-                ierr = calc_XYZ_grid_HEL(theta,zeta,r_eq,X,Y,Z)
+                ierr = calc_XYZ_grid_HEL(theta,zeta,norm_r,X,Y,Z)
                 CHCKERR('')
             case default
                 err_msg = 'No equilibrium style associated with '//&
@@ -1447,7 +1658,7 @@ contains
         end select
     contains
         ! VMEC version
-        integer function calc_XYZ_grid_VMEC(theta,zeta,r_eq,X,Y,Z,L) &
+        integer function calc_XYZ_grid_VMEC(theta,zeta,norm_r,X,Y,Z,L) &
             &result(ierr)
             use VMEC_vars, only: R_c, R_s, Z_c, Z_s, L_c, L_s, mpol, ntor
             use fourier_ops, only: calc_trigon_factors, fourier2real
@@ -1456,7 +1667,7 @@ contains
             
             ! input / output
             real(dp), intent(in) :: theta(:,:,:), zeta(:,:,:)                   ! points at which to calculate the grid
-            real(dp), intent(in) :: r_eq(:)                                     ! r values in equilibrium range
+            real(dp), intent(in) :: norm_r(:)                                   ! r values in equilibrium range
             real(dp), intent(inout), allocatable :: X(:,:,:), Y(:,:,:), &
                 &Z(:,:,:)                                                       ! X, Y and Z of grid
             real(dp), intent(inout), allocatable, optional :: L(:,:,:)          ! lambda of grid
@@ -1501,23 +1712,23 @@ contains
                 do n = -ntor,ntor
                     do m = 0,mpol-1
                         ierr = interp_fun_1D(R_c_int(m,n,kd),R_c(m,n,:,0),&
-                            &r_eq(kd))
+                            &norm_r(kd))
                         CHCKERR('')
                         ierr = interp_fun_1D(R_s_int(m,n,kd),R_s(m,n,:,0),&
-                            &r_eq(kd))
+                            &norm_r(kd))
                         CHCKERR('')
                         ierr = interp_fun_1D(Z_c_int(m,n,kd),Z_c(m,n,:,0),&
-                            &r_eq(kd))
+                            &norm_r(kd))
                         CHCKERR('')
                         ierr = interp_fun_1D(Z_s_int(m,n,kd),Z_s(m,n,:,0),&
-                            &r_eq(kd))
+                            &norm_r(kd))
                         CHCKERR('')
                         if (present(L)) then
                             ierr = interp_fun_1D(L_c_int(m,n,kd),L_c(m,n,:,0),&
-                                &r_eq(kd))
+                                &norm_r(kd))
                             CHCKERR('')
                             ierr = interp_fun_1D(L_s_int(m,n,kd),L_s(m,n,:,0),&
-                                &r_eq(kd))
+                                &norm_r(kd))
                             CHCKERR('')
                         end if
                     end do
@@ -1558,14 +1769,14 @@ contains
         end function calc_XYZ_grid_VMEC
         
         ! HELENA version
-        integer function calc_XYZ_grid_HEL(theta,zeta,r_eq,X,Y,Z) result(ierr)
+        integer function calc_XYZ_grid_HEL(theta,zeta,norm_r,X,Y,Z) result(ierr)
             use HEL_vars, only: R_H, Z_H, chi_H, ias, flux_H
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_HEL'
             
             ! input / output
             real(dp), intent(in) :: theta(:,:,:), zeta(:,:,:)                   ! points at which to calculate the grid
-            real(dp), intent(in) :: r_eq(:)                                     ! r values in equilibrium range
+            real(dp), intent(in) :: norm_r(:)                                   ! r values in equilibrium range
             real(dp), intent(inout), allocatable :: X(:,:,:), Y(:,:,:), &
                 &Z(:,:,:)                                                       ! X, Y and Z of grid
             
@@ -1596,15 +1807,15 @@ contains
             do kd = 1,n_r                                                       ! loop over all normal points
                 ! interpolate the HELENA tables in normal direction
                 ! Note:  HELENA   uses  a regular,  non-equidistant  grid,  here
-                ! normalized from 0 to 1 in flux_H/flux_H(n_r)
+                ! normalized from 0 to 1 in flux_H/flux_H(n_r_eq)
                 do id = 1,size(R_H,1)
-                    ierr = interp_fun_1D(R_H_int(id),R_H(id,:),r_eq(kd),&
-                        &x=flux_H/flux_H(n_r))
+                    ierr = interp_fun_1D(R_H_int(id),R_H(id,:),norm_r(kd),&
+                        &x=flux_H/flux_H(n_r_eq))
                     CHCKERR('')
                 end do
                 do id = 1,size(Z_H,1)
-                    ierr = interp_fun_1D(Z_H_int(id),Z_H(id,:),r_eq(kd),&
-                        &x=flux_H/flux_H(n_r))
+                    ierr = interp_fun_1D(Z_H_int(id),Z_H(id,:),norm_r(kd),&
+                        &x=flux_H/flux_H(n_r_eq))
                     CHCKERR('')
                 end do
                 ! loop over toroidal points

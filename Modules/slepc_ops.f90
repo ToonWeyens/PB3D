@@ -17,7 +17,8 @@ module slepc_ops
 contains
     ! This subroutine sets up  the matrices A ad B of  the generalized EV system
     ! described in [ADD REF] and solves them using the slepc suite
-    integer function solve_EV_system_slepc(use_guess) result(ierr)
+    integer function solve_EV_system_slepc(use_guess,max_n_EV) &
+        &result(ierr)
         use slepc_vars, only: start_slepc, stop_slepc, setup_matrices, &
             &setup_solver, setup_guess, get_solution, summarize_solution, &
             &store_results
@@ -26,12 +27,12 @@ contains
         
         ! input / output
         PetscBool, intent(in) :: use_guess                                      ! whether to use a guess or not
+        PetscInt, intent(inout) :: max_n_EV                                     ! how many solutions saved
         
         ! local variables
         Mat :: A                                                                ! matrix A in EV problem A X = lambda B X
         Mat :: B                                                                ! matrix B in EV problem A X = lambda B X
         EPS :: solver                                                           ! EV solver
-        PetscInt :: max_n_EV                                                    ! nr. of EV's saved
         PetscInt, save :: guess_start_id = -10                                  ! start of index of previous vector, saved for next iteration
         PetscInt, save :: prev_n_EV                                             ! nr. of solutions of previous vector
         

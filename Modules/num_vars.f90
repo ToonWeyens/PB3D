@@ -13,7 +13,7 @@ module num_vars
         &next_job_win, plot_jq, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
         &nyq_fac, max_n_plots, alpha_job_nr, use_pol_flux, plot_grid, &
         &output_style, eq_style, eq_name, plot_dir, data_dir, script_dir, &
-        &spline_type
+        &spline_type, plot_flux_q
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -55,8 +55,9 @@ module num_vars
     integer :: eq_style                                                         ! either 1 (VMEC) or 2 (HELENA)
     integer :: alpha_job_nr                                                     ! which alpha job is being calculated
     logical :: use_pol_flux                                                     ! whether or not the poloidal flux is used as radial variable
-    logical :: plot_jq                                                          ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0
-    logical :: plot_grid                                                        ! whether to plot the grid in real coordinates
+    logical :: plot_jq                                                          ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0 (only global master)
+    logical :: plot_grid                                                        ! whether to plot the grid in real coordinates (only group masters)
+    logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates (only global master)
     
     ! concerning Richardson extrapolation
     integer :: max_it_r                                                         ! number of levels for Richardson extrapolation

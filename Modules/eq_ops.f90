@@ -35,7 +35,8 @@ contains
             &T_VF, T_FV, g_F, h_F, det_T_VF, det_T_FV, jac_F, g_FD, h_FD, &
             &jac_FD, T_HF, T_FH, det_T_HF, det_T_FH, g_H, h_H
         use utilities, only: derivs
-        use num_vars, only: max_deriv, ltest, use_pol_flux, plot_grid, eq_style
+        use num_vars, only: max_deriv, ltest, use_pol_flux, plot_grid, &
+            &eq_style, grp_rank
         
         character(*), parameter :: rout_name = 'calc_eq'
         
@@ -96,7 +97,7 @@ contains
             end if
             
             ! plot grid if requested
-            if (plot_grid) then
+            if (plot_grid .and. grp_rank.eq.0) then                             ! only group masters
                 ! choose which equilibrium style is being used:
                 !   1:  VMEC
                 !   2:  HELENA
@@ -113,6 +114,8 @@ contains
                         ierr = 1
                         CHCKERR(err_msg)
                 end select
+            else
+                call writo('Grid plot not requested')
             end if
             
             ! check whether the mesh has been calculated correctly
@@ -145,6 +148,7 @@ contains
                     end do
                     
                     ! calculate flux quantities
+                    call writo('Calculate flux quantities...')
                     ierr = calc_flux_q()
                     CHCKERR('')
                     
@@ -413,7 +417,7 @@ contains
     integer function plot_grid_real(theta,zeta,min_r,max_r) &
         &result(ierr)
         use eq_vars, only: n_par, calc_XYZ_grid
-        use num_vars, only: output_style
+        use num_vars, only: output_style, alpha_job_nr
         
         character(*), parameter :: rout_name = 'plot_grid_real'
         
@@ -428,7 +432,8 @@ contains
             &'Magnetic field in flux surfaces'                                  ! name of animation
         real(dp), allocatable :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)             ! X, Y and Z of surface in Axisymmetric coordinates
         real(dp), allocatable :: X_2(:,:,:), Y_2(:,:,:), Z_2(:,:,:)             ! X, Y and Z of magnetic field lines in Axisymmetric coordinates
-        real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)            ! theta and zeta for flux surface plot
+        real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)            ! theta and zeta for plots
+        real(dp), allocatable :: r_plot(:)                                      ! r for plots
         integer :: id                                                           ! counter
         integer :: loc_n_par, loc_n_r                                           ! local nr. of parallel and normal points
         integer :: n_theta_plot = 40                                            ! nr. of poloidal points in plot
@@ -457,18 +462,22 @@ contains
         loc_n_par = size(theta,1)
         loc_n_r = size(theta,2)
         
-        ! initialize theta_surf and zeta_surf
+        ! initialize theta_plot, zeta_plot and r_plot
         allocate(theta_plot(n_theta_plot,n_zeta_plot,loc_n_r))
         do id = 1,n_theta_plot
-            theta_plot(id,:,:) = (id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)
+            theta_plot(id,:,:) = pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)      ! better to start from pi for the plot
         end do
         allocate(zeta_plot(n_theta_plot,n_zeta_plot,loc_n_r))
         do id = 1,n_zeta_plot
             zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
         end do
+        allocate(r_plot(loc_n_r))
+        do id = 1,loc_n_r
+            r_plot(id) = min_r + (id-1._dp)/(loc_n_r-1)*(max_r-min_r)
+        end do
         
         ! calculate X,Y and Z
-        ierr = calc_XYZ_grid(theta_plot,zeta_plot,[min_r,max_r],X_1,Y_1,Z_1)
+        ierr = calc_XYZ_grid(theta_plot,zeta_plot,r_plot,X_1,Y_1,Z_1)
         CHCKERR('')
         
         ! deallocate
@@ -485,7 +494,7 @@ contains
         end do
         
         ! calculate X,Y and Z
-        ierr = calc_XYZ_grid(theta_plot,zeta_plot,[min_r,max_r],X_2,Y_2,Z_2)
+        ierr = calc_XYZ_grid(theta_plot,zeta_plot,r_plot,X_2,Y_2,Z_2)
         CHCKERR('')
         
         ! deallocate
@@ -496,7 +505,7 @@ contains
             case(1)                                                             ! GNUPlot output
                 call plot_grid_real_GP(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)
             case(2)                                                             ! HDF5 output
-                ierr = plot_grid_real_hdf5(x_1,x_2,y_1,y_2,z_1,z_2,anim_name)
+                ierr = plot_grid_real_HDF5(x_1,x_2,y_1,y_2,z_1,z_2,anim_name)
                 CHCKERR('')
             case default
                 err_msg = 'No style associated with '//trim(i2str(output_style))
@@ -531,10 +540,12 @@ contains
             call lvl_ud(1)
             
             ! set names
-            plot_title(1) = 'Magnetic Flux Surface'
-            file_name(1) = 'Flux_surfaces.dat'
-            plot_title(2) = 'Magnetic Field Line'
-            file_name(2) = 'B_field.dat'
+            plot_title(1) = 'Magnetic Flux Surface for alpha job '//&
+                &trim(i2str(alpha_job_nr))
+            file_name(1) = 'Flux_surfaces_'//trim(i2str(alpha_job_nr))//'.dat'
+            plot_title(2) = 'Magnetic Field Line for alpha job '//&
+                &trim(i2str(alpha_job_nr))
+            file_name(2) = 'B_field_'//trim(i2str(alpha_job_nr))//'.dat'
             
             ! write flux surfaces
             call print_GP_3D(trim(plot_title(1)),trim(file_name(1)),&
@@ -598,12 +609,15 @@ contains
             n_r = size(X_1,3)                                                   ! should be same for all other X_i, Y_i and Z_i
             
             ! set up plot titles
-            plot_title(1) = 'Magnetic Flux Surface'
-            plot_title(2) = 'Magnetic Field Line'
+            plot_title(1) = 'Magnetic Flux Surface for alpha job '//&
+                &trim(i2str(alpha_job_nr))
+            plot_title(2) = 'Magnetic Field Line for alpha job '//&
+                &trim(i2str(alpha_job_nr))
             
             ! open HDF5 file
-            ierr = open_HDF5_file(file_info,'field_lines_in_flux_surfaces',&
-                &description=anim_name)
+            ierr = open_HDF5_file(file_info,'field_lines_in_flux_surfaces_'//&
+                &trim(i2str(alpha_job_nr)),description=anim_name,&
+                &ind_plot=.true.)
             CHCKERR('')
             
             ! create grid for time collection

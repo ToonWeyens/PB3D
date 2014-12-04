@@ -12,8 +12,13 @@ module MPI_ops
     implicit none
     private
     public start_MPI, stop_MPI, split_MPI, abort_MPI, broadcast_vars, &
-        &merge_MPI, get_next_job, divide_grid, get_ser_X_vec, get_ghost_X_vec, &
+        &merge_MPI, get_next_job, divide_grid, get_ser_var, get_ghost_X_vec, &
         &wait_MPI
+    
+    ! interfaces
+    interface get_ser_var
+        module procedure get_ser_var_complex, get_ser_var_real
+    end interface
     
 contains
     ! start MPI and gather information
@@ -241,7 +246,7 @@ contains
             use num_vars, only: min_n_r_X, grp_n_procs, grp_rank, min_r_X, &
                 &max_r_X, use_pol_flux, eq_style
             use utilities, only: con2dis, dis2con, calc_int, interp_fun_1D, &
-                &calc_deriv
+                &calc_deriv, round_with_tol
             use eq_vars, only: grp_min_r_eq, grp_max_r_eq, n_r_eq, &
                 &eq_use_pol_flux
             use VMEC_vars, only: phi, phi_r, iotaf
@@ -324,13 +329,16 @@ contains
             ! 1. continuous perturbation grid (0..1)
             grp_min_r_eq_X_con = min_r_X + &
                 &grp_rank*(max_r_X-min_r_X)/grp_n_procs
-            ! 2. continuous equilibrium grid (0..1)
+            ! 2 round with tolerance
+            ierr = round_with_tol(grp_min_r_eq_X_con,0._dp,1._dp)
+            CHCKERR('')
+            ! 3. continuous equilibrium grid (0..1)
             ierr = interp_fun_1D(grp_min_r_eq_eq_con,flux_eq,&
                 &grp_min_r_eq_X_con,flux)
             CHCKERR('')
-            ! 3. discrete equilibrium grid, unrounded
+            ! 4. discrete equilibrium grid, unrounded
             call con2dis(grp_min_r_eq_eq_con,grp_min_r_eq_eq_dis,flux_eq)
-            ! 4. discrete equilibrium grid, rounded down
+            ! 5. discrete equilibrium grid, rounded down
             grp_min_r_eq = floor(grp_min_r_eq_eq_dis)
             
             ! use min_r_X and max_r_X to calculate grp_max_r_eq
@@ -345,13 +353,16 @@ contains
             ! 4. continous perturbation grid (0..1)
             call dis2con(grp_max_r_eq_X_dis,grp_max_r_eq_X_con,[1,min_n_r_X],&
                 &[min_r_X,max_r_X])                                             ! the perturbation grid is equidistant
-            ! 5. continuous equilibrium grid (0..1)
+            ! 5 round with tolerance
+            ierr = round_with_tol(grp_max_r_eq_X_con,0._dp,1._dp)
+            CHCKERR('')
+            ! 6. continuous equilibrium grid (0..1)
             ierr = interp_fun_1D(grp_max_r_eq_eq_con,flux_eq,&
                 &grp_max_r_eq_X_con,flux)
             CHCKERR('')
-            ! 6. discrete equilibrium grid, unrounded
+            ! 7. discrete equilibrium grid, unrounded
             call con2dis(grp_max_r_eq_eq_con,grp_max_r_eq_dis,flux_eq)
-            ! 7. discrete equlibrium grid, rounded up
+            ! 8. discrete equlibrium grid, rounded up
             grp_max_r_eq = ceiling(grp_max_r_eq_dis)
             
             deallocate(flux,flux_eq)
@@ -480,17 +491,17 @@ contains
         CHCKERR('MPI broadcast failed')
     end function get_next_job
     
-    ! gather solution Eigenvector X_vec in serial version on group master
+    ! Gather parallel variable in serial version on group master
+    ! Note: the serial variable has to be allocatable and unallocated
     ! [MPI] Collective call
-    integer function get_ser_X_vec(X_vec,ser_X_vec) result(ierr)
+    integer function get_ser_var_complex(var,ser_var) result(ierr)              ! complex version
         use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
-        use X_vars, only: grp_n_r_X, size_X
         
-        character(*), parameter :: rout_name = 'get_X_vec'
+        character(*), parameter :: rout_name = 'get_ser_var'
         
         ! input / output
-        complex(dp), intent(in) :: X_vec(:,:)                                   ! parallel vector
-        complex(dp), intent(inout) :: ser_X_vec(:,:)                            ! serial vector
+        complex(dp), intent(in) :: var(:)                                       ! parallel vector
+        complex(dp), allocatable, intent(inout) :: ser_var(:)                   ! serial vector
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -501,8 +512,8 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! gather  grp_n_r_X of  all  groups  onto main  processor,  to serve  as
-        ! recvcounts on group master
+        ! gather local size  of var of all groups onto  main processor, to serve
+        ! as receive counts on group master
         if (grp_rank.eq.0) then
             allocate(recvcounts(grp_n_procs))
             allocate(displs(grp_n_procs))
@@ -510,12 +521,17 @@ contains
             allocate(recvcounts(0))
             allocate(displs(0))
         end if
-        call MPI_Gather(grp_n_r_X,1,MPI_INTEGER,recvcounts,1,MPI_INTEGER,0,&
+        call MPI_Gather(size(var),1,MPI_INTEGER,recvcounts,1,MPI_INTEGER,0,&
             &MPI_Comm_groups,ierr)
-        err_msg = 'Failed to gather solution Eigenvector'
-        recvcounts = recvcounts * size_X
+        err_msg = 'Failed to gather size of parallel variable'
+        CHCKERR(err_msg)
         
-        ! deduce displacemnts by summing recvcounts
+        ! allocate serial variable
+        allocate(ser_var(sum(recvcounts)),stat=ierr)
+        err_msg = 'Serial variable was already allocated'
+        CHCKERR(err_msg)
+        
+        ! deduce displacements by summing recvcounts
         if (grp_rank.eq.0) then
             displs(1) = 0
             do id = 2,grp_n_procs
@@ -523,11 +539,61 @@ contains
             end do
         end if
         
-        call MPI_Gatherv(X_vec,grp_n_r_X*size_X,MPI_DOUBLE_COMPLEX,ser_X_vec,&
+        call MPI_Gatherv(var,size(var),MPI_DOUBLE_COMPLEX,ser_var,&
             &recvcounts,displs,MPI_DOUBLE_COMPLEX,0,MPI_Comm_groups,ierr)
-        err_msg = 'Failed to gather solution Eigenvector'
+        err_msg = 'Failed to gather parallel variable'
         CHCKERR(err_msg)
-    end function get_ser_X_vec
+    end function get_ser_var_complex
+    integer function get_ser_var_real(var,ser_var) result(ierr)                 ! real version
+        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
+        
+        character(*), parameter :: rout_name = 'get_ser_var_real'
+        
+        ! input / output
+        real(dp), intent(in) :: var(:)                                          ! parallel vector
+        real(dp), allocatable, intent(inout) :: ser_var(:)                      ! serial vector
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer, allocatable :: recvcounts(:)                                   ! counts of nr. of elements received from each processor
+        integer, allocatable :: displs(:)                                       ! displacements elements received from each processor
+        integer :: id                                                           ! counter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! gather local size  of var of all groups onto  main processor, to serve
+        ! as receive counts on group master
+        if (grp_rank.eq.0) then
+            allocate(recvcounts(grp_n_procs))
+            allocate(displs(grp_n_procs))
+        else
+            allocate(recvcounts(0))
+            allocate(displs(0))
+        end if
+        call MPI_Gather(size(var),1,MPI_INTEGER,recvcounts,1,MPI_INTEGER,0,&
+            &MPI_Comm_groups,ierr)
+        err_msg = 'Failed to gather size of parallel variable'
+        CHCKERR(err_msg)
+        
+        ! allocate serial variable
+        allocate(ser_var(sum(recvcounts)),stat=ierr)
+        err_msg = 'Serial variable was already allocated'
+        CHCKERR(err_msg)
+        
+        ! deduce displacements by summing recvcounts
+        if (grp_rank.eq.0) then
+            displs(1) = 0
+            do id = 2,grp_n_procs
+                displs(id) = displs(id-1) + recvcounts(id-1)
+            end do
+        end if
+        
+        call MPI_Gatherv(var,size(var),MPI_DOUBLE_PRECISION,ser_var,&
+            &recvcounts,displs,MPI_DOUBLE_PRECISION,0,MPI_Comm_groups,ierr)
+        err_msg = 'Failed to gather parallel variable'
+        CHCKERR(err_msg)
+    end function get_ser_var_real
     
     ! fill the  ghost regions  in  X_vec. Every  message  is  identified by  its
     ! sending process
@@ -535,7 +601,7 @@ contains
     integer function get_ghost_X_vec(X_vec,size_ghost) result(ierr)
         use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
         
-        character(*), parameter :: rout_name = 'get_X_vec'
+        character(*), parameter :: rout_name = 'get_ghost_X_vec'
         
         ! input / output
         complex(dp), intent(in) :: X_vec(:,:)                                   ! parallel vector

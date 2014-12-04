@@ -52,7 +52,7 @@ module X_vars
 contains
     ! initialize the variable m and check and/or plot it
     integer function init_m() result(ierr)
-        use num_vars, only: plot_jq, use_pol_flux
+        use num_vars, only: plot_jq, use_pol_flux, glb_rank
         
         character(*), parameter :: rout_name = 'init_m'
         
@@ -81,7 +81,7 @@ contains
         end if
         
         ! plot resonances if requested
-        if (plot_jq) then
+        if (plot_jq .and. glb_rank.eq.0) then
             ierr = resonance_plot()
             CHCKERR('')
         else
@@ -252,7 +252,7 @@ contains
     ! plot  q-profile  or iota-profile  in  flux coordinates  with nq-m  = 0  or
     ! n-iotam = 0 indicate if requested
     integer function resonance_plot() result(ierr)
-        use num_vars, only: glb_rank, use_pol_flux, eq_style, output_style, pi
+        use num_vars, only: use_pol_flux, eq_style, output_style, pi
         use utilities, only: calc_zero_NR, interp_fun_1D
         use eq_vars, only: q_saf_V_full, rot_t_V_full, flux_p_V_full, &
             &flux_t_V_full, q_saf_H_full, rot_t_H_full, flux_p_H_full, &
@@ -280,173 +280,172 @@ contains
         ! initialize ierr
         ierr = 0
         
-        if (glb_rank.eq.0) then
-            ! set up flux_p, flux_t, q_saf and rot_t
-            ! choose which equilibrium style is being used:
-            !   1:  VMEC
-            !   2:  HELENA
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    if (use_pol_flux) then
-                        allocate(flux_p(size(flux_p_V_full,1)))
-                        flux_p = flux_p_V_full(:,0)
-                        allocate(q_saf(size(q_saf_V_full,1),0:2))
-                        q_saf = q_saf_V_full(:,0:2)
-                    else
-                        allocate(flux_t(size(flux_t_V_full,1)))
-                        flux_t = flux_t_V_full(:,0)
-                        allocate(rot_t(size(rot_t_V_full,1),0:2))
-                        rot_t = rot_t_V_full(:,0:2)
-                    end if
-                    pmone = -1                                                  ! conversion of VMEC LH to Flux RH
-                case (2)                                                        ! HELENA
-                    if (use_pol_flux) then
-                        allocate(flux_p(size(flux_p_H_full,1)))
-                        flux_p = flux_p_H_full(:,0)
-                        allocate(q_saf(size(q_saf_H_full,1),0:2))
-                        q_saf = q_saf_H_full(:,0:2)
-                    else
-                        allocate(flux_t(size(flux_t_H_full,1)))
-                        flux_t = flux_t_H_full(:,0)
-                        allocate(rot_t(size(rot_t_H_full,1),0:2))
-                        rot_t = rot_t_H_full(:,0:2)
-                    end if
-                    pmone = 1                                                   ! no conversion of HELENA HH to Flux RH
-                case default
-                    call writo('No equilibrium style associated with '//&
-                        &trim(i2str(eq_style)))
-                    call writo('Aborting')
-                    return
-            end select
-            
-            if (use_pol_flux) then
-                call writo('Plotting safety factor q and resonant surfaces &
-                    &q = m/n')
-            else
-                call writo('Plotting rotational transform iota and resonant &
-                    &surfaces iota = n/m')
-            end if
-            call lvl_ud(1)
-            
-            call writo('calculating resonant surfaces')
-            call lvl_ud(1)
-            
-            ! initialize variables
-            allocate(x_vars(n_r_eq,size_X+1)); x_vars = 0
-            allocate(y_vars(n_r_eq,size_X+1)); y_vars = 0
-            allocate(jq_for_function(n_r_eq,0:2))
-            
-            if (use_pol_flux) then
-                x_vars(:,1) = flux_p/abs(flux_p(n_r_eq))
-                y_vars(:,1) = pmone*q_saf(:,0)
-                jq_for_function = q_saf
-            else
-                x_vars(:,1) = flux_t/abs(flux_t(n_r_eq))
-                y_vars(:,1) = pmone*rot_t(:,0)
-                jq_for_function = rot_t
-            end if
-            
-            kd = 2
-            do jd = 1, size_X
-                ! find place where q = m/n or  iota = n/m in VMEC coordinates by
-                ! solving q-m/n = 0 or iota-n/m=0, using the functin jq_fun
-                call lvl_ud(1)
-                
-                ! set up mnfrac_for_function
+        ! set up flux_p, flux_t, q_saf and rot_t
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
                 if (use_pol_flux) then
-                    mnfrac_for_function = pmone*m_X(jd)*1.0_dp/n_X(jd)
+                    allocate(flux_p(size(flux_p_V_full,1)))
+                    flux_p = flux_p_V_full(:,0)
+                    allocate(q_saf(size(q_saf_V_full,1),0:2))
+                    q_saf = q_saf_V_full(:,0:2)
                 else
-                    mnfrac_for_function = pmone*n_X(jd)*1.0_dp/m_X(jd)
+                    allocate(flux_t(size(flux_t_V_full,1)))
+                    flux_t = flux_t_V_full(:,0)
+                    allocate(rot_t(size(rot_t_V_full,1),0:2))
+                    rot_t = rot_t_V_full(:,0:2)
                 end if
-                
-                ! calculate zero using Newton-Rhapson
-                istat = calc_zero_NR(jq_solution,jq_fun,jq_dfun,1.0_dp)
-                call lvl_ud(-1)
-                
-                ! intercept error
-                if (istat.ne.0) then
-                    call writo('Error intercepted: Couldn''t find resonating &
-                        &surface for (n,m) = ('//trim(i2str(n_X(jd)))//','//&
-                        &trim(i2str(m_X(jd)))//')')
-                else if (jq_solution.lt.0.0_dp) then
-                    call writo('Mode (n,m) = ('//trim(i2str(n_X(jd)))//','//&
-                        &trim(i2str(m_X(jd)))//') does not resonate in plasma')
+                pmone = -1                                                      ! conversion of VMEC LH to Flux RH
+            case (2)                                                            ! HELENA
+                if (use_pol_flux) then
+                    allocate(flux_p(size(flux_p_H_full,1)))
+                    flux_p = flux_p_H_full(:,0)
+                    allocate(q_saf(size(q_saf_H_full,1),0:2))
+                    q_saf = q_saf_H_full(:,0:2)
                 else
-                    if (jq_solution.gt.1.0_dp) then
-                        call writo('Mode (n,m) = ('//trim(i2str(n_X(jd)))//','&
-                            &//trim(i2str(m_X(jd)))//') does not resonate &
-                            &in plasma')
-                        if (use_pol_flux) then
-                            y_vars(n_r_eq,kd) = q_saf(n_r_eq,0)
-                        else
-                            y_vars(n_r_eq,kd) = rot_t(n_r_eq,0)
-                        end if
-                    else
-                        ! convert solution to flux coordinates if GNUPlot output
-                        if (output_style.eq.1) then
-                            if (use_pol_flux) then
-                                istat = interp_fun_1D(jq_solution_transf,&
-                                    &flux_p/abs(flux_p(n_r_eq)),jq_solution)
-                            else
-                                istat = interp_fun_1D(jq_solution_transf,&
-                                    &flux_t/abs(flux_t(n_r_eq)),jq_solution)
-                            end if
-                            x_vars(:,kd) = jq_solution_transf
-                            call writo('Mode (n,m) = ('//trim(i2str(n_X(jd)))//&
-                                &','//trim(i2str(m_X(jd)))//') resonates in &
-                                &plasma at normalized flux surface '//&
-                                &trim(r2str(jq_solution_transf)))
-                        else                                                    ! HDF5 output needs equilibrium tabulated values
-                            x_vars(:,kd) = jq_solution
-                        end if
-                        ! the y axis is always in perturbation grid
-                        if (use_pol_flux) then
-                            y_vars(n_r_eq,kd) = m_X(jd)*1.0_dp/n_X(jd)
-                        else
-                            y_vars(n_r_eq,kd) = n_X(jd)*1.0_dp/m_X(jd)
-                        end if
-                    end if
-                    kd = kd + 1
+                    allocate(flux_t(size(flux_t_H_full,1)))
+                    flux_t = flux_t_H_full(:,0)
+                    allocate(rot_t(size(rot_t_H_full,1),0:2))
+                    rot_t = rot_t_H_full(:,0:2)
                 end if
-            end do
-            
-            ! check status
-            if (istat.ne.0) then
-                call writo('WARNING: Failed to produce plot')
+                pmone = 1                                                       ! no conversion of HELENA HH to Flux RH
+            case default
+                call writo('No equilibrium style associated with '//&
+                    &trim(i2str(eq_style)))
+                call writo('Aborting')
                 return
-            end if
-            
-            call lvl_ud(-1)
-            
-            call writo('Plotting results')
-            if (use_pol_flux) then
-                plot_title = 'safety factor q'
-                file_name = 'q_saf.dat'
-            else
-                plot_title = 'rotational transform iota'
-                file_name = 'rot_t.dat'
-            end if
-            select case(output_style)
-                case(1)                                                         ! GNUPlot output
-                    ! plot on screen
-                    call print_GP_2D(plot_title,file_name,y_vars(:,1:kd-1),&
-                        &x=x_vars(:,1:kd-1))
-                    
-                    ! plot in file as well
-                    call draw_GP(plot_title,file_name,kd-1,.true.,.false.)
-                case(2)                                                         ! HDF5 output
-                    ierr = plot_resonance_plot_HDF5()
-                    CHCKERR('')
-                case default
-                    err_msg = 'No style associated with '//&
-                        &trim(i2str(output_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
-            
-            call lvl_ud(-1)
-            call writo('Done plotting')
+        end select
+        
+        if (use_pol_flux) then
+            call writo('Plotting safety factor q and resonant surfaces &
+                &q = m/n')
+        else
+            call writo('Plotting rotational transform iota and resonant &
+                &surfaces iota = n/m')
         end if
+        call lvl_ud(1)
+        
+        call writo('calculating resonant surfaces')
+        call lvl_ud(1)
+        
+        ! initialize variables
+        allocate(x_vars(n_r_eq,size_X+1)); x_vars = 0
+        allocate(y_vars(n_r_eq,size_X+1)); y_vars = 0
+        allocate(jq_for_function(n_r_eq,0:2))
+        
+        if (use_pol_flux) then
+            x_vars(:,1) = flux_p/abs(flux_p(n_r_eq))
+            y_vars(:,1) = pmone*q_saf(:,0)
+            jq_for_function = q_saf
+        else
+            x_vars(:,1) = flux_t/abs(flux_t(n_r_eq))
+            y_vars(:,1) = pmone*rot_t(:,0)
+            jq_for_function = rot_t
+        end if
+        
+        kd = 2
+        do jd = 1, size_X
+            ! find place  where q  = m/n or  iota = n/m  in VMEC  coordinates by
+            ! solving q-m/n = 0 or iota-n/m=0, using the functin jq_fun
+            call lvl_ud(1)
+            
+            ! set up mnfrac_for_function
+            if (use_pol_flux) then
+                mnfrac_for_function = pmone*m_X(jd)*1.0_dp/n_X(jd)
+            else
+                mnfrac_for_function = pmone*n_X(jd)*1.0_dp/m_X(jd)
+            end if
+            
+            ! calculate zero using Newton-Rhapson
+            istat = calc_zero_NR(jq_solution,jq_fun,jq_dfun,1.0_dp)
+            call lvl_ud(-1)
+            
+            ! intercept error
+            if (istat.ne.0) then
+                call writo('Error intercepted: Couldn''t find resonating &
+                    &surface for (n,m) = ('//trim(i2str(n_X(jd)))//','//&
+                    &trim(i2str(m_X(jd)))//')')
+            else if (jq_solution.lt.0.0_dp) then
+                call writo('Mode (n,m) = ('//trim(i2str(n_X(jd)))//','//&
+                    &trim(i2str(m_X(jd)))//') does not resonate in plasma')
+            else
+                if (jq_solution.gt.1.0_dp) then
+                    call writo('Mode (n,m) = ('//trim(i2str(n_X(jd)))//','&
+                        &//trim(i2str(m_X(jd)))//') does not resonate &
+                        &in plasma')
+                    if (use_pol_flux) then
+                        y_vars(n_r_eq,kd) = q_saf(n_r_eq,0)
+                    else
+                        y_vars(n_r_eq,kd) = rot_t(n_r_eq,0)
+                    end if
+                else
+                    ! convert solution to flux coordinates if GNUPlot output
+                    if (output_style.eq.1) then
+                        if (use_pol_flux) then
+                            istat = interp_fun_1D(jq_solution_transf,&
+                                &flux_p/abs(flux_p(n_r_eq)),jq_solution)
+                        else
+                            istat = interp_fun_1D(jq_solution_transf,&
+                                &flux_t/abs(flux_t(n_r_eq)),jq_solution)
+                        end if
+                        x_vars(:,kd) = jq_solution_transf
+                        call writo('Mode (n,m) = ('//trim(i2str(n_X(jd)))//&
+                            &','//trim(i2str(m_X(jd)))//') resonates in &
+                            &plasma at normalized flux surface '//&
+                            &trim(r2str(jq_solution_transf)))
+                    else                                                        ! HDF5 output needs equilibrium tabulated values
+                        x_vars(:,kd) = jq_solution
+                    end if
+                    ! the y axis is always in perturbation grid
+                    if (use_pol_flux) then
+                        y_vars(n_r_eq,kd) = m_X(jd)*1.0_dp/n_X(jd)
+                    else
+                        y_vars(n_r_eq,kd) = n_X(jd)*1.0_dp/m_X(jd)
+                    end if
+                end if
+                kd = kd + 1
+            end if
+        end do
+        
+        ! check status
+        if (istat.ne.0) then
+            call writo('WARNING: Failed to produce plot')
+            return
+        end if
+        
+        call lvl_ud(-1)
+        
+        call writo('Plotting results')
+        if (use_pol_flux) then
+            plot_title = 'safety factor q'
+            file_name = 'q_saf'
+        else
+            plot_title = 'rotational transform iota'
+            file_name = 'rot_t'
+        end if
+        select case(output_style)
+            case(1)                                                             ! GNUPlot output
+                ! plot on screen
+                call print_GP_2D(plot_title,trim(file_name)//'.dat.',&
+                    &y_vars(:,1:kd-1),x=x_vars(:,1:kd-1))
+                
+                ! plot in file as well
+                call draw_GP(plot_title,trim(file_name)//'.dat.',kd-1,&
+                    &.true.,.false.)
+            case(2)                                                             ! HDF5 output
+                ierr = plot_resonance_plot_HDF5()
+                CHCKERR('')
+            case default
+                err_msg = 'No style associated with '//&
+                    &trim(i2str(output_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        
+        call lvl_ud(-1)
+        call writo('Done plotting')
     contains
         ! Returns q-m/n  or iota-n/m in  Equilibrium coordinates, used  to solve
         ! for q = m/n or iota = n/m.
@@ -522,6 +521,7 @@ contains
                 &Z_plot_ind(:,:,:)                                              ! X, Y and Z of plots of individual surfaces
             integer :: plot_dim(4)                                              ! plot dimensions (total = group because only group masters)
             real(dp), allocatable :: vars(:,:,:,:)                              ! variable to plot
+            character(len=max_str_ln), allocatable :: plot_titles(:)            ! name of plots
             
             ! initialize ierr
             ierr = 0
@@ -552,12 +552,14 @@ contains
             allocate(Y_plot(n_theta_plot,n_zeta_plot,1,size_X))
             allocate(Z_plot(n_theta_plot,n_zeta_plot,1,size_X))
             
+            ! set up plot_titles
+            allocate(plot_titles(size_X))
+            
             ! loop over all resonant surfaces to calculate X, Y and Z values
             do id = 1,size_X
                 ! calculate the X, Y and Z values for this flux surface
                 ierr = calc_XYZ_grid(theta_plot,zeta_plot,&
-                    &[x_vars(n_r_eq,id+1),x_vars(n_r_eq,id+1)],&
-                    &X_plot_ind,Y_plot_ind,Z_plot_ind)
+                    &[x_vars(n_r_eq,id+1)],X_plot_ind,Y_plot_ind,Z_plot_ind)
                 CHCKERR('')
                 
                 ! save the individual variable in the total variables
@@ -567,10 +569,14 @@ contains
                 
                 ! deallocate the individual variables
                 deallocate(X_plot_ind,Y_plot_ind,Z_plot_ind)
+                
+                ! set plot titles
+                plot_titles(id) = trim(plot_title)//' for (n,m) = ('//&
+                    &trim(i2str(n_X(id)))//','//trim(i2str(m_X(id)))//')'
             end do
             
-            call print_HDF5_3D(plot_title,file_name,vars,plot_dim,plot_dim,&
-                &[0,0,0,0],X=X_plot,Y=Y_plot,Z=Z_plot,anim=.false.,&
+            call print_HDF5_3D(plot_titles,file_name,vars,plot_dim,plot_dim,&
+                &[0,0,0,0],X=X_plot,Y=Y_plot,Z=Z_plot,col=3,&
                 &description='resonant surfaces')
         end function plot_resonance_plot_HDF5
     end function resonance_plot

@@ -103,7 +103,7 @@ contains
     ! set-up and  solve the  EV system  by discretizing  the equations  in n_r_X
     ! normal points,  making use of  PV0, PV1 and  PV2, interpolated in  the n_r
     ! (equilibrium) values
-    integer function solve_EV_system(use_guess) result(ierr)
+    integer function solve_EV_system(use_guess,n_sol_saved) result(ierr)
         use num_vars, only: EV_style
         use str_ops, only: i2str
         use slepc_ops, only: solve_EV_system_slepc
@@ -112,6 +112,7 @@ contains
         
         ! input / output
         logical, intent(in) :: use_guess                                        ! whether to use a guess or not
+        integer, intent(inout) :: n_sol_saved                                   ! how many solutions saved
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -122,7 +123,7 @@ contains
         select case (EV_style)
             case(1)                                                             ! slepc solver for EV problem
                 ! solve the system
-                ierr = solve_EV_system_slepc(use_guess)
+                ierr = solve_EV_system_slepc(use_guess,n_sol_saved)
                 CHCKERR('')
             case default
                 err_msg = 'No EV solver style associated with '//&
@@ -194,7 +195,7 @@ contains
             &grp_n_procs, use_pol_flux
         use output_ops, only: draw_GP, draw_GP_animated, merge_GP
         use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X
-        use MPI_ops, only: get_ser_X_vec, get_ghost_X_vec, wait_MPI
+        use MPI_ops, only: get_ghost_X_vec, wait_MPI
         use eq_vars, only: q_saf_FD, rot_t_FD, grp_n_r_eq, max_flux, &
             &max_flux_eq, flux_p_FD, flux_t_FD, eq_use_pol_flux
         use utilities, only: con2dis, interp_fun_1D
@@ -598,6 +599,7 @@ contains
         integer :: n_theta_plot = 201                                           ! nr. of poloidal points in plot
         integer :: n_zeta_plot = 101                                            ! nr. of toroidal points in plot
         real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)            ! theta_V and zeta_V for flux surface plot
+        real(dp), allocatable :: r_plot(:)                                      ! r for plots
         real(dp), allocatable :: x_plot(:,:,:)                                  ! x values of plot
         real(dp), allocatable :: y_plot(:,:,:)                                  ! y values of plot
         real(dp), allocatable :: z_plot(:,:,:)                                  ! z values of plot
@@ -615,7 +617,6 @@ contains
         character(len=max_str_ln) :: var_name                                   ! name of variable that is plot
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), pointer :: flux(:), flux_eq(:)                                ! either pol. or tor. flux
-        real(dp) :: min_r_eq, max_r_eq                                          ! minimum and maximum of normal range in equilibrium grid
         
         ! initialize ierr
         ierr = 0
@@ -639,22 +640,6 @@ contains
         ! set up var_name
         var_name = 'Solution vector X_vec'
         
-        ! initialize theta_plot and zeta_plot
-        if (follow_B) then
-            ierr = 1
-            CHCKERR('NOT YET IMPLEMENTED')
-            !!!!! SHOULD BE EQUAL TO THE GRID PLOT, WITH ADDITIONALLY THE SOLUTION VECTOR !!!!
-        else
-            allocate(theta_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
-            do id = 1,n_theta_plot
-                theta_plot(id,:,:) = (id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)
-            end do
-            allocate(zeta_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
-            do id = 1,n_zeta_plot
-                zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
-            end do
-        end if
-        
         ! set up flux and flux_eq
         if (use_pol_flux) then
             flux => flux_p_FD(:,0)
@@ -667,20 +652,36 @@ contains
             flux_eq => flux_t_FD(:,0)
         end if
         
-        ! convert  the  perturbation  normal  range  given  by  grp_r_X   to  an
-        ! equilibrium normal range with limits min_r_eq and max_r_eq
-        ierr = interp_fun_1D(min_r_eq,flux_eq/max_flux_eq,&
-            &grp_r_X(1),flux/max_flux)
-        CHCKERR('')
-        ierr = interp_fun_1D(max_r_eq,flux_eq/max_flux_eq,&
-            &grp_r_X(grp_n_r_X),flux/max_flux)
-        CHCKERR('')
+        ! initialize theta_plot and zeta_plot
+        if (follow_B) then
+            ierr = 1
+            CHCKERR('NOT YET IMPLEMENTED')
+            !!!!! SHOULD BE EQUAL TO THE GRID PLOT, WITH ADDITIONALLY THE SOLUTION VECTOR !!!!
+        else
+            ! theta equidistant
+            allocate(theta_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
+            do id = 1,n_theta_plot
+                theta_plot(id,:,:) = pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)
+            end do
+            ! zeta equidistant
+            allocate(zeta_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
+            do id = 1,n_zeta_plot
+                zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
+            end do
+            ! convert  the perturbation  normal  values  grp_r_X to  equilibrium
+            ! normal values
+            allocate(r_plot(grp_n_r_X))
+            do id = 1,grp_n_r_X
+                ierr = interp_fun_1D(r_plot(id),flux_eq/max_flux_eq,&
+                    &grp_r_X(id),flux/max_flux)
+                CHCKERR('')
+            end do
+        end if
         
         ! calculate X,Y  and Z using  the Equilibrium theta_plot  and zeta_plot,
-        ! tabulated  in the  equilibrium normal  grid with  limits min_r_eq  and
-        ! max_r_eq
-        ierr = calc_XYZ_grid(theta_plot,zeta_plot,[min_r_eq,max_r_eq],&
-            &x_plot,y_plot,z_plot,l_plot)
+        ! tabulated in the equilibrium normal grid
+        ierr = calc_XYZ_grid(theta_plot,zeta_plot,r_plot,x_plot,y_plot,z_plot,&
+            &l_plot)
         CHCKERR('')
         
         !call print_GP_3D('test_plot','',z_plot,X=x_plot,Y=y_plot)               ! for testing
@@ -815,6 +816,7 @@ contains
         ! deallocate
         deallocate(x_plot,y_plot,z_plot,f_plot)
         if (eq_style.eq.1) deallocate(l_plot)                                   ! only if using VMEC
+        deallocate(theta_plot,zeta_plot,r_plot)
         
         call lvl_ud(-1)
     end function plot_X_vec_HDF5
