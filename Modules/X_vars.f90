@@ -5,8 +5,11 @@ module X_vars
 #include <PB3D_macros.h>
     use num_vars, only: dp, max_str_ln, iu
     use message_ops, only: lvl_ud, writo, print_ar_1
-    use output_ops, only: print_GP_2D, draw_GP
+    use output_ops, only: print_GP_2D, draw_GP, print_HDF5_3D
     use str_ops, only: r2str, i2str, r2strt
+    
+    ! for testing
+    use eq_vars, only: grp_min_r_eq, n_r_eq
     
     implicit none
     
@@ -48,6 +51,11 @@ module X_vars
     complex(dp), allocatable :: X_vec(:,:,:)                                    ! Eigenvector solution, with ghost region
     complex(dp), allocatable :: X_val(:)                                        ! Eigenvalue solution
     complex(dp), allocatable :: exp_ang_par_F(:,:,:,:)                          ! exp(i (k-m) ang_par_F)
+    
+    !! for testing:
+    !character(len=max_str_ln), allocatable :: var_names(:)                      ! names of variables
+    !character(len=max_str_ln), allocatable :: file_name                         ! name of file
+    !integer :: tot_dim(4), grp_dim(4), grp_offset(4)                            ! total dim., group dim. and group offset
     
 contains
     ! initialize the variable m and check and/or plot it
@@ -583,8 +591,8 @@ contains
     
     ! calculate rho from user input
     integer function calc_rho() result(ierr)
-        use num_vars, only: eq_style
-        use eq_vars, only: pres_FD, grp_n_r_eq, grp_min_r_eq, n_r_eq
+        use num_vars, only: eq_style, use_normalization
+        use eq_vars, only: pres_FD, grp_n_r_eq, grp_min_r_eq, n_r_eq, rho_0
         use VMEC_vars, only: gam
         
         character(*), parameter :: rout_name = 'calc_rho'
@@ -631,6 +639,9 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
+        
+        ! normalize rho
+        if (use_normalization) rho = rho/rho_0
     end function calc_rho
     
     ! calculate  ~PV_(k,m)^i  (pol.  flux)  or ~PV_(l,n)^i  (tor.  flux) at  all
@@ -639,12 +650,13 @@ contains
     subroutine calc_PV
         use metric_ops, only: g_FD, h_FD, jac_FD
         use eq_vars, only: n_par, q_saf_FD, rot_t_FD, grp_n_r_eq
-        use num_vars, only: use_pol_flux
+        use num_vars, only: use_pol_flux, use_normalization, mu_0
         
         ! local variables
         integer :: m, k, kd                                                     ! counters
         real(dp), allocatable :: com_fac(:,:)                                   ! common factor |nabla psi|^2/(J^2*B^2)
         real(dp), allocatable :: fac_n(:), fac_m(:)                             ! multiplicative factors for n and m
+        real(dp) :: mu_0_loc                                                    ! local version of mu_0
         
         ! submatrices
         ! jacobian
@@ -662,9 +674,16 @@ contains
         ! upper metric factors
         allocate(h22(n_par,grp_n_r_eq)); h22 = h_FD(:,:,2,2,0,0,0)
         
+        ! set up local mu_0
+        if (use_normalization) then
+            mu_0_loc = 1._dp
+        else
+            mu_0_loc = mu_0
+        end if
+        
         ! set up common factor for PVi
         allocate(com_fac(n_par,grp_n_r_eq))
-        com_fac = h22/g33
+        com_fac = h22/(g33*mu_0_loc)
         
         ! set up fac_n and fac_m
         allocate(fac_n(grp_n_r_eq),fac_m(grp_n_r_eq))
@@ -682,11 +701,11 @@ contains
                 ! calculate PV0
                 PV0(:,:,k,m) = com_fac * (DU_X_0(:,:,m) - extra1 - extra2 ) * &
                     &(conjg(DU_X_0(:,:,k)) - extra1 - extra2) - &
-                    &mu0sigma/J * (extra1 + extra2) - extra3
+                    &mu_0/mu_0_loc * (mu0sigma/J * (extra1 + extra2) - extra3)
                 
                 ! add (nq-k)*(nq-m)/(J^2 |nabla psi|^2) to PV0
                 do kd = 1,grp_n_r_eq
-                    PV0(:,kd,k,m) = PV0(:,kd,k,m) + &
+                    PV0(:,kd,k,m) = PV0(:,kd,k,m) + 1._dp/mu_0_loc * &
                         &(n_X(m)*fac_n(kd)-m_X(m)*fac_m(kd))*&
                         &(n_X(k)*fac_n(kd)-m_X(k)*fac_m(kd)) / &
                         &( J(:,kd)**2*h22(:,kd) )
@@ -722,6 +741,43 @@ contains
         
         ! deallocate mu0sigma and the extra's
         deallocate(mu0sigma,extra1,extra2,extra3)
+        
+        !! output for test
+        !write(*,*) 'non-integrated values'
+        !write(*,*) 'RE max PV = ', maxval(realpart(PV0)), &
+            !&maxval(realpart(PV1)), maxval(realpart(PV2))
+        !write(*,*) 'IM max PV = ', maxval(imagpart(PV0)), &
+            !&maxval(imagpart(PV1)), maxval(imagpart(PV2))
+        !write(*,*) 'RE min PV = ', minval(realpart(PV0)), &
+            !&minval(realpart(PV1)), minval(realpart(PV2))
+        !write(*,*) 'IM min PV = ', minval(imagpart(PV0)), &
+            !&minval(imagpart(PV1)), minval(imagpart(PV2))
+        !allocate(var_names(n_par))
+        !do kd = 1,n_par
+            !var_names(kd) = 'i_par = '//trim(i2str(kd))
+        !end do
+        !tot_dim = [n_par,n_r_eq,size_X,size_X]
+        !grp_dim = [n_par,grp_n_r_eq,size_X,size_X]
+        !grp_offset = [0,grp_min_r_eq-1,0,0]
+        !file_name = 'RE PV0'
+        !call print_HDF5_3D(var_names,file_name,realpart(PV0),tot_dim,grp_dim,&
+            !&grp_offset,col_id=1,col=1)
+        !file_name = 'IM PV0'
+        !call print_HDF5_3D(var_names,file_name,imagpart(PV0),tot_dim,grp_dim,&
+            !&grp_offset,col_id=1,col=1)
+        !file_name = 'RE PV1'
+        !call print_HDF5_3D(var_names,file_name,realpart(PV1),tot_dim,grp_dim,&
+            !&grp_offset,col_id=1,col=1)
+        !file_name = 'IM PV1'
+        !call print_HDF5_3D(var_names,file_name,imagpart(PV1),tot_dim,grp_dim,&
+            !&grp_offset,col_id=1,col=1)
+        !file_name = 'RE PV2'
+        !call print_HDF5_3D(var_names,file_name,realpart(PV2),tot_dim,grp_dim,&
+            !&grp_offset,col_id=1,col=1)
+        !file_name = 'IM PV2'
+        !call print_HDF5_3D(var_names,file_name,imagpart(PV2),tot_dim,grp_dim,&
+            !&grp_offset,col_id=1,col=1)
+        !deallocate(var_names)
     end subroutine calc_PV
     
     ! calculate  ~KV_(k,m)^i  (pol.  flux)  or ~KV_(l,n)^i  (tor.  flux) at  all
@@ -730,6 +786,7 @@ contains
     subroutine calc_KV
         use metric_ops, only: g_FD, h_FD, jac_FD
         use eq_vars, only: n_par, grp_n_r_eq
+        use output_ops, only: print_HDF5_3D
         
         ! local variables
         integer :: m, k, kd                                                     ! counters
@@ -761,7 +818,7 @@ contains
             do k = 1,m
                 ! calculate KV0
                 KV0(:,:,k,m) = com_fac * U_X_0(:,:,m) * conjg(U_X_0(:,:,k)) + &
-                    &1/h22
+                    &1._dp/h22
                 
                 ! calculate KV2
                 KV2(:,:,k,m) = com_fac * U_X_1(:,:,m) * conjg(U_X_1(:,:,k))
@@ -790,6 +847,42 @@ contains
             KV1(:,kd,:,:) = KV1(:,kd,:,:)*rho(kd)
             KV2(:,kd,:,:) = KV2(:,kd,:,:)*rho(kd)
         end do
+        
+        !! output for test
+        !write(*,*) 'RE max PV = ', maxval(realpart(PV0)), &
+            !&maxval(realpart(PV1)), maxval(realpart(PV2))
+        !write(*,*) 'IM max PV = ', maxval(imagpart(PV0)), &
+            !&maxval(imagpart(PV1)), maxval(imagpart(PV2))
+        !write(*,*) 'RE min PV = ', minval(realpart(PV0)), &
+            !&minval(realpart(PV1)), minval(realpart(PV2))
+        !write(*,*) 'IM min PV = ', minval(imagpart(PV0)), &
+            !&minval(imagpart(PV1)), minval(imagpart(PV2))
+        !allocate(var_names(n_par))
+        !do kd = 1,n_par
+            !var_names(kd) = 'i_par = '//trim(i2str(kd))
+        !end do
+        !tot_dim = [n_par,n_r_eq,size_X,size_X]
+        !grp_dim = [n_par,grp_n_r_eq,size_X,size_X]
+        !grp_offset = [0,grp_min_r_eq-1,0,0]
+        !file_name = 'RE KV0'
+        !call print_HDF5_3D(var_names,file_name,realpart(KV0),tot_dim,grp_dim,&
+            !&grp_offset,col_id=1,col=1)
+        !file_name = 'IM KV0'
+        !call print_HDF5_3D(var_names,file_name,imagpart(KV0),tot_dim,grp_dim,&
+            !&grp_offset,col_id=1,col=1)
+        !file_name = 'RE KV1'
+        !call print_HDF5_3D(var_names,file_name,realpart(KV1),tot_dim,grp_dim,&
+            !&grp_offset,col_id=1,col=1)
+        !file_name = 'IM KV1'
+        !call print_HDF5_3D(var_names,file_name,imagpart(KV1),tot_dim,grp_dim,&
+            !&grp_offset,col_id=1,col=1)
+        !file_name = 'RE KV2'
+        !call print_HDF5_3D(var_names,file_name,realpart(KV2),tot_dim,grp_dim,&
+            !&grp_offset,col_id=1,col=1)
+        !file_name = 'IM KV2'
+        !call print_HDF5_3D(var_names,file_name,imagpart(KV2),tot_dim,grp_dim,&
+            !&grp_offset,col_id=1,col=1)
+        !deallocate(var_names)
     end subroutine calc_KV
     
     ! calculate U_m^0, U_m^1 or U_n^0, U_n^1  at grp_n_r_eq values of the normal
@@ -799,7 +892,7 @@ contains
     ! Note: The  poloidal  derivatives  have  the  factor  i/n  or i/m  included
     ! already, as opposed to [ADD REF]
     subroutine calc_U
-        use num_vars, only: use_pol_flux
+        use num_vars, only: use_pol_flux, mu_0, use_normalization
         use metric_ops, only: g_FD, h_FD, jac_FD
         use eq_vars, only: rot_t_FD, q_saf_FD, ang_par_F, n_par, p => pres_FD, &
             &grp_n_r_eq
@@ -810,6 +903,7 @@ contains
         real(dp), allocatable :: djq(:)                                         ! either q' (pol. flux) or -iota' (tor. flux)
         real(dp), allocatable :: fac_n(:), fac_m(:)                             ! multiplicative factors for n and m
         real(dp), allocatable :: mn(:)                                          ! either n*A_0 (pol. flux) or m (tor.flux)
+        real(dp) :: mu_0_loc                                                    ! local version of mu_0
         
         ! submatrices
         ! jacobian
@@ -828,6 +922,13 @@ contains
         real(dp), allocatable :: h22(:,:)                                       ! h^psi,psi
         real(dp), allocatable :: D3h22(:,:)                                     ! D_theta h^psi,psi
         
+        ! set up local mu_0
+        if (use_normalization) then
+            mu_0_loc = 1._dp
+        else
+            mu_0_loc = mu_0
+        end if
+        
         ! set up djq, fac_n, fac_m and mn
         allocate(djq(grp_n_r_eq),fac_n(grp_n_r_eq),fac_m(grp_n_r_eq),mn(size_X))
         if (use_pol_flux) then
@@ -841,7 +942,7 @@ contains
             fac_m = rot_t_FD(:,0)
             mn = m_X
         end if
-
+        
         ! set up submatrices
         ! jacobian
         allocate(J(n_par,grp_n_r_eq)); J = jac_FD(:,:,0,0,0)
@@ -867,15 +968,15 @@ contains
                 U_X_0(:,kd,jd) = &
                     &-(h12(:,kd)/h22(:,kd) + djq(kd)*ang_par_F(:,kd))&
                     &+ iu/(mn(jd)*g33(:,kd)) * (g13(:,kd)*djq(kd) + &
-                    &J(:,kd)**2*p(kd,1) + iu*n_frac * &
+                    &J(:,kd)**2*p(kd,1)*mu_0_loc + iu*n_frac * &
                     &( g13(:,kd)*djq(kd)*ang_par_F(:,kd) - g23(:,kd) ))
                 DU_X_0(:,kd,jd) = -(D3h12(:,kd)/h22(:,kd) - &
                     &D3h22(:,kd)*h12(:,kd)/h22(:,kd)**2 + djq(kd)) - &
                     &iu*D3g33(:,kd)/(mn(jd)*g33(:,kd)**2) * (g13(:,kd)*djq(kd)&
-                    &+ J(:,kd)**2*p(kd,1) + iu*n_frac * &
+                    &+ J(:,kd)**2*p(kd,1)*mu_0_loc + iu*n_frac * &
                     &( g13(:,kd)*djq(kd)*ang_par_F(:,kd) - g23(:,kd) )) + &
                     &iu/(mn(jd)*g33(:,kd)) * (D3g13(:,kd)*djq(kd) + &
-                    &2*D3J(:,kd)*J(:,kd)*p(kd,1) + iu*n_frac * &
+                    &2*D3J(:,kd)*J(:,kd)*p(kd,1)*mu_0_loc + iu*n_frac * &
                     &( D3g13(:,kd)*djq(kd)*ang_par_F(:,kd) + g13(:,kd)*djq(kd) &
                     &- D3g23(:,kd) )) + iu*n_frac*U_X_0(:,kd,jd)
                 U_X_1(:,kd,jd) = iu/mn(jd) * &
@@ -900,7 +1001,7 @@ contains
         end do
     end subroutine calc_U
     
-    ! calculate extra1, extra2 and extra3
+    ! Calculate extra1, extra2 and extra3 in non-normalized coordinates:
     !   extra1 = S*J
     !   extra2 = mu0sigma*J*B^2/h^psi,psi
     !   extra3 = 2*p'*kn
@@ -911,6 +1012,7 @@ contains
     integer function calc_extra() result(ierr)
         use metric_ops, only: g_FD, h_FD, jac_FD
         use eq_vars, only: n_par, p => pres_FD, grp_n_r_eq
+        use num_vars, only: mu_0
         
         character(*), parameter :: rout_name = 'calc_extra'
         
@@ -968,14 +1070,15 @@ contains
         allocate(D3h22(n_par,grp_n_r_eq)); D3h22 = h_FD(:,:,2,2,0,0,1)
         allocate(h23(n_par,grp_n_r_eq)); h23 = h_FD(:,:,2,3,0,0,0)
         
-        ! allocate mu0sigma and extra terms. Later they are deallocated in calc_PV
+        ! allocate  mu0sigma  and extra  terms.  Later they  are deallocated  in
+        ! calc_PV
         allocate(mu0sigma(n_par,grp_n_r_eq))
         allocate(extra1(n_par,grp_n_r_eq))
         allocate(extra2(n_par,grp_n_r_eq))
         allocate(extra3(n_par,grp_n_r_eq))
         
         ! calculate mu0sigma
-        mu0sigma = 1/(J*g33) * (g13*(D2g33-D3g23) + g23*(D3g13-D1g33) &
+        mu0sigma = 1._dp/(J*g33) * (g13*(D2g33-D3g23) + g23*(D3g13-D1g33) &
             &+ g33*(D1g23-D2g13))
         
         ! calculate extra1
@@ -986,8 +1089,8 @@ contains
         
         ! calculate extra3
         do kd = 1,grp_n_r_eq
-            extra3(:,kd) = p(kd,1) * ( 2*J(:,kd)**2*p(kd,1)/g33(:,kd) + &
-                &1/h22(:,kd) * ( &
+            extra3(:,kd) = p(kd,1) * ( 2*J(:,kd)**2*mu_0*p(kd,1)/g33(:,kd) + &
+                &1._dp/h22(:,kd) * ( &
                 &h12(:,kd) * ( D1g33(:,kd)/g33(:,kd) - 2*D1J(:,kd)/J(:,kd) ) + &
                 &h22(:,kd) * ( D2g33(:,kd)/g33(:,kd) - 2*D2J(:,kd)/J(:,kd) ) + &
                 &h23(:,kd) * ( D3g33(:,kd)/g33(:,kd) - 2*D3J(:,kd)/J(:,kd) ) ) )

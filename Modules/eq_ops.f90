@@ -36,7 +36,7 @@ contains
             &jac_FD, T_HF, T_FH, det_T_HF, det_T_FH, g_H, h_H
         use utilities, only: derivs
         use num_vars, only: max_deriv, ltest, use_pol_flux, plot_grid, &
-            &eq_style, grp_rank
+            &eq_style, grp_rank, use_normalization
         
         character(*), parameter :: rout_name = 'calc_eq'
         
@@ -347,13 +347,16 @@ contains
             end do
             
             ! normalize the quantities
-            call writo('Normalize the equilibrium and metric quantities...')
-            call normalize_eq_vars
-            call normalize_metric_vars
+            if (use_normalization) then
+                call writo('Normalize the equilibrium and metric quantities...')
+                call normalize_eq_vars
+                call normalize_metric_vars
+            end if
             
             ! deallocate unused equilibrium quantities
             if (.not.ltest) then
-                call writo('Deallocate unused equilibrium and metric quantities...')
+                call writo('Deallocate unused equilibrium and metric &
+                    &quantities...')
                 ierr = dealloc_eq()
                 CHCKERR('')
                 ierr = dealloc_metric()

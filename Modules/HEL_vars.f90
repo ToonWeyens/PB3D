@@ -15,8 +15,8 @@ module HEL_vars
         &h_H_33, RBphi, R_H, Z_H
     
     ! global variables
-    real(dp) :: R_0_H = 1.0_dp                                                  ! R of magnetic axis (normalization constant)
-    real(dp) :: B_0_H = 1.0_dp                                                  ! B at magnetic axis (normalization constant)
+    real(dp) :: R_0_H = 1.5_dp                                                  ! R of magnetic axis (normalization constant)
+    real(dp) :: B_0_H = 2.0_dp                                                  ! B at magnetic axis (normalization constant)
     real(dp), allocatable :: chi_H(:)                                           ! poloidal angle
     real(dp), allocatable :: flux_H(:)                                          ! normal coordinate values
     real(dp), allocatable :: p0(:)                                              ! pressure profile
@@ -141,7 +141,7 @@ contains
             allocate(h_H_33(nchi,n_r_eq))                                       ! upper metric factor 3,3
             read(eq_i,*,IOSTAT=ierr) &
                 &(h_H_33(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,n_r_eq*nchi) ! (gem33)
-            h_H_33(:,:) = 1/h_H_33(:,:)                                         ! HELENA gives R^2, but need 1/R^2
+            h_H_33(:,:) = 1._dp/h_H_33(:,:)                                     ! HELENA gives R^2, but need 1/R^2
             h_H_33(:,1) = 0._dp                                                 ! first normal point is not given, so set to zero
             h_H_11 = h_H_11 / (R_0_H**2)                                        ! rescale h_H_33
             

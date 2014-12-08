@@ -1247,7 +1247,7 @@ contains
         
         ! calculate terms
         if (m1.eq.0 .and. m2.eq.0 .and. m3.eq.0) then                           ! direct inverse
-            X(:,:,0,0,0) = 1/Y(:,:,0,0,0)
+            X(:,:,0,0,0) = 1._dp/Y(:,:,0,0,0)
         else                                                                    ! calculate using the other inverses
             do z = 0,m3                                                         ! derivs in third coord
                 if (z.eq.0) then                                                ! first term in sum
@@ -1570,34 +1570,21 @@ contains
     ! as the  poloidal and toroidal flux
     subroutine normalize_metric_vars
         use eq_vars, only: R_0, B_0, psi_0
-        use num_vars, only: use_pol_flux
         
         ! local variables
         real(dp) :: g_0(3,3)                                                    ! normalization factor for the covariant metric factors
         integer :: jd, d1, d2                                                   ! counter
         
         ! set up g_0
-        if (use_pol_flux) then
-            g_0(1,1) = R_0 * R_0
-            g_0(1,2) = 1 / B_0
-            g_0(1,3) = R_0 * R_0
-            g_0(2,1) = g_0(1,2)
-            g_0(2,2) = 1/(R_0 * B_0) * 1/(R_0 * B_0)
-            g_0(2,3) = 1/(R_0 * B_0) * R_0
-            g_0(3,1) = g_0(1,3)
-            g_0(3,2) = g_0(2,3)
-            g_0(3,3) = R_0 * R_0
-        else
-            g_0(1,1) = R_0 * R_0
-            g_0(1,2) = 1 / B_0
-            g_0(1,3) = R_0 * R_0
-            g_0(2,1) = g_0(1,2)
-            g_0(2,2) = 1/(R_0 * B_0) * 1/(R_0 * B_0)
-            g_0(2,3) = 1/B_0
-            g_0(3,1) = g_0(1,3)
-            g_0(3,2) = g_0(2,3)
-            g_0(3,3) = R_0 * R_0
-        end if
+        g_0(1,1) = R_0 * R_0
+        g_0(1,2) = 1._dp/B_0
+        g_0(1,3) = R_0 * R_0
+        g_0(2,1) = g_0(1,2)
+        g_0(2,2) = 1._dp/(R_0 * B_0) * 1/(R_0 * B_0)
+        g_0(2,3) = 1._dp/B_0
+        g_0(3,1) = g_0(1,3)
+        g_0(3,2) = g_0(2,3)
+        g_0(3,3) = R_0 * R_0
         
         ! normalize the metric coefficients
         do d2 = 1,3

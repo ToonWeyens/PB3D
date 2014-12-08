@@ -734,7 +734,7 @@ contains
             &max_alpha, min_alpha, tol_NR, glb_rank, glb_n_procs, no_guess, &
             &n_sol_requested, min_n_r_X, min_r_X, max_r_X, nyq_fac, tol_r, &
             &use_pol_flux, max_n_plots, plot_grid, no_plots, output_style, &
-            &eq_style
+            &eq_style, use_normalization, save_only_unstable_sol
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
         use eq_vars, only: n_par, max_par, min_par, grp_min_r_eq, n_r_eq, &
             &grp_max_r_eq, R_0, pres_0, B_0, psi_0, rho_0, eq_use_pol_flux
@@ -773,6 +773,12 @@ contains
             call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(plot_grid,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            CHCKERR('MPI broadcast failed')
+            call MPI_Bcast(use_normalization,1,MPI_LOGICAL,0,MPI_COMM_WORLD,&
+                &ierr)
+            CHCKERR('MPI broadcast failed')
+            call MPI_Bcast(save_only_unstable_sol,1,MPI_LOGICAL,0,&
+                &MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')

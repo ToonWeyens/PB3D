@@ -13,7 +13,7 @@ module num_vars
         &next_job_win, plot_jq, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
         &nyq_fac, max_n_plots, alpha_job_nr, use_pol_flux, plot_grid, &
         &output_style, eq_style, eq_name, plot_dir, data_dir, script_dir, &
-        &spline_type, plot_flux_q
+        &spline_type, plot_flux_q, use_normalization, save_only_unstable_sol
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -58,6 +58,8 @@ module num_vars
     logical :: plot_jq                                                          ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0 (only global master)
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates (only group masters)
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates (only global master)
+    logical :: use_normalization                                                ! whether to use normalization or not
+    logical :: save_only_unstable_sol                                           ! whether to save only unstable solutions or all
     
     ! concerning Richardson extrapolation
     integer :: max_it_r                                                         ! number of levels for Richardson extrapolation

@@ -781,8 +781,8 @@ contains
     ! stores the results
     integer function store_results(solver,max_n_EV) result(ierr)
         use X_vars, only: size_X, grp_n_r_X, n_r_X, X_vec, X_val
-        use eq_vars, only: B_0, R_0, rho_0
-        use num_vars, only: mu_0
+        use eq_vars, only: T_0
+        use num_vars, only: use_normalization
         
         character(*), parameter :: rout_name = 'store_results'
         
@@ -806,6 +806,13 @@ contains
             &n_r_X*size_X,PETSC_NULL_SCALAR,sol_vec,ierr)
         CHCKERR('Failed to create MPI vector with arrays')
         
+        ! Calculate Alfven time T_0 = sqrt(mu_0 rho_0) R_0 / B_0
+        if (use_normalization) then
+            call writo('Calculating inverse normalization of results with')
+            call writo('omega_0 = 1/T_0^2 = '//trim(r2strt(1/(T_0**2)))//&
+                &' s^-2')
+        end if
+        
         ! store them
         do id = 1,max_n_EV
             ! get EV solution in vector X_vec
@@ -828,11 +835,13 @@ contains
                 !&0,1000,1000,guess_viewer,istat)
             !call VecView(sol_vec,guess_viewer,istat)
             
-            ! go back to  physical values from normalization  by multiplying the
-            ! Eigenvalues by 1/T0^2 = B_0^2 / (mu_0 rho_0 R_0^2)
-            !X_val(id) = X_val(id) * B_0**2 / (mu_0*rho_0*R_0**2)
-            
             call lvl_ud(1)
+            
+            !! go back to  physical values from normalization  by multiplying the
+            !! Eigenvalues by 1/T_0^2
+            !if (use_normalization) then
+                !X_val(id) = X_val(id)/(T_0**2)
+            !end if
             
             ! print output
             call writo('eigenvalue: '//trim(r2strt(realpart(X_val(id))))//&

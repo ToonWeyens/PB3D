@@ -862,7 +862,7 @@ contains
         type(XML_str_type) :: XYZ(3)                                            ! data items for geometry
         type(XML_str_type) :: geom                                              ! geometry
         type(XML_str_type) :: att(1)                                            ! attribute
-        logical :: col_mask(4) = .false.                                        ! to select out the collection dimension
+        logical :: col_mask(4)                                                  ! to select out the collection dimension
         real(dp), pointer :: var_ptr(:,:,:)                                     ! pointer to vars, X, Y or z
         character(len=max_str_ln), allocatable :: var_names_loc(:)              ! local copy of var_names
         
@@ -874,6 +874,7 @@ contains
         if (present(col)) col_loc = col
         
         ! set real dimensions
+        col_mask = .false.
         col_mask(col_id_loc) = .true.
         tot_dim_3D = pack(tot_dim,.not.col_mask)
         if (present(grp_dim)) then

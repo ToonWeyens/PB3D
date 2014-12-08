@@ -13,12 +13,14 @@
     min_sec_X = 10
     max_sec_X = 20
     use_pol_flux = .true.
-    n_sol_requested = 1
-    min_n_r_X = 200
+    n_sol_requested = 1000
+    min_n_r_X = 40
     max_n_plots = 2
     plot_jq = .true.
     plot_grid = .false.
-    plot_flux_q = .false.
+    plot_flux_q = .true.
+    use_normalization = .true.
+    save_only_unstable_sol = .true.
     output_style = 2
 /
     

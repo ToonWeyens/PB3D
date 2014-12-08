@@ -82,6 +82,14 @@ contains
         call calc_V_int(PV1,PV_int(:,:,:,2))
         call calc_V_int(PV2,PV_int(:,:,:,3))
         call lvl_ud(-1)
+        !write(*,*) 'RE min PV = ', minval(realpart(PV_int(:,:,:,1))), &
+            !&minval(realpart(PV_int(:,:,:,2))), minval(realpart(PV_int(:,:,:,3)))
+        !write(*,*) 'IM min PV = ', minval(imagpart(PV_int(:,:,:,1))), &
+            !&minval(imagpart(PV_int(:,:,:,2))), minval(imagpart(PV_int(:,:,:,3)))
+        !write(*,*) 'RE max PV = ', maxval(realpart(PV_int(:,:,:,1))), &
+            !&maxval(realpart(PV_int(:,:,:,2))), maxval(realpart(PV_int(:,:,:,3)))
+        !write(*,*) 'IM max PV = ', maxval(imagpart(PV_int(:,:,:,1))), &
+            !&maxval(imagpart(PV_int(:,:,:,2))), maxval(imagpart(PV_int(:,:,:,3)))
         
         ! Calculate KV_int = <KVi e^(k-m)ang_par_F>
         call writo('Taking field average of KV')
@@ -90,6 +98,14 @@ contains
         call calc_V_int(KV1,KV_int(:,:,:,2))
         call calc_V_int(KV2,KV_int(:,:,:,3))
         call lvl_ud(-1)
+        !write(*,*) 'RE min KV = ', minval(realpart(KV_int(:,:,:,1))), &
+            !&minval(realpart(KV_int(:,:,:,2))), minval(realpart(KV_int(:,:,:,3)))
+        !write(*,*) 'IM min KV = ', minval(imagpart(KV_int(:,:,:,1))), &
+            !&minval(imagpart(KV_int(:,:,:,2))), minval(imagpart(KV_int(:,:,:,3)))
+        !write(*,*) 'RE max KV = ', maxval(realpart(KV_int(:,:,:,1))), &
+            !&maxval(realpart(KV_int(:,:,:,2))), maxval(realpart(KV_int(:,:,:,3)))
+        !write(*,*) 'IM max KV = ', maxval(imagpart(KV_int(:,:,:,1))), &
+            !&maxval(imagpart(KV_int(:,:,:,2))), maxval(imagpart(KV_int(:,:,:,3)))
         
         ! deallocate equilibrium variables
         call writo('deallocating unused variables')
@@ -103,7 +119,7 @@ contains
     ! set-up and  solve the  EV system  by discretizing  the equations  in n_r_X
     ! normal points,  making use of  PV0, PV1 and  PV2, interpolated in  the n_r
     ! (equilibrium) values
-    integer function solve_EV_system(use_guess,n_sol_saved) result(ierr)
+    integer function solve_EV_system(use_guess,n_sol_found) result(ierr)
         use num_vars, only: EV_style
         use str_ops, only: i2str
         use slepc_ops, only: solve_EV_system_slepc
@@ -112,7 +128,7 @@ contains
         
         ! input / output
         logical, intent(in) :: use_guess                                        ! whether to use a guess or not
-        integer, intent(inout) :: n_sol_saved                                   ! how many solutions saved
+        integer, intent(inout) :: n_sol_found                                   ! how many solutions saved
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -123,7 +139,7 @@ contains
         select case (EV_style)
             case(1)                                                             ! slepc solver for EV problem
                 ! solve the system
-                ierr = solve_EV_system_slepc(use_guess,n_sol_saved)
+                ierr = solve_EV_system_slepc(use_guess,n_sol_found)
                 CHCKERR('')
             case default
                 err_msg = 'No EV solver style associated with '//&
@@ -237,8 +253,6 @@ contains
         
         ! initialize ierr
         ierr = 0
-        
-        call lvl_ud(1)
         
         ! 1. initialize some quantities
         
@@ -473,8 +487,6 @@ contains
             ! deallocate
             deallocate(file_names)
         end if
-        
-        call lvl_ud(-1)
     contains
         ! calculates the array  of normal points in the  perturbation grid where
         ! to interpolate  to produce the plot.  This assumes that the  vector to
@@ -620,8 +632,6 @@ contains
         
         ! initialize ierr
         ierr = 0
-        
-        call lvl_ud(1)
         
         ! user output
         call writo('Starting the plot')
@@ -817,7 +827,5 @@ contains
         deallocate(x_plot,y_plot,z_plot,f_plot)
         if (eq_style.eq.1) deallocate(l_plot)                                   ! only if using VMEC
         deallocate(theta_plot,zeta_plot,r_plot)
-        
-        call lvl_ud(-1)
     end function plot_X_vec_HDF5
 end module

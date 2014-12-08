@@ -145,7 +145,7 @@ contains
     ! runs the calculations for one of the alpha's
     integer function run_for_alpha(job_nr,alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, grp_rank, no_guess, &
-            &alpha_job_nr
+            &alpha_job_nr, save_only_unstable_sol
         use eq_ops, only: calc_eq
         use eq_vars, only: ang_par_F, n_par
         use output_ops, only: draw_GP
@@ -168,7 +168,9 @@ contains
         real(dp), allocatable :: x_axis(:,:)                                    ! x axis for plot of Eigenvalues with n_r_X
         logical :: use_guess                                                    ! whether a guess is formed from previous level of Richardson
         character(len=max_str_ln) :: plot_title                                 ! title for plots
-        integer :: n_sol_saved                                                  ! how many solutions saved
+        integer :: n_sol_found                                                  ! how many solutions found and saved
+        integer :: first_stable_id                                              ! index of first stable EV
+        integer :: n_sol_to_save                                                ! nr. of solutions to save
         
         ! initialize ierr
         ierr = 0
@@ -229,7 +231,7 @@ contains
             ! solve it
             call writo('treating the EV system')
             call lvl_ud(1)
-            ierr = solve_EV_system(use_guess,n_sol_saved)
+            ierr = solve_EV_system(use_guess,n_sol_found)
             CHCKERR('')
             call lvl_ud(-1)
             
@@ -277,10 +279,35 @@ contains
                         &final Eigenvalues'
                     call print_GP_2D(plot_title,'Eigenvalues_'//&
                         &trim(i2str(alpha_job_nr))//'.dat',&
-                        &realpart(X_val(1:n_sol_saved)))
+                        &realpart(X_val(1:n_sol_found)))
                     ! same output in file as well
                     call draw_GP(plot_title,'Eigenvalues_'//&
                         &trim(i2str(alpha_job_nr))//'.dat',1,.true.,.false.)
+                    
+                    ! output unstable solutions as well if requested
+                    if (save_only_unstable_sol .and. realpart(X_val(1)).lt.0) &
+                        &then                                                   ! only plot them if there are unstable solutions
+                        plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
+                            &final unstable Eigenvalues'
+                        ! find first stable index
+                        first_stable_id = 0
+                        id = 1
+                        do while (first_stable_id.eq.0 .and. id.le.n_sol_found)
+                            if (realpart(X_val(id)).gt.0._dp) &
+                                &first_stable_id = id
+                            id = id + 1
+                        end do
+                        call print_GP_2D(plot_title,'Eigenvalues_'//&
+                            &trim(i2str(alpha_job_nr))//'_unstable.dat',&
+                            &realpart(X_val(1:first_stable_id-1)))
+                        ! same output in file as well
+                        call draw_GP(plot_title,'Eigenvalues_'//&
+                            &trim(i2str(alpha_job_nr))//'_unstable.dat',1,&
+                            &.true.,.false.)
+                        n_sol_to_save = first_stable_id - 1
+                    else
+                        n_sol_to_save = n_sol_found
+                    end if
                     
                     call lvl_ud(-1)
                 end if
@@ -289,19 +316,26 @@ contains
                 
                 call lvl_ud(1)
                 
-                do id = 1,n_sol_saved
+                ! for all the solutions that are to be saved
+                do id = 1,n_sol_to_save
+                    ! user output
                     call writo('plotting results for mode '//trim(i2str(id))//&
-                        &'/'//trim(i2str(n_sol_saved))//&
+                        &'/'//trim(i2str(n_sol_to_save))//&
                         &', with eigenvalue '&
                         &//trim(r2strt(realpart(X_val(id))))//' + '//&
                         &trim(r2strt(imagpart(X_val(id))))//' i')
                     
-                    ! plot the harmonics
+                    call lvl_ud(1)
+                    
+                    ! plot information about harmonics
                     call plot_harmonics(X_vec(:,:,id),id)
                     
+                    ! plot the vector
                     ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id,job_nr,&
                         &[ang_par_F(1,1),ang_par_F(n_par,1)])
                     CHCKERR('')
+                    
+                    call lvl_ud(-1)
                 end do
                 
                 call lvl_ud(-1)
@@ -331,7 +365,7 @@ contains
         call dealloc_metric_final
         call dealloc_X_final
     contains
-        ! plots the harmonics and their maximum
+        ! plots the harmonics and their maximum in 2D
         subroutine plot_harmonics(X_vec,X_id)
             use MPI_ops, only: wait_MPI, get_ghost_X_vec, get_ser_var
             use output_ops, only: merge_GP

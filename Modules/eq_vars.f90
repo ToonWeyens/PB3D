@@ -19,7 +19,7 @@ module eq_vars
         &theta_V, zeta_V, n_par, grp_n_r_eq, lam_H, min_par, max_par, n_r_eq, &
         &q_saf_V, q_saf_V_full, flux_p_V, flux_t_V, VMEC_R, VMEC_Z, VMEC_L, &
         &pres_V, q_saf_FD, flux_p_FD, flux_t_FD, pres_FD, grp_min_r_eq, &
-        &grp_max_r_eq, R_0, pres_0, B_0, psi_0, rho_0, ang_par_F, &
+        &grp_max_r_eq, R_0, pres_0, B_0, psi_0, rho_0, T_0, ang_par_F, &
         &rot_t_FD, rot_t_V, flux_p_V_full, flux_t_V_full, rot_t_V_full, &
         &max_flux, max_flux_eq, eq_use_pol_flux, q_saf_H, rot_t_H, theta_H, &
         &zeta_H, pres_H, flux_p_H, flux_t_H, q_saf_H_full, rot_t_H_full, &
@@ -57,7 +57,7 @@ module eq_vars
     real(dp) :: max_flux, max_flux_eq                                           ! max. flux (pol. or tor.) (min.flux is trivially equal to 0)
     real(dp) :: min_par, max_par                                                ! min. and max. of parallel coordinate [pi]
     real(dp) :: R_0, pres_0, rho_0                                              ! independent normalization constants for nondimensionalization
-    real(dp) :: B_0, psi_0                                                      ! derived normalization constants for nondimensionalization
+    real(dp) :: B_0, psi_0, T_0                                                 ! derived normalization constants for nondimensionalization
     integer :: n_par, n_r_eq                                                    ! total nr. of parallel and normal points in equilibrim grid
     integer :: grp_n_r_eq                                                       ! nr. of normal points in this process in alpha group
     integer :: grp_min_r_eq, grp_max_r_eq                                       ! min. and max. r range of this process in alpha group
@@ -1437,7 +1437,7 @@ contains
     !   psi_0:  reference flux (= R_0^2 B_0)
     ! [MPI] only global master
     integer function calc_norm_const() result(ierr)
-        use num_vars, only: glb_rank, eq_style, mu_0
+        use num_vars, only: glb_rank, eq_style, mu_0, use_normalization
         
         character(*), parameter :: rout_name = 'calc_norm_const'
         
@@ -1447,21 +1447,48 @@ contains
         ! initialize ierr
         ierr = 0
         
-        if (glb_rank.eq.0) then
-            ! choose which equilibrium style is being used:
-            !   1:  VMEC
-            !   2:  HELENA
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    call calc_norm_const_VMEC
-                case (2)                                                        ! HELENA
-                    call calc_norm_const_HEL
-                case default
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
+        if (use_normalization) then
+            ! user output
+            call writo('Calculating the normalization constants')
+            
+            call lvl_ud(1)
+            
+            ! calculation
+            if (glb_rank.eq.0) then
+                ! choose which equilibrium style is being used:
+                !   1:  VMEC
+                !   2:  HELENA
+                select case (eq_style)
+                    case (1)                                                    ! VMEC
+                        call calc_norm_const_VMEC
+                    case (2)                                                    ! HELENA
+                        call calc_norm_const_HEL
+                    case default
+                        err_msg = 'No equilibrium style associated with '//&
+                            &trim(i2str(eq_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
+                end select
+            end if
+            
+            ! Alfven velocity
+            T_0 = sqrt(mu_0*rho_0)*R_0/B_0 
+            
+            call writo('Major radius    R_0 = '//trim(r2strt(R_0))//' m')
+            call writo('Pressure        pres_0 = '//trim(r2strt(pres_0))//' Pa')
+            call writo('Mass density    rho_0 = '//trim(r2strt(rho_0))&
+                &//' kg/m^3')
+            call writo('Magnetic field  B_0 = '//trim(r2strt(B_0))//' T')
+            call writo('Magnetic flux   psi_0 = '//trim(r2strt(psi_0))//' Tm^2')
+            call writo('Alfven time     T_0 = '//trim(r2strt(T_0))//' s')
+            
+            call lvl_ud(-1)
+            
+            ! user output
+            call writo('Normalization constants calculated')
+        else
+            ! user output
+            call writo('Normalization not used')
         end if
     contains 
         ! VMEC version
@@ -1481,7 +1508,7 @@ contains
             B_0 = sqrt(pres_0 * mu_0)
             
             ! set reference flux
-            psi_0 = (R_0**2 * B_0)
+            psi_0 = R_0**2 * B_0
         end subroutine calc_norm_const_VMEC
         
         ! HELENA version
@@ -1501,7 +1528,7 @@ contains
             pres_0 = B_0**2/mu_0
             
             ! set reference flux
-            psi_0 = (R_0**2 * B_0)
+            psi_0 = R_0**2 * B_0
         end subroutine calc_norm_const_HEL
     end function calc_norm_const
     
