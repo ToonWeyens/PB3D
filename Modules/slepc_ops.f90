@@ -16,7 +16,9 @@ module slepc_ops
     
 contains
     ! This subroutine sets up  the matrices A ad B of  the generalized EV system
-    ! described in [ADD REF] and solves them using the slepc suite
+    ! described in  [ADD REF] and  solves them using  the slepc suite.  The most
+    ! unstable solutions  are obtained, where the  variable "max_n_EV" indicates
+    ! how many.
     integer function solve_EV_system_slepc(use_guess,max_n_EV) &
         &result(ierr)
         use slepc_vars, only: start_slepc, stop_slepc, setup_matrices, &

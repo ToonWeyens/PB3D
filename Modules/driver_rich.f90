@@ -145,7 +145,7 @@ contains
     ! runs the calculations for one of the alpha's
     integer function run_for_alpha(job_nr,alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, grp_rank, no_guess, &
-            &alpha_job_nr, save_only_unstable_sol
+            &alpha_job_nr, n_sol_plotted
         use eq_ops, only: calc_eq
         use eq_vars, only: ang_par_F, n_par
         use output_ops, only: draw_GP
@@ -162,15 +162,15 @@ contains
         
         ! local variables
         integer :: ir                                                           ! counter for richardson extrapolation
-        integer :: id                                                           ! counter
+        integer :: id, jd                                                       ! counters
         logical :: done_richard                                                 ! is it converged?
         complex(dp), allocatable :: X_val_rich(:,:,:)                           ! Richardson array of eigenvalues X_val
         real(dp), allocatable :: x_axis(:,:)                                    ! x axis for plot of Eigenvalues with n_r_X
         logical :: use_guess                                                    ! whether a guess is formed from previous level of Richardson
         character(len=max_str_ln) :: plot_title                                 ! title for plots
         integer :: n_sol_found                                                  ! how many solutions found and saved
-        integer :: first_stable_id                                              ! index of first stable EV
-        integer :: n_sol_to_save                                                ! nr. of solutions to save
+        integer :: last_unstable_id                                             ! index of last unstable EV
+        integer :: min_id(3), max_id(3)                                         ! min. and max. index of range 1, 2 and 3
         
         ! initialize ierr
         ierr = 0
@@ -235,6 +235,7 @@ contains
             CHCKERR('')
             call lvl_ud(-1)
             
+            ! Richardson extrapolation
             if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
                 ! update the x axis of the Eigenvalue plot
                 x_axis(ir,:) = 1.0_dp*n_r_X
@@ -250,6 +251,45 @@ contains
                 done_richard = .true.
             end if
             
+            ! getting range of EV to plot
+            ! find last unstable index (if ends with 0, no unstable EV)
+            last_unstable_id = 0
+            do id = 1,n_sol_found
+                if (realpart(X_val(id)).lt.0._dp) last_unstable_id = id
+            end do
+            ! set up min. and max. of range 1
+            if (last_unstable_id.gt.0) then                                     ! there is an unstable range
+                min_id(1) = 1                                                   ! start from most unstable EV
+                max_id(1) = min(n_sol_plotted(1),last_unstable_id)              ! end with n_sol_plotted(1) first unstable values if available
+            else                                                                ! no unstable range
+                min_id(1) = 1                                                   ! no unstable values to plot
+                max_id(1) = 0                                                   ! no unstable values to plot
+            end if
+            ! set up min. and max. of range 2
+            if (last_unstable_id.gt.0) then                                     ! there is an unstable range
+                min_id(2) = last_unstable_id - n_sol_plotted(2) + 1             ! start from n_sol_plotted(2) last unstable values
+                max_id(2) = &
+                    &min(last_unstable_id + n_sol_plotted(3),n_sol_found)       ! end with n_sol_plotted(3) first stable values if available
+            else                                                                ! no unstable range
+                min_id(2) = 1                                                   ! start from first EV (stable)
+                max_id(2) = min(n_sol_plotted(3),n_sol_found)                   ! end with n_sol_plotted(3) first stable values if available
+            end if
+            ! set up min. and max. of range 3
+            min_id(3) = n_sol_found - n_sol_plotted(4) + 1                      ! start from n_sol_plotted(4) last stable values
+            max_id(3) = n_sol_found                                             ! end with most stable EV
+            ! merge ranges 2 and 3 if overlap
+            if (min_id(3).le.max_id(2)) then
+                max_id(2) = max_id(3)                                           ! range 3 merged with range 2
+                min_id(3) = 1                                                   ! range 3 not used any more
+                max_id(3) = 0                                                   ! range 3 not used any more
+            end if
+            ! merge ranges 1 and 2 if overlap
+            if (min_id(2).le.max_id(1)) then
+                max_id(1) = max_id(2)                                           ! range 2 merged with range 1
+                min_id(2) = 1                                                   ! range 2 not used any more
+                max_id(2) = 0                                                   ! range 2 not used any more
+            end if
+            
             ! output the evolution of the  Eigenvalues with the number of normal
             ! points in the perturbation grid  and the largest Eigenfunction for
             ! the last Richardson loop
@@ -257,16 +297,20 @@ contains
                 if (grp_rank.eq.0) then
                     call writo('plotting the Eigenvalues')
                     call lvl_ud(1)
+                    
+                    ! Eigenvalues as function of nr. of normal points
                     if (max_it_r.gt.1) then
                         call writo('plotting Eigenvalues as function of nr. of &
                             &normal points')
                         
                         ! output on screen
                         plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
-                            &Eigenvalues as function of nr. of normal points'
+                            &Eigenvalues as function of nr. of normal points &
+                            &[log]'
                         call print_GP_2D(plot_title,'Eigenvalues_'//&
                             &trim(i2str(alpha_job_nr))//'_richardson.dat',&
-                            &realpart(X_val_rich(1:ir,1,:)),x=x_axis(1:ir,:))
+                            &log10(abs(realpart(X_val_rich(1:ir,1,:)))),&
+                            &x=x_axis(1:ir,:))
                         ! same output in file as well
                         call draw_GP(plot_title,'Eigenvalues_'//&
                             &trim(i2str(alpha_job_nr))//'_richardson.dat',&
@@ -274,39 +318,45 @@ contains
                     end if
                     call writo('plotting final Eigenvalues')
                     
+                    ! Last Eigenvalues
                     ! output on screen
                     plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
-                        &final Eigenvalues'
+                        &final Eigenvalues omega^2 [log]'
                     call print_GP_2D(plot_title,'Eigenvalues_'//&
                         &trim(i2str(alpha_job_nr))//'.dat',&
-                        &realpart(X_val(1:n_sol_found)))
+                        &log10(abs(realpart(X_val(1:n_sol_found)))))
                     ! same output in file as well
                     call draw_GP(plot_title,'Eigenvalues_'//&
                         &trim(i2str(alpha_job_nr))//'.dat',1,.true.,.false.)
                     
-                    ! output unstable solutions as well if requested
-                    if (save_only_unstable_sol .and. realpart(X_val(1)).lt.0) &
-                        &then                                                   ! only plot them if there are unstable solutions
+                    ! Last Eigenvalues: unstable range
+                    if (last_unstable_id.gt.0) then
+                        ! output on screen
                         plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
-                            &final unstable Eigenvalues'
-                        ! find first stable index
-                        first_stable_id = 0
-                        id = 1
-                        do while (first_stable_id.eq.0 .and. id.le.n_sol_found)
-                            if (realpart(X_val(id)).gt.0._dp) &
-                                &first_stable_id = id
-                            id = id + 1
-                        end do
+                            &final unstable Eigenvalues omega^2'
                         call print_GP_2D(plot_title,'Eigenvalues_'//&
                             &trim(i2str(alpha_job_nr))//'_unstable.dat',&
-                            &realpart(X_val(1:first_stable_id-1)))
+                            &realpart(X_val(1:last_unstable_id)),&
+                            &x=[(id*1._dp,id=1,last_unstable_id)])
                         ! same output in file as well
                         call draw_GP(plot_title,'Eigenvalues_'//&
                             &trim(i2str(alpha_job_nr))//'_unstable.dat',1,&
                             &.true.,.false.)
-                        n_sol_to_save = first_stable_id - 1
-                    else
-                        n_sol_to_save = n_sol_found
+                    end if
+                    
+                    ! Last Eigenvalues: stable range
+                    if (last_unstable_id.lt.n_sol_found) then
+                        ! output on screen
+                        plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
+                            &final stable Eigenvalues omega^2'
+                        call print_GP_2D(plot_title,'Eigenvalues_'//&
+                            &trim(i2str(alpha_job_nr))//'_stable.dat',&
+                            &realpart(X_val(last_unstable_id+1:n_sol_found)),&
+                            &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)])
+                        ! same output in file as well
+                        call draw_GP(plot_title,'Eigenvalues_'//&
+                            &trim(i2str(alpha_job_nr))//'_stable.dat',1,&
+                            &.true.,.false.)
                     end if
                     
                     call lvl_ud(-1)
@@ -317,25 +367,32 @@ contains
                 call lvl_ud(1)
                 
                 ! for all the solutions that are to be saved
-                do id = 1,n_sol_to_save
-                    ! user output
-                    call writo('plotting results for mode '//trim(i2str(id))//&
-                        &'/'//trim(i2str(n_sol_to_save))//&
-                        &', with eigenvalue '&
-                        &//trim(r2strt(realpart(X_val(id))))//' + '//&
-                        &trim(r2strt(imagpart(X_val(id))))//' i')
-                    
-                    call lvl_ud(1)
-                    
-                    ! plot information about harmonics
-                    call plot_harmonics(X_vec(:,:,id),id)
-                    
-                    ! plot the vector
-                    ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id,job_nr,&
-                        &[ang_par_F(1,1),ang_par_F(n_par,1)])
-                    CHCKERR('')
-                    
-                    call lvl_ud(-1)
+                ! three ranges
+                do jd = 1,3
+                    call writo('Plotting results for modes '//&
+                        &trim(i2str(min_id(jd)))//'..'//trim(i2str(max_id(jd)))&
+                        &//' of range '//trim(i2str(jd)))
+                    ! indices in each range
+                    do id = min_id(jd),max_id(jd)
+                        ! user output
+                        call writo('plotting results for mode '//&
+                            &trim(i2str(id))//'/'//trim(i2str(n_sol_found))//&
+                            &', with eigenvalue '&
+                            &//trim(r2strt(realpart(X_val(id))))//' + '//&
+                            &trim(r2strt(imagpart(X_val(id))))//' i')
+                        
+                        call lvl_ud(1)
+                        
+                        ! plot information about harmonics
+                        call plot_harmonics(X_vec(:,:,id),id)
+                        
+                        ! plot the vector
+                        ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id,job_nr,&
+                            &[ang_par_F(1,1),ang_par_F(n_par,1)])
+                        CHCKERR('')
+                        
+                        call lvl_ud(-1)
+                    end do
                 end do
                 
                 call lvl_ud(-1)
@@ -397,10 +454,12 @@ contains
                 x_plot(:,kd) = grp_r_X
             end do
             
+            ! absolute amplitude
             ! set up file name of this rank and plot title
-            file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//'.dat'
+            file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//&
+                &'_abs.dat'
             plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
-                &trim(i2str(X_id))
+                &trim(i2str(X_id))//' - absolute value'
             
             ! print amplitude of harmonics of eigenvector for each rank
             call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
@@ -429,7 +488,41 @@ contains
                 deallocate(file_names)
             end if
             
-            ! find maximum of each mode
+            ! perturbation at midplane theta = zeta = 0
+            ! set up file name of this rank and plot title
+            file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//&
+                &'_midplane.dat'
+            plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
+                &trim(i2str(X_id))//' - midplane'
+            
+            ! print amplitude of harmonics of eigenvector for each rank
+            call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
+                &trim(i2str(grp_rank)),&
+                &realpart(transpose(X_vec_extended(:,:))),x=x_plot,draw=.false.)
+            
+            ! wait for all processes
+            ierr = wait_MPI()
+            CHCKERR('')
+            
+            ! plot by group master
+            if (grp_rank.eq.0) then
+                ! set up file names in array
+                allocate(file_names(grp_n_procs))
+                do kd = 1,grp_n_procs
+                    file_names(kd) = trim(file_name)//'_'//trim(i2str(kd-1))
+                end do
+                
+                ! merge files
+                call merge_GP(file_names,file_name,delete=.true.)
+                
+                ! draw plot
+                call draw_GP(trim(plot_title),file_name,size_X,.true.,.false.)
+                
+                ! deallocate
+                deallocate(file_names)
+            end if
+            
+            ! maximum of each mode
             allocate(X_vec_max(size_X))
             X_vec_max = 0.0_dp
             do kd = 1,size_X

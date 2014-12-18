@@ -15,8 +15,8 @@ module HEL_vars
         &h_H_33, RBphi, R_H, Z_H
     
     ! global variables
-    real(dp) :: R_0_H = 1.5_dp                                                  ! R of magnetic axis (normalization constant)
-    real(dp) :: B_0_H = 2.0_dp                                                  ! B at magnetic axis (normalization constant)
+    real(dp) :: R_0_H = 1.0_dp                                                  ! R of magnetic axis (normalization constant)
+    real(dp) :: B_0_H = 1.0_dp                                                  ! B at magnetic axis (normalization constant)
     real(dp), allocatable :: chi_H(:)                                           ! poloidal angle
     real(dp), allocatable :: flux_H(:)                                          ! normal coordinate values
     real(dp), allocatable :: p0(:)                                              ! pressure profile

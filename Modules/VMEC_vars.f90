@@ -118,15 +118,15 @@ contains
             
             ! Allocate and repack the Fourier coefficients to translate them for
             ! use in this code
-            allocate(R_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
-            allocate(Z_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
-            allocate(L_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
-            allocate(L_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
+            allocate(R_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+            allocate(Z_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+            allocate(L_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+            allocate(L_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
             !if (lasym) then                                                     ! following only needed in assymetric situations
-                allocate(R_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
-                allocate(Z_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
-                allocate(L_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
-                allocate(L_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv(3)))
+                allocate(R_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+                allocate(Z_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+                allocate(L_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+                allocate(L_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
             !end if
             
             ! factors R_c,s; Z_c,s and L_C,s and HM varieties
@@ -140,7 +140,7 @@ contains
             !end if
             
             ! normal derivatives of these factors
-            do kd = 1,max_deriv(1)
+            do kd = 1,max_deriv+1
                 do jd = -ntor,ntor
                     do id = 0,mpol-1
                         ierr = calc_deriv(R_c(id,jd,:,0),R_c(id,jd,:,kd),&
@@ -168,7 +168,7 @@ contains
             end do
             
             ! conversion HM -> FM (L)
-            do kd = 0,max_deriv(1)
+            do kd = 0,max_deriv+1
                 do jd = -ntor,ntor
                     do id = 0,mpol-1
                         ierr = conv_FHM(L_s_H(id,jd,:,kd),L_s(id,jd,:,kd),&

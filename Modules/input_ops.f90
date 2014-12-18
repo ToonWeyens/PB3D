@@ -58,7 +58,7 @@ contains
             &calc_mesh_style, EV_style, n_procs_per_alpha, plot_jq, tol_r, &
             &n_sol_requested, min_r_X, max_r_X, nyq_fac, max_n_plots, &
             &glb_rank, nyq_fac, plot_grid, plot_flux_q, output_style, &
-            &use_normalization, save_only_unstable_sol
+            &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot
         use eq_vars, only: &
             &min_par, max_par, n_par, rho_0
         use message_ops, only: writo, lvl_ud
@@ -77,8 +77,8 @@ contains
             &max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
             &max_r_X, EV_style, n_procs_per_alpha, plot_jq, n_sol_requested, &
             &nyq_fac, rho_0, max_n_plots, use_pol_flux, plot_grid, &
-            &output_style, plot_flux_q, use_normalization, &
-            &save_only_unstable_sol
+            &output_style, plot_flux_q, use_normalization, n_sol_plotted, &
+            &n_theta_plot, n_zeta_plot
         
         ! initialize ierr
         ierr = 0
@@ -116,6 +116,9 @@ contains
                     ! adapt run-time variables if needed
                     call adapt_run
                     
+                    ! adapt plotting variables if needed
+                    call adapt_plot
+                    
                     ! adapt alpha variables if needed
                     call adapt_n_alpha
                     
@@ -142,9 +145,22 @@ contains
                     
                     call lvl_ud(-1)
                 else                                                            ! cannot read input data
-                    call writo('Cannot open user-provided file "' // &
+                    call writo('WARNING: Cannot open user-provided file "' // &
                         &trim(input_name) // '". Using defaults')
                 end if
+            end if
+            
+            ! set up min_n_X, max_n_X, min_m_X, max_m_X
+            if (use_pol_flux) then
+                min_n_X = prim_X
+                max_n_X = prim_X
+                min_m_X = min_sec_X
+                max_m_X = max_sec_X
+            else
+                min_m_X = prim_X
+                max_m_X = prim_X
+                min_n_X = min_sec_X
+                max_n_X = max_sec_X
             end if
             
             call lvl_ud(-1)
@@ -153,13 +169,16 @@ contains
     contains
         subroutine default_input
             use eq_vars, only: eq_use_pol_flux
+            use num_vars, only: eq_style
             
             ! concerning Newton-Rhapson
             max_it_NR = 50                                                      ! maximum 50 Newton-Rhapson iterations
             tol_NR = 1.0E-10_dp                                                 ! wanted relative error in Newton-Rhapson iteration
+            
             ! concerning Richardson extrapolation
             max_it_r = 8                                                        ! maximum 5 levels of Richardson extrapolation
             tol_r = 1E-5                                                        ! wanted relative error in Richardson extrapolation
+            
             ! runtime variables
             minim_style = 1                                                     ! Richardson Extrapolation with normal discretization
             n_procs_per_alpha = 1                                               ! 1 processor per field line
@@ -170,7 +189,21 @@ contains
             max_n_plots = 4                                                     ! maximum nr. of modes for which to plot output in plot_X_vec
             output_style = 1                                                    ! GNUPlot output
             use_normalization = .true.                                          ! use normalization for the variables
-            save_only_unstable_sol = .false.                                    ! save stable and unstable solutions
+            
+            ! variables concerning plotting
+            n_sol_plotted = n_sol_requested                                     ! plot all solutions
+            ! default   values   of  n_theta_plot  and   n_zeta_plot  depend  on
+            ! equilibrium style being used:
+            !   1:  VMEC
+            !   2:  HELENA
+            select case(eq_style)
+                case (1)                                                        ! VMEC
+                    n_theta_plot = 201                                          ! nr. poloidal points in plot
+                    n_zeta_plot = 101                                           ! nr. toroidal points in plot
+                case (2)                                                        ! VMEC
+                    n_theta_plot = 501                                          ! nr. poloidal points in plot
+                    n_zeta_plot = 1                                             ! nr. toroidal points in plot
+            end select
             
             ! variables concerning poloidal mode numbers m
             min_par = -4.0_dp                                                   ! minimum parallel angle [pi]
@@ -181,15 +214,18 @@ contains
             max_sec_X = prim_X                                                  ! max. of. secondary mode number of perturbation
             n_par = 20                                                          ! number of parallel grid points
             use_pol_flux = eq_use_pol_flux                                      ! use same normal flux coordinate as the equilibrium
+            
             ! variables concerning alpha
             min_alpha = 0.0_dp                                                  ! minimum field line label [pi]
             max_alpha = 2.0_dp                                                  ! maximum field line label [pi]
             n_alpha = 10                                                        ! number of different field lines
+            
             ! variables concerning perturbation
             min_r_X = 0.1_dp                                                    ! minimum radius
             max_r_X = 1.0_dp                                                    ! maximum radius
             EV_style = 1                                                        ! slepc solver for EV problem
             min_n_r_X = 10                                                      ! at least 10 points in perturbation grid
+            
             ! variables concerning normalization
             rho_0 = 10E-6_dp                                                    ! for fusion, particle density of around 1E21, mp around 1E-27
         end subroutine
@@ -211,13 +247,28 @@ contains
             if (max_n_plots.lt.0) then
                 max_n_plots = 0
                 call writo('WARNING: max_n_plots cannot be negative and is &
-                    &set to 0')
+                    &set to '//trim(i2str(max_n_plots)))
             end if
             if (output_style.lt.1 .or. output_style.gt.2) then
                 output_style = 1
                 call writo('WARNING: output_style set to default (1: GNUPlot)')
             end if
         end subroutine adapt_run
+        
+        ! checks whether the variables concerning plotting are chosen correctly.
+        ! n_theta and n_zeta_plot have to be positive
+        subroutine adapt_plot
+            if (n_theta_plot.lt.1) then
+                n_theta_plot = 1
+                call writo('WARNING: n_theta_plot cannot be negative and is &
+                    &set to '//trim(i2str(n_theta_plot)))
+            end if
+            if (n_zeta_plot.lt.1) then
+                n_zeta_plot = 1
+                call writo('WARNING: n_zeta_plot cannot be negative and is &
+                    &set to '//trim(i2str(n_zeta_plot)))
+            end if
+        end subroutine adapt_plot
         
         ! checks whether n_par is chosen high enough so aliasing can be avoided.
         ! aliasing occurs when there are not  enough points on the parallel grid
@@ -342,19 +393,6 @@ contains
             if (nyq_fac.lt.1) then
                 call writo('WARNING: nyq_fac has been increased to 1')
                 nyq_fac = 1
-            end if
-            
-            ! set up min_n_X, max_n_X, min_m_X, max_m_X
-            if (use_pol_flux) then
-                min_n_X = prim_X
-                max_n_X = prim_X
-                min_m_X = min_sec_X
-                max_m_X = max_sec_X
-            else
-                min_m_X = prim_X
-                max_m_X = prim_X
-                min_n_X = min_sec_X
-                max_n_X = max_sec_X
             end if
         end function adapt_m
         

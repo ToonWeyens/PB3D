@@ -104,28 +104,22 @@ contains
         
         ! initialize variables that are used for all equilibrium styles
         ! g_F
-        allocate(g_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1))
+        allocate(g_F(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! h_F
-        allocate(h_F(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1))
+        allocate(h_F(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! g_FD
-        allocate(g_FD(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1))
+        allocate(g_FD(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! h_FD
-        allocate(h_FD(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1))
+        allocate(h_FD(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! jac_F
-        allocate(jac_F(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
-            &0:max_deriv(2)-1,0:max_deriv(3)-1))
+        allocate(jac_F(n_par,grp_n_r_eq,0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! jac_FD
-        allocate(jac_FD(n_par,grp_n_r_eq,0:max_deriv(1)-1,0:max_deriv(2)-1,&
-            &0:max_deriv(3)-1))
+        allocate(jac_FD(n_par,grp_n_r_eq,0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! initialize variables that are  specifici to which equilibrium style is
         ! being used:
@@ -134,72 +128,72 @@ contains
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! g_C
-                allocate(g_C(n_par,grp_n_r_eq,3,3,0:max_deriv(1),&
-                    &0:max_deriv(2),0:max_deriv(3))); g_C = 0.0_dp
+                allocate(g_C(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv)); g_C = 0.0_dp
                 
                 ! g_V
-                allocate(g_V(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                allocate(g_V(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv))
                 
                 ! T_VC
-                allocate(T_VC(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1)); T_VC = 0.0_dp
+                allocate(T_VC(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv)); T_VC = 0.0_dp
                 
                 ! T_VF
-                allocate(T_VF(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1)); T_VF = 0.0_dp
+                allocate(T_VF(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv)); T_VF = 0.0_dp
                 
                 ! T_FV
-                allocate(T_FV(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1)); T_FV = 0.0_dp
+                allocate(T_FV(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv)); T_FV = 0.0_dp
                 
                 ! det_T_VC
-                allocate(det_T_VC(n_par,grp_n_r_eq,0:max_deriv(1),&
-                    &0:max_deriv(2),0:max_deriv(3)))
+                allocate(det_T_VC(n_par,grp_n_r_eq,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv))
                 
                 ! det_T_VF
-                allocate(det_T_VF(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                allocate(det_T_VF(n_par,grp_n_r_eq,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv))
                 
                 ! det_T_FV
-                allocate(det_T_FV(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                allocate(det_T_FV(n_par,grp_n_r_eq,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv))
                 
                 ! jac_C
-                allocate(jac_C(n_par,grp_n_r_eq,0:max_deriv(1),0:max_deriv(2),&
-                    &0:max_deriv(3)))
+                allocate(jac_C(n_par,grp_n_r_eq,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv))
                 
                 ! jac_V
-                allocate(jac_V(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                allocate(jac_V(n_par,grp_n_r_eq,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv))
             case (2)                                                            ! HELENA
                 ! h_H
-                allocate(h_H(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                allocate(h_H(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv))
                 
                 ! g_H
-                allocate(g_H(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                allocate(g_H(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv))
                 
                 ! T_HF
-                allocate(T_HF(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1)); T_HF = 0.0_dp
+                allocate(T_HF(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv)); T_HF = 0.0_dp
                 
                 ! T_FH
-                allocate(T_FH(n_par,grp_n_r_eq,3,3,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1)); T_FH = 0.0_dp
+                allocate(T_FH(n_par,grp_n_r_eq,3,3,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv)); T_FH = 0.0_dp
                 
                 ! det_T_HF
-                allocate(det_T_HF(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                allocate(det_T_HF(n_par,grp_n_r_eq,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv))
                 
                 ! det_T_FH
-                allocate(det_T_FH(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                allocate(det_T_FH(n_par,grp_n_r_eq,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv))
                 
                 ! jac_H
-                allocate(jac_H(n_par,grp_n_r_eq,0:max_deriv(1)-1,&
-                    &0:max_deriv(2)-1,0:max_deriv(3)-1))
+                allocate(jac_H(n_par,grp_n_r_eq,0:max_deriv,0:max_deriv,&
+                    &0:max_deriv))
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
@@ -266,10 +260,10 @@ contains
         ierr = 0
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_g_V')
+        ierr = check_deriv(deriv,max_deriv,'calc_g_V')
         CHCKERR('')
         
-        ierr = calc_g(g_C,T_VC,g_V,deriv,max_deriv-[1,1,1])
+        ierr = calc_g(g_C,T_VC,g_V,deriv,max_deriv)
         CHCKERR('')
     end function calc_g_V_ind
     integer function calc_g_V_arr(deriv) result(ierr)
@@ -309,7 +303,7 @@ contains
         ierr = 0
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_h_H')
+        ierr = check_deriv(deriv,max_deriv,'calc_h_H')
         CHCKERR('')
         
         ! initialize h_H
@@ -337,35 +331,83 @@ contains
         else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
             do id = 1,n_par
                 ierr = calc_deriv(h_H(id,:,1,1,0,0,0),h_H(id,:,1,1,1,0,0),&
-                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,2)                     ! use extra precision to later calculate mixed derivatives
                 CHCKERR('')
                 ierr = calc_deriv(h_H(id,:,1,2,0,0,0),h_H(id,:,1,2,1,0,0),&
-                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,2)                     ! use extra precision to later calculate mixed derivatives
                 CHCKERR('')
                 ierr = calc_deriv(h_H(id,:,2,2,0,0,0),h_H(id,:,2,2,1,0,0),&
-                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,2)                     ! use extra precision to later calculate mixed derivatives
                 CHCKERR('')
                 ierr = calc_deriv(h_H(id,:,3,3,0,0,0),h_H(id,:,3,3,1,0,0),&
-                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,2)                     ! use extra precision to later calculate mixed derivatives
                 CHCKERR('')
             end do
             h_H(:,:,2,1,1,0,0) = h_H(:,:,1,2,1,0,0)
+        else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
+            do id = 1,n_par
+                ierr = calc_deriv(h_H(id,:,1,1,0,0,0),h_H(id,:,1,1,2,0,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),2,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(id,:,1,2,0,0,0),h_H(id,:,1,2,2,0,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),2,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(id,:,2,2,0,0,0),h_H(id,:,2,2,2,0,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),2,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(id,:,3,3,0,0,0),h_H(id,:,3,3,2,0,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),2,1)
+                CHCKERR('')
+            end do
+            h_H(:,:,2,1,2,0,0) = h_H(:,:,1,2,2,0,0)
         else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
             do kd = 1,grp_n_r_eq
                 ierr = calc_deriv(h_H(:,kd,1,1,0,0,0),h_H(:,kd,1,1,0,1,0),&
-                    &theta_H(:,kd),1,1)
+                    &theta_H(:,kd),1,2)                                         ! use extra precision to later calculate mixed derivatives
                 CHCKERR('')
                 ierr = calc_deriv(h_H(:,kd,1,2,0,0,0),h_H(:,kd,1,2,0,1,0),&
-                    &theta_H(:,kd),1,1)
+                    &theta_H(:,kd),1,2)                                         ! use extra precision to later calculate mixed derivatives
                 CHCKERR('')
                 ierr = calc_deriv(h_H(:,kd,2,2,0,0,0),h_H(:,kd,2,2,0,1,0),&
-                    &theta_H(:,kd),1,1)
+                    &theta_H(:,kd),1,2)                                         ! use extra precision to later calculate mixed derivatives
                 CHCKERR('')
                 ierr = calc_deriv(h_H(:,kd,3,3,0,0,0),h_H(:,kd,3,3,0,1,0),&
-                    &theta_H(:,kd),1,1)
+                    &theta_H(:,kd),1,2)                                         ! use extra precision to later calculate mixed derivatives
                 CHCKERR('')
             end do
             h_H(:,:,2,1,0,1,0) = h_H(:,:,1,2,0,1,0)
+        else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
+            do kd = 1,grp_n_r_eq
+                ierr = calc_deriv(h_H(:,kd,1,1,0,0,0),h_H(:,kd,1,1,0,2,0),&
+                    &theta_H(:,kd),2,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(:,kd,1,2,0,0,0),h_H(:,kd,1,2,0,2,0),&
+                    &theta_H(:,kd),2,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(:,kd,2,2,0,0,0),h_H(:,kd,2,2,0,2,0),&
+                    &theta_H(:,kd),2,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(:,kd,3,3,0,0,0),h_H(:,kd,3,3,0,2,0),&
+                    &theta_H(:,kd),2,1)
+                CHCKERR('')
+            end do
+            h_H(:,:,2,1,0,2,0) = h_H(:,:,1,2,0,2,0)
+        else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
+            do id = 1,n_par
+                ierr = calc_deriv(h_H(id,:,1,1,0,1,0),h_H(id,:,1,1,1,1,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(id,:,1,2,0,1,0),h_H(id,:,1,2,1,1,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(id,:,2,2,0,1,0),h_H(id,:,2,2,1,1,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                CHCKERR('')
+                ierr = calc_deriv(h_H(id,:,3,3,0,1,0),h_H(id,:,3,3,1,1,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                CHCKERR('')
+            end do
+            h_H(:,:,2,1,1,1,0) = h_H(:,:,1,2,1,1,0)
         else
             ierr = 1
             err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
@@ -407,7 +449,7 @@ contains
         ierr = 0
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_g_F')
+        ierr = check_deriv(deriv,max_deriv,'calc_g_F')
         CHCKERR('')
         
         ! choose which equilibrium style is being used:
@@ -415,10 +457,10 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ierr = calc_g(g_V,T_FV,g_F,deriv,max_deriv-[1,1,1])
+                ierr = calc_g(g_V,T_FV,g_F,deriv,max_deriv)
                 CHCKERR('')
             case (2)                                                            ! HELENA
-                ierr = calc_g(g_H,T_FH,g_F,deriv,max_deriv-[1,1,1])
+                ierr = calc_g(g_H,T_FH,g_F,deriv,max_deriv)
                 CHCKERR('')
             case default
                 err_msg = 'No equilibrium style associated with '//&
@@ -461,7 +503,7 @@ contains
         
         ! input / output
         integer, intent(in) :: deriv(3)
-        integer, intent(in) :: max_deriv(3)
+        integer, intent(in) :: max_deriv
         real(dp), intent(in) :: T_BA(:,:,:,:,0:,0:,0:)
         real(dp), intent(in) :: g_A(:,:,:,:,0:,0:,0:)
         real(dp), intent(inout) :: g_B(:,:,:,:,0:,0:,0:)
@@ -607,7 +649,7 @@ contains
         ierr = 0
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_J_V')
+        ierr = check_deriv(deriv,max_deriv,'calc_J_V')
         CHCKERR('')
         
         ! calculate determinant
@@ -653,7 +695,7 @@ contains
         ierr = 0
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_J_H')
+        ierr = check_deriv(deriv,max_deriv,'calc_J_H')
         CHCKERR('')
         
         ! calculate determinant
@@ -667,13 +709,31 @@ contains
         else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
             do id = 1,n_par
                 ierr = calc_deriv(jac_H(id,:,0,0,0),jac_H(id,:,1,0,0),&
-                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,1)
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),1,2)                     ! use extra precision to later calculate mixed derivatives
+                CHCKERR('')
+            end do
+        else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
+            do id = 1,n_par
+                ierr = calc_deriv(jac_H(id,:,0,0,0),jac_H(id,:,2,0,0),&
+                    &flux_H(grp_min_r_eq:grp_max_r_eq),2,1)
                 CHCKERR('')
             end do
         else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
             do kd = 1,grp_n_r_eq
                 ierr = calc_deriv(jac_H(:,kd,0,0,0),jac_H(:,kd,0,1,0),&
-                    &theta_H(:,kd),1,1)
+                    &theta_H(:,kd),1,2)                                         ! use extra precision to later calculate mixed derivatives
+                CHCKERR('')
+            end do
+        else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
+            do kd = 1,grp_n_r_eq
+                ierr = calc_deriv(jac_H(:,kd,0,0,0),jac_H(:,kd,0,2,0),&
+                    &theta_H(:,kd),2,1)
+                CHCKERR('')
+            end do
+        else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
+            do kd = 1,grp_n_r_eq
+                ierr = calc_deriv(jac_H(:,kd,1,0,0),jac_H(:,kd,1,1,0),&
+                    &theta_H(:,kd),1,1)     
                 CHCKERR('')
             end do
         else
@@ -719,7 +779,7 @@ contains
         ierr = 0
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_J_V')
+        ierr = check_deriv(deriv,max_deriv,'calc_J_V')
         CHCKERR('')
         
         ! initialize jac_F
@@ -771,7 +831,7 @@ contains
         integer, intent(in) :: deriv(3)
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_T_VC')
+        ierr = check_deriv(deriv,max_deriv,'calc_T_VC')
         CHCKERR('')
         
         ! initialize
@@ -844,7 +904,7 @@ contains
         ierr = 0
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_T_VF')
+        ierr = check_deriv(deriv,max_deriv,'calc_T_VF')
         CHCKERR('')
         
         ! initialize T_VF
@@ -1003,7 +1063,7 @@ contains
         ierr = 0
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv-[1,1,1],'calc_T_HF')
+        ierr = check_deriv(deriv,max_deriv,'calc_T_HF')
         CHCKERR('')
         
         ! initialize T_HF
@@ -1347,7 +1407,7 @@ contains
         real(dp), intent(in) :: X_A(1:,1:,0:,0:,0:)                             ! variable and derivs. in coord. system A
         real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      ! transf. mat. and derivs. between coord. systems A and B
         real(dp), intent(inout) :: X_B(1:,1:)                                   ! requested derivs. of variable in coord. system B
-        integer, intent(in) :: max_deriv(:)                                     ! maximum degrees of derivs.
+        integer, intent(in) :: max_deriv                                        ! maximum degrees of derivs.
         integer, intent(in) :: deriv_B(:)                                       ! derivs. in coord. system B
         integer, intent(in), optional :: deriv_A_input(:)                       ! derivs. in coord. system A (optional)
         
@@ -1473,7 +1533,7 @@ contains
         
         ! check the derivatives requested
         ! (every B deriv. needs all the A derivs. -> sum(deriv_B) needed)
-        ierr = check_deriv([deriv_A+deriv_B,0,0],[max_deriv,0,0],'calc_f_deriv')
+        ierr = check_deriv([deriv_A+deriv_B,0,0],max_deriv,'calc_f_deriv')
         CHCKERR('')
         
         ! calculate the  derivative in coord.  deriv_id_B of coord. system  B of
@@ -1520,7 +1580,7 @@ contains
         real(dp), intent(inout) :: X_B(1:,1:,0:,0:,0:)                          ! requested derivs. of variable in coord. system B
         real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      ! transf. mat. and derivs. between coord. systems A and B
         integer, intent(in) :: derivs(:,:)                                      ! series of derivs. (in coordinate system B)
-        integer, intent(in) :: max_deriv(:)                                     ! maximum degrees of derivs.
+        integer, intent(in) :: max_deriv                                        ! maximum degrees of derivs.
         
         ! local variables
         integer :: id                                                           ! counter
@@ -1541,7 +1601,7 @@ contains
         real(dp), intent(inout) :: X_B(1:,1:,1:,1:,0:,0:,0:)                    ! requested derivs. of variable in coord. system B
         real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      ! transf. mat. and derivs. between coord. systems A and B
         integer, intent(in) :: derivs(:,:)                                      ! series of derivs. (in coordinate system B)
-        integer, intent(in) :: max_deriv(:)                                     ! maximum degrees of derivs.
+        integer, intent(in) :: max_deriv                                        ! maximum degrees of derivs.
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters

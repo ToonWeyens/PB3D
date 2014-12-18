@@ -16,7 +16,7 @@ module test
         &test_calc_ext_var, test_B, test_calc_deriv, test_arr_mult, &
         &test_conv_FHM, test_calc_RZL, test_calc_T_VF, test_calc_inv_met, &
         &test_calc_det, test_inv, test_calc_f_deriv, test_calc_g, &
-        &test_fourier2real, test_prepare_X, test_slepc
+        &test_fourier2real, test_prepare_X, test_slepc, test_pres_balance
     
 contains
     integer function test_fourier2real() result(ierr)
@@ -530,7 +530,7 @@ contains
             
             ! calculate equilibrium
             write(*,*) 'calculating P'
-            call prepare_X
+            ierr = prepare_X()
             
             ! visualize PV
             write(*,*) 'Real PV0 (5,5) ='
@@ -564,10 +564,7 @@ contains
         real(dp) :: x_loc
         real(dp) :: start_step
         real(dp), allocatable :: varin(:)
-        real(dp), allocatable :: var1_an(:), var2_an(:), var3_an(:), &
-            &var4_an(:), var5_an(:)
-        real(dp), allocatable :: var1_nm(:), var2_nm(:), var3_nm(:), &
-            &var4_nm(:), var5_nm(:)
+        real(dp), allocatable :: var_an(:,:), var_nm(:,:)
         logical :: ind_plots, eqd_plots
         real(dp), allocatable :: step_size(:)
         real(dp), allocatable :: max_error(:,:)
@@ -575,6 +572,7 @@ contains
         real(dp), allocatable :: plot_y(:,:)
         real(dp), allocatable :: plot_x(:,:)
         integer :: input_type
+        integer :: prec
         real(dp), allocatable :: x(:)                                           ! abscissa
         integer :: max_deriv
         
@@ -597,6 +595,18 @@ contains
                 end if
             end do
             do
+                write(*,*) 'precision ?'
+                    write(*,*) '1: truncation error ~ Delta^2'
+                    write(*,*) '2: truncation error ~ Delta^3'
+                read(*,*) prec
+                if (prec.lt.1 .or. prec.gt.2) then
+                    write(*,*) 'choose a value from the correct range'
+                    cycle
+                else
+                    exit
+                end if
+            end do
+            do
                 write(*,*) 'starting (max) step size ?'
                 read(*,*) start_step
                 if (start_step.gt.1E-1_dp) then
@@ -609,10 +619,8 @@ contains
             write(*,*) 'equidistant plot? [yes]'
             if(yes_no(.true.)) then
                 eqd_plots = .true.
-                max_deriv = 5
             else
                 eqd_plots = .false.
-                max_deriv = 2
             end if
             if (.not.eqd_plots) then
                 do
@@ -653,13 +661,31 @@ contains
                 end if
             end do
             
+            ! set up max_deriv
+            select case (prec)
+                case(1)
+                    if (eqd_plots) then
+                        max_deriv = 5
+                    else
+                        max_deriv = 3
+                    end if
+                case(2)
+                    if (eqd_plots) then
+                        max_deriv = 1
+                    else
+                        max_deriv = 1
+                    end if
+                case default
+                    write(*,*) 'ERROR: in test_calc_deriv, how did &
+                        &you get here?!??!'
+            end select
+            
             ! initialize
             allocate(step_size(n_steps)); step_size = 0.0_dp
             allocate(max_error(n_steps,max_deriv)); max_error = 0.0_dp
             allocate(mean_error(n_steps,max_deriv)); mean_error = 0.0_dp
             allocate(plot_x(n_steps,2)); plot_x = 0.0_dp
             allocate(plot_y(n_steps,2)); plot_y = 0.0_dp
-            
                 
             ! n_steps calculations up to min_step
             do id = 1,n_steps
@@ -691,72 +717,56 @@ contains
                 
                 ! set up input function
                 if (allocated(varin)) deallocate(varin)
-                if (allocated(var1_an)) deallocate(var1_an)
-                if (allocated(var2_an)) deallocate(var2_an)
-                if (allocated(var3_an)) deallocate(var3_an)
-                if (allocated(var4_an)) deallocate(var4_an)
-                if (allocated(var5_an)) deallocate(var5_an)
-                if (allocated(var1_nm)) deallocate(var1_nm)
-                if (allocated(var2_nm)) deallocate(var2_nm)
-                if (allocated(var3_nm)) deallocate(var3_nm)
-                if (allocated(var4_nm)) deallocate(var4_nm)
-                if (allocated(var5_nm)) deallocate(var5_nm)
+                if (allocated(var_an)) deallocate(var_an)
+                if (allocated(var_nm)) deallocate(var_nm)
                 
                 allocate(varin(loc_max))
-                allocate(var1_an(loc_max))
-                allocate(var2_an(loc_max))
-                allocate(var3_an(loc_max))
-                allocate(var4_an(loc_max))
-                allocate(var5_an(loc_max))
-                allocate(var1_nm(loc_max))
-                allocate(var2_nm(loc_max))
-                allocate(var3_nm(loc_max))
-                allocate(var4_nm(loc_max))
-                allocate(var5_nm(loc_max))
+                allocate(var_an(loc_max,5))
+                allocate(var_nm(loc_max,5))
                 
                 select case (input_type)
                     case (1)
                         varin = sin(pi*x)+0.25*cos(2*pi*x)
-                        var1_an =  (pi)**1*cos(pi*x)-0.25*(2*pi)**1*sin(2*pi*x)
-                        var2_an = -(pi)**2*sin(pi*x)-0.25*(2*pi)**2*cos(2*pi*x)
-                        var3_an = -(pi)**3*cos(pi*x)+0.25*(2*pi)**3*sin(2*pi*x)
-                        var4_an =  (pi)**4*sin(pi*x)+0.25*(2*pi)**4*cos(2*pi*x)
-                        var5_an =  (pi)**5*cos(pi*x)-0.25*(2*pi)**5*sin(2*pi*x)
+                        var_an(:,1) =  (pi)**1*cos(pi*x)-0.25*(2*pi)**1*sin(2*pi*x)
+                        var_an(:,2) = -(pi)**2*sin(pi*x)-0.25*(2*pi)**2*cos(2*pi*x)
+                        var_an(:,3) = -(pi)**3*cos(pi*x)+0.25*(2*pi)**3*sin(2*pi*x)
+                        var_an(:,4) =  (pi)**4*sin(pi*x)+0.25*(2*pi)**4*cos(2*pi*x)
+                        var_an(:,5) =  (pi)**5*cos(pi*x)-0.25*(2*pi)**5*sin(2*pi*x)
                     case (2)
                         varin = 0.5+x-2*x**3+x**4
-                        var1_an = 1-6*x**2+4*x**3
-                        var2_an = -12*x+12*x**2
-                        var3_an = -12+24*x
-                        var4_an = 24._dp
-                        var5_an = 0.0_dp
+                        var_an(:,1) = 1-6*x**2+4*x**3
+                        var_an(:,2) = -12*x+12*x**2
+                        var_an(:,3) = -12+24*x
+                        var_an(:,4) = 24._dp
+                        var_an(:,5) = 0.0_dp
                     case(3)
                         varin = x**7
-                        var1_an = 7*x**6
-                        var2_an = 6*7*x**5
-                        var3_an = 5*6*7*x**4
-                        var4_an = 4*5*6*7*x**3
-                        var5_an = 3*4*5*6*7*x**2
+                        var_an(:,1) = 7*x**6
+                        var_an(:,2) = 6*7*x**5
+                        var_an(:,3) = 5*6*7*x**4
+                        var_an(:,4) = 4*5*6*7*x**3
+                        var_an(:,5) = 3*4*5*6*7*x**2
                     case(4)
                         varin = x**6
-                        var1_an = 6*x**5
-                        var2_an = 5*6*x**4
-                        var3_an = 4*5*6*x**3
-                        var4_an = 3*4*5*6*x**2
-                        var5_an = 2*3*4*5*6*x**1
+                        var_an(:,1) = 6*x**5
+                        var_an(:,2) = 5*6*x**4
+                        var_an(:,3) = 4*5*6*x**3
+                        var_an(:,4) = 3*4*5*6*x**2
+                        var_an(:,5) = 2*3*4*5*6*x**1
                     case(5)
                         varin = x**5
-                        var1_an = 5*x**4
-                        var2_an = 4*5*x**3
-                        var3_an = 3*4*5*x**2
-                        var4_an = 2*3*4*5*x**1
-                        var5_an = 1*2*3*4*5._dp
+                        var_an(:,1) = 5*x**4
+                        var_an(:,2) = 4*5*x**3
+                        var_an(:,3) = 3*4*5*x**2
+                        var_an(:,4) = 2*3*4*5*x**1
+                        var_an(:,5) = 1*2*3*4*5._dp
                     case(6)
                         varin = x**4
-                        var1_an = 4*x**3
-                        var2_an = 3*4*x**2
-                        var3_an = 2*3*4*x**1
-                        var4_an = 1*2*3*4._dp
-                        var5_an = 0._dp
+                        var_an(:,1) = 4*x**3
+                        var_an(:,2) = 3*4*x**2
+                        var_an(:,3) = 2*3*4*x**1
+                        var_an(:,4) = 1*2*3*4._dp
+                        var_an(:,5) = 0._dp
                     case default
                         write(*,*) 'ERROR: in test_calc_deriv, how did &
                             &you get here?!??!'
@@ -765,73 +775,39 @@ contains
                 
                 ! numerical derivatives
                 if (eqd_plots) then
-                    ierr = calc_deriv(varin,var1_nm,1.0_dp/step_size(id),1,1)
-                    CHCKERR('')
-                    ierr = calc_deriv(varin,var2_nm,1.0_dp/step_size(id),2,1)
-                    CHCKERR('')
-                    ierr = calc_deriv(varin,var3_nm,1.0_dp/step_size(id),3,1)
-                    CHCKERR('')
-                    ierr = calc_deriv(varin,var4_nm,1.0_dp/step_size(id),4,1)
-                    CHCKERR('')
-                    ierr = calc_deriv(varin,var5_nm,1.0_dp/step_size(id),5,1)
-                    CHCKERR('')
+                    do kd = 1,max_deriv
+                        ierr = calc_deriv(varin,var_nm(:,kd),&
+                            &1.0_dp/step_size(id),kd,prec)
+                        CHCKERR('')
+                    end do
                 else
-                    ierr = calc_deriv(varin,var1_nm,x,1,1)                      ! only derivatives of degree 1 and 2 implemented
-                    CHCKERR('')
-                    ierr = calc_deriv(varin,var2_nm,x,2,1)                      ! only derivatives of degree 1 and 2 implemented
-                    CHCKERR('')
+                    do kd = 1,max_deriv
+                        ierr = calc_deriv(varin,var_nm(:,kd),x,kd,prec)
+                        CHCKERR('')
+                    end do
                 end if
                 
                 ! max and mean errors
-                max_error(id,1) = maxval(abs(var1_an-var1_nm))/ &
-                    &maxval(abs(var1_an))
-                mean_error(id,1) = sum(abs(var1_an-var1_nm))/loc_max/ &
-                    &maxval(abs(var1_an))
-                max_error(id,2) = maxval(abs(var2_an-var2_nm))/ &
-                    &maxval(abs(var2_an))
-                mean_error(id,2) = sum(abs(var2_an-var2_nm))/loc_max/ &
-                    &maxval(abs(var2_an))
-                if (eqd_plots) then
-                    max_error(id,3) = maxval(abs(var3_an-var3_nm))/ &
-                        &maxval(abs(var3_an))
-                    max_error(id,4) = maxval(abs(var4_an-var4_nm))/ &
-                        &maxval(abs(var4_an))
-                    max_error(id,5) = maxval(abs(var5_an-var5_nm))/ &
-                        &maxval(abs(var5_an))
-                    
-                    mean_error(id,3) = sum(abs(var3_an-var3_nm))/loc_max/ &
-                        &maxval(abs(var3_an))
-                    mean_error(id,4) = sum(abs(var4_an-var4_nm))/loc_max/ &
-                        &maxval(abs(var4_an))
-                    mean_error(id,5) = sum(abs(var5_an-var5_nm))/loc_max/ &
-                        &maxval(abs(var5_an))
-                end if
+                do kd = 1,max_deriv
+                    max_error(id,kd) = maxval(abs(var_an(:,kd)-var_nm(:,kd)))/ &
+                    &maxval(abs(var_an(:,kd)))
+                    mean_error(id,kd) = sum(abs(var_an(:,kd)-var_nm(:,kd)))/&
+                        &loc_max/ maxval(abs(var_an(:,kd)))
+                end do
                 
                 ! plots
                 if (ind_plots) then
                     call print_GP_2D('input variable','',varin,x=x)
                     
-                    call print_GP_2D('analytical deriv. ord. 1','',var1_an,x=x)
-                    call print_GP_2D('numerical deriv. ord. 1','',var1_nm,x=x)
-                    call print_GP_2D('diff deriv. ord. 1','',(var1_an-var1_nm)&
-                        &/maxval(abs(var1_an)),x=x)
-                    
-                    call print_GP_2D('analytical deriv. ord. 2','',var2_an,x=x)
-                    call print_GP_2D('numerical deriv. ord. 2','',var2_nm,x=x)
-                    call print_GP_2D('diff deriv. ord. 2','',(var2_an-var2_nm)&
-                        &/maxval(abs(var2_an)),x=x)
-                    
-                    if (eqd_plots) then
-                        call print_GP_2D('analytical deriv. ord. 3','',var3_an,x=x)
-                        call print_GP_2D('numerical deriv. ord. 3','',var3_nm,x=x)
-                        call print_GP_2D('diff deriv. ord. 3','',(var3_an-var3_nm)&
-                            &/maxval(abs(var3_an)),x=x)
-                        
-                        call print_GP_2D('analytical deriv. ord. 4','',var4_an,x=x)
-                        call print_GP_2D('numerical deriv. ord. 4','',var4_nm,x=x)
-                        call print_GP_2D('diff deriv. ord. 4','',(var4_an-var4_nm)&
-                            &/maxval(abs(var4_an)),x=x)
-                    end if
+                    do kd = 1,max_deriv
+                        call print_GP_2D('analytical deriv. ord. '//&
+                            &trim(i2str(kd)),'',var_an(:,kd),x=x)
+                        call print_GP_2D('numerical deriv. ord. '//&
+                            &trim(i2str(kd)),'',var_nm(:,kd),x=x)
+                        call print_GP_2D('diff deriv. ord. '//&
+                            &trim(i2str(kd)),'',(var_an(:,kd)-var_nm(:,kd))&
+                            &/maxval(abs(var_an(:,kd))),x=x)
+                    end do
                 end if
             end do
             
@@ -2536,6 +2512,36 @@ contains
             end do
         end function calc_B_V_covar
     end function test_B
+    
+    integer function test_pres_balance() result(ierr)
+        use MPI_ops, only: split_MPI
+        use eq_ops, only: calc_eq
+        use eq_vars, only: grp_n_r_eq, n_par
+        
+        character(*), parameter :: rout_name = 'test_pres_balance'
+        
+        ! local variables
+        real(dp), allocatable :: B(:,:,:,:,:,:)                                 ! magnetic field
+        
+        ! initialize ierr
+        ierr = 0
+        
+        write(*,*) 'test pressure balance?'
+        if(yes_no(.false.)) then
+            
+            write(*,*) 'testing pressure balance'
+            
+            write(*,*) 'calculating metric coefficients'
+            
+            ierr = split_MPI()
+            CHCKERR('')
+            ierr = calc_eq(0.12*pi)
+            CHCKERR('')
+            
+            write(*,*) 'calculating magnetic field and derivatives'
+            allocate(B(n_par,grp_n_r_eq,0:1,0:1,0:1,3))
+        end if
+    end function test_pres_balance
 
     integer function test_ang_B() result(ierr)
         !use VMEC_vars, only: mpol, ntor

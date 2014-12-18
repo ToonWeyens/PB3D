@@ -7,7 +7,7 @@ module eq_ops
     use num_vars, only: pi, dp, max_str_ln
     use message_ops, only: print_ar_2, lvl_ud, writo
     use output_ops, only: print_GP_3D, draw_GP_animated, draw_GP, &
-        &print_HDF5_3D, print_GP_2D
+        &print_GP_2D
     use str_ops, only: i2str
     
     implicit none
@@ -142,7 +142,7 @@ contains
                     call writo('Calculate R,Z,L...')
                     ierr = prepare_RZL()
                     CHCKERR('')
-                    do id = 0,2
+                    do id = 0,max_deriv+1
                         ierr = calc_RZL(derivs(id))
                         CHCKERR('')
                     end do
@@ -154,7 +154,7 @@ contains
                     
                     ! calculate the metrics in the cylindrical coordinate system
                     call writo('Calculate g_C...')                              ! h_C is not necessary
-                    do id = 0,1
+                    do id = 0,max_deriv
                         ierr = calc_g_C(derivs(id))
                         CHCKERR('')
                     end do
@@ -162,7 +162,7 @@ contains
                     ! calculate  the  jacobian  in  the  cylindrical  coordinate
                     ! system
                     call writo('Calculate jac_C...')
-                    do id = 0,1
+                    do id = 0,max_deriv
                         ierr = calc_jac_C(derivs(id))
                         CHCKERR('')
                     end do
@@ -170,35 +170,35 @@ contains
                     ! calculate   the  transformation  matrix  C(ylindrical)  ->
                     ! V(MEC)
                     call writo('Calculate T_VC...')
-                    do id = 0,1
+                    do id = 0,max_deriv
                         ierr = calc_T_VC(derivs(id))
                         CHCKERR('')
                     end do
                     
                     ! calculate the metric factors in the VMEC coordinate system
                     call writo('Calculate g_V...')
-                    do id = 0,1
+                    do id = 0,max_deriv
                         ierr = calc_g_V(derivs(id))
                         CHCKERR('')
                     end do
                     
                     ! calculate the jacobian in the VMEC coordinate system
                     call writo('Calculate jac_V...')
-                    do id = 0,1
+                    do id = 0,max_deriv
                         ierr = calc_jac_V(derivs(id))
                         CHCKERR('')
                     end do
                     
                     ! calculate the transformation matrix V(MEC) -> F(lux)
                     call writo('Calculate T_VF...')
-                    do id = 0,1
+                    do id = 0,max_deriv
                         ierr = calc_T_VF(derivs(id))
                         CHCKERR('')
                     end do
                     
                     ! calculate the inverse of the transformation matrix T_VF
                     call writo('Calculate T_FV...')
-                    do id = 0,1
+                    do id = 0,max_deriv
                         ierr = calc_inv_met(T_FV,T_VF,derivs(id))
                         CHCKERR('')
                         ierr = calc_inv_met(det_T_FV,det_T_VF,derivs(id))
@@ -222,7 +222,7 @@ contains
                     
                     ! calculate the jacobian in the HELENA coordinate system
                     call writo('Calculate jac_H...')
-                    do id = 0,1
+                    do id = 0,max_deriv
                         ierr = calc_jac_H(derivs(id))
                         CHCKERR('')
                     end do
@@ -230,28 +230,28 @@ contains
                     ! calculate  the  metric  factors in  the HELENA  coordinate
                     ! system
                     call writo('Calculate h_H...')
-                    do id = 0,1
+                    do id = 0,max_deriv
                         ierr = calc_h_H(derivs(id))
                         CHCKERR('')
                     end do
                     
                     ! calculate the inverse g_H of the metric factors h_H
                     call writo('Calculate g_H...')
-                    do id = 0,1
+                    do id = 0,max_deriv
                         ierr = calc_inv_met(g_H,h_H,derivs(id))
                         CHCKERR('')
                     end do
                     
                     ! calculate the transformation matrix H(ELENA) -> F(lux)
                     call writo('Calculate T_HF...')
-                    do id = 0,1
+                    do id = 0,max_deriv
                         ierr = calc_T_HF(derivs(id))
                         CHCKERR('')
                     end do
                     
                     ! calculate the inverse of the transformation matrix T_VH
                     call writo('Calculate T_FH...')
-                    do id = 0,1
+                    do id = 0,max_deriv
                         ierr = calc_inv_met(T_FH,T_HF,derivs(id))
                         CHCKERR('')
                         ierr = calc_inv_met(det_T_FH,det_T_HF,derivs(id))
@@ -277,21 +277,21 @@ contains
             
             ! calculate the metric factors in the Flux coordinate system
             call writo('Calculate g_F...')
-            do id = 0,1
+            do id = 0,max_deriv
                 ierr = calc_g_F(derivs(id))
                 CHCKERR('')
             end do
             
             ! calculate the inverse h_F of the metric factors g_F
             call writo('Calculate h_F...')
-            do id = 0,1
+            do id = 0,max_deriv
                 ierr = calc_inv_met(h_F,g_F,derivs(id))
                 CHCKERR('')
             end do
             
             ! calculate the jacobian in the Flux coordinate system
             call writo('Calculate jac_F...')
-            do id = 0,1
+            do id = 0,max_deriv
                 ierr = calc_jac_F(derivs(id))
                 CHCKERR('')
             end do
@@ -299,48 +299,45 @@ contains
             ! calculate the derivatives in Flux coordinates from the derivatives
             ! in VMEC coordinates
             call writo('Calculate derivatives in flux coordinates...')
-            do id = 0,1
+            do id = 0,max_deriv
                 ! g_FD
-                ierr = calc_f_deriv(g_F,T_FE,g_FD,max_deriv-[1,1,1],&
-                    &derivs(id))
+                ierr = calc_f_deriv(g_F,T_FE,g_FD,max_deriv,derivs(id))
                 CHCKERR('')
                 
                 ! h_FD
-                ierr = calc_f_deriv(h_F,T_FE,h_FD,max_deriv-[1,1,1],&
-                    &derivs(id))
+                ierr = calc_f_deriv(h_F,T_FE,h_FD,max_deriv,derivs(id))
                 CHCKERR('')
                 
                 ! jac_FD
-                ierr = calc_f_deriv(jac_F,T_FE,jac_FD,max_deriv-[1,1,1],&
-                    &derivs(id))
+                ierr = calc_f_deriv(jac_F,T_FE,jac_FD,max_deriv,derivs(id))
                 CHCKERR('')
                 
                 ! pres_FD
                 ierr = calc_f_deriv(pres_E,T_FE(1,:,2,1,:,0,0),pres_FD(:,id),&
-                    &max_deriv(1)-1,id)
+                    &max_deriv,id)
                 CHCKERR('')
                     
                 ! flux_p_FD
                 ierr = calc_f_deriv(flux_p_E,T_FE(1,:,2,1,:,0,0),&
-                    &flux_p_FD(:,id),max_deriv(1)-1,id)
+                    &flux_p_FD(:,id),max_deriv,id)
                 CHCKERR('')
                     
                 ! flux_t_FD
                 ierr = calc_f_deriv(flux_t_E,T_FE(1,:,2,1,:,0,0),&
-                    &flux_t_FD(:,id),max_deriv(1)-1,id)
+                    &flux_t_FD(:,id),max_deriv,id)
                 CHCKERR('')
                 if (eq_style.eq.1) flux_t_FD = - flux_t_FD                      ! conversion VMEC LH -> RH coord. system
                 
                 if (use_pol_flux) then
                     ! q_saf_FD
                     ierr = calc_f_deriv(q_saf_E,T_FE(1,:,2,1,:,0,0),&
-                        &q_saf_FD(:,id),max_deriv(1)-1,id)
+                        &q_saf_FD(:,id),max_deriv,id)
                     CHCKERR('')
                     if (eq_style.eq.1) q_saf_FD = - q_saf_FD                    ! conversion VMEC LH -> RH coord. system
                 else
                     ! rot_t_FD
                     ierr = calc_f_deriv(rot_t_E,T_FE(1,:,2,1,:,0,0),&
-                        &rot_t_FD(:,id),max_deriv(1)-1,id)
+                        &rot_t_FD(:,id),max_deriv,id)
                     CHCKERR('')
                     if (eq_style.eq.1) rot_t_FD = - rot_t_FD                    ! conversion VMEC LH -> RH coord. system
                 end if
@@ -416,6 +413,8 @@ contains
     ! surfaces in the equilibrium grid has  to be provided with min_r and max_r.
     ! Ideally, this routine should be run  with the full equilibrium grid normal
     ! extent, which implies for example, min_r = 0, max_r = 1.
+    ! Note: This routine has its  own n_theta_plot and n_zeta_plot, since it has
+    ! to be 3D also in the axisymmetric case.
     ! [MPI] Collective call
     integer function plot_grid_real(theta,zeta,min_r,max_r) &
         &result(ierr)

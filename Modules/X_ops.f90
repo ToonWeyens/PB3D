@@ -51,7 +51,8 @@ contains
         ! calculate U and DU
         call writo('Calculating U and DU...')
         call lvl_ud(1)
-        call calc_U
+        ierr = calc_U()
+        CHCKERR('')
         call lvl_ud(-1)
         
         ! calculate extra equilibrium quantities
@@ -176,12 +177,13 @@ contains
         ! limit  n_t(2) to  1. If  it is  predominantly real,  the Eigenfunction
         ! oscilates, so choose n_t(2) = 8 for 2 whole periods
         omega = sqrt(X_val)
-        if (abs(realpart(omega)/imagpart(omega)).lt.1) then
+        if (abs(realpart(omega)/imagpart(omega)).lt.1) then                     ! exploding, unstable
+            if (imagpart(omega).gt.0) omega = - omega                           ! exploding solution, not the decaying one
+            n_t(1) = 1                                                          ! 1 point per quarter period
             n_t(2) = 1                                                          ! 1 quarter period
-            n_t(1) = 10                                                         ! 10 points per quarter period
-        else
+        else                                                                    ! oscillating, stable
+            n_t(1) = 2                                                          ! 2 points per quarter period
             n_t(2) = 4                                                          ! 4 quarter periods
-            n_t(1) = 5                                                          ! 5 points per quarter period
         end if
         
         ! delegate to child routines
@@ -190,7 +192,7 @@ contains
                 ierr = plot_X_vec_GP(X_vec,omega,X_id,job_id,n_t,par_range_F)
                 CHCKERR('')
             case(2)                                                             ! HDF5 output
-                ierr = plot_X_vec_HDF5(X_vec,X_val,X_id,job_id,n_t,.false.)
+                ierr = plot_X_vec_HDF5(X_vec,omega,X_id,job_id,n_t,.false.)
                 CHCKERR('')
             case default
                 err_msg = 'No style associated with '//trim(i2str(output_style))
@@ -212,8 +214,8 @@ contains
         use output_ops, only: draw_GP, draw_GP_animated, merge_GP
         use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X
         use MPI_ops, only: get_ghost_X_vec, wait_MPI
-        use eq_vars, only: q_saf_FD, rot_t_FD, grp_n_r_eq, max_flux, &
-            &max_flux_eq, flux_p_FD, flux_t_FD, eq_use_pol_flux
+        use eq_vars, only: q_saf_FD, rot_t_FD, grp_n_r_eq, max_flux_F, &
+            &max_flux_eq_F, flux_p_FD, flux_t_FD, eq_use_pol_flux
         use utilities, only: con2dis, interp_fun_1D
         
         character(*), parameter :: rout_name = 'plot_X_vec_GP'
@@ -344,10 +346,10 @@ contains
                     
                     ! set up  interp. fac_n and fac_m  (tabulated in equilibrium
                     ! grid)
-                    ierr = interp_fun_1D(kd_loc_eq,flux_eq/max_flux_eq,&
-                        &r_plot(kd),flux/max_flux)
+                    ierr = interp_fun_1D(kd_loc_eq,flux_eq/max_flux_eq_F,&
+                        &r_plot(kd),flux/max_flux_F)
                     CHCKERR('')
-                    call con2dis(kd_loc_eq,kd_loc_i,flux_eq/max_flux_eq)        ! equilibrium values tabulated at flux_eq for this group, normalized with max_flux_eq
+                    call con2dis(kd_loc_eq,kd_loc_i,flux_eq/max_flux_eq_F)      ! equilibrium values tabulated at flux_eq for this group, normalized with max_flux_eq_F
                     fac_n_interp = fac_n(floor(kd_loc_i)) + &
                         &(kd_loc_i-floor(kd_loc_i)) * &
                         &(fac_n(ceiling(kd_loc_i))-fac_n(floor(kd_loc_i)))
@@ -586,13 +588,12 @@ contains
         &result(ierr)
         use X_vars, only: grp_min_r_X, grp_n_r_X, n_r_X, grp_r_X, grp_n_r_X, &
             &size_X, n_X, m_X
-        use output_ops, only: print_HDF5_3D
-        use num_vars, only: eq_style, use_pol_flux
+        use num_vars, only: eq_style, use_pol_flux, n_theta_plot, n_zeta_plot
         use eq_vars, only: calc_XYZ_grid, &
-            &flux_p_FD, flux_t_FD, eq_use_pol_flux, max_flux, max_flux_eq
+            &flux_p_FD, flux_t_FD, eq_use_pol_flux, max_flux_F, max_flux_eq_F
         use HDF5_vars, only: open_HDF5_file, print_HDF5_top, print_HDF5_geom, &
             &print_HDF5_3D_data_item, print_HDF5_grid, add_HDF5_item, &
-            &close_HDF5_file, print_HDF5_att, &
+            &close_HDF5_file, print_HDF5_att, reset_HDF5_item, &
             &HDF5_file_type, XML_str_type
         use utilities, only: interp_fun_1D
         
@@ -608,8 +609,6 @@ contains
         
         ! local variables
         integer :: id, kd, ld                                                   ! counters
-        integer :: n_theta_plot = 201                                           ! nr. of poloidal points in plot
-        integer :: n_zeta_plot = 101                                            ! nr. of toroidal points in plot
         real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)            ! theta_V and zeta_V for flux surface plot
         real(dp), allocatable :: r_plot(:)                                      ! r for plots
         real(dp), allocatable :: x_plot(:,:,:)                                  ! x values of plot
@@ -623,12 +622,13 @@ contains
         type(XML_str_type) :: time_col_grid                                     ! grid with time collection
         type(XML_str_type), allocatable :: grids(:)                             ! the grids in the time collection
         type(XML_str_type) :: top                                               ! topology
-        type(XML_str_type) :: XYZ(3)                                            ! data items for geometry
+        type(XML_str_type), allocatable :: XYZ(:)                               ! data items for geometry
         type(XML_str_type) :: geom                                              ! geometry
         type(XML_str_type) :: att(1)                                            ! attribute
         character(len=max_str_ln) :: var_name                                   ! name of variable that is plot
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), pointer :: flux(:), flux_eq(:)                                ! either pol. or tor. flux
+        real(dp) :: time_frac                                                   ! fraction of Alfvén time
         
         ! initialize ierr
         ierr = 0
@@ -670,20 +670,29 @@ contains
         else
             ! theta equidistant
             allocate(theta_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
-            do id = 1,n_theta_plot
-                theta_plot(id,:,:) = pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)
-            end do
+            if (n_theta_plot.eq.1) then
+                theta_plot = 0.0_dp
+            else
+                do id = 1,n_theta_plot
+                    theta_plot(id,:,:) = &
+                        &pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)              ! starting from pi gives nicer plots
+                end do
+            end if
             ! zeta equidistant
             allocate(zeta_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
-            do id = 1,n_zeta_plot
-                zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
-            end do
+            if (n_zeta_plot.eq.1) then
+                zeta_plot = 0.0_dp
+            else
+                do id = 1,n_zeta_plot
+                    zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
+                end do
+            end if
             ! convert  the perturbation  normal  values  grp_r_X to  equilibrium
             ! normal values
             allocate(r_plot(grp_n_r_X))
             do id = 1,grp_n_r_X
-                ierr = interp_fun_1D(r_plot(id),flux_eq/max_flux_eq,&
-                    &grp_r_X(id),flux/max_flux)
+                ierr = interp_fun_1D(r_plot(id),flux_eq/max_flux_eq_F,&
+                    &grp_r_X(id),flux/max_flux_F)
                 CHCKERR('')
             end do
         end if
@@ -702,35 +711,56 @@ contains
         ! open HDF5 file
         ierr = open_HDF5_file(file_info,'X_vec_'//trim(i2str(job_id))//&
             &'_'//trim(i2str(X_id)),'Job '//trim(i2str(job_id))//&
-            &' - Solution vector X_vec for Eigenvalue '//trim(i2str(X_id)))
+            &' - Solution vector X_vec for Eigenvalue '//trim(i2str(X_id))//&
+            &' with omega = '//trim(r2str(realpart(omega))))
         CHCKERR('')
         
         ! print topology
-        call print_HDF5_top(top,2,tot_dim)
+        if (n_zeta_plot.eq.1 .or. n_theta_plot.eq.1) then                       ! 2D mesh
+            call print_HDF5_top(top,1,tot_dim)
+        else                                                                    ! 3D mesh
+            call print_HDF5_top(top,2,tot_dim)
+        end if
         
         ! add topology to HDF5 file and reset it
         call add_HDF5_item(file_info,top,reset=.true.)
         
+        ! allocate geometry arrays
+        if (n_zeta_plot.eq.1 .or. n_theta_plot.eq.1) then                       ! 2D mesh
+            allocate(XYZ(2))
+        else                                                                    ! 3D mesh
+            allocate(XYZ(3))
+        end if
+        
         ! print data item for X
         ierr = print_HDF5_3D_data_item(XYZ(1),file_info,&
-            &'X_'//trim(i2str(id)),x_plot,tot_dim,grp_dim=grp_dim,&
-            &grp_offset=grp_offset)
+            &'X',x_plot,tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
         CHCKERR('')
         
-        ! print data item for Y
-        ierr = print_HDF5_3D_data_item(XYZ(2),file_info,&
-            &'Y_'//trim(i2str(id)),y_plot,tot_dim,grp_dim=grp_dim,&
-            &grp_offset=grp_offset)
-        CHCKERR('')
-        
-        ! print data item for Z
-        ierr = print_HDF5_3D_data_item(XYZ(3),file_info,&
-            &'Z_'//trim(i2str(id)),z_plot,tot_dim,grp_dim=grp_dim,&
-            &grp_offset=grp_offset)
-        CHCKERR('')
+        ! print data item for Y and / or Z
+        if (n_zeta_plot.eq.1) then                                              ! if toroidally symmetric, no Y axis
+            ierr = print_HDF5_3D_data_item(XYZ(2),file_info,&
+                &'Z',z_plot,tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
+            CHCKERR('')
+        else if (n_theta_plot.eq.1) then                                        ! if poloidally symmetric, no Z axis
+            ierr = print_HDF5_3D_data_item(XYZ(2),file_info,&
+                &'Y',y_plot,tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
+            CHCKERR('')
+        else
+            ierr = print_HDF5_3D_data_item(XYZ(2),file_info,&
+                &'Y',y_plot,tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
+            CHCKERR('')
+            ierr = print_HDF5_3D_data_item(XYZ(3),file_info,&
+                &'Z',z_plot,tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
+            CHCKERR('')
+        end if
         
         ! print geometry with X, Y and Z data item
-        call print_HDF5_geom(geom,2,XYZ,.true.)
+        if (n_zeta_plot.eq.1 .or. n_theta_plot.eq.1) then                       ! if symmetry 2D geometry
+            call print_HDF5_geom(geom,1,XYZ,.true.)
+        else                                                                    ! if no symmetry 3D geometry
+            call print_HDF5_geom(geom,2,XYZ,.true.)
+        end if
         
         ! add geometry to HDF5 file and reset it
         call add_HDF5_item(file_info,geom,reset=.true.)
@@ -739,13 +769,21 @@ contains
         allocate(grids(product(n_t)))
         
         ! user output
-        call writo('Calculating plot for '//trim(i2str(product(n_t)))//&
-            &' time steps')
+        if (product(n_t).gt.1) call writo('Calculating plot for '//&
+            &trim(i2str(product(n_t)))//' time steps')
         
         call lvl_ud(1)
             
         ! For  each time step, produce the 3D plot
         do id = 1,product(n_t)
+            ! set time fraction
+            if (n_t(1).eq.1) then
+                time_frac = (id-1) * 0.5*pi
+            else
+                time_frac = (mod(id-1,n_t(1))*1._dp/n_t(1) + (id-1)/n_t(1)) * &
+                    &0.5*pi
+            end if
+            
             ! print data item for plot variable f_plot
             f_plot = 0.0_dp
             ! for all normal points
@@ -762,9 +800,8 @@ contains
                             ! (theta_F,zeta_F) for the inverse Fourier transform
                             ! of the Eigenvalue Fourier modes to real space
                             f_plot(:,:,kd) = f_plot(:,:,kd) + &
-                                &realpart(X_vec(ld,kd) * exp(iu * &
-                                &(omega/abs(omega)*0.5*pi*&
-                                &(id-1.0_dp)/(n_t(1)-1) + &
+                                &realpart(X_vec(ld,kd) * &
+                                &exp(iu * (omega/abs(omega)*time_frac + &
                                 &n_X(ld)*(-zeta_plot(:,:,kd)) - &
                                 &m_X(ld)*(theta_plot(:,:,kd)+l_plot(:,:,kd)))))
                         end do
@@ -776,9 +813,8 @@ contains
                             ! HELENA coordinates  (theta_H,zeta_H) coincide with
                             ! flux coordinates (theta_F,zeta_F)
                             f_plot(:,:,kd) = f_plot(:,:,kd) + &
-                                &realpart(X_vec(ld,kd) * exp(iu * &
-                                &(omega/abs(omega)*0.5*pi*&
-                                &(id-1.0_dp)/(n_t(1)-1) + &
+                                &realpart(X_vec(ld,kd) * &
+                                &exp(iu * (omega/abs(omega)*time_frac + &
                                 &n_X(ld)*(zeta_plot(:,:,kd)) - &
                                 &m_X(ld)*(theta_plot(:,:,kd)))))
                         end do
@@ -790,6 +826,7 @@ contains
                     CHCKERR(err_msg)
             end select
             
+            ! print data item for axes
             ierr = print_HDF5_3D_data_item(XYZ(1),file_info,'var_'//&
                 &trim(i2str(id)),f_plot,tot_dim,grp_dim=grp_dim,&
                 &grp_offset=grp_offset)                                         ! reuse XYZ(1)
@@ -800,24 +837,33 @@ contains
             
             ! create a grid with the topology, the geometry and the attribute
             ierr = print_HDF5_grid(grids(id),var_name,1,&
-                &grid_time=0.5*pi*(id-1.0_dp)/(n_t(1)-1),grid_atts=att,&
-                &reset=.true.)
+                grid_time=time_frac,grid_atts=att,reset=.true.)
             CHCKERR('')
             
             ! user output
-            call writo('Finished plot for time step '//trim(i2str(id))//&
-                &'/'//trim(i2str(product(n_t))))
+            if (product(n_t).gt.1) then
+                call writo('Finished plot for time step '//trim(i2str(id))//&
+                    &'/'//trim(i2str(product(n_t))))
+            else
+                call writo('Finished plot')
+            end if
         end do
         
         call lvl_ud(-1)
         
-        ! create grid collection from individual grids and reset them
-        ierr = print_HDF5_grid(time_col_grid,'time collection',2,&
-            &grid_grids=grids,reset=.true.)
-        CHCKERR('')
-        
-        ! add collection grid to HDF5 file and reset it
-        call add_HDF5_item(file_info,time_col_grid,reset=.true.)
+        ! either create collection or just use individual grids
+        if (product(n_t).eq.1) then
+            ! add individual grids to HDF5 file and reset them
+            call add_HDF5_item(file_info,grids(1),reset=.true.)
+        else
+            ! create grid collection from individual grids and reset them
+            ierr = print_HDF5_grid(time_col_grid,'time collection',2,&
+                &grid_grids=grids,reset=.true.)
+            CHCKERR('')
+            
+            ! add collection grid to HDF5 file and reset it
+            call add_HDF5_item(file_info,time_col_grid,reset=.true.)
+        end if
         
         ! close HDF5 file
         ierr = close_HDF5_file(file_info)
@@ -826,6 +872,6 @@ contains
         ! deallocate
         deallocate(x_plot,y_plot,z_plot,f_plot)
         if (eq_style.eq.1) deallocate(l_plot)                                   ! only if using VMEC
-        deallocate(theta_plot,zeta_plot,r_plot)
+        deallocate(theta_plot,zeta_plot,r_plot,XYZ)
     end function plot_X_vec_HDF5
 end module

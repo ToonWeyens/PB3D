@@ -5,7 +5,7 @@ module X_vars
 #include <PB3D_macros.h>
     use num_vars, only: dp, max_str_ln, iu
     use message_ops, only: lvl_ud, writo, print_ar_1
-    use output_ops, only: print_GP_2D, draw_GP, print_HDF5_3D
+    use output_ops, only: print_GP_2D, draw_GP, print_HDF5
     use str_ops, only: r2str, i2str, r2strt
     
     ! for testing
@@ -111,7 +111,7 @@ contains
             
             ! local variables
             integer :: id                                                       ! counter
-            real(dp) :: tol = 0.1                                               ! tolerance for being out of range of q or iota values
+            real(dp) :: tol = 0.2                                               ! tolerance for being out of range of q or iota values
             real(dp) :: min_jq, max_jq                                          ! min. and max. values of q or iota
             
             ! initialize ierr
@@ -260,7 +260,7 @@ contains
     ! plot  q-profile  or iota-profile  in  flux coordinates  with nq-m  = 0  or
     ! n-iotam = 0 indicate if requested
     integer function resonance_plot() result(ierr)
-        use num_vars, only: use_pol_flux, eq_style, output_style, pi
+        use num_vars, only: use_pol_flux, eq_style, output_style
         use utilities, only: calc_zero_NR, interp_fun_1D
         use eq_vars, only: q_saf_V_full, rot_t_V_full, flux_p_V_full, &
             &flux_t_V_full, q_saf_H_full, rot_t_H_full, flux_p_H_full, &
@@ -443,7 +443,7 @@ contains
                 call draw_GP(plot_title,trim(file_name)//'.dat.',kd-1,&
                     &.true.,.false.)
             case(2)                                                             ! HDF5 output
-                ierr = plot_resonance_plot_HDF5()
+                ierr = resonance_plot_HDF5()
                 CHCKERR('')
             case default
                 err_msg = 'No style associated with '//&
@@ -512,16 +512,15 @@ contains
         end function jq_dfun
         
         ! plots the resonance plot in 3D in HDF5 format
-        integer function plot_resonance_plot_HDF5() result(ierr)
-            use eq_vars, only: calc_XYZ_grid
-            use output_ops, only: print_HDF5_3D
+        integer function resonance_plot_HDF5() result(ierr)
+            use eq_vars, only: calc_XYZ_grid, calc_eqd_mesh
+            use num_vars, only: n_theta_plot, n_zeta_plot
+            use output_ops, only: print_HDF5
             
-            character(*), parameter :: rout_name = 'plot_resonance_plot_HDF5'
+            character(*), parameter :: rout_name = 'resonance_plot_HDF5'
             
             ! local variables
-            integer :: id                                                       ! counter
-            integer :: n_theta_plot = 81                                        ! nr. of poloidal points in plot
-            integer :: n_zeta_plot = 81                                         ! nr. of toroidal points in plot
+            integer :: id                                                       ! counters
             real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)        ! pol. and tor. angle of plot
             real(dp), allocatable :: X_plot(:,:,:,:), Y_plot(:,:,:,:), &
                 &Z_plot(:,:,:,:)                                                ! X, Y and Z of plot of all surfaces
@@ -536,14 +535,16 @@ contains
                 
             ! set up pol. and tor. angle for plot
             allocate(theta_plot(n_theta_plot,n_zeta_plot,1))
-            allocate(zeta_plot(n_theta_plot,n_zeta_plot,1))
-            do id = 1,n_theta_plot
-                theta_plot(id,:,:) = (id-1.0_dp)*2*pi/&
-                    &(n_theta_plot-1.0_dp)
+            ierr = calc_eqd_mesh(theta_plot(:,1,1),n_theta_plot,0._dp,2._dp)
+            CHCKERR('')
+            do id = 2,n_zeta_plot
+                theta_plot(:,id,1) = theta_plot(:,1,1)
             end do
-            do id = 1,n_zeta_plot
-                zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/&
-                    &(n_zeta_plot-1.0_dp)
+            allocate(zeta_plot(n_theta_plot,n_zeta_plot,1))
+            ierr = calc_eqd_mesh(zeta_plot(1,:,1),n_zeta_plot,0._dp,2._dp)
+            CHCKERR('')
+            do id = 2,n_theta_plot
+                zeta_plot(id,:,1) = zeta_plot(1,:,1)
             end do
             
             ! set up vars
@@ -579,14 +580,16 @@ contains
                 deallocate(X_plot_ind,Y_plot_ind,Z_plot_ind)
                 
                 ! set plot titles
-                plot_titles(id) = trim(plot_title)//' for (n,m) = ('//&
-                    &trim(i2str(n_X(id)))//','//trim(i2str(m_X(id)))//')'
+                plot_titles(id) = trim(plot_title)//' for n,m = '//&
+                    &trim(i2str(n_X(id)))//','//trim(i2str(m_X(id)))//''
             end do
             
-            call print_HDF5_3D(plot_titles,file_name,vars,plot_dim,plot_dim,&
-                &[0,0,0,0],X=X_plot,Y=Y_plot,Z=Z_plot,col=3,&
+            write(*,*) 'TEMPORARILY, col is set to 1 because otherwise 2D plot &
+                &does not work!!!!'
+            call print_HDF5(plot_titles,file_name,vars,plot_dim,plot_dim,&
+                &[0,0,0,0],X=X_plot,Y=Y_plot,Z=Z_plot,col=1,&
                 &description='resonant surfaces')
-        end function plot_resonance_plot_HDF5
+        end function resonance_plot_HDF5
     end function resonance_plot
     
     ! calculate rho from user input
@@ -760,22 +763,22 @@ contains
         !grp_dim = [n_par,grp_n_r_eq,size_X,size_X]
         !grp_offset = [0,grp_min_r_eq-1,0,0]
         !file_name = 'RE PV0'
-        !call print_HDF5_3D(var_names,file_name,realpart(PV0),tot_dim,grp_dim,&
+        !call print_HDF5(var_names,file_name,realpart(PV0),tot_dim,grp_dim,&
             !&grp_offset,col_id=1,col=1)
         !file_name = 'IM PV0'
-        !call print_HDF5_3D(var_names,file_name,imagpart(PV0),tot_dim,grp_dim,&
+        !call print_HDF5(var_names,file_name,imagpart(PV0),tot_dim,grp_dim,&
             !&grp_offset,col_id=1,col=1)
         !file_name = 'RE PV1'
-        !call print_HDF5_3D(var_names,file_name,realpart(PV1),tot_dim,grp_dim,&
+        !call print_HDF5(var_names,file_name,realpart(PV1),tot_dim,grp_dim,&
             !&grp_offset,col_id=1,col=1)
         !file_name = 'IM PV1'
-        !call print_HDF5_3D(var_names,file_name,imagpart(PV1),tot_dim,grp_dim,&
+        !call print_HDF5(var_names,file_name,imagpart(PV1),tot_dim,grp_dim,&
             !&grp_offset,col_id=1,col=1)
         !file_name = 'RE PV2'
-        !call print_HDF5_3D(var_names,file_name,realpart(PV2),tot_dim,grp_dim,&
+        !call print_HDF5(var_names,file_name,realpart(PV2),tot_dim,grp_dim,&
             !&grp_offset,col_id=1,col=1)
         !file_name = 'IM PV2'
-        !call print_HDF5_3D(var_names,file_name,imagpart(PV2),tot_dim,grp_dim,&
+        !call print_HDF5(var_names,file_name,imagpart(PV2),tot_dim,grp_dim,&
             !&grp_offset,col_id=1,col=1)
         !deallocate(var_names)
     end subroutine calc_PV
@@ -786,7 +789,7 @@ contains
     subroutine calc_KV
         use metric_ops, only: g_FD, h_FD, jac_FD
         use eq_vars, only: n_par, grp_n_r_eq
-        use output_ops, only: print_HDF5_3D
+        use output_ops, only: print_HDF5
         
         ! local variables
         integer :: m, k, kd                                                     ! counters
@@ -865,22 +868,22 @@ contains
         !grp_dim = [n_par,grp_n_r_eq,size_X,size_X]
         !grp_offset = [0,grp_min_r_eq-1,0,0]
         !file_name = 'RE KV0'
-        !call print_HDF5_3D(var_names,file_name,realpart(KV0),tot_dim,grp_dim,&
+        !call print_HDF5(var_names,file_name,realpart(KV0),tot_dim,grp_dim,&
             !&grp_offset,col_id=1,col=1)
         !file_name = 'IM KV0'
-        !call print_HDF5_3D(var_names,file_name,imagpart(KV0),tot_dim,grp_dim,&
+        !call print_HDF5(var_names,file_name,imagpart(KV0),tot_dim,grp_dim,&
             !&grp_offset,col_id=1,col=1)
         !file_name = 'RE KV1'
-        !call print_HDF5_3D(var_names,file_name,realpart(KV1),tot_dim,grp_dim,&
+        !call print_HDF5(var_names,file_name,realpart(KV1),tot_dim,grp_dim,&
             !&grp_offset,col_id=1,col=1)
         !file_name = 'IM KV1'
-        !call print_HDF5_3D(var_names,file_name,imagpart(KV1),tot_dim,grp_dim,&
+        !call print_HDF5(var_names,file_name,imagpart(KV1),tot_dim,grp_dim,&
             !&grp_offset,col_id=1,col=1)
         !file_name = 'RE KV2'
-        !call print_HDF5_3D(var_names,file_name,realpart(KV2),tot_dim,grp_dim,&
+        !call print_HDF5(var_names,file_name,realpart(KV2),tot_dim,grp_dim,&
             !&grp_offset,col_id=1,col=1)
         !file_name = 'IM KV2'
-        !call print_HDF5_3D(var_names,file_name,imagpart(KV2),tot_dim,grp_dim,&
+        !call print_HDF5(var_names,file_name,imagpart(KV2),tot_dim,grp_dim,&
             !&grp_offset,col_id=1,col=1)
         !deallocate(var_names)
     end subroutine calc_KV
@@ -891,21 +894,28 @@ contains
     ! poloidal derivatives
     ! Note: The  poloidal  derivatives  have  the  factor  i/n  or i/m  included
     ! already, as opposed to [ADD REF]
-    subroutine calc_U
-        use num_vars, only: use_pol_flux, mu_0, use_normalization
+    integer function calc_U() result(ierr)
+        use num_vars, only: use_pol_flux, mu_0, use_normalization, eq_style
         use metric_ops, only: g_FD, h_FD, jac_FD
         use eq_vars, only: rot_t_FD, q_saf_FD, ang_par_F, n_par, p => pres_FD, &
             &grp_n_r_eq
         
+        character(*), parameter :: rout_name = 'calc_U'
+        
         ! local variables
         integer :: jd, kd                                                       ! counters
+        real(dp) :: mu_0_loc                                                    ! local version of mu_0
         real(dp) :: n_frac                                                      ! nq-m (pol. flux) or n-iotam (tor. flux)
         real(dp), allocatable :: djq(:)                                         ! either q' (pol. flux) or -iota' (tor. flux)
         real(dp), allocatable :: fac_n(:), fac_m(:)                             ! multiplicative factors for n and m
         real(dp), allocatable :: mn(:)                                          ! either n*A_0 (pol. flux) or m (tor.flux)
-        real(dp) :: mu_0_loc                                                    ! local version of mu_0
+        complex(dp), allocatable :: U_corr(:,:,:)                               ! correction to U for a certain (n,m)
+        complex(dp), allocatable :: D3U_corr(:,:,:)                             ! D_theta U_corr
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
-        ! submatrices
+        ! helper variables for the correction to U
+        real(dp), allocatable :: g_frac(:,:)                                    ! g_alpha,theta / g_theta,theta
+        real(dp), allocatable :: T_theta(:,:), D1T_theta(:,:), D3T_theta(:,:)   ! Theta^theta and derivatives
         ! jacobian
         real(dp), allocatable :: J(:,:)                                         ! jac
         real(dp), allocatable :: D3J(:,:)                                       ! D_theta jac
@@ -920,7 +930,14 @@ contains
         real(dp), allocatable :: h12(:,:)                                       ! h^alpha,psi
         real(dp), allocatable :: D3h12(:,:)                                     ! D_theta h^alpha,psi
         real(dp), allocatable :: h22(:,:)                                       ! h^psi,psi
+        real(dp), allocatable :: D1h22(:,:)                                     ! D_alpha h^psi,psi
         real(dp), allocatable :: D3h22(:,:)                                     ! D_theta h^psi,psi
+        real(dp), allocatable :: h23(:,:)                                       ! h^psi,theta
+        real(dp), allocatable :: D1h23(:,:)                                     ! D_alpha h^psi,theta
+        real(dp), allocatable :: D3h23(:,:)                                     ! D_theta h^psi,theta
+        
+        ! initialize ierr
+        ierr = 0
         
         ! set up local mu_0
         if (use_normalization) then
@@ -943,6 +960,13 @@ contains
             mn = m_X
         end if
         
+        ! allocate helper variables
+        allocate(U_corr(n_par,grp_n_r_eq,size(m_X)))
+        allocate(D3U_corr(n_par,grp_n_r_eq,size(m_X)))
+        allocate(g_frac(n_par,grp_n_r_eq))
+        allocate(T_theta(n_par,grp_n_r_eq))
+        allocate(D1T_theta(n_par,grp_n_r_eq),D3T_theta(n_par,grp_n_r_eq))
+        
         ! set up submatrices
         ! jacobian
         allocate(J(n_par,grp_n_r_eq)); J = jac_FD(:,:,0,0,0)
@@ -958,48 +982,213 @@ contains
         allocate(h12(n_par,grp_n_r_eq)); h12 = h_FD(:,:,1,2,0,0,0)
         allocate(D3h12(n_par,grp_n_r_eq)); D3h12 = h_FD(:,:,1,2,0,0,1)
         allocate(h22(n_par,grp_n_r_eq)); h22 = h_FD(:,:,2,2,0,0,0)
+        allocate(D1h22(n_par,grp_n_r_eq)); D1h22 = h_FD(:,:,2,2,1,0,0)
         allocate(D3h22(n_par,grp_n_r_eq)); D3h22 = h_FD(:,:,2,2,0,0,1)
+        allocate(h23(n_par,grp_n_r_eq)); h23 = h_FD(:,:,2,3,0,0,0)
+        allocate(D1h23(n_par,grp_n_r_eq)); D1h23 = h_FD(:,:,2,3,1,0,0)
+        allocate(D3h23(n_par,grp_n_r_eq)); D3h23 = h_FD(:,:,2,3,0,0,1)
         
-        ! loop over the M elements of U_X and DU
+        ! calculate U_X_0, U_X_1, DU_X_0 and DU_X_1
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                call calc_U_VMEC
+            case (2)                                                            ! HELENA
+                ierr = calc_U_HEL()
+                CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        
         do jd = 1,size(m_X)
-            ! loop over all normal points
-            do kd = 1,grp_n_r_eq
-                n_frac = n_X(jd)*fac_n(kd)-m_X(jd)*fac_m(kd)
-                U_X_0(:,kd,jd) = &
-                    &-(h12(:,kd)/h22(:,kd) + djq(kd)*ang_par_F(:,kd))&
-                    &+ iu/(mn(jd)*g33(:,kd)) * (g13(:,kd)*djq(kd) + &
-                    &J(:,kd)**2*p(kd,1)*mu_0_loc + iu*n_frac * &
-                    &( g13(:,kd)*djq(kd)*ang_par_F(:,kd) - g23(:,kd) ))
-                DU_X_0(:,kd,jd) = -(D3h12(:,kd)/h22(:,kd) - &
-                    &D3h22(:,kd)*h12(:,kd)/h22(:,kd)**2 + djq(kd)) - &
-                    &iu*D3g33(:,kd)/(mn(jd)*g33(:,kd)**2) * (g13(:,kd)*djq(kd)&
-                    &+ J(:,kd)**2*p(kd,1)*mu_0_loc + iu*n_frac * &
-                    &( g13(:,kd)*djq(kd)*ang_par_F(:,kd) - g23(:,kd) )) + &
-                    &iu/(mn(jd)*g33(:,kd)) * (D3g13(:,kd)*djq(kd) + &
-                    &2*D3J(:,kd)*J(:,kd)*p(kd,1)*mu_0_loc + iu*n_frac * &
-                    &( D3g13(:,kd)*djq(kd)*ang_par_F(:,kd) + g13(:,kd)*djq(kd) &
-                    &- D3g23(:,kd) )) + iu*n_frac*U_X_0(:,kd,jd)
-                U_X_1(:,kd,jd) = iu/mn(jd) * &
-                    &(1 + n_frac/mn(jd) * g13(:,kd)/g33(:,kd))
-                DU_X_1(:,kd,jd) = iu/mn(jd) * &
-                    &(n_frac/mn(jd) * (D3g13(:,kd)/g33(:,kd) - &
-                    &D3g33(:,kd)*g13(:,kd)/g33(:,kd)**2) + &
-                    &iu*n_frac*U_X_1(:,kd,jd) )
+            write(*,*) 'U0'
+            write(*,*) 'RE U0'
+            call print_GP_2D('RE U0(:,:,'//trim(i2str(jd))//')','',&
+                &transpose(realpart(U_X_0(:,:,jd))))
+            write(*,*) 'RE U_corr'
+            call print_GP_2D('RE U_corr(:,:,'//trim(i2str(jd))//')','',&
+                &transpose(realpart(U_corr(:,:,jd))))
+            write(*,*) 'FRACTION RE U_corr'
+            call print_GP_2D('RE U_corr(:,:,'//trim(i2str(jd))//')','',&
+                &transpose(realpart(U_corr(:,:,jd)/U_X_0(:,:,jd))))
+            write(*,*) 'IM U0'
+            call print_GP_2D('IM U0(:,:,'//trim(i2str(jd))//')','',&
+                &transpose(imagpart(U_X_0(:,:,jd))))
+            write(*,*) 'IM U_corr'
+            call print_GP_2D('IM RE U_corr(:,:,'//trim(i2str(jd))//')','',&
+                &transpose(imagpart(U_corr(:,:,jd))))
+            write(*,*) 'FRACTION IM U_corr'
+            call print_GP_2D('IM U_corr(:,:,'//trim(i2str(jd))//')','',&
+                &transpose(imagpart(U_corr(:,:,jd)/U_X_0(:,:,jd))))
+        end do
+        
+        ! deallocate
+        deallocate(U_corr,D3U_corr)
+        deallocate(J,D3J)
+        deallocate(g13,D3g13,g23,D3g23,g33,D3g33)
+        deallocate(h12,D3h12,h22,D1h22,D3h22,h23,D1h23,D3h23)
+        deallocate(g_frac)
+        deallocate(T_theta,D1T_theta,D3T_theta)
+    contains
+        ! VMEC version
+        subroutine calc_U_VMEC
+            ! local variables
+            ! extra helper variables for the correction to U
+            real(dp), allocatable :: D3g_frac(:,:)                              ! D_theta g_frac
+            real(dp), allocatable :: D13T_theta(:,:), D33T_theta(:,:)           ! Theta^theta derivatives
+            ! extra upper metric factors
+            real(dp), allocatable :: D3h22(:,:)                                 ! D_theta h^psi,psi
+            real(dp), allocatable :: D13h22(:,:)                                ! D^2_alpha,theta h^psi,psi
+            real(dp), allocatable :: D33h22(:,:)                                ! D^2_theta,theta h^psi,psi
+            real(dp), allocatable :: D13h23(:,:)                                ! D^2_alpha,theta h^psi,theta
+            real(dp), allocatable :: D33h23(:,:)                                ! D^2_theta,theta h^psi,theta
+            
+            ! allocate extra helper variables
+            allocate(D3g_frac(n_par,grp_n_r_eq))
+            allocate(D13T_theta(n_par,grp_n_r_eq),D33T_theta(n_par,grp_n_r_eq))
+            
+            ! set up extra submatrices
+            ! upper metric factors
+            allocate(D13h22(n_par,grp_n_r_eq)); D13h22 = h_FD(:,:,2,2,1,0,1)
+            allocate(D33h22(n_par,grp_n_r_eq)); D33h22 = h_FD(:,:,2,2,0,0,2)
+            allocate(D13h23(n_par,grp_n_r_eq)); D13h23 = h_FD(:,:,2,3,1,0,1)
+            allocate(D33h23(n_par,grp_n_r_eq)); D33h23 = h_FD(:,:,2,3,0,0,2)
+            
+            ! loop over the M elements of U_X and DU
+            do jd = 1,size(m_X)
+                ! set up helper variables
+                g_frac = g13/g33
+                D3g_frac = D3g13/g33 - g13*D3g33/(g33**2)
+                T_theta = h23/h22
+                D1T_theta = D1h23/h22 - h23*D1h22/(h22**2)
+                D3T_theta = D3h23/h22 - h23*D3h22/(h22**2)
+                D13T_theta = D13h23/h22 - (D3h23*D1h22+D1h23*D3h22)/(h22**2) &
+                    &- h23*D13h22/(h22**2) + 2*h23*D3h22*D1h22/(h22**3)
+                D33T_theta = D33h23/h22 - 2*D3h23*D3h22/(h22**2) &
+                    &- h23*D33h22/(h22**2) + 2*h23*D3h22**2/(h22**3)
+                
+                ! loop over all normal points
+                do kd = 1,grp_n_r_eq
+                    ! set up correction to U
+                    n_frac = n_X(jd)*fac_n(kd)-m_X(jd)*fac_m(kd)
+                    ! set up U correction
+                    U_corr(:,kd,jd) = iu/mn(jd)*n_frac/mn(jd)*(g_frac(:,kd)*&
+                        &(D3T_theta(:,kd)+iu*n_frac*T_theta(:,kd))+&
+                        &D1T_theta(:,kd))
+                    ! set up D_theta U correction
+                    D3U_corr(:,kd,jd) = iu/mn(jd)*n_frac/mn(jd)*&
+                        &(D3g_frac(:,kd)*&
+                        &(D3T_theta(:,kd)+iu*n_frac*T_theta(:,kd))+&
+                        &g_frac(:,kd)*&
+                        &(D33T_theta(:,kd)+iu*n_frac*D3T_theta(:,kd))+&
+                        &D13T_theta(:,kd))
+                    ! calculate U_X_0 and DU_X_0
+                    U_X_0(:,kd,jd) = &
+                        &-(h12(:,kd)/h22(:,kd) + djq(kd)*ang_par_F(:,kd))&
+                        &+ iu/(mn(jd)*g33(:,kd)) * (g13(:,kd)*djq(kd) + &
+                        &J(:,kd)**2*p(kd,1)*mu_0_loc + iu*n_frac * &
+                        &( g13(:,kd)*djq(kd)*ang_par_F(:,kd) - g23(:,kd) )) &
+                        &+ U_corr(:,kd,jd)
+                    DU_X_0(:,kd,jd) = -(D3h12(:,kd)/h22(:,kd) - &
+                        &D3h22(:,kd)*h12(:,kd)/h22(:,kd)**2 + djq(kd)) - &
+                        &iu*D3g33(:,kd)/(mn(jd)*g33(:,kd)**2) * &
+                        &(g13(:,kd)*djq(kd)+ J(:,kd)**2*p(kd,1)*mu_0_loc + &
+                        &iu*n_frac * &
+                        &( g13(:,kd)*djq(kd)*ang_par_F(:,kd) - g23(:,kd) )) + &
+                        &iu/(mn(jd)*g33(:,kd)) * (D3g13(:,kd)*djq(kd) + &
+                        &2*D3J(:,kd)*J(:,kd)*p(kd,1)*mu_0_loc + iu*n_frac * &
+                        &( D3g13(:,kd)*djq(kd)*ang_par_F(:,kd) + &
+                        &g13(:,kd)*djq(kd) - D3g23(:,kd) )) + &
+                        &iu*n_frac*U_X_0(:,kd,jd) &
+                        &+ D3U_corr(:,kd,jd)
+                    ! calculate U_X_1 and DU_X_1
+                    U_X_1(:,kd,jd) = iu/mn(jd) * &
+                        &(1 + n_frac/mn(jd) * g13(:,kd)/g33(:,kd))
+                    DU_X_1(:,kd,jd) = iu/mn(jd) * &
+                        &(n_frac/mn(jd) * (D3g13(:,kd)/g33(:,kd) - &
+                        &D3g33(:,kd)*g13(:,kd)/g33(:,kd)**2) + &
+                        &iu*n_frac*U_X_1(:,kd,jd) )
+                end do
             end do
             
-            !write(*,*) 'U1'
-            !call print_GP_2D('RE U1(:,:,'//trim(i2str(jd))//')','',&
-                !&realpart(transpose(U_X_1(:,:,jd))))
-            !call print_GP_2D('IM U1(:,:,'//trim(i2str(jd))//')','',&
-                !&imagpart(transpose(U_X_1(:,:,jd))))
+            ! deallocate
+            deallocate(D3g_frac)
+            deallocate(D13T_theta,D33T_theta)
+        end subroutine calc_U_VMEC
+        
+        ! HELENA version
+        integer function calc_U_HEL() result(ierr)
+            use eq_vars, only: theta_H
+            use utilities, only: calc_deriv
             
-            !write(*,*) 'DU1'
-            !call print_GP_2D('RE DU1(:,:,'//trim(i2str(jd))//')','',&
-                !&realpart(transpose(DU_X_1(:,:,jd))))
-            !call print_GP_2D('IM DU1(:,:,'//trim(i2str(jd))//')','',&
-                !&imagpart(transpose(DU_X_1(:,:,jd))))
-        end do
-    end subroutine calc_U
+            character(*), parameter :: rout_name = 'calc_U_HEL'
+            
+            ! local variablas
+            real(dp), allocatable :: D3_var(:,:)                                ! derivative of variable
+            
+            ! allocate extra helper variables
+            allocate(D3_var(n_par,2))
+            
+            ! initialize ierr
+            ierr = 0
+                
+            ! loop over the M elements of U_X and DU
+            do jd = 1,size(m_X)
+                ! set up helper variables
+                g_frac = g13/g33
+                T_theta = h23/h22
+                ! loop over all normal points
+                do kd = 1,grp_n_r_eq
+                    ierr = calc_deriv(T_theta(:,kd),D3T_theta(:,kd),&
+                        &theta_H(:,kd),1,2)                                     ! higher precision because other derivative will be taken later
+                end do
+                
+                ! loop over all normal points
+                do kd = 1,grp_n_r_eq
+                write(*,*) 'INVESTIGATE HOW IMPROVING THE DERIVATIVES CAN &
+                    &HELP YOU GET RID OF UNSTABLE SIDE OF SPECTRUM !!!!!!!!!!!!!!!!!!!!!!!'
+                write(*,*) 'DOING THIS IN THIS ROUTINE ALREADY HELPED A LOT!!!!!'
+                    ! set up correction to U
+                    n_frac = n_X(jd)*fac_n(kd)-m_X(jd)*fac_m(kd)
+                    ! set up U correction
+                    U_corr(:,kd,jd) = iu/mn(jd)*n_frac/mn(jd)*(g_frac(:,kd)*&
+                        &(D3T_theta(:,kd)+iu*n_frac*T_theta(:,kd)))
+                    ! calculate U_X_0 and DU_X_0
+                    U_X_0(:,kd,jd) = &
+                        &-(h12(:,kd)/h22(:,kd) + djq(kd)*ang_par_F(:,kd))&
+                        &+ iu/(mn(jd)*g33(:,kd)) * (g13(:,kd)*djq(kd) + &
+                        &J(:,kd)**2*p(kd,1)*mu_0_loc + iu*n_frac * &
+                        &( g13(:,kd)*djq(kd)*ang_par_F(:,kd) - g23(:,kd) )) &
+                        &+ U_corr(:,kd,jd)
+                    ierr = calc_deriv(realpart(U_X_0(:,kd,jd)),D3_var(:,1),&
+                        &theta_H(:,kd),1,1)
+                    ierr = calc_deriv(imagpart(U_X_0(:,kd,jd)),D3_var(:,2),&
+                        &theta_H(:,kd),1,1)
+                    CHCKERR('')
+                    DU_X_0(:,kd,jd) = D3_var(:,1) + iu*D3_var(:,2) + &
+                        &iu*n_frac*U_X_0(:,kd,jd)
+                    ! calculate U_X_1 and DU_X_1
+                    U_X_1(:,kd,jd) = iu/mn(jd) * &
+                        &(1 + n_frac/mn(jd) * g13(:,kd)/g33(:,kd))
+                    ierr = calc_deriv(realpart(U_X_1(:,kd,jd)),D3_var(:,1),&
+                        &theta_H(:,kd),1,1)
+                    ierr = calc_deriv(imagpart(U_X_1(:,kd,jd)),D3_var(:,2),&
+                        &theta_H(:,kd),1,1)
+                    CHCKERR('')
+                    DU_X_1(:,kd,jd) = D3_var(:,1) + iu*D3_var(:,2) + &
+                        &iu*n_frac*U_X_1(:,kd,jd)
+                end do
+            end do
+            
+            ! deallocate
+            deallocate(D3_var)
+        end function calc_U_HEL
+    end function calc_U
     
     ! Calculate extra1, extra2 and extra3 in non-normalized coordinates:
     !   extra1 = S*J
@@ -1117,7 +1306,6 @@ contains
         
         ! local variables
         integer :: k, m, jd, kd                                                 ! counters
-        write(*,*) 'CALC_V_INT SHOULD WORK WITH FAST FOURIER TRANSFORM!!!'
         
         do m = 1,size_X
             do k = 1,size_X

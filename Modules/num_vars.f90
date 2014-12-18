@@ -13,7 +13,8 @@ module num_vars
         &next_job_win, plot_jq, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
         &nyq_fac, max_n_plots, alpha_job_nr, use_pol_flux, plot_grid, &
         &output_style, eq_style, eq_name, plot_dir, data_dir, script_dir, &
-        &spline_type, plot_flux_q, use_normalization, save_only_unstable_sol
+        &spline_type, plot_flux_q, use_normalization, n_sol_plotted, &
+        &n_theta_plot, n_zeta_plot
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -22,10 +23,9 @@ module num_vars
     integer, parameter :: n_seq_0 = 10                                          ! start of index of file numbers for opening
     integer, parameter :: max_args = 10                                         ! maximum number of input arguments
     integer, parameter :: max_opts = 8                                          ! maximum number of options in input arguments
-    integer, parameter, dimension(3) :: max_deriv = [2,2,2]                     ! highest derivatives that are tabulated for VMEC amplitudes R, Z, L in r,theta,zeta)
+    integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! will hold name of output file
-    integer :: n_sol_requested                                                  ! how many solutions requested
 
     ! MPI variables
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha
@@ -59,7 +59,8 @@ module num_vars
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates (only group masters)
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates (only global master)
     logical :: use_normalization                                                ! whether to use normalization or not
-    logical :: save_only_unstable_sol                                           ! whether to save only unstable solutions or all
+    integer :: n_sol_requested                                                  ! how many solutions requested
+    integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
     
     ! concerning Richardson extrapolation
     integer :: max_it_r                                                         ! number of levels for Richardson extrapolation
@@ -82,6 +83,8 @@ module num_vars
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots
     character(len=4) :: data_dir = 'Data'                                       ! directory where to save data for plots
+    integer :: n_theta_plot                                                     ! nr. of poloidal points in plot
+    integer :: n_zeta_plot                                                      ! nr. of toroidal points in plot
     
     ! concerning the various field lines for which to do the calculations
     integer :: n_alpha                                                          ! how many field lines

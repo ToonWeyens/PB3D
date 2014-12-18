@@ -23,7 +23,7 @@ module eq_vars
         &rot_t_FD, rot_t_V, flux_p_V_full, flux_t_V_full, rot_t_V_full, &
         &max_flux, max_flux_eq, eq_use_pol_flux, q_saf_H, rot_t_H, theta_H, &
         &zeta_H, pres_H, flux_p_H, flux_t_H, q_saf_H_full, rot_t_H_full, &
-        &flux_p_H_full, flux_t_H_full
+        &flux_p_H_full, flux_t_H_full, max_flux_F, max_flux_eq_F
 
     ! global variables
     ! Note: The indices in [derivatives] are:
@@ -54,7 +54,8 @@ module eq_vars
     real(dp), allocatable, target :: flux_p_FD(:,:), flux_t_FD(:,:)             ! pol. and tor. flux, and norm. Deriv. with values and Derivs. in flux coords.
     real(dp), allocatable :: flux_p_V_full(:,:), flux_t_V_full(:,:)             ! pol. flux, tor. flux, and norm. Deriv. values and Derivs. in VMEC coords.
     real(dp), allocatable :: flux_p_H_full(:,:), flux_t_H_full(:,:)             ! pol. flux, tor. flux, and norm. Deriv. values and Derivs. in HELENA coords.
-    real(dp) :: max_flux, max_flux_eq                                           ! max. flux (pol. or tor.) (min.flux is trivially equal to 0)
+    real(dp) :: max_flux, max_flux_eq                                           ! max. flux (pol. or tor.) in Equilibrium coordinates
+    real(dp) :: max_flux_F, max_flux_eq_F                                       ! max. flux (pol. or tor.) in Flux coordinates
     real(dp) :: min_par, max_par                                                ! min. and max. of parallel coordinate [pi]
     real(dp) :: R_0, pres_0, rho_0                                              ! independent normalization constants for nondimensionalization
     real(dp) :: B_0, psi_0, T_0                                                 ! derived normalization constants for nondimensionalization
@@ -85,20 +86,20 @@ contains
         grp_n_r_eq = grp_max_r_eq - grp_min_r_eq + 1
         
         ! pres_FD
-        allocate(pres_FD(grp_n_r_eq,0:max_deriv(1)))
+        allocate(pres_FD(grp_n_r_eq,0:max_deriv))
         
         ! flux_p_FD
-        allocate(flux_p_FD(grp_n_r_eq,0:max_deriv(1)))
+        allocate(flux_p_FD(grp_n_r_eq,0:max_deriv))
         
         ! flux_t_FD
-        allocate(flux_t_FD(grp_n_r_eq,0:max_deriv(1)))
+        allocate(flux_t_FD(grp_n_r_eq,0:max_deriv))
         
         if (use_pol_flux) then
             ! q_saf_FD
-            allocate(q_saf_FD(grp_n_r_eq,0:max_deriv(1)))
+            allocate(q_saf_FD(grp_n_r_eq,0:max_deriv))
         else
             ! rot_t_FD
-            allocate(rot_t_FD(grp_n_r_eq,0:max_deriv(1)))
+            allocate(rot_t_FD(grp_n_r_eq,0:max_deriv))
         end if
         
         ! initialize variables that are  specifici to which equilibrium style is
@@ -108,79 +109,79 @@ contains
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! R
-                allocate(VMEC_R(n_par,grp_n_r_eq,0:max_deriv(1),0:max_deriv(2),&
-                    &0:max_deriv(3)))
+                allocate(VMEC_R(n_par,grp_n_r_eq,0:max_deriv+1,0:max_deriv+1,&
+                    &0:max_deriv+1))
                 
                 ! Z
-                allocate(VMEC_Z(n_par,grp_n_r_eq,0:max_deriv(1),0:max_deriv(2),&
-                    &0:max_deriv(3)))
+                allocate(VMEC_Z(n_par,grp_n_r_eq,0:max_deriv+1,0:max_deriv+1,&
+                    &0:max_deriv+1))
                 
                 ! lambda
-                allocate(VMEC_L(n_par,grp_n_r_eq,0:max_deriv(1),0:max_deriv(2),&
-                    &0:max_deriv(3)))
+                allocate(VMEC_L(n_par,grp_n_r_eq,0:max_deriv+1,0:max_deriv+1,&
+                    &0:max_deriv+1))
                 
                 ! pres_V
-                allocate(pres_V(grp_n_r_eq,0:max_deriv(1)))
+                allocate(pres_V(grp_n_r_eq,0:max_deriv+1))
                 
                 ! flux_p_V
-                allocate(flux_p_V(grp_n_r_eq,0:max_deriv(1)))
+                allocate(flux_p_V(grp_n_r_eq,0:max_deriv+1))
                 
                 ! flux_t_V
-                allocate(flux_t_V(grp_n_r_eq,0:max_deriv(1)))
+                allocate(flux_t_V(grp_n_r_eq,0:max_deriv+1))
                 
                 if (use_pol_flux) then
                     ! q_saf_V
-                    allocate(q_saf_V(grp_n_r_eq,0:max_deriv(1)))
+                    allocate(q_saf_V(grp_n_r_eq,0:max_deriv+1))
                 else
                     ! rot_t_V
-                    allocate(rot_t_V(grp_n_r_eq,0:max_deriv(1)))
+                    allocate(rot_t_V(grp_n_r_eq,0:max_deriv+1))
                 end if
                 
                 ! full variables for group masters
                 if (grp_rank.eq.0) then
                     ! flux_p_V_full
-                    allocate(flux_p_V_full(n_r_eq,0:max_deriv(1)))
+                    allocate(flux_p_V_full(n_r_eq,0:max_deriv+1))
                     
                     ! flux_t_V_full
-                    allocate(flux_t_V_full(n_r_eq,0:max_deriv(1)))
+                    allocate(flux_t_V_full(n_r_eq,0:max_deriv+1))
                     
                     ! q_saf_V_full
-                    allocate(q_saf_V_full(n_r_eq,0:max_deriv(1)))
+                    allocate(q_saf_V_full(n_r_eq,0:max_deriv+1))
                     
                     ! rot_t_V_full
-                    allocate(rot_t_V_full(n_r_eq,0:max_deriv(1)))
+                    allocate(rot_t_V_full(n_r_eq,0:max_deriv+1))
                 end if
             case (2)                                                            ! HELENA
                 ! pres_H
-                allocate(pres_H(grp_n_r_eq,0:max_deriv(1)))
+                allocate(pres_H(grp_n_r_eq,0:max_deriv+1))
                 
                 ! flux_p_H
-                allocate(flux_p_H(grp_n_r_eq,0:max_deriv(1)))
+                allocate(flux_p_H(grp_n_r_eq,0:max_deriv+1))
                 
                 ! flux_t_H
-                allocate(flux_t_H(grp_n_r_eq,0:max_deriv(1)))
+                allocate(flux_t_H(grp_n_r_eq,0:max_deriv+1))
                 
                 if (use_pol_flux) then
                     ! q_saf_H
-                    allocate(q_saf_H(grp_n_r_eq,0:max_deriv(1)))
+                    allocate(q_saf_H(grp_n_r_eq,0:max_deriv+1))
                 else
                     ! rot_t_H
-                    allocate(rot_t_H(grp_n_r_eq,0:max_deriv(1)))
+                    allocate(rot_t_H(grp_n_r_eq,0:max_deriv+1))
                 end if
                 
                 ! full variables for group masters
                 if (grp_rank.eq.0) then
                     ! flux_p_H_full
-                    allocate(flux_p_H_full(n_r_eq,0:max_deriv(1)))
+                    allocate(flux_p_H_full(n_r_eq,0:max_deriv+1))
                     
                     ! flux_t_H_full
-                    allocate(flux_t_H_full(n_r_eq,0:max_deriv(1)))
+                    allocate(flux_t_H_full(n_r_eq,0:max_deriv+1))
                     
                     ! q_saf_H_full
-                    allocate(q_saf_H_full(n_r_eq,0:max_deriv(1)))
+                    allocate(q_saf_H_full(n_r_eq,0:max_deriv+1))
                     
                     ! rot_t_H_full
-                    allocate(rot_t_H_full(n_r_eq,0:max_deriv(1)))
+                    allocate(rot_t_H_full(n_r_eq,0:max_deriv+1))
                 end if
             case default
                 err_msg = 'No equilibrium style associated with '//&
@@ -223,7 +224,7 @@ contains
         ierr = 0
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_RZL')
+        ierr = check_deriv(deriv,max_deriv+1,'calc_RZL')
         CHCKERR('')
         
         ! calculate the variables R,Z and their angular derivative
@@ -277,7 +278,8 @@ contains
         ! initialize ierr
         ierr = 0
         
-        write(*,*) 'HELENA SHOULD BE ADAPTED ONLY ONCE !!!!'
+        write(*,*) 'HELENA SHOULD BE ADAPTED FOR EVERY ALPHA, BUT THE HELENA OUTPUT SHOULD BE SAVED !!!!'
+        
         ! set old arrays
         allocate(old_h_H_11(size(h_H_11,1),size(h_H_11,2)))
         old_h_H_11 = h_H_11
@@ -396,7 +398,7 @@ contains
             
             ! pressure: copy from VMEC and derive
             pres_V(:,0) = presf(grp_min_r_eq:grp_max_r_eq)
-            do kd = 1, max_deriv(1)
+            do kd = 1, max_deriv+1
                 ierr = calc_deriv(pres_V(:,0),pres_V(:,kd),n_r_eq-1._dp,kd,1)
                 CHCKERR('')
             end do
@@ -411,7 +413,7 @@ contains
             ! easier to use full normal mesh flux_p because of the integral
             flux_p_V(:,1) = Dflux_p_full(grp_min_r_eq:grp_max_r_eq)
             flux_p_V(:,0) = flux_p_int_full(grp_min_r_eq:grp_max_r_eq)
-            do kd = 2,max_deriv(1)
+            do kd = 2,max_deriv+1
                 ierr = calc_deriv(flux_p_V(:,1),flux_p_V(:,kd),&
                     &n_r_eq-1._dp,kd-1,1)
                 CHCKERR('')
@@ -420,7 +422,7 @@ contains
             ! toroidal flux: copy from VMEC and derive
             flux_t_V(:,0) = phi(grp_min_r_eq:grp_max_r_eq)
             flux_t_V(:,1) = phi_r(grp_min_r_eq:grp_max_r_eq)
-            do kd = 2,max_deriv(1)
+            do kd = 2,max_deriv+1
                 ierr = calc_deriv(flux_t_V(:,1),flux_t_V(:,kd),n_r_eq-1._dp,&
                     &kd-1,1)
                 CHCKERR('')
@@ -429,7 +431,7 @@ contains
             if (use_pol_flux) then
                 ! safety factor
                 q_saf_V(:,0) = 1.0_dp/iotaf(grp_min_r_eq:grp_max_r_eq)
-                do kd = 1,max_deriv(1)
+                do kd = 1,max_deriv+1
                     ierr = calc_deriv(q_saf_V(:,0),q_saf_V(:,kd),n_r_eq-1._dp,&
                         &kd,1)
                     CHCKERR('')
@@ -437,10 +439,11 @@ contains
                 
                 ! set max_flux
                 max_flux = flux_p_int_full(n_r_eq)
+                max_flux_F = max_flux
             else
                 ! rot. transform
                 rot_t_V(:,0) = iotaf(grp_min_r_eq:grp_max_r_eq)
-                do kd = 1,max_deriv(1)
+                do kd = 1,max_deriv+1
                     ierr = calc_deriv(rot_t_V(:,0),rot_t_V(:,kd),n_r_eq-1._dp,&
                         &kd,1)
                     CHCKERR('')
@@ -448,13 +451,16 @@ contains
                 
                 ! set max_flux
                 max_flux = phi(n_r_eq)
+                max_flux_F = - max_flux                                         ! conversion VMEC LH -> RH coord. system
             end if
             
             ! max_flux_eq
             if (eq_use_pol_flux) then
                 max_flux_eq = flux_p_int_full(n_r_eq)
+                max_flux_eq_F = max_flux_eq
             else
                 max_flux_eq = phi(n_r_eq)
+                max_flux_eq_F = - max_flux_eq                                   ! conversion VMEC LH -> RH coord. system
             end if
                 
             ! the global master needs flux_p_V_full, flux_t_V_full, q_saf_V_full
@@ -465,7 +471,7 @@ contains
                 ! flux_t_V_full
                 flux_t_V_full(:,0) = phi
                 flux_t_V_full(:,1) = phi_r
-                do kd = 2,max_deriv(1)
+                do kd = 2,max_deriv+1
                     ierr = calc_deriv(flux_t_V_full(:,1),flux_t_V_full(:,kd),&
                         &n_r_eq-1._dp,kd-1,1)
                     CHCKERR('')
@@ -474,7 +480,7 @@ contains
                 ! flux_p_V_full
                 flux_p_V_full(:,0) = flux_p_int_full
                 flux_p_V_full(:,1) = Dflux_p_full
-                do kd = 2,max_deriv(1)
+                do kd = 2,max_deriv+1
                     ierr = calc_deriv(flux_p_V_full(:,1),&
                         &flux_p_V_full(:,kd),n_r_eq-1._dp,kd-1,1)
                     CHCKERR('')
@@ -482,7 +488,7 @@ contains
                 
                 ! q_saf_V_full
                 q_saf_V_full(:,0) = 1.0_dp/iotaf
-                do kd = 1,max_deriv(1)
+                do kd = 1,max_deriv+1
                     ierr = calc_deriv(q_saf_V_full(:,0),&
                         &q_saf_V_full(:,kd),n_r_eq-1._dp,kd,1)
                     CHCKERR('')
@@ -490,7 +496,7 @@ contains
                 
                 ! rot_t_V_full
                 rot_t_V_full(:,0) = iotaf
-                do kd = 1,max_deriv(1)
+                do kd = 1,max_deriv+1
                     ierr = calc_deriv(rot_t_V_full(:,0),&
                         &rot_t_V_full(:,kd),n_r_eq-1._dp,kd,1)
                     CHCKERR('')
@@ -520,7 +526,7 @@ contains
             
             ! pressure: copy from HELENA and derive
             pres_H(:,0) = p0(grp_min_r_eq:grp_max_r_eq)
-            do kd = 1, max_deriv(1)
+            do kd = 1, max_deriv+1
                 ierr = calc_deriv(pres_H(:,0),pres_H(:,kd),&
                     &flux_H(grp_min_r_eq:grp_max_r_eq),kd,1)
                 CHCKERR('')
@@ -540,7 +546,7 @@ contains
             ! easier to use full normal mesh flux_t because of the integral
             flux_t_H(:,1) = Dflux_t_full(grp_min_r_eq:grp_max_r_eq)
             flux_t_H(:,0) = flux_t_int_full(grp_min_r_eq:grp_max_r_eq)
-            do kd = 2,max_deriv(1)
+            do kd = 2,max_deriv+1
                 ierr = calc_deriv(flux_t_H(:,1),flux_t_H(:,kd),&
                     &flux_H(grp_min_r_eq:grp_max_r_eq),kd-1,1)
                 CHCKERR('')
@@ -548,7 +554,7 @@ contains
                 
             ! poloidal flux: copy from HELENA and derive
             flux_p_H(:,0) = flux_H(grp_min_r_eq:grp_max_r_eq)
-            do kd = 1,max_deriv(1)
+            do kd = 1,max_deriv+1
                 ierr = calc_deriv(flux_p_H(:,0),flux_p_H(:,kd),&
                     &flux_H(grp_min_r_eq:grp_max_r_eq),kd,1)
                 CHCKERR('')
@@ -557,7 +563,7 @@ contains
             if (use_pol_flux) then
                 ! safety factor
                 q_saf_H(:,0) = qs(grp_min_r_eq:grp_max_r_eq)
-                do kd = 1,max_deriv(1)
+                do kd = 1,max_deriv+1
                     ierr = calc_deriv(q_saf_H(:,0),q_saf_H(:,kd),&
                         &flux_H(grp_min_r_eq:grp_max_r_eq),kd,1)
                     CHCKERR('')
@@ -568,7 +574,7 @@ contains
             else
                 ! rot. transform
                 rot_t_H(:,0) = 1.0_dp/qs(grp_min_r_eq:grp_max_r_eq)
-                do kd = 1,max_deriv(1)
+                do kd = 1,max_deriv+1
                     ierr = calc_deriv(rot_t_H(:,0),rot_t_H(:,kd),&
                         &flux_H(grp_min_r_eq:grp_max_r_eq),kd,1)
                     CHCKERR('')
@@ -577,9 +583,11 @@ contains
                 ! set max_flux
                 max_flux = flux_t_int_full(n_r_eq)
             end if
+            max_flux_F = max_flux
             
             ! max_flux_eq
             max_flux_eq = flux_H(n_r_eq)
+            max_flux_eq_F = max_flux_eq
             
             ! the global master needs flux_p_H_full, flux_t_H_full, q_saf_H_full
             ! and rot_t_H_full  for the resonance plot  and checking of m  and n
@@ -589,7 +597,7 @@ contains
                 ! flux_t_H_full
                 flux_t_H_full(:,0) = flux_t_int_full
                 flux_t_H_full(:,1) = Dflux_t_full
-                do kd = 2,max_deriv(1)
+                do kd = 2,max_deriv
                     ierr = calc_deriv(flux_t_H_full(:,1),flux_t_H_full(:,kd),&
                         &flux_H,kd-1,1)
                     CHCKERR('')
@@ -597,7 +605,7 @@ contains
                 
                 ! flux_p_H_full
                 flux_p_H_full(:,0) = flux_H
-                do kd = 1,max_deriv(1)
+                do kd = 1,max_deriv
                     ierr = calc_deriv(flux_p_H_full(:,0),flux_p_H_full(:,kd),&
                         &flux_H,kd,1)
                     CHCKERR('')
@@ -605,7 +613,7 @@ contains
                 
                 ! q_saf_H_full
                 q_saf_H_full(:,0) = qs(:)
-                do kd = 1,max_deriv(1)
+                do kd = 1,max_deriv
                     ierr = calc_deriv(q_saf_H_full(:,0),q_saf_H_full(:,kd),&
                         &flux_H,kd,1)
                     CHCKERR('')
@@ -613,7 +621,7 @@ contains
                 
                 ! rot_t_H_full
                 rot_t_H_full(:,0) = 1.0_dp/qs(:)
-                do kd = 1,max_deriv(1)
+                do kd = 1,max_deriv
                     ierr = calc_deriv(rot_t_H_full(:,0),rot_t_H_full(:,kd),&
                         &flux_H,kd,1)
                     CHCKERR('')
@@ -679,11 +687,12 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                y_plot_2D(:,1) = q_saf_V_full(:,0)
-                y_plot_2D(:,2) = rot_t_V_full(:,0)
+                y_plot_2D(:,1) = -q_saf_V_full(:,0)                             ! conversion VMEC LH -> RH coord. system
+                y_plot_2D(:,2) = -rot_t_V_full(:,0)                             ! conversion VMEC LH -> RH coord. system
                 y_plot_2D(:,3) = presf
                 y_plot_2D(:,4) = flux_p_V_full(:,0)
-                y_plot_2D(:,5) = flux_t_V_full(:,0)
+                y_plot_2D(:,5) = -flux_t_V_full(:,0)                            ! conversion VMEC LH -> RH coord. system
+                ! 2D normal variable (y_plot_2D tabulated in eq. grid)
                 if (use_pol_flux) then
                     x_plot_2D(:,1) = flux_p_V_full(:,0)/max_flux
                 else
@@ -765,7 +774,8 @@ contains
     contains
         ! convert 2D plot to real plot in 3D and output in HDF5
         integer function flux_q_plot_HDF5(r_plot) result(ierr)
-            use output_ops, only: print_HDF5_3D
+            use output_ops, only: print_HDF5
+            use num_vars, only: n_theta_plot, n_zeta_plot
             
             character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
             
@@ -775,8 +785,6 @@ contains
             ! local variables
             integer :: kd                                                       ! counter
             real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)        ! theta and zeta for 3D plot
-            integer :: n_theta_plot = 201                                       ! nr. of poloidal points in plot
-            integer :: n_zeta_plot = 101                                        ! nr. of toroidal points in plot
             real(dp), allocatable :: x_plot_3D(:,:,:)                           ! x values of 3D plot
             real(dp), allocatable :: y_plot_3D(:,:,:)                           ! y values of 3D plot
             real(dp), allocatable :: z_plot_3D(:,:,:)                           ! z values of 3D plot
@@ -795,13 +803,23 @@ contains
             
             ! initialize theta_plot and zeta_plot
             allocate(theta_plot(n_theta_plot,n_zeta_plot,n_r_plot))
-            do id = 1,n_theta_plot
-                theta_plot(id,:,:) = pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)
-            end do
+            if (n_theta_plot.eq.1) then
+                theta_plot = 0.0_dp
+            else
+                do id = 1,n_theta_plot
+                    theta_plot(id,:,:) = &
+                        &pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)              ! starting from pi gives nicer plots
+                end do
+            end if
+            ! zeta equidistant
             allocate(zeta_plot(n_theta_plot,n_zeta_plot,n_r_plot))
-            do id = 1,n_zeta_plot
-                zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
-            end do
+            if (n_zeta_plot.eq.1) then
+                zeta_plot = 0.0_dp
+            else
+                do id = 1,n_zeta_plot
+                    zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
+                end do
+            end if
             
             ! calculate X,Y and Z
             ierr = calc_XYZ_grid(theta_plot,zeta_plot,r_plot,&
@@ -830,7 +848,7 @@ contains
             end do
             
             ! print the output using HDF5
-            call print_HDF5_3D(plot_titles,'flux_quantities',f_plot,plot_dim,&
+            call print_HDF5(plot_titles,'flux_quantities',f_plot,plot_dim,&
                 &plot_dim,[0,0,0,0],x_plot,y_plot,z_plot,col=1,&
                 &description='Flux quantities')
             
@@ -1414,7 +1432,9 @@ contains
         flux_p_FD = flux_p_FD/psi_0
         flux_t_FD = flux_t_FD/psi_0
         max_flux = max_flux/psi_0
+        max_flux_F = max_flux_F/psi_0
         max_flux_eq = max_flux_eq/psi_0
+        max_flux_eq_F = max_flux_eq_F/psi_0
         
         ! scale  the  derivatives  by  psi_p_0
         do id = 1,size(pres_FD,2)-1
@@ -1632,7 +1652,7 @@ contains
     end function dealloc_eq_final
     
     ! calculates X,Y  and Z on a  grid in the equilibrium  poloidal and toroidal
-    ! angle theta and zeta, for every normal point in also the equilibrium grid.
+    ! angle theta and zeta, for every normal point in the equilibrium grid.
     ! The dimensions are (n_theta,n_zeta,n_r)
     ! If VMEC is the equilibrium  model, this routine also optionally calculates
     ! lambda on the grid, as this is  also needed some times. If HELENA is used,

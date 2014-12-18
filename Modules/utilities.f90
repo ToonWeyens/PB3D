@@ -6,6 +6,7 @@ module utilities
     use num_vars, only: dp, iu, max_str_ln
     use message_ops, only: writo, print_ar_1, print_ar_2
     use str_ops, only: i2str, r2strt, r2str
+    use output_ops, only: print_GP_2D
     
     implicit none
     private
@@ -140,7 +141,8 @@ contains
         ! local variables
         integer :: max_n
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: max_order = 5                                                ! maximum order
+        integer :: max_order(2) = [5,1]                                         ! maximum orders for precicions
+        integer :: max_prec = 2                                                 ! maximum precision
         
         ! initialize ierr
         ierr = 0
@@ -154,10 +156,15 @@ contains
             ierr = 1
             CHCKERR(err_msg)
         end if
-        if (ord.lt.1 .or. ord.gt.max_order) then
-            err_msg = 'Can only derive from order 1 &
-                &up to order '//trim(i2str(max_order))//', not '//&
-                &trim(i2str(ord))
+        if (prec.lt.1 .or. prec.gt.max_prec) then
+            err_msg = 'Precision '//trim(i2str(prec))//' not implemented'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        if (ord.lt.1 .or. ord.gt.max_order(prec)) then
+            err_msg = 'For precision '//trim(i2str(prec))//&
+                &', can only derive from order 1 up to order '//&
+                &trim(i2str(max_order(prec)))//', not '//trim(i2str(ord))
             ierr = 1
             CHCKERR(err_msg)
         end if
@@ -166,6 +173,8 @@ contains
         select case (prec)
             case (1)
                 call prec1
+            case (2)
+                call prec2
             case default
                 err_msg = 'Precision of order '//trim(i2str(prec))//&
                     &' not implemented'
@@ -274,6 +283,48 @@ contains
                     CHCKERR(err_msg)
             end select
         end subroutine
+        
+        subroutine prec2
+            ! test whether enough points are given
+            if (max_n-3.lt.ord) then
+                err_msg = 'For a derivative of order '//&
+                    &trim(i2str(ord))//', with precision '//trim(i2str(prec))&
+                    &//', at least '//trim(i2str(ord+3))//&
+                    &' input values have to be passed'
+                ierr = 1
+                CHCKERR(err_msg)
+            end if
+            
+            ! apply derivation rules precise up to order 1
+            select case (ord)
+                case(1)                                                         ! first derivative
+                    ! first point
+                    dvar(1:1) = inv_step*&
+                        &(-11*var(1)+18*var(2)-9*var(3)+2*var(4))/6
+                    ! second point
+                    dvar(2:2) = inv_step*&
+                        &(-2*var(1)-3*var(2)+6*var(3)-var(4))/6
+                    ! middle points
+                    ! (take 5 points instead of 4 because of symmetry)
+                    dvar(3:max_n-2) = inv_step*&
+                        &(var(1:max_n-4)-8*var(2:max_n-3)+&
+                        &8*var(4:max_n-1)-var(5:max_n))/12
+                    ! next-to-last point
+                    dvar(max_n-1:max_n-1) = -inv_step*&                         ! - because odd number (1) of sign changes
+                        &(-2*var(max_n)-3*var(max_n-1)+6*var(max_n-2)-&
+                        &var(max_n-3))/6
+                    ! last point
+                    dvar(max_n:max_n) = -inv_step*&                             ! - because odd number (1) of sign changes
+                        &(-11*var(max_n)+18*var(max_n-1)-9*var(max_n-2)+&
+                        &2*var(max_n-3))/6
+                case default
+                    ! This you should never reach!
+                    err_msg = 'Derivation of order '//trim(i2str(ord))//&
+                        &' not possible in calc_deriv_equidistant'
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+        end subroutine
     end function calc_deriv_equidistant
     
     ! numerically derives  a function whose values  are given on a  regular, but
@@ -293,8 +344,10 @@ contains
         ! local variables
         integer :: max_n
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: max_order = 2                                                ! maximum order
-        real(dp), allocatable :: delta(:)                                       ! delta(i) = x(i+1)-x(i) (called delta_(i+1/2) in text)
+        integer :: max_order(2) = [3,1]                                         ! maximum orders for precisions
+        integer :: max_prec = 2                                                 ! maximum precision
+        real(dp), allocatable, target :: delta(:)                               ! delta(i) = x(i+1)-x(i) (called delta_(i+1/2) in text)
+        real(dp), pointer :: a(:), b(:), c(:), d(:)                             ! pointers to parts of delta
         
         ! initialize ierr
         ierr = 0
@@ -314,9 +367,15 @@ contains
             ierr = 1
             CHCKERR(err_msg)
         end if
-        if (ord.lt.1 .or. ord.gt.max_order) then
-            err_msg = 'Can only derive from order 1 up to order '//&
-                &trim(i2str(max_order))//', not '//trim(i2str(ord))
+        if (prec.lt.1 .or. prec.gt.max_prec) then
+            err_msg = 'Precision '//trim(i2str(prec))//' not implemented'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        if (ord.lt.1 .or. ord.gt.max_order(prec)) then
+            err_msg = 'For precision '//trim(i2str(prec))//&
+                &', can only derive from order 1 up to order '//&
+                &trim(i2str(max_order(prec)))//', not '//trim(i2str(ord))
             ierr = 1
             CHCKERR(err_msg)
         end if
@@ -329,6 +388,8 @@ contains
         select case (prec)
             case (1)
                 call prec1
+            case (2)
+                call prec2
             case default
                 err_msg = 'Precision of order '//trim(i2str(prec))//&
                     &' not implemented'
@@ -351,58 +412,247 @@ contains
             select case (ord)
                 case(1)                                                         ! first derivative
                     ! first point
-                    dvar(1) = (-(2*delta(1)+delta(2))*delta(2)*var(1)+&
-                        &(delta(1)+delta(2))**2*var(2)-delta(1)**2*var(3)) / &
-                        &(delta(1)*(delta(1)+delta(2))*delta(2))
+                    a => delta(1:1)
+                    b => delta(2:2)
+                    dvar(1:1) = (-(2*a+b)*b*var(1)+(a+b)**2*var(2)-&
+                        &a**2*var(3)) / (a*(a+b)*b)
+                    nullify(a,b)
                     ! middle points
-                    dvar(2:max_n-1) = (-delta(2:max_n-1)**2*var(1:max_n-2)+&
-                        &(delta(2:max_n-1)**2-delta(1:max_n-2)**2)*var(2:max_n-1)+ &
-                        &delta(1:max_n-2)**2*var(3:max_n)) / &
-                        &(delta(1:max_n-2)*(delta(1:max_n-2)+delta(2:max_n-1))*&
-                        &delta(2:max_n-1))
+                    a => delta(1:max_n-2)
+                    b => delta(2:max_n-1)
+                    dvar(2:max_n-1) = (-b**2*var(1:max_n-2)+&
+                        &(b**2-a**2)*var(2:max_n-1)+ a**2*var(3:max_n)) / &
+                        &(a*(a+b)*b)
+                    nullify(a,b)
                     ! last point
-                    dvar(max_n) = (delta(max_n-1)**2*var(max_n-2)-&
-                        &(delta(max_n-1)+delta(max_n-2))**2*var(max_n-1)+&
-                        &(2*delta(max_n-1)+delta(max_n-2))*delta(max_n-2)*&
-                        &var(max_n)) / (delta(max_n-1)*&
-                        &(delta(max_n-1)+delta(max_n-2))*delta(max_n-2))
+                    a => delta(max_n-1:max_n-1)
+                    b => delta(max_n-2:max_n-2)
+                    dvar(max_n:max_n) = -(-(2*a+b)*b*var(max_n)+(a+b)**2&       ! - because odd number (1) of sign changes
+                        &*var(max_n-1)-a**2*var(max_n-2)) / (a*(a+b)*b)
+                    nullify(a,b)
                 case(2)                                                         ! second derivative
                     ! first point
-                    dvar(1) = 2*(delta(2)*(delta(2)+delta(3))*delta(3)*&
-                        &(3*delta(1)+2*delta(2)+delta(3))*var(1)-&
-                        &(delta(1)+delta(2))*(delta(1)+delta(2)+delta(3))*&
-                        &delta(3)*(2*delta(1)+2*delta(2)+delta(3))*var(2)+&
-                        &(delta(2)+delta(3))*(delta(1)+delta(2)+delta(3))*&
-                        &delta(1)*(2*delta(1)+delta(2)+delta(3))*var(3)-&
-                        &delta(1)*(delta(1)+delta(2))*delta(2)*&
-                        &(2*delta(1)+delta(2))*var(4)) / &
-                        &(delta(1)*delta(2)*delta(3)*(delta(1)+delta(2))*&
-                        &(delta(2)+delta(3))*(delta(1)+delta(2)+delta(3)))
+                    a => delta(1:1)
+                    b => delta(2:2)
+                    c => delta(3:3)
+                    dvar(1:1) = 2*(b*(b+c)*c*(3*a+2*b+c)*var(1)-&
+                        &(a+b)*(a+b+c)*c*(2*a+2*b+c)*var(2)+&
+                        &(b+c)*(a+b+c)*a*(2*a+b+c)*var(3)-&
+                        &a*(a+b)*b*(2*a+b)*var(4)) / &
+                        &(a*b*c*(a+b)*(b+c)*(a+b+c))
+                    nullify(a,b,c)
                     ! middle points
-                    dvar(2:max_n-1) = 2*(delta(2:max_n-1)*var(1:max_n-2)-&
-                        &(delta(1:max_n-2)+delta(2:max_n-1))*var(2:max_n-1)+ &
-                        &delta(1:max_n-2)*var(3:max_n)) / &
-                        &(delta(1:max_n-2)*(delta(1:max_n-2)+delta(2:max_n-1))*&
-                        &delta(2:max_n-1))
+                    a => delta(1:max_n-2)
+                    b => delta(2:max_n-1)
+                    dvar(2:max_n-1) = 2*(b*var(1:max_n-2)-&
+                        &(a+b)*var(2:max_n-1)+ a*var(3:max_n)) / &
+                        &(a*(a+b)*b)
+                    nullify(a,b)
                     ! last point
-                    dvar(max_n) = 2*(delta(max_n-2)*&
-                        &(delta(max_n-2)+delta(max_n-3))*delta(max_n-3)*&
-                        &(3*delta(max_n-1)+2*delta(max_n-2)+delta(max_n-3))*&
-                        &var(max_n)-(delta(max_n-1)+delta(max_n-2))*&
-                        &(delta(max_n-1)+delta(max_n-2)+delta(max_n-3))*&
-                        &delta(max_n-3)*(2*delta(max_n-1)+2*delta(max_n-2)+&
-                        &delta(max_n-3))*var(max_n-1)+&
-                        &(delta(max_n-2)+delta(max_n-3))*&
-                        &(delta(max_n-1)+delta(max_n-2)+delta(max_n-3))*&
-                        &delta(max_n-1)*(2*delta(max_n-1)+delta(max_n-2)+&
-                        &delta(max_n-3))*var(max_n-2)-&
-                        &delta(max_n-1)*(delta(max_n-1)+delta(max_n-2))*&
-                        &delta(max_n-2)*&
-                        &(2*delta(max_n-1)+delta(max_n-2))*var(max_n-3)) / &
-                        &(delta(max_n-1)*delta(max_n-2)*delta(max_n-3)*&
-                        &(delta(max_n-1)+delta(max_n-2))*&
-                        &(delta(max_n-2)+delta(max_n-3))*&
-                        &(delta(max_n-1)+delta(max_n-2)+delta(max_n-3)))
+                    a => delta(max_n-1:max_n-1)
+                    b => delta(max_n-2:max_n-2)
+                    c => delta(max_n-3:max_n-3)
+                    dvar(max_n:max_n) = 2*(b*(b+c)*c*(3*a+2*b+c)*var(max_n)-&
+                        &(a+b)*(a+b+c)*c*(2*a+2*b+c)*var(max_n-1)+&
+                        &(b+c)*(a+b+c)*a*(2*a+b+c)*var(max_n-2)-&
+                        &a*(a+b)*b*(2*a+b)*var(max_n-3)) / &
+                        &(a*b*c*(a+b)*(b+c)*(a+b+c))
+                    nullify(a,b,c)
+                case(3)                                                         ! third derivative
+                    ! first point
+                    a => delta(1:1)
+                    b => delta(2:2)
+                    c => delta(3:3)
+                    d => delta(4:4)
+                    dvar(1:1) = 6*(&
+                        &-b*c*d*(b+c)*(c+d)*(b+c+d)*(4*a+3*b+2*c+d)*var(1:1)&
+                        &+c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*(3*a+3*b+2*c+d)*&
+                        &var(2:2)&
+                        &-a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*(3*a+2*b+2*c+d)*&
+                        &var(3:3)&
+                        &+a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*(3*a+2*b+c+d)*&
+                        &var(4:4)&
+                        &-a*b*c*(b+c)*(a+b)*(a+b+c)*(3*a+2*b+c)*&
+                        &var(5:5)) / &
+                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
+                    nullify(a,b,c,d)
+                    ! second point
+                    a => delta(1:1)
+                    b => delta(2:2)
+                    c => delta(3:3)
+                    d => delta(4:4)
+                    dvar(2:2) = 6*(&
+                        &-b*c*d*(b+c)*(c+d)*(b+c+d)*(3*b+2*c+d)*var(1:1)&
+                        &-c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*(a-3*b-2*c-d)*&
+                        &var(2:2)&
+                        &+a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*(a-2*b-2*c-d)*&
+                        &var(3:3)&
+                        &-a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*(a-2*b-c-d)*&
+                        &var(4:4)&
+                        &+a*b*c*(b+c)*(a+b)*(a+b+c)*(a-2*b-c)*&
+                        &var(5:5)) / &
+                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
+                    nullify(a,b,c,d)
+                    ! middle points
+                    a => delta(1:max_n-4)
+                    b => delta(2:max_n-3)
+                    c => delta(3:max_n-2)
+                    d => delta(4:max_n-1)
+                    dvar(3:max_n-2) = 6*(&
+                        &b*c*d*(b+c)*(c+d)*(b+c+d)*(b-2*c-d)*&
+                        &var(1:max_n-4)&
+                        &-c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*(a+b-2*c-d)*&
+                        &var(2:max_n-3)&
+                        &+a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*(a+2*b-2*c-d)*&
+                        &var(3:max_n-2)&
+                        &-a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*(a+2*b-c-d)*&
+                        &var(4:max_n-1)&
+                        &+a*b*c*(b+c)*(a+b)*(a+b+c)*(a+2*b-c)*&
+                        &var(5:max_n)) / &
+                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
+                    nullify(a,b,c,d)
+                    ! next-to-last point
+                    a => delta(max_n-1:max_n-1)
+                    b => delta(max_n-2:max_n-2)
+                    c => delta(max_n-3:max_n-3)
+                    d => delta(max_n-4:max_n-4)
+                    dvar(max_n-1:max_n-1) = -6*(&                               ! - because odd number (3) of sign changes
+                        &-b*c*d*(b+c)*(c+d)*(b+c+d)*(3*b+2*c+d)*&
+                        &var(max_n:max_n)&
+                        &-c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*(a-3*b-2*c-d)*&
+                        &var(max_n-1:max_n-1)&
+                        &+a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*(a-2*b-2*c-d)*&
+                        &var(max_n-2:max_n-2)&
+                        &-a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*(a-2*b-c-d)*&
+                        &var(max_n-3:max_n-3)&
+                        &+a*b*c*(b+c)*(a+b)*(a+b+c)*(a-2*b-c)*&
+                        &var(max_n-4:max_n-4)) / &
+                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
+                    nullify(a,b,c,d)
+                    ! next-to-last point
+                    a => delta(max_n-1:max_n-1)
+                    b => delta(max_n-2:max_n-2)
+                    c => delta(max_n-3:max_n-3)
+                    d => delta(max_n-4:max_n-4)
+                    dvar(max_n-1:max_n-1) = -6*(&                               ! - because odd number (3) of sign changes
+                        &-b*c*d*(b+c)*(c+d)*(b+c+d)*(3*b+2*c+d)*&
+                        &var(max_n:max_n)&
+                        &-c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*(a-3*b-2*c-d)*&
+                        &var(max_n-1:max_n-1)&
+                        &+a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*(a-2*b-2*c-d)*&
+                        &var(max_n-2:max_n-2)&
+                        &-a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*(a-2*b-c-d)*&
+                        &var(max_n-3:max_n-3)&
+                        &+a*b*c*(b+c)*(a+b)*(a+b+c)*(a-2*b-c)*&
+                        &var(max_n-4:max_n-4)) / &
+                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
+                    nullify(a,b,c,d)
+                    ! last point
+                    a => delta(max_n-1:max_n-1)
+                    b => delta(max_n-2:max_n-2)
+                    c => delta(max_n-3:max_n-3)
+                    d => delta(max_n-4:max_n-4)
+                    dvar(max_n:max_n) = -6*(&                                   ! -1 because odd number (3) of sign changes
+                        &-b*c*d*(b+c)*(c+d)*(b+c+d)*(4*a+3*b+2*c+d)*&
+                        &var(max_n:max_n)&
+                        &+c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*(3*a+3*b+2*c+d)*&
+                        &var(max_n-1:max_n-1)&
+                        &-a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*(3*a+2*b+2*c+d)*&
+                        &var(max_n-2:max_n-2)&
+                        &+a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*(3*a+2*b+c+d)*&
+                        &var(max_n-3:max_n-3)&
+                        &-a*b*c*(b+c)*(a+b)*(a+b+c)*(3*a+2*b+c)*&
+                        &var(max_n-4:max_n-4)) / &
+                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
+                    nullify(a,b,c,d)
+                case default
+                    ! This you should never reach!
+                    err_msg = 'Derivation of order '//trim(i2str(ord))//&
+                        &' not possible in calc_deriv_regular'
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+        end subroutine
+        
+        subroutine prec2
+            ! test whether enough points are given
+            if (max_n-3.lt.ord) then
+                err_msg = 'For a derivative of order '//&
+                    &trim(i2str(ord))//', with precision '//trim(i2str(prec))&
+                    &//', at least '//trim(i2str(ord+3))//&
+                    &' input values have to be passed'
+                ierr = 1
+                CHCKERR(err_msg)
+            end if
+            
+            ! apply derivation rules precise up to order 1
+            select case (ord)
+                case(1)                                                         ! first derivative
+                    ! first point
+                    a => delta(1:1)
+                    b => delta(2:2)
+                    c => delta(3:3)
+                    dvar(1:1) = (&
+                        &-b*(b+c)*c*(a*(3*a+2*b+c)+b*(2*a+b)+c*(a+b))*var(1)&
+                        &+(a+b)*(a+b+c)*c*(a+b)*(a+b+c)*var(2)&
+                        &-(b+c)*(a+b+c)*a*a*(a+b+c)*var(3)&
+                        &+a*(a+b)*b*a*(a+b)*var(4)) / &
+                        &(a*b*c*(a+b)*(b+c)*(a+b+c))
+                    nullify(a,b,c)
+                    ! second point
+                    a => delta(1:1)
+                    b => delta(2:2)
+                    c => delta(3:3)
+                    dvar(2:2) = (&
+                        &-b*(b+c)*c*b*(b+c)*var(1)&
+                        &+(a+b)*(a+b+c)*c*(b*c-a*c+b**2-2*a*b)*var(2)&
+                        &+(b+c)*(a+b+c)*a*a*(b+c)*var(3)&
+                        &-a*(a+b)*b*a*b*var(4)) / &
+                        &(a*b*c*(a+b)*(b+c)*(a+b+c))
+                    nullify(a,b,c)
+                    ! middle points
+                    ! (take 5 points instead of 4 because of symmetry)
+                    a => delta(1:max_n-4)
+                    b => delta(2:max_n-3)
+                    c => delta(3:max_n-2)
+                    d => delta(4:max_n-1)
+                    dvar(3:max_n-2) = (&
+                        &b*c*d*(b+c)*(c+d)*(b+c+d)*b*c*(c+d)*&
+                        &var(1:max_n-4)&
+                        &-c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*c*(a+b)*(c+d)*&
+                        &var(2:max_n-3)&
+                        &+a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*&
+                        &(a*d*(c-b)+a*c**2-d*b**2-2*b*c*(a+b-c-d))*&
+                        &var(3:max_n-2)&
+                        &+a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*b*(a+b)*(c+d)*&
+                        &var(4:max_n-1)&
+                        &-a*b*c*(b+c)*(a+b)*(a+b+c)*b*c*(a+b)*&
+                        &var(5:max_n)) / &
+                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
+                    nullify(a,b,c,d)
+                    ! next-to-last point
+                    a => delta(max_n-1:max_n-1)
+                    b => delta(max_n-2:max_n-2)
+                    c => delta(max_n-3:max_n-3)
+                    dvar(max_n-1:max_n-1) = -(&                                 ! - because odd number (1) of sign changes
+                        &-b*(b+c)*c*b*(b+c)*var(max_n)&
+                        &+(a+b)*(a+b+c)*c*(b*c-a*c+b**2-2*a*b)*var(max_n-1)&
+                        &+(b+c)*(a+b+c)*a*a*(b+c)*var(max_n-2)&
+                        &-a*(a+b)*b*a*b*var(max_n-3)) / &
+                        &(a*b*c*(a+b)*(b+c)*(a+b+c))
+                    nullify(a,b,c)
+                    ! last point
+                    a => delta(max_n-1:max_n-1)
+                    b => delta(max_n-2:max_n-2)
+                    c => delta(max_n-3:max_n-3)
+                    dvar(max_n:max_n) = -(&                                     ! - because odd number (1) of sign changes
+                        &-b*(b+c)*c*(a*(3*a+2*b+c)+b*(2*a+b)+c*(a+b))*&
+                        &var(max_n)&
+                        &+(a+b)*(a+b+c)*c*(a+b)*(a+b+c)*var(max_n-1)&
+                        &-(b+c)*(a+b+c)*a*a*(a+b+c)*var(max_n-2)&
+                        &+a*(a+b)*b*a*(a+b)*var(max_n-3)) / &
+                        &(a*b*c*(a+b)*(b+c)*(a+b+c))
+                    nullify(a,b,c)
                 case default
                     ! This you should never reach!
                     err_msg = 'Derivation of order '//trim(i2str(ord))//&
@@ -521,7 +771,7 @@ contains
         
         ! input / output
         integer, intent(in) :: deriv(3)
-        integer, intent(in) :: max_deriv(3)
+        integer, intent(in) :: max_deriv
         character(len=*), intent(in) :: sr_name
         
         ! local variables
@@ -533,11 +783,11 @@ contains
         
         ! test the derivatives
         do id = 1, 3
-            if (deriv(id).gt.max_deriv(id)) then
+            if (deriv(id).gt.max_deriv) then
                 err_msg = 'Asking '//trim(sr_name)//' for a derivative&
                     & in the '//trim(i2str(id))//'th dimension of order '&
                     &//trim(i2str(deriv(id)))//', while the maximum order is '&
-                    &//trim(i2str(max_deriv(id)))
+                    &//trim(i2str(max_deriv))
                 ierr = 1
                 CHCKERR(err_msg)
             end if

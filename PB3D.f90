@@ -28,7 +28,7 @@ program PB3D
         &test_calc_deriv, test_conv_FHM, test_calc_RZL, &
         &test_arr_mult, test_calc_T_VF, test_calc_inv_met, test_calc_det, &
         &test_inv, test_calc_f_deriv, test_calc_g, test_fourier2real, &
-        &test_prepare_X, test_slepc
+        &test_prepare_X, test_slepc, test_pres_balance
 #if ldebug
     use num_vars, only: ltest
 #endif
@@ -86,6 +86,10 @@ program PB3D
     call passed_time
     call writo('')
     call lvl_ud(-1)
+    
+    write(*,*) 'CALC_V_INT SHOULD WORK WITH FAST FOURIER TRANSFORM!!!'
+    
+    write(*,*) 'TEST PRESSURE BALANCE'
 
     !-------------------------------------------------------
     !   Test routines and functions
@@ -95,6 +99,8 @@ program PB3D
         call start_time
         call writo('Start tests')
         call lvl_ud(1)
+        ierr = test_pres_balance()
+        CHCKERR
         !ierr = test_B()
         !CHCKERR
         !ierr = test_ang_B()

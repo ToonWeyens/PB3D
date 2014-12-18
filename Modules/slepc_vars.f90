@@ -9,6 +9,7 @@ module slepc_vars
     use num_vars, only: iu, dp, max_str_ln
     use message_ops, only: lvl_ud, writo, print_ar_2
     use str_ops, only: r2strt, r2str, i2str
+    use output_ops, only: print_GP_2D
 
     implicit none
     private
@@ -219,7 +220,7 @@ contains
         ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING !!!!!!
         integer function fill_mat(V_int_tab,mat,grp_r_eq) result(ierr)
             use num_vars, only: min_r_X, max_r_X
-            use eq_vars, only: max_flux
+            use eq_vars, only: max_flux_F
             use X_vars, only: grp_min_r_X, grp_max_r_X, n_r_X, size_X
             
             character(*), parameter :: rout_name = 'fill_mat'
@@ -275,7 +276,7 @@ contains
             end if
             
             ! set up step_size
-            step_size = (max_r_X-min_r_X)/(n_r_X-1.0) * max_flux                ! equidistant perturbation grid
+            step_size = (max_r_X-min_r_X)/(n_r_X-1.0) * max_flux_F              ! equidistant perturbation grid in perturb. coords.
             
             ! get  the   interpolated  terms   in  V_interp  (also   correct  if
             ! grp_r_eq_hi = grp_r_eq_lo)
@@ -497,8 +498,8 @@ contains
         ! oordinate of which is determined by the variable eq_use_pol_flux
         integer function get_interp_data(grp_r_eq) result(ierr)
             use utilities, only: con2dis, interp_fun_1D
-            use eq_vars, only: max_flux, max_flux_eq, flux_p_FD, flux_t_FD, &
-                &eq_use_pol_flux
+            use eq_vars, only: max_flux_F, max_flux_eq_F, flux_p_FD, &
+                &flux_t_FD, eq_use_pol_flux
             use X_vars, only: grp_r_X
             use num_vars, only: use_pol_flux
             
@@ -541,11 +542,11 @@ contains
                 ! the same  normal coordinate as the  discretization. Therefore,
                 ! conversion is necessary
                 ! 1. continuous equilibrium grid (0..1)
-                ierr = interp_fun_1D(grp_r_eq_eq_con,flux_eq/max_flux_eq,&
-                    &r_X_loc,flux/max_flux)
+                ierr = interp_fun_1D(grp_r_eq_eq_con,flux_eq/max_flux_eq_F,&
+                    &r_X_loc,flux/max_flux_F)
                 CHCKERR('')
                 ! 2. discrete equilibrium grid, unrounded
-                call con2dis(grp_r_eq_eq_con,grp_r_eq(kd),flux_eq/max_flux_eq)
+                call con2dis(grp_r_eq_eq_con,grp_r_eq(kd),flux_eq/max_flux_eq_F)
             end do
         end function get_interp_data
     end function setup_matrices
@@ -795,6 +796,7 @@ contains
         Vec :: sol_vec                                                          ! solution EV parallel vector
         PetscReal :: error                                                      ! error of EPS solver
         PetscInt :: one = 1                                                     ! one
+        PetscReal, parameter :: infinity = 1.E40_dp                             ! beyond this value, modes are not saved
         
         ! initialize ierr
         ierr = 0
@@ -808,9 +810,11 @@ contains
         
         ! Calculate Alfven time T_0 = sqrt(mu_0 rho_0) R_0 / B_0
         if (use_normalization) then
-            call writo('Calculating inverse normalization of results with')
+            call writo('inverse normalization factor:')
+            call lvl_ud(1)
             call writo('omega_0 = 1/T_0^2 = '//trim(r2strt(1/(T_0**2)))//&
                 &' s^-2')
+            call lvl_ud(-1)
         end if
         
         ! store them
@@ -827,6 +831,14 @@ contains
             CHCKERR('EPSComputeRelativeError failed')
             call writo('for solution '//trim(i2str(id))//&
                 &'/'//trim(i2str(max_n_EV))//':')
+            
+            ! test for infinity
+            if (abs(X_val(id)).gt.infinity) then
+                max_n_EV = id-1
+                call writo('The next Eigenvalues are larger than '//&
+                    &trim(r2strt(infinity))//' and are discarded')
+                exit
+            end if
             
             !! visualize solution
             !call PetscViewerDrawOpen(PETSC_COMM_WORLD,PETSC_NULL_CHARACTER,&
