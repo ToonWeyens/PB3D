@@ -381,9 +381,6 @@ contains
         
         ! Sets the  boundary conditions by overwriting  the Hermitian components
         ! written in fill_mat.
-        ! The  boundary condition  deep in  the  plasma, which  states that  the
-        ! perturbation is  zero there,  is implemented  by setting  the diagonal
-        ! elements off block (0,0) to a very large value.
         ! The boundary condition at the plasma surface IS STILL AN OPEN QUESTION
         ! Note:  Only matrix  A should  have its  elements set  to a  very large
         ! value, not both A and B.
@@ -396,7 +393,8 @@ contains
             Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
             
             ! local variables
-            PetscScalar, allocatable :: loc_block_null(:,:)                      ! (size_X,size_X) block matrix for 1 normal point, one
+            PetscScalar, parameter :: EV_0 = 1.0E00_dp                          ! EV corresponding to first normal point (artificial)
+            PetscScalar, allocatable :: loc_block_one(:,:)                      ! (size_X,size_X) block matrix for 1 normal point, one
             PetscScalar, allocatable :: loc_block_zero(:,:)                     ! (size_X,size_X) block matrix for 1 normal point, zero
             PetscInt, allocatable :: loc_k(:), loc_m(:)                         ! the locations at which to add the blocks to the matrices
             PetscInt :: id                                                      ! counter
@@ -405,10 +403,10 @@ contains
             ierr = 0
             
             ! initialize local blocks
-            allocate(loc_block_null(size_X,size_X))
-            loc_block_null = 0.0_dp
+            allocate(loc_block_one(size_X,size_X))
+            loc_block_one = 0.0_dp
             do id = 1,size_X
-                loc_block_null(id,id) = 1.0_dp
+                loc_block_one(id,id) = 1.0_dp
             end do
             allocate(loc_block_zero(size_X,size_X))
             loc_block_zero = 0.0_dp
@@ -416,26 +414,29 @@ contains
                 loc_block_zero(id,id) = 0._dp
             end do
             
-            ! -------------!
-            ! BLOCKS (0,0) !
-            ! -------------!
             if (grp_rank.eq.0) then
+                ! -------------!
+                ! BLOCKS (0,0) !
+                ! -------------!
                 ! set indices where to insert the block
-                loc_k = [(id, id = 0,size_X-1)]                                 ! first diagonal
+                loc_k = [(id, id = 0,size_X-1)]
                 loc_m = loc_k
                 
-                ! set the values of A (infinity)
-                call MatSetValues(A,size_X,loc_k,size_X,loc_m,loc_block_null,&
+                ! set the values of A (EV_0)
+                call MatSetValues(A,size_X,loc_k,size_X,loc_m,&
+                    &EV_0*loc_block_one,INSERT_VALUES,ierr)
+                CHCKERR('')
+                
+                ! set the values of B (one)
+                call MatSetValues(B,size_X,loc_k,size_X,loc_m,loc_block_one,&
                     &INSERT_VALUES,ierr)
                 CHCKERR('')
                 
-                ! set the values of B (zero)
-                call MatSetValues(B,size_X,loc_k,size_X,loc_m,loc_block_zero,&
-                    &INSERT_VALUES,ierr)
-                CHCKERR('')
-                
+                ! -------------!
+                ! BLOCKS (0,1) !
+                ! -------------!
                 ! set indices where to insert the block
-                loc_k = [(id, id = 0,size_X-1)]                                 ! first diagonal
+                loc_k = [(id, id = 0,size_X-1)]
                 loc_m = loc_k + size_X
                 
                 ! set the values of A (zero)
@@ -447,28 +448,44 @@ contains
                 call MatSetValues(B,size_X,loc_k,size_X,loc_m,loc_block_zero,&
                     &INSERT_VALUES,ierr)
                 CHCKERR('')
-            end if
-            
-            ! -------------------------!
-            ! BLOCKS (n_r_X-1,n_r_X-1) !
-            ! -------------------------!
-            if (grp_rank.eq.grp_n_procs-1) then
-                ! set indices where to insert the block
-                loc_k = [(id, id = 0,size_X-1)] + (n_r_X-1)*size_X              ! last diagonal
-                loc_m = loc_k
                 
-                ! set the values of A (infinity)
-                call MatSetValues(A,size_X,loc_k,size_X,loc_m,loc_block_null,&
+                ! -------------!
+                ! BLOCKS (1,0) !
+                ! -------------!
+                ! set the values of A (zero)
+                call MatSetValues(A,size_X,loc_m,size_X,loc_k,loc_block_zero,&
                     &INSERT_VALUES,ierr)
                 CHCKERR('')
                 
                 ! set the values of B (zero)
-                call MatSetValues(B,size_X,loc_k,size_X,loc_m,loc_block_zero,&
+                call MatSetValues(B,size_X,loc_m,size_X,loc_k,loc_block_zero,&
+                    &INSERT_VALUES,ierr)
+                CHCKERR('')
+            end if
+            
+            if (grp_rank.eq.grp_n_procs-1) then
+                ! -------------------------!
+                ! BLOCKS (n_r_X-1,n_r_X-1) !
+                ! -------------------------!
+                ! set indices where to insert the block
+                loc_k = [(id, id = 0,size_X-1)] + (n_r_X-1)*size_X
+                loc_m = loc_k
+                
+                ! set the values of A (EV_0)
+                call MatSetValues(A,size_X,loc_k,size_X,loc_m,&
+                    &EV_0*loc_block_one,INSERT_VALUES,ierr)
+                CHCKERR('')
+                
+                ! set the values of B (one)
+                call MatSetValues(B,size_X,loc_k,size_X,loc_m,loc_block_one,&
                     &INSERT_VALUES,ierr)
                 CHCKERR('')
                 
+                ! -------------------------!
+                ! BLOCKS (n_r_X-1,n_r_X-2) !
+                ! -------------------------!
                 ! set indices where to insert the block
-                loc_k = [(id, id = 0,size_X-1)] + (n_r_X-1)*size_X              ! last diagonal
+                loc_k = [(id, id = 0,size_X-1)] + (n_r_X-1)*size_X
                 loc_m = loc_k - size_X
                 
                 ! set the values of A (zero)
@@ -478,6 +495,19 @@ contains
                 
                 ! set the values of B (zero)
                 call MatSetValues(B,size_X,loc_k,size_X,loc_m,loc_block_zero,&
+                    &INSERT_VALUES,ierr)
+                CHCKERR('')
+                
+                ! -------------------------!
+                ! BLOCKS (n_r_X-2,n_r_X-1) !
+                ! -------------------------!
+                ! set the values of A (zero)
+                call MatSetValues(A,size_X,loc_m,size_X,loc_k,loc_block_zero,&
+                    &INSERT_VALUES,ierr)
+                CHCKERR('')
+                
+                ! set the values of B (zero)
+                call MatSetValues(B,size_X,loc_m,size_X,loc_k,loc_block_zero,&
                     &INSERT_VALUES,ierr)
                 CHCKERR('')
             end if

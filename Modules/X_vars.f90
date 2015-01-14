@@ -1005,27 +1005,27 @@ contains
                 CHCKERR(err_msg)
         end select
         
-        do jd = 1,size(m_X)
-            write(*,*) 'U0'
-            write(*,*) 'RE U0'
-            call print_GP_2D('RE U0(:,:,'//trim(i2str(jd))//')','',&
-                &transpose(realpart(U_X_0(:,:,jd))))
-            write(*,*) 'RE U_corr'
-            call print_GP_2D('RE U_corr(:,:,'//trim(i2str(jd))//')','',&
-                &transpose(realpart(U_corr(:,:,jd))))
-            write(*,*) 'FRACTION RE U_corr'
-            call print_GP_2D('RE U_corr(:,:,'//trim(i2str(jd))//')','',&
-                &transpose(realpart(U_corr(:,:,jd)/U_X_0(:,:,jd))))
-            write(*,*) 'IM U0'
-            call print_GP_2D('IM U0(:,:,'//trim(i2str(jd))//')','',&
-                &transpose(imagpart(U_X_0(:,:,jd))))
-            write(*,*) 'IM U_corr'
-            call print_GP_2D('IM RE U_corr(:,:,'//trim(i2str(jd))//')','',&
-                &transpose(imagpart(U_corr(:,:,jd))))
-            write(*,*) 'FRACTION IM U_corr'
-            call print_GP_2D('IM U_corr(:,:,'//trim(i2str(jd))//')','',&
-                &transpose(imagpart(U_corr(:,:,jd)/U_X_0(:,:,jd))))
-        end do
+        !do jd = 1,size(m_X)
+            !write(*,*) 'U0'
+            !write(*,*) 'RE U0'
+            !call print_GP_2D('RE U0(:,:,'//trim(i2str(jd))//')','',&
+                !&transpose(realpart(U_X_0(:,:,jd))))
+            !write(*,*) 'RE U_corr'
+            !call print_GP_2D('RE U_corr(:,:,'//trim(i2str(jd))//')','',&
+                !&transpose(realpart(U_corr(:,:,jd))))
+            !write(*,*) 'FRACTION RE U_corr'
+            !call print_GP_2D('RE U_corr(:,:,'//trim(i2str(jd))//')','',&
+                !&transpose(realpart(U_corr(:,:,jd)/U_X_0(:,:,jd))))
+            !write(*,*) 'IM U0'
+            !call print_GP_2D('IM U0(:,:,'//trim(i2str(jd))//')','',&
+                !&transpose(imagpart(U_X_0(:,:,jd))))
+            !write(*,*) 'IM U_corr'
+            !call print_GP_2D('IM RE U_corr(:,:,'//trim(i2str(jd))//')','',&
+                !&transpose(imagpart(U_corr(:,:,jd))))
+            !write(*,*) 'FRACTION IM U_corr'
+            !call print_GP_2D('IM U_corr(:,:,'//trim(i2str(jd))//')','',&
+                !&transpose(imagpart(U_corr(:,:,jd)/U_X_0(:,:,jd))))
+        !end do
         
         ! deallocate
         deallocate(U_corr,D3U_corr)
