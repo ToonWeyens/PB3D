@@ -735,7 +735,7 @@ contains
             &n_sol_requested, min_n_r_X, min_r_X, max_r_X, nyq_fac, tol_r, &
             &use_pol_flux, max_n_plots, plot_grid, no_plots, output_style, &
             &eq_style, use_normalization, n_sol_plotted, n_theta_plot, &
-            &n_zeta_plot, max_deriv
+            &n_zeta_plot
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
         use eq_vars, only: n_par, max_par, min_par, grp_min_r_eq, n_r_eq, &
             &grp_max_r_eq, R_0, pres_0, B_0, psi_0, rho_0, eq_use_pol_flux
@@ -820,8 +820,6 @@ contains
             call MPI_Bcast(n_theta_plot,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(n_zeta_plot,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(max_deriv,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(n_sol_plotted,4,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')

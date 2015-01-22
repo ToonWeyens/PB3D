@@ -178,7 +178,7 @@ contains
         ! Calculate the equilibrium quantities for current alpha
         ierr = calc_eq(alpha)
         CHCKERR('')
-        
+            
         ! initialize m
         ierr = init_m()
         CHCKERR('')
@@ -369,7 +369,8 @@ contains
                 ! for all the solutions that are to be saved
                 ! three ranges
                 do jd = 1,3
-                    call writo('Plotting results for modes '//&
+                    if (min_id(jd).le.max_id(jd)) call &
+                        &writo('Plotting results for modes '//&
                         &trim(i2str(min_id(jd)))//'..'//trim(i2str(max_id(jd)))&
                         &//' of range '//trim(i2str(jd)))
                     ! indices in each range

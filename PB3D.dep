@@ -15,6 +15,17 @@ PB3D.o : \
 
 test.o : \
 
+sol_ops.o : \
+    num_vars.o \
+
+coord_ops.o : \
+    num_vars.o \
+    str_ops.o \
+    fourier_ops.o \
+    VMEC_vars.o \
+    utilities.o \
+    eq_vars.o \
+
 driver.o : \
     num_vars.o \
     driver_rich.o \

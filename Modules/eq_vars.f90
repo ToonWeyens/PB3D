@@ -1293,7 +1293,7 @@ contains
             ierr = calc_zero_NR(ang_B(kd),fun_ang_B,dfun_ang_B,ang_NR)
             CHCKERR('')
             
-            ! do a check  whether the result is indeed alpha,  making use of the
+            ! do a check whether the result is indeed alpha
             if (abs(fun_ang_B(ang_B(kd))).gt.tol_NR*100) then
                 err_msg = 'In theta_B, calculating alpha as a check, using &
                     &the theta_V that is the solution of alpha = '&

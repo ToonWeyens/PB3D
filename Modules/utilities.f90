@@ -47,6 +47,9 @@ module utilities
     interface dis2con
         module procedure dis2con_equidistant, dis2con_regular
     end interface
+    interface interp_fun_1D
+        module procedure interp_fun_1D_0D, interp_fun_1D_2D
+    end interface
     
 contains
     ! initialize utilities:
@@ -1437,6 +1440,7 @@ contains
         integer :: jd
         real(dp) :: corr
         character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), parameter :: relax_fac = 0.5_dp                               ! factor for relaxation
         
         ! initialize ierr
         ierr = 0
@@ -1448,7 +1452,7 @@ contains
             corr = -fun(zero_NR)/dfun(zero_NR)
             !write(*,*) 'jd, zero_NR = ', jd, zero_NR
             !write(*,*) 'fun, dfun = ', fun(zero_NR), dfun(zero_NR)
-            zero_NR = zero_NR + corr
+            zero_NR = zero_NR + relax_fac*corr
             
             ! check for convergence
             if (abs(corr).lt.tol_NR) then
@@ -1635,12 +1639,12 @@ contains
     ! result is stored in  y_out. The array x can be  optionally passed. If not,
     ! it is assumed to be the (equidistant) linear space between 0 and 1.
     ! Note: This function is assumed to be monotomous. If not, an error results.
-    integer function interp_fun_1D(y_out,y,x_in,x) result(ierr)
+    integer function interp_fun_1D_2D(y_out,y,x_in,x) result(ierr)              ! 2D version
         character(*), parameter :: rout_name = 'interp_fun_1D'
         
         ! input / output
-        real(dp), intent(inout) :: y_out                                        ! output y_out
-        real(dp), intent(in) :: y(:)                                            ! y(x)
+        real(dp), intent(inout) :: y_out(:,:)                                   ! output y_out
+        real(dp), intent(in) :: y(:,:,:)                                        ! y(x)
         real(dp), intent(in) :: x_in                                            ! input x_in
         real(dp), intent(in), optional :: x(:)                                  ! x(x)
         
@@ -1654,7 +1658,7 @@ contains
         ierr = 0
         
         ! set up n_pt
-        n_pt = size(y)
+        n_pt = size(y,3)
         
         ! tests
         if (present(x)) then
@@ -1683,7 +1687,66 @@ contains
         ind_hi = ceiling(ind)
         
         ! calculate y_out
-        y_out = y(ind_lo) + (y(ind_hi)-y(ind_lo)) * &
+        y_out = y(:,:,ind_lo) + (y(:,:,ind_hi)-y(:,:,ind_lo)) * &
             &(ind-ind_lo)
-    end function interp_fun_1D
+    end function interp_fun_1D_2D
+    integer function interp_fun_1D_0D(y_out,y,x_in,x) result(ierr)              ! 0D version
+        character(*), parameter :: rout_name = 'interp_fun_1D'
+        
+        ! input / output
+        real(dp), intent(inout) :: y_out                                        ! output y_out
+        real(dp), intent(in) :: y(:)                                            ! y(x)
+        real(dp), intent(in) :: x_in                                            ! input x_in
+        real(dp), intent(in), optional :: x(:)                                  ! x(x)
+        
+        ! local variables
+        real(dp) :: y_out_loc(1,1)
+        !integer :: n_pt                                                         ! nr. points in y
+        !real(dp) :: ind                                                         ! unrounded x-index
+        !integer :: ind_lo, ind_hi                                               ! lower and higher index of x_in in x(x)
+        !character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! call 2D version
+        ierr = interp_fun_1D_2D(y_out_loc,reshape(y,[1,1,size(y)]),x_in,x)
+        CHCKERR('')
+        
+        ! copy to y_out
+        y_out = y_out_loc(1,1)
+        
+        !! initialize ierr
+        !ierr = 0
+        
+        !! set up n_pt
+        !n_pt = size(y)
+        
+        !! tests
+        !if (present(x)) then
+            !if (size(x).ne.n_pt) then
+                !err_msg = 'x and y need to have the same size'
+                !ierr = 1
+                !CHCKERR(err_msg)
+            !end if
+        !end if
+        
+        !! find the lower range of the index in the x array
+        !if (present(x)) then
+            !call con2dis(x_in,ind,x)
+        !else
+            !call con2dis(x_in,ind,[0._dp,1._dp],[1,n_pt])
+        !end if
+        
+        !! test if result has been found
+        !if (ind.le.0) then
+            !ierr = 1
+            !CHCKERR('see WARNING from con2dis above')
+        !end if
+        
+        !! set ind_lo and ind_hi
+        !ind_lo = floor(ind)
+        !ind_hi = ceiling(ind)
+        
+        !! calculate y_out
+        !y_out = y(ind_lo) + (y(ind_hi)-y(ind_lo)) * &
+            !&(ind-ind_lo)
+    end function interp_fun_1D_0D
 end module utilities

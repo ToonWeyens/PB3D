@@ -1042,7 +1042,6 @@ contains
             real(dp), allocatable :: D3g_frac(:,:)                              ! D_theta g_frac
             real(dp), allocatable :: D13T_theta(:,:), D33T_theta(:,:)           ! Theta^theta derivatives
             ! extra upper metric factors
-            real(dp), allocatable :: D3h22(:,:)                                 ! D_theta h^psi,psi
             real(dp), allocatable :: D13h22(:,:)                                ! D^2_alpha,theta h^psi,psi
             real(dp), allocatable :: D33h22(:,:)                                ! D^2_theta,theta h^psi,psi
             real(dp), allocatable :: D13h23(:,:)                                ! D^2_alpha,theta h^psi,theta

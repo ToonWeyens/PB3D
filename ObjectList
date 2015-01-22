@@ -11,6 +11,7 @@ HDF5_vars.o \
 HEL_vars.o \
 eq_vars.o \
 metric_ops.o \
+coord_ops.o \
 file_ops.o \
 X_ops.o \
 X_vars.o \
@@ -19,6 +20,7 @@ eq_ops.o \
 driver_rich.o \
 slepc_vars.o \
 slepc_ops.o \
+sol_ops.o \
 driver.o \
 test.o \
 PB3D.o \
