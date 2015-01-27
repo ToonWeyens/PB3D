@@ -315,7 +315,7 @@ contains
     end function open_input
 
     ! open an output file
-    ! [MPI] only group masters
+    ! [MPI] Parts by all processes, parts only by group master
     integer function open_output() result(ierr)
         use num_vars, only: output_i, n_seq_0, glb_rank, grp_nr, glb_rank, &
             &grp_rank, output_name
@@ -330,6 +330,7 @@ contains
         
         ! initialize ierr
         ierr = 0
+        write(*,*) '!!!! FIX FILE_OPS FOR NON MASTERS !!!!!!!!'
         
         if (grp_rank.eq.0) then                                                 ! only group masters
             if (glb_rank.eq.0) call writo('Attempting to open output files')    ! but only global master outputs

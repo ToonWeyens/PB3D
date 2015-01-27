@@ -6,9 +6,9 @@ str_ops.o \
 utilities.o \
 output_ops.o \
 input_ops.o \
-VMEC_vars.o \
-HDF5_vars.o \
-HEL_vars.o \
+HDF5_ops.o \
+VMEC_ops.o \
+HEL_ops.o \
 eq_vars.o \
 metric_ops.o \
 coord_ops.o \

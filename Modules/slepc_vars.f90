@@ -527,7 +527,7 @@ contains
         ! V_interp  from  the tabulated  values  in  the equilibrium  grid,  the
         ! oordinate of which is determined by the variable eq_use_pol_flux
         integer function get_interp_data(grp_r_eq) result(ierr)
-            use utilities, only: con2dis, interp_fun_1D
+            use utilities, only: con2dis, interp_fun
             use eq_vars, only: max_flux_F, max_flux_eq_F, flux_p_FD, &
                 &flux_t_FD, eq_use_pol_flux
             use X_vars, only: grp_r_X
@@ -572,7 +572,7 @@ contains
                 ! the same  normal coordinate as the  discretization. Therefore,
                 ! conversion is necessary
                 ! 1. continuous equilibrium grid (0..1)
-                ierr = interp_fun_1D(grp_r_eq_eq_con,flux_eq/max_flux_eq_F,&
+                ierr = interp_fun(grp_r_eq_eq_con,flux_eq/max_flux_eq_F,&
                     &r_X_loc,flux/max_flux_F)
                 CHCKERR('')
                 ! 2. discrete equilibrium grid, unrounded

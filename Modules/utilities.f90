@@ -6,12 +6,11 @@ module utilities
     use num_vars, only: dp, iu, max_str_ln
     use message_ops, only: writo, print_ar_1, print_ar_2
     use str_ops, only: i2str, r2strt, r2str
-    use output_ops, only: print_GP_2D
     
     implicit none
     private
-    public calc_zero_NR, calc_ext_var, calc_det, calc_int, arr_mult, &
-        &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun_1D, &
+    public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, &
+        &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun, &
         &init_utilities, derivs, con2dis, dis2con, round_with_tol, &
         &calc_spline_3
     
@@ -23,8 +22,8 @@ module utilities
     integer, allocatable :: derivs_4(:,:)                                       ! all possible derivatives of order 3
 
     ! interfaces
-    interface arr_mult
-        module procedure arr_mult_3_3, arr_mult_3_1, arr_mult_1_1
+    interface add_arr_mult
+        module procedure add_arr_mult_3_3, add_arr_mult_3_1, add_arr_mult_1_1
     end interface
     interface calc_det
         module procedure calc_det_0D, calc_det_2D
@@ -47,8 +46,8 @@ module utilities
     interface dis2con
         module procedure dis2con_equidistant, dis2con_regular
     end interface
-    interface interp_fun_1D
-        module procedure interp_fun_1D_0D, interp_fun_1D_2D
+    interface interp_fun
+        module procedure interp_fun_0D, interp_fun_1D, interp_fun_2D
     end interface
     
 contains
@@ -127,7 +126,7 @@ contains
     end function
     
     ! numerically derives  a function  whose values are  given on  a equidistant
-    ! mesh, specified by the inverse step size  to an order specified by ord and
+    ! grid, specified by the inverse step size  to an order specified by ord and
     ! a precision  specified by  prec (which is  the power of  the step  size to
     ! which the result  is still correct. E.g.: for forward  differences, prec =
     ! 0, and for central differences prec=1)
@@ -331,7 +330,7 @@ contains
     end function calc_deriv_equidistant
     
     ! numerically derives  a function whose values  are given on a  regular, but
-    ! not  equidistant, mesh,  to  an order  specified by  ord  and a  precision
+    ! not  equidistant, grid,  to  an order  specified by  ord  and a  precision
     ! specified by prec (which is the power of the step size to which the result
     ! is still correct. E.g.: for forward differences, prec = 0, and for central
     ! differences prec=1)
@@ -996,8 +995,8 @@ contains
     ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
     ! that are distributed between both acording to the binomial theorem
     ! VERSION with arr_1 and arr_2 in three coords.
-    integer function arr_mult_3_3(arr_1,arr_2,arr_3,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'arr_mult_3_3'
+    integer function add_arr_mult_3_3(arr_1,arr_2,arr_3,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'add_arr_mult_3_3'
         
         ! input / output
         real(dp), intent(in) :: arr_1(1:,1:,0:,0:,0:)
@@ -1074,13 +1073,13 @@ contains
                 end do
             end do
         end do
-    end function arr_mult_3_3
+    end function add_arr_mult_3_3
     
     ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
     ! that are distributed between both acording to the binomial theorem
     ! VERSION with arr_1 in three coords and arr_2 only in the flux coord.
-    integer function arr_mult_3_1(arr_1,arr_2,arr_3,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'arr_mult_3_1'
+    integer function add_arr_mult_3_1(arr_1,arr_2,arr_3,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'add_arr_mult_3_1'
         
         ! input / output
         real(dp), intent(in) :: arr_1(1:,1:,0:,0:,0:)
@@ -1128,13 +1127,13 @@ contains
                     &arr_1(:,kd,r,deriv(2),deriv(3))* arr_2(kd,deriv(1)-r)
             end do
         end do
-    end function arr_mult_3_1
+    end function add_arr_mult_3_1
     
     ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
     ! that are distributed between both acording to the binomial theorem
     ! VERSION with arr_1 and arr_2 only in the flux coord.
-    integer function arr_mult_1_1(arr_1,arr_2,arr_3,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'arr_mult_1_1'
+    integer function add_arr_mult_1_1(arr_1,arr_2,arr_3,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'add_arr_mult_1_1'
         
         ! input / output
         real(dp), intent(in) :: arr_1(1:,0:)
@@ -1181,7 +1180,7 @@ contains
                 arr_3 = arr_3 + bin_fac * arr_1(:,r)* arr_2(:,deriv(1)-r)
             end do
         end if
-    end function arr_mult_1_1
+    end function add_arr_mult_1_1
 
     ! Calculate determinant of a  matrix which is defined on a  2D grid (first 2
     ! indices). The  size of the matrix  (last two indices) should  be small, as
@@ -1298,10 +1297,10 @@ contains
     end function calc_det_0D
     
     ! calculate inverse of  square matrix A which has  elements depending on
-    ! 2D mesh (first two coords)
+    ! 2D grid (first two coords)
     ! this method uses direct inversion using  Cramer's rule, since the matrix A
     ! is supposed to be  very small (i.e. 3x3 or 1x1) and  since the inverse has
-    ! to be calculated at  each of the points in the 2D mesh,  this can be quite
+    ! to be calculated at  each of the points in the 2D grid,  this can be quite
     ! fast
     integer function calc_inv_2D(inv_2D,A) result(ierr)
         character(*), parameter :: rout_name = 'calc_inv_2D'
@@ -1639,8 +1638,8 @@ contains
     ! result is stored in  y_out. The array x can be  optionally passed. If not,
     ! it is assumed to be the (equidistant) linear space between 0 and 1.
     ! Note: This function is assumed to be monotomous. If not, an error results.
-    integer function interp_fun_1D_2D(y_out,y,x_in,x) result(ierr)              ! 2D version
-        character(*), parameter :: rout_name = 'interp_fun_1D'
+    integer function interp_fun_2D(y_out,y,x_in,x) result(ierr)                 ! 2D version
+        character(*), parameter :: rout_name = 'interp_fun_2D'
         
         ! input / output
         real(dp), intent(inout) :: y_out(:,:)                                   ! output y_out
@@ -1689,9 +1688,35 @@ contains
         ! calculate y_out
         y_out = y(:,:,ind_lo) + (y(:,:,ind_hi)-y(:,:,ind_lo)) * &
             &(ind-ind_lo)
-    end function interp_fun_1D_2D
-    integer function interp_fun_1D_0D(y_out,y,x_in,x) result(ierr)              ! 0D version
+    end function interp_fun_2D
+    integer function interp_fun_1D(y_out,y,x_in,x) result(ierr)                 ! 1D version
         character(*), parameter :: rout_name = 'interp_fun_1D'
+        
+        ! input / output
+        real(dp), intent(inout) :: y_out(:)                                     ! output y_out
+        real(dp), intent(in) :: y(:,:)                                          ! y(x)
+        real(dp), intent(in) :: x_in                                            ! input x_in
+        real(dp), intent(in), optional :: x(:)                                  ! x(x)
+        
+        ! local variables
+        real(dp), allocatable :: y_out_loc(:,:)
+        
+        ! allocate y_out_loc
+        allocate(y_out_loc(1,size(y_out)))
+        
+        ! call 2D version
+        ierr = interp_fun_2D(y_out_loc,reshape(y,[1,size(y_out),size(y)]),&
+            &x_in,x)
+        CHCKERR('')
+        
+        ! copy to y_out
+        y_out = y_out_loc(1,1)
+        
+        ! clean up
+        deallocate(y_out_loc)
+    end function interp_fun_1D
+    integer function interp_fun_0D(y_out,y,x_in,x) result(ierr)                 ! 0D version
+        character(*), parameter :: rout_name = 'interp_fun_0D'
         
         ! input / output
         real(dp), intent(inout) :: y_out                                        ! output y_out
@@ -1701,52 +1726,12 @@ contains
         
         ! local variables
         real(dp) :: y_out_loc(1,1)
-        !integer :: n_pt                                                         ! nr. points in y
-        !real(dp) :: ind                                                         ! unrounded x-index
-        !integer :: ind_lo, ind_hi                                               ! lower and higher index of x_in in x(x)
-        !character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! call 2D version
-        ierr = interp_fun_1D_2D(y_out_loc,reshape(y,[1,1,size(y)]),x_in,x)
+        ierr = interp_fun_2D(y_out_loc,reshape(y,[1,1,size(y)]),x_in,x)
         CHCKERR('')
         
         ! copy to y_out
         y_out = y_out_loc(1,1)
-        
-        !! initialize ierr
-        !ierr = 0
-        
-        !! set up n_pt
-        !n_pt = size(y)
-        
-        !! tests
-        !if (present(x)) then
-            !if (size(x).ne.n_pt) then
-                !err_msg = 'x and y need to have the same size'
-                !ierr = 1
-                !CHCKERR(err_msg)
-            !end if
-        !end if
-        
-        !! find the lower range of the index in the x array
-        !if (present(x)) then
-            !call con2dis(x_in,ind,x)
-        !else
-            !call con2dis(x_in,ind,[0._dp,1._dp],[1,n_pt])
-        !end if
-        
-        !! test if result has been found
-        !if (ind.le.0) then
-            !ierr = 1
-            !CHCKERR('see WARNING from con2dis above')
-        !end if
-        
-        !! set ind_lo and ind_hi
-        !ind_lo = floor(ind)
-        !ind_hi = ceiling(ind)
-        
-        !! calculate y_out
-        !y_out = y(ind_lo) + (y(ind_hi)-y(ind_lo)) * &
-            !&(ind-ind_lo)
-    end function interp_fun_1D_0D
+    end function interp_fun_0D
 end module utilities

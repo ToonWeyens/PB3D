@@ -13,15 +13,15 @@ module test
     implicit none
     private
     public test_repack, test_print_GP, test_metric_transf, test_ang_B, &
-        &test_calc_ext_var, test_B, test_calc_deriv, test_arr_mult, &
+        &test_calc_ext_var, test_B, test_calc_deriv, test_add_arr_mult, &
         &test_conv_FHM, test_calc_RZL, test_calc_T_VF, test_calc_inv_met, &
         &test_calc_det, test_inv, test_calc_f_deriv, test_calc_g, &
         &test_fourier2real, test_prepare_X, test_slepc, test_pres_balance
     
 contains
     integer function test_fourier2real() result(ierr)
-        !use VMEC_vars, only: nfp
-        !use eq_vars, only: calc_eqd_mesh
+        !use VMEC_ops, only: nfp
+        !use eq_vars, only: calc_eqd_grid
         !use fourier_ops, only: fourier2real, calc_trigon_factors
         
         !character(*), parameter :: rout_name = 'test_fourier2real'
@@ -62,7 +62,7 @@ contains
             
             !! physical grid
             !zeta = 0.4*pi/2
-            !ierr = calc_eqd_mesh(theta(:,1),n,min_n,max_n)
+            !ierr = calc_eqd_grid(theta(:,1),n,min_n,max_n)
             !CHCKERR('')
             
             !! set up Fourier coefficients
@@ -100,7 +100,7 @@ contains
             !write(*,*) 'D_theta'
             !! invert Fourier series
             !do id = 1,n
-                !ierr = calc_mesh_cs(cs,mpol,ntor,nfp,theta(id),zeta(id))
+                !ierr = calc_ang_grid(cs,mpol,ntor,nfp,theta(id),zeta(id))
                 !CHCKERR('')
                 !realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[1,0],ierr)
                 !CHCKERR('')
@@ -126,7 +126,7 @@ contains
             !write(*,*) 'D_zeta'
             !! invert Fourier series
             !do id = 1,n
-                !ierr = calc_mesh_cs(cs,mpol,ntor,nfp,theta(id),zeta(id))
+                !ierr = calc_ang_grid(cs,mpol,ntor,nfp,theta(id),zeta(id))
                 !CHCKERR('')
                 !realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[0,1],ierr)
                 !CHCKERR('')
@@ -152,7 +152,7 @@ contains
             !write(*,*) 'D^2_theta D_zeta'
             !! invert Fourier series
             !do id = 1,n
-                !ierr = calc_mesh_cs(cs,mpol,ntor,nfp,theta(id),zeta(id))
+                !ierr = calc_ang_grid(cs,mpol,ntor,nfp,theta(id),zeta(id))
                 !CHCKERR('')
                 !realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[2,1],ierr)
                 !CHCKERR('')
@@ -184,7 +184,7 @@ contains
     subroutine test_repack
         ! VMEC variable has structure (1:mnmax, 1:grp_n_r_eq)
         ! output variable should have (1:grp_n_r_eq, 0:mpol-1, -ntor:ntor)
-        use VMEC_vars, only: repack
+        use VMEC_ops, only: repack
         
         integer :: n_rB, mpolB, ntorB, mnmaxB
         real(dp), allocatable :: xmB(:), xnB(:)
@@ -514,7 +514,7 @@ contains
     integer function test_prepare_X() result(ierr)
         use X_ops, only: prepare_X
         use X_vars, only: PV0, PV1, PV2
-        use eq_ops, only: calc_eq
+        use driver_rich, only: calc_eq
         
         character(*), parameter :: rout_name = 'test_prepare_X'
         
@@ -1020,9 +1020,10 @@ contains
     end function test_conv_FHM
     
     integer function test_calc_RZL() result(ierr)
-        use eq_vars, only: calc_RZL, init_eq, calc_eqd_mesh, &
-            &VMEC_R, VMEC_Z, theta_V, zeta_V,  n_par, grp_n_r_eq
-        use VMEC_vars, only: rmax_surf, rmin_surf, zmax_surf
+        use coord_ops, only: calc_eqd_grid
+        use eq_ops, only: calc_RZL, init_eq
+        use eq_vars, only: VMEC_R, VMEC_Z, theta_E, zeta_E,  n_par, grp_n_r_eq
+        use VMEC_ops, only: rmax_surf, rmin_surf, zmax_surf
         
         character(*), parameter :: rout_name = 'test_calc_RZL'
         
@@ -1038,15 +1039,15 @@ contains
             write(*,*) 'initializing'
             ierr = init_eq()
             
-            write(*,*) 'calculations with constant zeta, varying theta_V'
-            if (allocated(zeta_V)) deallocate(zeta_V)
-            allocate(zeta_V(n_par,grp_n_r_eq)); zeta_V = 0.0_dp
-            if (allocated(theta_V)) deallocate(theta_V)
-            allocate(theta_V(n_par,grp_n_r_eq)); theta_V = 0.0_dp
+            write(*,*) 'calculations with constant zeta, varying theta_E'
+            if (allocated(zeta_E)) deallocate(zeta_E)
+            allocate(zeta_E(n_par,grp_n_r_eq)); zeta_E = 0.0_dp
+            if (allocated(theta_E)) deallocate(theta_E)
+            allocate(theta_E(n_par,grp_n_r_eq)); theta_E = 0.0_dp
             
-            zeta_V = 0.4*pi/2
+            zeta_E = 0.4*pi/2
             do jd = 1,grp_n_r_eq
-                ierr = calc_eqd_mesh(theta_V(:,jd),n_par, 0.0_dp*pi, 3.0_dp*pi)
+                ierr = calc_eqd_grid(theta_E(:,jd),n_par, 0.0_dp*pi, 3.0_dp*pi)
                 CHCKERR('')
             end do
             
@@ -1067,26 +1068,26 @@ contains
             
             write(*,*) 'Plotting R'
             call print_GP_3D('R','',VMEC_R(:,:,0,0,0))
-            call print_GP_2D('R at r = 5','',VMEC_R(:,5,0,0,0),x=theta_V(:,5))
+            call print_GP_2D('R at r = 5','',VMEC_R(:,5,0,0,0),x=theta_E(:,5))
             do jd = 1,3
-                call print_GP_2D('R_theta_V^'//trim(i2str(jd))//' at r = 5','',&
-                    &VMEC_R(:,5,0,jd,0),x=theta_V(:,5))
+                call print_GP_2D('R_theta_E^'//trim(i2str(jd))//' at r = 5','',&
+                    &VMEC_R(:,5,0,jd,0),x=theta_E(:,5))
             end do
             do jd = 1,3
                 call print_GP_2D('R_zeta^'//trim(i2str(jd))//' at r = 5','',&
-                    &VMEC_R(:,5,0,0,jd),x=theta_V(:,5))
+                    &VMEC_R(:,5,0,0,jd),x=theta_E(:,5))
             end do
             
             write(*,*) 'Plotting Z'
             call print_GP_3D('Z','',VMEC_Z(:,:,0,0,0))
-            call print_GP_2D('Z at r = 5','',VMEC_Z(:,5,0,0,0),x=theta_V(:,5))
+            call print_GP_2D('Z at r = 5','',VMEC_Z(:,5,0,0,0),x=theta_E(:,5))
             do jd = 1,3
-                call print_GP_2D('Z_theta_V^'//trim(i2str(jd))//' at r = 5','',&
-                    &VMEC_Z(:,5,0,jd,0),x=theta_V(:,5))
+                call print_GP_2D('Z_theta_E^'//trim(i2str(jd))//' at r = 5','',&
+                    &VMEC_Z(:,5,0,jd,0),x=theta_E(:,5))
             end do
             do jd = 1,3
                 call print_GP_2D('Z_zeta^'//trim(i2str(jd))//' at r = 5','',&
-                    &VMEC_Z(:,5,0,0,jd),x=theta_V(:,5))
+                    &VMEC_Z(:,5,0,0,jd),x=theta_E(:,5))
             end do
             
             ! test whether VMEC given bounds are respected
@@ -1133,13 +1134,13 @@ contains
                     & is lower than VMEC provided minimum by '//&
                     &trim(r2strt(100*min_frac))//'%...'
                 write(*,*) ' -> Maybe use an even number of poloidal points, &
-                    &or more angular mesh points in general?'
+                    &or more angular grid points in general?'
                 write(*,*) ' -> Maybe run VMEC with more accuracy?'
             else if (max_frac.gt.margin) then                                   ! too high maximum
                 write(*,*) 'WARNING: maximum of variable in real angular space &
                     & is greater than VMEC provided maximum by '//&
                     &trim(r2strt(100*max_frac))//'%...'
-                write(*,*) ' -> Maybe use more angular mesh points'
+                write(*,*) ' -> Maybe use more angular grid points'
                 write(*,*) ' -> Maybe run VMEC with more accuracy?'
             else 
                 write(*,*) 'within bounds'
@@ -1149,9 +1150,9 @@ contains
     end function test_calc_RZL
     
     integer function test_calc_T_VF() result(ierr)
-        use eq_ops, only: calc_eq
-        use metric_ops, only: T_VF
-        use eq_vars, only: q_saf_V, VMEC_L, flux_p_V, theta => theta_V, &
+        use driver_rich, only: calc_eq
+        use metric_ops, only: T_EF
+        use eq_vars, only: q_saf_E, VMEC_L, flux_p_E, theta => theta_E, &
             &grp_n_r_eq
         
         character(*), parameter :: rout_name = 'test_calc_T_VF'
@@ -1216,13 +1217,13 @@ contains
             do id = 1,3
                 do jd = 1,3
                     call print_GP_2D('T_VF('//trim(i2str(id))//','//&
-                        &trim(i2str(jd))//')','',T_VF(5,:,id,jd,deriv(1),&
+                        &trim(i2str(jd))//')','',T_EF(5,:,id,jd,deriv(1),&
                         &deriv(2),deriv(3)))
                     call print_GP_2D('alt. T_VF('//trim(i2str(id))//','//&
                         &trim(i2str(jd))//')','',T_loc(:,id,jd))
                     call print_GP_2D('abs. diff ('//trim(i2str(id))//','//&
                         &trim(i2str(jd))//')','',abs(T_loc(:,id,jd)-&
-                        &T_VF(5,:,id,jd,deriv(1),&
+                        &T_EF(5,:,id,jd,deriv(1),&
                         &deriv(2),deriv(3))))
                 end do
             end do
@@ -1234,84 +1235,84 @@ contains
     contains
         subroutine case_1
             T_loc = 0.0_dp
-            T_loc(:,1,1) = -q_saf_V(:,1)*(theta(5,:)+VMEC_L(5,:,0,0,0)) &
-                &-q_saf_V(:,0)*VMEC_L(5,:,1,0,0)
-            T_loc(:,1,2) = flux_p_V(:,1)/(2*pi)
+            T_loc(:,1,1) = -q_saf_E(:,1)*(theta(5,:)+VMEC_L(5,:,0,0,0)) &
+                &-q_saf_E(:,0)*VMEC_L(5,:,1,0,0)
+            T_loc(:,1,2) = flux_p_E(:,1)/(2*pi)
             T_loc(:,1,3) = VMEC_L(5,:,1,0,0)
-            T_loc(:,2,1) = -q_saf_V(:,0)*(1.0_dp+VMEC_L(5,:,0,1,0))
+            T_loc(:,2,1) = -q_saf_E(:,0)*(1.0_dp+VMEC_L(5,:,0,1,0))
             T_loc(:,2,2) = 0.0_dp
             T_loc(:,2,3) = 1.0_dp + VMEC_L(5,:,0,1,0)
-            T_loc(:,3,1) = 1.0_dp - q_saf_V(:,0)*VMEC_L(5,:,0,0,1)
+            T_loc(:,3,1) = 1.0_dp - q_saf_E(:,0)*VMEC_L(5,:,0,0,1)
             T_loc(:,3,2) = 0.0_dp
             T_loc(:,3,3) = VMEC_L(5,:,0,0,1)
         end subroutine
         
         subroutine case_2
             T_loc = 0.0_dp
-            T_loc(:,1,1) = -q_saf_V(:,2)*(theta(5,:)+VMEC_L(5,:,0,0,0)) &
-                &-2*q_saf_V(:,1)*VMEC_L(5,:,1,0,0)&
-                &-q_saf_V(:,0)*VMEC_L(5,:,2,0,0)
-            T_loc(:,1,2) = flux_p_V(:,2)/(2*pi)
+            T_loc(:,1,1) = -q_saf_E(:,2)*(theta(5,:)+VMEC_L(5,:,0,0,0)) &
+                &-2*q_saf_E(:,1)*VMEC_L(5,:,1,0,0)&
+                &-q_saf_E(:,0)*VMEC_L(5,:,2,0,0)
+            T_loc(:,1,2) = flux_p_E(:,2)/(2*pi)
             T_loc(:,1,3) = VMEC_L(5,:,2,0,0)
-            T_loc(:,2,1) = -q_saf_V(:,1)*(1.0_dp+VMEC_L(5,:,0,1,0)) &
-                &-q_saf_V(:,0)*VMEC_L(5,:,1,1,0)
+            T_loc(:,2,1) = -q_saf_E(:,1)*(1.0_dp+VMEC_L(5,:,0,1,0)) &
+                &-q_saf_E(:,0)*VMEC_L(5,:,1,1,0)
             T_loc(:,2,2) = 0.0_dp
             T_loc(:,2,3) = VMEC_L(5,:,1,1,0)
-            T_loc(:,3,1) = -q_saf_V(:,1)*VMEC_L(5,:,0,0,1) &
-                &- q_saf_V(:,0)*VMEC_L(5,:,1,0,1)
+            T_loc(:,3,1) = -q_saf_E(:,1)*VMEC_L(5,:,0,0,1) &
+                &- q_saf_E(:,0)*VMEC_L(5,:,1,0,1)
             T_loc(:,3,2) = 0.0_dp
             T_loc(:,3,3) = VMEC_L(5,:,1,0,1)
         end subroutine
         
         subroutine case_3
             T_loc = 0.0_dp
-            T_loc(:,1,1) = -q_saf_V(:,1)*(1+VMEC_L(5,:,0,1,0))&
-                &-q_saf_V(:,0)*VMEC_L(5,:,1,1,0)
+            T_loc(:,1,1) = -q_saf_E(:,1)*(1+VMEC_L(5,:,0,1,0))&
+                &-q_saf_E(:,0)*VMEC_L(5,:,1,1,0)
             T_loc(:,1,2) = 0.0_dp
             T_loc(:,1,3) = VMEC_L(5,:,1,1,0)
-            T_loc(:,2,1) = -q_saf_V(:,0)*VMEC_L(5,:,0,2,0)
+            T_loc(:,2,1) = -q_saf_E(:,0)*VMEC_L(5,:,0,2,0)
             T_loc(:,2,2) = 0.0_dp
             T_loc(:,2,3) = VMEC_L(5,:,0,2,0)
-            T_loc(:,3,1) = -q_saf_V(:,0)*VMEC_L(5,:,0,1,1)
+            T_loc(:,3,1) = -q_saf_E(:,0)*VMEC_L(5,:,0,1,1)
             T_loc(:,3,2) = 0.0_dp
             T_loc(:,3,3) = VMEC_L(5,:,0,1,1)
         end subroutine
         
         subroutine case_4
             T_loc = 0.0_dp
-            T_loc(:,1,1) = -q_saf_V(:,1)*VMEC_L(5,:,0,0,1)&
-                &-q_saf_V(:,0)*VMEC_L(5,:,1,0,1)
+            T_loc(:,1,1) = -q_saf_E(:,1)*VMEC_L(5,:,0,0,1)&
+                &-q_saf_E(:,0)*VMEC_L(5,:,1,0,1)
             T_loc(:,1,2) = 0.0_dp
             T_loc(:,1,3) = VMEC_L(5,:,1,0,1)
-            T_loc(:,2,1) = -q_saf_V(:,0)*VMEC_L(5,:,0,1,1)
+            T_loc(:,2,1) = -q_saf_E(:,0)*VMEC_L(5,:,0,1,1)
             T_loc(:,2,2) = 0.0_dp
             T_loc(:,2,3) = VMEC_L(5,:,0,1,1)
-            T_loc(:,3,1) = -q_saf_V(:,0)*VMEC_L(5,:,0,0,2)
+            T_loc(:,3,1) = -q_saf_E(:,0)*VMEC_L(5,:,0,0,2)
             T_loc(:,3,2) = 0.0_dp
             T_loc(:,3,3) = VMEC_L(5,:,0,0,2)
         end subroutine
         
         subroutine case_5
             T_loc = 0.0_dp
-            T_loc(:,1,1) = -q_saf_V(:,2)*VMEC_L(5,:,0,2,1)-2*q_saf_V(:,1)*&
-                &VMEC_L(5,:,1,2,1)-q_saf_V(:,0)*VMEC_L(5,:,2,2,1)
+            T_loc(:,1,1) = -q_saf_E(:,2)*VMEC_L(5,:,0,2,1)-2*q_saf_E(:,1)*&
+                &VMEC_L(5,:,1,2,1)-q_saf_E(:,0)*VMEC_L(5,:,2,2,1)
             T_loc(:,1,2) = 0.0_dp
             T_loc(:,1,3) = VMEC_L(5,:,2,2,1)
-            T_loc(:,2,1) = -q_saf_V(:,1)*VMEC_L(5,:,0,3,1)&
-                &-q_saf_V(:,0)*VMEC_L(5,:,1,3,1)
+            T_loc(:,2,1) = -q_saf_E(:,1)*VMEC_L(5,:,0,3,1)&
+                &-q_saf_E(:,0)*VMEC_L(5,:,1,3,1)
             T_loc(:,2,2) = 0.0_dp
             T_loc(:,2,3) = VMEC_L(5,:,1,3,1)
-            T_loc(:,3,1) = -q_saf_V(:,1)*VMEC_L(5,:,0,2,2)&
-                &-q_saf_V(:,0)*VMEC_L(5,:,1,2,2)
+            T_loc(:,3,1) = -q_saf_E(:,1)*VMEC_L(5,:,0,2,2)&
+                &-q_saf_E(:,0)*VMEC_L(5,:,1,2,2)
             T_loc(:,3,2) = 0.0_dp
             T_loc(:,3,3) = VMEC_L(5,:,1,2,2)
         end subroutine
     end function test_calc_T_VF
     
     integer function test_calc_g() result(ierr)
-        use eq_ops, only: calc_eq
-        use metric_ops, only: g_V, g_F
-        use eq_vars, only: VMEC_R, VMEC_Z, q_saf_V
+        use driver_rich, only: calc_eq
+        use metric_ops, only: g_E, g_F
+        use eq_vars, only: VMEC_R, VMEC_Z, q_saf_E
         
         character(*), parameter :: rout_name = 'tset_calc_g'
         
@@ -1333,7 +1334,7 @@ contains
             write(*,*) 'check g_V?'
             if(yes_no(.false.)) then
                 write(*,*) 'g_V(5,5) = '
-                call print_ar_2(g_V(5,5,:,:,0,0,0))
+                call print_ar_2(g_E(5,5,:,:,0,0,0))
                 
                 write(*,*) 'g_V(5,5), manually'
                 g(1,1) = VMEC_R(5,5,1,0,0)*VMEC_R(5,5,1,0,0) + &
@@ -1354,7 +1355,7 @@ contains
                 g(3,2) = g(2,3)
                 call print_ar_2(g)
                 write(*,*) 'rel diff'
-                call print_ar_2(2*(g_V(5,5,:,:,0,0,0)-g)/(g_V(5,5,:,:,0,0,0)+g))
+                call print_ar_2(2*(g_E(5,5,:,:,0,0,0)-g)/(g_E(5,5,:,:,0,0,0)+g))
             end if
             
             do
@@ -1373,7 +1374,7 @@ contains
                     d(id_d) = 1
                     
                     write(*,*) 'D_'//trim(i2str(id_d))//' g_V(5,5) = '
-                    call print_ar_2(g_V(5,5,:,:,d(1),d(2),d(3)))
+                    call print_ar_2(g_E(5,5,:,:,d(1),d(2),d(3)))
                     
                     write(*,*) 'D_'//trim(i2str(id_d))//' g_V(5,5), manually'
                     g(1,1) = VMEC_R(5,5,d(1)+1,d(2),d(3))*VMEC_R(5,5,1,0,0) + &
@@ -1406,8 +1407,8 @@ contains
                     g(3,2) = g(2,3)
                     call print_ar_2(g(:,:))
                     write(*,*) 'rel diff'
-                    call print_ar_2(2*(g_V(5,5,:,:,d(1),d(2),d(3))-g)/&
-                        &(g_V(5,5,:,:,d(1),d(2),d(3))+g))
+                    call print_ar_2(2*(g_E(5,5,:,:,d(1),d(2),d(3))-g)/&
+                        &(g_E(5,5,:,:,d(1),d(2),d(3))+g))
                 else
                     exit
                 end if
@@ -1422,11 +1423,11 @@ contains
                 write(*,*) 'AND ONLY ELEMENT (1,3) IS VALID'
                 write(*,*) 'g_F(5,5), manually'
                 g = 0.0_dp
-                !g(1,3) = -VMEC_L(5,5,0,0,1)*(1-q_saf_V(5,0)*VMEC_L(5,5,0,0,1))/&
-                    !&(1+VMEC_L(5,5,0,1,0))**2*g_V(5,5,2,2,0,0,0) + q_saf_V(5,0)* &
-                    !&g_V(5,5,3,3,0,0,0) + (1-2*q_saf_V(5,0)*VMEC_L(5,5,0,0,1))/&
-                    !&(1+VMEC_L(5,5,0,1,0))*g_V(5,5,2,3,0,0,0)
-                g(1,3) = q_saf_V(5,0)*g_V(5,5,3,3,0,0,0)
+                !g(1,3) = -VMEC_L(5,5,0,0,1)*(1-q_saf_E(5,0)*VMEC_L(5,5,0,0,1))/&
+                    !&(1+VMEC_L(5,5,0,1,0))**2*g_E(5,5,2,2,0,0,0) + q_saf_E(5,0)* &
+                    !&g_E(5,5,3,3,0,0,0) + (1-2*q_saf_E(5,0)*VMEC_L(5,5,0,0,1))/&
+                    !&(1+VMEC_L(5,5,0,1,0))*g_E(5,5,2,3,0,0,0)
+                g(1,3) = q_saf_E(5,0)*g_E(5,5,3,3,0,0,0)
                 call print_ar_2(g)
                 write(*,*) 'rel diff'
                 call print_ar_2(2*(g_F(5,5,:,:,0,0,0)-g)/(g_F(5,5,:,:,0,0,0)+g))
@@ -1455,10 +1456,10 @@ contains
                     write(*,*) 'D_'//trim(i2str(id_d))//' g_F(5,5), manually'
                     g = 0.0_dp
                     if (id_d.eq.1) then
-                        g(1,3) = q_saf_V(5,1)*g_V(5,5,3,3,0,0,0) + &
-                            &q_saf_V(5,0)*g_V(5,5,3,3,d(1),d(2),d(3))
+                        g(1,3) = q_saf_E(5,1)*g_E(5,5,3,3,0,0,0) + &
+                            &q_saf_E(5,0)*g_E(5,5,3,3,d(1),d(2),d(3))
                     else
-                        g(1,3) = q_saf_V(5,0)*g_V(5,5,3,3,d(1),d(2),d(3))
+                        g(1,3) = q_saf_E(5,0)*g_E(5,5,3,3,d(1),d(2),d(3))
                     end if
                     call print_ar_2(g)
                     write(*,*) 'rel diff'
@@ -1477,9 +1478,9 @@ contains
     
     integer function test_calc_f_deriv() result(ierr)
         use metric_ops, only: calc_f_deriv, &
-            &h_F, h_FD, T_FV
-        use eq_ops, only: calc_eq
-        use eq_vars, only: n_par, flux_p_V, flux_p_FD, grp_n_r_eq
+            &h_F, h_FD, T_FE
+        use driver_rich, only: calc_eq
+        use eq_vars, only: n_par, flux_p_E, flux_p_FD, grp_n_r_eq
         
         character(*), parameter :: rout_name = 'test_calc_f_deriv'
         
@@ -1507,7 +1508,7 @@ contains
             write(*,*) 'flux_p_FD = '
             call print_ar_1(flux_p_FD(:,0))
             write(*,*) 'alternative calculation = '
-            alt_calc(1,:) = flux_p_V(:,0)
+            alt_calc(1,:) = flux_p_E(:,0)
             call print_ar_1(alt_calc(1,:))
             write(*,*) 'rel difference = '
             call print_ar_1(2*abs(flux_p_FD(:,0)-alt_calc(1,:))/&
@@ -1570,7 +1571,7 @@ contains
             do id = 1,3
                 der1 = 0
                 der1(id) = 1
-                alt_calc = alt_calc + T_FV(:,:,2,id,0,0,0)*&
+                alt_calc = alt_calc + T_FE(:,:,2,id,0,0,0)*&
                     &h_F(:,:,3,1,der1(1),der1(2),der1(3))
             end do
             call print_ar_2(alt_calc)
@@ -1590,10 +1591,10 @@ contains
                     der1(id) = 1
                     der2 = 0
                     der2(jd) = 1
-                    alt_calc = alt_calc + T_FV(:,:,2,id,0,0,0)*&
-                        &(T_FV(:,:,2,jd,der1(1),der1(2),der1(3))*&
+                    alt_calc = alt_calc + T_FE(:,:,2,id,0,0,0)*&
+                        &(T_FE(:,:,2,jd,der1(1),der1(2),der1(3))*&
                         &h_F(:,:,3,1,der2(1),der2(2),der2(3)) + &
-                        &T_FV(:,:,2,jd,0,0,0)*h_F(:,:,3,1,der1(1)+der2(1),&
+                        &T_FE(:,:,2,jd,0,0,0)*h_F(:,:,3,1,der1(1)+der2(1),&
                         &der1(2)+der2(2),der1(3)+der2(3)))
                 end do
             end do
@@ -1614,10 +1615,10 @@ contains
                     der1(id) = 1
                     der2 = 0
                     der2(jd) = 1
-                    alt_calc = alt_calc + T_FV(:,:,3,id,0,0,0)*&
-                        &(T_FV(:,:,2,jd,der1(1),der1(2),der1(3))*&
+                    alt_calc = alt_calc + T_FE(:,:,3,id,0,0,0)*&
+                        &(T_FE(:,:,2,jd,der1(1),der1(2),der1(3))*&
                         &h_F(:,:,3,1,der2(1),der2(2),der2(3)) + &
-                        &T_FV(:,:,2,jd,0,0,0)*h_F(:,:,3,1,der1(1)+der2(1),&
+                        &T_FE(:,:,2,jd,0,0,0)*h_F(:,:,3,1,der1(1)+der2(1),&
                         &der1(2)+der2(2),der1(3)+der2(3)))
                 end do
             end do
@@ -1638,10 +1639,10 @@ contains
                     der1(id) = 1
                     der2 = 0
                     der2(jd) = 1
-                    alt_calc = alt_calc + T_FV(:,:,2,id,0,0,0)*&
-                        &(T_FV(:,:,3,jd,der1(1),der1(2),der1(3))*&
+                    alt_calc = alt_calc + T_FE(:,:,2,id,0,0,0)*&
+                        &(T_FE(:,:,3,jd,der1(1),der1(2),der1(3))*&
                         &h_F(:,:,3,1,der2(1),der2(2),der2(3)) + &
-                        &T_FV(:,:,3,jd,0,0,0)*h_F(:,:,3,1,der1(1)+der2(1),&
+                        &T_FE(:,:,3,jd,0,0,0)*h_F(:,:,3,1,der1(1)+der2(1),&
                         &der1(2)+der2(2),der1(3)+der2(3)))
                 end do
             end do
@@ -1665,21 +1666,21 @@ contains
                         der2(jd) = 1
                         der3 = 0
                         der3(kd) = 1
-                        alt_calc = alt_calc + T_FV(:,:,3,id,0,0,0)*&
-                            &(T_FV(:,:,2,jd,der1(1),der1(2),der1(3))*&
-                            &  (T_FV(:,:,2,kd,der2(1),der2(2),der2(3))*&
+                        alt_calc = alt_calc + T_FE(:,:,3,id,0,0,0)*&
+                            &(T_FE(:,:,2,jd,der1(1),der1(2),der1(3))*&
+                            &  (T_FE(:,:,2,kd,der2(1),der2(2),der2(3))*&
                             &    h_F(:,:,3,1,der3(1),der3(2),der3(3)) + &
-                            &    T_FV(:,:,2,kd,0,0,0)* &
+                            &    T_FE(:,:,2,kd,0,0,0)* &
                             &    h_F(:,:,3,1,der2(1)+der3(1),der2(2)+der3(2),der2(3)+der3(3)) &
                             &  ) + &
-                            &  T_FV(:,:,2,jd,0,0,0) * &
-                            &  (T_FV(:,:,2,kd,der1(1)+der2(1),der1(2)+der2(2),der1(3)+der2(3)) * &
+                            &  T_FE(:,:,2,jd,0,0,0) * &
+                            &  (T_FE(:,:,2,kd,der1(1)+der2(1),der1(2)+der2(2),der1(3)+der2(3)) * &
                             &    h_F(:,:,3,1,der3(1),der3(2),der3(3)) + &
-                            &    T_FV(:,:,2,kd,der2(1),der2(2),der2(3)) * &
+                            &    T_FE(:,:,2,kd,der2(1),der2(2),der2(3)) * &
                             &    h_F(:,:,3,1,der1(1)+der3(1),der1(2)+der3(2),der1(3)+der3(3)) + &
-                            &    T_FV(:,:,2,kd,der1(1),der1(2),der1(3)) * &
+                            &    T_FE(:,:,2,kd,der1(1),der1(2),der1(3)) * &
                             &    h_F(:,:,3,1,der2(1)+der3(1),der2(2)+der3(2),der2(3)+der3(3)) + &
-                            &    T_FV(:,:,2,kd,0,0,0) * &
+                            &    T_FE(:,:,2,kd,0,0,0) * &
                             &    h_F(:,:,3,1,der1(1)+der2(1)+der3(1),der1(2)+der2(2)+der3(2),der1(3)+der2(3)+der3(3)) &
                             &  )&
                             &)
@@ -1702,21 +1703,21 @@ contains
                         der2(jd) = 1
                         der3 = 0
                         der3(kd) = 1
-                        alt_calc = alt_calc + T_FV(:,:,2,id,0,0,0)*&
-                            &(T_FV(:,:,3,jd,der1(1),der1(2),der1(3))*&
-                            &  (T_FV(:,:,2,kd,der2(1),der2(2),der2(3))*&
+                        alt_calc = alt_calc + T_FE(:,:,2,id,0,0,0)*&
+                            &(T_FE(:,:,3,jd,der1(1),der1(2),der1(3))*&
+                            &  (T_FE(:,:,2,kd,der2(1),der2(2),der2(3))*&
                             &    h_F(:,:,3,1,der3(1),der3(2),der3(3)) + &
-                            &    T_FV(:,:,2,kd,0,0,0)* &
+                            &    T_FE(:,:,2,kd,0,0,0)* &
                             &    h_F(:,:,3,1,der2(1)+der3(1),der2(2)+der3(2),der2(3)+der3(3)) &
                             &  ) + &
-                            &  T_FV(:,:,3,jd,0,0,0) * &
-                            &  (T_FV(:,:,2,kd,der1(1)+der2(1),der1(2)+der2(2),der1(3)+der2(3)) * &
+                            &  T_FE(:,:,3,jd,0,0,0) * &
+                            &  (T_FE(:,:,2,kd,der1(1)+der2(1),der1(2)+der2(2),der1(3)+der2(3)) * &
                             &    h_F(:,:,3,1,der3(1),der3(2),der3(3)) + &
-                            &    T_FV(:,:,2,kd,der2(1),der2(2),der2(3)) * &
+                            &    T_FE(:,:,2,kd,der2(1),der2(2),der2(3)) * &
                             &    h_F(:,:,3,1,der1(1)+der3(1),der1(2)+der3(2),der1(3)+der3(3)) + &
-                            &    T_FV(:,:,2,kd,der1(1),der1(2),der1(3)) * &
+                            &    T_FE(:,:,2,kd,der1(1),der1(2),der1(3)) * &
                             &    h_F(:,:,3,1,der2(1)+der3(1),der2(2)+der3(2),der2(3)+der3(3)) + &
-                            &    T_FV(:,:,2,kd,0,0,0) * &
+                            &    T_FE(:,:,2,kd,0,0,0) * &
                             &    h_F(:,:,3,1,der1(1)+der2(1)+der3(1),der1(2)+der2(2)+der3(2),der1(3)+der2(3)+der3(3)) &
                             &  )&
                             &)
@@ -1738,8 +1739,8 @@ contains
     
     integer function test_calc_inv_met() result(ierr)
         use metric_ops, only: calc_inv_met, &
-            &T_VF, T_FV
-        use eq_ops, only: calc_eq
+            &T_EF, T_FE
+        use driver_rich, only: calc_eq
         use eq_vars, only: n_par, grp_n_r_eq
         
         character(*), parameter :: rout_name = 'test_calc_inv_met'
@@ -1763,7 +1764,7 @@ contains
             write(*,*) 'testing zeroth order'
             do kd = 1,grp_n_r_eq
                 do id = 1,n_par
-                    TxT = matmul(T_VF(id,kd,:,:,0,0,0),T_FV(id,kd,:,:,0,0,0))
+                    TxT = matmul(T_EF(id,kd,:,:,0,0,0),T_FE(id,kd,:,:,0,0,0))
                     trace(id,kd) = TxT(1,1)+TxT(2,2)+TxT(3,3)
                 end do
             end do
@@ -1774,8 +1775,8 @@ contains
             write(*,*) 'testing first order: r derivative'
             do kd = 1,grp_n_r_eq
                 do id = 1,n_par
-                    TxT = matmul(T_VF(id,kd,:,:,1,0,0),T_FV(id,kd,:,:,0,0,0)) &
-                        &+ matmul(T_VF(id,kd,:,:,0,0,0),T_FV(id,kd,:,:,1,0,0))
+                    TxT = matmul(T_EF(id,kd,:,:,1,0,0),T_FE(id,kd,:,:,0,0,0)) &
+                        &+ matmul(T_EF(id,kd,:,:,0,0,0),T_FE(id,kd,:,:,1,0,0))
                     trace(id,kd) = sum(TxT)
                 end do
             end do
@@ -1786,8 +1787,8 @@ contains
             write(*,*) 'testing first order: t derivative'
             do kd = 1,grp_n_r_eq
                 do id = 1,n_par
-                    TxT = matmul(T_VF(id,kd,:,:,0,1,0),T_FV(id,kd,:,:,0,0,0)) &
-                        &+ matmul(T_VF(id,kd,:,:,0,0,0),T_FV(id,kd,:,:,0,1,0))
+                    TxT = matmul(T_EF(id,kd,:,:,0,1,0),T_FE(id,kd,:,:,0,0,0)) &
+                        &+ matmul(T_EF(id,kd,:,:,0,0,0),T_FE(id,kd,:,:,0,1,0))
                     trace(id,kd) = sum(TxT)
                 end do
             end do
@@ -1798,8 +1799,8 @@ contains
             write(*,*) 'testing first order: z derivative'
             do kd = 1,grp_n_r_eq
                 do id = 1,n_par
-                    TxT = matmul(T_VF(id,kd,:,:,0,0,1),T_FV(id,kd,:,:,0,0,0)) &
-                        &+ matmul(T_VF(id,kd,:,:,0,0,0),T_FV(id,kd,:,:,0,0,1))
+                    TxT = matmul(T_EF(id,kd,:,:,0,0,1),T_FE(id,kd,:,:,0,0,0)) &
+                        &+ matmul(T_EF(id,kd,:,:,0,0,0),T_FE(id,kd,:,:,0,0,1))
                     trace(id,kd) = sum(TxT)
                 end do
             end do
@@ -1810,9 +1811,9 @@ contains
             write(*,*) 'testing second order: tt derivative'
             do kd = 1,grp_n_r_eq
                 do id = 1,n_par
-                    TxT = matmul(T_VF(id,kd,:,:,0,2,0),T_FV(id,kd,:,:,0,0,0)) &
-                        &+2*matmul(T_VF(id,kd,:,:,0,1,0),T_FV(id,kd,:,:,0,1,0))&
-                        &+matmul(T_VF(id,kd,:,:,0,0,0),T_FV(id,kd,:,:,0,2,0))
+                    TxT = matmul(T_EF(id,kd,:,:,0,2,0),T_FE(id,kd,:,:,0,0,0)) &
+                        &+2*matmul(T_EF(id,kd,:,:,0,1,0),T_FE(id,kd,:,:,0,1,0))&
+                        &+matmul(T_EF(id,kd,:,:,0,0,0),T_FE(id,kd,:,:,0,2,0))
                     trace(id,kd) = sum(TxT)
                 end do
             end do
@@ -1823,12 +1824,12 @@ contains
             write(*,*) 'testing third order: rtt derivative'
             do kd = 1,grp_n_r_eq
                 do id = 1,n_par
-                    TxT = matmul(T_VF(id,kd,:,:,1,2,0),T_FV(id,kd,:,:,0,0,0)) &
-                        &+matmul(T_VF(id,kd,:,:,0,2,0),T_FV(id,kd,:,:,1,0,0))&
-                        &+2*matmul(T_VF(id,kd,:,:,1,1,0),T_FV(id,kd,:,:,0,1,0))&
-                        &+2*matmul(T_VF(id,kd,:,:,0,1,0),T_FV(id,kd,:,:,1,1,0))&
-                        &+matmul(T_VF(id,kd,:,:,1,0,0),T_FV(id,kd,:,:,0,2,0))&
-                        &+matmul(T_VF(id,kd,:,:,0,0,0),T_FV(id,kd,:,:,1,2,0))
+                    TxT = matmul(T_EF(id,kd,:,:,1,2,0),T_FE(id,kd,:,:,0,0,0)) &
+                        &+matmul(T_EF(id,kd,:,:,0,2,0),T_FE(id,kd,:,:,1,0,0))&
+                        &+2*matmul(T_EF(id,kd,:,:,1,1,0),T_FE(id,kd,:,:,0,1,0))&
+                        &+2*matmul(T_EF(id,kd,:,:,0,1,0),T_FE(id,kd,:,:,1,1,0))&
+                        &+matmul(T_EF(id,kd,:,:,1,0,0),T_FE(id,kd,:,:,0,2,0))&
+                        &+matmul(T_EF(id,kd,:,:,0,0,0),T_FE(id,kd,:,:,1,2,0))
                     trace(id,kd) = sum(TxT)
                 end do
             end do
@@ -2002,13 +2003,13 @@ contains
     
     integer function test_metric_transf() result(ierr)
         !use eq_ops, only: calc_eq
-        !use eq_vars, only: n_par, flux_p_V, VMEC_R, VMEC_Z, VMEC_L, theta, &
+        !use eq_vars, only: n_par, flux_p_E, VMEC_R, VMEC_Z, VMEC_L, theta, &
             !&zeta, &grp_n_r_eq
-        !use VMEC_vars, only: mpol, ntor, jac_V_c_H, jac_V_s_H, nfp, n_r_eq
-        !use metric_ops, only: jac_V, jac_F, T_FV, det_T_FV, g_F, h_F, g_V, &
-            !&calc_inv_met, T_VF
+        !use VMEC_ops, only: mpol, ntor, jac_V_c_H, jac_V_s_H, nfp, n_r_eq
+        !use metric_ops, only: jac_E, jac_F, T_FE, det_T_FE, g_F, h_F, g_E, &
+            !&calc_inv_met, T_EF
         !use utilities, only: calc_deriv, calc_det, conv_FHM
-        !use num_vars, only: calc_mesh_style
+        !use num_vars, only: grid_style
         
         !character(*), parameter :: rout_name = 'test_metric_transf'
         
@@ -2034,7 +2035,7 @@ contains
             !write(*,*) 'calculating equilibrium with constant zeta'
             !write(*,*) 'At which toroidal point zeta do you want the plot?'
             !read(*,*) zeta_in
-            !calc_mesh_style = 2
+            !grid_style = 2
             !ierr = calc_eq(zeta_in)
             !CHCKERR('')
             
@@ -2049,8 +2050,8 @@ contains
                         !&VMEC_Z(:,kd,1,0,0))
                 !end do
                 !call print_GP_3D('jac_V (1:calc, 2:direct calc, 3: diff)','',&
-                    !&reshape([jac_V(:,:,0,0,0),jac_ALT,&
-                    !&jac_V(:,:,0,0,0)-jac_ALT],[n_par,grp_n_r_eq,3]))
+                    !&reshape([jac_E(:,:,0,0,0),jac_ALT,&
+                    !&jac_E(:,:,0,0,0)-jac_ALT],[n_par,grp_n_r_eq,3]))
                 
                 !write(*,*) 'comparing jac_V with jac_V provided by VMEC (FM)'
                 !! jac_V from VMEC
@@ -2066,14 +2067,14 @@ contains
                     !CHCKERR('')
                 !end do
                 !call print_GP_3D('jac_V (1: calc, 2: VMEC, 3: diff)','',&
-                    !&reshape([jac_V(:,:,0,0,0),jac_ALT,&
-                    !&jac_V(:,:,0,0,0)-jac_ALT],[n_par,grp_n_r_eq,3]))
+                    !&reshape([jac_E(:,:,0,0,0),jac_ALT,&
+                    !&jac_E(:,:,0,0,0)-jac_ALT],[n_par,grp_n_r_eq,3]))
                 !call print_GP_3D('jac_V calc-VMEC [log]','',&
-                    !&log10(max(2*abs(jac_V(:,:,0,0,0)-jac_ALT(:,:))/&
-                    !&(jac_V(:,:,0,0,0)+jac_ALT),1E-10_dp)))
+                    !&log10(max(2*abs(jac_E(:,:,0,0,0)-jac_ALT(:,:))/&
+                    !&(jac_E(:,:,0,0,0)+jac_ALT),1E-10_dp)))
                 
                 !write(*,*) 'comparing jac_V with jac_V provided by VMEC (HM)'
-                !! calculate half mesh jac_V
+                !! calculate half grid jac_V
                 !do id = 1,n_par
                     !jac_ALT(id,2:grp_n_r_eq) = (n_r_eq-1._dp)*0.25*&
                         !&(VMEC_R(id,1:grp_n_r_eq-1,0,0,0)+VMEC_R(id,2:grp_n_r_eq,0,0,0))&
@@ -2097,11 +2098,11 @@ contains
             
             !write(*,*) 'check J_F?'
             !if(yes_no(.false.)) then
-                !!   jac_F = (flux_p_V'/2pi * (1+L_t))^-1 * R * (R'Z_t - R' Z_t)
+                !!   jac_F = (flux_p_E'/2pi * (1+L_t))^-1 * R * (R'Z_t - R' Z_t)
                 !do kd = 1,grp_n_r_eq
                     !jac_ALT(:,kd) = VMEC_R(:,kd,0,0,0)*(VMEC_R(:,kd,1,0,0)*&
                         !&VMEC_Z(:,kd,0,1,0)-VMEC_R(:,kd,0,1,0)*&
-                        !&VMEC_Z(:,kd,1,0,0))/(flux_p_V(kd,1)/(2*pi)*&
+                        !&VMEC_Z(:,kd,1,0,0))/(flux_p_E(kd,1)/(2*pi)*&
                         !&(1+VMEC_L(:,kd,0,1,0)))
                 !end do
                 !call print_GP_3D('jac_F (1:calc, 2:direct calc, 3: diff)','',&
@@ -2131,17 +2132,17 @@ contains
             
             !write(*,*) 'check jacobians as determinants?'
             !if(yes_no(.false.)) then
-                !ierr = calc_det(jac_ALT,T_FV(:,:,:,:,0,0,0))
+                !ierr = calc_det(jac_ALT,T_FE(:,:,:,:,0,0,0))
                 !CHCKERR('')
-                !call print_ar_2(jac_ALT-det_T_FV(:,:,0,0,0))
+                !call print_ar_2(jac_ALT-det_T_FE(:,:,0,0,0))
                 !read(*,*)
             !end if
             
             !write(*,*) 'check g*h?'
             !if(yes_no(.false.)) then
                 !write(*,*) 'VMEC coordinate system'
-                !! calculate h_V from g_V
-                !ierr = calc_inv_met(h_V,g_V,[0,0,0])
+                !! calculate h_V from g_E
+                !ierr = calc_inv_met(h_V,g_E,[0,0,0])
                 !CHCKERR('')
                 !do kd = 1,grp_n_r_eq
                     !do id = 1,n_par
@@ -2150,12 +2151,12 @@ contains
                         !!call print_ar_2(h_V(id,kd,:,:,0,0,0))
                         !!write(*,*) 'g_V('//trim(i2str(id))//','//
                             !!&trim(i2str(kd))//') = ')
-                        !!call print_ar_2(g_V(id,kd,:,:,0,0,0))
+                        !!call print_ar_2(g_E(id,kd,:,:,0,0,0))
                         !!write(*,*) 'h_V*g_V'
                         !!call print_ar_2(matmul(h_V(id,kd,:,:,0,0,0),&
-                            !!&g_V(id,kd,:,:,0,0,0)))
+                            !!&g_E(id,kd,:,:,0,0,0)))
                         !gxh(id,kd) = sum(matmul(h_V(id,kd,:,:,0,0,0),&
-                            !&g_V(id,kd,:,:,0,0,0))-&
+                            !&g_E(id,kd,:,:,0,0,0))-&
                             !&reshape([1,0,0,0,1,0,0,0,1],[3,3]))
                     !end do
                 !end do
@@ -2181,8 +2182,8 @@ contains
                 !write(*,*) 'flux coordinate system'
                 !do kd = 1,grp_n_r_eq
                     !do id = 1,n_par
-                        !gxh(id,kd) = sum(matmul(T_FV(id,kd,:,:,0,0,0),&
-                            !&T_VF(id,kd,:,:,0,0,0))-&
+                        !gxh(id,kd) = sum(matmul(T_FE(id,kd,:,:,0,0,0),&
+                            !&T_EF(id,kd,:,:,0,0,0))-&
                             !&reshape([1,0,0,0,1,0,0,0,1],[3,3]))
                     !end do
                 !end do
@@ -2223,17 +2224,17 @@ contains
     end function test_metric_transf
 
     integer function test_B() result(ierr)
-        use eq_vars, only: n_par, q_saf_V, flux_p_V, VMEC_L, theta_V, zeta_V, &
+        use eq_vars, only: n_par, q_saf_E, flux_p_E, VMEC_L, theta_E, zeta_E, &
             &grp_n_r_eq, grp_min_r_eq, grp_max_r_eq
         !use eq_vars, only: theta, zeta, pres_FD
-        use VMEC_vars, only: B_V_sub_c_M, B_V_sub_s_M, B_V_s_H, B_V_c_H
-        !use VMEC_vars, only: mpol, ntor, B_V_sub_c_M, &
+        use VMEC_ops, only: B_V_sub_c_M, B_V_sub_s_M, B_V_s_H, B_V_c_H
+        !use VMEC_ops, only: mpol, ntor, B_V_sub_c_M, &
             !&B_V_sub_s_M, nfp
-        use metric_ops, only: g_V, jac_V, g_F, jac_F, T_FV, calc_inv_met
+        use metric_ops, only: g_E, jac_E, g_F, jac_F, T_FE, calc_inv_met
         !use metric_ops, only: g_FD, jac_FD
         use utilities, only: calc_deriv, conv_FHM
-        use eq_ops, only: calc_eq
-        use num_vars, only: calc_mesh_style
+        use driver_rich, only: calc_eq
+        use num_vars, only: grid_style
         use MPI_ops, only: split_MPI
         use fourier_ops, only: calc_trigon_factors, fourier2real
         
@@ -2261,7 +2262,7 @@ contains
         if(yes_no(.false.)) then
             
             write(*,*) 'calculating equilibrium with constant zeta'
-            calc_mesh_style = 2
+            grid_style = 2
             ierr = split_MPI()
             CHCKERR('')
             ierr = calc_eq(0.12*pi)
@@ -2310,7 +2311,7 @@ contains
                     B_F_sub_ALT(:,:,jd) = 0.0_dp                                !  transforming B_V_sub_ALT into B_F_sub_ALT
                     do id = 1,3
                         B_F_sub_ALT(:,:,jd) = B_F_sub_ALT(:,:,jd) + &
-                            &T_FV(:,:,jd,id,0,0,0)*B_V_sub_ALT(:,:,id)
+                            &T_FE(:,:,jd,id,0,0,0)*B_V_sub_ALT(:,:,id)
                     end do
                 end do
                 
@@ -2329,7 +2330,7 @@ contains
             write(*,*) 'check magn. of. magnetic field?'
             if(yes_no(.false.)) then
                 write(*,*) 'comparison with g_V(1,2)/J^2'
-                ierr = calc_trigon_factors(theta_V,zeta_V,trigon_factors)
+                ierr = calc_trigon_factors(theta_E,zeta_E,trigon_factors)
                 CHCKERR('')
                 ierr = fourier2real(&
                     &B_V_c_H(:,:,grp_min_r_eq:grp_max_r_eq), &
@@ -2348,7 +2349,7 @@ contains
                 
                 write(*,*) 'comparison with B_i B_j h^ij'
                 ! calculate h_V from g_V
-                ierr = calc_inv_met(h_V,g_V,[0,0,0])
+                ierr = calc_inv_met(h_V,g_E,[0,0,0])
                 CHCKERR('')
                 ierr = calc_B_V_covar([0,0])
                 CHCKERR('')
@@ -2377,13 +2378,13 @@ contains
             if(yes_no(.false.)) then
                 
                 write(*,*) 'plot B_zeta'
-                dum(:,5) = flux_p_V(5,1)/(2*pi*jac_V(:,5,0,0,0)) * &
-                    &(-q_saf_V(5,0)*(1+VMEC_L(:,5,0,1,0))*g_V(:,5,3,3,0,0,0) - &
-                    &(1-q_saf_V(5,0)*VMEC_L(:,5,0,0,1))*g_V(:,5,3,2,0,0,0))
+                dum(:,5) = flux_p_E(5,1)/(2*pi*jac_E(:,5,0,0,0)) * &
+                    &(-q_saf_E(5,0)*(1+VMEC_L(:,5,0,1,0))*g_E(:,5,3,3,0,0,0) - &
+                    &(1-q_saf_E(5,0)*VMEC_L(:,5,0,0,1))*g_E(:,5,3,2,0,0,0))
                 write(*,*) 'theta (should be increasing in the first dim.) = '
-                call print_ar_2(theta_V)
+                call print_ar_2(theta_E)
                 write(*,*) 'zeta (should be constant) = '
-                call print_ar_2(zeta_V)
+                call print_ar_2(zeta_E)
                 write(*,*) 'B_zeta from VMEC = '
                 ierr = calc_B_V_covar([0,0])                                    ! calculating B_V_sub_ALT
                 CHCKERR('')
@@ -2394,14 +2395,14 @@ contains
                     &dum(:,5)-B_V_sub_ALT(:,5,3))
             
                 !write(*,*) 'plot D_theta B_zeta'
-                !dum(:,5) = flux_p_V(5,1)/(2*pi*jac_V(:,5,0,0,0)) * &
-                    !&(-jac_V(:,5,0,1,0)/jac_V(:,5,0,0,0) * &
-                    !&(q_saf_V(5,0)*(1+VMEC_L(:,5,0,1,0))*g_V(:,5,3,3,0,0,0) + &
-                    !&(1-q_saf_V(5,0)*VMEC_L(:,5,0,0,1))*g_V(:,5,3,2,0,0,0)) + &
-                    !&q_saf_V(5,0)*(VMEC_L(:,5,0,2,0)*g_V(:,5,3,3,0,0,0)+&
-                    !&(1+VMEC_L(:,5,0,1,0))*g_V(:,5,3,3,0,1,0)) &
-                    !&-q_saf_V(5,0)*VMEC_L(:,5,0,1,1)*g_V(:,5,3,2,0,0,0) + &
-                    !&(1-q_saf_V(5,0)*VMEC_L(:,5,0,0,1))*g_V(:,5,3,2,0,1,0))
+                !dum(:,5) = flux_p_E(5,1)/(2*pi*jac_E(:,5,0,0,0)) * &
+                    !&(-jac_E(:,5,0,1,0)/jac_E(:,5,0,0,0) * &
+                    !&(q_saf_E(5,0)*(1+VMEC_L(:,5,0,1,0))*g_E(:,5,3,3,0,0,0) + &
+                    !&(1-q_saf_E(5,0)*VMEC_L(:,5,0,0,1))*g_E(:,5,3,2,0,0,0)) + &
+                    !&q_saf_E(5,0)*(VMEC_L(:,5,0,2,0)*g_E(:,5,3,3,0,0,0)+&
+                    !&(1+VMEC_L(:,5,0,1,0))*g_E(:,5,3,3,0,1,0)) &
+                    !&-q_saf_E(5,0)*VMEC_L(:,5,0,1,1)*g_E(:,5,3,2,0,0,0) + &
+                    !&(1-q_saf_E(5,0)*VMEC_L(:,5,0,0,1))*g_E(:,5,3,2,0,1,0))
                 !ierr = calc_B_V_covar([1,0])
                 !CHCKERR('')
                 !call print_GP_2D('D_theta B_zeta (1: calc, 2: an)','',&
@@ -2483,7 +2484,7 @@ contains
                 &_B_V_covar, the returned value of "B_V_sub" is NOT correct &
                 &because derivatives are asked'
             
-            ierr = calc_trigon_factors(theta_V,zeta_V,trigon_factors)
+            ierr = calc_trigon_factors(theta_E,zeta_E,trigon_factors)
             CHCKERR('')
             do jd = 1,3
                 ierr = fourier2real(&
@@ -2492,11 +2493,11 @@ contains
                     &trigon_factors,B_V_sub_ALT(:,:,jd),deriv)
                 CHCKERR('')
                 do kd = 1,grp_n_r_eq
-                    B_V_sub(:,kd,jd) = flux_p_V(kd,1)/&
-                        &(2*pi*jac_V(:,kd,0,0,0)) * &
-                        &(-q_saf_V(kd,0)*(1+VMEC_L(:,kd,0,1,0)) * &
-                        &g_V(:,kd,3,jd,0,0,0) - (1-q_saf_V(kd,0)*&
-                        &VMEC_L(:,kd,0,0,1))*g_V(:,kd,2,jd,0,0,0))
+                    B_V_sub(:,kd,jd) = flux_p_E(kd,1)/&
+                        &(2*pi*jac_E(:,kd,0,0,0)) * &
+                        &(-q_saf_E(kd,0)*(1+VMEC_L(:,kd,0,1,0)) * &
+                        &g_E(:,kd,3,jd,0,0,0) - (1-q_saf_E(kd,0)*&
+                        &VMEC_L(:,kd,0,0,1))*g_E(:,kd,2,jd,0,0,0))
                 end do
             end do
             deallocate(trigon_factors)
@@ -2515,7 +2516,7 @@ contains
     
     integer function test_pres_balance() result(ierr)
         use MPI_ops, only: split_MPI
-        use eq_ops, only: calc_eq
+        use driver_rich, only: calc_eq
         use eq_vars, only: grp_n_r_eq, n_par
         
         character(*), parameter :: rout_name = 'test_pres_balance'
@@ -2544,8 +2545,8 @@ contains
     end function test_pres_balance
 
     integer function test_ang_B() result(ierr)
-        !use VMEC_vars, only: mpol, ntor
-        !use eq_vars, only: calc_eqd_mesh, calc_mesh, &
+        !use VMEC_ops, only: mpol, ntor
+        !use eq_vars, only: calc_eqd_grid, calc_ang_grid, &
             !&n_par, theta, zeta, grp_n_r_eq
         !use num_vars, only: use_tor_flux
         
@@ -2579,9 +2580,9 @@ contains
             !! decrease the number of parallel points
             !n_par = 100
             
-            !! calculate mesh points (theta, zeta) that follow the magnetic field
+            !! calculate grid points (theta, zeta) that follow the magnetic field
             !! line
-            !ierr = calc_mesh(alpha)
+            !ierr = calc_ang_grid(alpha)
             !CHCKERR('')
             
             !call print_GP_2D('zeta(theta)','',zeta,x=theta)
@@ -2630,15 +2631,15 @@ contains
                 !grid_max = maxval(theta(:,kd)) + &
                     !&0.1*(maxval(theta(:,kd))-minval(theta(:,kd)))
             !end if
-            !ierr = calc_eqd_mesh(plot_dep_var,n_plot,grid_min,grid_max)
+            !ierr = calc_eqd_grid(plot_dep_var,n_plot,grid_min,grid_max)
             !CHCKERR('')
             !par: do id = 1, n_par
                 !if (use_tor_flux) then                                          ! looking for zeta
-                    !plot_var(1,:) = plot_dep_var                                ! eq. mesh of zeta
+                    !plot_var(1,:) = plot_dep_var                                ! eq. grid of zeta
                     !plot_var(2,:) = find_f_plot(n_plot,plot_dep_var, &
                         !&theta(id,kd),alpha)                                    ! corresponding f(zeta)
                 !else                                                            ! looking for theta
-                    !plot_var(1,:) = plot_dep_var                                ! eq. mesh of theta
+                    !plot_var(1,:) = plot_dep_var                                ! eq. grid of theta
                     !plot_var(2,:) = find_f_plot(n_plot,plot_dep_var, &
                         !&zeta(id,kd),alpha)                                     ! corresponding f(theta)
                 !end if
@@ -2664,8 +2665,8 @@ contains
         !! calculates the function f = zeta - q (theta + lambda) - alpha_0
         !! makes use of kd from parent to indicate the flux surface
         !function find_f_plot(n_ang,dep_var,par_var,alpha)
-            !use fourier_ops, only: calc_mesh_cs, f2r
-            !use VMEC_vars, only: iotaf, nfp, L_c, L_s
+            !use fourier_ops, only: calc_ang_grid, f2r
+            !use VMEC_ops, only: iotaf, nfp, L_c, L_s
             
             !! input / output
             !integer :: n_ang
@@ -2683,7 +2684,7 @@ contains
             !do jd = 1, n_ang
                 !if (use_tor_flux) then                                          ! looking for zeta (dep. var)
                     !! cosines and sines
-                    !ierr = calc_mesh_cs(cs,mpol,ntor,nfp,par_var,dep_var(jd))
+                    !ierr = calc_ang_grid(cs,mpol,ntor,nfp,par_var,dep_var(jd))
                     !CHCKERR('')
                     !! lambda
                     !lam = f2r(L_c(:,:,kd,0),L_s(:,:,kd,0),cs,mpol,ntor,nfp,&
@@ -2692,7 +2693,7 @@ contains
                     !find_f_plot(jd) = dep_var(jd)-(par_var+lam)/iotaf(kd)-alpha
                 !else                                                            ! looking for theta (dep. var)
                     !! cosines and sines
-                    !ierr = calc_mesh_cs(cs,mpol,ntor,nfp,dep_var(jd),par_var)
+                    !ierr = calc_ang_grid(cs,mpol,ntor,nfp,dep_var(jd),par_var)
                     !CHCKERR('')
                     !! lambda
                     !lam = f2r(L_c(:,:,kd,0),L_s(:,:,kd,0),cs,mpol,ntor,nfp,&
@@ -2704,14 +2705,15 @@ contains
         !end function find_f_plot
     end function test_ang_B
     
-    integer function test_arr_mult() result(ierr)
-        use utilities, only: arr_mult
-        use eq_vars, only: calc_eqd_mesh, calc_RZL, init_eq, calc_flux_q, &
-            &VMEC_R, vmec_Z, n_par, theta => theta_V, zeta => zeta_V, q_saf_V, &
-            &pres_V, grp_n_r_eq
+    integer function test_add_arr_mult() result(ierr)
+        use utilities, only: add_arr_mult
+        use eq_ops, only: init_eq, calc_RZL, calc_flux_q
+        use coord_ops, only: calc_eqd_grid
+        use eq_vars, only: VMEC_R, vmec_Z, n_par, theta => theta_E, &
+            &zeta => zeta_E, q_saf_E, pres_E, grp_n_r_eq
         !use num_vars, only: max_deriv
         
-        character(*), parameter :: rout_name = 'test_arr_mult'
+        character(*), parameter :: rout_name = 'test_add_arr_mult'
         
         ! local variables
         integer :: case_nr
@@ -2719,10 +2721,10 @@ contains
         ! initialize ierr
         ierr = 0
         
-        write(*,*) 'test arr_mult?'
+        write(*,*) 'test add_arr_mult?'
         if(yes_no(.false.)) then
             output_i = 0
-            write(*,*) 'Testing whether arr_mult correctly multiplies two &
+            write(*,*) 'Testing whether add_arr_mult correctly multiplies two &
                 &functions, taking into account derivatives'
             do 
                 case_nr = 1
@@ -2782,7 +2784,7 @@ contains
             
             zeta = 0.4*pi/2
             do jd = 1,grp_n_r_eq
-                ierr = calc_eqd_mesh(theta(:,jd),n_par,0.0_dp*pi,3.0_dp*pi)
+                ierr = calc_eqd_grid(theta(:,jd),n_par,0.0_dp*pi,3.0_dp*pi)
                 CHCKERR('')
             end do
             
@@ -2798,7 +2800,7 @@ contains
             ! multiply
             write(*,*) 'multiply R and Z'
             RZ = 0.0_dp
-            ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,0])
+            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,0])
             CHCKERR('')
             RZ_num = VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,0,0)
             call print_GP_2D('RZ (calc,num) at par = 5','',&
@@ -2810,7 +2812,7 @@ contains
             write(*,*) 'derive RZ'
             ! Dr
             RZ = 0.0_dp
-            ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[1,0,0])
+            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[1,0,0])
             CHCKERR('')
             RZ_num = VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,1,0,0)
@@ -2820,7 +2822,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Dtheta
             RZ = 0.0_dp
-            ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[0,1,0])
+            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[0,1,0])
             CHCKERR('')
             RZ_num = VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,1,0)
@@ -2830,7 +2832,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Dzeta
             RZ = 0.0_dp
-            ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,1])
+            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,1])
             CHCKERR('')
             RZ_num = VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,0,1)
@@ -2843,7 +2845,7 @@ contains
             write(*,*) 'double derive RZ'
             ! Drr
             RZ = 0.0_dp
-            ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[2,0,0])
+            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[2,0,0])
             CHCKERR('')
             RZ_num = VMEC_R(5,:,2,0,0)*VMEC_Z(5,:,0,0,0) + &
                 &2.0_dp * VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,1,0,0) + &
@@ -2854,7 +2856,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Drtheta
             RZ = 0.0_dp
-            ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[1,1,0])
+            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[1,1,0])
             CHCKERR('')
             RZ_num = VMEC_R(5,:,1,1,0)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,0,1,0) + &
@@ -2866,7 +2868,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Drzeta
             RZ = 0.0_dp
-            ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[1,0,1])
+            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[1,0,1])
             CHCKERR('')
             RZ_num = VMEC_R(5,:,1,0,1)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,0,0,1) + &
@@ -2878,7 +2880,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Dthetatheta
             RZ = 0.0_dp
-            ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[0,2,0])
+            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[0,2,0])
             CHCKERR('')
             RZ_num = VMEC_R(5,:,0,2,0)*VMEC_Z(5,:,0,0,0) + &
                 &2.0_dp * VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,0,1,0) + &
@@ -2889,7 +2891,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Dtzeta
             RZ = 0.0_dp
-            ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[0,1,1])
+            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[0,1,1])
             CHCKERR('')
             RZ_num = VMEC_R(5,:,0,1,1)*VMEC_Z(5,:,0,0,0) + &
                 &VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,0,0,1) + &
@@ -2901,7 +2903,7 @@ contains
                 &RZ(5,:)-RZ_num)
             ! Dzetazeta
             RZ = 0.0_dp
-            ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,2])
+            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,2])
             CHCKERR('')
             RZ_num = VMEC_R(5,:,0,0,2)*VMEC_Z(5,:,0,0,0) + &
                 &2.0_dp * VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,0,0,1) + &
@@ -2914,7 +2916,7 @@ contains
             ! higher order derive multiplied values
             write(*,*) 'higher order derive RZ'
             RZ = 0.0_dp
-            ierr = arr_mult(VMEC_R,VMEC_Z,RZ,[1,2,3])
+            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[1,2,3])
             CHCKERR('')
             RZ_num = VMEC_R(5,:,1,2,3)*VMEC_Z(5,:,0,0,0) + &
                 &3.0_dp * VMEC_R(5,:,1,2,2)*VMEC_Z(5,:,0,0,1) + &
@@ -2967,7 +2969,7 @@ contains
             
             zeta = 0.4*pi/2
             do jd = 1,grp_n_r_eq
-                ierr = calc_eqd_mesh(theta(:,jd),n_par, 0.0_dp*pi, 3.0_dp*pi)
+                ierr = calc_eqd_grid(theta(:,jd),n_par, 0.0_dp*pi, 3.0_dp*pi)
             CHCKERR('')
             end do
             
@@ -2980,16 +2982,16 @@ contains
                 end do
             end do
             
-            write(*,*) 'calculate q_saf_V'
+            write(*,*) 'calculate q_saf_E'
             ierr = calc_flux_q()
             CHCKERR('')
             
             ! multiply
-            write(*,*) 'multiply R and q_saf_V'
+            write(*,*) 'multiply R and q_saf_E'
             Rq = 0.0_dp
-            ierr = arr_mult(VMEC_R,q_saf_V,Rq,[0,0,0])
+            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[0,0,0])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,0,0,0)*q_saf_V(:,0)
+            Rq_num = VMEC_R(5,:,0,0,0)*q_saf_E(:,0)
             call print_GP_2D('Rq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Rq (calc-num) at par = 5','',&
@@ -2999,19 +3001,19 @@ contains
             write(*,*) 'derive Rq'
             ! Dr
             Rq = 0.0_dp
-            ierr = arr_mult(VMEC_R,q_saf_V,Rq,[1,0,0])
+            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[1,0,0])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,1,0,0)*q_saf_V(:,0) + &
-                &VMEC_R(5,:,0,0,0)*q_saf_V(:,1)
+            Rq_num = VMEC_R(5,:,1,0,0)*q_saf_E(:,0) + &
+                &VMEC_R(5,:,0,0,0)*q_saf_E(:,1)
             call print_GP_2D('DrRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Dtheta
             Rq = 0.0_dp
-            ierr = arr_mult(VMEC_R,q_saf_V,Rq,[0,1,0])
+            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[0,1,0])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,0,1,0)*q_saf_V(:,0) + &
+            Rq_num = VMEC_R(5,:,0,1,0)*q_saf_E(:,0) + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DtRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
@@ -3019,9 +3021,9 @@ contains
                 &Rq(5,:)-Rq_num)
             ! Dzeta
             Rq = 0.0_dp
-            ierr = arr_mult(VMEC_R,q_saf_V,Rq,[0,0,1])
+            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[0,0,1])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,0,0,1)*q_saf_V(:,0) + &
+            Rq_num = VMEC_R(5,:,0,0,1)*q_saf_E(:,0) + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DzRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
@@ -3032,22 +3034,22 @@ contains
             write(*,*) 'double derive Rq'
             ! Drr
             Rq = 0.0_dp
-            ierr = arr_mult(VMEC_R,q_saf_V,Rq,[2,0,0])
+            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[2,0,0])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,2,0,0)*q_saf_V(:,0) + &
-                &2.0_dp * VMEC_R(5,:,1,0,0)*q_saf_V(:,1) + &
-                &VMEC_R(5,:,0,0,0)*q_saf_V(:,2)
+            Rq_num = VMEC_R(5,:,2,0,0)*q_saf_E(:,0) + &
+                &2.0_dp * VMEC_R(5,:,1,0,0)*q_saf_E(:,1) + &
+                &VMEC_R(5,:,0,0,0)*q_saf_E(:,2)
             call print_GP_2D('DrrRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrrRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Drtheta
             Rq = 0.0_dp
-            ierr = arr_mult(VMEC_R,q_saf_V,Rq,[1,1,0])
+            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[1,1,0])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,1,1,0)*q_saf_V(:,0) + &
+            Rq_num = VMEC_R(5,:,1,1,0)*q_saf_E(:,0) + &
                 &VMEC_R(5,:,1,0,0)*0.0_dp + &
-                &VMEC_R(5,:,0,1,0)*q_saf_V(:,1) + &
+                &VMEC_R(5,:,0,1,0)*q_saf_E(:,1) + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DrtRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
@@ -3055,11 +3057,11 @@ contains
                 &Rq(5,:)-Rq_num)
             ! Drzeta
             Rq = 0.0_dp
-            ierr = arr_mult(VMEC_R,q_saf_V,Rq,[1,0,1])
+            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[1,0,1])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,1,0,1)*q_saf_V(:,0) + &
+            Rq_num = VMEC_R(5,:,1,0,1)*q_saf_E(:,0) + &
                 &VMEC_R(5,:,1,0,0)*0.0_dp + &
-                &VMEC_R(5,:,0,0,1)*q_saf_V(:,1) + &
+                &VMEC_R(5,:,0,0,1)*q_saf_E(:,1) + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DrzRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
@@ -3067,9 +3069,9 @@ contains
                 &Rq(5,:)-Rq_num)
             ! Dthetatheta
             Rq = 0.0_dp
-            ierr = arr_mult(VMEC_R,q_saf_V,Rq,[0,2,0])
+            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[0,2,0])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,0,2,0)*q_saf_V(:,0) + &
+            Rq_num = VMEC_R(5,:,0,2,0)*q_saf_E(:,0) + &
                 &2.0_dp * VMEC_R(5,:,0,1,0)*0.0_dp + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DttRq (calc,num) at par = 5','',&
@@ -3078,9 +3080,9 @@ contains
                 &Rq(5,:)-Rq_num)
             ! Dtzeta
             Rq = 0.0_dp
-            ierr = arr_mult(VMEC_R,q_saf_V,Rq,[0,1,1])
+            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[0,1,1])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,0,1,1)*q_saf_V(:,0) + &
+            Rq_num = VMEC_R(5,:,0,1,1)*q_saf_E(:,0) + &
                 &VMEC_R(5,:,0,1,0)*0.0_dp + &
                 &VMEC_R(5,:,0,0,1)*0.0_dp + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
@@ -3090,9 +3092,9 @@ contains
                 &Rq(5,:)-Rq_num)
             ! Dzetazeta
             Rq = 0.0_dp
-            ierr = arr_mult(VMEC_R,q_saf_V,Rq,[0,0,2])
+            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[0,0,2])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,0,0,2)*q_saf_V(:,0) + &
+            Rq_num = VMEC_R(5,:,0,0,2)*q_saf_E(:,0) + &
                 &2.0_dp * VMEC_R(5,:,0,0,1)*0.0_dp + &
                 &VMEC_R(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DzzRq (calc,num) at par = 5','',&
@@ -3103,9 +3105,9 @@ contains
             ! higher order derive multiplied values
             write(*,*) 'higher order derive Rq'
             Rq = 0.0_dp
-            ierr = arr_mult(VMEC_R,q_saf_V,Rq,[1,2,3])
+            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[1,2,3])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,1,2,3)*q_saf_V(:,0) + &
+            Rq_num = VMEC_R(5,:,1,2,3)*q_saf_E(:,0) + &
                 &3.0_dp * VMEC_R(5,:,1,2,2)*0.0_dp + &
                 &3.0_dp * VMEC_R(5,:,1,2,1)*0.0_dp + &
                 &1.0_dp * VMEC_R(5,:,1,2,0)*0.0_dp + &
@@ -3117,7 +3119,7 @@ contains
                 &3.0_dp * VMEC_R(5,:,1,0,2)*0.0_dp + &
                 &3.0_dp * VMEC_R(5,:,1,0,1)*0.0_dp + &
                 &1.0_dp * VMEC_R(5,:,1,0,0)*0.0_dp + &
-                &1.0_dp * VMEC_R(5,:,0,2,3)*q_saf_V(:,1) + &
+                &1.0_dp * VMEC_R(5,:,0,2,3)*q_saf_E(:,1) + &
                 &3.0_dp * VMEC_R(5,:,0,2,2)*0.0_dp + &
                 &3.0_dp * VMEC_R(5,:,0,2,1)*0.0_dp + &
                 &1.0_dp * VMEC_R(5,:,0,2,0)*0.0_dp + &
@@ -3156,20 +3158,20 @@ contains
             
             zeta = 0.4*pi/2
             do jd = 1,grp_n_r_eq
-                ierr = calc_eqd_mesh(theta(:,jd),n_par,0.0_dp*pi,3.0_dp*pi)
+                ierr = calc_eqd_grid(theta(:,jd),n_par,0.0_dp*pi,3.0_dp*pi)
                 CHCKERR('')
             end do
             
-            write(*,*) 'calculate q_saf_V and pres_V'
+            write(*,*) 'calculate q_saf_E and pres_E'
             ierr = calc_flux_q()
             CHCKERR('')
             
             ! multiply
-            write(*,*) 'multiply pres_V and q_saf_V'
+            write(*,*) 'multiply pres_E and q_saf_E'
             pq = 0.0_dp
-            ierr = arr_mult(pres_V,q_saf_V,pq,[0,0,0])
+            ierr = add_arr_mult(pres_E,q_saf_E,pq,[0,0,0])
             CHCKERR('')
-            pq_num = pres_V(:,0)*q_saf_V(:,0)
+            pq_num = pres_E(:,0)*q_saf_E(:,0)
             call print_GP_2D('pq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff pq (calc-num) = 5','',&
@@ -3179,30 +3181,30 @@ contains
             write(*,*) 'derive pq'
             ! Dr
             pq = 0.0_dp
-            ierr = arr_mult(pres_V,q_saf_V,pq,[1,0,0])
+            ierr = add_arr_mult(pres_E,q_saf_E,pq,[1,0,0])
             CHCKERR('')
-            pq_num = pres_V(:,1)*q_saf_V(:,0) + &
-                &pres_V(:,0)*q_saf_V(:,1)
+            pq_num = pres_E(:,1)*q_saf_E(:,0) + &
+                &pres_E(:,0)*q_saf_E(:,1)
             call print_GP_2D('Drpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Drpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Dtheta
             pq = 0.0_dp
-            ierr = arr_mult(pres_V,q_saf_V,pq,[0,1,0])
+            ierr = add_arr_mult(pres_E,q_saf_E,pq,[0,1,0])
             CHCKERR('')
-            pq_num = 0.0_dp*q_saf_V(:,0) + &
-                &pres_V(:,0)*0.0_dp
+            pq_num = 0.0_dp*q_saf_E(:,0) + &
+                &pres_E(:,0)*0.0_dp
             call print_GP_2D('Dtpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Dtpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Dzeta
             pq = 0.0_dp
-            ierr = arr_mult(pres_V,q_saf_V,pq,[0,0,1])
+            ierr = add_arr_mult(pres_E,q_saf_E,pq,[0,0,1])
             CHCKERR('')
-            pq_num = 0.0_dp*q_saf_V(:,0) + &
-                &pres_V(:,0)*0.0_dp
+            pq_num = 0.0_dp*q_saf_E(:,0) + &
+                &pres_E(:,0)*0.0_dp
             call print_GP_2D('Dzpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Dzpq (calc-num) = 5','',&
@@ -3212,18 +3214,18 @@ contains
             write(*,*) 'double derive pq'
             ! Drr
             pq = 0.0_dp
-            ierr = arr_mult(pres_V,q_saf_V,pq,[2,0,0])
+            ierr = add_arr_mult(pres_E,q_saf_E,pq,[2,0,0])
             CHCKERR('')
-            pq_num = pres_V(:,2)*q_saf_V(:,0) + &
-                &2.0_dp * pres_V(:,1)*q_saf_V(:,1) + &
-                &pres_V(:,0)*q_saf_V(:,2)
+            pq_num = pres_E(:,2)*q_saf_E(:,0) + &
+                &2.0_dp * pres_E(:,1)*q_saf_E(:,1) + &
+                &pres_E(:,0)*q_saf_E(:,2)
             call print_GP_2D('Drrpq (calc,num) = 5','',&
                 &reshape([pq,pq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Drrpq (calc-num) = 5','',&
                 &pq-pq_num)
             ! Drtheta
             pq = 0.0_dp
-            ierr = arr_mult(pres_V,q_saf_V,pq,[1,1,0])
+            ierr = add_arr_mult(pres_E,q_saf_E,pq,[1,1,0])
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Drtpq (calc,num) = 5','',&
@@ -3232,7 +3234,7 @@ contains
                 &pq-pq_num)
             ! Drzeta
             pq = 0.0_dp
-            ierr = arr_mult(pres_V,q_saf_V,pq,[2,0,1])
+            ierr = add_arr_mult(pres_E,q_saf_E,pq,[2,0,1])
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Drzpq (calc,num) = 5','',&
@@ -3241,7 +3243,7 @@ contains
                 &pq-pq_num)
             ! Dthetatheta
             pq = 0.0_dp
-            ierr = arr_mult(pres_V,q_saf_V,pq,[0,2,0])
+            ierr = add_arr_mult(pres_E,q_saf_E,pq,[0,2,0])
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Dttpq (calc,num) = 5','',&
@@ -3250,7 +3252,7 @@ contains
                 &pq-pq_num)
             ! Dtzeta
             pq = 0.0_dp
-            ierr = arr_mult(pres_V,q_saf_V,pq,[0,1,1])
+            ierr = add_arr_mult(pres_E,q_saf_E,pq,[0,1,1])
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Dtzpq (calc,num) = 5','',&
@@ -3259,7 +3261,7 @@ contains
                 &pq-pq_num)
             ! Dzetazeta
             pq = 0.0_dp
-            ierr = arr_mult(pres_V,q_saf_V,pq,[0,0,2])
+            ierr = add_arr_mult(pres_E,q_saf_E,pq,[0,0,2])
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Dzzpq (calc,num) = 5','',&
@@ -3270,7 +3272,7 @@ contains
             ! higher order derive multiplied values
             write(*,*) 'higher order derive pq'
             pq = 0.0_dp
-            ierr = arr_mult(pres_V,q_saf_V,pq,[1,2,3])
+            ierr = add_arr_mult(pres_E,q_saf_E,pq,[1,2,3])
             CHCKERR('')
             pq_num = 0.0_dp
             call print_GP_2D('Drttzzzpq (calc,num) = 5','',&
@@ -3278,7 +3280,7 @@ contains
             call print_GP_2D('diff Drttzzzpq (calc-num) = 5','',&
                 &pq-pq_num)
         end function case_1_1
-    end function test_arr_mult
+    end function test_add_arr_mult
     
     ! test SLEPC
     ! (from $PETSC_DIR/src/eps/examples/tutorials/ex1f90.F90)

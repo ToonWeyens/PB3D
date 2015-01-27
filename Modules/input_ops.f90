@@ -55,7 +55,7 @@ contains
         use num_vars, only: &
             &minim_style, min_alpha, max_alpha, n_alpha, max_it_NR, tol_NR, &
             &max_it_r, input_i, n_seq_0, min_n_r_X, use_pol_flux, &
-            &calc_mesh_style, EV_style, n_procs_per_alpha, plot_jq, tol_r, &
+            &grid_style, EV_style, n_procs_per_alpha, plot_jq, tol_r, &
             &n_sol_requested, min_r_X, max_r_X, nyq_fac, max_n_plots, &
             &glb_rank, nyq_fac, plot_grid, plot_flux_q, output_style, &
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot
@@ -98,7 +98,7 @@ contains
             call default_input
             
             ! initialize non-input file variables
-            calc_mesh_style = 0                                                 ! for debugging, not for users
+            grid_style = 1                                                      ! nonzero for debugging, not for users
             
             ! read user input
             if (input_i.ge.n_seq_0) then                                        ! otherwise, defaults are loaded

@@ -10,7 +10,7 @@ module driver_rich
     use output_ops, only: print_GP_2D, print_GP_3D
     implicit none
     private
-    public run_rich_driver
+    public run_rich_driver, calc_eq
 
     ! global variables
     real(dp), allocatable :: alpha(:)
@@ -25,11 +25,11 @@ contains
     integer function run_rich_driver() result(ierr)
         use num_vars, only: min_alpha, max_alpha, n_alpha, glb_rank, grp_nr, &
             &max_alpha, alpha_job_nr, use_pol_flux, eq_style
-        use eq_vars, only: calc_eqd_mesh
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
-        use VMEC_vars, only: dealloc_VMEC
-        use HEL_vars, only: dealloc_HEL
+        use VMEC_ops, only: dealloc_VMEC
+        use HEL_ops, only: dealloc_HEL
+        use coord_ops, only: calc_eqd_grid
         
         character(*), parameter :: rout_name = 'run_rich_driver'
         
@@ -65,9 +65,9 @@ contains
         call lvl_ud(-1)
         
         ! determine the magnetic field lines for which to run the calculations 
-        ! (equidistant mesh)
+        ! (equidistant grid)
         allocate(alpha(n_alpha))
-        ierr = calc_eqd_mesh(alpha,n_alpha,min_alpha,max_alpha,.true.)          ! evenly spread alpha's over 0..2*pi
+        ierr = calc_eqd_grid(alpha,n_alpha,min_alpha,max_alpha,.true.)          ! evenly spread alpha's over 0..2*pi
         CHCKERR('')
         
         ! split  the  communicator MPI_COMM_WORLD into subcommunicators
@@ -146,12 +146,11 @@ contains
     integer function run_for_alpha(job_nr,alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, grp_rank, no_guess, &
             &alpha_job_nr, n_sol_plotted
-        use eq_ops, only: calc_eq
         use eq_vars, only: ang_par_F, n_par
         use output_ops, only: draw_GP
         use eq_vars, only: dealloc_eq_final
-        use X_ops, only: prepare_X, solve_EV_system, plot_X_vec
-        use X_vars, only: X_vec, X_val, init_m, dealloc_X_final, n_r_X, size_X
+        use X_ops, only: prepare_X, solve_EV_system, plot_X_vec, init_m
+        use X_vars, only: X_vec, X_val, dealloc_X_final, n_r_X, size_X
         use metric_ops, only: dealloc_metric_final
         
         character(*), parameter :: rout_name = 'run_for_alpha'
@@ -418,8 +417,7 @@ contains
         
         ! deallocate remaining equilibrium quantities
         call writo('Deallocate remaining quantities')
-        ierr = dealloc_eq_final()
-        CHCKERR('')
+        call dealloc_eq_final
         call dealloc_metric_final
         call dealloc_X_final
     contains
@@ -560,6 +558,303 @@ contains
         end subroutine plot_harmonics
     end function run_for_alpha
     
+    ! calculate  the equilibrium  quantities on  a grid  determined by  straight
+    ! field lines. This  grid has the dimensions  (n_par,grp_n_r_eq) where n_par
+    ! is  the  number  of  points  taken along  the  magnetic  field  lines  and
+    ! grp_n_r_eq .le.  n_r_eq is the  normal extent  in the equilibrium  grid of
+    ! this rank. It is determined so  that the perturbation quantities that will
+    ! be needed in this rank are fully covered, so no communication is necessary
+    integer function calc_eq(alpha) result(ierr)
+        use eq_vars, only: dealloc_eq, &
+            &q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, pres_FD, n_par, &
+            &flux_p_E, flux_t_E, pres_E, q_saf_E, rot_t_E, theta_E, zeta_E
+        use eq_ops, only: init_eq, calc_flux_q, prepare_RZL, calc_RZL, &
+            &normalize_eq_vars, adapt_HEL_to_eq
+        use metric_ops, only: calc_g_C, calc_g_C, calc_T_VC, calc_g_V, &
+            &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, &
+            &calc_jac_V, calc_jac_F, calc_f_deriv, dealloc_metric, &
+            &normalize_metric_vars, calc_jac_H, calc_T_HF, calc_h_H, &
+            &T_EF, T_FE, det_T_EF, det_T_FE, g_F, h_F, jac_F, g_FD, h_FD, &
+            &jac_FD, g_E, h_E
+        use utilities, only: derivs
+        use num_vars, only: max_deriv, ltest, use_pol_flux, plot_grid, &
+            &eq_style, grp_rank, use_normalization
+        use coord_ops, only: calc_ang_grid, plot_grid_real
+        
+        character(*), parameter :: rout_name = 'calc_eq'
+        
+        ! input / output
+        real(dp) :: alpha
+        
+        ! local variables
+        integer :: id
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: pmone                                                        ! plus or minus one
+        
+        ! initialize ierr
+        ierr = 0
+        
+        call writo('Start setting up equilibrium quantities in '//&
+            &trim(i2str(n_par))//' discrete parallel points')
+        call lvl_ud(1)
+        
+            call writo('Start initializing variables')
+            call lvl_ud(1)
+            
+                ! initialize equilibrium quantities
+                call writo('Initialize equilibrium quantities...')
+                ierr = init_eq()
+                CHCKERR('')
+                
+                ! initialize metric quantities
+                call writo('Initialize metric quantities...')
+                ierr = init_metric()
+                CHCKERR('')
+                
+                ! calculate flux quantities
+                call writo('Calculate flux quantities...')
+                ierr = calc_flux_q()
+                CHCKERR('')
+            
+            call lvl_ud(-1)
+            call writo('Variables initialized')
+            
+            call writo('Start determining the equilibrium grid')
+            call lvl_ud(1)
+            
+                ! calculate angular grid points (theta_E,zeta_E) that follow the
+                ! magnetic field line determined by alpha
+                ! Note: The normal grid is determined by VMEC, it can either use
+                ! the toroidal  flux or  the poloidal  flux (VMEC_use_pol_flux).
+                ! This does not have to coincide with use_pol_flux used by PB3D.
+                ! However, the grid is tabulated in the VMEC normal coordinate
+                ierr = calc_ang_grid(alpha)
+                CHCKERR('')
+                
+                ! adapt the HELENA variables to the equilibrium grid
+                if (eq_style.eq.2) then
+                    ierr = adapt_HEL_to_eq()
+                    CHCKERR('')
+                end if
+                
+                ! plot grid if requested
+                if (plot_grid .and. grp_rank.eq.0) then                         ! only group masters
+                    ierr = plot_grid_real(theta_E,zeta_E,0._dp,1._dp)
+                    CHCKERR('')
+                else
+                    call writo('Grid plot not requested')
+                end if
+            
+            call lvl_ud(-1)
+            call writo('Equilibrium grid determined')
+            
+            call writo('Calculating equilibrium quantities on equilibrium grid')
+            call lvl_ud(1)
+            
+                ! choose which equilibrium style is being used:
+                !   1:  VMEC
+                !   2:  HELENA
+                select case (eq_style)
+                    case (1)                                                    ! VMEC
+                        ! calculate the  cylindrical variables  R, Z  and lambda
+                        ! and derivatives
+                        call writo('Calculate R,Z,L...')
+                        ierr = prepare_RZL()
+                        CHCKERR('')
+                        do id = 0,max_deriv+1
+                            ierr = calc_RZL(derivs(id))
+                            CHCKERR('')
+                        end do
+                        
+                        ! calculate  the metrics  in the  cylindrical coordinate
+                        ! system
+                        call writo('Calculate g_C...')                          ! h_C is not necessary
+                        do id = 0,max_deriv
+                            ierr = calc_g_C(derivs(id))
+                            CHCKERR('')
+                        end do
+                        
+                        ! calculate the  jacobian in the  cylindrical coordinate
+                        ! system
+                        call writo('Calculate jac_C...')
+                        do id = 0,max_deriv
+                            ierr = calc_jac_C(derivs(id))
+                            CHCKERR('')
+                        end do
+                        
+                        ! calculate the  transformation matrix  C(ylindrical) ->
+                        ! V(MEC)
+                        call writo('Calculate T_VC...')
+                        do id = 0,max_deriv
+                            ierr = calc_T_VC(derivs(id))
+                            CHCKERR('')
+                        end do
+                        
+                        ! calculate  the metric  factors in the  VMEC coordinate
+                        ! system
+                        call writo('Calculate g_V...')
+                        do id = 0,max_deriv
+                            ierr = calc_g_V(derivs(id))
+                            CHCKERR('')
+                        end do
+                        
+                        ! calculate the jacobian in the VMEC coordinate system
+                        call writo('Calculate jac_V...')
+                        do id = 0,max_deriv
+                            ierr = calc_jac_V(derivs(id))
+                            CHCKERR('')
+                        end do
+                        
+                        ! calculate the transformation matrix V(MEC) -> F(lux)
+                        call writo('Calculate T_VF...')
+                        do id = 0,max_deriv
+                            ierr = calc_T_VF(derivs(id))
+                            CHCKERR('')
+                        end do
+                        
+                        ! set up plus minus one
+                        pmone = -1                                              ! conversion VMEC LH -> RH coord. system
+                    case (2)                                                    ! HELENA
+                        ! calculate the jacobian in the HELENA coordinate system
+                        call writo('Calculate jac_H...')
+                        do id = 0,max_deriv
+                            ierr = calc_jac_H(derivs(id))
+                            CHCKERR('')
+                        end do
+                        
+                        ! calculate the metric factors  in the HELENA coordinate
+                        ! system
+                        call writo('Calculate h_H...')
+                        do id = 0,max_deriv
+                            ierr = calc_h_H(derivs(id))
+                            CHCKERR('')
+                        end do
+                        
+                        ! calculate the inverse g_H of the metric factors h_H
+                        call writo('Calculate g_H...')
+                        do id = 0,max_deriv
+                            ierr = calc_inv_met(g_E,h_E,derivs(id))
+                            CHCKERR('')
+                        end do
+                        
+                        ! calculate the transformation matrix H(ELENA) -> F(lux)
+                        call writo('Calculate T_HF...')
+                        do id = 0,max_deriv
+                            ierr = calc_T_HF(derivs(id))
+                            CHCKERR('')
+                        end do
+                        
+                        ! set up plus minus one
+                        pmone = 1
+                    case default
+                        err_msg = 'No equilibrium style associated with '//&
+                            &trim(i2str(eq_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
+                end select
+                
+                ! calculate  the  inverse of  the transformation  matrix T_EF
+                call writo('Calculate T_FE...')
+                do id = 0,max_deriv
+                    ierr = calc_inv_met(T_FE,T_EF,derivs(id))
+                    CHCKERR('')
+                    ierr = calc_inv_met(det_T_FE,det_T_EF,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the metric factors in the Flux coordinate system
+                call writo('Calculate g_F...')
+                do id = 0,max_deriv
+                    ierr = calc_g_F(derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the inverse h_F of the metric factors g_F
+                call writo('Calculate h_F...')
+                do id = 0,max_deriv
+                    ierr = calc_inv_met(h_F,g_F,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the jacobian in the Flux coordinate system
+                call writo('Calculate jac_F...')
+                do id = 0,max_deriv
+                    ierr = calc_jac_F(derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate   the  derivatives  in  Flux  coordinates  from  the
+                ! derivatives in VMEC coordinates
+                call writo('Calculate derivatives in flux coordinates...')
+                do id = 0,max_deriv
+                    ! g_FD
+                    ierr = calc_f_deriv(g_F,T_FE,g_FD,max_deriv,derivs(id))
+                    CHCKERR('')
+                    
+                    ! h_FD
+                    ierr = calc_f_deriv(h_F,T_FE,h_FD,max_deriv,derivs(id))
+                    CHCKERR('')
+                    
+                    ! jac_FD
+                    ierr = calc_f_deriv(jac_F,T_FE,jac_FD,max_deriv,derivs(id))
+                    CHCKERR('')
+                    
+                    ! pres_FD
+                    ierr = calc_f_deriv(pres_E,T_FE(1,:,2,1,:,0,0),pres_FD(:,id),&
+                        &max_deriv,id)
+                    CHCKERR('')
+                        
+                    ! flux_p_FD
+                    ierr = calc_f_deriv(flux_p_E,T_FE(1,:,2,1,:,0,0),&
+                        &flux_p_FD(:,id),max_deriv,id)
+                    CHCKERR('')
+                        
+                    ! flux_t_FD
+                    ierr = calc_f_deriv(flux_t_E,T_FE(1,:,2,1,:,0,0),&
+                        &flux_t_FD(:,id),max_deriv,id)
+                    CHCKERR('')
+                    flux_t_FD = pmone * flux_t_FD                               ! multiply by plus minus one
+                    
+                    if (use_pol_flux) then
+                        ! q_saf_FD
+                        ierr = calc_f_deriv(q_saf_E,T_FE(1,:,2,1,:,0,0),&
+                            &q_saf_FD(:,id),max_deriv,id)
+                        CHCKERR('')
+                        q_saf_FD = pmone * q_saf_FD                             ! multiply by plus minus one
+                    else
+                        ! rot_t_FD
+                        ierr = calc_f_deriv(rot_t_E,T_FE(1,:,2,1,:,0,0),&
+                            &rot_t_FD(:,id),max_deriv,id)
+                        CHCKERR('')
+                        rot_t_FD = pmone * rot_t_FD                             ! multiply by plus minus one
+                    end if
+                end do
+                
+                ! normalize the quantities
+                if (use_normalization) then
+                    call writo('Normalize the equilibrium and metric &
+                        &quantities...')
+                    call normalize_eq_vars
+                    call normalize_metric_vars
+                end if
+                
+                ! deallocate unused equilibrium quantities
+                if (.not.ltest) then
+                    call writo('Deallocate unused equilibrium and metric &
+                        &quantities...')
+                    ierr = dealloc_eq()
+                    CHCKERR('')
+                    ierr = dealloc_metric()
+                    CHCKERR('')
+                end if
+            
+            call lvl_ud(-1)
+            call writo('Equilibrium quantities calculated on equilibrium grid')
+            
+        call lvl_ud(-1)
+        call writo('Done setting up equilibrium quantities')
+    end function calc_eq
+    
     ! calculates the number of normal  points for the perturbation n_r_X for the
     ! various Richardson iterations
     ! The aim is to  halve the step size, which is given by  dx(n) = 1/(n-1) or,
@@ -579,7 +874,7 @@ contains
             n_r_X = 2 * n_r_X - 1
         end if
         call writo(trim(i2str(n_r_X))//' normal points for this level')
-    end subroutine
+    end subroutine calc_n_r_X
     
     ! calculates  the  coefficients  of   the  Eigenvalues  in   the  Richardson
     ! extrapolation

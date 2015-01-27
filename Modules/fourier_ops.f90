@@ -13,13 +13,13 @@ module fourier_ops
     public calc_trigon_factors, fourier2real
 
 contains
-    ! Calculate the trigoniometric cosine and  sine factors on a mesh (0:mpol-1,
+    ! Calculate the trigoniometric cosine and  sine factors on a grid (0:mpol-1,
     ! -ntor:ntor) at given arrays 2D for theta_V and zeta_V
     ! Note:  use  -zeta instead  of  zeta  since zeta  is  tabulated  as a  flux
     ! coordinate, while here the VMEC coordinate is needed
     integer function calc_trigon_factors(theta,zeta,trigon_factors) &
         &result(ierr)
-        use VMEC_vars, only: mpol, ntor, nfp
+        use VMEC_ops, only: mpol, ntor, nfp
         
         character(*), parameter :: rout_name = 'calc_trigon_factors'
         
@@ -92,7 +92,7 @@ contains
     ! be provided here if needed)
     integer function fourier2real(var_fourier_c,var_fourier_s,trigon_factors,&
         &var_real,deriv) result(ierr)
-        use VMEC_vars, only: mpol, ntor, nfp
+        use VMEC_ops, only: mpol, ntor, nfp
         
         character(*), parameter :: rout_name = 'fourier2real'
         

@@ -1,7 +1,7 @@
 PB3D.o : \
     num_vars.o \
     MPI_ops.o \
-    VMEC_vars.o \
+    VMEC_ops.o \
     file_ops.o \
     driver.o \
     test.o \
@@ -9,7 +9,7 @@ PB3D.o : \
     utilities.o \
     input_ops.o \
     message_ops.o \
-    HDF5_vars.o \
+    HDF5_ops.o \
     eq_ops.o \
     eq_vars.o \
 
@@ -22,9 +22,12 @@ coord_ops.o : \
     num_vars.o \
     str_ops.o \
     fourier_ops.o \
-    VMEC_vars.o \
+    VMEC_ops.o \
     utilities.o \
     eq_vars.o \
+    output_ops.o \
+    HDF5_ops.o \
+    message_ops.o \
 
 driver.o : \
     num_vars.o \
@@ -46,9 +49,10 @@ driver_rich.o : \
     X_vars.o \
     slepc_ops.o \
     metric_ops.o \
-    VMEC_vars.o \
-    HEL_vars.o \
+    VMEC_ops.o \
+    HEL_ops.o \
     utilities.o \
+    coord_ops.o \
 
 slepc_ops.o : \
     num_vars.o \
@@ -64,7 +68,7 @@ slepc_vars.o : \
     utilities.o \
     file_ops.o \
     MPI_ops.o \
-    VMEC_vars.o \
+    VMEC_ops.o \
 
 X_ops.o : \
     num_vars.o \
@@ -72,7 +76,7 @@ X_ops.o : \
     eq_vars.o \
     metric_ops.o \
     utilities.o \
-    VMEC_vars.o \
+    VMEC_ops.o \
     output_ops.o \
     message_ops.o \
     X_vars.o \
@@ -80,13 +84,10 @@ X_ops.o : \
     str_ops.o \
     str_ops.o \
     MPI_ops.o \
+    coord_ops.o \
 
 X_vars.o : \
     num_vars.o \
-    output_ops.o \
-    message_ops.o \
-    eq_vars.o \
-    metric_ops.o \
 
 eq_ops.o : \
     num_vars.o \
@@ -95,8 +96,9 @@ eq_ops.o : \
     message_ops.o \
     metric_ops.o \
     utilities.o \
-    VMEC_vars.o \
-    HEL_vars.o \
+    VMEC_ops.o \
+    HEL_ops.o \
+    coord_ops.o \
     
 message_ops.o : \
     num_vars.o \
@@ -106,9 +108,9 @@ output_ops.o : \
     num_vars.o \
     str_ops.o \
     message_ops.o \
-    HDF5_vars.o \
+    HDF5_ops.o \
 
-HDF5_vars.o : \
+HDF5_ops.o : \
     num_vars.o \
     str_ops.o \
     message_ops.o \
@@ -124,22 +126,22 @@ input_ops.o : \
 fourier_ops.o : \
     message_ops.o \
     num_vars.o \
-    VMEC_vars.o \
+    VMEC_ops.o \
 
 file_ops.o : \
     num_vars.o \
     str_ops.o \
     eq_vars.o \
     message_ops.o \
-    VMEC_vars.o \
+    VMEC_ops.o \
 
-VMEC_vars.o : \
+VMEC_ops.o : \
     num_vars.o \
     str_ops.o \
     message_ops.o \
     utilities.o \
 
-HEL_vars.o : \
+HEL_ops.o : \
     num_vars.o \
     str_ops.o \
     message_ops.o \
@@ -152,12 +154,8 @@ utilities.o : \
 
 eq_vars.o : \
     num_vars.o \
-    str_ops.o \
     message_ops.o \
-    fourier_ops.o \
-    VMEC_vars.o \
-    HEL_vars.o \
-    utilities.o \
+    str_ops.o \
 
 metric_ops.o : \
     num_vars.o \
@@ -165,17 +163,19 @@ metric_ops.o : \
     str_ops.o \
     eq_vars.o \
     utilities.o \
-    HEL_vars.o \
+    HEL_ops.o \
 
 MPI_ops.o : \
     num_vars.o \
     str_ops.o \
     message_ops.o \
-    VMEC_vars.o \
+    VMEC_ops.o \
     X_vars.o \
     eq_vars.o \
     file_ops.o \
     utilities.o \
+    output_ops.o \
+    HEL_ops.o \
 
 str_ops.o : \
     num_vars.o \

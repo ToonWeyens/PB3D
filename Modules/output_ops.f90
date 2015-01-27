@@ -831,7 +831,7 @@ contains
     ! for time point. If not, inconsistent behavior results.
     subroutine print_HDF5_arr(var_names,file_name,vars,tot_dim,grp_dim,&
         &grp_offset,X,Y,Z,col_id,col,description)                               ! array version
-        use HDF5_vars, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
+        use HDF5_ops, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
             &print_HDF5_geom, print_HDF5_3D_data_item, print_HDF5_att, &
             &print_HDF5_grid, close_HDF5_file, &
             &XML_str_type, HDF5_file_type
@@ -935,18 +935,18 @@ contains
         allocate(grids(n_plot))
         
         ! allocate geometry arrays
-        if (tot_dim_3D(1).eq.1 .or. tot_dim_3D(2).eq.1) then                    ! 2D mesh
+        if (tot_dim_3D(1).eq.1 .or. tot_dim_3D(2).eq.1) then                    ! 2D grid
             allocate(XYZ(2))
-        else                                                                    ! 3D mesh
+        else                                                                    ! 3D grid
             allocate(XYZ(3))
         end if
         
         ! loop over all plots
         do id = 1,n_plot
             ! print topology
-            if (tot_dim_3D(1).eq.1 .or. tot_dim_3D(2).eq.1) then                ! 2D mesh
+            if (tot_dim_3D(1).eq.1 .or. tot_dim_3D(2).eq.1) then                ! 2D grid
                 call print_HDF5_top(top,1,tot_dim_3D)
-            else                                                                ! 3D mesh
+            else                                                                ! 3D grid
                 call print_HDF5_top(top,2,tot_dim_3D)
             end if
             
@@ -1100,7 +1100,7 @@ contains
     end subroutine print_HDF5_arr
     subroutine print_HDF5_ind(var_name,file_name,var,tot_dim,grp_dim,&
         &grp_offset,X,Y,Z,description)                                          ! individual version
-        use HDF5_vars, only: open_HDF5_file, add_HDF5_item, &
+        use HDF5_ops, only: open_HDF5_file, add_HDF5_item, &
             &XML_str_type, HDF5_file_type, print_HDF5_top, print_HDF5_geom, &
             &print_HDF5_3D_data_item, print_HDF5_att, print_HDF5_grid, &
             &close_HDF5_file
@@ -1144,16 +1144,16 @@ contains
         CHCKSTT
         
         ! allocate geometry arrays
-        if (tot_dim(1).eq.1 .or. tot_dim(2).eq.1) then                          ! 2D mesh
+        if (tot_dim(1).eq.1 .or. tot_dim(2).eq.1) then                          ! 2D grid
             allocate(XYZ(2))
-        else                                                                    ! 3D mesh
+        else                                                                    ! 3D grid
             allocate(XYZ(3))
         end if
         
         ! print topology
-        if (tot_dim(1).eq.1 .or. tot_dim(2).eq.1) then                          ! 2D mesh
+        if (tot_dim(1).eq.1 .or. tot_dim(2).eq.1) then                          ! 2D grid
             call print_HDF5_top(top,1,tot_dim)
-        else                                                                    ! 3D mesh
+        else                                                                    ! 3D grid
             call print_HDF5_top(top,2,tot_dim)
         end if
             

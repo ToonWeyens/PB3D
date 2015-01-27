@@ -26,7 +26,7 @@ program PB3D
     use test, only: test_repack, test_print_GP, &
         &test_metric_transf, test_ang_B, test_calc_ext_var, test_B, &
         &test_calc_deriv, test_conv_FHM, test_calc_RZL, &
-        &test_arr_mult, test_calc_T_VF, test_calc_inv_met, test_calc_det, &
+        &test_add_arr_mult, test_calc_T_VF, test_calc_inv_met, test_calc_det, &
         &test_inv, test_calc_f_deriv, test_calc_g, test_fourier2real, &
         &test_prepare_X, test_slepc, test_pres_balance
 #if ldebug
@@ -35,15 +35,14 @@ program PB3D
     use str_ops, only: r2str, i2str
     use message_ops, only: init_message_ops, lvl_ud, writo, init_time, &
         &start_time, passed_time, print_hello, print_goodbye
-    use HDF5_vars, only: init_HDF5
+    use HDF5_ops, only: init_HDF5
     use driver, only: run_driver
     use file_ops, only: open_input, open_output, search_file, parse_args, &
         &init_file_ops, close_output
     use input_ops, only: read_input
     use utilities, only: init_utilities
     use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, broadcast_vars
-    use eq_vars, only: calc_norm_const
-    use eq_ops, only: read_eq
+    use eq_ops, only: read_eq, calc_norm_const
     
     implicit none
 
@@ -109,8 +108,6 @@ program PB3D
         !CHCKERR
         !call test_print_GP
         !CHCKERR
-        !ierr = test_calc_mesh_cs()
-        !CHCKERR
         !ierr = test_calc_ext_var()
         !CHCKERR
         !ierr = test_fourier2real()
@@ -123,7 +120,7 @@ program PB3D
         !CHCKERR
         !ierr = test_calc_f_deriv()
         !CHCKERR
-        !ierr = test_arr_mult()
+        !ierr = test_add_arr_mult()
         !CHCKERR
         !ierr = test_metric_transf()
         !CHCKERR
@@ -187,17 +184,18 @@ contains
         
         if (ierr.ne.66) then
             call writo('>> calling routine: PB3D (main) of rank '//&
-                &trim(i2str(glb_rank)))
+                &trim(i2str(glb_rank)),persistent=.true.)
             call writo('ERROR CODE '//trim(i2str(ierr))//&
-                &'. Aborting MPI rank '//trim(i2str(glb_rank)))
+                &'. Aborting MPI rank '//trim(i2str(glb_rank)),&
+                &persistent=.true.)
             call lvl_ud(1)
             ierr_abort = abort_MPI()
         else
             ierr_abort = stop_MPI()
         end if
         if (ierr_abort.ne.0) then
-            call writo('MPI cannot abort...')
-            call writo('Shutting down')
+            call writo('MPI cannot abort...',persistent=.true.)
+            call writo('Shutting down',persistent=.true.)
         end if
         call lvl_ud(-1)
         stop

@@ -188,9 +188,10 @@ contains
         if (trim(err_msg).eq.'') then
             lvl = 2
             call writo('>> calling routine: '//trim(routine_name)//' of rank '&
-                &//trim(i2str(glb_rank)))
+                &//trim(i2str(glb_rank)),persistent=.true.)
         else
-            call writo('ERROR in '//trim(routine_name)//': '//trim(err_msg))
+            call writo('ERROR in '//trim(routine_name)//': '//trim(err_msg),&
+                &persistent=.true.)
         end if
     end subroutine
     
@@ -218,7 +219,7 @@ contains
     !       whether a  process outputs  or not,  also when  there are  no groups
     !       (yet)
     subroutine writo(input_str,persistent)
-        use num_vars, only: grp_rank, glb_rank, output_i
+        use num_vars, only: grp_rank, output_i
         
         ! input / output
         character(len=*), intent(in) :: input_str                               ! the name that is searched for
@@ -284,7 +285,7 @@ contains
                         if (temp_output_omitted.eq.0) then                      ! up to now success: first error
                             ! error message
                             do id = 1,2
-                                call format_str(lvl,temp_output_err_str(id))   ! format error message
+                                call format_str(lvl,temp_output_err_str(id))    ! format error message
                                 temp_output(temp_output_id) = &
                                     &temp_output_err_str(id)                    ! save error message as final temporary output
                                 write(*,*) temp_output_err_str(id)              ! write error message on screen
@@ -303,12 +304,10 @@ contains
                     if (lvl.eq.1) write(output_i,*) header_str
                 end if
                 
-                ! if first group, also write output to screen
-                if (glb_rank.eq.0) then                                         ! if output_i = 0, output has already been written to screen
-                    if (lvl.eq.1) write(*,*) header_str                         ! first level gets extra lines
-                    write(*,*) output_str
-                    if (lvl.eq.1) write(*,*) header_str
-                end if
+                ! also write output to screen
+                if (lvl.eq.1) write(*,*) header_str                             ! first level gets extra lines
+                write(*,*) output_str
+                if (lvl.eq.1) write(*,*) header_str
             end do
         end if
     contains

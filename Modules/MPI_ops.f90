@@ -245,12 +245,12 @@ contains
         integer function calc_eq_r_range() result(ierr)
             use num_vars, only: min_n_r_X, grp_n_procs, grp_rank, min_r_X, &
                 &max_r_X, use_pol_flux, eq_style
-            use utilities, only: con2dis, dis2con, calc_int, interp_fun_1D, &
+            use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
                 &calc_deriv, round_with_tol
             use eq_vars, only: grp_min_r_eq, grp_max_r_eq, n_r_eq, &
                 &eq_use_pol_flux
-            use VMEC_vars, only: phi, phi_r, iotaf
-            use HEL_vars, only: flux_H, qs
+            use VMEC_ops, only: phi, phi_r, iotaf
+            use HEL_ops, only: flux_H, qs
             use X_vars, only: grp_max_r_X
             
             character(*), parameter :: rout_name = 'calc_eq_r_range'
@@ -333,7 +333,7 @@ contains
             ierr = round_with_tol(grp_min_r_eq_X_con,0._dp,1._dp)
             CHCKERR('')
             ! 3. continuous equilibrium grid (0..1)
-            ierr = interp_fun_1D(grp_min_r_eq_eq_con,flux_eq,&
+            ierr = interp_fun(grp_min_r_eq_eq_con,flux_eq,&
                 &grp_min_r_eq_X_con,flux)
             CHCKERR('')
             ! 4. discrete equilibrium grid, unrounded
@@ -357,7 +357,7 @@ contains
             ierr = round_with_tol(grp_max_r_eq_X_con,0._dp,1._dp)
             CHCKERR('')
             ! 6. continuous equilibrium grid (0..1)
-            ierr = interp_fun_1D(grp_max_r_eq_eq_con,flux_eq,&
+            ierr = interp_fun(grp_max_r_eq_eq_con,flux_eq,&
                 &grp_max_r_eq_X_con,flux)
             CHCKERR('')
             ! 7. discrete equilibrium grid, unrounded
@@ -727,7 +727,7 @@ contains
     ! the global master process using the inputs to the other processes
     ! [MPI] Collective call
     integer function broadcast_vars() result(ierr)
-        use VMEC_vars, only: mpol, ntor, lasym, lfreeb, nfp, iotaf, gam, R_c, &
+        use VMEC_ops, only: mpol, ntor, lasym, lfreeb, nfp, iotaf, gam, R_c, &
             &R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf
         use num_vars, only: max_str_ln, output_name, ltest, EV_style, &
             &max_it_NR, max_it_r, n_alpha, n_procs_per_alpha, minim_style, &
@@ -735,11 +735,11 @@ contains
             &n_sol_requested, min_n_r_X, min_r_X, max_r_X, nyq_fac, tol_r, &
             &use_pol_flux, max_n_plots, plot_grid, no_plots, output_style, &
             &eq_style, use_normalization, n_sol_plotted, n_theta_plot, &
-            &n_zeta_plot
+            &n_zeta_plot, grid_style
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
         use eq_vars, only: n_par, max_par, min_par, grp_min_r_eq, n_r_eq, &
             &grp_max_r_eq, R_0, pres_0, B_0, psi_0, rho_0, eq_use_pol_flux
-        use HEL_vars, only: R_0_H, B_0_H, p0, qs, flux_H, nchi, chi_H, ias, &
+        use HEL_ops, only: R_0_H, B_0_H, p0, qs, flux_H, nchi, chi_H, ias, &
             &h_H_11, h_H_12, h_H_33, RBphi, R_H, Z_H
         
         character(*), parameter :: rout_name = 'broadcast_vars'
@@ -789,6 +789,8 @@ contains
             call MPI_Bcast(n_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(EV_style,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            CHCKERR('MPI broadcast failed')
+            call MPI_Bcast(grid_style,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(n_procs_per_alpha,1,MPI_INTEGER,0,MPI_COMM_WORLD,&
                 &ierr)
