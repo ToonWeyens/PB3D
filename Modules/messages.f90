@@ -1,13 +1,13 @@
 !------------------------------------------------------------------------------!
-!   This module contains operations concerning giving output, on the screen as !
-!   well as in output files                                                    !
+!   Operations and variables  concerning giving output, on the  screen as well !
+!   as in output files                                                         !
 !------------------------------------------------------------------------------!
-module message_ops
+module messages
     use str_ops, only: i2str, r2strt, r2str
     use num_vars, only: dp, max_str_ln
     implicit none
     private
-    public init_message_ops, lvl_ud, writo, print_ar_1, print_ar_2, &
+    public init_messages, lvl_ud, writo, print_ar_1, print_ar_2, &
         &print_err_msg, init_time, start_time, stop_time, passed_time, &
         &print_hello, print_goodbye, &
         &temp_output_id, max_len_temp_output, temp_output, lvl, lvl_sep, &
@@ -28,7 +28,7 @@ module message_ops
 contains
     ! initialize the variables for the module
     ! [MPI] All ranks
-    subroutine init_message_ops
+    subroutine init_messages
         ! output level
         lvl = 1
         
@@ -43,7 +43,7 @@ contains
         temp_output_omitted = 0
         temp_output_id = 1
         allocate(temp_output(max_len_temp_output))
-    end subroutine init_message_ops
+    end subroutine init_messages
     
     ! prints first message
     subroutine print_hello
@@ -393,4 +393,4 @@ contains
         output_str = trim(output_str) // ' |'
         write(*,*) output_str
     end subroutine
-end module message_ops
+end module messages

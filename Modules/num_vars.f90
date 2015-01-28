@@ -1,20 +1,25 @@
 !------------------------------------------------------------------------------!
-!   numerical variables used by most other modules                             !
+!   Numerical variables used by most other modules                             !
 !------------------------------------------------------------------------------!
 module num_vars
     implicit none
     private
-    public dp, qp, minim_style, max_str_ln, n_seq_0, max_args, max_opts, &
-        &prog_name, max_it_r, tol_r, ltest, pi, max_it_NR, tol_NR, no_guess, &
-        &no_plots, input_i, output_i, eq_i, min_alpha, max_alpha, n_alpha, &
-        &max_deriv, mu_0, grid_style, iu, EV_style, n_procs_per_alpha, &
-        &n_procs, MPI_Comm_groups, MPI_Comm_masters, glb_rank, glb_n_procs, &
-        &grp_rank, grp_n_procs, grp_nr, n_groups, output_name, next_job, &
-        &next_job_win, plot_jq, n_sol_requested, min_n_r_X, min_r_X, max_r_X, &
-        &nyq_fac, max_n_plots, alpha_job_nr, use_pol_flux, plot_grid, &
-        &output_style, eq_style, eq_name, plot_dir, data_dir, script_dir, &
-        &spline_type, plot_flux_q, use_normalization, n_sol_plotted, &
-        &n_theta_plot, n_zeta_plot
+    public dp, qp, max_str_ln, n_seq_0, max_args, max_opts, max_deriv, &
+        &prog_name, output_name, &
+        &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
+        &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups, &
+        &next_job, next_job_win, &
+        &pi, mu_0, iu, &
+        &minim_style, grid_style, EV_style, eq_style, plot_jq, plot_grid, &
+        &plot_flux_q, ltest, use_pol_flux_eq, use_pol_flux_X, &
+        &use_normalization, n_sol_requested, n_sol_plotted, &
+        &max_it_r, tol_r, no_guess, &
+        &max_it_NR, tol_NR, nyq_fac, &
+        &input_i, eq_i, eq_name, output_i, max_n_plots, no_plots, &
+        &output_style, plot_dir, script_dir, data_dir, n_theta_plot, &
+        &n_zeta_plot, &
+        &n_alpha, min_alpha, max_alpha, alpha_job_nr, &
+        &spline_type
 
     ! technical variables
     integer, parameter :: dp=kind(1.d0)                                         ! double precision
@@ -49,15 +54,15 @@ module num_vars
     ! concerning runtime
     integer :: minim_style                                                      ! determines the method used for minimization
         ! 1 [def] : Euler-Lagrange min., finite diff and Richardson's method
-    logical :: ltest                                                            ! whether or not to call the testing routines
     integer :: grid_style                                                       ! how equilibrium grid is calculated
     integer :: EV_style                                                         ! determines the method used for solving an EV problem
     integer :: eq_style                                                         ! either 1 (VMEC) or 2 (HELENA)
-    integer :: alpha_job_nr                                                     ! which alpha job is being calculated
-    logical :: use_pol_flux                                                     ! whether or not the poloidal flux is used as radial variable
     logical :: plot_jq                                                          ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0 (only global master)
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates (only group masters)
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates (only global master)
+    logical :: ltest                                                            ! whether or not to call the testing routines
+    logical :: use_pol_flux_eq                                                  ! .true. if equilibrium uses pol. flux and .false. if tor. flux
+    logical :: use_pol_flux_X                                                   ! .true. if perturbation uses pol. flux and .false. if tor. flux
     logical :: use_normalization                                                ! whether to use normalization or not
     integer :: n_sol_requested                                                  ! how many solutions requested
     integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
@@ -89,10 +94,7 @@ module num_vars
     ! concerning the various field lines for which to do the calculations
     integer :: n_alpha                                                          ! how many field lines
     real(dp) :: min_alpha, max_alpha                                            ! min. and max. value for alpha, should be (0...2pi)
-    
-    ! concerning the perturbation grid
-    integer :: min_n_r_X                                                        ! min. of n_r_X (e.g. first value in Richardson loop)
-    real(dp) :: min_r_X, max_r_X                                                ! min. and max. normal coord. for pert. (either pol. or tor., depending on use_pol_flux from VMEC)
+    integer :: alpha_job_nr                                                     ! which alpha job is being calculated
     
     ! concerning  spline interpolation
     ! The type of the spline is determined by "spline_type":

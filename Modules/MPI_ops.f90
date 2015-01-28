@@ -1,11 +1,11 @@
 !------------------------------------------------------------------------------!
-!   Routines related to MPI                                                    !
+!   Operations related to MPI                                                  !
 !------------------------------------------------------------------------------!
 module MPI_ops
 #include <PB3D_macros.h>
     use MPI
     use str_ops, only: i2str
-    use message_ops, only: writo, lvl_ud, print_ar_1
+    use messages, only: writo, lvl_ud, print_ar_1
     use num_vars, only: dp, max_str_ln
     use output_ops, only: print_GP_2D, draw_GP
     
@@ -47,11 +47,12 @@ contains
     ! many processors to use per field line
     ! [MPI] Collective call
     integer function split_MPI() result(ierr)
-        use num_vars, only: n_procs_per_alpha, n_procs, n_alpha, min_n_r_X, &
+        use X_vars, only: min_n_r_X
+        use num_vars, only: n_procs_per_alpha, n_procs, n_alpha, &
             &MPI_Comm_groups, glb_rank, glb_n_procs, grp_rank, next_job, &
             &grp_n_procs, grp_nr, n_groups, next_job_win
         !use num_vars, only: MPI_Comm_masters
-        use file_ops, only: open_output
+        use files, only: open_output
         
         character(*), parameter :: rout_name = 'split_MPI'
         
@@ -243,15 +244,14 @@ contains
         ! tabulated in flux_eq (normalized)
         ! [MPI] Collective call
         integer function calc_eq_r_range() result(ierr)
-            use num_vars, only: min_n_r_X, grp_n_procs, grp_rank, min_r_X, &
-                &max_r_X, use_pol_flux, eq_style
+            use num_vars, only: grp_n_procs, grp_rank, use_pol_flux_eq, &
+                &use_pol_flux_X, eq_style
             use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
                 &calc_deriv, round_with_tol
-            use eq_vars, only: grp_min_r_eq, grp_max_r_eq, n_r_eq, &
-                &eq_use_pol_flux
-            use VMEC_ops, only: phi, phi_r, iotaf
-            use HEL_ops, only: flux_H, qs
-            use X_vars, only: grp_max_r_X
+            use eq_vars, only: grp_min_r_eq, grp_max_r_eq, n_r_eq
+            use VMEC, only: phi, phi_r, iotaf
+            use HELENA, only: flux_H, qs
+            use X_vars, only: grp_max_r_X, min_n_r_X, min_r_X, max_r_X
             
             character(*), parameter :: rout_name = 'calc_eq_r_range'
             
@@ -277,7 +277,7 @@ contains
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     ! set up perturbation flux
-                    if (use_pol_flux) then
+                    if (use_pol_flux_X) then
                         ierr = calc_int(-iotaf*phi_r,1.0_dp/(n_r_eq-1.0_dp),&
                             &flux)
                         CHCKERR('')
@@ -285,7 +285,7 @@ contains
                         flux = phi
                     end if
                     ! set up equilibrium flux
-                    if (eq_use_pol_flux) then
+                    if (use_pol_flux_eq) then
                         ierr = calc_int(-iotaf*phi_r,1.0_dp/(n_r_eq-1.0_dp),&
                             &flux_eq)
                         CHCKERR('')
@@ -298,14 +298,14 @@ contains
                     ierr = calc_deriv(flux_H,flux_H_r,flux_H,1,1)
                     CHCKERR('')
                     ! set up perturbation flux
-                    if (use_pol_flux) then
+                    if (use_pol_flux_X) then
                         flux = flux_H
                     else
                         ierr = calc_int(qs*flux_H_r,flux_H,flux)
                         CHCKERR('')
                     end if
                     ! set up equilibrium flux
-                    if (eq_use_pol_flux) then
+                    if (use_pol_flux_eq) then
                         flux_eq = flux_H
                     else
                         ierr = calc_int(qs*flux_H_r,flux_H,flux_eq)
@@ -647,9 +647,9 @@ contains
     ! up  grp_r_X, which contains the  normal variable in the  perturbation grid
     ! for this rank (global range (min_r_X..max_r_X))
     integer function divide_grid(n_r_X_in) result(ierr)
-        use num_vars, only: MPI_Comm_groups, min_r_X, max_r_X, grp_rank, &
-            &grp_n_procs
-        use X_vars, only: n_r_X, grp_n_r_X, grp_min_r_X, grp_max_r_X, grp_r_X
+        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
+        use X_vars, only: n_r_X, grp_n_r_X, grp_min_r_X, grp_max_r_X, grp_r_X, &
+            &min_r_X, max_r_X
         use utilities, only: round_with_tol
         
         character(*), parameter :: rout_name = 'divide_grid'
@@ -727,19 +727,20 @@ contains
     ! the global master process using the inputs to the other processes
     ! [MPI] Collective call
     integer function broadcast_vars() result(ierr)
-        use VMEC_ops, only: mpol, ntor, lasym, lfreeb, nfp, iotaf, gam, R_c, &
+        use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, iotaf, gam, R_c, &
             &R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf
         use num_vars, only: max_str_ln, output_name, ltest, EV_style, &
             &max_it_NR, max_it_r, n_alpha, n_procs_per_alpha, minim_style, &
             &max_alpha, min_alpha, tol_NR, glb_rank, glb_n_procs, no_guess, &
-            &n_sol_requested, min_n_r_X, min_r_X, max_r_X, nyq_fac, tol_r, &
-            &use_pol_flux, max_n_plots, plot_grid, no_plots, output_style, &
-            &eq_style, use_normalization, n_sol_plotted, n_theta_plot, &
-            &n_zeta_plot, grid_style
-        use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
-        use eq_vars, only: n_par, max_par, min_par, grp_min_r_eq, n_r_eq, &
-            &grp_max_r_eq, R_0, pres_0, B_0, psi_0, rho_0, eq_use_pol_flux
-        use HEL_ops, only: R_0_H, B_0_H, p0, qs, flux_H, nchi, chi_H, ias, &
+            &n_sol_requested, nyq_fac, tol_r, use_pol_flux_X, use_pol_flux_eq, &
+            &max_n_plots, plot_grid, no_plots, output_style, eq_style, &
+            &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
+            &grid_style
+        use X_vars, only: n_par, min_par, max_par, min_m_X, max_m_X, min_n_X, &
+            &max_n_X, min_n_r_X, min_r_X, max_r_X
+        use eq_vars, only: grp_min_r_eq, n_r_eq, grp_max_r_eq, &
+            &R_0, pres_0, B_0, psi_0, rho_0
+        use HELENA, only: R_0_H, B_0_H, p0, qs, flux_H, nchi, chi_H, ias, &
             &h_H_11, h_H_12, h_H_33, RBphi, R_H, Z_H
         
         character(*), parameter :: rout_name = 'broadcast_vars'
@@ -765,9 +766,9 @@ contains
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(ltest,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(use_pol_flux,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(use_pol_flux_X,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(eq_use_pol_flux,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(use_pol_flux_eq,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(no_guess,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')

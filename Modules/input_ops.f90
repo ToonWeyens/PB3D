@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   This module contains operations concerning giving input                    !
+!   Operations concerning giving input                                         !
 !------------------------------------------------------------------------------!
 module input_ops
 #include <PB3D_macros.h>
@@ -15,8 +15,7 @@ contains
     !   yes = .true.: yes is default answer
     !   yes = .false.: no is default answer
     logical function yes_no(yes)
-        use message_ops, only: start_time, stop_time, &
-            &lvl_sep, lvl
+        use messages, only: start_time, stop_time, lvl_sep, lvl
         
         ! input / output
         logical :: yes
@@ -54,16 +53,16 @@ contains
     integer function read_input() result(ierr)
         use num_vars, only: &
             &minim_style, min_alpha, max_alpha, n_alpha, max_it_NR, tol_NR, &
-            &max_it_r, input_i, n_seq_0, min_n_r_X, use_pol_flux, &
-            &grid_style, EV_style, n_procs_per_alpha, plot_jq, tol_r, &
-            &n_sol_requested, min_r_X, max_r_X, nyq_fac, max_n_plots, &
-            &glb_rank, nyq_fac, plot_grid, plot_flux_q, output_style, &
-            &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot
-        use eq_vars, only: &
-            &min_par, max_par, n_par, rho_0
-        use message_ops, only: writo, lvl_ud
-        use file_ops, only: input_name
-        use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X
+            &max_it_r, input_i, n_seq_0, use_pol_flux_X, grid_style, EV_style, &
+            &n_procs_per_alpha, plot_jq, tol_r, n_sol_requested, nyq_fac, &
+            &max_n_plots, glb_rank, nyq_fac, plot_grid, plot_flux_q, &
+            &output_style, use_normalization, n_sol_plotted, n_theta_plot, &
+            &n_zeta_plot
+        use eq_vars, only: rho_0
+        use messages, only: writo, lvl_ud
+        use files, only: input_name
+        use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X, n_par, &
+            &min_par, max_par, min_n_r_X, min_n_X, min_r_X, max_r_X
         
         character(*), parameter :: rout_name = 'read_input'
         
@@ -76,7 +75,7 @@ contains
             &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
             &max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
             &max_r_X, EV_style, n_procs_per_alpha, plot_jq, n_sol_requested, &
-            &nyq_fac, rho_0, max_n_plots, use_pol_flux, plot_grid, &
+            &nyq_fac, rho_0, max_n_plots, use_pol_flux_X, plot_grid, &
             &output_style, plot_flux_q, use_normalization, n_sol_plotted, &
             &n_theta_plot, n_zeta_plot
         
@@ -151,7 +150,7 @@ contains
             end if
             
             ! set up min_n_X, max_n_X, min_m_X, max_m_X
-            if (use_pol_flux) then
+            if (use_pol_flux_X) then
                 min_n_X = prim_X
                 max_n_X = prim_X
                 min_m_X = min_sec_X
@@ -168,8 +167,7 @@ contains
         end if
     contains
         subroutine default_input
-            use eq_vars, only: eq_use_pol_flux
-            use num_vars, only: eq_style
+            use num_vars, only: eq_style, use_pol_flux_eq
             
             ! concerning Newton-Rhapson
             max_it_NR = 50                                                      ! maximum 50 Newton-Rhapson iterations
@@ -213,7 +211,7 @@ contains
             min_sec_X = prim_X                                                  ! min. of. secondary mode number of perturbation
             max_sec_X = prim_X                                                  ! max. of. secondary mode number of perturbation
             n_par = 20                                                          ! number of parallel grid points
-            use_pol_flux = eq_use_pol_flux                                      ! use same normal flux coordinate as the equilibrium
+            use_pol_flux_X = use_pol_flux_eq                                    ! use same normal flux coordinate as the equilibrium
             
             ! variables concerning alpha
             min_alpha = 0.0_dp                                                  ! minimum field line label [pi]

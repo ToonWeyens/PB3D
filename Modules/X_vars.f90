@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Holds variables pertaining to the perturbation quantities
+!   Variables pertaining to the perturbation quantities                        !
 !------------------------------------------------------------------------------!
 module X_vars
 #include <PB3D_macros.h>
@@ -9,10 +9,11 @@ module X_vars
     
     private
     public dealloc_X, dealloc_X_final, &
-        &n_x, m_X, n_r_X, U_X_0, U_X_1, DU_X_0, DU_X_1, extra1, grp_r_X, &
+        &n_par, n_x, m_X, n_r_X, U_X_0, U_X_1, DU_X_0, DU_X_1, extra1, grp_r_X, &
         &extra2, extra3, PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, min_m_X, &
         &max_m_X, grp_n_r_X, size_X, PV_int, KV_int, grp_min_r_X, grp_max_r_X, &
-        &min_n_X, max_n_X, exp_ang_par_F, mu0sigma
+        &min_n_X, max_n_X, ang_par_F, exp_ang_par_F, mu0sigma, min_par, &
+        &max_par, min_n_r_X, min_r_X, max_r_X
     
     ! global variables
     integer :: size_X                                                           ! size of n_X and m_X (nr. of modes)
@@ -22,9 +23,13 @@ module X_vars
     integer :: min_m_X                                                          ! lowest poloidal mode number m_X
     integer :: max_m_X                                                          ! highest poloidal mode number m_X
     integer, allocatable :: m_X(:)                                              ! vector of poloidal mode numbers
-    integer :: n_r_X                                                            ! number of normal points for perturbations
-    integer :: grp_n_r_X                                                        ! number of normal points for perturbations on this process
-    integer :: grp_min_r_X, grp_max_r_X                                         ! min. and max. r range of this process in alpha group
+    integer :: n_par                                                            ! number of parallel points in perturbation grid
+    real(dp) :: min_par, max_par                                                ! min. and max. of parallel coordinate [pi]
+    integer :: n_r_X                                                            ! number of normal points in perturbation grid
+    integer :: grp_n_r_X                                                        ! number of normal points in perturbation grid on this process
+    integer :: min_n_r_X                                                        ! min. of n_r_X (e.g. first value in Richardson loop)
+    real(dp) :: min_r_X, max_r_X                                                ! min. and max. normal range for pert. (either pol. or tor., depending on use_pol_flux_X)
+    integer :: grp_min_r_X, grp_max_r_X                                         ! min. and max. index of normal range of this process in alpha group
     real(dp), allocatable :: grp_r_X(:)                                         ! normal points in Flux coords., globally normalized to (min_r_X..max_r_X)
     complex(dp), allocatable :: U_X_0(:,:,:), U_X_1(:,:,:)                      ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
     complex(dp), allocatable :: DU_X_0(:,:,:), DU_X_1(:,:,:)                    ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
@@ -42,6 +47,7 @@ module X_vars
     complex(dp), allocatable :: KV_int(:,:,:,:)                                 ! <~KV e^i(k-m)ang_par_F> coefficient
     complex(dp), allocatable :: X_vec(:,:,:)                                    ! Eigenvector solution, with ghost region
     complex(dp), allocatable :: X_val(:)                                        ! Eigenvalue solution
+    real(dp), allocatable :: ang_par_F(:,:)                                     ! parallel angle in flux coordinates (either zeta_F or theta_F)
     complex(dp), allocatable :: exp_ang_par_F(:,:,:,:)                          ! exp(i (k-m) ang_par_F)
     
 contains
@@ -61,5 +67,6 @@ contains
         deallocate(X_vec,X_val)
         deallocate(PV_int,KV_int)
         deallocate(grp_r_X)
+        deallocate(ang_par_F)
     end subroutine dealloc_X_final
 end module

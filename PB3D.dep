@@ -1,15 +1,15 @@
 PB3D.o : \
     num_vars.o \
     MPI_ops.o \
-    VMEC_ops.o \
-    file_ops.o \
+    VMEC.o \
+    files.o \
     driver.o \
     test.o \
     str_ops.o \
     utilities.o \
     input_ops.o \
-    message_ops.o \
-    HDF5_ops.o \
+    messages.o \
+    HDF5.o \
     eq_ops.o \
     eq_vars.o \
 
@@ -22,53 +22,45 @@ coord_ops.o : \
     num_vars.o \
     str_ops.o \
     fourier_ops.o \
-    VMEC_ops.o \
+    VMEC.o \
+    HELENA.o \
     utilities.o \
+    X_vars.o \
     eq_vars.o \
     output_ops.o \
-    HDF5_ops.o \
-    message_ops.o \
+    HDF5.o \
+    messages.o \
 
 driver.o : \
     num_vars.o \
     driver_rich.o \
-    message_ops.o \
+    messages.o \
     str_ops.o \
 
 driver_rich.o : \
     num_vars.o \
     MPI_ops.o \
-    file_ops.o \
+    files.o \
     str_ops.o \
     output_ops.o \
-    message_ops.o \
+    messages.o \
     eq_vars.o \
     metric_ops.o \
     eq_ops.o \
     X_ops.o \
     X_vars.o \
-    slepc_ops.o \
+    SLEPC_ops.o \
     metric_ops.o \
-    VMEC_ops.o \
-    HEL_ops.o \
+    VMEC.o \
+    HELENA.o \
     utilities.o \
     coord_ops.o \
 
-slepc_ops.o : \
+SLEPC_ops.o : \
     num_vars.o \
-    message_ops.o \
+    messages.o \
     str_ops.o \
     MPI_ops.o \
-    slepc_vars.o \
-
-slepc_vars.o : \
-    num_vars.o \
-    message_ops.o \
-    str_ops.o \
-    utilities.o \
-    file_ops.o \
-    MPI_ops.o \
-    VMEC_ops.o \
 
 X_ops.o : \
     num_vars.o \
@@ -76,11 +68,11 @@ X_ops.o : \
     eq_vars.o \
     metric_ops.o \
     utilities.o \
-    VMEC_ops.o \
+    VMEC.o \
     output_ops.o \
-    message_ops.o \
+    messages.o \
     X_vars.o \
-    slepc_ops.o \
+    SLEPC_ops.o \
     str_ops.o \
     str_ops.o \
     MPI_ops.o \
@@ -92,90 +84,98 @@ X_vars.o : \
 eq_ops.o : \
     num_vars.o \
     eq_vars.o \
+    X_vars.o \
     output_ops.o \
-    message_ops.o \
+    messages.o \
     metric_ops.o \
     utilities.o \
-    VMEC_ops.o \
-    HEL_ops.o \
+    VMEC.o \
+    HELENA.o \
     coord_ops.o \
     
-message_ops.o : \
+messages.o : \
     num_vars.o \
     str_ops.o \
 
 output_ops.o : \
     num_vars.o \
     str_ops.o \
-    message_ops.o \
-    HDF5_ops.o \
+    messages.o \
+    HDF5.o \
 
-HDF5_ops.o : \
+HDF5.o : \
     num_vars.o \
     str_ops.o \
-    message_ops.o \
+    messages.o \
 
 input_ops.o : \
-    message_ops.o \
+    messages.o \
     str_ops.o \
     num_vars.o \
     eq_vars.o \
-    file_ops.o \
+    files.o \
     X_vars.o \
 
 fourier_ops.o : \
-    message_ops.o \
+    messages.o \
     num_vars.o \
-    VMEC_ops.o \
+    VMEC.o \
 
-file_ops.o : \
+files.o : \
     num_vars.o \
     str_ops.o \
     eq_vars.o \
-    message_ops.o \
-    VMEC_ops.o \
+    messages.o \
+    VMEC.o \
 
-VMEC_ops.o : \
+VMEC.o : \
     num_vars.o \
     str_ops.o \
-    message_ops.o \
+    messages.o \
     utilities.o \
 
-HEL_ops.o : \
+HELENA.o : \
     num_vars.o \
     str_ops.o \
-    message_ops.o \
+    messages.o \
     utilities.o \
+    output_ops.o \
 
 utilities.o : \
     num_vars.o \
-    message_ops.o \
+    messages.o \
     str_ops.o \
 
 eq_vars.o : \
     num_vars.o \
-    message_ops.o \
+    messages.o \
     str_ops.o \
 
 metric_ops.o : \
     num_vars.o \
-    message_ops.o \
+    messages.o \
     str_ops.o \
     eq_vars.o \
+    X_vars.o \
     utilities.o \
-    HEL_ops.o \
+    HELENA.o \
+    metric_vars.o \
+
+metric_vars.o : \
+    num_vars.o \
+    str_ops.o \
 
 MPI_ops.o : \
     num_vars.o \
     str_ops.o \
-    message_ops.o \
-    VMEC_ops.o \
+    messages.o \
+    VMEC.o \
     X_vars.o \
     eq_vars.o \
-    file_ops.o \
+    files.o \
     utilities.o \
     output_ops.o \
-    HEL_ops.o \
+    HELENA.o \
 
 str_ops.o : \
     num_vars.o \

@@ -4,7 +4,7 @@
 module utilities
 #include <PB3D_macros.h>
     use num_vars, only: dp, iu, max_str_ln
-    use message_ops, only: writo, print_ar_1, print_ar_2
+    use messages, only: writo, print_ar_1, print_ar_2
     use str_ops, only: i2str, r2strt, r2str
     
     implicit none

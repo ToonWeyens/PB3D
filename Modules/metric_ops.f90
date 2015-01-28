@@ -1,11 +1,10 @@
 !------------------------------------------------------------------------------!
-!   Variables, subroutines and  functions that have to do with the metric      !
-!   elements                                                                   !
+!   Operations that have to do with the metric elements                        !
 !------------------------------------------------------------------------------!
 module metric_ops 
 #include <PB3D_macros.h>
     use num_vars, only: dp, max_deriv, max_str_ln
-    use message_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
+    use messages, only: writo, print_ar_2, print_ar_1, lvl_ud
     use str_ops, only: r2str, i2str
     use eq_vars, only: grp_n_r_eq
     use utilities, only: check_deriv
@@ -13,32 +12,11 @@ module metric_ops
     
     implicit none
     private
-    public calc_T_VC, calc_g_C, calc_jac_C, calc_g_V, T_VC, calc_jac_V, &
+    public calc_T_VC, calc_g_C, calc_jac_C, calc_g_V, calc_jac_V, &
         &calc_jac_H, calc_T_HF, init_metric, calc_T_VF, calc_h_H, &
         &calc_inv_met, calc_g_F, calc_jac_F, normalize_metric_vars, &
-        &calc_f_deriv, dealloc_metric, dealloc_metric_final, &
-        &jac_F, h_F, g_F, g_C, g_FD, h_FD, jac_E, jac_FD, T_FE, T_EF, &
-        &det_T_FE, det_T_EF, h_E, g_E
-
-    ! upper (h) and lower (g) metric factors
-    ! (index 1,2: along B, perp to flux surfaces, index 4,5: 3x3 matrix)
-    real(dp), allocatable :: g_C(:,:,:,:,:,:,:)                                 ! in the C(ylindrical) coordinate system
-    real(dp), allocatable :: g_E(:,:,:,:,:,:,:), h_E(:,:,:,:,:,:,:)             ! in the E(quilibrium) coordinate system
-    real(dp), allocatable :: g_F(:,:,:,:,:,:,:), h_F(:,:,:,:,:,:,:)             ! in the F(lux) coordinate system with derivatves in the V(MEC) system
-    real(dp), allocatable :: g_FD(:,:,:,:,:,:,:), h_FD(:,:,:,:,:,:,:)           ! in the F(lux) coordinate system with derivatives in the F(lux) system
-    ! upper and lower transformation matrices
-    ! (index 1,2: along B, perp to flux surfaces, index 4,5: 3x3 matrix)
-    real(dp), allocatable :: T_VC(:,:,:,:,:,:,:)                                ! C(ylindrical) to V(MEC) (lower)
-    real(dp), allocatable :: T_EF(:,:,:,:,:,:,:)                                ! E(quilibrium) to F(lux) (upper)
-    real(dp), allocatable, target :: T_FE(:,:,:,:,:,:,:)                        ! E(quilibrium) to F(lux) (lower)
-    real(dp), allocatable :: det_T_VC(:,:,:,:,:)                                ! determinant of T_VC
-    real(dp), allocatable :: det_T_EF(:,:,:,:,:)                                ! determinant of T_EF
-    real(dp), allocatable :: det_T_FE(:,:,:,:,:)                                ! determinant of T_FE
-    real(dp), allocatable :: jac_C(:,:,:,:,:)                                   ! jacobian of C(ylindrical) coordinate system
-    real(dp), allocatable :: jac_E(:,:,:,:,:)                                   ! jacobian of E(quilibrium) coordinate system
-    real(dp), allocatable :: jac_F(:,:,:,:,:)                                   ! jacobian of F(lux) coordinate system with derivatives in the V(MEC) system
-    real(dp), allocatable :: jac_FD(:,:,:,:,:)                                  ! jacobian of F(lux) coordinate system with derivatives in the F(lux) system
-        
+        &calc_f_deriv
+    
     ! interfaces
     interface calc_g_C
         module procedure calc_g_C_ind, calc_g_C_arr
@@ -86,7 +64,10 @@ contains
     ! initialize metric variables
     integer function init_metric() result(ierr)
         use num_vars, only: eq_style
-        use eq_vars, only: n_par, grp_n_r_eq
+        use eq_vars, only: grp_n_r_eq
+        use X_vars, only: n_par
+        use metric_vars, only: g_E, h_E, g_F, h_F, g_FD, h_FD, jac_E, jac_F, &
+            &jac_FD, T_EF, T_FE, det_T_EF, det_T_FE, g_C, T_VC, det_T_VC, jac_C
         
         character(*), parameter :: rout_name = 'init_metric'
         
@@ -173,8 +154,9 @@ contains
     
     ! calculate the lower metric elements in the C(ylindrical) coordinate system
     integer function calc_g_C_ind(deriv) result(ierr)
-        use eq_vars, only: VMEC_R
+        use eq_vars, only: R_E
         use utilities, only: add_arr_mult
+        use metric_vars, only: g_C
         
         character(*), parameter :: rout_name = 'calc_g_C_ind'
         
@@ -193,8 +175,8 @@ contains
             g_C(:,:,1,1,deriv(1),deriv(2),deriv(3)) = 1.0_dp
             g_C(:,:,3,3,deriv(1),deriv(2),deriv(3)) = 1.0_dp
         end if
-        ierr = add_arr_mult(VMEC_R,VMEC_R,&
-            &g_C(:,:,2,2,deriv(1),deriv(2),deriv(3)),deriv)
+        ierr = add_arr_mult(R_E,R_E,g_C(:,:,2,2,deriv(1),deriv(2),deriv(3)),&
+            &deriv)
         CHCKERR('')
     end function calc_g_C_ind
     integer function calc_g_C_arr(deriv) result(ierr)
@@ -219,6 +201,7 @@ contains
     !       already. If not, the results will be incorrect!
     integer function calc_g_V_ind(deriv) result(ierr)
         use num_vars, only: max_deriv
+        use metric_vars, only: g_C, T_VC, g_E
         
         character(*), parameter :: rout_name = 'calc_g_V_ind'
         
@@ -254,9 +237,11 @@ contains
     ! system using the HELENA output
     integer function calc_h_H_ind(deriv) result(ierr)
         use num_vars, only: max_deriv
-        use HEL_ops, only: h_H_11, h_H_12, h_H_33, flux_H
-        use eq_vars, only: grp_min_r_eq, grp_max_r_eq, n_par, theta_E
+        use HELENA, only: h_H_11, h_H_12, h_H_33, flux_H
+        use eq_vars, only: grp_min_r_eq, grp_max_r_eq, theta_E
+        use X_vars, only: n_par
         use utilities, only: calc_deriv, calc_det
+        use metric_vars, only: h_E, jac_E
         
         character(*), parameter :: rout_name = 'calc_h_H_ind'
         
@@ -403,6 +388,7 @@ contains
     ! trans- formation matrices
     integer function calc_g_F_ind(deriv) result(ierr)
         use num_vars, only: max_deriv
+        use metric_vars, only: g_E, g_F, T_FE
         
         character(*), parameter :: rout_name = 'calc_g_F_ind'
         
@@ -448,7 +434,8 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect. This is not checked!
     integer function calc_g(g_A,T_BA,g_B,deriv,max_deriv) result(ierr)
-        use eq_vars, only: n_par, grp_n_r_eq
+        use eq_vars, only: grp_n_r_eq
+        use X_vars, only: n_par
         
         character(*), parameter :: rout_name = 'calc_g'
         
@@ -552,7 +539,8 @@ contains
     
     ! calculate the jacobian in cylindrical coordinates
     integer function calc_jac_C_ind(deriv) result(ierr)
-        use eq_vars, only: VMEC_R
+        use eq_vars, only: R_E
+        use metric_vars, only: jac_C
         
         character(*), parameter :: rout_name = 'calc_jac_C_ind'
         
@@ -567,7 +555,7 @@ contains
         CHCKERR('')
         
         jac_C(:,:,deriv(1),deriv(2),deriv(3)) = &
-            &VMEC_R(:,:,deriv(1),deriv(2),deriv(3))
+            &R_E(:,:,deriv(1),deriv(2),deriv(3))
     end function calc_jac_C_ind
     integer function calc_jac_C_arr(deriv) result(ierr)
         character(*), parameter :: rout_name = 'calc_jac_C_arr'
@@ -590,6 +578,7 @@ contains
     !       already. If not, the results will be incorrect!
     integer function calc_jac_V_ind(deriv) result(ierr)
         use utilities, only: add_arr_mult
+        use metric_vars, only: jac_E, det_T_VC, jac_C
         
         character(*), parameter :: rout_name = 'calc_jac_V_ind'
         
@@ -628,10 +617,12 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_jac_H_ind(deriv) result(ierr)
-        use HEL_ops, only:  qs, h_H_33, RBphi, flux_H
+        use HELENA, only:  qs, h_H_33, RBphi, flux_H
         use utilities, only: calc_deriv
-        use eq_vars, only: n_par, grp_n_r_eq, grp_min_r_eq, theta_E, &
+        use X_vars, only: n_par
+        use eq_vars, only: grp_n_r_eq, grp_min_r_eq, theta_E, &
             &grp_min_r_eq, grp_max_r_eq
+        use metric_vars, only: jac_E
         
         character(*), parameter :: rout_name = 'calc_jac_H_ind'
         
@@ -711,11 +702,12 @@ contains
     end function calc_jac_H_arr
     
     ! calculate the jacobian in Flux coordinates from 
-    !   jac_F = det(T_FV) jac_V
+    !   jac_F = det(T_FE) jac_E
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_jac_F_ind(deriv) result(ierr)
         use utilities, only: add_arr_mult
+        use metric_vars, only: jac_F, det_T_FE, jac_E
         
         character(*), parameter :: rout_name = 'calc_jac_F_ind'
         
@@ -756,7 +748,8 @@ contains
     ! coordinate system
     integer function calc_T_VC_ind(deriv) result(ierr)
         use utilities, only: add_arr_mult
-        use eq_vars, only: VMEC_R, VMEC_Z
+        use eq_vars, only: R_E, Z_E
+        use metric_vars, only: T_VC, det_T_VC
         
         character(*), parameter :: rout_name = 'calc_T_VC_ind'
         
@@ -772,31 +765,31 @@ contains
         
         ! calculate transformation matrix T_V^C
         T_VC(:,:,1,1,deriv(1),deriv(2),deriv(3)) = &
-            &VMEC_R(:,:,deriv(1)+1,deriv(2),deriv(3))
+            &R_E(:,:,deriv(1)+1,deriv(2),deriv(3))
         !T_VC(:,:,1,2,deriv(1),deriv(2),deriv(3)) = 0
         T_VC(:,:,1,3,deriv(1),deriv(2),deriv(3)) = &
-            &VMEC_Z(:,:,deriv(1)+1,deriv(2),deriv(3))
+            &Z_E(:,:,deriv(1)+1,deriv(2),deriv(3))
         T_VC(:,:,2,1,deriv(1),deriv(2),deriv(3)) = &
-            &VMEC_R(:,:,deriv(1),deriv(2)+1,deriv(3))
+            &R_E(:,:,deriv(1),deriv(2)+1,deriv(3))
         !T_VC(:,:,2,2,deriv(1),deriv(2),deriv(3)) = 0
         T_VC(:,:,2,3,deriv(1),deriv(2),deriv(3)) = &
-            &VMEC_Z(:,:,deriv(1),deriv(2)+1,deriv(3))
+            &Z_E(:,:,deriv(1),deriv(2)+1,deriv(3))
         T_VC(:,:,3,1,deriv(1),deriv(2),deriv(3)) = &
-            &VMEC_R(:,:,deriv(1),deriv(2),deriv(3)+1)
+            &R_E(:,:,deriv(1),deriv(2),deriv(3)+1)
         if (sum(deriv).eq.0) then
             T_VC(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 1.0_dp
         !else
             !T_VC(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 0
         end if
         T_VC(:,:,3,3,deriv(1),deriv(2),deriv(3)) = &
-            &VMEC_Z(:,:,deriv(1),deriv(2),deriv(3)+1)
+            &Z_E(:,:,deriv(1),deriv(2),deriv(3)+1)
         
         ! determinant
         det_T_VC(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        ierr = add_arr_mult(VMEC_R(:,:,0:,1:,0:),VMEC_Z(:,:,1:,0:,0:),&
+        ierr = add_arr_mult(R_E(:,:,0:,1:,0:),Z_E(:,:,1:,0:,0:),&
             &det_T_VC(:,:,deriv(1),deriv(2),deriv(3)),deriv)
         CHCKERR('')
-        ierr = add_arr_mult(-VMEC_R(:,:,1:,0:,0:),VMEC_Z(:,:,0:,1:,0:),&
+        ierr = add_arr_mult(-R_E(:,:,1:,0:,0:),Z_E(:,:,0:,1:,0:),&
             &det_T_VC(:,:,deriv(1),deriv(2),deriv(3)),deriv)
         CHCKERR('')
     end function calc_T_VC_ind
@@ -818,10 +811,12 @@ contains
     ! calculate the transformation matrix  between equilibrium V(mec) and F(lux)
     ! oordinate system
     integer function calc_T_VF_ind(deriv) result(ierr)
-        use num_vars, only: pi, use_pol_flux
-        use eq_vars, only: VMEC_L, q_saf_E, rot_t_E, n_par, theta_E, zeta_E, &
-            &flux_p_E, flux_t_E, grp_n_r_eq
+        use num_vars, only: pi, use_pol_flux_X
+        use X_vars, only: n_par
+        use eq_vars, only: L_E, q_saf_E, rot_t_E, theta_E, zeta_E, flux_p_E, &
+            &flux_t_E, grp_n_r_eq
         use utilities, only: add_arr_mult
+        use metric_vars, only: T_EF, det_T_EF
         
         character(*), parameter :: rout_name = 'calc_T_VF_ind'
         
@@ -851,16 +846,15 @@ contains
         theta_s(:,:,0,0,0) = theta_E
         theta_s(:,:,0,1,0) = 1.0_dp
         ! add the deformation described by lambda
-        theta_s = theta_s + VMEC_L(:,:,0:deriv(1)+1,0:deriv(2)+1,&
-            &0:deriv(3)+1)
+        theta_s = theta_s + L_E(:,:,0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1)
             
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             ! calculate transformation matrix T_V^F
             ! (1,1)
             ierr = add_arr_mult(theta_s,q_saf_E(:,1:),&
                 &T_EF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv)
             CHCKERR('')
-            ierr = add_arr_mult(VMEC_L(:,:,1:,0:,0:),q_saf_E,&
+            ierr = add_arr_mult(L_E(:,:,1:,0:,0:),q_saf_E,&
                 &T_EF(:,:,1,1,deriv(1),deriv(2),deriv(3)),deriv)
             CHCKERR('')
             ! (1,2)
@@ -873,7 +867,7 @@ contains
             end if
             ! (1,3)
             T_EF(:,:,1,3,deriv(1),deriv(2),deriv(3)) = &
-                &VMEC_L(:,:,deriv(1)+1,deriv(2),deriv(3))
+                &L_E(:,:,deriv(1)+1,deriv(2),deriv(3))
             ! (2,1)
             ierr = add_arr_mult(theta_s(:,:,0:,1:,0:),q_saf_E,&
                 &T_EF(:,:,2,1,deriv(1),deriv(2),deriv(3)),deriv)
@@ -887,14 +881,14 @@ contains
             if (sum(deriv).eq.0) then
                 T_EF(:,:,3,1,0,0,0) = -1.0_dp
             end if
-            ierr = add_arr_mult(VMEC_L(:,:,0:,0:,1:),q_saf_E,&
+            ierr = add_arr_mult(L_E(:,:,0:,0:,1:),q_saf_E,&
                 &T_EF(:,:,3,1,deriv(1),deriv(2),deriv(3)),deriv)
             CHCKERR('')
             ! (3,2)
             !T_EF(:,:,3,2,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             ! (3,3)
             T_EF(:,:,3,3,deriv(1),deriv(2),deriv(3)) = &
-                &VMEC_L(:,:,deriv(1),deriv(2),deriv(3)+1)
+                &L_E(:,:,deriv(1),deriv(2),deriv(3)+1)
             
             ! determinant
             det_T_EF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
@@ -977,10 +971,12 @@ contains
     ! calculate the transformation matrix  between H(ELENA) and F(lux) oordinate
     ! system
     integer function calc_T_HF_ind(deriv) result(ierr)
-        use num_vars, only: pi, use_pol_flux
-        use eq_vars, only: q_saf_E, rot_t_E, n_par, theta_E, zeta_E, flux_t_E, &
+        use num_vars, only: pi, use_pol_flux_X
+        use X_vars, only: n_par
+        use eq_vars, only: q_saf_E, rot_t_E, theta_E, zeta_E, flux_t_E, &
             &grp_n_r_eq
         use utilities, only: add_arr_mult
+        use metric_vars, only: T_EF, det_T_EF
         
         character(*), parameter :: rout_name = 'calc_T_HF_ind'
         
@@ -1009,7 +1005,7 @@ contains
         theta_s(:,:,0,0,0) = theta_E
         theta_s(:,:,0,1,0) = 1.0_dp
             
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             ! calculate transformation matrix T_H^F
             ! (1,1)
             ierr = add_arr_mult(theta_s,-q_saf_E(:,1:),&
@@ -1140,7 +1136,8 @@ contains
     !       already. If not, the results will be incorrect!
     integer function calc_inv_met_ind(X,Y,deriv) result(ierr)                   ! matrix version
         use utilities, only: calc_inv
-        use eq_vars, only: n_par, grp_n_r_eq
+        use X_vars, only: n_par
+        use eq_vars, only: grp_n_r_eq
         
         character(*), parameter :: rout_name = 'calc_inv_met_ind'
         
@@ -1213,7 +1210,8 @@ contains
         end if
     end function calc_inv_met_ind
     integer function calc_inv_met_ind_0D(X,Y,deriv) result(ierr)                ! scalar version
-        use eq_vars, only: n_par, grp_n_r_eq
+        use eq_vars, only: grp_n_r_eq
+        use X_vars, only: n_par
         
         character(*), parameter :: rout_name = 'calc_inv_met_ind_0D'
         
@@ -1563,6 +1561,7 @@ contains
     ! as the  poloidal and toroidal flux
     subroutine normalize_metric_vars
         use eq_vars, only: R_0, B_0, psi_0
+        use metric_vars, only: g_FD, h_FD, jac_FD
         
         ! local variables
         real(dp) :: g_0(3,3)                                                    ! normalization factor for the covariant metric factors
@@ -1597,47 +1596,4 @@ contains
             jac_FD(:,:,:,jd,:) = jac_FD(:,:,:,jd,:) * psi_0**jd
         end do
     end subroutine normalize_metric_vars
-    
-    ! deallocates  metric  quantities  that  are  not  used  anymore  after  the
-    ! equilibrium phase
-    integer function dealloc_metric() result(ierr)
-        use num_vars, only: eq_style
-        
-        character(*), parameter :: rout_name = 'dealloc_metric'
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! deallocate general variables
-        deallocate(jac_F,h_F,g_F)
-        deallocate(T_EF,T_FE)
-        deallocate(det_T_EF,det_T_FE)
-        deallocate(jac_E,g_E,h_E)
-        
-        ! choose which equilibrium style is being used:
-        !   1:  VMEC
-        !   2:  HELENA
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                deallocate(T_VC,det_T_VC)
-                deallocate(jac_C,g_C)
-            case (2)                                                            ! HELENA
-                ! nothing
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-    end function dealloc_metric
-    
-    ! deallocates  metric quantities  that are not  used anymore  after the
-    ! calculation for a certain alpha
-    subroutine dealloc_metric_final
-        deallocate(g_FD,h_FD)
-        deallocate(jac_FD)
-    end subroutine dealloc_metric_final
 end module metric_ops

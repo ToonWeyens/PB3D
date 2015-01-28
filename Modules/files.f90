@@ -1,17 +1,17 @@
 !------------------------------------------------------------------------------!
-!   This module contains operations on files (open, close, etc.)               !
+!   Manages file operations and variables                                      !
 !------------------------------------------------------------------------------!
-module file_ops
+module files
 #include <PB3D_macros.h>
     use netcdf
     use num_vars, only: dp, max_str_ln, max_args
     use safe_open_mod, only: safe_open
     use str_ops, only: i2str
-    use message_ops, only: lvl_ud, writo, &
+    use messages, only: lvl_ud, writo, &
         &lvl
     implicit none
     private
-    public open_input, open_output, search_file, parse_args, init_file_ops, &   ! routines
+    public open_input, open_output, search_file, parse_args, init_files, &
         &input_name, opt_args, close_output
 
     ! user-specified arguments
@@ -28,7 +28,7 @@ module file_ops
 contains
     ! initialize the variables for the module
     ! [MPI] All ranks
-    subroutine init_file_ops
+    subroutine init_files
         use num_vars, only: max_opts, ltest, output_name
         
         output_name = "PB3D_out"                                                ! standard output name
@@ -319,7 +319,7 @@ contains
     integer function open_output() result(ierr)
         use num_vars, only: output_i, n_seq_0, glb_rank, grp_nr, glb_rank, &
             &grp_rank, output_name
-        use message_ops, only: temp_output, temp_output_active, &
+        use messages, only: temp_output, temp_output_active, &
             &temp_output_id, temp_output_omitted
         
         character(*), parameter :: rout_name = 'open_output'
@@ -330,7 +330,7 @@ contains
         
         ! initialize ierr
         ierr = 0
-        write(*,*) '!!!! FIX FILE_OPS FOR NON MASTERS !!!!!!!!'
+        write(*,*) '!!!! FIX files FOR NON MASTERS !!!!!!!!'
         
         if (grp_rank.eq.0) then                                                 ! only group masters
             if (glb_rank.eq.0) call writo('Attempting to open output files')    ! but only global master outputs
@@ -437,4 +437,4 @@ contains
         i_unit = -1
         call lvl_ud(-1)
     end subroutine
-end module file_ops
+end module files

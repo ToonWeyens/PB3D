@@ -5,7 +5,7 @@ module test
 #include <PB3D_macros.h>
     use num_vars, only: dp, max_str_ln, pi, mu_0, output_i, iu
     use output_ops, only: print_GP_2D, print_GP_3D
-    use message_ops, only: print_ar_1, print_ar_2, start_time, &
+    use messages, only: print_ar_1, print_ar_2, start_time, &
         &stop_time
     use input_ops, only: yes_no
     use str_ops, only: i2str, r2str, r2strt
@@ -20,7 +20,7 @@ module test
     
 contains
     integer function test_fourier2real() result(ierr)
-        !use VMEC_ops, only: nfp
+        !use VMEC, only: nfp
         !use eq_vars, only: calc_eqd_grid
         !use fourier_ops, only: fourier2real, calc_trigon_factors
         
@@ -184,7 +184,7 @@ contains
     subroutine test_repack
         ! VMEC variable has structure (1:mnmax, 1:grp_n_r_eq)
         ! output variable should have (1:grp_n_r_eq, 0:mpol-1, -ntor:ntor)
-        use VMEC_ops, only: repack
+        use VMEC, only: repack
         
         integer :: n_rB, mpolB, ntorB, mnmaxB
         real(dp), allocatable :: xmB(:), xnB(:)
@@ -1022,8 +1022,9 @@ contains
     integer function test_calc_RZL() result(ierr)
         use coord_ops, only: calc_eqd_grid
         use eq_ops, only: calc_RZL, init_eq
-        use eq_vars, only: VMEC_R, VMEC_Z, theta_E, zeta_E,  n_par, grp_n_r_eq
-        use VMEC_ops, only: rmax_surf, rmin_surf, zmax_surf
+        use eq_vars, only: R_E, Z_E, theta_E, zeta_E,  grp_n_r_eq
+        use X_vars, only: n_par
+        use VMEC, only: rmax_surf, rmin_surf, zmax_surf
         
         character(*), parameter :: rout_name = 'test_calc_RZL'
         
@@ -1067,39 +1068,39 @@ contains
             CHCKERR('')
             
             write(*,*) 'Plotting R'
-            call print_GP_3D('R','',VMEC_R(:,:,0,0,0))
-            call print_GP_2D('R at r = 5','',VMEC_R(:,5,0,0,0),x=theta_E(:,5))
+            call print_GP_3D('R','',R_E(:,:,0,0,0))
+            call print_GP_2D('R at r = 5','',R_E(:,5,0,0,0),x=theta_E(:,5))
             do jd = 1,3
                 call print_GP_2D('R_theta_E^'//trim(i2str(jd))//' at r = 5','',&
-                    &VMEC_R(:,5,0,jd,0),x=theta_E(:,5))
+                    &R_E(:,5,0,jd,0),x=theta_E(:,5))
             end do
             do jd = 1,3
                 call print_GP_2D('R_zeta^'//trim(i2str(jd))//' at r = 5','',&
-                    &VMEC_R(:,5,0,0,jd),x=theta_E(:,5))
+                    &R_E(:,5,0,0,jd),x=theta_E(:,5))
             end do
             
             write(*,*) 'Plotting Z'
-            call print_GP_3D('Z','',VMEC_Z(:,:,0,0,0))
-            call print_GP_2D('Z at r = 5','',VMEC_Z(:,5,0,0,0),x=theta_E(:,5))
+            call print_GP_3D('Z','',Z_E(:,:,0,0,0))
+            call print_GP_2D('Z at r = 5','',Z_E(:,5,0,0,0),x=theta_E(:,5))
             do jd = 1,3
                 call print_GP_2D('Z_theta_E^'//trim(i2str(jd))//' at r = 5','',&
-                    &VMEC_Z(:,5,0,jd,0),x=theta_E(:,5))
+                    &Z_E(:,5,0,jd,0),x=theta_E(:,5))
             end do
             do jd = 1,3
                 call print_GP_2D('Z_zeta^'//trim(i2str(jd))//' at r = 5','',&
-                    &VMEC_Z(:,5,0,0,jd),x=theta_E(:,5))
+                    &Z_E(:,5,0,0,jd),x=theta_E(:,5))
             end do
             
             ! test whether VMEC given bounds are respected
             if (rmax_surf.gt.0.0_dp) then
                 write(*,*) 'Checking the bounds of R'
-                call within_bounds(VMEC_R(:,:,0,0,0),rmin_surf,rmax_surf)
+                call within_bounds(R_E(:,:,0,0,0),rmin_surf,rmax_surf)
             else
                 write(*,*) 'Not possible to check the bounds of R'
             end if
             if (zmax_surf.gt.0.0_dp) then
                 write(*,*) 'Checking the bounds of Z'
-                call within_bounds(VMEC_Z(:,:,0,0,0),-zmax_surf,zmax_surf)
+                call within_bounds(Z_E(:,:,0,0,0),-zmax_surf,zmax_surf)
             else
                 write(*,*) 'Not possible to check the bounds of Z'
             end if
@@ -1151,8 +1152,8 @@ contains
     
     integer function test_calc_T_VF() result(ierr)
         use driver_rich, only: calc_eq
-        use metric_ops, only: T_EF
-        use eq_vars, only: q_saf_E, VMEC_L, flux_p_E, theta => theta_E, &
+        use metric_vars, only: T_EF
+        use eq_vars, only: q_saf_E, L_E, flux_p_E, theta => theta_E, &
             &grp_n_r_eq
         
         character(*), parameter :: rout_name = 'test_calc_T_VF'
@@ -1235,84 +1236,84 @@ contains
     contains
         subroutine case_1
             T_loc = 0.0_dp
-            T_loc(:,1,1) = -q_saf_E(:,1)*(theta(5,:)+VMEC_L(5,:,0,0,0)) &
-                &-q_saf_E(:,0)*VMEC_L(5,:,1,0,0)
+            T_loc(:,1,1) = -q_saf_E(:,1)*(theta(5,:)+L_E(5,:,0,0,0)) &
+                &-q_saf_E(:,0)*L_E(5,:,1,0,0)
             T_loc(:,1,2) = flux_p_E(:,1)/(2*pi)
-            T_loc(:,1,3) = VMEC_L(5,:,1,0,0)
-            T_loc(:,2,1) = -q_saf_E(:,0)*(1.0_dp+VMEC_L(5,:,0,1,0))
+            T_loc(:,1,3) = L_E(5,:,1,0,0)
+            T_loc(:,2,1) = -q_saf_E(:,0)*(1.0_dp+L_E(5,:,0,1,0))
             T_loc(:,2,2) = 0.0_dp
-            T_loc(:,2,3) = 1.0_dp + VMEC_L(5,:,0,1,0)
-            T_loc(:,3,1) = 1.0_dp - q_saf_E(:,0)*VMEC_L(5,:,0,0,1)
+            T_loc(:,2,3) = 1.0_dp + L_E(5,:,0,1,0)
+            T_loc(:,3,1) = 1.0_dp - q_saf_E(:,0)*L_E(5,:,0,0,1)
             T_loc(:,3,2) = 0.0_dp
-            T_loc(:,3,3) = VMEC_L(5,:,0,0,1)
+            T_loc(:,3,3) = L_E(5,:,0,0,1)
         end subroutine
         
         subroutine case_2
             T_loc = 0.0_dp
-            T_loc(:,1,1) = -q_saf_E(:,2)*(theta(5,:)+VMEC_L(5,:,0,0,0)) &
-                &-2*q_saf_E(:,1)*VMEC_L(5,:,1,0,0)&
-                &-q_saf_E(:,0)*VMEC_L(5,:,2,0,0)
+            T_loc(:,1,1) = -q_saf_E(:,2)*(theta(5,:)+L_E(5,:,0,0,0)) &
+                &-2*q_saf_E(:,1)*L_E(5,:,1,0,0)&
+                &-q_saf_E(:,0)*L_E(5,:,2,0,0)
             T_loc(:,1,2) = flux_p_E(:,2)/(2*pi)
-            T_loc(:,1,3) = VMEC_L(5,:,2,0,0)
-            T_loc(:,2,1) = -q_saf_E(:,1)*(1.0_dp+VMEC_L(5,:,0,1,0)) &
-                &-q_saf_E(:,0)*VMEC_L(5,:,1,1,0)
+            T_loc(:,1,3) = L_E(5,:,2,0,0)
+            T_loc(:,2,1) = -q_saf_E(:,1)*(1.0_dp+L_E(5,:,0,1,0)) &
+                &-q_saf_E(:,0)*L_E(5,:,1,1,0)
             T_loc(:,2,2) = 0.0_dp
-            T_loc(:,2,3) = VMEC_L(5,:,1,1,0)
-            T_loc(:,3,1) = -q_saf_E(:,1)*VMEC_L(5,:,0,0,1) &
-                &- q_saf_E(:,0)*VMEC_L(5,:,1,0,1)
+            T_loc(:,2,3) = L_E(5,:,1,1,0)
+            T_loc(:,3,1) = -q_saf_E(:,1)*L_E(5,:,0,0,1) &
+                &- q_saf_E(:,0)*L_E(5,:,1,0,1)
             T_loc(:,3,2) = 0.0_dp
-            T_loc(:,3,3) = VMEC_L(5,:,1,0,1)
+            T_loc(:,3,3) = L_E(5,:,1,0,1)
         end subroutine
         
         subroutine case_3
             T_loc = 0.0_dp
-            T_loc(:,1,1) = -q_saf_E(:,1)*(1+VMEC_L(5,:,0,1,0))&
-                &-q_saf_E(:,0)*VMEC_L(5,:,1,1,0)
+            T_loc(:,1,1) = -q_saf_E(:,1)*(1+L_E(5,:,0,1,0))&
+                &-q_saf_E(:,0)*L_E(5,:,1,1,0)
             T_loc(:,1,2) = 0.0_dp
-            T_loc(:,1,3) = VMEC_L(5,:,1,1,0)
-            T_loc(:,2,1) = -q_saf_E(:,0)*VMEC_L(5,:,0,2,0)
+            T_loc(:,1,3) = L_E(5,:,1,1,0)
+            T_loc(:,2,1) = -q_saf_E(:,0)*L_E(5,:,0,2,0)
             T_loc(:,2,2) = 0.0_dp
-            T_loc(:,2,3) = VMEC_L(5,:,0,2,0)
-            T_loc(:,3,1) = -q_saf_E(:,0)*VMEC_L(5,:,0,1,1)
+            T_loc(:,2,3) = L_E(5,:,0,2,0)
+            T_loc(:,3,1) = -q_saf_E(:,0)*L_E(5,:,0,1,1)
             T_loc(:,3,2) = 0.0_dp
-            T_loc(:,3,3) = VMEC_L(5,:,0,1,1)
+            T_loc(:,3,3) = L_E(5,:,0,1,1)
         end subroutine
         
         subroutine case_4
             T_loc = 0.0_dp
-            T_loc(:,1,1) = -q_saf_E(:,1)*VMEC_L(5,:,0,0,1)&
-                &-q_saf_E(:,0)*VMEC_L(5,:,1,0,1)
+            T_loc(:,1,1) = -q_saf_E(:,1)*L_E(5,:,0,0,1)&
+                &-q_saf_E(:,0)*L_E(5,:,1,0,1)
             T_loc(:,1,2) = 0.0_dp
-            T_loc(:,1,3) = VMEC_L(5,:,1,0,1)
-            T_loc(:,2,1) = -q_saf_E(:,0)*VMEC_L(5,:,0,1,1)
+            T_loc(:,1,3) = L_E(5,:,1,0,1)
+            T_loc(:,2,1) = -q_saf_E(:,0)*L_E(5,:,0,1,1)
             T_loc(:,2,2) = 0.0_dp
-            T_loc(:,2,3) = VMEC_L(5,:,0,1,1)
-            T_loc(:,3,1) = -q_saf_E(:,0)*VMEC_L(5,:,0,0,2)
+            T_loc(:,2,3) = L_E(5,:,0,1,1)
+            T_loc(:,3,1) = -q_saf_E(:,0)*L_E(5,:,0,0,2)
             T_loc(:,3,2) = 0.0_dp
-            T_loc(:,3,3) = VMEC_L(5,:,0,0,2)
+            T_loc(:,3,3) = L_E(5,:,0,0,2)
         end subroutine
         
         subroutine case_5
             T_loc = 0.0_dp
-            T_loc(:,1,1) = -q_saf_E(:,2)*VMEC_L(5,:,0,2,1)-2*q_saf_E(:,1)*&
-                &VMEC_L(5,:,1,2,1)-q_saf_E(:,0)*VMEC_L(5,:,2,2,1)
+            T_loc(:,1,1) = -q_saf_E(:,2)*L_E(5,:,0,2,1)-2*q_saf_E(:,1)*&
+                &L_E(5,:,1,2,1)-q_saf_E(:,0)*L_E(5,:,2,2,1)
             T_loc(:,1,2) = 0.0_dp
-            T_loc(:,1,3) = VMEC_L(5,:,2,2,1)
-            T_loc(:,2,1) = -q_saf_E(:,1)*VMEC_L(5,:,0,3,1)&
-                &-q_saf_E(:,0)*VMEC_L(5,:,1,3,1)
+            T_loc(:,1,3) = L_E(5,:,2,2,1)
+            T_loc(:,2,1) = -q_saf_E(:,1)*L_E(5,:,0,3,1)&
+                &-q_saf_E(:,0)*L_E(5,:,1,3,1)
             T_loc(:,2,2) = 0.0_dp
-            T_loc(:,2,3) = VMEC_L(5,:,1,3,1)
-            T_loc(:,3,1) = -q_saf_E(:,1)*VMEC_L(5,:,0,2,2)&
-                &-q_saf_E(:,0)*VMEC_L(5,:,1,2,2)
+            T_loc(:,2,3) = L_E(5,:,1,3,1)
+            T_loc(:,3,1) = -q_saf_E(:,1)*L_E(5,:,0,2,2)&
+                &-q_saf_E(:,0)*L_E(5,:,1,2,2)
             T_loc(:,3,2) = 0.0_dp
-            T_loc(:,3,3) = VMEC_L(5,:,1,2,2)
+            T_loc(:,3,3) = L_E(5,:,1,2,2)
         end subroutine
     end function test_calc_T_VF
     
     integer function test_calc_g() result(ierr)
         use driver_rich, only: calc_eq
-        use metric_ops, only: g_E, g_F
-        use eq_vars, only: VMEC_R, VMEC_Z, q_saf_E
+        use metric_vars, only: g_E, g_F
+        use eq_vars, only: R_E, Z_E, q_saf_E
         
         character(*), parameter :: rout_name = 'tset_calc_g'
         
@@ -1337,19 +1338,19 @@ contains
                 call print_ar_2(g_E(5,5,:,:,0,0,0))
                 
                 write(*,*) 'g_V(5,5), manually'
-                g(1,1) = VMEC_R(5,5,1,0,0)*VMEC_R(5,5,1,0,0) + &
-                    &VMEC_Z(5,5,1,0,0)*VMEC_Z(5,5,1,0,0)
-                g(1,2) = VMEC_R(5,5,1,0,0)*VMEC_R(5,5,0,1,0) + &
-                    &VMEC_Z(5,5,1,0,0)*VMEC_Z(5,5,0,1,0)
-                g(1,3) = VMEC_R(5,5,1,0,0)*VMEC_R(5,5,0,0,1) + &
-                    &VMEC_Z(5,5,1,0,0)*VMEC_Z(5,5,0,0,1)
-                g(2,2) = VMEC_R(5,5,0,1,0)*VMEC_R(5,5,0,1,0) + &
-                    &VMEC_Z(5,5,0,1,0)*VMEC_Z(5,5,0,1,0)
-                g(2,3) = VMEC_R(5,5,0,1,0)*VMEC_R(5,5,0,0,1) + &
-                    &VMEC_Z(5,5,0,1,0)*VMEC_Z(5,5,0,0,1)
-                g(3,3) = VMEC_R(5,5,0,0,1)*VMEC_R(5,5,0,0,1) + &
-                    &VMEC_Z(5,5,0,0,1)*VMEC_Z(5,5,0,0,1) + &
-                    &VMEC_R(5,5,0,0,0)*VMEC_R(5,5,0,0,0)
+                g(1,1) = R_E(5,5,1,0,0)*R_E(5,5,1,0,0) + &
+                    &Z_E(5,5,1,0,0)*Z_E(5,5,1,0,0)
+                g(1,2) = R_E(5,5,1,0,0)*R_E(5,5,0,1,0) + &
+                    &Z_E(5,5,1,0,0)*Z_E(5,5,0,1,0)
+                g(1,3) = R_E(5,5,1,0,0)*R_E(5,5,0,0,1) + &
+                    &Z_E(5,5,1,0,0)*Z_E(5,5,0,0,1)
+                g(2,2) = R_E(5,5,0,1,0)*R_E(5,5,0,1,0) + &
+                    &Z_E(5,5,0,1,0)*Z_E(5,5,0,1,0)
+                g(2,3) = R_E(5,5,0,1,0)*R_E(5,5,0,0,1) + &
+                    &Z_E(5,5,0,1,0)*Z_E(5,5,0,0,1)
+                g(3,3) = R_E(5,5,0,0,1)*R_E(5,5,0,0,1) + &
+                    &Z_E(5,5,0,0,1)*Z_E(5,5,0,0,1) + &
+                    &R_E(5,5,0,0,0)*R_E(5,5,0,0,0)
                 g(2,1) = g(1,2)
                 g(3,1) = g(1,3)
                 g(3,2) = g(2,3)
@@ -1377,31 +1378,31 @@ contains
                     call print_ar_2(g_E(5,5,:,:,d(1),d(2),d(3)))
                     
                     write(*,*) 'D_'//trim(i2str(id_d))//' g_V(5,5), manually'
-                    g(1,1) = VMEC_R(5,5,d(1)+1,d(2),d(3))*VMEC_R(5,5,1,0,0) + &
-                        &VMEC_R(5,5,1,0,0)*VMEC_R(5,5,d(1)+1,d(2),d(3)) + &
-                        &VMEC_Z(5,5,d(1)+1,d(2),d(3))*VMEC_Z(5,5,1,0,0) + &
-                        &VMEC_Z(5,5,1,0,0)*VMEC_Z(5,5,d(1)+1,d(2),d(3))
-                    g(1,2) = VMEC_R(5,5,d(1)+1,d(2),d(3))*VMEC_R(5,5,0,1,0) + &
-                        &VMEC_R(5,5,1,0,0)*VMEC_R(5,5,d(1),d(2)+1,d(3)) + &
-                        &VMEC_Z(5,5,d(1)+1,d(2),d(3))*VMEC_Z(5,5,0,1,0) + &
-                        &VMEC_Z(5,5,1,0,0)*VMEC_Z(5,5,d(1),d(2)+1,d(3))
-                    g(1,3) = VMEC_R(5,5,d(1)+1,d(2),d(3))*VMEC_R(5,5,0,0,1) + &
-                        &VMEC_R(5,5,1,0,0)*VMEC_R(5,5,d(1),d(2),d(3)+1) + &
-                        &VMEC_Z(5,5,d(1)+1,d(2),d(3))*VMEC_Z(5,5,0,0,1) + &
-                        &VMEC_Z(5,5,1,0,0)*VMEC_Z(5,5,d(1),d(2),d(3)+1)
-                    g(2,2) = VMEC_R(5,5,d(1),d(2)+1,d(3))*VMEC_R(5,5,0,1,0) + &
-                        &VMEC_R(5,5,0,1,0)*VMEC_R(5,5,d(1),d(2)+1,d(3)) + &
-                        &VMEC_Z(5,5,d(1),d(2)+1,d(3))*VMEC_Z(5,5,0,1,0) + &
-                        &VMEC_Z(5,5,0,1,0)*VMEC_Z(5,5,d(1),d(2)+1,d(3))
-                    g(2,3) = VMEC_R(5,5,d(1),d(2)+1,d(3))*VMEC_R(5,5,0,0,1) + &
-                        &VMEC_R(5,5,0,1,0)*VMEC_R(5,5,d(1),d(2),d(3)+1) + &
-                        &VMEC_Z(5,5,d(1),d(2)+1,d(3))*VMEC_Z(5,5,0,0,1) + &
-                        &VMEC_Z(5,5,0,1,0)*VMEC_Z(5,5,d(1),d(2),d(3)+1)
-                    g(3,3) = VMEC_R(5,5,d(1),d(2),d(3)+1)*VMEC_R(5,5,0,0,1) + &
-                        &VMEC_R(5,5,0,0,1)*VMEC_R(5,5,d(1),d(2),d(3)+1) + &
-                        &VMEC_Z(5,5,d(1),d(2),d(3)+1)*VMEC_Z(5,5,0,0,1) + &
-                        &VMEC_Z(5,5,0,0,1)*VMEC_Z(5,5,d(1),d(2),d(3)+1) + &
-                        &2*VMEC_R(5,5,d(1),d(2),d(3))*VMEC_R(5,5,0,0,0)
+                    g(1,1) = R_E(5,5,d(1)+1,d(2),d(3))*R_E(5,5,1,0,0) + &
+                        &R_E(5,5,1,0,0)*R_E(5,5,d(1)+1,d(2),d(3)) + &
+                        &Z_E(5,5,d(1)+1,d(2),d(3))*Z_E(5,5,1,0,0) + &
+                        &Z_E(5,5,1,0,0)*Z_E(5,5,d(1)+1,d(2),d(3))
+                    g(1,2) = R_E(5,5,d(1)+1,d(2),d(3))*R_E(5,5,0,1,0) + &
+                        &R_E(5,5,1,0,0)*R_E(5,5,d(1),d(2)+1,d(3)) + &
+                        &Z_E(5,5,d(1)+1,d(2),d(3))*Z_E(5,5,0,1,0) + &
+                        &Z_E(5,5,1,0,0)*Z_E(5,5,d(1),d(2)+1,d(3))
+                    g(1,3) = R_E(5,5,d(1)+1,d(2),d(3))*R_E(5,5,0,0,1) + &
+                        &R_E(5,5,1,0,0)*R_E(5,5,d(1),d(2),d(3)+1) + &
+                        &Z_E(5,5,d(1)+1,d(2),d(3))*Z_E(5,5,0,0,1) + &
+                        &Z_E(5,5,1,0,0)*Z_E(5,5,d(1),d(2),d(3)+1)
+                    g(2,2) = R_E(5,5,d(1),d(2)+1,d(3))*R_E(5,5,0,1,0) + &
+                        &R_E(5,5,0,1,0)*R_E(5,5,d(1),d(2)+1,d(3)) + &
+                        &Z_E(5,5,d(1),d(2)+1,d(3))*Z_E(5,5,0,1,0) + &
+                        &Z_E(5,5,0,1,0)*Z_E(5,5,d(1),d(2)+1,d(3))
+                    g(2,3) = R_E(5,5,d(1),d(2)+1,d(3))*R_E(5,5,0,0,1) + &
+                        &R_E(5,5,0,1,0)*R_E(5,5,d(1),d(2),d(3)+1) + &
+                        &Z_E(5,5,d(1),d(2)+1,d(3))*Z_E(5,5,0,0,1) + &
+                        &Z_E(5,5,0,1,0)*Z_E(5,5,d(1),d(2),d(3)+1)
+                    g(3,3) = R_E(5,5,d(1),d(2),d(3)+1)*R_E(5,5,0,0,1) + &
+                        &R_E(5,5,0,0,1)*R_E(5,5,d(1),d(2),d(3)+1) + &
+                        &Z_E(5,5,d(1),d(2),d(3)+1)*Z_E(5,5,0,0,1) + &
+                        &Z_E(5,5,0,0,1)*Z_E(5,5,d(1),d(2),d(3)+1) + &
+                        &2*R_E(5,5,d(1),d(2),d(3))*R_E(5,5,0,0,0)
                     g(2,1) = g(1,2)
                     g(3,1) = g(1,3)
                     g(3,2) = g(2,3)
@@ -1423,10 +1424,10 @@ contains
                 write(*,*) 'AND ONLY ELEMENT (1,3) IS VALID'
                 write(*,*) 'g_F(5,5), manually'
                 g = 0.0_dp
-                !g(1,3) = -VMEC_L(5,5,0,0,1)*(1-q_saf_E(5,0)*VMEC_L(5,5,0,0,1))/&
-                    !&(1+VMEC_L(5,5,0,1,0))**2*g_E(5,5,2,2,0,0,0) + q_saf_E(5,0)* &
-                    !&g_E(5,5,3,3,0,0,0) + (1-2*q_saf_E(5,0)*VMEC_L(5,5,0,0,1))/&
-                    !&(1+VMEC_L(5,5,0,1,0))*g_E(5,5,2,3,0,0,0)
+                !g(1,3) = -L_E(5,5,0,0,1)*(1-q_saf_E(5,0)*L_E(5,5,0,0,1))/&
+                    !&(1+L_E(5,5,0,1,0))**2*g_E(5,5,2,2,0,0,0) + q_saf_E(5,0)* &
+                    !&g_E(5,5,3,3,0,0,0) + (1-2*q_saf_E(5,0)*L_E(5,5,0,0,1))/&
+                    !&(1+L_E(5,5,0,1,0))*g_E(5,5,2,3,0,0,0)
                 g(1,3) = q_saf_E(5,0)*g_E(5,5,3,3,0,0,0)
                 call print_ar_2(g)
                 write(*,*) 'rel diff'
@@ -1477,10 +1478,11 @@ contains
     end function test_calc_g
     
     integer function test_calc_f_deriv() result(ierr)
-        use metric_ops, only: calc_f_deriv, &
-            &h_F, h_FD, T_FE
+        use metric_ops, only: calc_f_deriv
+        use metric_vars, only: h_F, h_FD, T_FE
         use driver_rich, only: calc_eq
-        use eq_vars, only: n_par, flux_p_E, flux_p_FD, grp_n_r_eq
+        use eq_vars, only: flux_p_E, flux_p_FD, grp_n_r_eq
+        use X_vars, only: n_par
         
         character(*), parameter :: rout_name = 'test_calc_f_deriv'
         
@@ -1738,10 +1740,11 @@ contains
     end function test_calc_f_deriv
     
     integer function test_calc_inv_met() result(ierr)
-        use metric_ops, only: calc_inv_met, &
-            &T_EF, T_FE
+        use metric_ops, only: calc_inv_met
+        use metric_vars, only: T_EF, T_FE
         use driver_rich, only: calc_eq
-        use eq_vars, only: n_par, grp_n_r_eq
+        use eq_vars, only: grp_n_r_eq
+        use X_vars, only: n_par
         
         character(*), parameter :: rout_name = 'test_calc_inv_met'
         
@@ -2003,11 +2006,12 @@ contains
     
     integer function test_metric_transf() result(ierr)
         !use eq_ops, only: calc_eq
-        !use eq_vars, only: n_par, flux_p_E, VMEC_R, VMEC_Z, VMEC_L, theta, &
+        !use X_vars, only: n_par
+        !use eq_vars, only: flux_p_E, R_E, Z_E, L_E, theta, &
             !&zeta, &grp_n_r_eq
-        !use VMEC_ops, only: mpol, ntor, jac_V_c_H, jac_V_s_H, nfp, n_r_eq
-        !use metric_ops, only: jac_E, jac_F, T_FE, det_T_FE, g_F, h_F, g_E, &
-            !&calc_inv_met, T_EF
+        !use VMEC, only: mpol, ntor, jac_V_c_H, jac_V_s_H, nfp, n_r_eq
+        !use metric_ops, only: calc_inv_met
+        !use metric_vars, only: jac_E, jac_F, T_FE, det_T_FE, g_F, h_F, g_E, T_EF
         !use utilities, only: calc_deriv, calc_det, conv_FHM
         !use num_vars, only: grid_style
         
@@ -2045,9 +2049,9 @@ contains
                     !&calculation in the code')
                 !! jac_V calculated
                 !do kd = 1,grp_n_r_eq
-                    !jac_ALT(:,kd) = VMEC_R(:,kd,0,0,0)*(VMEC_R(:,kd,1,0,0)*&
-                        !&VMEC_Z(:,kd,0,1,0)-VMEC_R(:,kd,0,1,0)*&
-                        !&VMEC_Z(:,kd,1,0,0))
+                    !jac_ALT(:,kd) = R_E(:,kd,0,0,0)*(R_E(:,kd,1,0,0)*&
+                        !&Z_E(:,kd,0,1,0)-R_E(:,kd,0,1,0)*&
+                        !&Z_E(:,kd,1,0,0))
                 !end do
                 !call print_GP_3D('jac_V (1:calc, 2:direct calc, 3: diff)','',&
                     !&reshape([jac_E(:,:,0,0,0),jac_ALT,&
@@ -2077,11 +2081,11 @@ contains
                 !! calculate half grid jac_V
                 !do id = 1,n_par
                     !jac_ALT(id,2:grp_n_r_eq) = (n_r_eq-1._dp)*0.25*&
-                        !&(VMEC_R(id,1:grp_n_r_eq-1,0,0,0)+VMEC_R(id,2:grp_n_r_eq,0,0,0))&
-                        !&*((VMEC_R(id,2:grp_n_r_eq,0,0,0)-VMEC_R(id,1:grp_n_r_eq-1,0,0,0))&
-                        !&  *(VMEC_Z(id,1:grp_n_r_eq-1,0,1,0)+VMEC_Z(id,2:grp_n_r_eq,0,1,0)) &
-                        !&-(VMEC_Z(id,2:grp_n_r_eq,0,0,0)-VMEC_Z(id,1:grp_n_r_eq-1,0,0,0))&
-                        !&  *(VMEC_R(id,1:grp_n_r_eq-1,0,1,0)+VMEC_R(id,2:grp_n_r_eq,0,1,0)))
+                        !&(R_E(id,1:grp_n_r_eq-1,0,0,0)+R_E(id,2:grp_n_r_eq,0,0,0))&
+                        !&*((R_E(id,2:grp_n_r_eq,0,0,0)-R_E(id,1:grp_n_r_eq-1,0,0,0))&
+                        !&  *(Z_E(id,1:grp_n_r_eq-1,0,1,0)+Z_E(id,2:grp_n_r_eq,0,1,0)) &
+                        !&-(Z_E(id,2:grp_n_r_eq,0,0,0)-Z_E(id,1:grp_n_r_eq-1,0,0,0))&
+                        !&  *(R_E(id,1:grp_n_r_eq-1,0,1,0)+R_E(id,2:grp_n_r_eq,0,1,0)))
                 !end do
                 !jac_ALT(:,1) = 0.0_dp
                 !call print_GP_3D('(HM) jac_V (1: calc, 2: VMEC, 3: diff)','',&
@@ -2100,10 +2104,10 @@ contains
             !if(yes_no(.false.)) then
                 !!   jac_F = (flux_p_E'/2pi * (1+L_t))^-1 * R * (R'Z_t - R' Z_t)
                 !do kd = 1,grp_n_r_eq
-                    !jac_ALT(:,kd) = VMEC_R(:,kd,0,0,0)*(VMEC_R(:,kd,1,0,0)*&
-                        !&VMEC_Z(:,kd,0,1,0)-VMEC_R(:,kd,0,1,0)*&
-                        !&VMEC_Z(:,kd,1,0,0))/(flux_p_E(kd,1)/(2*pi)*&
-                        !&(1+VMEC_L(:,kd,0,1,0)))
+                    !jac_ALT(:,kd) = R_E(:,kd,0,0,0)*(R_E(:,kd,1,0,0)*&
+                        !&Z_E(:,kd,0,1,0)-R_E(:,kd,0,1,0)*&
+                        !&Z_E(:,kd,1,0,0))/(flux_p_E(kd,1)/(2*pi)*&
+                        !&(1+L_E(:,kd,0,1,0)))
                 !end do
                 !call print_GP_3D('jac_F (1:calc, 2:direct calc, 3: diff)','',&
                     !&reshape([jac_F(:,:,0,0,0),jac_ALT,&
@@ -2224,14 +2228,16 @@ contains
     end function test_metric_transf
 
     integer function test_B() result(ierr)
-        use eq_vars, only: n_par, q_saf_E, flux_p_E, VMEC_L, theta_E, zeta_E, &
+        use X_vars, only: n_par
+        use eq_vars, only: q_saf_E, flux_p_E, L_E, theta_E, zeta_E, &
             &grp_n_r_eq, grp_min_r_eq, grp_max_r_eq
         !use eq_vars, only: theta, zeta, pres_FD
-        use VMEC_ops, only: B_V_sub_c_M, B_V_sub_s_M, B_V_s_H, B_V_c_H
-        !use VMEC_ops, only: mpol, ntor, B_V_sub_c_M, &
+        use VMEC, only: B_V_sub_c_M, B_V_sub_s_M, B_V_s_H, B_V_c_H
+        !use VMEC, only: mpol, ntor, B_V_sub_c_M, &
             !&B_V_sub_s_M, nfp
-        use metric_ops, only: g_E, jac_E, g_F, jac_F, T_FE, calc_inv_met
-        !use metric_ops, only: g_FD, jac_FD
+        use metric_vars, only: g_E, jac_E, g_F, jac_F, T_FE
+        use metric_ops, only: calc_inv_met
+        !use metric_vars, only: g_FD, jac_FD
         use utilities, only: calc_deriv, conv_FHM
         use driver_rich, only: calc_eq
         use num_vars, only: grid_style
@@ -2379,8 +2385,8 @@ contains
                 
                 write(*,*) 'plot B_zeta'
                 dum(:,5) = flux_p_E(5,1)/(2*pi*jac_E(:,5,0,0,0)) * &
-                    &(-q_saf_E(5,0)*(1+VMEC_L(:,5,0,1,0))*g_E(:,5,3,3,0,0,0) - &
-                    &(1-q_saf_E(5,0)*VMEC_L(:,5,0,0,1))*g_E(:,5,3,2,0,0,0))
+                    &(-q_saf_E(5,0)*(1+L_E(:,5,0,1,0))*g_E(:,5,3,3,0,0,0) - &
+                    &(1-q_saf_E(5,0)*L_E(:,5,0,0,1))*g_E(:,5,3,2,0,0,0))
                 write(*,*) 'theta (should be increasing in the first dim.) = '
                 call print_ar_2(theta_E)
                 write(*,*) 'zeta (should be constant) = '
@@ -2397,12 +2403,12 @@ contains
                 !write(*,*) 'plot D_theta B_zeta'
                 !dum(:,5) = flux_p_E(5,1)/(2*pi*jac_E(:,5,0,0,0)) * &
                     !&(-jac_E(:,5,0,1,0)/jac_E(:,5,0,0,0) * &
-                    !&(q_saf_E(5,0)*(1+VMEC_L(:,5,0,1,0))*g_E(:,5,3,3,0,0,0) + &
-                    !&(1-q_saf_E(5,0)*VMEC_L(:,5,0,0,1))*g_E(:,5,3,2,0,0,0)) + &
-                    !&q_saf_E(5,0)*(VMEC_L(:,5,0,2,0)*g_E(:,5,3,3,0,0,0)+&
-                    !&(1+VMEC_L(:,5,0,1,0))*g_E(:,5,3,3,0,1,0)) &
-                    !&-q_saf_E(5,0)*VMEC_L(:,5,0,1,1)*g_E(:,5,3,2,0,0,0) + &
-                    !&(1-q_saf_E(5,0)*VMEC_L(:,5,0,0,1))*g_E(:,5,3,2,0,1,0))
+                    !&(q_saf_E(5,0)*(1+L_E(:,5,0,1,0))*g_E(:,5,3,3,0,0,0) + &
+                    !&(1-q_saf_E(5,0)*L_E(:,5,0,0,1))*g_E(:,5,3,2,0,0,0)) + &
+                    !&q_saf_E(5,0)*(L_E(:,5,0,2,0)*g_E(:,5,3,3,0,0,0)+&
+                    !&(1+L_E(:,5,0,1,0))*g_E(:,5,3,3,0,1,0)) &
+                    !&-q_saf_E(5,0)*L_E(:,5,0,1,1)*g_E(:,5,3,2,0,0,0) + &
+                    !&(1-q_saf_E(5,0)*L_E(:,5,0,0,1))*g_E(:,5,3,2,0,1,0))
                 !ierr = calc_B_V_covar([1,0])
                 !CHCKERR('')
                 !call print_GP_2D('D_theta B_zeta (1: calc, 2: an)','',&
@@ -2431,7 +2437,7 @@ contains
                 !!write(*,*) 'D_theta B_alpha converted to VMEC coords = '
                 !!ierr = calc_B_V_covar([1,0])                                    ! so B_V_sub_ALT contains the theta derivatives
                 !!CHCKERR('')
-                !!call print_ar_2(1/(1+VMEC_L(:,:,0,1,0))*B_V_sub_ALT(:,:,3))
+                !!call print_ar_2(1/(1+L_E(:,:,0,1,0))*B_V_sub_ALT(:,:,3))
                 !read(*,*)
                 
             end if
@@ -2495,9 +2501,9 @@ contains
                 do kd = 1,grp_n_r_eq
                     B_V_sub(:,kd,jd) = flux_p_E(kd,1)/&
                         &(2*pi*jac_E(:,kd,0,0,0)) * &
-                        &(-q_saf_E(kd,0)*(1+VMEC_L(:,kd,0,1,0)) * &
+                        &(-q_saf_E(kd,0)*(1+L_E(:,kd,0,1,0)) * &
                         &g_E(:,kd,3,jd,0,0,0) - (1-q_saf_E(kd,0)*&
-                        &VMEC_L(:,kd,0,0,1))*g_E(:,kd,2,jd,0,0,0))
+                        &L_E(:,kd,0,0,1))*g_E(:,kd,2,jd,0,0,0))
                 end do
             end do
             deallocate(trigon_factors)
@@ -2517,7 +2523,8 @@ contains
     integer function test_pres_balance() result(ierr)
         use MPI_ops, only: split_MPI
         use driver_rich, only: calc_eq
-        use eq_vars, only: grp_n_r_eq, n_par
+        use X_vars, only: n_par
+        use eq_vars, only: grp_n_r_eq
         
         character(*), parameter :: rout_name = 'test_pres_balance'
         
@@ -2545,9 +2552,10 @@ contains
     end function test_pres_balance
 
     integer function test_ang_B() result(ierr)
-        !use VMEC_ops, only: mpol, ntor
+        !use VMEC, only: mpol, ntor
+        !use X_vars, only: n_par
         !use eq_vars, only: calc_eqd_grid, calc_ang_grid, &
-            !&n_par, theta, zeta, grp_n_r_eq
+            !&theta, zeta, grp_n_r_eq
         !use num_vars, only: use_tor_flux
         
         !character(*), parameter :: rout_name = 'test_ang_B'
@@ -2666,7 +2674,7 @@ contains
         !! makes use of kd from parent to indicate the flux surface
         !function find_f_plot(n_ang,dep_var,par_var,alpha)
             !use fourier_ops, only: calc_ang_grid, f2r
-            !use VMEC_ops, only: iotaf, nfp, L_c, L_s
+            !use VMEC, only: iotaf, nfp, L_c, L_s
             
             !! input / output
             !integer :: n_ang
@@ -2709,8 +2717,9 @@ contains
         use utilities, only: add_arr_mult
         use eq_ops, only: init_eq, calc_RZL, calc_flux_q
         use coord_ops, only: calc_eqd_grid
-        use eq_vars, only: VMEC_R, vmec_Z, n_par, theta => theta_E, &
+        use eq_vars, only: R_E, Z_E, theta => theta_E, &
             &zeta => zeta_E, q_saf_E, pres_E, grp_n_r_eq
+        use X_vars, only: n_par
         !use num_vars, only: max_deriv
         
         character(*), parameter :: rout_name = 'test_add_arr_mult'
@@ -2800,9 +2809,9 @@ contains
             ! multiply
             write(*,*) 'multiply R and Z'
             RZ = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,0])
+            ierr = add_arr_mult(R_E,Z_E,RZ,[0,0,0])
             CHCKERR('')
-            RZ_num = VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,0,0)
+            RZ_num = R_E(5,:,0,0,0)*Z_E(5,:,0,0,0)
             call print_GP_2D('RZ (calc,num) at par = 5','',&
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff RZ (calc-num) at par = 5','',&
@@ -2812,30 +2821,30 @@ contains
             write(*,*) 'derive RZ'
             ! Dr
             RZ = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[1,0,0])
+            ierr = add_arr_mult(R_E,Z_E,RZ,[1,0,0])
             CHCKERR('')
-            RZ_num = VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,0,0,0) + &
-                &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,1,0,0)
+            RZ_num = R_E(5,:,1,0,0)*Z_E(5,:,0,0,0) + &
+                &R_E(5,:,0,0,0)*Z_E(5,:,1,0,0)
             call print_GP_2D('DrRZ (calc,num) at par = 5','',&
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Dtheta
             RZ = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[0,1,0])
+            ierr = add_arr_mult(R_E,Z_E,RZ,[0,1,0])
             CHCKERR('')
-            RZ_num = VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,0,0,0) + &
-                &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,1,0)
+            RZ_num = R_E(5,:,0,1,0)*Z_E(5,:,0,0,0) + &
+                &R_E(5,:,0,0,0)*Z_E(5,:,0,1,0)
             call print_GP_2D('DtRZ (calc,num) at par = 5','',&
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DtRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Dzeta
             RZ = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,1])
+            ierr = add_arr_mult(R_E,Z_E,RZ,[0,0,1])
             CHCKERR('')
-            RZ_num = VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,0,0,0) + &
-                &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,0,1)
+            RZ_num = R_E(5,:,0,0,1)*Z_E(5,:,0,0,0) + &
+                &R_E(5,:,0,0,0)*Z_E(5,:,0,0,1)
             call print_GP_2D('DzRZ (calc,num) at par = 5','',&
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DzRZ (calc-num) at par = 5','',&
@@ -2845,69 +2854,69 @@ contains
             write(*,*) 'double derive RZ'
             ! Drr
             RZ = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[2,0,0])
+            ierr = add_arr_mult(R_E,Z_E,RZ,[2,0,0])
             CHCKERR('')
-            RZ_num = VMEC_R(5,:,2,0,0)*VMEC_Z(5,:,0,0,0) + &
-                &2.0_dp * VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,1,0,0) + &
-                &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,2,0,0)
+            RZ_num = R_E(5,:,2,0,0)*Z_E(5,:,0,0,0) + &
+                &2.0_dp * R_E(5,:,1,0,0)*Z_E(5,:,1,0,0) + &
+                &R_E(5,:,0,0,0)*Z_E(5,:,2,0,0)
             call print_GP_2D('DrrRZ (calc,num) at par = 5','',&
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrrRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Drtheta
             RZ = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[1,1,0])
+            ierr = add_arr_mult(R_E,Z_E,RZ,[1,1,0])
             CHCKERR('')
-            RZ_num = VMEC_R(5,:,1,1,0)*VMEC_Z(5,:,0,0,0) + &
-                &VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,0,1,0) + &
-                &VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,1,0,0) + &
-                &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,1,1,0)
+            RZ_num = R_E(5,:,1,1,0)*Z_E(5,:,0,0,0) + &
+                &R_E(5,:,1,0,0)*Z_E(5,:,0,1,0) + &
+                &R_E(5,:,0,1,0)*Z_E(5,:,1,0,0) + &
+                &R_E(5,:,0,0,0)*Z_E(5,:,1,1,0)
             call print_GP_2D('DrtRZ (calc,num) at par = 5','',&
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrtRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Drzeta
             RZ = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[1,0,1])
+            ierr = add_arr_mult(R_E,Z_E,RZ,[1,0,1])
             CHCKERR('')
-            RZ_num = VMEC_R(5,:,1,0,1)*VMEC_Z(5,:,0,0,0) + &
-                &VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,0,0,1) + &
-                &VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,1,0,0) + &
-                &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,1,0,1)
+            RZ_num = R_E(5,:,1,0,1)*Z_E(5,:,0,0,0) + &
+                &R_E(5,:,1,0,0)*Z_E(5,:,0,0,1) + &
+                &R_E(5,:,0,0,1)*Z_E(5,:,1,0,0) + &
+                &R_E(5,:,0,0,0)*Z_E(5,:,1,0,1)
             call print_GP_2D('DrzRZ (calc,num) at par = 5','',&
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrzRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Dthetatheta
             RZ = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[0,2,0])
+            ierr = add_arr_mult(R_E,Z_E,RZ,[0,2,0])
             CHCKERR('')
-            RZ_num = VMEC_R(5,:,0,2,0)*VMEC_Z(5,:,0,0,0) + &
-                &2.0_dp * VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,0,1,0) + &
-                &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,2,0)
+            RZ_num = R_E(5,:,0,2,0)*Z_E(5,:,0,0,0) + &
+                &2.0_dp * R_E(5,:,0,1,0)*Z_E(5,:,0,1,0) + &
+                &R_E(5,:,0,0,0)*Z_E(5,:,0,2,0)
             call print_GP_2D('DttRZ (calc,num) at par = 5','',&
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DttRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Dtzeta
             RZ = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[0,1,1])
+            ierr = add_arr_mult(R_E,Z_E,RZ,[0,1,1])
             CHCKERR('')
-            RZ_num = VMEC_R(5,:,0,1,1)*VMEC_Z(5,:,0,0,0) + &
-                &VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,0,0,1) + &
-                &VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,0,1,0) + &
-                &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,1,1)
+            RZ_num = R_E(5,:,0,1,1)*Z_E(5,:,0,0,0) + &
+                &R_E(5,:,0,1,0)*Z_E(5,:,0,0,1) + &
+                &R_E(5,:,0,0,1)*Z_E(5,:,0,1,0) + &
+                &R_E(5,:,0,0,0)*Z_E(5,:,0,1,1)
             call print_GP_2D('DtzRZ (calc,num) at par = 5','',&
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DtzRZ (calc-num) at par = 5','',&
                 &RZ(5,:)-RZ_num)
             ! Dzetazeta
             RZ = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[0,0,2])
+            ierr = add_arr_mult(R_E,Z_E,RZ,[0,0,2])
             CHCKERR('')
-            RZ_num = VMEC_R(5,:,0,0,2)*VMEC_Z(5,:,0,0,0) + &
-                &2.0_dp * VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,0,0,1) + &
-                &VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,0,0,2)
+            RZ_num = R_E(5,:,0,0,2)*Z_E(5,:,0,0,0) + &
+                &2.0_dp * R_E(5,:,0,0,1)*Z_E(5,:,0,0,1) + &
+                &R_E(5,:,0,0,0)*Z_E(5,:,0,0,2)
             call print_GP_2D('DzzRZ (calc,num) at par = 5','',&
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DzzRZ (calc-num) at par = 5','',&
@@ -2916,32 +2925,32 @@ contains
             ! higher order derive multiplied values
             write(*,*) 'higher order derive RZ'
             RZ = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,VMEC_Z,RZ,[1,2,3])
+            ierr = add_arr_mult(R_E,Z_E,RZ,[1,2,3])
             CHCKERR('')
-            RZ_num = VMEC_R(5,:,1,2,3)*VMEC_Z(5,:,0,0,0) + &
-                &3.0_dp * VMEC_R(5,:,1,2,2)*VMEC_Z(5,:,0,0,1) + &
-                &3.0_dp * VMEC_R(5,:,1,2,1)*VMEC_Z(5,:,0,0,2) + &
-                &1.0_dp * VMEC_R(5,:,1,2,0)*VMEC_Z(5,:,0,0,3) + &
-                &2.0_dp * VMEC_R(5,:,1,1,3)*VMEC_Z(5,:,0,1,0) + &
-                &6.0_dp * VMEC_R(5,:,1,1,2)*VMEC_Z(5,:,0,1,1) + &
-                &6.0_dp * VMEC_R(5,:,1,1,1)*VMEC_Z(5,:,0,1,2) + &
-                &2.0_dp * VMEC_R(5,:,1,1,0)*VMEC_Z(5,:,0,1,3) + &
-                &1.0_dp * VMEC_R(5,:,1,0,3)*VMEC_Z(5,:,0,2,0) + &
-                &3.0_dp * VMEC_R(5,:,1,0,2)*VMEC_Z(5,:,0,2,1) + &
-                &3.0_dp * VMEC_R(5,:,1,0,1)*VMEC_Z(5,:,0,2,2) + &
-                &1.0_dp * VMEC_R(5,:,1,0,0)*VMEC_Z(5,:,0,2,3) + &
-                &1.0_dp * VMEC_R(5,:,0,2,3)*VMEC_Z(5,:,1,0,0) + &
-                &3.0_dp * VMEC_R(5,:,0,2,2)*VMEC_Z(5,:,1,0,1) + &
-                &3.0_dp * VMEC_R(5,:,0,2,1)*VMEC_Z(5,:,1,0,2) + &
-                &1.0_dp * VMEC_R(5,:,0,2,0)*VMEC_Z(5,:,1,0,3) + &
-                &2.0_dp * VMEC_R(5,:,0,1,3)*VMEC_Z(5,:,1,1,0) + &
-                &6.0_dp * VMEC_R(5,:,0,1,2)*VMEC_Z(5,:,1,1,1) + &
-                &6.0_dp * VMEC_R(5,:,0,1,1)*VMEC_Z(5,:,1,1,2) + &
-                &2.0_dp * VMEC_R(5,:,0,1,0)*VMEC_Z(5,:,1,1,3) + &
-                &1.0_dp * VMEC_R(5,:,0,0,3)*VMEC_Z(5,:,1,2,0) + &
-                &3.0_dp * VMEC_R(5,:,0,0,2)*VMEC_Z(5,:,1,2,1) + &
-                &3.0_dp * VMEC_R(5,:,0,0,1)*VMEC_Z(5,:,1,2,2) + &
-                &1.0_dp * VMEC_R(5,:,0,0,0)*VMEC_Z(5,:,1,2,3)
+            RZ_num = R_E(5,:,1,2,3)*Z_E(5,:,0,0,0) + &
+                &3.0_dp * R_E(5,:,1,2,2)*Z_E(5,:,0,0,1) + &
+                &3.0_dp * R_E(5,:,1,2,1)*Z_E(5,:,0,0,2) + &
+                &1.0_dp * R_E(5,:,1,2,0)*Z_E(5,:,0,0,3) + &
+                &2.0_dp * R_E(5,:,1,1,3)*Z_E(5,:,0,1,0) + &
+                &6.0_dp * R_E(5,:,1,1,2)*Z_E(5,:,0,1,1) + &
+                &6.0_dp * R_E(5,:,1,1,1)*Z_E(5,:,0,1,2) + &
+                &2.0_dp * R_E(5,:,1,1,0)*Z_E(5,:,0,1,3) + &
+                &1.0_dp * R_E(5,:,1,0,3)*Z_E(5,:,0,2,0) + &
+                &3.0_dp * R_E(5,:,1,0,2)*Z_E(5,:,0,2,1) + &
+                &3.0_dp * R_E(5,:,1,0,1)*Z_E(5,:,0,2,2) + &
+                &1.0_dp * R_E(5,:,1,0,0)*Z_E(5,:,0,2,3) + &
+                &1.0_dp * R_E(5,:,0,2,3)*Z_E(5,:,1,0,0) + &
+                &3.0_dp * R_E(5,:,0,2,2)*Z_E(5,:,1,0,1) + &
+                &3.0_dp * R_E(5,:,0,2,1)*Z_E(5,:,1,0,2) + &
+                &1.0_dp * R_E(5,:,0,2,0)*Z_E(5,:,1,0,3) + &
+                &2.0_dp * R_E(5,:,0,1,3)*Z_E(5,:,1,1,0) + &
+                &6.0_dp * R_E(5,:,0,1,2)*Z_E(5,:,1,1,1) + &
+                &6.0_dp * R_E(5,:,0,1,1)*Z_E(5,:,1,1,2) + &
+                &2.0_dp * R_E(5,:,0,1,0)*Z_E(5,:,1,1,3) + &
+                &1.0_dp * R_E(5,:,0,0,3)*Z_E(5,:,1,2,0) + &
+                &3.0_dp * R_E(5,:,0,0,2)*Z_E(5,:,1,2,1) + &
+                &3.0_dp * R_E(5,:,0,0,1)*Z_E(5,:,1,2,2) + &
+                &1.0_dp * R_E(5,:,0,0,0)*Z_E(5,:,1,2,3)
             call print_GP_2D('DrttzzzRZ (calc,num) at par = 5','',&
                 &reshape([RZ(5,:),RZ_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrttzzzRZ (calc-num) at par = 5','',&
@@ -2989,9 +2998,9 @@ contains
             ! multiply
             write(*,*) 'multiply R and q_saf_E'
             Rq = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[0,0,0])
+            ierr = add_arr_mult(R_E,q_saf_E,Rq,[0,0,0])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,0,0,0)*q_saf_E(:,0)
+            Rq_num = R_E(5,:,0,0,0)*q_saf_E(:,0)
             call print_GP_2D('Rq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff Rq (calc-num) at par = 5','',&
@@ -3001,30 +3010,30 @@ contains
             write(*,*) 'derive Rq'
             ! Dr
             Rq = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[1,0,0])
+            ierr = add_arr_mult(R_E,q_saf_E,Rq,[1,0,0])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,1,0,0)*q_saf_E(:,0) + &
-                &VMEC_R(5,:,0,0,0)*q_saf_E(:,1)
+            Rq_num = R_E(5,:,1,0,0)*q_saf_E(:,0) + &
+                &R_E(5,:,0,0,0)*q_saf_E(:,1)
             call print_GP_2D('DrRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Dtheta
             Rq = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[0,1,0])
+            ierr = add_arr_mult(R_E,q_saf_E,Rq,[0,1,0])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,0,1,0)*q_saf_E(:,0) + &
-                &VMEC_R(5,:,0,0,0)*0.0_dp
+            Rq_num = R_E(5,:,0,1,0)*q_saf_E(:,0) + &
+                &R_E(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DtRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DtRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Dzeta
             Rq = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[0,0,1])
+            ierr = add_arr_mult(R_E,q_saf_E,Rq,[0,0,1])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,0,0,1)*q_saf_E(:,0) + &
-                &VMEC_R(5,:,0,0,0)*0.0_dp
+            Rq_num = R_E(5,:,0,0,1)*q_saf_E(:,0) + &
+                &R_E(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DzRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DzRq (calc-num) at par = 5','',&
@@ -3034,69 +3043,69 @@ contains
             write(*,*) 'double derive Rq'
             ! Drr
             Rq = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[2,0,0])
+            ierr = add_arr_mult(R_E,q_saf_E,Rq,[2,0,0])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,2,0,0)*q_saf_E(:,0) + &
-                &2.0_dp * VMEC_R(5,:,1,0,0)*q_saf_E(:,1) + &
-                &VMEC_R(5,:,0,0,0)*q_saf_E(:,2)
+            Rq_num = R_E(5,:,2,0,0)*q_saf_E(:,0) + &
+                &2.0_dp * R_E(5,:,1,0,0)*q_saf_E(:,1) + &
+                &R_E(5,:,0,0,0)*q_saf_E(:,2)
             call print_GP_2D('DrrRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrrRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Drtheta
             Rq = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[1,1,0])
+            ierr = add_arr_mult(R_E,q_saf_E,Rq,[1,1,0])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,1,1,0)*q_saf_E(:,0) + &
-                &VMEC_R(5,:,1,0,0)*0.0_dp + &
-                &VMEC_R(5,:,0,1,0)*q_saf_E(:,1) + &
-                &VMEC_R(5,:,0,0,0)*0.0_dp
+            Rq_num = R_E(5,:,1,1,0)*q_saf_E(:,0) + &
+                &R_E(5,:,1,0,0)*0.0_dp + &
+                &R_E(5,:,0,1,0)*q_saf_E(:,1) + &
+                &R_E(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DrtRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrtRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Drzeta
             Rq = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[1,0,1])
+            ierr = add_arr_mult(R_E,q_saf_E,Rq,[1,0,1])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,1,0,1)*q_saf_E(:,0) + &
-                &VMEC_R(5,:,1,0,0)*0.0_dp + &
-                &VMEC_R(5,:,0,0,1)*q_saf_E(:,1) + &
-                &VMEC_R(5,:,0,0,0)*0.0_dp
+            Rq_num = R_E(5,:,1,0,1)*q_saf_E(:,0) + &
+                &R_E(5,:,1,0,0)*0.0_dp + &
+                &R_E(5,:,0,0,1)*q_saf_E(:,1) + &
+                &R_E(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DrzRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrzRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Dthetatheta
             Rq = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[0,2,0])
+            ierr = add_arr_mult(R_E,q_saf_E,Rq,[0,2,0])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,0,2,0)*q_saf_E(:,0) + &
-                &2.0_dp * VMEC_R(5,:,0,1,0)*0.0_dp + &
-                &VMEC_R(5,:,0,0,0)*0.0_dp
+            Rq_num = R_E(5,:,0,2,0)*q_saf_E(:,0) + &
+                &2.0_dp * R_E(5,:,0,1,0)*0.0_dp + &
+                &R_E(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DttRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DttRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Dtzeta
             Rq = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[0,1,1])
+            ierr = add_arr_mult(R_E,q_saf_E,Rq,[0,1,1])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,0,1,1)*q_saf_E(:,0) + &
-                &VMEC_R(5,:,0,1,0)*0.0_dp + &
-                &VMEC_R(5,:,0,0,1)*0.0_dp + &
-                &VMEC_R(5,:,0,0,0)*0.0_dp
+            Rq_num = R_E(5,:,0,1,1)*q_saf_E(:,0) + &
+                &R_E(5,:,0,1,0)*0.0_dp + &
+                &R_E(5,:,0,0,1)*0.0_dp + &
+                &R_E(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DtzRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DtzRq (calc-num) at par = 5','',&
                 &Rq(5,:)-Rq_num)
             ! Dzetazeta
             Rq = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[0,0,2])
+            ierr = add_arr_mult(R_E,q_saf_E,Rq,[0,0,2])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,0,0,2)*q_saf_E(:,0) + &
-                &2.0_dp * VMEC_R(5,:,0,0,1)*0.0_dp + &
-                &VMEC_R(5,:,0,0,0)*0.0_dp
+            Rq_num = R_E(5,:,0,0,2)*q_saf_E(:,0) + &
+                &2.0_dp * R_E(5,:,0,0,1)*0.0_dp + &
+                &R_E(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DzzRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DzzRq (calc-num) at par = 5','',&
@@ -3105,32 +3114,32 @@ contains
             ! higher order derive multiplied values
             write(*,*) 'higher order derive Rq'
             Rq = 0.0_dp
-            ierr = add_arr_mult(VMEC_R,q_saf_E,Rq,[1,2,3])
+            ierr = add_arr_mult(R_E,q_saf_E,Rq,[1,2,3])
             CHCKERR('')
-            Rq_num = VMEC_R(5,:,1,2,3)*q_saf_E(:,0) + &
-                &3.0_dp * VMEC_R(5,:,1,2,2)*0.0_dp + &
-                &3.0_dp * VMEC_R(5,:,1,2,1)*0.0_dp + &
-                &1.0_dp * VMEC_R(5,:,1,2,0)*0.0_dp + &
-                &2.0_dp * VMEC_R(5,:,1,1,3)*0.0_dp + &
-                &6.0_dp * VMEC_R(5,:,1,1,2)*0.0_dp + &
-                &6.0_dp * VMEC_R(5,:,1,1,1)*0.0_dp + &
-                &2.0_dp * VMEC_R(5,:,1,1,0)*0.0_dp + &
-                &1.0_dp * VMEC_R(5,:,1,0,3)*0.0_dp + &
-                &3.0_dp * VMEC_R(5,:,1,0,2)*0.0_dp + &
-                &3.0_dp * VMEC_R(5,:,1,0,1)*0.0_dp + &
-                &1.0_dp * VMEC_R(5,:,1,0,0)*0.0_dp + &
-                &1.0_dp * VMEC_R(5,:,0,2,3)*q_saf_E(:,1) + &
-                &3.0_dp * VMEC_R(5,:,0,2,2)*0.0_dp + &
-                &3.0_dp * VMEC_R(5,:,0,2,1)*0.0_dp + &
-                &1.0_dp * VMEC_R(5,:,0,2,0)*0.0_dp + &
-                &2.0_dp * VMEC_R(5,:,0,1,3)*0.0_dp + &
-                &6.0_dp * VMEC_R(5,:,0,1,2)*0.0_dp + &
-                &6.0_dp * VMEC_R(5,:,0,1,1)*0.0_dp + &
-                &2.0_dp * VMEC_R(5,:,0,1,0)*0.0_dp + &
-                &1.0_dp * VMEC_R(5,:,0,0,3)*0.0_dp + &
-                &3.0_dp * VMEC_R(5,:,0,0,2)*0.0_dp + &
-                &3.0_dp * VMEC_R(5,:,0,0,1)*0.0_dp + &
-                &1.0_dp * VMEC_R(5,:,0,0,0)*0.0_dp
+            Rq_num = R_E(5,:,1,2,3)*q_saf_E(:,0) + &
+                &3.0_dp * R_E(5,:,1,2,2)*0.0_dp + &
+                &3.0_dp * R_E(5,:,1,2,1)*0.0_dp + &
+                &1.0_dp * R_E(5,:,1,2,0)*0.0_dp + &
+                &2.0_dp * R_E(5,:,1,1,3)*0.0_dp + &
+                &6.0_dp * R_E(5,:,1,1,2)*0.0_dp + &
+                &6.0_dp * R_E(5,:,1,1,1)*0.0_dp + &
+                &2.0_dp * R_E(5,:,1,1,0)*0.0_dp + &
+                &1.0_dp * R_E(5,:,1,0,3)*0.0_dp + &
+                &3.0_dp * R_E(5,:,1,0,2)*0.0_dp + &
+                &3.0_dp * R_E(5,:,1,0,1)*0.0_dp + &
+                &1.0_dp * R_E(5,:,1,0,0)*0.0_dp + &
+                &1.0_dp * R_E(5,:,0,2,3)*q_saf_E(:,1) + &
+                &3.0_dp * R_E(5,:,0,2,2)*0.0_dp + &
+                &3.0_dp * R_E(5,:,0,2,1)*0.0_dp + &
+                &1.0_dp * R_E(5,:,0,2,0)*0.0_dp + &
+                &2.0_dp * R_E(5,:,0,1,3)*0.0_dp + &
+                &6.0_dp * R_E(5,:,0,1,2)*0.0_dp + &
+                &6.0_dp * R_E(5,:,0,1,1)*0.0_dp + &
+                &2.0_dp * R_E(5,:,0,1,0)*0.0_dp + &
+                &1.0_dp * R_E(5,:,0,0,3)*0.0_dp + &
+                &3.0_dp * R_E(5,:,0,0,2)*0.0_dp + &
+                &3.0_dp * R_E(5,:,0,0,1)*0.0_dp + &
+                &1.0_dp * R_E(5,:,0,0,0)*0.0_dp
             call print_GP_2D('DrttzzzRq (calc,num) at par = 5','',&
                 &reshape([Rq(5,:),Rq_num],[grp_n_r_eq,2]))
             call print_GP_2D('diff DrttzzzRq (calc-num) at par = 5','',&

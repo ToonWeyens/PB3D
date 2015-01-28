@@ -6,7 +6,7 @@ module driver_rich
 #include <PB3D_macros.h>
     use num_vars, only: max_it_r, dp, pi, max_str_ln
     use str_ops, only: i2str, r2str, r2strt
-    use message_ops, only: writo, print_ar_2, print_ar_1, lvl_ud
+    use messages, only: writo, print_ar_2, print_ar_1, lvl_ud
     use output_ops, only: print_GP_2D, print_GP_3D
     implicit none
     private
@@ -24,11 +24,11 @@ contains
     !       the other groups
     integer function run_rich_driver() result(ierr)
         use num_vars, only: min_alpha, max_alpha, n_alpha, glb_rank, grp_nr, &
-            &max_alpha, alpha_job_nr, use_pol_flux, eq_style
+            &max_alpha, alpha_job_nr, use_pol_flux_X, eq_style
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
-        use VMEC_ops, only: dealloc_VMEC
-        use HEL_ops, only: dealloc_HEL
+        use VMEC, only: dealloc_VMEC
+        use HELENA, only: dealloc_HEL
         use coord_ops, only: calc_eqd_grid
         
         character(*), parameter :: rout_name = 'run_rich_driver'
@@ -41,7 +41,7 @@ contains
         ierr = 0
         
         ! set up flux_name
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             flux_name = 'poloidal'
         else
             flux_name = 'toroidal'
@@ -53,7 +53,7 @@ contains
         call writo('using the '//trim(flux_name)//' flux as the normal &
             &variable')
         call writo('for '//trim(i2str(n_alpha))//' values of alpha')
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             call writo('with toroidal mode number n = '//trim(i2str(min_n_X)))
             call writo('and poloidal mode number m = '//trim(i2str(min_m_X))//&
                 &'..'//trim(i2str(max_m_X)))
@@ -146,12 +146,12 @@ contains
     integer function run_for_alpha(job_nr,alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, grp_rank, no_guess, &
             &alpha_job_nr, n_sol_plotted
-        use eq_vars, only: ang_par_F, n_par
         use output_ops, only: draw_GP
         use eq_vars, only: dealloc_eq_final
         use X_ops, only: prepare_X, solve_EV_system, plot_X_vec, init_m
-        use X_vars, only: X_vec, X_val, dealloc_X_final, n_r_X, size_X
-        use metric_ops, only: dealloc_metric_final
+        use X_vars, only: X_vec, X_val, dealloc_X_final, n_r_X, size_X, n_par, &
+            &ang_par_F
+        use metric_vars, only: dealloc_metric_final
         
         character(*), parameter :: rout_name = 'run_for_alpha'
         
@@ -565,19 +565,21 @@ contains
     ! this rank. It is determined so  that the perturbation quantities that will
     ! be needed in this rank are fully covered, so no communication is necessary
     integer function calc_eq(alpha) result(ierr)
+        use X_vars, only: n_par
         use eq_vars, only: dealloc_eq, &
-            &q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, pres_FD, n_par, &
-            &flux_p_E, flux_t_E, pres_E, q_saf_E, rot_t_E, theta_E, zeta_E
+            &q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, pres_FD, flux_p_E, &
+            &flux_t_E, pres_E, q_saf_E, rot_t_E, theta_E, zeta_E
         use eq_ops, only: init_eq, calc_flux_q, prepare_RZL, calc_RZL, &
             &normalize_eq_vars, adapt_HEL_to_eq
         use metric_ops, only: calc_g_C, calc_g_C, calc_T_VC, calc_g_V, &
             &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, &
-            &calc_jac_V, calc_jac_F, calc_f_deriv, dealloc_metric, &
-            &normalize_metric_vars, calc_jac_H, calc_T_HF, calc_h_H, &
+            &calc_jac_V, calc_jac_F, calc_f_deriv, normalize_metric_vars, &
+            &calc_jac_H, calc_T_HF, calc_h_H
+        use metric_vars, only: dealloc_metric, &
             &T_EF, T_FE, det_T_EF, det_T_FE, g_F, h_F, jac_F, g_FD, h_FD, &
             &jac_FD, g_E, h_E
         use utilities, only: derivs
-        use num_vars, only: max_deriv, ltest, use_pol_flux, plot_grid, &
+        use num_vars, only: max_deriv, ltest, use_pol_flux_X, plot_grid, &
             &eq_style, grp_rank, use_normalization
         use coord_ops, only: calc_ang_grid, plot_grid_real
         
@@ -624,10 +626,10 @@ contains
             
                 ! calculate angular grid points (theta_E,zeta_E) that follow the
                 ! magnetic field line determined by alpha
-                ! Note: The normal grid is determined by VMEC, it can either use
-                ! the toroidal  flux or  the poloidal  flux (VMEC_use_pol_flux).
-                ! This does not have to coincide with use_pol_flux used by PB3D.
-                ! However, the grid is tabulated in the VMEC normal coordinate
+                ! Note: The  normal grid  is determined  by the  equilibrium, it
+                ! can  either  use  the  toroidal  flux  or  the  poloidal  flux
+                ! (use_pol_flux_eq).  This  does  not   have  to  coincide  with
+                ! use_pol_flux_X used by PB3D.
                 ierr = calc_ang_grid(alpha)
                 CHCKERR('')
                 
@@ -815,7 +817,7 @@ contains
                     CHCKERR('')
                     flux_t_FD = pmone * flux_t_FD                               ! multiply by plus minus one
                     
-                    if (use_pol_flux) then
+                    if (use_pol_flux_X) then
                         ! q_saf_FD
                         ierr = calc_f_deriv(q_saf_E,T_FE(1,:,2,1,:,0,0),&
                             &q_saf_FD(:,id),max_deriv,id)
@@ -862,8 +864,7 @@ contains
     ! This yields n(dx/2)/n(dx) = (2+dx)/(1+dx) = (2n(dx)-1)/n(dx)
     ! The recursion formula is therefore: n(dx/2) = 2n(dx) - 1
     subroutine calc_n_r_X(ir)
-        use X_vars, only: n_r_X
-        use num_vars, only: min_n_r_X
+        use X_vars, only: n_r_X, min_n_r_X
         
         ! input / output
         integer, intent(in) :: ir

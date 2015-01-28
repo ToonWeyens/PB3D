@@ -1,11 +1,10 @@
 !------------------------------------------------------------------------------!
-!   Calculates the equilibrium quantities, making use of the metric_ops,       !
-!   eq_vars, etc                                                               !
+!   Operations on the equilibrium variables                                    !
 !------------------------------------------------------------------------------!
 module eq_ops
 #include <PB3D_macros.h>
     use num_vars, only: pi, dp, max_str_ln
-    use message_ops, only: print_ar_2, lvl_ud, writo
+    use messages, only: print_ar_2, lvl_ud, writo
     use output_ops, only: print_GP_3D, draw_GP_animated, draw_GP, &
         &print_GP_2D
     use str_ops, only: i2str, r2strt
@@ -22,11 +21,12 @@ module eq_ops
 contains
     ! initialize the equilibrium variables
     integer function init_eq() result(ierr)
-        use num_vars, only: max_deriv, grp_rank, use_pol_flux, eq_style
+        use num_vars, only: max_deriv, grp_rank, use_pol_flux_X, eq_style
         use eq_vars, only: pres_FD, flux_p_FD, flux_t_FD, q_saf_FD, rot_t_FD, &
             &pres_E, flux_p_E, flux_t_E, q_saf_E, rot_t_E, flux_p_E_full, &
-            &flux_t_E_full, q_saf_E_full, rot_t_E_full, VMEC_R, VMEC_Z, &
-            &VMEC_L, grp_min_r_eq, grp_max_r_eq, grp_n_r_eq, n_par, n_r_eq
+            &flux_t_E_full, q_saf_E_full, rot_t_E_full, R_E, Z_E, L_E, &
+            &grp_min_r_eq, grp_max_r_eq, grp_n_r_eq, n_r_eq
+        use X_vars, only: n_par
         
         character(*), parameter :: rout_name = 'init_eq'
         
@@ -49,7 +49,7 @@ contains
         ! flux_t_FD
         allocate(flux_t_FD(grp_n_r_eq,0:max_deriv))
         
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             ! q_saf_FD
             allocate(q_saf_FD(grp_n_r_eq,0:max_deriv))
         else
@@ -66,7 +66,7 @@ contains
         ! flux_t_E
         allocate(flux_t_E(grp_n_r_eq,0:max_deriv+1))
         
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             ! q_saf_E
             allocate(q_saf_E(grp_n_r_eq,0:max_deriv+1))
         else
@@ -96,15 +96,15 @@ contains
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! R
-                allocate(VMEC_R(n_par,grp_n_r_eq,0:max_deriv+1,0:max_deriv+1,&
+                allocate(R_E(n_par,grp_n_r_eq,0:max_deriv+1,0:max_deriv+1,&
                     &0:max_deriv+1))
                 
                 ! Z
-                allocate(VMEC_Z(n_par,grp_n_r_eq,0:max_deriv+1,0:max_deriv+1,&
+                allocate(Z_E(n_par,grp_n_r_eq,0:max_deriv+1,0:max_deriv+1,&
                     &0:max_deriv+1))
                 
                 ! lambda
-                allocate(VMEC_L(n_par,grp_n_r_eq,0:max_deriv+1,0:max_deriv+1,&
+                allocate(L_E(n_par,grp_n_r_eq,0:max_deriv+1,0:max_deriv+1,&
                     &0:max_deriv+1))
             case (2)                                                            ! HELENA
                 ! nothing
@@ -118,10 +118,10 @@ contains
     
     ! reads the equilibrium input file
     integer function read_eq() result(ierr)
-        use num_vars, only: eq_style, glb_rank
-        use VMEC_ops, only: read_VMEC
-        use HEL_ops, only: read_HEL
-        use eq_vars, only: n_r_eq, eq_use_pol_flux
+        use num_vars, only: eq_style, glb_rank, use_pol_flux_eq
+        use VMEC, only: read_VMEC
+        use HELENA, only: read_HEL
+        use eq_vars, only: n_r_eq
         
         character(*), parameter :: rout_name = 'read_eq'
         
@@ -138,10 +138,10 @@ contains
             !   2:  HELENA
             select case (eq_style)
                 case (1)                                                        ! VMEC
-                    ierr = read_VMEC(n_r_eq,eq_use_pol_flux)
+                    ierr = read_VMEC(n_r_eq,use_pol_flux_eq)
                     CHCKERR('')
                 case (2)                                                        ! HELENA
-                    ierr = read_HEL(n_r_eq,eq_use_pol_flux)
+                    ierr = read_HEL(n_r_eq,use_pol_flux_eq)
                     CHCKERR('')
                 case default
                     err_msg = 'No equilibrium style associated with '//&
@@ -167,16 +167,19 @@ contains
         CHCKERR('')
     end function prepare_RZL
     
-    ! calculate R, Z and Lambda and  derivatives in VMEC coordinates at the grid
-    ! points given by the variables VMEC_theta and VMEC_zeta and at every normal
-    ! point. The derivatives  are indicated by the variable "deriv"  which has 3
-    ! indices
+    ! calculate  R, Z  and Lambda  and derivatives  in VMEC  coordinates at  the
+    ! grid  points given  by  the  variables theta_E  and  zeta_E (contained  in
+    ! trigon_factors) and at  every normal point. The  derivatives are indicated
+    ! by the variable "deriv" which has 3 indices
+    ! Note: There is no HELENA equivalent  because for HELENA simulations, R and
+    ! Z are not necessary for calculation of the metric coefficients, and L does
+    ! not exist.
     integer function calc_RZL_ind(deriv) result(ierr)
         use fourier_ops, only: fourier2real
-        use VMEC_ops, only: R_c, R_s, Z_c, Z_s, L_c, L_s
+        use VMEC, only: R_c, R_s, Z_c, Z_s, L_c, L_s
         use utilities, only: check_deriv
         use num_vars, only: max_deriv
-        use eq_vars, only: VMEC_R, VMEC_Z, VMEC_L, grp_min_r_eq, grp_max_r_eq, &
+        use eq_vars, only: R_E, Z_E, L_E, grp_min_r_eq, grp_max_r_eq, &
             &trigon_factors
         
         character(*), parameter :: rout_name = 'calc_RZL_ind'
@@ -194,17 +197,17 @@ contains
         ! calculate the variables R,Z and their angular derivative
         ierr = fourier2real(R_c(:,:,grp_min_r_eq:grp_max_r_eq,deriv(1)),&
             &R_s(:,:,grp_min_r_eq:grp_max_r_eq,deriv(1)),&
-            &trigon_factors,VMEC_R(:,:,deriv(1),deriv(2),deriv(3)),&
+            &trigon_factors,R_E(:,:,deriv(1),deriv(2),deriv(3)),&
             &[deriv(2),deriv(3)])
         CHCKERR('')
         ierr = fourier2real(Z_c(:,:,grp_min_r_eq:grp_max_r_eq,deriv(1)),&
             &Z_s(:,:,grp_min_r_eq:grp_max_r_eq,deriv(1)),&
-            &trigon_factors,VMEC_Z(:,:,deriv(1),deriv(2),deriv(3)),&
+            &trigon_factors,Z_E(:,:,deriv(1),deriv(2),deriv(3)),&
             &[deriv(2),deriv(3)])
         CHCKERR('')
         ierr = fourier2real(L_c(:,:,grp_min_r_eq:grp_max_r_eq,deriv(1)),&
             &L_s(:,:,grp_min_r_eq:grp_max_r_eq,deriv(1)),&
-            &trigon_factors,VMEC_L(:,:,deriv(1),deriv(2),deriv(3)),&
+            &trigon_factors,L_E(:,:,deriv(1),deriv(2),deriv(3)),&
             &[deriv(2),deriv(3)])
         CHCKERR('')
     end function calc_RZL_ind
@@ -227,9 +230,10 @@ contains
     ! correct poloidal HELENA range (and possibly multiples).
     integer function adapt_HEL_to_eq() result(ierr)
         use num_vars, only: pi
-        use HEL_ops, only: h_H_11, h_H_12, h_H_33, ias, chi_H
+        use HELENA, only: h_H_11, h_H_12, h_H_33, ias, chi_H
         use utilities, only: interp_fun
-        use eq_vars, only: grp_min_r_eq, n_par, grp_n_r_eq, theta_E
+        use eq_vars, only: grp_min_r_eq, grp_n_r_eq, theta_E
+        use X_vars, only: n_par
         
         character(*), parameter :: rout_name = 'adapt_HEL_to_eq'
         
@@ -313,13 +317,13 @@ contains
     ! calculates flux quantities  and normal derivatives in  the VMEC coordinate
     ! system
     integer function calc_flux_q() result(ierr)
-        use num_vars, only: eq_style, max_deriv, grp_rank, use_pol_flux, &
-            &glb_rank, plot_flux_q
+        use num_vars, only: eq_style, max_deriv, grp_rank, use_pol_flux_X, &
+            &use_pol_flux_eq, glb_rank, plot_flux_q
         use utilities, only: calc_deriv, calc_int
         use eq_vars, only: flux_p_E, flux_t_E, pres_E, q_saf_E, rot_t_E, &
             &flux_t_E_full, flux_p_E_full, q_saf_E_full, rot_t_E_full, &
             &grp_min_r_eq, grp_max_r_eq, max_flux, max_flux_eq, max_flux_F, &
-            &max_flux_eq_F, n_r_eq, eq_use_pol_flux
+            &max_flux_eq_F, n_r_eq
         
         character(*), parameter :: rout_name = 'calc_flux_q_VMEC'
         
@@ -357,7 +361,7 @@ contains
     contains
         ! VMEC version
         integer function calc_flux_q_VMEC() result(ierr)
-            use VMEC_ops, only: iotaf, phi, phi_r, presf
+            use VMEC, only: iotaf, phi, phi_r, presf
             
             character(*), parameter :: rout_name = 'calc_flux_q_VMEC'
             
@@ -401,7 +405,7 @@ contains
                 CHCKERR('')
             end do
             
-            if (use_pol_flux) then
+            if (use_pol_flux_X) then
                 ! safety factor
                 q_saf_E(:,0) = 1.0_dp/iotaf(grp_min_r_eq:grp_max_r_eq)
                 do kd = 1,max_deriv+1
@@ -428,7 +432,7 @@ contains
             end if
             
             ! max_flux_eq
-            if (eq_use_pol_flux) then
+            if (use_pol_flux_eq) then
                 max_flux_eq = flux_p_int_full(n_r_eq)
                 max_flux_eq_F = max_flux_eq
             else
@@ -477,14 +481,14 @@ contains
             end if
             
             ! deallocate helper variables
-            if (use_pol_flux .or. grp_rank.eq.0) then
+            if (use_pol_flux_X .or. grp_rank.eq.0) then
                 deallocate(Dflux_p_full,flux_p_int_full)
             end if
         end function calc_flux_q_VMEC
         
         ! HELENA version
         integer function calc_flux_q_HEL() result(ierr)
-            use HEL_ops, only: qs, flux_H, p0
+            use HELENA, only: qs, flux_H, p0
             
             character(*), parameter :: rout_name = 'calc_flux_q_HEL'
             
@@ -533,7 +537,7 @@ contains
                 CHCKERR('')
             end do
             
-            if (use_pol_flux) then
+            if (use_pol_flux_X) then
                 ! safety factor
                 q_saf_E(:,0) = qs(grp_min_r_eq:grp_max_r_eq)
                 do kd = 1,max_deriv+1
@@ -602,7 +606,7 @@ contains
             end if
             
             ! deallocate helper variables
-            if (use_pol_flux .or. grp_rank.eq.0) then
+            if (use_pol_flux_X .or. grp_rank.eq.0) then
                 deallocate(Dflux_t_full,flux_t_int_full)
             end if
         end function calc_flux_q_HEL
@@ -615,9 +619,9 @@ contains
     !   poloidal flux flux_p
     !   toroidal flux flux_t
     integer function flux_q_plot() result(ierr)
-        use num_vars, only: eq_style, use_pol_flux, output_style
-        use VMEC_ops, only: presf
-        use HEL_ops, only: p0
+        use num_vars, only: eq_style, use_pol_flux_X, output_style
+        use VMEC, only: presf
+        use HELENA, only: p0
         use eq_vars, only: q_saf_E_full, rot_t_E_full, flux_p_E_full, &
             &flux_t_E_full, max_flux, max_flux_eq, n_r_eq
         
@@ -668,7 +672,7 @@ contains
                 y_plot_2D(:,4) = flux_p_E_full(:,0)
                 y_plot_2D(:,5) = -flux_t_E_full(:,0)                            ! conversion VMEC LH -> RH coord. system
                 ! 2D normal variable (y_plot_2D tabulated in eq. grid)
-                if (use_pol_flux) then
+                if (use_pol_flux_X) then
                     x_plot_2D(:,1) = flux_p_E_full(:,0)/max_flux
                 else
                     x_plot_2D(:,1) = flux_t_E_full(:,0)/max_flux
@@ -682,7 +686,7 @@ contains
                 y_plot_2D(:,3) = p0
                 y_plot_2D(:,4) = flux_p_E_full(:,0)
                 y_plot_2D(:,5) = flux_t_E_full(:,0)
-                if (use_pol_flux) then
+                if (use_pol_flux_X) then
                     x_plot_2D(:,1) = flux_p_E_full(:,0)/max_flux
                 else
                     x_plot_2D(:,1) = flux_t_E_full(:,0)/max_flux
@@ -838,7 +842,7 @@ contains
     ! normalizes equilibrium quantities pres_FD, q_saf_FD or rot_t_FD, flux_p_FD
     ! or flux_t_FD, max_flux and pres using the normalization constants
     subroutine normalize_eq_vars
-        use num_vars, only: use_pol_flux
+        use num_vars, only: use_pol_flux_X
         use eq_vars, only: pres_FD, flux_p_FD, flux_t_FD, q_saf_FD, rot_t_FD, &
             &max_flux, max_flux_eq, max_flux_F, max_flux_eq_F, pres_0, psi_0
         
@@ -859,7 +863,7 @@ contains
             pres_FD(:,id) = pres_FD(:,id) * psi_0**(id)
             flux_p_FD(:,id) = flux_p_FD(:,id) * psi_0**(id)
             flux_t_FD(:,id) = flux_t_FD(:,id) * psi_0**(id)
-            if (use_pol_flux) then
+            if (use_pol_flux_X) then
                 q_saf_FD(:,id) = q_saf_FD(:,id) * psi_0**(id)
             else
                 rot_t_FD(:,id) = rot_t_FD(:,id) * psi_0**(id)
@@ -932,10 +936,10 @@ contains
     contains 
         ! VMEC version
         subroutine calc_norm_const_VMEC
-            use VMEC_ops, only: R_c, presf
+            use VMEC, only: R_c, presf
             
-            ! set  the major  radius  as  the average  value  of  VMEC_R on  the
-            ! magnetic axis
+            ! set the major  radius as the average value of  R_E on the magnetic
+            ! axis
             R_0 = R_c(0,0,1,0)
             
             ! rho_0 is set up through an input variable with the same name
@@ -952,7 +956,7 @@ contains
         
         ! HELENA version
         subroutine calc_norm_const_HEL
-            use HEL_ops, only: R_0_H, B_0_H
+            use HELENA, only: R_0_H, B_0_H
             
             ! set the major radius as the HELENA normalization parameter
             R_0 = R_0_H

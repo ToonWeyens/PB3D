@@ -1,31 +1,98 @@
 !------------------------------------------------------------------------------!
-!   Holds variables and routines that use slepc (and petsc) routines
+!   Operations that use SLEPC (and PETSC) routines
 !------------------------------------------------------------------------------!
-module slepc_vars
+module SLEPC_ops
 #include <PB3D_macros.h>
 #include <finclude/slepcepsdef.h>
 !#include <finclude/petscsys.h>
     use slepceps
     use num_vars, only: iu, dp, max_str_ln
-    use message_ops, only: lvl_ud, writo, print_ar_2
+    use messages, only: writo, print_ar_2, lvl_ud
     use str_ops, only: r2strt, r2str, i2str
-    use output_ops, only: print_GP_2D
 
     implicit none
     private
-    public start_slepc, stop_slepc, setup_matrices, setup_solver, setup_guess, &
-        &get_solution, summarize_solution, store_results
+    public solve_EV_system_SLEPC
     
 contains
-    !  This  subroutine starts  petsc  and  slepc  with  the correct  number  of
+    ! This subroutine sets up  the matrices A ad B of  the generalized EV system
+    ! described in  [ADD REF] and  solves them using  the SLEPC suite.  The most
+    ! unstable solutions  are obtained, where the  variable "max_n_EV" indicates
+    ! how many.
+    integer function solve_EV_system_SLEPC(use_guess,max_n_EV) &
+        &result(ierr)
+        character(*), parameter :: rout_name = 'solve_EV_system_SLEPC'
+        
+        ! input / output
+        PetscBool, intent(in) :: use_guess                                      ! whether to use a guess or not
+        PetscInt, intent(inout) :: max_n_EV                                     ! how many solutions saved
+        
+        ! local variables
+        Mat :: A                                                                ! matrix A in EV problem A X = lambda B X
+        Mat :: B                                                                ! matrix B in EV problem A X = lambda B X
+        EPS :: solver                                                           ! EV solver
+        PetscInt, save :: guess_start_id = -10                                  ! start of index of previous vector, saved for next iteration
+        PetscInt, save :: prev_n_EV                                             ! nr. of solutions of previous vector
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! start SLEPC
+        ierr = start_SLEPC()
+        CHCKERR('')
+        
+        ! set up the matrix
+        call writo('set up matrices...')
+        
+        ierr = setup_matrices(A,B)
+        CHCKERR('')
+        
+        ! set up solver
+        call writo('set up EV solver...')
+        
+        ierr = setup_solver(A,B,solver)
+        CHCKERR('')
+        
+        ! set up guess
+        call writo('set up guess...')
+        
+        if (use_guess) call setup_guess(A,solver,guess_start_id,prev_n_EV)
+        
+        ! get solution
+        call writo('get solution...')
+        
+        ierr = get_solution(solver)
+        CHCKERR('')
+        
+        ! summarize solution
+        call writo('summarize solution...')
+        
+        ierr = summarize_solution(solver,max_n_EV)
+        CHCKERR('')
+        
+        ! store results
+        call writo('storing results for '//trim(i2str(max_n_EV))//' highest &
+            &Eigenvalues...')
+        
+        ierr = store_results(solver,max_n_EV)
+        CHCKERR('')
+        
+        ! finalize
+        call writo('finalize SLEPC...')
+        
+        ierr = stop_SLEPC(A,B,solver,guess_start_id,prev_n_EV,max_n_EV)
+        CHCKERR('')
+    end function solve_EV_system_SLEPC
+        
+    !  This  subroutine starts  PETSC  and  SLEPC  with  the correct  number  of
     ! processors
-    integer function start_slepc() result(ierr)
+    integer function start_SLEPC() result(ierr)
         use num_vars, only: MPI_Comm_groups, grp_n_procs
         use X_vars, only: n_r_X
-        use file_ops, only: opt_args
+        use files, only: opt_args
         use MPI_ops, only: divide_grid
         
-        character(*), parameter :: rout_name = 'start_slepc'
+        character(*), parameter :: rout_name = 'start_SLEPC'
         
         ! local variables
         PetscBool :: flg                                                        ! flag to catch options
@@ -36,7 +103,7 @@ contains
         ierr = 0
         
         ! user message
-        call writo('initialize slepc...')
+        call writo('initialize SLEPC...')
         call lvl_ud(1)
         
         ! divide perturbation grid under group processes
@@ -53,8 +120,8 @@ contains
                 &values, increasing n_r_X or increasing number of field &
                 &lines n_alpha')
         end if
-        call SlepcInitialize(PETSC_NULL_CHARACTER,ierr)                         ! initialize slepc
-        CHCKERR('slepc failed to initialize')
+        call SlepcInitialize(PETSC_NULL_CHARACTER,ierr)                         ! initialize SLEPC
+        CHCKERR('SLEPC failed to initialize')
         
         ! output
         call writo('slepc started with '//trim(i2str(grp_n_procs))&
@@ -66,7 +133,7 @@ contains
         call writo('run tests...')
 #if defined(PETSC_USE_COMPLEX)
 #else
-        err_msg = 'Petsc and slepc have to be configured and compiled &
+        err_msg = 'PETSC and SLEPC have to be configured and compiled &
             &with the option "--with-scalar-type=complex"'
         call SlepcFinalize(ierr)
         ierr = 1
@@ -79,7 +146,7 @@ contains
             if (trim(option_name).ne.'') call PetscOptionsHasName(&
                 &PETSC_NULL_CHARACTER,trim(option_name),flg,ierr)
         end do
-    end function start_slepc
+    end function start_SLEPC
     
     ! sets up the matrices A and B in the EV problem A X = lambda B X
     integer function setup_matrices(A,B) result(ierr)
@@ -219,9 +286,9 @@ contains
         ! Note: the factors i/n or i/m are already included in V_int_tab
         ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING !!!!!!
         integer function fill_mat(V_int_tab,mat,grp_r_eq) result(ierr)
-            use num_vars, only: min_r_X, max_r_X
             use eq_vars, only: max_flux_F
-            use X_vars, only: grp_min_r_X, grp_max_r_X, n_r_X, size_X
+            use X_vars, only: min_r_X, max_r_X, grp_min_r_X, grp_max_r_X, &
+                &n_r_X, size_X
             
             character(*), parameter :: rout_name = 'fill_mat'
             
@@ -525,13 +592,13 @@ contains
         
         ! calculates the  variable grp_r_eq,  which is  later used  to calculate
         ! V_interp  from  the tabulated  values  in  the equilibrium  grid,  the
-        ! oordinate of which is determined by the variable eq_use_pol_flux
+        ! oordinate of which is determined by the variable use_pol_flux_eq
         integer function get_interp_data(grp_r_eq) result(ierr)
             use utilities, only: con2dis, interp_fun
             use eq_vars, only: max_flux_F, max_flux_eq_F, flux_p_FD, &
-                &flux_t_FD, eq_use_pol_flux
+                &flux_t_FD
             use X_vars, only: grp_r_X
-            use num_vars, only: use_pol_flux
+            use num_vars, only: use_pol_flux_X, use_pol_flux_eq
             
             character(*), parameter :: rout_name = 'get_interp_data'
             
@@ -548,12 +615,12 @@ contains
             ierr = 0
             
             ! set up flux and flux_eq
-            if (use_pol_flux) then
+            if (use_pol_flux_X) then
                 flux => flux_p_FD(:,0)
             else
                 flux => flux_t_FD(:,0)
             end if
-            if (eq_use_pol_flux) then
+            if (use_pol_flux_eq) then
                 flux_eq => flux_p_FD(:,0)
             else
                 flux_eq => flux_t_FD(:,0)
@@ -908,13 +975,13 @@ contains
         call lvl_ud(-1)
     end function store_results
     
-    ! stop petsc and slepc
+    ! stop PETSC and SLEPC
     ! [MPI] Collective call
-    integer function stop_slepc(A,B,solver,guess_start_id,prev_n_EV,max_n_EV) &
+    integer function stop_SLEPC(A,B,solver,guess_start_id,prev_n_EV,max_n_EV) &
         &result(ierr)
         use X_vars, only: grp_min_r_X
         
-        character(*), parameter :: rout_name = 'stop_slepc'
+        character(*), parameter :: rout_name = 'stop_SLEPC'
         
         ! input / output
         Mat, intent(in) :: A, B                                                 ! matrices A and B in EV problem A X = lambda B X
@@ -940,10 +1007,10 @@ contains
         call MatDestroy(B,ierr)
         CHCKERR('Failed to destroy matrix B')
         
-        ! stop slepc
+        ! stop SLEPC
         call SlepcFinalize(ierr)
-        CHCKERR('Failed to Finalize slepc')
+        CHCKERR('Failed to Finalize SLEPC')
         
         call lvl_ud(-1)
-    end function stop_slepc
+    end function stop_SLEPC
 end module

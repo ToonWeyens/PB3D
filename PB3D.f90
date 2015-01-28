@@ -33,12 +33,12 @@ program PB3D
     use num_vars, only: ltest
 #endif
     use str_ops, only: r2str, i2str
-    use message_ops, only: init_message_ops, lvl_ud, writo, init_time, &
+    use messages, only: init_messages, lvl_ud, writo, init_time, &
         &start_time, passed_time, print_hello, print_goodbye
     use HDF5_ops, only: init_HDF5
     use driver, only: run_driver
-    use file_ops, only: open_input, open_output, search_file, parse_args, &
-        &init_file_ops, close_output
+    use files, only: open_input, open_output, search_file, parse_args, &
+        &init_files, close_output
     use input_ops, only: read_input
     use utilities, only: init_utilities
     use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, broadcast_vars
@@ -55,8 +55,8 @@ program PB3D
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
     call print_hello
-    call init_message_ops                                                       ! initialize message operations
-    call init_file_ops                                                          ! initialize file operations
+    call init_messages                                                          ! initialize message operations
+    call init_files                                                             ! initialize file operations
     call init_utilities                                                         ! initialize utilities
     call init_time                                                              ! initialize time
     call init_HDF5                                                              ! initialize HDF5

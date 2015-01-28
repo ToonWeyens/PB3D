@@ -1,11 +1,10 @@
 !------------------------------------------------------------------------------!
-!   Calculate the matrix  elements due to the Plasma of  the system of equations
-!   that has to be solved as described in [ADD REF]
+!   Operations considering perturbation quantities                             !
 !------------------------------------------------------------------------------!
 module X_ops
 #include <PB3D_macros.h>
     use num_vars, only: dp, iu, max_str_ln, pi
-    use message_ops, only: lvl_ud, writo, print_ar_2
+    use messages, only: lvl_ud, writo, print_ar_2
     use output_ops, only: print_GP_2D, print_GP_3D, draw_GP
     use str_ops, only: i2str, r2strt, r2str
 
@@ -22,7 +21,7 @@ module X_ops
 contains
     ! initialize the variable m and check and/or plot it
     integer function init_m() result(ierr)
-        use num_vars, only: plot_jq, use_pol_flux, glb_rank
+        use num_vars, only: plot_jq, use_pol_flux_X, glb_rank
         use X_vars, only: n_X, m_X, min_m_X, max_m_X, min_n_X, max_n_X, size_X
         
         character(*), parameter :: rout_name = 'init_m'
@@ -35,7 +34,7 @@ contains
         ierr = 0
         
         ! set size_X
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             size_X = max_m_X - min_m_X + 1
         else
             size_X = max_n_X - min_n_X + 1
@@ -43,7 +42,7 @@ contains
         
         ! setup n_X and m_X
         allocate(n_X(size_X),m_X(size_X))
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             n_X = min_n_X
             m_X = [(id, id = min_m_X, max_m_X)]
         else
@@ -67,7 +66,7 @@ contains
         ! plasma
         integer function check_m_and_n() result(ierr)
             use eq_vars, only: q_saf_E_full, rot_t_E_full                       ! full variables are NOT normalized
-            use num_vars, only: glb_rank, use_pol_flux, eq_style
+            use num_vars, only: glb_rank, use_pol_flux_X, eq_style
             
             character(*), parameter :: rout_name = 'check_m_and_n'
             
@@ -99,7 +98,7 @@ contains
                 end select
                 
                 ! set min_jq and max_jq in flux coordinate system
-                if (use_pol_flux) then
+                if (use_pol_flux_X) then
                     min_jq = minval(pmone*q_saf_E_full(:,0))
                     max_jq = maxval(pmone*q_saf_E_full(:,0))
                 else
@@ -114,7 +113,7 @@ contains
                 ! for every mode (n,m) check whether  m/n is inside the range of
                 ! q values or n/m inside the range of iota values
                 do id = 1, size_X
-                    if (use_pol_flux) then
+                    if (use_pol_flux_X) then
                         if (m_X(id)*1.0/n_X(id) .lt.min_jq .or. &
                             &m_X(id)*1.0/n_X(id) .gt.max_jq) then
                             call writo('for (n,m) = ('//trim(i2str(n_X(id)))//&
@@ -145,7 +144,7 @@ contains
     ! plot  q-profile  or iota-profile  in  flux coordinates  with nq-m  = 0  or
     ! n-iotam = 0 indicate if requested
     integer function resonance_plot() result(ierr)
-        use num_vars, only: use_pol_flux, eq_style, output_style
+        use num_vars, only: use_pol_flux_X, eq_style, output_style
         use utilities, only: calc_zero_NR, interp_fun
         use eq_vars, only: q_saf_E_full, rot_t_E_full, flux_p_E_full, &
             &flux_t_E_full, n_r_eq                                              ! full variables are NOT normalized
@@ -189,7 +188,7 @@ contains
                 return
         end select
         
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             allocate(flux_p(size(flux_p_E_full,1)))
             flux_p = flux_p_E_full(:,0)
             allocate(q_saf(size(q_saf_E_full,1),0:2))
@@ -201,7 +200,7 @@ contains
             rot_t = rot_t_E_full(:,0:2)
         end if
         
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             call writo('Plotting safety factor q and resonant surfaces &
                 &q = m/n')
         else
@@ -218,7 +217,7 @@ contains
         allocate(y_vars(n_r_eq,size_X+1)); y_vars = 0
         allocate(jq_for_function(n_r_eq,0:2))
         
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             x_vars(:,1) = flux_p/abs(flux_p(n_r_eq))
             y_vars(:,1) = pmone*q_saf(:,0)
             jq_for_function = q_saf
@@ -235,7 +234,7 @@ contains
             call lvl_ud(1)
             
             ! set up mnfrac_for_function
-            if (use_pol_flux) then
+            if (use_pol_flux_X) then
                 mnfrac_for_function = pmone*m_X(jd)*1.0_dp/n_X(jd)
             else
                 mnfrac_for_function = pmone*n_X(jd)*1.0_dp/m_X(jd)
@@ -258,7 +257,7 @@ contains
                     call writo('Mode (n,m) = ('//trim(i2str(n_X(jd)))//','&
                         &//trim(i2str(m_X(jd)))//') does not resonate &
                         &in plasma')
-                    if (use_pol_flux) then
+                    if (use_pol_flux_X) then
                         y_vars(n_r_eq,kd) = q_saf(n_r_eq,0)
                     else
                         y_vars(n_r_eq,kd) = rot_t(n_r_eq,0)
@@ -266,7 +265,7 @@ contains
                 else
                     ! convert solution to flux coordinates if GNUPlot output
                     if (output_style.eq.1) then
-                        if (use_pol_flux) then
+                        if (use_pol_flux_X) then
                             istat = interp_fun(jq_solution_transf,&
                                 &flux_p/abs(flux_p(n_r_eq)),jq_solution)
                         else
@@ -282,7 +281,7 @@ contains
                         x_vars(:,kd) = jq_solution
                     end if
                     ! the y axis is always in perturbation grid
-                    if (use_pol_flux) then
+                    if (use_pol_flux_X) then
                         y_vars(n_r_eq,kd) = m_X(jd)*1.0_dp/n_X(jd)
                     else
                         y_vars(n_r_eq,kd) = n_X(jd)*1.0_dp/m_X(jd)
@@ -301,7 +300,7 @@ contains
         call lvl_ud(-1)
         
         call writo('Plotting results')
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             plot_title = 'safety factor q'
             file_name = 'q_saf'
         else
@@ -328,7 +327,7 @@ contains
         end select
         
         ! nullify pointers
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             deallocate(flux_p,q_saf)
         else
             deallocate(flux_t,rot_t)
@@ -491,10 +490,10 @@ contains
     ! HERMITIAN SO ONLY  M*(M+1)/2 ELEMENTS ARE NEEDED INSTEAD  OF M^2. HOWEVER,
     ! TAKE INTO ACCOUNT AS WELL THE MPI STORAGE MATRIX FORMATS !!!
     subroutine init_X
-        use eq_vars, only: n_par, grp_n_r_eq, ang_par_F
-        use num_vars, only: use_pol_flux
+        use eq_vars, only: grp_n_r_eq
+        use num_vars, only: use_pol_flux_X
         use X_vars, only: U_X_0, U_X_1, DU_X_0, DU_X_1, PV0, PV1, PV2, KV0, &
-            &KV1, KV2, exp_ang_par_F, PV_int, KV_int, size_X
+            &KV1, KV2, exp_ang_par_F, PV_int, KV_int, size_X, n_par, ang_par_F
         
         ! local variables
         integer :: m, k                                                         ! counter
@@ -531,7 +530,7 @@ contains
         
         ! exp_ang_par_F
         allocate(exp_ang_par_F(n_par,grp_n_r_eq,size_X,size_X))
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             do m = 1,size_X
                 do k = 1,size_X
                     exp_ang_par_F(:,:,k,m) = exp(iu*(k-m)*ang_par_F)
@@ -557,7 +556,7 @@ contains
     integer function prepare_X() result(ierr)
         use X_vars, only: dealloc_X, &
             &PV0, PV1, PV2, KV0, KV1, KV2, PV_int, KV_int
-        use num_vars, only: use_pol_flux
+        use num_vars, only: use_pol_flux_X
         
         character(*), parameter :: rout_name = 'prepare_X'
         
@@ -568,7 +567,7 @@ contains
         ierr = 0
         
         ! set up ang_par_F_name
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             ang_par_F_name = 'theta'
         else
             ang_par_F_name = 'zeta'
@@ -660,7 +659,7 @@ contains
     integer function solve_EV_system(use_guess,n_sol_found) result(ierr)
         use num_vars, only: EV_style
         use str_ops, only: i2str
-        use slepc_ops, only: solve_EV_system_slepc
+        use SLEPC_ops, only: solve_EV_system_SLEPC
         
         character(*), parameter :: rout_name = 'solve_EV_system'
         
@@ -675,9 +674,9 @@ contains
         ierr = 0
         
         select case (EV_style)
-            case(1)                                                             ! slepc solver for EV problem
+            case(1)                                                             ! SLEPC solver for EV problem
                 ! solve the system
-                ierr = solve_EV_system_slepc(use_guess,n_sol_found)
+                ierr = solve_EV_system_SLEPC(use_guess,n_sol_found)
                 CHCKERR('')
             case default
                 err_msg = 'No EV solver style associated with '//&
@@ -691,7 +690,7 @@ contains
     integer function calc_rho() result(ierr)
         use num_vars, only: eq_style, use_normalization
         use eq_vars, only: pres_FD, grp_n_r_eq, grp_min_r_eq, n_r_eq, rho_0, rho
-        use VMEC_ops, only: gam
+        use VMEC, only: gam
         
         character(*), parameter :: rout_name = 'calc_rho'
         
@@ -746,11 +745,11 @@ contains
     ! grp_n_r_eq values
     ! (see [ADD REF] for details)
     subroutine calc_PV
-        use metric_ops, only: g_FD, h_FD, jac_FD
-        use eq_vars, only: n_par, q_saf_FD, rot_t_FD, grp_n_r_eq
-        use num_vars, only: use_pol_flux, use_normalization, mu_0
+        use metric_vars, only: g_FD, h_FD, jac_FD
+        use eq_vars, only: q_saf_FD, rot_t_FD, grp_n_r_eq
+        use num_vars, only: use_pol_flux_X, use_normalization, mu_0
         use X_vars, only: PV0, PV1, PV2, DU_X_0, DU_X_1, mu0sigma, extra1, &
-            &extra2, extra3, size_X, m_X, n_X
+            &extra2, extra3, size_X, m_X, n_X, n_par
         
         ! local variables
         integer :: m, k, kd                                                     ! counters
@@ -787,7 +786,7 @@ contains
         
         ! set up fac_n and fac_m
         allocate(fac_n(grp_n_r_eq),fac_m(grp_n_r_eq))
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             fac_n = q_saf_FD(:,0)
             fac_m = 1.0_dp
         else
@@ -881,10 +880,10 @@ contains
     ! grp_n_r_eq values
     ! (see [ADD REF] for details)
     subroutine calc_KV
-        use metric_ops, only: g_FD, h_FD, jac_FD
-        use eq_vars, only: n_par, grp_n_r_eq, rho
+        use metric_vars, only: g_FD, h_FD, jac_FD
+        use eq_vars, only: grp_n_r_eq, rho
         use output_ops, only: print_HDF5
-        use X_vars, only: KV0, KV1, KV2, U_X_0, U_X_1, size_X
+        use X_vars, only: KV0, KV1, KV2, U_X_0, U_X_1, size_X, n_par
         
         ! local variables
         integer :: m, k, kd                                                     ! counters
@@ -990,11 +989,12 @@ contains
     ! Note: The  poloidal  derivatives  have  the  factor  i/n  or i/m  included
     ! already, as opposed to [ADD REF]
     integer function calc_U() result(ierr)
-        use num_vars, only: use_pol_flux, mu_0, use_normalization, eq_style
-        use metric_ops, only: g_FD, h_FD, jac_FD
-        use eq_vars, only: rot_t_FD, q_saf_FD, ang_par_F, n_par, p => pres_FD, &
+        use num_vars, only: use_pol_flux_X, mu_0, use_normalization, eq_style
+        use metric_vars, only: g_FD, h_FD, jac_FD
+        use eq_vars, only: rot_t_FD, q_saf_FD, p => pres_FD, &
             &grp_n_r_eq
-        use X_vars, only: n_X, m_X, U_X_0, U_X_1, DU_X_0, DU_X_1, size_X
+        use X_vars, only: n_X, m_X, U_X_0, U_X_1, DU_X_0, DU_X_1, size_X, &
+            &n_par, ang_par_F
         
         character(*), parameter :: rout_name = 'calc_U'
         
@@ -1044,7 +1044,7 @@ contains
         
         ! set up djq, fac_n, fac_m and mn
         allocate(djq(grp_n_r_eq),fac_n(grp_n_r_eq),fac_m(grp_n_r_eq),mn(size_X))
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             djq = q_saf_FD(:,1)
             fac_n = q_saf_FD(:,0)
             fac_m = 1.0_dp
@@ -1295,10 +1295,10 @@ contains
     !   parallel current mu0sigma = B . nabla x B / B^2
     !   normal curvature kn = nabla psi / h^psi,psi * nabla (mu0 p + B^2/2)
     integer function calc_extra() result(ierr)
-        use metric_ops, only: g_FD, h_FD, jac_FD
-        use eq_vars, only: n_par, p => pres_FD, grp_n_r_eq
+        use metric_vars, only: g_FD, h_FD, jac_FD
+        use eq_vars, only: p => pres_FD, grp_n_r_eq
         use num_vars, only: mu_0
-        use X_vars, only: mu0sigma, extra1, extra2, extra3
+        use X_vars, only: mu0sigma, extra1, extra2, extra3, n_par
         
         character(*), parameter :: rout_name = 'calc_extra'
         
@@ -1394,9 +1394,9 @@ contains
     !   <V e^[i(n-l)ang_par_F]> = [ oint J V(l,n) e^i(n-l)ang_par_F dang_par_F ]
     ! Note: V is changed on exit
     subroutine calc_V_int(V,V_int)
-        use eq_vars, only: n_par, grp_n_r_eq, ang_par_F
-        use metric_ops, only: jac_FD
-        use X_vars, only: size_X, exp_ang_par_F
+        use eq_vars, only: grp_n_r_eq
+        use metric_vars, only: jac_FD
+        use X_vars, only: size_X, exp_ang_par_F, n_par, ang_par_F
         
         ! input / output
         complex(dp), intent(inout) :: V(n_par,grp_n_r_eq,size_X,size_X)         ! input V(n_par,n_r,size_X,size_X)
@@ -1486,13 +1486,13 @@ contains
     ! file
     integer function plot_X_vec_GP(X_vec,omega,X_id,job_id,n_t,par_range_F) &
         &result(ierr)
-        use num_vars, only: grp_rank, min_r_X, max_r_X, max_n_plots, &
-            &grp_n_procs, use_pol_flux
+        use num_vars, only: grp_rank, max_n_plots, grp_n_procs, &
+            &use_pol_flux_X, use_pol_flux_eq
         use output_ops, only: draw_GP, draw_GP_animated, merge_GP
-        use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X
+        use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X, min_r_X, max_r_X
         use MPI_ops, only: get_ghost_X_vec, wait_MPI
         use eq_vars, only: q_saf_FD, rot_t_FD, grp_n_r_eq, max_flux_F, &
-            &max_flux_eq_F, flux_p_FD, flux_t_FD, eq_use_pol_flux
+            &max_flux_eq_F, flux_p_FD, flux_t_FD
         use utilities, only: con2dis, interp_fun
         
         character(*), parameter :: rout_name = 'plot_X_vec_GP'
@@ -1537,7 +1537,7 @@ contains
         
         ! set up fac_n and fac_m
         allocate(fac_n(grp_n_r_eq),fac_m(grp_n_r_eq))
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             fac_n = q_saf_FD(:,0)
             fac_m = 1.0_dp
         else
@@ -1591,12 +1591,12 @@ contains
         end if
         
         ! set up flux and flux_eq
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             flux => flux_p_FD(:,0)
         else
             flux => flux_t_FD(:,0)
         end if
-        if (eq_use_pol_flux) then
+        if (use_pol_flux_eq) then
             flux_eq => flux_p_FD(:,0)
         else
             flux_eq => flux_t_FD(:,0)
@@ -1865,9 +1865,9 @@ contains
         &result(ierr)
         use X_vars, only: grp_min_r_X, grp_n_r_X, n_r_X, grp_r_X, grp_n_r_X, &
             &size_X, n_X, m_X
-        use num_vars, only: eq_style, use_pol_flux, n_theta_plot, n_zeta_plot
-        use eq_vars, only: flux_p_FD, flux_t_FD, eq_use_pol_flux, max_flux_F, &
-            &max_flux_eq_F
+        use num_vars, only: eq_style, use_pol_flux_X, use_pol_flux_eq, &
+            &n_theta_plot, n_zeta_plot
+        use eq_vars, only: flux_p_FD, flux_t_FD, max_flux_F, max_flux_eq_F
         use HDF5_ops, only: open_HDF5_file, print_HDF5_top, print_HDF5_geom, &
             &print_HDF5_3D_data_item, print_HDF5_grid, add_HDF5_item, &
             &close_HDF5_file, print_HDF5_att, reset_HDF5_item, &
@@ -1929,12 +1929,12 @@ contains
         var_name = 'Solution vector X_vec'
         
         ! set up flux and flux_eq
-        if (use_pol_flux) then
+        if (use_pol_flux_X) then
             flux => flux_p_FD(:,0)
         else
             flux => flux_t_FD(:,0)
         end if
-        if (eq_use_pol_flux) then
+        if (use_pol_flux_eq) then
             flux_eq => flux_p_FD(:,0)
         else
             flux_eq => flux_t_FD(:,0)

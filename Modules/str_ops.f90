@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   This module contains operations on strings                                 !
+!   Operations on strings                                                      !
 !------------------------------------------------------------------------------!
 module str_ops
     use num_vars, only: dp, max_str_ln

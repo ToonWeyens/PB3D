@@ -1,13 +1,13 @@
 !------------------------------------------------------------------------------!
-!   This module contains operations concerning giving output, on the screen as !
-!   well as in output files                                                    !
+!   Operations concerning  giving output, on the  screen as well as  in output !
+!   files                                                                      !
 !------------------------------------------------------------------------------!
 module output_ops
 #include <PB3D_macros.h>
     use str_ops, only: i2str, r2strt, r2str
     use num_vars, only: dp, max_str_ln, no_plots, iu, plot_dir, data_dir, &
         &script_dir
-    use message_ops, only: writo, stop_time, start_time, lvl_ud
+    use messages, only: writo, stop_time, start_time, lvl_ud
     
     implicit none
     private

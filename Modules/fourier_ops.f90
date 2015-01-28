@@ -1,10 +1,10 @@
 !------------------------------------------------------------------------------!
-!   Variables, subroutines and  functions that  have  to do  with the  fourier !
-!   representation used and its relations with the real space                  !
+!   Operations that  have to do with  the fourier representation used  and its !
+!   relations with the real space                                              !
 !------------------------------------------------------------------------------!
 module fourier_ops
 #include <PB3D_macros.h>
-    use message_ops, only: writo, print_ar_1, print_ar_2
+    use messages, only: writo, print_ar_1, print_ar_2
     use num_vars, only: dp, max_str_ln
     use str_ops, only: i2str
 
@@ -19,7 +19,7 @@ contains
     ! coordinate, while here the VMEC coordinate is needed
     integer function calc_trigon_factors(theta,zeta,trigon_factors) &
         &result(ierr)
-        use VMEC_ops, only: mpol, ntor, nfp
+        use VMEC, only: mpol, ntor, nfp
         
         character(*), parameter :: rout_name = 'calc_trigon_factors'
         
@@ -92,7 +92,7 @@ contains
     ! be provided here if needed)
     integer function fourier2real(var_fourier_c,var_fourier_s,trigon_factors,&
         &var_real,deriv) result(ierr)
-        use VMEC_ops, only: mpol, ntor, nfp
+        use VMEC, only: mpol, ntor, nfp
         
         character(*), parameter :: rout_name = 'fourier2real'
         
