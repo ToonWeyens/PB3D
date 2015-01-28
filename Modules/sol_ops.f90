@@ -17,27 +17,41 @@ contains
     ! calculates  the  normal   component  of  the  perturbation,   or  a  first
     ! derivative.  The   input  is   given  for   a  range   (r,theta,zeta)_F in
     ! Flux coordinates
-    integer function calc_real_X(r_F,theta_F,zeta_F,deriv) result(ierr)
+    integer function calc_real_X(r_F,theta_F,zeta_F,time,X_F,deriv) result(ierr)
         character(*), parameter :: rout_name = 'calc_real_X'
         
         ! input / output
-        real(dp), intent(in) :: r_F(:), theta_F(:), zeta_F(:)                   ! range of normal coord, theta and zeta
+        real(dp), intent(in) :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)           ! Flux (perturbation) coords.
+        real(dp), intent(in) :: time(:)                                         ! time range
+        complex(dp), intent(inout) :: X_F(:,:,:)                                ! normal component of perturbation
         integer, intent(in), optional :: deriv(3)                               ! optional derivatives in angular coordinates
         
         ! local variables
-        integer :: n_pts                                                        ! nr. of points
+        integer :: n_r, n_theta, n_zeta                                         ! dimensions of the grid
+        integer :: n_t                                                          ! number of time points
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
-        ! set up n_pts
-        n_pts = size(r_F)
+        ! set up array sizes and time points
+        n_theta = size(theta_F,1)
+        n_zeta = size(theta_F,2)
+        n_r = size(theta_F,3)
+        n_t = size(time)
         
         ! tests
-        if (size(theta_F).ne.n_pts .or. size(zeta_F).ne.n_pts) then
+        if (n_theta.ne.size(zeta_F,1) .or. n_zeta.ne.size(zeta_F,2) .or. &
+            &n_r.ne.size(zeta_F,3) .or. n_r.ne.size(r_F)) then
             ierr = 1
-            err_msg = 'The coordinate arrays need to have the same size'
+            err_msg = 'theta_F, zeta_F and r_F need to have the correct &
+                &dimensions'
+            CHCKERR(err_msg)
+        end if
+        if (n_theta.ne.size(X_F,1) .or. n_zeta.ne.size(X_F,2) .or. &
+            &n_r.ne.size(X_F,3)) then
+            ierr = 1
+            err_msg = 'X_F needs to have the correct dimensions'
             CHCKERR(err_msg)
         end if
         if (maxval(deriv).gt.1) then
@@ -45,6 +59,7 @@ contains
             err_msg = 'Maximum derivative is of order 1'
             CHCKERR(err_msg)
         end if
+        
     end function calc_real_X
     
     ! calculates  the  geodesic  component  of  the  perturbation,  or  a  first

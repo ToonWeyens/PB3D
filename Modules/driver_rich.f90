@@ -28,7 +28,7 @@ contains
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
         use VMEC, only: dealloc_VMEC
-        use HELENA, only: dealloc_HEL
+        use HELENA, only: dealloc_HEL_final
         use coord_ops, only: calc_eqd_grid
         
         character(*), parameter :: rout_name = 'run_rich_driver'
@@ -121,7 +121,7 @@ contains
             case (1)                                                            ! VMEC
                 call dealloc_VMEC
             case (2)                                                            ! HELENA
-                call dealloc_HEL
+                call dealloc_HEL_final
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
@@ -582,6 +582,7 @@ contains
         use num_vars, only: max_deriv, ltest, use_pol_flux_X, plot_grid, &
             &eq_style, grp_rank, use_normalization
         use coord_ops, only: calc_ang_grid, plot_grid_real
+        use HELENA, only: dealloc_HEL
         
         character(*), parameter :: rout_name = 'calc_eq'
         
@@ -848,6 +849,7 @@ contains
                     CHCKERR('')
                     ierr = dealloc_metric()
                     CHCKERR('')
+                    call dealloc_HEL
                 end if
             
             call lvl_ud(-1)

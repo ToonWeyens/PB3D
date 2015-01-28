@@ -10,9 +10,9 @@ module HELENA
     
     implicit none
     private
-    public read_HEL, dealloc_HEL, &
+    public read_HEL, dealloc_HEL, dealloc_HEL_final, &
         &R_0_H, B_0_H, p0, qs, flux_H, nchi, chi_H, ias, h_H_11, h_H_12, &
-        &h_H_33, RBphi, R_H, Z_H
+        &h_H_33, RBphi, R_H, Z_H, h_H_11_full, h_H_12_full, h_H_33_full
     
     ! global variables
     real(dp) :: R_0_H = 1.0_dp                                                  ! R of magnetic axis (normalization constant)
@@ -22,9 +22,12 @@ module HELENA
     real(dp), allocatable :: p0(:)                                              ! pressure profile
     real(dp), allocatable :: qs(:)                                              ! safety factor
     real(dp), allocatable :: RBphi(:)                                           ! R B_phi
-    real(dp), allocatable :: h_H_11(:,:)                                        ! upper metric factor 11 (gem11)
-    real(dp), allocatable :: h_H_12(:,:)                                        ! upper metric factor 12 (gem12)
-    real(dp), allocatable :: h_H_33(:,:)                                        ! upper metric factor 33 (1/gem33)
+    real(dp), allocatable :: h_H_11_full(:,:)                                   ! full upper metric factor 11 (gem11)
+    real(dp), allocatable :: h_H_12_full(:,:)                                   ! full upper metric factor 12 (gem12)
+    real(dp), allocatable :: h_H_33_full(:,:)                                   ! full upper metric factor 33 (1/gem33)
+    real(dp), allocatable :: h_H_11(:,:)                                        ! adapted upper metric factor 11 (gem11) (see adapt_HEL_to_eq)
+    real(dp), allocatable :: h_H_12(:,:)                                        ! adapted upper metric factor 12 (gem12) (see adapt_HEL_to_eq)
+    real(dp), allocatable :: h_H_33(:,:)                                        ! adapted upper metric factor 33 (1/gem33) (see adapt_HEL_to_eq)
     real(dp), allocatable :: R_H(:,:)                                           ! major radius R (xout)
     real(dp), allocatable :: Z_H(:,:)                                           ! height Z (yout)
     integer :: nchi                                                             ! nr. of poloidal points (nchi)
@@ -119,31 +122,34 @@ contains
             read(eq_i,*,IOSTAT=ierr) (chi_H(id),id=1,nchi)
             CHCKERR(err_msg)
             
-            allocate(h_H_11(nchi,n_r_eq))                                       ! upper metric factor 1,1
+            allocate(h_H_11_full(nchi,n_r_eq))                                  ! upper metric factor 1,1
             read(eq_i,*,IOSTAT=ierr) &
-                &(h_H_11(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,n_r_eq*nchi) ! (gem11)
+                &(h_H_11_full(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,&
+                &n_r_eq*nchi)                                                   ! (gem11)
             CHCKERR(err_msg)
-            h_H_11(:,1) = 0._dp                                                 ! first normal point is not given, so set to zero
-            h_H_11 = h_H_11 * (R_0_H * B_0_H)**2                                ! rescale h_H_11
+            h_H_11_full(:,1) = 0._dp                                            ! first normal point is not given, so set to zero
+            h_H_11_full = h_H_11_full * (R_0_H * B_0_H)**2                      ! rescale h_H_11_full
             
-            allocate(h_H_12(nchi,n_r_eq))                                       ! upper metric factor 1,2
+            allocate(h_H_12_full(nchi,n_r_eq))                                  ! upper metric factor 1,2
             read(eq_i,*,IOSTAT=ierr) &
-                &(h_H_12(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,n_r_eq*nchi) ! (gem12)
+                &(h_H_12_full(mod(id-1,nchi)+1,(id-1)/nchi+1),&
+                &id=nchi+1,n_r_eq*nchi)                                         ! (gem12)
             CHCKERR(err_msg)
-            h_H_12(:,1) = 0._dp                                                 ! first normal point is not given, so set to zero
-            h_H_12 = h_H_12 * B_0_H                                             ! rescale h_H_12
+            h_H_12_full(:,1) = 0._dp                                            ! first normal point is not given, so set to zero
+            h_H_12_full = h_H_12_full * B_0_H                                   ! rescale h_H_12_full
             
             read(eq_i,*,IOSTAT=ierr) cpsurf, radius                             ! poloidal flux on surface, minor radius
             CHCKERR(err_msg)
             cpsurf = cpsurf * R_0_H**2 * B_0_H                                  ! back to real space
             flux_H = flux_H**2 * cpsurf                                         ! rescale poloidal flux
             
-            allocate(h_H_33(nchi,n_r_eq))                                       ! upper metric factor 3,3
+            allocate(h_H_33_full(nchi,n_r_eq))                                  ! upper metric factor 3,3
             read(eq_i,*,IOSTAT=ierr) &
-                &(h_H_33(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,n_r_eq*nchi) ! (gem33)
-            h_H_33(:,:) = 1._dp/h_H_33(:,:)                                     ! HELENA gives R^2, but need 1/R^2
-            h_H_33(:,1) = 0._dp                                                 ! first normal point is not given, so set to zero
-            h_H_11 = h_H_11 / (R_0_H**2)                                        ! rescale h_H_33
+                &(h_H_33_full(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,&
+                &n_r_eq*nchi)                                                   ! (gem33)
+            h_H_33_full(:,:) = 1._dp/h_H_33_full(:,:)                           ! HELENA gives R^2, but need 1/R^2
+            h_H_33_full(:,1) = 0._dp                                            ! first normal point is not given, so set to zero
+            h_H_11_full = h_H_11_full / (R_0_H**2)                              ! rescale h_H_33_full
             
             read(eq_i,*,IOSTAT=ierr) raxis                                      ! major radius
             CHCKERR(err_msg)
@@ -265,44 +271,52 @@ contains
         
         ! output results
         call writo('maximum error in h_H_11 = '//&
-            &trim(r2str(maxval(abs(h_H_11(:,3:n_r)-h_H_11_alt(:,3:n_r))))))
+            &trim(r2str(maxval(abs(h_H_11_full(:,3:n_r)-h_H_11_alt(:,3:n_r))))))
         call writo('maximum error in h_H_12 = '//&
-            &trim(r2str(maxval(abs(h_H_12(:,3:n_r)-h_H_12_alt(:,3:n_r))))))
+            &trim(r2str(maxval(abs(h_H_12_full(:,3:n_r)-h_H_12_alt(:,3:n_r))))))
         call writo('maximum error in h_H_33 = '//&
-            &trim(r2str(maxval(abs(h_H_33(:,3:n_r)-h_H_33_alt(:,3:n_r))))))
+            &trim(r2str(maxval(abs(h_H_33_full(:,3:n_r)-h_H_33_alt(:,3:n_r))))))
         
         !! plot results
-        !call print_GP_3D('h_H_11 (HEL,alt)','',&
-            !&reshape([h_H_11(:,3:n_r),h_H_11_alt(:,3:n_r)],[nchi,n_r-2,2]),&
+        !call print_GP_3D('h_H_11 (HEL,alt)','',reshape([h_H_11_full(:,3:n_r),&
+            !&h_H_11_alt(:,3:n_r)],[nchi,n_r-2,2]),&
             !&x=reshape([R_H(:,3:n_r),R_H(:,3:n_r)],[nchi,n_r-2,2]),&
             !&y=reshape([Z_H(:,3:n_r),Z_H(:,3:n_r)],[nchi,n_r-2,2]))
-        !call print_GP_3D('diff h_H_11','',h_H_11(:,3:n_r)-h_H_11_alt(:,3:n_r),&
-            !&x=R_H(:,3:n_r),y=Z_H(:,3:n_r))
-        !call print_GP_3D('h_H_12 (HEL,alt)','',&
-            !&reshape([h_H_12(:,3:n_r),h_H_12_alt(:,3:n_r)],[nchi,n_r-2,2]),&
+        !call print_GP_3D('diff h_H_11','',h_H_11_full(:,3:n_r)-&
+            !&h_H_11_alt(:,3:n_r),x=R_H(:,3:n_r),y=Z_H(:,3:n_r))
+        !call print_GP_3D('h_H_12 (HEL,alt)','',reshape([h_H_12_full(:,3:n_r),&
+            !&h_H_12_alt(:,3:n_r)],[nchi,n_r-2,2]),&
             !&x=reshape([R_H(:,3:n_r),R_H(:,3:n_r)],[nchi,n_r-2,2]),&
             !&y=reshape([Z_H(:,3:n_r),Z_H(:,3:n_r)],[nchi,n_r-2,2]))
-        !call print_GP_3D('diff h_H_12','',h_H_12(:,3:n_r)-h_H_12_alt(:,3:n_r),&
-            !&x=R_H(:,3:n_r),y=Z_H(:,3:n_r))
-        !call print_GP_3D('h_H_33 (HEL,alt)','',&
-            !&reshape([h_H_33(:,3:n_r),h_H_33_alt(:,3:n_r)],[nchi,n_r-2,2]),&
+        !call print_GP_3D('diff h_H_12','',h_H_12_full(:,3:n_r)-&
+            !&h_H_12_alt(:,3:n_r),x=R_H(:,3:n_r),y=Z_H(:,3:n_r))
+        !call print_GP_3D('h_H_33 (HEL,alt)','',reshape([h_H_33_full(:,3:n_r),&
+            !&h_H_33_alt(:,3:n_r)],[nchi,n_r-2,2]),&
             !&x=reshape([R_H(:,3:n_r),R_H(:,3:n_r)],[nchi,n_r-2,2]),&
             !&y=reshape([Z_H(:,3:n_r),Z_H(:,3:n_r)],[nchi,n_r-2,2]))
-        !call print_GP_3D('diff h_H_33','',h_H_33(:,3:n_r)-h_H_33_alt(:,3:n_r),&
-            !&x=R_H(:,3:n_r),y=Z_H(:,3:n_r))
+        !call print_GP_3D('diff h_H_33','',h_H_33_full(:,3:n_r)-&
+            !&h_H_33_alt(:,3:n_r),x=R_H(:,3:n_r),y=Z_H(:,3:n_r))
     end function check_metrics
     
-    ! deallocates HELENA quantities that are not used anymore
+    ! deallocates  HELENA  quantities  that  are not  used  any  more after  the
+    ! equilibrium phase
     subroutine dealloc_HEL
+        deallocate(h_H_11)
+        deallocate(h_H_12)
+        deallocate(h_H_33)
+    end subroutine dealloc_HEL
+    
+    ! deallocates HELENA quantities that are not used any more
+    subroutine dealloc_HEL_final
         deallocate(chi_H)
         deallocate(flux_H)
         deallocate(p0)
         deallocate(qs)
         deallocate(RBphi)
-        deallocate(h_H_11)
-        deallocate(h_H_12)
-        deallocate(h_H_33)
+        deallocate(h_H_11_full)
+        deallocate(h_H_12_full)
+        deallocate(h_H_33_full)
         deallocate(R_H)
         deallocate(Z_H)
-    end subroutine dealloc_HEL
+    end subroutine dealloc_HEL_final
 end module HELENA

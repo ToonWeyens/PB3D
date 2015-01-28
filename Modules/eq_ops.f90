@@ -230,7 +230,8 @@ contains
     ! correct poloidal HELENA range (and possibly multiples).
     integer function adapt_HEL_to_eq() result(ierr)
         use num_vars, only: pi
-        use HELENA, only: h_H_11, h_H_12, h_H_33, ias, chi_H
+        use HELENA, only: ias, chi_H, h_H_11_full, h_H_12_full, h_H_33_full, &
+            &h_H_11, h_H_12, h_H_33
         use utilities, only: interp_fun
         use eq_vars, only: grp_min_r_eq, grp_n_r_eq, theta_E
         use X_vars, only: n_par
@@ -238,9 +239,6 @@ contains
         character(*), parameter :: rout_name = 'adapt_HEL_to_eq'
         
         ! local variables
-        real(dp), allocatable :: old_h_H_11(:,:)                                ! upper metric factor 11 (gem11)
-        real(dp), allocatable :: old_h_H_12(:,:)                                ! upper metric factor 12 (gem12)
-        real(dp), allocatable :: old_h_H_33(:,:)                                ! upper metric factor 33 (1/gem33)
         integer :: id, kd                                                       ! counters
         real(dp) :: par_loc                                                     ! local parallel (= poloidal) point
         
@@ -249,18 +247,10 @@ contains
         
         write(*,*) 'HELENA SHOULD BE ADAPTED FOR EVERY ALPHA, BUT THE HELENA OUTPUT SHOULD BE SAVED !!!!'
         
-        ! set old arrays
-        allocate(old_h_H_11(size(h_H_11,1),size(h_H_11,2)))
-        old_h_H_11 = h_H_11
-        allocate(old_h_H_12(size(h_H_12,1),size(h_H_12,2)))
-        old_h_H_12 = h_H_12
-        allocate(old_h_H_33(size(h_H_33,1),size(h_H_33,2)))
-        old_h_H_33 = h_H_33
-        
-        ! reallocate the new arrays
-        deallocate(h_H_11); allocate(h_H_11(n_par,grp_n_r_eq))
-        deallocate(h_H_12); allocate(h_H_12(n_par,grp_n_r_eq))
-        deallocate(h_H_33); allocate(h_H_33(n_par,grp_n_r_eq))
+        ! reallocate the arrays
+        allocate(h_H_11(n_par,grp_n_r_eq))
+        allocate(h_H_12(n_par,grp_n_r_eq))
+        allocate(h_H_33(n_par,grp_n_r_eq))
         
         ! For every poloidal point, check  which half poloidal circle it belongs
         ! to.  If this  is a  bottom part  and HELENA  is symmetric  (ias =  0),
@@ -288,30 +278,27 @@ contains
                 ! account the possible symmetry
                 if (ias.eq.0 .and. par_loc.gt.pi) then
                     ierr = interp_fun(h_H_11(id,kd),&
-                        &old_h_H_11(:,grp_min_r_eq-1+kd),2*pi-par_loc,x=chi_H)
+                        &h_H_11_full(:,grp_min_r_eq-1+kd),2*pi-par_loc,x=chi_H)
                     CHCKERR('')
                     ierr = interp_fun(h_H_12(id,kd),&
-                        &-old_h_H_12(:,grp_min_r_eq-1+kd),2*pi-par_loc,x=chi_H) ! change of sign
+                        &-h_H_12_full(:,grp_min_r_eq-1+kd),2*pi-par_loc,x=chi_H)! change of sign
                     CHCKERR('')
                     ierr = interp_fun(h_H_33(id,kd),&
-                        &old_h_H_33(:,grp_min_r_eq-1+kd),2*pi-par_loc,x=chi_H)
+                        &h_H_33_full(:,grp_min_r_eq-1+kd),2*pi-par_loc,x=chi_H)
                     CHCKERR('')
                 else
                     ierr = interp_fun(h_H_11(id,kd),&
-                        &old_h_H_11(:,grp_min_r_eq-1+kd),par_loc,x=chi_H)
+                        &h_H_11_full(:,grp_min_r_eq-1+kd),par_loc,x=chi_H)
                     CHCKERR('')
                     ierr = interp_fun(h_H_12(id,kd),&
-                        &old_h_H_12(:,grp_min_r_eq-1+kd),par_loc,x=chi_H)
+                        &h_H_12_full(:,grp_min_r_eq-1+kd),par_loc,x=chi_H)
                     CHCKERR('')
                     ierr = interp_fun(h_H_33(id,kd),&
-                        &old_h_H_33(:,grp_min_r_eq-1+kd),par_loc,x=chi_H)
+                        &h_H_33_full(:,grp_min_r_eq-1+kd),par_loc,x=chi_H)
                     CHCKERR('')
                 end if
             end do
         end do
-        
-        ! deallocate old arrays
-        deallocate(old_h_H_11,old_h_H_12,old_h_H_33)
     end function adapt_HEL_to_eq
     
     ! calculates flux quantities  and normal derivatives in  the VMEC coordinate

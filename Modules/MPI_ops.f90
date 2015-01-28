@@ -741,7 +741,7 @@ contains
         use eq_vars, only: grp_min_r_eq, n_r_eq, grp_max_r_eq, &
             &R_0, pres_0, B_0, psi_0, rho_0
         use HELENA, only: R_0_H, B_0_H, p0, qs, flux_H, nchi, chi_H, ias, &
-            &h_H_11, h_H_12, h_H_33, RBphi, R_H, Z_H
+            &h_H_11_full, h_H_12_full, h_H_33_full, RBphi, R_H, Z_H
         
         character(*), parameter :: rout_name = 'broadcast_vars'
         
@@ -969,20 +969,20 @@ contains
                     call MPI_Bcast(Z_H,size(Z_H),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_2_R(h_H_11)
+                    call bcast_size_2_R(h_H_11_full)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(h_H_11,size(h_H_11),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_COMM_WORLD,ierr)
+                    call MPI_Bcast(h_H_11_full,size(h_H_11_full),&
+                        &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_2_R(h_H_12)
+                    call bcast_size_2_R(h_H_12_full)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(h_H_12,size(h_H_12),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_COMM_WORLD,ierr)
+                    call MPI_Bcast(h_H_12_full,size(h_H_12_full),&
+                        &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_2_R(h_H_33)
+                    call bcast_size_2_R(h_H_33_full)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(h_H_33,size(h_H_33),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_COMM_WORLD,ierr)
+                    call MPI_Bcast(h_H_33_full,size(h_H_33_full),&
+                        &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                 case default
                     err_msg = 'No equilibrium style associated with '//&
