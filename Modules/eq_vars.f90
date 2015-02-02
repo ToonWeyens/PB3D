@@ -15,8 +15,8 @@ module eq_vars
         &flux_p_E, flux_t_E, R_E, Z_E, L_E, pres_E, q_saf_FD, &
         &flux_p_FD, flux_t_FD, pres_FD, grp_min_r_eq, grp_max_r_eq, rho, R_0, &
         &pres_0, B_0, psi_0, rho_0, T_0, rot_t_FD, rot_t_E, flux_p_E_full, &
-        &flux_t_E_full, rot_t_E_full, max_flux, max_flux_eq, &
-        &max_flux_F, max_flux_eq_F, theta_E, zeta_E, trigon_factors
+        &flux_t_E_full, rot_t_E_full, max_flux_X, max_flux_eq, &
+        &max_flux_X_F, max_flux_eq_F, theta_E, zeta_E, trigon_factors
 
     ! global variables
     ! Note: The indices in [derivatives] are:
@@ -38,8 +38,8 @@ module eq_vars
     real(dp), allocatable :: q_saf_FD(:,:)                                      ! safety factor, Deriv. in Flux coords.
     real(dp), allocatable :: rot_t_FD(:,:)                                      ! rot. transform, Deriv. in Flux coords.
     real(dp), allocatable, target :: flux_p_FD(:,:), flux_t_FD(:,:)             ! pol. and tor. flux, and norm. Deriv. with values and Derivs. in flux coords.
-    real(dp) :: max_flux, max_flux_eq                                           ! max. flux (pol. or tor.) in Equilibrium coordinates
-    real(dp) :: max_flux_F, max_flux_eq_F                                       ! max. flux (pol. or tor.) in Flux coordinates
+    real(dp) :: max_flux_X, max_flux_eq                                         ! max. flux (pol. or tor.) in Equilibrium coordinates
+    real(dp) :: max_flux_X_F, max_flux_eq_F                                     ! max. flux (pol. or tor.) in Flux coordinates
     real(dp) :: R_0, pres_0, rho_0                                              ! independent normalization constants for nondimensionalization
     real(dp) :: B_0, psi_0, T_0                                                 ! derived normalization constants for nondimensionalization
     integer :: n_r_eq                                                           ! total nr. of normal points in equilibrim grid

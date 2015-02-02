@@ -27,9 +27,9 @@ contains
             &max_alpha, alpha_job_nr, use_pol_flux_X, eq_style
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
-        use VMEC, only: dealloc_VMEC
+        use VMEC, only: dealloc_VMEC_final
         use HELENA, only: dealloc_HEL_final
-        use coord_ops, only: calc_eqd_grid
+        use grid_ops, only: calc_eqd_grid
         
         character(*), parameter :: rout_name = 'run_rich_driver'
         
@@ -67,7 +67,7 @@ contains
         ! determine the magnetic field lines for which to run the calculations 
         ! (equidistant grid)
         allocate(alpha(n_alpha))
-        ierr = calc_eqd_grid(alpha,n_alpha,min_alpha,max_alpha,.true.)          ! evenly spread alpha's over 0..2*pi
+        ierr = calc_eqd_grid(alpha,n_alpha,min_alpha*pi,max_alpha*pi,.true.)
         CHCKERR('')
         
         ! split  the  communicator MPI_COMM_WORLD into subcommunicators
@@ -119,7 +119,7 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                call dealloc_VMEC
+                call dealloc_VMEC_final
             case (2)                                                            ! HELENA
                 call dealloc_HEL_final
             case default
@@ -441,6 +441,10 @@ contains
             real(dp), allocatable :: X_vec_max(:)                               ! maximum position index of X_vec of rank
             real(dp), allocatable :: ser_X_vec_max(:)                           ! maximum position index of X_vec of whole group
             
+            ! user output
+            call writo('Started plot of the harmonics')
+            call lvl_ud(1)
+            
             ! set up extended X_vec with ghost values
             allocate(X_vec_extended(size_X,size(grp_r_X)))
             X_vec_extended(:,1:size(X_vec,2)) = X_vec
@@ -555,6 +559,10 @@ contains
             
             ! deallocate
             deallocate(x_plot,X_vec_extended)
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Finished plot of the harmonics')
         end subroutine plot_harmonics
     end function run_for_alpha
     
@@ -581,7 +589,7 @@ contains
         use utilities, only: derivs
         use num_vars, only: max_deriv, ltest, use_pol_flux_X, plot_grid, &
             &eq_style, grp_rank, use_normalization
-        use coord_ops, only: calc_ang_grid, plot_grid_real
+        use grid_ops, only: calc_ang_grid, plot_grid_real
         use HELENA, only: dealloc_HEL
         
         character(*), parameter :: rout_name = 'calc_eq'
@@ -845,11 +853,26 @@ contains
                 if (.not.ltest) then
                     call writo('Deallocate unused equilibrium and metric &
                         &quantities...')
-                    ierr = dealloc_eq()
-                    CHCKERR('')
                     ierr = dealloc_metric()
                     CHCKERR('')
-                    call dealloc_HEL
+                    ! general equilibrium
+                    ierr = dealloc_eq()
+                    CHCKERR('')
+                    ! specific equilibrium
+                    ! choose which equilibrium style is being used:
+                    !   1:  VMEC
+                    !   2:  HELENA
+                    select case (eq_style)
+                        case (1)                                                ! VMEC
+                            ! nothing
+                        case (2)                                                ! HELENA
+                            call dealloc_HEL
+                        case default
+                            err_msg = 'No equilibrium style associated with '//&
+                                &trim(i2str(eq_style))
+                            ierr = 1
+                            CHCKERR(err_msg)
+                    end select
                 end if
             
             call lvl_ud(-1)

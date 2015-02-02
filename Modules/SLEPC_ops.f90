@@ -286,7 +286,7 @@ contains
         ! Note: the factors i/n or i/m are already included in V_int_tab
         ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING !!!!!!
         integer function fill_mat(V_int_tab,mat,grp_r_eq) result(ierr)
-            use eq_vars, only: max_flux_F
+            use eq_vars, only: max_flux_X_F
             use X_vars, only: min_r_X, max_r_X, grp_min_r_X, grp_max_r_X, &
                 &n_r_X, size_X
             
@@ -343,7 +343,7 @@ contains
             end if
             
             ! set up step_size
-            step_size = (max_r_X-min_r_X)/(n_r_X-1.0) * max_flux_F              ! equidistant perturbation grid in perturb. coords.
+            step_size = (max_r_X-min_r_X)/(n_r_X-1.0) * max_flux_X_F            ! equidistant perturbation grid in perturb. coords.
             
             ! get  the   interpolated  terms   in  V_interp  (also   correct  if
             ! grp_r_eq_hi = grp_r_eq_lo)
@@ -595,10 +595,10 @@ contains
         ! oordinate of which is determined by the variable use_pol_flux_eq
         integer function get_interp_data(grp_r_eq) result(ierr)
             use utilities, only: con2dis, interp_fun
-            use eq_vars, only: max_flux_F, max_flux_eq_F, flux_p_FD, &
-                &flux_t_FD
+            use eq_vars, only: max_flux_eq_F, flux_p_FD, flux_t_FD
             use X_vars, only: grp_r_X
-            use num_vars, only: use_pol_flux_X, use_pol_flux_eq
+            use num_vars, only: use_pol_flux_eq
+            use grid_ops, only: coord_F2E
             
             character(*), parameter :: rout_name = 'get_interp_data'
             
@@ -606,45 +606,38 @@ contains
             PetscReal, allocatable, intent(inout) :: grp_r_eq(:)                ! unrounded index in tables V_int
             
             ! local variables
-            PetscReal :: r_X_loc                                                ! local copy of grp_r_X
-            PetscReal :: grp_r_eq_eq_con                                        ! equivalent of grp_r_eq in table of equilibrium normal points
-            PetscReal, pointer :: flux(:), flux_eq(:)                           ! either pol. or tor. flux
+            PetscReal, pointer :: flux_eq(:)                                    ! either pol. or tor. flux
+            PetscReal, allocatable :: grp_r_eq_con(:)                           ! continuous version of grp_r_X converted to eq. coords.
             PetscInt :: kd                                                      ! counter
             
             ! initialize ierr
             ierr = 0
             
-            ! set up flux and flux_eq
-            if (use_pol_flux_X) then
-                flux => flux_p_FD(:,0)
-            else
-                flux => flux_t_FD(:,0)
-            end if
+            ! set up flux_eq
             if (use_pol_flux_eq) then
                 flux_eq => flux_p_FD(:,0)
             else
                 flux_eq => flux_t_FD(:,0)
             end if
             
-            ! allocate grp_r_eq_lo and hi
+            ! allocate grp_r_eq and continuous version
             allocate(grp_r_eq(size(grp_r_X)))
+            allocate(grp_r_eq_con(size(grp_r_X)))
             
+            ! convert grp_r_X to (continuous) equilibrium coordinates
+            ierr = coord_F2E(grp_r_X,grp_r_eq_con)
+            CHCKERR('')
+            
+            ! get the table  indices between which to  interpolate by converting
+            ! the continuous equilibrium points to the discretized values
             ! loop over all normal points
             do kd = 1,size(grp_r_X)
-                ! set local copy of grp_r_X
-                r_X_loc = grp_r_X(kd)
-                
-                ! get the table indices between which to interpolate. The tables
-                ! are set up in the equilibrium grid, which not necessarily uses
-                ! the same  normal coordinate as the  discretization. Therefore,
-                ! conversion is necessary
-                ! 1. continuous equilibrium grid (0..1)
-                ierr = interp_fun(grp_r_eq_eq_con,flux_eq/max_flux_eq_F,&
-                    &r_X_loc,flux/max_flux_F)
-                CHCKERR('')
-                ! 2. discrete equilibrium grid, unrounded
-                call con2dis(grp_r_eq_eq_con,grp_r_eq(kd),flux_eq/max_flux_eq_F)
+                call con2dis(grp_r_eq_con(kd),grp_r_eq(kd),&
+                    &flux_eq/max_flux_eq_F)
             end do
+            
+            ! deallocate local variables
+            deallocate(grp_r_eq_con)
         end function get_interp_data
     end function setup_matrices
     

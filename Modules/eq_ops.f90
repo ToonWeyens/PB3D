@@ -245,8 +245,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        write(*,*) 'HELENA SHOULD BE ADAPTED FOR EVERY ALPHA, BUT THE HELENA OUTPUT SHOULD BE SAVED !!!!'
-        
         ! reallocate the arrays
         allocate(h_H_11(n_par,grp_n_r_eq))
         allocate(h_H_12(n_par,grp_n_r_eq))
@@ -309,8 +307,8 @@ contains
         use utilities, only: calc_deriv, calc_int
         use eq_vars, only: flux_p_E, flux_t_E, pres_E, q_saf_E, rot_t_E, &
             &flux_t_E_full, flux_p_E_full, q_saf_E_full, rot_t_E_full, &
-            &grp_min_r_eq, grp_max_r_eq, max_flux, max_flux_eq, max_flux_F, &
-            &max_flux_eq_F, n_r_eq
+            &grp_min_r_eq, grp_max_r_eq, max_flux_X, max_flux_eq, &
+            &max_flux_X_F, max_flux_eq_F, n_r_eq
         
         character(*), parameter :: rout_name = 'calc_flux_q_VMEC'
         
@@ -401,9 +399,9 @@ contains
                     CHCKERR('')
                 end do
                 
-                ! set max_flux
-                max_flux = flux_p_int_full(n_r_eq)
-                max_flux_F = max_flux
+                ! set max_flux_X
+                max_flux_X = flux_p_int_full(n_r_eq)
+                max_flux_X_F = max_flux_X
             else
                 ! rot. transform
                 rot_t_E(:,0) = iotaf(grp_min_r_eq:grp_max_r_eq)
@@ -413,9 +411,9 @@ contains
                     CHCKERR('')
                 end do
                 
-                ! set max_flux
-                max_flux = phi(n_r_eq)
-                max_flux_F = - max_flux                                         ! conversion VMEC LH -> RH coord. system
+                ! set max_flux_X
+                max_flux_X = phi(n_r_eq)
+                max_flux_X_F = - max_flux_X                                     ! conversion VMEC LH -> RH coord. system
             end if
             
             ! max_flux_eq
@@ -533,8 +531,8 @@ contains
                     CHCKERR('')
                 end do
                 
-                ! set max_flux
-                max_flux = flux_H(n_r_eq)
+                ! set max_flux_X
+                max_flux_X = flux_H(n_r_eq)
             else
                 ! rot. transform
                 rot_t_E(:,0) = 1.0_dp/qs(grp_min_r_eq:grp_max_r_eq)
@@ -544,10 +542,10 @@ contains
                     CHCKERR('')
                 end do
                 
-                ! set max_flux
-                max_flux = flux_t_int_full(n_r_eq)
+                ! set max_flux_X
+                max_flux_X = flux_t_int_full(n_r_eq)
             end if
-            max_flux_F = max_flux
+            max_flux_X_F = max_flux_X
             
             ! max_flux_eq
             max_flux_eq = flux_H(n_r_eq)
@@ -610,7 +608,7 @@ contains
         use VMEC, only: presf
         use HELENA, only: p0
         use eq_vars, only: q_saf_E_full, rot_t_E_full, flux_p_E_full, &
-            &flux_t_E_full, max_flux, max_flux_eq, n_r_eq
+            &flux_t_E_full, max_flux_eq, n_r_eq
         
         character(*), parameter :: rout_name = 'flux_q_plot'
         
@@ -660,9 +658,9 @@ contains
                 y_plot_2D(:,5) = -flux_t_E_full(:,0)                            ! conversion VMEC LH -> RH coord. system
                 ! 2D normal variable (y_plot_2D tabulated in eq. grid)
                 if (use_pol_flux_X) then
-                    x_plot_2D(:,1) = flux_p_E_full(:,0)/max_flux
+                    x_plot_2D(:,1) = flux_p_E_full(:,0)/max_flux_eq
                 else
-                    x_plot_2D(:,1) = flux_t_E_full(:,0)/max_flux
+                    x_plot_2D(:,1) = flux_t_E_full(:,0)/max_flux_eq
                 end if
                 do id = 2,n_vars
                     x_plot_2D(:,id) = x_plot_2D(:,1)
@@ -674,9 +672,9 @@ contains
                 y_plot_2D(:,4) = flux_p_E_full(:,0)
                 y_plot_2D(:,5) = flux_t_E_full(:,0)
                 if (use_pol_flux_X) then
-                    x_plot_2D(:,1) = flux_p_E_full(:,0)/max_flux
+                    x_plot_2D(:,1) = flux_p_E_full(:,0)/max_flux_eq
                 else
-                    x_plot_2D(:,1) = flux_t_E_full(:,0)/max_flux
+                    x_plot_2D(:,1) = flux_t_E_full(:,0)/max_flux_eq
                 end if
                 do id = 2,n_vars
                     x_plot_2D(:,id) = x_plot_2D(:,1)
@@ -742,7 +740,7 @@ contains
         integer function flux_q_plot_HDF5(r_plot) result(ierr)
             use output_ops, only: print_HDF5
             use num_vars, only: n_theta_plot, n_zeta_plot
-            use coord_ops, only: calc_XYZ_grid
+            use grid_ops, only: calc_XYZ_grid
             
             character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
             
@@ -831,7 +829,7 @@ contains
     subroutine normalize_eq_vars
         use num_vars, only: use_pol_flux_X
         use eq_vars, only: pres_FD, flux_p_FD, flux_t_FD, q_saf_FD, rot_t_FD, &
-            &max_flux, max_flux_eq, max_flux_F, max_flux_eq_F, pres_0, psi_0
+            &max_flux_X, max_flux_eq, max_flux_X_F, max_flux_eq_F, pres_0, psi_0
         
         ! local variables
         integer :: id                                                           ! counter
@@ -840,8 +838,8 @@ contains
         pres_FD = pres_FD/pres_0
         flux_p_FD = flux_p_FD/psi_0
         flux_t_FD = flux_t_FD/psi_0
-        max_flux = max_flux/psi_0
-        max_flux_F = max_flux_F/psi_0
+        max_flux_X = max_flux_X/psi_0
+        max_flux_X_F = max_flux_X_F/psi_0
         max_flux_eq = max_flux_eq/psi_0
         max_flux_eq_F = max_flux_eq_F/psi_0
         

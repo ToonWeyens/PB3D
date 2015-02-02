@@ -21,7 +21,7 @@ module VMEC
         &gam => gamma                                                           ! gamma in adiabatic law
     implicit none
     private
-    public read_VMEC, dealloc_VMEC, repack, &
+    public read_VMEC, dealloc_VMEC_final, repack, &
         &mnmax, rmnc, mpol, ntor, nfp, R_c, R_s, Z_c, Z_s, L_c, L_s, &
         &presf, rmax_surf, rmin_surf, zmax_surf, iotaf, lasym, &
         &lfreeb, phi, phi_r, VMEC_version, gam, &
@@ -217,7 +217,7 @@ contains
     end function read_VMEC
     
     ! deallocates VMEC quantities that are not used anymore
-    subroutine dealloc_VMEC
+    subroutine dealloc_VMEC_final
         deallocate(phi,phi_r)
         deallocate(iotaf)
         deallocate(presf)
@@ -249,7 +249,7 @@ contains
         if (allocated(B_V_s_H)) deallocate(B_V_s_H)
         if (allocated(jac_V_c_H)) deallocate(jac_V_c_H)
         if (allocated(jac_V_s_H)) deallocate(jac_V_s_H)
-    end subroutine dealloc_VMEC
+    end subroutine dealloc_VMEC_final
 
     ! Repack  variables  representing the  Fourier  composition  such as  R,  Z,
     ! lambda, ...  In VMEC these  are stored as  (1:mnmax, 1:ns) with  mnmax the

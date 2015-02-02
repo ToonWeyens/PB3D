@@ -396,7 +396,7 @@ contains
         integer function resonance_plot_HDF5() result(ierr)
             use num_vars, only: n_theta_plot, n_zeta_plot
             use output_ops, only: print_HDF5
-            use coord_ops, only: calc_XYZ_grid, calc_eqd_grid
+            use grid_ops, only: calc_XYZ_grid, calc_eqd_grid
             
             character(*), parameter :: rout_name = 'resonance_plot_HDF5'
             
@@ -409,20 +409,19 @@ contains
                 &Z_plot_ind(:,:,:)                                              ! X, Y and Z of plots of individual surfaces
             integer :: plot_dim(4)                                              ! plot dimensions (total = group because only group masters)
             real(dp), allocatable :: vars(:,:,:,:)                              ! variable to plot
-            character(len=max_str_ln), allocatable :: plot_titles(:)            ! name of plots
             
             ! initialize ierr
             ierr = 0
                 
             ! set up pol. and tor. angle for plot
             allocate(theta_plot(n_theta_plot,n_zeta_plot,1))
-            ierr = calc_eqd_grid(theta_plot(:,1,1),n_theta_plot,0._dp,2._dp)
+            ierr = calc_eqd_grid(theta_plot(:,1,1),n_theta_plot,0._dp,2*pi)
             CHCKERR('')
             do id = 2,n_zeta_plot
                 theta_plot(:,id,1) = theta_plot(:,1,1)
             end do
             allocate(zeta_plot(n_theta_plot,n_zeta_plot,1))
-            ierr = calc_eqd_grid(zeta_plot(1,:,1),n_zeta_plot,0._dp,2._dp)
+            ierr = calc_eqd_grid(zeta_plot(1,:,1),n_zeta_plot,0._dp,2*pi)
             CHCKERR('')
             do id = 2,n_theta_plot
                 zeta_plot(id,:,1) = zeta_plot(1,:,1)
@@ -442,9 +441,6 @@ contains
             allocate(Y_plot(n_theta_plot,n_zeta_plot,1,size_X))
             allocate(Z_plot(n_theta_plot,n_zeta_plot,1,size_X))
             
-            ! set up plot_titles
-            allocate(plot_titles(size_X))
-            
             ! loop over all resonant surfaces to calculate X, Y and Z values
             do id = 1,size_X
                 ! calculate the X, Y and Z values for this flux surface
@@ -459,16 +455,11 @@ contains
                 
                 ! deallocate the individual variables
                 deallocate(X_plot_ind,Y_plot_ind,Z_plot_ind)
-                
-                ! set plot titles
-                plot_titles(id) = trim(plot_title)//' for n,m = '//&
-                    &trim(i2str(n_X(id)))//','//trim(i2str(m_X(id)))//''
             end do
             
-            write(*,*) 'TEMPORARILY, col is set to 1 because otherwise 2D plot &
-                &does not work!!!!'
-            call print_HDF5(plot_titles,file_name,vars,plot_dim,plot_dim,&
-                &[0,0,0,0],X=X_plot,Y=Y_plot,Z=Z_plot,col=1,&
+            ! print using HDF5
+            call print_HDF5([plot_title],file_name,vars,plot_dim,plot_dim,&
+                &[0,0,0,0],X=X_plot,Y=Y_plot,Z=Z_plot,col=3,&
                 &description='resonant surfaces')
         end function resonance_plot_HDF5
     end function resonance_plot
@@ -1491,7 +1482,7 @@ contains
         use output_ops, only: draw_GP, draw_GP_animated, merge_GP
         use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X, min_r_X, max_r_X
         use MPI_ops, only: get_ghost_X_vec, wait_MPI
-        use eq_vars, only: q_saf_FD, rot_t_FD, grp_n_r_eq, max_flux_F, &
+        use eq_vars, only: q_saf_FD, rot_t_FD, grp_n_r_eq, max_flux_X_F, &
             &max_flux_eq_F, flux_p_FD, flux_t_FD
         use utilities, only: con2dis, interp_fun
         
@@ -1507,9 +1498,9 @@ contains
         
         ! local variables
         complex(dp), allocatable :: X_vec_extended(:,:)                         ! MPI Eigenvector extended with assymetric ghost region
-        real(dp), allocatable :: x_plot(:,:,:,:)                                ! x values of plot, parallel version
-        real(dp), allocatable :: y_plot(:,:,:,:)                                ! y values of plot, parallel version
-        real(dp), allocatable :: z_plot(:,:,:,:)                                ! z values of plot, parallel version
+        real(dp), allocatable :: X_plot(:,:,:,:)                                ! x values of plot, parallel version
+        real(dp), allocatable :: Y_plot(:,:,:,:)                                ! y values of plot, parallel version
+        real(dp), allocatable :: Z_plot(:,:,:,:)                                ! z values of plot, parallel version
         real(dp), allocatable :: z_magn_plot(:,:,:)                             ! z values of plot of magnitude, parallel version
         integer :: id, jd, kd, ld                                               ! counter
         integer :: n_par_F = 50                                                 ! how many parallel points
@@ -1524,7 +1515,7 @@ contains
         real(dp) :: fac_n_interp, fac_m_interp                                  ! fac_n and fac_m at interpolated normal position
         real(dp) :: first_fac_n_interp, first_fac_m_interp                      ! first fac_n_interp and fac_m_interp
         character(len=max_str_ln), allocatable :: file_names(:)                 ! names of file of plots of different ranks
-        real(dp), pointer :: flux(:), flux_eq(:)                                ! either pol. or tor. flux
+        real(dp), pointer :: flux_X(:), flux_eq(:)                              ! either pol. or tor. flux
         real(dp), allocatable :: r_plot(:)                                      ! local normal values at which to interpolate for the plot
         integer :: n_norm                                                       ! max nr of normal points to plot
         integer :: grp_n_norm                                                   ! nr. of normal points in plot for this rank
@@ -1569,9 +1560,9 @@ contains
         else
             allocate(X_vec_extended(size(X_vec,1),size(X_vec,2)))
         end if
-        allocate(x_plot(grp_n_norm,n_par_F,size_X,product(n_t)))
-        allocate(y_plot(grp_n_norm,n_par_F,size_X,product(n_t)))
-        allocate(z_plot(grp_n_norm,n_par_F,size_X,product(n_t)))
+        allocate(X_plot(grp_n_norm,n_par_F,size_X,product(n_t)))
+        allocate(Y_plot(grp_n_norm,n_par_F,size_X,product(n_t)))
+        allocate(Z_plot(grp_n_norm,n_par_F,size_X,product(n_t)))
         allocate(z_magn_plot(grp_n_norm,n_par_F,product(n_t)))
         allocate(X_vec_interp(size_X))
         allocate(first_X_vec_interp(size_X))
@@ -1584,17 +1575,17 @@ contains
         ! set up y-axis in parallel
         if (present(par_range_F)) then
             do id = 1,n_par_F
-                y_plot(:,id,:,:) = ang_par_F_loc(id)
+                Y_plot(:,id,:,:) = ang_par_F_loc(id)
             end do
         else
-            y_plot = 0.0_dp
+            Y_plot = 0.0_dp
         end if
         
-        ! set up flux and flux_eq
+        ! set up flux_X and flux_eq
         if (use_pol_flux_X) then
-            flux => flux_p_FD(:,0)
+            flux_X => flux_p_FD(:,0)
         else
-            flux => flux_t_FD(:,0)
+            flux_X => flux_t_FD(:,0)
         end if
         if (use_pol_flux_eq) then
             flux_eq => flux_p_FD(:,0)
@@ -1608,8 +1599,8 @@ contains
         do id = 1,product(n_t)
             ! loop over all normal points
             do kd = 1,grp_n_norm
-                ! set up x_plot
-                x_plot(kd,:,:,:) = r_plot(kd)
+                ! set up X_plot
+                X_plot(kd,:,:,:) = r_plot(kd)
                 
                 ! set up the interpolated values of X_vec, fac_n and fac_m
                 if (kd.lt.grp_n_norm .and. grp_rank+1.lt.grp_n_procs &
@@ -1624,7 +1615,7 @@ contains
                     ! set up  interp. fac_n and fac_m  (tabulated in equilibrium
                     ! grid)
                     ierr = interp_fun(kd_loc_eq,flux_eq/max_flux_eq_F,&
-                        &r_plot(kd),flux/max_flux_F)
+                        &r_plot(kd),flux_X/max_flux_X_F)
                     CHCKERR('')
                     call con2dis(kd_loc_eq,kd_loc_i,flux_eq/max_flux_eq_F)      ! equilibrium values tabulated at flux_eq for this group, normalized with max_flux_eq_F
                     fac_n_interp = fac_n(floor(kd_loc_i)) + &
@@ -1662,18 +1653,18 @@ contains
                         &fac_m_interp = realpart(fac_i_interp(1))
                 end if
                 
-                ! loop over all modes and all parallel points to set up z_plot
+                ! loop over all modes and all parallel points to set up Z_plot
                 do ld = 1,size_X
                     do jd = 1,n_par_F
-                        z_plot(kd,jd,ld,id) = &
+                        Z_plot(kd,jd,ld,id) = &
                             &realpart(X_vec_interp(ld) * exp(iu * &
-                            &(omega/abs(omega)*0.5*pi*(id-1.0_dp)/(n_t(1)-1)&
-                            &    + iu*n_X(ld)*fac_n_interp-&
+                            &(omega/abs(omega)*0.5*pi*(id-1.0_dp)/&
+                            &max(n_t(1)-1,1) + n_X(ld)*fac_n_interp-&
                             &          m_X(ld)*fac_m_interp)&
                             &    * ang_par_F_loc(jd)))
                     end do
                     z_magn_plot(kd,:,id) = z_magn_plot(kd,:,id) + &
-                        &z_plot(kd,:,ld,id)
+                        &Z_plot(kd,:,ld,id)
                 end do
             end do
         end do
@@ -1691,12 +1682,12 @@ contains
                     &trim(i2str(ld))//'.dat'
                 if (present(par_range_F)) then
                     call print_GP_3D(trim(plot_title),trim(file_name)//'_'//&
-                        &trim(i2str(grp_rank)),z_plot(:,:,ld,:),&
-                        &y=y_plot(:,:,ld,:),x=x_plot(:,:,ld,:),draw=.false.)
+                        &trim(i2str(grp_rank)),Z_plot(:,:,ld,:),&
+                        &y=Y_plot(:,:,ld,:),x=X_plot(:,:,ld,:),draw=.false.)
                 else
                     call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
-                        &trim(i2str(grp_rank)),z_plot(:,1,ld,:),&
-                        &x=x_plot(:,1,ld,:),draw=.false.)
+                        &trim(i2str(grp_rank)),Z_plot(:,1,ld,:),&
+                        &x=X_plot(:,1,ld,:),draw=.false.)
                 end if
                     
                 ! wait for all processes
@@ -1739,12 +1730,12 @@ contains
         if (present(par_range_F)) then
             call print_GP_3D(trim(plot_title),trim(file_name)//&
                 &'_'//trim(i2str(grp_rank)),&
-                &z_magn_plot(:,:,:),y=y_plot(:,:,1,:),&
-                &x=x_plot(:,:,1,:),draw=.false.)
+                &z_magn_plot(:,:,:),y=Y_plot(:,:,1,:),&
+                &x=X_plot(:,:,1,:),draw=.false.)
         else
             call print_GP_2D(trim(plot_title),trim(file_name)//&
                 &'_'//trim(i2str(grp_rank)),&
-                &z_magn_plot(:,1,:),x=x_plot(:,1,1,:),&
+                &z_magn_plot(:,1,:),x=X_plot(:,1,1,:),&
                 &draw=.false.)
         end if
         
@@ -1863,17 +1854,12 @@ contains
     ! system of equations. (TO BE IMPLEMENTED)
     integer function plot_X_vec_HDF5(X_vec,omega,X_id,job_id,n_t,follow_B) &
         &result(ierr)
-        use X_vars, only: grp_min_r_X, grp_n_r_X, n_r_X, grp_r_X, grp_n_r_X, &
-            &size_X, n_X, m_X
-        use num_vars, only: eq_style, use_pol_flux_X, use_pol_flux_eq, &
-            &n_theta_plot, n_zeta_plot
-        use eq_vars, only: flux_p_FD, flux_t_FD, max_flux_F, max_flux_eq_F
-        use HDF5_ops, only: open_HDF5_file, print_HDF5_top, print_HDF5_geom, &
-            &print_HDF5_3D_data_item, print_HDF5_grid, add_HDF5_item, &
-            &close_HDF5_file, print_HDF5_att, reset_HDF5_item, &
-            &HDF5_file_type, XML_str_type
+        use X_vars, only: grp_min_r_X, grp_n_r_X, n_r_X, grp_r_X, grp_n_r_X
+        use num_vars, only: n_theta_plot, n_zeta_plot
         use utilities, only: interp_fun
-        use coord_ops, only: calc_XYZ_grid
+        use grid_ops, only: calc_XYZ_grid, coord_F2E, coord_E2F
+        use sol_ops, only: calc_real_X
+        use output_ops, only: print_HDF5
         
         character(*), parameter :: rout_name = 'plot_X_vec_HDF5'
         
@@ -1886,33 +1872,31 @@ contains
         logical, intent(in), optional :: follow_B                               ! .true. if to be plot only along B
         
         ! local variables
-        integer :: id, kd, ld                                                   ! counters
-        real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)            ! theta_V and zeta_V for flux surface plot
-        real(dp), allocatable :: r_plot(:)                                      ! r for plots
-        real(dp), allocatable :: x_plot(:,:,:)                                  ! x values of plot
-        real(dp), allocatable :: y_plot(:,:,:)                                  ! y values of plot
-        real(dp), allocatable :: z_plot(:,:,:)                                  ! z values of plot
-        real(dp), allocatable :: l_plot(:,:,:)                                  ! lambda values of plot
-        real(dp), allocatable :: f_plot(:,:,:)                                  ! the function to plot
+        integer :: id                                                           ! counter
+        real(dp), allocatable :: theta_E(:,:,:), zeta_E(:,:,:)                  ! theta_E and zeta_E for flux surface plot
+        real(dp), allocatable :: r_E(:)                                         ! r for plots in pert. coords.
+        real(dp), allocatable :: theta_F(:,:,:), zeta_F(:,:,:)                  ! theta_F and zeta_F for flux surface plot
+        real(dp), allocatable :: r_F(:)                                         ! r for plots in eq. coords.
+        real(dp), allocatable :: X_plot_ind(:,:,:)                              ! individual version of X_plot
+        real(dp), allocatable :: Y_plot_ind(:,:,:)                              ! individual version of Y_plot
+        real(dp), allocatable :: Z_plot_ind(:,:,:)                              ! individual version of Z_plot
+        real(dp), allocatable :: X_plot(:,:,:,:)                                ! x values of plot
+        real(dp), allocatable :: Y_plot(:,:,:,:)                                ! y values of plot
+        real(dp), allocatable :: Z_plot(:,:,:,:)                                ! z values of plot
+        real(dp), allocatable :: f_plot(:,:,:,:)                                ! the function to plot
+        integer :: tot_dim(4), grp_dim(4), grp_offset(4)                        ! total dimensions, group dimensions and group offset
         logical :: follow_B_loc                                                 ! local copy of follow_B
-        integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total dimensions, group dimensions and group offset
-        type(HDF5_file_type) :: file_info                                       ! HDF5 file info
-        type(XML_str_type) :: time_col_grid                                     ! grid with time collection
-        type(XML_str_type), allocatable :: grids(:)                             ! the grids in the time collection
-        type(XML_str_type) :: top                                               ! topology
-        type(XML_str_type), allocatable :: XYZ(:)                               ! data items for geometry
-        type(XML_str_type) :: geom                                              ! geometry
-        type(XML_str_type) :: att(1)                                            ! attribute
         character(len=max_str_ln) :: var_name                                   ! name of variable that is plot
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), pointer :: flux(:), flux_eq(:)                                ! either pol. or tor. flux
+        character(len=max_str_ln) :: file_name                                  ! name of file
+        character(len=max_str_ln) :: description                                ! description
         real(dp) :: time_frac                                                   ! fraction of Alfvén time
         
         ! initialize ierr
         ierr = 0
         
         ! user output
-        call writo('Starting the plot')
+        call writo('Started the plot of the Eigenfunction')
+        call lvl_ud(1)
         
         ! set up local follow_B
         follow_B_loc = .false.
@@ -1921,130 +1905,71 @@ contains
         end if
         
         ! set up total dimensions, group dimensions and group offset
-        tot_dim = [n_theta_plot,n_zeta_plot,n_r_X]
-        grp_dim = [n_theta_plot,n_zeta_plot,grp_n_r_X]
-        grp_offset = [0,0,grp_min_r_X-1]
+        tot_dim = [n_theta_plot,n_zeta_plot,n_r_X,product(n_t)]
+        grp_dim = [n_theta_plot,n_zeta_plot,grp_n_r_X,product(n_t)]
+        grp_offset = [0,0,grp_min_r_X-1,product(n_t)]
         
-        ! set up var_name
+        ! set up var_name, file_name and description
         var_name = 'Solution vector X_vec'
+        file_name = 'X_vec_'//trim(i2str(job_id))//'_'//trim(i2str(X_id))
+        description = 'Job '//trim(i2str(job_id))//' - Solution vector X_vec &
+            &for Eigenvalue '//trim(i2str(X_id))//' with omega = '&
+            &//trim(r2str(realpart(omega)))
         
-        ! set up flux and flux_eq
-        if (use_pol_flux_X) then
-            flux => flux_p_FD(:,0)
-        else
-            flux => flux_t_FD(:,0)
-        end if
-        if (use_pol_flux_eq) then
-            flux_eq => flux_p_FD(:,0)
-        else
-            flux_eq => flux_t_FD(:,0)
-        end if
+        ! allocate variables holding X, Y and Z of plot
+        allocate(X_plot(n_theta_plot,n_zeta_plot,grp_n_r_X,product(n_t)))
+        allocate(Y_plot(n_theta_plot,n_zeta_plot,grp_n_r_X,product(n_t)))
+        allocate(Z_plot(n_theta_plot,n_zeta_plot,grp_n_r_X,product(n_t)))
         
-        ! initialize theta_plot and zeta_plot
+        ! initialize theta_E and zeta_E
         if (follow_B) then
             ierr = 1
             CHCKERR('NOT YET IMPLEMENTED')
-            !!!!! SHOULD BE EQUAL TO THE GRID PLOT, WITH ADDITIONALLY THE SOLUTION VECTOR !!!!
+            !!!! SHOULD BE SIMILAR TO THE  GRID PLOT, WITH ADDITIONALLY THE !!!!
+            !!!! SOLUTION VECTOR SUPERIMPOSED ALONG THE GRID LINES          !!!!
         else
+            ! normal variable taken from grp_r_X
+            allocate(r_F(grp_n_r_X))
+            r_F = grp_r_X(1:grp_n_r_X)
             ! theta equidistant
-            allocate(theta_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
+            allocate(theta_E(n_theta_plot,n_zeta_plot,grp_n_r_X))
             if (n_theta_plot.eq.1) then
-                theta_plot = 0.0_dp
+                theta_E = 0.0_dp
             else
                 do id = 1,n_theta_plot
-                    theta_plot(id,:,:) = &
+                    theta_E(id,:,:) = &
                         &pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)              ! starting from pi gives nicer plots
                 end do
             end if
             ! zeta equidistant
-            allocate(zeta_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
+            allocate(zeta_E(n_theta_plot,n_zeta_plot,grp_n_r_X))
             if (n_zeta_plot.eq.1) then
-                zeta_plot = 0.0_dp
+                zeta_E = 0.0_dp
             else
                 do id = 1,n_zeta_plot
-                    zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
+                    zeta_E(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
                 end do
             end if
             ! convert  the perturbation  normal  values  grp_r_X to  equilibrium
             ! normal values
-            allocate(r_plot(grp_n_r_X))
-            do id = 1,grp_n_r_X
-                ierr = interp_fun(r_plot(id),flux_eq/max_flux_eq_F,&
-                    &grp_r_X(id),flux/max_flux_F)
-                CHCKERR('')
-            end do
+            allocate(r_E(grp_n_r_X))
+            ierr = coord_F2E(grp_r_X(1:grp_n_r_X),r_E)
+            CHCKERR('')
+            ! convert all equilibrium coordinates to flux coordinates
+            allocate(theta_F(n_theta_plot,n_zeta_plot,grp_n_r_X))
+            allocate(zeta_F(n_theta_plot,n_zeta_plot,grp_n_r_X))
+            ierr = coord_E2F(r_E,theta_E,zeta_E,r_F,theta_F,zeta_F)
+            CHCKERR('')
         end if
         
-        ! calculate X,Y  and Z using  the Equilibrium theta_plot  and zeta_plot,
-        ! tabulated in the equilibrium normal grid
-        ierr = calc_XYZ_grid(r_plot,theta_plot,zeta_plot,x_plot,y_plot,z_plot,&
-            &l_plot)
+        ! calculate  individual X,Y  and  Z using  the  Equilibrium theta_E  and
+        ! zeta_plot, tabulated in the equilibrium normal grid
+        ierr = calc_XYZ_grid(r_E,theta_E,zeta_E,X_plot_ind,Y_plot_ind,&
+            &Z_plot_ind)
         CHCKERR('')
-        
-        !call print_GP_3D('test_plot','',z_plot,X=x_plot,Y=y_plot)               ! for testing
         
         ! calculate the function to plot: global mode
-        allocate(f_plot(n_theta_plot,n_zeta_plot,grp_n_r_X))
-        
-        ! open HDF5 file
-        ierr = open_HDF5_file(file_info,'X_vec_'//trim(i2str(job_id))//&
-            &'_'//trim(i2str(X_id)),'Job '//trim(i2str(job_id))//&
-            &' - Solution vector X_vec for Eigenvalue '//trim(i2str(X_id))//&
-            &' with omega = '//trim(r2str(realpart(omega))))
-        CHCKERR('')
-        
-        ! print topology
-        if (n_zeta_plot.eq.1 .or. n_theta_plot.eq.1) then                       ! 2D grid
-            call print_HDF5_top(top,1,tot_dim)
-        else                                                                    ! 3D grid
-            call print_HDF5_top(top,2,tot_dim)
-        end if
-        
-        ! add topology to HDF5 file and reset it
-        call add_HDF5_item(file_info,top,reset=.true.)
-        
-        ! allocate geometry arrays
-        if (n_zeta_plot.eq.1 .or. n_theta_plot.eq.1) then                       ! 2D grid
-            allocate(XYZ(2))
-        else                                                                    ! 3D grid
-            allocate(XYZ(3))
-        end if
-        
-        ! print data item for X
-        ierr = print_HDF5_3D_data_item(XYZ(1),file_info,&
-            &'X',x_plot,tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
-        CHCKERR('')
-        
-        ! print data item for Y and / or Z
-        if (n_zeta_plot.eq.1) then                                              ! if toroidally symmetric, no Y axis
-            ierr = print_HDF5_3D_data_item(XYZ(2),file_info,&
-                &'Z',z_plot,tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
-            CHCKERR('')
-        else if (n_theta_plot.eq.1) then                                        ! if poloidally symmetric, no Z axis
-            ierr = print_HDF5_3D_data_item(XYZ(2),file_info,&
-                &'Y',y_plot,tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
-            CHCKERR('')
-        else
-            ierr = print_HDF5_3D_data_item(XYZ(2),file_info,&
-                &'Y',y_plot,tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
-            CHCKERR('')
-            ierr = print_HDF5_3D_data_item(XYZ(3),file_info,&
-                &'Z',z_plot,tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
-            CHCKERR('')
-        end if
-        
-        ! print geometry with X, Y and Z data item
-        if (n_zeta_plot.eq.1 .or. n_theta_plot.eq.1) then                       ! if symmetry 2D geometry
-            call print_HDF5_geom(geom,1,XYZ,.true.)
-        else                                                                    ! if no symmetry 3D geometry
-            call print_HDF5_geom(geom,2,XYZ,.true.)
-        end if
-        
-        ! add geometry to HDF5 file and reset it
-        call add_HDF5_item(file_info,geom,reset=.true.)
-        
-        ! create grid for time collection
-        allocate(grids(product(n_t)))
+        allocate(f_plot(n_theta_plot,n_zeta_plot,grp_n_r_X,product(n_t)))
         
         ! user output
         if (product(n_t).gt.1) call writo('Calculating plot for '//&
@@ -2056,100 +1981,44 @@ contains
         do id = 1,product(n_t)
             ! set time fraction
             if (n_t(1).eq.1) then
-                time_frac = (id-1) * 0.5*pi
+                time_frac = (id-1) * 0.25
             else
                 time_frac = (mod(id-1,n_t(1))*1._dp/n_t(1) + (id-1)/n_t(1)) * &
-                    &0.5*pi
+                    &0.25
             end if
             
-            ! print data item for plot variable f_plot
-            f_plot = 0.0_dp
-            ! for all normal points
-            ! choose which equilibrium style is being used:
-            !   1:  VMEC
-            !   2:  HELENA
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    do kd = 1,grp_n_r_X
-                        ! for all modes
-                        do ld = 1,size_X
-                            ! Need   to   translate    from   VMEC   coordinates
-                            ! (theta_V,zeta_V)      to     flux      coordinates
-                            ! (theta_F,zeta_F) for the inverse Fourier transform
-                            ! of the Eigenvalue Fourier modes to real space
-                            f_plot(:,:,kd) = f_plot(:,:,kd) + &
-                                &realpart(X_vec(ld,kd) * &
-                                &exp(iu * (omega/abs(omega)*time_frac + &
-                                &n_X(ld)*(-zeta_plot(:,:,kd)) - &
-                                &m_X(ld)*(theta_plot(:,:,kd)+l_plot(:,:,kd)))))
-                        end do
-                    end do
-                case (2)                                                        ! HELENA
-                    do kd = 1,grp_n_r_X
-                        ! for all modes
-                        do ld = 1,size_X
-                            ! HELENA coordinates  (theta_H,zeta_H) coincide with
-                            ! flux coordinates (theta_F,zeta_F)
-                            f_plot(:,:,kd) = f_plot(:,:,kd) + &
-                                &realpart(X_vec(ld,kd) * &
-                                &exp(iu * (omega/abs(omega)*time_frac + &
-                                &n_X(ld)*(zeta_plot(:,:,kd)) - &
-                                &m_X(ld)*(theta_plot(:,:,kd)))))
-                        end do
-                    end do
-                case default
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
-            
-            ! print data item for axes
-            ierr = print_HDF5_3D_data_item(XYZ(1),file_info,'var_'//&
-                &trim(i2str(id)),f_plot,tot_dim,grp_dim=grp_dim,&
-                &grp_offset=grp_offset)                                         ! reuse XYZ(1)
-            CHCKERR('')
-            
-            ! print attribute with this data item
-            call print_HDF5_att(att(1),XYZ(1),'X_vec',1,.true.)
-            
-            ! create a grid with the topology, the geometry and the attribute
-            ierr = print_HDF5_grid(grids(id),var_name,1,&
-                grid_time=time_frac,grid_atts=att,reset=.true.)
+            ! calculate f_plot at this time point
+            ierr = calc_real_X(X_vec,omega**2,r_F,theta_F,zeta_F,time_frac,&
+                &f_plot(:,:,:,id))
             CHCKERR('')
             
             ! user output
             if (product(n_t).gt.1) then
-                call writo('Finished plot for time step '//trim(i2str(id))//&
+                call writo('Calculated plot for time step '//trim(i2str(id))//&
                     &'/'//trim(i2str(product(n_t))))
-            else
-                call writo('Finished plot')
             end if
+            
+            ! set up X, Y and Z of plot
+            X_plot(:,:,:,id) = X_plot_ind
+            Y_plot(:,:,:,id) = Y_plot_ind
+            Z_plot(:,:,:,id) = Z_plot_ind
         end do
         
         call lvl_ud(-1)
         
-        ! either create collection or just use individual grids
-        if (product(n_t).eq.1) then
-            ! add individual grids to HDF5 file and reset them
-            call add_HDF5_item(file_info,grids(1),reset=.true.)
-        else
-            ! create grid collection from individual grids and reset them
-            ierr = print_HDF5_grid(time_col_grid,'time collection',2,&
-                &grid_grids=grids,reset=.true.)
-            CHCKERR('')
-            
-            ! add collection grid to HDF5 file and reset it
-            call add_HDF5_item(file_info,time_col_grid,reset=.true.)
-        end if
-        
-        ! close HDF5 file
-        ierr = close_HDF5_file(file_info)
-        CHCKERR('')
+        ! print using HDF5
+        call print_HDF5([var_name],file_name,f_plot,tot_dim,grp_dim=grp_dim,&
+            &grp_offset=grp_offset,X=X_plot,Y=Y_plot,Z=Z_plot,col=2,&
+            &description=description)
         
         ! deallocate
-        deallocate(x_plot,y_plot,z_plot,f_plot)
-        if (eq_style.eq.1) deallocate(l_plot)                                   ! only if using VMEC
-        deallocate(theta_plot,zeta_plot,r_plot,XYZ)
+        deallocate(X_plot_ind,Y_plot_ind,Z_plot_ind)
+        deallocate(X_plot,Y_plot,Z_plot,f_plot)
+        deallocate(theta_E,zeta_E,r_E)
+        deallocate(theta_F,zeta_F,r_F)
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Finished the plot of the Eigenfunction')
     end function plot_X_vec_HDF5
 end module

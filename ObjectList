@@ -1,5 +1,5 @@
 ObjectFiles = \
-coord_ops.o \
+grid_ops.o \
 driver.o \
 driver_rich.o \
 eq_ops.o \

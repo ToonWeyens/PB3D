@@ -12,174 +12,153 @@ module test
 
     implicit none
     private
-    public test_repack, test_print_GP, test_metric_transf, test_ang_B, &
-        &test_calc_ext_var, test_B, test_calc_deriv, test_add_arr_mult, &
-        &test_conv_FHM, test_calc_RZL, test_calc_T_VF, test_calc_inv_met, &
-        &test_calc_det, test_inv, test_calc_f_deriv, test_calc_g, &
-        &test_fourier2real, test_prepare_X, test_slepc, test_pres_balance
+    public test_X_and_U, test_repack, test_print_GP, test_calc_deriv, &
+        &test_calc_ext_var, test_conv_FHM, test_calc_RZL, test_calc_T_VF, &
+        &test_calc_g, test_calc_f_deriv, test_calc_inv_met, test_calc_det, &
+        &test_inv, test_pres_balance, test_add_arr_mult, test_slepc
     
 contains
-    integer function test_fourier2real() result(ierr)
-        !use VMEC, only: nfp
-        !use eq_vars, only: calc_eqd_grid
-        !use fourier_ops, only: fourier2real, calc_trigon_factors
+    integer function test_X_and_U() result(ierr)
+        use utilities, only: calc_deriv
+        use MPI_ops, only: split_MPI
+        use driver_rich, only: calc_eq
+        use X_ops, only: init_m, prepare_X, solve_EV_system
+        use X_vars, only: n_r_X, min_n_r_X, X_val, X_vec, grp_n_r_X, grp_r_X
+        use grid_ops, only: calc_eqd_grid, coord_F2E, calc_XYZ_grid
+        use sol_ops, only: calc_real_X
+        use output_ops, only: print_HDF5
+        use num_vars, only: n_theta => n_theta_plot, n_zeta => n_zeta_plot
         
-        !character(*), parameter :: rout_name = 'test_fourier2real'
+        character(*), parameter :: rout_name = 'test_X_and_U'
         
-        !! local variables
-        !real(dp), allocatable :: cosvar(:,:)
-        !real(dp), allocatable :: sinvar(:,:)
-        !real(dp), allocatable :: realvar(:,:)
-        !real(dp), allocatable :: realvar_ALT(:)
-        !real(dp), allocatable :: theta(:,:), zeta(:,:)
-        !real(dp), allocatable :: trigon_factors(:,:,:,:,:)                      ! trigonometric factor cosine for the inverse fourier transf.
-        !integer :: id, jd
-        !real(dp) :: min_n, max_n
-        !integer :: ntor, mpol
-        !integer :: n
+        ! local variables
+        real(dp) :: alpha = 0._dp
+        integer :: n_sol_found
+        integer :: deriv(3)
+        integer :: EV_i
+        real(dp), allocatable :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)
+        real(dp), allocatable :: r_E(:), theta_E(:,:,:), zeta_E(:,:,:)
+        real(dp), allocatable :: X_F(:,:,:)
+        real(dp), allocatable :: X(:,:,:), Y(:,:,:), Z(:,:,:)
+        integer :: n_r
+        real(dp) :: time
+        integer :: id, kd
         
-        !! initialize ierr
-        !ierr = 0
+        ! initialize ierr
+        ierr = 0
         
-        !write(*,*) 'test fourier2real?'
-        !if(yes_no(.false.)) then
+        write(*,*) 'test calc_real_X and calc_real_U?'
+        if(yes_no(.false.)) then
+            ! split MPI
+            ierr = split_MPI()
+            CHCKERR('')
             
-            !output_i = 0
-            !mpol = 3
-            !ntor = 1
-            !n = 200
+            ! Calculate the equilibrium quantities for current alpha
+            ierr = calc_eq(alpha)
+            CHCKERR('')
             
-            !allocate(cosvar(0:mpol-1,-ntor:ntor))
-            !allocate(sinvar(0:mpol-1,-ntor:ntor))
-            !allocate(realvar(n,1))
-            !allocate(realvar_ALT(n))
+            ! initialize m
+            ierr = init_m()
+            CHCKERR('')
             
-            !allocate(theta(n,1))
-            !allocate(zeta(n,1))
+            ! prepare the  matrix elements
+            ierr = prepare_X()
+            CHCKERR('')
+            end if
             
-            !min_n = 0.0_dp
-            !max_n = 3*pi
+            ! calculate number of radial points
+            n_r_X = min_n_r_X
             
-            !! physical grid
-            !zeta = 0.4*pi/2
-            !ierr = calc_eqd_grid(theta(:,1),n,min_n,max_n)
-            !CHCKERR('')
+            ! setup the matrices of the generalized EV system AX = lambda BX and
+            ! solve it
+            ierr = solve_EV_system(.false.,n_sol_found)
+            CHCKERR('')
             
-            !! set up Fourier coefficients
-            !cosvar(:,-1) = [3,2,3]
-            !sinvar(:,-1) = [0,1,0]
-            !cosvar(:,0) = [4,5,0]
-            !sinvar(:,0) = [1,0,3]
-            !cosvar(:,1) = [1,2,1]
-            !sinvar(:,1) = [1,3,4]
+            ! get user input
+            do
+                write(*,*) 'Order of derivative in r?'
+                read(*,*) deriv(1)
+                if (deriv(1).lt.0 .or. deriv(1).gt.2) then
+                    write(*,*) 'choose a value between 0 and 2'
+                else
+                    exit
+                end if
+            end do
+            do
+                write(*,*) 'Order of derivative in theta'
+                read(*,*) deriv(2)
+                if (deriv(2).lt.0) then
+                    write(*,*) 'choose a value larger or equal to 0'
+                else
+                    exit
+                end if
+            end do
+            do
+                write(*,*) 'Order of derivative in zeta'
+                read(*,*) deriv(3)
+                if (deriv(3).lt.0) then
+                    write(*,*) 'choose a value larger or equal to 0'
+                else
+                    exit
+                end if
+            end do
+            do
+                write(*,*) 'Which EV to plot?'
+                read(*,*) EV_i
+                if (EV_i.lt.1 .or. EV_i.gt.n_sol_found) then
+                    write(*,*) 'choose a value between 1 and '//trim(i2str(n_sol_found))
+                else
+                    exit
+                end if
+            end do
+            write(*,*) 'Time?'
+            read(*,*) time
             
-            !write(*,*) 'zeroth order'
-            !! invert Fourier series
-            !ierr = calc_trigon_factors(theta,zeta,trigon_factors)
-            !CHCKERR('')
-            !ierr = fourier2real(cosvar,sinvar,trigon_factors,&
-                !&realvar)
+            ! set up coordinates and X_F
+            n_r = grp_n_r_X
+            allocate(r_F(n_r))
+            allocate(theta_F(n_theta,n_zeta,n_r))
+            allocate(zeta_F(n_theta,n_zeta,n_r))
+            allocate(X_F(n_theta,n_zeta,n_r))
+            r_F = grp_r_X(1:grp_n_r_X)
+            ierr = calc_eqd_grid(theta_F(:,1,1),n_theta,pi,3*pi)
+            CHCKERR('')
+            do kd = 1,n_r
+                do id = 1,n_zeta
+                    theta_F(:,id,kd) = theta_F(:,1,1)
+                end do
+            end do
+            ierr = calc_eqd_grid(zeta_F(1,:,1),n_zeta,0*pi,2*pi)
+            CHCKERR('')
+            do kd = 1,n_r
+                do id = 1,n_theta
+                    zeta_F(id,:,kd) = zeta_F(1,:,1)
+                end do
+            end do
             
-            !call print_GP_2D('real variable','',realvar)
+            ! get X_F
+            ierr = calc_real_X(X_vec(:,:,EV_i),X_val(EV_i),r_F,theta_F,zeta_F,&
+                &time,X_F,deriv)
+            CHCKERR('')
             
-            !! do an alternative calculation
-            !realvar_ALT = 0.0_dp
-            !do id = 0,mpol-1
-                !do jd = -ntor,ntor
-                    !realvar_ALT = realvar_ALT + &
-                        !&cosvar(id,jd)*cos(id*theta-jd*nfp*zeta) + &
-                        !&sinvar(id,jd)*sin(id*theta-jd*nfp*zeta)
-                !end do
-            !end do
+            ! convert to equilibrium angles
+            allocate(r_E(n_r))
+            allocate(theta_E(n_theta,n_zeta,n_r))
+            allocate(zeta_E(n_theta,n_zeta,n_r))
+            ierr = coord_F2E(r_F,theta_F,zeta_F,r_E,theta_E,zeta_E)
+            CHCKERR('')
             
-            !call print_GP_2D('real variable, alternative calc','',realvar_ALT)
+            ! get X, Y and Z of grid
+            ierr = calc_XYZ_grid(r_E,theta_E,zeta_E,X,Y,Z)
+            CHCKERR('')
             
-            !! difference
-            !call print_GP_2D('difference','',realvar-realvar_ALT)
+            ! plot X
+            call print_HDF5('X_F','X_F',X_F,[n_theta,n_zeta,n_r],&
+                &[n_theta,n_zeta,n_r],[0,0,0],X,Y,Z)
             
-            !write(*,*) 'D_theta'
-            !! invert Fourier series
-            !do id = 1,n
-                !ierr = calc_ang_grid(cs,mpol,ntor,nfp,theta(id),zeta(id))
-                !CHCKERR('')
-                !realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[1,0],ierr)
-                !CHCKERR('')
-            !end do
-            
-            !call print_GP_2D('real variable','',realvar)
-            
-            !! do an alternative calculation
-            !realvar_ALT = 0.0_dp
-            !do id = 0,mpol-1
-                !do jd = -ntor,ntor
-                    !realvar_ALT = realvar_ALT + &
-                        !&id*sinvar(id,jd)*cos(id*theta-jd*nfp*zeta) - &
-                        !&id*cosvar(id,jd)*sin(id*theta-jd*nfp*zeta)
-                !end do
-            !end do
-            
-            !call print_GP_2D('real variable, alternative calc.','',realvar_ALT)
-            
-            !! difference
-            !call print_GP_2D('difference','',realvar-realvar_ALT)
-            
-            !write(*,*) 'D_zeta'
-            !! invert Fourier series
-            !do id = 1,n
-                !ierr = calc_ang_grid(cs,mpol,ntor,nfp,theta(id),zeta(id))
-                !CHCKERR('')
-                !realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[0,1],ierr)
-                !CHCKERR('')
-            !end do
-            
-            !call print_GP_2D('real variable','',realvar)
-            
-            !! do an alternative calculation
-            !realvar_ALT = 0.0_dp
-            !do id = 0,mpol-1
-                !do jd = -ntor,ntor
-                    !realvar_ALT = realvar_ALT - &
-                        !&jd*sinvar(id,jd)*cos(id*theta-jd*nfp*zeta) + &
-                        !&jd*cosvar(id,jd)*sin(id*theta-jd*nfp*zeta)
-                !end do
-            !end do
-            
-            !call print_GP_2D('real variable, alternative calc.','',realvar_ALT)
-            
-            !! difference
-            !call print_GP_2D('difference','',realvar-realvar_ALT)
-            
-            !write(*,*) 'D^2_theta D_zeta'
-            !! invert Fourier series
-            !do id = 1,n
-                !ierr = calc_ang_grid(cs,mpol,ntor,nfp,theta(id),zeta(id))
-                !CHCKERR('')
-                !realvar(id) = f2r(cosvar,sinvar,cs,mpol,ntor,nfp,[2,1],ierr)
-                !CHCKERR('')
-            !end do
-            
-            !call print_GP_2D('real variable','',realvar)
-            
-            !! do an alternative calculation
-            !realvar_ALT = 0.0_dp
-            !do id = 0,mpol-1
-                !do jd = -ntor,ntor
-                    !realvar_ALT = realvar_ALT + &
-                        !&id*id*jd*sinvar(id,jd)*cos(id*theta-jd*nfp*zeta) - &
-                        !&id*id*jd*cosvar(id,jd)*sin(id*theta-jd*nfp*zeta)
-                !end do
-            !end do
-            
-            !call print_GP_2D('real variable, alternative calc.','',realvar_ALT)
-            
-            !! difference
-            !call print_GP_2D('difference','',realvar-realvar_ALT)
-            
-            
-            !write(*,*) 'Stopping'
-            !stop
-        !end if
-    end function test_fourier2real
+            ! output message
+            write(*,*) 'Use VisIt or Paraview to visualize above plot'
+    end function test_X_and_U
     
     subroutine test_repack
         ! VMEC variable has structure (1:mnmax, 1:grp_n_r_eq)
@@ -511,48 +490,6 @@ contains
         end subroutine
     end subroutine test_print_GP
 
-    integer function test_prepare_X() result(ierr)
-        use X_ops, only: prepare_X
-        use X_vars, only: PV0, PV1, PV2
-        use driver_rich, only: calc_eq
-        
-        character(*), parameter :: rout_name = 'test_prepare_X'
-        
-        ! initialize ierr
-        ierr = 0
-        
-        write(*,*) 'test prepare_X?'
-        if(yes_no(.false.)) then
-            ! calculate equilibrium
-            write(*,*) 'calculating equilibrium'
-            ierr = calc_eq(0.2*pi)
-            CHCKERR('')
-            
-            ! calculate equilibrium
-            write(*,*) 'calculating P'
-            ierr = prepare_X()
-            
-            ! visualize PV
-            write(*,*) 'Real PV0 (5,5) ='
-            call print_ar_2(realpart(PV0(5,5,:,:)))
-            write(*,*) 'Imag PV0 (5,5) ='
-            call print_ar_2(imagpart(PV0(5,5,:,:)))
-            
-            write(*,*) 'Real PV1 (5,5) ='
-            call print_ar_2(realpart(PV1(5,5,:,:)))
-            write(*,*) 'Imag PV1 (5,5) ='
-            call print_ar_2(imagpart(PV1(5,5,:,:)))
-            
-            write(*,*) 'Real PV2 (5,5) ='
-            call print_ar_2(realpart(PV2(5,5,:,:)))
-            write(*,*) 'Imag PV2 (5,5) ='
-            call print_ar_2(imagpart(PV2(5,5,:,:)))
-            
-            write(*,*) 'Stopping'
-            stop
-        end if
-    end function test_prepare_X
-    
     integer function test_calc_deriv() result(ierr)
         use utilities, only: calc_deriv
         
@@ -561,7 +498,6 @@ contains
         ! local variables
         integer :: loc_max, id, kd
         integer :: n_steps, grid_type
-        real(dp) :: x_loc
         real(dp) :: start_step
         real(dp), allocatable :: varin(:)
         real(dp), allocatable :: var_an(:,:), var_nm(:,:)
@@ -1020,7 +956,7 @@ contains
     end function test_conv_FHM
     
     integer function test_calc_RZL() result(ierr)
-        use coord_ops, only: calc_eqd_grid
+        use grid_ops, only: calc_eqd_grid
         use eq_ops, only: calc_RZL, init_eq
         use eq_vars, only: R_E, Z_E, theta_E, zeta_E,  grp_n_r_eq
         use X_vars, only: n_par
@@ -2004,522 +1940,6 @@ contains
         end if
     end function test_inv
     
-    integer function test_metric_transf() result(ierr)
-        !use eq_ops, only: calc_eq
-        !use X_vars, only: n_par
-        !use eq_vars, only: flux_p_E, R_E, Z_E, L_E, theta, &
-            !&zeta, &grp_n_r_eq
-        !use VMEC, only: mpol, ntor, jac_V_c_H, jac_V_s_H, nfp, n_r_eq
-        !use metric_ops, only: calc_inv_met
-        !use metric_vars, only: jac_E, jac_F, T_FE, det_T_FE, g_F, h_F, g_E, T_EF
-        !use utilities, only: calc_deriv, calc_det, conv_FHM
-        !use num_vars, only: grid_style
-        
-        !character(*), parameter :: rout_name = 'test_metric_transf'
-        
-        !! local variables
-        !real(dp) :: jac_ALT(1:n_par,1:grp_n_r_eq)                               ! VMEC calculated jac, FM
-        !real(dp) :: jac_ALT_H(1:n_par,1:grp_n_r_eq)                             ! VMEC calculated jac, HM
-        !real(dp) :: h_F_ALT(1:n_par,1:grp_n_r_eq)                               ! alternative of h_F (or derivatives)
-        !integer :: id, jd, kd                                                   ! counter
-        !real(dp) :: h_V(1:n_par,1:grp_n_r_eq,3,3,0:0,0:0,0:0)                   ! h_V
-        !real(dp) :: gxh(1:n_par,1:grp_n_r_eq)                                   ! norm of g*h
-        !real(dp) :: cs(0:mpol-1,-ntor:ntor,2)                                   ! (co)sines for all pol m and tor n
-        !real(dp) :: zeta_in
-        !real(dp), allocatable :: trigon_factors(:,:,:,:,:)                      ! trigonometric factor cosine for the inverse fourier transf.
-        
-        !! initialize ierr
-        !ierr = 0
-        
-        !write(*,*) 'test metric_transf?'
-        !if(yes_no(.false.)) then
-            
-            !output_i = 0
-            
-            !write(*,*) 'calculating equilibrium with constant zeta'
-            !write(*,*) 'At which toroidal point zeta do you want the plot?'
-            !read(*,*) zeta_in
-            !grid_style = 2
-            !ierr = calc_eq(zeta_in)
-            !CHCKERR('')
-            
-            !write(*,*) 'check J_V?'
-            !if(yes_no(.false.)) then
-                !write(*,*) 'calculating jac_V directly to compare it with the 
-                    !&calculation in the code')
-                !! jac_V calculated
-                !do kd = 1,grp_n_r_eq
-                    !jac_ALT(:,kd) = R_E(:,kd,0,0,0)*(R_E(:,kd,1,0,0)*&
-                        !&Z_E(:,kd,0,1,0)-R_E(:,kd,0,1,0)*&
-                        !&Z_E(:,kd,1,0,0))
-                !end do
-                !call print_GP_3D('jac_V (1:calc, 2:direct calc, 3: diff)','',&
-                    !&reshape([jac_E(:,:,0,0,0),jac_ALT,&
-                    !&jac_E(:,:,0,0,0)-jac_ALT],[n_par,grp_n_r_eq,3]))
-                
-                !write(*,*) 'comparing jac_V with jac_V provided by VMEC (FM)'
-                !! jac_V from VMEC
-                !write(*,*) 'WRONG: YOU HAVE TO TAKE ONLY A PART OF THE NORMAL RANGE!!!'
-                !ierr = calc_trigon_factors(theta,zeta,trigon_factors)
-                !CHCKERR('')
-                !ierr = fourier2real(jac_V_c_H,jac_V_s_H,trigon_factors,&
-                    !&jac_ALT_H)
-                !CHCKERR('')
-                !! HM to FM
-                !do id = 1,n_par
-                    !ierr = conv_FHM(jac_ALT_H(id,:),jac_ALT(id,:),.false.)
-                    !CHCKERR('')
-                !end do
-                !call print_GP_3D('jac_V (1: calc, 2: VMEC, 3: diff)','',&
-                    !&reshape([jac_E(:,:,0,0,0),jac_ALT,&
-                    !&jac_E(:,:,0,0,0)-jac_ALT],[n_par,grp_n_r_eq,3]))
-                !call print_GP_3D('jac_V calc-VMEC [log]','',&
-                    !&log10(max(2*abs(jac_E(:,:,0,0,0)-jac_ALT(:,:))/&
-                    !&(jac_E(:,:,0,0,0)+jac_ALT),1E-10_dp)))
-                
-                !write(*,*) 'comparing jac_V with jac_V provided by VMEC (HM)'
-                !! calculate half grid jac_V
-                !do id = 1,n_par
-                    !jac_ALT(id,2:grp_n_r_eq) = (n_r_eq-1._dp)*0.25*&
-                        !&(R_E(id,1:grp_n_r_eq-1,0,0,0)+R_E(id,2:grp_n_r_eq,0,0,0))&
-                        !&*((R_E(id,2:grp_n_r_eq,0,0,0)-R_E(id,1:grp_n_r_eq-1,0,0,0))&
-                        !&  *(Z_E(id,1:grp_n_r_eq-1,0,1,0)+Z_E(id,2:grp_n_r_eq,0,1,0)) &
-                        !&-(Z_E(id,2:grp_n_r_eq,0,0,0)-Z_E(id,1:grp_n_r_eq-1,0,0,0))&
-                        !&  *(R_E(id,1:grp_n_r_eq-1,0,1,0)+R_E(id,2:grp_n_r_eq,0,1,0)))
-                !end do
-                !jac_ALT(:,1) = 0.0_dp
-                !call print_GP_3D('(HM) jac_V (1: calc, 2: VMEC, 3: diff)','',&
-                    !&reshape([jac_ALT,jac_ALT_H,&
-                    !&jac_ALT-jac_ALT_H],[n_par,grp_n_r_eq,3]))
-                !call print_GP_3D('(HM) jac_V calc-VMEC [log]','',&
-                    !&log10(max(2*abs(jac_ALT-jac_ALT_H(:,:))/&
-                    !&(jac_ALT+jac_ALT_H),1E-10_dp)))
-                !call print_GP_3D('(HM) jac_V calc-VMEC','',&
-                    !&jac_ALT-jac_ALT_H)
-                !call print_GP_2D('(HM) jac_V calc-VMEC','',&
-                    !&transpose(jac_ALT-jac_ALT_H))
-            !end if
-            
-            !write(*,*) 'check J_F?'
-            !if(yes_no(.false.)) then
-                !!   jac_F = (flux_p_E'/2pi * (1+L_t))^-1 * R * (R'Z_t - R' Z_t)
-                !do kd = 1,grp_n_r_eq
-                    !jac_ALT(:,kd) = R_E(:,kd,0,0,0)*(R_E(:,kd,1,0,0)*&
-                        !&Z_E(:,kd,0,1,0)-R_E(:,kd,0,1,0)*&
-                        !&Z_E(:,kd,1,0,0))/(flux_p_E(kd,1)/(2*pi)*&
-                        !&(1+L_E(:,kd,0,1,0)))
-                !end do
-                !call print_GP_3D('jac_F (1:calc, 2:direct calc, 3: diff)','',&
-                    !&reshape([jac_F(:,:,0,0,0),jac_ALT,&
-                    !&jac_F(:,:,0,0,0)-jac_ALT],[n_par,grp_n_r_eq,3]))
-            !end if
-            
-            !!write(*,*) 'check r and rr derivatives?'
-            !!if(yes_no(.false.)) then
-                !!call print_GP_2D('J_F(par-'//trim(i2str(par))//')','',&
-                    !!&jac_F(par,:,0,0,0))
-                !!do kd = 1,2
-                    !!write(*,*) 'checking r^'//trim(i2str(kd))//' deriv.'
-                    !!ierr = calc_deriv(jac_F(par,:,0,0,0),&
-                        !!&jac_ALT(par,:),n_r-1._dp,kd,1)
-                    !!CHCKERR('')
-                    !!call print_GP_2D('Dr^'//trim(i2str(kd))//' J_F(par=par) &
-                        !!&(1: an, 2: num)','',&
-                        !!&reshape([jac_F(par,:,kd,0,0),jac_ALT(par,:)],[grp_n_r_eq,2]))
-                    !!call print_GP_2D('diff with num Dr^'//trim(i2str(kd))//' &
-                        !!&J_F(par='//trim(i2str(par))//') [log]','',&
-                        !!&log10(max(2*abs(jac_ALT(par,:)-&
-                        !!&jac_F(par,:,kd,0,0))/(jac_ALT(par,:)+&
-                        !!&jac_F(par,:,kd,0,0)),1E-10_dp)))
-                !!end do
-            !!end if
-            
-            !write(*,*) 'check jacobians as determinants?'
-            !if(yes_no(.false.)) then
-                !ierr = calc_det(jac_ALT,T_FE(:,:,:,:,0,0,0))
-                !CHCKERR('')
-                !call print_ar_2(jac_ALT-det_T_FE(:,:,0,0,0))
-                !read(*,*)
-            !end if
-            
-            !write(*,*) 'check g*h?'
-            !if(yes_no(.false.)) then
-                !write(*,*) 'VMEC coordinate system'
-                !! calculate h_V from g_E
-                !ierr = calc_inv_met(h_V,g_E,[0,0,0])
-                !CHCKERR('')
-                !do kd = 1,grp_n_r_eq
-                    !do id = 1,n_par
-                        !!write(*,*) 'h_V('//trim(i2str(id))//','//
-                            !!&trim(i2str(kd))//') = ')
-                        !!call print_ar_2(h_V(id,kd,:,:,0,0,0))
-                        !!write(*,*) 'g_V('//trim(i2str(id))//','//
-                            !!&trim(i2str(kd))//') = ')
-                        !!call print_ar_2(g_E(id,kd,:,:,0,0,0))
-                        !!write(*,*) 'h_V*g_V'
-                        !!call print_ar_2(matmul(h_V(id,kd,:,:,0,0,0),&
-                            !!&g_E(id,kd,:,:,0,0,0)))
-                        !gxh(id,kd) = sum(matmul(h_V(id,kd,:,:,0,0,0),&
-                            !&g_E(id,kd,:,:,0,0,0))-&
-                            !&reshape([1,0,0,0,1,0,0,0,1],[3,3]))
-                    !end do
-                !end do
-                !write(*,*) 'g_V * h_V = '
-                !call print_ar_2(gxh)
-                !read(*,*)
-                
-                !write(*,*) 'flux coordinate system'
-                !do kd = 1,grp_n_r_eq
-                    !do id = 1,n_par
-                        !gxh(id,kd) = sum(matmul(h_F(id,kd,:,:,0,0,0),&
-                            !&g_F(id,kd,:,:,0,0,0))-&
-                            !&reshape([1,0,0,0,1,0,0,0,1],[3,3]))
-                    !end do
-                !end do
-                !write(*,*) 'g_F * h_F = '
-                !call print_ar_2(gxh)
-                !read(*,*)
-            !end if
-            
-            !write(*,*) 'check T_XY*T_YX?'
-            !if(yes_no(.false.)) then
-                !write(*,*) 'flux coordinate system'
-                !do kd = 1,grp_n_r_eq
-                    !do id = 1,n_par
-                        !gxh(id,kd) = sum(matmul(T_FE(id,kd,:,:,0,0,0),&
-                            !&T_EF(id,kd,:,:,0,0,0))-&
-                            !&reshape([1,0,0,0,1,0,0,0,1],[3,3]))
-                    !end do
-                !end do
-                !write(*,*) 'T_FV * T_VF = '
-                !call print_ar_2(gxh)
-                !read(*,*)
-            !end if
-            
-            !write(*,*) 'check h_F?'
-            !if(yes_no(.false.)) then
-                !do kd = 1,3
-                    !do id = 1,3
-                        !write(*,*) 'checking r derivatives'
-                        !call print_GP_3D('h_F('//trim(i2str(id))//','//&
-                            !&trim(i2str(kd))//')','',h_F(:,2:grp_n_r_eq,id,kd,0,0,0))
-                        !do jd =1,n_par
-                            !ierr = calc_deriv(h_F(jd,2:grp_n_r_eq,id,kd,0,0,0),&
-                                !&h_F_ALT(jd,2:grp_n_r_eq),n_r_eq-1._dp,1,1)
-                            !CHCKERR('')
-                        !end do
-                        !call print_GP_3D('Dr h_F('//trim(i2str(id))//','//&
-                            !&trim(i2str(kd))//') (1: an, 2: num, 3:diff)',&
-                            !&'',reshape([h_F(:,2:grp_n_r_eq,id,kd,1,0,0),&
-                            !&h_F_ALT(:,2:grp_n_r_eq),h_F(:,2:grp_n_r_eq,id,kd,1,0,0)-&
-                            !&h_F_ALT(:,2:grp_n_r_eq)],[n_par,grp_n_r_eq-1,3]))
-                        !call print_GP_3D('Dr h_F an-num [log]','',log10(&
-                            !&max(abs(2*(h_F_ALT(:,2:grp_n_r_eq)-&
-                            !&h_F(:,2:grp_n_r_eq,id,kd,1,0,0))/(maxval(h_F_ALT(:,2:grp_n_r_eq)+&
-                            !&h_F(:,2:grp_n_r_eq,id,kd,1,0,0)))),1E-10_dp)))
-                    !end do
-                !end do
-            !end if
-                
-            
-            !write(*,*) 'Stopping'
-            !stop
-        !end if
-    end function test_metric_transf
-
-    integer function test_B() result(ierr)
-        use X_vars, only: n_par
-        use eq_vars, only: q_saf_E, flux_p_E, L_E, theta_E, zeta_E, &
-            &grp_n_r_eq, grp_min_r_eq, grp_max_r_eq
-        !use eq_vars, only: theta, zeta, pres_FD
-        use VMEC, only: B_V_sub_c_M, B_V_sub_s_M, B_V_s_H, B_V_c_H
-        !use VMEC, only: mpol, ntor, B_V_sub_c_M, &
-            !&B_V_sub_s_M, nfp
-        use metric_vars, only: g_E, jac_E, g_F, jac_F, T_FE
-        use metric_ops, only: calc_inv_met
-        !use metric_vars, only: g_FD, jac_FD
-        use utilities, only: calc_deriv, conv_FHM
-        use driver_rich, only: calc_eq
-        use num_vars, only: grid_style
-        use MPI_ops, only: split_MPI
-        use fourier_ops, only: calc_trigon_factors, fourier2real
-        
-        character(*), parameter :: rout_name = 'test_B'
-        
-        ! local variables
-        integer :: id, jd, kd                                                   ! counters
-        real(dp), allocatable :: B(:,:)                                         ! magn. field
-        real(dp), allocatable :: B_ALT(:,:)                                     ! magn. field alternative
-        real(dp), allocatable :: B_ALT_2(:,:)                                   ! magn. field alternative 2
-        real(dp), allocatable :: B_V_sub(:,:,:)                                 ! cov. components of B in VMEC coords
-        real(dp), allocatable :: B_V_sub_ALT(:,:,:)                             ! VMEC output
-        real(dp), allocatable :: B_F_sub(:,:,:)                                 ! cov. components of B in flux coords
-        real(dp), allocatable :: B_F_sub_ALT(:,:,:)                             ! conversion of VMEC output
-        real(dp), allocatable :: h_V(:,:,:,:,:,:,:)                             ! h_V
-        real(dp), allocatable :: dum(:,:)
-        real(dp), allocatable :: dum2(:,:)
-        real(dp), allocatable :: dum3(:,:)
-        real(dp), allocatable :: trigon_factors(:,:,:,:,:)                      ! trigonometric factor cosine for the inverse fourier transf.
-        
-        ! initialize ierr
-        ierr = 0
-        
-        write(*,*) 'test B?'
-        if(yes_no(.false.)) then
-            
-            write(*,*) 'calculating equilibrium with constant zeta'
-            grid_style = 2
-            ierr = split_MPI()
-            CHCKERR('')
-            ierr = calc_eq(0.12*pi)
-            CHCKERR('')
-            
-            ! allocate variables
-            allocate(B(1:n_par,1:grp_n_r_eq))
-            allocate(B_ALT(1:n_par,1:grp_n_r_eq))
-            allocate(B_ALT_2(1:n_par,1:grp_n_r_eq))
-            allocate(B_V_sub(1:n_par,1:grp_n_r_eq,3))
-            allocate(B_V_sub_ALT(1:n_par,1:grp_n_r_eq,3))
-            allocate(B_F_sub(1:n_par,1:grp_n_r_eq,3))
-            allocate(B_F_sub_ALT(1:n_par,1:grp_n_r_eq,3))
-            allocate(h_V(1:n_par,1:grp_n_r_eq,3,3,0:0,0:0,0:0))
-            allocate(dum(1:n_par,1:grp_n_r_eq))
-            allocate(dum2(1:n_par,1:grp_n_r_eq))
-            allocate(dum3(1:n_par,1:grp_n_r_eq))
-            
-            write(*,*) 'check covar. comp. of magnetic field in VMEC coords?'
-            if(yes_no(.false.)) then
-                ierr = calc_B_V_covar([0,0])
-                CHCKERR('')
-                do jd = 1,3
-                    call print_GP_2D('B_'//trim(i2str(jd))//'(par=5) &
-                        &(1: calc, 2: VMEC)','',&
-                        &reshape([B_V_sub(5,:,jd),B_V_sub_ALT(5,:,jd)],[grp_n_r_eq,2]))
-                    call print_GP_2D('B_'//trim(i2str(jd))//' - B_ALT_'//&
-                        &trim(i2str(jd))//'(par=5) from VMEC, REL error [log]',&
-                        &'',log10(max(abs(2*(B_V_sub(5,2:grp_n_r_eq,jd)-&
-                        &B_V_sub_ALT(5,2:grp_n_r_eq,jd))/(B_V_sub(5,2:grp_n_r_eq,jd)+&
-                        &B_V_sub_ALT(5,2:grp_n_r_eq,jd))),1E-10_dp)))
-                end do
-            end if
-            
-            write(*,*) 'check covar. comp. of magnetic field in flux coords?'
-            if(yes_no(.false.)) then
-                write(*,*) 'calculating B_F_sub from g_theta,i'
-                do jd = 1,3
-                    B_F_sub(:,:,jd) = g_F(:,:,3,jd,0,0,0)/jac_F(:,:,0,0,0)
-                end do
-                
-                write(*,*) 'calculating B_F_sub_ALT from B_V_sub_ALT from VMEC'
-                ierr = calc_B_V_covar([0,0])                                    ! calculating B_V_sub_ALT
-                CHCKERR('')
-                do jd = 1,3
-                    B_F_sub_ALT(:,:,jd) = 0.0_dp                                !  transforming B_V_sub_ALT into B_F_sub_ALT
-                    do id = 1,3
-                        B_F_sub_ALT(:,:,jd) = B_F_sub_ALT(:,:,jd) + &
-                            &T_FE(:,:,jd,id,0,0,0)*B_V_sub_ALT(:,:,id)
-                    end do
-                end do
-                
-                do jd = 1,3
-                    call print_GP_2D('B_'//trim(i2str(jd))//'(par=5) &
-                        &(1: calc from g_F, 2: VMEC)','',&
-                        &reshape([B_F_sub(5,:,jd),B_F_sub_ALT(5,:,jd)],[grp_n_r_eq,2]))
-                    call print_GP_2D('B_'//trim(i2str(jd))//' - B_ALT_'//&
-                        &trim(i2str(jd))//'(par=5) from VMEC, REL error [log]',&
-                        &'',log10(max(abs(2*(B_F_sub(5,2:grp_n_r_eq,jd)-&
-                        &B_F_sub_ALT(5,2:grp_n_r_eq,jd))/(B_F_sub(5,2:grp_n_r_eq,jd)+&
-                        &B_F_sub_ALT(5,2:grp_n_r_eq,jd))),1E-10_dp)))
-                end do
-            end if
-            
-            write(*,*) 'check magn. of. magnetic field?'
-            if(yes_no(.false.)) then
-                write(*,*) 'comparison with g_V(1,2)/J^2'
-                ierr = calc_trigon_factors(theta_E,zeta_E,trigon_factors)
-                CHCKERR('')
-                ierr = fourier2real(&
-                    &B_V_c_H(:,:,grp_min_r_eq:grp_max_r_eq), &
-                    &B_V_s_H(:,:,grp_min_r_eq:grp_max_r_eq), &
-                    &trigon_factors,B_ALT(:,:))
-                CHCKERR('')
-                deallocate(trigon_factors)
-                B(:,:) = sqrt(g_F(:,:,3,3,0,0,0))/&
-                    &jac_F(:,:,0,0,0)
-                call print_GP_2D('B(par=5) &
-                    &(1: calc from g_F, 2: VMEC)','',reshape([B(5,:),&
-                    &B_ALT(5,:)],[grp_n_r_eq,2]))
-                call print_GP_2D('B - B_ALT (par=5) from VMEC, REL error [log]'&
-                    &,'',log10(max(abs(2*(B(5,2:grp_n_r_eq)-B_ALT(5,2:grp_n_r_eq))/&
-                    &(B(5,2:grp_n_r_eq)+B_ALT(5,2:grp_n_r_eq))),1E-10_dp)))
-                
-                write(*,*) 'comparison with B_i B_j h^ij'
-                ! calculate h_V from g_V
-                ierr = calc_inv_met(h_V,g_E,[0,0,0])
-                CHCKERR('')
-                ierr = calc_B_V_covar([0,0])
-                CHCKERR('')
-                B_ALT_2 = 0.0_dp
-                do id = 1,3
-                    do kd = 1,3
-                        B_ALT_2(:,:) = B_ALT_2(:,:) + &
-                            &B_V_sub(:,:,id)*B_V_sub(:,:,kd)*&
-                            &h_V(:,:,id,kd,0,0,0)
-                    end do
-                end do
-                B_ALT_2 = sqrt(B_ALT_2)
-                ! conversion FM -> HM and store in B
-                do id = 1,n_par
-                    ierr = conv_FHM(B_ALT_2(id,:),B(id,:),.true.)
-                    CHCKERR('')
-                end do
-                call print_GP_2D('B(par=5) (1: calc from B_i B^j, 2: VMEC)',&
-                    &'',reshape([B(5,:),B_ALT(5,:)],[grp_n_r_eq,2]))
-                call print_GP_2D('B - B_ALT (par=5) from VMEC, REL error [log]'&
-                    &,'',log10(max(abs(2*(B(5,2:grp_n_r_eq)-B_ALT(5,2:grp_n_r_eq))/&
-                    &(B(5,2:grp_n_r_eq)+B_ALT(5,2:grp_n_r_eq))),1E-10_dp)))
-            end if
-            
-            write(*,*) 'test whether D_alpha B_theta = D_theta B_alpha?'
-            if(yes_no(.false.)) then
-                
-                write(*,*) 'plot B_zeta'
-                dum(:,5) = flux_p_E(5,1)/(2*pi*jac_E(:,5,0,0,0)) * &
-                    &(-q_saf_E(5,0)*(1+L_E(:,5,0,1,0))*g_E(:,5,3,3,0,0,0) - &
-                    &(1-q_saf_E(5,0)*L_E(:,5,0,0,1))*g_E(:,5,3,2,0,0,0))
-                write(*,*) 'theta (should be increasing in the first dim.) = '
-                call print_ar_2(theta_E)
-                write(*,*) 'zeta (should be constant) = '
-                call print_ar_2(zeta_E)
-                write(*,*) 'B_zeta from VMEC = '
-                ierr = calc_B_V_covar([0,0])                                    ! calculating B_V_sub_ALT
-                CHCKERR('')
-                call print_ar_2(B_V_sub_ALT(:,:,3))
-                call print_GP_2D('B_zeta (1: calc, 2: VMEC)','',&
-                    &reshape([dum(:,5),B_V_sub_ALT(:,5,3)],[n_par,2]))
-                call print_GP_2D('B_zeta difference, calc-VMEC','',&
-                    &dum(:,5)-B_V_sub_ALT(:,5,3))
-            
-                !write(*,*) 'plot D_theta B_zeta'
-                !dum(:,5) = flux_p_E(5,1)/(2*pi*jac_E(:,5,0,0,0)) * &
-                    !&(-jac_E(:,5,0,1,0)/jac_E(:,5,0,0,0) * &
-                    !&(q_saf_E(5,0)*(1+L_E(:,5,0,1,0))*g_E(:,5,3,3,0,0,0) + &
-                    !&(1-q_saf_E(5,0)*L_E(:,5,0,0,1))*g_E(:,5,3,2,0,0,0)) + &
-                    !&q_saf_E(5,0)*(L_E(:,5,0,2,0)*g_E(:,5,3,3,0,0,0)+&
-                    !&(1+L_E(:,5,0,1,0))*g_E(:,5,3,3,0,1,0)) &
-                    !&-q_saf_E(5,0)*L_E(:,5,0,1,1)*g_E(:,5,3,2,0,0,0) + &
-                    !&(1-q_saf_E(5,0)*L_E(:,5,0,0,1))*g_E(:,5,3,2,0,1,0))
-                !ierr = calc_B_V_covar([1,0])
-                !CHCKERR('')
-                !call print_GP_2D('D_theta B_zeta (1: calc, 2: an)','',&
-                    !&reshape([dum(:,5),B_V_sub_ALT(:,5,3)],[n_par,2]))
-                !call print_GP_2D('D_theta B_zeta difference, calc-VMEC','',&
-                    !&dum(:,5)-B_V_sub_ALT(:,5,3))
-                !call print_GP_2D('D_theta B_zeta REL difference, calc-VMEC','',&
-                    !&abs(dum(:,5)-B_V_sub_ALT(:,5,3))/maxval(dum(:,5)))
-                
-                !write(*,*) 'D_alpha B_theta = '
-                !dum = g_FD(:,:,3,3,1,0,0)/jac_FD(:,:,0,0,0)- &
-                    !&g_FD(:,:,3,3,0,0,0)*jac_FD(:,:,1,0,0)/&
-                    !&jac_FD(:,:,0,0,0)**2
-                !call print_ar_2(dum)
-                !write(*,*) 'D_theta B_alpha = '
-                !dum2 = g_FD(:,:,3,1,0,0,1)/jac_FD(:,:,0,0,0)- &
-                    !&g_FD(:,:,3,1,0,0,0)*jac_FD(:,:,0,0,1)/&
-                    !&jac_FD(:,:,0,0,0)**2
-                !call print_ar_2(dum2)
-                !write(*,*) 'D_alpha B_theta - D_theta B_alpha 
-                    !&[rel. error] = ')
-                !call print_ar_2(2*abs((dum-dum2)/(dum+dum2)))
-                !call print_GP_2D('rel error at par = 5, [log]','',&
-                    !&log10(max(abs((dum(5,:)-dum2(5,:))/(dum(5,:)+&
-                    !&dum2(5,:))),1E-10_dp)))
-                !!write(*,*) 'D_theta B_alpha converted to VMEC coords = '
-                !!ierr = calc_B_V_covar([1,0])                                    ! so B_V_sub_ALT contains the theta derivatives
-                !!CHCKERR('')
-                !!call print_ar_2(1/(1+L_E(:,:,0,1,0))*B_V_sub_ALT(:,:,3))
-                !read(*,*)
-                
-            end if
-            
-            !write(*,*) 'test whether D_theta B_psi - D_psi B_theta = mu_0 J &
-                !&p''?'
-            !if(yes_no(.false.)) then
-            !write(*,*) 'ADAPT THIS!!!!! MU_0 GOES AWAY FOR NORMALIZED QUANTITIES !!!!!!!!!!'
-                    !! dum = D_theta B_psi
-                    !dum = g_FD(:,:,3,2,0,0,1)/jac_FD(:,:,0,0,0)- &
-                        !&g_FD(:,:,3,2,0,0,0)*jac_FD(:,:,0,0,1)/&
-                        !&jac_FD(:,:,0,0,0)**2
-                    !dum(:,1) = 0.0_dp
-                    !! dum2 = D_psi B_theta
-                    !dum2 = g_FD(:,:,3,3,0,1,0)/jac_FD(:,:,0,0,0)- &
-                        !&g_FD(:,:,3,3,0,0,0)*jac_FD(:,:,0,1,0)/&
-                        !&jac_FD(:,:,0,0,0)**2
-                    !dum2(:,1) = 0.0_dp
-                    !call print_GP_2D('1: D_theta B_psi, 2: D_psi B_theta','',&
-                        !&reshape([dum(5,:),dum2(5,:)],[grp_n_r_eq,2]))
-                    
-                    !do id = 1,n_par
-                        !dum3(id,:) = mu_0*jac_FD(id,:,0,0,0)*pres_FD(:,1)
-                    !end do
-                    !call print_GP_2D('1: D_theta B_psi-D_psi B_theta, 2: calc',&
-                        !&'',reshape([dum(5,:)-dum2(5,:),dum3(5,:)],[grp_n_r_eq,2]))
-                    !call print_GP_2D('diff','',dum(5,:)-dum2(5,:)-dum3(5,:))
-            !end if
-            
-            
-            write(*,*) 'Stopping'
-            stop
-        end if
-    contains
-        ! calculates B_V_sub  from VMEC output and also  B_V_sub_ALT from direct
-        ! calculation using the metric factors
-        integer function calc_B_V_covar(deriv) result(ierr)
-            character(*), parameter :: rout_name = 'calc_B_V_covar'
-            
-            ! input / output
-            integer :: deriv(2)
-            
-            ! local variables
-            real(dp) :: tempvar(1:n_par,1:grp_n_r_eq)                           ! for HM to FM conversions
-            
-            ! initialize ierr
-            ierr = 0
-            
-            if (deriv(1).ne.0 .or. deriv(2).ne.0) write(*,*) 'WARNING: In calc&
-                &_B_V_covar, the returned value of "B_V_sub" is NOT correct &
-                &because derivatives are asked'
-            
-            ierr = calc_trigon_factors(theta_E,zeta_E,trigon_factors)
-            CHCKERR('')
-            do jd = 1,3
-                ierr = fourier2real(&
-                    &B_V_sub_c_M(:,:,grp_min_r_eq:grp_max_r_eq,jd), &
-                    &B_V_sub_s_M(:,:,grp_min_r_eq:grp_max_r_eq,jd), &
-                    &trigon_factors,B_V_sub_ALT(:,:,jd),deriv)
-                CHCKERR('')
-                do kd = 1,grp_n_r_eq
-                    B_V_sub(:,kd,jd) = flux_p_E(kd,1)/&
-                        &(2*pi*jac_E(:,kd,0,0,0)) * &
-                        &(-q_saf_E(kd,0)*(1+L_E(:,kd,0,1,0)) * &
-                        &g_E(:,kd,3,jd,0,0,0) - (1-q_saf_E(kd,0)*&
-                        &L_E(:,kd,0,0,1))*g_E(:,kd,2,jd,0,0,0))
-                end do
-            end do
-            deallocate(trigon_factors)
-            
-            ! convert HM to FM (only theta and zeta component)
-            do jd = 2,3
-                do id = 1,n_par
-                    ierr = conv_FHM(B_V_sub_ALT(id,:,jd),tempvar(id,:),&
-                        &.false.)
-                    CHCKERR('')
-                end do
-                B_V_sub_ALT(:,:,jd) = tempvar
-            end do
-        end function calc_B_V_covar
-    end function test_B
-    
     integer function test_pres_balance() result(ierr)
         use MPI_ops, only: split_MPI
         use driver_rich, only: calc_eq
@@ -2550,173 +1970,11 @@ contains
             allocate(B(n_par,grp_n_r_eq,0:1,0:1,0:1,3))
         end if
     end function test_pres_balance
-
-    integer function test_ang_B() result(ierr)
-        !use VMEC, only: mpol, ntor
-        !use X_vars, only: n_par
-        !use eq_vars, only: calc_eqd_grid, calc_ang_grid, &
-            !&theta, zeta, grp_n_r_eq
-        !use num_vars, only: use_tor_flux
-        
-        !character(*), parameter :: rout_name = 'test_ang_B'
-        
-        !! local variables (not to be used in child functions)
-        !real(dp) :: alpha
-        !integer :: id
-        !real(dp), allocatable :: plot_dep_var(:)
-        !real(dp), allocatable :: plot_var(:,:)
-        !integer :: n_plot
-        !character(len=max_str_ln) :: par_ang, dep_ang                           ! parallel angle and dependent angle, for output message
-        !real(dp) :: grid_min, grid_max
-        
-        !! local variables (also used in child functions)
-        !integer :: kd
-        
-        !! initialize ierr
-        !ierr = 0
-        
-        !write(*,*) 'test ang_B?'
-        !if(yes_no(.false.)) then
-            !output_i = 0
-            !write(*,*) 'Plot zeta(theta)'
-            
-            
-            !! CALCULATE THETA(ZETA)
-            !write(*,*) 'Calculating theta(zeta)'
-            !alpha = 1.2_dp*pi
-            
-            !! decrease the number of parallel points
-            !n_par = 100
-            
-            !! calculate grid points (theta, zeta) that follow the magnetic field
-            !! line
-            !ierr = calc_ang_grid(alpha)
-            !CHCKERR('')
-            
-            !call print_GP_2D('zeta(theta)','',zeta,x=theta)
-            !!do kd = 1,grp_n_r_eq
-                !!call print_GP_2D('zeta(theta) at r = '//trim(i2str(kd))//'/'//&
-                    !!&trim(i2str(grp_n_r_eq)),'',zeta(:,kd),x=theta(:,kd))
-            !!end do
-            
-            
-            !! CALCULATE F FOR A RANGE OF PARALLEL VALUES
-            !write(*,*) 'Calculating f for a range of parallel values'
-            
-            !n_plot = 100
-            
-            !! initialize
-            !allocate(plot_dep_var(n_plot)); plot_dep_var = 0.0_dp
-            !allocate(plot_var(2,n_plot)); plot_var = 0.0_dp
-            
-            !! set correct plot messages
-            !if (use_tor_flux) then                                              ! looking for zeta
-                !par_ang = 'theta'; dep_ang = 'zeta'
-            !else                                                                ! looking for theta
-                !par_ang = 'zeta'; dep_ang = 'theta'
-            !end if
-                
-            !do
-                !write(*,*) 'At which grp_n_r_eq do you want to plot the solutions? [1..'&
-                    !&//trim(i2str(grp_n_r_eq))//']'
-                !read(*,*) kd
-                !if (kd.ge.1 .and. kd.le.grp_n_r_eq) then
-                    !exit
-                !else
-                    !write(*,*) 'Please choose an acceptable value'
-                !end if
-            !end do
-
-            !! determine grid considering the solutions on current flux surface
-            !if (use_tor_flux) then                                              ! looking for zeta
-                !grid_min = minval(zeta(:,kd)) - &
-                    !&0.1*(maxval(zeta(:,kd))-minval(zeta(:,kd)))
-                !grid_max = maxval(zeta(:,kd)) + &
-                    !&0.1*(maxval(zeta(:,kd))-minval(zeta(:,kd)))
-            !else                                                                ! looking for theta
-                !grid_min = minval(theta(:,kd)) - &
-                    !&0.1*(maxval(theta(:,kd))-minval(theta(:,kd)))
-                !grid_max = maxval(theta(:,kd)) + &
-                    !&0.1*(maxval(theta(:,kd))-minval(theta(:,kd)))
-            !end if
-            !ierr = calc_eqd_grid(plot_dep_var,n_plot,grid_min,grid_max)
-            !CHCKERR('')
-            !par: do id = 1, n_par
-                !if (use_tor_flux) then                                          ! looking for zeta
-                    !plot_var(1,:) = plot_dep_var                                ! eq. grid of zeta
-                    !plot_var(2,:) = find_f_plot(n_plot,plot_dep_var, &
-                        !&theta(id,kd),alpha)                                    ! corresponding f(zeta)
-                !else                                                            ! looking for theta
-                    !plot_var(1,:) = plot_dep_var                                ! eq. grid of theta
-                    !plot_var(2,:) = find_f_plot(n_plot,plot_dep_var, &
-                        !&zeta(id,kd),alpha)                                     ! corresponding f(theta)
-                !end if
-                
-                !call print_GP_2D('zeta - q (theta+lambda) - alpha_0 at &
-                    !&(r,theta,zeta) = ('//&
-                    !&trim(r2strt((kd-1._dp)/(grp_n_r_eq-1._dp)))//','//&
-                    !&trim(r2strt(theta(id,kd)))//', '//&
-                    !&trim(r2strt(zeta(id,kd)))//')','',plot_var(2,:),&
-                    !&x=plot_var(1,:))
-                
-                !write(*,*) 'Paused... plot next?'
-                !if(.not.yes_no(.true.)) then
-                    !exit
-                !end if
-            !end do par
-            
-            
-            !write(*,*) 'Stopping'
-            !stop
-        !end if
-    !contains
-        !! calculates the function f = zeta - q (theta + lambda) - alpha_0
-        !! makes use of kd from parent to indicate the flux surface
-        !function find_f_plot(n_ang,dep_var,par_var,alpha)
-            !use fourier_ops, only: calc_ang_grid, f2r
-            !use VMEC, only: iotaf, nfp, L_c, L_s
-            
-            !! input / output
-            !integer :: n_ang
-            !real(dp) :: find_f_plot(n_ang)
-            !real(dp) :: dep_var(n_ang)
-            !real(dp) :: par_var
-            !real(dp) :: alpha
-            
-            !! local variables
-            !integer :: jd
-            !real(dp), allocatable :: cs(:,:,:)                                  ! (co)sines for all pol m and tor n
-            !real(dp) :: lam
-            
-            !allocate(cs(0:mpol-1,-ntor:ntor,2))
-            !do jd = 1, n_ang
-                !if (use_tor_flux) then                                          ! looking for zeta (dep. var)
-                    !! cosines and sines
-                    !ierr = calc_ang_grid(cs,mpol,ntor,nfp,par_var,dep_var(jd))
-                    !CHCKERR('')
-                    !! lambda
-                    !lam = f2r(L_c(:,:,kd,0),L_s(:,:,kd,0),cs,mpol,ntor,nfp,&
-                        !&ierr=ierr)
-                    !CHCKERR('')
-                    !find_f_plot(jd) = dep_var(jd)-(par_var+lam)/iotaf(kd)-alpha
-                !else                                                            ! looking for theta (dep. var)
-                    !! cosines and sines
-                    !ierr = calc_ang_grid(cs,mpol,ntor,nfp,dep_var(jd),par_var)
-                    !CHCKERR('')
-                    !! lambda
-                    !lam = f2r(L_c(:,:,kd,0),L_s(:,:,kd,0),cs,mpol,ntor,nfp,&
-                        !&ierr=ierr)
-                    !CHCKERR('')
-                    !find_f_plot(jd) = par_var-(dep_var(jd)+lam)/iotaf(kd)-alpha
-                !end if
-            !end do
-        !end function find_f_plot
-    end function test_ang_B
     
     integer function test_add_arr_mult() result(ierr)
         use utilities, only: add_arr_mult
         use eq_ops, only: init_eq, calc_RZL, calc_flux_q
-        use coord_ops, only: calc_eqd_grid
+        use grid_ops, only: calc_eqd_grid
         use eq_vars, only: R_E, Z_E, theta => theta_E, &
             &zeta => zeta_E, q_saf_E, pres_E, grp_n_r_eq
         use X_vars, only: n_par

@@ -1,5 +1,15 @@
 !------------------------------------------------------------------------------!
-!   operations and variables pertaining to HDF5 and XDMF                       !
+!   Operations and variables pertaining to HDF5 and XDMF                       !
+!   Notes about XDMF:                                                          !
+!       - Collections can be spatial or temporal. If a variable is to be       !
+!         evolved in time or if its domain is decomposed (e.g. the same        !
+!         physical variable is defined in multiple HDF5 variables), then the   !
+!         attribute name of this variable has to be the same for all the grids !
+!         in the collection.                                                   !
+!       - If no collection is used, but just multiple grids, the attribute     !
+!         can be different but does not have to be, as the different grid are  !
+!         distinguished by their different grid names, not by the attribute    !
+!         of the variables they contain.                                       !
 !------------------------------------------------------------------------------!
 module HDF5_ops
 #include <PB3D_macros.h>

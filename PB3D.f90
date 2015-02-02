@@ -23,12 +23,7 @@
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D
-    use test, only: test_repack, test_print_GP, &
-        &test_metric_transf, test_ang_B, test_calc_ext_var, test_B, &
-        &test_calc_deriv, test_conv_FHM, test_calc_RZL, &
-        &test_add_arr_mult, test_calc_T_VF, test_calc_inv_met, test_calc_det, &
-        &test_inv, test_calc_f_deriv, test_calc_g, test_fourier2real, &
-        &test_prepare_X, test_slepc, test_pres_balance
+    use test, only: test_X_and_U
 #if ldebug
     use num_vars, only: ltest
 #endif
@@ -98,45 +93,7 @@ program PB3D
         call start_time
         call writo('Start tests')
         call lvl_ud(1)
-        ierr = test_pres_balance()
-        CHCKERR
-        !ierr = test_B()
-        !CHCKERR
-        !ierr = test_ang_B()
-        !CHCKERR
-        !ierr = test_repack()
-        !CHCKERR
-        !call test_print_GP
-        !CHCKERR
-        !ierr = test_calc_ext_var()
-        !CHCKERR
-        !ierr = test_fourier2real()
-        !CHCKERR
-        !ierr = test_calc_det()
-        !CHCKERR
-        !ierr = test_inv()
-        !CHCKERR
-        !ierr = test_calc_g()
-        !CHCKERR
-        !ierr = test_calc_f_deriv()
-        !CHCKERR
-        !ierr = test_add_arr_mult()
-        !CHCKERR
-        !ierr = test_metric_transf()
-        !CHCKERR
-        !ierr = test_slepc()
-        !CHCKERR
-        !ierr = test_prepare_X()
-        !CHCKERR
-        !ierr = test_calc_inv_met()
-        !CHCKERR
-        !ierr = test_calc_T_VF()
-        !CHCKERR
-        !ierr = test_calc_RZL()
-        !CHCKERR
-        !ierr = test_conv_FHM()
-        !CHCKERR
-        ierr = test_calc_deriv()
+        ierr = test_X_and_U()
         CHCKERR
         call writo('')
         call passed_time
