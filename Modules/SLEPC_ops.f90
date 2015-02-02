@@ -286,9 +286,8 @@ contains
         ! Note: the factors i/n or i/m are already included in V_int_tab
         ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING !!!!!!
         integer function fill_mat(V_int_tab,mat,grp_r_eq) result(ierr)
-            use eq_vars, only: max_flux_X_F
             use X_vars, only: min_r_X, max_r_X, grp_min_r_X, grp_max_r_X, &
-                &n_r_X, size_X
+                &n_r_X, size_X, max_flux_X_F
             
             character(*), parameter :: rout_name = 'fill_mat'
             

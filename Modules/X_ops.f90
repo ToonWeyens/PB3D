@@ -977,8 +977,8 @@ contains
     ! coordinate, n_par values  of the parallel coordinate and  size_X values of
     ! the poloidal mode number,  or of the toroidal mode number,  as well as the
     ! poloidal derivatives
-    ! Note: The  poloidal  derivatives  have  the  factor  i/n  or i/m  included
-    ! already, as opposed to [ADD REF]
+    ! Note: The normal derivatives have the  factor i/n or i/m included already,
+    ! as opposed to [ADD REF]
     integer function calc_U() result(ierr)
         use num_vars, only: use_pol_flux_X, mu_0, use_normalization, eq_style
         use metric_vars, only: g_FD, h_FD, jac_FD
@@ -1480,10 +1480,11 @@ contains
         use num_vars, only: grp_rank, max_n_plots, grp_n_procs, &
             &use_pol_flux_X, use_pol_flux_eq
         use output_ops, only: draw_GP, draw_GP_animated, merge_GP
-        use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X, min_r_X, max_r_X
+        use X_vars, only: n_r_X, size_X, n_X, m_X, grp_r_X, min_r_X, max_r_X, &
+            &max_flux_X_F
         use MPI_ops, only: get_ghost_X_vec, wait_MPI
-        use eq_vars, only: q_saf_FD, rot_t_FD, grp_n_r_eq, max_flux_X_F, &
-            &max_flux_eq_F, flux_p_FD, flux_t_FD
+        use eq_vars, only: q_saf_FD, rot_t_FD, grp_n_r_eq, max_flux_eq_F, &
+            &flux_p_FD, flux_t_FD
         use utilities, only: con2dis, interp_fun
         
         character(*), parameter :: rout_name = 'plot_X_vec_GP'

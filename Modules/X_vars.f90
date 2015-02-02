@@ -13,7 +13,7 @@ module X_vars
         &extra2, extra3, PV0, PV1, PV2, KV0, KV1, KV2, X_vec, X_val, min_m_X, &
         &max_m_X, grp_n_r_X, size_X, PV_int, KV_int, grp_min_r_X, grp_max_r_X, &
         &min_n_X, max_n_X, ang_par_F, exp_ang_par_F, mu0sigma, min_par, &
-        &max_par, min_n_r_X, min_r_X, max_r_X
+        &max_par, min_n_r_X, min_r_X, max_r_X, max_flux_X, max_flux_X_F
     
     ! global variables
     integer :: size_X                                                           ! size of n_X and m_X (nr. of modes)
@@ -31,6 +31,7 @@ module X_vars
     real(dp) :: min_r_X, max_r_X                                                ! min. and max. normal range for pert. (either pol. or tor., depending on use_pol_flux_X)
     integer :: grp_min_r_X, grp_max_r_X                                         ! min. and max. index of normal range of this process in alpha group
     real(dp), allocatable :: grp_r_X(:)                                         ! normal points in Flux coords., globally normalized to (min_r_X..max_r_X)
+    real(dp) :: max_flux_X, max_flux_X_F                                        ! max. flux (pol. or tor.) of pert. grid
     complex(dp), allocatable :: U_X_0(:,:,:), U_X_1(:,:,:)                      ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
     complex(dp), allocatable :: DU_X_0(:,:,:), DU_X_1(:,:,:)                    ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
     real(dp), allocatable :: mu0sigma(:,:)                                      ! parallel current

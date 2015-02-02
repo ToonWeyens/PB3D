@@ -32,7 +32,9 @@ module utilities
         module procedure calc_inv_0D, calc_inv_2D
     end interface
     interface calc_deriv
-        module procedure calc_deriv_equidistant, calc_deriv_regular
+        module procedure calc_deriv_equidistant_real, &
+            &calc_deriv_equidistant_complex, calc_deriv_regular_real, &
+            &calc_deriv_regular_complex
     end interface
     interface calc_int
         module procedure calc_int_equidistant, calc_int_regular
@@ -130,10 +132,10 @@ contains
     ! a precision  specified by  prec (which is  the power of  the step  size to
     ! which the result  is still correct. E.g.: for forward  differences, prec =
     ! 0, and for central differences prec=1)
-    integer function calc_deriv_equidistant(var,dvar,inv_step,ord,prec) &
+    integer function calc_deriv_equidistant_real(var,dvar,inv_step,ord,prec) &
         &result(ierr)                                                           ! equidistant version
         
-        character(*), parameter :: rout_name = 'calc_deriv_equidistant'
+        character(*), parameter :: rout_name = 'calc_deriv_equidistant_real'
         
         ! input / output
         real(dp), intent(in) :: var(:), inv_step
@@ -327,14 +329,50 @@ contains
                     CHCKERR(err_msg)
             end select
         end subroutine
-    end function calc_deriv_equidistant
+    end function calc_deriv_equidistant_real
+    integer function calc_deriv_equidistant_complex(var,dvar,inv_step,ord,prec) &
+        &result(ierr)                                                           ! equidistant complex version
+        
+        character(*), parameter :: rout_name = 'calc_deriv_equidistant_complex'
+        
+        ! input / output
+        complex(dp), intent(in) :: var(:)
+        real(dp), intent(in) :: inv_step
+        complex(dp), intent(inout) :: dvar(:)
+        integer, intent(in) :: ord, prec
+        
+        ! local variables
+        real(dp), allocatable :: dvar_loc(:)
+        
+        ! set up local copy of component of dvar
+        allocate(dvar_loc(size(var)))
+        
+        ! call real version for real part
+        ierr = calc_deriv_equidistant_real(realpart(var),dvar_loc,&
+            &inv_step,ord,prec)
+        CHCKERR('')
+        
+        ! update dvar with local copy
+        dvar = dvar_loc
+        
+        ! call real version for imaginary part
+        ierr = calc_deriv_equidistant_real(imagpart(var),dvar_loc,&
+            &inv_step,ord,prec)
+        CHCKERR('')
+        
+        ! update dvar with local copy
+        dvar = dvar + iu*dvar_loc
+        
+        ! deallocate local variables
+        deallocate(dvar_loc)
+    end function calc_deriv_equidistant_complex
     
     ! numerically derives  a function whose values  are given on a  regular, but
     ! not  equidistant, grid,  to  an order  specified by  ord  and a  precision
     ! specified by prec (which is the power of the step size to which the result
     ! is still correct. E.g.: for forward differences, prec = 0, and for central
     ! differences prec=1)
-    integer function calc_deriv_regular(var,dvar,x,ord,prec) result(ierr)       ! regular, non-equidistant version
+    integer function calc_deriv_regular_real(var,dvar,x,ord,prec) result(ierr)  ! regular, non-equidistant version
         character(*), parameter :: rout_name = 'calc_deriv_regular'
         
         ! input / output
@@ -663,7 +701,41 @@ contains
                     CHCKERR(err_msg)
             end select
         end subroutine
-    end function calc_deriv_regular
+    end function calc_deriv_regular_real
+    integer function calc_deriv_regular_complex(var,dvar,x,ord,prec) &
+        &result(ierr)                                                           ! regular, non-equidistant, complex version
+        
+        character(*), parameter :: rout_name = 'calc_deriv_regular_complex'
+        
+        ! input / output
+        complex(dp), intent(in) :: var(:)
+        real(dp), intent(in) :: x(:)
+        complex(dp), intent(inout) :: dvar(:)
+        integer, intent(in) :: ord, prec
+        
+        ! local variables
+        real(dp), allocatable :: dvar_loc(:)
+        
+        ! set up local copy of component of dvar
+        allocate(dvar_loc(size(var)))
+        
+        ! call real version for real part
+        ierr = calc_deriv_regular_real(realpart(var),dvar_loc,x,ord,prec)
+        CHCKERR('')
+        
+        ! update dvar with local copy
+        dvar = dvar_loc
+        
+        ! call real version for imaginary part
+        ierr = calc_deriv_regular_real(imagpart(var),dvar_loc,x,ord,prec)
+        CHCKERR('')
+        
+        ! update dvar with local copy
+        dvar = dvar + iu*dvar_loc
+        
+        ! deallocate local variables
+        deallocate(dvar_loc)
+    end function calc_deriv_regular_complex
     
     ! Calculates the coefficients of a cubic  spline through a number of points,
     ! which  can  later  be  used  to  calculate  the  interpolating  values  or

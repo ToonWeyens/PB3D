@@ -307,8 +307,8 @@ contains
         use utilities, only: calc_deriv, calc_int
         use eq_vars, only: flux_p_E, flux_t_E, pres_E, q_saf_E, rot_t_E, &
             &flux_t_E_full, flux_p_E_full, q_saf_E_full, rot_t_E_full, &
-            &grp_min_r_eq, grp_max_r_eq, max_flux_X, max_flux_eq, &
-            &max_flux_X_F, max_flux_eq_F, n_r_eq
+            &grp_min_r_eq, grp_max_r_eq, max_flux_eq, max_flux_eq_F, n_r_eq
+        use X_vars, only: max_flux_X, max_flux_X_F
         
         character(*), parameter :: rout_name = 'calc_flux_q_VMEC'
         
@@ -829,7 +829,8 @@ contains
     subroutine normalize_eq_vars
         use num_vars, only: use_pol_flux_X
         use eq_vars, only: pres_FD, flux_p_FD, flux_t_FD, q_saf_FD, rot_t_FD, &
-            &max_flux_X, max_flux_eq, max_flux_X_F, max_flux_eq_F, pres_0, psi_0
+            &max_flux_eq, max_flux_eq_F, pres_0, psi_0
+        use X_vars, only: max_flux_X, max_flux_X_F
         
         ! local variables
         integer :: id                                                           ! counter

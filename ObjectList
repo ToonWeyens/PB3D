@@ -1,5 +1,6 @@
 ObjectFiles = \
 grid_ops.o \
+grid_vars.o \
 driver.o \
 driver_rich.o \
 eq_ops.o \

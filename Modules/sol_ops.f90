@@ -19,16 +19,17 @@ module sol_ops
     end interface
 
 contains
-    ! calculates the normal  component of the perturbation,  or derivatives. The
-    ! input is given for a range  (r,theta,zeta)_F in Flux coordinates and for a
-    ! range in normalized time (1 corresponds to one period).
-    ! Optionally, derivatives can be specified in [r,theta,z]
+    ! calculates the  normal component  of the  perturbation, or  optionally the
+    ! parallel derivative.  The input is  given for a range  (r,theta,zeta)_F in
+    ! Flux coordinates and for a range  in normalized time (1 corresponds to one
+    ! period).
     integer function calc_real_X_arr(X_vec,X_val,r_F,theta_F,zeta_F,time,X_F,&
         &deriv) result(ierr)                                                    ! (time) array version
         use X_vars, only: grp_n_r_X, size_X, n_X, m_X
-        use utilities, only: calc_deriv
+        use eq_vars, only: q_saf_FD, rot_t_FD
+        use num_vars, only: use_pol_flux_X
         
-        character(*), parameter :: rout_name = 'calc_real_X'
+        character(*), parameter :: rout_name = 'calc_real_X_arr'
         
         ! input / output
         complex(dp), intent(in) :: X_vec(:,:)                                   ! MPI Eigenvector
@@ -36,7 +37,7 @@ contains
         real(dp), intent(in) :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)           ! Flux (perturbation) coords.
         real(dp), intent(in) :: time(:)                                         ! time range
         real(dp), intent(inout) :: X_F(:,:,:,:)                                 ! normal component of perturbation
-        integer, intent(in), optional :: deriv(3)                               ! optional derivatives in angular coordinates
+        logical, intent(in), optional :: deriv                                  ! return parallel derivative
         
         ! local variables
         integer :: n_r, n_theta, n_zeta                                         ! dimensions of the grid
@@ -44,10 +45,8 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, jd, kd                                                   ! counter
         complex(dp) :: sqrt_X_val_norm                                          ! normalized sqrt(X_val)
-        integer :: deriv_loc(3)                                                 ! local copy of deriv
-        complex(dp) :: deriv_mult_factor                                        ! multiplicative factor due to angular derivatives
-        real(dp), allocatable :: X_F_loc(:)                                     ! local version of X_F, used to calculate normal derivatives
-        integer :: deriv_prec                                                   ! precision of normal derivatives
+        logical :: deriv_loc                                                    ! local copy of deriv
+        complex(dp), allocatable :: deriv_mult_factor(:)                        ! multiplicative factor due to parallel derivative
         
         ! initialize ierr
         ierr = 0
@@ -72,22 +71,13 @@ contains
             err_msg = 'X_F needs to have the correct dimensions'
             CHCKERR(err_msg)
         end if
-        if (present(deriv)) then
-            if (minval(deriv).lt.0) then
-                ierr = 1
-                err_msg = 'Only positive derivatives can be specified'
-                CHCKERR(err_msg)
-            end if
-            if(deriv(1).gt.2) then
-                ierr = 1
-                err_msg = 'Normal derivatives cannot be of higher order than 2'
-                CHCKERR(err_msg)
-            end if
-        end if
         
         ! set up local copy of deriv
-        deriv_loc = [0,0,0]
+        deriv_loc = .false.
         if (present(deriv)) deriv_loc = deriv
+        
+        ! set up multiplicative factor due to derivatives
+        allocate(deriv_mult_factor(grp_n_r_X))
         
         ! set up normalized sqrt(X_val)
         sqrt_X_val_norm = sqrt(X_val)
@@ -97,13 +87,6 @@ contains
         end if
         sqrt_X_val_norm = sqrt_X_val_norm / abs(sqrt_X_val_norm)
         
-        ! if normal derivatives, allocate helper variable
-        if (deriv_loc(1).gt.0) then
-            allocate(X_F_loc(n_r))
-            if (deriv_loc(1).eq.1) deriv_prec = 2
-            if (deriv_loc(1).eq.2) deriv_prec = 1
-        end if
-        
         ! initialize X_F
         X_F = 0._dp
         
@@ -111,9 +94,16 @@ contains
         do id = 1,n_t
             ! iterate over all modes
             do jd = 1,size_X
-                ! set up angular multiplicative factor for derivatives
-                deriv_mult_factor =  &
-                    &(-iu*m_X(jd))**deriv_loc(2) * (iu*n_X(jd))**deriv_loc(3)
+                ! set up angular multiplicative factor for parallel derivative
+                if (deriv_loc) then
+                    if (use_pol_flux_X) then
+                        deriv_mult_factor =  iu*(n_X(jd)*q_saf_FD(:,0)-m_X(jd))
+                    else
+                        deriv_mult_factor =  iu*(n_X(jd)-m_X(jd)*rot_t_FD(:,0))
+                    end if
+                else
+                    deriv_mult_factor = 1._dp
+                end if
                 
                 ! iterate over all normal points (of this group)
                 do kd = 1,grp_n_r_X
@@ -122,32 +112,15 @@ contains
                         &exp(iu*(n_X(jd)*zeta_F(:,:,kd)-&
                         &m_X(jd)*theta_F(:,:,kd))) * &
                         &exp(iu*sqrt_X_val_norm*time(id)*2*pi) * &
-                        &deriv_mult_factor * X_vec(jd,kd))
+                        &deriv_mult_factor(kd) * X_vec(jd,kd))
                 end do
             end do
-            
-            ! perform normal derivatives on global solution
-            if (deriv_loc(1).gt.0) then
-                do jd = 1,n_zeta
-                    do kd = 1,n_theta
-                        X_F_loc = X_F(kd,jd,:,id)
-                        ierr = calc_deriv(X_F_loc,X_F(kd,jd,:,id),r_F,&
-                            &deriv_loc(1),deriv_prec)
-                        CHCKERR('')
-                    end do
-                end do
-            end if
         end do
-        
-        ! deallocate helper variables
-        if (deriv_loc(1).gt.0) then
-            deallocate(X_F_loc)
-        end if
     end function calc_real_X_arr
     integer function calc_real_X_ind(X_vec,X_val,r_F,theta_F,zeta_F,time,X_F,&
         &deriv) result(ierr)                                                    ! (time) individual version
         
-        character(*), parameter :: rout_name = 'calc_real_X'
+        character(*), parameter :: rout_name = 'calc_real_X_ind'
         
         ! input / output
         complex(dp), intent(in) :: X_vec(:,:)                                   ! MPI Eigenvector
@@ -155,7 +128,7 @@ contains
         real(dp), intent(in) :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)           ! Flux (perturbation) coords.
         real(dp), intent(in) :: time                                            ! time range
         real(dp), intent(inout) :: X_F(:,:,:)                                   ! normal component of perturbation
-        integer, intent(in), optional :: deriv(3)                               ! optional derivatives in angular coordinates
+        logical, intent(in), optional :: deriv                                  ! optional parallel derivative
         
         ! local variables
         real(dp), allocatable :: X_F_arr(:,:,:,:)
@@ -175,16 +148,19 @@ contains
         deallocate(X_F_arr)
     end function calc_real_X_ind
     
-    ! calculates the geodesic component of the perturbation, or derivatives. The
-    ! input is given for a range  (r,theta,zeta)_F in Flux coordinates and for a
-    ! range in normalized time (1 corresponds to one period).
-    ! Optionally, derivatives can be specified in [r,theta,z]
+    ! calculates the geodesic  component of the perturbation,  or optionally the
+    ! parallel derivative.  The input is  given for a range  (r,theta,zeta)_F in
+    ! Flux coordinates and for a range  in normalized time (1 corresponds to one
+    ! period).
     integer function calc_real_U_arr(X_vec,X_val,r_F,theta_F,zeta_F,time,U_F,&
         &deriv) result(ierr)                                                    ! (time) array version
-        use X_vars, only: grp_n_r_X, size_X, n_X, m_X
+        use X_vars, only: grp_n_r_X, size_X, n_X, m_X, U_X_0, U_X_1, DU_X_0, &
+            &DU_X_1, grp_r_X
+        use eq_vars, only: q_saf_FD, rot_t_FD
         use utilities, only: calc_deriv
+        use num_vars, only: use_pol_flux_X
         
-        character(*), parameter :: rout_name = 'calc_real_X'
+        character(*), parameter :: rout_name = 'calc_real_U_arr'
         
         ! input / output
         complex(dp), intent(in) :: X_vec(:,:)                                   ! MPI Eigenvector
@@ -192,7 +168,7 @@ contains
         real(dp), intent(in) :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)           ! Flux (perturbation) coords.
         real(dp), intent(in) :: time(:)                                         ! time range
         real(dp), intent(inout) :: U_F(:,:,:,:)                                 ! normal component of perturbation
-        integer, intent(in), optional :: deriv(3)                               ! optional derivatives in angular coordinates
+        logical, intent(in), optional :: deriv                                  ! return parallel derivative
         
         ! local variables
         integer :: n_r, n_theta, n_zeta                                         ! dimensions of the grid
@@ -200,10 +176,9 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, jd, kd                                                   ! counter
         complex(dp) :: sqrt_X_val_norm                                          ! normalized sqrt(X_val)
-        integer :: deriv_loc(3)                                                 ! local copy of deriv
-        complex(dp) :: deriv_mult_factor                                        ! multiplicative factor due to angular derivatives
-        real(dp), allocatable :: X_F_loc(:)                                     ! local version of X_F, used to calculate normal derivatives
-        integer :: deriv_prec                                                   ! precision of normal derivatives
+        logical :: deriv_loc                                                    ! local copy of deriv
+        complex(dp), allocatable :: deriv_mult_factor(:)                        ! multiplicative factor due to parallel derivative
+        complex(dp), allocatable :: DX_vec(:)                                   ! derivative of X_vec for a specific mode
         
         ! initialize ierr
         ierr = 0
@@ -228,22 +203,16 @@ contains
             err_msg = 'U_F needs to have the correct dimensions'
             CHCKERR(err_msg)
         end if
-        if (present(deriv)) then
-            if (minval(deriv).lt.0) then
-                ierr = 1
-                err_msg = 'Only positive derivatives can be specified'
-                CHCKERR(err_msg)
-            end if
-            if(deriv(1).gt.2) then
-                ierr = 1
-                err_msg = 'Normal derivatives cannot be of higher order than 2'
-                CHCKERR(err_msg)
-            end if
-        end if
         
         ! set up local copy of deriv
-        deriv_loc = [0,0,0]
+        deriv_loc = .false.
         if (present(deriv)) deriv_loc = deriv
+        
+        ! set up DX_vec
+        allocate(DX_vec(grp_n_r_X))
+        
+        ! set up multiplicative factor due to derivatives
+        allocate(deriv_mult_factor(grp_n_r_X))
         
         ! set up normalized sqrt(X_val)
         sqrt_X_val_norm = sqrt(X_val)
@@ -253,23 +222,23 @@ contains
         end if
         sqrt_X_val_norm = sqrt_X_val_norm / abs(sqrt_X_val_norm)
         
-        ! if normal derivatives, allocate helper variable
-        if (deriv_loc(1).gt.0) then
-            allocate(X_F_loc(n_r))
-            if (deriv_loc(1).eq.1) deriv_prec = 2
-            if (deriv_loc(1).eq.2) deriv_prec = 1
-        end if
-        
-        ! initialize X_F
+        ! initialize U_F
         U_F = 0._dp
         
         ! iterate over time steps
         do id = 1,n_t
             ! iterate over all modes
             do jd = 1,size_X
-                ! set up angular multiplicative factor for derivatives
-                deriv_mult_factor =  &
-                    &(-iu*m_X(jd))**deriv_loc(2) * (iu*n_X(jd))**deriv_loc(3)
+                ! set up angular multiplicative factor for parallel derivative
+                if (deriv_loc) then
+                    deriv_mult_factor = 1._dp
+                else
+                    deriv_mult_factor = 1._dp
+                end if
+                
+                ! set up normal derivative of X_vec
+                ierr = calc_deriv(X_vec(jd,:),DX_vec,grp_r_X(1:grp_n_r_X),1,2)
+                CHCKERR('')
                 
                 ! iterate over all normal points (of this group)
                 do kd = 1,grp_n_r_X
@@ -278,32 +247,18 @@ contains
                         &exp(iu*(n_X(jd)*zeta_F(:,:,kd)-&
                         &m_X(jd)*theta_F(:,:,kd))) * &
                         &exp(iu*sqrt_X_val_norm*time(id)*2*pi) * &
-                        &deriv_mult_factor * X_vec(jd,kd))
+                        &deriv_mult_factor(kd) * X_vec(jd,kd))
                 end do
+                
+                ! deallocate normal derivative of X_vec
+                deallocate(DX_vec)
             end do
-            
-            ! perform normal derivatives on global solution
-            if (deriv_loc(1).gt.0) then
-                do jd = 1,n_zeta
-                    do kd = 1,n_theta
-                        X_F_loc = U_F(kd,jd,:,id)
-                        ierr = calc_deriv(X_F_loc,U_F(kd,jd,:,id),r_F,&
-                            &deriv_loc(1),deriv_prec)
-                        CHCKERR('')
-                    end do
-                end do
-            end if
         end do
-        
-        ! deallocate helper variables
-        if (deriv_loc(1).gt.0) then
-            deallocate(X_F_loc)
-        end if
     end function calc_real_U_arr
     integer function calc_real_U_ind(X_vec,X_val,r_F,theta_F,zeta_F,time,U_F,&
         &deriv) result(ierr)                                                    ! (time) individual version
         
-        character(*), parameter :: rout_name = 'calc_real_X'
+        character(*), parameter :: rout_name = 'calc_real_U_ind'
         
         ! input / output
         complex(dp), intent(in) :: X_vec(:,:)                                   ! MPI Eigenvector
@@ -311,23 +266,23 @@ contains
         real(dp), intent(in) :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)           ! Flux (perturbation) coords.
         real(dp), intent(in) :: time                                            ! time range
         real(dp), intent(inout) :: U_F(:,:,:)                                   ! normal component of perturbation
-        integer, intent(in), optional :: deriv(3)                               ! optional derivatives in angular coordinates
+        logical, intent(in), optional :: deriv                                  ! optional parallel derivative
         
         ! local variables
-        real(dp), allocatable :: X_F_arr(:,:,:,:)
+        real(dp), allocatable :: U_F_arr(:,:,:,:)
         
         ! allocate array version of U_F
-        allocate(X_F_arr(size(U_F,1),size(U_F,2),size(U_F,3),1))
+        allocate(U_F_arr(size(U_F,1),size(U_F,2),size(U_F,3),1))
         
         ! call array version
-        ierr = calc_real_X_arr(X_vec,X_val,r_F,theta_F,zeta_F,[time],&
-            &X_F_arr,deriv)
+        ierr = calc_real_U_arr(X_vec,X_val,r_F,theta_F,zeta_F,[time],&
+            &U_F_arr,deriv)
         CHCKERR('')
         
-        ! copy array to individual X_F
-        U_F = X_F_arr(:,:,:,1)
+        ! copy array to individual U_F
+        U_F = U_F_arr(:,:,:,1)
         
-        ! deallocate array version of X_F
-        deallocate(X_F_arr)
+        ! deallocate array version of U_F
+        deallocate(U_F_arr)
     end function calc_real_U_ind
 end module sol_ops

@@ -35,6 +35,9 @@ grid_ops.o : \
     HDF5.o \
     messages.o \
 
+grid_vars.o : \
+    num_vars.o \
+
 driver.o : \
     num_vars.o \
     driver_rich.o \

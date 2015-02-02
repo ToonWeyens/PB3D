@@ -1363,7 +1363,7 @@ contains
         
         ! check the derivatives requested
         ! (every B deriv. needs all the A derivs. -> sum(deriv_B) needed)
-        ierr = check_deriv(deriv_A +sum(deriv_B),max_deriv,'calc_f_deriv')
+        ierr = check_deriv(deriv_A + sum(deriv_B),max_deriv,'calc_f_deriv')
         CHCKERR('')
         
         ! detect first deriv. in the B coord. system that needs to be exchanged,

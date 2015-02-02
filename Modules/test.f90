@@ -34,7 +34,7 @@ contains
         ! local variables
         real(dp) :: alpha = 0._dp
         integer :: n_sol_found
-        integer :: deriv(3)
+        logical :: deriv
         integer :: EV_i
         real(dp), allocatable :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)
         real(dp), allocatable :: r_E(:), theta_E(:,:,:), zeta_E(:,:,:)
@@ -75,33 +75,12 @@ contains
             CHCKERR('')
             
             ! get user input
-            do
-                write(*,*) 'Order of derivative in r?'
-                read(*,*) deriv(1)
-                if (deriv(1).lt.0 .or. deriv(1).gt.2) then
-                    write(*,*) 'choose a value between 0 and 2'
-                else
-                    exit
-                end if
-            end do
-            do
-                write(*,*) 'Order of derivative in theta'
-                read(*,*) deriv(2)
-                if (deriv(2).lt.0) then
-                    write(*,*) 'choose a value larger or equal to 0'
-                else
-                    exit
-                end if
-            end do
-            do
-                write(*,*) 'Order of derivative in zeta'
-                read(*,*) deriv(3)
-                if (deriv(3).lt.0) then
-                    write(*,*) 'choose a value larger or equal to 0'
-                else
-                    exit
-                end if
-            end do
+            write(*,*) 'parallel derivative requested?'
+            if(yes_no(.false.)) then
+                deriv = .true.
+            else
+                deriv = .false.
+            end if
             do
                 write(*,*) 'Which EV to plot?'
                 read(*,*) EV_i
@@ -153,8 +132,13 @@ contains
             CHCKERR('')
             
             ! plot X
-            call print_HDF5('X_F','X_F',X_F,[n_theta,n_zeta,n_r],&
-                &[n_theta,n_zeta,n_r],[0,0,0],X,Y,Z)
+            if (deriv) then
+                call print_HDF5('DX_F','DX_F',X_F,[n_theta,n_zeta,n_r],&
+                    &[n_theta,n_zeta,n_r],[0,0,0],X,Y,Z)
+            else
+                call print_HDF5('X_F','X_F',X_F,[n_theta,n_zeta,n_r],&
+                    &[n_theta,n_zeta,n_r],[0,0,0],X,Y,Z)
+            end if
             
             ! output message
             write(*,*) 'Use VisIt or Paraview to visualize above plot'
