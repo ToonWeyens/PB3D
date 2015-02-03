@@ -14,7 +14,6 @@ PB3D.o : \
     eq_vars.o \
 
 test.o : \
-    grid_ops.o \
 
 sol_ops.o : \
     num_vars.o \
@@ -34,9 +33,6 @@ grid_ops.o : \
     output_ops.o \
     HDF5.o \
     messages.o \
-
-grid_vars.o : \
-    num_vars.o \
 
 driver.o : \
     num_vars.o \
