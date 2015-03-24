@@ -23,7 +23,7 @@
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D
-    use test, only: test_X_and_U
+    !use test, only: test_X_and_U
 #if ldebug
     use num_vars, only: ltest
 #endif
@@ -93,8 +93,8 @@ program PB3D
         call start_time
         call writo('Start tests')
         call lvl_ud(1)
-        ierr = test_X_and_U()
-        CHCKERR
+        !ierr = test_X_and_U()
+        !CHCKERR
         call writo('')
         call passed_time
         call writo('')

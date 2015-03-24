@@ -9,7 +9,5 @@ Universidad Carlos III de Madrid
 
 To set up:
 1. git clone https://ToonWeyens@bitbucket.org/ToonWeyens/pb3d.git
-2. cd Run
-3. mkdir Data Scripts Videos Plots
-4. change PB3D_DIR in the makefile
-5. copy or add symbolic links to the output files (e.g. wout_cdxu or cbm18a)
+2. change PB3D_DIR in the makefile
+3. copy or add symbolic links to the output files (e.g. wout_cdxu or cbm18a)

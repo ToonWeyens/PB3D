@@ -7,13 +7,17 @@ module driver_rich
     use num_vars, only: max_it_r, dp, pi, max_str_ln
     use str_ops, only: i2str, r2str, r2strt
     use messages, only: writo, print_ar_2, print_ar_1, lvl_ud
-    use output_ops, only: print_GP_2D, print_GP_3D
+    use output_ops, only: print_GP_2D, print_GP_3D, print_HDF5
+    use grid_vars, only: grid_type
+    
     implicit none
     private
     public run_rich_driver, calc_eq
 
     ! global variables
     real(dp), allocatable :: alpha(:)
+    type(grid_type) :: grid_eq                                                  ! equilibrium grid
+    type(grid_type) :: grid_X                                                   ! perturbation grid
     
 contains
     ! Implementation   of  the  driver,  using  Richardson's  extrapolation  and
@@ -30,12 +34,15 @@ contains
         use VMEC, only: dealloc_VMEC_final
         use HELENA, only: dealloc_HEL_final
         use grid_ops, only: calc_eqd_grid
+        use grid_vars, only: create_grid, &
+            &n_r_eq, n_par_X
         
         character(*), parameter :: rout_name = 'run_rich_driver'
         
         ! local variables
         character(len=8) :: flux_name                                           ! toroidal or poloidal
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid of this process
         
         ! initialize ierr
         ierr = 0
@@ -67,13 +74,21 @@ contains
         ! determine the magnetic field lines for which to run the calculations 
         ! (equidistant grid)
         allocate(alpha(n_alpha))
-        ierr = calc_eqd_grid(alpha,n_alpha,min_alpha*pi,max_alpha*pi,.true.)
+        ierr = calc_eqd_grid(alpha,n_alpha,min_alpha*pi,max_alpha*pi,&
+            &excl_last=.true.)
         CHCKERR('')
         
         ! split  the  communicator MPI_COMM_WORLD into subcommunicators
         call writo('Setting up groups for dynamical load balancing')
         call lvl_ud(1)
-        ierr = split_MPI()
+        ierr = split_MPI(n_r_eq,eq_limits)
+        CHCKERR('')
+        call lvl_ud(-1)
+        
+        ! create equilibrium grid
+        call writo('Creating equilibrium grid')
+        call lvl_ud(1)
+        ierr = create_grid(grid_eq,[n_par_X,1,n_r_eq],eq_limits)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -142,16 +157,20 @@ contains
         call lvl_ud(-1)
     end function run_rich_driver
     
-    ! runs the calculations for one of the alpha's
+    ! Runs the  calculations for one  of the alpha's.
     integer function run_for_alpha(job_nr,alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, grp_rank, no_guess, &
-            &alpha_job_nr, n_sol_plotted
+            &alpha_job_nr, use_normalization, use_pol_flux_X
         use output_ops, only: draw_GP
-        use eq_vars, only: dealloc_eq_final
-        use X_ops, only: prepare_X, solve_EV_system, plot_X_vec, init_m
-        use X_vars, only: X_vec, X_val, dealloc_X_final, n_r_X, size_X, n_par, &
-            &ang_par_F
-        use metric_vars, only: dealloc_metric_final
+        use eq_vars, only: create_eq, dealloc_eq_final, eq_type
+        use eq_ops, only: normalize_eq_vars
+        use metric_ops, only: normalize_metric_vars
+        use X_vars, only: create_X, dealloc_X_final, X_type
+        use X_ops, only: prepare_X, solve_EV_system, plot_X_vec, &
+            &normalize_X_vars
+        use metric_vars, only: dealloc_metric_final, metric_type
+        use MPI_ops, only: divide_X_grid
+        use grid_vars, only: create_grid, destroy_grid
         
         character(*), parameter :: rout_name = 'run_for_alpha'
         
@@ -160,33 +179,69 @@ contains
         real(dp), intent(in) :: alpha                                           ! alpha at which to run the calculations
         
         ! local variables
+        type(eq_type) :: eq                                                     ! equilibrium for this alpha
+        type(metric_type) :: met                                                ! metric variables
+        type(X_type) :: X                                                       ! perturbation variables
         integer :: ir                                                           ! counter for richardson extrapolation
-        integer :: id, jd                                                       ! counters
+        integer :: n_r_X                                                        ! total number of normal points in X grid for this step in Richardson ex.
+        integer :: X_limits(2)                                                  ! min. and max. index of X grid for this process
+        real(dp), allocatable :: grp_r_X(:)                                     ! normal points in Flux coords., globally normalized to (min_r_X..max_r_X)
         logical :: done_richard                                                 ! is it converged?
-        complex(dp), allocatable :: X_val_rich(:,:,:)                           ! Richardson array of eigenvalues X_val
+        complex(dp), allocatable :: X_val_rich(:,:,:)                           ! Richardson array of eigenvalues X val
         real(dp), allocatable :: x_axis(:,:)                                    ! x axis for plot of Eigenvalues with n_r_X
         logical :: use_guess                                                    ! whether a guess is formed from previous level of Richardson
-        character(len=max_str_ln) :: plot_title                                 ! title for plots
         integer :: n_sol_found                                                  ! how many solutions found and saved
-        integer :: last_unstable_id                                             ! index of last unstable EV
         integer :: min_id(3), max_id(3)                                         ! min. and max. index of range 1, 2 and 3
+        integer :: last_unstable_id                                             ! index of last unstable EV
+        real(dp), pointer :: ang_par_F(:,:,:)                                   ! parallel angle in flux coordinates
         
         ! initialize ierr
         ierr = 0
         
+        ! create equilibrium
+        call writo('Create equilibrium...')
+        ierr = create_eq(eq,grid_eq)
+        CHCKERR('')
+        
+        ! create perturbation
+        call create_X(grid_eq,X)
+        
         ! Calculate the equilibrium quantities for current alpha
-        ierr = calc_eq(alpha)
+        ierr = calc_eq(eq,met,X,alpha)
         CHCKERR('')
-            
-        ! initialize m
-        ierr = init_m()
-        CHCKERR('')
+        
+        ! normalize the quantities
+        if (use_normalization) then
+            call writo('Start normalizing the equilibrium, metric and &
+                &perturbation quantities')
+            call lvl_ud(1)
+            call normalize_eq_vars(eq)
+            call normalize_metric_vars(met)
+            call normalize_X_vars(X)
+            call lvl_ud(-1)
+            call writo('Normalization done')
+        end if
         
         ! prepare the  matrix elements by calculating  the integrated magnitudes
         ! KV_int and  PV_int for each of  the n_r equilibrium normal  points and
         ! for the modes (k,m)
-        ierr = prepare_X()
+        call writo('Preparing perturbation variables')
+        call lvl_ud(1)
+        ierr = prepare_X(eq,grid_eq,met,X)
         CHCKERR('')
+        call lvl_ud(-1)
+        call writo('Perturbation variables prepared')
+        
+        ! set up parallel angle in flux coordinates
+        if (use_pol_flux_X) then
+            ang_par_F => grid_eq%theta_F
+        else
+            ang_par_F => grid_eq%zeta_F
+        end if
+        
+        write(*,*) 'INVESTIGATE HOW IMPROVING THE DERIVATIVES CAN &
+            &HELP YOU GET RID OF UNSTABLE SIDE OF SPECTRUM !!!!!!!!!!!!!!!!!!!!!!!'
+        write(*,*) 'DOING THIS IN THIS ROUTINE ALREADY HELPED A LOT!!!!!'
         
         ! Initalize some variables for Richardson loop
         ir = 1
@@ -220,7 +275,20 @@ contains
             ! Richardson loops and save in n_r_X
             call writo('calculating the normal points')
             call lvl_ud(1)
-            call calc_n_r_X(ir)
+            call calc_n_r_X(ir,n_r_X)
+            call lvl_ud(-1)
+            
+            ! divide perturbation grid under group processes
+            ierr = divide_X_grid(n_r_X,X_limits,grp_r_X)
+            CHCKERR('')
+            
+            ! create perturbation grid with division limits
+            call writo('Creating perturbation grid')
+            call lvl_ud(1)
+            ierr = create_grid(grid_X,n_r_X,X_limits)
+            CHCKERR('')
+            grid_X%grp_r_F = grp_r_X
+            deallocate(grp_r_X)
             call lvl_ud(-1)
             
             ! set use_guess to .false. if no_guess
@@ -230,7 +298,7 @@ contains
             ! solve it
             call writo('treating the EV system')
             call lvl_ud(1)
-            ierr = solve_EV_system(use_guess,n_sol_found)
+            ierr = solve_EV_system(eq,grid_X,X,use_guess,n_sol_found)
             CHCKERR('')
             call lvl_ud(-1)
             
@@ -241,16 +309,221 @@ contains
                 
                 ! update  the  variable  X_val_rich  with the  results  of  this
                 ! Richardson level
-                ierr = calc_rich_ex(ir,X_val,X_val_rich,done_richard,use_guess)
-                CHCKERR('')
                 call writo('updating Richardson extrapolation variables')
                 call lvl_ud(1)
+                ierr = calc_rich_ex(ir,X%val,X_val_rich,done_richard,use_guess)
+                CHCKERR('')
                 call lvl_ud(-1)
             else                                                                ! if not, Richardson is done
                 done_richard = .true.
             end if
             
             ! getting range of EV to plot
+            call find_plot_ranges(X%val,n_sol_found,min_id,max_id,&
+                &last_unstable_id)
+            
+            ! output the evolution of the  Eigenvalues with the number of normal
+            ! points in the perturbation grid  and the largest Eigenfunction for
+            ! the last Richardson loop
+            if (done_richard .or. ir.eq.max_it_r+1) then
+                call writo('plotting the Eigenvalues')
+                
+                call lvl_ud(1)
+                call plot_X_vals(x_axis)
+                call lvl_ud(-1)
+                
+                call writo('plotting the Eigenvectors')
+                
+                call lvl_ud(1)
+                call plot_X_vecs()
+                call lvl_ud(-1)
+            end if
+            
+            ! destroy grid
+            call destroy_grid(grid_X)
+            
+            if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
+                call lvl_ud(-1)                                                 ! end of one richardson loop
+            end if
+        end do Richard
+        
+        call lvl_ud(-1)                                                         ! done with richardson
+        if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
+            call writo('Finished Richardson loop')
+        else
+            call writo('Finished perturbation calculation')
+        end if
+        
+        ! deallocate Richardson loop variables
+        if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
+            deallocate(X_val_rich)
+            deallocate(x_axis)
+        end if
+        
+        ! deallocate remaining equilibrium quantities
+        call writo('Deallocate remaining quantities')
+        call dealloc_eq_final(eq)
+        call dealloc_metric_final(met)
+        call dealloc_X_final(X)
+    contains
+        ! plots the harmonics and their maximum in 2D
+        subroutine plot_harmonics(X_vec,X_id)
+            use MPI_ops, only: wait_MPI, get_ghost_arr, get_ser_var
+            use output_ops, only: merge_GP
+            use num_vars, only: grp_n_procs
+            
+            ! input / output
+            complex(dp), intent(in) :: X_vec(:,:)                               ! MPI Eigenvector
+            integer, intent(in) :: X_id                                         ! nr. of Eigenvalue (for output name)
+            
+            ! local variables
+            integer :: id, kd                                                   ! counters
+            character(len=max_str_ln) :: file_name                              ! name of file of plots of this proc.
+            character(len=max_str_ln), allocatable :: file_names(:)             ! names of file of plots of different procs.
+            character(len=max_str_ln) :: plot_title                             ! title for plots
+            real(dp), allocatable :: x_plot(:,:)                                ! x values of plot
+            complex(dp), allocatable :: X_vec_extended(:,:)                     ! MPI Eigenvector extended with assymetric ghost region
+            real(dp), allocatable :: X_vec_max(:)                               ! maximum position index of X_vec of rank
+            real(dp), allocatable :: ser_X_vec_max(:)                           ! maximum position index of X_vec of whole group
+            
+            ! user output
+            call writo('Started plot of the harmonics')
+            call lvl_ud(1)
+            
+            ! set up extended X_vec with ghost values
+            allocate(X_vec_extended(X%n_mod,size(grid_X%grp_r_F)))
+            X_vec_extended(:,1:size(X_vec,2)) = X_vec
+            ierr = get_ghost_arr(X_vec_extended,1)
+            CHCKERR('')
+            
+            ! set up x_plot
+            allocate(x_plot(size(grid_X%grp_r_F),X%n_mod))
+            do kd = 1,X%n_mod
+                x_plot(:,kd) = grid_X%grp_r_F
+            end do
+            
+            ! absolute amplitude
+            ! set up file name of this rank and plot title
+            file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//&
+                &'_abs.dat'
+            plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
+                &trim(i2str(X_id))//' - absolute value'
+            
+            ! print amplitude of harmonics of eigenvector for each rank
+            call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
+                &trim(i2str(grp_rank)),abs(transpose(X_vec_extended(:,:))),&
+                &x=x_plot,draw=.false.)
+            
+            ! wait for all processes
+            ierr = wait_MPI()
+            CHCKERR('')
+            
+            ! plot by group master
+            if (grp_rank.eq.0) then
+                ! set up file names in array
+                allocate(file_names(grp_n_procs))
+                do kd = 1,grp_n_procs
+                    file_names(kd) = trim(file_name)//'_'//trim(i2str(kd-1))
+                end do
+                
+                ! merge files
+                call merge_GP(file_names,file_name,delete=.true.)
+                
+                ! draw plot
+                call draw_GP(trim(plot_title),file_name,X%n_mod,.true.,.false.)
+                
+                ! deallocate
+                deallocate(file_names)
+            end if
+            
+            ! perturbation at midplane theta = zeta = 0
+            ! set up file name of this rank and plot title
+            file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//&
+                &'_midplane.dat'
+            plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
+                &trim(i2str(X_id))//' - midplane'
+            
+            ! print amplitude of harmonics of eigenvector for each rank
+            call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
+                &trim(i2str(grp_rank)),&
+                &realpart(transpose(X_vec_extended(:,:))),x=x_plot,draw=.false.)
+            
+            ! wait for all processes
+            ierr = wait_MPI()
+            CHCKERR('')
+            
+            ! plot by group master
+            if (grp_rank.eq.0) then
+                ! set up file names in array
+                allocate(file_names(grp_n_procs))
+                do kd = 1,grp_n_procs
+                    file_names(kd) = trim(file_name)//'_'//trim(i2str(kd-1))
+                end do
+                
+                ! merge files
+                call merge_GP(file_names,file_name,delete=.true.)
+                
+                ! draw plot
+                call draw_GP(trim(plot_title),file_name,X%n_mod,.true.,.false.)
+                
+                ! deallocate
+                deallocate(file_names)
+            end if
+            
+            ! maximum of each mode
+            allocate(X_vec_max(X%n_mod))
+            X_vec_max = 0.0_dp
+            do kd = 1,X%n_mod
+                X_vec_max(kd) = grid_X%grp_r_F(maxloc(abs(X_vec(kd,:)),1))
+            end do
+            
+            ! gather all parllel X_vec_max arrays in one serial array
+            ierr = get_ser_var(X_vec_max,ser_X_vec_max)
+            CHCKERR('')
+            
+            ! find the maximum of the different ranks and put it in X_vec_max of
+            ! group master
+            if (grp_rank.eq.0) then
+                do kd = 1,X%n_mod
+                    X_vec_max(kd) = maxval([(ser_X_vec_max(kd+id*X%n_mod),&
+                        &id=0,grp_n_procs-1)])
+                end do
+                
+                ! set up file name of this rank and plot title
+                file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//'_max.dat'
+                plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
+                    &trim(i2str(X_id))//' - maximum of modes'
+                
+                ! plot the maximum
+                call print_GP_2D(trim(plot_title),trim(file_name),&
+                    &[(kd*1._dp,kd=1,X%n_mod)],x=X_vec_max,draw=.false.)
+                
+                ! draw plot
+                call draw_GP(trim(plot_title),file_name,1,.true.,.false.)
+            end if
+            
+            ! deallocate
+            deallocate(x_plot,X_vec_extended)
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Finished plot of the harmonics')
+        end subroutine plot_harmonics
+        
+        ! finds the plot ranges min_id and max_id
+        subroutine find_plot_ranges(X_val,n_sol_found,min_id,max_id,&
+            &last_unstable_id)
+            use num_vars, only: n_sol_plotted
+            
+            ! input / output
+            complex(dp), intent(in) :: X_val(:)                                 ! Eigenvalues
+            integer, intent(in) :: n_sol_found                                  ! how many solutions found and saved
+            integer, intent(inout) :: min_id(3), max_id(3)                      ! min. and max. index of range 1, 2 and 3
+            integer, intent(inout) :: last_unstable_id                          ! index of last unstable EV
+            
+            ! local variables
+            integer :: id                                                       ! counter
+            
             ! find last unstable index (if ends with 0, no unstable EV)
             last_unstable_id = 0
             do id = 1,n_sol_found
@@ -288,282 +561,119 @@ contains
                 min_id(2) = 1                                                   ! range 2 not used any more
                 max_id(2) = 0                                                   ! range 2 not used any more
             end if
+        end subroutine find_plot_ranges
+        
+        ! plots Eigenvalues
+        subroutine plot_X_vals(x_axis)
+            ! input / output
+            real(dp), intent(in) :: x_axis(:,:)                                    ! x axis for plot of Eigenvalues with n_r_X
             
-            ! output the evolution of the  Eigenvalues with the number of normal
-            ! points in the perturbation grid  and the largest Eigenfunction for
-            ! the last Richardson loop
-            if (done_richard .or. ir.eq.max_it_r+1) then
-                if (grp_rank.eq.0) then
-                    call writo('plotting the Eigenvalues')
-                    call lvl_ud(1)
+            ! local variables
+            character(len=max_str_ln) :: plot_title                             ! title for plots
+            integer :: id                                                       ! counter
+            
+            if (grp_rank.eq.0) then
+                ! Eigenvalues as function of nr. of normal points
+                if (max_it_r.gt.1) then
+                    call writo('plotting Eigenvalues as function of nr. of &
+                        &normal points')
                     
-                    ! Eigenvalues as function of nr. of normal points
-                    if (max_it_r.gt.1) then
-                        call writo('plotting Eigenvalues as function of nr. of &
-                            &normal points')
-                        
-                        ! output on screen
-                        plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
-                            &Eigenvalues as function of nr. of normal points &
-                            &[log]'
-                        call print_GP_2D(plot_title,'Eigenvalues_'//&
-                            &trim(i2str(alpha_job_nr))//'_richardson.dat',&
-                            &log10(abs(realpart(X_val_rich(1:ir,1,:)))),&
-                            &x=x_axis(1:ir,:))
-                        ! same output in file as well
-                        call draw_GP(plot_title,'Eigenvalues_'//&
-                            &trim(i2str(alpha_job_nr))//'_richardson.dat',&
-                            &n_sol_requested,.true.,.false.)
-                    end if
-                    call writo('plotting final Eigenvalues')
-                    
-                    ! Last Eigenvalues
                     ! output on screen
                     plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
-                        &final Eigenvalues omega^2 [log]'
+                        &Eigenvalues as function of nr. of normal points &
+                        &[log]'
                     call print_GP_2D(plot_title,'Eigenvalues_'//&
-                        &trim(i2str(alpha_job_nr))//'.dat',&
-                        &log10(abs(realpart(X_val(1:n_sol_found)))))
+                        &trim(i2str(alpha_job_nr))//'_richardson.dat',&
+                        &log10(abs(realpart(X_val_rich(1:ir,1,:)))),&
+                        &x=x_axis(1:ir,:))
                     ! same output in file as well
                     call draw_GP(plot_title,'Eigenvalues_'//&
-                        &trim(i2str(alpha_job_nr))//'.dat',1,.true.,.false.)
-                    
-                    ! Last Eigenvalues: unstable range
-                    if (last_unstable_id.gt.0) then
-                        ! output on screen
-                        plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
-                            &final unstable Eigenvalues omega^2'
-                        call print_GP_2D(plot_title,'Eigenvalues_'//&
-                            &trim(i2str(alpha_job_nr))//'_unstable.dat',&
-                            &realpart(X_val(1:last_unstable_id)),&
-                            &x=[(id*1._dp,id=1,last_unstable_id)])
-                        ! same output in file as well
-                        call draw_GP(plot_title,'Eigenvalues_'//&
-                            &trim(i2str(alpha_job_nr))//'_unstable.dat',1,&
-                            &.true.,.false.)
-                    end if
-                    
-                    ! Last Eigenvalues: stable range
-                    if (last_unstable_id.lt.n_sol_found) then
-                        ! output on screen
-                        plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
-                            &final stable Eigenvalues omega^2'
-                        call print_GP_2D(plot_title,'Eigenvalues_'//&
-                            &trim(i2str(alpha_job_nr))//'_stable.dat',&
-                            &realpart(X_val(last_unstable_id+1:n_sol_found)),&
-                            &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)])
-                        ! same output in file as well
-                        call draw_GP(plot_title,'Eigenvalues_'//&
-                            &trim(i2str(alpha_job_nr))//'_stable.dat',1,&
-                            &.true.,.false.)
-                    end if
-                    
-                    call lvl_ud(-1)
+                        &trim(i2str(alpha_job_nr))//'_richardson.dat',&
+                        &n_sol_requested,.true.,.false.)
+                end if
+                call writo('plotting final Eigenvalues')
+                
+                ! Last Eigenvalues
+                ! output on screen
+                plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
+                    &final Eigenvalues omega^2 [log]'
+                call print_GP_2D(plot_title,'Eigenvalues_'//&
+                    &trim(i2str(alpha_job_nr))//'.dat',&
+                    &log10(abs(realpart(X%val(1:n_sol_found)))))
+                ! same output in file as well
+                call draw_GP(plot_title,'Eigenvalues_'//&
+                    &trim(i2str(alpha_job_nr))//'.dat',1,.true.,.false.)
+                
+                ! Last Eigenvalues: unstable range
+                if (last_unstable_id.gt.0) then
+                    ! output on screen
+                    plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
+                        &final unstable Eigenvalues omega^2'
+                    call print_GP_2D(plot_title,'Eigenvalues_'//&
+                        &trim(i2str(alpha_job_nr))//'_unstable.dat',&
+                        &realpart(X%val(1:last_unstable_id)),&
+                        &x=[(id*1._dp,id=1,last_unstable_id)])
+                    ! same output in file as well
+                    call draw_GP(plot_title,'Eigenvalues_'//&
+                        &trim(i2str(alpha_job_nr))//'_unstable.dat',1,&
+                        &.true.,.false.)
                 end if
                 
-                call writo('plotting the Eigenvectors')
-                
+                ! Last Eigenvalues: stable range
+                if (last_unstable_id.lt.n_sol_found) then
+                    ! output on screen
+                    plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
+                        &final stable Eigenvalues omega^2'
+                    call print_GP_2D(plot_title,'Eigenvalues_'//&
+                        &trim(i2str(alpha_job_nr))//'_stable.dat',&
+                        &realpart(X%val(last_unstable_id+1:n_sol_found)),&
+                        &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)])
+                    ! same output in file as well
+                    call draw_GP(plot_title,'Eigenvalues_'//&
+                        &trim(i2str(alpha_job_nr))//'_stable.dat',1,&
+                        &.true.,.false.)
+                end if
+            end if
+        end subroutine plot_X_vals
+        
+        ! plots Eigenvectors
+        subroutine plot_X_vecs()
+            ! local variables
+            integer :: id, jd                                                   ! counters
+            
+            ! for all the solutions that are to be saved
+            ! three ranges
+            do jd = 1,3
+                if (min_id(jd).le.max_id(jd)) call &
+                    &writo('Plotting results for modes '//&
+                    &trim(i2str(min_id(jd)))//'..'//trim(i2str(max_id(jd)))&
+                    &//' of range '//trim(i2str(jd)))
                 call lvl_ud(1)
                 
-                ! for all the solutions that are to be saved
-                ! three ranges
-                do jd = 1,3
-                    if (min_id(jd).le.max_id(jd)) call &
-                        &writo('Plotting results for modes '//&
-                        &trim(i2str(min_id(jd)))//'..'//trim(i2str(max_id(jd)))&
-                        &//' of range '//trim(i2str(jd)))
-                    ! indices in each range
-                    do id = min_id(jd),max_id(jd)
-                        ! user output
-                        call writo('plotting results for mode '//&
-                            &trim(i2str(id))//'/'//trim(i2str(n_sol_found))//&
-                            &', with eigenvalue '&
-                            &//trim(r2strt(realpart(X_val(id))))//' + '//&
-                            &trim(r2strt(imagpart(X_val(id))))//' i')
-                        
-                        call lvl_ud(1)
-                        
-                        ! plot information about harmonics
-                        call plot_harmonics(X_vec(:,:,id),id)
-                        
-                        ! plot the vector
-                        ierr = plot_X_vec(X_vec(:,:,id),X_val(id),id,job_nr,&
-                            &[ang_par_F(1,1),ang_par_F(n_par,1)])
-                        CHCKERR('')
-                        
-                        call lvl_ud(-1)
-                    end do
+                ! indices in each range
+                do id = min_id(jd),max_id(jd)
+                    ! user output
+                    call writo('Mode '//trim(i2str(id))//'/'//&
+                        &trim(i2str(n_sol_found))//', with eigenvalue '&
+                        &//trim(r2strt(realpart(X%val(id))))//' + '//&
+                        &trim(r2strt(imagpart(X%val(id))))//' i')
+                    
+                    call lvl_ud(1)
+                    
+                    ! plot information about harmonics
+                    call plot_harmonics(X%vec(:,:,id),id)
+                    
+                    ! plot the vector
+                    ierr = plot_X_vec(grid_eq,eq,grid_X,X,id,job_nr,&
+                        &[ang_par_F(1,1,1),ang_par_F(grid_eq%n(1),1,1)])
+                    CHCKERR('')
+                    
+                    call lvl_ud(-1)
                 end do
                 
                 call lvl_ud(-1)
-            end if
-            
-            if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
-                call lvl_ud(-1)                                                 ! end of one richardson loop
-            end if
-        end do Richard
-        
-        call lvl_ud(-1)                                                         ! done with richardson
-        if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
-            call writo('Finished Richardson loop')
-        else
-            call writo('Finished perturbation calculation')
-        end if
-        
-        ! deallocate Richardson loop variables
-        if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
-            deallocate(X_val_rich)
-        end if
-        
-        ! deallocate remaining equilibrium quantities
-        call writo('Deallocate remaining quantities')
-        call dealloc_eq_final
-        call dealloc_metric_final
-        call dealloc_X_final
-    contains
-        ! plots the harmonics and their maximum in 2D
-        subroutine plot_harmonics(X_vec,X_id)
-            use MPI_ops, only: wait_MPI, get_ghost_X_vec, get_ser_var
-            use output_ops, only: merge_GP
-            use num_vars, only: grp_n_procs
-            use X_vars, only: grp_r_X
-            
-            ! input / output
-            complex(dp), intent(in) :: X_vec(:,:)                               ! MPI Eigenvector
-            integer, intent(in) :: X_id                                         ! nr. of Eigenvalue (for output name)
-            
-            ! local variables
-            integer :: id, kd                                                   ! counters
-            character(len=max_str_ln) :: file_name                              ! name of file of plots of this proc.
-            character(len=max_str_ln), allocatable :: file_names(:)             ! names of file of plots of different procs.
-            real(dp), allocatable :: x_plot(:,:)                                ! x values of plot
-            complex(dp), allocatable :: X_vec_extended(:,:)                     ! MPI Eigenvector extended with assymetric ghost region
-            real(dp), allocatable :: X_vec_max(:)                               ! maximum position index of X_vec of rank
-            real(dp), allocatable :: ser_X_vec_max(:)                           ! maximum position index of X_vec of whole group
-            
-            ! user output
-            call writo('Started plot of the harmonics')
-            call lvl_ud(1)
-            
-            ! set up extended X_vec with ghost values
-            allocate(X_vec_extended(size_X,size(grp_r_X)))
-            X_vec_extended(:,1:size(X_vec,2)) = X_vec
-            ierr = get_ghost_X_vec(X_vec_extended,1)
-            CHCKERR('')
-            
-            ! set up x_plot
-            allocate(x_plot(size(grp_r_X),size_X))
-            do kd = 1,size_X
-                x_plot(:,kd) = grp_r_X
             end do
-            
-            ! absolute amplitude
-            ! set up file name of this rank and plot title
-            file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//&
-                &'_abs.dat'
-            plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
-                &trim(i2str(X_id))//' - absolute value'
-            
-            ! print amplitude of harmonics of eigenvector for each rank
-            call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
-                &trim(i2str(grp_rank)),abs(transpose(X_vec_extended(:,:))),&
-                &x=x_plot,draw=.false.)
-            
-            ! wait for all processes
-            ierr = wait_MPI()
-            CHCKERR('')
-            
-            ! plot by group master
-            if (grp_rank.eq.0) then
-                ! set up file names in array
-                allocate(file_names(grp_n_procs))
-                do kd = 1,grp_n_procs
-                    file_names(kd) = trim(file_name)//'_'//trim(i2str(kd-1))
-                end do
-                
-                ! merge files
-                call merge_GP(file_names,file_name,delete=.true.)
-                
-                ! draw plot
-                call draw_GP(trim(plot_title),file_name,size_X,.true.,.false.)
-                
-                ! deallocate
-                deallocate(file_names)
-            end if
-            
-            ! perturbation at midplane theta = zeta = 0
-            ! set up file name of this rank and plot title
-            file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//&
-                &'_midplane.dat'
-            plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
-                &trim(i2str(X_id))//' - midplane'
-            
-            ! print amplitude of harmonics of eigenvector for each rank
-            call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
-                &trim(i2str(grp_rank)),&
-                &realpart(transpose(X_vec_extended(:,:))),x=x_plot,draw=.false.)
-            
-            ! wait for all processes
-            ierr = wait_MPI()
-            CHCKERR('')
-            
-            ! plot by group master
-            if (grp_rank.eq.0) then
-                ! set up file names in array
-                allocate(file_names(grp_n_procs))
-                do kd = 1,grp_n_procs
-                    file_names(kd) = trim(file_name)//'_'//trim(i2str(kd-1))
-                end do
-                
-                ! merge files
-                call merge_GP(file_names,file_name,delete=.true.)
-                
-                ! draw plot
-                call draw_GP(trim(plot_title),file_name,size_X,.true.,.false.)
-                
-                ! deallocate
-                deallocate(file_names)
-            end if
-            
-            ! maximum of each mode
-            allocate(X_vec_max(size_X))
-            X_vec_max = 0.0_dp
-            do kd = 1,size_X
-                X_vec_max(kd) = grp_r_X(maxloc(abs(X_vec(kd,:)),1))
-            end do
-            
-            ! gather all parllel X_vec_max arrays in one serial array
-            ierr = get_ser_var(X_vec_max,ser_X_vec_max)
-            CHCKERR('')
-            
-            ! find the maximum of the different ranks and put it in X_vec_max of
-            ! group master
-            if (grp_rank.eq.0) then
-                do kd = 1,size_X
-                    X_vec_max(kd) = maxval([(ser_X_vec_max(kd+id*size_X),&
-                        &id=0,grp_n_procs-1)])
-                end do
-            
-                ! set up file name of this rank and plot title
-                file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//'_max.dat'
-                plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
-                    &trim(i2str(X_id))//' - maximum of modes'
-                
-                ! plot the maximum
-                call print_GP_2D(trim(plot_title),trim(file_name),&
-                    &[(kd*1._dp,kd=1,size_X)],x=X_vec_max,draw=.false.)
-                
-                ! draw plot
-                call draw_GP(trim(plot_title),file_name,1,.true.,.false.)
-            end if
-            
-            ! deallocate
-            deallocate(x_plot,X_vec_extended)
-            
-            ! user output
-            call lvl_ud(-1)
-            call writo('Finished plot of the harmonics')
-        end subroutine plot_harmonics
+        end subroutine plot_X_vecs
     end function run_for_alpha
     
     ! calculate  the equilibrium  quantities on  a grid  determined by  straight
@@ -572,85 +682,125 @@ contains
     ! grp_n_r_eq .le.  n_r_eq is the  normal extent  in the equilibrium  grid of
     ! this rank. It is determined so  that the perturbation quantities that will
     ! be needed in this rank are fully covered, so no communication is necessary
-    integer function calc_eq(alpha) result(ierr)
-        use X_vars, only: n_par
-        use eq_vars, only: dealloc_eq, &
-            &q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, pres_FD, flux_p_E, &
-            &flux_t_E, pres_E, q_saf_E, rot_t_E, theta_E, zeta_E
-        use eq_ops, only: init_eq, calc_flux_q, prepare_RZL, calc_RZL, &
-            &normalize_eq_vars, adapt_HEL_to_eq
+    integer function calc_eq(eq,met,X,alpha) result(ierr)
+        use eq_vars, only: dealloc_eq, eq_type
+        use eq_ops, only: calc_flux_q, prepare_RZL, calc_RZL, &
+            &adapt_HEL_to_eq
         use metric_ops, only: calc_g_C, calc_g_C, calc_T_VC, calc_g_V, &
-            &init_metric, calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, &
-            &calc_jac_V, calc_jac_F, calc_f_deriv, normalize_metric_vars, &
-            &calc_jac_H, calc_T_HF, calc_h_H
-        use metric_vars, only: dealloc_metric, &
-            &T_EF, T_FE, det_T_EF, det_T_FE, g_F, h_F, jac_F, g_FD, h_FD, &
-            &jac_FD, g_E, h_E
+            &calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, calc_jac_V, &
+            &calc_jac_F, calc_f_deriv, calc_jac_H, calc_T_HF, calc_h_H
+        use metric_vars, only: create_metric, dealloc_metric, metric_type
         use utilities, only: derivs
-        use num_vars, only: max_deriv, ltest, use_pol_flux_X, plot_grid, &
-            &eq_style, grp_rank, use_normalization
+        use num_vars, only: max_deriv, ltest, plot_grid, eq_style
         use grid_ops, only: calc_ang_grid, plot_grid_real
         use HELENA, only: dealloc_HEL
+        use X_vars, only: X_type
+        
+        use utilities, only: calc_det, calc_inv, calc_mult, c
+        !use metric_ops, only: plot_info
+        !use utilities, only: plot_info_2 => plot_info
         
         character(*), parameter :: rout_name = 'calc_eq'
         
         ! input / output
-        real(dp) :: alpha
+        type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
+        type(metric_type), intent(inout) :: met                                 ! metric variables
+        type(X_type), intent(inout) :: X                                        ! perturbation variables
+        real(dp), intent(in) :: alpha                                           ! field line coordinate of current equilibrium
         
         ! local variables
         integer :: id
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: pmone                                                        ! plus or minus one
         
+        !! TEMPORARILY, TO PLOT MORE INFO IN ROUTINES
+        !plot_info = .true.
+        !plot_info_2 = .true.
+        
+        !real(dp) :: A(1,1,1,16)
+        !real(dp) :: B(1,1,1,10)
+        !real(dp) :: det(1,1,1)
+        !real(dp) :: invA(1,1,1,16)
+        !real(dp) :: invB(1,1,1,10)
+        !real(dp) :: AinvA(1,1,1,16)
+        !real(dp) :: BinvB(1,1,1,10)
+        !real(dp) :: AinvB(1,1,1,16)
+        !real(dp) :: BinvA(1,1,1,16)
+        
+        !A = reshape([1,2,3,1,2,1,1,4,3,1,3,2,1,4,2,2],shape(A))
+        !B = reshape([1,2,3,1,1,1,4,3,2,2],shape(B))
+        !write(*,*) 'A = ', A
+        !write(*,*) 'B = ', B
+        !ierr = calc_det(det,A,4)
+        !CHCKERR('')
+        !write(*,*) 'detA = ', det
+        !ierr = calc_det(det,B,4)
+        !CHCKERR('')
+        !write(*,*) 'detB = ', det
+        !ierr = calc_inv(invA,A,4)
+        !CHCKERR('')
+        !write(*,*) 'invA = ', invA
+        !ierr = calc_inv(invB,B,4)
+        !CHCKERR('')
+        !write(*,*) 'invB = ', invB
+        !ierr = calc_mult(A,invA,AinvA,4)
+        !CHCKERR('')
+        !write(*,*) 'AinvA = ', AinvA
+        !ierr = calc_mult(B,invB,BinvB,4)
+        !CHCKERR('')
+        !write(*,*) 'BinvB = ', BinvB
+        !ierr = calc_mult(A,invB,AinvB,4)
+        !CHCKERR('')
+        !write(*,*) 'AinvB = ', AinvB
+        !ierr = calc_mult(B,invA,BinvA,4)
+        !CHCKERR('')
+        !write(*,*) 'BinvA = ', BinvA
+        
         ! initialize ierr
         ierr = 0
         
         call writo('Start setting up equilibrium quantities in '//&
-            &trim(i2str(n_par))//' discrete parallel points')
+            &trim(i2str(grid_eq%n(1)))//' discrete parallel points')
         call lvl_ud(1)
         
             call writo('Start initializing variables')
             call lvl_ud(1)
-            
-                ! initialize equilibrium quantities
-                call writo('Initialize equilibrium quantities...')
-                ierr = init_eq()
-                CHCKERR('')
                 
                 ! initialize metric quantities
                 call writo('Initialize metric quantities...')
-                ierr = init_metric()
+                ierr = create_metric(grid_eq,met)
                 CHCKERR('')
                 
                 ! calculate flux quantities
                 call writo('Calculate flux quantities...')
-                ierr = calc_flux_q()
+                ierr = calc_flux_q(eq,grid_eq,X)
                 CHCKERR('')
-            
+                
             call lvl_ud(-1)
             call writo('Variables initialized')
             
             call writo('Start determining the equilibrium grid')
             call lvl_ud(1)
             
-                ! calculate angular grid points (theta_E,zeta_E) that follow the
-                ! magnetic field line determined by alpha
+                ! calculate  angular grid  points (theta,zeta)  that follow  the
+                ! magnetic field  line determined  by alpha in  E(quilibrum) and
+                ! F(lux) coords.
                 ! Note: The  normal grid  is determined  by the  equilibrium, it
                 ! can  either  use  the  toroidal  flux  or  the  poloidal  flux
                 ! (use_pol_flux_eq).  This  does  not   have  to  coincide  with
                 ! use_pol_flux_X used by PB3D.
-                ierr = calc_ang_grid(alpha)
+                ierr = calc_ang_grid(grid_eq,eq,alpha)
                 CHCKERR('')
                 
                 ! adapt the HELENA variables to the equilibrium grid
                 if (eq_style.eq.2) then
-                    ierr = adapt_HEL_to_eq()
+                    ierr = adapt_HEL_to_eq(grid_eq)
                     CHCKERR('')
                 end if
                 
                 ! plot grid if requested
-                if (plot_grid .and. grp_rank.eq.0) then                         ! only group masters
-                    ierr = plot_grid_real(theta_E,zeta_E,0._dp,1._dp)
+                if (plot_grid) then
+                    ierr = plot_grid_real(grid_eq)
                     CHCKERR('')
                 else
                     call writo('Grid plot not requested')
@@ -670,10 +820,10 @@ contains
                         ! calculate the  cylindrical variables  R, Z  and lambda
                         ! and derivatives
                         call writo('Calculate R,Z,L...')
-                        ierr = prepare_RZL()
+                        ierr = prepare_RZL(grid_eq)
                         CHCKERR('')
                         do id = 0,max_deriv+1
-                            ierr = calc_RZL(derivs(id))
+                            ierr = calc_RZL(grid_eq,eq,derivs(id))
                             CHCKERR('')
                         end do
                         
@@ -681,7 +831,7 @@ contains
                         ! system
                         call writo('Calculate g_C...')                          ! h_C is not necessary
                         do id = 0,max_deriv
-                            ierr = calc_g_C(derivs(id))
+                            ierr = calc_g_C(eq,met,derivs(id))
                             CHCKERR('')
                         end do
                         
@@ -689,7 +839,7 @@ contains
                         ! system
                         call writo('Calculate jac_C...')
                         do id = 0,max_deriv
-                            ierr = calc_jac_C(derivs(id))
+                            ierr = calc_jac_C(eq,met,derivs(id))
                             CHCKERR('')
                         end do
                         
@@ -697,7 +847,7 @@ contains
                         ! V(MEC)
                         call writo('Calculate T_VC...')
                         do id = 0,max_deriv
-                            ierr = calc_T_VC(derivs(id))
+                            ierr = calc_T_VC(eq,met,derivs(id))
                             CHCKERR('')
                         end do
                         
@@ -705,21 +855,21 @@ contains
                         ! system
                         call writo('Calculate g_V...')
                         do id = 0,max_deriv
-                            ierr = calc_g_V(derivs(id))
+                            ierr = calc_g_V(met,derivs(id))
                             CHCKERR('')
                         end do
                         
                         ! calculate the jacobian in the VMEC coordinate system
                         call writo('Calculate jac_V...')
                         do id = 0,max_deriv
-                            ierr = calc_jac_V(derivs(id))
+                            ierr = calc_jac_V(met,derivs(id))
                             CHCKERR('')
                         end do
                         
                         ! calculate the transformation matrix V(MEC) -> F(lux)
                         call writo('Calculate T_VF...')
                         do id = 0,max_deriv
-                            ierr = calc_T_VF(derivs(id))
+                            ierr = calc_T_VF(grid_eq,eq,met,derivs(id))
                             CHCKERR('')
                         end do
                         
@@ -729,7 +879,7 @@ contains
                         ! calculate the jacobian in the HELENA coordinate system
                         call writo('Calculate jac_H...')
                         do id = 0,max_deriv
-                            ierr = calc_jac_H(derivs(id))
+                            ierr = calc_jac_H(grid_eq,eq,met,derivs(id))
                             CHCKERR('')
                         end do
                         
@@ -737,21 +887,21 @@ contains
                         ! system
                         call writo('Calculate h_H...')
                         do id = 0,max_deriv
-                            ierr = calc_h_H(derivs(id))
+                            ierr = calc_h_H(grid_eq,eq,met,derivs(id))
                             CHCKERR('')
                         end do
                         
                         ! calculate the inverse g_H of the metric factors h_H
                         call writo('Calculate g_H...')
                         do id = 0,max_deriv
-                            ierr = calc_inv_met(g_E,h_E,derivs(id))
+                            ierr = calc_inv_met(met%g_E,met%h_E,derivs(id))
                             CHCKERR('')
                         end do
                         
                         ! calculate the transformation matrix H(ELENA) -> F(lux)
                         call writo('Calculate T_HF...')
                         do id = 0,max_deriv
-                            ierr = calc_T_HF(derivs(id))
+                            ierr = calc_T_HF(grid_eq,eq,met,derivs(id))
                             CHCKERR('')
                         end do
                         
@@ -767,96 +917,103 @@ contains
                 ! calculate  the  inverse of  the transformation  matrix T_EF
                 call writo('Calculate T_FE...')
                 do id = 0,max_deriv
-                    ierr = calc_inv_met(T_FE,T_EF,derivs(id))
+                    ierr = calc_inv_met(met%T_FE,met%T_EF,derivs(id))
                     CHCKERR('')
-                    ierr = calc_inv_met(det_T_FE,det_T_EF,derivs(id))
+                    ierr = calc_inv_met(met%det_T_FE,met%det_T_EF,derivs(id))
                     CHCKERR('')
                 end do
                 
                 ! calculate the metric factors in the Flux coordinate system
                 call writo('Calculate g_F...')
                 do id = 0,max_deriv
-                    ierr = calc_g_F(derivs(id))
+                    ierr = calc_g_F(met,derivs(id))
                     CHCKERR('')
                 end do
                 
                 ! calculate the inverse h_F of the metric factors g_F
                 call writo('Calculate h_F...')
                 do id = 0,max_deriv
-                    ierr = calc_inv_met(h_F,g_F,derivs(id))
+                    ierr = calc_inv_met(met%h_F,met%g_F,derivs(id))
                     CHCKERR('')
                 end do
                 
                 ! calculate the jacobian in the Flux coordinate system
                 call writo('Calculate jac_F...')
                 do id = 0,max_deriv
-                    ierr = calc_jac_F(derivs(id))
+                    ierr = calc_jac_F(met,derivs(id))
                     CHCKERR('')
                 end do
                 
                 ! calculate   the  derivatives  in  Flux  coordinates  from  the
                 ! derivatives in VMEC coordinates
-                call writo('Calculate derivatives in flux coordinates...')
+                call writo('Calculate derivatives in Flux coordinates...')
                 do id = 0,max_deriv
                     ! g_FD
-                    ierr = calc_f_deriv(g_F,T_FE,g_FD,max_deriv,derivs(id))
+                    ierr = calc_f_deriv(met%g_F,met%T_FE,met%g_FD,max_deriv,&
+                        &derivs(id))
                     CHCKERR('')
                     
                     ! h_FD
-                    ierr = calc_f_deriv(h_F,T_FE,h_FD,max_deriv,derivs(id))
+                    ierr = calc_f_deriv(met%h_F,met%T_FE,met%h_FD,max_deriv,&
+                        &derivs(id))
                     CHCKERR('')
                     
                     ! jac_FD
-                    ierr = calc_f_deriv(jac_F,T_FE,jac_FD,max_deriv,derivs(id))
+                    ierr = calc_f_deriv(met%jac_F,met%T_FE,met%jac_FD,&
+                        &max_deriv,derivs(id))
                     CHCKERR('')
                     
                     ! pres_FD
-                    ierr = calc_f_deriv(pres_E,T_FE(1,:,2,1,:,0,0),pres_FD(:,id),&
-                        &max_deriv,id)
+                    ierr = calc_f_deriv(eq%pres_E,&
+                        &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
+                        &eq%pres_FD(:,id),max_deriv,id)
                     CHCKERR('')
                         
                     ! flux_p_FD
-                    ierr = calc_f_deriv(flux_p_E,T_FE(1,:,2,1,:,0,0),&
-                        &flux_p_FD(:,id),max_deriv,id)
+                    ierr = calc_f_deriv(eq%flux_p_E,&
+                        &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
+                        &eq%flux_p_FD(:,id),max_deriv,id)
                     CHCKERR('')
                         
                     ! flux_t_FD
-                    ierr = calc_f_deriv(flux_t_E,T_FE(1,:,2,1,:,0,0),&
-                        &flux_t_FD(:,id),max_deriv,id)
+                    ierr = calc_f_deriv(eq%flux_t_E,&
+                        &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
+                        &eq%flux_t_FD(:,id),max_deriv,id)
                     CHCKERR('')
-                    flux_t_FD = pmone * flux_t_FD                               ! multiply by plus minus one
+                    eq%flux_t_FD(:,id) = pmone * eq%flux_t_FD(:,id)             ! multiply by plus minus one
                     
-                    if (use_pol_flux_X) then
-                        ! q_saf_FD
-                        ierr = calc_f_deriv(q_saf_E,T_FE(1,:,2,1,:,0,0),&
-                            &q_saf_FD(:,id),max_deriv,id)
-                        CHCKERR('')
-                        q_saf_FD = pmone * q_saf_FD                             ! multiply by plus minus one
-                    else
-                        ! rot_t_FD
-                        ierr = calc_f_deriv(rot_t_E,T_FE(1,:,2,1,:,0,0),&
-                            &rot_t_FD(:,id),max_deriv,id)
-                        CHCKERR('')
-                        rot_t_FD = pmone * rot_t_FD                             ! multiply by plus minus one
-                    end if
+                    ! q_saf_FD
+                    ierr = calc_f_deriv(eq%q_saf_E,&
+                        &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
+                        &eq%q_saf_FD(:,id),max_deriv,id)
+                    CHCKERR('')
+                    eq%q_saf_FD(:,id) = pmone * eq%q_saf_FD(:,id)               ! multiply by plus minus one
+                    
+                    ! rot_t_FD
+                    ierr = calc_f_deriv(eq%rot_t_E,&
+                        &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
+                        &eq%rot_t_FD(:,id),max_deriv,id)
+                    CHCKERR('')
+                    eq%rot_t_FD(:,id) = pmone * eq%rot_t_FD(:,id)               ! multiply by plus minus one
                 end do
                 
-                ! normalize the quantities
-                if (use_normalization) then
-                    call writo('Normalize the equilibrium and metric &
-                        &quantities...')
-                    call normalize_eq_vars
-                    call normalize_metric_vars
-                end if
+                !write(*,*) 'det_T_FE:', 0,0,0
+                !call print_HDF5('X','X',met%det_T_FE(:,:,:,0,0,0))
+                !read(*,*)
+                !do id = 1,9
+                    !write(*,*) 'h_FD:', id
+                    !call print_HDF5('X','X',met%h_FD(:,:,:,id,0,0,0))
+                    !read(*,*)
+                !end do
                 
                 ! deallocate unused equilibrium quantities
                 if (.not.ltest) then
                     call writo('Deallocate unused equilibrium and metric &
                         &quantities...')
-                    ierr = dealloc_metric()
+                    ierr = dealloc_metric(met)
                     CHCKERR('')
                     ! general equilibrium
-                    ierr = dealloc_eq()
+                    ierr = dealloc_eq(eq)
                     CHCKERR('')
                     ! specific equilibrium
                     ! choose which equilibrium style is being used:
@@ -888,11 +1045,12 @@ contains
     ! inverting: n(dx) = 1 + 1/dx.
     ! This yields n(dx/2)/n(dx) = (2+dx)/(1+dx) = (2n(dx)-1)/n(dx)
     ! The recursion formula is therefore: n(dx/2) = 2n(dx) - 1
-    subroutine calc_n_r_X(ir)
-        use X_vars, only: n_r_X, min_n_r_X
+    subroutine calc_n_r_X(ir,n_r_X)
+        use X_vars, only: min_n_r_X
         
         ! input / output
         integer, intent(in) :: ir
+        integer, intent(inout) :: n_r_X
         
         if (ir.eq.1) then
             n_r_X = min_n_r_X

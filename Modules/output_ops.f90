@@ -8,6 +8,7 @@ module output_ops
     use num_vars, only: dp, max_str_ln, no_plots, iu, plot_dir, data_dir, &
         &script_dir
     use messages, only: writo, stop_time, start_time, lvl_ud
+    use files, only: nextunit
     
     implicit none
     private
@@ -65,8 +66,7 @@ contains
         end if
     end subroutine print_GP_2D_ind
     subroutine print_GP_2D_arr(var_name,file_name_i,y,x,draw)                   ! multiple plots
-        use num_vars, only: n_seq_0, grp_rank
-        use safe_open_mod, only: safe_open
+        use num_vars, only: grp_rank
         
         ! input / output
         character(len=*), intent(in) :: var_name
@@ -116,9 +116,8 @@ contains
         end if
         
         ! open output file
-        file_i = n_seq_0
-        call safe_open(file_i,istat,data_dir//'/'//trim(file_name),'replace',&
-            &'formatted',delim_in='none')
+        open(unit=nextunit(file_i),file=data_dir//'/'//trim(file_name),&
+            &iostat=istat)
         
         ! write to output file
         write(file_i,*) '# '//trim(var_name)//':'
@@ -189,8 +188,7 @@ contains
         end if
     end subroutine print_GP_3D_ind
     subroutine print_GP_3D_arr(var_name,file_name_i,z,y,x,draw)                 ! multiple plots
-        use num_vars, only: n_seq_0, grp_rank
-        use safe_open_mod, only: safe_open
+        use num_vars, only: grp_rank
         
         ! input / output
         character(len=*), intent(in) :: var_name
@@ -263,9 +261,8 @@ contains
         end if
         
         ! open output file
-        file_i = n_seq_0
-        call safe_open(file_i,istat,data_dir//'/'//trim(file_name),'replace',&
-            &'formatted',delim_in='none')
+        open(unit=nextunit(file_i),file=data_dir//'/'//trim(file_name),&
+            &iostat=istat)
         
         ! write to output file
         write(file_i,*) '# '//trim(var_name)//':'
@@ -303,7 +300,6 @@ contains
     ! the file.
     subroutine draw_GP_ind(var_name,file_name,nplt,is_2D,plot_on_screen,&
         &draw_ops)
-        use safe_open_mod, only: safe_open
         
         ! input / output
         character(len=*), intent(in) :: file_name                               ! name of file
@@ -324,8 +320,7 @@ contains
     end subroutine draw_GP_ind
     subroutine draw_GP_arr(var_name,file_names,nplt,is_2D,plot_on_screen,&
         &draw_ops)
-        use safe_open_mod, only: safe_open
-        use num_vars, only: grp_rank, n_seq_0
+        use num_vars, only: grp_rank
         
         ! input / output
         character(len=*), intent(in) :: file_names(:)                           ! name of file
@@ -371,9 +366,7 @@ contains
         end if
         
         ! open script file
-        cmd_i = n_seq_0
-        call safe_open(cmd_i,istat,trim(script_name),'replace','formatted',&
-            &delim_in='none')
+        open(unit=nextunit(cmd_i),file=trim(script_name),iostat=istat)
         if (istat.ne.0) then
             call writo('WARNING: Could not open file for gnuplot command')
             return
@@ -502,9 +495,6 @@ contains
     end subroutine draw_GP_animated_ind
     subroutine draw_GP_animated_arr(var_name,file_names,nplt,is_2D,ranges,&
         &delay,draw_ops)
-        use num_vars, only: n_seq_0
-        use safe_open_mod, only: safe_open
-        
         ! input / output
         character(len=*), intent(in) :: file_names(:)                           ! name of file
         character(len=*), intent(in) :: var_name                                ! name of function
@@ -554,9 +544,7 @@ contains
         script_name = ''//trim(script_dir)//'/'//trim(var_name)//'.gnu'
         
         ! open script file
-        cmd_i = n_seq_0
-        call safe_open(cmd_i,istat,trim(script_name),'replace','formatted',&
-            &delim_in='none')
+        open(unit=nextunit(cmd_i),file=trim(script_name),iostat=istat)
         if (istat.ne.0) then
             call writo('WARNING: Could not open file for gnuplot command')
             return
@@ -699,9 +687,6 @@ contains
         end if
     contains
         subroutine get_ranges(file_name,ranges)
-            use safe_open_mod, only: safe_open
-            use num_vars, only: n_seq_0
-            
             ! input / output
             character(len=*), intent(in) :: file_name                           ! name of file
             real(dp), intent(inout) :: ranges(:,:)                              ! x and y range, and z range (if 3D) of plot
@@ -713,9 +698,8 @@ contains
             
             
             ! open data file
-            data_i = n_seq_0
-            call safe_open(data_i,istat,trim(data_dir)//'/'//trim(file_name),&
-                &'old','formatted',delim_in='none')
+            open(unit=nextunit(data_i),file=data_dir//'/'//trim(file_name),&
+                &status='old',iostat=istat)
             
             ! set up loc_data
             if (is_2D) then
@@ -815,9 +799,10 @@ contains
     ! "file_name" and  accompanying XDMF file.  For collections, only  the first
     ! value for var_names is used, so it should have a size of one.
     ! The plot is generally  3D, but if one of the  dimensions provided is equal
-    ! to 1, the plot becomes 2D. The axes of the 2D plot correpond to X-Z if the
-    ! second dimension  (zeta) is singular, or  X-Y if it is  the third (theta).
-    ! This corresponds to a poloidal or a toroidal cross section, respectively.
+    ! to 1, the plot becomes 2D. 
+    ! The axes of the 2D plot correpond to X-Z if the second dimension (zeta) is
+    ! singular,  or X-Y  if  it is  the  third (theta).  This  corresponds to  a
+    ! poloidal or a toroidal cross section, respectively.
     ! Optionally, the  (curvilinear) grid can  be provided through "X",  "Y" and
     ! "Z". If so, "Y" or "Z" may be neglected if it is a 2D plot.
     ! Additionally, the total grid size has  to be provided in "tot_dim", and if
@@ -834,6 +819,11 @@ contains
     !   - for spatial collections:  subset of blocks or pseudocolor using the 
     !       variable name (other names are ignored)
     !   - for without collections:  pseudocolor using the variables name_i
+    ! Note: Currently all of possibly multiple processes that write data have to
+    ! cover the  entire range  of the  variables in  the dimension  indicated by
+    ! col_id.  (This could  be implemented  by  changing n_plot  is defined  and
+    ! selectively  letting  each  processer  write  in  the  main  loop  at  its
+    ! corresponding indices.)
     subroutine print_HDF5_arr(var_names,file_name,vars,tot_dim,grp_dim,&
         &grp_offset,X,Y,Z,col_id,col,description)                               ! array version
         use HDF5_ops, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
@@ -845,7 +835,7 @@ contains
         character(len=*), intent(in) :: var_names(:)                            ! names of variable to be plot
         character(len=*), intent(in) :: file_name                               ! file name
         real(dp), intent(in), target :: vars(:,:,:,:)                           ! variables to plot
-        integer, intent(in) :: tot_dim(4)                                       ! total dimensions of the arrays
+        integer, intent(in), optional :: tot_dim(4)                             ! total dimensions of the arrays
         integer, intent(in), optional :: grp_dim(4)                             ! group dimensions of the arrays
         integer, intent(in), optional :: grp_offset(4)                          ! offset of group dimensions
         real(dp), intent(in), target, optional :: X(:,:,:,:)                    ! curvlinear grid X points
@@ -862,6 +852,7 @@ contains
         type(HDF5_file_type) :: file_info                                       ! file info
         integer :: n_plot                                                       ! nr. of plots
         integer :: id, jd                                                       ! counter
+        integer :: tot_dim_loc(4)                                               ! local copy of tot_dim
         integer :: tot_dim_3D(3)                                                ! tot_dim except collection
         integer :: grp_dim_3D(3)                                                ! grp_dim except collection
         integer :: grp_offset_3D(3)                                             ! grp_offset except collection
@@ -885,10 +876,24 @@ contains
         col_loc = 1                                                             ! default no spatial collection
         if (present(col)) col_loc = col
         
+        ! set up local tot_dim
+        tot_dim_loc = shape(vars)
+        if (present(tot_dim)) tot_dim_loc = tot_dim
+        
+        ! tests
+        if (present(grp_dim)) then
+            if (tot_dim_loc(col_id_loc).ne.grp_dim(col_id_loc)) then
+                istat = 1
+                call writo('WARNING: In print_HDF5, all the processes need to have &
+                    &the full range in the dimension given by col_id')
+                CHCKSTT
+            end if
+        end if
+        
         ! set real dimensions
         col_mask = .false.
         col_mask(col_id_loc) = .true.
-        tot_dim_3D = pack(tot_dim,.not.col_mask)
+        tot_dim_3D = pack(tot_dim_loc,.not.col_mask)
         if (present(grp_dim)) then
             grp_dim_3D = pack(grp_dim,.not.col_mask)
         else
@@ -947,8 +952,9 @@ contains
         end if
         
         ! open HDF5 file
-        if (tot_dim(1).eq.grp_dim(1) .and. tot_dim(2).eq.grp_dim(2) .and. &
-            &tot_dim(3).eq.grp_dim(3) .and. tot_dim(4).eq.grp_dim(4)) then
+        if (tot_dim_3D(1).eq.grp_dim_3D(1) .and. &
+            &tot_dim_3D(2).eq.grp_dim_3D(2) .and. &
+            &tot_dim_3D(3).eq.grp_dim_3D(3)) then
             istat = open_HDF5_file(file_info,file_name,description,&
                 &ind_plot=.true.)                                               ! individual plot
         else
@@ -1147,7 +1153,7 @@ contains
         character(len=*), intent(in) :: var_name                                ! name of variable to be plot
         character(len=*), intent(in) :: file_name                               ! file name
         real(dp), intent(in), target :: var(:,:,:)                              ! variable to plot
-        integer, intent(in) :: tot_dim(3)                                       ! total dimensions of the arrays
+        integer, intent(in), optional :: tot_dim(3)                             ! total dimensions of the arrays
         integer, intent(in), optional :: grp_dim(3)                             ! group dimensions of the arrays
         integer, intent(in), optional :: grp_offset(3)                          ! offset of group dimensions
         real(dp), intent(in), target, optional :: X(:,:,:)                      ! curvlinear grid X points
@@ -1159,6 +1165,7 @@ contains
         integer :: istat                                                        ! status
         type(HDF5_file_type) :: file_info                                       ! file info
         integer :: id                                                           ! counter
+        integer :: tot_dim_loc(3)                                               ! local version of tot_dim
         type(XML_str_type) :: grid                                              ! grid
         type(XML_str_type) :: top                                               ! topology
         type(XML_str_type), allocatable :: XYZ(:)                               ! data items for geometry
@@ -1167,13 +1174,32 @@ contains
         real(dp), pointer :: X_ptr(:,:,:)                                       ! pointer to X
         real(dp), pointer :: Y_ptr(:,:,:)                                       ! pointer to Y
         real(dp), pointer :: Z_ptr(:,:,:)                                       ! pointer to Z
+        integer :: grp_dim_loc(3)                                               ! local version of grp_dim
+        integer :: grp_offset_loc(3)                                            ! local version of grp_offset
         
         ! set up file info
         file_info%name = file_name
         
+        ! set up local tot_dim
+        tot_dim_loc = shape(var)
+        if (present(tot_dim)) tot_dim_loc = tot_dim
+        
+        ! set up local grp_dim and grp_offset
+        if (present(grp_dim)) then
+            grp_dim_loc = grp_dim
+        else
+            grp_dim_loc = tot_dim_loc
+        end if
+        if (present(grp_offset)) then
+            grp_offset_loc = grp_offset
+        else
+            grp_offset_loc = [0,0,0]
+        end if
+        
         ! open HDF5 file
-        if (tot_dim(1).eq.grp_dim(1) .and. tot_dim(2).eq.grp_dim(2) .and. &
-            &tot_dim(3).eq.grp_dim(3)) then
+        if (tot_dim_loc(1).eq.grp_dim_loc(1) .and. &
+            &tot_dim_loc(2).eq.grp_dim_loc(2) .and. &
+            &tot_dim_loc(3).eq.grp_dim_loc(3)) then
             istat = open_HDF5_file(file_info,file_name,description,&
                 &ind_plot=.true.)                                               ! individual plot
         else
@@ -1182,17 +1208,17 @@ contains
         CHCKSTT
         
         ! allocate geometry arrays
-        if (tot_dim(1).eq.1 .or. tot_dim(2).eq.1) then                          ! 2D grid
+        if (tot_dim_loc(1).eq.1 .or. tot_dim_loc(2).eq.1) then                  ! 2D grid
             allocate(XYZ(2))
         else                                                                    ! 3D grid
             allocate(XYZ(3))
         end if
         
         ! print topology
-        if (tot_dim(1).eq.1 .or. tot_dim(2).eq.1) then                          ! 2D grid
-            call print_HDF5_top(top,1,tot_dim)
+        if (tot_dim_loc(1).eq.1 .or. tot_dim_loc(2).eq.1) then                  ! 2D grid
+            call print_HDF5_top(top,1,tot_dim_loc)
         else                                                                    ! 3D grid
-            call print_HDF5_top(top,2,tot_dim)
+            call print_HDF5_top(top,2,tot_dim_loc)
         end if
             
         ! calculate geometry arrays
@@ -1208,7 +1234,7 @@ contains
             Y_ptr => Y
         else
             allocate(Y_ptr(size(var,1),size(var,2),size(var,3)))
-            do id = 1,size(var,1)
+            do id = 1,size(var,2)
                 Y_ptr(:,id,:) = id
             end do
         end if
@@ -1216,36 +1242,36 @@ contains
             Z_ptr => Z
         else
             allocate(Z_ptr(size(var,1),size(var,2),size(var,3)))
-            do id = 1,size(var,1)
+            do id = 1,size(var,3)
                 Z_ptr(:,:,id) = id
             end do
         end if
         
         ! print data item for X
         istat = print_HDF5_3D_data_item(XYZ(1),file_info,'X',X_ptr,&
-            &tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
+            &tot_dim_loc,grp_dim=grp_dim_loc,grp_offset=grp_offset_loc)
         CHCKSTT
         
         ! print data item for Y and / or Z
-        if (tot_dim(2).eq.1) then                                               ! if toroidally symmetric, no Y axis
+        if (tot_dim_loc(2).eq.1) then                                           ! if toroidally symmetric, no Y axis
             istat = print_HDF5_3D_data_item(XYZ(2),file_info,'Z',Z_ptr,&
-                &tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
+                &tot_dim_loc,grp_dim=grp_dim_loc,grp_offset=grp_offset_loc)
             CHCKSTT
-        else if (tot_dim(1).eq.1) then                                          ! if poloidally symmetric, no Z axis
+        else if (tot_dim_loc(1).eq.1) then                                      ! if poloidally symmetric, no Z axis
             istat = print_HDF5_3D_data_item(XYZ(2),file_info,'Y',Y_ptr,&
-                &tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
+                &tot_dim_loc,grp_dim=grp_dim_loc,grp_offset=grp_offset_loc)
             CHCKSTT
         else
             istat = print_HDF5_3D_data_item(XYZ(2),file_info,'Y',Y_ptr,&
-                &tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
+                &tot_dim_loc,grp_dim=grp_dim_loc,grp_offset=grp_offset_loc)
             CHCKSTT
             istat = print_HDF5_3D_data_item(XYZ(3),file_info,'Z',Z_ptr,&
-                &tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)
+                &tot_dim_loc,grp_dim=grp_dim_loc,grp_offset=grp_offset_loc)
             CHCKSTT
         end if
         
         ! print geometry with X, Y and Z data item
-        if (tot_dim(2).eq.1 .or. tot_dim(1).eq.1) then                          ! if symmetry 2D geometry
+        if (tot_dim_loc(2).eq.1 .or. tot_dim_loc(1).eq.1) then                  ! if symmetry 2D geometry
             call print_HDF5_geom(geom,1,XYZ,.true.)
         else                                                                    ! if no symmetry 3D geometry
             call print_HDF5_geom(geom,2,XYZ,.true.)
@@ -1253,7 +1279,7 @@ contains
         
         ! print data item for plot variable
         istat = print_HDF5_3D_data_item(XYZ(1),file_info,'var',&
-            &var,tot_dim,grp_dim=grp_dim,grp_offset=grp_offset)                 ! reuse XYZ(1)
+            &var,tot_dim_loc,grp_dim=grp_dim_loc,grp_offset=grp_offset_loc)     ! reuse XYZ(1)
         CHCKSTT
         
         ! print attribute with this data item

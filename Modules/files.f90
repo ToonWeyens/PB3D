@@ -3,16 +3,14 @@
 !------------------------------------------------------------------------------!
 module files
 #include <PB3D_macros.h>
-    use netcdf
     use num_vars, only: dp, max_str_ln, max_args
-    use safe_open_mod, only: safe_open
     use str_ops, only: i2str
     use messages, only: lvl_ud, writo, &
         &lvl
     implicit none
     private
     public open_input, open_output, search_file, parse_args, init_files, &
-        &input_name, opt_args, close_output
+        &input_name, opt_args, close_output, nextunit
 
     ! user-specified arguments
     integer :: numargs                                                          ! control the user-specified arguments
@@ -42,7 +40,10 @@ contains
         opt_args(3) = '--test'
         opt_args(4) = '--no_guess'
         opt_args(5) = '--no_plots'
-        inc_args = [1,0,0,0,0]
+        opt_args(6) = '-st_pc_factor_shift_type'
+        opt_args(7) = '-st_pc_type'
+        opt_args(8) = '-st_pc_factor_mat_solver_package'
+        inc_args = [1,0,0,0,0,1,1,1]
     end subroutine
 
     ! parses the command line arguments
@@ -149,51 +150,26 @@ contains
             input_exts = ["input"]
             input_con_symb = [".","-","_"]
             call search_file(input_i,input_name,input_exts,input_con_symb)
-            if (input_i.lt.0) then
-                if (input_name.eq."") then
-                    call writo('No input file found. Default used')
-                else 
-                    ierr = 1
-                    err_msg = 'input file number negative but name not empty!'
-                    CHCKERR(err_msg)
-                end if
-            else
-                if (input_name.eq."") then
-                    ierr = 1
-                    err_msg = 'input file number ok but name empty'
-                    CHCKERR(err_msg)
-                else
-                    call writo('Input file "' // trim(input_name) &
-                        &// '" opened at number ' // trim(i2str(input_i)))
-                end if
+            if (input_name.eq."") then
+                call writo('No input file found. Default used')
+            else 
+                call writo('Input file "' // trim(input_name) &
+                    &// '" opened at number ' // trim(i2str(input_i)))
             end if
             
-            !  check for  equilibrium  file and  print error  if  not found  (no
+            ! check for  equilibrium  file  and  print error  if  not found  (no
             ! default!)
             eq_name = command_arg(2)
             eq_exts = ["wout"]
             eq_con_symb = [".","-","_"]
-            !call search_file(eq_i,eq_name,eq_exts,eq_con_symb,'.nc')
             call search_file(eq_i,eq_name,eq_exts,eq_con_symb,'.txt')
-            if (eq_i.lt.0) then
-                if (eq_name.eq."") then
-                    err_msg = 'no equilibrium file found'
-                    ierr = 1
-                    CHCKERR(err_msg)                                            ! no default for equilibrium input
-                else 
-                    ierr = 1
-                    err_msg = 'equilibrium file number negative but name not empty!'
-                    CHCKERR(err_msg)
-                end if
+            if (eq_name.eq."") then
+                ierr = 1
+                err_msg = 'No equilibrium file found and no default possible.'
+                CHCKERR(err_msg)
             else
-                if (eq_name.eq."") then
-                    ierr = 1
-                    err_msg = 'equilibrium file number ok but name empty'
-                    CHCKERR(err_msg)
-                else
-                    call writo('equilibrium file "' // trim(eq_name) &
-                        &// '" opened at number ' // trim(i2str(eq_i)))
-                end if
+                call writo('equilibrium file "' // trim(eq_name) &
+                    &// '" opened at number ' // trim(i2str(eq_i)))
             end if
             
             ! Determine which equilibrium style (1: VMEC, 2: HELENA)
@@ -308,6 +284,15 @@ contains
                 case (5)                                                        ! disable plotting
                     call writo('option no_plots chosen: plotting disabled')
                     no_plots = .true.
+                case (6)
+                    call writo('option st_pc_factor_shift_type '//&
+                        &trim(command_arg(arg_nr+1))//' passed to SLEPC')
+                case (7)
+                    call writo('option st_pc_type '//&
+                        &trim(command_arg(arg_nr+1))//' passed to SLEPC')
+                case (8)
+                    call writo('option st_pc_factor_mat_solver_package '//&
+                        &trim(command_arg(arg_nr+1))//' passed to SLEPC')
                 case default
                     call writo('WARNING: Invalid option number')
             end select
@@ -317,7 +302,7 @@ contains
     ! open an output file
     ! [MPI] Parts by all processes, parts only by group master
     integer function open_output() result(ierr)
-        use num_vars, only: output_i, n_seq_0, glb_rank, grp_nr, glb_rank, &
+        use num_vars, only: output_i, glb_rank, grp_nr, glb_rank, &
             &grp_rank, output_name
         use messages, only: temp_output, temp_output_active, &
             &temp_output_id, temp_output_omitted
@@ -330,7 +315,7 @@ contains
         
         ! initialize ierr
         ierr = 0
-        write(*,*) '!!!! FIX files FOR NON MASTERS !!!!!!!!'
+        write(*,*) '!!!! FIX files issue FOR NON MASTERS !!!!!!!!'
         
         if (grp_rank.eq.0) then                                                 ! only group masters
             if (glb_rank.eq.0) call writo('Attempting to open output files')    ! but only global master outputs
@@ -341,10 +326,8 @@ contains
                 &trim(i2str(grp_nr))
             
             ! open output file for the log
-            output_i = n_seq_0                                                  ! start at the number indicated by n_seq_0
             full_output_name = trim(output_name) // '.txt'
-            call safe_open(output_i,ierr,full_output_name,'replace',&
-                &'formatted',delim_in='none')
+            open(unit=nextunit(output_i),file=full_output_name,iostat=ierr)
             CHCKERR('Cannot open log output file')
             temp_output_active = .false.                                        ! no more temporary output
             
@@ -396,23 +379,20 @@ contains
     ! looks for the full name of a file and tests for its existence
     ! output:   full name of file, empty string if non-existent
     subroutine search_file(i_unit,file_name,exts,con_symb,ext)
-        use num_vars, only: n_seq_0
-        
         character(len=*), intent(inout) :: file_name                            ! the name that is searched for
         character(len=*), intent(in) :: exts(:)                                 ! the possible extensions of the full_name
         character(len=*), intent(in) :: con_symb(:)                             ! the possible symbols to connect with the full_name
         character(len=*), optional, intent(in) :: ext                           ! optional extension at end of file
         integer, intent(out) :: i_unit                                          ! will hold the file handle
-
+        
         character(len=max_str_ln) :: mod_file_name                               ! modified file name
         integer :: id, jd, istat
-
+        
         ! try to open the given name
-        i_unit = n_seq_0                                                        ! start at the number indicated by n_seq_0
-        call safe_open(i_unit,istat,file_name,'old','formatted')
+        open(unit=nextunit(i_unit),file=file_name,status='old',iostat=istat)
         if (present(ext)) mod_file_name = trim(mod_file_name) // trim(ext)      ! if an extension is provided, append it
         if (istat.eq.0) return
-
+        
         ! try with the extensions provided
         call writo('Literal file "' // trim(file_name) // &
             &'" not found. Trying combinations')
@@ -424,7 +404,8 @@ contains
                 if (present(ext)) mod_file_name = trim(mod_file_name) &         ! if an extension is provided, append it
                     &// trim(ext)
                 call writo('trying ' // trim(mod_file_name))
-                call safe_open(i_unit,istat,mod_file_name,'old','formatted')
+                open(unit=nextunit(i_unit),file=mod_file_name,status='old',&
+                    &iostat=istat)
                 if (istat.eq.0) then
                     file_name = mod_file_name 
                     call lvl_ud(-1)
@@ -432,9 +413,38 @@ contains
                 end if
             end do
         end do
-        ! no matches, empty file_name and i_unit = -1 returned
+        ! no matches, empty file_name and i_unit = 0 returned
         file_name = ""
-        i_unit = -1
+        i_unit = 0
         call lvl_ud(-1)
     end subroutine
+    
+    ! Search for available  new unit where lun_min and lun_max  define the range
+    ! of possible luns to check. The unit value is returned by the function, and
+    ! also  by the  optional  argument.  This allows  the  function  to be  used
+    ! directly in an  open statement, and optionally save the  result in a local
+    ! variable. If no units are available, -1 is returned.
+    ! (Adapted from: "http://fortranwiki.org/fortran/show/newunit")
+    integer function nextunit(unit)
+        ! input / output
+        integer, intent(out), optional :: unit
+        
+        ! local variables
+        integer, parameter :: lun_min=10, lun_max=1000
+        logical :: opened
+        integer :: lun
+        
+        ! iterate over permitted luns until available one found
+        nextunit=-1
+        do lun=lun_min,lun_max
+            inquire(unit=lun,opened=opened)
+            if (.not. opened) then
+                nextunit=lun
+                exit
+            end if
+        end do
+        
+        ! return unit number if present
+        if (present(unit)) unit=nextunit
+    end function nextunit
 end module files

@@ -1,19 +1,20 @@
 PB3D.o : \
+    HDF5_ops.o \
     num_vars.o \
     MPI_ops.o \
     VMEC.o \
     files.o \
     driver.o \
-    test.o \
     str_ops.o \
     utilities.o \
     input_ops.o \
     messages.o \
-    HDF5.o \
     eq_ops.o \
     eq_vars.o \
 
-test.o : \
+grid_vars.o : \
+    num_vars.o \
+    messages.o \
 
 sol_ops.o : \
     num_vars.o \
@@ -22,6 +23,8 @@ sol_ops.o : \
     X_vars.o \
 
 grid_ops.o : \
+    HDF5_ops.o \
+    grid_vars.o \
     num_vars.o \
     str_ops.o \
     fourier_ops.o \
@@ -31,8 +34,8 @@ grid_ops.o : \
     X_vars.o \
     eq_vars.o \
     output_ops.o \
-    HDF5.o \
     messages.o \
+    MPI_ops.o \
 
 driver.o : \
     num_vars.o \
@@ -58,6 +61,7 @@ driver_rich.o : \
     HELENA.o \
     utilities.o \
     grid_ops.o \
+    grid_vars.o \
 
 SLEPC_ops.o : \
     num_vars.o \
@@ -95,21 +99,24 @@ eq_ops.o : \
     VMEC.o \
     HELENA.o \
     grid_ops.o \
+    MPI_ops.o \
     
 messages.o : \
     num_vars.o \
     str_ops.o \
 
 output_ops.o : \
+    HDF5_ops.o \
     num_vars.o \
     str_ops.o \
     messages.o \
-    HDF5.o \
+    files.o \
 
-HDF5.o : \
+HDF5_ops.o : \
     num_vars.o \
     str_ops.o \
     messages.o \
+    files.o \
 
 input_ops.o : \
     messages.o \
@@ -118,6 +125,7 @@ input_ops.o : \
     eq_vars.o \
     files.o \
     X_vars.o \
+    grid_vars.o \
 
 fourier_ops.o : \
     messages.o \
@@ -127,9 +135,7 @@ fourier_ops.o : \
 files.o : \
     num_vars.o \
     str_ops.o \
-    eq_vars.o \
     messages.o \
-    VMEC.o \
 
 VMEC.o : \
     num_vars.o \
@@ -148,11 +154,13 @@ utilities.o : \
     num_vars.o \
     messages.o \
     str_ops.o \
+    output_ops.o \
 
 eq_vars.o : \
     num_vars.o \
     messages.o \
     str_ops.o \
+    grid_vars.o \
 
 metric_ops.o : \
     num_vars.o \
@@ -179,6 +187,7 @@ MPI_ops.o : \
     utilities.o \
     output_ops.o \
     HELENA.o \
+    grid_vars.o \
 
 str_ops.o : \
     num_vars.o \

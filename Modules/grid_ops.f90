@@ -10,14 +10,14 @@ module grid_ops
 
     implicit none
     private
-    public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, calc_ang_grid, &
+    public coord_X2eq, coord_eq2X, calc_XYZ_grid, calc_eqd_grid, calc_ang_grid, &
         &plot_grid_real
     
-    interface coord_F2E
-        module procedure coord_F2E_r, coord_F2E_rtz
+    interface coord_X2eq
+        module procedure coord_X2eq_r, coord_X2eq_rtz
     end interface
-    interface coord_E2F
-        module procedure coord_E2F_r, coord_E2F_rtz
+    interface coord_eq2X
+        module procedure coord_eq2X_r, coord_eq2X_rtz
     end interface
     
 contains
@@ -25,30 +25,38 @@ contains
     ! but tabulated in the Equilibrium (!) normal variable.
     ! The variable  use_pol_flux determines  whether theta (.true.)  or zeta
     ! (.false.) is used as the parallel variable.
-    integer function calc_ang_grid(alpha) result(ierr)
+    integer function calc_ang_grid(grid,eq,alpha) result(ierr)
         use num_vars, only: grid_style, use_pol_flux_X, use_pol_flux_eq, &
             &eq_style
-        use X_vars, only: n_par, min_par, max_par, ang_par_F
-        use eq_vars, only: theta_E, zeta_E, flux_p_E, flux_t_E, &
-            &grp_n_r_eq, q_saf_E, rot_t_E
+        use grid_vars, only: grid_type, min_par_X, max_par_X
+        use eq_vars, only: eq_type
+        use X_vars, only: X_type
         
         character(*), parameter :: rout_name = 'calc_ang_grid'
         
         ! input / output
+        type(grid_type), intent(inout) :: grid                                  ! grid of which to calculate angular part
+        type(eq_type), intent(in) :: eq                                         ! equilibrium containing the angular grid
         real(dp), intent(in) :: alpha                                           ! field line coordinate
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), allocatable :: ang_comp_F(:,:)                                ! complementary Flux angle to ang_par_F
-        integer :: kd                                                           ! counter
         real(dp), allocatable :: r_E_loc(:)                                     ! flux in Equilibrium coords.
-        real(dp), allocatable :: theta_F(:,:,:), zeta_F(:,:,:)                  ! theta_F and zeta_F
-        real(dp), allocatable :: theta_E_loc(:,:,:), zeta_E_loc(:,:,:)          ! local copy of theta_E and zeta_E
         real(dp), pointer :: flux_X(:), flux_eq(:)                              ! either pol. or tor. flux
         integer :: pmone                                                        ! plus or minus one
+        integer :: kd                                                           ! counter
+        type(X_type) :: X_loc                                                   ! local X (only purpose is to match the interface)
         
         ! initialize ierr
         ierr = 0
+        
+        ! tests
+        if (grid%n(2).ne.1) then
+            ierr = 1
+            err_msg = 'The angular grid must be for a single field line, so &
+                &it can only have one geodesical value.'
+            CHCKERR(err_msg)
+        end if
         
         ! calculate the grid
         ! grid style
@@ -56,19 +64,6 @@ contains
         select case (grid_style)
             ! grid along the magnetic field lines
             case (1)
-                ! set up parallel and complementary Flux coordinate
-                allocate(ang_par_F(n_par,grp_n_r_eq)); ang_par_F = 0.0_dp
-                allocate(ang_comp_F(n_par,grp_n_r_eq)); ang_comp_F = 0.0_dp
-                
-                ! set up  parallel angle in Flux  coordinates on equidistant
-                ! grid
-                ierr = calc_eqd_grid(ang_par_F(:,1),n_par,min_par*pi,&
-                    &max_par*pi)
-                CHCKERR('')
-                do kd = 2,grp_n_r_eq
-                    ang_par_F(:,kd) = ang_par_F(:,1)
-                end do
-                
                 ! set up plus minus one
                 ! choose which equilibrium style is being used:
                 !   1:  VMEC
@@ -85,64 +80,59 @@ contains
                         CHCKERR(err_msg)
                 end select
                 
-                ! calculate the other Flux angle from alpha
-                if (use_pol_flux_X) then
-                    do kd = 1,grp_n_r_eq
-                        ang_comp_F(:,kd) = pmone*q_saf_E(kd,0)*ang_par_F(:,kd)
+                ! set up parallel angle in  Flux coordinates on equidistant grid
+                ! and use this to calculate the other angle as well
+                if (use_pol_flux_X) then                                        ! parallel angle theta
+                    ierr = calc_eqd_grid(grid%theta_F(:,1,1),grid%n(1),&
+                        &min_par_X*pi,max_par_X*pi)
+                    CHCKERR('')
+                    do kd = 2,grid%grp_n_r
+                        grid%theta_F(:,1,kd) = grid%theta_F(:,1,1)
                     end do
-                    ang_comp_F = ang_comp_F + alpha
-                else
-                    do kd = 1,grp_n_r_eq
-                        ang_comp_F(:,kd) = pmone*rot_t_E(kd,0)*ang_par_F(:,kd)
+                    do kd = 1,grid%grp_n_r
+                        grid%zeta_F(:,1,kd) = pmone*eq%q_saf_E(kd,0)*&
+                            &grid%theta_F(:,1,kd)
                     end do
-                    ang_comp_F = ang_comp_F - alpha
-                end if
-                
-                ! allocate flux coordinates
-                allocate(theta_F(1,n_par,grp_n_r_eq),zeta_F(1,n_par,grp_n_r_eq))
-                
-                ! set up local equilibrium coordinates
-                allocate(r_E_loc(grp_n_r_eq))
-                allocate(theta_E_loc(1,n_par,grp_n_r_eq))
-                allocate(zeta_E_loc(1,n_par,grp_n_r_eq))
-                
-                ! set up theta_F and zeta_F
-                if (use_pol_flux_X) then
-                    theta_F(1,:,:) = ang_par_F
-                    zeta_F(1,:,:) = ang_comp_F
-                else
-                    theta_F(1,:,:) = ang_comp_F
-                    zeta_F(1,:,:) = ang_par_F
+                    grid%zeta_F = grid%zeta_F + alpha
+                else                                                            ! parallel angle zeta
+                    ierr = calc_eqd_grid(grid%zeta_F(:,1,1),grid%n(1),&
+                        &min_par_X*pi,max_par_X*pi)
+                    CHCKERR('')
+                    do kd = 2,grid%grp_n_r
+                        grid%zeta_F(:,1,kd) = grid%zeta_F(:,1,1)
+                    end do
+                    do kd = 1,grid%grp_n_r
+                        grid%zeta_F(:,1,kd) = pmone*eq%rot_t_E(kd,0)*&
+                            &grid%theta_F(:,1,kd)
+                    end do
+                    grid%zeta_F = grid%zeta_F - alpha
                 end if
                 
                 ! set up flux_X and flux_eq
                 if (use_pol_flux_X) then
-                    flux_X => flux_p_E(:,0)
+                    flux_X => eq%flux_p_E(:,0)
                 else
-                    flux_X => flux_t_E(:,0)
+                    flux_X => eq%flux_t_E(:,0)
                 end if
                 if (use_pol_flux_eq) then
-                    flux_eq => flux_p_E(:,0)
+                    flux_eq => eq%flux_p_E(:,0)
                 else
-                    flux_eq => flux_t_E(:,0)
+                    flux_eq => eq%flux_t_E(:,0)
                 end if
                 
-                ! convert Flux coordinates to equilibrium coordinates
-                ! (use custom  flux_eq and flux_X because the  FD quantities are
+                ! allocate local r_E
+                allocate(r_E_loc(size(flux_X)))
+                
+                ! convert perturbation coordinates to equilibrium coordinates
+                ! (use custom  flux_eq and flux_X  because the X  quantities are
                 ! not yet calculated)
-                ierr = coord_F2E(flux_X,theta_F,zeta_F,&
-                    &r_E_loc,theta_E_loc,zeta_E_loc,&
-                    &r_F_array=flux_X,r_E_array=flux_eq)
+                ierr = coord_X2eq(eq,grid,X_loc,flux_X,grid%theta_F,grid%zeta_F,&
+                    &r_E_loc,grid%theta_E,grid%zeta_E,&
+                    &r_X_array=flux_X,r_eq_array=flux_eq)
                 CHCKERR('')
                 
-                ! update theta_E and zeta_E with their local copies
-                theta_E = theta_E_loc(1,:,:)
-                zeta_E = zeta_E_loc(1,:,:)
-                
                 ! deallocate local variables
-                deallocate(ang_comp_F)
-                deallocate(theta_E_loc,zeta_E_loc,r_E_loc)
-                deallocate(theta_F,zeta_F)
+                deallocate(r_E_loc)
                 nullify(flux_X,flux_eq)
             ! grid style error
             case default
@@ -153,68 +143,74 @@ contains
         end select
     end function calc_ang_grid
     
-    ! Converts  Flux  coordinates  (r,theta,zeta)_F to  Equilibrium  coordinates
-    ! (r,theta,zeta)_E. Optionally,  two arrays  r_F_array and r_E_array  can be
-    ! provided,  that define  the mapping  between the  both coordinate  system.
-    ! Standard, the normalized (wrt. 1) flux variables are used.
-    integer function coord_F2E_rtz(r_F,theta_F,zeta_F,r_E,theta_E,zeta_E,&
-        &r_F_array,r_E_array) result(ierr)                                      ! version with r, theta and zeta
+    ! Converts   perturbation   coordinates  (theta,r,zeta)_X   to   equilibrium
+    ! coordinates  (theta,r,zeta)_eq.  Optionally,   two  arrays  r_X_array  and
+    ! r_eq_array  can be  provided, that  define  the mapping  between the  both
+    ! coordinate system.  Standard, the normalized  (wrt. 1) flux  variables are
+    ! used.
+    integer function coord_X2eq_rtz(eq,eq_grid,X,r_X,theta_X,zeta_X,r_eq,&
+        &theta_eq,zeta_eq,r_X_array,r_eq_array) result(ierr)                    ! version with r, theta and zeta
         use num_vars, only: tol_NR, eq_style
         use fourier_ops, only: fourier2real, calc_trigon_factors
         use VMEC, only: L_c, L_s
         use utilities, only: interp_fun
-        use eq_vars, only: flux_p_FD, flux_t_FD
+        use eq_vars, only: eq_type
+        use grid_vars, only: grid_type
+        use X_vars, only: X_type
         
-        character(*), parameter :: rout_name = 'coord_F2E_rtz'
+        character(*), parameter :: rout_name = 'coord_X2eq_rtz'
         
         ! input / output
-        real(dp), intent(in) :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)           ! Flux (perturbation) coords.
-        real(dp), intent(inout) :: r_E(:), theta_E(:,:,:), zeta_E(:,:,:)        ! equilibrium coords.
-        real(dp), intent(in), optional, target :: r_F_array(:), r_E_array(:)    ! optional arrays that define mapping between two coord. systems
+        type(eq_type) :: eq                                                     ! equilibrium in which to convert variables
+        type(grid_type) :: eq_grid                                              ! equilibrium grid (for normal group limits)
+        type(X_type) :: X                                                       ! perturbation variables
+        real(dp), intent(in) :: r_X(:), theta_X(:,:,:), zeta_X(:,:,:)           ! perturbation coords.
+        real(dp), intent(inout) :: r_eq(:), theta_eq(:,:,:), zeta_eq(:,:,:)     ! equilibrium coords.
+        real(dp), intent(in), optional, target :: r_X_array(:), r_eq_array(:)   ! optional arrays that define mapping between two coord. systems
         
         ! local variables (also used in child functions)
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_r, n_theta, n_zeta                                         ! dimensions of the grid
         real(dp), allocatable :: L_c_loc(:,:,:)                                 ! local version of L_c
         real(dp), allocatable :: L_s_loc(:,:,:)                                 ! local version of L_s
-        real(dp) :: theta_V_loc(1,1), zeta_V_loc(1,1)                           ! local version of theta_V, zeta_V (needs to be 2D matrix)
-        real(dp) :: lam(1,1)                                                    ! lambda (needs to be 2D matrix)
-        real(dp) :: dlam(1,1)                                                   ! angular derivative of lambda (needs to be 2D matrix)
+        real(dp) :: theta_V_loc(1,1,1), zeta_V_loc(1,1,1)                       ! local version of theta_V, zeta_V (needs to be 3D matrix)
+        real(dp) :: lam(1,1,1)                                                  ! lambda (needs to be 3D matrix)
+        real(dp) :: dlam(1,1,1)                                                 ! angular derivative of lambda (needs to be 3D matrix)
         integer :: id, jd, kd                                                   ! counters
         
         ! initialize ierr
         ierr = 0
         
         ! set up array sizes
-        n_theta = size(theta_E,1)
-        n_zeta = size(theta_E,2)
-        n_r = size(theta_E,3)
+        n_theta = size(theta_eq,1)
+        n_zeta = size(theta_eq,2)
+        n_r = size(theta_eq,3)
         
         ! tests
-        if (size(theta_F,1).ne.size(zeta_F,1) .or. &
-            &size(theta_F,2).ne.size(zeta_F,2) .or. &
-            &size(theta_F,3).ne.size(zeta_F,3) .or. &
-            &size(theta_F,3).ne.size(r_F)) then
+        if (size(theta_X,1).ne.size(zeta_X,1) .or. &
+            &size(theta_X,2).ne.size(zeta_X,2) .or. &
+            &size(theta_X,3).ne.size(zeta_X,3) .or. &
+            &size(theta_X,3).ne.size(r_X)) then
             ierr = 1
-            err_msg = 'theta_F, zeta_F and r_F need to have the correct &
+            err_msg = 'theta_X, zeta_X and r_X need to have the correct &
                 &dimensions'
             CHCKERR(err_msg)
         end if
-        if (n_theta.ne.size(zeta_E,1) .or. n_zeta.ne.size(zeta_E,2) .or. &
-            &n_r.ne.size(zeta_E,3) .or. n_r.ne.size(r_E)) then
+        if (n_theta.ne.size(zeta_eq,1) .or. n_zeta.ne.size(zeta_eq,2) .or. &
+            &n_r.ne.size(zeta_eq,3) .or. n_r.ne.size(r_eq)) then
             ierr = 1
-            err_msg = 'theta_E, zeta_E and r_E need to have the correct &
+            err_msg = 'theta_eq, zeta_eq and r_eq need to have the correct &
                 &dimensions'
             CHCKERR(err_msg)
         end if
-        if (present(r_F_array).neqv.present(r_E_array)) then
+        if (present(r_X_array).neqv.present(r_eq_array)) then
             ierr = 1
-            err_msg = 'both r_F_array and r_E_array have to be provided'
+            err_msg = 'both r_X_array and r_eq_array have to be provided'
             CHCKERR(err_msg)
         end if
         
         ! convert normal position
-        ierr = coord_F2E_r(r_F,r_E,r_F_array,r_E_array)
+        ierr = coord_X2eq_r(eq,X,r_X,r_eq,r_X_array,r_eq_array)
         CHCKERR('')
         
         ! choose which equilibrium style is being used:
@@ -222,12 +218,12 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ierr = coord_F2E_VMEC()
+                ierr = coord_X2eq_VMEC()
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! trivial HELENA uses flux coordinates
-                theta_E = theta_F
-                zeta_E = zeta_F
+                theta_eq = theta_X
+                zeta_eq = zeta_X
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
@@ -235,38 +231,36 @@ contains
                 CHCKERR(err_msg)
         end select
     contains
-        integer function coord_F2E_VMEC() result(ierr)
+        integer function coord_X2eq_VMEC() result(ierr)
             use utilities, only: calc_zero_NR
             use VMEC, only: mpol, ntor
-            use eq_vars, only: grp_min_r_eq, grp_max_r_eq
-            use X_vars, only: max_flux_X_F
             use num_vars, only: use_pol_flux_X
             
-            character(*), parameter :: rout_name = 'coord_F2E_VMEC'
+            character(*), parameter :: rout_name = 'coord_X2eq_VMEC'
             
             ! local variables
             real(dp), allocatable :: L_c_loc_ind(:,:), L_s_loc_ind(:,:)         ! individual versions of L_c_loc and L_s_loc
             real(dp), pointer :: flux_X(:)                                      ! either pol. or tor. flux
-            real(dp) :: r_F_factor                                              ! mult. factors for r_F
+            real(dp) :: r_X_factor                                              ! mult. factors for r_X
             
             ! initialize ierr
             ierr = 0
             
-            ! set up flux_X and multiplicative factor r_F_factor
-            if (present(r_F_array)) then
-                flux_X => r_F_array
-                r_F_factor = 1._dp
+            ! set up flux_X and multiplicative factor r_X_factor
+            if (present(r_X_array)) then
+                flux_X => r_X_array
+                r_X_factor = 1._dp
             else
                 if (use_pol_flux_X) then
-                    flux_X => flux_p_FD(:,0)
+                    flux_X => eq%flux_p_FD(:,0)
                 else
-                    flux_X => flux_t_FD(:,0)
+                    flux_X => eq%flux_t_FD(:,0)
                 end if
-                r_F_factor = max_flux_X_F
+                r_X_factor = X%max_flux_F
             end if
             
             ! the toroidal angle is trivial
-            zeta_E = - zeta_F                                                   ! conversion VMEC LH -> RH coord. system
+            zeta_eq = - zeta_X                                                  ! conversion VMEC LH -> RH coord. system
             
             ! allocate local copies of L_c and L_s
             allocate(L_c_loc(0:mpol-1,-ntor:ntor,1:1))
@@ -276,14 +270,14 @@ contains
             
             ! loop over all normal points
             do kd = 1,n_r
-                ! interpolate L_c and L_s at requested normal point r_F
+                ! interpolate L_c and L_s at requested normal point r_X
                 ierr = interp_fun(L_c_loc_ind,&
-                    &L_c(:,:,grp_min_r_eq:grp_max_r_eq,0),&
-                    &r_F(kd)*r_F_factor,flux_X)
+                    &L_c(:,:,eq_grid%i_min:eq_grid%i_max,0),&
+                    &r_X(kd)*r_X_factor,flux_X)
                 CHCKERR('')
                 ierr = interp_fun(L_s_loc_ind,&
-                    &L_s(:,:,grp_min_r_eq:grp_max_r_eq,0),&
-                    &r_F(kd)*r_F_factor,flux_X)
+                    &L_s(:,:,eq_grid%i_min:eq_grid%i_max,0),&
+                    &r_X(kd)*r_X_factor,flux_X)
                 CHCKERR('')
                 
                 ! copy individual to array version
@@ -291,22 +285,22 @@ contains
                 L_s_loc(:,:,1) = L_s_loc_ind
                 
                 ! the poloidal angle has to be found as the zero of
-                !   f = theta_F - theta_E - lambda
+                !   f = theta_X - theta_eq - lambda
                 ! loop over all angular points
                 do jd = 1,n_zeta
                     do id = 1,n_theta
                         ! calculate zero of f
-                        ierr = calc_zero_NR(theta_E(id,jd,kd),fun_pol,dfun_pol,&
-                            &theta_F(id,jd,kd))                                 ! use theta_F as guess for theta_E
+                        ierr = calc_zero_NR(theta_eq(id,jd,kd),fun_pol,&
+                            &dfun_pol,theta_X(id,jd,kd))                        ! use theta_X as guess for theta_eq
                         CHCKERR('')
                         
                         ! do a check whether the result is indeed zero
-                        if (abs(fun_pol(theta_E(id,jd,kd))).gt.tol_NR*100) then
-                            err_msg = 'In coord_F2E_VMEC, calculating f as a &
-                                &check, using the theta_E that is the solution &
-                                &of f = 0, yields a calculated f that &
+                        if (abs(fun_pol(theta_eq(id,jd,kd))).gt.tol_NR*100) then
+                            err_msg = 'In coord_X2eq_VMEC, calculating f as a &
+                                &check, using the theta_eq that is the solution&
+                                & of f = 0, yields a calculated f that &
                                 &deviates from 0 by '//trim(r2strt(&
-                                &100*abs(fun_pol(theta_E(id,jd,kd)))))//'%'
+                                &100*abs(fun_pol(theta_eq(id,jd,kd)))))//'%'
                             ierr = 1
                             CHCKERR(err_msg)
                         end if
@@ -317,28 +311,28 @@ contains
             ! deallocate variables
             deallocate(L_c_loc,L_s_loc)
             deallocate(L_c_loc_ind,L_s_loc_ind)
-        end function coord_F2E_VMEC
+        end function coord_X2eq_VMEC
         
-        ! function that returns f = theta_F  - theta_V - lambda. It uses theta_F
-        ! and  zeta_E (=  zeta_V)  from the  parent function,  lam  and dlam  to
+        ! function that returns f = theta_X  - theta_V - lambda. It uses theta_X
+        ! and  zeta_eq (=  zeta_V) from  the parent  function, lam  and dlam  to
         ! contain the  variable lambda  or its derivative,  as well  as L_s_loc,
         ! L_c_loc, theta_V_loc, zeta_V_loc, id, jd and kd.
-        function fun_pol(theta_E_in)
+        function fun_pol(theta_eq_in)
             character(*), parameter :: rout_name = 'fun_pol'
             
             ! input / output
             real(dp) :: fun_pol
-            real(dp), intent(in) :: theta_E_in
+            real(dp), intent(in) :: theta_eq_in
             
             ! local variables
-            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:)              ! trigonometric factor cosine for the inverse fourier transf.
+            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:,:)            ! trigonometric factor cosine for the inverse fourier transf.
             
             ! initialize fun_pol
             fun_pol = 0.0_dp
             
             ! set up local copies of theta_V_loc, zeta_V_loc
-            theta_V_loc = theta_E_in
-            zeta_V_loc = zeta_E(id,jd,kd)
+            theta_V_loc = theta_eq_in
+            zeta_V_loc = zeta_eq(id,jd,kd)
             
             ! transform lambda from Fourier space to real space
             ! calculate the (co)sines
@@ -351,32 +345,32 @@ contains
             CHCKERR('')
             
             ! calculate the output function
-            fun_pol = theta_F(id,jd,kd) - theta_E_in - lam(1,1)
+            fun_pol = theta_X(id,jd,kd) - theta_eq_in - lam(1,1,1)
             
             ! deallocate trigoniometric factors
             deallocate(trigon_factors_loc)
         end function fun_pol
         
         ! function that  returns df/dtheta_V  = -1  - dlambda/dtheta_V.  It uses
-        ! theta_F and zeta_E  (= zeta_V) from the parent function,  lam and dlam
+        ! theta_X and zeta_eq (= zeta_V) from  the parent function, lam and dlam
         ! to contain the variable lambda or  its derivative, as well as L_s_loc,
         ! L_c_loc, theta_V_loc, zeta_V_loc, id, jd and kd.
-        function dfun_pol(theta_E_in)
+        function dfun_pol(theta_eq_in)
             character(*), parameter :: rout_name = 'dfun_pol'
             
             ! input / output
             real(dp) :: dfun_pol
-            real(dp), intent(in) :: theta_E_in
+            real(dp), intent(in) :: theta_eq_in
             
             ! local variables
-            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:)              ! trigonometric factor cosine for the inverse fourier transf.
+            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:,:)            ! trigonometric factor cosine for the inverse fourier transf.
             
             ! initialize dfun_pol
             dfun_pol = 0.0_dp
             
             ! set up local copies of theta_V_loc, zeta_V_loc
-            theta_V_loc = theta_E_in
-            zeta_V_loc = zeta_E(id,jd,kd)
+            theta_V_loc = theta_eq_in
+            zeta_V_loc = zeta_eq(id,jd,kd)
             
             ! transform lambda from Fourier space to real space
             ! calculate the (co)sines
@@ -389,29 +383,32 @@ contains
             CHCKERR('')
             
             ! calculate the output function
-            dfun_pol = -1._dp - dlam(1,1)
+            dfun_pol = -1._dp - dlam(1,1,1)
             
             ! deallocate trigoniometric factors
             deallocate(trigon_factors_loc)
         end function dfun_pol
-    end function coord_F2E_rtz
-    integer function coord_F2E_r(r_F,r_E,r_F_array,r_E_array) result(ierr)      ! version with only r
-        use eq_vars, only: flux_p_FD, flux_t_FD, max_flux_eq_F
+    end function coord_X2eq_rtz
+    integer function coord_X2eq_r(eq,X,r_X,r_eq,r_X_array,r_eq_array) &
+        &result(ierr)                                                           ! version with only r
         use num_vars, only: use_pol_flux_eq, use_pol_flux_X
         use utilities, only: interp_fun
-        use X_vars, only: max_flux_X_F
+        use eq_vars, only: eq_type
+        use X_vars, only: X_type
         
-        character(*), parameter :: rout_name = 'coord_F2E_r'
+        character(*), parameter :: rout_name = 'coord_X2eq_r'
         
         ! input / output
-        real(dp), intent(in) :: r_F(:)                                          ! Flux (perturbation) coords.
-        real(dp), intent(inout) :: r_E(:)                                       ! equilibrium coords.
-        real(dp), intent(in), optional, target :: r_F_array(:), r_E_array(:)    ! optional arrays that define mapping between two coord. systems
+        type(eq_type) :: eq                                                     ! equilibrium in which to convert variables
+        type(X_type) :: X                                                       ! perturbation variables
+        real(dp), intent(in) :: r_X(:)                                          ! perturbation coords.
+        real(dp), intent(inout) :: r_eq(:)                                      ! equilibrium coords.
+        real(dp), intent(in), optional, target :: r_X_array(:), r_eq_array(:)   ! optional arrays that define mapping between two coord. systems
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), pointer :: flux_X(:), flux_eq(:)                              ! either pol. or tor. flux
-        real(dp) :: r_F_factor, r_E_factor                                      ! mult. factors for r_F and r_E
+        real(dp) :: r_X_factor, r_eq_factor                                     ! mult. factors for r_X and r_eq
         integer :: n_r                                                          ! dimension of the grid
         integer :: kd                                                           ! counter
         
@@ -419,106 +416,112 @@ contains
         ierr = 0
         
         ! set up array sizes
-        n_r = size(r_F)
+        n_r = size(r_X)
         
         ! tests
-        if (n_r.ne.size(r_E)) then
+        if (n_r.ne.size(r_eq)) then
             ierr = 1
-            err_msg = 'r_F and r_E need to have the correct dimensions'
+            err_msg = 'r_X and r_eq need to have the correct dimensions'
             CHCKERR(err_msg)
         end if
-        if (present(r_F_array).neqv.present(r_E_array)) then
+        if (present(r_X_array).neqv.present(r_eq_array)) then
             ierr = 1
-            err_msg = 'both r_F_array and r_E_array have to be provided'
+            err_msg = 'both r_X_array and r_eq_array have to be provided'
             CHCKERR(err_msg)
         end if
         
-        ! set  up  flux_X,   flux_eq  and   multiplicative  factors  r_F_factor,
-        ! r_E_factor
-        if (present(r_F_array)) then
-            flux_X => r_F_array
-            flux_eq => r_E_array
-            r_F_factor = 1._dp
-            r_E_factor = 1._dp
+        ! set  up  flux_X,   flux_eq  and   multiplicative  factors  r_X_factor,
+        ! r_eq_factor
+        if (present(r_X_array)) then
+            flux_X => r_X_array
+            flux_eq => r_eq_array
+            r_X_factor = 1._dp
+            r_eq_factor = 1._dp
         else
             if (use_pol_flux_X) then
-                flux_X => flux_p_FD(:,0)
+                flux_X => eq%flux_p_FD(:,0)
             else
-                flux_X => flux_t_FD(:,0)
+                flux_X => eq%flux_t_FD(:,0)
             end if
             if (use_pol_flux_eq) then
-                flux_eq => flux_p_FD(:,0)
+                flux_eq => eq%flux_p_FD(:,0)
             else
-                flux_eq => flux_t_FD(:,0)
+                flux_eq => eq%flux_t_FD(:,0)
             end if
-            r_F_factor = max_flux_X_F
-            r_E_factor = max_flux_eq_F
+            r_X_factor = X%max_flux_F
+            r_eq_factor = eq%max_flux_F
         end if
         
         ! convert normal position
         do kd = 1,n_r
-            ierr = interp_fun(r_E(kd),flux_eq/r_E_factor,r_F(kd),&
-                &flux_X/r_F_factor)
+            ierr = interp_fun(r_eq(kd),flux_eq/r_eq_factor,r_X(kd),&
+                &flux_X/r_X_factor)
             CHCKERR('')
-            r_E(kd) = r_E(kd)
+            r_eq(kd) = r_eq(kd)
         end do
-    end function coord_F2E_r
+    end function coord_X2eq_r
     
-    ! Converts  Equilibrium  coordinates  (r,theta,zeta)_E to  Flux  coordinates
-    ! (r,theta,zeta)_F. Optionally,  two arrays  r_E_array and r_F_array  can be
-    ! provided,  that define  the mapping  between the  both coordinate  system.
-    ! Standard, the normalized (wrt. 1) flux variables are used.
-    integer function coord_E2F_rtz(r_E,theta_E,zeta_E,r_F,theta_F,zeta_F,&
-        &r_E_array,r_F_array) result(ierr)                                      ! version with r, theta and zeta
+    ! Converts   equilibrium  coordinates   (r,theta,zeta)_eq  to   perturbation
+    ! coordinates  (r,theta,zeta)_X.  Optionally,   two  arrays  r_eq_array  and
+    ! r_X_array  can be  provided,  that  define the  mapping  between the  both
+    ! coordinate system.  Standard, the normalized  (wrt. 1) flux  variables are
+    ! used.
+    integer function coord_eq2X_rtz(eq,eq_grid,X,r_eq,theta_eq,zeta_eq,r_X,&
+        &theta_X,zeta_X,r_eq_array,r_X_array) result(ierr)                      ! version with r, theta and zeta
         use num_vars, only: eq_style
         use utilities, only: interp_fun
-        use eq_vars, only: flux_p_FD, flux_t_FD
+        use eq_vars, only: eq_type
+        use grid_vars, only: grid_type
+        use X_vars, only: X_type
         
-        character(*), parameter :: rout_name = 'coord_E2F_rtz'
+        character(*), parameter :: rout_name = 'coord_eq2X_rtz'
         
         ! input / output
-        real(dp), intent(in) :: r_E(:), theta_E(:,:,:), zeta_E(:,:,:)           ! equilibrium coords.
-        real(dp), intent(inout) :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)        ! Flux (perturbation) coords.
-        real(dp), intent(in), optional, target :: r_E_array(:), r_F_array(:)    ! optional arrays that define mapping between two coord. systems
+        type(eq_type) :: eq                                                     ! equilibrium in which to convert variables
+        type(grid_type) :: eq_grid                                              ! equilibrium grid (for normal group limits)
+        type(X_type) :: X                                                       ! perturbation variables
+        real(dp), intent(in) :: r_eq(:), theta_eq(:,:,:), zeta_eq(:,:,:)        ! equilibrium coords.
+        real(dp), intent(inout) :: r_X(:), theta_X(:,:,:), zeta_X(:,:,:)        ! perturbation coords.
+        real(dp), intent(in), optional, target :: r_eq_array(:), r_X_array(:)   ! optional arrays that define mapping between two coord. systems
         
         ! local variables (also used in child functions)
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_r, n_theta, n_zeta                                         ! dimensions of the grid
-        integer :: id, jd, kd                                                   ! counters
+        integer :: kd                                                           ! counter
         
         ! initialize ierr
         ierr = 0
         
         ! set up array sizes
-        n_theta = size(theta_E,1)
-        n_zeta = size(theta_E,2)
-        n_r = size(theta_E,3)
+        n_theta = size(theta_eq,1)
+        n_zeta = size(theta_eq,2)
+        n_r = size(theta_eq,3)
         
         ! tests
-        if (size(theta_F,1).ne.size(zeta_F,1) .or. &
-            &size(theta_F,2).ne.size(zeta_F,2) .or. &
-            &size(theta_F,3).ne.size(zeta_F,3) .or. &
-            &size(theta_F,3).ne.size(r_F)) then
+        if (size(theta_X,1).ne.size(zeta_X,1) .or. &
+            &size(theta_X,2).ne.size(zeta_X,2) .or. &
+            &size(theta_X,3).ne.size(zeta_X,3) .or. &
+            &size(theta_X,3).ne.size(r_X)) then
             ierr = 1
-            err_msg = 'theta_F, zeta_F and r_F need to have the correct &
+            err_msg = 'theta_X, zeta_X and r_X need to have the correct &
                 &dimensions'
             CHCKERR(err_msg)
         end if
-        if (n_theta.ne.size(zeta_E,1) .or. n_zeta.ne.size(zeta_E,2) .or. &
-            &n_r.ne.size(zeta_E,3) .or. n_r.ne.size(r_E)) then
+        if (n_theta.ne.size(zeta_eq,1) .or. n_zeta.ne.size(zeta_eq,2) .or. &
+            &n_r.ne.size(zeta_eq,3) .or. n_r.ne.size(r_eq)) then
             ierr = 1
-            err_msg = 'theta_E, zeta_E and r_E need to have the correct &
+            err_msg = 'theta_eq, zeta_eq and r_eq need to have the correct &
                 &dimensions'
             CHCKERR(err_msg)
         end if
-        if (present(r_F_array).neqv.present(r_E_array)) then
+        if (present(r_X_array).neqv.present(r_eq_array)) then
             ierr = 1
-            err_msg = 'both r_F_array and r_E_array have to be provided'
+            err_msg = 'both r_X_array and r_eq_array have to be provided'
             CHCKERR(err_msg)
         end if
         
         ! convert normal position
-        ierr = coord_E2F_r(r_E,r_F,r_E_array,r_F_array)
+        ierr = coord_eq2X_r(eq,X,r_eq,r_X,r_eq_array,r_X_array)
         CHCKERR('')
         
         ! choose which equilibrium style is being used:
@@ -526,12 +529,12 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ierr = coord_E2F_VMEC()
+                ierr = coord_eq2X_VMEC()
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! trivial HELENA uses flux coordinates
-                theta_F = theta_E
-                zeta_F = zeta_E
+                theta_X = theta_eq
+                zeta_X = zeta_eq
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
@@ -539,114 +542,95 @@ contains
                 CHCKERR(err_msg)
         end select
     contains
-        integer function coord_E2F_VMEC() result(ierr)
+        integer function coord_eq2X_VMEC() result(ierr)
             use VMEC, only: mpol, ntor, L_c, L_s
             use fourier_ops, only: calc_trigon_factors, fourier2real
-            use eq_vars, only: grp_min_r_eq, grp_max_r_eq, max_flux_eq_F
             use num_vars, only: use_pol_flux_eq
             
-            character(*), parameter :: rout_name = 'coord_E2F_VMEC'
+            character(*), parameter :: rout_name = 'coord_eq2X_VMEC'
             
             ! local variables
             real(dp), allocatable :: L_c_loc(:,:,:), L_s_loc(:,:,:)             ! local version of L_c and L_s
-            real(dp), allocatable :: L_c_loc_ind(:,:), L_s_loc_ind(:,:)         ! individual versions of L_c_loc and L_s_loc
-            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:)              ! trigonometric factor cosine for the inverse fourier transf.
-            real(dp) :: lam(1,1)                                                ! lambda (needs to be 2D matrix)
-            real(dp) :: theta_V_loc(1,1), zeta_V_loc(1,1)                       ! local version of theta_V, zeta_V (needs to be 2D matrix)
+            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:,:)            ! trigonometric factor cosine for the inverse fourier transf.
+            real(dp), allocatable :: lam(:,:,:)                                 ! lambda
             real(dp), pointer :: flux_eq(:)                                     ! either pol. or tor. flux
-            real(dp) :: r_E_factor                                              ! mult. factors for r_E
+            real(dp) :: r_eq_factor                                             ! mult. factors for r_eq
             
             ! initialize ierr
             ierr = 0
             
-            ! set  up  flux_eq  and   multiplicative  factor  r_E_factor
-            if (present(r_F_array)) then
-                flux_eq => r_E_array
-                r_E_factor = 1._dp
+            ! set  up  flux_eq  and   multiplicative  factor  r_eq_factor
+            if (present(r_X_array)) then
+                flux_eq => r_eq_array
+                r_eq_factor = 1._dp
             else
                 if (use_pol_flux_eq) then
-                    flux_eq => flux_p_FD(:,0)
+                    flux_eq => eq%flux_p_FD(:,0)
                 else
-                    flux_eq => flux_t_FD(:,0)
+                    flux_eq => eq%flux_t_FD(:,0)
                 end if
-                r_E_factor = max_flux_eq_F
+                r_eq_factor = eq%max_flux_F
             end if
             
             ! the toroidal angle is trivial
-            zeta_F = - zeta_E                                                   ! conversion VMEC LH -> RH coord. system
+            zeta_X = - zeta_eq                                                  ! conversion VMEC LH -> RH coord. system
             
-            ! allocate local copies of L_c and L_s
-            allocate(L_c_loc(0:mpol-1,-ntor:ntor,1:1))
-            allocate(L_s_loc(0:mpol-1,-ntor:ntor,1:1))
-            allocate(L_c_loc_ind(0:mpol-1,-ntor:ntor))
-            allocate(L_s_loc_ind(0:mpol-1,-ntor:ntor))
+            ! allocate local copies of L_c and L_s and lambda
+            allocate(L_c_loc(0:mpol-1,-ntor:ntor,1:n_r))
+            allocate(L_s_loc(0:mpol-1,-ntor:ntor,1:n_r))
+            allocate(lam(n_theta,n_zeta,n_r))
             
+            ! interpolate L_c and L_s at requested normal point r_eq
             ! loop over all normal points
             do kd = 1,n_r
-                ! interpolate L_c and L_s at requested normal point r_E
-                ierr = interp_fun(L_c_loc_ind,&
-                    &L_c(:,:,grp_min_r_eq:grp_max_r_eq,0),&
-                    &r_E(kd),flux_eq/r_E_factor)
+                ierr = interp_fun(L_c_loc(:,:,kd),&
+                    &L_c(:,:,eq_grid%i_min:eq_grid%i_max,0),&
+                    &r_eq(kd),flux_eq/r_eq_factor)
                 CHCKERR('')
-                ierr = interp_fun(L_s_loc_ind,&
-                    &L_s(:,:,grp_min_r_eq:grp_max_r_eq,0),&
-                    &r_E(kd),flux_eq/r_E_factor)
+                ierr = interp_fun(L_s_loc(:,:,kd),&
+                    &L_s(:,:,eq_grid%i_min:eq_grid%i_max,0),&
+                    &r_eq(kd),flux_eq/r_eq_factor)
                 CHCKERR('')
-                
-                ! copy individual to array version
-                L_c_loc(:,:,1) = L_c_loc_ind
-                L_s_loc(:,:,1) = L_s_loc_ind
-                
-                ! loop over all angular points
-                do jd = 1,n_zeta
-                    do id = 1,n_theta
-                        ! set up local copies of theta_V_loc, zeta_V_loc
-                        theta_V_loc = theta_E(id,jd,kd)
-                        zeta_V_loc = zeta_E(id,jd,kd)
-                        
-                        ! transform lambda from Fourier space to real space
-                        ! calculate the (co)sines
-                        ierr = calc_trigon_factors(theta_V_loc,zeta_V_loc,&
-                            &trigon_factors_loc)
-                        CHCKERR('')
-                        
-                        ! calculate lambda
-                        ierr = fourier2real(L_c_loc,L_s_loc,trigon_factors_loc,&
-                            &lam)
-                        CHCKERR('')
-                        
-                        ! the poloidal angle has to be found as
-                        !   theta_F = theta_E + lambda
-                        theta_F(id,jd,kd) = theta_E(id,jd,kd) + lam(1,1)
-                        
-                        ! deallocate trigoniometric factors
-                        deallocate(trigon_factors_loc)
-                    end do
-                end do
             end do
             
+            ! calculate the (co)sines to transform lambda to real space
+            ierr = calc_trigon_factors(theta_eq,zeta_eq,trigon_factors_loc)
+            CHCKERR('')
+            
+            ! calculate lambda
+            ierr = fourier2real(L_c_loc,L_s_loc,trigon_factors_loc,lam)
+            CHCKERR('')
+            
+            ! the poloidal angle has to be found as
+            !   theta_X = theta_eq + lambda
+            theta_X = theta_eq + lam
+            
             ! deallocate variables
+            deallocate(trigon_factors_loc)
             deallocate(L_c_loc,L_s_loc)
-            deallocate(L_c_loc_ind,L_s_loc_ind)
-        end function coord_E2F_VMEC
-    end function coord_E2F_rtz
-    integer function coord_E2F_r(r_E,r_F,r_E_array,r_F_array) result(ierr)      ! version with only r
-        use eq_vars, only: flux_p_FD, flux_t_FD, max_flux_eq_F
-        use X_vars, only: max_flux_X_F
+            deallocate(lam)
+        end function coord_eq2X_VMEC
+    end function coord_eq2X_rtz
+    integer function coord_eq2X_r(eq,X,r_eq,r_X,r_eq_array,r_X_array) &
+        &result(ierr)                                                           ! version with only r
+        use X_vars, only: X_type
         use num_vars, only: use_pol_flux_eq, use_pol_flux_X
         use utilities, only: interp_fun
+        use eq_vars, only: eq_type
         
-        character(*), parameter :: rout_name = 'coord_E2F_r'
+        character(*), parameter :: rout_name = 'coord_eq2X_r'
         
         ! input / output
-        real(dp), intent(in) :: r_E(:)                                          ! equilibrium coords.
-        real(dp), intent(inout) :: r_F(:)                                       ! Flux (perturbation) coords.
-        real(dp), intent(in), optional, target :: r_E_array(:), r_F_array(:)    ! optional arrays that define mapping between two coord. systems
+        type(eq_type) :: eq                                                     ! equilibrium in which to convert variables
+        type(X_type) :: X                                                       ! perturbation variables
+        real(dp), intent(in) :: r_eq(:)                                         ! equilibrium coords.
+        real(dp), intent(inout) :: r_X(:)                                       ! perturbation coords.
+        real(dp), intent(in), optional, target :: r_eq_array(:), r_X_array(:)   ! optional arrays that define mapping between two coord. systems
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), pointer :: flux_X(:), flux_eq(:)                              ! either pol. or tor. flux
-        real(dp) :: r_E_factor, r_F_factor                                      ! mult. factors for r_F and r_E
+        real(dp) :: r_eq_factor, r_X_factor                                     ! mult. factors for r_X and r_eq
         integer :: n_r                                                          ! dimension of the grid
         integer :: kd                                                           ! counter
         
@@ -654,65 +638,67 @@ contains
         ierr = 0
         
         ! set up array sizes
-        n_r = size(r_E)
+        n_r = size(r_eq)
         
         ! tests
-        if (n_r.ne.size(r_F)) then
+        if (n_r.ne.size(r_X)) then
             ierr = 1
-            err_msg = 'r_E and r_F need to have the correct dimensions'
+            err_msg = 'r_eq and r_X need to have the correct dimensions'
             CHCKERR(err_msg)
         end if
-        if (present(r_E_array).neqv.present(r_F_array)) then
+        if (present(r_eq_array).neqv.present(r_X_array)) then
             ierr = 1
-            err_msg = 'both r_E_array and r_F_array have to be provided'
+            err_msg = 'both r_eq_array and r_X_array have to be provided'
             CHCKERR(err_msg)
         end if
         
-        ! set  up  flux_X,   flux_eq  and   multiplicative  factors  r_F_factor,
-        ! r_E_factor
-        if (present(r_E_array)) then
-            flux_eq => r_E_array
-            flux_X => r_F_array
-            r_E_factor = 1._dp
-            r_F_factor = 1._dp
+        ! set  up  flux_X,   flux_eq  and   multiplicative  factors  r_X_factor,
+        ! r_eq_factor
+        if (present(r_eq_array)) then
+            flux_eq => r_eq_array
+            flux_X => r_X_array
+            r_eq_factor = 1._dp
+            r_X_factor = 1._dp
         else
             if (use_pol_flux_eq) then
-                flux_eq => flux_p_FD(:,0)
+                flux_eq => eq%flux_p_FD(:,0)
             else
-                flux_eq => flux_t_FD(:,0)
+                flux_eq => eq%flux_t_FD(:,0)
             end if
             if (use_pol_flux_X) then
-                flux_X => flux_p_FD(:,0)
+                flux_X => eq%flux_p_FD(:,0)
             else
-                flux_X => flux_t_FD(:,0)
+                flux_X => eq%flux_t_FD(:,0)
             end if
-            r_E_factor = max_flux_eq_F
-            r_F_factor = max_flux_X_F
+            r_eq_factor = eq%max_flux_F
+            r_X_factor = X%max_flux_F
         end if
         
         ! convert normal position
         do kd = 1,n_r
-            ierr = interp_fun(r_F(kd),flux_X/r_F_factor,r_E(kd),&
-                &flux_eq/r_E_factor)
+            ierr = interp_fun(r_X(kd),flux_X/r_X_factor,r_eq(kd),&
+                &flux_eq/r_eq_factor)
             CHCKERR('')
         end do
-    end function coord_E2F_r
+    end function coord_eq2X_r
     
-    ! calculates X,Y  and Z on a  grid in the equilibrium  poloidal and toroidal
-    ! angle theta and zeta, for every normal point in the equilibrium grid.
-    ! The dimensions are (n_theta,n_zeta,n_r)
+    ! Calculates  X,Y and  Z on  a grid,  which should  have the  E(equilibrium)
+    ! angles set up. The total r_E, however, is not needed: grp_r_E is enough.
     ! If VMEC is the equilibrium  model, this routine also optionally calculates
     ! lambda on the grid, as this is  also needed some times. If HELENA is used,
-    ! this variable is not allocated.
-    ! Note: The variables X, Y, Z and optionally L have to be unallocated.
-    integer function calc_XYZ_grid(r_E,theta_E,zeta_E,X,Y,Z,L) result(ierr)
+    ! this variable is not used.
+    ! X, Y, Z and  optionally L need to have the correct  dimensions if they are
+    ! allocated.  They  can  also  be  passed unallocated,  in  which  case  the
+    ! allocation happens automatically.
+    integer function calc_XYZ_grid(grid,X,Y,Z,L) result(ierr)
         use num_vars, only: eq_style
         use utilities, only: interp_fun, round_with_tol
+        use grid_vars, only: grid_type
         
         character(*), parameter :: rout_name = 'calc_XYZ_grid'
         
         ! input / output
-        real(dp), intent(in) :: r_E(:), theta_E(:,:,:), zeta_E(:,:,:)           ! points at which to calculate the grid
+        type(grid_type), intent(in) :: grid                                     ! grid for which to calculate X, Y, Z and optionally L
         real(dp), intent(inout), allocatable :: X(:,:,:), Y(:,:,:), Z(:,:,:)    ! X, Y and Z of grid
         real(dp), intent(inout), allocatable, optional :: L(:,:,:)              ! lambda of grid
         
@@ -723,14 +709,47 @@ contains
         ierr = 0
         
         ! test
-        if (size(theta_E,1).ne.size(zeta_E,1) .or. &
-            &size(theta_E,2).ne.size(zeta_E,2) .or. &
-            &size(theta_E,3).ne.size(zeta_E,3) .or. &
-            &size(theta_E,3).ne.size(r_E)) then
-            ierr = 1
-            err_msg =  'theta_E, zeta_E and r_E need to have the correct &
-                &dimensions'
-            CHCKERR(err_msg)
+        if (allocated(X)) then
+            if (size(X,1).ne.grid%n(1) .or. size(X,2).ne.grid%n(2) .or. &
+                &size(X,3).ne.grid%grp_n_r) then
+                ierr = 1
+                err_msg =  'X needs to have the correct dimensions'
+                CHCKERR(err_msg)
+            end if
+        else
+            allocate(X(grid%n(1),grid%n(2),grid%grp_n_r))
+        end if
+        if (allocated(Y)) then
+            if (size(Y,1).ne.grid%n(1) .or. size(Y,2).ne.grid%n(2) .or. &
+                &size(Y,3).ne.grid%grp_n_r) then
+                ierr = 1
+                err_msg =  'Y needs to have the correct dimensions'
+                CHCKERR(err_msg)
+            end if
+        else
+            allocate(Y(grid%n(1),grid%n(2),grid%grp_n_r))
+        end if
+        if (allocated(Z)) then
+            if (size(Z,1).ne.grid%n(1) .or. size(Z,2).ne.grid%n(2) .or. &
+                &size(Z,3).ne.grid%grp_n_r) then
+                ierr = 1
+                err_msg =  'Z needs to have the correct dimensions'
+                CHCKERR(err_msg)
+            end if
+        else
+            allocate(Z(grid%n(1),grid%n(2),grid%grp_n_r))
+        end if
+        if (present(L)) then
+            if (allocated(L)) then
+                if (size(L,1).ne.grid%n(1) .or. size(L,2).ne.grid%n(2) .or. &
+                    &size(L,3).ne.grid%grp_n_r) then
+                    ierr = 1
+                    err_msg =  'L needs to have the correct dimensions'
+                    CHCKERR(err_msg)
+                end if
+            else
+                allocate(L(grid%n(1),grid%n(2),grid%grp_n_r))
+            end if
         end if
         
         ! choose which equilibrium style is being used:
@@ -738,10 +757,10 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ierr = calc_XYZ_grid_VMEC(r_E,theta_E,zeta_E,X,Y,Z,L)
+                ierr = calc_XYZ_grid_VMEC(grid,X,Y,Z,L)
                 CHCKERR('')
             case (2)                                                            ! HELENA
-                ierr = calc_XYZ_grid_HEL(r_E,theta_E,zeta_E,X,Y,Z)
+                ierr = calc_XYZ_grid_HEL(grid,X,Y,Z)
                 CHCKERR('')
             case default
                 err_msg = 'No equilibrium style associated with '//&
@@ -751,105 +770,93 @@ contains
         end select
     contains
         ! VMEC version
-        integer function calc_XYZ_grid_VMEC(r_E,theta_E,zeta_E,X,Y,Z,L) &
-            &result(ierr)
+        integer function calc_XYZ_grid_VMEC(grid,X,Y,Z,L) result(ierr)
             use VMEC, only: R_c, R_s, Z_c, Z_s, L_c, L_s, mpol, ntor
             use fourier_ops, only: calc_trigon_factors, fourier2real
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_VMEC'
             
             ! input / output
-            real(dp), intent(in) :: r_E(:)                                      ! r values in equilibrium range
-            real(dp), intent(in) :: theta_E(:,:,:), zeta_E(:,:,:)               ! points at which to calculate the grid
-            real(dp), intent(inout), allocatable :: X(:,:,:), Y(:,:,:), &
-                &Z(:,:,:)                                                       ! X, Y and Z of grid
-            real(dp), intent(inout), allocatable, optional :: L(:,:,:)          ! lambda of grid
+            type(grid_type), intent(in) :: grid                                 ! grid for which to calculate X, Y, Z and optionally L
+            real(dp), intent(inout) :: X(:,:,:), Y(:,:,:), Z(:,:,:)             ! X, Y and Z of grid
+            real(dp), intent(inout), optional :: L(:,:,:)                       ! lambda of grid
             
             ! local variables
-            integer :: id, kd, m, n                                             ! counters
-            integer :: n_theta, n_zeta, n_r                                     ! dimensions of the grid
+            integer :: kd, m, n                                                 ! counters
             real(dp), allocatable :: R_c_int(:,:,:), R_s_int(:,:,:)             ! interpolated version of R_c and R_s
             real(dp), allocatable :: Z_c_int(:,:,:), Z_s_int(:,:,:)             ! interpolated version of Z_c and Z_s
             real(dp), allocatable :: L_c_int(:,:,:), L_s_int(:,:,:)             ! interpolated version of L_c and L_s
-            real(dp), allocatable :: trigon_factors(:,:,:,:,:)                  ! trigonometric factor cosine for the inverse fourier transf.
+            real(dp), allocatable :: trigon_factors(:,:,:,:,:,:)                ! trigonometric factor cosine for the inverse fourier transf.
             real(dp), allocatable :: R(:,:,:)                                   ! R in Cylindrical coordinates
             
             ! initialize ierr
             ierr = 0
             
-            ! set up n_theta, n_zeta and n_r
-            n_theta = size(theta_E,1)
-            n_zeta = size(theta_E,2)
-            n_r = size(theta_E,3)
-            
-            ! initialize R, Z, X and Y
-            allocate(R(n_theta,n_zeta,n_r),Z(n_theta,n_zeta,n_r))
-            allocate(X(n_theta,n_zeta,n_r),Y(n_theta,n_zeta,n_r))
-            if (present(L)) allocate(L(n_theta,n_zeta,n_r))
-            
             ! set up interpolated R_c_int, ..
-            allocate(R_c_int(0:mpol-1,-ntor:ntor,1:n_r))
-            allocate(R_s_int(0:mpol-1,-ntor:ntor,1:n_r))
-            allocate(Z_c_int(0:mpol-1,-ntor:ntor,1:n_r))
-            allocate(Z_s_int(0:mpol-1,-ntor:ntor,1:n_r))
+            allocate(R_c_int(0:mpol-1,-ntor:ntor,1:grid%grp_n_r))
+            allocate(R_s_int(0:mpol-1,-ntor:ntor,1:grid%grp_n_r))
+            allocate(Z_c_int(0:mpol-1,-ntor:ntor,1:grid%grp_n_r))
+            allocate(Z_s_int(0:mpol-1,-ntor:ntor,1:grid%grp_n_r))
             if (present(L)) then
-                allocate(L_c_int(0:mpol-1,-ntor:ntor,1:n_r))
-                allocate(L_s_int(0:mpol-1,-ntor:ntor,1:n_r))
+                allocate(L_c_int(0:mpol-1,-ntor:ntor,1:grid%grp_n_r))
+                allocate(L_s_int(0:mpol-1,-ntor:ntor,1:grid%grp_n_r))
             end if
             
             ! interpolate VMEC tables for every requested normal point
-            do kd = 1,n_r                                                       ! loop over all normal points
+            do kd = 1,grid%grp_n_r                                              ! loop over all group normal points
                 ! interpolate the VMEC tables in normal direction
                 ! Note: VMEC uses an equidistant grid, here normalized from 0 to
                 ! 1
                 do n = -ntor,ntor
                     do m = 0,mpol-1
-                        ierr = interp_fun(R_c_int(m,n,kd),R_c(m,n,:,0),r_E(kd))
+                        ierr = interp_fun(R_c_int(m,n,kd),R_c(m,n,:,0),&
+                            &grid%grp_r_E(kd))
                         CHCKERR('')
-                        ierr = interp_fun(R_s_int(m,n,kd),R_s(m,n,:,0),r_E(kd))
+                        ierr = interp_fun(R_s_int(m,n,kd),R_s(m,n,:,0),&
+                            &grid%grp_r_E(kd))
                         CHCKERR('')
-                        ierr = interp_fun(Z_c_int(m,n,kd),Z_c(m,n,:,0),r_E(kd))
+                        ierr = interp_fun(Z_c_int(m,n,kd),Z_c(m,n,:,0),&
+                            &grid%grp_r_E(kd))
                         CHCKERR('')
-                        ierr = interp_fun(Z_s_int(m,n,kd),Z_s(m,n,:,0),r_E(kd))
+                        ierr = interp_fun(Z_s_int(m,n,kd),Z_s(m,n,:,0),&
+                            &grid%grp_r_E(kd))
                         CHCKERR('')
                         if (present(L)) then
                             ierr = interp_fun(L_c_int(m,n,kd),L_c(m,n,:,0),&
-                                &r_E(kd))
+                                &grid%grp_r_E(kd))
                             CHCKERR('')
                             ierr = interp_fun(L_s_int(m,n,kd),L_s(m,n,:,0),&
-                                &r_E(kd))
+                                &grid%grp_r_E(kd))
                             CHCKERR('')
                         end if
                     end do
                 end do
             end do
             
+            ! calculate trigonometric factors
+            ierr = calc_trigon_factors(grid%theta_E,grid%zeta_E,trigon_factors)
+            CHCKERR('')
+            
+            ! allocate R
+            allocate(R(grid%n(1),grid%n(2),grid%grp_n_r))
+            
             ! inverse fourier transform with trigonometric factors
-            do id = 1,n_theta
-                ! calculate trigonometric factors
-                ierr = calc_trigon_factors(theta_E(id,:,:),zeta_E(id,:,:),&
-                    &trigon_factors)
+            ierr = fourier2real(R_c_int,R_s_int,trigon_factors,R,[0,0])
+            CHCKERR('')
+            ierr = fourier2real(Z_c_int,Z_s_int,trigon_factors,Z,[0,0])
+            CHCKERR('')
+            if (present(L)) then
+                ierr = fourier2real(L_c_int,L_s_int,trigon_factors,L,[0,0])
                 CHCKERR('')
-                ierr = fourier2real(R_c_int,R_s_int,trigon_factors,R(id,:,:),&
-                        &[0,0])
-                CHCKERR('')
-                ierr = fourier2real(Z_c_int,Z_s_int,trigon_factors,Z(id,:,:),&
-                        &[0,0])
-                CHCKERR('')
-                if (present(L)) then
-                    ierr = fourier2real(L_c_int,L_s_int,trigon_factors,&
-                        &L(id,:,:),[0,0])
-                    CHCKERR('')
-                end if
-                
-                ! deallocate
-                deallocate(trigon_factors)
-            end do
+            end if
+            
+            ! deallocate
+            deallocate(trigon_factors)
             
             ! transform cylindrical to cartesian
             ! (the geometrical zeta is the inverse of VMEC zeta)
-            X = R*cos(-zeta_E)
-            Y = R*sin(-zeta_E)
+            X = R*cos(-grid%zeta_E)
+            Y = R*sin(-grid%zeta_E)
             
             ! deallocate
             deallocate(R_c_int,R_s_int,Z_c_int,Z_s_int)
@@ -858,22 +865,17 @@ contains
         end function calc_XYZ_grid_VMEC
         
         ! HELENA version
-        integer function calc_XYZ_grid_HEL(r_E,theta_E,zeta_E,X,Y,Z) &
-            &result(ierr)
+        integer function calc_XYZ_grid_HEL(grid,X,Y,Z) result(ierr)
             use HELENA, only: R_H, Z_H, chi_H, ias, flux_H
-            use eq_vars, only: n_r_eq
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_HEL'
             
             ! input / output
-            real(dp), intent(in) :: r_E(:)                                      ! r values in equilibrium range
-            real(dp), intent(in) :: theta_E(:,:,:), zeta_E(:,:,:)               ! points at which to calculate the grid
-            real(dp), intent(inout), allocatable :: X(:,:,:), Y(:,:,:), &
-                &Z(:,:,:)                                                       ! X, Y and Z of grid
+            type(grid_type), intent(in) :: grid                                 ! grid for which to calculate X, Y, Z and optionally L
+            real(dp), intent(inout) :: X(:,:,:), Y(:,:,:), Z(:,:,:)             ! X, Y and Z of grid
             
             ! local variables
             integer :: id, jd, kd                                               ! counters
-            integer :: n_theta, n_zeta, n_r                                     ! dimensions of the grid
             real(dp), allocatable :: R_H_int(:), Z_H_int(:)                     ! R and Z at interpolated normal value
             real(dp), allocatable :: R(:,:,:)                                   ! R in Cylindrical coordinates
             real(dp) :: theta_loc                                               ! local copy of theta_E
@@ -881,41 +883,33 @@ contains
             ! initialize ierr
             ierr = 0
             
-            ! set up n_theta, n_zeta and n_r
-            n_theta = size(theta_E,1)
-            n_zeta = size(theta_E,2)
-            n_r = size(theta_E,3)
-            
-            ! initialize R, Z X and Y
-            allocate(R(n_theta,n_zeta,n_r),Z(n_theta,n_zeta,n_r))
-            allocate(X(n_theta,n_zeta,n_r),Y(n_theta,n_zeta,n_r))
+            ! allocate R
+            allocate(R(grid%n(1),grid%n(2),grid%grp_n_r))
             
             ! set up interpolated R and Z
             allocate(R_H_int(size(R_H,1)),Z_H_int(size(Z_H,1)))
             
             ! interpolate HELENA output  R_H and Z_H for  every requested normal
             ! point
-            do kd = 1,n_r                                                       ! loop over all normal points
-                ! interpolate the HELENA tables in normal direction
-                ! Note:  HELENA   uses  a regular,  non-equidistant  grid,  here
-                ! normalized from 0 to 1 in flux_H/flux_H(n_r_eq)
+            ! Note:  R_H and  Z_H  are not  adapted to  the  parallel grid,  but
+            ! tabulated in the original HELENA poloidal grid
+            ! interpolate the HELENA tables in normal direction
+            do kd = 1,grid%grp_n_r                                              ! loop over all normal points
                 do id = 1,size(R_H,1)
-                    ierr = interp_fun(R_H_int(id),R_H(id,:),r_E(kd),&
-                        &x=flux_H/flux_H(n_r_eq))
+                    ierr = interp_fun(R_H_int(id),R_H(id,:),grid%grp_r_E(kd),&
+                        &x=flux_H/flux_H(size(flux_H)))
                     CHCKERR('')
                 end do
                 do id = 1,size(Z_H,1)
-                    ierr = interp_fun(Z_H_int(id),Z_H(id,:),r_E(kd),&
-                        &x=flux_H/flux_H(n_r_eq))
+                    ierr = interp_fun(Z_H_int(id),Z_H(id,:),grid%grp_r_E(kd),&
+                        &x=flux_H/flux_H(size(flux_H)))
                     CHCKERR('')
                 end do
                 ! loop over toroidal points
-                do jd = 1,n_zeta
+                do jd = 1,grid%n(2)
                     ! interpolate at the requested poloidal points
-                    ! Note: R_H  and Z_H are  not adapted to the  parallel grid,
-                    ! but tabulated in the original HELENA poloidal grid
-                    do id = 1,n_theta
-                        theta_loc = theta_E(id,jd,kd)
+                    do id = 1,grid%n(1)
+                        theta_loc = grid%theta_E(id,jd,kd)
                         ! add or subtract 2pi to  the parallel angle until it is
                         ! at least 0 to get principal range 0..2pi
                         if (theta_loc.lt.0._dp) then
@@ -949,8 +943,8 @@ contains
             end do
             
             ! calculate X and Y, transforming cylindrical to cartesian
-            X = R*cos(zeta_E)
-            Y = R*sin(zeta_E)
+            X = R*cos(grid%zeta_E)
+            Y = R*sin(grid%zeta_E)
             
             ! deallocate
             deallocate(R)
@@ -1014,26 +1008,21 @@ contains
     end function calc_eqd_grid
     
     ! plots the grid in real space
-    ! The  variables theta  and  zeta follow  the magnetic  field  lines in  the
-    ! equilibrium grid  and are tabulated along  the magnetic field lines  for a
-    ! series  of flux  surfaces. The  start  and end  index of  the normal  flux
-    ! surfaces in the equilibrium grid has  to be provided with min_r and max_r.
-    ! Ideally, this routine should be run  with the full equilibrium grid normal
-    ! extent, which implies for example, min_r = 0, max_r = 1.
-    ! Note: This routine has its  own n_theta_plot and n_zeta_plot, since it has
-    ! to be 3D also in the axisymmetric case.
+    ! The  equilibrium grid  should contain  the fieldline-oriented  angles with
+    ! ang_1 the parallel angle and ang_2 the field line label.
+    ! Note:  This  routine  does  not  use  n_theta_plot  and  n_zeta_plot  from
+    ! num_vars, but  instead has  its own,  since it has  to be  3D also  in the
+    ! axisymmetric case.
     ! [MPI] Collective call
-    integer function plot_grid_real(theta,zeta,min_r,max_r) &
-        &result(ierr)
-        use X_vars, only: n_par
-        use num_vars, only: output_style, alpha_job_nr
+    integer function plot_grid_real(grid) result(ierr)
+        use num_vars, only: output_style, alpha_job_nr, grp_rank, grp_n_procs
+        use grid_vars, only: create_grid, destroy_grid, grid_type
+        use MPI_ops, only: get_ser_var, wait_MPI
         
         character(*), parameter :: rout_name = 'plot_grid_real'
         
         ! input / output
-        real(dp), intent(in) :: theta(:,:)                                      ! theta in VMEC or HELENA coordinates
-        real(dp), intent(in) :: zeta(:,:)                                       ! zeta in VMEC or HELENA coordinates
-        real(dp), intent(in) :: min_r, max_r                                    ! minimum and maximum normal range
+        type(grid_type), intent(in) :: grid                                     ! fieldline-oriented grid
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1041,12 +1030,18 @@ contains
             &'Magnetic field in flux surfaces'                                  ! name of animation
         real(dp), allocatable :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)             ! X, Y and Z of surface in Axisymmetric coordinates
         real(dp), allocatable :: X_2(:,:,:), Y_2(:,:,:), Z_2(:,:,:)             ! X, Y and Z of magnetic field lines in Axisymmetric coordinates
-        real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)            ! theta and zeta for plots
-        real(dp), allocatable :: r_plot(:)                                      ! r for plots
-        integer :: id                                                           ! counter
-        integer :: loc_n_par, loc_n_r                                           ! local nr. of parallel and normal points
+        real(dp), pointer :: X_1_tot(:,:,:), Y_1_tot(:,:,:), Z_1_tot(:,:,:)     ! total X, Y and Z
+        real(dp), pointer :: X_2_tot(:,:,:), Y_2_tot(:,:,:), Z_2_tot(:,:,:)     ! total X, Y and Z
+        integer :: id, jd                                                       ! counters
         integer :: n_theta_plot = 40                                            ! nr. of poloidal points in plot
         integer :: n_zeta_plot = 160                                            ! nr. of toroidal points in plot
+        type(grid_type) :: plot_grid                                            ! grid for plotting
+        integer, allocatable :: tot_i_min(:)                                    ! i_min of equilibrium grid of all processes
+        integer :: plot_dim(3,2)                                                ! total plot dimensions
+        integer :: plot_grp_dim(3,2)                                            ! group plot dimensions
+        integer :: plot_offset(3,2)                                             ! plot offset
+        integer :: r_min(2), r_max(2)                                           ! start and end index of normal range to plot in total range
+        integer :: grp_r_min(2), grp_r_max(2)                                   ! start and end index of normal range to plot in this group range
         
         ! initialize ierr
         ierr = 0
@@ -1055,66 +1050,115 @@ contains
         
         call lvl_ud(1)
         
-        ! some tests
-        if (size(theta,1).ne.size(zeta,1) .or. &
-            &size(theta,1).ne.n_par .or. &
-            &size(theta,2).ne.size(zeta,2)) then
-            err_msg = 'theta and zeta have to have the correct sizes'
-            ierr = 1
-            CHCKERR(err_msg)
+        ! 0. set up variables
+        
+        ! get min_i of equilibrium grid
+        ierr = get_ser_var([grid%i_min],tot_i_min,scatter=.true.)
+        CHCKERR('')
+        
+        ! set up min. and max. r and grp version
+        ! (They differ  for the flux  surfaces and  the field lines  because, to
+        ! avoid overlap, the  field lines of a certain flux  surface are plotted
+        ! with the previous flux surface.)
+        grp_r_min(1) = 1                                                        ! start from 1 in group range
+        r_min(1) = grid%i_min                                                   ! which translates to i_min in total range
+        if (grp_rank.eq.0) then                                                 ! first process
+            grp_r_min(2) = 2                                                    ! start from 2 in group range
+            r_min(2) = grid%i_min + 1                                           ! which translates to i_min + 1 in total range
+        else                                                                    ! next processes
+            grp_r_min(2) = 1                                                    ! start from 1 in group range
+            r_min(2) = grid%i_min                                               ! which translates to i_min in total range
+        end if
+        if (grp_rank.eq.grp_n_procs-1) then                                     ! last process
+            grp_r_max(1) = grid%grp_n_r - 1                                     ! end with next-to-last point in group range
+            r_max(1) = grid%i_max - 1                                           ! which corresponds to i_max - 1 in total range
+            grp_r_max(2) = grid%grp_n_r                                         ! end with last point in group range
+            r_max(2) = grid%i_max                                               ! which corresponds to i_max in total range
+        else                                                                    ! previous processes
+            grp_r_max(1) = tot_i_min(grp_rank+2)-tot_i_min(grp_rank+1)          ! end with one point before first point of next group in group range
+            r_max(1) = grp_r_max(1) - grp_r_min(1) + r_min(1)                   ! which is translated to total range
+            grp_r_max(2) = tot_i_min(grp_rank+2)-tot_i_min(grp_rank+1)          ! end with one point before first point of next group in group range
+            r_max(2) = grp_r_max(2) - grp_r_min(2) + r_min(2)                   ! which is translated to total range
         end if
         
         ! 1. plot flux surfaces
         call writo('writing flux surfaces')
         
-        ! initialize loc_n_par and loc_n_r
-        loc_n_par = size(theta,1)
-        loc_n_r = size(theta,2)
-        
-        ! initialize theta_plot, zeta_plot and r_plot
-        allocate(theta_plot(n_theta_plot,n_zeta_plot,loc_n_r))
-        do id = 1,n_theta_plot
-            theta_plot(id,:,:) = pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)      ! better to start from pi for the plot
-        end do
-        allocate(zeta_plot(n_theta_plot,n_zeta_plot,loc_n_r))
-        do id = 1,n_zeta_plot
-            zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
-        end do
-        allocate(r_plot(loc_n_r))
-        do id = 1,loc_n_r
-            r_plot(id) = min_r + (id-1._dp)/(loc_n_r-1)*(max_r-min_r)
-        end do
-        
-        ! calculate X,Y and Z
-        ierr = calc_XYZ_grid(r_plot,theta_plot,zeta_plot,X_1,Y_1,Z_1)
+        ! create plot grid
+        ierr = create_grid(plot_grid,[n_theta_plot,n_zeta_plot,&
+            &r_max(1)-r_min(1)+1])                                              ! a divided grid could be used here but it's not necessary
         CHCKERR('')
         
-        ! deallocate
-        deallocate(theta_plot,zeta_plot)
+        ! initialize theta, zeta and r of plot grid
+        do id = 1,n_theta_plot
+            plot_grid%theta_E(id,:,:) = &
+                &pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)                      ! better to start from pi for the plot
+        end do
+        do id = 1,n_zeta_plot
+           plot_grid%zeta_E(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)     ! just start from 0
+        end do
+        plot_grid%grp_r_E = grid%grp_r_E(grp_r_min(1):grp_r_max(1))             ! take normal values from equilibrium grid
+        
+        ! set up plot_dim, plot_grp_dim and plot_offset for flux surfaces
+        plot_grp_dim(:,1) = [n_theta_plot,n_zeta_plot,r_max(1)-r_min(1)+1]
+        plot_dim(:,1) = [n_theta_plot,n_zeta_plot,grid%n(3)-tot_i_min(1)]       ! subtract i_min of first process
+        plot_offset(:,1) = [0,0,r_min(1)-tot_i_min(1)]                          ! subtract i_min of first process
+        
+        ! allocate X_1, Y_1 and Z_1
+        allocate(X_1(plot_grp_dim(1,1),plot_grp_dim(2,1),plot_grp_dim(3,1)))
+        allocate(Y_1(plot_grp_dim(1,1),plot_grp_dim(2,1),plot_grp_dim(3,1)))
+        allocate(Z_1(plot_grp_dim(1,1),plot_grp_dim(2,1),plot_grp_dim(3,1)))
+        
+        ! calculate X_1,Y_1 and Z_1
+        ierr = calc_XYZ_grid(plot_grid,X_1,Y_1,Z_1)
+        CHCKERR('')
+        
+        ! destroy grid
+        call destroy_grid(plot_grid)
         
         ! 2. plot field lines
         call writo('writing field lines')
         
-        ! initialize theta_plot and zeta_plot
-        allocate(theta_plot(1,loc_n_par,loc_n_r),zeta_plot(1,loc_n_par,loc_n_r))
-        do id = 1,loc_n_par
-            theta_plot(1,id,:) = theta(id,:)
-            zeta_plot(1,id,:) = zeta(id,:)
-        end do
-        
-        ! calculate X,Y and Z
-        ierr = calc_XYZ_grid(r_plot,theta_plot,zeta_plot,X_2,Y_2,Z_2)
+        ! create plot grid
+        ierr = create_grid(plot_grid,[grid%n(1),grid%n(2),r_max(2)-r_min(2)+1])
         CHCKERR('')
         
-        ! deallocate
-        deallocate(theta_plot,zeta_plot)
+        ! initialize theta, zeta and r of plot grid
+        plot_grid%theta_E = grid%theta_E(:,:,grp_r_min(2):grp_r_max(2))
+        plot_grid%zeta_E = grid%zeta_E(:,:,grp_r_min(2):grp_r_max(2))
+        plot_grid%grp_r_E = grid%grp_r_E(grp_r_min(2):grp_r_max(2))             ! take normal values from equilibrium grid
+        
+        ! set up plot_dim, plot_grp_dim and plot_offset for field lines
+        plot_grp_dim(:,2) = [grid%n(1),grid%n(2),r_max(2)-r_min(2)+1]
+        plot_dim(:,2) = [grid%n(1),grid%n(2),grid%n(3)-tot_i_min(1)]            ! subtract i_min of first process
+        plot_offset(:,2) = [0,0,r_min(2)-tot_i_min(1)]                          ! subtract i_min of first process
+        
+        ! allocate X_2, Y_2 and Z_2
+        allocate(X_2(plot_grp_dim(1,2),plot_grp_dim(2,2),plot_grp_dim(3,2)))
+        allocate(Y_2(plot_grp_dim(1,2),plot_grp_dim(2,2),plot_grp_dim(3,2)))
+        allocate(Z_2(plot_grp_dim(1,2),plot_grp_dim(2,2),plot_grp_dim(3,2)))
+        
+        ! calculate X_2,Y_2 and Z_2
+        ierr = calc_XYZ_grid(plot_grid,X_2,Y_2,Z_2)
+        CHCKERR('')
+        
+        ! destroy grid
+        call destroy_grid(plot_grid)
+        
+        ! get pointers to full X, Y and Z
+        call get_full_XYZ(X_1,Y_1,Z_1,X_1_tot,Y_1_tot,Z_1_tot,plot_dim(:,1),&
+            &'flux surfaces')
+        call get_full_XYZ(X_2,Y_2,Z_2,X_2_tot,Y_2_tot,Z_2_tot,plot_dim(:,2),&
+            &'field lines')
         
         ! delegate to child routines
         select case(output_style)
             case(1)                                                             ! GNUPlot output
-                call plot_grid_real_GP(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)
+                call plot_grid_real_GP(X_1_tot,X_2_tot,Y_1_tot,Y_2_tot,&
+                    &Z_1_tot,Z_2_tot,anim_name)
             case(2)                                                             ! HDF5 output
-                ierr = plot_grid_real_HDF5(x_1,x_2,y_1,y_2,z_1,z_2,anim_name)
+                ierr = plot_grid_real_HDF5(X_1_tot,X_2_tot,Y_1_tot,Y_2_tot,&
+                    &Z_1_tot,Z_2_tot,anim_name)
                 CHCKERR('')
             case default
                 err_msg = 'No style associated with '//trim(i2str(output_style))
@@ -1125,12 +1169,63 @@ contains
         ! deallocate
         deallocate(X_1,Y_1,Z_1)
         deallocate(X_2,Y_2,Z_2)
+        nullify(X_1_tot,Y_1_tot,Z_1_tot)
+        nullify(X_2_tot,Y_2_tot,Z_2_tot)
         
         call lvl_ud(-1)
         
         call writo('Done plotting magnetic field and flux surfaces')
+            ierr = wait_MPI()
+            
     contains
+        ! get pointer to full plotting variables X, Y and Z
+        subroutine get_full_XYZ(X,Y,Z,X_tot,Y_tot,Z_tot,tot_dim,merge_name)
+            ! input / output
+            real(dp), intent(in), target :: X(:,:,:), Y(:,:,:), Z(:,:,:)        ! X, Y and Z of either flux surfaces or magnetic field lines
+            real(dp), intent(inout), pointer :: X_tot(:,:,:), Y_tot(:,:,:), &
+                &Z_tot(:,:,:)                                                   ! pointer to full X, Y and Z
+            integer, intent(in) :: tot_dim(3)                                   ! total dimensions
+            character(len=*) :: merge_name                                      ! name of variable to be merged
+            
+            ! local variables
+            real(dp), allocatable :: loc_XYZ(:)                                 ! local copy of X, Y or Z in an angular point
+            real(dp), allocatable :: ser_loc_XYZ(:)                             ! serial copy of loc_XYZ
+            
+            ! merge plots for flux surfaces if more than one process
+            if (grp_n_procs.gt.1) then                                          ! merge group plots
+                call writo('Merging group plots for '//merge_name)
+                if (grp_rank.eq.0) then
+                    allocate(X_tot(tot_dim(1),tot_dim(2),tot_dim(3)))
+                    allocate(Y_tot(tot_dim(1),tot_dim(2),tot_dim(3)))
+                    allocate(Z_tot(tot_dim(1),tot_dim(2),tot_dim(3)))
+                end if
+                allocate(loc_XYZ(tot_dim(3)))
+                do jd = 1,tot_dim(2)
+                    do id = 1,tot_dim(1)
+                        loc_XYZ = X(id,jd,:)
+                        ierr = get_ser_var(loc_XYZ,ser_loc_XYZ)
+                        CHCKERR('')
+                        if (grp_rank.eq.0) X_tot(id,jd,:) = ser_loc_XYZ
+                        loc_XYZ = Y(id,jd,:)
+                        ierr = get_ser_var(loc_XYZ,ser_loc_XYZ)
+                        CHCKERR('')
+                        if (grp_rank.eq.0) Y_tot(id,jd,:) = ser_loc_XYZ
+                        loc_XYZ = Z(id,jd,:)
+                        ierr = get_ser_var(loc_XYZ,ser_loc_XYZ)
+                        CHCKERR('')
+                        if (grp_rank.eq.0) Z_tot(id,jd,:) = ser_loc_XYZ
+                    end do
+                end do
+                deallocate(loc_XYZ,ser_loc_XYZ)
+            else                                                                ! just point
+                X_tot => X
+                Y_tot => Y
+                Z_tot => Z
+            end if
+        end subroutine get_full_XYZ
         subroutine plot_grid_real_GP(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)         ! GNUPlot version
+            use output_ops, only: merge_GP
+            
             ! input / output
             real(dp), intent(in) :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)          ! X, Y and Z of surface in Axisymmetric coordinates
             real(dp), intent(in) :: X_2(:,:,:), Y_2(:,:,:), Z_2(:,:,:)          ! X, Y and Z of magnetic field lines in Axisymmetric coordinates
@@ -1139,44 +1234,46 @@ contains
             ! local variables
             character(len=max_str_ln) :: file_name(2), plot_title(2)            ! file name and title
             character(len=max_str_ln) :: draw_ops(2)                            ! individual plot command
-            integer :: n_r                                                      ! total number of normal points
+            
+            ! initialize ierr
+            ierr = 0
            
-            ! set up n_r
-            n_r = size(X_1,3)                                                   ! should be same for all other X_i, Y_i and Z_i
-            
-            ! user output
-            call writo('Drawing animation with GNUPlot')
-            call lvl_ud(1)
-            
-            ! set names
-            plot_title(1) = 'Magnetic Flux Surface for alpha job '//&
-                &trim(i2str(alpha_job_nr))
-            file_name(1) = 'Flux_surfaces_'//trim(i2str(alpha_job_nr))//'.dat'
-            plot_title(2) = 'Magnetic Field Line for alpha job '//&
-                &trim(i2str(alpha_job_nr))
-            file_name(2) = 'B_field_'//trim(i2str(alpha_job_nr))//'.dat'
-            
-            ! write flux surfaces
-            call print_GP_3D(trim(plot_title(1)),trim(file_name(1)),&
-                &Z_1(:,:,1:n_r-1),x=X_1(:,:,1:n_r-1),&
-                &y=Y_1(:,:,1:n_r-1),draw=.false.)                               ! plot all but last points
-            
-            ! initialize n_r
-            n_r = size(X_2,3)
-            
-            ! write magnetic field lines
-            call print_GP_3D(trim(plot_title(2)),trim(file_name(2)),&
-                &Z_2(:,:,2:n_r),x=X_2(:,:,2:n_r),y=Y_2(:,:,2:n_r),&
-                &draw=.false.)                                                  ! plot all bit first points
-            
-            ! plot both output files
-            call writo('creating GNUPlot animation')
-            draw_ops(1) = 'linecolor rgb ''#d3d3d3'' linewidth 1'
-            draw_ops(2) = 'linecolor rgb ''black'' linewidth 3'
-            call draw_GP_animated(anim_name,file_name,n_r-1,.false.,&
-                &delay=50,draw_ops=draw_ops)
-            
-            call lvl_ud(-1)
+            ! only group masters
+            if (grp_rank.eq.0) then
+                ! user output
+                call writo('Drawing animation with GNUPlot')
+                call lvl_ud(1)
+                
+                ! set names
+                plot_title(1) = 'Magnetic Flux Surface for alpha job '//&
+                    &trim(i2str(alpha_job_nr))
+                file_name(1) = 'Flux_surfaces_'//trim(i2str(alpha_job_nr))
+                plot_title(2) = 'Magnetic Field Line for alpha job '//&
+                    &trim(i2str(alpha_job_nr))
+                file_name(2) = 'B_field_'//trim(i2str(alpha_job_nr))
+                
+                ! write flux surfaces of this process
+                call print_GP_3D(trim(plot_title(1)),trim(file_name(1))//&
+                    &'.dat',Z_1,x=X_1,y=Y_1,draw=.false.)
+                
+                ! write magnetic field lines
+                call print_GP_3D(trim(plot_title(2)),trim(file_name(2))//&
+                    &'.dat',Z_2,x=X_2,y=Y_2,draw=.false.)
+                
+                ! add '.dat' to file names
+                do id = 1,2
+                    file_name(id) = trim(file_name(id))//'.dat'
+                end do
+                
+                ! draw both files
+                call writo('creating GNUPlot animation')
+                draw_ops(1) = 'linecolor rgb ''#d3d3d3'' linewidth 1'
+                draw_ops(2) = 'linecolor rgb ''black'' linewidth 3'
+                call draw_GP_animated(anim_name,file_name,plot_dim(3,1),&
+                    &.false.,delay=50,draw_ops=draw_ops)
+                
+                call lvl_ud(-1)
+            end if
         end subroutine plot_grid_real_GP
         integer function plot_grid_real_HDF5(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)&
             & result(ierr)                                                      ! HDF5 version
@@ -1208,107 +1305,113 @@ contains
             ! initialize ierr
             ierr = 0
             
-            ! user output
-            call writo('Drawing animation with HDF5')
-            call lvl_ud(1)
-            
-            ! set up loc_dim and n_r
-            loc_dim(:,1) = [size(X_1,1),size(X_1,2),1]
-            loc_dim(:,2) = [size(X_2,1),size(X_2,2),1]
-            n_r = size(X_1,3)                                                   ! should be same for all other X_i, Y_i and Z_i
-            
-            ! set up plot titles
-            plot_title(1) = 'Magnetic Flux Surface for alpha job '//&
-                &trim(i2str(alpha_job_nr))
-            plot_title(2) = 'Magnetic Field Line for alpha job '//&
-                &trim(i2str(alpha_job_nr))
-            
-            ! open HDF5 file
-            ierr = open_HDF5_file(file_info,'field_lines_in_flux_surfaces_'//&
-                &trim(i2str(alpha_job_nr)),description=anim_name,&
-                &ind_plot=.true.)
-            CHCKERR('')
-            
-            ! create grid for time collection
-            allocate(space_col_grids(n_r-1))
-            
-            ! loop over all normal points
-            do id = 1,n_r-1
-                ! A. start with flux surface
+            ! only group masters
+            if (grp_rank.eq.0) then
+                ! user output
+                call writo('Drawing animation with HDF5')
+                call lvl_ud(1)
                 
-                ! print topology
-                call print_HDF5_top(top,2,loc_dim(:,1))
+                ! set up loc_dim and n_r
+                loc_dim(:,1) = [size(X_1,1),size(X_1,2),1]
+                loc_dim(:,2) = [size(X_2,1),size(X_2,2),1]
+                n_r = size(X_1,3)                                               ! should be same for all other X_i, Y_i and Z_i
                 
-                ! print data item for X
-                ierr = print_HDF5_3D_data_item(XYZ(1),file_info,&
-                    &'X_surf_'//trim(i2str(id)),X_1(:,:,id:id),loc_dim(:,1))
+                ! set up plot titles
+                plot_title(1) = 'Magnetic Flux Surface for alpha job '//&
+                    &trim(i2str(alpha_job_nr))
+                plot_title(2) = 'Magnetic Field Line for alpha job '//&
+                    &trim(i2str(alpha_job_nr))
+                
+                ! open HDF5 file
+                ierr = open_HDF5_file(file_info,&
+                    &'field_lines_in_flux_surfaces_'//&
+                    &trim(i2str(alpha_job_nr)),description=anim_name,&
+                    &ind_plot=.true.)
                 CHCKERR('')
                 
-                ! print data item for Y
-                ierr = print_HDF5_3D_data_item(XYZ(2),file_info,&
-                    &'Y_surf_'//trim(i2str(id)),Y_1(:,:,id:id),loc_dim(:,1))
+                ! create grid for time collection
+                allocate(space_col_grids(n_r-1))
+                
+                ! loop over all normal points
+                do id = 1,n_r-1
+                    ! A. start with flux surface
+                    
+                    ! print topology
+                    call print_HDF5_top(top,2,loc_dim(:,1))
+                    
+                    ! print data item for X
+                    ierr = print_HDF5_3D_data_item(XYZ(1),file_info,&
+                        &'X_surf_'//trim(i2str(id)),X_1(:,:,id:id),loc_dim(:,1))
+                    CHCKERR('')
+                    
+                    ! print data item for Y
+                    ierr = print_HDF5_3D_data_item(XYZ(2),file_info,&
+                        &'Y_surf_'//trim(i2str(id)),Y_1(:,:,id:id),loc_dim(:,1))
+                    CHCKERR('')
+                    
+                    ! print data item for Z
+                    ierr = print_HDF5_3D_data_item(XYZ(3),file_info,&
+                        &'Z_surf_'//trim(i2str(id)),Z_1(:,:,id:id),loc_dim(:,1))
+                    CHCKERR('')
+                    
+                    ! print geometry with X, Y and Z data item
+                    call print_HDF5_geom(geom,2,XYZ,.true.)
+                    
+                    ! create a grid with the topology and the geometry
+                    ierr = print_HDF5_grid(grids(1),plot_title(1),1,&
+                        &grid_top=top,grid_geom=geom,reset=.true.)
+                    CHCKERR('')
+                    
+                    ! B. end with magnetic field
+                    
+                    ! print topology
+                    call print_HDF5_top(top,2,loc_dim(:,2))
+                    
+                    ! print data item for X
+                    ierr = print_HDF5_3D_data_item(XYZ(1),file_info,'X_field_'&
+                        &//trim(i2str(id)),X_2(:,:,id+1:id+1),loc_dim(:,2))
+                    CHCKERR('')
+                    
+                    ! print data item for Y
+                    ierr = print_HDF5_3D_data_item(XYZ(2),file_info,'Y_field_'&
+                        &//trim(i2str(id)),Y_2(:,:,id+1:id+1),loc_dim(:,2))
+                    CHCKERR('')
+                    
+                    ! print data item for Z
+                    ierr = print_HDF5_3D_data_item(XYZ(3),file_info,'Z_field_'&
+                        &//trim(i2str(id)),Z_2(:,:,id+1:id+1),loc_dim(:,2))
+                    CHCKERR('')
+                    
+                    ! print geometry with X, Y and Z data item
+                    call print_HDF5_geom(geom,2,XYZ,.true.)
+                    
+                    ! create a grid with the topology and the geometry
+                    ierr = print_HDF5_grid(grids(2),plot_title(2),1,&
+                        &grid_top=top,grid_geom=geom,reset=.true.)
+                    CHCKERR('')
+                    
+                    ! C.  merge flux  surface and magnetic  field in  to spatial
+                    ! collection
+                    ierr = print_HDF5_grid(space_col_grids(id),&
+                        &'spatial collection',3,grid_time=id*1._dp,&
+                        &grid_grids=grids,reset=.true.)
+                    CHCKERR('')
+                end do
+                
+                ! create grid collection from individual grids and reset them
+                ierr = print_HDF5_grid(time_col_grid,'time collection',2,&
+                    &grid_grids=space_col_grids,reset=.true.)
                 CHCKERR('')
                 
-                ! print data item for Z
-                ierr = print_HDF5_3D_data_item(XYZ(3),file_info,&
-                    &'Z_surf_'//trim(i2str(id)),Z_1(:,:,id:id),loc_dim(:,1))
+                ! add collection grid to HDF5 file and reset it
+                call add_HDF5_item(file_info,time_col_grid,reset=.true.)
+                
+                ! close HDF5 file
+                ierr = close_HDF5_file(file_info)
                 CHCKERR('')
                 
-                ! print geometry with X, Y and Z data item
-                call print_HDF5_geom(geom,2,XYZ,.true.)
-                
-                ! create a grid with the topology and the geometry
-                ierr = print_HDF5_grid(grids(1),plot_title(1),1,&
-                    &grid_top=top,grid_geom=geom,reset=.true.)
-                CHCKERR('')
-                
-                ! B. end with magnetic field
-                
-                ! print topology
-                call print_HDF5_top(top,2,loc_dim(:,2))
-                
-                ! print data item for X
-                ierr = print_HDF5_3D_data_item(XYZ(1),file_info,&
-                    &'X_field_'//trim(i2str(id)),X_2(:,:,id+1:id+1),loc_dim(:,2))
-                CHCKERR('')
-                
-                ! print data item for Y
-                ierr = print_HDF5_3D_data_item(XYZ(2),file_info,&
-                    &'Y_field_'//trim(i2str(id)),Y_2(:,:,id+1:id+1),loc_dim(:,2))
-                CHCKERR('')
-                
-                ! print data item for Z
-                ierr = print_HDF5_3D_data_item(XYZ(3),file_info,&
-                    &'Z_field_'//trim(i2str(id)),Z_2(:,:,id+1:id+1),loc_dim(:,2))
-                CHCKERR('')
-                
-                ! print geometry with X, Y and Z data item
-                call print_HDF5_geom(geom,2,XYZ,.true.)
-                
-                ! create a grid with the topology and the geometry
-                ierr = print_HDF5_grid(grids(2),plot_title(2),1,&
-                    &grid_top=top,grid_geom=geom,reset=.true.)
-                CHCKERR('')
-                
-                ! C. merge flux surface and magnetic field in to spatial collection
-                ierr = print_HDF5_grid(space_col_grids(id),'spatial collection',&
-                    &3,grid_time=id*1._dp,grid_grids=grids,reset=.true.)
-                CHCKERR('')
-            end do
-            
-            ! create grid collection from individual grids and reset them
-            ierr = print_HDF5_grid(time_col_grid,'time collection',2,&
-                &grid_grids=space_col_grids,reset=.true.)
-            CHCKERR('')
-            
-            ! add collection grid to HDF5 file and reset it
-            call add_HDF5_item(file_info,time_col_grid,reset=.true.)
-            
-            ! close HDF5 file
-            ierr = close_HDF5_file(file_info)
-            CHCKERR('')
-            
-            call lvl_ud(-1)
+                call lvl_ud(-1)
+            end if
         end function plot_grid_real_HDF5
     end function plot_grid_real
 end module grid_ops

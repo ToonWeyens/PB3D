@@ -1,4 +1,6 @@
 ObjectFiles = \
+HDF5_ops.o \
+grid_vars.o \
 grid_ops.o \
 driver.o \
 driver_rich.o \
@@ -6,7 +8,6 @@ eq_ops.o \
 eq_vars.o \
 files.o \
 fourier_ops.o \
-HDF5.o \
 HELENA.o \
 input_ops.o \
 messages.o \
@@ -18,7 +19,6 @@ output_ops.o \
 SLEPC_ops.o \
 sol_ops.o \
 str_ops.o \
-test.o \
 utilities.o \
 VMEC.o \
 X_ops.o \

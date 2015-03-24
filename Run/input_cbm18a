@@ -1,7 +1,7 @@
 &INPUTDATA
-    n_par                   = 50
-    min_par                 = -1.0
-    max_par                 = 1.0
+    n_par_X                 = 50
+    min_par_X               = -1.0
+    max_par_X               = 1.0
     n_alpha                 = 1
     min_alpha               = 0.0
     max_alpha               = 2.0
@@ -13,17 +13,17 @@
     n_procs_per_alpha       = 2
     prim_X                  = 10
     min_sec_X               = 20
-    max_sec_X               = 20
+    max_sec_X               = 21
     use_pol_flux_X          = .true.
     n_sol_requested         = 1000
     n_sol_plotted           = 2,2,2,2
-    min_n_r_X               = 75
+    min_n_r_X               = 10
     max_n_plots             = 2
-    plot_jq                 = .true.
+    plot_jq                 = .false.
     plot_grid               = .false.
-    plot_flux_q             = .true.
+    plot_flux_q             = .false.
     use_normalization       = .true.
-    output_style            = 2
+    output_style            = 1
 /
 
     prim_X                  = 240

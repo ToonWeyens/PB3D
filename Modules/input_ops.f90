@@ -23,7 +23,7 @@ contains
         ! local variables
         character(len=max_str_ln) :: answer_str
         integer :: id 
-
+        
         do id = 1,lvl                                                           ! to get the response on the right collumn
             write(*,'(A)',advance='no') lvl_sep
         end do
@@ -37,7 +37,7 @@ contains
         call stop_time
         read (*, '(A)') answer_str
         call start_time
-
+        
         select case (strh2l(trim(answer_str)))
             !case ('y','Y','yes','Yes','YEs','YES','yEs','yES','yeS','YeS')
             case ('y','yes')
@@ -53,7 +53,7 @@ contains
     integer function read_input() result(ierr)
         use num_vars, only: &
             &minim_style, min_alpha, max_alpha, n_alpha, max_it_NR, tol_NR, &
-            &max_it_r, input_i, n_seq_0, use_pol_flux_X, grid_style, EV_style, &
+            &max_it_r, input_i, use_pol_flux_X, grid_style, EV_style, &
             &n_procs_per_alpha, plot_jq, tol_r, n_sol_requested, nyq_fac, &
             &max_n_plots, glb_rank, nyq_fac, plot_grid, plot_flux_q, &
             &output_style, use_normalization, n_sol_plotted, n_theta_plot, &
@@ -61,8 +61,9 @@ contains
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files, only: input_name
-        use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X, n_par, &
-            &min_par, max_par, min_n_r_X, min_n_X, min_r_X, max_r_X
+        use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X, min_n_r_X, &
+            &min_n_X, min_r_X, max_r_X
+        use grid_vars, only: n_par_X, min_par_X, max_par_X
         
         character(*), parameter :: rout_name = 'read_input'
         
@@ -71,9 +72,9 @@ contains
         integer :: prim_X, min_sec_X, max_sec_X                                 ! n_X and m_X (pol. flux) or m_X and n_X (tor. flux)
         
         ! input options
-        namelist /inputdata/ minim_style, min_par, min_n_r_X, &
-            &max_par, min_alpha, max_alpha, n_par, n_alpha, max_it_NR, tol_NR, &
-            &max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
+        namelist /inputdata/ minim_style, min_par_X, min_n_r_X, &
+            &max_par_X, min_alpha, max_alpha, n_par_X, n_alpha, max_it_NR, &
+            &tol_NR, max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
             &max_r_X, EV_style, n_procs_per_alpha, plot_jq, n_sol_requested, &
             &nyq_fac, rho_0, max_n_plots, use_pol_flux_X, plot_grid, &
             &output_style, plot_flux_q, use_normalization, n_sol_plotted, &
@@ -83,7 +84,7 @@ contains
         ierr = 0
         
         if (glb_rank.eq.0) then                                                 ! only global master
-            if (input_i.ge.0) then                                              ! if open_input opened a file
+            if (input_name.ne.'') then                                          ! if open_input opened a file
                 call writo('Setting up user-provided input "' &       
                     &// trim(input_name) // '"')
             else 
@@ -92,7 +93,7 @@ contains
             call lvl_ud(1)
             
             ! initialize input variables (optionally overwritten by user later)
-            if (input_i.ge.0) call writo('Initialize all the inputs with &
+            if (input_name.ne.'') call writo('Initialize all the inputs with &
                 &default values')
             call default_input
             
@@ -100,7 +101,7 @@ contains
             grid_style = 1                                                      ! nonzero for debugging, not for users
             
             ! read user input
-            if (input_i.ge.n_seq_0) then                                        ! otherwise, defaults are loaded
+            if (input_name.ne.'') then                                          ! otherwise, defaults are loaded
                 read (input_i, nml=inputdata, iostat=istat)                     ! read input data
                 
                 ! check input if successful read
@@ -121,8 +122,8 @@ contains
                     ! adapt alpha variables if needed
                     call adapt_n_alpha
                     
-                    ! adapt n_par if needed
-                    call adapt_n_par
+                    ! adapt n_par_X if needed
+                    call adapt_n_par_X
                     
                     ! adapt min_r_X and max_r_X if needed
                     ierr = adapt_X()
@@ -170,7 +171,7 @@ contains
             use num_vars, only: eq_style, use_pol_flux_eq
             
             ! concerning Newton-Rhapson
-            max_it_NR = 50                                                      ! maximum 50 Newton-Rhapson iterations
+            max_it_NR = 500                                                     ! maximum 500 Newton-Rhapson iterations
             tol_NR = 1.0E-10_dp                                                 ! wanted relative error in Newton-Rhapson iteration
             
             ! concerning Richardson extrapolation
@@ -204,13 +205,13 @@ contains
             end select
             
             ! variables concerning poloidal mode numbers m
-            min_par = -4.0_dp                                                   ! minimum parallel angle [pi]
-            max_par = 4.0_dp                                                    ! maximum parallel angle [pi]
+            min_par_X = -4.0_dp                                                 ! minimum parallel angle [pi]
+            max_par_X = 4.0_dp                                                  ! maximum parallel angle [pi]
             nyq_fac = 5                                                         ! need at least 5 points per period for perturbation quantitites
             prim_X = 20                                                         ! main mode number of perturbation
             min_sec_X = prim_X                                                  ! min. of. secondary mode number of perturbation
             max_sec_X = prim_X                                                  ! max. of. secondary mode number of perturbation
-            n_par = 20                                                          ! number of parallel grid points
+            n_par_X = 20                                                        ! number of parallel grid points in pert. grid
             use_pol_flux_X = use_pol_flux_eq                                    ! use same normal flux coordinate as the equilibrium
             
             ! variables concerning alpha
@@ -268,20 +269,20 @@ contains
             end if
         end subroutine adapt_plot
         
-        ! checks whether n_par is chosen high enough so aliasing can be avoided.
-        ! aliasing occurs when there are not  enough points on the parallel grid
-        ! so  the  fast-moving  functions  e^(i(k-m)) V  don't  give  the  wrong
-        ! integrals in the perturbation part
-        subroutine adapt_n_par
-            if (n_par.lt.nyq_fac*max(max_sec_X-min_sec_X,1)*&
-                &(max_par-min_par)/2) then
-                n_par = int(nyq_fac*max(max_sec_X-min_sec_X,1)*&
-                    &(max_par-min_par)/2)
-                if (mod(n_par,2).eq.0) n_par = n_par+1                          ! odd numbers are usually better
+        ! checks  whether n_par_X  is  chosen  high enough  so  aliasing can  be
+        ! avoided.  aliasing occurs  when there  are  not enough  points on  the
+        ! parallel grid so the fast-moving functions e^(i(k-m)) V don't give the
+        ! wrong integrals in the perturbation part
+        subroutine adapt_n_par_X
+            if (n_par_X.lt.nyq_fac*max(max_sec_X-min_sec_X,1)*&
+                &(max_par_X-min_par_X)/2) then
+                n_par_X = int(nyq_fac*max(max_sec_X-min_sec_X,1)*&
+                    &(max_par_X-min_par_X)/2)
+                if (mod(n_par_X,2).eq.0) n_par_X = n_par_X+1                    ! odd numbers are usually better
                 call writo('WARNING: To avoid aliasing of the perturbation &
-                    &integrals, n_par is increased to '//trim(i2str(n_par)))
+                    &integrals, n_par_X is increased to '//trim(i2str(n_par_X)))
             end if
-        end subroutine adapt_n_par
+        end subroutine adapt_n_par_X
         
         ! checks whether variables concerning  perturbation are correct. min_r_X
         ! should not be  too close to zero because  the equilibrium calculations
@@ -291,7 +292,7 @@ contains
         ! preferibly at least 10 (arbitrary)
         ! min_n_r_X has  to be at  least 2 (for 2 grid points)
         integer function adapt_X() result(ierr)
-            use eq_vars, only: n_r_eq
+            use grid_vars, only: n_r_eq
             
             character(*), parameter :: rout_name = 'adapt_X'
             

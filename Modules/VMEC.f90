@@ -68,9 +68,12 @@ contains
             
             ! rewind input file
             rewind(eq_i)
+            close(eq_i)
+            eq_i = 50
+            open(eq_i,file=trim(eq_name))
             
             ! read VMEC output using LIBSTELL
-            call read_wout_file(eq_i, ierr)                                     ! read the VMEC file number
+            call read_wout_file(eq_i,ierr)                                      ! read the VMEC file number
             CHCKERR('Failed to read the VMEC file')
             close(eq_i)                                                         ! close the VMEC file
             

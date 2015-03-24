@@ -3,16 +3,18 @@
 !------------------------------------------------------------------------------!
 module utilities
 #include <PB3D_macros.h>
-    use num_vars, only: dp, iu, max_str_ln
+    use num_vars, only: dp, qp, iu, max_str_ln
     use messages, only: writo, print_ar_1, print_ar_2
     use str_ops, only: i2str, r2strt, r2str
+    use output_ops, only: print_HDF5
     
     implicit none
     private
-    public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, &
-        &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun, &
-        &init_utilities, derivs, con2dis, dis2con, round_with_tol, &
-        &calc_spline_3
+    public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
+        &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun, calc_mult, &
+        &init_utilities, derivs, con2dis, dis2con, round_with_tol, conv_sym, &
+        &is_sym, calc_spline_3, con, &
+        &plot_info
     
     ! the possible derivatives of order i
     integer, allocatable :: derivs_0(:,:)                                       ! all possible derivatives of order 0
@@ -30,6 +32,10 @@ module utilities
     end interface
     interface calc_inv
         module procedure calc_inv_0D, calc_inv_2D
+    end interface
+    interface calc_mult
+        module procedure calc_mult_0D_real, calc_mult_2D_real, &
+            &calc_mult_2D_complex
     end interface
     interface calc_deriv
         module procedure calc_deriv_equidistant_real, &
@@ -51,6 +57,12 @@ module utilities
     interface interp_fun
         module procedure interp_fun_0D, interp_fun_1D, interp_fun_2D
     end interface
+    interface con
+        module procedure con_3D, con_2D, con_1D, con_0D
+    end interface
+    
+    ! global variables for debugging
+    logical :: plot_info = .false.                                              ! to plot information if wanted
     
 contains
     ! initialize utilities:
@@ -1066,14 +1078,13 @@ contains
     
     ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
     ! that are distributed between both acording to the binomial theorem
-    ! VERSION with arr_1 and arr_2 in three coords.
-    integer function add_arr_mult_3_3(arr_1,arr_2,arr_3,deriv) result(ierr)
+    integer function add_arr_mult_3_3(arr_1,arr_2,arr_3,deriv) result(ierr)     ! Version with arr_1 and arr_2 in three coords.
         character(*), parameter :: rout_name = 'add_arr_mult_3_3'
         
         ! input / output
-        real(dp), intent(in) :: arr_1(1:,1:,0:,0:,0:)
-        real(dp), intent(in) :: arr_2(1:,1:,0:,0:,0:)
-        real(dp), intent(out) :: arr_3(1:,1:)
+        real(dp), intent(in) :: arr_1(1:,1:,1:,0:,0:,0:)
+        real(dp), intent(in) :: arr_2(1:,1:,1:,0:,0:,0:)
+        real(dp), intent(out) :: arr_3(1:,1:,1:)
         integer, intent(in) :: deriv(3)
         
         ! local variables
@@ -1086,26 +1097,26 @@ contains
         ierr = 0
         
         ! tests
-        if (size(arr_1,1).ne.size(arr_2,1) .or. size(arr_1,2).ne.size(arr_2,2))&
-            & then
+        if (size(arr_1,1).ne.size(arr_2,1) .or. size(arr_1,2).ne.size(arr_2,2) &
+            &.or. size(arr_1,3).ne.size(arr_2,3)) then
             err_msg = 'Arrays 1 and 2 need to have the same size'
             ierr = 1
             CHCKERR(err_msg)
         end if
-        if (size(arr_1,1).ne.size(arr_3,1) .or. size(arr_1,2).ne.size(arr_3,2))&
-            & then
+        if (size(arr_1,1).ne.size(arr_3,1) .or. size(arr_1,2).ne.size(arr_3,2) &
+            &.or. size(arr_1,3).ne.size(arr_3,3)) then
             err_msg = 'Arrays 1 and 2 need to have the same size as the &
                 &resulting array 3'
             ierr = 1
             CHCKERR(err_msg)
         end if
         do kd = 1,3
-            if (size(arr_1,2+kd).lt.deriv(kd)+1 .or. &
-                &size(arr_2,2+kd).lt.deriv(kd)+1) then
+            if (size(arr_1,3+kd).lt.deriv(kd)+1 .or. &
+                &size(arr_2,3+kd).lt.deriv(kd)+1) then
                 err_msg = 'Arrays 1 and 2 do not provide the necessary &
                     &orders of derivatives to calculate a derivative of order &
                     &['//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//&
-                    &','//trim(i2str(deriv(3)))//', at least in coordinate '&
+                    &','//trim(i2str(deriv(3)))//' in coordinate '&
                     &//trim(i2str(kd))
                 ierr = 1
                 CHCKERR(err_msg)
@@ -1136,27 +1147,23 @@ contains
                     end if
                     
                     ! current term in the tripple summation
-                    do kd = 1, size(arr_1,2)
-                        arr_3(:,kd) = arr_3(:,kd) + &
-                            &bin_fac(1)*bin_fac(2)*bin_fac(3) &
-                            &* arr_1(:,kd,r,m,n)&
-                            &* arr_2(:,kd,deriv(1)-r,deriv(2)-m,deriv(3)-n)
-                    end do
+                    arr_3 = arr_3 + &
+                        &bin_fac(1)*bin_fac(2)*bin_fac(3) &
+                        &* arr_1(:,:,:,r,m,n)&
+                        &* arr_2(:,:,:,deriv(1)-r,deriv(2)-m,deriv(3)-n)
                 end do
             end do
         end do
     end function add_arr_mult_3_3
-    
     ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
     ! that are distributed between both acording to the binomial theorem
-    ! VERSION with arr_1 in three coords and arr_2 only in the flux coord.
-    integer function add_arr_mult_3_1(arr_1,arr_2,arr_3,deriv) result(ierr)
+    integer function add_arr_mult_3_1(arr_1,arr_2,arr_3,deriv) result(ierr)     ! Version with arr_1 in three coords and arr_2 only in the flux coord.
         character(*), parameter :: rout_name = 'add_arr_mult_3_1'
         
         ! input / output
-        real(dp), intent(in) :: arr_1(1:,1:,0:,0:,0:)
+        real(dp), intent(in) :: arr_1(1:,1:,1:,0:,0:,0:)
         real(dp), intent(in) :: arr_2(1:,0:)
-        real(dp), intent(out) :: arr_3(1:,1:)
+        real(dp), intent(out) :: arr_3(1:,1:,1:)
         integer, intent(in) :: deriv(3)
         
         ! local variables
@@ -1169,14 +1176,14 @@ contains
         ierr = 0
         
         ! tests
-        if (size(arr_1,2).ne.size(arr_2,1)) then
+        if (size(arr_1,3).ne.size(arr_2,1)) then
             err_msg = 'Arrays 1 and 2 need to have the same size in the flux &
                 &coord.'
             ierr = 1
             CHCKERR(err_msg)
         end if
-        if (size(arr_1,1).ne.size(arr_3,1) .or. &
-            &size(arr_1,2).ne.size(arr_3,2)) then
+        if (size(arr_1,1).ne.size(arr_3,1) .or. size(arr_1,2).ne.size(arr_3,2) &
+            &.or. size(arr_1,3).ne.size(arr_3,3)) then
             err_msg = 'Array 1 needs to have the same size as the resulting &
                 &array 3'
             ierr = 1
@@ -1194,17 +1201,15 @@ contains
             end if
             
             ! current term in the tripple summation
-            do kd = 1, size(arr_1,2)
-                arr_3(:,kd) = arr_3(:,kd) + bin_fac * &
-                    &arr_1(:,kd,r,deriv(2),deriv(3))* arr_2(kd,deriv(1)-r)
+            do kd = 1, size(arr_1,3)
+                arr_3(:,:,kd) = arr_3(:,:,kd) + bin_fac * &
+                    &arr_1(:,:,kd,r,deriv(2),deriv(3))* arr_2(kd,deriv(1)-r)
             end do
         end do
     end function add_arr_mult_3_1
-    
     ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
     ! that are distributed between both acording to the binomial theorem
-    ! VERSION with arr_1 and arr_2 only in the flux coord.
-    integer function add_arr_mult_1_1(arr_1,arr_2,arr_3,deriv) result(ierr)
+    integer function add_arr_mult_1_1(arr_1,arr_2,arr_3,deriv) result(ierr)     ! Version with arr_1 and arr_2 only in the flux coord.
         character(*), parameter :: rout_name = 'add_arr_mult_1_1'
         
         ! input / output
@@ -1254,81 +1259,133 @@ contains
         end if
     end function add_arr_mult_1_1
 
-    ! Calculate determinant of a  matrix which is defined on a  2D grid (first 2
-    ! indices). The  size of the matrix  (last two indices) should  be small, as
-    ! the direct formula employing cofactors is used.
-    integer recursive function calc_det_2D(detA,A) result (ierr)
+    ! Calculate determinant of a matrix which is defined on a 3D grid . The size
+    ! of  the  matrix  (last  two  indices)  should  be  small,  as  the  direct
+    ! formula employing cofactors  is used. The storage  convention described in
+    ! metric_type is used.
+    integer recursive function calc_det_2D(detA,A,n) result (ierr)
         character(*), parameter :: rout_name = 'calc_det_2D'
         
         ! input / output
+        real(dp), intent(inout) :: detA(:,:,:)                                  ! output
         real(dp), intent(in) :: A(:,:,:,:)                                      ! input
-        real(dp), intent(inout) :: detA(:,:)                                    ! output
+        integer, intent(in) :: n                                                ! size of matrix
         
         ! local variables
-        integer :: id                                                           ! counter
-        integer :: n                                                            ! holds size of A
+        logical :: sym                                                          ! .true. if matrix symmetric
+        integer :: id, jd, kd                                                   ! counter
+        integer :: nn                                                           ! nr. of elements in matrix
         real(dp) :: sgn                                                         ! holds either plus or minus one
         integer, allocatable :: slct(:)                                         ! 0 in between 1's selects which column to delete
         integer, allocatable :: idx(:)                                          ! counts from 1 to size(A)
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), allocatable :: work(:,:)                                      ! work array
+        real(dp), allocatable :: work(:,:,:)                                    ! work array
+        integer, allocatable :: c_sub(:)                                        ! indices of submatrix in storage convention of metric_type
+        integer, allocatable :: k_sub(:)                                        ! first indices of submatrix in 2D
         
         ! initialize ierr
         ierr = 0
         
         ! tests
-        if (size(A,3).ne.size(A,4)) then
-            err_msg = 'The matrix A has to be square'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        if (size(A,3).gt.4) then
-            err_msg = 'This should only be used for small matrices'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        if (size(detA,1).ne.size(A,1) .or. size(detA,2).ne.size(A,2)) then
+        if (size(detA,1).ne.size(A,1) .or. size(detA,2).ne.size(A,2) .or. &
+            &size(detA,3).ne.size(A,3)) then
             err_msg = 'The output and input matrix have to have the same sizes'
             ierr = 1
             CHCKERR(err_msg)
         end if
         
-        ! intialize
-        n = size(A,3)
+        ! set total number of elements in matrix
+        nn = size(A,4)
+        
+        ! set sym
+        ierr = is_sym(n,nn,sym)
+        CHCKERR('')
+        
+        ! intialize other quantities
         sgn = 1.0_dp
         allocate (idx(n))
         idx = [(id,id=1,n)]
         allocate (slct(n))
         slct = 1
-        allocate (work(size(A,1),size(A,2)))
+        allocate (work(size(A,1),size(A,2),size(A,3)))
         
         detA = 0.0_dp
         
         if (n.eq.1) then                                                        ! shouldn't be used
-            detA = A(:,:,1,1)
+            detA = A(:,:,:,c([1,1],sym,n))
         else if (n.eq.2) then
-            detA = A(:,:,1,1)*A(:,:,2,2)-A(:,:,1,2)*A(:,:,2,1)
+            if (plot_info) write(*,*) '   n = 2 sym = ', sym
+            detA = A(:,:,:,c([1,1],sym,n))*A(:,:,:,c([2,2],sym,n))-&
+                &A(:,:,:,c([1,2],sym,n))*A(:,:,:,c([2,1],sym,n))
+            if (plot_info) then
+                write(*,*) 'A(1,1):'
+                call print_HDF5('X','X',A(:,:,:,c([1,1],sym,n)),[size(A,1),size(A,2),size(A,3)])
+                read(*,*)
+                write(*,*) 'A(2,2):'
+                call print_HDF5('X','X',A(:,:,:,c([2,2],sym,n)),[size(A,1),size(A,2),size(A,3)])
+                read(*,*)
+                write(*,*) 'A(1,2):'
+                call print_HDF5('X','X',A(:,:,:,c([1,2],sym,n)),[size(A,1),size(A,2),size(A,3)])
+                read(*,*)
+                write(*,*) 'A(2,1):'
+                call print_HDF5('X','X',A(:,:,:,c([2,1],sym,n)),[size(A,1),size(A,2),size(A,3)])
+                read(*,*)
+            end if
         else
+            if (plot_info) write(*,*) '   n = '//trim(i2str(n))//' sym = ', sym
+            ! allocate coordinates of (n-1)x(n-1) submatrix
+            allocate(c_sub((n-1)**2))
+            allocate(k_sub(n**2)); k_sub = 0
+            ! iterate over indices in second dimension
             do id = 1, n
+                if (plot_info) then
+                    write(*,*) 'id = ', id
+                    write(*,*) 'previous det:'
+                    call print_HDF5('X','X',detA,[size(A,1),size(A,2),size(A,3)])
+                    read(*,*)
+                end if
                 slct(id) = 0
-                ierr = calc_det_2D(work,A(:,:,2:n,pack(idx,slct.gt.0)))
+                ! set up coordinates of submatrix (2:n,pack(idx,slct.gt.0))
+                ! (in general not symmetric, even if parent matrix is)
+                k_sub = pack(idx,slct.gt.0)
+                do kd = 1,n-1
+                    do jd = 1,n-1
+                        c_sub((kd-1)*(n-1)+jd) = c([jd+1,k_sub(kd)],sym,n)
+                    end do
+                end do
+                ierr = calc_det_2D(work,A(:,:,:,c_sub),n-1)
                 CHCKERR('')
-                detA = detA + A(:,:,1,id)*sgn*work
+                detA = detA + A(:,:,:,c([1,id],sym,n))*sgn*work
                 sgn = -sgn
                 slct(id) = 1
+                if (plot_info) then
+                    write(*,*) 'plotting A of ', c([1,id],sym,n)
+                        call print_HDF5('X','X',A(:,:,:,c([1,id],sym,n)),&
+                            &[size(A,1),size(A,2),size(A,3)])
+                    read(*,*)
+                    write(*,*) 'plotting subdet '
+                        call print_HDF5('X','X',work,&
+                            &[size(A,1),size(A,2),size(A,3)])
+                    read(*,*)
+                    write(*,*) 'sign = ', -sgn
+                    write(*,*) 'updated det:'
+                    call print_HDF5('X','X',detA,[size(A,1),size(A,2),size(A,3)])
+                    read(*,*)
+                end if
             end do
+            ! deallocate c_sub and k_sub
+            deallocate(c_sub,k_sub)
         end if
     end function calc_det_2D
-
     ! calculate determinant of a constant matrix
-    ! (adapted from http://dualm.wordpress.com/2012/01/06/computing-determinant-in-fortran/)
-    ! ¡¡¡WARNING: the matrix A is changed on output!!!
+    ! (adapted from http://dualm.wordpress.com/2012/01/06/computing-determinant-
+    ! in-fortran/)
     integer function calc_det_0D(det_0D,A) result(ierr)
         character(*), parameter :: rout_name = 'calc_det_0D'
         
         ! input / output
-        real(dp), intent(inout) :: A(:,:)                                       ! input
         real(dp), intent(inout) :: det_0D                                       ! output
+        real(dp), intent(in) :: A(:,:)                                          ! input
         
         ! local variables
         integer :: n 
@@ -1336,6 +1393,7 @@ contains
         integer :: id, info
         integer, allocatable :: ipiv(:)
         character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), allocatable :: A_loc(:,:)                                     ! copy of A
         
         ! initialize ierr
         ierr = 0
@@ -1352,11 +1410,15 @@ contains
         allocate(ipiv(n))
         ipiv = 0
         
-        call dgetrf(n, n, A, n, ipiv, info)
+        ! set up local A
+        allocate(A_loc(n,n))
+        A_loc = A
+        
+        call dgetrf(n, n, A_loc, n, ipiv, info)
         
         det_0D = 1.0_dp
         do id = 1, n
-            det_0D = det_0D*A(id, id)
+            det_0D = det_0D*A_loc(id, id)
         end do
         
         sgn = 1.0_dp
@@ -1366,38 +1428,40 @@ contains
             end if
         end do
         det_0D = sgn*det_0D
+        
+        ! deallocate local variables
+        deallocate(A_loc)
     end function calc_det_0D
     
-    ! calculate inverse of  square matrix A which has  elements depending on
-    ! 2D grid (first two coords)
-    ! this method uses direct inversion using  Cramer's rule, since the matrix A
-    ! is supposed to be  very small (i.e. 3x3 or 1x1) and  since the inverse has
-    ! to be calculated at  each of the points in the 2D grid,  this can be quite
-    ! fast
-    integer function calc_inv_2D(inv_2D,A) result(ierr)
+    ! calculate inverse of square matrix A  which has elements depending on a 3D
+    ! grid. The storage convention described in metric_type is used.
+    ! This method uses direct inversion using  Cramer's rule, since the matrix A
+    ! is supposed to  be very small (i.e.  3x3) and since the inverse  has to be
+    ! calculated at each of the points in the grid, this can be quite fast.
+    integer function calc_inv_2D(inv_2D,A,n) result(ierr)
         character(*), parameter :: rout_name = 'calc_inv_2D'
         
         ! input / output
         real(dp), intent(inout) :: inv_2D(:,:,:,:)                              ! output
         real(dp), intent(in) :: A(:,:,:,:)                                      ! input
+        integer, intent(in) :: n                                                ! size of matrix
         
         ! local variables
-        real(dp), allocatable :: detA(:,:)
-        integer :: id, kd                                                       ! counters
-        integer :: n
+        logical :: sym                                                          ! .true. if matrix symmetric
+        real(dp), allocatable :: detA(:,:,:)                                    ! determinant of a submatrix of A
+        integer :: id, jd, kd, ld                                               ! counters
+        integer :: nn                                                           ! nr. of elements in matrix
         integer, allocatable :: slct(:,:)                                       ! 0 in between 1's selects which column to delete
         integer, allocatable :: idx(:)                                          ! counts from 1 to size(A)
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer, allocatable :: c_sub(:)                                        ! indices of submatrix in storage convention of metric_type
+        integer, allocatable :: l_sub(:), k_sub(:)                              ! first and second indices of submatrix in 2D
+        integer :: kd_min                                                       ! min. of kd
        
         ! initialize ierr
         ierr = 0
         
         ! tests
-        if (size(A,3).ne.size(A,4)) then
-            err_msg = 'The input matrix has to be square'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
         if (size(inv_2D,1).ne.size(A,1) .or. size(inv_2D,2).ne.size(A,2) .or. &
             &size(inv_2D,3).ne.size(A,3) .or. size(inv_2D,4).ne.size(A,4)) then
             err_msg = 'The output and input matrix have to have the same sizes'
@@ -1405,39 +1469,85 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! initializing
-        n = size(A,3)
+        ! set total number of elements in matrix
+        nn = size(A,4)
+        
+        ! set sym
+        ierr = is_sym(n,nn,sym)
+        CHCKERR('')
+        
+        ! initialize other quantitites
         allocate (idx(n))
         idx = [(id,id=1,n)]
         allocate (slct(n,2))
         slct = 1
-        allocate(detA(size(A,1),size(A,2)))
+        allocate(detA(size(A,1),size(A,2),size(A,3)))
         detA = 0.0_dp
+        
+        ! allocate coordinates of (n-1)x(n-1) submatrix
+        allocate(c_sub((n-1)**2))
+        allocate(l_sub(n**2)); l_sub = 0
+        allocate(k_sub(n**2)); k_sub = 0
+        
+        ! set up kd_min
+        kd_min = 1
         
         ! calculate cofactor matrix, replacing original elements
         ! use is made of detA
-        do kd = 1,n
-            do id = 1,n
-                slct(kd,1) = 0                                                  ! take out row kd
-                slct(id,2) = 0                                                  ! take out column id
-                ierr = calc_det(detA,&
-                    &A(:,:,pack(idx,slct(:,1).gt.0),pack(idx,slct(:,2).gt.0)))
+        do ld = 1,n
+            ! adjust kd_min if symmetric
+            if (sym) kd_min = ld
+            do kd = kd_min,n
+                if (plot_info) write(*,*) 'in calc_inv kd,ld = ', kd, ld
+                ! set up coordinates of submatrix (strike out row i, column j)
+                slct(ld,1) = 0                                                  ! take out column ld
+                slct(kd,2) = 0                                                  ! take out row kd
+                l_sub = pack(idx,slct(:,1).gt.0)
+                k_sub = pack(idx,slct(:,2).gt.0)
+                do jd = 1,n-1
+                    do id = 1,n-1
+                        c_sub((jd-1)*(n-1)+id) = c([l_sub(id),k_sub(jd)],sym,n) ! taking the transpose!
+                    end do
+                end do
+                if (plot_info) write(*,*) 'c_sub = ', c_sub
+                ierr = calc_det_2D(detA,A(:,:,:,c_sub),n-1)
                 CHCKERR('')
-                inv_2D(:,:,id,kd) = (-1.0_dp)**(id+kd)*detA
-                slct(kd,1) = 1
-                slct(id,2) = 1
+                inv_2D(:,:,:,c([kd,ld],sym,n)) = (-1.0_dp)**(kd+ld)*detA
+                slct(ld,1) = 1
+                slct(kd,2) = 1
+                if (plot_info) then
+                    write(*,*) 'inv( = ',kd,ld,')'
+                    call print_HDF5('X','X',inv_2D(:,:,:,c([kd,ld],sym,n)),&
+                        &[size(inv_2D,1),size(inv_2D,2),size(inv_2D,3)])
+                    write(*,*) 'last row: ', inv_2D(:,:,size(inv_2D,3),c([kd,ld],sym,n))
+                    read(*,*)
+                end if
             end do
         end do
         
+        ! deallocate c_sub l_sub and k_sub
+        deallocate(c_sub,l_sub,k_sub)
+        
         ! calculate determinant in detA
-        ierr = calc_det(detA,A)
+        ierr = calc_det(detA,A,n)
         CHCKERR('')
         
+        if (plot_info) then
+            write(*,*) 'detA = '
+            call print_HDF5('X','X',detA,&
+                &[size(inv_2D,1),size(inv_2D,2),size(inv_2D,3)])
+            read(*,*)
+        end if
         ! divide by determinant
-        do kd = 1,n
-            do id = 1,n
-                inv_2D(:,:,id,kd) = inv_2D(:,:,id,kd) / detA
-            end do
+        do kd = 1,nn
+            inv_2D(:,:,:,kd) = inv_2D(:,:,:,kd) / detA
+            
+            if (plot_info) then
+                write(*,*) 'FINAL RESULT', kd
+                call print_HDF5('X','X',inv_2D(:,:,:,kd),&
+                    &[size(inv_2D,1),size(inv_2D,2),size(inv_2D,3)])
+                read(*,*)
+            end if
         end do
     end function calc_inv_2D
     ! calculate inverse of a constant square matrix
@@ -1484,7 +1594,263 @@ contains
         call dgetri(n, inv_0D, n, ipiv, w, n, ierr)                             ! inverse of LU
         CHCKERR('Lapack couldn''t compute the inverse')
     end function calc_inv_0D
-
+    
+    ! Calculate matrix multiplication of two square matrices AB = A B which have
+    ! elements  defined  on a  3D  grid.  The  storage convention  described  in
+    ! metric_type is used.
+    ! Optionally, A and/or B can be transposed.
+    integer function calc_mult_2D_real(A,B,AB,n,transp) result(ierr)            ! real version with matrix defined on 3D grid
+        character(*), parameter :: rout_name = 'calc_mult_2D_real'
+        
+        ! input / output
+        real(dp), intent(in) :: A(:,:,:,:)                                      ! input A
+        real(dp), intent(in) :: B(:,:,:,:)                                      ! input B
+        real(dp), intent(inout) :: AB(:,:,:,:)                                  ! output A B
+        integer, intent(in) :: n                                                ! size of matrix
+        logical, intent(in), optional :: transp(2)                              ! .true. if A and/or B transposed
+        
+        ! local variables
+        logical :: sym(3)                                                       ! .true. if matrices symmetric
+        integer :: nn(3)                                                        ! nr. of elements in matrices
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: id, jd, kd                                                   ! counters
+        integer :: id_min                                                       ! min. of id
+        integer :: c1, c2, c3                                                   ! coordinates
+        integer :: ind(2,3)                                                     ! indices
+        logical :: transp_loc(2)                                                ! local copy of transp
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (size(A,1).ne.size(B,1) .or. size(A,2).ne.size(B,2) .or. &
+            &size(A,3).ne.size(B,3) .or. size(A,1).ne.size(AB,1) .or. &
+            &size(A,2).ne.size(AB,2) .or. size(A,3).ne.size(AB,3)) then
+            err_msg = 'The output and input matrices have to defined on the &
+                &same grid'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        
+        ! set local transp
+        transp_loc = .false.
+        if (present(transp)) transp_loc = transp
+        
+        ! set total number of elements in matrices
+        nn(1) = size(A,4)
+        nn(2) = size(B,4)
+        nn(3) = size(AB,4)
+        
+        ! set sym
+        do id = 1,3
+            ierr = is_sym(n,nn(id),sym(id))
+            CHCKERR('')
+        end do
+        
+        ! initialize AB
+        AB = 0._dp
+        
+        ! set up id_min
+        id_min = 1
+        
+        ! loop over all 2D rows and columns of AB
+        do jd = 1,n
+            ! adjust id_min if AB symmetric
+            if (sym(3)) id_min = jd
+            do id = id_min,n
+                do kd = 1,n
+                    ind(:,3) = [id,jd]
+                    c3 = c(ind(:,3),sym(3),n)
+                    if (transp_loc(1)) then
+                        ind(:,1) = [kd,id]
+                    else
+                        ind(:,1) = [id,kd]
+                    end if
+                    c1 = c(ind(:,1),sym(1),n)
+                    if (transp_loc(2)) then
+                        ind(:,2) = [jd,kd]
+                    else
+                        ind(:,2) = [kd,jd]
+                    end if
+                    c2 = c(ind(:,2),sym(2),n)
+                    AB(:,:,:,c3) = AB(:,:,:,c3) + &
+                        &A(:,:,:,c1)*B(:,:,:,c2)
+                end do
+            end do
+        end do
+    end function calc_mult_2D_real
+    integer function calc_mult_2D_complex(A,B,AB,n,transp) result(ierr)         ! complex version with matrix defined on 3D grid
+        character(*), parameter :: rout_name = 'calc_mult_2D_complex'
+        
+        ! input / output
+        complex(dp), intent(in) :: A(:,:,:,:)                                   ! input A
+        complex(dp), intent(in) :: B(:,:,:,:)                                   ! input B
+        complex(dp), intent(inout) :: AB(:,:,:,:)                               ! output A B
+        integer, intent(in) :: n                                                ! size of matrix
+        logical, intent(in), optional :: transp(2)                              ! .true. if A and/or B transposed
+        
+        ! local variables
+        logical :: sym(3)                                                       ! .true. if matrices symmetric
+        integer :: nn(3)                                                        ! nr. of elements in matrices
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: id, jd, kd                                                   ! counters
+        integer :: id_min                                                       ! min. of id
+        integer :: c1, c2, c3                                                   ! coordinates
+        logical :: transp_loc(2)                                                ! local copy of transp
+        integer :: ind(2,3)                                                     ! indices
+        integer :: d(3)                                                         ! dimension of matrices A and B
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (size(A,1).ne.size(B,1) .or. size(A,2).ne.size(B,2) .or. &
+            &size(A,3).ne.size(B,3) .or. size(A,1).ne.size(AB,1) .or. &
+            &size(A,2).ne.size(AB,2) .or. size(A,3).ne.size(AB,3)) then
+            err_msg = 'The output and input matrices have to defined on the &
+                &same grid'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        
+        ! set local transp
+        transp_loc = .false.
+        if (present(transp)) transp_loc = transp
+        
+        ! set d
+        d = [size(A,1),size(A,2),size(A,3)]
+        
+        ! set total number of elements in matrices
+        nn(1) = size(A,4)
+        nn(2) = size(B,4)
+        nn(3) = size(AB,4)
+        
+        ! set sym
+        do id = 1,3
+            ierr = is_sym(n,nn(id),sym(id))
+            CHCKERR('')
+        end do
+        
+        ! initialize AB
+        AB = 0._dp
+        
+        ! set up id_min
+        id_min = 1
+        
+        ! loop over all 2D rows and columns of AB
+        do jd = 1,n
+            ! adjust id_min if AB symmetric
+            if (sym(3)) id_min = jd
+            do id = id_min,n
+                do kd = 1,n
+                    ind(:,3) = [id,jd]
+                    c3 = c(ind(:,3),sym(3),n)
+                    if (transp_loc(1)) then
+                        ind(:,1) = [kd,id]
+                    else
+                        ind(:,1) = [id,kd]
+                    end if
+                    c1 = c(ind(:,1),sym(1),n)
+                    if (transp_loc(2)) then
+                        ind(:,2) = [jd,kd]
+                    else
+                        ind(:,2) = [kd,jd]
+                    end if
+                    c2 = c(ind(:,2),sym(2),n)
+                    AB(:,:,:,c3) = AB(:,:,:,c3) + &
+                        &con(A(:,:,:,c1),ind(:,1),sym(1),d)*&
+                        &con(B(:,:,:,c2),ind(:,2),sym(2),d)
+                end do
+            end do
+        end do
+    end function calc_mult_2D_complex
+    integer function calc_mult_0D_real(A,B,AB,n) result(ierr)                   ! real version with constant matrix
+        character(*), parameter :: rout_name = 'calc_mult_0D_real'
+        
+        ! input / output
+        real(dp), intent(in) :: A(:)                                            ! input A
+        real(dp), intent(in) :: B(:)                                            ! input B
+        real(dp), intent(inout) :: AB(:)                                        ! output A B
+        integer, intent(in) :: n                                                ! size of matrix
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), allocatable :: loc_AB(:,:,:,:)                                ! local copy of C
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (size(A).ne.size(B) .or. size(A).ne.size(AB)) then
+            err_msg = 'The matrices A, B and AB need to have the same shape'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        
+        ! allocate local AB
+        allocate(loc_AB(1,1,1,size(AB)))
+        
+        ! calculate using 2D version
+        ierr = calc_mult_2D_real(reshape(A,[1,1,1,size(A)]),&
+            &reshape(B,[1,1,1,size(B)]),loc_AB,n)
+        
+        ! update AB with local value
+        AB = loc_AB(1,1,1,:)
+        
+        ! deallocate local variables
+        deallocate(loc_AB)
+    end function calc_mult_0D_real
+    
+    ! Converts a  (symmetric) matrix  A defined  on a 3D  grid with  the storage
+    ! convention  described in  metric_type. If  the matrix  is stored  with n^2
+    ! numbers, only  the lower diagonal elements  are kept in matrix  B. If only
+    ! the  lower diagonal  elements are  stored, they  are copied  to the  upper
+    ! diagonal ones of the matrix B as well.
+    ! Note  that  the  routine  does  not check  whether  the  matrix is  indeed
+    ! symmetric and that information may thus be lost after conversion.
+    integer function conv_sym(A,B,n) result(ierr)
+        character(*), parameter :: rout_name = 'conv_sym'
+        
+        ! input / output
+        real(dp), intent(in) :: A(:,:,:,:)                                      ! matrix to be converted
+        real(dp), intent(inout) :: B(:,:,:,:)                                   ! converted matrix
+        integer, intent(in) :: n                                                ! size of matrix
+        
+        ! local variables
+        logical :: sym(2)                                                       ! .true. if matrices symmetric
+        integer :: nn(2)                                                        ! nr. of elements in matrices
+        integer :: id, jd                                                       ! counters
+        integer :: id_min                                                       ! minimum value of id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set total number of elements in matrix
+        nn(1) = size(A,4)
+        nn(2) = size(B,4)
+        
+        ! set sym
+        do id = 1,2
+            ierr = is_sym(n,nn(id),sym(id))
+            CHCKERR('')
+        end do
+        
+        ! copy A into B
+        if ((sym(1).neqv.sym(2))) then                                          ! matrices A and B have different storage type
+            ! set id_min
+            id_min = 1
+            ! convert according to sym of A
+            do jd = 1,n
+                if (sym(2)) id_min = jd
+                do id = id_min,n
+                    B(:,:,:,c([id,jd],sym(2),n)) = A(:,:,:,c([id,jd],sym(1),n))
+                end do
+            end do
+        else
+            B = A
+        end if
+    end function conv_sym
+    
     ! finds the zero of a function using Newton-Rhapson iteration
     integer function calc_zero_NR(zero_NR,fun,dfun,guess) result(ierr)
         use num_vars, only: max_it_NR, tol_NR
@@ -1530,7 +1896,8 @@ contains
                 return
             else if (jd .eq. max_it_NR) then
                 err_msg = 'Not converged after '//trim(i2str(jd))//&
-                    &' iterations, with residual = '//trim(r2str(corr))
+                    &' iterations, with residual '//trim(r2str(corr))//&
+                    &' and final value '//trim(r2str(zero_NR))
                 zero_NR = 0.0_dp
                 ierr = 1
                 CHCKERR(err_msg)
@@ -1806,4 +2173,131 @@ contains
         ! copy to y_out
         y_out = y_out_loc(1,1)
     end function interp_fun_0D
+    
+    ! convert 2D  coordinates (i,j) to  the storage convention used  in (square)
+    ! metric matrices:
+    !   (1 4 7)      (1    )
+    !   (2 5 8)  or  (2 4  ) for symmetric matrices.
+    !   (3 6 9)      (3 5 6)
+    ! Optionally,  the  size of  the  (square) matrix  can be  changed from  its
+    ! default value of 3x3 using n.
+    ! The value of c is given by
+    !   c = (j-1)*n + i
+    ! for non-symmetric matrices, and by
+    !   c = (j-1)*n + i - (j-1)*j/2   if i.ge.j
+    !   c = (i-1)*n + j - (i-1)*i/2   if j.ge.i
+    ! since sum_k=1^j-1 = (j-1)*j/2
+    integer function c(ij,sym,n)
+        ! input / output
+        integer, intent(in) :: ij(2)                                            ! 2D coords. (i,j)
+        logical, intent(in) :: sym                                              ! .true. if symmetric
+        integer, intent(in), optional :: n                                      ! max of 2D coords.
+        
+        ! local variables
+        integer :: n_loc
+        
+        ! set n_loc
+        n_loc = 3
+        if (present(n)) n_loc = n
+        
+        ! depending on symmetry
+        if (sym) then                                                           ! symmetric
+            if (ij(1).ge.ij(2)) then
+                c = (ij(2)-1)*n_loc + ij(1) - (ij(2)-1)*ij(2)/2
+            else
+                c = (ij(1)-1)*n_loc + ij(2) - (ij(1)-1)*ij(1)/2
+            end if
+        else                                                                    ! asymmetric
+            c = (ij(2)-1)*n_loc + ij(1)
+        end if
+    end function c
+    
+    ! determines whether a metric matrix is symmetric or not
+    integer function is_sym(n,nn,sym) result(ierr)
+        character(*), parameter :: rout_name = 'is_sym'
+        
+        ! input / output
+        integer, intent(in) :: n                                                ! size of matrix
+        integer, intent(in) :: nn                                               ! number of elements in matrix
+        logical, intent(inout) :: sym                                           ! output
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set sym
+        if (nn.eq.n**2) then
+            sym = .false.
+        else if (nn.eq.n*(n+1)/2) then
+            sym = .true.
+        else
+            ierr = 1
+            err_msg = 'The matrix corresponds neither to a symmetric nor to a &
+                &normal matrix'
+            CHCKERR('')
+        end if
+    end function is_sym
+
+    ! Either takes the  complex conjugate of a square matrix  element A, defined
+    ! on a  3D grid,  or not,  depending on  whether the  indices of  the matrix
+    ! element  correspond  to the  upper  (conjugate)  or lower  (no  conjugate)
+    ! triangular part.
+    ! Note: Only for symmetric matrices does this have to be applied.
+    function con_3D(A,c,sym,d) result(B)                                        ! 3D version
+        complex(dp), intent(in) :: A(:,:,:)                                     ! input A
+        integer, intent(in) :: c(2)                                             ! indices in square matrix
+        logical, intent(in) :: sym                                              ! if A is symmetric
+        integer, intent(in) :: d(3)                                             ! dimensions of matrix A
+        complex(dp) :: B(d(1),d(2),d(3))                                        ! output B
+        
+        ! determine whether to take complex conjugate or not
+        if (c(2).gt.c(1) .and. sym) then                                        ! upper triangular matrix
+            B = conjg(A)
+        else
+            B = A
+        end if
+    end function con_3D
+    function con_2D(A,c,sym,d) result(B)                                        ! 2D version
+        complex(dp), intent(in) :: A(:,:)                                       ! input A
+        integer, intent(in) :: c(2)                                             ! indices in square matrix
+        logical, intent(in) :: sym                                              ! if A is symmetric
+        integer, intent(in) :: d(2)                                             ! dimensions of matrix A
+        complex(dp) :: B(d(1),d(2))                                             ! output B
+        
+        ! determine whether to take complex conjugate or not
+        if (c(2).gt.c(1) .and. sym) then                                        ! upper triangular matrix
+            B = conjg(A)
+        else
+            B = A
+        end if
+    end function con_2D
+    function con_1D(A,c,sym,d) result(B)                                        ! 1D version
+        complex(dp), intent(in) :: A(:)                                         ! input A
+        integer, intent(in) :: c(2)                                             ! indices in square matrix
+        logical, intent(in) :: sym                                              ! if A is symmetric
+        integer, intent(in) :: d(1)                                             ! dimensions of matrix A
+        complex(dp) :: B(d(1))                                                  ! output B
+        
+        ! determine whether to take complex conjugate or not
+        if (c(2).gt.c(1) .and. sym) then                                        ! upper triangular matrix
+            B = conjg(A)
+        else
+            B = A
+        end if
+    end function con_1D
+    function con_0D(A,c,sym) result(B)                                          ! 0D version
+        complex(dp), intent(in) :: A                                            ! input A
+        integer, intent(in) :: c(2)                                             ! indices in square matrix
+        logical, intent(in) :: sym                                              ! if A is symmetric
+        complex(dp) :: B                                                        ! output B
+        
+        ! determine whether to take complex conjugate or not
+        if (c(2).gt.c(1) .and. sym) then                                        ! upper triangular matrix
+            B = conjg(A)
+        else
+            B = A
+        end if
+    end function con_0D
 end module utilities

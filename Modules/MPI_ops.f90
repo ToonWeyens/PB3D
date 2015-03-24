@@ -12,12 +12,15 @@ module MPI_ops
     implicit none
     private
     public start_MPI, stop_MPI, split_MPI, abort_MPI, broadcast_vars, &
-        &merge_MPI, get_next_job, divide_grid, get_ser_var, get_ghost_X_vec, &
+        &merge_MPI, get_next_job, divide_X_grid, get_ser_var, get_ghost_arr, &
         &wait_MPI
     
     ! interfaces
     interface get_ser_var
-        module procedure get_ser_var_complex, get_ser_var_real
+        module procedure get_ser_var_complex, get_ser_var_real, get_ser_var_int
+    end interface
+    interface get_ghost_arr
+        module procedure get_ghost_arr_2D_complex, get_ghost_arr_1D_real
     end interface
     
 contains
@@ -46,7 +49,7 @@ contains
     ! subcommunicators,  according to  n_procs_per_alpha,  which determines  how
     ! many processors to use per field line
     ! [MPI] Collective call
-    integer function split_MPI() result(ierr)
+    integer function split_MPI(n_r_eq,eq_limits) result(ierr)
         use X_vars, only: min_n_r_X
         use num_vars, only: n_procs_per_alpha, n_procs, n_alpha, &
             &MPI_Comm_groups, glb_rank, glb_n_procs, grp_rank, next_job, &
@@ -55,6 +58,10 @@ contains
         use files, only: open_output
         
         character(*), parameter :: rout_name = 'split_MPI'
+        
+        ! input / output
+        integer, intent(in) :: n_r_eq                                           ! tot. nr. normal points in equilibrium grid
+        integer, intent(inout) :: eq_limits(2)                                  ! min. and max. index of eq. grid for this process
         
         ! local variables
         integer :: remainder                                                    ! remainder of division
@@ -202,7 +209,7 @@ contains
         CHCKERR('Couldn''t create window to next_job')
         
         ! calculate the r range for the equilibrium calculations
-        ierr = calc_eq_r_range()
+        ierr = calc_eq_r_range(eq_limits)
         CHCKERR('')
         
         ! set fence so that the global master holds next_job = 1 for sure
@@ -216,7 +223,7 @@ contains
             CHCKERR('')
         end if
     contains
-        ! calculate grp_min_r_eq  and grp_max_r_eq  for this  rank in  the alpha
+        ! calculate group limits for equilibrium grid for this rank in the alpha
         ! group so that  the equilibrium quantities are calculated  for only the
         ! normal range that is relevant for the perturbation calculations, which
         ! are to be anticipated.
@@ -234,8 +241,8 @@ contains
         ! perturbation  points,  at  n_r_X  going  to  infinity  (i.e.  r_min  +
         ! grp_rank*(r_max-r_min)/grp_n_procs) and the maximum of the equilibrium
         ! range is to  be given by the  grid point that includes  the highest of
-        ! the  possible  perturbation  points,  at n_r_X  at  its  lowest  value
-        ! (i.e.  given by  divide_grid with  cumul .true.)  plus 1,  because the
+        ! the possible perturbation  points, at n_r_X at its  lowest value (i.e.
+        ! given  by  divide_X_grid  with  cumul  .true.)  plus  1,  because  the
         ! perturbation  quantity of  perturbation  normal point  (i) depends  on
         ! perturbation normal point (i+1)
         ! Furthermore,  the conversion  between points  r_X on  the perturbation
@@ -243,21 +250,24 @@ contains
         ! (1..n_r_eq), the  subroutine con2dis  is used with  equilibrium values
         ! tabulated in flux_eq (normalized)
         ! [MPI] Collective call
-        integer function calc_eq_r_range() result(ierr)
+        integer function calc_eq_r_range(eq_limits) result(ierr)
             use num_vars, only: grp_n_procs, grp_rank, use_pol_flux_eq, &
                 &use_pol_flux_X, eq_style
             use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
                 &calc_deriv, round_with_tol
-            use eq_vars, only: grp_min_r_eq, grp_max_r_eq, n_r_eq
             use VMEC, only: phi, phi_r, iotaf
             use HELENA, only: flux_H, qs
-            use X_vars, only: grp_max_r_X, min_n_r_X, min_r_X, max_r_X
+            use X_vars, only: min_n_r_X, min_r_X, max_r_X
             
             character(*), parameter :: rout_name = 'calc_eq_r_range'
+            
+            ! input / output
+            integer, intent(inout) :: eq_limits(2)                              ! min. and max. index of eq. grid for this process
             
             ! local variables
             real(dp), allocatable :: flux(:), flux_eq(:)                        ! either pol. or tor. flux, in VMEC coord.
             real(dp), allocatable :: flux_H_r(:)                                ! normal derivative of flux_H
+            integer :: X_limits(2)                                              ! min. and max. index of X grid for this process
             real(dp) :: grp_min_r_eq_X_con                                      ! grp_min_r_eq in continuous perturbation grid
             real(dp) :: grp_min_r_eq_eq_con                                     ! grp_min_r_eq in continuous equilibrium grid
             real(dp) :: grp_min_r_eq_eq_dis                                     ! grp_min_r_eq in discrete equilibrium grid, unrounded
@@ -339,31 +349,28 @@ contains
             ! 4. discrete equilibrium grid, unrounded
             call con2dis(grp_min_r_eq_eq_con,grp_min_r_eq_eq_dis,flux_eq)
             ! 5. discrete equilibrium grid, rounded down
-            grp_min_r_eq = floor(grp_min_r_eq_eq_dis)
+            eq_limits(1) = floor(grp_min_r_eq_eq_dis)
             
             ! use min_r_X and max_r_X to calculate grp_max_r_eq
-            ! 1. divide_grid for min_n_r_X normal points
-            ierr = divide_grid(min_n_r_X)                                       ! divide the grid for the min_n_r_X tot. normal points
+            ! 1. divide_X_grid for min_n_r_X normal points
+            ierr = divide_X_grid(min_n_r_X,X_limits)                            ! divide the grid for the min_n_r_X tot. normal points
             CHCKERR('')
             ! 2. discrete perturbation grid (1..min_n_r_X)
-            grp_max_r_eq_X_dis = grp_max_r_X
-            ! 3. add one to max if not last global point
-            if (grp_rank.ne.grp_n_procs-1) &
-                &grp_max_r_eq_X_dis = grp_max_r_eq_X_dis + 1
-            ! 4. continous perturbation grid (0..1)
+            grp_max_r_eq_X_dis = X_limits(2)
+            ! 3. continous perturbation grid (0..1)
             call dis2con(grp_max_r_eq_X_dis,grp_max_r_eq_X_con,[1,min_n_r_X],&
                 &[min_r_X,max_r_X])                                             ! the perturbation grid is equidistant
-            ! 5 round with tolerance
+            ! 4 round with tolerance
             ierr = round_with_tol(grp_max_r_eq_X_con,0._dp,1._dp)
             CHCKERR('')
-            ! 6. continuous equilibrium grid (0..1)
+            ! 5. continuous equilibrium grid (0..1)
             ierr = interp_fun(grp_max_r_eq_eq_con,flux_eq,&
                 &grp_max_r_eq_X_con,flux)
             CHCKERR('')
-            ! 7. discrete equilibrium grid, unrounded
+            ! 6. discrete equilibrium grid, unrounded
             call con2dis(grp_max_r_eq_eq_con,grp_max_r_eq_dis,flux_eq)
-            ! 8. discrete equlibrium grid, rounded up
-            grp_max_r_eq = ceiling(grp_max_r_eq_dis)
+            ! 7. discrete equlibrium grid, rounded up
+            eq_limits(2) = ceiling(grp_max_r_eq_dis)
             
             deallocate(flux,flux_eq)
         end function calc_eq_r_range
@@ -465,19 +472,24 @@ contains
         
         ! test whether it is a master that calls this routine
         if (grp_rank.eq.0) then
-            call MPI_Win_lock(MPI_LOCK_EXCLUSIVE,0,0,next_job_win,ierr)
             err_msg = 'Group '//trim(i2str(grp_nr))//&
                 &' coulnd''t lock window on global master'
+            call MPI_Win_lock(MPI_LOCK_EXCLUSIVE,0,0,next_job_win,ierr)
             CHCKERR(err_msg)
-            call MPI_Get_accumulate(1,1,MPI_INTEGER,next_job,1,&
-                &MPI_INTEGER,0,null_disp,1,MPI_INTEGER,MPI_SUM,&
-                &next_job_win,ierr)
             err_msg = 'Group '//trim(i2str(grp_nr))//&
                 &' coulnd''t increment next_job on global master'
+            !call MPI_Get_accumulate(1,1,MPI_INTEGER,next_job,1,MPI_INTEGER,0,&
+                !&null_disp,1,MPI_INTEGER,MPI_SUM,next_job_win,ierr)             ! ONLY WORKS FOR OPENMPI 1.8 or higher
+            !CHCKERR(err_msg)
+            call MPI_Get(next_job,1,MPI_INTEGER,0,null_disp,1,MPI_INTEGER,&
+                &next_job_win,ierr)
             CHCKERR(err_msg)
-            call MPI_Win_unlock(0,next_job_win,ierr)
+            call MPI_accumulate(1,1,MPI_INTEGER,0,null_disp,1,MPI_INTEGER,&
+                &MPI_SUM,next_job_win,ierr)
+            CHCKERR(err_msg)
             err_msg = 'Group '//trim(i2str(grp_nr))//&
                 &' coulnd''t unlock window on global master'
+            call MPI_Win_unlock(0,next_job_win,ierr)
             CHCKERR(err_msg)
             
             ! if all jobs reached, output -1
@@ -491,10 +503,12 @@ contains
         CHCKERR('MPI broadcast failed')
     end function get_next_job
     
-    ! Gather parallel variable in serial version on group master
-    ! Note: the serial variable has to be allocatable and unallocated
+    ! Gather parallel variable in serial version on group master or, optionally,
+    ! to all the processes, using the variable "scatter"
+    ! Note:  the serial variable  has to be  allocatable and if  unallocated, it
+    ! will be allocated.
     ! [MPI] Collective call
-    integer function get_ser_var_complex(var,ser_var) result(ierr)              ! complex version
+    integer function get_ser_var_complex(var,ser_var,scatter) result(ierr)      ! complex version
         use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
         
         character(*), parameter :: rout_name = 'get_ser_var'
@@ -502,49 +516,71 @@ contains
         ! input / output
         complex(dp), intent(in) :: var(:)                                       ! parallel vector
         complex(dp), allocatable, intent(inout) :: ser_var(:)                   ! serial vector
+        logical, intent(in), optional :: scatter                                ! optionally scatter the result to all the processes
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer, allocatable :: recvcounts(:)                                   ! counts of nr. of elements received from each processor
         integer, allocatable :: displs(:)                                       ! displacements elements received from each processor
         integer :: id                                                           ! counter
+        logical :: scatter_loc                                                  ! local copy of scatter
         
         ! initialize ierr
         ierr = 0
         
+        ! set local copy of scatter
+        scatter_loc = .false.
+        if (present(scatter)) scatter_loc = scatter
+        
         ! gather local size  of var of all groups onto  main processor, to serve
         ! as receive counts on group master
-        if (grp_rank.eq.0) then
+        if (grp_rank.eq.0 .or. scatter_loc) then
             allocate(recvcounts(grp_n_procs))
             allocate(displs(grp_n_procs))
         else
             allocate(recvcounts(0))
             allocate(displs(0))
         end if
-        call MPI_Gather(size(var),1,MPI_INTEGER,recvcounts,1,MPI_INTEGER,0,&
-            &MPI_Comm_groups,ierr)
+        if (scatter_loc) then
+            call MPI_Allgather(size(var),1,MPI_INTEGER,recvcounts,1,&
+                &MPI_INTEGER,MPI_Comm_groups,ierr)
+        else
+            call MPI_Gather(size(var),1,MPI_INTEGER,recvcounts,1,&
+                &MPI_INTEGER,0,MPI_Comm_groups,ierr)
+        end if
         err_msg = 'Failed to gather size of parallel variable'
         CHCKERR(err_msg)
         
         ! allocate serial variable
-        allocate(ser_var(sum(recvcounts)),stat=ierr)
-        err_msg = 'Serial variable was already allocated'
-        CHCKERR(err_msg)
+        if (allocated(ser_var)) then
+            if (size(ser_var).ne.sum(recvcounts)) then
+                ierr = 1
+                err_msg = 'ser_var has wrong dimensions'
+                CHCKERR(err_msg)
+            end if
+        else
+            allocate(ser_var(sum(recvcounts)))
+        end if
         
         ! deduce displacements by summing recvcounts
-        if (grp_rank.eq.0) then
+        if (grp_rank.eq.0 .or. scatter_loc) then
             displs(1) = 0
             do id = 2,grp_n_procs
                 displs(id) = displs(id-1) + recvcounts(id-1)
             end do
         end if
         
-        call MPI_Gatherv(var,size(var),MPI_DOUBLE_COMPLEX,ser_var,&
-            &recvcounts,displs,MPI_DOUBLE_COMPLEX,0,MPI_Comm_groups,ierr)
+        if (scatter_loc) then
+            call MPI_Allgatherv(var,size(var),MPI_DOUBLE_COMPLEX,ser_var,&
+                &recvcounts,displs,MPI_DOUBLE_COMPLEX,MPI_Comm_groups,ierr)
+        else
+            call MPI_Gatherv(var,size(var),MPI_DOUBLE_COMPLEX,ser_var,&
+                &recvcounts,displs,MPI_DOUBLE_COMPLEX,0,MPI_Comm_groups,ierr)
+        end if
         err_msg = 'Failed to gather parallel variable'
         CHCKERR(err_msg)
     end function get_ser_var_complex
-    integer function get_ser_var_real(var,ser_var) result(ierr)                 ! real version
+    integer function get_ser_var_real(var,ser_var,scatter) result(ierr)         ! real version
         use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
         
         character(*), parameter :: rout_name = 'get_ser_var_real'
@@ -552,59 +588,154 @@ contains
         ! input / output
         real(dp), intent(in) :: var(:)                                          ! parallel vector
         real(dp), allocatable, intent(inout) :: ser_var(:)                      ! serial vector
+        logical, intent(in), optional :: scatter                                ! optionally scatter the result to all the processes
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer, allocatable :: recvcounts(:)                                   ! counts of nr. of elements received from each processor
         integer, allocatable :: displs(:)                                       ! displacements elements received from each processor
         integer :: id                                                           ! counter
+        logical :: scatter_loc                                                  ! local copy of scatter
         
         ! initialize ierr
         ierr = 0
         
+        ! set local copy of scatter
+        scatter_loc = .false.
+        if (present(scatter)) scatter_loc = scatter
+        
         ! gather local size  of var of all groups onto  main processor, to serve
         ! as receive counts on group master
-        if (grp_rank.eq.0) then
+        if (grp_rank.eq.0 .or. scatter_loc) then
             allocate(recvcounts(grp_n_procs))
             allocate(displs(grp_n_procs))
         else
             allocate(recvcounts(0))
             allocate(displs(0))
         end if
-        call MPI_Gather(size(var),1,MPI_INTEGER,recvcounts,1,MPI_INTEGER,0,&
-            &MPI_Comm_groups,ierr)
+        if (scatter_loc) then
+            call MPI_Allgather(size(var),1,MPI_INTEGER,recvcounts,1,&
+                &MPI_INTEGER,MPI_Comm_groups,ierr)
+        else
+            call MPI_Gather(size(var),1,MPI_INTEGER,recvcounts,1,&
+                &MPI_INTEGER,0,MPI_Comm_groups,ierr)
+        end if
         err_msg = 'Failed to gather size of parallel variable'
         CHCKERR(err_msg)
         
         ! allocate serial variable
-        allocate(ser_var(sum(recvcounts)),stat=ierr)
-        err_msg = 'Serial variable was already allocated'
-        CHCKERR(err_msg)
+        if (allocated(ser_var)) then
+            if (size(ser_var).ne.sum(recvcounts)) then
+                ierr = 1
+                err_msg = 'ser_var has wrong dimensions'
+                CHCKERR(err_msg)
+            end if
+        else
+            allocate(ser_var(sum(recvcounts)))
+        end if
         
         ! deduce displacements by summing recvcounts
-        if (grp_rank.eq.0) then
+        if (grp_rank.eq.0 .or. scatter_loc) then
             displs(1) = 0
             do id = 2,grp_n_procs
                 displs(id) = displs(id-1) + recvcounts(id-1)
             end do
         end if
         
-        call MPI_Gatherv(var,size(var),MPI_DOUBLE_PRECISION,ser_var,&
-            &recvcounts,displs,MPI_DOUBLE_PRECISION,0,MPI_Comm_groups,ierr)
+        if (scatter_loc) then
+            call MPI_Allgatherv(var,size(var),MPI_DOUBLE_PRECISION,ser_var,&
+                &recvcounts,displs,MPI_DOUBLE_PRECISION,MPI_Comm_groups,ierr)
+        else
+            call MPI_Gatherv(var,size(var),MPI_DOUBLE_PRECISION,ser_var,&
+                &recvcounts,displs,MPI_DOUBLE_PRECISION,0,MPI_Comm_groups,ierr)
+        end if
         err_msg = 'Failed to gather parallel variable'
         CHCKERR(err_msg)
     end function get_ser_var_real
-    
-    ! fill the  ghost regions  in  X_vec. Every  message  is  identified by  its
-    ! sending process
-    ! [MPI] Collective call
-    integer function get_ghost_X_vec(X_vec,size_ghost) result(ierr)
+    integer function get_ser_var_int(var,ser_var,scatter) result(ierr)          ! integer version
         use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
         
-        character(*), parameter :: rout_name = 'get_ghost_X_vec'
+        character(*), parameter :: rout_name = 'get_ser_var_int'
         
         ! input / output
-        complex(dp), intent(in) :: X_vec(:,:)                                   ! parallel vector
+        integer, intent(in) :: var(:)                                           ! parallel vector
+        integer, allocatable, intent(inout) :: ser_var(:)                       ! serial vector
+        logical, intent(in), optional :: scatter                                ! optionally scatter the result to all the processes
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer, allocatable :: recvcounts(:)                                   ! counts of nr. of elements received from each processor
+        integer, allocatable :: displs(:)                                       ! displacements elements received from each processor
+        integer :: id                                                           ! counter
+        logical :: scatter_loc                                                  ! local copy of scatter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local copy of scatter
+        scatter_loc = .false.
+        if (present(scatter)) scatter_loc = scatter
+        
+        ! gather local size  of var of all groups onto  main processor, to serve
+        ! as receive counts on group master
+        if (grp_rank.eq.0 .or. scatter_loc) then
+            allocate(recvcounts(grp_n_procs))
+            allocate(displs(grp_n_procs))
+        else
+            allocate(recvcounts(0))
+            allocate(displs(0))
+        end if
+        if (scatter_loc) then
+            call MPI_Allgather(size(var),1,MPI_INTEGER,recvcounts,1,&
+                &MPI_INTEGER,MPI_Comm_groups,ierr)
+        else
+            call MPI_Gather(size(var),1,MPI_INTEGER,recvcounts,1,&
+                &MPI_INTEGER,0,MPI_Comm_groups,ierr)
+        end if
+        err_msg = 'Failed to gather size of parallel variable'
+        CHCKERR(err_msg)
+        
+        ! allocate serial variable
+        if (allocated(ser_var)) then
+            if (size(ser_var).ne.sum(recvcounts)) then
+                ierr = 1
+                err_msg = 'ser_var has wrong dimensions'
+                CHCKERR(err_msg)
+            end if
+        else
+            allocate(ser_var(sum(recvcounts)))
+        end if
+        
+        ! deduce displacements by summing recvcounts
+        if (grp_rank.eq.0 .or. scatter_loc) then
+            displs(1) = 0
+            do id = 2,grp_n_procs
+                displs(id) = displs(id-1) + recvcounts(id-1)
+            end do
+        end if
+        
+        if (scatter_loc) then
+            call MPI_Allgatherv(var,size(var),MPI_INTEGER,ser_var,&
+                &recvcounts,displs,MPI_INTEGER,MPI_Comm_groups,ierr)
+        else
+            call MPI_Gatherv(var,size(var),MPI_INTEGER,ser_var,&
+                &recvcounts,displs,MPI_INTEGER,0,MPI_Comm_groups,ierr)
+        end if
+        err_msg = 'Failed to gather parallel variable'
+        CHCKERR(err_msg)
+    end function get_ser_var_int
+    
+    ! Fill the ghost regions in an array  by sending the first normal point of a
+    ! process to  the left process. Every  message is identified by  its sending
+    ! process. The array should have the extended size, including ghost regions.
+    ! [MPI] Collective call
+    integer function get_ghost_arr_2D_complex(arr,size_ghost) result(ierr)      ! 2D complex version
+        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
+        
+        character(*), parameter :: rout_name = 'get_ghost_arr_2D_complex'
+        
+        ! input / output
+        complex(dp), intent(inout) :: arr(:,:)                                  ! divided array
         integer, intent(in) :: size_ghost                                       ! width of ghost region
         
         ! local variables
@@ -616,63 +747,100 @@ contains
         ierr = 0
         
         ! initialize number of modes and total size
-        n_modes = size(X_vec,1)
-        tot_size = size(X_vec,2)
+        n_modes = size(arr,1)
+        tot_size = size(arr,2)
         
         ! ghost regions only make sense if there is more than 1 process
         if (grp_n_procs.gt.1) then
             if (grp_rank.eq.0) then                                             ! first rank only receives
-                call MPI_Recv(X_vec(:,tot_size-size_ghost+1:tot_size),&
+                call MPI_Recv(arr(:,tot_size-size_ghost+1:tot_size),&
                     &size_ghost*n_modes,MPI_DOUBLE_COMPLEX,grp_rank+1,&
                     &grp_rank+1,MPI_Comm_groups,istat,ierr)
                 CHCKERR('Failed to receive')
             else if (grp_rank+1.eq.grp_n_procs) then                            ! last rank only sends
-                call MPI_Send(X_vec(:,1:size_ghost),size_ghost*n_modes,&
+                call MPI_Send(arr(:,1:size_ghost),size_ghost*n_modes,&
                     &MPI_DOUBLE_COMPLEX,grp_rank-1,grp_rank,MPI_Comm_groups,&
                     &ierr)
                 CHCKERR('Failed to send')
             else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(X_vec(:,1:size_ghost),size_ghost*n_modes,&
+                call MPI_Sendrecv(arr(:,1:size_ghost),size_ghost*n_modes,&
                     &MPI_DOUBLE_COMPLEX,grp_rank-1,grp_rank,&
-                    &X_vec(:,tot_size-size_ghost+1:tot_size),size_ghost*n_modes,&
+                    &arr(:,tot_size-size_ghost+1:tot_size),size_ghost*n_modes,&
                     &MPI_DOUBLE_COMPLEX,grp_rank+1,grp_rank+1,MPI_Comm_groups,&
                     &istat,ierr)
                 CHCKERR('Failed to send and receive')
             end if
         end if
-    end function get_ghost_X_vec
+    end function get_ghost_arr_2D_complex
+    integer function get_ghost_arr_1D_real(arr,size_ghost) result(ierr)         ! 1D real version
+        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
+        
+        character(*), parameter :: rout_name = 'get_ghost_arr_1D_real'
+        
+        ! input / output
+        real(dp), intent(in) :: arr(:)                                          ! divided array
+        integer, intent(in) :: size_ghost                                       ! width of ghost region
+        
+        ! local variables
+        integer :: tot_size                                                     ! total size (including ghost region)
+        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! initialize number of modes and total size
+        tot_size = size(arr)
+        
+        ! ghost regions only make sense if there is more than 1 process
+        if (grp_n_procs.gt.1) then
+            if (grp_rank.eq.0) then                                             ! first rank only receives
+                call MPI_Recv(arr(tot_size-size_ghost+1:tot_size),&
+                    &size_ghost,MPI_DOUBLE_PRECISION,grp_rank+1,&
+                    &grp_rank+1,MPI_Comm_groups,istat,ierr)
+                CHCKERR('Failed to receive')
+            else if (grp_rank+1.eq.grp_n_procs) then                            ! last rank only sends
+                call MPI_Send(arr(1:size_ghost),size_ghost,&
+                    &MPI_DOUBLE_PRECISION,grp_rank-1,grp_rank,MPI_Comm_groups,&
+                    &ierr)
+                CHCKERR('Failed to send')
+            else                                                                ! middle ranks send and receive
+                call MPI_Sendrecv(arr(1:size_ghost),size_ghost,&
+                    &MPI_DOUBLE_PRECISION,grp_rank-1,grp_rank,&
+                    &arr(tot_size-size_ghost+1:tot_size),size_ghost,&
+                    &MPI_DOUBLE_PRECISION,grp_rank+1,grp_rank+1,&
+                    &MPI_Comm_groups,istat,ierr)
+                CHCKERR('Failed to send and receive')
+            end if
+        end if
+    end function get_ghost_arr_1D_real
     
     ! divides a  grid of  n_r_X points  under the  ranks of  MPI_Comm_groups and
     ! assigns grp_n_r_X and grp_min_r_X and  grp_max_r_X to each rank. Also sets
     ! up  grp_r_X, which contains the  normal variable in the  perturbation grid
     ! for this rank (global range (min_r_X..max_r_X))
-    integer function divide_grid(n_r_X_in) result(ierr)
+    ! Note: for  the first ranks,  the upper index is  one higher than  might be
+    ! expected because the routine fill_matrix  needs information about the next
+    ! perturbation point (so this is an asymetric ghost region)
+    integer function divide_X_grid(n_r_X,X_limits,grp_r_X) result(ierr)
         use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
-        use X_vars, only: n_r_X, grp_n_r_X, grp_min_r_X, grp_max_r_X, grp_r_X, &
-            &min_r_X, max_r_X
+        use X_vars, only: min_r_X, max_r_X
         use utilities, only: round_with_tol
         
-        character(*), parameter :: rout_name = 'divide_grid'
+        character(*), parameter :: rout_name = 'divide_X_grid'
         
         ! input / output
-        integer, intent(in), optional :: n_r_X_in                               ! custom user-provided number n_r_X
+        integer, intent(in) :: n_r_X                                            ! tot. nr. of normal points in pert. grid
+        integer, intent(inout) :: X_limits(2)                                   ! min. and max. index of X grid for this process
+        real(dp), intent(inout), allocatable, optional :: grp_r_X(:)            ! normal points in Flux coords., globally normalized to (min_r_X..max_r_X)
         
         ! local variables
         integer :: n_procs                                                      ! nr. of procs.
         integer :: rank                                                         ! rank
         integer :: id                                                           ! counter
-        integer :: n_r_X_loc                                                    ! local value of n_r_X, either user-provided or from X_vars
-        integer :: grp_n_r_X_one                                                ! either grp_n_r_X + 1 (first ranks) or grp_n_r_X (last rank)
+        integer :: grp_n_r_X                                                    ! nr. of points in group normal X grid
         
         ! initialize ierr
         ierr = 0
-        
-        ! set n_r_X_loc
-        if (present(n_r_X_in)) then
-            n_r_X_loc = n_r_X_in
-        else
-            n_r_X_loc = n_r_X
-        end if
         
         ! set n_procs and rank
         call MPI_Comm_size(MPI_Comm_groups,n_procs,ierr)
@@ -681,37 +849,36 @@ contains
         CHCKERR('Failed to get MPI rank')
         
         ! calculate n_loc for this rank
-        grp_n_r_X = divide_grid_ind(rank,n_r_X_loc,n_procs)
+        grp_n_r_X = divide_X_grid_ind(rank,n_r_X,n_procs)
+        
+        ! add ghost region if not last process
+        if (grp_rank+1.lt.grp_n_procs) then
+            grp_n_r_X = grp_n_r_X + 1
+        end if
         
         ! calculate the starting index of this rank
-        grp_min_r_X = 1
+        X_limits(1) = 1
         do id = 0,rank-1
-            grp_min_r_X = grp_min_r_X + divide_grid_ind(id,n_r_X_loc,n_procs)
+            X_limits(1) = X_limits(1) + divide_X_grid_ind(id,n_r_X,n_procs)
         end do
         ! calculate the end index of this rank
-        grp_max_r_X = grp_min_r_X - 1 + grp_n_r_X
+        X_limits(2) = X_limits(1) - 1 + grp_n_r_X
         
-        ! set up grp_r_X
-        ! Note: for the first ranks, the upper index is one higher than might be
-        ! expected because  the routine fill_matrix needs  information about the
-        ! next perturbation point (so this is an asymetric ghost region)
-        if (allocated(grp_r_X)) deallocate(grp_r_X)
-        if (grp_rank+1.lt.grp_n_procs) then
-            grp_n_r_X_one = grp_n_r_X + 1
-        else
-            grp_n_r_X_one = grp_n_r_X
+        ! set up grp_r_X if present
+        if (present(grp_r_X)) then
+            if (allocated(grp_r_X)) deallocate(grp_r_X)
+            allocate(grp_r_X(grp_n_r_X))
+            grp_r_X = [(min_r_X + (X_limits(1)+id-2.0_dp)/(n_r_X-1.0_dp)*&
+                &(max_r_X-min_r_X),id=1,grp_n_r_X)]
+            
+            ! round with standard tolerance
+            ierr = round_with_tol(grp_r_X,0.0_dp,1.0_dp)
+            CHCKERR('')
         end if
-        allocate(grp_r_X(grp_n_r_X_one))
-        grp_r_X = [(min_r_X + (grp_min_r_X+id-2.0_dp)/(n_r_X_loc-1.0_dp)*&
-            &(max_r_X-min_r_X),id=1,grp_n_r_X_one)]
-        
-        ! round with standard tolerance
-        ierr = round_with_tol(grp_r_X,0.0_dp,1.0_dp)
-        CHCKERR('')
     contains 
-        integer function divide_grid_ind(rank,n,n_procs) result(n_loc)
+        integer function divide_X_grid_ind(rank,n,n_procs) result(n_loc)
             ! input / output
-            integer, intent(in) :: rank                                         ! rank for which to be calculate divide_grid_ind
+            integer, intent(in) :: rank                                         ! rank for which to be calculate divide_X_grid_ind
             integer, intent(in) :: n                                            ! tot. nr. of points to be divided under n_procs
             integer, intent(in) :: n_procs                                      ! nr. of processes
             
@@ -720,28 +887,28 @@ contains
                 if (mod(n,n_procs).gt.rank) &
                     &n_loc = n_loc + 1                                          ! add a point to the first ranks if there is a remainder
             end if
-        end function divide_grid_ind
-    end function divide_grid
+        end function divide_X_grid_ind
+    end function divide_X_grid
     
     ! Broadcasts all  the relevant variable that have been  determined so far in
     ! the global master process using the inputs to the other processes
     ! [MPI] Collective call
     integer function broadcast_vars() result(ierr)
-        use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, iotaf, gam, R_c, &
-            &R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf
         use num_vars, only: max_str_ln, output_name, ltest, EV_style, &
             &max_it_NR, max_it_r, n_alpha, n_procs_per_alpha, minim_style, &
             &max_alpha, min_alpha, tol_NR, glb_rank, glb_n_procs, no_guess, &
             &n_sol_requested, nyq_fac, tol_r, use_pol_flux_X, use_pol_flux_eq, &
-            &max_n_plots, plot_grid, no_plots, output_style, eq_style, &
-            &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
-            &grid_style
-        use X_vars, only: n_par, min_par, max_par, min_m_X, max_m_X, min_n_X, &
-            &max_n_X, min_n_r_X, min_r_X, max_r_X
-        use eq_vars, only: grp_min_r_eq, n_r_eq, grp_max_r_eq, &
-            &R_0, pres_0, B_0, psi_0, rho_0
+            &max_n_plots, plot_flux_q, plot_grid, no_plots, output_style, &
+            &eq_style, use_normalization, n_sol_plotted, n_theta_plot, &
+            &n_zeta_plot, grid_style, plot_jq
+        use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, iotaf, gam, R_c, &
+            &R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf
         use HELENA, only: R_0_H, B_0_H, p0, qs, flux_H, nchi, chi_H, ias, &
             &h_H_11_full, h_H_12_full, h_H_33_full, RBphi, R_H, Z_H
+        use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0
+        use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_n_r_X, &
+            &min_r_X, max_r_X
+        use grid_vars, only: n_r_eq, n_par_X, min_par_X, max_par_X
         
         character(*), parameter :: rout_name = 'broadcast_vars'
         
@@ -774,7 +941,11 @@ contains
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
+            call MPI_Bcast(plot_flux_q,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            CHCKERR('MPI broadcast failed')
             call MPI_Bcast(plot_grid,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            CHCKERR('MPI broadcast failed')
+            call MPI_Bcast(plot_jq,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(use_normalization,1,MPI_LOGICAL,0,MPI_COMM_WORLD,&
                 &ierr)
@@ -785,7 +956,7 @@ contains
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(minim_style,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(n_par,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(n_par_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(n_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
@@ -809,10 +980,6 @@ contains
             call MPI_Bcast(n_sol_requested,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(min_n_r_X,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(grp_min_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(grp_max_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(nyq_fac,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
@@ -840,9 +1007,11 @@ contains
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(tol_r,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(min_par,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(min_par_X,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,&
+                &ierr)
             CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(max_par,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(max_par_X,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,&
+                &ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(gam,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')

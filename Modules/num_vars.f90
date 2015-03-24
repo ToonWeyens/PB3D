@@ -2,10 +2,12 @@
 !   Numerical variables used by most other modules                             !
 !------------------------------------------------------------------------------!
 module num_vars
+    use ISO_FORTRAN_ENV
+    
     implicit none
     private
-    public dp, qp, max_str_ln, n_seq_0, max_args, max_opts, max_deriv, &
-        &prog_name, output_name, &
+    public dp, qp, max_str_ln, max_args, max_opts, max_deriv, prog_name, &
+        &output_name, &
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
         &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups, &
         &next_job, next_job_win, &
@@ -22,10 +24,11 @@ module num_vars
         &spline_type
 
     ! technical variables
-    integer, parameter :: dp=kind(1.d0)                                         ! double precision
-    integer, parameter :: qp = selected_real_kind (32)                          ! quadruple precision
+    !integer, parameter :: dp = kind(1.d0)                                       ! double precision
+    !integer, parameter :: qp = selected_real_kind (32)                          ! quadruple precision
+    integer, parameter :: dp = REAL64                                           ! double precision
+    integer, parameter :: qp = REAL128                                          ! quadruple precision
     integer, parameter :: max_str_ln = 100                                      ! maximum length of filenames
-    integer, parameter :: n_seq_0 = 10                                          ! start of index of file numbers for opening
     integer, parameter :: max_args = 10                                         ! maximum number of input arguments
     integer, parameter :: max_opts = 8                                          ! maximum number of options in input arguments
     integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
