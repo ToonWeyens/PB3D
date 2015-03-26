@@ -27,12 +27,12 @@ contains
     ! initialize the variables for the module
     ! [MPI] All ranks
     subroutine init_files
-        use num_vars, only: max_opts, ltest, output_name
+        use num_vars, only: ltest, output_name
         
         output_name = "PB3D_out"                                                ! standard output name
         ltest = .false.                                                         ! don't call the testing routines
         lvl = 1
-        allocate(opt_args(max_opts), inc_args(max_opts))
+        allocate(opt_args(9), inc_args(9))
         opt_args = ''
         inc_args = 0
         opt_args(1) = '-o'                                                      ! in which file to output
@@ -40,10 +40,11 @@ contains
         opt_args(3) = '--test'
         opt_args(4) = '--no_guess'
         opt_args(5) = '--no_plots'
-        opt_args(6) = '-st_pc_factor_shift_type'
-        opt_args(7) = '-st_pc_type'
-        opt_args(8) = '-st_pc_factor_mat_solver_package'
-        inc_args = [1,0,0,0,0,1,1,1]
+        opt_args(6) = '--no_messages'
+        opt_args(7) = '-st_pc_factor_shift_type'
+        opt_args(8) = '-st_pc_type'
+        opt_args(9) = '-st_pc_factor_mat_solver_package'
+        inc_args = [1,0,0,0,0,0,1,1,1]
     end subroutine
 
     ! parses the command line arguments
@@ -125,7 +126,7 @@ contains
     ! [MPI] Only global master
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, ltest, glb_rank, &
-            &output_name, no_guess, no_plots, eq_style, eq_name
+            &output_name, no_guess, no_plots, eq_style, eq_name, no_messages
         
         character(*), parameter :: rout_name = 'open_input'
         
@@ -284,13 +285,16 @@ contains
                 case (5)                                                        ! disable plotting
                     call writo('option no_plots chosen: plotting disabled')
                     no_plots = .true.
-                case (6)
+                case (6)                                                        ! disable messages
+                    call writo('option no_messages chosen: messages disabled')
+                    no_messages = .true.
+                case (7)
                     call writo('option st_pc_factor_shift_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (7)
+                case (8)
                     call writo('option st_pc_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (8)
+                case (9)
                     call writo('option st_pc_factor_mat_solver_package '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
                 case default

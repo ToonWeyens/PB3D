@@ -251,8 +251,8 @@ contains
         ! tabulated in flux_eq (normalized)
         ! [MPI] Collective call
         integer function calc_eq_r_range(eq_limits) result(ierr)
-            use num_vars, only: grp_n_procs, grp_rank, use_pol_flux_eq, &
-                &use_pol_flux_X, eq_style
+            use num_vars, only: grp_n_procs, grp_rank, use_pol_flux_E, &
+                &use_pol_flux_F, eq_style
             use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
                 &calc_deriv, round_with_tol
             use VMEC, only: phi, phi_r, iotaf
@@ -287,7 +287,7 @@ contains
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     ! set up perturbation flux
-                    if (use_pol_flux_X) then
+                    if (use_pol_flux_F) then
                         ierr = calc_int(-iotaf*phi_r,1.0_dp/(n_r_eq-1.0_dp),&
                             &flux)
                         CHCKERR('')
@@ -295,7 +295,7 @@ contains
                         flux = phi
                     end if
                     ! set up equilibrium flux
-                    if (use_pol_flux_eq) then
+                    if (use_pol_flux_E) then
                         ierr = calc_int(-iotaf*phi_r,1.0_dp/(n_r_eq-1.0_dp),&
                             &flux_eq)
                         CHCKERR('')
@@ -308,14 +308,14 @@ contains
                     ierr = calc_deriv(flux_H,flux_H_r,flux_H,1,1)
                     CHCKERR('')
                     ! set up perturbation flux
-                    if (use_pol_flux_X) then
+                    if (use_pol_flux_F) then
                         flux = flux_H
                     else
                         ierr = calc_int(qs*flux_H_r,flux_H,flux)
                         CHCKERR('')
                     end if
                     ! set up equilibrium flux
-                    if (use_pol_flux_eq) then
+                    if (use_pol_flux_E) then
                         flux_eq = flux_H
                     else
                         ierr = calc_int(qs*flux_H_r,flux_H,flux_eq)
@@ -864,7 +864,7 @@ contains
         ! calculate the end index of this rank
         X_limits(2) = X_limits(1) - 1 + grp_n_r_X
         
-        ! set up grp_r_X if present
+        ! set up grp_r_X if present (equidistant grid in Flux coordinates)
         if (present(grp_r_X)) then
             if (allocated(grp_r_X)) deallocate(grp_r_X)
             allocate(grp_r_X(grp_n_r_X))
@@ -897,7 +897,7 @@ contains
         use num_vars, only: max_str_ln, output_name, ltest, EV_style, &
             &max_it_NR, max_it_r, n_alpha, n_procs_per_alpha, minim_style, &
             &max_alpha, min_alpha, tol_NR, glb_rank, glb_n_procs, no_guess, &
-            &n_sol_requested, nyq_fac, tol_r, use_pol_flux_X, use_pol_flux_eq, &
+            &n_sol_requested, nyq_fac, tol_r, use_pol_flux_F, use_pol_flux_E, &
             &max_n_plots, plot_flux_q, plot_grid, no_plots, output_style, &
             &eq_style, use_normalization, n_sol_plotted, n_theta_plot, &
             &n_zeta_plot, grid_style, plot_jq
@@ -933,9 +933,9 @@ contains
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(ltest,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(use_pol_flux_X,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(use_pol_flux_F,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(use_pol_flux_eq,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(use_pol_flux_E,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(no_guess,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')

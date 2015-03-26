@@ -5,7 +5,7 @@ module X_vars
 #include <PB3D_macros.h>
     use num_vars, only: dp, max_str_ln, iu
     use str_ops, only: i2str
-    use messages, only: writo
+    use messages, only: writo, lvl_ud
     
     implicit none
     
@@ -18,7 +18,7 @@ module X_vars
     ! global variables
     ! (These  variables  should  be   used   only  until  the  grids  have  been
     ! established. They are put here for lack of a better place.)
-    real(dp) :: min_r_X, max_r_X                                                ! min. and max. normal range for pert. (either pol. or tor., depending on use_pol_flux_X)
+    real(dp) :: min_r_X, max_r_X                                                ! min. and max. normal range for pert. (either pol. or tor., depending on use_pol_flux_F)
     integer :: min_n_r_X                                                        ! min. of n_r_X (e.g. first value in Richardson loop)
     integer :: min_n_X                                                          ! lowest poloidal mode number m_X
     integer :: max_n_X                                                          ! highest poloidal mode number m_X
@@ -49,8 +49,8 @@ module X_vars
         real(dp), allocatable :: extra1(:,:,:)                                  ! extra terms in PV_0 (see routine calc_extra)
         real(dp), allocatable :: extra2(:,:,:)                                  ! extra terms in PV_0 (see routine calc_extra)
         real(dp), allocatable :: extra3(:,:,:)                                  ! extra terms in PV_0 (see routine calc_extra)
-        complex(dp), allocatable :: U_0(:,:,:,:), U_1(:,:,:,:)                  ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
-        complex(dp), allocatable :: DU_0(:,:,:,:), DU_1(:,:,:,:)                ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
+        complex(dp), pointer :: U_0(:,:,:,:), U_1(:,:,:,:)                      ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
+        complex(dp), pointer :: DU_0(:,:,:,:), DU_1(:,:,:,:)                    ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
         complex(dp), allocatable :: PV_0(:,:,:,:)                               ! ~PV^0 coefficient
         complex(dp), allocatable :: PV_1(:,:,:,:)                               ! ~PV^1 coefficient
         complex(dp), allocatable :: PV_2(:,:,:,:)                               ! ~PV^2 coefficient
@@ -69,7 +69,7 @@ module X_vars
 contains
     ! initialize the variable m and check and/or plot it
     subroutine create_X(grid,X)
-        use num_vars, only: use_pol_flux_X
+        use num_vars, only: use_pol_flux_F
         use grid_vars, only: grid_type
         
         ! input / output
@@ -82,6 +82,10 @@ contains
         integer :: n_par, n_geo                                                 ! tot. nr. of angular points in parallel and geodesic direction
         integer :: nn_mod_1, nn_mod_2                                           ! number of indices for a quantity that is symmetric or not
         
+        ! user output
+        call writo('Create equilibrium...')
+        call lvl_ud(1)
+        
         ! set local variables
         grp_n_r = grid%grp_n_r
         n_par = grid%n(1)
@@ -89,7 +93,7 @@ contains
         n = grid%n(3)
         
         ! set n_mod
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             X%n_mod = max_m_X - min_m_X + 1
         else
             X%n_mod = max_n_X - min_n_X + 1
@@ -101,7 +105,7 @@ contains
         
         ! n and m
         allocate(X%n(X%n_mod),X%m(X%n_mod))
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             X%n = min_n_X
             X%m = [(id, id = min_m_X, max_m_X)]
         else
@@ -155,6 +159,8 @@ contains
         allocate(X%KV_int_0(nn_mod_2,n_geo,grp_n_r))                            ! symmetric
         allocate(X%KV_int_1(nn_mod_1,n_geo,grp_n_r))                            ! not symmetric
         allocate(X%KV_int_2(nn_mod_2,n_geo,grp_n_r))                            ! symmetric
+        
+        call lvl_ud(-1)
     end subroutine create_X
     
     ! deallocates  perturbation quantities that  are not used anymore  after the
@@ -166,7 +172,7 @@ contains
         deallocate(X%U_0,X%U_1,X%DU_0,X%DU_1)
         deallocate(X%PV_0,X%PV_1,X%PV_2,X%KV_0,X%KV_1,X%KV_2)
         deallocate(X%exp_ang_par_F)
-        deallocate(X%mu0sigma,X%extra1,X%extra2,X%extra3)
+        deallocate(X%mu0sigma,X%extra2,X%extra3)
     end subroutine dealloc_X
     
     ! deallocates  perturbation quantities that  are not used anymore  after the
@@ -179,5 +185,6 @@ contains
         deallocate(X%vec,X%val)
         deallocate(X%PV_int_0,X%PV_int_1,X%PV_int_2)
         deallocate(X%KV_int_0,X%KV_int_1,X%KV_int_2)
+        deallocate(X%extra1)                                                    ! extra1 is needed in decomposition of energy
     end subroutine dealloc_X_final
 end module

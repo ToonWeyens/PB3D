@@ -391,6 +391,10 @@ contains
                 write(cmd_i,*) 'set style line '//trim(i2str(ifl))//' '//&
                     &trim(draw_ops(ifl))//';'
             end do
+        else
+            write(cmd_i,*) 'set style line 1 lc rgb ''#0060ad'' lt 1 lw 1 pt 7 &
+                &pi -1 ps 0.5;'
+            write(cmd_i,*) 'set pointintervalbox 0.75;'
         end if
         
         ! individual plots
@@ -402,12 +406,14 @@ contains
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
                         loc_draw_op = 'linestyle '//trim(i2str(ifl))
+                    else
+                        loc_draw_op = 'linestyle 1'
                     end if
                     plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
                     &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
                     &':'//trim(i2str(nplt+iplt))//' title '''//trim(var_name)//&
                     &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
-                    &')'' with lines '//trim(loc_draw_op)//','
+                    &')'' with linespoints '//trim(loc_draw_op)//','
                     if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
                 end do
                 write(cmd_i,*) trim(plot_cmd)
@@ -419,12 +425,14 @@ contains
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
                         loc_draw_op = 'linestyle '//trim(i2str(ifl))
+                    else
+                        loc_draw_op = 'linestyle 1'
                     end if
                     plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
                     &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
                     &':'//trim(i2str(nplt+iplt))//':'//trim(i2str(2*nplt+iplt))&
                     &//' title '''//trim(var_name)//' ('//trim(i2str(iplt))&
-                    &//'/'//trim(i2str(nplt))//')'' with lines '//&
+                    &//'/'//trim(i2str(nplt))//')'' with linespoints '//&
                     &trim(loc_draw_op)//','
                     if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
                 end do
@@ -629,6 +637,10 @@ contains
                 write(cmd_i,*) 'set style line '//trim(i2str(ifl))//' '//&
                     &trim(draw_ops(ifl))//';'
             end do
+        else
+            write(cmd_i,*) 'set style line 1 lc rgb ''#0060ad'' lt 1 lw 1 pt 7 &
+                &pi -1 ps 0.5;'
+            write(cmd_i,*) 'set pointintervalbox 0.75;'
         end if
         
         ! individual plots
@@ -639,12 +651,14 @@ contains
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
                         loc_draw_op = 'linestyle '//trim(i2str(ifl))
+                    else
+                        loc_draw_op = 'linestyle 1'
                     end if
                     plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
                     &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
                     &':'//trim(i2str(nplt+iplt))//' title '''//trim(var_name)//&
                     &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
-                    &')'' with lines '//trim(loc_draw_op)
+                    &')'' with linespoints '//trim(loc_draw_op)
                     if (ifl.ne.nfl) plot_cmd = trim(plot_cmd)//', '
                 end do
                 write(cmd_i,*) trim(plot_cmd)
@@ -655,12 +669,14 @@ contains
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
                         loc_draw_op = 'linestyle '//trim(i2str(ifl))
+                    else
+                        loc_draw_op = 'linestyle 1'
                     end if
                     plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
                     &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
                     &':'//trim(i2str(nplt+iplt))//':'//trim(i2str(2*nplt+iplt))&
                     &//' title '''//trim(var_name)//' ('//trim(i2str(iplt))&
-                    &//'/'//trim(i2str(nplt))//')'' with lines '//&
+                    &//'/'//trim(i2str(nplt))//')'' with linespoints '//&
                     &trim(loc_draw_op)
                     if (ifl.ne.nfl) plot_cmd = trim(plot_cmd)//', '
                 end do
@@ -799,7 +815,7 @@ contains
     ! "file_name" and  accompanying XDMF file.  For collections, only  the first
     ! value for var_names is used, so it should have a size of one.
     ! The plot is generally  3D, but if one of the  dimensions provided is equal
-    ! to 1, the plot becomes 2D. 
+    ! to 1, the plot becomes 2D. THIS SHOULD BE DONE ONLY IF IT IS INDEED SO!!!
     ! The axes of the 2D plot correpond to X-Z if the second dimension (zeta) is
     ! singular,  or X-Y  if  it is  the  third (theta).  This  corresponds to  a
     ! poloidal or a toroidal cross section, respectively.
@@ -968,6 +984,7 @@ contains
         ! allocate geometry arrays
         ! (first two indices correspond to angular dimensions)
         if (tot_dim_3D(1).eq.1 .or. tot_dim_3D(2).eq.1) then                    ! 2D grid
+            write(*,*) '!!! CHECK IF REALLY AXISYMMETRIC !!!'
             allocate(XYZ(2))
         else                                                                    ! 3D grid
             allocate(XYZ(3))
@@ -1209,6 +1226,7 @@ contains
         
         ! allocate geometry arrays
         if (tot_dim_loc(1).eq.1 .or. tot_dim_loc(2).eq.1) then                  ! 2D grid
+            write(*,*) '!!! CHECK IF REALLY AXISYMMETRIC !!!'
             allocate(XYZ(2))
         else                                                                    ! 3D grid
             allocate(XYZ(3))

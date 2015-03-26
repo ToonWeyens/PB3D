@@ -88,6 +88,10 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! user output
+        call writo('Create equilibrium...')
+        call lvl_ud(1)
+        
         ! set local variables
         grp_n_r = grid%grp_n_r
         n_par = grid%n(1)
@@ -149,6 +153,8 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
+        
+        call lvl_ud(-1)
     end function create_eq
     
     ! deallocates  equilibrium quantities  that are not  used anymore  after the

@@ -219,7 +219,7 @@ contains
     !       whether a  process outputs  or not,  also when  there are  no groups
     !       (yet)
     subroutine writo(input_str,persistent)
-        use num_vars, only: grp_rank, output_i
+        use num_vars, only: grp_rank, output_i, no_messages
         
         ! input / output
         character(len=*), intent(in) :: input_str                               ! the name that is searched for
@@ -232,6 +232,9 @@ contains
         integer :: id, i_part                                                   ! counters
         integer :: max_len_part, num_parts, st_part, en_part                    ! variables controlling strings
         logical :: ignore                                                       ! normally, everybody but group master is ignored
+        
+        ! bypass messages if no_messages
+        if (no_messages) return
         
         ! setup ignore
         ignore = .true.                                                         ! ignore by default

@@ -779,7 +779,7 @@ contains
     ! calculate the transformation matrix  between equilibrium V(mec) and F(lux)
     ! oordinate system
     integer function calc_T_VF_ind(grid,eq,met,deriv) result(ierr)
-        use num_vars, only: pi, use_pol_flux_X
+        use num_vars, only: pi, use_pol_flux_F
         use metric_vars, only: metric_type
         use eq_vars, only: eq_type
         use grid_vars, only: grid_type
@@ -823,7 +823,7 @@ contains
         ! add the deformation described by lambda
         theta_s = theta_s + eq%L_E(:,:,:,0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1)
             
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             ! calculate transformation matrix T_V^F
             ! (1,1)
             ierr = add_arr_mult(theta_s,eq%q_saf_E(:,1:),&
@@ -967,7 +967,7 @@ contains
     ! calculate the transformation matrix  between H(ELENA) and F(lux) oordinate
     ! system
     integer function calc_T_HF_ind(grid,eq,met,deriv) result(ierr)
-        use num_vars, only: pi, use_pol_flux_X
+        use num_vars, only: pi, use_pol_flux_F
         use eq_vars, only: eq_type
         use grid_vars, only: grid_type
         use utilities, only: add_arr_mult, c
@@ -1007,7 +1007,7 @@ contains
         theta_s(:,:,:,0,0,0) = grid%theta_E
         theta_s(:,:,:,0,1,0) = 1.0_dp
             
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             ! calculate transformation matrix T_H^F
             ! (1,1)
             ierr = add_arr_mult(theta_s,-eq%q_saf_E(:,1:),&

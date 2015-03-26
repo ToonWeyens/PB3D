@@ -20,16 +20,15 @@ contains
     ! described in  [ADD REF] and  solves them using  the SLEPC suite.  The most
     ! unstable solutions  are obtained, where the  variable "max_n_EV" indicates
     ! how many.
-    integer function solve_EV_system_SLEPC(eq,grid_X,X,use_guess,max_n_EV) &
-        &result(ierr)
-        use eq_vars, only: eq_type
+    integer function solve_EV_system_SLEPC(grid_eq,grid_X,X,use_guess,&
+        &max_n_EV) result(ierr)
         use grid_vars, only: grid_type
         use X_vars, only: X_type
         
         character(*), parameter :: rout_name = 'solve_EV_system_SLEPC'
         
         ! input / output
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_type), intent(inout) :: X                                        ! perturbation variables
         PetscBool, intent(in) :: use_guess                                      ! whether to use a guess or not
@@ -52,7 +51,7 @@ contains
         ! set up the matrix
         call writo('set up matrices...')
         
-        ierr = setup_matrices(eq,grid_X,X,A,B)
+        ierr = setup_matrices(grid_eq,grid_X,X,A,B)
         CHCKERR('')
         
         ! set up solver
@@ -154,25 +153,23 @@ contains
     end function start_SLEPC
     
     ! Sets  up the  matrices  A and  B in  the  EV problem  A  X =  lambda B  X.
-    ! Optionally the geodesical index of  the perturbation variables at which to
+    ! Optionally the  geodesic index of  the perturbation variables at  which to
     ! perform the calculations can be changed  from its default value of 1 using
     ! the variable i_geo.
     ! Note: For normal usage, i_geo should be 1, or not present.
-    integer function setup_matrices(eq,grid_X,X,A,B,i_geo) &
-        &result(ierr)
+    integer function setup_matrices(grid_eq,grid_X,X,A,B,i_geo) result(ierr)
         use num_vars, only: grp_n_procs, grp_rank
-        use eq_vars, only: eq_type
         use grid_vars, only: grid_type
         use X_vars, only: X_type
         
         character(*), parameter :: rout_name = 'setup_matrices'
         
         ! input / output
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_type), intent(in) :: X                                           ! perturbation variables
         Mat, intent(inout) :: A, B                                              ! matrix A and B
-        integer, intent(in), optional :: i_geo                                  ! at which geodesical index to perform the calculations
+        integer, intent(in), optional :: i_geo                                  ! at which geodesic index to perform the calculations
         
         ! local variables
         PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
@@ -204,8 +201,7 @@ contains
         
         ! set  up arrays  grp_r_eq that  determine how  to fill  the
         ! matrices
-        ierr = get_interp_data(grp_r_eq)
-        CHCKERR('')
+        call get_interp_data(grp_r_eq)
         
         ! create a  matrix A and B  with the appropriate number  of preallocated
         ! entries (excluding ghost regions)
@@ -663,20 +659,14 @@ contains
         
         ! calculates the  variable grp_r_eq,  which is  later used  to calculate
         ! V_interp_i  from the  tabulated values  in the  equilibrium grid,  the
-        ! oordinate of which is determined by the variable use_pol_flux_eq
-        integer function get_interp_data(grp_r_eq) result(ierr)
+        ! oordinate of which is determined by the variable use_pol_flux_E
+        subroutine get_interp_data(grp_r_eq)
             use utilities, only: con2dis, interp_fun
-            use num_vars, only: use_pol_flux_eq
-            use grid_ops, only: coord_X2eq
-            
-            character(*), parameter :: rout_name = 'get_interp_data'
             
             ! input / output
             PetscReal, allocatable, intent(inout) :: grp_r_eq(:)                ! unrounded index in tables V_int
             
             ! local variables
-            PetscReal, pointer :: flux_eq(:)                                    ! either pol. or tor. flux
-            PetscReal, allocatable :: grp_r_eq_con(:)                           ! continuous version of grp_r_X converted to eq. coords.
             PetscInt :: kd                                                      ! counter
             integer :: grp_n_r                                                  ! nr. of normal point in group for perturbation grid
             
@@ -686,32 +676,16 @@ contains
             ! set grp_n_r
             grp_n_r = size(grid_X%grp_r_F)
             
-            ! set up flux_eq
-            if (use_pol_flux_eq) then
-                flux_eq => eq%flux_p_FD(:,0)
-            else
-                flux_eq => eq%flux_t_FD(:,0)
-            end if
-            
             ! allocate grp_r_eq and continuous version
             allocate(grp_r_eq(grp_n_r))
-            allocate(grp_r_eq_con(grp_n_r))
-            
-            ! convert grp_r_F to (continuous) equilibrium coordinates
-            ierr = coord_X2eq(eq,X,grid_X%grp_r_F,grp_r_eq_con)
-            CHCKERR('')
             
             ! get the table  indices between which to  interpolate by converting
             ! the continuous equilibrium points to the discretized values
             ! loop over all normal points
             do kd = 1,grp_n_r
-                call con2dis(grp_r_eq_con(kd),grp_r_eq(kd),&
-                    &flux_eq/eq%max_flux_F)
+                call con2dis(grid_X%grp_r_F(kd),grp_r_eq(kd),grid_eq%grp_r_F)
             end do
-            
-            ! deallocate local variables
-            deallocate(grp_r_eq_con)
-        end function get_interp_data
+        end subroutine get_interp_data
     end function setup_matrices
     
     ! sets up EV solver

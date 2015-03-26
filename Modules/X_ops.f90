@@ -22,7 +22,7 @@ contains
     ! prepare the matrix elements by calculating  KV_i and PV_i, which then will
     ! have to be integrated, with a complex exponential weighting function
     integer function prepare_X(eq,grid,met,X) result(ierr)
-        use num_vars, only: use_pol_flux_X, plot_jq, grp_nr
+        use num_vars, only: use_pol_flux_F, plot_jq, grp_nr
         use eq_vars, only: eq_type
         use grid_vars, onlY: grid_type
         use metric_vars, only: metric_type
@@ -45,12 +45,16 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! user output
+        call writo('Preparing perturbation variables')
+        call lvl_ud(1)
+        
         ! tests
         ierr = check_modes(eq,X)
         CHCKERR('')
         
         ! set up parallel angle in flux coordinates
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             ang_par_F => grid%theta_F
         else
             ang_par_F => grid%zeta_F
@@ -67,7 +71,7 @@ contains
         end if
         
         ! set exp_ang_par_F
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             do m = 1,X%n_mod
                 do k = m,X%n_mod
                     X%exp_ang_par_F(:,:,:,c([k,m],.true.,X%n_mod)) = &
@@ -84,7 +88,7 @@ contains
         end if
         
         ! set up ang_par_F_name
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             ang_par_F_name = 'theta'
         else
             ang_par_F_name = 'zeta'
@@ -158,14 +162,18 @@ contains
         call lvl_ud(-1)
         
         call writo('Done calculating')
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Perturbation variables prepared')
     end function prepare_X
     
     ! plot  q-profile  or iota-profile  in  flux coordinates  with nq-m  = 0  or
     ! n-iotam = 0 indicate if requested
     ! [MPI] Parts by all processes, parts only by global master
     integer function resonance_plot(eq,grid,X) result(ierr)
-        use num_vars, only: use_pol_flux_eq, use_pol_flux_X, output_style, &
-            &grp_n_procs, grp_rank, tol_NR
+        use num_vars, only: use_pol_flux_E, use_pol_flux_F, output_style, &
+            &grp_n_procs, grp_rank, tol_NR, no_plots
         use eq_vars, only: eq_type
         use grid_vars, only: grid_type
         use X_vars, only: X_type
@@ -204,6 +212,9 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! bypass plots if no_plots
+        if (no_plots) return
+        
         ! get min_i of equilibrium grid
         ierr = get_ser_var([grid%i_min],tot_i_min,scatter=.true.)
         CHCKERR('')
@@ -217,7 +228,7 @@ contains
         end if
         
         ! get serial version of flux_X and safety factor or rot. transform
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             ierr = get_ser_var(eq%flux_p_FD(i_lim(1):i_lim(2),0),flux_X)
             CHCKERR('')
             if (grp_rank.eq.0) allocate(jq(size(flux_X),0:2))
@@ -236,7 +247,7 @@ contains
                 if(grp_rank.eq.0) jq(:,jd) = jq_loc*X%max_flux_F**jd
             end do
         end if
-        if (use_pol_flux_eq) then
+        if (use_pol_flux_E) then
             ierr = get_ser_var(eq%flux_p_FD(i_lim(1):i_lim(2),0),flux_eq)
             CHCKERR('')
         else
@@ -244,7 +255,7 @@ contains
             CHCKERR('')
         end if
         
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             call writo('Plotting safety factor q and resonant surfaces &
                 &q = m/n')
         else
@@ -282,7 +293,7 @@ contains
                 call lvl_ud(1)
                 
                 ! set up mnfrac_for_function
-                if (use_pol_flux_X) then
+                if (use_pol_flux_F) then
                     mnfrac_for_function = X%m(jd)*1.0_dp/X%n(jd)
                 else
                     mnfrac_for_function = X%n(jd)*1.0_dp/X%m(jd)
@@ -319,7 +330,7 @@ contains
                             x_vars(:,kd) = jq_solution
                         end if
                         ! the y axis is always in perturbation grid
-                        if (use_pol_flux_X) then
+                        if (use_pol_flux_F) then
                             y_vars(n_r,kd) = X%m(jd)*1.0_dp/X%n(jd)
                         else
                             y_vars(n_r,kd) = X%n(jd)*1.0_dp/X%m(jd)
@@ -341,7 +352,7 @@ contains
             end if
             
             call writo('Plotting results')
-            if (use_pol_flux_X) then
+            if (use_pol_flux_F) then
                 plot_title = 'safety factor q'
                 file_name = 'q_saf'
             else
@@ -436,7 +447,7 @@ contains
             use num_vars, only: n_theta_plot, n_zeta_plot
             use output_ops, only: print_HDF5
             use grid_vars, only: create_grid, destroy_grid
-            use grid_ops, only: calc_XYZ_grid, calc_eqd_grid, coord_X2eq
+            use grid_ops, only: calc_XYZ_grid, calc_eqd_grid, coord_F2E
             
             character(*), parameter :: rout_name = 'resonance_plot_HDF5'
             
@@ -450,20 +461,20 @@ contains
                 &Z_plot_ind(:,:,:)                                              ! X, Y and Z of plots of individual surfaces
             integer :: plot_dim(4)                                              ! plot dimensions (total = group because only group masters)
             real(dp), allocatable :: vars(:,:,:,:)                              ! variable to plot
-            type(grid_type) :: plot_grid                                        ! grid for plotting
+            type(grid_type) :: grid_plot                                        ! grid for plotting
             
             ! initialize ierr
             ierr = 0
             
             ! set up pol. and tor. angle for plot
             allocate(theta_plot(n_theta_plot,n_zeta_plot,1))
-            ierr = calc_eqd_grid(theta_plot(:,1,1),n_theta_plot,0._dp,2*pi)
+            ierr = calc_eqd_grid(theta_plot(:,1,1),0._dp,2*pi)
             CHCKERR('')
             do id = 2,n_zeta_plot
                 theta_plot(:,id,1) = theta_plot(:,1,1)
             end do
             allocate(zeta_plot(n_theta_plot,n_zeta_plot,1))
-            ierr = calc_eqd_grid(zeta_plot(1,:,1),n_zeta_plot,0._dp,2*pi)
+            ierr = calc_eqd_grid(zeta_plot(1,:,1),0._dp,2*pi)
             CHCKERR('')
             do id = 2,n_theta_plot
                 zeta_plot(id,:,1) = zeta_plot(1,:,1)
@@ -480,15 +491,15 @@ contains
             
             ! calculate normal coords. in Equilibrium coords.
             allocate(r_plot(X%n_mod))
-            ierr = coord_X2eq(eq,X,x_vars(n_r,2:X%n_mod+1),r_plot,&
-                &r_X_array=flux_X/flux_X(n_r),r_eq_array=flux_eq/flux_eq(n_r))
+            ierr = coord_F2E(eq,X,x_vars(n_r,2:X%n_mod+1),r_plot,&
+                &r_F_array=flux_X/flux_X(n_r),r_E_array=flux_eq/flux_eq(n_r))
             CHCKERR('')
             
             ! create plot grid
-            ierr = create_grid(plot_grid,plot_dim(1:3))
+            ierr = create_grid(grid_plot,plot_dim(1:3))
             CHCKERR('')
-            plot_grid%theta_E = theta_plot
-            plot_grid%zeta_E = zeta_plot
+            grid_plot%theta_E = theta_plot
+            grid_plot%zeta_E = zeta_plot
             
             ! set up plot X, Y and Z
             allocate(X_plot(n_theta_plot,n_zeta_plot,1,X%n_mod))
@@ -498,9 +509,9 @@ contains
             ! loop over all resonant surfaces to calculate X, Y and Z values
             do id = 1,X%n_mod
                 ! set grp_r_E of plot grid
-                plot_grid%grp_r_E = r_plot(id)
+                grid_plot%grp_r_E = r_plot(id)
                 
-                ierr = calc_XYZ_grid(plot_grid,X_plot_ind,Y_plot_ind,Z_plot_ind)
+                ierr = calc_XYZ_grid(grid_plot,X_plot_ind,Y_plot_ind,Z_plot_ind)
                 CHCKERR('')
                 
                 ! save the individual variable in the total variables
@@ -522,7 +533,7 @@ contains
             deallocate(theta_plot,zeta_plot,r_plot)
             
             ! delete plot grid
-            call destroy_grid(plot_grid)
+            call destroy_grid(grid_plot)
         end function resonance_plot_HDF5
     end function resonance_plot
     
@@ -531,7 +542,7 @@ contains
     ! [MPI] Parts by all processes, parts only by global master
     integer function check_modes(eq,X) result(ierr)
         use MPI_ops, only: get_ser_var
-        use num_vars, only: glb_rank, use_pol_flux_X, eq_style
+        use num_vars, only: glb_rank, use_pol_flux_F, eq_style
         use eq_vars, only: eq_type
         use X_vars, only: X_type
         
@@ -554,7 +565,7 @@ contains
         
         ! get serial q_saf_E(:,0) or rot_t_E(:,0)
         ! (There will be some overlap but it does not matter)
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             ierr = get_ser_var(eq%q_saf_E(:,0),ser_jq)
             CHCKERR('')
         else
@@ -591,7 +602,7 @@ contains
             ! for every mode (n,m) check whether  m/n is inside the range of
             ! q values or n/m inside the range of iota values
             do id = 1, X%n_mod
-                if (use_pol_flux_X) then
+                if (use_pol_flux_F) then
                     if (X%m(id)*1.0/X%n(id) .lt.min_jq .or. &
                         &X%m(id)*1.0/X%n(id) .gt.max_jq) then
                         call writo('for (n,m) = ('//trim(i2str(X%n(id)))//&
@@ -621,19 +632,18 @@ contains
     ! set-up  and solve  the  EV system  by discretizing  the  equations in  the
     ! perturbation  grid,  making  use  of   PV  and  KV,  interpolated  in  the
     ! equilibrium grid.
-    integer function solve_EV_system(eq,grid_X,X,use_guess,n_sol_found) &
-        &result(ierr)
+    integer function solve_EV_system(grid_eq,grid_X,X,use_guess,&
+        &n_sol_found) result(ierr)
         use num_vars, only: EV_style
         use str_ops, only: i2str
         use SLEPC_ops, only: solve_EV_system_SLEPC
-        use eq_vars, only: eq_type
         use grid_vars, only: grid_type
         use X_vars, only: X_type
         
         character(*), parameter :: rout_name = 'solve_EV_system'
         
         ! input / output
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_type), intent(inout) :: X                                        ! perturbation variables
         logical, intent(in) :: use_guess                                        ! whether to use a guess or not
@@ -648,7 +658,8 @@ contains
         select case (EV_style)
             case(1)                                                             ! SLEPC solver for EV problem
                 ! solve the system
-                ierr = solve_EV_system_SLEPC(eq,grid_X,X,use_guess,n_sol_found)
+                ierr = solve_EV_system_SLEPC(grid_eq,grid_X,X,use_guess,&
+                    &n_sol_found)
                 CHCKERR('')
             case default
                 err_msg = 'No EV solver style associated with '//&
@@ -726,7 +737,7 @@ contains
     ! eq grp_n_r values
     ! (see [ADD REF] for details)
     subroutine calc_PV(eq,grid,met,X)
-        use num_vars, only: use_pol_flux_X, use_normalization, mu_0
+        use num_vars, only: use_pol_flux_F, use_normalization, mu_0
         use eq_vars, only: eq_type
         use grid_vars, only: grid_type
         use metric_vars, only: metric_type
@@ -775,7 +786,7 @@ contains
         
         ! set up fac_n and fac_m
         allocate(fac_n(grid%grp_n_r),fac_m(grid%grp_n_r))
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             fac_n = eq%q_saf_FD(:,0)
             fac_m = 1.0_dp
         else
@@ -952,7 +963,7 @@ contains
     ! Note: The normal derivatives have the  factor i/n or i/m included already,
     ! as opposed to [ADD REF]
     integer function calc_U(eq,grid,met,X) result(ierr)
-        use num_vars, only: use_pol_flux_X, mu_0, use_normalization, eq_style
+        use num_vars, only: use_pol_flux_F, mu_0, use_normalization, eq_style
         use eq_vars, only: eq_type
         use grid_vars, only: grid_type
         use metric_vars, only: metric_type
@@ -1014,7 +1025,7 @@ contains
         end if
         
         ! set up parallel angle in flux coordinates
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             ang_par_F => grid%theta_F
         else
             ang_par_F => grid%zeta_F
@@ -1023,7 +1034,7 @@ contains
         ! set up djq, fac_n, fac_m and mn
         allocate(djq(grid%grp_n_r),mn(X%n_mod))
         allocate(fac_n(grid%grp_n_r),fac_m(grid%grp_n_r))
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             djq = eq%q_saf_FD(:,1)
             fac_n = eq%q_saf_FD(:,0)
             fac_m = 1.0_dp
@@ -1270,7 +1281,7 @@ contains
         end function calc_U_HEL
     end function calc_U
     
-    ! Calculate extra1, extra2 and extra3 in non-normalized coordinates:
+    ! Calculate mu0sigma, extra1, extra2 and extra3:
     !   extra1 = S*J
     !   extra2 = mu0sigma*J*B^2/h^psi,psi
     !   extra3 = 2*p'*kn
@@ -1410,7 +1421,7 @@ contains
     ! or
     !   <V e^[i(n-l)ang_par_F]> = [ oint J V(l,n) e^i(n-l)ang_par_F dang_par_F ]
     integer function calc_V_int(grid,met,exp_ang,n_mod,V,V_int) result(ierr)
-        use num_vars, only: use_pol_flux_X
+        use num_vars, only: use_pol_flux_F
         use grid_vars, only: grid_type
         use metric_vars, only: metric_type
         use utilities, only: calc_mult, c, con, is_sym
@@ -1455,7 +1466,7 @@ contains
         allocate(V_J_e(dims(1),dims(2),dims(3),nn_mod))
         
         ! set up ang_par_F
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             ang_par_F => grid%theta_F
         else
             ang_par_F => grid%zeta_F
@@ -1582,7 +1593,7 @@ contains
     integer function plot_X_vec_GP(eq,grid_X,X,X_id,job_id,n_t,par_range_F) &
         &result(ierr)
         use num_vars, only: grp_rank, max_n_plots, grp_n_procs, &
-            &use_pol_flux_X, use_pol_flux_eq
+            &use_pol_flux_F, use_pol_flux_E
         use grid_vars, only: grid_type
         use eq_vars, only: eq_type
         use X_vars, only: min_r_X, max_r_X, X_type
@@ -1640,7 +1651,7 @@ contains
         
         ! set up fac_n and fac_m
         allocate(fac_n(size(eq%q_saf_FD,1)),fac_m(size(eq%rot_t_FD,1)))
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             fac_n = eq%q_saf_FD(:,0)
             fac_m = 1.0_dp
         else
@@ -1696,12 +1707,12 @@ contains
         end if
         
         ! set up flux_X and flux_eq
-        if (use_pol_flux_X) then
+        if (use_pol_flux_F) then
             flux_X => eq%flux_p_FD(:,0)
         else
             flux_X => eq%flux_t_FD(:,0)
         end if
-        if (use_pol_flux_eq) then
+        if (use_pol_flux_E) then
             flux_eq => eq%flux_p_FD(:,0)
         else
             flux_eq => eq%flux_t_FD(:,0)
@@ -1959,11 +1970,16 @@ contains
     end function plot_X_vec_GP
     
     ! HDF5 version of plot_X_vec
-    ! Plots an  eigenfunction in  3D real  space by determining  a grid  in VMEC
-    ! coordinates that covers  the entire device (But they are  tabulated in the
-    ! perturbation normal  grid) and then  calculating the real  perturbation on
-    ! that grid  by inverting the Fourier  transform that defined the  modes for
-    ! which are  solved.
+    ! Plots  an  eigenfunction  in  3D  real space  by  determining  a  grid  in
+    ! E(quilibrium)  coordinates   that  covers  the  entire   device  and  then
+    ! calculating the  real perturbation on  that grid by inverting  the Fourier
+    ! transform that defined the modes for which are solved.
+    ! Since the equations have  been solved for a single field  line, a trick is
+    ! applied  setting up  a modified  equilibrium and  a modified  perturbation
+    ! grid,  which   have  the  same   normal  variables  as   their  unmodified
+    ! counterparts, but the  angular variables are modified to  cover the entire
+    ! space.  As only  the normal  perturbation  is calculated,  using only  the
+    ! equilibrium variables flux_q_FD or q_saf_FD, this is not wrong.
     ! Alternatively, by using the optional argument "follow_B", the modes can be
     ! plot along  the magnetic  field lines  which have been  used to  solve the
     ! system of equations. (TO BE IMPLEMENTED)
@@ -1974,8 +1990,8 @@ contains
         use X_vars, only: X_type
         use num_vars, only: n_theta_plot, n_zeta_plot, grp_n_procs, grp_rank
         use utilities, only: interp_fun
-        use grid_ops, only: calc_XYZ_grid, coord_X2eq, coord_eq2X
-        use sol_ops, only: calc_real_X
+        use grid_ops, only: calc_XYZ_grid, coord_F2E, coord_E2F
+        use sol_ops, only: calc_real_XUQ
         use output_ops, only: print_HDF5
         
         character(*), parameter :: rout_name = 'plot_X_vec_HDF5'
@@ -1993,7 +2009,8 @@ contains
         ! local variables
         integer :: id                                                           ! counter
         complex(dp) :: omega                                                    ! sqrt of Eigenvalue
-        type(grid_type) :: plot_grid                                            ! plot grid
+        type(grid_type) :: grid_X_mod                                           ! modified X grid (see remark above)
+        type(grid_type) :: grid_eq_mod                                          ! modified eq grid (see remark above)
         real(dp), allocatable :: X_plot_ind(:,:,:)                              ! individual version of X_plot
         real(dp), allocatable :: Y_plot_ind(:,:,:)                              ! individual version of Y_plot
         real(dp), allocatable :: Z_plot_ind(:,:,:)                              ! individual version of Z_plot
@@ -2034,7 +2051,8 @@ contains
             if (follow_B) follow_B_loc = follow_B
         end if
         
-        ! set up total dimensions, group dimensions and group offset
+        ! Set  up total dimensions,  group dimensions  and group offset  for the
+        ! final plot. The normal variables are taken from the perturbation grid.
         tot_dim = [n_theta_plot,n_zeta_plot,grid_X%n(3),product(n_t)]
         grp_dim = [n_theta_plot,n_zeta_plot,grp_n_r_X_loc,product(n_t)]
         grp_offset = [0,0,grid_X%i_min-1,product(n_t)]
@@ -2051,13 +2069,19 @@ contains
         allocate(Y_plot(n_theta_plot,n_zeta_plot,grp_n_r_X_loc,product(n_t)))
         allocate(Z_plot(n_theta_plot,n_zeta_plot,grp_n_r_X_loc,product(n_t)))
         
-        ! create plot grid (only group quantities needed)
-        ierr = create_grid(plot_grid,&
+        ! create modified perturbation grid (only group quantities needed)
+        ierr = create_grid(grid_X_mod,&
             &[n_theta_plot,n_zeta_plot,grid_X%n(3)],&
             &[grid_X%i_min,grid_X%i_min+grp_n_r_X_loc-1])
         CHCKERR('')
         
-        ! set plot grid coordinates
+        ! create modified equilibrium grid (only group quantities needed)
+        ierr = create_grid(grid_eq_mod,&
+            &[n_theta_plot,n_zeta_plot,grid_eq%n(3)],&
+            &[grid_eq%i_min,grid_eq%i_max])
+        CHCKERR('')
+        
+        ! Set modified perturbation and modified equilibrium grid coordinates.
         write(*,*) 'THE GRID SHOULD BE CALCULATED ONLY ONCE AS IT DOESNT CHANGE'
         if (follow_B) then
             ierr = 1
@@ -2065,62 +2089,70 @@ contains
             !!!! SHOULD BE SIMILAR TO THE  GRID PLOT, WITH ADDITIONALLY THE !!!!
             !!!! SOLUTION VECTOR SUPERIMPOSED ALONG THE GRID LINES          !!!!
         else
-            ! X normal variable taken from grp_r_F
-            plot_grid%grp_r_F = grid_X%grp_r_F(1:grp_n_r_X_loc)
+            ! modified X normal F variable taken from X grp_r_F
+            grid_X_mod%grp_r_F = grid_X%grp_r_F(1:grp_n_r_X_loc)
             
-            ! X theta equidistant and saved in E variable
+            ! modified eq normal F variable taken from eq grp_r_F
+            grid_eq_mod%grp_r_F = grid_eq%grp_r_F
+            
+            ! modified X  theta equidistant and saved in E  variable (used later
+            ! to calculate X, Y and Z)
             if (n_theta_plot.eq.1) then
-                plot_grid%theta_E = 0.0_dp
+                grid_X_mod%theta_E = 0.0_dp
             else
                 do id = 1,n_theta_plot
-                    plot_grid%theta_E(id,:,:) = &
+                    grid_X_mod%theta_E(id,:,:) = &
                         &pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)              ! starting from pi gives nicer plots
                 end do
             end if
             
-            ! X zeta equidistant and saved in E variable
+            ! modified X  zeta equidistant and  saved in E  variable (used later
+            ! to calculate X, Y and Z)
             if (n_zeta_plot.eq.1) then
-                plot_grid%zeta_E = 0.0_dp
+                grid_X_mod%zeta_E = 0.0_dp
             else
                 do id = 1,n_zeta_plot
-                    plot_grid%zeta_E(:,id,:) = &
+                    grid_X_mod%zeta_E(:,id,:) = &
                         &(id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
                 end do
             end if
             
-            ! convert the  X normal values grp_r_F to eq  normal values and save
-            ! them in the E varaibles
-            ierr = coord_X2eq(eq,X,plot_grid%grp_r_F,plot_grid%grp_r_E)
+            ! convert the X  normal values to eq normal values  and save them in
+            ! the E variables (used later to calculate X, Y and Z)
+            !!ierr = coord_X2eq(eq,X,grid_X_mod%grp_r_F,grid_X_mod%grp_r_E)
             CHCKERR('')
             
             ! convert all equilibrium coordinates to X coordinates and save them
-            ! in the Flux variables
-            ierr = coord_eq2X(eq,grid_eq,X,&
-                &plot_grid%grp_r_E,plot_grid%theta_E,plot_grid%zeta_E,&
-                &plot_grid%grp_r_F,plot_grid%theta_F,plot_grid%zeta_F)
+            ! in the Flux variables (used later to calculate normal component of
+            ! the plasma perturbation)
+            write(*,*) '!?!?!?! CAN WE USE E eq to F X ?! ?!??!? !? !?'
+            write(*,*) '!?!?!?!??????????????????????!!!!!!!!!!!!!!!!!'
+            ierr = coord_E2F(eq,grid_eq,X,&
+                &grid_X_mod%grp_r_E,grid_X_mod%theta_E,grid_X_mod%zeta_E,&
+                &grid_X_mod%grp_r_F,grid_X_mod%theta_F,grid_X_mod%zeta_F)
             CHCKERR('')
             
             !write(*,*) 'theta_E'
-            !call print_HDF5('X','X',plot_grid%theta_E)
+            !call print_HDF5('X','X',grid_X_mod%theta_E)
             !read(*,*)
             !write(*,*) 'theta_F'
-            !call print_HDF5('X','X',plot_grid%theta_F)
+            !call print_HDF5('X','X',grid_X_mod%theta_F)
             !read(*,*)
             !write(*,*) 'zeta_E'
-            !call print_HDF5('X','X',plot_grid%zeta_E)
+            !call print_HDF5('X','X',grid_X_mod%zeta_E)
             !read(*,*)
             !write(*,*) 'zeta_F'
-            !call print_HDF5('X','X',plot_grid%zeta_F)
+            !call print_HDF5('X','X',grid_X_mod%zeta_F)
             !read(*,*)
-            !write(*,*) 'grp_r_E = ', plot_grid%grp_r_E
+            !write(*,*) 'grp_r_E = ', grid_X_mod%grp_r_E
             !read(*,*)
-            !write(*,*) 'grp_r_F = ', plot_grid%grp_r_F
+            !write(*,*) 'grp_r_F = ', grid_X_mod%grp_r_F
             !read(*,*)
         end if
         
         ! calculate  individual X,Y  and  Z using  the  Equilibrium theta_E  and
         ! zeta_plot, tabulated in the equilibrium normal grid
-        ierr = calc_XYZ_grid(plot_grid,X_plot_ind,Y_plot_ind,Z_plot_ind)
+        ierr = calc_XYZ_grid(grid_X_mod,X_plot_ind,Y_plot_ind,Z_plot_ind)
         CHCKERR('')
         
         !write(*,*) 'X_plot_ind'
@@ -2153,7 +2185,14 @@ contains
             end if
             
             ! calculate f_plot at this time point
-            ierr = calc_real_X(eq,plot_grid,X,X_id,time_frac,f_plot(:,:,:,id))
+            ! Note: Since for  X (style 1) only the  equilibrium flux quantities
+            ! rot_t_FD  or  q_saf_FD  are  needed  in  calc_real_XUQ,  a  little
+            ! trick  is  applied  here:  Instead  of  the  equilibrium  grid,  a
+            ! modified equilibrium  grid is  passed, which  has the  same normal
+            ! characteristics as  the equilibrium grid, but  the desired angular
+            ! ones.
+            ierr = calc_real_XUQ(grid_eq,eq,grid_X,X,grid_X_mod,X_id,1,&
+                &time_frac,f_plot(:,:,:,id))
             CHCKERR('')
             
             !write(*,*) 'f_plot'
@@ -2184,7 +2223,7 @@ contains
         deallocate(X_plot,Y_plot,Z_plot,f_plot)
         
         ! destroy grid
-        call destroy_grid(plot_grid)
+        call destroy_grid(grid_X_mod)
         
         ! user output
         call lvl_ud(-1)

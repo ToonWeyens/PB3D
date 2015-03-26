@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.6                                                               !
+!   Version: 0.7                                                               !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -101,6 +101,11 @@ program PB3D
         call lvl_ud(-1)
     end if
 #endif
+    
+    write(*,*) 'INVESTIGATE HOW IMPROVING THE DERIVATIVES CAN &
+        &HELP YOU GET RID OF UNSTABLE SIDE OF SPECTRUM !!!!!!!!!!!!!!!!!!!!!!!'
+    write(*,*) 'DOING THIS IN THIS ROUTINE ALREADY HELPED A LOT!!!!!'
+    
     
     !-------------------------------------------------------
     !   Main driver

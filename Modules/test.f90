@@ -100,14 +100,14 @@ contains
             allocate(zeta_F(n_theta,n_zeta,n_r))
             allocate(X_F(n_theta,n_zeta,n_r))
             r_F = grp_r_X(1:grp_n_r_X)
-            ierr = calc_eqd_grid(theta_F(:,1,1),n_theta,pi,3*pi)
+            ierr = calc_eqd_grid(theta_F(:,1,1),pi,3*pi)
             CHCKERR('')
             do kd = 1,n_r
                 do id = 1,n_zeta
                     theta_F(:,id,kd) = theta_F(:,1,1)
                 end do
             end do
-            ierr = calc_eqd_grid(zeta_F(1,:,1),n_zeta,0*pi,2*pi)
+            ierr = calc_eqd_grid(zeta_F(1,:,1),0*pi,2*pi)
             CHCKERR('')
             do kd = 1,n_r
                 do id = 1,n_theta
@@ -968,7 +968,7 @@ contains
             
             zeta_E = 0.4*pi/2
             do jd = 1,grp_n_r_eq
-                ierr = calc_eqd_grid(theta_E(:,jd),n_par, 0.0_dp*pi, 3.0_dp*pi)
+                ierr = calc_eqd_grid(theta_E(:,jd),0.0_dp*pi, 3.0_dp*pi)
                 CHCKERR('')
             end do
             
@@ -2035,7 +2035,7 @@ contains
             
             zeta = 0.4*pi/2
             do jd = 1,grp_n_r_eq
-                ierr = calc_eqd_grid(theta(:,jd),n_par,0.0_dp*pi,3.0_dp*pi)
+                ierr = calc_eqd_grid(theta(:,jd),0.0_dp*pi,3.0_dp*pi)
                 CHCKERR('')
             end do
             
@@ -2220,7 +2220,7 @@ contains
             
             zeta = 0.4*pi/2
             do jd = 1,grp_n_r_eq
-                ierr = calc_eqd_grid(theta(:,jd),n_par, 0.0_dp*pi, 3.0_dp*pi)
+                ierr = calc_eqd_grid(theta(:,jd),0.0_dp*pi, 3.0_dp*pi)
             CHCKERR('')
             end do
             
@@ -2409,7 +2409,7 @@ contains
             
             zeta = 0.4*pi/2
             do jd = 1,grp_n_r_eq
-                ierr = calc_eqd_grid(theta(:,jd),n_par,0.0_dp*pi,3.0_dp*pi)
+                ierr = calc_eqd_grid(theta(:,jd),0.0_dp*pi,3.0_dp*pi)
                 CHCKERR('')
             end do
             

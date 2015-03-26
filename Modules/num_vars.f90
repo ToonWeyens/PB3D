@@ -6,18 +6,17 @@ module num_vars
     
     implicit none
     private
-    public dp, qp, max_str_ln, max_args, max_opts, max_deriv, prog_name, &
-        &output_name, &
+    public dp, qp, max_str_ln, max_args, max_deriv, prog_name, output_name, &
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
         &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups, &
         &next_job, next_job_win, &
         &pi, mu_0, iu, &
         &minim_style, grid_style, EV_style, eq_style, plot_jq, plot_grid, &
-        &plot_flux_q, ltest, use_pol_flux_eq, use_pol_flux_X, &
+        &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
         &use_normalization, n_sol_requested, n_sol_plotted, &
         &max_it_r, tol_r, no_guess, &
         &max_it_NR, tol_NR, nyq_fac, &
-        &input_i, eq_i, eq_name, output_i, max_n_plots, no_plots, &
+        &input_i, eq_i, eq_name, output_i, max_n_plots, no_plots, no_messages, &
         &output_style, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, &
         &n_alpha, min_alpha, max_alpha, alpha_job_nr, &
@@ -30,7 +29,6 @@ module num_vars
     integer, parameter :: qp = REAL128                                          ! quadruple precision
     integer, parameter :: max_str_ln = 100                                      ! maximum length of filenames
     integer, parameter :: max_args = 10                                         ! maximum number of input arguments
-    integer, parameter :: max_opts = 8                                          ! maximum number of options in input arguments
     integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! will hold name of output file
@@ -64,8 +62,8 @@ module num_vars
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates (only group masters)
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates (only global master)
     logical :: ltest                                                            ! whether or not to call the testing routines
-    logical :: use_pol_flux_eq                                                  ! .true. if equilibrium uses pol. flux and .false. if tor. flux
-    logical :: use_pol_flux_X                                                   ! .true. if perturbation uses pol. flux and .false. if tor. flux
+    logical :: use_pol_flux_E                                                   ! .true. if Equilibrium coordinates use pol. flux and .false. if tor. flux
+    logical :: use_pol_flux_F                                                   ! .true. if Flux coordinates use pol. flux and .false. if tor. flux
     logical :: use_normalization                                                ! whether to use normalization or not
     integer :: n_sol_requested                                                  ! how many solutions requested
     integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
@@ -87,6 +85,7 @@ module num_vars
     integer :: output_i                                                         ! file number of output file
     integer :: max_n_plots                                                      ! max. nr. of modes for which to output a plot
     logical :: no_plots = .false.                                               ! true if no plots should be made
+    logical :: no_messages = .false.                                            ! true if no messages should be shown
     integer :: output_style                                                     ! style of output (GNUPlot, HDF5, ...)
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots

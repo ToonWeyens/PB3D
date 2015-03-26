@@ -21,6 +21,7 @@ sol_ops.o : \
     utilities.o \
     eq_vars.o \
     X_vars.o \
+    output_ops.o \
 
 grid_ops.o : \
     HDF5_ops.o \
@@ -62,6 +63,7 @@ driver_rich.o : \
     utilities.o \
     grid_ops.o \
     grid_vars.o \
+    sol_ops.o \
 
 SLEPC_ops.o : \
     num_vars.o \
