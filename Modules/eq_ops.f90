@@ -702,29 +702,30 @@ contains
                 CHCKERR('')
             end do
             
-            ! max_flux in Flux coordinates and normal coordinate in grid_eq
+            ! max flux  of eq grid and of X grid and normal coord. of eq grid in
+            ! Flux coordinates
             if (use_pol_flux_F) then
-                X%max_flux_E = flux_p_int_full(grid_eq%n(3))
-                X%max_flux_F = X%max_flux_E
-                grid_eq%r_F = flux_p_int_full/X%max_flux_F
-                grid_eq%grp_r_F = eq%flux_p_E(:,0)/X%max_flux_F
+                X%max_flux_F = flux_p_int_full(grid_eq%n(3))
+                eq%max_flux_F = X%max_flux_F
+                grid_eq%r_F = flux_p_int_full/eq%max_flux_F
+                grid_eq%grp_r_F = eq%flux_p_E(:,0)/eq%max_flux_F
             else
-                X%max_flux_E = phi(grid_eq%n(3))
-                X%max_flux_F = - X%max_flux_E                                   ! conversion VMEC LH -> RH coord. system
-                grid_eq%r_F = phi/X%max_flux_F
-                grid_eq%grp_r_F = eq%flux_t_E(:,0)/X%max_flux_F
+                X%max_flux_F = - phi(grid_eq%n(3))                              ! conversion VMEC LH -> RH coord. system
+                eq%max_flux_F = X%max_flux_F
+                grid_eq%r_F = - phi/eq%max_flux_F                               ! conversion VMEC LH -> RH coord. system
+                grid_eq%grp_r_F = - eq%flux_t_E(:,0)/eq%max_flux_F              ! conversion VMEC LH -> RH coord. system
             end if
             
-            ! max_flux  in  Equilibrium  coordinates  and  normal coordinate  in
-            ! grid_eq
+            ! max flux  of eq grid and of X grid and normal coord. of eq grid in
+            ! Equilibrium coordinates
             if (use_pol_flux_E) then
-                eq%max_flux_E = flux_p_int_full(grid_eq%n(3))
-                eq%max_flux_F = eq%max_flux_E
+                X%max_flux_E = flux_p_int_full(grid_eq%n(3))
+                eq%max_flux_E = X%max_flux_E
                 grid_eq%r_E = flux_p_int_full/eq%max_flux_E
                 grid_eq%grp_r_E = eq%flux_p_E(:,0)/eq%max_flux_E
             else
-                eq%max_flux_E = phi(grid_eq%n(3))
-                eq%max_flux_F = - eq%max_flux_E                                 ! conversion VMEC LH -> RH coord. system
+                X%max_flux_E = phi(grid_eq%n(3))
+                eq%max_flux_E = X%max_flux_E
                 grid_eq%r_E = phi/eq%max_flux_E
                 grid_eq%grp_r_E = eq%flux_t_E(:,0)/eq%max_flux_E
             end if
@@ -800,23 +801,24 @@ contains
                 CHCKERR('')
             end do
             
-            ! max_flux in Flux coordinates and normal coordinate in grid_eq
+            ! max flux  of eq grid and of X grid and normal coord. of eq grid in
+            ! Flux coordinates
             if (use_pol_flux_F) then
-                X%max_flux_E = flux_H(grid_eq%n(3))
-                X%max_flux_F = X%max_flux_E
-                grid_eq%r_F = flux_H/X%max_flux_F
-                grid_eq%grp_r_F = eq%flux_p_E(:,0)/X%max_flux_F
+                X%max_flux_F = flux_H(grid_eq%n(3))
+                eq%max_flux_F = X%max_flux_F
+                grid_eq%r_F = flux_H/eq%max_flux_F
+                grid_eq%grp_r_F = eq%flux_p_E(:,0)/eq%max_flux_F
             else
-                X%max_flux_E = flux_t_int_full(grid_eq%n(3))
-                X%max_flux_F = eq%max_flux_E
+                X%max_flux_F = flux_t_int_full(grid_eq%n(3))
+                eq%max_flux_F = X%max_flux_F
                 grid_eq%r_F = flux_t_int_full/eq%max_flux_F
                 grid_eq%grp_r_F = eq%flux_t_E(:,0)/eq%max_flux_F
             end if
             
-            ! max_flux  in  Equilibrium  coordinates  and  normal coordinate  in
-            ! grid_eq
-            eq%max_flux_E = flux_H(grid_eq%n(3))
-            eq%max_flux_F = eq%max_flux_E
+            ! max flux  of eq grid and of X grid and normal coord. of eq grid in 
+            ! Equilibrium coordinates (uses poloidal flux by default)
+            X%max_flux_E = flux_H(grid_eq%n(3))
+            eq%max_flux_E = X%max_flux_E
             grid_eq%r_E = flux_H/eq%max_flux_E
             grid_eq%grp_r_E = eq%flux_p_E(:,0)/eq%max_flux_E
             

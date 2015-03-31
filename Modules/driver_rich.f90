@@ -590,6 +590,9 @@ contains
         ! reset no_plots and no_messages
         no_plots = no_plots_loc
         no_messages = no_messages_loc
+        ! copy the Eigenvectors and -values into the extended X
+        X_ext%val = X%val
+        X_ext%vec = X%vec
         
         !! test whether flux quantities are the same
         !call print_GP_2D('rot_t_FD','',eq%rot_t_FD(:,0))
@@ -607,8 +610,8 @@ contains
         call writo('plotting the Eigenvectors')
         
         call lvl_ud(1)
-        ierr = plot_X_vecs(grid_eq,eq,grid_X,X,n_sol_found,last_unstable_id,&
-            &min_id,max_id)
+        ierr = plot_X_vecs(grid_eq_ext,eq_ext,grid_X,X_ext,n_sol_found,&
+            &last_unstable_id,min_id,max_id)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -731,7 +734,11 @@ contains
             end if
         end subroutine plot_X_vals
         
-        ! plots Eigenvectors
+        ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
+        ! equilibrium  grid and  the normal  part of  the provided  perturbation
+        ! grid.
+        ! Note: These don't necessarily have to  coincide with the grids used in
+        ! the calculations.
         integer function plot_X_vecs(grid_eq,eq,grid_X,X,n_sol_found,&
             &last_unstable_id,min_id,max_id) result(ierr)
             use num_vars, only: use_pol_flux_F, alpha_job_nr
@@ -739,6 +746,7 @@ contains
             use eq_vars, only: eq_type
             use X_vars, only: X_type
             use X_ops, only: plot_X_vec
+            use sol_ops, only: calc_real_XUQ
             
             character(*), parameter :: rout_name = 'plot_X_vecs'
             
@@ -750,20 +758,13 @@ contains
             integer, intent(in) :: n_sol_found                                  ! how many solutions found and saved
             integer, intent(in) :: last_unstable_id                             ! index of last unstable EV
             integer, intent(in) :: min_id(3), max_id(3)                         ! min. and max. index of range 1, 2 and 3
+            real(dp), allocatable :: X_F(:,:,:,:)                               ! the normal component of the plasma perturbation
             
             ! local variables
             integer :: id, jd                                                   ! counters
-            real(dp), pointer :: ang_par_F(:,:,:)                               ! parallel angle in flux coordinates
             
             ! initialize ierr
             ierr = 0
-            
-            ! set up parallel angle in flux coordinates
-            if (use_pol_flux_F) then
-                ang_par_F => grid_eq%theta_F
-            else
-                ang_par_F => grid_eq%zeta_F
-            end if
             
             ! for all the solutions that are to be saved
             ! three ranges
@@ -788,9 +789,9 @@ contains
                     ierr = plot_harmonics(grid_X,X,id)
                     CHCKERR('')
                     
-                    ! plot the vector
-                    ierr = plot_X_vec(grid_eq,eq,grid_X,X,id,alpha_job_nr,&
-                        &[ang_par_F(1,1,1),ang_par_F(grid_eq%n(1),1,1)])
+                    ! calculate the normal component of the perturbation
+                    !ierr = calc_real_XUQ_arr(grid_eq,eq,grid_X,X,X_id,style,&
+                        !&time,X_F,met,deriv)
                     CHCKERR('')
                     
                     call lvl_ud(-1)

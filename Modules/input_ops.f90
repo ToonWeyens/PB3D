@@ -212,7 +212,7 @@ contains
             min_sec_X = prim_X                                                  ! min. of. secondary mode number of perturbation
             max_sec_X = prim_X                                                  ! max. of. secondary mode number of perturbation
             n_par_X = 20                                                        ! number of parallel grid points in pert. grid
-            use_pol_flux_F = use_pol_flux_E                                    ! use same normal flux coordinate as the equilibrium
+            use_pol_flux_F = use_pol_flux_E                                     ! use same normal flux coordinate as the equilibrium
             
             ! variables concerning alpha
             min_alpha = 0.0_dp                                                  ! minimum field line label [pi]

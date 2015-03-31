@@ -84,6 +84,13 @@ program PB3D
     write(*,*) 'CALC_V_INT SHOULD WORK WITH FAST FOURIER TRANSFORM!!!'
     
     write(*,*) 'TEST PRESSURE BALANCE'
+    
+    write(*,*) 'INVESTIGATE HOW IMPROVING THE DERIVATIVES CAN &
+        &HELP YOU GET RID OF UNSTABLE SIDE OF SPECTRUM !!!!!!!!!!!!!!!!!!!!!!!'
+    write(*,*) 'DOING THIS IN THIS ROUTINE ALREADY HELPED A LOT!!!!!'
+    
+    write(*,*) '!!!!!!!!!! YOU SHOULD ALLOW ARBITRARY RANGES FOR M AND N !!!!!!'
+    write(*,*) '!!!!!!!!!! E.G. FROM -10 to +20 !!!!!'
 
     !-------------------------------------------------------
     !   Test routines and functions
@@ -101,11 +108,6 @@ program PB3D
         call lvl_ud(-1)
     end if
 #endif
-    
-    write(*,*) 'INVESTIGATE HOW IMPROVING THE DERIVATIVES CAN &
-        &HELP YOU GET RID OF UNSTABLE SIDE OF SPECTRUM !!!!!!!!!!!!!!!!!!!!!!!'
-    write(*,*) 'DOING THIS IN THIS ROUTINE ALREADY HELPED A LOT!!!!!'
-    
     
     !-------------------------------------------------------
     !   Main driver

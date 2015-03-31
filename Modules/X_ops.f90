@@ -537,8 +537,13 @@ contains
         end function resonance_plot_HDF5
     end function resonance_plot
     
-    ! checks whether  nq-m <<  n or  n-iotam << m  is satisfied  in some  of the
-    ! plasma
+    ! Checks whether |nq-m|/|n|  < tol and |nq-m|/|m| < tol  (or |q-iotam|/|m| <
+    ! tol and |n-iotam|/|n| < tol) is satisfied in some part of the plasma, with
+    ! tol << 1.
+    ! The condition is determined by the sign of q (or iota) and given by:
+    !   max(min_q-tol,min_q/(1+tol)) < m/n < min(max_q+tol,max_q/(1-tol)), q>0
+    !   max(min_q-tol,min_q/(1-tol)) < m/n < min(max_q+tol,max_q/(1+tol)), q<0
+    ! (or replacing q by iota and m/n by n/m).
     ! [MPI] Parts by all processes, parts only by global master
     integer function check_modes(eq,X) result(ierr)
         use MPI_ops, only: get_ser_var
@@ -554,11 +559,14 @@ contains
         
         ! local variables
         integer :: id                                                           ! counter
-        real(dp) :: tol = 0.2                                                   ! tolerance for being out of range of q or iota values
+        real(dp) :: tol = 0.1_dp                                                ! tolerance for being out of range of q or iota values
         real(dp) :: min_jq, max_jq                                              ! min. and max. values of q or iota
         integer :: pmone                                                        ! plus or minus one
+        integer :: pmone2                                                       ! plus or minus one
         character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=max_str_ln) :: jq_name                                    ! either safety factor or rotational transform
         real(dp), allocatable :: ser_jq(:)                                      ! serial q_saf_E(:,0) or rot_t_E(:,0)
+        real(dp) :: lim_lo, lim_hi                                              ! lower and upper limit on n/m (or m/n)
         
         ! initialize ierr
         ierr = 0
@@ -575,7 +583,13 @@ contains
         
         if (glb_rank.eq.0) then
             call writo('Checking mode numbers')
-            ! set up plus minus one
+            call lvl_ud(1)
+            
+            ! user output
+            call writo('The tolerance used is '//trim(r2strt(tol)))
+            
+            ! set  up  plus  minus  one  to  convert  from Equilibrium  to  Flux
+            ! coordinates
             ! choose which equilibrium style is being used:
             !   1:  VMEC
             !   2:  HELENA
@@ -591,40 +605,76 @@ contains
                     CHCKERR(err_msg)
             end select
             
-            ! set min_jq and max_jq in flux coordinate system
+            ! set min_jq and max_jq in Flux coordinate system
             min_jq = minval(pmone*ser_jq)
             max_jq = maxval(pmone*ser_jq)
             
-            ! multiply by plus minus one and tolerance
-            min_jq = min_jq - tol*abs(min_jq)
-            max_jq = max_jq + tol*abs(max_jq)
+            ! set up jq name
+            if (use_pol_flux_F) then
+                jq_name = 'safety factor'
+            else
+                jq_name = 'rotational transform'
+            end if
+            
+            ! set  up plus  minus one  2, according  to the  sign of  the safety
+            ! factor
+            if (min_jq.lt.0 .and. max_jq.lt.0) then
+                pmone2 = -1
+            else if (min_jq.gt.0 .and. max_jq.gt.0) then
+                pmone2 = 1
+            else
+                err_msg = trim(jq_name)//' cannot change sign'
+                ierr = 1
+                CHCKERR(err_msg)
+            end if
             
             ! for every mode (n,m) check whether  m/n is inside the range of
             ! q values or n/m inside the range of iota values
             do id = 1, X%n_mod
+                ! calculate upper and lower limits
+                lim_lo = max(min_jq-tol,min_jq/(1+pmone2*tol))
+                lim_hi = min(max_jq+tol,max_jq/(1-pmone2*tol))
+                
+                ! check if limits are met
                 if (use_pol_flux_F) then
-                    if (X%m(id)*1.0/X%n(id) .lt.min_jq .or. &
-                        &X%m(id)*1.0/X%n(id) .gt.max_jq) then
+                    if (X%m(id)*1.0/X%n(id).lt.lim_lo .or. &
+                        &X%m(id)*1.0/X%n(id).gt.lim_hi) then
                         call writo('for (n,m) = ('//trim(i2str(X%n(id)))//&
-                            &','//trim(i2str(X%m(id)))//'), the ratio &
-                            &|n q - m|/n is never << 1')
+                            &','//trim(i2str(X%m(id)))//'), there is no range &
+                            &the plasma where the ratio |n q - m| << |n|,|m| &
+                            &is  met')
                         ierr = 1
-                        err_msg = 'Choose m and n so that |n q - m|/n << 1'
+                        err_msg = 'Choose m and n so that |n q - m| << |n|,|m|'
                         CHCKERR(err_msg)
                     end if
                 else
-                    if (X%n(id)*1.0/X%m(id) .lt.min_jq .or. &
-                        &X%n(id)*1.0/X%m(id) .gt.max_jq) then
+                    if (X%n(id)*1.0/X%m(id).lt.lim_lo .or. &
+                        &X%n(id)*1.0/X%m(id).gt.lim_hi) then
                         call writo('for (n,m) = ('//trim(i2str(X%n(id)))//&
-                            &','//trim(i2str(X%m(id)))//'), the ratio &
-                            &|n - iota m|/n is never << 1')
+                            &','//trim(i2str(X%m(id)))//'), there is no range &
+                            &the plasma where the ratio &
+                            &|n - iota m| << |m|,|n| is  met')
+                        ierr = 1
                         ierr = 1
                         err_msg = 'Choose m and n so that &
-                            &|n - iota m|/n << 1'
+                            &|n - iota m| << |n|,|m|'
                         CHCKERR(err_msg)
                     end if
                 end if
             end do
+            
+            ! output message
+            if (use_pol_flux_F) then
+                call writo('The modes are all within the allowed range &
+                    &of '//trim(r2strt(lim_lo))//' < n/m < '//&
+                    &trim(r2strt(lim_hi)))
+            else
+                call writo('The modes are all within the allowed range &
+                    &of '//trim(r2strt(lim_lo))//' < m/n < '//&
+                    &trim(r2strt(lim_hi)))
+            end if
+            
+            call lvl_ud(1)
             call writo('Mode numbers checked')
         end if
     end function check_modes
