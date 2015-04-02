@@ -28,11 +28,14 @@ module eq_vars
     private
     public create_eq, dealloc_eq, dealloc_eq_final, &
         &eq_type, &
-        &R_0, pres_0, B_0, psi_0, rho_0, T_0
+        &R_0, pres_0, B_0, psi_0, rho_0, T_0, max_flux_p_E, max_flux_p_F, &
+        &max_flux_t_E, max_flux_t_F
     
     ! global variables
     real(dp) :: R_0, pres_0, rho_0                                              ! independent normalization constants for nondimensionalization
     real(dp) :: B_0, psi_0, T_0                                                 ! derived normalization constants for nondimensionalization
+    real(dp) :: max_flux_p_E, max_flux_p_F                                      ! max. pol. flux in Equilibrium and Flux coordinates
+    real(dp) :: max_flux_t_E, max_flux_t_F                                      ! max. tor. flux in Equilibrium and Flux coordinates
     
     ! equilibrium type
     ! The arrays here are of the form (except for rho):
@@ -51,7 +54,6 @@ module eq_vars
     ! information about the grid points  at which the equilibrium quantities are
     ! tabulated.
     type :: eq_type
-        real(dp) :: max_flux_E, max_flux_F                                      ! max. flux (pol. or tor.) of eq. grid
         real(dp), allocatable :: R_E(:,:,:,:,:,:)                               ! R in E(quilibrium) coord
         real(dp), allocatable :: Z_E(:,:,:,:,:,:)                               ! Z in E(quilibrium) coords.
         real(dp), allocatable :: L_E(:,:,:,:,:,:)                               ! L(ambda) in E(quilibrium) coords.

@@ -61,7 +61,7 @@ contains
     ! grp_n_r_eq .le.  n_r_eq is the  normal extent  in the equilibrium  grid of
     ! this rank. It is determined so  that the perturbation quantities that will
     ! be needed in this rank are fully covered, so no communication is necessary
-    integer function calc_eq(grid_eq,eq,met,X,alpha) result(ierr)
+    integer function calc_eq(grid_eq,eq,met,alpha) result(ierr)
         use eq_vars, only: dealloc_eq, eq_type
         use metric_ops, only: calc_g_C, calc_g_C, calc_T_VC, calc_g_V, &
             &calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, calc_jac_V, &
@@ -72,7 +72,6 @@ contains
         use grid_vars, only: grid_type
         use grid_ops, only: calc_ang_grid, plot_grid_real
         use HELENA, only: dealloc_HEL
-        use X_vars, only: X_type
         
         use utilities, only: calc_det, calc_inv, calc_mult, c
         !use metric_ops, only: plot_info
@@ -84,7 +83,6 @@ contains
         type(grid_type) :: grid_eq                                              ! equilibrium grid
         type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
         type(metric_type), intent(inout) :: met                                 ! metric variables
-        type(X_type), intent(inout) :: X                                        ! perturbation variables
         real(dp), intent(in) :: alpha                                           ! field line coordinate of current equilibrium
         
         ! local variables
@@ -152,7 +150,7 @@ contains
                 
                 ! calculate flux quantities and complete equilibrium grid
                 call writo('Calculate flux quantities...')
-                ierr = calc_flux_q(eq,grid_eq,X)
+                ierr = calc_flux_q(eq,grid_eq)
                 CHCKERR('')
                 
             call lvl_ud(-1)
@@ -590,20 +588,19 @@ contains
     
     ! Calculates flux quantities  and normal derivatives in  the VMEC coordinate
     ! system. Also sets the normal coordinate in the equilibrium grid.
-    integer function calc_flux_q(eq,grid_eq,X) result(ierr)
-        use num_vars, only: eq_style, max_deriv, grp_nr, &
-            &use_pol_flux_E, use_pol_flux_F, plot_flux_q
+    integer function calc_flux_q(eq,grid_eq) result(ierr)
+        use num_vars, only: eq_style, max_deriv, grp_nr, use_pol_flux_E, &
+            &use_pol_flux_F, plot_flux_q
         use utilities, only: calc_deriv, calc_int
-        use eq_vars, only: eq_type
+        use eq_vars, only: eq_type, max_flux_p_E, max_flux_t_E, max_flux_p_F, &
+            &max_flux_t_F
         use grid_vars, only: grid_type
-        use X_vars, only: X_type
         
         character(*), parameter :: rout_name = 'calc_flux_q'
         
         ! input / output
         type(eq_type), intent(inout) :: eq                                      ! equilibrium for this alpha
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(X_type), intent(inout) :: X                                        ! perturbation
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -702,32 +699,26 @@ contains
                 CHCKERR('')
             end do
             
-            ! max flux  of eq grid and of X grid and normal coord. of eq grid in
-            ! Flux coordinates
-            if (use_pol_flux_F) then
-                X%max_flux_F = flux_p_int_full(grid_eq%n(3))
-                eq%max_flux_F = X%max_flux_F
-                grid_eq%r_F = flux_p_int_full/eq%max_flux_F
-                grid_eq%grp_r_F = eq%flux_p_E(:,0)/eq%max_flux_F
+            ! max flux and normal coord. of eq grid in Equilibrium coordinates
+            max_flux_p_E = flux_p_int_full(grid_eq%n(3))
+            max_flux_t_E = phi(grid_eq%n(3))
+            if (use_pol_flux_E) then
+                grid_eq%r_E = flux_p_int_full/max_flux_p_E
+                grid_eq%grp_r_E = eq%flux_p_E(:,0)/max_flux_p_E
             else
-                X%max_flux_F = - phi(grid_eq%n(3))                              ! conversion VMEC LH -> RH coord. system
-                eq%max_flux_F = X%max_flux_F
-                grid_eq%r_F = - phi/eq%max_flux_F                               ! conversion VMEC LH -> RH coord. system
-                grid_eq%grp_r_F = - eq%flux_t_E(:,0)/eq%max_flux_F              ! conversion VMEC LH -> RH coord. system
+                grid_eq%r_E = phi/max_flux_t_E
+                grid_eq%grp_r_E = eq%flux_t_E(:,0)/max_flux_t_E
             end if
             
-            ! max flux  of eq grid and of X grid and normal coord. of eq grid in
-            ! Equilibrium coordinates
-            if (use_pol_flux_E) then
-                X%max_flux_E = flux_p_int_full(grid_eq%n(3))
-                eq%max_flux_E = X%max_flux_E
-                grid_eq%r_E = flux_p_int_full/eq%max_flux_E
-                grid_eq%grp_r_E = eq%flux_p_E(:,0)/eq%max_flux_E
+            ! max flux and normal coord. of eq grid in Flux coordinates
+            max_flux_p_F = flux_p_int_full(grid_eq%n(3))
+            max_flux_t_F = - phi(grid_eq%n(3))                                  ! conversion VMEC LH -> RH coord. system
+            if (use_pol_flux_F) then
+                grid_eq%r_F = flux_p_int_full/max_flux_p_F
+                grid_eq%grp_r_F = eq%flux_p_E(:,0)/max_flux_p_F
             else
-                X%max_flux_E = phi(grid_eq%n(3))
-                eq%max_flux_E = X%max_flux_E
-                grid_eq%r_E = phi/eq%max_flux_E
-                grid_eq%grp_r_E = eq%flux_t_E(:,0)/eq%max_flux_E
+                grid_eq%r_F = - phi/max_flux_t_F                                ! conversion VMEC LH -> RH coord. system
+                grid_eq%grp_r_F = - eq%flux_t_E(:,0)/max_flux_t_F               ! conversion VMEC LH -> RH coord. system
             end if
             
             ! deallocate helper variables
@@ -801,26 +792,23 @@ contains
                 CHCKERR('')
             end do
             
-            ! max flux  of eq grid and of X grid and normal coord. of eq grid in
-            ! Flux coordinates
-            if (use_pol_flux_F) then
-                X%max_flux_F = flux_H(grid_eq%n(3))
-                eq%max_flux_F = X%max_flux_F
-                grid_eq%r_F = flux_H/eq%max_flux_F
-                grid_eq%grp_r_F = eq%flux_p_E(:,0)/eq%max_flux_F
-            else
-                X%max_flux_F = flux_t_int_full(grid_eq%n(3))
-                eq%max_flux_F = X%max_flux_F
-                grid_eq%r_F = flux_t_int_full/eq%max_flux_F
-                grid_eq%grp_r_F = eq%flux_t_E(:,0)/eq%max_flux_F
-            end if
+            ! max flux and  normal coord. of eq grid  in Equilibrium coordinates
+            ! (uses poloidal flux by default)
+            max_flux_p_E = flux_H(grid_eq%n(3))
+            max_flux_t_E = flux_t_int_full(grid_eq%n(3))
+            grid_eq%r_E = flux_H/max_flux_p_E
+            grid_eq%grp_r_E = eq%flux_p_E(:,0)/max_flux_p_E
             
-            ! max flux  of eq grid and of X grid and normal coord. of eq grid in 
-            ! Equilibrium coordinates (uses poloidal flux by default)
-            X%max_flux_E = flux_H(grid_eq%n(3))
-            eq%max_flux_E = X%max_flux_E
-            grid_eq%r_E = flux_H/eq%max_flux_E
-            grid_eq%grp_r_E = eq%flux_p_E(:,0)/eq%max_flux_E
+            ! max flux and normal coord. of eq grid in Flux coordinates
+            max_flux_p_F = flux_H(grid_eq%n(3))
+            max_flux_t_F = flux_t_int_full(grid_eq%n(3))
+            if (use_pol_flux_F) then
+                grid_eq%r_F = flux_H/max_flux_p_F
+                grid_eq%grp_r_F = eq%flux_p_E(:,0)/max_flux_p_F
+            else
+                grid_eq%r_F = flux_t_int_full/max_flux_t_F
+                grid_eq%grp_r_F = eq%flux_t_E(:,0)/max_flux_t_F
+            end if
             
             ! deallocate helper variables
             deallocate(Dflux_t_full,flux_t_int_full)
@@ -837,7 +825,7 @@ contains
     integer function flux_q_plot(eq,grid_eq) result(ierr)
         use num_vars, only: eq_style, use_pol_flux_F, output_style, &
             &grp_rank, grp_n_procs, no_plots
-        use eq_vars, only: eq_type
+        use eq_vars, only: eq_type, max_flux_p_E, max_flux_t_E
         use grid_vars, only: grid_type
         
         character(*), parameter :: rout_name = 'flux_q_plot'
@@ -910,9 +898,9 @@ contains
         
         ! 2D normal variable (Y_plot_2D tabulated in eq. grid)
         if (use_pol_flux_F) then
-            X_plot_2D(1:grid_eq%grp_n_r,1) = eq%flux_p_E(:,0)/eq%max_flux_E
+            X_plot_2D(1:grid_eq%grp_n_r,1) = eq%flux_p_E(:,0)/max_flux_p_E
         else
-            X_plot_2D(1:grid_eq%grp_n_r,1) = eq%flux_t_E(:,0)/eq%max_flux_E
+            X_plot_2D(1:grid_eq%grp_n_r,1) = eq%flux_t_E(:,0)/max_flux_t_E
         end if
         do id = 2,n_vars
             X_plot_2D(:,id) = X_plot_2D(:,1)
@@ -1117,7 +1105,8 @@ contains
     
     ! normalizes equilibrium quantities using the normalization constants
     subroutine normalize_eq_vars(eq)
-        use eq_vars, only: eq_type, psi_0, pres_0
+        use eq_vars, only: eq_type, psi_0, pres_0, max_flux_p_E, max_flux_t_E, &
+            &max_flux_p_F, max_flux_t_F
         
         ! local variables
         type(eq_type) :: eq                                                     ! equilibrium
@@ -1127,8 +1116,10 @@ contains
         eq%pres_FD = eq%pres_FD/pres_0
         eq%flux_p_FD = eq%flux_p_FD/psi_0
         eq%flux_t_FD = eq%flux_t_FD/psi_0
-        eq%max_flux_E = eq%max_flux_E/psi_0
-        eq%max_flux_F = eq%max_flux_F/psi_0
+        max_flux_p_E = max_flux_p_E/psi_0
+        max_flux_p_F = max_flux_p_F/psi_0
+        max_flux_t_E = max_flux_t_E/psi_0
+        max_flux_t_F = max_flux_t_F/psi_0
         
         ! scale  the  derivatives  by  psi_p_0
         do id = 1,size(eq%pres_FD,2)-1

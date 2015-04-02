@@ -47,11 +47,12 @@ contains
     
     ! prints first message
     subroutine print_hello
-        use num_vars, only: glb_rank
+        use num_vars, only: glb_rank, prog_name, prog_version
         
         if (glb_rank.eq.0) then
             write(*,*) 'Simulation started on '//get_date()//&
                 &', at '//get_clock()
+            write(*,*) trim(prog_name)//' version: '//trim(prog_version)
             write(*,*) ''
         end if
     end subroutine print_hello

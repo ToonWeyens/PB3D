@@ -9,8 +9,8 @@ module files
         &lvl
     implicit none
     private
-    public open_input, open_output, search_file, parse_args, init_files, &
-        &input_name, opt_args, close_output, nextunit
+    public open_input, open_output, parse_args, init_files, input_name, &
+        &opt_args, close_output, nextunit
 
     ! user-specified arguments
     integer :: numargs                                                          ! control the user-specified arguments
@@ -141,7 +141,8 @@ contains
         integer :: first_ints(2)                                                ! first two input integers of input file (HELENA)
         integer :: istat                                                        ! status
         
-        ierr = 0                                                                ! no errors (yet)
+        ! initialize ierr
+        ierr = 0
      
         if (glb_rank.eq.0) then                                                 ! following only for master process
             call writo("Attempting to open files")
@@ -257,6 +258,9 @@ contains
             
             ! input / output
             integer :: opt_nr, arg_nr
+            
+            ! initialize ierr
+            ierr = 0
             
             select case(opt_nr)
                 case (1)                                                        ! option -o
@@ -386,15 +390,16 @@ contains
         character(len=*), intent(inout) :: file_name                            ! the name that is searched for
         character(len=*), intent(in) :: exts(:)                                 ! the possible extensions of the full_name
         character(len=*), intent(in) :: con_symb(:)                             ! the possible symbols to connect with the full_name
-        character(len=*), optional, intent(in) :: ext                           ! optional extension at end of file
+        character(len=*), optional, intent(in) :: ext                           ! optional filetype extension at end of file name
         integer, intent(out) :: i_unit                                          ! will hold the file handle
         
         character(len=max_str_ln) :: mod_file_name                               ! modified file name
         integer :: id, jd, istat
         
         ! try to open the given name
-        open(unit=nextunit(i_unit),file=file_name,status='old',iostat=istat)
-        if (present(ext)) mod_file_name = trim(mod_file_name) // trim(ext)      ! if an extension is provided, append it
+        mod_file_name = file_name                                               ! copy file_name to mod_file_name
+        if (present(ext)) mod_file_name = trim(file_name) // trim(ext)          ! if an extension is provided, append it
+        open(unit=nextunit(i_unit),file=mod_file_name,status='old',iostat=istat)
         if (istat.eq.0) return
         
         ! try with the extensions provided

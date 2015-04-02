@@ -392,8 +392,10 @@ contains
                     &trim(draw_ops(ifl))//';'
             end do
         else
+            !write(cmd_i,*) 'set style line 1 lc rgb ''#0060ad'' lt 1 lw 1 pt 7 &
+                !&pi -1 ps 0.5;'
             write(cmd_i,*) 'set style line 1 lc rgb ''#0060ad'' lt 1 lw 1 pt 7 &
-                &pi -1 ps 0.5;'
+                &ps 0.5;'
             write(cmd_i,*) 'set pointintervalbox 0.75;'
         end if
         
@@ -638,8 +640,10 @@ contains
                     &trim(draw_ops(ifl))//';'
             end do
         else
+            !write(cmd_i,*) 'set style line 1 lc rgb ''#0060ad'' lt 1 lw 1 pt 7 &
+                !&pi -1 ps 0.5;'
             write(cmd_i,*) 'set style line 1 lc rgb ''#0060ad'' lt 1 lw 1 pt 7 &
-                &pi -1 ps 0.5;'
+                &ps 0.5;'
             write(cmd_i,*) 'set pointintervalbox 0.75;'
         end if
         
@@ -770,6 +774,9 @@ contains
         character(len=size(file_names_in)*max_str_ln) :: shell_cmd              ! shell command
         integer :: id                                                           ! counter
         logical :: delete_loc                                                   ! local copy of delete
+        
+        ! initialize istat
+        istat = 0
         
         ! set up concatenation command
         shell_cmd = 'cat'

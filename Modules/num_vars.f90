@@ -7,6 +7,7 @@ module num_vars
     implicit none
     private
     public dp, qp, max_str_ln, max_args, max_deriv, prog_name, output_name, &
+        &prog_version, &
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
         &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups, &
         &next_job, next_job_win, &
@@ -32,6 +33,7 @@ module num_vars
     integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! will hold name of output file
+    character(len=max_str_ln) :: prog_version = '0.7'                           ! version number
 
     ! MPI variables
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha

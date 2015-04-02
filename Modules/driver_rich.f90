@@ -158,11 +158,12 @@ contains
         use num_vars, only: n_sol_requested, max_it_r, no_guess, &
             &alpha_job_nr, grp_rank
         use eq_vars, only: dealloc_eq_final, eq_type
-        use X_vars, only: dealloc_X_final, X_type
+        use X_vars, only: dealloc_X_final, create_X, X_type
         use X_ops, only: solve_EV_system
         use metric_vars, only: dealloc_metric_final, metric_type
         use MPI_ops, only: divide_X_grid
         use grid_vars, only: create_grid, destroy_grid, grid_type
+        use grid_ops, only: coord_F2E
         
         character(*), parameter :: rout_name = 'run_for_alpha'
         
@@ -188,6 +189,9 @@ contains
         
         ! initialize ierr
         ierr = 0
+        
+        ! create perturbation
+        call create_X(grid_eq,X)
         
         ! calculate necessary quantities on equilibrium grid
         ierr = calculate_vars_in_eq_grid(grid_eq,eq,met,X,alpha)
@@ -241,6 +245,8 @@ contains
             CHCKERR('')
             grid_X%grp_r_F = grp_r_X
             deallocate(grp_r_X)
+            ierr = coord_F2E(eq,grid_X%grp_r_F,grid_X%grp_r_E)
+            CHCKERR('')
             call lvl_ud(-1)
             
             ! set use_guess to .false. if no_guess
@@ -450,7 +456,7 @@ contains
         use grid_vars, only: grid_type
         use eq_vars, only: create_eq, eq_type
         use metric_vars, only: metric_type
-        use X_vars, only: X_type, create_X
+        use X_vars, only: X_type
         use eq_ops, only: calc_eq
         use X_ops, only: prepare_X
         
@@ -470,34 +476,25 @@ contains
         ierr = create_eq(eq,grid_eq)
         CHCKERR('')
         
-        ! 2. create perturbation
-        call create_X(grid_eq,X)
-        
-        ! 3. Calculate the equilibrium quantities for current alpha
-        ierr = calc_eq(grid_eq,eq,met,X,alpha)
+        ! 2. Calculate the equilibrium quantities for current alpha
+        ierr = calc_eq(grid_eq,eq,met,alpha)
         CHCKERR('')
         
-        ! 4. normalize the quantities
-        call normalize(eq,met,X)
-        
-        ! 5. prepare the matrix elements
+        ! 4. prepare the matrix elements
         ierr = prepare_X(eq,grid_eq,met,X)
         CHCKERR('')
     contains
         ! normalize quantities
-        subroutine normalize(eq,met,X)
+        subroutine normalize(eq,met)
             use num_vars, only: use_normalization
             use eq_vars, only: eq_type
             use metric_vars, only: metric_type
-            use X_vars, only: X_type
             use eq_ops, only: normalize_eq_vars
             use metric_ops, only: normalize_metric_vars
-            use X_ops, only: normalize_X_vars
             
             ! input / output
             type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
             type(metric_type), intent(inout) :: met                                 ! metric variables
-            type(X_type), intent(inout) :: X                                        ! perturbation variables
             
             if (use_normalization) then
                 call writo('Start normalizing the equilibrium, metric and &
@@ -505,7 +502,6 @@ contains
                 call lvl_ud(1)
                 call normalize_eq_vars(eq)
                 call normalize_metric_vars(met)
-                call normalize_X_vars(X)
                 call lvl_ud(-1)
                 call writo('Normalization done')
             end if
@@ -516,18 +512,20 @@ contains
     integer function process_output(grid_eq,eq,grid_X,X,n_sol_found,alpha) &
         &result(ierr)
         use num_vars, only: n_theta_plot, n_zeta_plot, no_plots, no_messages
-        use grid_vars, only: create_grid, grid_type
-        use eq_vars, only: create_eq, eq_type
-        use metric_vars, only: metric_type
-        use X_vars, only: create_X, X_type
+        use grid_vars, only: create_grid, grid_type, destroy_grid
+        use eq_vars, only: eq_type, dealloc_eq, dealloc_eq_final
+        use metric_vars, only: metric_type, dealloc_metric, dealloc_metric_final
+        use X_vars, only: dealloc_X, dealloc_X_final, create_X, X_type
+        use grid_ops, only: coord_E2F, calc_XYZ_grid
         use X_ops, only: prepare_X
+        use sol_ops, only: plot_X_vecs
         
         character(*), parameter :: rout_name = 'process_output'
         
         ! input / output
-        type(grid_type) :: grid_eq                                              ! equilibrium grid
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(eq_type), intent(in) :: eq                                         ! equilibirum variables
-        type(grid_type) :: grid_X                                               ! perturbation grid
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_type), intent(in) :: X                                           ! perturbation variables
         integer, intent(in) :: n_sol_found                                      ! how many solutions found and saved
         real(dp), intent(in) :: alpha                                           ! field line label alpha
@@ -537,11 +535,13 @@ contains
         integer :: min_id(3), max_id(3)                                         ! min. and max. index of range 1, 2 and 3
         integer :: last_unstable_id                                             ! index of last unstable EV
         type(grid_type) :: grid_eq_ext                                          ! extended equilibrium grid, covering whole geometry
+        type(grid_type) :: grid_X_ext                                           ! extended perturbation grid, covering whole geometry
         type(eq_type) :: eq_ext                                                 ! extended equilibrium variables
         type(metric_type) :: met_ext                                            ! extended metric variables
         type(X_type) :: X_ext                                                   ! extended perturbation variables
         logical :: no_plots_loc                                                 ! local copy of no_plots
         logical :: no_messages_loc                                              ! local copy of no_messages
+        real(dp), allocatable :: XYZ(:,:,:,:)                                   ! X, Y and Z of extended eq_grid
         
         ! initialize ierr
         ierr = 0
@@ -552,37 +552,50 @@ contains
         
         ! user output
         call writo('plotting the Eigenvalues')
-        
         call lvl_ud(1)
+        
         call plot_X_vals(X,n_sol_found,last_unstable_id)
+        
         call lvl_ud(-1)
         
         ! user output
-        call writo('creating plot grid')
+        call writo('creating extended plot grids')
         call lvl_ud(1)
         
-        ! creating  equilibrium  grid  for  the  output  that covers  the  whole
-        ! geometry angularly
-        ierr = create_grid(grid_eq_ext,[n_theta_plot,n_zeta_plot,grid_eq%n(3)],&
-            &[grid_eq%i_min,grid_eq%i_max])
+        ierr = extend_grid(grid_eq,eq,grid_eq,grid_eq_ext)
         CHCKERR('')
-        grid_eq_ext%grp_r_F = grid_eq%grp_r_F
-        do id = 1,n_theta_plot
-            grid_eq_ext%theta_F(id,:,:) = &
-                &pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)                      ! starting from pi gives nicer plots
-        end do
-        do id = 1,n_zeta_plot
-            grid_eq_ext%zeta_F(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
-        end do
+        ierr = extend_grid(grid_eq,eq,grid_X,grid_X_ext,XYZ)
+        CHCKERR('')
+        
+        call lvl_ud(-1)
+        
+        ! user output
+        call writo('plotting the Eigenvectors')
+        call lvl_ud(1)
+        
+        ! Since the equations have been solved  for a single field line normally
+        ! the  equilibrium, metric  and perturbation  quantities that  have been
+        ! used have  to be recalculated for  the entire angular range,  which is
+        ! done  below.  However,  since  here  only  the  equilibrium  variables
+        ! flux_q_FD or q_saf_FD or used, the plotting of the Eigenvectors can be
+        ! done already.
+        ierr = plot_X_vecs(grid_eq_ext,eq_ext,grid_X,X,XYZ,n_sol_found,&
+            &min_id,max_id)
+        CHCKERR('')
+        
+        call lvl_ud(-1)
         
         ! user output
         call writo('calculating variables on plot grid')
+        call lvl_ud(1)
         
         ! back up no_plots and no_messages and set to .true.
         no_plots_loc = no_plots
         no_messages_loc = no_messages
-        no_plots = .true.
-        no_messages = .true.
+        !!!no_plots = .true.
+        !!!no_messages = .true.
+        ! create extended perturbation
+        call create_X(grid_eq_ext,X_ext)
         ! create  equilibrium,  metric   and   some  perturbation  variables  on
         ! equilibrium grid
         ierr = calculate_vars_in_eq_grid(grid_eq_ext,eq_ext,met_ext,X_ext,alpha)
@@ -594,33 +607,32 @@ contains
         X_ext%val = X%val
         X_ext%vec = X%vec
         
-        !! test whether flux quantities are the same
-        !call print_GP_2D('rot_t_FD','',eq%rot_t_FD(:,0))
-        !call print_GP_2D('OLD - NEW rot_t_FD','',eq%rot_t_FD(:,0)-eq_ext%rot_t_FD(:,0))
-        !call print_GP_2D('q_saf_FD','',eq%q_saf_FD(:,0))
-        !call print_GP_2D('OLD - NEW q_saf_FD','',eq%q_saf_FD(:,0)-eq_ext%q_saf_FD(:,0))
-        !call print_GP_2D('pres_FD','',eq%pres_FD(:,0))
-        !call print_GP_2D('OLD - NEW pres_FD','',eq%pres_FD(:,0)-eq_ext%pres_FD(:,0))
-        !call print_GP_2D('flux_p_FD','',eq%flux_p_FD(:,0))
-        !call print_GP_2D('OLD - NEW flux_p_FD','',eq%flux_p_FD(:,0)-eq_ext%flux_p_FD(:,0))
-        !call print_GP_2D('flux_t_FD','',eq%flux_t_FD(:,0))
-        !call print_GP_2D('OLD - NEW flux_t_FD','',eq%flux_t_FD(:,0)-eq_ext%flux_t_FD(:,0))
-        
-        ! user output
-        call writo('plotting the Eigenvectors')
-        
-        call lvl_ud(1)
-        ierr = plot_X_vecs(grid_eq_ext,eq_ext,grid_X,X_ext,n_sol_found,&
-            &last_unstable_id,min_id,max_id)
-        CHCKERR('')
         call lvl_ud(-1)
         
         ! user output
         call writo('Decomposing the energy into its terms')
-        
         call lvl_ud(1)
+        
         ierr = decompose_energy(grid_eq,eq,grid_X,X,n_sol_found)
         CHCKERR('')
+        
+        call lvl_ud(-1)
+        
+        ! user output
+        call writo('Cleaning up')
+        call lvl_ud(1)
+        
+        call destroy_grid(grid_eq_ext)
+        call destroy_grid(grid_X_ext)
+        ierr = dealloc_eq(eq_ext)
+        CHCKERR('')
+        call dealloc_eq_final(eq_ext)
+        ierr = dealloc_metric(met_ext)
+        call dealloc_metric_final(met_ext)
+        CHCKERR('')
+        call dealloc_X(X_ext)
+        call dealloc_X_final(X_ext)
+        
         call lvl_ud(-1)
     contains
         ! finds the plot ranges min_id and max_id
@@ -734,224 +746,74 @@ contains
             end if
         end subroutine plot_X_vals
         
-        ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
-        ! equilibrium  grid and  the normal  part of  the provided  perturbation
-        ! grid.
-        ! Note: These don't necessarily have to  coincide with the grids used in
-        ! the calculations.
-        integer function plot_X_vecs(grid_eq,eq,grid_X,X,n_sol_found,&
-            &last_unstable_id,min_id,max_id) result(ierr)
-            use num_vars, only: use_pol_flux_F, alpha_job_nr
+        ! Extend a  grid angularly  using equidistant variables  of n_theta_plot
+        ! and  n_zeta_plot  angular  and  own grp_n_r  points.  Optionally  also
+        ! calculate X, Y and Z on this extended grid
+        integer function extend_grid(grid_eq,eq,grid_in,grid_ext,XYZ) &
+            &result(ierr)
             use grid_vars, only: grid_type
-            use eq_vars, only: eq_type
-            use X_vars, only: X_type
-            use X_ops, only: plot_X_vec
-            use sol_ops, only: calc_real_XUQ
+            use num_vars, only: n_theta_plot, n_zeta_plot
             
-            character(*), parameter :: rout_name = 'plot_X_vecs'
+            character(*), parameter :: rout_name = 'extend_grid'
             
             ! input / output
             type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid
-            type(eq_type), intent(in) :: eq                                     ! equilibrium variables
-            type(grid_type), intent(in) :: grid_X                               ! perturbation grid
-            type(X_type), intent(in) :: X                                       ! perturbation variables
-            integer, intent(in) :: n_sol_found                                  ! how many solutions found and saved
-            integer, intent(in) :: last_unstable_id                             ! index of last unstable EV
-            integer, intent(in) :: min_id(3), max_id(3)                         ! min. and max. index of range 1, 2 and 3
-            real(dp), allocatable :: X_F(:,:,:,:)                               ! the normal component of the plasma perturbation
+            type(eq_type), intent(in) :: eq                                     ! equilibirum variables
+            type(grid_type), intent(in) :: grid_in                              ! grid to be extended
+            type(grid_type), intent(inout) :: grid_ext                          ! extended grid
+            real(dp), intent(inout), allocatable, optional :: XYZ(:,:,:,:)      ! X, Y and Z of extended eq_grid
             
             ! local variables
-            integer :: id, jd                                                   ! counters
+            real(dp), allocatable :: X_ind(:,:,:), Y_ind(:,:,:), Z_ind(:,:,:)   ! individual versions of X, Y and Z
             
             ! initialize ierr
             ierr = 0
             
-            ! for all the solutions that are to be saved
-            ! three ranges
-            do jd = 1,3
-                if (min_id(jd).le.max_id(jd)) call &
-                    &writo('Plotting results for modes '//&
-                    &trim(i2str(min_id(jd)))//'..'//trim(i2str(max_id(jd)))&
-                    &//' of range '//trim(i2str(jd)))
-                call lvl_ud(1)
-                
-                ! indices in each range
-                do id = min_id(jd),max_id(jd)
-                    ! user output
-                    call writo('Mode '//trim(i2str(id))//'/'//&
-                        &trim(i2str(n_sol_found))//', with eigenvalue '&
-                        &//trim(r2strt(realpart(X%val(id))))//' + '//&
-                        &trim(r2strt(imagpart(X%val(id))))//' i')
-                    
-                    call lvl_ud(1)
-                    
-                    ! plot information about harmonics
-                    ierr = plot_harmonics(grid_X,X,id)
-                    CHCKERR('')
-                    
-                    ! calculate the normal component of the perturbation
-                    !ierr = calc_real_XUQ_arr(grid_eq,eq,grid_X,X,X_id,style,&
-                        !&time,X_F,met,deriv)
-                    CHCKERR('')
-                    
-                    call lvl_ud(-1)
-                end do
-                
-                call lvl_ud(-1)
-            end do
-        end function plot_X_vecs
-        
-        ! plots the harmonics and their maximum in 2D
-        integer function plot_harmonics(grid_X,X,X_id) result(ierr)
-            use MPI_ops, only: wait_MPI, get_ghost_arr, get_ser_var
-            use output_ops, only: merge_GP
-            use num_vars, only: grp_n_procs, grp_rank, alpha_job_nr
-            use grid_vars, only: grid_type
-            use X_vars, only: X_type
-            
-            character(*), parameter :: rout_name = 'plot_harmonics'
-            
-            ! input / output
-            type(grid_type), intent(in) :: grid_X                               ! perturbation grid
-            type(X_type), intent(in) :: X                                       ! perturbation variables/
-            integer, intent(in) :: X_id                                         ! nr. of Eigenvalue (for output name)
-            
-            ! local variables
-            integer :: id, kd                                                   ! counters
-            character(len=max_str_ln) :: file_name                              ! name of file of plots of this proc.
-            character(len=max_str_ln), allocatable :: file_names(:)             ! names of file of plots of different procs.
-            character(len=max_str_ln) :: plot_title                             ! title for plots
-            real(dp), allocatable :: x_plot(:,:)                                ! x values of plot
-            complex(dp), allocatable :: X_vec_extended(:,:)                     ! MPI Eigenvector extended with assymetric ghost region
-            real(dp), allocatable :: X_vec_max(:)                               ! maximum position index of X_vec of rank
-            real(dp), allocatable :: ser_X_vec_max(:)                           ! maximum position index of X_vec of whole group
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! user output
-            call writo('Started plot of the harmonics')
-            call lvl_ud(1)
-            
-            ! set up extended X_vec with ghost values
-            allocate(X_vec_extended(X%n_mod,size(grid_X%grp_r_F)))
-            X_vec_extended(:,1:size(X%vec,2)) = X%vec(:,:,X_id)
-            ierr = get_ghost_arr(X_vec_extended,1)
+            ! creating equilibrium  grid for  the output  that covers  the whole
+            ! geometry angularly in E coordinates
+            ierr = create_grid(grid_ext,&
+                &[n_theta_plot,n_zeta_plot,grid_in%n(3)],&
+                &[grid_in%i_min,grid_in%i_max])
             CHCKERR('')
-            
-            ! set up x_plot
-            allocate(x_plot(size(grid_X%grp_r_F),X%n_mod))
-            do kd = 1,X%n_mod
-                x_plot(:,kd) = grid_X%grp_r_F
-            end do
-            
-            ! absolute amplitude
-            ! set up file name of this rank and plot title
-            file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//&
-                &'_abs.dat'
-            plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
-                &trim(i2str(X_id))//' - absolute value'
-            
-            ! print amplitude of harmonics of eigenvector for each rank
-            call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
-                &trim(i2str(grp_rank)),abs(transpose(X_vec_extended(:,:))),&
-                &x=x_plot,draw=.false.)
-            
-            ! wait for all processes
-            ierr = wait_MPI()
-            CHCKERR('')
-            
-            ! plot by group master
-            if (grp_rank.eq.0) then
-                ! set up file names in array
-                allocate(file_names(grp_n_procs))
-                do kd = 1,grp_n_procs
-                    file_names(kd) = trim(file_name)//'_'//trim(i2str(kd-1))
+            grid_ext%grp_r_E = grid_in%grp_r_E
+            if (n_theta_plot.eq.1) then
+                grid_ext%theta_E = 0._dp
+            else
+                do id = 1,n_theta_plot
+                    grid_ext%theta_E(id,:,:) = &
+                        &pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)              ! starting from pi gives nicer plots
                 end do
-                
-                ! merge files
-                call merge_GP(file_names,file_name,delete=.true.)
-                
-                ! draw plot
-                call draw_GP(trim(plot_title),file_name,X%n_mod,.true.,.false.)
-                
-                ! deallocate
-                deallocate(file_names)
+            end if
+            if (n_zeta_plot.eq.1) then
+                grid_ext%zeta_E = 0._dp
+            else
+                do id = 1,n_zeta_plot
+                    grid_ext%zeta_E(:,id,:) = &
+                        &(id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
+                end do
             end if
             
-            ! perturbation at midplane theta = zeta = 0
-            ! set up file name of this rank and plot title
-            file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//&
-                &'_midplane.dat'
-            plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
-                &trim(i2str(X_id))//' - midplane'
-            
-            ! print amplitude of harmonics of eigenvector for each rank
-            call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
-                &trim(i2str(grp_rank)),&
-                &realpart(transpose(X_vec_extended(:,:))),x=x_plot,draw=.false.)
-            
-            ! wait for all processes
-            ierr = wait_MPI()
-            CHCKERR('')
-            
-            ! plot by group master
-            if (grp_rank.eq.0) then
-                ! set up file names in array
-                allocate(file_names(grp_n_procs))
-                do kd = 1,grp_n_procs
-                    file_names(kd) = trim(file_name)//'_'//trim(i2str(kd-1))
-                end do
+            ! calculate  X, Y and  Z of extended grid  using extended grid  in E
+            ! coordinates if present
+            if (present(XYZ)) then
+                ! calculate them on individual, allocatable grids
+                ierr = calc_XYZ_grid(grid_ext,X_ind,Y_ind,Z_ind)
+                CHCKERR('')
                 
-                ! merge files
-                call merge_GP(file_names,file_name,delete=.true.)
-                
-                ! draw plot
-                call draw_GP(trim(plot_title),file_name,X%n_mod,.true.,.false.)
-                
-                ! deallocate
-                deallocate(file_names)
+                ! copy values to XYZ
+                allocate(XYZ(n_theta_plot,n_zeta_plot,grid_ext%grp_n_r,3))
+                XYZ(:,:,:,1) = X_ind
+                XYZ(:,:,:,2) = Y_ind
+                XYZ(:,:,:,3) = Z_ind
+                deallocate(X_ind,Y_ind,Z_ind)
             end if
             
-            ! maximum of each mode
-            allocate(X_vec_max(X%n_mod))
-            X_vec_max = 0.0_dp
-            do kd = 1,X%n_mod
-                X_vec_max(kd) = grid_X%grp_r_F(maxloc(abs(X%vec(kd,:,X_id)),1))
-            end do
-            
-            ! gather all parllel X_vec_max arrays in one serial array
-            ierr = get_ser_var(X_vec_max,ser_X_vec_max)
+            ! convert all E coordinates to F coordinates
+            ierr = coord_E2F(eq,grid_eq,&
+                &grid_ext%grp_r_E,grid_ext%theta_E,grid_ext%zeta_E,&
+                &grid_ext%grp_r_F,grid_ext%theta_F,grid_ext%zeta_F)
             CHCKERR('')
-            
-            ! find the maximum of the different ranks and put it in X_vec_max of
-            ! group master
-            if (grp_rank.eq.0) then
-                do kd = 1,X%n_mod
-                    X_vec_max(kd) = maxval([(ser_X_vec_max(kd+id*X%n_mod),&
-                        &id=0,grp_n_procs-1)])
-                end do
-                
-                ! set up file name of this rank and plot title
-                file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//'_max.dat'
-                plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
-                    &trim(i2str(X_id))//' - maximum of modes'
-                
-                ! plot the maximum
-                call print_GP_2D(trim(plot_title),trim(file_name),&
-                    &[(kd*1._dp,kd=1,X%n_mod)],x=X_vec_max,draw=.false.)
-                
-                ! draw plot
-                call draw_GP(trim(plot_title),file_name,1,.true.,.false.)
-            end if
-            
-            ! deallocate
-            deallocate(x_plot,X_vec_extended)
-            
-            ! user output
-            call lvl_ud(-1)
-            call writo('Finished plot of the harmonics')
-        end function plot_harmonics
+        end function extend_grid
         
         ! Decomposes the  energy to see the fraction of  the individual terms in
         ! the total energy on a grid.
@@ -964,8 +826,7 @@ contains
         !   - geodesic kink term = sigma U* Qn
         integer function decompose_energy(grid_eq,eq,grid_X,X,n_sol_found) &
             &result(ierr)
-            use sol_ops, only: calc_real_XUQ, calc_real_U, calc_real_Qn, &
-                &calc_real_Qg
+            use sol_ops, only: calc_real_XUQ
             use grid_vars, only: grid_type
             use eq_vars, only: eq_type
             use X_vars, only: X_type

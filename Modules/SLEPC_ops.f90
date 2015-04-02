@@ -314,10 +314,12 @@ contains
         !   as  the interpolated  value  of  the previous  point  allow for  the
         !   calculation of every quantity
         ! Note: the factors i/n or i/m are already included in V_int_i
-        ! !!!! THE BOUNDARY CONDITIONS ARE STILL MISSING !!!!!!
+        ! !!!! THE REAL BOUNDARY CONDITIONS ARE STILL MISSING !!!!!!
         integer function fill_mat(V_0,V_1,V_2,mat) result(ierr)
+            use num_vars, only: use_pol_flux_F
             use X_vars, only: min_r_X, max_r_X
             use utilities, only: c, con
+            use eq_vars, only: max_flux_p_F, max_flux_t_F
             
             character(*), parameter :: rout_name = 'fill_mat'
             
@@ -342,12 +344,20 @@ contains
             PetscInt :: id, jd                                                  ! counters
             PetscInt :: k, m                                                    ! counters
             integer :: i_max_X_loc                                              ! local copy of i_max of X grid
+            PetscReal :: max_flux_F                                             ! maximum flux in Flux coordinates
             
             ! for tests
             PetscInt :: r_X_start, r_X_end                                      ! start block and end block
             
             ! initialize ierr
             ierr = 0
+            
+            ! set up max_flux_F
+            if (use_pol_flux_F) then
+                max_flux_F = max_flux_p_F
+            else
+                max_flux_F = max_flux_t_F
+            end if
             
             ! set nn_mod_1 and nn_mod_2
             nn_mod_1 = X%n_mod**2
@@ -391,7 +401,7 @@ contains
             end if
             
             ! set up step_size
-            step_size = (max_r_X-min_r_X)/(grid_X%n(3)-1.0) * X%max_flux_F      ! equidistant perturbation grid in perturb. coords.
+            step_size = (max_r_X-min_r_X)/(grid_X%n(3)-1.0) * max_flux_F        ! equidistant perturbation grid in perturb. coords.
             
             ! get the interpolated terms in V_int_i_next
             call interp_V(V_0,grp_r_eq(1),V_int_0_next)
@@ -657,9 +667,8 @@ contains
             CHCKERR('Coulnd''t end assembly of matrix')
         end function set_mat_BC
         
-        ! calculates the  variable grp_r_eq,  which is  later used  to calculate
-        ! V_interp_i  from the  tabulated values  in the  equilibrium grid,  the
-        ! oordinate of which is determined by the variable use_pol_flux_E
+        ! Calculates the  variable grp_r_eq,  which is  later used  to calculate
+        ! V_interp_i from the tabulated values in the equilibrium grid.
         subroutine get_interp_data(grp_r_eq)
             use utilities, only: con2dis, interp_fun
             

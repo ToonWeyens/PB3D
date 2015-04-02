@@ -32,8 +32,8 @@ program PB3D
         &start_time, passed_time, print_hello, print_goodbye
     use HDF5_ops, only: init_HDF5
     use driver, only: run_driver
-    use files, only: open_input, open_output, search_file, parse_args, &
-        &init_files, close_output
+    use files, only: open_input, open_output, parse_args, init_files, &
+        &close_output
     use input_ops, only: read_input
     use utilities, only: init_utilities
     use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, broadcast_vars

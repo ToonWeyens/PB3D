@@ -30,7 +30,6 @@ contains
             &eq_style
         use grid_vars, only: grid_type, min_par_X, max_par_X
         use eq_vars, only: eq_type
-        use X_vars, only: X_type
         
         character(*), parameter :: rout_name = 'calc_ang_grid'
         
@@ -42,10 +41,9 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: r_E_loc(:)                                     ! flux in Equilibrium coords.
-        real(dp), pointer :: flux_F(:), flux_E(:)                               ! either pol. or tor. flux
+        real(dp), pointer :: flux_F(:), flux_E(:)                               ! flux that the F and E use as normal coord.
         integer :: pmone                                                        ! plus or minus one
         integer :: kd                                                           ! counter
-        type(X_type) :: X_loc                                                   ! local X (only purpose is to match the interface)
         
         ! initialize ierr
         ierr = 0
@@ -102,10 +100,10 @@ contains
                         grid%zeta_F(:,1,kd) = grid%zeta_F(:,1,1)
                     end do
                     do kd = 1,grid%grp_n_r
-                        grid%zeta_F(:,1,kd) = pmone*eq%rot_t_E(kd,0)*&
-                            &grid%theta_F(:,1,kd)
+                        grid%theta_F(:,1,kd) = pmone*eq%rot_t_E(kd,0)*&
+                            &grid%zeta_F(:,1,kd)
                     end do
-                    grid%zeta_F = grid%zeta_F - alpha
+                    grid%theta_F = grid%theta_F - alpha
                 end if
                 
                 ! set up flux_F and flux_E
@@ -126,7 +124,7 @@ contains
                 ! convert  Flux  coordinates  to  Equilibrium  coordinates  (use
                 ! custom flux_E and  flux_F because the Flux  quantities are not
                 ! yet calculated)
-                ierr = coord_F2E(eq,grid,X_loc,flux_F,grid%theta_F,grid%zeta_F,&
+                ierr = coord_F2E(eq,grid,flux_F,grid%theta_F,grid%zeta_F,&
                     &r_E_loc,grid%theta_E,grid%zeta_E,&
                     &r_F_array=flux_F,r_E_array=flux_E)
                 CHCKERR('')
@@ -147,10 +145,8 @@ contains
     ! (theta,r,zeta)_E. Optionally,  two arrays  r_F_array and r_E_array  can be
     ! provided,  that define  the mapping  between the  both coordinate  system.
     ! Standard,  the  normalized  (wrt.  1)  poloidal and  /  or  toroidal  flux
-    ! variables in Flux coordinates are used.
-    ! Note: in the default case, both grids  are assumed to be expressed in Flux
-    ! coordinates.
-    integer function coord_F2E_rtz(eq,eq_grid,X,r_F,theta_F,zeta_F,r_E,&
+    ! variables in Flux coordinates are used from the equilibrium.
+    integer function coord_F2E_rtz(eq,grid_eq,r_F,theta_F,zeta_F,r_E,&
         &theta_E,zeta_E,r_F_array,r_E_array) result(ierr)                       ! version with r, theta and zeta
         use num_vars, only: tol_NR, eq_style
         use fourier_ops, only: fourier2real, calc_trigon_factors
@@ -158,14 +154,12 @@ contains
         use utilities, only: interp_fun
         use eq_vars, only: eq_type
         use grid_vars, only: grid_type
-        use X_vars, only: X_type
         
         character(*), parameter :: rout_name = 'coord_F2E_rtz'
         
         ! input / output
         type(eq_type) :: eq                                                     ! equilibrium in which to convert variables
-        type(grid_type) :: eq_grid                                              ! equilibrium grid (for normal group limits)
-        type(X_type) :: X                                                       ! perturbation variables
+        type(grid_type) :: grid_eq                                              ! equilibrium grid (for normal group limits)
         real(dp), intent(in) :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)           ! Flux coords.
         real(dp), intent(inout) :: r_E(:), theta_E(:,:,:), zeta_E(:,:,:)        ! Equilibrium coords.
         real(dp), intent(in), optional, target :: r_F_array(:), r_E_array(:)    ! optional arrays that define mapping between two coord. systems
@@ -212,7 +206,7 @@ contains
         end if
         
         ! convert normal position
-        ierr = coord_F2E_r(eq,X,r_F,r_E,r_F_array,r_E_array)
+        ierr = coord_F2E_r(eq,r_F,r_E,r_F_array,r_E_array)
         CHCKERR('')
         
         ! choose which equilibrium style is being used:
@@ -237,6 +231,7 @@ contains
             use utilities, only: calc_zero_NR
             use VMEC, only: mpol, ntor
             use num_vars, only: use_pol_flux_F
+            use eq_vars, only: max_flux_p_F, max_flux_t_F
             
             character(*), parameter :: rout_name = 'coord_F2E_VMEC'
             
@@ -255,10 +250,11 @@ contains
             else
                 if (use_pol_flux_F) then
                     flux_F => eq%flux_p_FD(:,0)
+                    r_F_factor = max_flux_p_F
                 else
                     flux_F => eq%flux_t_FD(:,0)
+                    r_F_factor = max_flux_t_F
                 end if
-                r_F_factor = X%max_flux_F
             end if
             
             ! the toroidal angle is trivial
@@ -274,11 +270,11 @@ contains
             do kd = 1,n_r
                 ! interpolate L_c and L_s at requested normal point r_F
                 ierr = interp_fun(L_c_loc_ind,&
-                    &L_c(:,:,eq_grid%i_min:eq_grid%i_max,0),&
+                    &L_c(:,:,grid_eq%i_min:grid_eq%i_max,0),&
                     &r_F(kd)*r_F_factor,flux_F)
                 CHCKERR('')
                 ierr = interp_fun(L_s_loc_ind,&
-                    &L_s(:,:,eq_grid%i_min:eq_grid%i_max,0),&
+                    &L_s(:,:,grid_eq%i_min:grid_eq%i_max,0),&
                     &r_F(kd)*r_F_factor,flux_F)
                 CHCKERR('')
                 
@@ -391,25 +387,23 @@ contains
             deallocate(trigon_factors_loc)
         end function dfun_pol
     end function coord_F2E_rtz
-    integer function coord_F2E_r(eq,X,r_F,r_E,r_F_array,r_E_array) &
+    integer function coord_F2E_r(eq,r_F,r_E,r_F_array,r_E_array) &
         &result(ierr)                                                           ! version with only r
         use num_vars, only: use_pol_flux_E, use_pol_flux_F
         use utilities, only: interp_fun
-        use eq_vars, only: eq_type
-        use X_vars, only: X_type
+        use eq_vars, only: eq_type, max_flux_p_F, max_flux_t_F
         
         character(*), parameter :: rout_name = 'coord_F2E_r'
         
         ! input / output
         type(eq_type) :: eq                                                     ! equilibrium in which to convert variables
-        type(X_type) :: X                                                       ! perturbation variables
         real(dp), intent(in) :: r_F(:)                                          ! perturbation coords.
         real(dp), intent(inout) :: r_E(:)                                       ! Equilibrium coords.
         real(dp), intent(in), optional, target :: r_F_array(:), r_E_array(:)    ! optional arrays that define mapping between two coord. systems
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), pointer :: flux_F(:), flux_E(:)                               ! either pol. or tor. flux
+        real(dp), pointer :: flux_F(:), flux_E(:)                               ! flux that the F and E use as normal coord.
         real(dp) :: r_F_factor, r_E_factor                                      ! mult. factors for r_F and r_E
         integer :: n_r                                                          ! dimension of the grid
         integer :: kd                                                           ! counter
@@ -442,16 +436,18 @@ contains
         else
             if (use_pol_flux_F) then
                 flux_F => eq%flux_p_FD(:,0)
+                r_F_factor = max_flux_p_F
             else
                 flux_F => eq%flux_t_FD(:,0)
+                r_F_factor = max_flux_t_F
             end if
             if (use_pol_flux_E) then
                 flux_E => eq%flux_p_FD(:,0)
+                r_E_factor = max_flux_p_F
             else
                 flux_E => eq%flux_t_FD(:,0)
+                r_E_factor = max_flux_t_F
             end if
-            r_F_factor = X%max_flux_F
-            r_E_factor = eq%max_flux_F
         end if
         
         ! convert normal position
@@ -467,23 +463,19 @@ contains
     ! (r,theta,zeta)_F. Optionally,  two arrays  r_E_array and r_F_array  can be
     ! provided,  that define  the mapping  between the  both coordinate  system.
     ! Standard,  the  normalized  (wrt.  1)  poloidal and  /  or  toroidal  flux
-    ! variables in Flux coordinates are used.
-    ! Note: in the default case, both grids  are assumed to be expressed in Flux
-    ! coordinates.
-    integer function coord_E2F_rtz(eq,eq_grid,X,r_E,theta_E,zeta_E,r_F,&
+    ! variables in Flux coordinates are used from the equilibrium.
+    integer function coord_E2F_rtz(eq,grid_eq,r_E,theta_E,zeta_E,r_F,&
         &theta_F,zeta_F,r_E_array,r_F_array) result(ierr)                       ! version with r, theta and zeta
         use num_vars, only: eq_style
         use utilities, only: interp_fun
         use eq_vars, only: eq_type
         use grid_vars, only: grid_type
-        use X_vars, only: X_type
         
         character(*), parameter :: rout_name = 'coord_E2F_rtz'
         
         ! input / output
         type(eq_type) :: eq                                                     ! equilibrium in which to convert variables
-        type(grid_type) :: eq_grid                                              ! equilibrium grid (for normal group limits)
-        type(X_type) :: X                                                       ! perturbation variables
+        type(grid_type) :: grid_eq                                              ! equilibrium grid (for normal group limits)
         real(dp), intent(in) :: r_E(:), theta_E(:,:,:), zeta_E(:,:,:)           ! Equilibrium coords.
         real(dp), intent(inout) :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)        ! Flux coords.
         real(dp), intent(in), optional, target :: r_E_array(:), r_F_array(:)    ! optional arrays that define mapping between two coord. systems
@@ -525,7 +517,7 @@ contains
         end if
         
         ! convert normal position
-        ierr = coord_E2F_r(eq,X,r_E,r_F,r_E_array,r_F_array)
+        ierr = coord_E2F_r(eq,r_E,r_F,r_E_array,r_F_array)
         CHCKERR('')
         
         ! choose which equilibrium style is being used:
@@ -550,6 +542,7 @@ contains
             use VMEC, only: mpol, ntor, L_c, L_s
             use fourier_ops, only: calc_trigon_factors, fourier2real
             use num_vars, only: use_pol_flux_E
+            use eq_vars, only: max_flux_p_F, max_flux_t_F
             
             character(*), parameter :: rout_name = 'coord_E2F_VMEC'
             
@@ -557,7 +550,7 @@ contains
             real(dp), allocatable :: L_c_loc(:,:,:), L_s_loc(:,:,:)             ! local version of L_c and L_s
             real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:,:)            ! trigonometric factor cosine for the inverse fourier transf.
             real(dp), allocatable :: lam(:,:,:)                                 ! lambda
-            real(dp), pointer :: flux_E(:)                                      ! either pol. or tor. flux
+            real(dp), pointer :: flux_E(:)                                      ! flux that the E coord. uses as normal coord.
             real(dp) :: r_E_factor                                              ! mult. factors for r_E
             
             ! initialize ierr
@@ -570,10 +563,11 @@ contains
             else
                 if (use_pol_flux_E) then
                     flux_E => eq%flux_p_FD(:,0)
+                    r_E_factor = max_flux_p_F
                 else
                     flux_E => eq%flux_t_FD(:,0)
+                    r_E_factor = max_flux_t_F
                 end if
-                r_E_factor = eq%max_flux_F
             end if
             
             ! the toroidal angle is trivial
@@ -588,11 +582,11 @@ contains
             ! loop over all normal points
             do kd = 1,n_r
                 ierr = interp_fun(L_c_loc(:,:,kd),&
-                    &L_c(:,:,eq_grid%i_min:eq_grid%i_max,0),&
+                    &L_c(:,:,grid_eq%i_min:grid_eq%i_max,0),&
                     &r_E(kd),flux_E/r_E_factor)
                 CHCKERR('')
                 ierr = interp_fun(L_s_loc(:,:,kd),&
-                    &L_s(:,:,eq_grid%i_min:eq_grid%i_max,0),&
+                    &L_s(:,:,grid_eq%i_min:grid_eq%i_max,0),&
                     &r_E(kd),flux_E/r_E_factor)
                 CHCKERR('')
             end do
@@ -615,25 +609,22 @@ contains
             deallocate(lam)
         end function coord_E2F_VMEC
     end function coord_E2F_rtz
-    integer function coord_E2F_r(eq,X,r_E,r_F,r_E_array,r_F_array) &
-        &result(ierr)                                                           ! version with only r
-        use X_vars, only: X_type
+    integer function coord_E2F_r(eq,r_E,r_F,r_E_array,r_F_array) result(ierr)   ! version with only r
         use num_vars, only: use_pol_flux_E, use_pol_flux_F
         use utilities, only: interp_fun
-        use eq_vars, only: eq_type
+        use eq_vars, only: eq_type, max_flux_p_F, max_flux_t_F
         
         character(*), parameter :: rout_name = 'coord_E2F_r'
         
         ! input / output
         type(eq_type) :: eq                                                     ! equilibrium in which to convert variables
-        type(X_type) :: X                                                       ! perturbation variables
         real(dp), intent(in) :: r_E(:)                                          ! Equilibrium coords.
         real(dp), intent(inout) :: r_F(:)                                       ! Flux coords.
         real(dp), intent(in), optional, target :: r_E_array(:), r_F_array(:)    ! optional arrays that define mapping between two coord. systems
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), pointer :: flux_F(:), flux_E(:)                               ! either pol. or tor. flux
+        real(dp), pointer :: flux_F(:), flux_E(:)                               ! flux that F and E coordinates use as normal coordinate
         real(dp) :: r_E_factor, r_F_factor                                      ! mult. factors for r_F and r_E
         integer :: n_r                                                          ! dimension of the grid
         integer :: kd                                                           ! counter
@@ -666,16 +657,18 @@ contains
         else
             if (use_pol_flux_E) then
                 flux_E => eq%flux_p_FD(:,0)
+                r_E_factor = max_flux_p_F
             else
                 flux_E => eq%flux_t_FD(:,0)
+                r_E_factor = max_flux_t_F
             end if
             if (use_pol_flux_F) then
                 flux_F => eq%flux_p_FD(:,0)
+                r_F_factor = max_flux_p_F
             else
                 flux_F => eq%flux_t_FD(:,0)
+                r_F_factor = max_flux_t_F
             end if
-            r_E_factor = eq%max_flux_F
-            r_F_factor = X%max_flux_F
         end if
         
         ! convert normal position

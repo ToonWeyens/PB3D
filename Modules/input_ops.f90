@@ -185,7 +185,7 @@ contains
             plot_grid = .false.                                                 ! do not plot the grid
             plot_flux_q = .false.                                               ! do not plot the flux quantities
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
-            max_n_plots = 4                                                     ! maximum nr. of modes for which to plot output in plot_X_vec
+            max_n_plots = 4                                                     ! maximum nr. of modes for which to plot output in plot_X_vecs
             output_style = 1                                                    ! GNUPlot output
             use_normalization = .true.                                          ! use normalization for the variables
             
@@ -199,7 +199,7 @@ contains
                 case (1)                                                        ! VMEC
                     n_theta_plot = 201                                          ! nr. poloidal points in plot
                     n_zeta_plot = 101                                           ! nr. toroidal points in plot
-                case (2)                                                        ! VMEC
+                case (2)                                                        ! HELENA
                     n_theta_plot = 501                                          ! nr. poloidal points in plot
                     n_zeta_plot = 1                                             ! nr. toroidal points in plot
             end select

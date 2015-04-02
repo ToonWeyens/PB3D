@@ -12,8 +12,8 @@
     tol_r                   = 5.0E-6
     n_procs_per_alpha       = 2
     prim_X                  = 10
-    min_sec_X               = 230
-    max_sec_X               = 240
+    min_sec_X               = 100
+    max_sec_X               = 101
     use_pol_flux_F          = .true.
     n_sol_requested         = 1000
     n_sol_plotted           = 2,2,2,2

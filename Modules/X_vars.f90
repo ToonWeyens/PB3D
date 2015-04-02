@@ -42,7 +42,6 @@ module X_vars
         integer :: max_m                                                        ! highest poloidal mode number m
         integer, allocatable :: n(:)                                            ! vector of poloidal mode numbers
         integer, allocatable :: m(:)                                            ! vector of poloidal mode numbers
-        real(dp) :: max_flux_E, max_flux_F                                      ! max. flux (pol. or tor.) of pert. grid
         complex(dp), allocatable :: vec(:,:,:)                                  ! Eigenvector solution, with ghost region
         complex(dp), allocatable :: val(:)                                      ! Eigenvalue solution
         real(dp), allocatable :: mu0sigma(:,:,:)                                ! parallel current
