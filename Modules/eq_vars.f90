@@ -19,9 +19,10 @@
 !------------------------------------------------------------------------------!
 module eq_vars
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: dp, pi, max_str_ln
-    use messages, only: writo, lvl_ud, print_ar_2, print_ar_1
-    use str_ops, only: i2str
     use grid_vars, only: grid_type
 
     implicit none
@@ -74,7 +75,6 @@ contains
     ! sizes are used, not the coordinate values.
     integer function create_eq(eq,grid) result(ierr)
         use num_vars, only: max_deriv, eq_style
-        use grid_vars, only: grid_type
         
         character(*), parameter :: rout_name = 'create_eq'
         

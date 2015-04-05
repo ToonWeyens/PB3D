@@ -3,18 +3,21 @@
 !------------------------------------------------------------------------------!
 module metric_ops 
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: dp, max_deriv, max_str_ln
-    use messages, only: writo, print_ar_2, print_ar_1, lvl_ud
-    use str_ops, only: r2str, i2str
     use utilities, only: check_deriv
-    use output_ops, only: print_GP_3D, print_GP_2D, print_HDF5
+    use grid_vars, only: grid_type
+    use eq_vars, only: eq_type
+    use metric_vars, only: metric_type
     
     implicit none
     private
     public calc_T_VC, calc_g_C, calc_jac_C, calc_g_V, calc_jac_V, &
         &calc_jac_H, calc_T_HF, calc_T_VF, calc_h_H, &
         &calc_inv_met, calc_g_F, calc_jac_F, normalize_metric_vars, &
-        &calc_f_deriv, &
+        &calc_f_deriv, test_T_VF, &
         &plot_info
     
     ! interfaces
@@ -67,8 +70,6 @@ contains
     ! calculate the lower metric elements in the C(ylindrical) coordinate system
     integer function calc_g_C_ind(eq,met,deriv) result(ierr)
         use utilities, only: add_arr_mult, c
-        use metric_vars, only: metric_type
-        use eq_vars, only: eq_type
         
         character(*), parameter :: rout_name = 'calc_g_C_ind'
         
@@ -97,9 +98,6 @@ contains
         CHCKERR('')
     end function calc_g_C_ind
     integer function calc_g_C_arr(eq,met,deriv) result(ierr)
-        use metric_vars, only: metric_type
-        use eq_vars, only: eq_type
-        
         character(*), parameter :: rout_name = 'calc_g_C_arr'
         
         ! input / output
@@ -123,7 +121,6 @@ contains
     !       already. If not, the results will be incorrect!
     integer function calc_g_V_ind(met,deriv) result(ierr)
         use num_vars, only: max_deriv
-        use metric_vars, only: metric_type
         
         character(*), parameter :: rout_name = 'calc_g_V_ind'
         
@@ -142,8 +139,6 @@ contains
         CHCKERR('')
     end function calc_g_V_ind
     integer function calc_g_V_arr(met,deriv) result(ierr)
-        use metric_vars, only: metric_type
-        
         character(*), parameter :: rout_name = 'calc_g_V_arr'
         
         ! input / output
@@ -162,9 +157,6 @@ contains
     ! calculate the  metric coefficients in the  equilibrium H(ELENA) coordinate
     ! system using the HELENA output
     integer function calc_h_H_ind(grid,eq,met,deriv) result(ierr)
-        use eq_vars, only: eq_type
-        use metric_vars, only: metric_type
-        use grid_vars, only: grid_type
         use num_vars, only: max_deriv
         use HELENA, only: h_H_11, h_H_12, h_H_33
         use utilities, only: calc_deriv, calc_det, c
@@ -271,10 +263,6 @@ contains
         end if
     end function calc_h_H_ind
     integer function calc_h_H_arr(grid,eq,met,deriv) result(ierr)
-        use eq_vars, only: eq_type
-        use metric_vars, only: metric_type
-        use grid_vars, only: grid_type
-        
         character(*), parameter :: rout_name = 'calc_h_H_arr'
         
         ! input / output
@@ -297,7 +285,6 @@ contains
     ! trans- formation matrices
     integer function calc_g_F_ind(met,deriv) result(ierr)
         use num_vars, only: max_deriv
-        use metric_vars, only: metric_type
         
         character(*), parameter :: rout_name = 'calc_g_F_ind'
         
@@ -317,8 +304,6 @@ contains
         CHCKERR('')
     end function calc_g_F_ind
     integer function calc_g_F_arr(met,deriv) result(ierr)
-        use metric_vars, only: metric_type
-        
         character(*), parameter :: rout_name = 'calc_g_F_arr'
         
         ! input / output
@@ -464,9 +449,6 @@ contains
     
     ! calculate the jacobian in cylindrical coordinates
     integer function calc_jac_C_ind(eq,met,deriv) result(ierr)
-        use eq_vars, only: eq_type
-        use metric_vars, only: metric_type
-        
         character(*), parameter :: rout_name = 'calc_jac_C_ind'
         
         ! input / output
@@ -485,9 +467,6 @@ contains
             &eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3))
     end function calc_jac_C_ind
     integer function calc_jac_C_arr(eq,met,deriv) result(ierr)
-        use metric_vars, only: metric_type
-        use eq_vars, only: eq_type
-        
         character(*), parameter :: rout_name = 'calc_jac_C_arr'
         
         ! input / output
@@ -509,7 +488,6 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_jac_V_ind(met,deriv) result(ierr)
-        use metric_vars, only: metric_type
         use utilities, only: add_arr_mult
         
         character(*), parameter :: rout_name = 'calc_jac_V_ind'
@@ -534,8 +512,6 @@ contains
         CHCKERR('')
     end function calc_jac_V_ind
     integer function calc_jac_V_arr(met,deriv) result(ierr)
-        use metric_vars, only: metric_type
-        
         character(*), parameter :: rout_name = 'calc_jac_V_arr'
         
         ! input / output
@@ -555,9 +531,6 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_jac_H_ind(grid,eq,met,deriv) result(ierr)
-        use eq_vars, only: eq_type
-        use metric_vars, only: metric_type
-        use grid_vars, only: grid_type
         use HELENA, only:  h_H_33, RBphi
         use utilities, only: calc_deriv
         
@@ -637,10 +610,6 @@ contains
         end if
     end function calc_jac_H_ind
     integer function calc_jac_H_arr(grid,eq,met,deriv) result(ierr)
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
-        use metric_vars, only: metric_type
-        
         character(*), parameter :: rout_name = 'calc_jac_H_arr'
         
         ! input / output
@@ -663,7 +632,6 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_jac_F_ind(met,deriv) result(ierr)
-        use metric_vars, only: metric_type
         use utilities, only: add_arr_mult
         
         character(*), parameter :: rout_name = 'calc_jac_F_ind'
@@ -688,8 +656,6 @@ contains
         CHCKERR('')
     end function calc_jac_F_ind
     integer function calc_jac_F_arr(met,deriv) result(ierr)
-        use metric_vars, only: metric_type
-        
         character(*), parameter :: rout_name = 'calc_jac_F_arr'
         
         ! input / output
@@ -709,8 +675,6 @@ contains
     ! coordinate system
     integer function calc_T_VC_ind(eq,met,deriv) result(ierr)
         use utilities, only: add_arr_mult, c
-        use metric_vars, only: metric_type
-        use eq_vars, only: eq_type
         
         character(*), parameter :: rout_name = 'calc_T_VC_ind'
         
@@ -757,9 +721,6 @@ contains
         CHCKERR('')
     end function calc_T_VC_ind
     integer function calc_T_VC_arr(eq,met,deriv) result(ierr)
-        use metric_vars, only: metric_type
-        use eq_vars, only: eq_type
-        
         character(*), parameter :: rout_name = 'calc_T_VC_arr'
         
         ! input / output
@@ -780,9 +741,6 @@ contains
     ! oordinate system
     integer function calc_T_VF_ind(grid,eq,met,deriv) result(ierr)
         use num_vars, only: pi, use_pol_flux_F
-        use metric_vars, only: metric_type
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
         use utilities, only: add_arr_mult, c
         
         character(*), parameter :: rout_name = 'calc_T_VF_ind'
@@ -943,10 +901,6 @@ contains
         end if
     end function calc_T_VF_ind
     integer function calc_T_VF_arr(grid,eq,met,deriv) result(ierr)
-        use metric_vars, only: metric_type
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
-        
         character(*), parameter :: rout_name = 'calc_T_VF_arr'
         
         ! input / output
@@ -968,10 +922,7 @@ contains
     ! system
     integer function calc_T_HF_ind(grid,eq,met,deriv) result(ierr)
         use num_vars, only: pi, use_pol_flux_F
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
         use utilities, only: add_arr_mult, c
-        use metric_vars, only: metric_type
         
         character(*), parameter :: rout_name = 'calc_T_HF_ind'
         
@@ -1132,10 +1083,6 @@ contains
         end if
     end function calc_T_HF_ind
     integer function calc_T_HF_arr(grid,eq,met,deriv) result(ierr)
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
-        use metric_vars, only: metric_type
-        
         character(*), parameter :: rout_name = 'calc_T_HF_arr'
         
         ! input / output
@@ -1626,7 +1573,6 @@ contains
     ! normalizes metric coefficients  and jacobian in flux  coordinates, as well
     ! as the  poloidal and toroidal flux
     subroutine normalize_metric_vars(met)
-        use metric_vars, only: metric_type
         use eq_vars, only: R_0, B_0, psi_0
         
         ! input / output
@@ -1660,4 +1606,114 @@ contains
             met%jac_FD(:,:,:,:,id,:) = met%jac_FD(:,:,:,:,id,:) * psi_0**id
         end do
     end subroutine normalize_metric_vars
+    
+#if ldebug
+    ! test T_VF
+    ! See if it complies with the theory of [ADD REF]
+    integer function test_T_VF(grid_eq,eq,met) result(ierr)
+        use num_vars, only: use_pol_flux_F, pi
+        use grid_vars, only: destroy_grid
+        use grid_ops, only: trim_grid
+        use utilities, only: c
+        
+        character(*), parameter :: rout_name = 'test_T_VF'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(metric_type), intent(in) :: met                                    ! metric variables
+        
+        ! local variables
+        integer :: id, kd                                                       ! counter
+        real(dp), allocatable :: res(:,:,:,:)                                   ! calculated result
+        character(len=max_str_ln) :: var_names(9)                               ! names of variables in plot
+        character(len=max_str_ln) :: file_name                                  ! name of plot file
+        character(len=max_str_ln) :: description                                ! description of plot
+        integer :: tot_dim(4), grp_dim(4), grp_offset(4)                        ! total and group dimensions and group offset
+        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! output
+        call writo('Going to test whether T_VF complies with the theory')
+        call lvl_ud(1)
+        
+        ! set up res
+        allocate(res(grid_eq%n(1),grid_eq%n(2),grid_eq%grp_n_r,9))
+        res = 0.0_dp
+        
+        ! choose depending on using poloidal flux or not
+        if (use_pol_flux_F) then                                                ! using poloidal flux
+            ! calculate T_VF(1,1)
+            do kd = 1,grid_eq%grp_n_r
+                res(:,:,kd,1) = grid_eq%theta_F(:,:,kd)*eq%q_saf_E(kd,1) + &
+                    &eq%L_E(:,:,kd,0,0,1)*eq%q_saf_E(kd,0)
+            end do
+            ! calculate T_VF(2,1)
+            do kd = 1,grid_eq%grp_n_r
+                res(:,:,kd,2) = (1._dp + eq%L_E(:,:,kd,0,1,0))*eq%q_saf_E(kd,0)
+            end do
+            ! calculate T_VF(3,1)
+            do kd = 1,grid_eq%grp_n_r
+                res(:,:,kd,3) = -1._dp + eq%L_E(:,:,kd,0,0,1)*eq%q_saf_E(kd,0)
+            end do
+            ! calculate T_VF(1,2)
+            do kd = 1,grid_eq%grp_n_r
+                res(:,:,kd,4) = eq%flux_p_E(kd,1)/(2*pi)
+            end do
+            ! calculate T_VF(1,3)
+            res(:,:,:,7) = eq%L_E(:,:,:,1,0,0)
+            ! calculate T_VF(2,3)
+            res(:,:,:,8) = 1._dp + eq%L_E(:,:,:,0,1,0)
+            ! calculate T_VF(3,3)
+            res(:,:,:,9) = eq%L_E(:,:,:,0,0,1)
+        else                                                                    ! using toroidal flux
+        end if
+        
+        ! trim extended grid into plot grid
+        ierr = trim_grid(grid_eq,grid_trim)
+        CHCKERR('')
+        
+        ! set up plot variables for calculated values
+        do id = 1,3
+            do kd = 1,3
+                var_names(c([kd,id],.false.)) = 'T_VF calc '//&
+                    &trim(i2str(kd))//','//trim(i2str(id))
+            end do
+        end do
+        file_name = 'TEST_T_VF_calc'
+        description = 'Calculated T_VF'
+        tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3),9]
+        grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,9]
+        grp_offset = [0,0,grid_trim%i_min-1,9]
+        
+        ! output calculated values
+        call print_HDF5(var_names,file_name,res,tot_dim=tot_dim,&
+            &grp_dim=grp_dim,grp_offset=grp_offset,col=1,&
+            &description=trim(description))
+        
+        ! set up plot variables for input values
+        do id = 1,3
+            do kd = 1,3
+                var_names(c([kd,id],.false.)) = 'T_VF input '//&
+                    &trim(i2str(kd))//','//trim(i2str(id))
+            end do
+        end do
+        file_name = 'TEST_T_VF_input'
+        description = 'Input T_VF'
+        
+        ! output input values
+        call print_HDF5(var_names,file_name,met%T_EF(:,:,:,:,0,0,0),&
+            &tot_dim=tot_dim,grp_dim=grp_dim,grp_offset=grp_offset,col=1,&
+            &description=trim(description))
+        
+        ! clean up
+        call destroy_grid(grid_trim)
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Test complete')
+    end function test_T_VF
+#endif
 end module metric_ops

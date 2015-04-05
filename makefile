@@ -82,7 +82,10 @@ PB3D:	$(ObjectFiles)
 %.o : %.f90
 	$(COMPILE) -c $<
 clean:
-	@rm -f *.o *.mod *~ gmon.out output.xdot fort.* results.txt PB3D_out* tempoutput.dat
+	@rm -f *.o *.mod *~ gmon.out output.xdot fort.* results.txt PB3D_out* tempoutput.dat Run/*~
 
-output:
-	@rm -f *.m *.nc Plots/*
+rm_output:
+	@rm -f Run/PB3D_out* Run/Plots/* Run/Data/* Run/Scripts/*
+code_stats:
+	cloc .
+	#@find . -name '*.f90' | xargs wc -l

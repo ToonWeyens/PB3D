@@ -4,10 +4,10 @@
 !------------------------------------------------------------------------------!
 module output_ops
 #include <PB3D_macros.h>
-    use str_ops, only: i2str, r2strt, r2str
+    use str_ops
+    use messages
     use num_vars, only: dp, max_str_ln, no_plots, iu, plot_dir, data_dir, &
         &script_dir
-    use messages, only: writo, stop_time, start_time, lvl_ud
     use files, only: nextunit
     
     implicit none
@@ -407,15 +407,16 @@ contains
                 plot_cmd = ''
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
-                        loc_draw_op = 'linestyle '//trim(i2str(ifl))
+                        loc_draw_op = 'with lines linestyle '//&
+                        &trim(i2str(ifl))
                     else
-                        loc_draw_op = 'linestyle 1'
+                        loc_draw_op = 'with linespoints linestyle 1'
                     end if
                     plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
                     &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
                     &':'//trim(i2str(nplt+iplt))//' title '''//trim(var_name)//&
                     &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
-                    &')'' with linespoints '//trim(loc_draw_op)//','
+                    &')'' '//trim(loc_draw_op)//','
                     if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
                 end do
                 write(cmd_i,*) trim(plot_cmd)
@@ -426,16 +427,16 @@ contains
                 plot_cmd = ''
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
-                        loc_draw_op = 'linestyle '//trim(i2str(ifl))
+                        loc_draw_op = 'with lines linestyle '//&
+                        &trim(i2str(ifl))
                     else
-                        loc_draw_op = 'linestyle 1'
+                        loc_draw_op = 'with linespoints linestyle 1'
                     end if
                     plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
                     &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
                     &':'//trim(i2str(nplt+iplt))//':'//trim(i2str(2*nplt+iplt))&
                     &//' title '''//trim(var_name)//' ('//trim(i2str(iplt))&
-                    &//'/'//trim(i2str(nplt))//')'' with linespoints '//&
-                    &trim(loc_draw_op)//','
+                    &//'/'//trim(i2str(nplt))//')'' '//trim(loc_draw_op)//','
                     if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
                 end do
                 write(cmd_i,*) trim(plot_cmd)
@@ -654,15 +655,16 @@ contains
                 plot_cmd = 'plot'
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
-                        loc_draw_op = 'linestyle '//trim(i2str(ifl))
+                        loc_draw_op = 'with lines linestyle '//&
+                        &trim(i2str(ifl))
                     else
-                        loc_draw_op = 'linestyle 1'
+                        loc_draw_op = 'with linespoints linestyle 1'
                     end if
                     plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
                     &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
                     &':'//trim(i2str(nplt+iplt))//' title '''//trim(var_name)//&
                     &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
-                    &')'' with linespoints '//trim(loc_draw_op)
+                    &')'' '//trim(loc_draw_op)
                     if (ifl.ne.nfl) plot_cmd = trim(plot_cmd)//', '
                 end do
                 write(cmd_i,*) trim(plot_cmd)
@@ -672,16 +674,16 @@ contains
                 plot_cmd = 'splot '
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
-                        loc_draw_op = 'linestyle '//trim(i2str(ifl))
+                        loc_draw_op = 'with lines linestyle '//&
+                        &trim(i2str(ifl))
                     else
-                        loc_draw_op = 'linestyle 1'
+                        loc_draw_op = 'with linespoints linestyle 1'
                     end if
                     plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
                     &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
                     &':'//trim(i2str(nplt+iplt))//':'//trim(i2str(2*nplt+iplt))&
                     &//' title '''//trim(var_name)//' ('//trim(i2str(iplt))&
-                    &//'/'//trim(i2str(nplt))//')'' with linespoints '//&
-                    &trim(loc_draw_op)
+                    &//'/'//trim(i2str(nplt))//')'' '//trim(loc_draw_op)
                     if (ifl.ne.nfl) plot_cmd = trim(plot_cmd)//', '
                 end do
                 write(cmd_i,*) trim(plot_cmd)
@@ -907,8 +909,8 @@ contains
         if (present(grp_dim)) then
             if (tot_dim_loc(col_id_loc).ne.grp_dim(col_id_loc)) then
                 istat = 1
-                call writo('WARNING: In print_HDF5, all the processes need to have &
-                    &the full range in the dimension given by col_id')
+                call writo('WARNING: In print_HDF5, all the processes need to &
+                    &have the full range in the dimension given by col_id')
                 CHCKSTT
             end if
         end if
@@ -1108,7 +1110,7 @@ contains
             else
                 allocate(X_3D(grp_dim_3D(1),grp_dim_3D(2),grp_dim_3D(3)))
                 do jd = 1,grp_dim_3D(1)
-                    X_3D(jd,:,:) = jd
+                    X_3D(jd,:,:) = grp_offset_3D(1) + jd
                 end do
             end if
             ! Y
@@ -1128,7 +1130,7 @@ contains
             else
                 allocate(Y_3D(grp_dim_3D(1),grp_dim_3D(2),grp_dim_3D(3)))
                 do jd = 1,grp_dim_3D(2)
-                    Y_3D(:,jd,:) = jd
+                    Y_3D(:,jd,:) = grp_offset_3D(2) + jd
                 end do
             end if
             ! X
@@ -1148,7 +1150,7 @@ contains
             else
                 allocate(Z_3D(grp_dim_3D(1),grp_dim_3D(2),grp_dim_3D(3)))
                 do jd = 1,grp_dim_3D(3)
-                    Z_3D(:,:,jd) = jd
+                    Z_3D(:,:,jd) = grp_offset_3D(3) + jd
                 end do
             end if
             ! variable
@@ -1252,7 +1254,7 @@ contains
         else
             allocate(X_ptr(size(var,1),size(var,2),size(var,3)))
             do id = 1,size(var,1)
-                X_ptr(id,:,:) = id
+                X_ptr(id,:,:) = grp_offset_loc(1) + id
             end do
         end if
         if (present(Y)) then
@@ -1260,7 +1262,7 @@ contains
         else
             allocate(Y_ptr(size(var,1),size(var,2),size(var,3)))
             do id = 1,size(var,2)
-                Y_ptr(:,id,:) = id
+                Y_ptr(:,id,:) =  grp_offset_loc(2) +id
             end do
         end if
         if (present(Z)) then
@@ -1268,7 +1270,7 @@ contains
         else
             allocate(Z_ptr(size(var,1),size(var,2),size(var,3)))
             do id = 1,size(var,3)
-                Z_ptr(:,:,id) = id
+                Z_ptr(:,:,id) =  grp_offset_loc(3) +id
             end do
         end if
         

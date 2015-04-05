@@ -3,10 +3,10 @@
 !------------------------------------------------------------------------------!
 module utilities
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: dp, qp, iu, max_str_ln
-    use messages, only: writo, print_ar_1, print_ar_2
-    use str_ops, only: i2str, r2strt, r2str
-    use output_ops, only: print_HDF5
     
     implicit none
     private

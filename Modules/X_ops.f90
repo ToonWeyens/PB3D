@@ -3,10 +3,14 @@
 !------------------------------------------------------------------------------!
 module X_ops
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: dp, iu, max_str_ln, pi
-    use messages, only: lvl_ud, writo, print_ar_2
-    use output_ops, only: print_GP_2D, print_GP_3D, draw_GP, print_HDF5
-    use str_ops, only: i2str, r2strt, r2str
+    use grid_vars, onlY: grid_type
+    use eq_vars, only: eq_type
+    use metric_vars, only: metric_type
+    use X_vars, only: X_type
 
     implicit none
     private
@@ -22,9 +26,6 @@ contains
     ! have to be integrated, with a complex exponential weighting function
     integer function prepare_X(eq,grid,met,X) result(ierr)
         use num_vars, only: use_pol_flux_F, plot_jq, grp_nr
-        use eq_vars, only: eq_type
-        use grid_vars, onlY: grid_type
-        use metric_vars, only: metric_type
         use X_vars, only: dealloc_X, X_type
         use utilities, only: c
         
@@ -172,12 +173,12 @@ contains
     ! [MPI] Parts by all processes, parts only by global master
     integer function resonance_plot(eq,grid,X) result(ierr)
         use num_vars, only: use_pol_flux_E, use_pol_flux_F, output_style, &
-            &grp_n_procs, grp_rank, tol_NR, no_plots
-        use eq_vars, only: eq_type, max_flux_p_F, max_flux_t_F
-        use grid_vars, only: grid_type
-        use X_vars, only: X_type
+            &grp_rank, tol_NR, no_plots
+        use eq_vars, only: max_flux_p_F, max_flux_t_F
         use utilities, only: calc_zero_NR, interp_fun
         use MPI_ops, only: get_ser_var
+        use grid_vars, only: destroy_grid
+        use grid_ops, only: trim_grid
         
         character(*), parameter :: rout_name = 'resonance_plot'
         
@@ -203,10 +204,9 @@ contains
         real(dp), allocatable :: jq_loc(:)                                      ! local version of jq
         real(dp), allocatable :: flux_X(:)                                      ! pol. or tor. perturbation flux in Flux coords.
         real(dp), allocatable :: flux_eq(:)                                     ! pol. or tor. equilibrium flux in Flux coords.
-        integer, allocatable :: tot_i_min(:)                                    ! i_min of Equilibrium grid of all processes
-        integer :: i_lim(2)                                                     ! limits of indices in group arrays
         integer :: n_r                                                          ! total number of normal points
         real(dp) :: tol_NR_old                                                  ! old value of tol_NR
+        type(grid_type) :: grid_trim                                            ! trimmed version of grid
         
         ! initialize ierr
         ierr = 0
@@ -214,43 +214,41 @@ contains
         ! bypass plots if no_plots
         if (no_plots) return
         
-        ! get min_i of equilibrium grid
-        ierr = get_ser_var([grid%i_min],tot_i_min,scatter=.true.)
+        ! get trimmed grid
+        ierr = trim_grid(grid,grid_trim)
         CHCKERR('')
-        
-        ! set index limits
-        i_lim(1) = 1                                                            ! start with first index of this group
-        if (grp_rank.lt.grp_n_procs-1) then                                     ! not last process
-            i_lim(2) = tot_i_min(grp_rank+2)-tot_i_min(grp_rank+1)              ! end with one before the start of next group
-        else                                                                    ! last process
-            i_lim(2) = grid%grp_n_r                                             ! end of this last group
-        end if
         
         ! get serial version of flux_X and safety factor or rot. transform
         if (use_pol_flux_F) then
-            ierr = get_ser_var(eq%flux_p_FD(i_lim(1):i_lim(2),0),flux_X)
+            ierr = get_ser_var(&
+                &eq%flux_p_FD(grid_trim%i_min:grid_trim%i_max,0),flux_X)
             CHCKERR('')
             if (grp_rank.eq.0) allocate(jq(size(flux_X),0:2))
             do jd = 0,2
-                ierr = get_ser_var(eq%q_saf_FD(i_lim(1):i_lim(2),jd),jq_loc)
+                ierr = get_ser_var(&
+                    &eq%q_saf_FD(grid_trim%i_min:grid_trim%i_max,jd),jq_loc)
                 CHCKERR('')
                 if(grp_rank.eq.0) jq(:,jd) = jq_loc*max_flux_p_F**jd
             end do
         else
-            ierr = get_ser_var(eq%flux_t_FD(i_lim(1):i_lim(2),0),flux_X)
+            ierr = get_ser_var(&
+                &eq%flux_t_FD(grid_trim%i_min:grid_trim%i_max,0),flux_X)
             CHCKERR('')
             if (grp_rank.eq.0) allocate(jq(size(flux_X),0:2))
             do jd = 0,2
-                ierr = get_ser_var(eq%rot_t_FD(i_lim(1):i_lim(2),jd),jq_loc)
+                ierr = get_ser_var(&
+                    &eq%rot_t_FD(grid_trim%i_min:grid_trim%i_max,jd),jq_loc)
                 CHCKERR('')
                 if(grp_rank.eq.0) jq(:,jd) = jq_loc*max_flux_t_F**jd
             end do
         end if
         if (use_pol_flux_E) then
-            ierr = get_ser_var(eq%flux_p_FD(i_lim(1):i_lim(2),0),flux_eq)
+            ierr = get_ser_var(&
+                &eq%flux_p_FD(grid_trim%i_min:grid_trim%i_max,0),flux_eq)
             CHCKERR('')
         else
-            ierr = get_ser_var(eq%flux_t_FD(i_lim(1):i_lim(2),0),flux_eq)
+            ierr = get_ser_var(&
+                &eq%flux_t_FD(grid_trim%i_min:grid_trim%i_max,0),flux_eq)
             CHCKERR('')
         end if
         
@@ -379,6 +377,7 @@ contains
             
             ! deallocate local variables
             deallocate(flux_X,flux_eq,jq)
+            call destroy_grid(grid_trim)
         
         end if
         
@@ -467,17 +466,11 @@ contains
             
             ! set up pol. and tor. angle for plot
             allocate(theta_plot(n_theta_plot,n_zeta_plot,1))
-            ierr = calc_eqd_grid(theta_plot(:,1,1),0._dp,2*pi)
-            CHCKERR('')
-            do id = 2,n_zeta_plot
-                theta_plot(:,id,1) = theta_plot(:,1,1)
-            end do
             allocate(zeta_plot(n_theta_plot,n_zeta_plot,1))
-            ierr = calc_eqd_grid(zeta_plot(1,:,1),0._dp,2*pi)
+            ierr = calc_eqd_grid(theta_plot,1*pi,3*pi,1)                        ! starting from pi gives nicer results
             CHCKERR('')
-            do id = 2,n_theta_plot
-                zeta_plot(id,:,1) = zeta_plot(1,:,1)
-            end do
+            ierr = calc_eqd_grid(zeta_plot,0*pi,2*pi,2)
+            CHCKERR('')
             
             ! set up vars
             allocate(vars(n_theta_plot,n_zeta_plot,1,X%n_mod))
@@ -547,8 +540,6 @@ contains
     integer function check_modes(eq,X) result(ierr)
         use MPI_ops, only: get_ser_var
         use num_vars, only: glb_rank, use_pol_flux_F, eq_style
-        use eq_vars, only: eq_type
-        use X_vars, only: X_type
         
         character(*), parameter :: rout_name = 'check_modes'
         
@@ -698,8 +689,6 @@ contains
         use num_vars, only: EV_style
         use str_ops, only: i2str
         use SLEPC_ops, only: solve_EV_system_SLEPC
-        use grid_vars, only: grid_type
-        use X_vars, only: X_type
         
         character(*), parameter :: rout_name = 'solve_EV_system'
         
@@ -737,8 +726,7 @@ contains
     integer function calc_rho(eq,grid) result(ierr)
         use num_vars, only: eq_style, use_normalization
         use VMEC, only: gam
-        use eq_vars, only: eq_type, rho_0
-        use grid_vars, only: grid_type
+        use eq_vars, only: rho_0
         
         character(*), parameter :: rout_name = 'calc_rho'
         
@@ -799,10 +787,6 @@ contains
     ! (see [ADD REF] for details)
     subroutine calc_PV(eq,grid,met,X)
         use num_vars, only: use_pol_flux_F, use_normalization, mu_0
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
-        use metric_vars, only: metric_type
-        use X_vars, only: X_type
         use utilities, only: c
         
         ! use input / output
@@ -822,9 +806,9 @@ contains
         ! jacobian
         real(dp), pointer :: J(:,:,:)                                           ! jac
         ! lower metric factors
-        real(dp), pointer :: g33(:,:,:)                                         ! h^alpha,psi
+        real(dp), pointer :: g33(:,:,:)                                         ! h_theta,theta or h_zeta,zeta
         ! upper metric factors
-        real(dp), pointer :: h22(:,:,:)                                         ! h^alpha,psi
+        real(dp), pointer :: h22(:,:,:)                                         ! h^psi,psi
         
         ! set up submatrices
         ! jacobian
@@ -921,10 +905,6 @@ contains
     ! eq grp_n_r values
     ! (see [ADD REF] for details)
     subroutine calc_KV(eq,grid,met,X)
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
-        use metric_vars, only: metric_type
-        use X_vars, only: X_type
         use utilities, only: c
         
         ! use input / output
@@ -1025,10 +1005,6 @@ contains
     ! as opposed to [ADD REF]
     integer function calc_U(eq,grid,met,X) result(ierr)
         use num_vars, only: use_pol_flux_F, mu_0, use_normalization, eq_style
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
-        use metric_vars, only: metric_type
-        use X_vars, only: X_type
         use utilities, only: c
         
         character(*), parameter :: rout_name = 'calc_U'
@@ -1352,10 +1328,6 @@ contains
     !   normal curvature kn = nabla psi / h^psi,psi * nabla (mu0 p + B^2/2)
     integer function calc_extra(eq,grid,met,X) result(ierr)
         use num_vars, only: mu_0
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
-        use metric_vars, only: metric_type
-        use X_vars, only: X_type
         use utilities, only: c
         
         character(*), parameter :: rout_name = 'calc_extra'
@@ -1483,8 +1455,6 @@ contains
     !   <V e^[i(n-l)ang_par_F]> = [ oint J V(l,n) e^i(n-l)ang_par_F dang_par_F ]
     integer function calc_V_int(grid,met,exp_ang,n_mod,V,V_int) result(ierr)
         use num_vars, only: use_pol_flux_F
-        use grid_vars, only: grid_type
-        use metric_vars, only: metric_type
         use utilities, only: calc_mult, c, con, is_sym
         
         character(*), parameter :: rout_name = 'calc_V_int'

@@ -3,10 +3,9 @@
 !------------------------------------------------------------------------------!
 module files
 #include <PB3D_macros.h>
+    use str_ops
+    use messages
     use num_vars, only: dp, max_str_ln, max_args
-    use str_ops, only: i2str
-    use messages, only: lvl_ud, writo, &
-        &lvl
     implicit none
     private
     public open_input, open_output, parse_args, init_files, input_name, &
@@ -164,7 +163,7 @@ contains
             eq_name = command_arg(2)
             eq_exts = ["wout"]
             eq_con_symb = [".","-","_"]
-            call search_file(eq_i,eq_name,eq_exts,eq_con_symb,'.txt')
+            call search_file(eq_i,eq_name,eq_exts,eq_con_symb)
             if (eq_name.eq."") then
                 ierr = 1
                 err_msg = 'No equilibrium file found and no default possible.'
@@ -283,8 +282,6 @@ contains
                 case (4)                                                        ! disable guessing Eigenfunction from previous Richardson level
                     call writo('option no_guess chosen: Eigenfunction not &
                         &guessed from previous Richardson level')
-                    call writo('(should be used for debugging only as it &
-                        &can lower performance)')
                     no_guess = .true.
                 case (5)                                                        ! disable plotting
                     call writo('option no_plots chosen: plotting disabled')
@@ -386,11 +383,10 @@ contains
     
     ! looks for the full name of a file and tests for its existence
     ! output:   full name of file, empty string if non-existent
-    subroutine search_file(i_unit,file_name,exts,con_symb,ext)
+    subroutine search_file(i_unit,file_name,exts,con_symb)
         character(len=*), intent(inout) :: file_name                            ! the name that is searched for
         character(len=*), intent(in) :: exts(:)                                 ! the possible extensions of the full_name
         character(len=*), intent(in) :: con_symb(:)                             ! the possible symbols to connect with the full_name
-        character(len=*), optional, intent(in) :: ext                           ! optional filetype extension at end of file name
         integer, intent(out) :: i_unit                                          ! will hold the file handle
         
         character(len=max_str_ln) :: mod_file_name                               ! modified file name
@@ -398,8 +394,7 @@ contains
         
         ! try to open the given name
         mod_file_name = file_name                                               ! copy file_name to mod_file_name
-        if (present(ext)) mod_file_name = trim(file_name) // trim(ext)          ! if an extension is provided, append it
-        open(unit=nextunit(i_unit),file=mod_file_name,status='old',iostat=istat)
+        open(unit=nextunit(i_unit),file=file_name,status='old',iostat=istat)
         if (istat.eq.0) return
         
         ! try with the extensions provided
@@ -410,8 +405,6 @@ contains
             do jd = 1, size(con_symb)                                           ! iterate over all possible connectors
                 mod_file_name = trim(exts(id))//trim(con_symb(jd))&
                     &//trim(file_name) 
-                if (present(ext)) mod_file_name = trim(mod_file_name) &         ! if an extension is provided, append it
-                    &// trim(ext)
                 call writo('trying ' // trim(mod_file_name))
                 open(unit=nextunit(i_unit),file=mod_file_name,status='old',&
                     &iostat=istat)
@@ -426,7 +419,7 @@ contains
         file_name = ""
         i_unit = 0
         call lvl_ud(-1)
-    end subroutine
+    end subroutine search_file
     
     ! Search for available  new unit where lun_min and lun_max  define the range
     ! of possible luns to check. The unit value is returned by the function, and

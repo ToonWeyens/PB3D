@@ -3,9 +3,11 @@
 !------------------------------------------------------------------------------!
 module metric_vars
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: dp, max_deriv, max_str_ln
-    use str_ops, only: r2str, i2str
-    use output_ops, only: print_GP_3D
+    use grid_vars, only: grid_type
     
     implicit none
     private
@@ -52,7 +54,6 @@ contains
     ! initialize metric variables
     integer function create_metric(grid,met) result(ierr)
         use num_vars, only: eq_style
-        use grid_vars, only: grid_type
         
         character(*), parameter :: rout_name = 'create_metric'
         

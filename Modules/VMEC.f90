@@ -3,10 +3,11 @@
 !------------------------------------------------------------------------------!
 module VMEC
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: &
         &dp, max_str_ln, pi
-    use str_ops, only: r2str, i2str
-    use messages, only: lvl_ud, writo, print_ar_1, print_ar_2
     use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
         &lasym, VMEC_version => version_, lfreeb, &                             ! stellerator symmetry, version number, free boundary or not
         &n_r_VMEC => ns, mpol, ntor, xn, xm, mnmax, nfp, &                      ! mpol, ntor = # modes

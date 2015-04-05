@@ -4,14 +4,18 @@
 !------------------------------------------------------------------------------!
 module sol_ops
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: dp, iu, max_str_ln, pi
-    use output_ops, only: print_GP_2D, draw_GP
-    use str_ops, only: i2str, r2str, r2strt
-    use messages, only: writo, lvl_ud
+    use grid_vars, only: grid_type
+    use eq_vars, only: eq_type
+    use metric_vars, only: metric_type
+    use X_vars, only: X_type
 
     implicit none
     private
-    public calc_real_XUQ, plot_X_vecs
+    public calc_real_XUQ, plot_X_vecs, test_output
     
     ! interfaces
     interface calc_real_XUQ
@@ -22,7 +26,7 @@ contains
     ! calculates the  normal or geodesic  component, or optionally  the parallel
     ! derivative of the plasma perturbation  or the normal or geodesic component
     ! of the magnetic field perturbation in the perturbation grid for a range in
-    ! normalized  time  (1  corresponds  to  one  period).  The  variable  XUQ_style
+    ! normalized  time (1  corresponds to  one period).  The variable  XUQ_style
     ! determines which one:
     !   - XUQ_style = 1: X (supports parallel derivative)
     !   - XUQ_style = 2: U (supports parallel derivative)
@@ -36,10 +40,6 @@ contains
     ! 1D grid.
     integer function calc_real_XUQ_arr(grid_eq,eq,grid_X,X,X_id,XUQ_style,time,&
         &XUQ,met,deriv) result(ierr)                                            ! (time) array version
-        use grid_vars, only: grid_type
-        use eq_vars, only: eq_type
-        use metric_vars, only: metric_type
-        use X_vars, only: X_type
         use num_vars, only: use_pol_flux_F, grp_rank, grp_n_procs
         use utilities, only: con2dis, calc_deriv
         
@@ -235,11 +235,6 @@ contains
     end function calc_real_XUQ_arr
     integer function calc_real_XUQ_ind(grid_eq,eq,grid_X,X,X_id,XUQ_style,time,&
         &XUQ,met,deriv) result(ierr)                                            ! (time) individual version
-        use grid_vars, only: grid_type
-        use eq_vars, only: eq_type
-        use metric_vars, only: metric_type
-        use X_vars, only: X_type
-        
         character(*), parameter :: rout_name = 'calc_real_XUQ_ind'
         
         ! input / output
@@ -272,6 +267,83 @@ contains
         deallocate(XUQ_arr)
     end function calc_real_XUQ_ind
     
+    ! performs some physical tests on output
+    !   - mu_0 D2p = 1/J (D3 B_2 - D2 B_3)
+    !   - mu_0 J D3p = 0 => D3 B_1 = D1 B_3
+    subroutine test_output(grid_eq,eq,met)
+        use utilities, only: c
+        use num_vars, only: mu_0
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        
+        ! local variables
+        real(dp), allocatable :: res(:,:,:)                                     ! result variable
+        integer :: kd                                                           ! counter
+        
+        write(*,*) '!!! THIS HAS TO PLOT ONLY ITS OWN GROUP PART IN THE TOTAL PLOT !!!'
+        
+        ! set up res
+        allocate(res(grid_eq%n(1),grid_eq%n(2),grid_eq%grp_n_r))
+        
+        ! user output
+        call writo('Checking if physical tests are satisfied')
+        call lvl_ud(1)
+        
+        ! user output
+        call writo('Checking if mu_0 p'' = 1/J (D3 B_2 - D2_B3)')
+        call lvl_ud(1)
+        
+        ! save mu_0 D2p in res
+        do kd = 1,grid_eq%grp_n_r
+            res(:,:,kd) = mu_0*eq%pres_FD(kd,1)
+        end do
+        
+        ! plot
+        call print_HDF5('Input mu_0 D2p','mu_0_D2p_input',res)
+        
+        ! calculate mu_0 D2p
+        res = met%g_FD(:,:,:,c([2,3],.true.),0,0,1)/met%jac_FD(:,:,:,0,0,0) - &
+            &met%g_FD(:,:,:,c([3,3],.true.),0,1,0)/met%jac_FD(:,:,:,0,0,0) - &
+            &(met%g_FD(:,:,:,c([2,3],.true.),0,0,0)*met%jac_FD(:,:,:,0,0,1) - &
+            &met%g_FD(:,:,:,c([3,3],.true.),0,0,0)*met%jac_FD(:,:,:,0,1,0))/ &
+            &met%jac_FD(:,:,:,0,0,0)**2
+        res = res/met%jac_FD(:,:,:,0,0,0)
+        
+        ! plot
+        call print_HDF5('Calculated mu_0 D2p','mu_0_D2p_calc',res)
+        
+        call lvl_ud(-1)
+        
+        ! user output
+        call writo('Checking if mu_0 J D3p = 0 => D3 B_1 = D1 B_3)')
+        call lvl_ud(1)
+        
+        ! calculate res
+        res = met%g_FD(:,:,:,c([1,3],.true.),0,0,1)/met%jac_FD(:,:,:,0,0,0) - &
+            &met%g_FD(:,:,:,c([1,3],.true.),0,0,0)*met%jac_FD(:,:,:,0,0,1) / &
+            &met%jac_FD(:,:,:,0,0,0)**2
+        res = res/met%jac_FD(:,:,:,0,0,0)
+        
+        ! plot
+        call print_HDF5('Calculated D3 B_1','D3_B1',res)
+        
+        ! calculate res
+        res = met%g_FD(:,:,:,c([3,3],.true.),1,0,0)/met%jac_FD(:,:,:,0,0,0) - &
+            &met%g_FD(:,:,:,c([3,3],.true.),0,0,0)*met%jac_FD(:,:,:,1,0,0)/ &
+            &met%jac_FD(:,:,:,0,0,0)**2
+        res = - res/met%jac_FD(:,:,:,0,0,0)
+        
+        ! plot
+        call print_HDF5('Calculated -D1 B_3','D1_B3',res)
+        
+        call lvl_ud(-1)
+        
+        call lvl_ud(-1)
+    end subroutine test_output
+    
     ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
     ! equilibrium  grid and  the normal  part of  the provided  perturbation
     ! grid.
@@ -279,9 +351,6 @@ contains
         &min_id,max_id) result(ierr)
         use num_vars, only: alpha_job_nr, grp_rank, grp_n_procs, &
             &output_style
-        use grid_vars, only: grid_type
-        use eq_vars, only: eq_type
-        use X_vars, only: X_type
         use output_ops, only: print_HDF5
         
         character(*), parameter :: rout_name = 'plot_X_vecs'
@@ -429,7 +498,7 @@ contains
                 select case(output_style)
                     case(1)                                                     ! GNUPlot output
                         call writo('No Eigenvector plot for output style '//&
-                            &trim(i2str(output_style))//' implemented yet'
+                            &trim(i2str(output_style))//' implemented yet')
                     case(2)                                                     ! HDF5 output
                         call print_HDF5([var_name],file_name,f_plot,&
                             &tot_dim=plot_dim,grp_dim=plot_grp_dim,&
@@ -452,15 +521,12 @@ contains
             
             call lvl_ud(-1)
         end do
-        
     contains
         ! plots the harmonics and their maximum in 2D
         integer function plot_harmonics(grid_X,X,X_id) result(ierr)
             use MPI_ops, only: wait_MPI, get_ghost_arr, get_ser_var
             use output_ops, only: merge_GP
             use num_vars, only: grp_n_procs, grp_rank, alpha_job_nr
-            use grid_vars, only: grid_type
-            use X_vars, only: X_type
             
             character(*), parameter :: rout_name = 'plot_harmonics'
             

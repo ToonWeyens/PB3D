@@ -4,10 +4,14 @@
 !------------------------------------------------------------------------------!
 module driver_rich
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: max_it_r, dp, pi, max_str_ln
-    use str_ops, only: i2str, r2str, r2strt
-    use messages, only: writo, print_ar_2, print_ar_1, lvl_ud
-    use output_ops, only: print_GP_2D, print_GP_3D, draw_GP, print_HDF5
+    use grid_vars, only: grid_type
+    use eq_vars, only: eq_type
+    use metric_vars, only: metric_type
+    use X_vars, only: X_type
     
     implicit none
     private
@@ -28,7 +32,7 @@ contains
         use VMEC, only: dealloc_VMEC_final
         use HELENA, only: dealloc_HEL_final
         use grid_ops, only: calc_eqd_grid
-        use grid_vars, only: create_grid, grid_type, &
+        use grid_vars, only: create_grid, &
             &n_r_eq, n_par_X
         
         character(*), parameter :: rout_name = 'run_rich_driver'
@@ -157,12 +161,12 @@ contains
     integer function run_for_alpha(grid_eq,grid_X,alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, no_guess, &
             &alpha_job_nr, grp_rank
-        use eq_vars, only: dealloc_eq_final, eq_type
-        use X_vars, only: dealloc_X_final, create_X, X_type
+        use eq_vars, only: dealloc_eq_final
+        use X_vars, only: dealloc_X_final, create_X
         use X_ops, only: solve_EV_system
-        use metric_vars, only: dealloc_metric_final, metric_type
+        use metric_vars, only: dealloc_metric_final
         use MPI_ops, only: divide_X_grid
-        use grid_vars, only: create_grid, destroy_grid, grid_type
+        use grid_vars, only: create_grid, destroy_grid
         use grid_ops, only: coord_F2E
         
         character(*), parameter :: rout_name = 'run_for_alpha'
@@ -318,7 +322,7 @@ contains
         call writo('Processing output')
         call lvl_ud(1)
         
-        ierr = process_output(grid_eq,eq,grid_X,X,n_sol_found,alpha)
+        ierr = process_output(grid_eq,eq,met,grid_X,X,n_sol_found,alpha)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -453,10 +457,7 @@ contains
     ! equilibrium grid
     integer function calculate_vars_in_eq_grid(grid_eq,eq,met,X,alpha) &
         &result(ierr)
-        use grid_vars, only: grid_type
-        use eq_vars, only: create_eq, eq_type
-        use metric_vars, only: metric_type
-        use X_vars, only: X_type
+        use eq_vars, only: create_eq
         use eq_ops, only: calc_eq
         use X_ops, only: prepare_X
         
@@ -487,8 +488,6 @@ contains
         ! normalize quantities
         subroutine normalize(eq,met)
             use num_vars, only: use_normalization
-            use eq_vars, only: eq_type
-            use metric_vars, only: metric_type
             use eq_ops, only: normalize_eq_vars
             use metric_ops, only: normalize_metric_vars
             
@@ -509,22 +508,23 @@ contains
     end function calculate_vars_in_eq_grid
     
     ! Processes the output of the simulations for vizualization, analysis, etc.
-    integer function process_output(grid_eq,eq,grid_X,X,n_sol_found,alpha) &
+    integer function process_output(grid_eq,eq,met,grid_X,X,n_sol_found,alpha) &
         &result(ierr)
         use num_vars, only: n_theta_plot, n_zeta_plot, no_plots, no_messages
-        use grid_vars, only: create_grid, grid_type, destroy_grid
-        use eq_vars, only: eq_type, dealloc_eq, dealloc_eq_final
-        use metric_vars, only: metric_type, dealloc_metric, dealloc_metric_final
-        use X_vars, only: dealloc_X, dealloc_X_final, create_X, X_type
-        use grid_ops, only: coord_E2F, calc_XYZ_grid
+        use grid_vars, only: create_grid, destroy_grid
+        use eq_vars, only: dealloc_eq, dealloc_eq_final
+        use metric_vars, only: dealloc_metric, dealloc_metric_final
+        use X_vars, only: dealloc_X, dealloc_X_final, create_X
+        use grid_ops, only: coord_E2F, calc_XYZ_grid, extend_grid, calc_XYZ_grid
         use X_ops, only: prepare_X
-        use sol_ops, only: plot_X_vecs
+        use sol_ops, only: plot_X_vecs, test_output
         
         character(*), parameter :: rout_name = 'process_output'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(eq_type), intent(in) :: eq                                         ! equilibirum variables
+        type(metric_type), intent(in) :: met                                    ! metric variables
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_type), intent(in) :: X                                           ! perturbation variables
         integer, intent(in) :: n_sol_found                                      ! how many solutions found and saved
@@ -541,7 +541,7 @@ contains
         type(X_type) :: X_ext                                                   ! extended perturbation variables
         logical :: no_plots_loc                                                 ! local copy of no_plots
         logical :: no_messages_loc                                              ! local copy of no_messages
-        real(dp), allocatable :: XYZ(:,:,:,:)                                   ! X, Y and Z of extended eq_grid
+        real(dp), allocatable :: X_ind(:,:,:), Y_ind(:,:,:), Z_ind(:,:,:)       ! individual versions of X, Y and Z
         
         ! initialize ierr
         ierr = 0
@@ -559,12 +559,22 @@ contains
         call lvl_ud(-1)
         
         ! user output
+        call writo('checking whether some physical tests are satisfied')
+        call lvl_ud(1)
+        
+        call test_output(grid_eq,eq,met)
+        
+        call lvl_ud(-1)
+        
+        ! user output
         call writo('creating extended plot grids')
         call lvl_ud(1)
         
-        ierr = extend_grid(grid_eq,eq,grid_eq,grid_eq_ext)
+        ierr = extend_grid(grid_eq,grid_eq_ext,grid_eq=grid_eq,eq=eq)           ! extend eq grid and convert to F
         CHCKERR('')
-        ierr = extend_grid(grid_eq,eq,grid_X,grid_X_ext,XYZ)
+        ierr = extend_grid(grid_X,grid_X_ext,grid_eq,eq)                        ! extend X grid and convert to F
+        CHCKERR('')
+        ierr = calc_XYZ_grid(grid_X_ext,X_ind,Y_ind,Z_ind)                      ! calculate X, Y and Z on extended X grid
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -579,8 +589,10 @@ contains
         ! done  below.  However,  since  here  only  the  equilibrium  variables
         ! flux_q_FD or q_saf_FD or used, the plotting of the Eigenvectors can be
         ! done already.
-        ierr = plot_X_vecs(grid_eq_ext,eq_ext,grid_X,X,XYZ,n_sol_found,&
-            &min_id,max_id)
+        ierr = plot_X_vecs(grid_eq_ext,eq_ext,grid_X,X,&
+            &reshape([X_ind,Y_ind,Z_ind],&
+            &[grid_X_ext%n(1),grid_X_ext%n(2),grid_X_ext%grp_n_r,3]),&
+            &n_sol_found,min_id,max_id)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -592,8 +604,8 @@ contains
         ! back up no_plots and no_messages and set to .true.
         no_plots_loc = no_plots
         no_messages_loc = no_messages
-        !!!no_plots = .true.
-        !!!no_messages = .true.
+        no_plots = .true.
+        no_messages = .true.
         ! create extended perturbation
         call create_X(grid_eq_ext,X_ext)
         ! create  equilibrium,  metric   and   some  perturbation  variables  on
@@ -613,8 +625,8 @@ contains
         call writo('Decomposing the energy into its terms')
         call lvl_ud(1)
         
-        ierr = decompose_energy(grid_eq,eq,grid_X,X,n_sol_found)
-        CHCKERR('')
+        !!!ierr = decompose_energy(grid_eq,eq,grid_X,X,n_sol_found)
+        !!!CHCKERR('')
         
         call lvl_ud(-1)
         
@@ -622,15 +634,12 @@ contains
         call writo('Cleaning up')
         call lvl_ud(1)
         
+        deallocate(X_ind,Y_ind,Z_ind)
         call destroy_grid(grid_eq_ext)
         call destroy_grid(grid_X_ext)
-        ierr = dealloc_eq(eq_ext)
-        CHCKERR('')
         call dealloc_eq_final(eq_ext)
-        ierr = dealloc_metric(met_ext)
         call dealloc_metric_final(met_ext)
         CHCKERR('')
-        call dealloc_X(X_ext)
         call dealloc_X_final(X_ext)
         
         call lvl_ud(-1)
@@ -691,7 +700,6 @@ contains
         ! plots Eigenvalues
         subroutine plot_X_vals(X,n_sol_found,last_unstable_id)
             use num_vars, only: grp_rank, alpha_job_nr
-            use X_vars, only: X_type
             
             ! input / output
             type(X_type), intent(in) :: X                                       ! perturbation variables
@@ -746,75 +754,6 @@ contains
             end if
         end subroutine plot_X_vals
         
-        ! Extend a  grid angularly  using equidistant variables  of n_theta_plot
-        ! and  n_zeta_plot  angular  and  own grp_n_r  points.  Optionally  also
-        ! calculate X, Y and Z on this extended grid
-        integer function extend_grid(grid_eq,eq,grid_in,grid_ext,XYZ) &
-            &result(ierr)
-            use grid_vars, only: grid_type
-            use num_vars, only: n_theta_plot, n_zeta_plot
-            
-            character(*), parameter :: rout_name = 'extend_grid'
-            
-            ! input / output
-            type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid
-            type(eq_type), intent(in) :: eq                                     ! equilibirum variables
-            type(grid_type), intent(in) :: grid_in                              ! grid to be extended
-            type(grid_type), intent(inout) :: grid_ext                          ! extended grid
-            real(dp), intent(inout), allocatable, optional :: XYZ(:,:,:,:)      ! X, Y and Z of extended eq_grid
-            
-            ! local variables
-            real(dp), allocatable :: X_ind(:,:,:), Y_ind(:,:,:), Z_ind(:,:,:)   ! individual versions of X, Y and Z
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! creating equilibrium  grid for  the output  that covers  the whole
-            ! geometry angularly in E coordinates
-            ierr = create_grid(grid_ext,&
-                &[n_theta_plot,n_zeta_plot,grid_in%n(3)],&
-                &[grid_in%i_min,grid_in%i_max])
-            CHCKERR('')
-            grid_ext%grp_r_E = grid_in%grp_r_E
-            if (n_theta_plot.eq.1) then
-                grid_ext%theta_E = 0._dp
-            else
-                do id = 1,n_theta_plot
-                    grid_ext%theta_E(id,:,:) = &
-                        &pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)              ! starting from pi gives nicer plots
-                end do
-            end if
-            if (n_zeta_plot.eq.1) then
-                grid_ext%zeta_E = 0._dp
-            else
-                do id = 1,n_zeta_plot
-                    grid_ext%zeta_E(:,id,:) = &
-                        &(id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
-                end do
-            end if
-            
-            ! calculate  X, Y and  Z of extended grid  using extended grid  in E
-            ! coordinates if present
-            if (present(XYZ)) then
-                ! calculate them on individual, allocatable grids
-                ierr = calc_XYZ_grid(grid_ext,X_ind,Y_ind,Z_ind)
-                CHCKERR('')
-                
-                ! copy values to XYZ
-                allocate(XYZ(n_theta_plot,n_zeta_plot,grid_ext%grp_n_r,3))
-                XYZ(:,:,:,1) = X_ind
-                XYZ(:,:,:,2) = Y_ind
-                XYZ(:,:,:,3) = Z_ind
-                deallocate(X_ind,Y_ind,Z_ind)
-            end if
-            
-            ! convert all E coordinates to F coordinates
-            ierr = coord_E2F(eq,grid_eq,&
-                &grid_ext%grp_r_E,grid_ext%theta_E,grid_ext%zeta_E,&
-                &grid_ext%grp_r_F,grid_ext%theta_F,grid_ext%zeta_F)
-            CHCKERR('')
-        end function extend_grid
-        
         ! Decomposes the  energy to see the fraction of  the individual terms in
         ! the total energy on a grid.
         ! The terms are:
@@ -827,9 +766,6 @@ contains
         integer function decompose_energy(grid_eq,eq,grid_X,X,n_sol_found) &
             &result(ierr)
             use sol_ops, only: calc_real_XUQ
-            use grid_vars, only: grid_type
-            use eq_vars, only: eq_type
-            use X_vars, only: X_type
             use grid_ops, only: calc_eqd_grid
             
             character(*), parameter :: rout_name = 'decompose_energy'

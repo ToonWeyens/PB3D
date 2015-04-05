@@ -1,3 +1,4 @@
+#!/bin/bash
 # Display usage function
 display_usage() { 
     echo -e "\nUsage:\n$0 [OPTS] NR_PROCS \n" 
@@ -30,7 +31,7 @@ while getopts "ds" opt; do
 done
 #
 # Checking for number of input arguments
-if [ "$#" != $((n_opt_args+1)) ]; then
+if [ "$#" -lt $((n_opt_args+1)) ]; then
     display_usage
     exit 1
 fi
@@ -46,5 +47,8 @@ else
     fi
 fi
 #
+# Shift arguments to skip options
+shift $n_opt_args
+#
 # Running command
-cp ../PB3D . && mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt
+cp ../PB3D . && mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2}

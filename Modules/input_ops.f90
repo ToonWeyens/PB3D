@@ -3,50 +3,91 @@
 !------------------------------------------------------------------------------!
 module input_ops
 #include <PB3D_macros.h>
-    use str_ops, only: strh2l, i2str, r2strt
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: dp, max_str_ln
     
     implicit none
     private
-    public yes_no, read_input
+    public yes_no, read_input, pause_prog
 
 contains
     ! queries for yes or no, depending on the flag yes:
     !   yes = .true.: yes is default answer
     !   yes = .false.: no is default answer
+    ! [MPI] All ranks, but only global rank can give input
     logical function yes_no(yes)
-        use messages, only: start_time, stop_time, lvl_sep, lvl
+        use messages, only: start_time, stop_time
+        use num_vars, only: glb_rank
+        use MPI_ops, only: wait_MPI, broadcast_l
         
         ! input / output
         logical :: yes
         
         ! local variables
-        character(len=max_str_ln) :: answer_str
-        integer :: id 
+        character(len=11) :: empty_str = ''                                     ! empty string
+        character(len=max_str_ln) :: answer_str                                 ! string with answer
+        integer :: istat                                                        ! status
         
-        do id = 1,lvl                                                           ! to get the response on the right collumn
-            write(*,'(A)',advance='no') lvl_sep
-        end do
-        if (yes) then
-            write(*,'(A)',advance='no') 'y(es)/n(o) [yes]: '
-            yes_no = .true.
-        else
-            write(*,'(A)',advance='no') 'y(es)/n(o) [no]: '
-            yes_no = .false.
-        end if
-        call stop_time
-        read (*, '(A)') answer_str
-        call start_time
-        
-        select case (strh2l(trim(answer_str)))
-            !case ('y','Y','yes','Yes','YEs','YES','yEs','yES','yeS','YeS')
-            case ('y','yes')
+        ! only global master can receive input
+        if (glb_rank.eq.0) then
+            write(*,'(A)',advance='no') empty_str                               ! first print empty string so that output is visible
+            if (yes) then
+                write(*,'(A)',advance='no') 'y(es)/n(o) [yes]: '
                 yes_no = .true.
-            case ('n','N','no','No','NO','nO') 
+            else
+                write(*,'(A)',advance='no') 'y(es)/n(o) [no]: '
                 yes_no = .false.
-            case default 
-        end select
+            end if
+            call stop_time
+            read (*, '(A)') answer_str
+            call start_time
+            
+            select case (strh2l(trim(answer_str)))
+                !case ('y','yes')
+                case ('y','Y','yes','Yes','YEs','YES','yEs','yES','yeS','YeS')
+                    yes_no = .true.
+                case ('n','N','no','No','NO','nO') 
+                    yes_no = .false.
+                case default 
+            end select
+        end if
+        istat = broadcast_l(yes_no)
+        if (istat.ne.0) call writo('WARNING: In yes_no, something went wrong. &
+            &Default used.')
     end function yes_no
+    
+    ! pauses the running of the program
+    ! [MPI] All ranks
+    subroutine pause_prog
+        use messages, only: start_time, stop_time
+        use MPI_ops, only: wait_MPI
+        use num_vars, only: glb_rank, grp_rank
+        
+        ! local variables
+        character(len=11) :: empty_str = ''                                     ! empty string
+        integer :: istat                                                        ! status
+        
+        ! output message
+        if (grp_rank.eq.0) then
+            write(*,'(A)',advance='no') empty_str                               ! first print empty string so that output is visible
+            write(*,'(A)',advance='no') 'Paused. Press any button...'
+        end if
+        
+        ! only global master can receive input
+        if (glb_rank.eq.0) then
+            call stop_time
+            read (*, *)
+            call start_time
+        end if
+        
+        ! wait for MPI
+        istat = wait_MPI()
+        if (istat.ne.0) call writo('WARNING: In pause_prog, something went &
+            &wrong. Continuing.')
+    end subroutine pause_prog
+    
     
     ! reads input from user-provided input file
     ! [MPI] only global master

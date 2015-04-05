@@ -3,21 +3,26 @@
 !------------------------------------------------------------------------------!
 module grid_ops
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: dp, pi, max_str_ln
-    use str_ops, only: r2strt, i2str, r2str
-    use output_ops, only: print_GP_2D, print_GP_3D, draw_GP_animated
-    use messages, only: lvl_ud, writo
+    use grid_vars, only: grid_type
+    use eq_vars, only: eq_type
 
     implicit none
     private
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, calc_ang_grid, &
-        &plot_grid_real
+        &plot_grid_real, trim_grid, extend_grid
     
     interface coord_F2E
         module procedure coord_F2E_r, coord_F2E_rtz
     end interface
     interface coord_E2F
         module procedure coord_E2F_r, coord_E2F_rtz
+    end interface
+    interface calc_eqd_grid
+        module procedure calc_eqd_grid_1D, calc_eqd_grid_3D
     end interface
     
 contains
@@ -28,8 +33,7 @@ contains
     integer function calc_ang_grid(grid,eq,alpha) result(ierr)
         use num_vars, only: grid_style, use_pol_flux_F, use_pol_flux_E, &
             &eq_style
-        use grid_vars, only: grid_type, min_par_X, max_par_X
-        use eq_vars, only: eq_type
+        use grid_vars, only: min_par_X, max_par_X
         
         character(*), parameter :: rout_name = 'calc_ang_grid'
         
@@ -81,27 +85,21 @@ contains
                 ! set up parallel angle in  Flux coordinates on equidistant grid
                 ! and use this to calculate the other angle as well
                 if (use_pol_flux_F) then                                        ! parallel angle theta
-                    ierr = calc_eqd_grid(grid%theta_F(:,1,1),min_par_X*pi,&
-                        &max_par_X*pi)
+                    ierr = calc_eqd_grid(grid%theta_F,min_par_X*pi,&
+                        &max_par_X*pi,1)
                     CHCKERR('')
-                    do kd = 2,grid%grp_n_r
-                        grid%theta_F(:,1,kd) = grid%theta_F(:,1,1)
-                    end do
                     do kd = 1,grid%grp_n_r
-                        grid%zeta_F(:,1,kd) = pmone*eq%q_saf_E(kd,0)*&
-                            &grid%theta_F(:,1,kd)
+                        grid%zeta_F(:,:,kd) = pmone*eq%q_saf_E(kd,0)*&
+                            &grid%theta_F(:,:,kd)
                     end do
                     grid%zeta_F = grid%zeta_F + alpha
                 else                                                            ! parallel angle zeta
-                    ierr = calc_eqd_grid(grid%zeta_F(:,1,1),min_par_X*pi,&
-                        &max_par_X*pi)
+                    ierr = calc_eqd_grid(grid%zeta_F,min_par_X*pi,&
+                        &max_par_X*pi,2)
                     CHCKERR('')
-                    do kd = 2,grid%grp_n_r
-                        grid%zeta_F(:,1,kd) = grid%zeta_F(:,1,1)
-                    end do
                     do kd = 1,grid%grp_n_r
-                        grid%theta_F(:,1,kd) = pmone*eq%rot_t_E(kd,0)*&
-                            &grid%zeta_F(:,1,kd)
+                        grid%theta_F(:,:,kd) = pmone*eq%rot_t_E(kd,0)*&
+                            &grid%zeta_F(:,:,kd)
                     end do
                     grid%theta_F = grid%theta_F - alpha
                 end if
@@ -152,8 +150,6 @@ contains
         use fourier_ops, only: fourier2real, calc_trigon_factors
         use VMEC, only: L_c, L_s
         use utilities, only: interp_fun
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
         
         character(*), parameter :: rout_name = 'coord_F2E_rtz'
         
@@ -391,7 +387,7 @@ contains
         &result(ierr)                                                           ! version with only r
         use num_vars, only: use_pol_flux_E, use_pol_flux_F
         use utilities, only: interp_fun
-        use eq_vars, only: eq_type, max_flux_p_F, max_flux_t_F
+        use eq_vars, only: max_flux_p_F, max_flux_t_F
         
         character(*), parameter :: rout_name = 'coord_F2E_r'
         
@@ -468,8 +464,6 @@ contains
         &theta_F,zeta_F,r_E_array,r_F_array) result(ierr)                       ! version with r, theta and zeta
         use num_vars, only: eq_style
         use utilities, only: interp_fun
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
         
         character(*), parameter :: rout_name = 'coord_E2F_rtz'
         
@@ -612,7 +606,7 @@ contains
     integer function coord_E2F_r(eq,r_E,r_F,r_E_array,r_F_array) result(ierr)   ! version with only r
         use num_vars, only: use_pol_flux_E, use_pol_flux_F
         use utilities, only: interp_fun
-        use eq_vars, only: eq_type, max_flux_p_F, max_flux_t_F
+        use eq_vars, only: max_flux_p_F, max_flux_t_F
         
         character(*), parameter :: rout_name = 'coord_E2F_r'
         
@@ -691,7 +685,6 @@ contains
     integer function calc_XYZ_grid(grid,X,Y,Z,L) result(ierr)
         use num_vars, only: eq_style
         use utilities, only: interp_fun, round_with_tol
-        use grid_vars, only: grid_type
         
         character(*), parameter :: rout_name = 'calc_XYZ_grid'
         
@@ -708,6 +701,8 @@ contains
         
         ! test
         if (allocated(X)) then
+        write(*,*) 'size(X)', shape(X)
+        write(*,*) 'size grid', grid%n, grid%grp_n_r
             if (size(X,1).ne.grid%n(1) .or. size(X,2).ne.grid%n(2) .or. &
                 &size(X,3).ne.grid%grp_n_r) then
                 ierr = 1
@@ -951,27 +946,35 @@ contains
 
     ! calculate grid of equidistant points,  where optionally the last point can
     ! be excluded
-    integer function calc_eqd_grid(var,min_grid,max_grid,excl_last) &
-        &result(ierr)
-        character(*), parameter :: rout_name = 'calc_eqd_grid'
+    integer function calc_eqd_grid_3D(var,min_grid,max_grid,grid_dim,&
+        &excl_last) result(ierr)                                                ! 3D version
+        character(*), parameter :: rout_name = 'calc_eqd_grid_3D'
         
         ! input and output
-        real(dp), intent(inout) :: var(:)                                       ! output
+        real(dp), intent(inout) :: var(:,:,:)                                   ! output
         real(dp), intent(in) :: min_grid, max_grid                              ! min. and max. of angles [pi]
+        integer, intent(in) :: grid_dim                                         ! in which dimension to create the grid
         logical, intent(in), optional :: excl_last                              ! .true. if last point excluded
         
         ! local variables
-        integer :: id
-        real(dp) :: delta_ang
+        integer :: id                                                           ! counter
         character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: excl_last_loc                                                ! local copy of excl_last
         integer :: grid_size                                                    ! nr. of points
+        integer :: grid_size_mod                                                ! grid_size or grid_size + 1
         
         ! initialize ierr
         ierr = 0
         
+        ! tests
+        if (grid_dim.lt.1 .or. grid_dim.gt.3) then
+            ierr = 1
+            err_msg = 'grid_dim has to point to a dimension going from 1 to 3'
+            CHCKERR(err_msg)
+        end if
+        
         ! set up grid_size
-        grid_size = size(var)
+        grid_size = size(var,grid_dim)
         
         ! test some values
         if (grid_size.lt.1) then
@@ -991,35 +994,75 @@ contains
         excl_last_loc = .false.
         if (present(excl_last)) excl_last_loc = excl_last
         
+        ! add 1 to modified grid size if last point is to be excluded
+        if (excl_last_loc) then
+            grid_size_mod = grid_size + 1
+        else
+            grid_size_mod = grid_size
+        end if
+        
         ! initialize output vector
         var = 0.0_dp
         
-        ! There are (grid_size-1) pieces in the total interval but if excl_last,
-        ! the last one is not included
-        if (excl_last_loc) then
-            delta_ang = (max_grid-min_grid)/(grid_size)
+        ! calculate grid points
+        if (grid_size.eq.1) then
+            var = min_grid                                                      ! = max_grid
         else
-            delta_ang = (max_grid-min_grid)/(grid_size-1)
+            if (grid_dim.eq.1) then
+                do id = 1,grid_size
+                    var(id,:,:) = min_grid + &
+                        &(max_grid-min_grid)*(id-1)/(grid_size_mod-1)
+                end do
+            else if (grid_dim.eq.2) then
+                do id = 1,grid_size
+                    var(:,id,:) = min_grid + &
+                        &(max_grid-min_grid)*(id-1)/(grid_size_mod-1)
+                end do
+            else
+                do id = 1,grid_size
+                    var(:,:,id) = min_grid + &
+                        &(max_grid-min_grid)*(id-1)/(grid_size_mod-1)
+                end do
+            end if
         end if
+    end function calc_eqd_grid_3D
+    integer function calc_eqd_grid_1D(var,min_grid,max_grid,excl_last) &
+        &result(ierr)                                                           ! 1D version
+        character(*), parameter :: rout_name = 'calc_eqd_grid_1D'
         
-        var(1) = min_grid
-        do id = 2,grid_size
-            var(id) = var(id-1) + delta_ang
-        end do
-    end function calc_eqd_grid
+        ! input and output
+        real(dp), intent(inout) :: var(:)                                       ! output
+        real(dp), intent(in) :: min_grid, max_grid                              ! min. and max. of angles [pi]
+        logical, intent(in), optional :: excl_last                              ! .true. if last point excluded
+        
+        ! local variables
+        real(dp), allocatable :: var_3D(:,:,:)                                  ! 3D version of var
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up var_3D
+        allocate(var_3D(size(var),1,1))
+        
+        ! call 3D version
+        ierr = calc_eqd_grid_3D(var_3D,min_grid,max_grid,1,excl_last)
+        CHCKERR('')
+        
+        ! update var
+        var = var_3D(:,1,1)
+    end function calc_eqd_grid_1D
     
     ! plots the grid in real space
     ! The  equilibrium grid  should contain  the fieldline-oriented  angles with
     ! ang_1 the parallel angle and ang_2 the field line label.
     ! Note:  This  routine  does  not  use  n_theta_plot  and  n_zeta_plot  from
-    ! num_vars, but  instead has  its own,  since it has  to be  3D also  in the
-    ! axisymmetric case.
+    ! num_vars, but instead  temporarily overwrites them with its  own, since it
+    ! has to be 3D also in the axisymmetric case.
     ! [MPI] Collective call
     integer function plot_grid_real(grid) result(ierr)
         use num_vars, only: output_style, alpha_job_nr, grp_rank, grp_n_procs, &
-            &no_plots
-        use grid_vars, only: create_grid, destroy_grid, grid_type
-        use MPI_ops, only: get_ser_var, wait_MPI
+            &no_plots, n_theta_plot, n_zeta_plot
+        use grid_vars, only: create_grid, destroy_grid
         
         character(*), parameter :: rout_name = 'plot_grid_real'
         
@@ -1028,22 +1071,17 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        character(len=*), parameter :: anim_name = &
-            &'Magnetic field in flux surfaces'                                  ! name of animation
         real(dp), allocatable :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)             ! X, Y and Z of surface in Axisymmetric coordinates
         real(dp), allocatable :: X_2(:,:,:), Y_2(:,:,:), Z_2(:,:,:)             ! X, Y and Z of magnetic field lines in Axisymmetric coordinates
         real(dp), pointer :: X_1_tot(:,:,:), Y_1_tot(:,:,:), Z_1_tot(:,:,:)     ! total X, Y and Z
         real(dp), pointer :: X_2_tot(:,:,:), Y_2_tot(:,:,:), Z_2_tot(:,:,:)     ! total X, Y and Z
-        integer :: id, jd                                                       ! counters
-        integer :: n_theta_plot = 40                                            ! nr. of poloidal points in plot
-        integer :: n_zeta_plot = 160                                            ! nr. of toroidal points in plot
+        type(grid_type) :: grid_ext                                             ! angularly extended grid
         type(grid_type) :: grid_plot                                            ! grid for plotting
-        integer, allocatable :: tot_i_min(:)                                    ! i_min of equilibrium grid of all processes
-        integer :: plot_dim(3,2)                                                ! total plot dimensions
-        integer :: plot_grp_dim(3,2)                                            ! group plot dimensions
-        integer :: plot_offset(3,2)                                             ! plot offset
-        integer :: r_min(2), r_max(2)                                           ! start and end index of normal range to plot in total range
-        integer :: grp_r_min(2), grp_r_max(2)                                   ! start and end index of normal range to plot in this group range
+        integer :: id, jd                                                       ! counters
+        integer :: n_theta_plot_old                                             ! backup of n_theta_plot
+        integer :: n_zeta_plot_old                                              ! backup of n_zeta_plot
+        character(len=*), parameter :: anim_name = &
+            &'Magnetic field in flux surfaces'                                  ! name of animation
         
         ! initialize ierr
         ierr = 0
@@ -1057,62 +1095,26 @@ contains
         
         ! 0. set up variables
         
-        ! get min_i of equilibrium grid
-        ierr = get_ser_var([grid%i_min],tot_i_min,scatter=.true.)
+        ! save n_theta_plot and n_zeta_plot and change them
+        n_theta_plot_old = n_theta_plot
+        n_zeta_plot_old = n_zeta_plot
+        n_theta_plot = 40
+        n_zeta_plot = 160
+        
+        ! extend grid
+        ierr = extend_grid(grid,grid_ext)
         CHCKERR('')
         
-        ! set up min. and max. r and grp version
-        ! (They differ  for the flux  surfaces and  the field lines  because, to
-        ! avoid overlap, the  field lines of a certain flux  surface are plotted
-        ! with the previous flux surface.)
-        grp_r_min(1) = 1                                                        ! start from 1 in group range
-        r_min(1) = grid%i_min                                                   ! which translates to i_min in total range
-        if (grp_rank.eq.0) then                                                 ! first process
-            grp_r_min(2) = 2                                                    ! start from 2 in group range
-            r_min(2) = grid%i_min + 1                                           ! which translates to i_min + 1 in total range
-        else                                                                    ! next processes
-            grp_r_min(2) = 1                                                    ! start from 1 in group range
-            r_min(2) = grid%i_min                                               ! which translates to i_min in total range
-        end if
-        if (grp_rank.eq.grp_n_procs-1) then                                     ! last process
-            grp_r_max(1) = grid%grp_n_r - 1                                     ! end with next-to-last point in group range
-            r_max(1) = grid%i_max - 1                                           ! which corresponds to i_max - 1 in total range
-            grp_r_max(2) = grid%grp_n_r                                         ! end with last point in group range
-            r_max(2) = grid%i_max                                               ! which corresponds to i_max in total range
-        else                                                                    ! previous processes
-            grp_r_max(1) = tot_i_min(grp_rank+2)-tot_i_min(grp_rank+1)          ! end with one point before first point of next group in group range
-            r_max(1) = grp_r_max(1) - grp_r_min(1) + r_min(1)                   ! which is translated to total range
-            grp_r_max(2) = tot_i_min(grp_rank+2)-tot_i_min(grp_rank+1)          ! end with one point before first point of next group in group range
-            r_max(2) = grp_r_max(2) - grp_r_min(2) + r_min(2)                   ! which is translated to total range
-        end if
+        ! restore n_theta_plot and n_zeta_plot
+        n_theta_plot = n_theta_plot_old
+        n_zeta_plot = n_zeta_plot_old
+        
+        ! trim extended grid into plot grid
+        ierr = trim_grid(grid_ext,grid_plot)
+        CHCKERR('')
         
         ! 1. plot flux surfaces
         call writo('writing flux surfaces')
-        
-        ! create plot grid
-        ierr = create_grid(grid_plot,[n_theta_plot,n_zeta_plot,&
-            &r_max(1)-r_min(1)+1])                                              ! a divided grid could be used here but it's not necessary
-        CHCKERR('')
-        
-        ! initialize theta, zeta and r of plot grid
-        do id = 1,n_theta_plot
-            grid_plot%theta_E(id,:,:) = &
-                &pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)                      ! better to start from pi for the plot
-        end do
-        do id = 1,n_zeta_plot
-           grid_plot%zeta_E(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)     ! just start from 0
-        end do
-        grid_plot%grp_r_E = grid%grp_r_E(grp_r_min(1):grp_r_max(1))             ! take normal values from equilibrium grid
-        
-        ! set up plot_dim, plot_grp_dim and plot_offset for flux surfaces
-        plot_grp_dim(:,1) = [n_theta_plot,n_zeta_plot,r_max(1)-r_min(1)+1]
-        plot_dim(:,1) = [n_theta_plot,n_zeta_plot,grid%n(3)-tot_i_min(1)]       ! subtract i_min of first process
-        plot_offset(:,1) = [0,0,r_min(1)-tot_i_min(1)]                          ! subtract i_min of first process
-        
-        ! allocate X_1, Y_1 and Z_1
-        allocate(X_1(plot_grp_dim(1,1),plot_grp_dim(2,1),plot_grp_dim(3,1)))
-        allocate(Y_1(plot_grp_dim(1,1),plot_grp_dim(2,1),plot_grp_dim(3,1)))
-        allocate(Z_1(plot_grp_dim(1,1),plot_grp_dim(2,1),plot_grp_dim(3,1)))
         
         ! calculate X_1,Y_1 and Z_1
         ierr = calc_XYZ_grid(grid_plot,X_1,Y_1,Z_1)
@@ -1124,43 +1126,30 @@ contains
         ! 2. plot field lines
         call writo('writing field lines')
         
-        ! create plot grid
-        ierr = create_grid(grid_plot,[grid%n(1),grid%n(2),r_max(2)-r_min(2)+1])
+        ! trim grid into plot grid
+        ierr = trim_grid(grid,grid_plot)
         CHCKERR('')
-        
-        ! initialize theta, zeta and r of plot grid
-        grid_plot%theta_E = grid%theta_E(:,:,grp_r_min(2):grp_r_max(2))
-        grid_plot%zeta_E = grid%zeta_E(:,:,grp_r_min(2):grp_r_max(2))
-        grid_plot%grp_r_E = grid%grp_r_E(grp_r_min(2):grp_r_max(2))             ! take normal values from equilibrium grid
-        
-        ! set up plot_dim, plot_grp_dim and plot_offset for field lines
-        plot_grp_dim(:,2) = [grid%n(1),grid%n(2),r_max(2)-r_min(2)+1]
-        plot_dim(:,2) = [grid%n(1),grid%n(2),grid%n(3)-tot_i_min(1)]            ! subtract i_min of first process
-        plot_offset(:,2) = [0,0,r_min(2)-tot_i_min(1)]                          ! subtract i_min of first process
-        
-        ! allocate X_2, Y_2 and Z_2
-        allocate(X_2(plot_grp_dim(1,2),plot_grp_dim(2,2),plot_grp_dim(3,2)))
-        allocate(Y_2(plot_grp_dim(1,2),plot_grp_dim(2,2),plot_grp_dim(3,2)))
-        allocate(Z_2(plot_grp_dim(1,2),plot_grp_dim(2,2),plot_grp_dim(3,2)))
         
         ! calculate X_2,Y_2 and Z_2
         ierr = calc_XYZ_grid(grid_plot,X_2,Y_2,Z_2)
         CHCKERR('')
         
-        ! destroy grid
+        ! destroy grids
         call destroy_grid(grid_plot)
+        call destroy_grid(grid_ext)
         
         ! get pointers to full X, Y and Z
-        call get_full_XYZ(X_1,Y_1,Z_1,X_1_tot,Y_1_tot,Z_1_tot,plot_dim(:,1),&
-            &'flux surfaces')
-        call get_full_XYZ(X_2,Y_2,Z_2,X_2_tot,Y_2_tot,Z_2_tot,plot_dim(:,2),&
-            &'field lines')
+        ! The reason for  this is that the  plot is not as simple  as usual, and
+        ! also  efficiency  is not  the  biggest  priority. Therefore,  all  the
+        ! plotting of the group is handled by a single process, the master.
+        call get_full_XYZ(X_1,Y_1,Z_1,X_1_tot,Y_1_tot,Z_1_tot,'flux surfaces')
+        call get_full_XYZ(X_2,Y_2,Z_2,X_2_tot,Y_2_tot,Z_2_tot,'field lines')
         
         ! delegate to child routines
         select case(output_style)
             case(1)                                                             ! GNUPlot output
-                call plot_grid_real_GP(X_1_tot,X_2_tot,Y_1_tot,Y_2_tot,&
-                    &Z_1_tot,Z_2_tot,anim_name)
+                call plot_grid_real_GP(X_1_tot,X_2_tot,Y_1_tot,Y_2_tot,Z_1_tot,&
+                    &Z_2_tot,anim_name)
             case(2)                                                             ! HDF5 output
                 ierr = plot_grid_real_HDF5(X_1_tot,X_2_tot,Y_1_tot,Y_2_tot,&
                     &Z_1_tot,Z_2_tot,anim_name)
@@ -1180,33 +1169,41 @@ contains
         call lvl_ud(-1)
         
         call writo('Done plotting magnetic field and flux surfaces')
-            ierr = wait_MPI()
-            
     contains
         ! get pointer to full plotting variables X, Y and Z
-        subroutine get_full_XYZ(X,Y,Z,X_tot,Y_tot,Z_tot,tot_dim,merge_name)
+        subroutine get_full_XYZ(X,Y,Z,X_tot,Y_tot,Z_tot,merge_name)
+            use MPI_ops, only: get_ser_var
+            
             ! input / output
             real(dp), intent(in), target :: X(:,:,:), Y(:,:,:), Z(:,:,:)        ! X, Y and Z of either flux surfaces or magnetic field lines
             real(dp), intent(inout), pointer :: X_tot(:,:,:), Y_tot(:,:,:), &
                 &Z_tot(:,:,:)                                                   ! pointer to full X, Y and Z
-            integer, intent(in) :: tot_dim(3)                                   ! total dimensions
             character(len=*) :: merge_name                                      ! name of variable to be merged
             
             ! local variables
             real(dp), allocatable :: loc_XYZ(:)                                 ! local copy of X, Y or Z in an angular point
             real(dp), allocatable :: ser_loc_XYZ(:)                             ! serial copy of loc_XYZ
+            integer, allocatable :: tot_dim(:)                                  ! total dimensions for plot 
             
             ! merge plots for flux surfaces if more than one process
             if (grp_n_procs.gt.1) then                                          ! merge group plots
+                ! user output
                 call writo('Merging group plots for '//merge_name)
+                
+                ! get total dimension
+                ierr = get_ser_var([size(X,3)],tot_dim)
+                    CHCKERR('')
+                
+                ! allocate total X, Y and Z (should have same sizes)
                 if (grp_rank.eq.0) then
-                    allocate(X_tot(tot_dim(1),tot_dim(2),tot_dim(3)))
-                    allocate(Y_tot(tot_dim(1),tot_dim(2),tot_dim(3)))
-                    allocate(Z_tot(tot_dim(1),tot_dim(2),tot_dim(3)))
+                    allocate(X_tot(size(X,1),size(X,2),sum(tot_dim)))
+                    allocate(Y_tot(size(X,1),size(X,2),sum(tot_dim)))
+                    allocate(Z_tot(size(X,1),size(X,2),sum(tot_dim)))
                 end if
-                allocate(loc_XYZ(tot_dim(3)))
-                do jd = 1,tot_dim(2)
-                    do id = 1,tot_dim(1)
+                
+                allocate(loc_XYZ(sum(tot_dim)))
+                do jd = 1,size(X,2)
+                    do id = 1,size(X,1)
                         loc_XYZ = X(id,jd,:)
                         ierr = get_ser_var(loc_XYZ,ser_loc_XYZ)
                         CHCKERR('')
@@ -1221,14 +1218,15 @@ contains
                         if (grp_rank.eq.0) Z_tot(id,jd,:) = ser_loc_XYZ
                     end do
                 end do
-                deallocate(loc_XYZ,ser_loc_XYZ)
             else                                                                ! just point
                 X_tot => X
                 Y_tot => Y
                 Z_tot => Z
             end if
         end subroutine get_full_XYZ
-        subroutine plot_grid_real_GP(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)         ! GNUPlot version
+        
+        ! plot with GNUPlot
+        subroutine plot_grid_real_GP(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)
             use output_ops, only: merge_GP
             
             ! input / output
@@ -1239,6 +1237,7 @@ contains
             ! local variables
             character(len=max_str_ln) :: file_name(2), plot_title(2)            ! file name and title
             character(len=max_str_ln) :: draw_ops(2)                            ! individual plot command
+            integer :: n_r                                                      ! number of normal points
             
             ! initialize ierr
             ierr = 0
@@ -1248,6 +1247,9 @@ contains
                 ! user output
                 call writo('Drawing animation with GNUPlot')
                 call lvl_ud(1)
+                
+                ! set n_r
+                n_r = size(X_1,3)-1
                 
                 ! set names
                 plot_title(1) = 'Magnetic Flux Surface for alpha job '//&
@@ -1259,11 +1261,13 @@ contains
                 
                 ! write flux surfaces of this process
                 call print_GP_3D(trim(plot_title(1)),trim(file_name(1))//&
-                    &'.dat',Z_1,x=X_1,y=Y_1,draw=.false.)
+                    &'.dat',Z_1(:,:,1:n_r),x=X_1(:,:,1:n_r),y=Y_1(:,:,1:n_r-1),&
+                    &draw=.false.)
                 
                 ! write magnetic field lines
                 call print_GP_3D(trim(plot_title(2)),trim(file_name(2))//&
-                    &'.dat',Z_2,x=X_2,y=Y_2,draw=.false.)
+                    &'.dat',Z_2(:,:,2:n_r+1),x=X_2(:,:,2:n_r+1),&
+                    &y=Y_2(:,:,2:n_r+1),draw=.false.)
                 
                 ! add '.dat' to file names
                 do id = 1,2
@@ -1271,17 +1275,18 @@ contains
                 end do
                 
                 ! draw both files
-                call writo('creating GNUPlot animation')
                 draw_ops(1) = 'linecolor rgb ''#d3d3d3'' linewidth 1'
                 draw_ops(2) = 'linecolor rgb ''black'' linewidth 3'
-                call draw_GP_animated(anim_name,file_name,plot_dim(3,1),&
-                    &.false.,delay=50,draw_ops=draw_ops)
+                call draw_GP_animated(anim_name,file_name,n_r,.false.,&
+                    &delay=50,draw_ops=draw_ops)
                 
                 call lvl_ud(-1)
             end if
         end subroutine plot_grid_real_GP
-        integer function plot_grid_real_HDF5(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)&
-            & result(ierr)                                                      ! HDF5 version
+        
+        ! Plot with HDF5
+        integer function plot_grid_real_HDF5(X_1,X_2,Y_1,Y_2,Z_1,Z_2,&
+            &anim_name) result(ierr)
             use HDF5_ops, only: open_HDF5_file, add_HDF5_item, &
                 &print_HDF5_top, print_HDF5_geom, print_HDF5_3D_data_item, &
                 &print_HDF5_grid, close_HDF5_file, &
@@ -1319,7 +1324,7 @@ contains
                 ! set up loc_dim and n_r
                 loc_dim(:,1) = [size(X_1,1),size(X_1,2),1]
                 loc_dim(:,2) = [size(X_2,1),size(X_2,2),1]
-                n_r = size(X_1,3)                                               ! should be same for all other X_i, Y_i and Z_i
+                n_r = size(X_1,3) - 1                                           ! should be same for all other X_i, Y_i and Z_i
                 
                 ! set up plot titles
                 plot_title(1) = 'Magnetic Flux Surface for alpha job '//&
@@ -1335,10 +1340,10 @@ contains
                 CHCKERR('')
                 
                 ! create grid for time collection
-                allocate(space_col_grids(n_r-1))
+                allocate(space_col_grids(n_r))
                 
                 ! loop over all normal points
-                do id = 1,n_r-1
+                do id = 1,n_r
                     ! A. start with flux surface
                     
                     ! print topology
@@ -1419,4 +1424,114 @@ contains
             end if
         end function plot_grid_real_HDF5
     end function plot_grid_real
+    
+    ! Trim a grid, removing any overlap between the different regions.
+    integer function trim_grid(grid_in,grid_out) result(ierr)
+        use grid_vars, only: create_grid
+        use num_vars, only: grp_n_procs, grp_rank
+        use MPI_ops, only: get_ser_var
+        
+        character(*), parameter :: rout_name = 'trim_grid'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_in                                  ! input grid
+        type(grid_type), intent(inout) :: grid_out                              ! trimmed grid
+        
+        ! local variables
+        integer, allocatable :: tot_i_min(:)                                    ! i_min of Equilibrium grid of all processes
+        integer, allocatable :: tot_i_max(:)                                    ! i_max of Equilibrium grid of all processes
+        integer :: i_lim_out(2)                                                 ! i_lim of output grid
+        integer :: n_out(3)                                                     ! n of output grid
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! get min_i's of the grid_in
+        ierr = get_ser_var([grid_in%i_min],tot_i_min,scatter=.true.)
+        CHCKERR('')
+        
+        ! get max_i's of the grid_in
+        ierr = get_ser_var([grid_in%i_max],tot_i_max,scatter=.true.)
+        CHCKERR('')
+        
+        ! set i_lim of output grid
+        i_lim_out(1) = grid_in%i_min-tot_i_min(1)+1                             ! subtract i_min of first process
+        if (grp_rank.lt.grp_n_procs-1) then                                     ! not last process
+            i_lim_out(2) = tot_i_min(grp_rank+2)-tot_i_min(1)                   ! take i_min of next process and subtract i_min of first
+        else                                                                    ! last process
+            i_lim_out(2) = grid_in%i_max-tot_i_min(1)+1                         ! end of this last group
+        end if
+        
+        ! set n of output grid
+        n_out(1) = grid_in%n(1)
+        n_out(2) = grid_in%n(2)
+        n_out(3) = tot_i_max(grp_n_procs)-tot_i_min(1)+1
+        
+        ! create new grid
+        ierr = create_grid(grid_out,n_out,i_lim_out)
+        CHCKERR('')
+        
+        ! copy arrays
+        grid_out%theta_E = grid_in%theta_E(:,:,1:grid_out%grp_n_r)
+        grid_out%zeta_E = grid_in%zeta_E(:,:,1:grid_out%grp_n_r)
+        grid_out%theta_F = grid_in%theta_F(:,:,1:grid_out%grp_n_r)
+        grid_out%zeta_F = grid_in%zeta_F(:,:,1:grid_out%grp_n_r)
+        grid_out%r_E = grid_in%r_E(tot_i_min(1):tot_i_max(grp_n_procs))         ! copy total r
+        grid_out%r_F = grid_in%r_F(tot_i_min(1):tot_i_max(grp_n_procs))
+        if (grid_in%divided) then                                               ! but if input grid divided, grp_r gets priority
+            grid_out%grp_r_E = grid_in%grp_r_E(1:grid_out%grp_n_r)
+            grid_out%grp_r_F = grid_in%grp_r_F(1:grid_out%grp_n_r)
+        end if
+    end function trim_grid
+    
+    ! Extend a  grid angularly using  equidistant variables of  n_theta_plot and
+    ! n_zeta_plot angular and  own grp_n_r points in  E coordinates. Optionally,
+    ! the grid can  also be converted to  F coordinates if equilibrium  grid and
+    ! the variables are provided.
+    integer function extend_grid(grid_in,grid_ext,grid_eq,eq) result(ierr)
+        use num_vars, only: n_theta_plot, n_zeta_plot
+        use grid_vars, only: create_grid
+        
+        character(*), parameter :: rout_name = 'extend_grid'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_in                                  ! grid to be extended
+        type(grid_type), intent(inout) :: grid_ext                              ! extended grid
+        type(grid_type), intent(in), optional :: grid_eq                        ! equilibrium grid
+        type(eq_type), intent(in), optional :: eq                               ! equilibirum variables
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (present(grid_eq).neqv.present(eq)) then
+            ierr = 1
+            err_msg = 'When converting to Flux coordinates, also equilibrium &
+                &grid and variables needed'
+            CHCKERR(err_msg)
+        end if
+        
+        ! creating  equilibrium  grid  for  the output  that  covers  the  whole
+        ! geometry angularly in E coordinates
+        ierr = create_grid(grid_ext,&
+            &[n_theta_plot,n_zeta_plot,grid_in%n(3)],&
+            &[grid_in%i_min,grid_in%i_max])
+        CHCKERR('')
+        grid_ext%grp_r_E = grid_in%grp_r_E
+        ierr = calc_eqd_grid(grid_ext%theta_E,1*pi,3*pi,1)                      ! starting from pi gives nicer plots
+        CHCKERR('')
+        ierr = calc_eqd_grid(grid_ext%zeta_E,0*pi,2*pi,2)
+        CHCKERR('')
+        
+        ! convert all E coordinates to F coordinates if requested
+        if (present(grid_eq)) then
+            ierr = coord_E2F(eq,grid_eq,&
+                &grid_ext%grp_r_E,grid_ext%theta_E,grid_ext%zeta_E,&
+                &grid_ext%grp_r_F,grid_ext%theta_F,grid_ext%zeta_F)
+            CHCKERR('')
+        end if
+    end function extend_grid
 end module grid_ops

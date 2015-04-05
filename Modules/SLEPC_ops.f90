@@ -5,11 +5,13 @@ module SLEPC_ops
 #include <PB3D_macros.h>
 #include <finclude/slepcepsdef.h>
 !#include <finclude/petscsys.h>
+    use str_ops
+    use output_ops
+    use messages
     use slepceps
     use num_vars, only: iu, dp, max_str_ln
-    use messages, only: writo, print_ar_2, lvl_ud
-    use str_ops, only: r2strt, r2str, i2str
-    use output_ops, only: print_GP_2D
+    use grid_vars, only: grid_type
+    use X_vars, only: X_type
 
     implicit none
     private
@@ -22,9 +24,6 @@ contains
     ! how many.
     integer function solve_EV_system_SLEPC(grid_eq,grid_X,X,use_guess,&
         &max_n_EV) result(ierr)
-        use grid_vars, only: grid_type
-        use X_vars, only: X_type
-        
         character(*), parameter :: rout_name = 'solve_EV_system_SLEPC'
         
         ! input / output
@@ -159,8 +158,6 @@ contains
     ! Note: For normal usage, i_geo should be 1, or not present.
     integer function setup_matrices(grid_eq,grid_X,X,A,B,i_geo) result(ierr)
         use num_vars, only: grp_n_procs, grp_rank
-        use grid_vars, only: grid_type
-        use X_vars, only: X_type
         
         character(*), parameter :: rout_name = 'setup_matrices'
         
@@ -700,8 +697,6 @@ contains
     ! sets up EV solver
     integer function setup_solver(grid_X,X,A,B,solver) result(ierr)
         use num_vars, only: n_sol_requested
-        use grid_vars, only: grid_type
-        use X_vars, only: X_type
         
         character(*), parameter :: rout_name = 'setup_solver'
         
@@ -756,8 +751,6 @@ contains
     
     ! sets up guess in solver
     subroutine setup_guess(X,A,solver,start_id,prev_n_EV)
-        use X_vars, only: X_type
-        
         ! input / output
         type(X_type), intent(in) :: X                                           ! perturbation variables
         Mat, intent(in) :: A                                                    ! matrix A (or B)
@@ -917,8 +910,6 @@ contains
     
     ! stores the results
     integer function store_results(grid_X,X,solver,max_n_EV) result(ierr)
-        use grid_vars, only: grid_type
-        use X_vars, only: X_type
         use eq_vars, only: T_0
         use num_vars, only: use_normalization, n_sol_requested, grp_n_procs, &
             &grp_rank
@@ -1044,8 +1035,6 @@ contains
     ! [MPI] Collective call
     integer function stop_SLEPC(grid_X,A,B,solver,guess_start_id,prev_n_EV,&
         &max_n_EV) result(ierr)
-        use grid_vars, only: grid_type
-        
         character(*), parameter :: rout_name = 'stop_SLEPC'
         
         ! input / output

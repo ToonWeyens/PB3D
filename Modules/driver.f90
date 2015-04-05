@@ -6,10 +6,11 @@
 !------------------------------------------------------------------------------!
 module driver
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use driver_rich, only: run_rich_driver
     use num_vars, only: minim_style, max_str_ln
-    use str_ops, only: i2str
-    use messages, only: writo, lvl_ud
     implicit none
     private
     public run_driver

@@ -33,7 +33,7 @@ module num_vars
     integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! will hold name of output file
-    character(len=max_str_ln) :: prog_version = '0.7'                           ! version number
+    character(len=max_str_ln) :: prog_version = '0.71'                          ! version number
 
     ! MPI variables
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha

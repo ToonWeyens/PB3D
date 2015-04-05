@@ -3,7 +3,7 @@
 !   as in output files                                                         !
 !------------------------------------------------------------------------------!
 module messages
-    use str_ops, only: i2str, r2strt, r2str
+    use str_ops
     use num_vars, only: dp, max_str_ln
     implicit none
     private
@@ -11,11 +11,12 @@ module messages
         &print_err_msg, init_time, start_time, stop_time, passed_time, &
         &print_hello, print_goodbye, &
         &temp_output_id, max_len_temp_output, temp_output, lvl, lvl_sep, &
-        &temp_output_active, temp_output_omitted
+        &temp_output_active, temp_output_omitted, time_sep
 
     ! global variables
     integer :: lvl                                                              ! lvl determines the indenting. higher lvl = more indenting
     character(len=2) :: lvl_sep = ''                                            ! characters that separate different levels of output
+    character(len=10) :: time_sep = ''                                          ! defines the length of time part of output
     real(dp) :: deltat                                                          ! length of time interval
     real(dp) :: t1, t2                                                          ! end points of time interval
     logical :: running                                                          ! whether the timer is running
@@ -147,7 +148,7 @@ contains
             end_str = trim(end_str)//')'
         end if
         call writo(trim(begin_str) // trim(end_str))
-
+        
         ! restart deltat
         call init_time
     end subroutine
@@ -245,7 +246,7 @@ contains
         if (.not.ignore) then                                                   ! only group master (= global master if no groups) or persistent
             ! Divide the input string length by the max_str_ln and loop over the
             ! different parts
-            max_len_part = max_str_ln-(lvl-1)*len(lvl_sep) - 10                 ! max length of a part (10 for time)
+            max_len_part = max_str_ln-(lvl-1)*len(lvl_sep) - len(time_sep)      ! max length of a part including time part
             num_parts = (len(trim(input_str))-1)/(max_len_part) + 1             ! how many parts there are
             do i_part = 1, num_parts
                 ! construct input string for the appropriate level
@@ -260,7 +261,7 @@ contains
                 
                 ! construct header string of equal length as output strength
                 header_str = ''
-                do id = 1, len(trim(output_str)) - 10                           ! 10 for time
+                do id = 1, len(trim(output_str)) - len(time_sep)                ! including time part
                     header_str =  trim(header_str) // '-'
                 end do
                 header_str = '          '//trim(header_str)

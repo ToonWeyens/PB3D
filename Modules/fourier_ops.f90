@@ -4,9 +4,10 @@
 !------------------------------------------------------------------------------!
 module fourier_ops
 #include <PB3D_macros.h>
-    use messages, only: writo, print_ar_1, print_ar_2
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: dp, max_str_ln
-    use str_ops, only: i2str
 
     implicit none
     private

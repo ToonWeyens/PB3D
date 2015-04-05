@@ -3,9 +3,11 @@
 !------------------------------------------------------------------------------!
 module X_vars
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: dp, max_str_ln, iu
-    use str_ops, only: i2str
-    use messages, only: writo, lvl_ud
+    use grid_vars, only: grid_type
     
     implicit none
     
@@ -69,7 +71,6 @@ contains
     ! initialize the variable m and check and/or plot it
     subroutine create_X(grid,X)
         use num_vars, only: use_pol_flux_F
-        use grid_vars, only: grid_type
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
@@ -82,7 +83,7 @@ contains
         integer :: nn_mod_1, nn_mod_2                                           ! number of indices for a quantity that is symmetric or not
         
         ! user output
-        call writo('Create equilibrium...')
+        call writo('Create perturbation...')
         call lvl_ud(1)
         
         ! set local variables

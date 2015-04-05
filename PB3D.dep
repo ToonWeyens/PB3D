@@ -15,6 +15,7 @@ PB3D.o : \
 grid_vars.o : \
     num_vars.o \
     messages.o \
+    output_ops.o \
 
 sol_ops.o : \
     num_vars.o \
@@ -94,6 +95,7 @@ X_vars.o : \
 
 eq_ops.o : \
     num_vars.o \
+    input_ops.o \
     eq_vars.o \
     X_vars.o \
     output_ops.o \
@@ -130,6 +132,7 @@ input_ops.o : \
     files.o \
     X_vars.o \
     grid_vars.o \
+    MPI_ops.o \
 
 fourier_ops.o : \
     messages.o \

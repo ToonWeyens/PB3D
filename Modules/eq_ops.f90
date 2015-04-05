@@ -3,11 +3,14 @@
 !------------------------------------------------------------------------------!
 module eq_ops
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use num_vars, only: pi, dp, max_str_ln
     use messages, only: print_ar_2, lvl_ud, writo
-    use output_ops, only: print_GP_3D, draw_GP, &
-        &print_GP_2D
-    use str_ops, only: i2str, r2strt
+    use grid_vars, only: grid_type
+    use eq_vars, only: eq_type
+    use metric_vars, only: metric_type
     
     implicit none
     private
@@ -62,20 +65,22 @@ contains
     ! this rank. It is determined so  that the perturbation quantities that will
     ! be needed in this rank are fully covered, so no communication is necessary
     integer function calc_eq(grid_eq,eq,met,alpha) result(ierr)
-        use eq_vars, only: dealloc_eq, eq_type
+        use eq_vars, only: dealloc_eq
         use metric_ops, only: calc_g_C, calc_g_C, calc_T_VC, calc_g_V, &
             &calc_T_VF, calc_inv_met, calc_g_F, calc_jac_C, calc_jac_V, &
             &calc_jac_F, calc_f_deriv, calc_jac_H, calc_T_HF, calc_h_H
-        use metric_vars, only: create_metric, dealloc_metric, metric_type
+        use metric_vars, only: create_metric, dealloc_metric
         use utilities, only: derivs
+        use input_ops, only: yes_no, pause_prog
         use num_vars, only: max_deriv, ltest, plot_grid, eq_style
-        use grid_vars, only: grid_type
         use grid_ops, only: calc_ang_grid, plot_grid_real
         use HELENA, only: dealloc_HEL
+        use MPI_ops, only: wait_MPI
+#if ldebug
+        use metric_ops, only: test_T_VF
+#endif
         
         use utilities, only: calc_det, calc_inv, calc_mult, c
-        !use metric_ops, only: plot_info
-        !use utilities, only: plot_info_2 => plot_info
         
         character(*), parameter :: rout_name = 'calc_eq'
         
@@ -89,49 +94,6 @@ contains
         integer :: id
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: pmone                                                        ! plus or minus one
-        
-        !! TEMPORARILY, TO PLOT MORE INFO IN ROUTINES
-        !plot_info = .true.
-        !plot_info_2 = .true.
-        
-        !real(dp) :: A(1,1,1,16)
-        !real(dp) :: B(1,1,1,10)
-        !real(dp) :: det(1,1,1)
-        !real(dp) :: invA(1,1,1,16)
-        !real(dp) :: invB(1,1,1,10)
-        !real(dp) :: AinvA(1,1,1,16)
-        !real(dp) :: BinvB(1,1,1,10)
-        !real(dp) :: AinvB(1,1,1,16)
-        !real(dp) :: BinvA(1,1,1,16)
-        
-        !A = reshape([1,2,3,1,2,1,1,4,3,1,3,2,1,4,2,2],shape(A))
-        !B = reshape([1,2,3,1,1,1,4,3,2,2],shape(B))
-        !write(*,*) 'A = ', A
-        !write(*,*) 'B = ', B
-        !ierr = calc_det(det,A,4)
-        !CHCKERR('')
-        !write(*,*) 'detA = ', det
-        !ierr = calc_det(det,B,4)
-        !CHCKERR('')
-        !write(*,*) 'detB = ', det
-        !ierr = calc_inv(invA,A,4)
-        !CHCKERR('')
-        !write(*,*) 'invA = ', invA
-        !ierr = calc_inv(invB,B,4)
-        !CHCKERR('')
-        !write(*,*) 'invB = ', invB
-        !ierr = calc_mult(A,invA,AinvA,4)
-        !CHCKERR('')
-        !write(*,*) 'AinvA = ', AinvA
-        !ierr = calc_mult(B,invB,BinvB,4)
-        !CHCKERR('')
-        !write(*,*) 'BinvB = ', BinvB
-        !ierr = calc_mult(A,invB,AinvB,4)
-        !CHCKERR('')
-        !write(*,*) 'AinvB = ', AinvB
-        !ierr = calc_mult(B,invA,BinvA,4)
-        !CHCKERR('')
-        !write(*,*) 'BinvA = ', BinvA
         
         ! initialize ierr
         ierr = 0
@@ -249,6 +211,14 @@ contains
                             ierr = calc_T_VF(grid_eq,eq,met,derivs(id))
                             CHCKERR('')
                         end do
+#if ldebug
+                        if (ltest) then
+                            call writo('Test calculation of T_VF?')
+                            if(yes_no(.false.)) ierr = test_T_VF(grid_eq,eq,met)
+                            CHCKERR('')
+                            call pause_prog
+                        end if
+#endif
                         
                         ! set up plus minus one
                         pmone = -1                                              ! conversion VMEC LH -> RH coord. system
@@ -374,40 +344,29 @@ contains
                     eq%rot_t_FD(:,id) = pmone * eq%rot_t_FD(:,id)               ! multiply by plus minus one
                 end do
                 
-                !write(*,*) 'det_T_FE:', 0,0,0
-                !call print_HDF5('X','X',met%det_T_FE(:,:,:,0,0,0))
-                !read(*,*)
-                !do id = 1,9
-                    !write(*,*) 'h_FD:', id
-                    !call print_HDF5('X','X',met%h_FD(:,:,:,id,0,0,0))
-                    !read(*,*)
-                !end do
-                
                 ! deallocate unused equilibrium quantities
-                if (.not.ltest) then
-                    call writo('Deallocate unused equilibrium and metric &
-                        &quantities...')
-                    ierr = dealloc_metric(met)
-                    CHCKERR('')
-                    ! general equilibrium
-                    ierr = dealloc_eq(eq)
-                    CHCKERR('')
-                    ! specific equilibrium
-                    ! choose which equilibrium style is being used:
-                    !   1:  VMEC
-                    !   2:  HELENA
-                    select case (eq_style)
-                        case (1)                                                ! VMEC
-                            ! nothing
-                        case (2)                                                ! HELENA
-                            call dealloc_HEL
-                        case default
-                            err_msg = 'No equilibrium style associated with '//&
-                                &trim(i2str(eq_style))
-                            ierr = 1
-                            CHCKERR(err_msg)
-                    end select
-                end if
+                call writo('Deallocate unused equilibrium and metric &
+                    &quantities...')
+                ierr = dealloc_metric(met)
+                CHCKERR('')
+                ! general equilibrium
+                ierr = dealloc_eq(eq)
+                CHCKERR('')
+                ! specific equilibrium
+                ! choose which equilibrium style is being used:
+                !   1:  VMEC
+                !   2:  HELENA
+                select case (eq_style)
+                    case (1)                                                    ! VMEC
+                        ! nothing
+                    case (2)                                                    ! HELENA
+                        call dealloc_HEL
+                    case default
+                        err_msg = 'No equilibrium style associated with '//&
+                            &trim(i2str(eq_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
+                end select
             
             call lvl_ud(-1)
             call writo('Equilibrium quantities calculated on equilibrium grid')
@@ -420,7 +379,6 @@ contains
     ! transformation of R, Z and L and derivatives
     integer function prepare_RZL(grid) result(ierr)
         use fourier_ops, only: calc_trigon_factors
-        use grid_vars, only: grid_type
         
         character(*), parameter :: rout_name = 'prepare_RZL'
         
@@ -447,8 +405,6 @@ contains
         use VMEC, only: R_c, R_s, Z_c, Z_s, L_c, L_s
         use utilities, only: check_deriv
         use num_vars, only: max_deriv
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
         
         character(*), parameter :: rout_name = 'calc_RZL_ind'
         
@@ -479,9 +435,6 @@ contains
         CHCKERR('')
     end function calc_RZL_ind
     integer function calc_RZL_arr(grid,eq,deriv) result(ierr)
-        use eq_vars, only: eq_type
-        use grid_vars, only: grid_type
-        
         character(*), parameter :: rout_name = 'calc_RZL_arr'
         
         ! input / output
@@ -509,7 +462,6 @@ contains
         use HELENA, only: ias, chi_H, h_H_11_full, h_H_12_full, h_H_33_full, &
             &h_H_11, h_H_12, h_H_33
         use utilities, only: interp_fun
-        use grid_vars, only: grid_type
         
         character(*), parameter :: rout_name = 'adapt_HEL_to_eq'
         
@@ -592,9 +544,8 @@ contains
         use num_vars, only: eq_style, max_deriv, grp_nr, use_pol_flux_E, &
             &use_pol_flux_F, plot_flux_q
         use utilities, only: calc_deriv, calc_int
-        use eq_vars, only: eq_type, max_flux_p_E, max_flux_t_E, max_flux_p_F, &
+        use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &
             &max_flux_t_F
-        use grid_vars, only: grid_type
         
         character(*), parameter :: rout_name = 'calc_flux_q'
         
@@ -825,8 +776,7 @@ contains
     integer function flux_q_plot(eq,grid_eq) result(ierr)
         use num_vars, only: eq_style, use_pol_flux_F, output_style, &
             &grp_rank, grp_n_procs, no_plots
-        use eq_vars, only: eq_type, max_flux_p_E, max_flux_t_E
-        use grid_vars, only: grid_type
+        use eq_vars, only: max_flux_p_E, max_flux_t_E
         
         character(*), parameter :: rout_name = 'flux_q_plot'
         
@@ -990,16 +940,14 @@ contains
         ! convert 2D plot to real plot in 3D and output in HDF5
         integer function flux_q_plot_HDF5() result(ierr)
             use output_ops, only: print_HDF5
-            use num_vars, only: n_theta_plot, n_zeta_plot
-            use grid_ops, only: calc_XYZ_grid
+            use grid_ops, only: calc_XYZ_grid, calc_eqd_grid, trim_grid, &
+                &extend_grid
             use grid_vars, only: create_grid, destroy_grid
-            use MPI_ops, only: get_ser_var
             
             character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
             
             ! local variables
             integer :: kd                                                       ! counter
-            real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)        ! theta and zeta for 3D plot
             real(dp), allocatable :: X_plot_3D(:,:,:)                           ! x values of 3D plot
             real(dp), allocatable :: Y_plot_3D(:,:,:)                           ! y values of 3D plot
             real(dp), allocatable :: Z_plot_3D(:,:,:)                           ! z values of 3D plot
@@ -1011,7 +959,7 @@ contains
             integer :: plot_grp_dim(4)                                          ! group plot dimensions
             integer :: plot_offset(4)                                           ! plot offset
             type(grid_type) :: grid_plot                                        ! grid for plotting
-            integer, allocatable :: tot_i_min(:)                                ! i_min of equilibrium grid of all processes
+            type(grid_type) :: grid_ext                                         ! angularly extended equilibrium grid
             character(len=max_str_ln) :: file_name                              ! file name
             
             ! initialize ierr
@@ -1020,53 +968,23 @@ contains
             ! set up file name
             file_name = 'flux_quantities'
             
-            ! initialize theta_plot and zeta_plot
-            allocate(theta_plot(n_theta_plot,n_zeta_plot,grid_eq%grp_n_r))
-            if (n_theta_plot.eq.1) then
-                theta_plot = 0.0_dp
-            else
-                do id = 1,n_theta_plot
-                    theta_plot(id,:,:) = &
-                        &pi+(id-1.0_dp)*2*pi/(n_theta_plot-1.0_dp)              ! starting from pi gives nicer plots
-                end do
-            end if
-            ! zeta equidistant
-            allocate(zeta_plot(n_theta_plot,n_zeta_plot,grid_eq%grp_n_r))
-            if (n_zeta_plot.eq.1) then
-                zeta_plot = 0.0_dp
-            else
-                do id = 1,n_zeta_plot
-                    zeta_plot(:,id,:) = (id-1.0_dp)*2*pi/(n_zeta_plot-1.0_dp)
-                end do
-            end if
-            
-            ! create plot grid (only group quantities needed)
-            ierr = create_grid(grid_plot,&
-                &[n_theta_plot,n_zeta_plot,grid_eq%n(3)],&
-                &[grid_eq%i_min,grid_eq%i_max])
-            CHCKERR('')
-            grid_plot%theta_E = theta_plot
-            grid_plot%zeta_E = zeta_plot
-            grid_plot%grp_r_E = grid_eq%grp_r_E
-            
-            ! get min_i of equilibrium grid
-            ierr = get_ser_var([grid_eq%i_min],tot_i_min,scatter=.true.)
+            ! extend equilibrium grid
+            ierr = extend_grid(grid_eq,grid_ext)
             CHCKERR('')
             
-            ! set up plot_dim, plot_grp_dim and plot_offset
-            plot_grp_dim = [n_theta_plot,n_zeta_plot,grid_plot%grp_n_r,n_vars]
-            plot_dim = [n_theta_plot,n_zeta_plot,&
-                &grid_plot%n(3)-tot_i_min(1)+1,n_vars]                          ! subtract i_min of first process
-            plot_offset = [0,0,grid_plot%i_min-tot_i_min(1),n_vars]             ! subtract i_min of first process
-            
-            ! allocate 3D X, Y and Z
-            allocate(X_plot_3D(plot_grp_dim(1),plot_grp_dim(2),plot_grp_dim(3)))
-            allocate(Y_plot_3D(plot_grp_dim(1),plot_grp_dim(2),plot_grp_dim(3)))
-            allocate(Z_plot_3D(plot_grp_dim(1),plot_grp_dim(2),plot_grp_dim(3)))
+            ! trim extended grid into plot grid
+            ierr = trim_grid(grid_ext,grid_plot)
+            CHCKERR('')
             
             ! calculate 3D X,Y and Z
             ierr = calc_XYZ_grid(grid_plot,X_plot_3D,Y_plot_3D,Z_plot_3D)
             CHCKERR('')
+            
+            ! set up plot_dim, plot_grp_dim and plot_offset
+            plot_dim = [grid_plot%n(1),grid_plot%n(2),grid_plot%n(3),n_vars]
+            plot_grp_dim = [grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r,&
+                &n_vars]
+            plot_offset = [0,0,grid_plot%i_min-1,n_vars]
             
             ! set up total plot variables
             allocate(X_plot(plot_grp_dim(1),plot_grp_dim(2),plot_grp_dim(3),&
@@ -1096,16 +1014,16 @@ contains
                 &description='Flux quantities')
             
             ! deallocate and destroy grid
-            deallocate(theta_plot,zeta_plot)
             deallocate(X_plot_3D,Y_plot_3D,Z_plot_3D)
             deallocate(X_plot,Y_plot,Z_plot,f_plot)
             call destroy_grid(grid_plot)
+            call destroy_grid(grid_ext)
         end function flux_q_plot_HDF5
     end function flux_q_plot
     
     ! normalizes equilibrium quantities using the normalization constants
     subroutine normalize_eq_vars(eq)
-        use eq_vars, only: eq_type, psi_0, pres_0, max_flux_p_E, max_flux_t_E, &
+        use eq_vars, only: psi_0, pres_0, max_flux_p_E, max_flux_t_E, &
             &max_flux_p_F, max_flux_t_F
         
         ! local variables

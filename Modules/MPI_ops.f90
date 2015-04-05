@@ -3,17 +3,17 @@
 !------------------------------------------------------------------------------!
 module MPI_ops
 #include <PB3D_macros.h>
+    use str_ops
+    use output_ops
+    use messages
     use MPI
-    use str_ops, only: i2str
-    use messages, only: writo, lvl_ud, print_ar_1
     use num_vars, only: dp, max_str_ln
-    use output_ops, only: print_GP_2D, draw_GP
     
     implicit none
     private
     public start_MPI, stop_MPI, split_MPI, abort_MPI, broadcast_vars, &
         &merge_MPI, get_next_job, divide_X_grid, get_ser_var, get_ghost_arr, &
-        &wait_MPI
+        &wait_MPI, broadcast_l
     
     ! interfaces
     interface get_ser_var
@@ -889,6 +889,27 @@ contains
             end if
         end function divide_X_grid_ind
     end function divide_X_grid
+    
+    ! wrapper function to broadcast a single logical variable
+    integer function broadcast_l(lvar,source) result(ierr)
+        character(*), parameter :: rout_name = 'broadcast_l'
+        
+        ! input / output
+        logical, intent(in) :: lvar                                             ! variable to be broadcast
+        integer, intent(in), optional :: source                                 ! process that sends
+        
+        ! local variables
+        integer :: source_loc = 0                                               ! local value for source
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local source if given
+        if (present(source)) source_loc = source
+        
+        call MPI_Bcast(lvar,1,MPI_LOGICAL,source_loc,MPI_COMM_WORLD,ierr)
+        CHCKERR('MPI broadcast failed')
+    end function broadcast_l
     
     ! Broadcasts all  the relevant variable that have been  determined so far in
     ! the global master process using the inputs to the other processes
