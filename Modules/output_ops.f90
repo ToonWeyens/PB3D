@@ -13,7 +13,7 @@ module output_ops
     implicit none
     private
     public print_GP_2D, print_GP_3D, draw_GP, draw_GP_animated, merge_GP, &
-        &print_HDF5
+        &print_HDF5, plot_diff_HDF5
     
     ! interfaces
     interface print_GP_2D
@@ -993,7 +993,6 @@ contains
         ! allocate geometry arrays
         ! (first two indices correspond to angular dimensions)
         if (tot_dim_3D(1).eq.1 .or. tot_dim_3D(2).eq.1) then                    ! 2D grid
-            write(*,*) '!!! CHECK IF REALLY AXISYMMETRIC !!!'
             allocate(XYZ(2))
         else                                                                    ! 3D grid
             allocate(XYZ(3))
@@ -1192,6 +1191,8 @@ contains
         type(HDF5_file_type) :: file_info                                       ! file info
         integer :: id                                                           ! counter
         integer :: tot_dim_loc(3)                                               ! local version of tot_dim
+        integer :: grp_dim_loc(3)                                               ! local version of grp_dim
+        integer :: grp_offset_loc(3)                                            ! local version of grp_offset
         type(XML_str_type) :: grid                                              ! grid
         type(XML_str_type) :: top                                               ! topology
         type(XML_str_type), allocatable :: XYZ(:)                               ! data items for geometry
@@ -1200,8 +1201,6 @@ contains
         real(dp), pointer :: X_ptr(:,:,:)                                       ! pointer to X
         real(dp), pointer :: Y_ptr(:,:,:)                                       ! pointer to Y
         real(dp), pointer :: Z_ptr(:,:,:)                                       ! pointer to Z
-        integer :: grp_dim_loc(3)                                               ! local version of grp_dim
-        integer :: grp_offset_loc(3)                                            ! local version of grp_offset
         
         ! set up file info
         file_info%name = file_name
@@ -1235,7 +1234,6 @@ contains
         
         ! allocate geometry arrays
         if (tot_dim_loc(1).eq.1 .or. tot_dim_loc(2).eq.1) then                  ! 2D grid
-            write(*,*) '!!! CHECK IF REALLY AXISYMMETRIC !!!'
             allocate(XYZ(2))
         else                                                                    ! 3D grid
             allocate(XYZ(3))
@@ -1324,4 +1322,115 @@ contains
         istat = close_HDF5_file(file_info)
         CHCKSTT
     end subroutine print_HDF5_ind
+    
+    ! Takes  two input  vectors and  plots  these as  well as  the relative  and
+    ! absolute difference in a HDF5  file, similar to print_HDF5. Optionally, an
+    ! output message  can be displayed on  screen with the maximum  relative and
+    ! absolute error.
+    subroutine plot_diff_HDF5(A,B,file_name,tot_dim,grp_dim,grp_offset,&
+        &description,output_message)
+        use utilities, only: diff
+        use messages, only: lvl_ud
+        
+        ! input / output
+        real(dp), intent(in) :: A(:,:,:), B(:,:,:)                              ! vectors A and B
+        character(len=*), intent(in) :: file_name                               ! name of plot
+        integer, intent(in), optional :: tot_dim(3)                             ! total dimensions of the arrays
+        integer, intent(in), optional :: grp_dim(3)                             ! group dimensions of the arrays
+        integer, intent(in), optional :: grp_offset(3)                          ! offset of group dimensions
+        character(len=*), intent(in), optional :: description                   ! description
+        logical, intent(in), optional :: output_message                         ! whether to display a message or not
+        
+        ! local variables
+        real(dp), allocatable :: plot_var(:,:,:,:)                              ! variable containing plot
+        integer :: tot_dim_loc(4)                                               ! local version of tot_dim
+        integer :: grp_dim_loc(4)                                               ! local version of grp_dim
+        integer :: grp_offset_loc(4)                                            ! local version of grp_offset
+        character(len=max_str_ln) :: var_names(4)                               ! names of variables in plot
+        logical :: output_message_loc                                           ! local version of output_message
+        real(dp) :: lims(2)                                                     ! limits of errors
+        integer :: lim_locs(3,2)                                                ! location of limits
+        
+        ! set up local tot_dim
+        tot_dim_loc = [shape(A),4]
+        if (present(tot_dim)) tot_dim_loc = [tot_dim,4]
+        
+        ! set up local grp_dim and grp_offset
+        if (present(grp_dim)) then
+            grp_dim_loc = [grp_dim,4]
+        else
+            grp_dim_loc = tot_dim_loc
+        end if
+        if (present(grp_offset)) then
+            grp_offset_loc = [grp_offset,4]
+        else
+            grp_offset_loc = [0,0,0,0]
+        end if
+        
+        ! set up local ouput message
+        output_message_loc = .false.
+        if (present(output_message)) output_message_loc = output_message
+        
+        ! tests
+        if (grp_dim_loc(1).ne.size(B,1) .or. grp_dim_loc(2).ne.size(B,2) .or. &
+            &grp_dim_loc(3).ne.size(B,3) .or. grp_dim_loc(1).ne.size(A,1) .or. &
+            &grp_dim_loc(2).ne.size(A,2) .or. grp_dim_loc(3).ne.size(A,3)) then
+            call writo('WARNING: in plot_diff_HDF5, A and B need to have the &
+                &correct size')
+            return
+        end if
+        
+        ! set up plot_var
+        allocate(plot_var(grp_dim_loc(1),grp_dim_loc(2),grp_dim_loc(3),4))
+        plot_var(:,:,:,1) = A
+        plot_var(:,:,:,2) = B
+        plot_var(:,:,:,3) = diff(A,B,grp_dim_loc,rel=.true.)
+        plot_var(:,:,:,4) = diff(A,B,grp_dim_loc,rel=.false.)
+        
+        ! set up var_names
+        var_names(1) = 'v1'
+        var_names(2) = 'v2'
+        var_names(3) = 'rel v1 - v2'
+        var_names(4) = 'abs v1 - v2'
+        
+        ! plot
+        call print_HDF5_arr(var_names,file_name,plot_var,tot_dim=tot_dim_loc,&
+            &grp_dim=grp_dim_loc,grp_offset=grp_offset_loc,col=1,&
+            &description=description)
+        
+        ! output message if requested
+        if (output_message_loc) then
+            call lvl_ud(1)
+            call writo('Information about relative and absolute error:')
+            call lvl_ud(1)
+            ! calculate limits on relative error
+            lims = [minval(plot_var(:,:,:,3)),maxval(plot_var(:,:,:,3))]
+            lim_locs(:,1) = minloc(plot_var(:,:,:,3))
+            lim_locs(:,2) = maxloc(plot_var(:,:,:,3))
+            ! output limits on relative error
+            call writo(trim(r2strt(lims(1)))//' (at '//&
+                &trim(i2str(lim_locs(1,1)))//','//&
+                &trim(i2str(lim_locs(2,1)))//','//&
+                &trim(i2str(lim_locs(3,1)))//&
+                &') < rel. err. < '//trim(r2strt(lims(2)))//&
+                &' (at '//trim(i2str(lim_locs(1,2)))//','//&
+                &trim(i2str(lim_locs(2,2)))//','//&
+                &trim(i2str(lim_locs(3,2)))//')')
+            ! calculate limits on absolute error
+            lims = [minval(plot_var(:,:,:,4)),maxval(plot_var(:,:,:,4))]
+            lim_locs(:,1) = minloc(plot_var(:,:,:,4))
+            lim_locs(:,2) = maxloc(plot_var(:,:,:,4))
+            ! output limits on absolute error
+            call writo(trim(r2strt(lims(1)))//' (at '//&
+                &trim(i2str(lim_locs(1,1)))//','//&
+                &trim(i2str(lim_locs(2,1)))//','//&
+                &trim(i2str(lim_locs(3,1)))//&
+                &') < abs. err. < '//trim(r2strt(lims(2)))//&
+                &' (at '//trim(i2str(lim_locs(1,2)))//','//&
+                &trim(i2str(lim_locs(2,2)))//','//&
+                &trim(i2str(lim_locs(3,2)))//')')
+            call lvl_ud(-1)
+            call lvl_ud(-1)
+        end if
+    end subroutine plot_diff_HDF5
 end module output_ops

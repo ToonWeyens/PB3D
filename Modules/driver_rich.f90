@@ -322,7 +322,7 @@ contains
         call writo('Processing output')
         call lvl_ud(1)
         
-        ierr = process_output(grid_eq,eq,met,grid_X,X,n_sol_found,alpha)
+        ierr = process_output(grid_eq,eq,grid_X,X,n_sol_found,alpha)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -508,30 +508,28 @@ contains
     end function calculate_vars_in_eq_grid
     
     ! Processes the output of the simulations for vizualization, analysis, etc.
-    integer function process_output(grid_eq,eq,met,grid_X,X,n_sol_found,alpha) &
+    integer function process_output(grid_eq,eq,grid_X,X,n_sol_found,alpha) &
         &result(ierr)
-        use num_vars, only: n_theta_plot, n_zeta_plot, no_plots, no_messages
+        use num_vars, only: no_plots, no_messages
         use grid_vars, only: create_grid, destroy_grid
         use eq_vars, only: dealloc_eq, dealloc_eq_final
         use metric_vars, only: dealloc_metric, dealloc_metric_final
         use X_vars, only: dealloc_X, dealloc_X_final, create_X
         use grid_ops, only: coord_E2F, calc_XYZ_grid, extend_grid, calc_XYZ_grid
         use X_ops, only: prepare_X
-        use sol_ops, only: plot_X_vecs, test_output
+        use sol_ops, only: plot_X_vecs
         
         character(*), parameter :: rout_name = 'process_output'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(eq_type), intent(in) :: eq                                         ! equilibirum variables
-        type(metric_type), intent(in) :: met                                    ! metric variables
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_type), intent(in) :: X                                           ! perturbation variables
         integer, intent(in) :: n_sol_found                                      ! how many solutions found and saved
         real(dp), intent(in) :: alpha                                           ! field line label alpha
         
         ! local variables
-        integer :: id                                                           ! counter
         integer :: min_id(3), max_id(3)                                         ! min. and max. index of range 1, 2 and 3
         integer :: last_unstable_id                                             ! index of last unstable EV
         type(grid_type) :: grid_eq_ext                                          ! extended equilibrium grid, covering whole geometry
@@ -555,14 +553,6 @@ contains
         call lvl_ud(1)
         
         call plot_X_vals(X,n_sol_found,last_unstable_id)
-        
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('checking whether some physical tests are satisfied')
-        call lvl_ud(1)
-        
-        call test_output(grid_eq,eq,met)
         
         call lvl_ud(-1)
         

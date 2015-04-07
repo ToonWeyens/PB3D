@@ -15,7 +15,7 @@ module sol_ops
 
     implicit none
     private
-    public calc_real_XUQ, plot_X_vecs, test_output
+    public calc_real_XUQ, plot_X_vecs
     
     ! interfaces
     interface calc_real_XUQ
@@ -266,83 +266,6 @@ contains
         ! deallocate array version of XUQ
         deallocate(XUQ_arr)
     end function calc_real_XUQ_ind
-    
-    ! performs some physical tests on output
-    !   - mu_0 D2p = 1/J (D3 B_2 - D2 B_3)
-    !   - mu_0 J D3p = 0 => D3 B_1 = D1 B_3
-    subroutine test_output(grid_eq,eq,met)
-        use utilities, only: c
-        use num_vars, only: mu_0
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(metric_type), intent(in) :: met                                    ! metric variables
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        
-        ! local variables
-        real(dp), allocatable :: res(:,:,:)                                     ! result variable
-        integer :: kd                                                           ! counter
-        
-        write(*,*) '!!! THIS HAS TO PLOT ONLY ITS OWN GROUP PART IN THE TOTAL PLOT !!!'
-        
-        ! set up res
-        allocate(res(grid_eq%n(1),grid_eq%n(2),grid_eq%grp_n_r))
-        
-        ! user output
-        call writo('Checking if physical tests are satisfied')
-        call lvl_ud(1)
-        
-        ! user output
-        call writo('Checking if mu_0 p'' = 1/J (D3 B_2 - D2_B3)')
-        call lvl_ud(1)
-        
-        ! save mu_0 D2p in res
-        do kd = 1,grid_eq%grp_n_r
-            res(:,:,kd) = mu_0*eq%pres_FD(kd,1)
-        end do
-        
-        ! plot
-        call print_HDF5('Input mu_0 D2p','mu_0_D2p_input',res)
-        
-        ! calculate mu_0 D2p
-        res = met%g_FD(:,:,:,c([2,3],.true.),0,0,1)/met%jac_FD(:,:,:,0,0,0) - &
-            &met%g_FD(:,:,:,c([3,3],.true.),0,1,0)/met%jac_FD(:,:,:,0,0,0) - &
-            &(met%g_FD(:,:,:,c([2,3],.true.),0,0,0)*met%jac_FD(:,:,:,0,0,1) - &
-            &met%g_FD(:,:,:,c([3,3],.true.),0,0,0)*met%jac_FD(:,:,:,0,1,0))/ &
-            &met%jac_FD(:,:,:,0,0,0)**2
-        res = res/met%jac_FD(:,:,:,0,0,0)
-        
-        ! plot
-        call print_HDF5('Calculated mu_0 D2p','mu_0_D2p_calc',res)
-        
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('Checking if mu_0 J D3p = 0 => D3 B_1 = D1 B_3)')
-        call lvl_ud(1)
-        
-        ! calculate res
-        res = met%g_FD(:,:,:,c([1,3],.true.),0,0,1)/met%jac_FD(:,:,:,0,0,0) - &
-            &met%g_FD(:,:,:,c([1,3],.true.),0,0,0)*met%jac_FD(:,:,:,0,0,1) / &
-            &met%jac_FD(:,:,:,0,0,0)**2
-        res = res/met%jac_FD(:,:,:,0,0,0)
-        
-        ! plot
-        call print_HDF5('Calculated D3 B_1','D3_B1',res)
-        
-        ! calculate res
-        res = met%g_FD(:,:,:,c([3,3],.true.),1,0,0)/met%jac_FD(:,:,:,0,0,0) - &
-            &met%g_FD(:,:,:,c([3,3],.true.),0,0,0)*met%jac_FD(:,:,:,1,0,0)/ &
-            &met%jac_FD(:,:,:,0,0,0)**2
-        res = - res/met%jac_FD(:,:,:,0,0,0)
-        
-        ! plot
-        call print_HDF5('Calculated -D1 B_3','D1_B3',res)
-        
-        call lvl_ud(-1)
-        
-        call lvl_ud(-1)
-    end subroutine test_output
     
     ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
     ! equilibrium  grid and  the normal  part of  the provided  perturbation

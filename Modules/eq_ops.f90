@@ -77,7 +77,7 @@ contains
         use HELENA, only: dealloc_HEL
         use MPI_ops, only: wait_MPI
 #if ldebug
-        use metric_ops, only: test_T_VF
+        use metric_ops, only: test_T_VF, test_p, test_jac_F
 #endif
         
         use utilities, only: calc_det, calc_inv, calc_mult, c
@@ -214,9 +214,11 @@ contains
 #if ldebug
                         if (ltest) then
                             call writo('Test calculation of T_VF?')
-                            if(yes_no(.false.)) ierr = test_T_VF(grid_eq,eq,met)
-                            CHCKERR('')
-                            call pause_prog
+                            if(yes_no(.false.)) then
+                                ierr = test_T_VF(grid_eq,eq,met)
+                                CHCKERR('')
+                                call pause_prog
+                            end if
                         end if
 #endif
                         
@@ -291,6 +293,17 @@ contains
                     CHCKERR('')
                 end do
                 
+#if ldebug
+                if (ltest) then
+                    call writo('Test Jacobian in Flux coordinates?')
+                    if(yes_no(.false.)) then
+                        ierr = test_jac_F(grid_eq,eq,met)
+                        CHCKERR('')
+                        call pause_prog
+                    end if
+                end if
+#endif
+                
                 ! calculate   the  derivatives  in  Flux  coordinates  from  the
                 ! derivatives in VMEC coordinates
                 call writo('Calculate derivatives in Flux coordinates...')
@@ -343,6 +356,17 @@ contains
                     CHCKERR('')
                     eq%rot_t_FD(:,id) = pmone * eq%rot_t_FD(:,id)               ! multiply by plus minus one
                 end do
+                
+#if ldebug
+                if (ltest) then
+                    call writo('Test consistency with given pressure?')
+                    if(yes_no(.false.)) then
+                        ierr = test_p(grid_eq,eq,met)
+                        CHCKERR('')
+                        call pause_prog
+                    end if
+                end if
+#endif
                 
                 ! deallocate unused equilibrium quantities
                 call writo('Deallocate unused equilibrium and metric &

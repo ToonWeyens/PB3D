@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.71                                                              !
+!   Version: 0.72                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -89,6 +89,8 @@ program PB3D
     write(*,*) '!!!!!!!!!! YOU SHOULD ALLOW ARBITRARY RANGES FOR M AND N !!!!!!'
     write(*,*) '!!!!!!!!!! E.G. FROM -10 to +20 !!!!!'
 
+    write(*,*) '!!! HDF5 PLOT CHOULD CHECK IF IT IS REALLY AXISYMMETRIC IF IT &
+        &DOES A 2D PLOT BECAUSE ONE DIMENSION EQUAL TO 1 !!!'
     
     !-------------------------------------------------------
     !   Main driver

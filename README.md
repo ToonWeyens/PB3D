@@ -22,3 +22,8 @@ CHANGELOG
       - Moved extend_grid to grid_ops.
       - Implemented trim_grid, which trims the ghost regions of a grid.
       - Resorted to using trim_grid and ext_grid in many of the routines where plots are made.
+
+0.72: - Implemented function to return relative or absolute difference between two inputs in utilities.
+      - Implemented routine that plots 2 variables and their rel. and abs. differences
+      - T_VF, jac_F is checked now for VMEC and it is found to be correct.
+      - D1 p and D3 p are checked for both VMEC and HELENA and it is NOT correct.

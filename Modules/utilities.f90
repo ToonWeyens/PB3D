@@ -13,7 +13,7 @@ module utilities
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun, calc_mult, &
         &init_utilities, derivs, con2dis, dis2con, round_with_tol, conv_sym, &
-        &is_sym, calc_spline_3, con, &
+        &is_sym, calc_spline_3, con, diff, &
         &plot_info
     
     ! the possible derivatives of order i
@@ -59,6 +59,9 @@ module utilities
     end interface
     interface con
         module procedure con_3D, con_2D, con_1D, con_0D
+    end interface
+    interface diff
+        module procedure diff_0D, diff_1D, diff_2D, diff_3D, diff_4D
     end interface
     
     ! global variables for debugging
@@ -2300,4 +2303,95 @@ contains
             B = A
         end if
     end function con_0D
+    
+    ! returns relative or absolute difference between inputs A and B
+    function diff_0D(A,B,rel) result(C)                                         ! 4D version
+        ! local variables
+        real(dp) :: max_diff = 1.E10                                            ! maximum absolute difference
+        
+        ! input / output
+        real(dp), intent(in) :: A                                               ! input A
+        real(dp), intent(in) :: B                                               ! input B
+        logical, intent(in) :: rel                                              ! .true. if relative and .false. if absolute error
+        real(dp) :: C                                                           ! output C
+        
+        ! return output
+        if (rel) then
+            C = min(max_diff,max(-max_diff,(A-B)/(A+B)))
+        else
+            C = abs(A-B)
+        end if
+    end function diff_0D
+    function diff_1D(A,B,dims,rel) result(C)                                    ! 4D version
+        ! local variables
+        real(dp) :: max_diff = 1.E10                                            ! maximum absolute difference
+        
+        ! input / output
+        real(dp), intent(in) :: A(:)                                            ! input A
+        real(dp), intent(in) :: B(:)                                            ! input B
+        integer, intent(in) :: dims(1)                                          ! dimensions of A and B
+        logical, intent(in) :: rel                                              ! .true. if relative and .false. if absolute error
+        real(dp) :: C(dims(1))                                                  ! output C
+        
+        ! return output
+        if (rel) then
+            C = min(max_diff,max(-max_diff,(A-B)/(A+B)))
+        else
+            C = abs(A-B)
+        end if
+    end function diff_1D
+    function diff_2D(A,B,dims,rel) result(C)                                    ! 4D version
+        ! local variables
+        real(dp) :: max_diff = 1.E10                                            ! maximum absolute difference
+        
+        ! input / output
+        real(dp), intent(in) :: A(:,:)                                          ! input A
+        real(dp), intent(in) :: B(:,:)                                          ! input B
+        integer, intent(in) :: dims(2)                                          ! dimensions of A and B
+        logical, intent(in) :: rel                                              ! .true. if relative and .false. if absolute error
+        real(dp) :: C(dims(1),dims(2))                                          ! output C
+        
+        ! return output
+        if (rel) then
+            C = min(max_diff,max(-max_diff,(A-B)/(A+B)))
+        else
+            C = abs(A-B)
+        end if
+    end function diff_2D
+    function diff_3D(A,B,dims,rel) result(C)                                    ! 4D version
+        ! local variables
+        real(dp) :: max_diff = 1.E10                                            ! maximum absolute difference
+        
+        ! input / output
+        real(dp), intent(in) :: A(:,:,:)                                        ! input A
+        real(dp), intent(in) :: B(:,:,:)                                        ! input B
+        integer, intent(in) :: dims(3)                                          ! dimensions of A and B
+        logical, intent(in) :: rel                                              ! .true. if relative and .false. if absolute error
+        real(dp) :: C(dims(1),dims(2),dims(3))                                  ! output C
+        
+        ! return output
+        if (rel) then
+            C = min(max_diff,max(-max_diff,(A-B)/(A+B)))
+        else
+            C = abs(A-B)
+        end if
+    end function diff_3D
+    function diff_4D(A,B,dims,rel) result(C)                                    ! 4D version
+        ! local variables
+        real(dp) :: max_diff = 1.E10                                            ! maximum absolute difference
+        
+        ! input / output
+        real(dp), intent(in) :: A(:,:,:,:)                                      ! input A
+        real(dp), intent(in) :: B(:,:,:,:)                                      ! input B
+        integer, intent(in) :: dims(4)                                          ! dimensions of A and B
+        logical, intent(in) :: rel                                              ! .true. if relative and .false. if absolute error
+        real(dp) :: C(dims(1),dims(2),dims(3),dims(4))                          ! output C
+        
+        ! return output
+        if (rel) then
+            C = min(max_diff,max(-max_diff,(A-B)/(A+B)))
+        else
+            C = abs(A-B)
+        end if
+    end function diff_4D
 end module utilities

@@ -17,8 +17,11 @@ module metric_ops
     public calc_T_VC, calc_g_C, calc_jac_C, calc_g_V, calc_jac_V, &
         &calc_jac_H, calc_T_HF, calc_T_VF, calc_h_H, &
         &calc_inv_met, calc_g_F, calc_jac_F, normalize_metric_vars, &
-        &calc_f_deriv, test_T_VF, &
+        &calc_f_deriv, &
         &plot_info
+#if ldebug
+    public test_T_VF, test_p, test_jac_F
+#endif
     
     ! interfaces
     interface calc_g_C
@@ -1614,7 +1617,8 @@ contains
         use num_vars, only: use_pol_flux_F, pi
         use grid_vars, only: destroy_grid
         use grid_ops, only: trim_grid
-        use utilities, only: c
+        use utilities, only: c, diff
+        use output_ops, only: plot_diff_HDF5
         
         character(*), parameter :: rout_name = 'test_T_VF'
         
@@ -1626,10 +1630,9 @@ contains
         ! local variables
         integer :: id, kd                                                       ! counter
         real(dp), allocatable :: res(:,:,:,:)                                   ! calculated result
-        character(len=max_str_ln) :: var_names(9)                               ! names of variables in plot
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(4), grp_dim(4), grp_offset(4)                        ! total and group dimensions and group offset
+        integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total and group dimensions and group offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         
         ! initialize ierr
@@ -1639,74 +1642,79 @@ contains
         call writo('Going to test whether T_VF complies with the theory')
         call lvl_ud(1)
         
-        ! set up res
-        allocate(res(grid_eq%n(1),grid_eq%n(2),grid_eq%grp_n_r,9))
-        res = 0.0_dp
-        
-        ! choose depending on using poloidal flux or not
-        if (use_pol_flux_F) then                                                ! using poloidal flux
-            ! calculate T_VF(1,1)
-            do kd = 1,grid_eq%grp_n_r
-                res(:,:,kd,1) = grid_eq%theta_F(:,:,kd)*eq%q_saf_E(kd,1) + &
-                    &eq%L_E(:,:,kd,0,0,1)*eq%q_saf_E(kd,0)
-            end do
-            ! calculate T_VF(2,1)
-            do kd = 1,grid_eq%grp_n_r
-                res(:,:,kd,2) = (1._dp + eq%L_E(:,:,kd,0,1,0))*eq%q_saf_E(kd,0)
-            end do
-            ! calculate T_VF(3,1)
-            do kd = 1,grid_eq%grp_n_r
-                res(:,:,kd,3) = -1._dp + eq%L_E(:,:,kd,0,0,1)*eq%q_saf_E(kd,0)
-            end do
-            ! calculate T_VF(1,2)
-            do kd = 1,grid_eq%grp_n_r
-                res(:,:,kd,4) = eq%flux_p_E(kd,1)/(2*pi)
-            end do
-            ! calculate T_VF(1,3)
-            res(:,:,:,7) = eq%L_E(:,:,:,1,0,0)
-            ! calculate T_VF(2,3)
-            res(:,:,:,8) = 1._dp + eq%L_E(:,:,:,0,1,0)
-            ! calculate T_VF(3,3)
-            res(:,:,:,9) = eq%L_E(:,:,:,0,0,1)
-        else                                                                    ! using toroidal flux
-        end if
-        
         ! trim extended grid into plot grid
         ierr = trim_grid(grid_eq,grid_trim)
         CHCKERR('')
         
+        ! set total and group dimensions and group offset
+        tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
+        grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r]
+        grp_offset = [0,0,grid_trim%i_min-1]
+        
+        ! set up res
+        allocate(res(grp_dim(1),grp_dim(2),grp_dim(3),9))
+        res = 0.0_dp
+        
+        ! calc res, depending on flux used in F coordinates
+        if (use_pol_flux_F) then                                                ! using poloidal flux
+            ! calculate T_VF(1,1)
+            do kd = 1,grid_trim%grp_n_r
+                res(:,:,kd,1) = grid_trim%theta_F(:,:,kd)*eq%q_saf_E(kd,1) + &
+                    &eq%L_E(:,:,kd,1,0,0)*eq%q_saf_E(kd,0)
+            end do
+            ! calculate T_VF(2,1)
+            do kd = 1,grid_trim%grp_n_r
+                res(:,:,kd,2) = (1._dp + eq%L_E(:,:,kd,0,1,0))*eq%q_saf_E(kd,0)
+            end do
+            ! calculate T_VF(3,1)
+            do kd = 1,grid_trim%grp_n_r
+                res(:,:,kd,3) = -1._dp + eq%L_E(:,:,kd,0,0,1)*eq%q_saf_E(kd,0)
+            end do
+            ! calculate T_VF(1,2)
+            do kd = 1,grid_trim%grp_n_r
+                res(:,:,kd,4) = eq%flux_p_E(kd,1)/(2*pi)
+            end do
+            ! calculate T_VF(1,3)
+            res(:,:,:,7) = eq%L_E(:,:,1:grid_trim%grp_n_r,1,0,0)
+            ! calculate T_VF(2,3)
+            res(:,:,:,8) = 1._dp + eq%L_E(:,:,1:grid_trim%grp_n_r,0,1,0)
+            ! calculate T_VF(3,3)
+            res(:,:,:,9) = eq%L_E(:,:,1:grid_trim%grp_n_r,0,0,1)
+        else                                                                    ! using toroidal flux
+            ! calculate T_VF(1,1)
+            do kd = 1,grid_trim%grp_n_r
+                res(:,:,kd,1) = grid_trim%zeta_E(:,:,kd)*eq%rot_t_E(kd,1) - &
+                    &eq%L_E(:,:,kd,1,0,0)
+            end do
+            ! calculate T_VF(2,1)
+            res(:,:,:,2) = - (1._dp + eq%L_E(:,:,1:grid_trim%grp_n_r,0,1,0))
+            ! calculate T_VF(3,1)
+            do kd = 1,grid_trim%grp_n_r
+                res(:,:,kd,3) = eq%rot_t_E(kd,0) - eq%L_E(:,:,kd,0,0,1)
+            end do
+            ! calculate T_VF(1,2)
+            do kd = 1,grid_trim%grp_n_r
+                res(:,:,kd,4) = - eq%flux_t_E(kd,1)/(2*pi)
+            end do
+            ! calculate T_VF(3,3)
+            res(:,:,:,9) = -1._dp
+        end if
+        
         ! set up plot variables for calculated values
         do id = 1,3
             do kd = 1,3
-                var_names(c([kd,id],.false.)) = 'T_VF calc '//&
-                    &trim(i2str(kd))//','//trim(i2str(id))
+                ! set some variables
+                file_name = 'TEST_T_VF_'//trim(i2str(kd))//'_'//trim(i2str(id))
+                description = 'Testing calculated with given value for T_VF('//&
+                    &trim(i2str(kd))//','//trim(i2str(id))//')'
+                
+                ! plot difference
+                call plot_diff_HDF5(res(:,:,:,c([kd,id],.false.)),&
+                    &met%T_EF(:,:,1:grid_trim%grp_n_r,c([kd,id],.false.),&
+                    &0,0,0),file_name,tot_dim,grp_dim,grp_offset,description,&
+                    &output_message=.true.)
             end do
         end do
-        file_name = 'TEST_T_VF_calc'
-        description = 'Calculated T_VF'
-        tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3),9]
-        grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,9]
-        grp_offset = [0,0,grid_trim%i_min-1,9]
-        
-        ! output calculated values
-        call print_HDF5(var_names,file_name,res,tot_dim=tot_dim,&
-            &grp_dim=grp_dim,grp_offset=grp_offset,col=1,&
-            &description=trim(description))
-        
-        ! set up plot variables for input values
-        do id = 1,3
-            do kd = 1,3
-                var_names(c([kd,id],.false.)) = 'T_VF input '//&
-                    &trim(i2str(kd))//','//trim(i2str(id))
-            end do
-        end do
-        file_name = 'TEST_T_VF_input'
-        description = 'Input T_VF'
-        
-        ! output input values
-        call print_HDF5(var_names,file_name,met%T_EF(:,:,:,:,0,0,0),&
-            &tot_dim=tot_dim,grp_dim=grp_dim,grp_offset=grp_offset,col=1,&
-            &description=trim(description))
         
         ! clean up
         call destroy_grid(grid_trim)
@@ -1715,5 +1723,201 @@ contains
         call lvl_ud(-1)
         call writo('Test complete')
     end function test_T_VF
+    
+    ! performs tests on pressure balance
+    !   - mu_0 D2p = 1/J (D3 B_2 - D2 B_3)
+    !   - mu_0 J D3p = 0 => D3 B_1 = D1 B_3
+    integer function test_p(grid_eq,eq,met) result(ierr)
+        use utilities, only: c
+        use num_vars, only: mu_0
+        use grid_ops, only: trim_grid
+        
+        character(*), parameter :: rout_name = 'test_p'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        
+        ! local variables
+        real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
+        integer :: kd                                                           ! counter
+        character(len=max_str_ln) :: file_name                                  ! name of plot file
+        character(len=max_str_ln) :: description                                ! description of plot
+        integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total and group dimensions and group offset
+        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! output
+        call writo('Going to test the consistency of the metric variables with &
+            &the given pressure')
+        call lvl_ud(1)
+        
+        ! trim extended grid into plot grid
+        ierr = trim_grid(grid_eq,grid_trim)
+        CHCKERR('')
+        
+        ! set up res
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,2))
+        
+        ! user output
+        call writo('Checking if mu_0 D1 p = 1/J (D3 B_2 - D2_B3)')
+        call lvl_ud(1)
+        
+        ! set total and group dimensions and group offset
+        tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
+        grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r]
+        grp_offset = [0,0,grid_trim%i_min-1]
+        
+        ! calculate mu_0 D2p
+        res(:,:,:,1) = &
+            &(met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,1) - &
+            &met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,1,0))/&
+            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) - &
+            &(met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,0)*&
+            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,1) - &
+            &met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,0,0)*&
+            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,1,0))/ &
+            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2
+        res(:,:,:,1) = res(:,:,:,1)/met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)
+        
+        ! save mu_0 D2p in res
+        do kd = 1,grid_trim%grp_n_r
+            res(:,:,kd,2) = mu_0*eq%pres_FD(kd,1)
+        end do
+        
+        ! set some variables
+        file_name = 'TEST_D1p'
+        description = 'Testing whether mu_0 D1 p = 1/J (D3 B_2 - D2_B3)'
+        
+        ! plot difference
+        call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),&
+            &file_name,tot_dim,grp_dim,grp_offset,description,&
+            &output_message=.true.)
+        
+        call lvl_ud(-1)
+        
+        ! user output
+        call writo('Checking if mu_0 J D3p = 0 => D3 B_1 = D1 B_3)')
+        call lvl_ud(1)
+        
+        ! calculate D3 B1
+        res(:,:,:,1) = met%g_FD(:,:,1:grid_trim%grp_n_r,c([1,3],.true.),0,0,1)/&
+            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) - &
+            &met%g_FD(:,:,1:grid_trim%grp_n_r,c([1,3],.true.),0,0,0)*&
+            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,1) / &
+            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2
+        
+        ! calculate D1 B3
+        res(:,:,:,2) = met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),1,0,0)/&
+            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) - &
+            &met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,0,0)*&
+            &met%jac_FD(:,:,1:grid_trim%grp_n_r,1,0,0) / &
+            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2
+        
+        ! set some variables
+        file_name = 'TEST_D3p'
+        description = 'Testing whether D3 B_1 = D1 B_3)'
+        
+        ! plot difference
+        call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),&
+            &file_name,tot_dim,grp_dim,grp_offset,description,&
+            &output_message=.true.)
+        
+        call lvl_ud(-1)
+        
+        call lvl_ud(-1)
+    end function test_p
+    
+    ! performs tests on Jacobian in Flux coordinates
+    !   - mu_0 D2p = 1/J (D3 B_2 - D2 B_3)
+    !   - mu_0 J D3p = 0 => D3 B_1 = D1 B_3
+    integer function test_jac_F(grid_eq,eq,met) result(ierr)
+        use num_vars, only: pi, eq_style, use_pol_flux_F
+        use grid_ops, only: trim_grid
+        
+        character(*), parameter :: rout_name = 'test_jac_F'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        
+        ! local variables
+        real(dp), allocatable :: res(:,:,:)                                     ! result variable
+        integer :: kd                                                           ! counter
+        character(len=max_str_ln) :: file_name                                  ! name of plot file
+        character(len=max_str_ln) :: description                                ! description of plot
+        integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total and group dimensions and group offset
+        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), pointer :: Dflux(:)                                           ! points to D flux_p or D flux_t in E coordinates
+        integer :: pmone                                                        ! plus or minus one
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! output
+        call writo('Going to test the calculation of the Jacobian in Flux &
+            &coordinates')
+        call lvl_ud(1)
+        
+        ! trim extended grid into plot grid
+        ierr = trim_grid(grid_eq,grid_trim)
+        CHCKERR('')
+        
+        ! set up res
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r))
+        
+        ! set total and group dimensions and group offset
+        tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
+        grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r]
+        grp_offset = [0,0,grid_trim%i_min-1]
+        
+        ! calculate mu_0 D2p
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                if (use_pol_flux_F) then                                        ! using poloidal flux
+                    Dflux => eq%flux_p_E(:,1)
+                    pmone = 1                                                   ! flux_p_V = flux_p_F
+                else
+                    Dflux => eq%flux_t_E(:,1)
+                    pmone = -1                                                  ! flux_t_V = - flux_t_F
+                end if
+                do kd = 1,grid_trim%grp_n_r
+                    res(:,:,kd) = pmone * 2*pi * eq%R_E(:,:,kd,0,0,0)*&
+                        &(eq%R_E(:,:,kd,1,0,0)*eq%Z_E(:,:,kd,0,1,0) - &
+                        &eq%Z_E(:,:,kd,1,0,0)*eq%R_E(:,:,kd,0,1,0)) / &
+                        &(Dflux(kd)*(1+eq%L_E(:,:,kd,0,1,0)))
+                end do
+                nullify(Dflux)
+            case (2)                                                            ! HELENA
+                call writo('WARNING: test_jac_F not yet implemented for HELENA')
+                return
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        
+        ! set some variables
+        file_name = 'TEST_jac_F'
+        description = 'Testing whether the Jacobian in Flux coordinates is &
+            &consistent'
+        
+        ! plot difference
+        call plot_diff_HDF5(res(:,:,:),&
+            &met%jac_F(:,:,1:grid_trim%grp_n_r,0,0,0),&
+            &file_name,tot_dim,grp_dim,grp_offset,description,&
+            &output_message=.true.)
+        
+        call lvl_ud(-1)
+    end function test_jac_F
 #endif
 end module metric_ops

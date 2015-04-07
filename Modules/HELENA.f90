@@ -276,26 +276,6 @@ contains
             &trim(r2str(maxval(abs(h_H_12_full(:,3:n_r)-h_H_12_alt(:,3:n_r))))))
         call writo('maximum error in h_H_33 = '//&
             &trim(r2str(maxval(abs(h_H_33_full(:,3:n_r)-h_H_33_alt(:,3:n_r))))))
-        
-        !! plot results
-        !call print_GP_3D('h_H_11 (HEL,alt)','',reshape([h_H_11_full(:,3:n_r),&
-            !&h_H_11_alt(:,3:n_r)],[nchi,n_r-2,2]),&
-            !&x=reshape([R_H(:,3:n_r),R_H(:,3:n_r)],[nchi,n_r-2,2]),&
-            !&y=reshape([Z_H(:,3:n_r),Z_H(:,3:n_r)],[nchi,n_r-2,2]))
-        !call print_GP_3D('diff h_H_11','',h_H_11_full(:,3:n_r)-&
-            !&h_H_11_alt(:,3:n_r),x=R_H(:,3:n_r),y=Z_H(:,3:n_r))
-        !call print_GP_3D('h_H_12 (HEL,alt)','',reshape([h_H_12_full(:,3:n_r),&
-            !&h_H_12_alt(:,3:n_r)],[nchi,n_r-2,2]),&
-            !&x=reshape([R_H(:,3:n_r),R_H(:,3:n_r)],[nchi,n_r-2,2]),&
-            !&y=reshape([Z_H(:,3:n_r),Z_H(:,3:n_r)],[nchi,n_r-2,2]))
-        !call print_GP_3D('diff h_H_12','',h_H_12_full(:,3:n_r)-&
-            !&h_H_12_alt(:,3:n_r),x=R_H(:,3:n_r),y=Z_H(:,3:n_r))
-        !call print_GP_3D('h_H_33 (HEL,alt)','',reshape([h_H_33_full(:,3:n_r),&
-            !&h_H_33_alt(:,3:n_r)],[nchi,n_r-2,2]),&
-            !&x=reshape([R_H(:,3:n_r),R_H(:,3:n_r)],[nchi,n_r-2,2]),&
-            !&y=reshape([Z_H(:,3:n_r),Z_H(:,3:n_r)],[nchi,n_r-2,2]))
-        !call print_GP_3D('diff h_H_33','',h_H_33_full(:,3:n_r)-&
-            !&h_H_33_alt(:,3:n_r),x=R_H(:,3:n_r),y=Z_H(:,3:n_r))
     end function check_metrics
     
     ! deallocates  HELENA  quantities  that  are not  used  any  more after  the
