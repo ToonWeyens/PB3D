@@ -11,7 +11,7 @@ module VMEC
     use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
         &lasym, VMEC_version => version_, lfreeb, &                             ! stellerator symmetry, version number, free boundary or not
         &n_r_VMEC => ns, mpol, ntor, xn, xm, mnmax, nfp, &                      ! mpol, ntor = # modes
-        &phi, phi_r => phipf, &                                                 ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
+        &phi, Dphi => phipf, &                                                  ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
         &iotaf, &                                                               ! iota = 1/q (FM)
         &presf, gmns, gmnc, &                                                   ! pressure (FM) jacobian (HM)
         &bsubumns, bsubumnc, bsubvmns, bsubvmnc, bsubsmns, bsubsmnc, &          ! B_theta (HM), B_zeta (HM), B_r (FM)
@@ -25,7 +25,7 @@ module VMEC
     public read_VMEC, dealloc_VMEC_final, repack, &
         &mnmax, rmnc, mpol, ntor, nfp, R_c, R_s, Z_c, Z_s, L_c, L_s, &
         &presf, rmax_surf, rmin_surf, zmax_surf, iotaf, lasym, &
-        &lfreeb, phi, phi_r, VMEC_version, gam, &
+        &lfreeb, phi, Dphi, VMEC_version, gam, &
         &B_V_sub_s_M, B_V_sub_c_M, B_V_c_H, B_V_s_H, &
         &jac_V_c_H, jac_V_s_H
 
@@ -43,7 +43,7 @@ contains
     ! [MPI] only global master
     integer function read_VMEC(n_r_eq,use_pol_flux_V) result(ierr)
         use utilities, only: calc_deriv, conv_FHM
-        use num_vars, only: max_deriv, eq_i, glb_rank, eq_name
+        use num_vars, only: max_deriv, eq_i, eq_name
 #if ldebug
         use num_vars, only: ltest
 #endif
@@ -62,167 +62,168 @@ contains
         ! initialize ierr
         ierr = 0
         
-        if (glb_rank.eq.0) then                                                 ! only global master
-            call writo('Reading data from VMEC output "' &
-                &// trim(eq_name) // '"')
-            call lvl_ud(1)
-            
-            ! rewind input file
-            rewind(eq_i)
-            close(eq_i)
-            eq_i = 50
-            open(eq_i,file=trim(eq_name))
-            
-            ! read VMEC output using LIBSTELL
-            call read_wout_file(eq_i,ierr)                                      ! read the VMEC file number
-            CHCKERR('Failed to read the VMEC file')
-            close(eq_i)                                                         ! close the VMEC file
-            
-            ! set some variables
-            n_r_eq = n_r_VMEC
-            use_pol_flux_V = lrfp
-            
-            call writo('VMEC version is ' // trim(r2str(VMEC_version)))
-            if (lfreeb) then
-                call writo('Free boundary VMEC')
-                err_msg = 'Free boundary VMEC is not yet supported by PB3D...'
-                ierr = 1
-                CHCKERR(err_msg)
-            else
-                call writo('Fixed boundary VMEC')
-            end if
-            if (lasym) then
-                call writo('No stellerator symmetry')
-            else
-                call writo('Stellerator symmetry applicable')
-                call writo('¡¡¡ ITS USAGE COULD BE IMPLEMENTED !!!')
-            end if
-            call writo('VMEC has '//trim(i2str(mpol))//' poloidal and '&
-                &//trim(i2str(ntor))//' toroidal modes, defined on '&
-                &//trim(i2str(n_r_eq))//' flux surfaces')
-            
-            call writo('Running tests')
-            call lvl_ud(1)
-            if (mnmax.ne.((ntor+1)+(2*ntor+1)*(mpol-1))) then                   ! are ntor, mpol and mnmax what is expected?
-                err_msg = 'Inconsistency in ntor, mpol and mnmax'
-                ierr = 1
-                CHCKERR(err_msg)
-            end if
-            call lvl_ud(-1)
-            
-            call writo('Updating variables')
-            xn = xn/nfp                                                         ! so we have xn excluding nfp
-            
-            call lvl_ud(-1)
-            call writo('Data from VMEC output successfully read')
-            
-            call writo('Reading the grid parameters')
-            call lvl_ud(1)
-            
-            ! Allocate and repack the Fourier coefficients to translate them for
-            ! use in this code
-            allocate(R_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-            allocate(Z_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-            allocate(L_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-            allocate(L_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-            !if (lasym) then                                                     ! following only needed in assymetric situations
-                allocate(R_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-                allocate(Z_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-                allocate(L_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-                allocate(L_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-            !end if
-            
-            ! factors R_c,s; Z_c,s and L_C,s and HM varieties
-            R_c(:,:,:,0) = repack(rmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            Z_s(:,:,:,0) = repack(zmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            L_s_H(:,:,:,0) = repack(lmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            !if (lasym) then                                                     ! following only needed in assymetric situations
-                R_s(:,:,:,0) = repack(rmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-                Z_c(:,:,:,0) = repack(zmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-                L_c_H(:,:,:,0) = repack(lmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            !end if
-            
-            ! normal derivatives of these factors
-            do kd = 1,max_deriv+1
-                do jd = -ntor,ntor
-                    do id = 0,mpol-1
-                        ierr = calc_deriv(R_c(id,jd,:,0),R_c(id,jd,:,kd),&
-                            &n_r_eq-1._dp,kd,1)
-                        CHCKERR('')
-                        ierr = calc_deriv(Z_s(id,jd,:,0),Z_s(id,jd,:,kd),&
-                            &n_r_eq-1._dp,kd,1)
-                        CHCKERR('')
-                        ierr = calc_deriv(L_s_H(id,jd,:,0),&
-                            &L_s_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
-                        CHCKERR('')
-                        !if (lasym) then                                         ! following only needed in assymetric situations
-                            ierr = calc_deriv(R_s(id,jd,:,0),&
-                                &R_s(id,jd,:,kd),n_r_eq-1._dp,kd,1)
-                            CHCKERR('')
-                            ierr = calc_deriv(Z_c(id,jd,:,0),&
-                                &Z_c(id,jd,:,kd),n_r_eq-1._dp,kd,1)
-                            CHCKERR('')
-                            ierr = calc_deriv(L_c_H(id,jd,:,0),&
-                                &L_c_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
-                            CHCKERR('')
-                        !end if
-                    end do
-                end do
-            end do
-            
-            ! conversion HM -> FM (L)
-            do kd = 0,max_deriv+1
-                do jd = -ntor,ntor
-                    do id = 0,mpol-1
-                        ierr = conv_FHM(L_s_H(id,jd,:,kd),L_s(id,jd,:,kd),&
-                            &.false.)
-                        CHCKERR('')
-                        !if (lasym) then                                         ! following only needed in assymetric situations
-                            ierr = conv_FHM(L_c_H(id,jd,:,kd),&
-                                &L_c(id,jd,:,kd),.false.)
-                            CHCKERR('')
-                        !end if
-                    end do
-                end do
-            end do
-            
-#if ldebug
-            ! for tests
-            if (ltest) then
-                allocate(B_V_sub_c_M(0:mpol-1,-ntor:ntor,1:n_r_eq,3))
-                allocate(B_V_sub_s_M(0:mpol-1,-ntor:ntor,1:n_r_eq,3))
-                allocate(B_V_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
-                allocate(B_V_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
-                allocate(jac_V_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
-                allocate(jac_V_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
-                
-                B_V_sub_c_M(:,:,:,1) = repack(bsubsmnc,mnmax,n_r_eq,mpol,ntor,&
-                    &xm,xn)
-                B_V_sub_s_M(:,:,:,1) = repack(bsubsmns,mnmax,n_r_eq,mpol,ntor,&
-                    &xm,xn)
-                B_V_sub_c_M(:,:,:,2) = repack(bsubumnc,mnmax,n_r_eq,mpol,ntor,&
-                    &xm,xn)
-                B_V_sub_s_M(:,:,:,2) = repack(bsubumns,mnmax,n_r_eq,mpol,ntor,&
-                    &xm,xn)
-                B_V_sub_c_M(:,:,:,3) = repack(bsubvmnc,mnmax,n_r_eq,mpol,ntor,&
-                    &xm,xn)
-                B_V_sub_s_M(:,:,:,3) = repack(bsubvmns,mnmax,n_r_eq,mpol,ntor,&
-                    &xm,xn)
-                B_V_c_H(:,:,:) = repack(bmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-                B_V_s_H(:,:,:) = repack(bmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-                jac_V_c_H(:,:,:) = -repack(gmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-                jac_V_s_H(:,:,:) = -repack(gmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            end if
-#endif
-            
-            call lvl_ud(-1)
-            call writo('Grid parameters successfully read')
+        call writo('Reading data from VMEC output "' &
+            &// trim(eq_name) // '"')
+        call lvl_ud(1)
+        
+        ! rewind input file
+        rewind(eq_i)
+        close(eq_i)
+        eq_i = 50
+        open(eq_i,file=trim(eq_name))
+        
+        ! read VMEC output using LIBSTELL
+        call read_wout_file(eq_i,ierr)                                          ! read the VMEC file number
+        CHCKERR('Failed to read the VMEC file')
+        close(eq_i)                                                             ! close the VMEC file
+        
+        ! set some variables
+        n_r_eq = n_r_VMEC
+        use_pol_flux_V = lrfp
+        
+        call writo('VMEC version is ' // trim(r2str(VMEC_version)))
+        if (lfreeb) then
+            call writo('Free boundary VMEC')
+            err_msg = 'Free boundary VMEC is not yet supported by PB3D...'
+            ierr = 1
+            CHCKERR(err_msg)
+        else
+            call writo('Fixed boundary VMEC')
         end if
+        if (lasym) then
+            call writo('No stellerator symmetry')
+        else
+            call writo('Stellerator symmetry applicable')
+            call writo('¡¡¡ ITS USAGE COULD BE IMPLEMENTED !!!')
+        end if
+        call writo('VMEC has '//trim(i2str(mpol))//' poloidal and '&
+            &//trim(i2str(ntor))//' toroidal modes, defined on '&
+            &//trim(i2str(n_r_eq))//' flux surfaces')
+        
+        call writo('Running tests')
+        call lvl_ud(1)
+        if (mnmax.ne.((ntor+1)+(2*ntor+1)*(mpol-1))) then                       ! are ntor, mpol and mnmax what is expected?
+            err_msg = 'Inconsistency in ntor, mpol and mnmax'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        call lvl_ud(-1)
+        
+        call writo('Updating variables')
+        xn = xn/nfp                                                             ! so we have xn excluding nfp
+        
+        call lvl_ud(-1)
+        call writo('Data from VMEC output successfully read')
+        
+        call writo('Reading the grid parameters')
+        call lvl_ud(1)
+        
+        ! Allocate and repack the Fourier coefficients to translate them for
+        ! use in this code
+        allocate(R_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+        allocate(Z_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+        allocate(L_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+        allocate(L_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+        !if (lasym) then                                                        ! following only needed in assymetric situations
+            allocate(R_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+            allocate(Z_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+            allocate(L_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+            allocate(L_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+        !end if
+        
+        ! factors R_c,s; Z_c,s and L_C,s and HM varieties
+        R_c(:,:,:,0) = repack(rmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+        Z_s(:,:,:,0) = repack(zmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+        L_s_H(:,:,:,0) = repack(lmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+        !if (lasym) then                                                        ! following only needed in assymetric situations
+            R_s(:,:,:,0) = repack(rmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            Z_c(:,:,:,0) = repack(zmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            L_c_H(:,:,:,0) = repack(lmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+        !end if
+        
+        ! normal derivatives of these factors
+        ! The VMEC normal coord. is  the toroidal (or poloidal) flux, normalized
+        ! wrt.  to  the  maximum  flux,  equidistantly,  so  the  step  size  is
+        ! 1/(n_r_eq-1).
+        do kd = 1,max_deriv+1
+            do jd = -ntor,ntor
+                do id = 0,mpol-1
+                    ierr = calc_deriv(R_c(id,jd,:,0),R_c(id,jd,:,kd),&
+                        &n_r_eq-1._dp,kd,1)
+                    CHCKERR('')
+                    ierr = calc_deriv(Z_s(id,jd,:,0),Z_s(id,jd,:,kd),&
+                        &n_r_eq-1._dp,kd,1)
+                    CHCKERR('')
+                    ierr = calc_deriv(L_s_H(id,jd,:,0),&
+                        &L_s_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
+                    CHCKERR('')
+                    !if (lasym) then                                            ! following only needed in assymetric situations
+                        ierr = calc_deriv(R_s(id,jd,:,0),&
+                            &R_s(id,jd,:,kd),n_r_eq-1._dp,kd,1)
+                        CHCKERR('')
+                        ierr = calc_deriv(Z_c(id,jd,:,0),&
+                            &Z_c(id,jd,:,kd),n_r_eq-1._dp,kd,1)
+                        CHCKERR('')
+                        ierr = calc_deriv(L_c_H(id,jd,:,0),&
+                            &L_c_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
+                        CHCKERR('')
+                    !end if
+                end do
+            end do
+        end do
+        
+        ! conversion HM -> FM (L)
+        do kd = 0,max_deriv+1
+            do jd = -ntor,ntor
+                do id = 0,mpol-1
+                    ierr = conv_FHM(L_s_H(id,jd,:,kd),L_s(id,jd,:,kd),&
+                        &.false.)
+                    CHCKERR('')
+                    !if (lasym) then                                            ! following only needed in assymetric situations
+                        ierr = conv_FHM(L_c_H(id,jd,:,kd),&
+                            &L_c(id,jd,:,kd),.false.)
+                        CHCKERR('')
+                    !end if
+                end do
+            end do
+        end do
+        
+#if ldebug
+        ! for tests
+        if (ltest) then
+            allocate(B_V_sub_c_M(0:mpol-1,-ntor:ntor,1:n_r_eq,3))
+            allocate(B_V_sub_s_M(0:mpol-1,-ntor:ntor,1:n_r_eq,3))
+            allocate(B_V_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
+            allocate(B_V_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
+            allocate(jac_V_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
+            allocate(jac_V_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
+            
+            B_V_sub_c_M(:,:,:,1) = repack(bsubsmnc,mnmax,n_r_eq,mpol,ntor,&
+                &xm,xn)
+            B_V_sub_s_M(:,:,:,1) = repack(bsubsmns,mnmax,n_r_eq,mpol,ntor,&
+                &xm,xn)
+            B_V_sub_c_M(:,:,:,2) = repack(bsubumnc,mnmax,n_r_eq,mpol,ntor,&
+                &xm,xn)
+            B_V_sub_s_M(:,:,:,2) = repack(bsubumns,mnmax,n_r_eq,mpol,ntor,&
+                &xm,xn)
+            B_V_sub_c_M(:,:,:,3) = repack(bsubvmnc,mnmax,n_r_eq,mpol,ntor,&
+                &xm,xn)
+            B_V_sub_s_M(:,:,:,3) = repack(bsubvmns,mnmax,n_r_eq,mpol,ntor,&
+                &xm,xn)
+            B_V_c_H(:,:,:) = repack(bmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            B_V_s_H(:,:,:) = repack(bmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            jac_V_c_H(:,:,:) = -repack(gmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            jac_V_s_H(:,:,:) = -repack(gmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+        end if
+#endif
+        
+        call lvl_ud(-1)
+        call writo('Grid parameters successfully read')
     end function read_VMEC
     
     ! deallocates VMEC quantities that are not used anymore
     subroutine dealloc_VMEC_final
-        deallocate(phi,phi_r)
+        deallocate(phi,Dphi)
         deallocate(iotaf)
         deallocate(presf)
         if (allocated(gmns)) deallocate(gmns)

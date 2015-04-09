@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.72                                                              !
+!   Version: 0.73                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -23,7 +23,6 @@
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D
-    !use test, only: test_X_and_U
     use str_ops, only: r2str, i2str
     use messages, only: init_messages, lvl_ud, writo, init_time, &
         &start_time, passed_time, print_hello, print_goodbye
@@ -33,13 +32,25 @@ program PB3D
         &close_output
     use input_ops, only: read_input
     use utilities, only: init_utilities
-    use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, broadcast_vars
+    use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, broadcast_input_vars
     use eq_ops, only: read_eq, calc_norm_const
+    use test, only: generic_tests
     
     implicit none
 
     ! local variables
     integer :: ierr                                                             ! error
+    
+    write(*,*) 'CALC_V_INT SHOULD WORK WITH FAST FOURIER TRANSFORM!!!'
+    
+    write(*,*) 'TEST PRESSURE BALANCE'
+    
+    write(*,*) 'INVESTIGATE HOW IMPROVING THE DERIVATIVES CAN &
+        &HELP YOU GET RID OF UNSTABLE SIDE OF SPECTRUM !!!!!!!!!!!!!!!!!!!!!!!'
+    write(*,*) 'DOING THIS IN THIS ROUTINE ALREADY HELPED A LOT!!!!!'
+    
+    write(*,*) '!!! HDF5 PLOT CHOULD CHECK IF IT IS REALLY AXISYMMETRIC IF IT &
+        &DOES A 2D PLOT BECAUSE ONE DIMENSION EQUAL TO 1 !!!'
     
     !-------------------------------------------------------
     !   Initialize some routines
@@ -71,26 +82,27 @@ program PB3D
     CHCKERR
     ierr = calc_norm_const()                                                    ! set up normalization constants
     CHCKERR
-    ierr = broadcast_vars()                                                     ! broadcast to other processors
+    ierr = broadcast_input_vars()                                               ! broadcast to other processors
     CHCKERR
     call writo('')
     call passed_time
     call writo('')
     call lvl_ud(-1)
     
-    write(*,*) 'CALC_V_INT SHOULD WORK WITH FAST FOURIER TRANSFORM!!!'
-    
-    write(*,*) 'TEST PRESSURE BALANCE'
-    
-    write(*,*) 'INVESTIGATE HOW IMPROVING THE DERIVATIVES CAN &
-        &HELP YOU GET RID OF UNSTABLE SIDE OF SPECTRUM !!!!!!!!!!!!!!!!!!!!!!!'
-    write(*,*) 'DOING THIS IN THIS ROUTINE ALREADY HELPED A LOT!!!!!'
-    
-    write(*,*) '!!!!!!!!!! YOU SHOULD ALLOW ARBITRARY RANGES FOR M AND N !!!!!!'
-    write(*,*) '!!!!!!!!!! E.G. FROM -10 to +20 !!!!!'
-
-    write(*,*) '!!! HDF5 PLOT CHOULD CHECK IF IT IS REALLY AXISYMMETRIC IF IT &
-        &DOES A 2D PLOT BECAUSE ONE DIMENSION EQUAL TO 1 !!!'
+    !-------------------------------------------------------
+    !   Do some tests
+    !-------------------------------------------------------
+#if ldebug
+    call start_time
+    call writo('Generic Tests')
+    call lvl_ud(1)
+    ierr = generic_tests()
+    CHCKERR
+    call writo('')
+    call passed_time
+    call writo('')
+    call lvl_ud(-1)
+#endif
     
     !-------------------------------------------------------
     !   Main driver

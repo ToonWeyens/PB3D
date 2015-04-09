@@ -11,10 +11,10 @@
     max_it_r                = 1
     tol_r                   = 5.0E-6
     n_procs_per_alpha       = 2
-    prim_X                  = 10
-    min_sec_X               = 100
-    max_sec_X               = 110
-    use_pol_flux_F          = .true.
+    prim_X                  = 240
+    min_sec_X               = 10
+    max_sec_X               = 20
+    use_pol_flux_F          = .false.
     n_sol_requested         = 1000
     n_sol_plotted           = 2,2,2,2
     min_n_r_X               = 10

@@ -15,11 +15,6 @@ module X_ops
     implicit none
     private
     public prepare_X, solve_EV_system, calc_PV, calc_KV, calc_U, calc_extra
-    
-    !! for testing:
-    !character(len=max_str_ln), allocatable :: var_names(:)                      ! names of variables
-    !character(len=max_str_ln), allocatable :: file_name                         ! name of file
-    !integer :: tot_dim(4), grp_dim(4), grp_offset(4)                            ! total dim., group dim. and group offset
 
 contains
     ! prepare the matrix elements by calculating  KV_i and PV_i, which then will
@@ -40,7 +35,7 @@ contains
         ! local variables
         integer :: m, k                                                         ! counters
         real(dp), pointer :: ang_par_F(:,:,:)                                   ! parallel angle in flux coordinates
-        character(len=5) :: ang_par_F_name                                      ! error message
+        character(len=10) :: integrand_name                                     ! name of integrand in field-line averages
         
         ! initialize ierr
         ierr = 0
@@ -75,27 +70,27 @@ contains
             do m = 1,X%n_mod
                 do k = m,X%n_mod
                     X%exp_ang_par_F(:,:,:,c([k,m],.true.,X%n_mod)) = &
-                        &exp(iu*(k-m)*grid%theta_F)
+                        &exp(iu*(k-m)*ang_par_F)
                 end do
             end do
         else
             do m = 1,X%n_mod
                 do k = m,X%n_mod
                     X%exp_ang_par_F(:,:,:,c([k,m],.true.,X%n_mod)) = &
-                        &exp(iu*(m-k)*grid%zeta_F)
+                        &exp(iu*(m-k)*ang_par_F)
                 end do
             end do
         end if
         
-        ! set up ang_par_F_name
+        ! set up integrand_name
         if (use_pol_flux_F) then
-            ang_par_F_name = 'theta'
+            integrand_name = '(k-m)theta'
         else
-            ang_par_F_name = 'zeta'
+            integrand_name = '(m-k)zeta'
         end if
         
-        call writo('Calculating table of field line averages &
-            &<V e^i[(k-m)'//trim(ang_par_F_name)//']>')
+        call writo('Setting up tables of field line averages &
+            &<V e^i['//trim(integrand_name)//']>')
         
         call lvl_ud(1)
         
@@ -130,13 +125,13 @@ contains
         ! Calculate PV_int = <PV e^(k-m)ang_par_F>
         call writo('Taking field average of PV')
         call lvl_ud(1)
-        ierr = calc_V_int(grid,met,X%exp_ang_par_F,X%n_mod,X%PV_0(:,:,:,:),&
+        ierr = calc_int_magn(grid,met,X%exp_ang_par_F,X%n_mod,X%PV_0(:,:,:,:),&
             &X%PV_int_0(:,:,:))
         CHCKERR('')
-        ierr = calc_V_int(grid,met,X%exp_ang_par_F,X%n_mod,X%PV_1(:,:,:,:),&
+        ierr = calc_int_magn(grid,met,X%exp_ang_par_F,X%n_mod,X%PV_1(:,:,:,:),&
             &X%PV_int_1(:,:,:))
         CHCKERR('')
-        ierr = calc_V_int(grid,met,X%exp_ang_par_F,X%n_mod,X%PV_2(:,:,:,:),&
+        ierr = calc_int_magn(grid,met,X%exp_ang_par_F,X%n_mod,X%PV_2(:,:,:,:),&
             &X%PV_int_2(:,:,:))
         CHCKERR('')
         call lvl_ud(-1)
@@ -144,13 +139,13 @@ contains
         ! Calculate KV_int = <KV e^(k-m)ang_par_F>
         call writo('Taking field average of KV')
         call lvl_ud(1)
-        ierr = calc_V_int(grid,met,X%exp_ang_par_F,X%n_mod,X%KV_0(:,:,:,:),&
+        ierr = calc_int_magn(grid,met,X%exp_ang_par_F,X%n_mod,X%KV_0(:,:,:,:),&
             &X%KV_int_0(:,:,:))
         CHCKERR('')
-        ierr = calc_V_int(grid,met,X%exp_ang_par_F,X%n_mod,X%KV_1(:,:,:,:),&
+        ierr = calc_int_magn(grid,met,X%exp_ang_par_F,X%n_mod,X%KV_1(:,:,:,:),&
             &X%KV_int_1(:,:,:))
         CHCKERR('')
-        ierr = calc_V_int(grid,met,X%exp_ang_par_F,X%n_mod,X%KV_2(:,:,:,:),&
+        ierr = calc_int_magn(grid,met,X%exp_ang_par_F,X%n_mod,X%KV_2(:,:,:,:),&
             &X%KV_int_2(:,:,:))
         CHCKERR('')
         call lvl_ud(-1)
@@ -172,13 +167,13 @@ contains
     ! n-iotam = 0 indicate if requested
     ! [MPI] Parts by all processes, parts only by global master
     integer function resonance_plot(eq,grid,X) result(ierr)
-        use num_vars, only: use_pol_flux_E, use_pol_flux_F, output_style, &
-            &grp_rank, tol_NR, no_plots
-        use eq_vars, only: max_flux_p_F, max_flux_t_F
+        use num_vars, only: use_pol_flux_F, output_style, grp_rank, tol_NR, &
+            &max_it_NR, no_plots
         use utilities, only: calc_zero_NR, interp_fun
-        use MPI_ops, only: get_ser_var
         use grid_vars, only: destroy_grid
+        use eq_vars, only: max_flux_p_F, max_flux_t_F
         use grid_ops, only: trim_grid
+        use MPI_ops, only: get_ser_var
         
         character(*), parameter :: rout_name = 'resonance_plot'
         
@@ -188,24 +183,21 @@ contains
         type(X_type) :: X                                                       ! perturbation variables
         
         ! local variables (also used in child functions)
-        real(dp) :: mnfrac_for_function                                         ! fraction m/n or n/m to determine resonant flux surface
-        real(dp), allocatable :: jq_for_function(:,:)                           ! rot_t or q_saf
+        real(dp) :: mnfrac_fun                                                  ! fraction m/n or n/m to determine resonant flux surface
         
         ! local variables (not to be used in child functions)
         integer :: jd, kd                                                       ! counters
         real(dp), allocatable :: x_vars(:,:)                                    ! for plotting
         real(dp), allocatable :: y_vars(:,:)                                    ! for plotting
-        real(dp) :: jq_solution                                                 ! solution for q = m/n or iota = n/m
-        real(dp) :: jq_solution_transf                                          ! transformed solution to flux coordinates
+        real(dp) :: jq_sol                                                      ! solution q or iota in F coords.
         integer :: istat                                                        ! status
         character(len=max_str_ln) :: plot_title, file_name                      ! name of plot, of file
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: jq(:,:)                                        ! saf. fac. or rot. transf. in Flxu coords.
         real(dp), allocatable :: jq_loc(:)                                      ! local version of jq
-        real(dp), allocatable :: flux_X(:)                                      ! pol. or tor. perturbation flux in Flux coords.
-        real(dp), allocatable :: flux_eq(:)                                     ! pol. or tor. equilibrium flux in Flux coords.
         integer :: n_r                                                          ! total number of normal points
         real(dp) :: tol_NR_old                                                  ! old value of tol_NR
+        integer :: max_it_NR_old                                                ! old value of max_it_NR
         type(grid_type) :: grid_trim                                            ! trimmed version of grid
         
         ! initialize ierr
@@ -218,69 +210,51 @@ contains
         ierr = trim_grid(grid,grid_trim)
         CHCKERR('')
         
-        ! get serial version of flux_X and safety factor or rot. transform
-        if (use_pol_flux_F) then
-            ierr = get_ser_var(&
-                &eq%flux_p_FD(grid_trim%i_min:grid_trim%i_max,0),flux_X)
-            CHCKERR('')
-            if (grp_rank.eq.0) allocate(jq(size(flux_X),0:2))
-            do jd = 0,2
-                ierr = get_ser_var(&
-                    &eq%q_saf_FD(grid_trim%i_min:grid_trim%i_max,jd),jq_loc)
-                CHCKERR('')
-                if(grp_rank.eq.0) jq(:,jd) = jq_loc*max_flux_p_F**jd
-            end do
-        else
-            ierr = get_ser_var(&
-                &eq%flux_t_FD(grid_trim%i_min:grid_trim%i_max,0),flux_X)
-            CHCKERR('')
-            if (grp_rank.eq.0) allocate(jq(size(flux_X),0:2))
-            do jd = 0,2
-                ierr = get_ser_var(&
-                    &eq%rot_t_FD(grid_trim%i_min:grid_trim%i_max,jd),jq_loc)
-                CHCKERR('')
-                if(grp_rank.eq.0) jq(:,jd) = jq_loc*max_flux_t_F**jd
-            end do
-        end if
-        if (use_pol_flux_E) then
-            ierr = get_ser_var(&
-                &eq%flux_p_FD(grid_trim%i_min:grid_trim%i_max,0),flux_eq)
-            CHCKERR('')
-        else
-            ierr = get_ser_var(&
-                &eq%flux_t_FD(grid_trim%i_min:grid_trim%i_max,0),flux_eq)
-            CHCKERR('')
-        end if
+        ! initialize variables
+        n_r = grid_trim%n(3)
         
+        ! Get serial version  of safety factor or rot. transform  and print user
+        ! message.  As  the normal  coordinate  is  rescaled  to 0..1,  the  ith
+        ! derivative has to be rescaled by the factor (max_flux_F/2pi)^i.
         if (use_pol_flux_F) then
             call writo('Plotting safety factor q and resonant surfaces &
                 &q = m/n')
+            if (grp_rank.eq.0) allocate(jq(n_r,0:2))
+            do jd = 0,2
+                ierr = get_ser_var(eq%q_saf_FD(1:grid_trim%grp_n_r,jd),jq_loc)
+                CHCKERR('')
+                if(grp_rank.eq.0) jq(:,jd) = jq_loc*(max_flux_p_F/(2*pi))**jd
+            end do
         else
             call writo('Plotting rotational transform iota and resonant &
                 &surfaces iota = n/m')
+            if (grp_rank.eq.0) allocate(jq(n_r,0:2))
+            do jd = 0,2
+                ierr = get_ser_var(eq%rot_t_FD(1:grid_trim%grp_n_r,jd),jq_loc)
+                CHCKERR('')
+                if(grp_rank.eq.0) jq(:,jd) = jq_loc*(max_flux_t_F/(2*pi))**jd
+            end do
         end if
-        call lvl_ud(1)
-            
+        
         ! the rest is done only by global master
         if (grp_rank.eq.0) then
             call writo('calculating resonant surfaces')
             
             ! initialize variables
-            n_r = size(flux_X)
             allocate(x_vars(n_r,X%n_mod+1)); x_vars = 0
             allocate(y_vars(n_r,X%n_mod+1)); y_vars = 0
-            allocate(jq_for_function(n_r,0:2))
             
             ! set x_vars and y_vars for first column
-            x_vars(:,1) = flux_X/abs(flux_X(n_r))
+            x_vars(:,1) = grid_trim%r_F/grid_trim%r_F(n_r)
             y_vars(:,1) = jq(:,0)
-            jq_for_function = jq
             
-            ! save old tol_NR
+            ! save old tol_NR and max_it_NR
             tol_NR_old = tol_NR
+            max_it_NR_old = max_it_NR
             
-            ! change tol_NR
-            tol_NR = 1.E-4_dp
+            ! change tol_NR and max_it_NR
+            tol_NR = 1.E-8_dp
+            max_it_NR = 5000
             
             ! loop over all modes (and shift the index in x and y_vars by 1)
             kd = 2
@@ -289,49 +263,39 @@ contains
                 ! solving q-m/n = 0 or iota-n/m=0, using the functin jq_fun
                 call lvl_ud(1)
                 
-                ! set up mnfrac_for_function
+                ! set up mnfrac for function
                 if (use_pol_flux_F) then
-                    mnfrac_for_function = X%m(jd)*1.0_dp/X%n(jd)
-                else
-                    mnfrac_for_function = X%n(jd)*1.0_dp/X%m(jd)
+                    mnfrac_fun = 1.0_dp*X%m(jd)/X%n(jd)
+                else                             
+                    mnfrac_fun = 1.0_dp*X%n(jd)/X%m(jd)
                 end if
                 
                 ! calculate zero using Newton-Rhapson
-                istat = calc_zero_NR(jq_solution,jq_fun,jq_dfun,1.0_dp)
+                istat = calc_zero_NR(jq_sol,jq_fun,jq_dfun,1.0_dp)
                 
                 ! intercept error
                 if (istat.ne.0) then
                     call writo('Error intercepted: Couldn''t find resonating &
                         &surface for (n,m) = ('//trim(i2str(X%n(jd)))//','//&
                         &trim(i2str(X%m(jd)))//')')
-                else if (jq_solution.lt.0.0_dp) then
+                else if (jq_sol.lt.0.0_dp) then
                     call writo('Mode (n,m) = ('//trim(i2str(X%n(jd)))//','//&
                         &trim(i2str(X%m(jd)))//') does not resonate in plasma')
                 else
-                    if (jq_solution.gt.1.0_dp) then
+                    if (jq_sol.gt.1.0_dp) then
                         call writo('Mode (n,m) = ('//trim(i2str(X%n(jd)))//','&
                             &//trim(i2str(X%m(jd)))//') does not resonate &
                             &in plasma')
                         y_vars(n_r,kd) = jq(n_r,0)
                     else
-                        ! convert solution to flux coordinates if GNUPlot output
-                        if (output_style.eq.1) then
-                            istat = interp_fun(jq_solution_transf,&
-                                &flux_X/abs(flux_X(n_r)),jq_solution)
-                            x_vars(:,kd) = jq_solution_transf
-                            call writo('Mode (n,m) = ('//trim(i2str(X%n(jd)))//&
-                                &','//trim(i2str(X%m(jd)))//') resonates in &
-                                &plasma at normalized flux surface '//&
-                                &trim(r2str(jq_solution_transf)))
-                        else
-                            x_vars(:,kd) = jq_solution
-                        end if
-                        ! the y axis is always in perturbation grid
-                        if (use_pol_flux_F) then
-                            y_vars(n_r,kd) = X%m(jd)*1.0_dp/X%n(jd)
-                        else
-                            y_vars(n_r,kd) = X%n(jd)*1.0_dp/X%m(jd)
-                        end if
+                        ! set x and y vars
+                        x_vars(:,kd) = jq_sol
+                        y_vars(n_r,kd) = mnfrac_fun
+                        ! GNUplot output
+                        if (output_style.eq.1) call writo('Mode (n,m) = ('//&
+                            &trim(i2str(X%n(jd)))//','//trim(i2str(X%m(jd)))//&
+                            &') resonates in plasma at normalized flux &
+                            &surface '//trim(r2str(jq_sol)))
                     end if
                     kd = kd + 1
                 end if
@@ -339,15 +303,11 @@ contains
                 call lvl_ud(-1)
             end do
             
-            ! recover old tol_NR
+            ! recover old tol_NR and max_it_NR
             tol_NR = tol_NR_old
+            max_it_NR = max_it_NR_old
             
-            ! check status
-            if (istat.ne.0) then
-                call writo('WARNING: Failed to produce plot')
-                return
-            end if
-            
+            ! user message
             call writo('Plotting results')
             if (use_pol_flux_F) then
                 plot_title = 'safety factor q'
@@ -356,6 +316,8 @@ contains
                 plot_title = 'rotational transform iota'
                 file_name = 'rot_t'
             end if
+            
+            ! plot according to output_style
             select case(output_style)
                 case(1)                                                             ! GNUPlot output
                     ! plot on screen
@@ -376,7 +338,7 @@ contains
             end select
             
             ! deallocate local variables
-            deallocate(flux_X,flux_eq,jq)
+            deallocate(jq)
             call destroy_grid(grid_trim)
         
         end if
@@ -386,57 +348,48 @@ contains
     contains
         ! Returns q-m/n or  iota-n/m in Flux coordinates, used to  solve for q =
         ! m/n or iota = n/m.
+        ! WARNING: This routine requires that  jq's derivatives be calculated up
+        ! to order 1. This is NOT checked!
         real(dp) function jq_fun(pt) result(res)
             ! input / output
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
             
-            ! local variables
-            real(dp) :: varin(n_r)                                              ! so interp_fun can be used
-            
             ! initialize res
             res = 0
             
             ! check whether to interpolate or extrapolate
-            if (pt.lt.0) then                                                   ! point requested lower than 0
+            if (pt.lt.x_vars(1,1)) then                                         ! point requested lower than minimum x
                 ! extrapolate variable from 1
-                res = jq_for_function(1,0) - mnfrac_for_function + &
-                    &jq_for_function(1,1)*(pt-0.0_dp)
-            else if (pt.gt.1) then                                              ! point requested higher than 1
+                res = jq(1,0) - mnfrac_fun + jq(1,1)*(pt-x_vars(1,1))
+            else if (pt.gt.x_vars(n_r,1)) then                                  ! point requested higher than maximum x
                 ! extrapolate variable from n_r
-                res = jq_for_function(n_r,0) - mnfrac_for_function + &
-                    &jq_for_function(n_r,1)*(pt-1.0_dp)
+                res = jq(n_r,0) - mnfrac_fun + jq(n_r,1)*(pt-x_vars(n_r,1))
             else                                                                ! point requested between 0 and 1
                 ! interpolate using interp_fun
-                varin = jq_for_function(:,0) - mnfrac_for_function
-                istat = interp_fun(res,varin,pt)
+                istat = interp_fun(res,jq(:,0)-mnfrac_fun,pt,x_vars(:,1))
             end if
         end function jq_fun
         
         ! returns d(q-m/n)/dr in Flux coordinates, used to solve for q = m/n
-        ! WARNING: This  routine requires that jq_for_function's  derivatives be
-        ! calculated up to order 2. This is NOT checked!
+        ! WARNING: This routine requires that  jq's derivatives be calculated up
+        ! to order 2. This is NOT checked!
         real(dp) function jq_dfun(pt) result(res)
             ! input / output
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
-            
-            ! local variables
-            real(dp) :: varin(n_r)                                           ! so interp_fun can be used
             
             ! initialize res
             res = 0
             
             ! check whether to interpolate or extrapolate
-            if (pt.lt.0) then                                                   ! point requested lower than 0
+            if (pt.lt.x_vars(1,1)) then                                         ! point requested lower than minimum x
                 ! extrapolate variable from 1
-                res = jq_for_function(1,1) + jq_for_function(1,2)*(pt-0.0_dp)
-            else if (pt.gt.1) then                                              ! point requested higher than 1
+                res = jq(1,1) + jq(1,2)*(pt-x_vars(1,1))
+            else if (pt.gt.x_vars(n_r,1)) then                                  ! point requested higher than maximum x
                 ! extrapolate variable from n_r
-                res = jq_for_function(n_r,1) + jq_for_function(n_r,2)*&
-                    &(pt-1.0_dp)
+                res = jq(n_r,1) + jq(n_r,2)*(pt-x_vars(n_r,1))
             else                                                                ! point requested between 0 and 1
                 ! interpolate using interp_fun
-                varin = jq_for_function(:,1)
-                istat = interp_fun(res,varin,pt)
+                istat = interp_fun(res,jq(:,1),pt,x=x_vars(:,1))
             end if
         end function jq_dfun
         
@@ -483,8 +436,7 @@ contains
             
             ! calculate normal coords. in Equilibrium coords.
             allocate(r_plot(X%n_mod))
-            ierr = coord_F2E(eq,x_vars(n_r,2:X%n_mod+1),r_plot,&
-                &r_F_array=flux_X/flux_X(n_r),r_E_array=flux_eq/flux_eq(n_r))
+            ierr = coord_F2E(grid,eq,x_vars(n_r,2:X%n_mod+1),r_plot)
             CHCKERR('')
             
             ! create plot grid
@@ -861,21 +813,6 @@ contains
                 ! calculate PV_2
                 X%PV_2(:,:,:,c([k,m],.true.,X%n_mod)) = &
                     &com_fac*X%DU_1(:,:,:,m)*conjg(X%DU_1(:,:,:,k))
-                
-                !write(*,*) '**k,m = ', k, m
-                
-                !write(*,*) 'RE PV_0',k,m
-                !call print_HDF5('X','X',realpart(X%PV_0(:,:,:,c([k,m],.true.,X%n_mod))))
-                !read(*,*)
-                !write(*,*) 'IM PV_0',k,m
-                !call print_HDF5('X','X',imagpart(X%PV_0(:,:,:,c([k,m],.true.,X%n_mod))))
-                !read(*,*)
-                !write(*,*) 'RE PV_2',k,m
-                !call print_HDF5('X','X',realpart(X%PV_2(:,:,:,c([k,m],.true.,X%n_mod))))
-                !read(*,*)
-                !write(*,*) 'IM PV_2',k,m
-                !call print_HDF5('X','X',imagpart(X%PV_2(:,:,:,c([k,m],.true.,X%n_mod))))
-                !read(*,*)
             end do
         end do
         
@@ -886,13 +823,6 @@ contains
                 X%PV_1(:,:,:,c([k,m],.false.,X%n_mod)) = &
                     &com_fac * X%DU_1(:,:,:,m) * &
                     &(conjg(X%DU_0(:,:,:,k)) - X%extra1 - X%extra2)
-                
-                !write(*,*) 'RE PV_1',k,m
-                !call print_HDF5('X','X',realpart(X%PV_1(:,:,:,c([k,m],.false.,X%n_mod))))
-                !read(*,*)
-                !write(*,*) 'IM PV_1',k,m
-                !call print_HDF5('X','X',imagpart(X%PV_1(:,:,:,c([k,m],.false.,X%n_mod))))
-                !read(*,*)
             end do
         end do
         
@@ -966,35 +896,6 @@ contains
             X%KV_1(:,:,kd,:) = X%KV_1(:,:,kd,:)*eq%rho(kd)
             X%KV_2(:,:,kd,:) = X%KV_2(:,:,kd,:)*eq%rho(kd)
         end do
-        
-        !do m = 1,X%n_mod
-            !do k = m,X%n_mod
-                !write(*,*) '**k,m = ', k, m
-                
-                !write(*,*) 'RE KV_0',k,m
-                !call print_HDF5('X','X',realpart(X%KV_0(:,:,:,c([k,m],.true.,X%n_mod))))
-                !read(*,*)
-                !write(*,*) 'IM KV_0',k,m
-                !call print_HDF5('X','X',imagpart(X%KV_0(:,:,:,c([k,m],.true.,X%n_mod))))
-                !read(*,*)
-                !write(*,*) 'RE KV_2',k,m
-                !call print_HDF5('X','X',realpart(X%KV_2(:,:,:,c([k,m],.true.,X%n_mod))))
-                !read(*,*)
-                !write(*,*) 'IM KV_2',k,m
-                !call print_HDF5('X','X',imagpart(X%KV_2(:,:,:,c([k,m],.true.,X%n_mod))))
-                !read(*,*)
-            !end do
-        !end do
-        !do m = 1,X%n_mod
-            !do k = 1,X%n_mod
-                !write(*,*) 'RE KV_1',k,m
-                !call print_HDF5('X','X',realpart(X%KV_1(:,:,:,c([k,m],.false.,X%n_mod))))
-                !read(*,*)
-                !write(*,*) 'IM KV_1',k,m
-                !call print_HDF5('X','X',imagpart(X%KV_1(:,:,:,c([k,m],.false.,X%n_mod))))
-                !read(*,*)
-            !end do
-        !end do
     end subroutine calc_KV
     
     ! calculate U_m^0, U_m^1 or U_n^0, U_n^1  at eq grp_n_r values of the normal
@@ -1138,21 +1039,6 @@ contains
         nullify(h12,D3h12,h22,D1h22,D3h22,h23,D1h23,D3h23)
         nullify(g_frac)
         nullify(T_theta,D1T_theta,D3T_theta)
-        
-        !do id = 1,X%n_mod
-            !write(*,*) 'RE DU_',id
-            !call print_HDF5('X','X',realpart(X%DU_0(:,:,:,id)))
-            !read(*,*)
-            !write(*,*) 'IM DU_0',id
-            !call print_HDF5('X','X',imagpart(X%DU_0(:,:,:,id)))
-            !read(*,*)
-            !write(*,*) 'RE DU_1',id
-            !call print_HDF5('X','X',realpart(X%DU_1(:,:,:,id)))
-            !read(*,*)
-            !write(*,*) 'IM DU_1',id
-            !call print_HDF5('X','X',imagpart(X%DU_1(:,:,:,id)))
-            !read(*,*)
-        !end do 
     contains
         ! VMEC version
         subroutine calc_U_VMEC
@@ -1415,15 +1301,6 @@ contains
                 &2*D3J(:,:,kd)/J(:,:,kd) ) ) )
         end do
         
-        !write(*,*) 'mu0sigma'
-        !call print_GP_2D('mu0sigma(:,1,:)','',transpose(X%mu0sigma(:,1,:)))
-        !write(*,*) 'extra1'
-        !call print_GP_2D('extra1(:,1,:)','',transpose(X%extra1(:,1,:)))
-        !write(*,*) 'extra2'
-        !call print_GP_2D('extra2(:,1,:)','',transpose(X%extra2(:,1,:)))
-        !write(*,*) 'extra3'
-        !call print_GP_2D('extra3(:,1,:)','',transpose(X%extra3(:,1,:)))
-        
         ! calculate rho from input (best done with normalized pressure already)
         ierr = calc_rho(eq,grid)
         CHCKERR('')
@@ -1436,28 +1313,18 @@ contains
         nullify(h12, D3h12)
         nullify(h22, D3h22)
         nullify(h23)
-        
-        !write(*,*) 'extra1'
-        !call print_HDF5('X','X',(X%extra1))
-        !read(*,*)
-        !write(*,*) 'extra2'
-        !call print_HDF5('X','X',(X%extra2))
-        !read(*,*)
-        !write(*,*) 'extra3'
-        !call print_HDF5('X','X',(X%extra3))
-        !read(*,*)
     end function calc_extra
     
-    ! calculates  magnetic  integral  <V e^[i(k-m)ang_par_F]>,  defined  as  the
-    ! matrix  
-    !   <V e^[i(k-m)ang_par_F]> = [ oint J V(k,m) e^i(k-m)ang_par_F dang_par_F ]
+    ! calculates magnetic integral of V, defined as the matrix
+    !   <V e^[i(k-m)theta_F]> = [ oint J V(k,m) e^i(k-m)theta_F dtheta_F ],
     ! or
-    !   <V e^[i(n-l)ang_par_F]> = [ oint J V(l,n) e^i(n-l)ang_par_F dang_par_F ]
-    integer function calc_V_int(grid,met,exp_ang,n_mod,V,V_int) result(ierr)
+    !   <V e^[i(m-k)zeta_F]> = [ oint J V(k,m) e^i(m-k)zeta_F dzeta_F ],
+    ! depending on whether poloidal or toroidal flux is used as normal coord.
+    integer function calc_int_magn(grid,met,exp_ang,n_mod,V,V_int) result(ierr)
         use num_vars, only: use_pol_flux_F
         use utilities, only: calc_mult, c, con, is_sym
         
-        character(*), parameter :: rout_name = 'calc_V_int'
+        character(*), parameter :: rout_name = 'calc_int_magn'
         
         ! input / output
         type(grid_type) :: grid                                                 ! grid
@@ -1518,12 +1385,6 @@ contains
                     &con(exp_ang(:,:,:,c([k,m],.true.,n_mod)),&
                     &[k,m],.true.,dims) * &
                     &con(V(:,:,:,c([k,m],sym,n_mod)),[k,m],sym,dims)
-                !write(*,*) 'RE V_J', k,m
-                !call print_HDF5('X','X',realpart(V_J_e(:,:,:,c([k,m],sym,n_mod))))
-                !read(*,*)
-                !write(*,*) 'IM V_J', k,m
-                !call print_HDF5('X','X',imagpart(V_J_e(:,:,:,c([k,m],sym,n_mod))))
-                !read(*,*)
             end do
         end do
         
@@ -1544,20 +1405,8 @@ contains
             end do
         end do
         
-        !do m = 1,n_mod
-            !do k = 1,n_mod
-                !write(*,*) 'INTEGRATED', k,m
-                !call print_HDF5('X','X',reshape([realpart(transpose(V_int(c([k,m],sym,n_mod),:,:))),&
-                    !&imagpart(transpose(con(V_int(c([k,m],sym,n_mod),:,:),[k,m],sym,[grid%n(2),grid%grp_n_r])))],&
-                    !&[grid%grp_n_r,grid%n(2),2]))
-                !write(*,*) 'last point:', con(V_int(c([k,m],sym,n_mod),:,grid%grp_n_r-1:grid%grp_n_r),&
-                    !&[k,m],sym,[grid%n(2),2])
-                !read(*,*)
-            !end do
-        !end do
-        
         ! deallocate local variables
         deallocate(V_J_e)
         nullify(ang_par_F)
-    end function calc_V_int
+    end function calc_int_magn
 end module

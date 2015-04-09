@@ -7,13 +7,13 @@ module MPI_ops
     use output_ops
     use messages
     use MPI
-    use num_vars, only: dp, max_str_ln
+    use num_vars, only: dp, max_str_ln, pi
     
     implicit none
     private
-    public start_MPI, stop_MPI, split_MPI, abort_MPI, broadcast_vars, &
+    public start_MPI, stop_MPI, split_MPI, abort_MPI, broadcast_input_vars, &
         &merge_MPI, get_next_job, divide_X_grid, get_ser_var, get_ghost_arr, &
-        &wait_MPI, broadcast_l
+        &wait_MPI, broadcast_var
     
     ! interfaces
     interface get_ser_var
@@ -21,6 +21,10 @@ module MPI_ops
     end interface
     interface get_ghost_arr
         module procedure get_ghost_arr_2D_complex, get_ghost_arr_1D_real
+    end interface
+    interface broadcast_var
+        module procedure broadcast_var_real, broadcast_var_int, &
+            &broadcast_var_log
     end interface
     
 contains
@@ -245,17 +249,16 @@ contains
         ! given  by  divide_X_grid  with  cumul  .true.)  plus  1,  because  the
         ! perturbation  quantity of  perturbation  normal point  (i) depends  on
         ! perturbation normal point (i+1)
-        ! Furthermore,  the conversion  between points  r_X on  the perturbation
-        ! range  (0..1) and  discrete grid  points r_eq  on the  equilbrium grid
-        ! (1..n_r_eq), the  subroutine con2dis  is used with  equilibrium values
-        ! tabulated in flux_eq (normalized)
+        ! Furthermore, for the conversion between points on the continuous range
+        ! (0..1) and  discrete grid points  in the equilbrium  grid (1..n_r_eq),
+        ! the subroutine  con2dis is used.
         ! [MPI] Collective call
         integer function calc_eq_r_range(eq_limits) result(ierr)
             use num_vars, only: grp_n_procs, grp_rank, use_pol_flux_E, &
                 &use_pol_flux_F, eq_style
             use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
                 &calc_deriv, round_with_tol
-            use VMEC, only: phi, phi_r, iotaf
+            use VMEC, only: phi, Dphi, iotaf
             use HELENA, only: flux_H, qs
             use X_vars, only: min_n_r_X, min_r_X, max_r_X
             
@@ -265,60 +268,60 @@ contains
             integer, intent(inout) :: eq_limits(2)                              ! min. and max. index of eq. grid for this process
             
             ! local variables
-            real(dp), allocatable :: flux(:), flux_eq(:)                        ! either pol. or tor. flux, in VMEC coord.
-            real(dp), allocatable :: flux_H_r(:)                                ! normal derivative of flux_H
+            real(dp), allocatable :: flux_F(:), flux_E(:)                       ! either pol. or tor. flux in F and E
+            real(dp), allocatable :: Dflux_H(:)                                 ! normal derivative of flux_H
             integer :: X_limits(2)                                              ! min. and max. index of X grid for this process
-            real(dp) :: grp_min_r_eq_X_con                                      ! grp_min_r_eq in continuous perturbation grid
-            real(dp) :: grp_min_r_eq_eq_con                                     ! grp_min_r_eq in continuous equilibrium grid
-            real(dp) :: grp_min_r_eq_eq_dis                                     ! grp_min_r_eq in discrete equilibrium grid, unrounded
-            integer :: grp_max_r_eq_X_dis                                       ! grp_max_r_eq in discrete perturbation grid
-            real(dp) :: grp_max_r_eq_X_con                                      ! grp_max_r_eq in continuous perturbation grid
-            real(dp) :: grp_max_r_eq_eq_con                                     ! grp_max_r_eq in continuous equilibrium grid
-            real(dp) :: grp_max_r_eq_dis                                        ! grp_max_r_eq in discrete equilibrium grid, unrounded
+            real(dp) :: grp_min_r_eq_F_con                                      ! grp_min_r_eq in continuous F coords.
+            real(dp) :: grp_min_r_eq_E_con                                      ! grp_min_r_eq in continuous E coords.
+            real(dp) :: grp_min_r_eq_E_dis                                      ! grp_min_r_eq in discrete E coords., unrounded
+            integer :: grp_max_r_eq_F_dis                                       ! grp_max_r_eq in discrete F coords.
+            real(dp) :: grp_max_r_eq_F_con                                      ! grp_max_r_eq in continuous F coords.
+            real(dp) :: grp_max_r_eq_E_con                                      ! grp_max_r_eq in continuous E coords.
+            real(dp) :: grp_max_r_eq_E_dis                                      ! grp_max_r_eq in discrete E coords., unrounded
             
             ! initialize ierr
             ierr = 0
             
-            ! set up  flux and flux_eq, depending on which  equilibrium style is
+            ! set up flux_F and flux_E,  depending on which equilibrium style is
             ! being used:
             !   1:  VMEC
             !   2:  HELENA
-            allocate(flux(n_r_eq),flux_eq(n_r_eq))
+            allocate(flux_F(n_r_eq),flux_E(n_r_eq))
             select case (eq_style)
                 case (1)                                                        ! VMEC
-                    ! set up perturbation flux
+                    ! set up F flux
                     if (use_pol_flux_F) then
-                        ierr = calc_int(-iotaf*phi_r,1.0_dp/(n_r_eq-1.0_dp),&
-                            &flux)
+                        ierr = calc_int(-iotaf*Dphi,1.0_dp/(n_r_eq-1.0_dp),&
+                            &flux_F)                                            ! conversion VMEC LH -> RH coord. system
                         CHCKERR('')
                     else
-                        flux = phi
+                        flux_F = phi
                     end if
-                    ! set up equilibrium flux
+                    ! set up E flux
                     if (use_pol_flux_E) then
-                        ierr = calc_int(-iotaf*phi_r,1.0_dp/(n_r_eq-1.0_dp),&
-                            &flux_eq)
+                        ierr = calc_int(iotaf*Dphi,1.0_dp/(n_r_eq-1.0_dp),&
+                            &flux_E)
                         CHCKERR('')
                     else
-                        flux_eq = phi
+                        flux_E = phi
                     end if
                 case (2)                                                        ! HELENA
                     ! calculate normal derivative of flux_H
-                    allocate(flux_H_r(n_r_eq))
-                    ierr = calc_deriv(flux_H,flux_H_r,flux_H,1,1)
+                    allocate(Dflux_H(n_r_eq))
+                    ierr = calc_deriv(flux_H,Dflux_H,flux_H,1,1)
                     CHCKERR('')
-                    ! set up perturbation flux
+                    ! set up F flux
                     if (use_pol_flux_F) then
-                        flux = flux_H
+                        flux_F = flux_H
                     else
-                        ierr = calc_int(qs*flux_H_r,flux_H,flux)
+                        ierr = calc_int(qs*Dflux_H,flux_H,flux_F)
                         CHCKERR('')
                     end if
-                    ! set up equilibrium flux
+                    ! set up E flux
                     if (use_pol_flux_E) then
-                        flux_eq = flux_H
+                        flux_E = flux_H
                     else
-                        ierr = calc_int(qs*flux_H_r,flux_H,flux_eq)
+                        ierr = calc_int(qs*Dflux_H,flux_H,flux_E)
                         CHCKERR('')
                     end if
                 case default
@@ -328,51 +331,51 @@ contains
                     CHCKERR(err_msg)
             end select
             
-            ! normalize flux and flux_eq to (0..1)
-            ! Note:  max_flux is  not yet  determined, so  use flux(n_r_eq)  and
-            ! flux_eq(n_r_eq), knowing that this is the full global range
-            flux = flux/flux(n_r_eq)
-            flux_eq = flux_eq/flux_eq(n_r_eq)
+            ! normalize flux_F and flux_E to (0..1)
+            ! Note: max_flux  is not yet  determined, so use  flux_F(n_r_eq) and
+            ! flux_E(n_r_eq), knowing that this is the full global range
+            flux_F = flux_F/flux_F(n_r_eq)
+            flux_E = flux_E/flux_E(n_r_eq)
             
             ! use min_r_X and max_r_X, with grp_n_procs to get the minimum bound
             ! grp_min_r_eq for this rank
             ! 1. continuous perturbation grid (0..1)
-            grp_min_r_eq_X_con = min_r_X + &
+            grp_min_r_eq_F_con = min_r_X + &
                 &grp_rank*(max_r_X-min_r_X)/grp_n_procs
             ! 2 round with tolerance
-            ierr = round_with_tol(grp_min_r_eq_X_con,0._dp,1._dp)
+            ierr = round_with_tol(grp_min_r_eq_F_con,0._dp,1._dp)
             CHCKERR('')
             ! 3. continuous equilibrium grid (0..1)
-            ierr = interp_fun(grp_min_r_eq_eq_con,flux_eq,&
-                &grp_min_r_eq_X_con,flux)
+            ierr = interp_fun(grp_min_r_eq_E_con,flux_E,&
+                &grp_min_r_eq_F_con,flux_F)
             CHCKERR('')
             ! 4. discrete equilibrium grid, unrounded
-            call con2dis(grp_min_r_eq_eq_con,grp_min_r_eq_eq_dis,flux_eq)
+            call con2dis(grp_min_r_eq_E_con,grp_min_r_eq_E_dis,flux_E)
             ! 5. discrete equilibrium grid, rounded down
-            eq_limits(1) = floor(grp_min_r_eq_eq_dis)
+            eq_limits(1) = floor(grp_min_r_eq_E_dis)
             
             ! use min_r_X and max_r_X to calculate grp_max_r_eq
             ! 1. divide_X_grid for min_n_r_X normal points
             ierr = divide_X_grid(min_n_r_X,X_limits)                            ! divide the grid for the min_n_r_X tot. normal points
             CHCKERR('')
             ! 2. discrete perturbation grid (1..min_n_r_X)
-            grp_max_r_eq_X_dis = X_limits(2)
+            grp_max_r_eq_F_dis = X_limits(2)
             ! 3. continous perturbation grid (0..1)
-            call dis2con(grp_max_r_eq_X_dis,grp_max_r_eq_X_con,[1,min_n_r_X],&
+            call dis2con(grp_max_r_eq_F_dis,grp_max_r_eq_F_con,[1,min_n_r_X],&
                 &[min_r_X,max_r_X])                                             ! the perturbation grid is equidistant
             ! 4 round with tolerance
-            ierr = round_with_tol(grp_max_r_eq_X_con,0._dp,1._dp)
+            ierr = round_with_tol(grp_max_r_eq_F_con,0._dp,1._dp)
             CHCKERR('')
             ! 5. continuous equilibrium grid (0..1)
-            ierr = interp_fun(grp_max_r_eq_eq_con,flux_eq,&
-                &grp_max_r_eq_X_con,flux)
+            ierr = interp_fun(grp_max_r_eq_E_con,flux_E,&
+                &grp_max_r_eq_F_con,flux_F)
             CHCKERR('')
             ! 6. discrete equilibrium grid, unrounded
-            call con2dis(grp_max_r_eq_eq_con,grp_max_r_eq_dis,flux_eq)
+            call con2dis(grp_max_r_eq_E_con,grp_max_r_eq_E_dis,flux_E)
             ! 7. discrete equlibrium grid, rounded up
-            eq_limits(2) = ceiling(grp_max_r_eq_dis)
+            eq_limits(2) = ceiling(grp_max_r_eq_E_dis)
             
-            deallocate(flux,flux_eq)
+            deallocate(flux_F,flux_E)
         end function calc_eq_r_range
     end function split_MPI
     
@@ -822,9 +825,11 @@ contains
     ! expected because the routine fill_matrix  needs information about the next
     ! perturbation point (so this is an asymetric ghost region)
     integer function divide_X_grid(n_r_X,X_limits,grp_r_X) result(ierr)
-        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
+        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs, &
+            &use_pol_flux_F
         use X_vars, only: min_r_X, max_r_X
         use utilities, only: round_with_tol
+        use eq_vars, only: max_flux_p_F, max_flux_t_F
         
         character(*), parameter :: rout_name = 'divide_X_grid'
         
@@ -838,6 +843,7 @@ contains
         integer :: rank                                                         ! rank
         integer :: id                                                           ! counter
         integer :: grp_n_r_X                                                    ! nr. of points in group normal X grid
+        real(dp) :: max_flux_F                                                  ! either max_flux_p_F or max_flux_t_F
         
         ! initialize ierr
         ierr = 0
@@ -866,14 +872,27 @@ contains
         
         ! set up grp_r_X if present (equidistant grid in Flux coordinates)
         if (present(grp_r_X)) then
+            ! set up max_flux
+            if (use_pol_flux_F) then
+                max_flux_F = max_flux_p_F
+            else
+                max_flux_F = max_flux_t_F
+            end if
+            
+            ! allocate grp_r_X
             if (allocated(grp_r_X)) deallocate(grp_r_X)
             allocate(grp_r_X(grp_n_r_X))
+            
+            ! calculate grp_r_X in range from 0 to 1
             grp_r_X = [(min_r_X + (X_limits(1)+id-2.0_dp)/(n_r_X-1.0_dp)*&
                 &(max_r_X-min_r_X),id=1,grp_n_r_X)]
             
             ! round with standard tolerance
             ierr = round_with_tol(grp_r_X,0.0_dp,1.0_dp)
             CHCKERR('')
+            
+            ! translate to the real normal variable in range from 0..flux/2pi
+            grp_r_X = grp_r_X*max_flux_F/(2*pi)
         end if
     contains 
         integer function divide_X_grid_ind(rank,n,n_procs) result(n_loc)
@@ -890,12 +909,12 @@ contains
         end function divide_X_grid_ind
     end function divide_X_grid
     
-    ! wrapper function to broadcast a single logical variable
-    integer function broadcast_l(lvar,source) result(ierr)
-        character(*), parameter :: rout_name = 'broadcast_l'
+    ! wrapper function to broadcast a single variable
+    integer function broadcast_var_real(var,source) result(ierr)                ! version for reals
+        character(*), parameter :: rout_name = 'broadcast_var_real'
         
         ! input / output
-        logical, intent(in) :: lvar                                             ! variable to be broadcast
+        real(dp), intent(in) :: var                                             ! variable to be broadcast
         integer, intent(in), optional :: source                                 ! process that sends
         
         ! local variables
@@ -907,14 +926,53 @@ contains
         ! set local source if given
         if (present(source)) source_loc = source
         
-        call MPI_Bcast(lvar,1,MPI_LOGICAL,source_loc,MPI_COMM_WORLD,ierr)
+        call MPI_Bcast(var,1,MPI_DOUBLE_PRECISION,source_loc,MPI_COMM_WORLD,&
+            &ierr)
         CHCKERR('MPI broadcast failed')
-    end function broadcast_l
+    end function broadcast_var_real
+    integer function broadcast_var_int(var,source) result(ierr)                 ! version for integers
+        character(*), parameter :: rout_name = 'broadcast_var_int'
+        
+        ! input / output
+        integer, intent(in) :: var                                              ! variable to be broadcast
+        integer, intent(in), optional :: source                                 ! process that sends
+        
+        ! local variables
+        integer :: source_loc = 0                                               ! local value for source
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local source if given
+        if (present(source)) source_loc = source
+        
+        call MPI_Bcast(var,1,MPI_INTEGER,source_loc,MPI_COMM_WORLD,ierr)
+        CHCKERR('MPI broadcast failed')
+    end function broadcast_var_int
+    integer function broadcast_var_log(var,source) result(ierr)                 ! version for logicals
+        character(*), parameter :: rout_name = 'broadcast_var_log'
+        
+        ! input / output
+        logical, intent(in) :: var                                              ! variable to be broadcast
+        integer, intent(in), optional :: source                                 ! process that sends
+        
+        ! local variables
+        integer :: source_loc = 0                                               ! local value for source
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local source if given
+        if (present(source)) source_loc = source
+        
+        call MPI_Bcast(var,1,MPI_LOGICAL,source_loc,MPI_COMM_WORLD,ierr)
+        CHCKERR('MPI broadcast failed')
+    end function broadcast_var_log
     
     ! Broadcasts all  the relevant variable that have been  determined so far in
     ! the global master process using the inputs to the other processes
     ! [MPI] Collective call
-    integer function broadcast_vars() result(ierr)
+    integer function broadcast_input_vars() result(ierr)
         use num_vars, only: max_str_ln, output_name, ltest, EV_style, &
             &max_it_NR, max_it_r, n_alpha, n_procs_per_alpha, minim_style, &
             &max_alpha, min_alpha, tol_NR, glb_rank, glb_n_procs, no_guess, &
@@ -923,7 +981,7 @@ contains
             &eq_style, use_normalization, n_sol_plotted, n_theta_plot, &
             &n_zeta_plot, grid_style, plot_jq
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, iotaf, gam, R_c, &
-            &R_s, Z_c, Z_s, L_c, L_s, phi, phi_r, presf
+            &R_s, Z_c, Z_s, L_c, L_s, phi, Dphi, presf
         use HELENA, only: R_0_H, B_0_H, p0, qs, flux_H, nchi, chi_H, ias, &
             &h_H_11_full, h_H_12_full, h_H_33_full, RBphi, R_H, Z_H
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0
@@ -931,7 +989,7 @@ contains
             &min_r_X, max_r_X
         use grid_vars, only: n_r_eq, n_par_X, min_par_X, max_par_X
         
-        character(*), parameter :: rout_name = 'broadcast_vars'
+        character(*), parameter :: rout_name = 'broadcast_input_vars'
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1068,9 +1126,9 @@ contains
                     call MPI_Bcast(phi,size(phi),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(phi_r)
+                    call bcast_size_1_R(Dphi)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(phi_r,size(phi_r),MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(Dphi,size(Dphi),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                     call bcast_size_1_R(iotaf)
@@ -1242,5 +1300,5 @@ contains
                 &-(arr_size(2)-1)/2:(arr_size(2)-1)/2,1:arr_size(3),&
                 &0:arr_size(4)-1))
         end subroutine bcast_size_4_R
-    end function broadcast_vars
+    end function broadcast_input_vars
 end module

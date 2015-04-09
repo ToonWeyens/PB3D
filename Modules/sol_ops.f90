@@ -134,9 +134,9 @@ contains
             ! set up parallel multiplicative factor par_fac in normal eq grid
             if (deriv_loc) then                                                 ! parallel derivative
                 if (use_pol_flux_F) then
-                    par_fac =  iu*(X%n(jd)*eq%q_saf_FD(:,0)-X%m(jd))
+                    par_fac = iu*(X%n(jd)*eq%q_saf_FD(:,0)-X%m(jd))
                 else
-                    par_fac =  iu*(X%n(jd)-X%m(jd)*eq%rot_t_FD(:,0))
+                    par_fac = iu*(X%n(jd)-X%m(jd)*eq%rot_t_FD(:,0))
                 end if
             else
                 par_fac = 1._dp
@@ -464,7 +464,7 @@ contains
             character(len=max_str_ln), allocatable :: file_names(:)             ! names of file of plots of different procs.
             character(len=max_str_ln) :: plot_title                             ! title for plots
             real(dp), allocatable :: x_plot(:,:)                                ! x values of plot
-            complex(dp), allocatable :: X_vec_extended(:,:)                     ! MPI Eigenvector extended with assymetric ghost region
+            complex(dp), allocatable :: X_vec_ext(:,:)                          ! MPI Eigenvector extended with assymetric ghost region
             real(dp), allocatable :: X_vec_max(:)                               ! maximum position index of X_vec of rank
             real(dp), allocatable :: ser_X_vec_max(:)                           ! maximum position index of X_vec of whole group
             
@@ -475,10 +475,11 @@ contains
             call writo('Started plot of the harmonics')
             call lvl_ud(1)
             
-            ! set up extended X_vec with ghost values
-            allocate(X_vec_extended(X%n_mod,size(grid_X%grp_r_F)))
-            X_vec_extended(:,1:size(X%vec,2)) = X%vec(:,:,X_id)
-            ierr = get_ghost_arr(X_vec_extended,1)
+            ! set up extended  X_vec with ghost values (grp_r_F of  X grid has a
+            ! ghost value but the EV returned does not)
+            allocate(X_vec_ext(X%n_mod,size(grid_X%grp_r_F)))
+            X_vec_ext(:,1:size(X%vec,2)) = X%vec(:,:,X_id)
+            ierr = get_ghost_arr(X_vec_ext,1)
             CHCKERR('')
             
             ! set up x_plot
@@ -496,7 +497,7 @@ contains
             
             ! print amplitude of harmonics of eigenvector for each rank
             call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
-                &trim(i2str(grp_rank)),abs(transpose(X_vec_extended(:,:))),&
+                &trim(i2str(grp_rank)),abs(transpose(X_vec_ext(:,:))),&
                 &x=x_plot,draw=.false.)
             
             ! wait for all processes
@@ -531,7 +532,7 @@ contains
             ! print amplitude of harmonics of eigenvector for each rank
             call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
                 &trim(i2str(grp_rank)),&
-                &realpart(transpose(X_vec_extended(:,:))),x=x_plot,draw=.false.)
+                &realpart(transpose(X_vec_ext(:,:))),x=x_plot,draw=.false.)
             
             ! wait for all processes
             ierr = wait_MPI()
@@ -588,7 +589,7 @@ contains
             end if
             
             ! deallocate
-            deallocate(x_plot,X_vec_extended)
+            deallocate(x_plot,X_vec_ext)
             
             ! user output
             call lvl_ud(-1)

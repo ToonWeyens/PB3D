@@ -5,11 +5,10 @@
 !       -  The  equilibrium  variables  are comprised  of  the  variable  that !
 !       result from the equilibrium  calculation, such as pressure, rotational !
 !       transform, etc.                                                        !
-!       -  These variables  are tabulated  on  a 2D  grid, in  the normal  and !
-!       parallel coordinate (thus following the magnetic field lines):         !
+! - These variables are tabulated on a 3D grid, following the magnetic field:  !
 !           + In the normal coordinate,  they are tabulated in the equilibrium !
 !           grid.                                                              !
-!           +  In  the   parallel  coordinate,  they  are   tabulated  in  the !
+!           +  In  the   angular  coordinates,  they  are   tabulated  in  the !
 !           perturbation grid (VMEC),  or in the equilibrium  grid followed by !
 !           an adaptation to the perturbation grid (HELENA).                   !
 !       - However, this  is not necessarily always the case,  as it depends on !
@@ -40,20 +39,31 @@ module eq_vars
     
     ! equilibrium type
     ! The arrays here are of the form (except for rho):
-    !   - (r,Dr)                                    for flux quantities
-    !   - (angle_1,angle_2,r,Dr,Dangle_1,Dangle_2)  for normal quantities
+    !   - (r,Dr)                        for flux quantities
+    !   - (angle_1,angle_2,r,D1,D2,D3)  for normal quantities
     ! where angle_1 and angle_2 can be any angle that completely describe a flux
     ! surface. For example, they  can refer to a grid of  theta and zeta values,
     ! but they  can also refer  to (Modified)  flux coordinates with  a parallel
-    ! angle and  a field line coordinate  (alpha). By choosing angle_1  equal to
-    ! the  parallel coordinate  and angle_2  to the  field line  coordinate, the
-    ! second dimension of  the matrices is then  chosen to be of size  1 for the
-    ! calculations  on a  single  field line.  At the  same  time, the  parallel
-    ! coordinate, in which integrations will have  to be done, ocupies the first
-    ! index. This is good for numerical efficiency.
+    ! angle and a field line coordinate (alpha).
+    ! For normal usage here, angle_1 is  chosen equal to the parallel coordinate
+    ! and angle_2 equal to the field line  label (so the second dimension of the
+    ! matrices is then chosen  to be of size 1 for the  calculations on a single
+    ! field  line).  At  the  same  time,  the  parallel  coordinate,  in  which
+    ! integrations will have  to be done, ocupies the first  index. This is good
+    ! for numerical efficiency.
     ! An  equilibrium type  should be  complemented  by grid  type, which  gives
     ! information about the grid points  at which the equilibrium quantities are
     ! tabulated.
+    ! It is important that this order  of the coordinates in space is consistent
+    ! among all the variables.
+    ! The last three indices refer to the  derivatives in coordinate 1, 2 and 3,
+    ! which refer to the coordinates described in [ADD REF]: 
+    !   - For E(quilibrium) coordinates, they are (r,theta,zeta)_E
+    !   - For F(lux) coordinates, they are (alpha,psi,ang_par)_F, where
+    !       + alpha = zeta - q theta and ang_par = theta for pol. flux,
+    !       + alpha = -theta + iota zeta and ang_par = zeta for tor. flux.
+    ! This order  of variables is  important when setting up  the transformation
+    ! matrices between the E and F coordinate systems.
     type :: eq_type
         real(dp), allocatable :: R_E(:,:,:,:,:,:)                               ! R in E(quilibrium) coord
         real(dp), allocatable :: Z_E(:,:,:,:,:,:)                               ! Z in E(quilibrium) coords.

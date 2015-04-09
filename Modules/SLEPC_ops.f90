@@ -16,6 +16,15 @@ module SLEPC_ops
     implicit none
     private
     public solve_EV_system_SLEPC
+#if ldebug
+    public debug_setup_matrices, debug_fill_mat
+#endif
+    
+    ! global variables
+#if ldebug
+    logical :: debug_setup_matrices = .false.                                   ! plot debug information for setup_matrices
+    logical :: debug_fill_mat = .false.                                         ! plot debug information for fill_mat
+#endif
     
 contains
     ! This subroutine sets up  the matrices A ad B of  the generalized EV system
@@ -135,6 +144,7 @@ contains
         ! checking for complex numbers
         call writo('run tests...')
 #if defined(PETSC_USE_COMPLEX)
+        ! OK
 #else
         err_msg = 'PETSC and SLEPC have to be configured and compiled &
             &with the option "--with-scalar-type=complex"'
@@ -175,10 +185,11 @@ contains
         integer :: i_geo_loc                                                    ! local copy of i_geo
         integer :: grp_n_r_X_loc                                                ! local copy of grp_n_r of X grid
         
-        !! for tests
-        !Mat :: A_t                                                              ! Hermitian transpose of A
-        !Mat :: B_t                                                              ! Hermitian transpose of B
-        !PetscScalar :: one = 1.0                                                ! one
+#if ldebug
+        Mat :: A_t                                                              ! Hermitian transpose of A
+        Mat :: B_t                                                              ! Hermitian transpose of B
+        PetscScalar :: one = 1.0                                                ! one
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -250,47 +261,55 @@ contains
         CHCKERR('')
         call writo('matrix B set up')
         
-        !! test if A and B hermitian
-        !call MatHermitianTranspose(A,MAT_INITIAL_MATRIX,A_t,ierr)
-        !CHCKERR('Hermitian transpose of A failed')
-        !call MatAXPY(A_t,-one,A,SAME_NONZERO_PATTERN,ierr)
-        !CHCKERR('A-A_t failed')
-        !call MatHermitianTranspose(B,MAT_INITIAL_MATRIX,B_t,ierr)
-        !CHCKERR('Hermitian transpose of B failed')
-        !call MatAXPY(B_t,-one,B,SAME_NONZERO_PATTERN,ierr)
-        !CHCKERR('B-B_t failed')
-        
-        !! visualize the matrices
-        !call PetscOptionsSetValue('-draw_pause','-1',ierr)
-        !write(*,*) 'A ='
-        !call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
-        !!call MatView(A,PETSC_VIEWER_DRAW_WORLD,ierr)
-        !write(*,*) 'B ='
-        !call MatView(B,PETSC_VIEWER_STDOUT_WORLD,ierr)
-        !!call MatView(B,PETSC_VIEWER_DRAW_WORLD,ierr)
-        !write(*,*) 'A_t ='
-        !call MatView(A_t,PETSC_VIEWER_STDOUT_WORLD,ierr)
-        !write(*,*) 'B_t ='
-        !call MatView(B_t,PETSC_VIEWER_STDOUT_WORLD,ierr)
-        
-        !! destroy matrices
-        !call MatDestroy(A_t,ierr)
-        !CHCKERR('Failed to destroy matrix A_t')
-        !call MatDestroy(B_t,ierr)
-        !CHCKERR('Failed to destroy matrix B_t')
+#if ldebug
+        if (debug_setup_matrices) then
+            ! test if A and B hermitian
+            call MatHermitianTranspose(A,MAT_INITIAL_MATRIX,A_t,ierr)
+            CHCKERR('Hermitian transpose of A failed')
+            call MatAXPY(A_t,-one,A,SAME_NONZERO_PATTERN,ierr)
+            CHCKERR('A-A_t failed')
+            call MatHermitianTranspose(B,MAT_INITIAL_MATRIX,B_t,ierr)
+            CHCKERR('Hermitian transpose of B failed')
+            call MatAXPY(B_t,-one,B,SAME_NONZERO_PATTERN,ierr)
+            CHCKERR('B-B_t failed')
+            
+            ! visualize the matrices
+            call PetscOptionsSetValue('-draw_pause','-1',ierr)
+            write(*,*) 'A ='
+            call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            !call MatView(A,PETSC_VIEWER_DRAW_WORLD,ierr)
+            write(*,*) 'B ='
+            call MatView(B,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            !call MatView(B,PETSC_VIEWER_DRAW_WORLD,ierr)
+            write(*,*) 'A_t ='
+            call MatView(A_t,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            write(*,*) 'B_t ='
+            call MatView(B_t,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            
+            ! destroy matrices
+            call MatDestroy(A_t,ierr)
+            CHCKERR('Failed to destroy matrix A_t')
+            call MatDestroy(B_t,ierr)
+            CHCKERR('Failed to destroy matrix B_t')
+        end if
+#endif
         
         ! set boundary conditions
         ierr = set_mat_BC(A,B)
         CHCKERR('')
         
-        !! visualize the matrices
-        !call PetscOptionsSetValue('-draw_pause','-1',ierr)
-        !write(*,*) 'A ='
-        !call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
-        !!call MatView(A,PETSC_VIEWER_DRAW_WORLD,ierr)
-        !write(*,*) 'B ='
-        !call MatView(B,PETSC_VIEWER_STDOUT_WORLD,ierr)
-        !!call MatView(B,PETSC_VIEWER_DRAW_WORLD,ierr)
+#if ldebug
+        if (debug_setup_matrices) then
+            ! visualize the matrices
+            call PetscOptionsSetValue('-draw_pause','-1',ierr)
+            write(*,*) 'A ='
+            call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            !call MatView(A,PETSC_VIEWER_DRAW_WORLD,ierr)
+            write(*,*) 'B ='
+            call MatView(B,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            !call MatView(B,PETSC_VIEWER_DRAW_WORLD,ierr)
+        end if
+#endif
         
         ! deallocate quantities
         deallocate(grp_r_eq)
@@ -301,16 +320,15 @@ contains
         ! A  and  B,  corresponding  to  the plasma  potential  energy  and  the
         ! (perpendicular) kinetic energy
         ! The procedure is as follows:
-        !   1. tables  are set  up for  (k,m) (pol. flux)  or (l,n)  pairs (tor.
-        !   flux), in the (par,r) equilibrium grid
-        !   2. at the first normal point  in the perturbation grid, belonging to
-        !   the current process, the tables are interpolated as a start
-        !   3. at every normal point in  the perturbation grid, belonging to the
+        !   1. Tables  are set  up for  (k,m) pairs in the equilibrium grid.
+        !   2. At the first normal point  in the perturbation grid, belonging to
+        !   the current process, the tables are interpolated as a start.
+        !   3. At every normal point in  the perturbation grid, belonging to the
         !   current process,  the tables are  interpolated at the next  point in
         !   the  corresponding  perturbation  grid. This  information,  as  well
         !   as  the interpolated  value  of  the previous  point  allow for  the
-        !   calculation of every quantity
-        ! Note: the factors i/n or i/m are already included in V_int_i
+        !   calculation of every quantity.
+        ! Note: the factors i/n or i/m are already included.
         ! !!!! THE REAL BOUNDARY CONDITIONS ARE STILL MISSING !!!!!!
         integer function fill_mat(V_0,V_1,V_2,mat) result(ierr)
             use num_vars, only: use_pol_flux_F
@@ -431,6 +449,18 @@ contains
                 ! add block to the matrix A
                 loc_k = [(jd, jd = 0,X%n_mod-1)] + id*X%n_mod
                 loc_m = loc_k
+#if ldebug
+                if (debug_fill_mat) then
+                    call writo('at (k,m) = ')
+                    write(*,*) loc_k
+                    write(*,*) loc_m
+                    call writo('following local block is added: ')
+                    write(*,*) 'Re ='
+                    call print_ar_2(realpart(loc_block))
+                    write(*,*) 'Im ='
+                    call print_ar_2(imagpart(loc_block))
+                endif
+#endif
                 call MatSetValues(mat,X%n_mod,loc_k,X%n_mod,loc_m,loc_block,&
                     &INSERT_VALUES,ierr)
                 CHCKERR('Couldn''t add values to matrix')
@@ -443,12 +473,6 @@ contains
                     call interp_V(V_0,grp_r_eq(id-grid_X%i_min+3),V_int_0_next)
                     call interp_V(V_1,grp_r_eq(id-grid_X%i_min+3),V_int_1_next)
                     call interp_V(V_2,grp_r_eq(id-grid_X%i_min+3),V_int_2_next)
-                    !write(*,*) 'V_int_0', V_int_0_next
-                    !read(*,*)
-                    !write(*,*) 'V_int_1', V_int_1_next
-                    !read(*,*)
-                    !write(*,*) 'V_int_2', V_int_2_next
-                    !read(*,*)
                     
                     loc_block = 0
                     do m = 1,X%n_mod
@@ -468,8 +492,6 @@ contains
                                 &[k,m],.true.)/2 * 1.0/(step_size)**2
                         end do
                     end do
-                    !write(*,*) 'loc_block = ', loc_block
-                    !read(*,*)
                     
                     ! add block to the matrix
                     loc_k = [(jd, jd = 0,X%n_mod-1)] + id*X%n_mod

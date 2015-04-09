@@ -93,7 +93,7 @@ contains
             do id = 1,size(open_help)
                 call writo(open_help(id))
             end do
-            ierr = 66
+            ierr = 66                                                           ! silent stop
             CHCKERR('')
         endif
         
@@ -102,7 +102,7 @@ contains
             do id = 1,size(open_error)
                 call writo(open_error(id))
             end do
-            ierr = 66
+            ierr = 66                                                           ! silent stop
             CHCKERR('')
         end if
         
@@ -124,8 +124,11 @@ contains
     ! open the input files
     ! [MPI] Only global master
     integer function open_input() result(ierr)
-        use num_vars, only: eq_i, input_i, ltest, glb_rank, &
+        use num_vars, only: eq_i, input_i, glb_rank, &
             &output_name, no_guess, no_plots, eq_style, eq_name, no_messages
+#if ldebug
+        use num_vars, only: ltest
+#endif
         
         character(*), parameter :: rout_name = 'open_input'
         

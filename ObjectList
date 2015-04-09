@@ -23,4 +23,5 @@ utilities.o \
 VMEC.o \
 X_ops.o \
 X_vars.o \
+test.o \
 PB3D.o \

@@ -1,21 +1,52 @@
 !------------------------------------------------------------------------------!
-!   Test some routines and functions                                           !
+!   Generic tests                                                              !
 !------------------------------------------------------------------------------!
 module test
 #include <PB3D_macros.h>
-    use num_vars, only: dp, max_str_ln, pi, mu_0, output_i, iu
-    use output_ops, only: print_GP_2D, print_GP_3D
-    use messages, only: print_ar_1, print_ar_2, start_time, &
-        &stop_time
-    use input_ops, only: yes_no
-    use str_ops, only: i2str, r2str, r2strt
-
+    use str_ops
+    use output_ops
+    use messages
+    use num_vars, only: pi, dp, max_str_ln
+    
     implicit none
     private
-    public test_calc_deriv, test_conv_FHM
-    
+#if ldebug
+    public generic_tests
+#endif
+
+#if ldebug
 contains
+    ! performs generic tests
+    integer function generic_tests() result(ierr)
+        use num_vars, only: ltest
+        use input_ops, only: pause_prog, get_log
+        
+        character(*), parameter :: rout_name = 'generic_tests'
+        
+        ! initialize ierr
+        ierr = 0
+        
+        if (ltest) then
+            call writo('Test calculation of derivatives?')
+            if(get_log(.false.)) then
+                ierr = test_calc_deriv()
+                CHCKERR('')
+                call pause_prog
+            end if
+            
+            call writo('Test conversion between full and half mesh?')
+            if(get_log(.false.)) then
+                ierr = test_conv_FHM()
+                CHCKERR('')
+                call pause_prog
+            end if
+        end if
+    end function generic_tests
+    
+    ! tests the calculation of derivatives
     integer function test_calc_deriv() result(ierr)
+        use num_vars, only: glb_rank
+        use input_ops, only: get_log, get_int, get_real
         use utilities, only: calc_deriv
         
         character(*), parameter :: rout_name = 'test_calc_deriv'
@@ -36,92 +67,57 @@ contains
         integer :: prec
         real(dp), allocatable :: x(:)                                           ! abscissa
         integer :: max_deriv
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
-        write(*,*) 'test calc_deriv?'
-        if(yes_no(.false.)) then
-            output_i = 0
-            
-            ! read user input
-            do
-                write(*,*) 'how many steps ?'
-                read(*,*) n_steps
-                if (n_steps.lt.10) then
-                    write(*,*) 'choose a value larger than 10'
-                    cycle
-                else
-                    exit
-                end if
-            end do
-            do
-                write(*,*) 'precision ?'
-                    write(*,*) '1: truncation error ~ Delta^2'
-                    write(*,*) '2: truncation error ~ Delta^3'
-                read(*,*) prec
-                if (prec.lt.1 .or. prec.gt.2) then
-                    write(*,*) 'choose a value from the correct range'
-                    cycle
-                else
-                    exit
-                end if
-            end do
-            do
-                write(*,*) 'starting (max) step size ?'
-                read(*,*) start_step
-                if (start_step.gt.1E-1_dp) then
-                    write(*,*) 'Choose a value smaller than 0.1'
-                    cycle
-                else
-                    exit
-                end if
-            end do
-            write(*,*) 'equidistant plot? [yes]'
-            if(yes_no(.true.)) then
-                eqd_plots = .true.
-            else
-                eqd_plots = .false.
-            end if
-            if (.not.eqd_plots) then
-                do
-                    write(*,*) 'which type of x-axis?'
-                        write(*,*) '1: linear x = (x-1)/(N-1)'
-                        write(*,*) '2: quadratic x = ((x-1)/(N-1))^2'
-                    read(*,*) grid_type
-                    if (grid_type.lt.1 .or. grid_type.gt.2) then
-                        write(*,*) 'choose a value from the range 1-2'
-                        cycle
-                    else
-                        exit
-                    end if
-                end do
-            end if
-            
-            write(*,*) 'Individual plots?'
-            if(yes_no(.false.)) then
-                ind_plots = .true.
-            else
-                ind_plots = .false.
-            end if
-            
-            do
-                write(*,*) 'which function?'
-                    write(*,*) '1: sin(pi*x) + 0.25*cos(2*pi*x)'
-                    write(*,*) '2: 0.5+x-2*x^3+x^4'
-                    write(*,*) '3: x^7'
-                    write(*,*) '4: x^6'
-                    write(*,*) '5: x^5'
-                    write(*,*) '6: x^4'
-                read(*,*) input_type
-                if (input_type.lt.1 .or. input_type.gt.6) then
-                    write(*,*) 'Choose a value from the range 1-6'
-                    cycle
-                else
-                    exit
-                end if
-            end do
-            
+        ! user output
+        call writo('Going to test the numerical calculation of derivatives')
+        call lvl_ud(1)
+        
+        ! read user inputs
+        call writo('how many steps?')
+        n_steps = get_int(lim_lo=10)
+        
+        call writo('precision?')
+        call lvl_ud(1)
+        call writo('1: truncation error ~ Delta^2')
+        call writo('2: truncation error ~ Delta^3')
+        call lvl_ud(-1)
+        prec = get_int(lim_lo=1,lim_hi=2)
+        
+        call writo('starting (max) step size?')
+        start_step = get_real(lim_hi=0.1_dp)
+        
+        call writo('equidistant plot?')
+        eqd_plots = get_log(.true.)
+        
+        if (.not.eqd_plots) then
+            call writo('which type of x-axis?')
+            call lvl_ud(1)
+            call writo('1: linear x = (x-1)/(N-1)')
+            call writo('2: quadratic x = ((x-1)/(N-1))^2')
+            call lvl_ud(-1)
+            grid_type = get_int(lim_lo=1,lim_hi=2)
+        end if
+        
+        call writo('individual plots?')
+        ind_plots = get_log(.false.)
+        
+        call writo('which function?')
+        call lvl_ud(1)
+        call writo('1: sin(pi*x) + 0.25*cos(2*pi*x)')
+        call writo('2: 0.5+x-2*x^3+x^4')
+        call writo('3: x^7')
+        call writo('4: x^6')
+        call writo('5: x^5')
+        call writo('6: x^4')
+        call lvl_ud(-1)
+        input_type = get_int(lim_lo=1,lim_hi=6)
+        
+        ! only do the tests by the group master
+        if (glb_rank.eq.0) then
             ! set up max_deriv
             select case (prec)
                 case(1)
@@ -137,17 +133,18 @@ contains
                         max_deriv = 1
                     end if
                 case default
-                    write(*,*) 'ERROR: in test_calc_deriv, how did &
-                        &you get here?!??!'
+                    ierr = 1
+                    err_msg = 'precision has to be 1 or 2'
+                    CHCKERR(err_msg)
             end select
             
-            ! initialize
+            ! initialize variables
             allocate(step_size(n_steps)); step_size = 0.0_dp
             allocate(max_error(n_steps,max_deriv)); max_error = 0.0_dp
             allocate(mean_error(n_steps,max_deriv)); mean_error = 0.0_dp
             allocate(plot_x(n_steps,2)); plot_x = 0.0_dp
             allocate(plot_y(n_steps,2)); plot_y = 0.0_dp
-                
+            
             ! n_steps calculations up to min_step
             do id = 1,n_steps
                 loc_max = nint(id/start_step)                                   ! how many points for this step id
@@ -156,10 +153,10 @@ contains
                 step_size(id) = 1._dp/(loc_max-1._dp)                           ! equidistant step size for loc_max points
                 
                 if (eqd_plots) then
-                    write(*,*) 'setting up equidistant grid'
+                    call writo('setting up equidistant grid')
                     x = [((kd-1._dp)*step_size(id),kd=1,loc_max)]
                 else
-                    write(*,*) 'setting up regular grid'
+                    call writo('setting up regular grid')
                     allocate(x(loc_max))
                     select case (grid_type)
                         case(1)
@@ -167,14 +164,14 @@ contains
                         case(2)
                             x = [(((kd-1._dp)*step_size(id))**2,kd=1,loc_max)]
                         case default
-                            write(*,*) 'ERROR: you cannot have regular a grid &
-                                &of type '//trim(i2str(grid_type))
-                            exit
+                            ierr = 1
+                            err_msg = 'grid_type has to be 1 or 2'
+                            CHCKERR(err_msg)
                     end select
                 end if
                 
-                write(*,*) trim(i2str(id))//'/'//trim(i2str(n_steps))// &
-                    &': calculating using '//trim(i2str(loc_max))//' points'
+                call writo(trim(i2str(id))//'/'//trim(i2str(n_steps))// &
+                    &': calculating using '//trim(i2str(loc_max))//' points')
                 
                 ! set up input function
                 if (allocated(varin)) deallocate(varin)
@@ -188,11 +185,16 @@ contains
                 select case (input_type)
                     case (1)
                         varin = sin(pi*x)+0.25*cos(2*pi*x)
-                        var_an(:,1) =  (pi)**1*cos(pi*x)-0.25*(2*pi)**1*sin(2*pi*x)
-                        var_an(:,2) = -(pi)**2*sin(pi*x)-0.25*(2*pi)**2*cos(2*pi*x)
-                        var_an(:,3) = -(pi)**3*cos(pi*x)+0.25*(2*pi)**3*sin(2*pi*x)
-                        var_an(:,4) =  (pi)**4*sin(pi*x)+0.25*(2*pi)**4*cos(2*pi*x)
-                        var_an(:,5) =  (pi)**5*cos(pi*x)-0.25*(2*pi)**5*sin(2*pi*x)
+                        var_an(:,1) = &
+                            &(pi)**1*cos(pi*x)-0.25*(2*pi)**1*sin(2*pi*x)
+                        var_an(:,2) = &
+                            &-(pi)**2*sin(pi*x)-0.25*(2*pi)**2*cos(2*pi*x)
+                        var_an(:,3) = &
+                            &-(pi)**3*cos(pi*x)+0.25*(2*pi)**3*sin(2*pi*x)
+                        var_an(:,4) = &
+                            &(pi)**4*sin(pi*x)+0.25*(2*pi)**4*cos(2*pi*x)
+                        var_an(:,5) = &
+                            &(pi)**5*cos(pi*x)-0.25*(2*pi)**5*sin(2*pi*x)
                     case (2)
                         varin = 0.5+x-2*x**3+x**4
                         var_an(:,1) = 1-6*x**2+4*x**3
@@ -229,9 +231,9 @@ contains
                         var_an(:,4) = 1*2*3*4._dp
                         var_an(:,5) = 0._dp
                     case default
-                        write(*,*) 'ERROR: in test_calc_deriv, how did &
-                            &you get here?!??!'
-                        stop
+                        ierr = 1
+                        err_msg = 'Input type has to be between 1 and 6'
+                        CHCKERR(err_msg)
                 end select
                 
                 ! numerical derivatives
@@ -287,15 +289,18 @@ contains
                 call print_GP_2D('max. and mean error [log-log], for deriv. of &
                     &order '//trim(i2str(id)),'',plot_y,x=plot_x)
             end do
-            
-            
-            write(*,*) 'Stopping'
-            stop
         end if
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Test complete')
     end function test_calc_deriv
     
+    ! tests the conversion between full and half mesh
     integer function test_conv_FHM() result(ierr)
+        use num_vars, only: glb_rank
         use utilities, only: conv_FHM
+        use input_ops, only: get_log, get_int
         
         character(*), parameter :: rout_name = 'test_conv_FHM'
         
@@ -311,32 +316,27 @@ contains
         ! initialize ierr
         ierr = 0
         
-        write(*,*) 'test conv_FHM?'
-        if(yes_no(.false.)) then
-            output_i = 0
-            write(*,*) 'Testing whether h2f*f2h = 1'
-            write(*,*) 'The relative difference between an original FM variable&
-                & var and h2f*f2h*var, should be decreasing with increasing &
-                &number of radial points'
-            write(*,*) ''
-            write(*,*) 'Do you want the individual plots?'
-            ind_plot = yes_no(.false.)
-            write(*,*) ''
-            do
-                write(*,*) 'n_max = ?'
-                read(*,*) n_max
-                if (n_max.lt.4*length) then
-                    write(*,*) 'n_max has to be larger than or equal to '&
-                        &//trim(i2str(4*length))//'...'
-                else 
-                    exit
-                end if
-            end do
-            write(*,*) 'logarithmic plot?'
-            log_plot = yes_no(.false.)
-            write(*,*) ''
-            
-            
+        ! user output
+        call writo('Going to test the numerical conversion between full and &
+            &half mesh variables')
+        call writo('The relative difference between an original FM variable&
+            & var and h2f*f2h*var, should be decreasing with increasing &
+            &number of radial points')
+        call lvl_ud(1)
+        
+        ! get user inputs
+        call writo('Do you want the individual plots?')
+        ind_plot = get_log(.false.)
+        
+        call writo('n_max = ?')
+        n_max = get_int(lim_lo=4*length)
+        
+        call writo('logarithmic plot?')
+        log_plot = get_log(.false.)
+        
+        ! only do the tests by the group master
+        if (glb_rank.eq.0) then
+            ! set step
             step = n_max/length
             
             do id = 1,length
@@ -382,8 +382,8 @@ contains
                     call print_GP_2D('rel. difference with '//trim(i2str(n_r))&
                         &//' radial points ('//trim(i2str(id))//'/'//&
                         &trim(i2str(length))//')','',vardiff)
-                    write(*,*) 'max = '//trim(r2strt(maxerr(id)))&
-                        &//', average: '//trim(r2strt(averr(id)))
+                    call writo('max = '//trim(r2strt(maxerr(id)))&
+                        &//', average: '//trim(r2strt(averr(id))))
                 end if
             end do
             
@@ -402,12 +402,11 @@ contains
             end if
             call print_GP_2D('average error as a function of numer of points',&
                 &'',plotvar(2,:),x=plotvar(1,:))
-                
-            write(*,*) 'Paused... press enter'
-            read(*,*)
-            
-            write(*,*) 'Stopping'
-            stop
         end if
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Test complete')
     end function test_conv_FHM
+#endif
 end module test

@@ -249,7 +249,7 @@ contains
             CHCKERR('')
             grid_X%grp_r_F = grp_r_X
             deallocate(grp_r_X)
-            ierr = coord_F2E(eq,grid_X%grp_r_F,grid_X%grp_r_E)
+            ierr = coord_F2E(grid_eq,eq,grid_X%grp_r_F,grid_X%grp_r_E)
             CHCKERR('')
             call lvl_ud(-1)
             
@@ -767,14 +767,14 @@ contains
             type(X_type), intent(in) :: X                                       ! perturbation variables
             integer, intent(in) :: n_sol_found                                  ! how many solutions found and saved
             
-            ! local variables
-            integer :: jd                                                       ! counter
-            integer :: n_t = 10                                                 ! nr. of time steps
-            real(dp), allocatable :: time(:)                                    ! time at which to calculate decomposition
-            real(dp), allocatable :: X_F(:,:,:,:)                               ! normal comp. of perturbation
-            real(dp), allocatable :: D3X_F(:,:,:,:)                             ! parallel deriv. of X
-            real(dp), allocatable :: U_F(:,:,:,:)                               ! geodesic comp. of perturbation
-            real(dp), allocatable :: D3U_F(:,:,:,:)                             ! parallel deriv. of U
+            !! local variables
+            !integer :: jd                                                       ! counter
+            !integer :: n_t = 10                                                 ! nr. of time steps
+            !real(dp), allocatable :: time(:)                                    ! time at which to calculate decomposition
+            !real(dp), allocatable :: X_F(:,:,:,:)                               ! normal comp. of perturbation
+            !real(dp), allocatable :: D3X_F(:,:,:,:)                             ! parallel deriv. of X
+            !real(dp), allocatable :: U_F(:,:,:,:)                               ! geodesic comp. of perturbation
+            !real(dp), allocatable :: D3U_F(:,:,:,:)                             ! parallel deriv. of U
             
             ! initialize ierr
             ierr = 0
@@ -784,27 +784,27 @@ contains
                 &grid')
             call lvl_ud(1)
             
-            ! intialize variables
-            !allocate(time(n_t))
-            !allocate(X_F(grid%n(1),grid%n(2),grid%grp_n_r,n_t))
-            !allocate(D3X_F(grid%n(1),grid%n(2),grid%grp_n_r,n_t))
-            !allocate(U_F(grid%n(1),grid%n(2),grid%grp_n_r,n_t))
-            !allocate(D3U_F(grid%n(1),grid%n(2),grid%grp_n_r,n_t))
+            !! intialize variables
+            !!allocate(time(n_t))
+            !!allocate(X_F(grid%n(1),grid%n(2),grid%grp_n_r,n_t))
+            !!allocate(D3X_F(grid%n(1),grid%n(2),grid%grp_n_r,n_t))
+            !!allocate(U_F(grid%n(1),grid%n(2),grid%grp_n_r,n_t))
+            !!allocate(D3U_F(grid%n(1),grid%n(2),grid%grp_n_r,n_t))
             
-            ! user output
-            call writo('Calculating X, U, Qn and Qg')
-            call lvl_ud(1)
+            !! user output
+            !call writo('Calculating X, U, Qn and Qg')
+            !call lvl_ud(1)
             
-            ! set up time
-            ierr = calc_eqd_grid(time,0.0_dp,1.0_dp,excl_last=.true.)
-            CHCKERR('')
+            !! set up time
+            !ierr = calc_eqd_grid(time,0.0_dp,1.0_dp,excl_last=.true.)
+            !CHCKERR('')
             
-            ! loop over all Eigenvalues
-            do jd = 1,n_sol_found
-                ! calculate X, U, Qn and Qg in real space
-                !ierr = calc_real_XUQ(eq,grid_eq,X,jd,time,X_F)
-                CHCKERR('')
-            end do
+            !! loop over all Eigenvalues
+            !do jd = 1,n_sol_found
+                !! calculate X, U, Qn and Qg in real space
+                !!ierr = calc_real_XUQ(eq,grid_eq,X,jd,time,X_F)
+                !CHCKERR('')
+            !end do
             
             call lvl_ud(-1)
         end function decompose_energy

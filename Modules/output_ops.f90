@@ -32,6 +32,14 @@ module output_ops
         module procedure draw_GP_animated_ind, draw_GP_animated_arr
     end interface
     
+    ! global variables
+    character(len=9) :: line_clrs(9) = ["'#000090'","'#000fff'","'#0090ff'",&
+        &"'#0fffee'", "'#90ff70'", "'#ffee00'", "'#ff7000'", "'#ee0000'", &
+        &"'#7f0000'"]                                                           ! color specifications for plotting
+    !character(len=max_str_ln) :: line_style = 'lt 1 lw 1 pt 7 pi -1 ps 0.5; &
+        !&set pointintervalbox 0.75;'                                            ! with little space in line connecting points
+    character(len=max_str_ln) :: line_style = 'lt 1 lw 1 pt 7 ps 0.5;'          ! without little space in line connecting points
+    
 contains
     ! print 2D output on a file
     ! The variables var_name and file_name hold the  name of the plot and of the
@@ -338,6 +346,7 @@ contains
         integer :: iplt, ifl                                                    ! counters
         integer :: nfl                                                          ! number of files to plot
         integer :: cmd_i                                                        ! file number for script file
+        integer :: plt_count                                                    ! counts the number of plots
         
         ! return if no_plots
         if (no_plots) then
@@ -388,16 +397,17 @@ contains
         ! set up line styles
         if (present(draw_ops)) then
             do ifl = 1,nfl
-                write(cmd_i,*) 'set style line '//trim(i2str(ifl))//' '//&
-                    &trim(draw_ops(ifl))//';'
+                write(cmd_i,*) trim(draw_ops(ifl))//';'
             end do
         else
-            !write(cmd_i,*) 'set style line 1 lc rgb ''#0060ad'' lt 1 lw 1 pt 7 &
-                !&pi -1 ps 0.5;'
-            write(cmd_i,*) 'set style line 1 lc rgb ''#0060ad'' lt 1 lw 1 pt 7 &
-                &ps 0.5;'
-            write(cmd_i,*) 'set pointintervalbox 0.75;'
+            do plt_count = 1,min(nplt*nfl,size(line_clrs))
+                write(cmd_i,*) 'set style line '//trim(i2str(plt_count))//&
+                    &' lc rgb '//line_clrs(plt_count)//' '//trim(line_style)
+            end do
         end if
+        
+        ! set up plt_count
+        plt_count = 1
         
         ! individual plots
         loc_draw_op = ''
@@ -407,10 +417,10 @@ contains
                 plot_cmd = ''
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
-                        loc_draw_op = 'with lines linestyle '//&
-                        &trim(i2str(ifl))
+                        loc_draw_op = trim(i2str(ifl))
                     else
-                        loc_draw_op = 'with linespoints linestyle 1'
+                        loc_draw_op = 'with linespoints linestyle '//&
+                            &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
                     end if
                     plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
                     &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
@@ -418,6 +428,7 @@ contains
                     &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
                     &')'' '//trim(loc_draw_op)//','
                     if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
+                    plt_count = plt_count + 1
                 end do
                 write(cmd_i,*) trim(plot_cmd)
             end do
@@ -427,10 +438,10 @@ contains
                 plot_cmd = ''
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
-                        loc_draw_op = 'with lines linestyle '//&
-                        &trim(i2str(ifl))
+                        loc_draw_op = trim(i2str(ifl))
                     else
-                        loc_draw_op = 'with linespoints linestyle 1'
+                        loc_draw_op = 'with linespoints linestyle '//&
+                            &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
                     end if
                     plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
                     &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
@@ -438,6 +449,7 @@ contains
                     &//' title '''//trim(var_name)//' ('//trim(i2str(iplt))&
                     &//'/'//trim(i2str(nplt))//')'' '//trim(loc_draw_op)//','
                     if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
+                    plt_count = plt_count + 1
                 end do
                 write(cmd_i,*) trim(plot_cmd)
             end do
@@ -525,6 +537,7 @@ contains
         integer :: cmd_i                                                        ! file number for script file
         integer :: delay_loc                                                    ! local copy of delay
         real(dp), allocatable :: ranges_loc(:,:)                                ! local copy of ranges
+        integer :: plt_count                                                    ! counts the number of plots
         
         ! return if no_plots
         if (no_plots) then
@@ -641,11 +654,10 @@ contains
                     &trim(draw_ops(ifl))//';'
             end do
         else
-            !write(cmd_i,*) 'set style line 1 lc rgb ''#0060ad'' lt 1 lw 1 pt 7 &
-                !&pi -1 ps 0.5;'
-            write(cmd_i,*) 'set style line 1 lc rgb ''#0060ad'' lt 1 lw 1 pt 7 &
-                &ps 0.5;'
-            write(cmd_i,*) 'set pointintervalbox 0.75;'
+            do plt_count = 1,min(nplt*nfl,size(line_clrs))
+                write(cmd_i,*) 'set style line '//trim(i2str(plt_count))//&
+                    &' lc rgb '//line_clrs(plt_count)//' '//trim(line_style)
+            end do
         end if
         
         ! individual plots
@@ -655,10 +667,10 @@ contains
                 plot_cmd = 'plot'
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
-                        loc_draw_op = 'with lines linestyle '//&
-                        &trim(i2str(ifl))
+                        loc_draw_op = trim(i2str(ifl))
                     else
-                        loc_draw_op = 'with linespoints linestyle 1'
+                        loc_draw_op = 'with linespoints linestyle '//&
+                            &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
                     end if
                     plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
                     &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
@@ -674,10 +686,10 @@ contains
                 plot_cmd = 'splot '
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
-                        loc_draw_op = 'with lines linestyle '//&
-                        &trim(i2str(ifl))
+                        loc_draw_op = trim(i2str(ifl))
                     else
-                        loc_draw_op = 'with linespoints linestyle 1'
+                        loc_draw_op = 'with linespoints linestyle '//&
+                            &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
                     end if
                     plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
                     &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
@@ -1330,6 +1342,7 @@ contains
     subroutine plot_diff_HDF5(A,B,file_name,tot_dim,grp_dim,grp_offset,&
         &description,output_message)
         use utilities, only: diff
+        use MPI_ops, only: get_ser_var
         use messages, only: lvl_ud
         
         ! input / output
@@ -1348,8 +1361,13 @@ contains
         integer :: grp_offset_loc(4)                                            ! local version of grp_offset
         character(len=max_str_ln) :: var_names(4)                               ! names of variables in plot
         logical :: output_message_loc                                           ! local version of output_message
-        real(dp) :: lims(2)                                                     ! limits of errors
-        integer :: lim_locs(3,2)                                                ! location of limits
+        real(dp) :: lim_lo                                                      ! lower limit of errors
+        real(dp) :: lim_hi                                                      ! upper limit of errors
+        real(dp) :: sum_err                                                     ! sum of errors
+        real(dp), allocatable :: tot_lim(:)                                     ! total lower or upper limit
+        real(dp), allocatable :: tot_err(:)                                     ! total sum of errors
+        integer :: istat                                                        ! status
+        logical :: ind_plot                                                     ! individual plot or not
         
         ! set up local tot_dim
         tot_dim_loc = [shape(A),4]
@@ -1367,10 +1385,6 @@ contains
             grp_offset_loc = [0,0,0,0]
         end if
         
-        ! set up local ouput message
-        output_message_loc = .false.
-        if (present(output_message)) output_message_loc = output_message
-        
         ! tests
         if (grp_dim_loc(1).ne.size(B,1) .or. grp_dim_loc(2).ne.size(B,2) .or. &
             &grp_dim_loc(3).ne.size(B,3) .or. grp_dim_loc(1).ne.size(A,1) .or. &
@@ -1379,6 +1393,15 @@ contains
                 &correct size')
             return
         end if
+        
+        ! set up local ouput message
+        output_message_loc = .false.
+        if (present(output_message)) output_message_loc = output_message
+        
+        ind_plot = .false.
+        if (tot_dim_loc(1).eq.grp_dim_loc(1) .and. &
+            &tot_dim_loc(2).eq.grp_dim_loc(2) .and. &
+            &tot_dim_loc(3).eq.grp_dim_loc(3)) ind_plot = .true.
         
         ! set up plot_var
         allocate(plot_var(grp_dim_loc(1),grp_dim_loc(2),grp_dim_loc(3),4))
@@ -1404,31 +1427,45 @@ contains
             call writo('Information about relative and absolute error:')
             call lvl_ud(1)
             ! calculate limits on relative error
-            lims = [minval(plot_var(:,:,:,3)),maxval(plot_var(:,:,:,3))]
-            lim_locs(:,1) = minloc(plot_var(:,:,:,3))
-            lim_locs(:,2) = maxloc(plot_var(:,:,:,3))
+            lim_lo = minval(plot_var(:,:,:,3))
+            lim_hi = maxval(plot_var(:,:,:,3))
+            sum_err = sum(plot_var(:,:,:,3))
+            ! get most stringent limits from all processes
+            if (.not.ind_plot) then
+                istat = get_ser_var([lim_lo],tot_lim)
+                CHCKSTT
+                lim_lo = minval(tot_lim)
+                istat = get_ser_var([lim_hi],tot_lim)
+                CHCKSTT
+                lim_hi = maxval(tot_lim)
+                istat = get_ser_var([sum_err],tot_err)
+                CHCKSTT
+                sum_err = sum(tot_err)
+            end if
             ! output limits on relative error
-            call writo(trim(r2strt(lims(1)))//' (at '//&
-                &trim(i2str(lim_locs(1,1)))//','//&
-                &trim(i2str(lim_locs(2,1)))//','//&
-                &trim(i2str(lim_locs(3,1)))//&
-                &') < rel. err. < '//trim(r2strt(lims(2)))//&
-                &' (at '//trim(i2str(lim_locs(1,2)))//','//&
-                &trim(i2str(lim_locs(2,2)))//','//&
-                &trim(i2str(lim_locs(3,2)))//')')
+            call writo(trim(r2strt(lim_lo))//' < rel. err. < '//&
+                &trim(r2strt(lim_hi))//', average value: '//&
+                &trim(r2strt(sum_err/product(tot_dim_loc(1:3)))))
             ! calculate limits on absolute error
-            lims = [minval(plot_var(:,:,:,4)),maxval(plot_var(:,:,:,4))]
-            lim_locs(:,1) = minloc(plot_var(:,:,:,4))
-            lim_locs(:,2) = maxloc(plot_var(:,:,:,4))
+            lim_lo = minval(plot_var(:,:,:,4))
+            lim_hi = maxval(plot_var(:,:,:,4))
+            sum_err = sum(plot_var(:,:,:,4))
+            ! get most stringent limits from all processes
+            if (.not.ind_plot) then
+                istat = get_ser_var([lim_lo],tot_lim)
+                CHCKSTT
+                lim_lo = minval(tot_lim)
+                istat = get_ser_var([lim_hi],tot_lim)
+                CHCKSTT
+                lim_hi = maxval(tot_lim)
+                istat = get_ser_var([sum_err],tot_err)
+                CHCKSTT
+                sum_err = sum(tot_err)
+            end if
             ! output limits on absolute error
-            call writo(trim(r2strt(lims(1)))//' (at '//&
-                &trim(i2str(lim_locs(1,1)))//','//&
-                &trim(i2str(lim_locs(2,1)))//','//&
-                &trim(i2str(lim_locs(3,1)))//&
-                &') < abs. err. < '//trim(r2strt(lims(2)))//&
-                &' (at '//trim(i2str(lim_locs(1,2)))//','//&
-                &trim(i2str(lim_locs(2,2)))//','//&
-                &trim(i2str(lim_locs(3,2)))//')')
+            call writo(trim(r2strt(lim_lo))//' < abs. err. < '//&
+                &trim(r2strt(lim_hi))//', average value: '//&
+                &trim(r2strt(sum_err/product(tot_dim_loc(1:3)))))
             call lvl_ud(-1)
             call lvl_ud(-1)
         end if

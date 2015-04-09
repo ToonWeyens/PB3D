@@ -1,5 +1,6 @@
 PB3D.o : \
     HDF5_ops.o \
+    test.o \
     num_vars.o \
     MPI_ops.o \
     VMEC.o \
@@ -11,6 +12,14 @@ PB3D.o : \
     messages.o \
     eq_ops.o \
     eq_vars.o \
+
+test.o : \
+    str_ops.o \
+    output_ops.o \
+    messages.o \
+    num_vars.o \
+    input_ops.o \
+    utilities.o \
 
 grid_vars.o : \
     num_vars.o \

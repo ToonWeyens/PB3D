@@ -20,10 +20,10 @@
     min_n_r_X               = 10
     max_n_plots             = 2
     plot_jq                 = .false.
-    plot_grid               = .false
-    plot_flux_q             = .false
+    plot_grid               = .false.
+    plot_flux_q             = .false.
     use_normalization       = .true.
-    output_style            = 2
+    output_style            = 1
 /
     n_par_X                 = 50
     min_n_r_X               = 20

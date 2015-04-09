@@ -6,15 +6,17 @@ module utilities
     use str_ops
     use output_ops
     use messages
-    use num_vars, only: dp, qp, iu, max_str_ln
+    use num_vars, only: dp, qp, iu, max_str_ln, pi
     
     implicit none
     private
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun, calc_mult, &
         &init_utilities, derivs, con2dis, dis2con, round_with_tol, conv_sym, &
-        &is_sym, calc_spline_3, con, diff, &
-        &plot_info
+        &is_sym, calc_spline_3, con, diff
+#if ldebug
+    public debug_interp_fun_0D, debug_calc_zero_NR, debug_con2dis_regular
+#endif
     
     ! the possible derivatives of order i
     integer, allocatable :: derivs_0(:,:)                                       ! all possible derivatives of order 0
@@ -64,8 +66,12 @@ module utilities
         module procedure diff_0D, diff_1D, diff_2D, diff_3D, diff_4D
     end interface
     
-    ! global variables for debugging
-    logical :: plot_info = .false.                                              ! to plot information if wanted
+    ! global variables
+#if ldebug
+    logical :: debug_interp_fun_0D = .false.                                    ! plot debug information for interp_fun_0D
+    logical :: debug_calc_zero_NR = .false.                                     ! plot debug information for calc_zero_NR
+    logical :: debug_con2dis_regular = .false.                                  ! plot debug information for con2dis_regular
+#endif
     
 contains
     ! initialize utilities:
@@ -1081,7 +1087,7 @@ contains
     
     ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
     ! that are distributed between both acording to the binomial theorem
-    integer function add_arr_mult_3_3(arr_1,arr_2,arr_3,deriv) result(ierr)     ! Version with arr_1 and arr_2 in three coords.
+    integer function add_arr_mult_3_3(arr_1,arr_2,arr_3,deriv) result(ierr)     ! Version with arr_1 and arr_2 in 3 coords.
         character(*), parameter :: rout_name = 'add_arr_mult_3_3'
         
         ! input / output
@@ -1158,9 +1164,7 @@ contains
             end do
         end do
     end function add_arr_mult_3_3
-    ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
-    ! that are distributed between both acording to the binomial theorem
-    integer function add_arr_mult_3_1(arr_1,arr_2,arr_3,deriv) result(ierr)     ! Version with arr_1 in three coords and arr_2 only in the flux coord.
+    integer function add_arr_mult_3_1(arr_1,arr_2,arr_3,deriv) result(ierr)     ! Version with arr_1 in 3 coords and arr_2 only in the flux coord.
         character(*), parameter :: rout_name = 'add_arr_mult_3_1'
         
         ! input / output
@@ -1210,8 +1214,6 @@ contains
             end do
         end do
     end function add_arr_mult_3_1
-    ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
-    ! that are distributed between both acording to the binomial theorem
     integer function add_arr_mult_1_1(arr_1,arr_2,arr_3,deriv) result(ierr)     ! Version with arr_1 and arr_2 only in the flux coord.
         character(*), parameter :: rout_name = 'add_arr_mult_1_1'
         
@@ -1317,36 +1319,14 @@ contains
         if (n.eq.1) then                                                        ! shouldn't be used
             detA = A(:,:,:,c([1,1],sym,n))
         else if (n.eq.2) then
-            if (plot_info) write(*,*) '   n = 2 sym = ', sym
             detA = A(:,:,:,c([1,1],sym,n))*A(:,:,:,c([2,2],sym,n))-&
                 &A(:,:,:,c([1,2],sym,n))*A(:,:,:,c([2,1],sym,n))
-            if (plot_info) then
-                write(*,*) 'A(1,1):'
-                call print_HDF5('X','X',A(:,:,:,c([1,1],sym,n)),[size(A,1),size(A,2),size(A,3)])
-                read(*,*)
-                write(*,*) 'A(2,2):'
-                call print_HDF5('X','X',A(:,:,:,c([2,2],sym,n)),[size(A,1),size(A,2),size(A,3)])
-                read(*,*)
-                write(*,*) 'A(1,2):'
-                call print_HDF5('X','X',A(:,:,:,c([1,2],sym,n)),[size(A,1),size(A,2),size(A,3)])
-                read(*,*)
-                write(*,*) 'A(2,1):'
-                call print_HDF5('X','X',A(:,:,:,c([2,1],sym,n)),[size(A,1),size(A,2),size(A,3)])
-                read(*,*)
-            end if
         else
-            if (plot_info) write(*,*) '   n = '//trim(i2str(n))//' sym = ', sym
             ! allocate coordinates of (n-1)x(n-1) submatrix
             allocate(c_sub((n-1)**2))
             allocate(k_sub(n**2)); k_sub = 0
             ! iterate over indices in second dimension
             do id = 1, n
-                if (plot_info) then
-                    write(*,*) 'id = ', id
-                    write(*,*) 'previous det:'
-                    call print_HDF5('X','X',detA,[size(A,1),size(A,2),size(A,3)])
-                    read(*,*)
-                end if
                 slct(id) = 0
                 ! set up coordinates of submatrix (2:n,pack(idx,slct.gt.0))
                 ! (in general not symmetric, even if parent matrix is)
@@ -1361,20 +1341,6 @@ contains
                 detA = detA + A(:,:,:,c([1,id],sym,n))*sgn*work
                 sgn = -sgn
                 slct(id) = 1
-                if (plot_info) then
-                    write(*,*) 'plotting A of ', c([1,id],sym,n)
-                        call print_HDF5('X','X',A(:,:,:,c([1,id],sym,n)),&
-                            &[size(A,1),size(A,2),size(A,3)])
-                    read(*,*)
-                    write(*,*) 'plotting subdet '
-                        call print_HDF5('X','X',work,&
-                            &[size(A,1),size(A,2),size(A,3)])
-                    read(*,*)
-                    write(*,*) 'sign = ', -sgn
-                    write(*,*) 'updated det:'
-                    call print_HDF5('X','X',detA,[size(A,1),size(A,2),size(A,3)])
-                    read(*,*)
-                end if
             end do
             ! deallocate c_sub and k_sub
             deallocate(c_sub,k_sub)
@@ -1501,7 +1467,6 @@ contains
             ! adjust kd_min if symmetric
             if (sym) kd_min = ld
             do kd = kd_min,n
-                if (plot_info) write(*,*) 'in calc_inv kd,ld = ', kd, ld
                 ! set up coordinates of submatrix (strike out row i, column j)
                 slct(ld,1) = 0                                                  ! take out column ld
                 slct(kd,2) = 0                                                  ! take out row kd
@@ -1512,19 +1477,11 @@ contains
                         c_sub((jd-1)*(n-1)+id) = c([l_sub(id),k_sub(jd)],sym,n) ! taking the transpose!
                     end do
                 end do
-                if (plot_info) write(*,*) 'c_sub = ', c_sub
                 ierr = calc_det_2D(detA,A(:,:,:,c_sub),n-1)
                 CHCKERR('')
                 inv_2D(:,:,:,c([kd,ld],sym,n)) = (-1.0_dp)**(kd+ld)*detA
                 slct(ld,1) = 1
                 slct(kd,2) = 1
-                if (plot_info) then
-                    write(*,*) 'inv( = ',kd,ld,')'
-                    call print_HDF5('X','X',inv_2D(:,:,:,c([kd,ld],sym,n)),&
-                        &[size(inv_2D,1),size(inv_2D,2),size(inv_2D,3)])
-                    write(*,*) 'last row: ', inv_2D(:,:,size(inv_2D,3),c([kd,ld],sym,n))
-                    read(*,*)
-                end if
             end do
         end do
         
@@ -1535,22 +1492,9 @@ contains
         ierr = calc_det(detA,A,n)
         CHCKERR('')
         
-        if (plot_info) then
-            write(*,*) 'detA = '
-            call print_HDF5('X','X',detA,&
-                &[size(inv_2D,1),size(inv_2D,2),size(inv_2D,3)])
-            read(*,*)
-        end if
         ! divide by determinant
         do kd = 1,nn
             inv_2D(:,:,:,kd) = inv_2D(:,:,:,kd) / detA
-            
-            if (plot_info) then
-                write(*,*) 'FINAL RESULT', kd
-                call print_HDF5('X','X',inv_2D(:,:,:,kd),&
-                    &[size(inv_2D,1),size(inv_2D,2),size(inv_2D,3)])
-                read(*,*)
-            end if
         end do
     end function calc_inv_2D
     ! calculate inverse of a constant square matrix
@@ -1881,31 +1825,82 @@ contains
         real(dp) :: corr
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), parameter :: relax_fac = 0.5_dp                               ! factor for relaxation
+#if ldebug
+        real(dp), allocatable :: corrs(:)                                       ! corrections for all steps
+#endif
         
         ! initialize ierr
         ierr = 0
         
+        ! set up zero_NR
         zero_NR = guess
+        
+#if ldebug
+        if (debug_calc_zero_NR) then
+            ! set up corrs
+            allocate(corrs(max_it_NR))
+        end if
+#endif
         
         NR: do jd = 1,max_it_NR
             ! correction to theta_NR
             corr = -fun(zero_NR)/dfun(zero_NR)
-            !write(*,*) 'jd, zero_NR = ', jd, zero_NR
-            !write(*,*) 'fun, dfun = ', fun(zero_NR), dfun(zero_NR)
+#if ldebug
+            if (debug_calc_zero_NR) corrs(jd) = corr
+#endif
             zero_NR = zero_NR + relax_fac*corr
             
             ! check for convergence
             if (abs(corr).lt.tol_NR) then
+#if ldebug
+                if (debug_calc_zero_NR) call plot_corrs(corrs(1:jd))
+#endif
                 return
             else if (jd .eq. max_it_NR) then
                 err_msg = 'Not converged after '//trim(i2str(jd))//&
                     &' iterations, with residual '//trim(r2str(corr))//&
                     &' and final value '//trim(r2str(zero_NR))
                 zero_NR = 0.0_dp
+#if ldebug
+                if (debug_calc_zero_NR) call plot_corrs(corrs)
+#endif
                 ierr = 1
                 CHCKERR(err_msg)
             end if
         end do NR
+#if ldebug
+    contains
+        ! plots corrections
+        subroutine plot_corrs(corrs)
+            ! input / output
+            real(dp), intent(in) :: corrs(:)                                    ! corrections
+            
+            ! local variables
+            real(dp) :: min_x, max_x                                            ! min. and max. x for which to plot the function
+            real(dp) :: extra_x = 1._dp                                         ! how much bigger to take the plot interval than just min and max
+            real(dp) :: delta_x                                                 ! interval between zero_NR and guess
+            integer :: n_x = 200                                                ! how many x values to plot
+            
+            ! plot corrections
+            call writo('Last correction '//trim(r2strt(corrs(size(corrs))))&
+                &//' with tolerance '//trim(r2strt(tol_NR)))
+            call print_GP_2D('corrs','',corrs)
+            
+            ! set up min and max x
+            min_x = min(zero_NR,guess)
+            max_x = max(zero_NR,guess)
+            delta_x = max_x-min_x
+            min_x = min_x - delta_x*extra_x
+            max_x = max_x + delta_x*extra_x
+            
+            ! plot function
+            call writo('Initial guess: '//trim(r2str(guess)))
+            call writo('Resulting zero: '//trim(r2str(zero_NR)))
+            call print_GP_2D('function','',&
+                &[(fun(min_x+(max_x-min_x)*(jd-1._dp)/(n_x-1)),jd=1,n_x)],&
+                &x=[(min_x+(max_x-min_x)*(jd-1._dp)/(n_x-1),jd=1,n_x)])
+        end subroutine plot_corrs
+#endif
     end function calc_zero_NR
 
     ! Convert  between  points  from  a  continuous grid  to  a  discrete  grid,
@@ -1937,23 +1932,68 @@ contains
         real(dp), intent(in) :: var_c(:)                                        ! continous grid values
         
         ! local variables
+        real(dp), allocatable :: var_c_loc(:)                                   ! local copy of var
         real(dp), allocatable :: var_c_inv(:)                                   ! inverted var_c
         integer :: size_c                                                       ! size of var_c
         integer :: ind_lo, ind_hi                                               ! lower and upper index comprising pt_c
         integer :: id                                                           ! counter
+        real(dp) :: pt_c_loc                                                    ! local pt_c
         
-        ! set up var_c_inv
+        ! set up size_c
         size_c = size(var_c)
-        allocate(var_c_inv(size_c))
-        var_c_inv = var_c(size_c:1:-1)
         
-        ! find the lower and upper index comprising pt_c
+#if ldebug
+        if (debug_con2dis_regular) &
+            &call writo('finding the discrete index of '//trim(r2str(pt_c)))
+#endif
+        
+        ! set up local var_c and pt_c_loc
+        allocate(var_c_loc(size_c))
+        if (var_c(1).lt.var_c(size_c)) then
+            var_c_loc = var_c
+            pt_c_loc = pt_c
+        else
+#if ldebug
+            if (debug_con2dis_regular) &
+                &call writo('setting var_c_loc = - var_c and pt_c_loc = -pt_c')
+#endif
+            var_c_loc = - var_c                                                 ! local var should be rising
+            pt_c_loc = - pt_c                                                   ! invert pt_c as well
+        end if
+        
+        ! set up inverse var_c
+        allocate(var_c_inv(size_c))
+        var_c_inv = var_c_loc(size_c:1:-1)
+        
+        ! find the lower and upper index comprising local pt_c
         ind_lo = 0
         ind_hi = size_c+1
         do id = 1,size_c
-            if (var_c(id).le.pt_c) ind_lo = id
-            if (var_c_inv(id).ge.pt_c) ind_hi = size_c+1-id
+            if (var_c_loc(id).le.pt_c_loc) then
+                ind_lo = id
+#if ldebug 
+                if (debug_con2dis_regular) call writo('for iteration '//&
+                    &trim(i2str(id))//'/'//trim(i2str(size_c))//', ind_lo = '//&
+                    &trim(i2str(ind_lo)))
+#endif
+            end if
+            if (var_c_inv(id).ge.pt_c_loc) then
+                ind_hi = size_c+1-id
+#if ldebug 
+                if (debug_con2dis_regular) call writo('for iteration '//&
+                    &trim(i2str(id))//'/'//trim(i2str(size_c))//', ind_hi = '//&
+                    &trim(i2str(ind_hi)))
+#endif
+            end if
         end do
+#if ldebug
+        if (debug_con2dis_regular) then
+            call writo('final ind_lo = '//trim(i2str(ind_lo))//', ind_hi = '//&
+                &trim(i2str(ind_hi)))
+            call print_GP_2D('var_c_loc, var_c_inv','',&
+                &reshape([var_c_loc,var_c_inv],[size_c,2]))
+        end if
+#endif
         
         ! tests
         if (ind_lo.eq.0 .or. ind_hi.eq.size_c+1) then                           ! not within range
@@ -1964,7 +2004,8 @@ contains
         
         ! set output
         if (ind_lo.lt.ind_hi) then                                              ! valid output that does not correspond to a point on grid
-            pt_d = ind_lo + (pt_c-var_c(ind_lo))/(var_c(ind_hi)-var_c(ind_lo))
+            pt_d = ind_lo + (pt_c_loc-var_c_loc(ind_lo))/&
+                &(var_c_loc(ind_hi)-var_c_loc(ind_lo))
         else if (ind_lo.eq.ind_hi) then                                         ! valid output that does correspond to a point on grid
             pt_d = ind_lo
         else                                                                    ! invalid output
@@ -1975,7 +2016,7 @@ contains
         end if
         
         ! deallocate
-        deallocate(var_c_inv)
+        deallocate(var_c_loc,var_c_inv)
     end subroutine con2dis_regular
     
     ! Convert  between  points  from  a  discrete grid  to  a  continuous  grid,
@@ -2168,6 +2209,22 @@ contains
         
         ! local variables
         real(dp) :: y_out_loc(1,1)
+#if ldebug
+        integer :: kd                                                           ! counter
+#endif
+        
+#if ldebug
+        ! plot for debugging
+        if (debug_interp_fun_0D) then
+            call writo('finding y('//trim(r2strt(x_in))//')')
+            if (present(x)) then
+                call print_GP_2D('y(x)','',y,X=x)
+            else
+                call print_GP_2D('y(x)','',y,&
+                    &X=[((kd-1._dp)/(size(y)-1),kd=1,size(y))])
+            end if
+        end if
+#endif
         
         ! call 2D version
         ierr = interp_fun_2D(y_out_loc,reshape(y,[1,1,size(y)]),x_in,x)
@@ -2175,6 +2232,12 @@ contains
         
         ! copy to y_out
         y_out = y_out_loc(1,1)
+        
+#if ldebug
+        ! plot for debugging
+        if (debug_interp_fun_0D) call writo(' => y('//trim(r2strt(x_in))//&
+            &') = '//trim(r2strt(y_out)))
+#endif
     end function interp_fun_0D
     
     ! convert 2D  coordinates (i,j) to  the storage convention used  in (square)

@@ -27,3 +27,14 @@ CHANGELOG
       - Implemented routine that plots 2 variables and their rel. and abs. differences
       - T_VF, jac_F is checked now for VMEC and it is found to be correct.
       - D1 p and D3 p are checked for both VMEC and HELENA and it is NOT correct.
+
+0.73: - Fixed the confusion about the normal variables in F and E coords.
+      - Improved plotting with GNUPlot, mostly in color handling.
+      - Renamed yes_no to get_log and extended it with get_real and get_int.
+      - Renamed broadcast_l to broadcast_log and extended it with broadcast_int, broadcast_real
+      - Reimplemented generic tests of calc_deriv and conv_FHM to module test.
+      - Fixed bug in calc_ang_grid: the parallel angle is always the first angle.
+      - Tests now use global variables "debug_x" where "x" is the name of the routine tested.
+      - Implemented successful testing of g_V.
+      - Moved checking of HELENA to testing routine.
+      - Implemented checking of Jac_F also for Helena and it is found to be correct.

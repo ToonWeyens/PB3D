@@ -96,7 +96,7 @@ contains
             
             ! increase deltat
             deltat = deltat+t2-t1
-
+            
             ! set t1 and t2 back to zero
             t1 = 0
             t2 = 0
@@ -185,7 +185,9 @@ contains
     ! calling routine
     subroutine print_err_msg(err_msg,routine_name)
         use num_vars, only: glb_rank
-        character(len=*) :: err_msg, routine_name
+        
+        ! input / output
+        character(len=*), intent(in) :: err_msg, routine_name
         
         if (trim(err_msg).eq.'') then
             lvl = 2
