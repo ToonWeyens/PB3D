@@ -24,13 +24,13 @@ contains
         character(*), parameter :: rout_name = 'calc_trigon_factors'
         
         ! input / output
-        real(dp), intent(in) :: theta(:,:,:)                                    ! poloidal angles
-        real(dp), intent(in) :: zeta(:,:,:)                                     ! toroidal angles
+        real(dp), intent(in) :: theta(:,:,:)                                    ! poloidal angles in equilibrium coords.
+        real(dp), intent(in) :: zeta(:,:,:)                                     ! toroidal angles in equilibrium coords.
         real(dp), intent(inout), allocatable :: trigon_factors(:,:,:,:,:,:)     ! trigonometric factor cosine and sine at these angles
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: n_ang_1, n_r, n_ang_2                                        ! sizes of 3D real output array
+        integer :: n_ang_1, n_ang_2, n_r                                        ! sizes of 3D real output array
         real(dp), allocatable :: cos_theta(:,:,:,:)                             ! cos(m theta) for all m
         real(dp), allocatable :: sin_theta(:,:,:,:)                             ! sin(m theta) for all m
         real(dp), allocatable :: cos_zeta(:,:,:,:)                              ! cos(n nfp theta) for all n
@@ -96,7 +96,8 @@ contains
     end function calc_trigon_factors
     
     ! Inverse Fourier transformation, from VMEC. Also calculates the poloidal or
-    ! toroidal derivatives, as indicated by the variable deriv(2).
+    ! toroidal  derivatives  in  VMEC  coords., as  indicated  by  the  variable
+    ! deriv(2).
     ! (Normal derivative  is done on the variables in  Fourier space, and should
     ! be provided here in var_fourier_i if needed).
     integer function fourier2real(var_fourier_c,var_fourier_s,trigon_factors,&
@@ -157,8 +158,8 @@ contains
         var_real = 0.0_dp
         
         ! sum over modes
-        do n = -ntor,ntor
-            do m = 0,mpol-1
+        do m = 0,mpol-1
+            do n = -ntor,ntor
                 ! initialize factors in front of cos and sin
                 fac_cos = var_fourier_c(m+1,n+ntor+1,:)
                 fac_sin = var_fourier_s(m+1,n+ntor+1,:)

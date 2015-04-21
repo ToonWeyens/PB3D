@@ -18,9 +18,9 @@ module metric_vars
     ! The arrays here are of the form:
     !   - (angle_1,angle_2,r,D1,D2,D3)      for normal quantities
     !   - (angle_1,angle_2,r,6/9,D1,D2,D3)  for metric matrices
-    ! where  a discussion  of the  coordinates is  given in  the description  of
-    ! eq_type. Also, like  with the equilibrium type, the metric  type should be
-    ! complemented by grid type.
+    ! where it is refered to the discussion  of the grid type for an explanation
+    ! of the angles angle_1 and angle_2 and  to the discussion of eq_type for an
+    ! explanation of the derivatives Di
     ! The fourth index for metric matrices  correspond to the 9 or 6 (symmetric)
     ! different values:
     !   (1 4 7)      (1    )

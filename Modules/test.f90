@@ -18,7 +18,6 @@ module test
 contains
     ! performs generic tests
     integer function generic_tests() result(ierr)
-        use num_vars, only: ltest
         use input_ops, only: pause_prog, get_log
         
         character(*), parameter :: rout_name = 'generic_tests'
@@ -26,20 +25,18 @@ contains
         ! initialize ierr
         ierr = 0
         
-        if (ltest) then
-            call writo('Test calculation of derivatives?')
-            if(get_log(.false.)) then
-                ierr = test_calc_deriv()
-                CHCKERR('')
-                call pause_prog
-            end if
-            
-            call writo('Test conversion between full and half mesh?')
-            if(get_log(.false.)) then
-                ierr = test_conv_FHM()
-                CHCKERR('')
-                call pause_prog
-            end if
+        call writo('Test calculation of derivatives?')
+        if(get_log(.false.)) then
+            ierr = test_calc_deriv()
+            CHCKERR('')
+            call pause_prog
+        end if
+        
+        call writo('Test conversion between full and half mesh?')
+        if(get_log(.false.)) then
+            ierr = test_conv_FHM()
+            CHCKERR('')
+            call pause_prog
         end if
     end function generic_tests
     

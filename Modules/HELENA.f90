@@ -3,16 +3,21 @@
 !------------------------------------------------------------------------------!
 module HELENA
 #include <PB3D_macros.h>
+    use num_vars, only: pi
     use str_ops
     use output_ops
     use messages
     use num_vars, only: dp, max_str_ln
+    use grid_vars, only: grid_type
+    use metric_vars, only: metric_type
+    use X_vars, only: X_type
     
     implicit none
     private
-    public read_HEL, dealloc_HEL, dealloc_HEL_final, &
-        &R_0_H, B_0_H, p0, qs, flux_H, nchi, chi_H, ias, h_H_11, h_H_12, &
-        &h_H_33, RBphi, R_H, Z_H, h_H_11_full, h_H_12_full, h_H_33_full
+    public read_HEL, dealloc_HEL, dealloc_HEL_final, adapt_to_B_HEL, &
+        &normalize_HEL, &
+        &R_0_H, B_0_H, pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, h_H_12, &
+        &h_H_33, RBphi, R_H, Z_H
 #if ldebug
     public test_metrics_H
 #endif
@@ -21,16 +26,13 @@ module HELENA
     real(dp) :: R_0_H = 1.0_dp                                                  ! R of magnetic axis (normalization constant)
     real(dp) :: B_0_H = 1.0_dp                                                  ! B at magnetic axis (normalization constant)
     real(dp), allocatable :: chi_H(:)                                           ! poloidal angle
-    real(dp), allocatable :: flux_H(:)                                          ! normal coordinate values
-    real(dp), allocatable :: p0(:)                                              ! pressure profile
+    real(dp), allocatable :: flux_p_H(:)                                        ! normal coordinate values (poloidal flux)
+    real(dp), allocatable :: pres_H(:)                                          ! pressure profile
     real(dp), allocatable :: qs(:)                                              ! safety factor
-    real(dp), allocatable :: RBphi(:)                                           ! R B_phi
-    real(dp), allocatable :: h_H_11_full(:,:)                                   ! full upper metric factor 11 (gem11)
-    real(dp), allocatable :: h_H_12_full(:,:)                                   ! full upper metric factor 12 (gem12)
-    real(dp), allocatable :: h_H_33_full(:,:)                                   ! full upper metric factor 33 (1/gem33)
-    real(dp), allocatable :: h_H_11(:,:,:)                                      ! adapted upper metric factor 11 (gem11) (see adapt_HEL_to_eq)
-    real(dp), allocatable :: h_H_12(:,:,:)                                      ! adapted upper metric factor 12 (gem12) (see adapt_HEL_to_eq)
-    real(dp), allocatable :: h_H_33(:,:,:)                                      ! adapted upper metric factor 33 (1/gem33) (see adapt_HEL_to_eq)
+    real(dp), allocatable :: RBphi(:)                                           ! R B_phi (= F)
+    real(dp), allocatable :: h_H_11(:,:)                                        ! adapted upper metric factor 11 (gem11)
+    real(dp), allocatable :: h_H_12(:,:)                                        ! adapted upper metric factor 12 (gem12)
+    real(dp), allocatable :: h_H_33(:,:)                                        ! adapted upper metric factor 33 (1/gem33)
     real(dp), allocatable :: R_H(:,:)                                           ! major radius R (xout)
     real(dp), allocatable :: Z_H(:,:)                                           ! height Z (yout)
     integer :: nchi                                                             ! nr. of poloidal points (nchi)
@@ -70,8 +72,8 @@ contains
         real(dp), allocatable :: dqs(:)                                         ! derivative of q
         real(dp), allocatable :: curj(:)                                        ! toroidal current
         real(dp), allocatable :: vx(:), vy(:)                                   ! R and Z of surface
-        real(dp) :: dj0, dje                                                    ! derivative of toroidal current on axis and surface
-        real(dp) :: dp0, dpe                                                    ! normal derivative of pressure on axis and surface
+        real(dp) :: Dj0, Dje                                                    ! derivative of toroidal current on axis and surface
+        real(dp) :: Dpres_H_0, Dpres_H_e                                        ! normal derivative of pressure on axis and surface
         real(dp) :: dRBphi0, dRBphie                                            ! normal derivative of R B_phi on axis and surface
         real(dp) :: radius, raxis                                               ! minor radius, major radius
         real(dp) :: eps                                                         ! inverse aspect ratio
@@ -95,8 +97,8 @@ contains
         CHCKERR(err_msg)
         n_r_eq = n_r_eq + 1                                                     ! HELENA outputs nr. of normal points - 1
         
-        allocate(flux_H(n_r_eq))                                                ! flux, derived from normal coordinate
-        read(eq_i,*,IOSTAT=ierr) (flux_H(kd),kd=1,n_r_eq)                       ! it is squared below, after reading cpsurf
+        allocate(flux_p_H(n_r_eq))                                              ! flux, derived from normal coordinate
+        read(eq_i,*,IOSTAT=ierr) (flux_p_H(kd),kd=1,n_r_eq)                     ! it is squared below, after reading cpsurf
         CHCKERR(err_msg)
         
         allocate(qs(n_r_eq))                                                    ! safety factor
@@ -114,7 +116,7 @@ contains
         read(eq_i,*,IOSTAT=ierr) (curj(kd),kd=1,n_r_eq)
         CHCKERR(err_msg)
         
-        read(eq_i,*,IOSTAT=ierr) dj0,dje                                        ! derivative of toroidal current at first and last point
+        read(eq_i,*,IOSTAT=ierr) Dj0,Dje                                        ! derivative of toroidal current at first and last point
         CHCKERR(err_msg)
         
         read(eq_i,*,IOSTAT=ierr) nchi                                           ! nr. poloidal points
@@ -124,44 +126,44 @@ contains
         read(eq_i,*,IOSTAT=ierr) (chi_H(id),id=1,nchi)
         CHCKERR(err_msg)
         
-        allocate(h_H_11_full(nchi,n_r_eq))                                      ! upper metric factor 1,1
+        allocate(h_H_11(nchi,n_r_eq))                                           ! upper metric factor 1,1
         read(eq_i,*,IOSTAT=ierr) &
-            &(h_H_11_full(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,&
+            &(h_H_11(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,&
             &n_r_eq*nchi)                                                       ! (gem11)
         CHCKERR(err_msg)
-        h_H_11_full(:,1) = 0._dp                                                ! first normal point is not given, so set to zero
-        h_H_11_full = h_H_11_full * (R_0_H * B_0_H)**2                          ! rescale h_H_11_full
+        h_H_11(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
+        h_H_11 = h_H_11 * (R_0_H * B_0_H)**2                                    ! rescale h_H_11
         
-        allocate(h_H_12_full(nchi,n_r_eq))                                      ! upper metric factor 1,2
+        allocate(h_H_12(nchi,n_r_eq))                                           ! upper metric factor 1,2
         read(eq_i,*,IOSTAT=ierr) &
-            &(h_H_12_full(mod(id-1,nchi)+1,(id-1)/nchi+1),&
+            &(h_H_12(mod(id-1,nchi)+1,(id-1)/nchi+1),&
             &id=nchi+1,n_r_eq*nchi)                                             ! (gem12)
         CHCKERR(err_msg)
-        h_H_12_full(:,1) = 0._dp                                                ! first normal point is not given, so set to zero
-        h_H_12_full = h_H_12_full * B_0_H                                       ! rescale h_H_12_full
+        h_H_12(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
+        h_H_12 = h_H_12 * B_0_H                                                 ! rescale h_H_12
         
         read(eq_i,*,IOSTAT=ierr) cpsurf, radius                                 ! poloidal flux on surface, minor radius
         CHCKERR(err_msg)
         cpsurf = cpsurf * R_0_H**2 * B_0_H                                      ! back to real space
-        flux_H = flux_H**2 * cpsurf                                             ! rescale poloidal flux
+        flux_p_H = flux_p_H**2 * cpsurf                                         ! rescale poloidal flux
         
-        allocate(h_H_33_full(nchi,n_r_eq))                                      ! upper metric factor 3,3
+        allocate(h_H_33(nchi,n_r_eq))                                           ! upper metric factor 3,3
         read(eq_i,*,IOSTAT=ierr) &
-            &(h_H_33_full(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,&
+            &(h_H_33(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,&
             &n_r_eq*nchi)                                                       ! (gem33)
-        h_H_33_full(:,:) = 1._dp/h_H_33_full(:,:)                               ! HELENA gives R^2, but need 1/R^2
-        h_H_33_full(:,1) = 0._dp                                                ! first normal point is not given, so set to zero
-        h_H_11_full = h_H_11_full / (R_0_H**2)                                  ! rescale h_H_33_full
+        h_H_33(:,:) = 1._dp/h_H_33(:,:)                                         ! HELENA gives R^2, but need 1/R^2
+        h_H_33(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
+        h_H_11 = h_H_11 / (R_0_H**2)                                            ! rescale h_H_33
         
         read(eq_i,*,IOSTAT=ierr) raxis                                          ! major radius
         CHCKERR(err_msg)
         
-        allocate(p0(n_r_eq))                                                    ! pressure profile
-        read(eq_i,*,IOSTAT=ierr) (p0(kd),kd=1,n_r_eq)
+        allocate(pres_H(n_r_eq))                                                ! pressure profile
+        read(eq_i,*,IOSTAT=ierr) (pres_H(kd),kd=1,n_r_eq)
         CHCKERR(err_msg)
-        p0 = p0 * B_0_H**2/mu_0                                                 ! rescale pressure
+        pres_H = pres_H * B_0_H**2/mu_0                                         ! rescale pressure
         
-        read(eq_i,*,IOSTAT=ierr) dp0,dpe                                        ! derivarives of pressure on axis and surface
+        read(eq_i,*,IOSTAT=ierr) Dpres_H_0,Dpres_H_e                            ! derivarives of pressure on axis and surface
         CHCKERR(err_msg)
         
         allocate(RBphi(n_r_eq))                                                 ! R B_phi (= F)
@@ -217,16 +219,319 @@ contains
     ! deallocates HELENA quantities that are not used any more
     subroutine dealloc_HEL_final
         deallocate(chi_H)
-        deallocate(flux_H)
-        deallocate(p0)
+        deallocate(flux_p_H)
+        deallocate(pres_H)
         deallocate(qs)
         deallocate(RBphi)
-        deallocate(h_H_11_full)
-        deallocate(h_H_12_full)
-        deallocate(h_H_33_full)
         deallocate(R_H)
         deallocate(Z_H)
     end subroutine dealloc_HEL_final
+    
+    ! calculate interpolation  factors for angular interpolation  in grid_out of
+    ! quantities defined on grid_in. This version  is specific for an input grid
+    ! corresponding to  axisymmetric variables with optional  top-down symmetry,
+    ! as is the case for variables resulting from HELENA equilibria.
+    ! The output of a 3D array of real values for the poloidal angle theta where
+    ! the  floored  integer of  each  value  indicates  the  base index  of  the
+    ! interpolated value in the output grid  and the modulus is the the fraction
+    ! towards the next integer.
+    ! The flag  td_sym indicates optionally  that there is top-down  symmetry as
+    ! well as axisymmetry. When there is top-down symmetry, the variables in the
+    ! lower half  (i.e. pi<theta<2pi) are  calculated from the variables  in the
+    ! upper  half  using  var(2pi-theta)  = var(theta).  However,  some  complex
+    ! variables also  need to  apply the complex  conjugate when  using top-down
+    ! symmetry.  Therefore, to  indicate  this, the  sign  of the  interpolation
+    ! factor is inverted so  it is negative. For variables that  do not need the
+    ! complex conjugate, this can safely be ignored by taking the absolute value
+    ! of the interpolation factor.
+    ! By default, the variables in the Flux coord. system are used, but this can
+    ! be changed optionally with the flag "use_E".
+    integer function get_ang_interp_data_HEL(grid_in,grid_out,theta_i,td_sym,&
+        &use_E) result(ierr)
+        use utilities, only: con2dis
+        
+        character(*), parameter :: rout_name = 'get_ang_interp_data_HEL'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_in, grid_out                        ! input and output grid
+        real(dp), allocatable, intent(inout) :: theta_i(:,:,:)                  ! interpolation index
+        logical, intent(in), optional :: td_sym                                 ! top-down symmetry
+        logical, intent(in), optional :: use_E                                  ! whether E is used instead of F
+        
+        ! local variables
+        integer :: id, jd, kd                                                   ! counters
+        logical :: td_sym_loc                                                   ! local version of td_sym
+        logical :: use_E_loc                                                    ! local version of use_E
+        real(dp) :: theta_loc                                                   ! local theta of output grid
+        real(dp), pointer :: theta_in(:)                                        ! input theta
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! test whether axisymmetric grid
+        if (grid_in%n(2).ne.1) then
+            ierr = 1
+            err_msg = 'Not an axisymmetric grid'
+            CHCKERR(err_msg)
+        end if
+        ! test whether normal sizes compatible
+        if (grid_in%grp_n_r.ne.grid_out%grp_n_r) then
+            ierr = 1
+            err_msg = 'Grids are not compatible in normal direction'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set up local use_E and td_sym
+        use_E_loc = .false.
+        if (present(use_E)) use_E_loc = use_E
+        td_sym_loc = .false.
+        if (present(td_sym)) td_sym_loc = td_sym
+        
+        ! allocate theta_i
+        allocate(theta_i(grid_out%n(1),grid_out%n(2),grid_out%grp_n_r))
+        
+        ! For every point on output grid, check to which half poloidal circle on
+        ! the  axisymmetric input  grid  it  belongs to.  If  there is  top-down
+        ! symmetry and the  angle theta lies in the bottom  part, the quantities
+        ! have to be taken from their symmetric counterpart (2pi-theta).
+        ! loop over all normal points of this rank
+        do kd = 1,grid_out%grp_n_r
+            ! point theta_in
+            if (use_E) then
+                theta_in => grid_in%theta_E(:,1,kd)                             ! axisymmetric grid should not have only one toroidal point
+            else
+                theta_in => grid_in%theta_F(:,1,kd)                             ! axisymmetric grid should not have only one toroidal point
+            end if
+            
+            ! loop over all angles of ang_2
+            do jd = 1,grid_out%n(2)
+                ! loop over all angles of ang_1
+                do id = 1,grid_out%n(1)
+                    ! set the local poloidal point from theta
+                    if (use_E) then
+                        theta_loc = grid_out%theta_E(id,jd,kd)
+                    else
+                        theta_loc = grid_out%theta_F(id,jd,kd)
+                    end if
+                    
+                    ! add or subtract  2pi to the parallel angle until  it is at
+                    ! least 0 to get principal range 0..2pi
+                    if (theta_loc.lt.0._dp) then
+                        do while (theta_loc.lt.0._dp)
+                            theta_loc = theta_loc + 2*pi
+                        end do
+                    else if (theta_loc.gt.2*pi) then
+                        do while (theta_loc.gt.2._dp*pi)
+                            theta_loc = theta_loc - 2*pi
+                        end do
+                    end if
+                    
+                    ! get interpolation factors in theta_i
+                    if (td_sym .and. theta_loc.gt.pi) then                      ! bottom part and top-down symmetric
+                        ierr = con2dis(2*pi-theta_loc,theta_i(id,jd,kd),&
+                            &theta_in)
+                        theta_i(id,jd,kd) = - theta_i(id,jd,kd)                 ! top-down symmetry applied
+                    else
+                        ierr = con2dis(theta_loc,theta_i(id,jd,kd),theta_in)
+                    end if
+                    CHCKERR('')
+                end do
+            end do
+        end do
+        
+        ! clean up
+        nullify(theta_in)
+    end function get_ang_interp_data_HEL
+    
+    ! Adapt  some variables  resulting from  HELENA equilibria  to field-aligned
+    ! grid:
+    !   - equilibrium variables of interest are flux variables
+    !   - metric variables: jac_FD, g_FD, h_FD
+    !   - perturbation variables: U_i, DU_i, PV_i, KV_i
+    integer function adapt_to_B_HEL(grid_eq,grid_eq_B,met,met_B,X,X_B) &
+        &result(ierr)
+        character(*), parameter :: rout_name = 'adapt_to_B_HEL'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq, grid_eq_B                       ! general and field-aligned equilibrium grid
+        type(metric_type), intent(in) :: met                                    ! general metric variables
+        type(metric_type), intent(inout) :: met_B                               ! field-aligned metric variables
+        type(X_type), intent(in) :: X                                           ! general perturbation variables
+        type(X_type), intent(inout) :: X_B                                      ! field-aligned perturbation variables
+        
+        ! local variables
+        real(dp), allocatable :: theta_i(:,:,:)                                 ! interpolation index
+        logical :: td_sym                                                       ! whether there is top-down symmetry (relevant only for HELENA)
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Adapting quantities to field-aligned grid')
+        call lvl_ud(1)
+        
+        ! set up td_sym
+        if (ias.eq.0) then
+            td_sym = .true.
+        else
+            td_sym = .false.
+        end if
+        
+        ! get angular interpolation factors
+        ierr = get_ang_interp_data_HEL(grid_eq,grid_eq_B,&
+            &theta_i,td_sym=td_sym,use_E=.false.)
+        CHCKERR('')
+        
+        ! user message
+        call writo('Adapting metric quantities')
+        call lvl_ud(1)
+        call interp_var_6D_real(met%jac_FD,theta_i,met_B%jac_FD)
+        call interp_var_7D_real(met%g_FD,theta_i,met_B%g_FD)
+        call interp_var_7D_real(met%h_FD,theta_i,met_B%h_FD)
+        call lvl_ud(-1)
+        
+        ! user message
+        call writo('Adapting perturbation quantities')
+        call lvl_ud(1)
+        call interp_var_4D_complex(X%exp_ang_par_f,theta_i,X_B%exp_ang_par_f,&
+            &sym_type=1)
+        call interp_var_4D_complex(X%U_0,theta_i,X_B%U_0,sym_type=2)
+        call interp_var_4D_complex(X%U_1,theta_i,X_B%U_1,sym_type=2)
+        call interp_var_4D_complex(X%DU_0,theta_i,X_B%DU_0,sym_type=1)
+        call interp_var_4D_complex(X%DU_1,theta_i,X_B%DU_1,sym_type=1)
+        call interp_var_4D_complex(X%PV_0,theta_i,X_B%PV_0,sym_type=1)
+        call interp_var_4D_complex(X%PV_1,theta_i,X_B%PV_1,sym_type=1)
+        call interp_var_4D_complex(X%PV_2,theta_i,X_B%PV_2,sym_type=1)
+        call interp_var_4D_complex(X%KV_0,theta_i,X_B%KV_0,sym_type=1)
+        call interp_var_4D_complex(X%KV_1,theta_i,X_B%KV_1,sym_type=1)
+        call interp_var_4D_complex(X%KV_2,theta_i,X_B%KV_2,sym_type=1)
+        call lvl_ud(-1)
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Quantities adapted to field-aligned grid')
+    contains
+        ! Interpolate a  variable defined  on an  axisymmetric grid  at poloidal
+        ! angles indicated by the interpolation factors theta_i.
+        ! There  is  an  optional  variable   sym_type  that  allows  for  extra
+        ! operations to be done on the variable if top-down symmetry is applied:
+        !   - sym_type = 0: var(2pi-theta) = var(theta)
+        !   - sym_type = 1: var(2pi-theta) = var(theta)*
+        !   - sym_type = 2: var(2pi-theta) = -var(theta)*
+        ! When top-down  symmetry has been  used to calculate  the interpolation
+        ! factors, this is indicated by a  negative factor instead of a positive
+        ! one.
+        ! (also  correct  if i_hi = i_lo)
+        subroutine interp_var_4D_complex(var,theta_i,var_int,sym_type)          ! 4D_complex version
+            ! input / output
+            complex(dp), intent(in) :: var(:,:,:,:)                             ! variable to be interpolated
+            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
+            complex(dp), intent(inout) :: var_int(:,:,:,:)                      ! interpolated var
+            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
+            
+            ! local variables
+            integer :: i_lo, i_hi                                               ! upper and lower index
+            integer :: id, jd, kd                                               ! counters
+            integer :: sym_type_loc                                             ! local version of symmetry type
+            
+            ! set up local symmetry type
+            sym_type_loc = 0
+            if (present(sym_type)) sym_type_loc = sym_type
+            
+            ! iterate over all normal points
+            do kd = 1,size(var_int,3)
+                ! iterate over all geodesical points
+                do jd = 1,size(var_int,2)
+                    ! iterate over all parallel points
+                    do id = 1,size(var_int,1)
+                        ! set up i_lo and i_hi
+                        i_lo = floor(abs(theta_i(id,jd,kd)))
+                        i_hi = ceiling(abs(theta_i(id,jd,kd)))
+                        
+                        var_int(id,jd,kd,:) = var(i_lo,1,kd,:) + &
+                            &(var(i_hi,1,kd,:)-var(i_lo,1,kd,:))*&
+                            &(abs(theta_i(id,jd,kd))-i_lo)                      ! because i_hi - i_lo = 1
+                        if (theta_i(id,jd,kd).lt.0) then
+                            if (sym_type_loc.eq.1) var_int(id,jd,kd,:) = &
+                                &conjg(var_int(id,jd,kd,:))
+                            if (sym_type_loc.eq.2) var_int(id,jd,kd,:) = &
+                                &- conjg(var_int(id,jd,kd,:))
+                        end if
+                    end do
+                end do
+            end do
+        end subroutine interp_var_4D_complex
+        subroutine interp_var_6D_real(var,theta_i,var_int)                      ! 6D_real version
+            ! input / output
+            real(dp), intent(in) :: var(:,:,:,:,:,:)                            ! variable to be interpolated
+            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
+            real(dp), intent(inout) :: var_int(:,:,:,:,:,:)                     ! interpolated var
+            
+            ! local variables
+            integer :: i_lo, i_hi                                               ! upper and lower index
+            integer :: id, jd, kd                                               ! counters
+            
+            ! iterate over all normal points
+            do kd = 1,size(var_int,3)
+                ! iterate over all geodesical points
+                do jd = 1,size(var_int,2)
+                    ! iterate over all parallel points
+                    do id = 1,size(var_int,1)
+                        ! set up i_lo and i_hi
+                        i_lo = floor(abs(theta_i(id,jd,kd)))
+                        i_hi = ceiling(abs(theta_i(id,jd,kd)))
+                        
+                        var_int(id,jd,kd,:,:,:) = var(i_lo,1,kd,:,:,:) + &
+                            &(var(i_hi,1,kd,:,:,:)-var(i_lo,1,kd,:,:,:))*&
+                            &(abs(theta_i(id,jd,kd))-i_lo)                      ! because i_hi - i_lo = 1
+                    end do
+                end do
+            end do
+        end subroutine interp_var_6D_real
+        subroutine interp_var_7D_real(var,theta_i,var_int)                      ! 7D_real version
+            ! input / output
+            real(dp), intent(in) :: var(:,:,:,:,:,:,:)                          ! variable to be interpolated
+            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
+            real(dp), intent(inout) :: var_int(:,:,:,:,:,:,:)                   ! interpolated var
+            
+            ! local variables
+            integer :: i_lo, i_hi                                               ! upper and lower index
+            integer :: id, jd, kd                                               ! counters
+            
+            ! iterate over all normal points
+            do kd = 1,size(var_int,3)
+                ! iterate over all geodesical points
+                do jd = 1,size(var_int,2)
+                    ! iterate over all parallel points
+                    do id = 1,size(var_int,1)
+                        ! set up i_lo and i_hi
+                        i_lo = floor(abs(theta_i(id,jd,kd)))
+                        i_hi = ceiling(abs(theta_i(id,jd,kd)))
+                        
+                        var_int(id,jd,kd,:,:,:,:) = var(i_lo,1,kd,:,:,:,:) + &
+                            &(var(i_hi,1,kd,:,:,:,:)-var(i_lo,1,kd,:,:,:,:))*&
+                            &(abs(theta_i(id,jd,kd))-i_lo)                      ! because i_hi - i_lo = 1
+                    end do
+                end do
+            end do
+        end subroutine interp_var_7D_real
+    end function adapt_to_B_HEL
+    
+    ! Normalizes HELENA input
+    subroutine normalize_HEL
+        use eq_vars, only: pres_0, psi_0, R_0, B_0
+        
+        ! scale the HELENA quantities
+        pres_H = pres_H/pres_0
+        flux_p_H = flux_p_H/psi_0
+        R_H = R_H/R_0
+        Z_H = Z_H/R_0
+        RBphi = RBphi/(R_0*B_0)
+        h_H_11 = h_H_11/(R_0**2)*psi_0**2
+        h_H_12 = h_H_12/(R_0**2)*psi_0
+        h_H_33 = h_H_33/(R_0**2)
+    end subroutine normalize_HEL
     
 #if ldebug
     ! Checks whether the metric elements  provided by HELENA are consistent with
@@ -273,9 +578,9 @@ contains
             allocate(jac(nchi,n_r))
             
             do id = 1,nchi
-                ierr = calc_deriv(R_H(id,:),Rpsi(id,:),flux_H,1,1)
+                ierr = calc_deriv(R_H(id,:),Rpsi(id,:),flux_p_H,1,1)
                 CHCKERR('')
-                ierr = calc_deriv(Z_H(id,:),Zpsi(id,:),flux_H,1,1)
+                ierr = calc_deriv(Z_H(id,:),Zpsi(id,:),flux_p_H,1,1)
                 CHCKERR('')
             end do
             do kd = 1,n_r
@@ -303,7 +608,7 @@ contains
             
             ! plot difference
             call plot_diff_HDF5(h_H_11_alt(:,:,r_min:n_r),&
-                &reshape(h_H_11_full(:,r_min:n_r),[nchi,1,n_r-r_min+1]),&
+                &reshape(h_H_11(:,r_min:n_r),[nchi,1,n_r-r_min+1]),&
                 &file_name,description=description,output_message=.true.)
             
             ! output h_H_12
@@ -314,7 +619,7 @@ contains
             
             ! plot difference
             call plot_diff_HDF5(h_H_12_alt(:,:,r_min:n_r),&
-                &reshape(h_H_12_full(:,r_min:n_r),[nchi,1,n_r-r_min+1]),&
+                &reshape(h_H_12(:,r_min:n_r),[nchi,1,n_r-r_min+1]),&
                 &file_name,description=description,output_message=.true.)
             
             ! output h_H_33
@@ -325,7 +630,7 @@ contains
             
             ! plot difference
             call plot_diff_HDF5(h_H_33_alt(:,:,r_min:n_r),&
-                &reshape(h_H_33_full(:,r_min:n_r),[nchi,1,n_r-r_min+1]),&
+                &reshape(h_H_33(:,r_min:n_r),[nchi,1,n_r-r_min+1]),&
                 &file_name,description=description,output_message=.true.)
         end if
         

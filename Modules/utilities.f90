@@ -13,9 +13,9 @@ module utilities
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun, calc_mult, &
         &init_utilities, derivs, con2dis, dis2con, round_with_tol, conv_sym, &
-        &is_sym, calc_spline_3, con, diff
+        &is_sym, calc_spline_3, con
 #if ldebug
-    public debug_interp_fun_0D, debug_calc_zero_NR, debug_con2dis_regular
+    public debug_interp_fun_0D_real, debug_calc_zero_NR, debug_con2dis_regular
 #endif
     
     ! the possible derivatives of order i
@@ -57,18 +57,17 @@ module utilities
         module procedure dis2con_equidistant, dis2con_regular
     end interface
     interface interp_fun
-        module procedure interp_fun_0D, interp_fun_1D, interp_fun_2D
+        module procedure interp_fun_0D_real, interp_fun_1D_real, &
+            &interp_fun_2D_real, interp_fun_0D_complex, interp_fun_1D_complex, &
+            &interp_fun_2D_complex
     end interface
     interface con
         module procedure con_3D, con_2D, con_1D, con_0D
     end interface
-    interface diff
-        module procedure diff_0D, diff_1D, diff_2D, diff_3D, diff_4D
-    end interface
     
     ! global variables
 #if ldebug
-    logical :: debug_interp_fun_0D = .false.                                    ! plot debug information for interp_fun_0D
+    logical :: debug_interp_fun_0D_real = .false.                               ! plot debug information for interp_fun_0D_real
     logical :: debug_calc_zero_NR = .false.                                     ! plot debug information for calc_zero_NR
     logical :: debug_con2dis_regular = .false.                                  ! plot debug information for con2dis_regular
 #endif
@@ -1911,12 +1910,17 @@ contains
     ! discrete grid  and the remainder  corresponds to the fraction  towards the
     ! next index.  If no solution  is found, a  negative value is  outputted, as
     ! well as a message.
-    subroutine con2dis_equidistant(pt_c,pt_d,lim_c,lim_d)                       ! equidistant version
+    integer function con2dis_equidistant(pt_c,pt_d,lim_c,lim_d) result(ierr)    ! equidistant version
+        !character(*), parameter :: rout_name = 'con2dis_equidistant'
+        
         ! input / output
         real(dp), intent(in) :: pt_c                                            ! point on continous grid
         real(dp), intent(inout) :: pt_d                                         ! point on discrete grid
         real(dp), intent(in) :: lim_c(2)                                        ! [min_c,max_c]
         integer, intent(in) :: lim_d(2)                                         ! [min_d,max_d]
+        
+        ! initialize ierr
+        ierr = 0
         
         ! Calculate, using the formula:
         !    pt_c - min_c     pt_d - min_d
@@ -1924,8 +1928,10 @@ contains
         !   max_c - min_c    max_d - min_d
         pt_d = lim_d(1) + (lim_d(2)-lim_d(1)) * (pt_c-lim_c(1)) / &
             &(lim_c(2)-lim_c(1))
-    end subroutine con2dis_equidistant
-    subroutine con2dis_regular(pt_c,pt_d,var_c)                                 ! regular grid version
+    end function con2dis_equidistant
+    integer function con2dis_regular(pt_c,pt_d,var_c) result(ierr)              ! regular grid version
+        character(*), parameter :: rout_name = 'con2dis_regular'
+        
         ! input / output
         real(dp), intent(in) :: pt_c                                            ! point on continous grid
         real(dp), intent(inout) :: pt_d                                         ! point on discrete grid
@@ -1938,6 +1944,10 @@ contains
         integer :: ind_lo, ind_hi                                               ! lower and upper index comprising pt_c
         integer :: id                                                           ! counter
         real(dp) :: pt_c_loc                                                    ! local pt_c
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         ! set up size_c
         size_c = size(var_c)
@@ -1997,9 +2007,10 @@ contains
         
         ! tests
         if (ind_lo.eq.0 .or. ind_hi.eq.size_c+1) then                           ! not within range
-            call writo('WARNING: pt_c not within range',persistent=.true.)
             pt_d = -1._dp
-            return
+            ierr = 1
+            err_msg = 'pt_c not within range'
+            CHCKERR(err_msg)
         end if
         
         ! set output
@@ -2009,15 +2020,15 @@ contains
         else if (ind_lo.eq.ind_hi) then                                         ! valid output that does correspond to a point on grid
             pt_d = ind_lo
         else                                                                    ! invalid output
-            call writo('WARNING: ind_lo cannot be higher than ind_hi',&
-                &persistent=.true.)
             pt_d = -1._dp
-            return
+            ierr = 1
+            err_msg = 'ind_lo cannot be higher than ind_hi'
+            CHCKERR('')
         end if
         
         ! deallocate
         deallocate(var_c_loc,var_c_inv)
-    end subroutine con2dis_regular
+    end function con2dis_regular
     
     ! Convert  between  points  from  a  discrete grid  to  a  continuous  grid,
     ! providing either  the the limits on  the grid (lim_c and  lim_d), in which
@@ -2026,12 +2037,17 @@ contains
     ! The output is a real value. If  the discrete value lies outside the range,
     ! in the case of a regular grid, a negative value is outputted, as well as a
     ! message.
-    subroutine dis2con_equidistant(pt_d,pt_c,lim_d,lim_c)                       ! equidistant version
+    integer function dis2con_equidistant(pt_d,pt_c,lim_d,lim_c) result(ierr)    ! equidistant version
+        !character(*), parameter :: rout_name = 'dis2con_equidistant'
+        
         ! input / output
         integer, intent(in) :: pt_d                                             ! point on discrete grid
         real(dp), intent(inout) :: pt_c                                         ! point on continous grid
         integer, intent(in) :: lim_d(2)                                         ! [min_d,max_d]
         real(dp), intent(in) :: lim_c(2)                                        ! [min_c,max_c]
+        
+        ! initialize ierr
+        ierr = 0
         
         ! Calculate, using the formula:
         !    pt_c - min_c     pt_d - min_d
@@ -2039,23 +2055,32 @@ contains
         !   max_c - min_c    max_d - min_d
         pt_c = lim_c(1) + (lim_c(2)-lim_c(1)) * (pt_d-lim_d(1)) / &
             &(lim_d(2)-lim_d(1))
-    end subroutine dis2con_equidistant
-    subroutine dis2con_regular(pt_d,pt_c,var_c)                                 ! regular grid version
+    end function dis2con_equidistant
+    integer function dis2con_regular(pt_d,pt_c,var_c) result(ierr)              ! regular grid version 
+        character(*), parameter :: rout_name = 'dis2con_regular'
+        
         ! input / output
         integer, intent(in) :: pt_d                                             ! point on discrete grid
         real(dp), intent(inout) :: pt_c                                         ! point on continous grid
         real(dp), intent(in) :: var_c(:)                                        ! continous grid values
         
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
         ! Check whether the discrete value lies inside the range
         if (pt_d.lt.1 .or. pt_d.gt.size(var_c)) then
-            call writo('WARNING: pt_c not within range',persistent=.true.)
             pt_c = -1._dp
-            return
+            ierr = 1
+            err_msg = 'WARNING: pt_c not within range'
+            CHCKERR(err_msg)
         end if
         
         ! Return the continuous variable
         pt_c = var_c(pt_d)
-    end subroutine dis2con_regular
+    end function dis2con_regular
     
     ! rounds  an  arry of  values  to limits,  with  a tolerance  1E-5 that  can
     ! optionally be modified
@@ -2121,8 +2146,8 @@ contains
     ! result is stored in  y_out. The array x can be  optionally passed. If not,
     ! it is assumed to be the (equidistant) linear space between 0 and 1.
     ! Note: This function is assumed to be monotomous. If not, an error results.
-    integer function interp_fun_2D(y_out,y,x_in,x) result(ierr)                 ! 2D version
-        character(*), parameter :: rout_name = 'interp_fun_2D'
+    integer function interp_fun_2D_real(y_out,y,x_in,x) result(ierr)            ! 2D real version
+        character(*), parameter :: rout_name = 'interp_fun_2D_real'
         
         ! input / output
         real(dp), intent(inout) :: y_out(:,:)                                   ! output y_out
@@ -2153,16 +2178,11 @@ contains
         
         ! find the lower range of the index in the x array
         if (present(x)) then
-            call con2dis(x_in,ind,x)
+            ierr = con2dis(x_in,ind,x)
         else
-            call con2dis(x_in,ind,[0._dp,1._dp],[1,n_pt])
+            ierr = con2dis(x_in,ind,[0._dp,1._dp],[1,n_pt])
         end if
-        
-        ! test if result has been found
-        if (ind.le.0) then
-            ierr = 1
-            CHCKERR('see WARNING from con2dis above')
-        end if
+        CHCKERR('')
         
         ! set ind_lo and ind_hi
         ind_lo = floor(ind)
@@ -2171,9 +2191,9 @@ contains
         ! calculate y_out
         y_out = y(:,:,ind_lo) + (y(:,:,ind_hi)-y(:,:,ind_lo)) * &
             &(ind-ind_lo)
-    end function interp_fun_2D
-    integer function interp_fun_1D(y_out,y,x_in,x) result(ierr)                 ! 1D version
-        character(*), parameter :: rout_name = 'interp_fun_1D'
+    end function interp_fun_2D_real
+    integer function interp_fun_1D_real(y_out,y,x_in,x) result(ierr)            ! 1D real version
+        character(*), parameter :: rout_name = 'interp_fun_1D_real'
         
         ! input / output
         real(dp), intent(inout) :: y_out(:)                                     ! output y_out
@@ -2188,7 +2208,7 @@ contains
         allocate(y_out_loc(1,size(y_out)))
         
         ! call 2D version
-        ierr = interp_fun_2D(y_out_loc,reshape(y,[1,size(y_out),size(y)]),&
+        ierr = interp_fun_2D_real(y_out_loc,reshape(y,[1,size(y_out),size(y)]),&
             &x_in,x)
         CHCKERR('')
         
@@ -2197,9 +2217,9 @@ contains
         
         ! clean up
         deallocate(y_out_loc)
-    end function interp_fun_1D
-    integer function interp_fun_0D(y_out,y,x_in,x) result(ierr)                 ! 0D version
-        character(*), parameter :: rout_name = 'interp_fun_0D'
+    end function interp_fun_1D_real
+    integer function interp_fun_0D_real(y_out,y,x_in,x) result(ierr)            ! 0D real version
+        character(*), parameter :: rout_name = 'interp_fun_0D_real'
         
         ! input / output
         real(dp), intent(inout) :: y_out                                        ! output y_out
@@ -2215,7 +2235,7 @@ contains
         
 #if ldebug
         ! plot for debugging
-        if (debug_interp_fun_0D) then
+        if (debug_interp_fun_0D_real) then
             call writo('finding y('//trim(r2strt(x_in))//')')
             if (present(x)) then
                 call print_GP_2D('y(x)','',y,X=x)
@@ -2227,7 +2247,7 @@ contains
 #endif
         
         ! call 2D version
-        ierr = interp_fun_2D(y_out_loc,reshape(y,[1,1,size(y)]),x_in,x)
+        ierr = interp_fun_2D_real(y_out_loc,reshape(y,[1,1,size(y)]),x_in,x)
         CHCKERR('')
         
         ! copy to y_out
@@ -2235,10 +2255,101 @@ contains
         
 #if ldebug
         ! plot for debugging
-        if (debug_interp_fun_0D) call writo(' => y('//trim(r2strt(x_in))//&
+        if (debug_interp_fun_0D_real) call writo(' => y('//trim(r2strt(x_in))//&
             &') = '//trim(r2strt(y_out)))
 #endif
-    end function interp_fun_0D
+    end function interp_fun_0D_real
+    integer function interp_fun_2D_complex(y_out,y,x_in,x) result(ierr)         ! 2D complex version
+        character(*), parameter :: rout_name = 'interp_fun_2D_complex'
+        
+        ! input / output
+        complex(dp), intent(inout) :: y_out(:,:)                                ! output y_out
+        complex(dp), intent(in) :: y(:,:,:)                                     ! y(x)
+        real(dp), intent(in) :: x_in                                            ! input x_in
+        real(dp), intent(in), optional :: x(:)                                  ! x(x)
+        
+        ! local variables
+        integer :: n_pt                                                         ! nr. points in y
+        real(dp) :: ind                                                         ! unrounded x-index
+        integer :: ind_lo, ind_hi                                               ! lower and higher index of x_in in x(x)
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up n_pt
+        n_pt = size(y,3)
+        
+        ! tests
+        if (present(x)) then
+            if (size(x).ne.n_pt) then
+                err_msg = 'x and y need to have the same size'
+                ierr = 1
+                CHCKERR(err_msg)
+            end if
+        end if
+        
+        ! find the lower range of the index in the x array
+        if (present(x)) then
+            ierr = con2dis(x_in,ind,x)
+        else
+            ierr = con2dis(x_in,ind,[0._dp,1._dp],[1,n_pt])
+        end if
+        CHCKERR('')
+        
+        ! set ind_lo and ind_hi
+        ind_lo = floor(ind)
+        ind_hi = ceiling(ind)
+        
+        ! calculate y_out
+        y_out = y(:,:,ind_lo) + (y(:,:,ind_hi)-y(:,:,ind_lo)) * &
+            &(ind-ind_lo)
+    end function interp_fun_2D_complex
+    integer function interp_fun_1D_complex(y_out,y,x_in,x) result(ierr)         ! 1D complex version
+        character(*), parameter :: rout_name = 'interp_fun_1D_complex'
+        
+        ! input / output
+        complex(dp), intent(inout) :: y_out(:)                                  ! output y_out
+        complex(dp), intent(in) :: y(:,:)                                       ! y(x)
+        real(dp), intent(in) :: x_in                                            ! input x_in
+        real(dp), intent(in), optional :: x(:)                                  ! x(x)
+        
+        ! local variables
+        complex(dp), allocatable :: y_out_loc(:,:)
+        
+        ! allocate y_out_loc
+        allocate(y_out_loc(1,size(y_out)))
+        
+        ! call 2D version
+        ierr = interp_fun_2D_complex(y_out_loc,&
+            &reshape(y,[1,size(y,1),size(y,2)]),x_in,x)
+        CHCKERR('')
+        
+        ! copy to y_out
+        y_out = y_out_loc(1,1)
+        
+        ! clean up
+        deallocate(y_out_loc)
+    end function interp_fun_1D_complex
+    integer function interp_fun_0D_complex(y_out,y,x_in,x) result(ierr)         ! 0D complex version
+        character(*), parameter :: rout_name = 'interp_fun_0D_complex'
+        
+        ! input / output
+        complex(dp), intent(inout) :: y_out                                     ! output y_out
+        complex(dp), intent(in) :: y(:)                                         ! y(x)
+        real(dp), intent(in) :: x_in                                            ! input x_in
+        real(dp), intent(in), optional :: x(:)                                  ! x(x)
+        
+        ! local variables
+        complex(dp) :: y_out_loc(1,1)
+        
+        ! call 2D version
+        ierr = interp_fun_2D_complex(y_out_loc,reshape(y,[1,1,size(y)]),x_in,x)
+        CHCKERR('')
+        
+        ! copy to y_out
+        y_out = y_out_loc(1,1)
+    end function interp_fun_0D_complex
     
     ! convert 2D  coordinates (i,j) to  the storage convention used  in (square)
     ! metric matrices:
@@ -2366,95 +2477,4 @@ contains
             B = A
         end if
     end function con_0D
-    
-    ! returns relative or absolute difference between inputs A and B
-    function diff_0D(A,B,rel) result(C)                                         ! 4D version
-        ! local variables
-        real(dp) :: max_diff = 1.E10                                            ! maximum absolute difference
-        
-        ! input / output
-        real(dp), intent(in) :: A                                               ! input A
-        real(dp), intent(in) :: B                                               ! input B
-        logical, intent(in) :: rel                                              ! .true. if relative and .false. if absolute error
-        real(dp) :: C                                                           ! output C
-        
-        ! return output
-        if (rel) then
-            C = min(max_diff,max(-max_diff,(A-B)/(A+B)))
-        else
-            C = abs(A-B)
-        end if
-    end function diff_0D
-    function diff_1D(A,B,dims,rel) result(C)                                    ! 4D version
-        ! local variables
-        real(dp) :: max_diff = 1.E10                                            ! maximum absolute difference
-        
-        ! input / output
-        real(dp), intent(in) :: A(:)                                            ! input A
-        real(dp), intent(in) :: B(:)                                            ! input B
-        integer, intent(in) :: dims(1)                                          ! dimensions of A and B
-        logical, intent(in) :: rel                                              ! .true. if relative and .false. if absolute error
-        real(dp) :: C(dims(1))                                                  ! output C
-        
-        ! return output
-        if (rel) then
-            C = min(max_diff,max(-max_diff,(A-B)/(A+B)))
-        else
-            C = abs(A-B)
-        end if
-    end function diff_1D
-    function diff_2D(A,B,dims,rel) result(C)                                    ! 4D version
-        ! local variables
-        real(dp) :: max_diff = 1.E10                                            ! maximum absolute difference
-        
-        ! input / output
-        real(dp), intent(in) :: A(:,:)                                          ! input A
-        real(dp), intent(in) :: B(:,:)                                          ! input B
-        integer, intent(in) :: dims(2)                                          ! dimensions of A and B
-        logical, intent(in) :: rel                                              ! .true. if relative and .false. if absolute error
-        real(dp) :: C(dims(1),dims(2))                                          ! output C
-        
-        ! return output
-        if (rel) then
-            C = min(max_diff,max(-max_diff,(A-B)/(A+B)))
-        else
-            C = abs(A-B)
-        end if
-    end function diff_2D
-    function diff_3D(A,B,dims,rel) result(C)                                    ! 4D version
-        ! local variables
-        real(dp) :: max_diff = 1.E10                                            ! maximum absolute difference
-        
-        ! input / output
-        real(dp), intent(in) :: A(:,:,:)                                        ! input A
-        real(dp), intent(in) :: B(:,:,:)                                        ! input B
-        integer, intent(in) :: dims(3)                                          ! dimensions of A and B
-        logical, intent(in) :: rel                                              ! .true. if relative and .false. if absolute error
-        real(dp) :: C(dims(1),dims(2),dims(3))                                  ! output C
-        
-        ! return output
-        if (rel) then
-            C = min(max_diff,max(-max_diff,(A-B)/(A+B)))
-        else
-            C = abs(A-B)
-        end if
-    end function diff_3D
-    function diff_4D(A,B,dims,rel) result(C)                                    ! 4D version
-        ! local variables
-        real(dp) :: max_diff = 1.E10                                            ! maximum absolute difference
-        
-        ! input / output
-        real(dp), intent(in) :: A(:,:,:,:)                                      ! input A
-        real(dp), intent(in) :: B(:,:,:,:)                                      ! input B
-        integer, intent(in) :: dims(4)                                          ! dimensions of A and B
-        logical, intent(in) :: rel                                              ! .true. if relative and .false. if absolute error
-        real(dp) :: C(dims(1),dims(2),dims(3),dims(4))                          ! output C
-        
-        ! return output
-        if (rel) then
-            C = min(max_diff,max(-max_diff,(A-B)/(A+B)))
-        else
-            C = abs(A-B)
-        end if
-    end function diff_4D
 end module utilities

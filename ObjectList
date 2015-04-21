@@ -20,6 +20,7 @@ SLEPC_ops.o \
 sol_ops.o \
 str_ops.o \
 utilities.o \
+MPI_utilities.o \
 VMEC.o \
 X_ops.o \
 X_vars.o \

@@ -13,7 +13,7 @@ module eq_ops
     
     implicit none
     private
-    public read_eq, normalize_eq_vars, calc_norm_const, calc_eq
+    public read_eq, calc_normalization_const, normalize_input, calc_eq
     
     interface calc_RZL
         module procedure calc_RZL_ind, calc_RZL_arr
@@ -82,18 +82,18 @@ contains
         use eq_vars, only: dealloc_eq
         use metric_ops, only: calc_g_C, calc_T_VC, calc_g_V, calc_T_VF, &
             &calc_inv_met, calc_g_F, calc_jac_C, calc_jac_V, calc_jac_F, &
-            &calc_f_deriv, calc_jac_H, calc_T_HF, calc_h_H
+            &transf_deriv, calc_jac_H, calc_T_HF, calc_h_H
         use metric_vars, only: create_metric, dealloc_metric
         use utilities, only: derivs
         use input_ops, only: get_log, pause_prog
         use num_vars, only: max_deriv, plot_grid, eq_style
-        use grid_ops, only: calc_ang_grid, plot_grid_real
+        use grid_ops, only: calc_ang_grid_eq, plot_grid_real
         use HELENA, only: dealloc_HEL
-        use MPI_ops, only: wait_MPI
+        use MPI_utilities, only: wait_MPI
 #if ldebug
         use num_vars, only: ltest
         use metric_ops, only: test_T_EF, test_p, test_jac_F, test_g_V, &
-            &test_D12h_H
+            &test_D12h_H, test_B_V
 #endif
         
         use utilities, only: calc_det, calc_inv, calc_mult, c
@@ -101,7 +101,7 @@ contains
         character(*), parameter :: rout_name = 'calc_eq'
         
         ! input / output
-        type(grid_type) :: grid_eq                                              ! equilibrium grid
+        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
         type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
         type(metric_type), intent(inout) :: met                                 ! metric variables
         real(dp), intent(in) :: alpha                                           ! field line coordinate of current equilibrium
@@ -114,8 +114,26 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('Start setting up equilibrium quantities in '//&
-            &trim(i2str(grid_eq%n(1)))//' discrete parallel points')
+        ! user output
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                call writo('Start setting up equilibrium quantities in '//&
+                    &trim(i2str(grid_eq%n(1)))//' parallel and '//&
+                    &trim(i2str(grid_eq%n(3)))//' normal points')
+            case (2)                                                            ! HELENA
+                call writo('Start setting up equilibrium quantities in '//&
+                    &trim(i2str(grid_eq%n(1)))//' poloidal and '//&
+                    &trim(i2str(grid_eq%n(3)))//' normal points')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        
         call lvl_ud(1)
         
             call writo('Start initializing variables')
@@ -137,21 +155,9 @@ contains
             call writo('Start determining the equilibrium grid')
             call lvl_ud(1)
             
-                ! calculate  angular grid  points (theta,zeta)  that follow  the
-                ! magnetic field  line determined  by alpha in  E(quilibrum) and
-                ! F(lux) coords.
-                ! Note: The  normal grid  is determined  by the  equilibrium, it
-                ! can  either  use  the  toroidal  flux  or  the  poloidal  flux
-                ! (use_pol_flux_E).  This  does  not   have  to  coincide  with
-                ! use_pol_flux_F used by PB3D.
-                ierr = calc_ang_grid(grid_eq,eq,alpha)
+                ! calculate  angular grid  points for equilibrium grid
+                ierr = calc_ang_grid_eq(grid_eq,eq,alpha)
                 CHCKERR('')
-                
-                ! adapt the HELENA variables to the equilibrium grid
-                if (eq_style.eq.2) then
-                    ierr = adapt_HEL_to_eq(grid_eq)
-                    CHCKERR('')
-                end if
                 
                 ! plot grid if requested
                 if (plot_grid) then
@@ -219,6 +225,12 @@ contains
                             call writo('Test calculation of g_V?')
                             if(get_log(.false.)) then
                                 ierr = test_g_V(grid_eq,eq,met)
+                                CHCKERR('')
+                                call pause_prog
+                            end if
+                            call writo('Test calculation of B_V?')
+                            if(get_log(.false.)) then
+                                ierr = test_B_V(grid_eq,eq,met)
                                 CHCKERR('')
                                 call pause_prog
                             end if
@@ -343,53 +355,53 @@ contains
                 end if
 #endif
                 
-                ! calculate   the  derivatives  in  Flux  coordinates  from  the
-                ! derivatives in VMEC coordinates
+                ! Transform  the derivatives in VMEC  coordinates to derivatives
+                ! in the Flux coordinates.
                 call writo('Calculate derivatives in Flux coordinates...')
                 do id = 0,max_deriv
                     ! g_FD
-                    ierr = calc_f_deriv(met%g_F,met%T_FE,met%g_FD,max_deriv,&
+                    ierr = transf_deriv(met%g_F,met%T_FE,met%g_FD,max_deriv,&
                         &derivs(id))
                     CHCKERR('')
                     
                     ! h_FD
-                    ierr = calc_f_deriv(met%h_F,met%T_FE,met%h_FD,max_deriv,&
+                    ierr = transf_deriv(met%h_F,met%T_FE,met%h_FD,max_deriv,&
                         &derivs(id))
                     CHCKERR('')
                     
                     ! jac_FD
-                    ierr = calc_f_deriv(met%jac_F,met%T_FE,met%jac_FD,&
+                    ierr = transf_deriv(met%jac_F,met%T_FE,met%jac_FD,&
                         &max_deriv,derivs(id))
                     CHCKERR('')
                     
                     ! pres_FD
-                    ierr = calc_f_deriv(eq%pres_E,&
+                    ierr = transf_deriv(eq%pres_E,&
                         &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
                         &eq%pres_FD(:,id),max_deriv,id)
                     CHCKERR('')
                         
                     ! flux_p_FD
-                    ierr = calc_f_deriv(eq%flux_p_E,&
+                    ierr = transf_deriv(eq%flux_p_E,&
                         &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
                         &eq%flux_p_FD(:,id),max_deriv,id)
                     CHCKERR('')
                         
                     ! flux_t_FD
-                    ierr = calc_f_deriv(eq%flux_t_E,&
+                    ierr = transf_deriv(eq%flux_t_E,&
                         &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
                         &eq%flux_t_FD(:,id),max_deriv,id)
                     CHCKERR('')
                     eq%flux_t_FD(:,id) = pmone * eq%flux_t_FD(:,id)             ! multiply by plus minus one
                     
                     ! q_saf_FD
-                    ierr = calc_f_deriv(eq%q_saf_E,&
+                    ierr = transf_deriv(eq%q_saf_E,&
                         &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
                         &eq%q_saf_FD(:,id),max_deriv,id)
                     CHCKERR('')
                     eq%q_saf_FD(:,id) = pmone * eq%q_saf_FD(:,id)               ! multiply by plus minus one
                     
                     ! rot_t_FD
-                    ierr = calc_f_deriv(eq%rot_t_E,&
+                    ierr = transf_deriv(eq%rot_t_E,&
                         &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
                         &eq%rot_t_FD(:,id),max_deriv,id)
                     CHCKERR('')
@@ -465,7 +477,7 @@ contains
     ! not exist.
     integer function calc_RZL_ind(grid,eq,deriv) result(ierr)
         use fourier_ops, only: fourier2real
-        use VMEC, only: R_c, R_s, Z_c, Z_s, L_c, L_s
+        use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s
         use utilities, only: check_deriv
         use num_vars, only: max_deriv
         
@@ -484,16 +496,16 @@ contains
         CHCKERR('')
         
         ! calculate the variables R,Z and their angular derivative
-        ierr = fourier2real(R_c(:,:,grid%i_min:grid%i_max,deriv(1)),&
-            &R_s(:,:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
+        ierr = fourier2real(R_V_c(:,:,grid%i_min:grid%i_max,deriv(1)),&
+            &R_V_s(:,:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
             &eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3)),[deriv(2),deriv(3)])
         CHCKERR('')
-        ierr = fourier2real(Z_c(:,:,grid%i_min:grid%i_max,deriv(1)),&
-            &Z_s(:,:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
+        ierr = fourier2real(Z_V_c(:,:,grid%i_min:grid%i_max,deriv(1)),&
+            &Z_V_s(:,:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
             &eq%Z_E(:,:,:,deriv(1),deriv(2),deriv(3)),[deriv(2),deriv(3)])
         CHCKERR('')
-        ierr = fourier2real(L_c(:,:,grid%i_min:grid%i_max,deriv(1)),&
-            &L_s(:,:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
+        ierr = fourier2real(L_V_c(:,:,grid%i_min:grid%i_max,deriv(1)),&
+            &L_V_s(:,:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
             &eq%L_E(:,:,:,deriv(1),deriv(2),deriv(3)),[deriv(2),deriv(3)])
         CHCKERR('')
     end function calc_RZL_ind
@@ -513,93 +525,6 @@ contains
             CHCKERR('')
         end do
     end function calc_RZL_arr
-
-    ! Adapt the HELENA  quantities for the equilibrium parallel  grid taking the
-    ! correct poloidal HELENA range (and possibly multiples).
-    ! Note: HELENA  equilibria are axisymmetric,  which eliminates the  need for
-    ! zeta dependence. However, theta can depend  on angle_1 and angle_2 as well
-    ! as on r (see discussion at the grid_type definition), the h_H_ij are 3D as
-    ! well.
-    integer function adapt_HEL_to_eq(grid) result(ierr)
-        use num_vars, only: pi
-        use HELENA, only: ias, chi_H, h_H_11_full, h_H_12_full, h_H_33_full, &
-            &h_H_11, h_H_12, h_H_33
-        use utilities, only: interp_fun
-        
-        character(*), parameter :: rout_name = 'adapt_HEL_to_eq'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid to which to adapt the HELENA quantities
-        
-        ! local variables
-        integer :: id, jd, kd                                                   ! counters
-        real(dp) :: par_loc                                                     ! local parallel (= poloidal) point
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! reallocate the arrays
-        allocate(h_H_11(grid%n(1),grid%n(2),grid%grp_n_r))
-        allocate(h_H_12(grid%n(1),grid%n(2),grid%grp_n_r))
-        allocate(h_H_33(grid%n(1),grid%n(2),grid%grp_n_r))
-        
-        ! For every poloidal point, check  which half poloidal circle it belongs
-        ! to.  If this  is a  bottom part  and HELENA  is symmetric  (ias =  0),
-        ! the  quantities have  to  be taken  from  their symmetric  counterpart
-        ! (2pi-theta) and  the metric factors  h_H_12 carry an  additional minus
-        ! sign.
-        ! loop over all angles of ang_2
-        do jd = 1,grid%n(2)
-            ! loop over all normal points of this rank
-            do kd = 1,grid%grp_n_r
-                ! loop over all angles of ang_1
-                do id = 1,grid%n(1)
-                    ! set the local poloidal point from theta
-                    par_loc = grid%theta_E(id,jd,kd)
-                    ! add or subtract  2pi to the parallel angle until  it is at
-                    ! least 0 to get principal range 0..2pi
-                    if (par_loc.lt.0._dp) then
-                        do while (par_loc.lt.0._dp)
-                            par_loc = par_loc + 2*pi
-                        end do
-                    else if (par_loc.gt.2*pi) then
-                        do while (par_loc.gt.2._dp*pi)
-                            par_loc = par_loc - 2*pi
-                        end do
-                    end if
-                    ! Interpolate the  HELENA variables poloidally,  taking into
-                    ! account the possible symmetry
-                    if (ias.eq.0 .and. par_loc.gt.pi) then
-                        ierr = interp_fun(h_H_11(id,jd,kd),&
-                            &h_H_11_full(:,grid%i_min-1+kd),2*pi-par_loc,&
-                            &x=chi_H)
-                        CHCKERR('')
-                        ierr = interp_fun(h_H_12(id,jd,kd),&
-                            &-h_H_12_full(:,grid%i_min-1+kd),2*pi-par_loc,&
-                            &x=chi_H)                                           ! change of sign
-                        CHCKERR('')
-                        ierr = interp_fun(h_H_33(id,jd,kd),&
-                            &h_H_33_full(:,grid%i_min-1+kd),2*pi-par_loc,&
-                            &x=chi_H)
-                        CHCKERR('')
-                    else
-                        ierr = interp_fun(h_H_11(id,jd,kd),&
-                            &h_H_11_full(:,grid%i_min-1+kd),par_loc,&
-                            &x=chi_H)
-                        CHCKERR('')
-                        ierr = interp_fun(h_H_12(id,jd,kd),&
-                            &h_H_12_full(:,grid%i_min-1+kd),par_loc,&
-                            &x=chi_H)
-                        CHCKERR('')
-                        ierr = interp_fun(h_H_33(id,jd,kd),&
-                            &h_H_33_full(:,grid%i_min-1+kd),par_loc,&
-                            &x=chi_H)
-                        CHCKERR('')
-                    end if
-                end do
-            end do
-        end do
-    end function adapt_HEL_to_eq
     
     ! Calculates flux quantities  and normal derivatives in  the VMEC coordinate
     ! system. Also sets the normal coordinate in the equilibrium grid.
@@ -654,7 +579,7 @@ contains
         ! wrt.  to  the  maximum  flux,  equidistantly,  so  the  step  size  is
         ! 1/(n(3)-1)
         integer function calc_flux_q_VMEC() result(ierr)
-            use VMEC, only: iotaf, phi, Dphi, presf
+            use VMEC, only: rot_t_V, flux_t_V, Dflux_t_V, pres_V
             
             character(*), parameter :: rout_name = 'calc_flux_q_VMEC'
             
@@ -668,38 +593,40 @@ contains
             
             ! set up helper variables to calculate poloidal flux
             allocate(Dflux_p_full(grid_eq%n(3)),flux_p_full(grid_eq%n(3)))
-            Dflux_p_full = iotaf*Dphi
+            Dflux_p_full = rot_t_V*Dflux_t_V
             ierr = calc_int(Dflux_p_full,1.0_dp/(grid_eq%n(3)-1.0_dp),&
                 &flux_p_full)
             CHCKERR('')
             
             ! max flux and normal coord. of eq grid in Equilibrium coordinates
             max_flux_p_E = flux_p_full(grid_eq%n(3))
-            max_flux_t_E = phi(grid_eq%n(3))
+            max_flux_t_E = flux_t_V(grid_eq%n(3))
             if (use_pol_flux_E) then
                 grid_eq%r_E = flux_p_full/flux_p_full(grid_eq%n(3))
                 grid_eq%grp_r_E = flux_p_full(grid_eq%i_min:grid_eq%i_max)/&
                     &flux_p_full(grid_eq%n(3))
             else
-                grid_eq%r_E = phi/phi(grid_eq%n(3))
-                grid_eq%grp_r_E = phi(grid_eq%i_min:grid_eq%i_max)/&
-                    &phi(grid_eq%n(3))
+                grid_eq%r_E = flux_t_V/flux_t_V(grid_eq%n(3))
+                grid_eq%grp_r_E = flux_t_V(grid_eq%i_min:grid_eq%i_max)/&
+                    &flux_t_V(grid_eq%n(3))
             end if
             
             ! max flux and normal coord. of eq grid in Flux coordinates
             max_flux_p_F = flux_p_full(grid_eq%n(3))
-            max_flux_t_F = - phi(grid_eq%n(3))                                  ! conversion VMEC LH -> RH coord. system
+            max_flux_t_F = - flux_t_V(grid_eq%n(3))                             ! conversion VMEC LH -> RH coord. system
             if (use_pol_flux_F) then
-                grid_eq%r_F = flux_p_full/(2*pi)                                ! psi_F = flux/2pi
+                grid_eq%r_F = flux_p_full/(2*pi)                                ! psi_F = flux_p/2pi
                 grid_eq%grp_r_F = flux_p_full(grid_eq%i_min:grid_eq%i_max)/&
-                    &(2*pi)                                                     ! psi_F = flux/2pi
+                    &(2*pi)                                                     ! psi_F = flux_p/2pi
             else
-                grid_eq%r_F = - phi/(2*pi)                                      ! conversion VMEC LH -> RH coord. system, psi_F = flux/2pi
-                grid_eq%grp_r_F = - phi(grid_eq%i_min:grid_eq%i_max)/(2*pi)     ! conversion VMEC LH -> RH coord. system, psi_F = flux/2pi
+                grid_eq%r_F = - flux_t_V/(2*pi)                                 ! conversion VMEC LH -> RH coord. system, psi_F = flux_t/2pi
+                grid_eq%grp_r_F = - flux_t_V(grid_eq%i_min:grid_eq%i_max)/&
+                    &(2*pi)                                                     ! conversion VMEC LH -> RH coord. system, psi_F = flux_t/2pi
             end if
             
-            ! poloidal flux: calculate using iotaf  and phi, Dphi (easier to use
-            ! full normal equilibrium grid flux_p because of the integral)
+            ! poloidal  flux: calculate  using rot_t_V  and flux_t_V,  Dflux_t_V
+            ! (easier to use full normal  equilibrium grid flux_p because of the
+            ! integral)
             eq%flux_p_E(:,0) = flux_p_full(grid_eq%i_min:grid_eq%i_max)
             eq%flux_p_E(:,1) = Dflux_p_full(grid_eq%i_min:grid_eq%i_max)
             do kd = 2,max_deriv+1
@@ -709,8 +636,8 @@ contains
             end do
             
             ! toroidal flux: copy from VMEC and derive
-            eq%flux_t_E(:,0) = phi(grid_eq%i_min:grid_eq%i_max)
-            eq%flux_t_E(:,1) = Dphi(grid_eq%i_min:grid_eq%i_max)
+            eq%flux_t_E(:,0) = flux_t_V(grid_eq%i_min:grid_eq%i_max)
+            eq%flux_t_E(:,1) = Dflux_t_V(grid_eq%i_min:grid_eq%i_max)
             do kd = 2,max_deriv+1
                 ierr = calc_deriv(eq%flux_t_E(:,1),eq%flux_t_E(:,kd),&
                     &grid_eq%n(3)-1._dp,kd-1,1)
@@ -718,7 +645,7 @@ contains
             end do
             
             ! pressure: copy from VMEC and derive
-            eq%pres_E(:,0) = presf(grid_eq%i_min:grid_eq%i_max)
+            eq%pres_E(:,0) = pres_V(grid_eq%i_min:grid_eq%i_max)
             do kd = 1, max_deriv+1
                 ierr = calc_deriv(eq%pres_E(:,0),eq%pres_E(:,kd),&
                     &grid_eq%n(3)-1._dp,kd,1)
@@ -726,7 +653,7 @@ contains
             end do
             
             ! safety factor
-            eq%q_saf_E(:,0) = 1.0_dp/iotaf(grid_eq%i_min:grid_eq%i_max)
+            eq%q_saf_E(:,0) = 1.0_dp/rot_t_V(grid_eq%i_min:grid_eq%i_max)
             do kd = 1,max_deriv+1
                 ierr = calc_deriv(eq%q_saf_E(:,0),eq%q_saf_E(:,kd),&
                     &grid_eq%n(3)-1._dp,kd,1)
@@ -734,7 +661,7 @@ contains
             end do
             
             ! rot. transform
-            eq%rot_t_E(:,0) = iotaf(grid_eq%i_min:grid_eq%i_max)
+            eq%rot_t_E(:,0) = rot_t_V(grid_eq%i_min:grid_eq%i_max)
             do kd = 1,max_deriv+1
                 ierr = calc_deriv(eq%rot_t_E(:,0),eq%rot_t_E(:,kd),&
                     &grid_eq%n(3)-1._dp,kd,1)
@@ -748,7 +675,7 @@ contains
         ! HELENA version
         ! The HELENA normal coord. is the poloidal flux
         integer function calc_flux_q_HEL() result(ierr)
-            use HELENA, only: qs, flux_H, p0
+            use HELENA, only: qs, flux_p_H, pres_H
             
             character(*), parameter :: rout_name = 'calc_flux_q_HEL'
             
@@ -756,49 +683,50 @@ contains
             integer :: kd                                                       ! counter
             real(dp), allocatable :: Dflux_t_full(:)                            ! version of dflux_t/dp on full normal equilibrium grid (1..n(3))
             real(dp), allocatable :: flux_t_full(:)                             ! version of integrated flux_t on full normal equilibrium grid (1..n(3))
-            real(dp), allocatable :: Dflux_H(:)                                 ! normal derivative of flux_H
+            real(dp), allocatable :: Dflux_p_H(:)                               ! normal derivative of flux_p_H
             
             ! initialize ierr
             ierr = 0
             
             ! set up helper variables to calculate toroidal flux
-            ! calculate normal derivative of flux_H
-            allocate(Dflux_H(grid_eq%n(3)))
-            ierr = calc_deriv(flux_H,Dflux_H,flux_H,1,1)
+            ! calculate normal derivative of flux_p_H
+            allocate(Dflux_p_H(grid_eq%n(3)))
+            ierr = calc_deriv(flux_p_H,Dflux_p_H,flux_p_H,1,1)
             allocate(Dflux_t_full(grid_eq%n(3)),flux_t_full(grid_eq%n(3)))
-            Dflux_t_full = qs*Dflux_H
-            ierr = calc_int(Dflux_t_full,flux_H,flux_t_full)
+            Dflux_t_full = qs*Dflux_p_H
+            ierr = calc_int(Dflux_t_full,flux_p_H,flux_t_full)
             CHCKERR('')
             
             ! max flux and  normal coord. of eq grid  in Equilibrium coordinates
             ! (uses poloidal flux by default)
-            max_flux_p_E = flux_H(grid_eq%n(3))
+            max_flux_p_E = flux_p_H(grid_eq%n(3))
             max_flux_t_E = flux_t_full(grid_eq%n(3))
-            grid_eq%r_E = flux_H
-            grid_eq%grp_r_E = flux_H(grid_eq%i_min:grid_eq%i_max)
+            grid_eq%r_E = flux_p_H
+            grid_eq%grp_r_E = flux_p_H(grid_eq%i_min:grid_eq%i_max)
             
             ! max flux and normal coord. of eq grid in Flux coordinates
-            max_flux_p_F = flux_H(grid_eq%n(3))
+            max_flux_p_F = flux_p_H(grid_eq%n(3))
             max_flux_t_F = flux_t_full(grid_eq%n(3))
             if (use_pol_flux_F) then
-                grid_eq%r_F = flux_H/(2*pi)                                     ! psi_F = flux/2pi
-                grid_eq%grp_r_F = flux_H(grid_eq%i_min:grid_eq%i_max)/(2*pi)    ! psi_F = flux/2pi
+                grid_eq%r_F = flux_p_H/(2*pi)                                   ! psi_F = flux_p/2pi
+                grid_eq%grp_r_F = flux_p_H(grid_eq%i_min:grid_eq%i_max)/(2*pi)  ! psi_F = flux_p/2pi
             else
-                grid_eq%r_F = flux_t_full/(2*pi)                                ! psi_F = flux/2pi
+                grid_eq%r_F = flux_t_full/(2*pi)                                ! psi_F = flux_t/2pi
                 grid_eq%grp_r_F = flux_t_full(grid_eq%i_min:grid_eq%i_max)/&
-                    &(2*pi)                                                     ! psi_F = flux/2pi
+                    &(2*pi)                                                     ! psi_F = flux_t/2pi
             end if
             
             ! poloidal flux: copy from HELENA and derive
-            eq%flux_p_E(:,0) = flux_H(grid_eq%i_min:grid_eq%i_max)
+            eq%flux_p_E(:,0) = flux_p_H(grid_eq%i_min:grid_eq%i_max)
             do kd = 1,max_deriv+1
                 ierr = calc_deriv(eq%flux_p_E(:,0),eq%flux_p_E(:,kd),&
                     &grid_eq%grp_r_E,kd,1)
                 CHCKERR('')
             end do
             
-            ! toroidal flux: calculate  using qs and flux_H,  Dflux_H (easier to
-            ! use full normal equilibrium grid flux_t because of the integral)
+            ! toroidal flux: calculate using  qs and flux_p_H, Dflux_p_H (easier
+            ! to  use  full  normal  equilibrium  grid  flux_t  because  of  the
+            ! integral)
             eq%flux_t_E(:,0) = flux_t_full(grid_eq%i_min:grid_eq%i_max)
             eq%flux_t_E(:,1) = Dflux_t_full(grid_eq%i_min:grid_eq%i_max)
             do kd = 2,max_deriv+1
@@ -808,7 +736,7 @@ contains
             end do
             
             ! pressure: copy from HELENA and derive
-            eq%pres_E(:,0) = p0(grid_eq%i_min:grid_eq%i_max)
+            eq%pres_E(:,0) = pres_H(grid_eq%i_min:grid_eq%i_max)
             do kd = 1, max_deriv+1
                 ierr = calc_deriv(eq%pres_E(:,0),eq%pres_E(:,kd),&
                     &grid_eq%grp_r_E,kd,1)
@@ -846,7 +774,7 @@ contains
     integer function flux_q_plot(eq,grid_eq) result(ierr)
         use num_vars, only: eq_style, output_style, glb_rank, no_plots
         use grid_ops, only: trim_grid
-        use MPI_ops, only: get_ser_var
+        use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'flux_q_plot'
         
@@ -1113,34 +1041,6 @@ contains
         end function flux_q_plot_HDF5
     end function flux_q_plot
     
-    ! normalizes equilibrium quantities using the normalization constants
-    subroutine normalize_eq_vars(eq)
-        use eq_vars, only: psi_0, pres_0, max_flux_p_E, max_flux_t_E, &
-            &max_flux_p_F, max_flux_t_F
-        
-        ! local variables
-        type(eq_type) :: eq                                                     ! equilibrium
-        integer :: id                                                           ! counter
-        
-        ! scale the quantities
-        eq%pres_FD = eq%pres_FD/pres_0
-        eq%flux_p_FD = eq%flux_p_FD/psi_0
-        eq%flux_t_FD = eq%flux_t_FD/psi_0
-        max_flux_p_E = max_flux_p_E/psi_0
-        max_flux_p_F = max_flux_p_F/psi_0
-        max_flux_t_E = max_flux_t_E/psi_0
-        max_flux_t_F = max_flux_t_F/psi_0
-        
-        ! scale  the  derivatives  by  psi_p_0
-        do id = 1,size(eq%pres_FD,2)-1
-            eq%pres_FD(:,id) = eq%pres_FD(:,id) * psi_0**(id)
-            eq%flux_p_FD(:,id) = eq%flux_p_FD(:,id) * psi_0**(id)
-            eq%flux_t_FD(:,id) = eq%flux_t_FD(:,id) * psi_0**(id)
-            eq%q_saf_FD(:,id) = eq%q_saf_FD(:,id) * psi_0**(id)
-            eq%rot_t_FD(:,id) = eq%rot_t_FD(:,id) * psi_0**(id)
-        end do
-    end subroutine normalize_eq_vars
-    
     ! sets up normalization constants:
     !   R_0:    major radius (= average R on axis)
     !   rho_0:  mass density on axis (set up through input variable)
@@ -1148,11 +1048,11 @@ contains
     !   B_0:    average magnetic field (= sqrt(mu_0 pres_0))
     !   psi_0:  reference flux (= R_0^2 B_0)
     ! [MPI] only global master
-    integer function calc_norm_const() result(ierr)
+    integer function calc_normalization_const() result(ierr)
         use num_vars, only: glb_rank, eq_style, mu_0, use_normalization
         use eq_vars, only: T_0, B_0, pres_0, psi_0, R_0, rho_0
         
-        character(*), parameter :: rout_name = 'calc_norm_const'
+        character(*), parameter :: rout_name = 'calc_normalization_const'
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1163,7 +1063,6 @@ contains
         if (use_normalization) then
             ! user output
             call writo('Calculating the normalization constants')
-            
             call lvl_ud(1)
             
             ! calculation
@@ -1173,9 +1072,9 @@ contains
                 !   2:  HELENA
                 select case (eq_style)
                     case (1)                                                    ! VMEC
-                        call calc_norm_const_VMEC
+                        call calc_normalization_const_VMEC
                     case (2)                                                    ! HELENA
-                        call calc_norm_const_HEL
+                        call calc_normalization_const_HEL
                     case default
                         err_msg = 'No equilibrium style associated with '//&
                             &trim(i2str(eq_style))
@@ -1195,9 +1094,8 @@ contains
             call writo('Magnetic flux   psi_0 = '//trim(r2strt(psi_0))//' Tm^2')
             call writo('Alfven time     T_0 = '//trim(r2strt(T_0))//' s')
             
-            call lvl_ud(-1)
-            
             ! user output
+            call lvl_ud(-1)
             call writo('Normalization constants calculated')
         else
             ! user output
@@ -1205,27 +1103,27 @@ contains
         end if
     contains 
         ! VMEC version
-        subroutine calc_norm_const_VMEC
-            use VMEC, only: R_c, presf
+        subroutine calc_normalization_const_VMEC
+            use VMEC, only: R_V_c, pres_V
             
             ! set the major  radius as the average value of  R_E on the magnetic
             ! axis
-            R_0 = R_c(0,0,1,0)
+            R_0 = R_V_c(0,0,1,0)
             
             ! rho_0 is set up through an input variable with the same name
             
             ! set pres_0 as pressure on axis
-            pres_0 = presf(1)
+            pres_0 = pres_V(1)
             
             ! set the reference value for B_0 from B_0 = sqrt(mu_0 pres_0)
             B_0 = sqrt(pres_0 * mu_0)
             
             ! set reference flux
             psi_0 = R_0**2 * B_0
-        end subroutine calc_norm_const_VMEC
+        end subroutine calc_normalization_const_VMEC
         
         ! HELENA version
-        subroutine calc_norm_const_HEL
+        subroutine calc_normalization_const_HEL
             use HELENA, only: R_0_H, B_0_H
             
             ! set the major radius as the HELENA normalization parameter
@@ -1242,6 +1140,46 @@ contains
             
             ! set reference flux
             psi_0 = R_0**2 * B_0
-        end subroutine calc_norm_const_HEL
-    end function calc_norm_const
+        end subroutine calc_normalization_const_HEL
+    end function calc_normalization_const
+    
+    ! normalize input quantities
+    integer function normalize_input() result(ierr)
+        use num_vars, only: use_normalization, eq_style
+        use VMEC, only: normalize_VMEC
+        use HELENA, only: normalize_HEL
+        
+        character(*), parameter :: rout_name = 'normalize_input'
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        if (use_normalization) then
+            ! user output
+            call writo('Start normalizing the input variables')
+            call lvl_ud(1)
+            
+            ! choose which equilibrium style is being used:
+            !   1:  VMEC
+            !   2:  HELENA
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    call normalize_VMEC
+                case (2)                                                        ! HELENA
+                    call normalize_HEL
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Normalization done')
+        end if
+    end function normalize_input
 end module eq_ops

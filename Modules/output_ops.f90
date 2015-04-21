@@ -1341,8 +1341,6 @@ contains
     ! absolute error.
     subroutine plot_diff_HDF5(A,B,file_name,tot_dim,grp_dim,grp_offset,&
         &description,output_message)
-        use utilities, only: diff
-        use MPI_ops, only: get_ser_var
         use messages, only: lvl_ud
         
         ! input / output
@@ -1359,28 +1357,28 @@ contains
         integer :: tot_dim_loc(4)                                               ! local version of tot_dim
         integer :: grp_dim_loc(4)                                               ! local version of grp_dim
         integer :: grp_offset_loc(4)                                            ! local version of grp_offset
-        character(len=max_str_ln) :: var_names(4)                               ! names of variables in plot
+        character(len=max_str_ln) :: var_names(5)                               ! names of variables in plot
         logical :: output_message_loc                                           ! local version of output_message
         real(dp) :: lim_lo                                                      ! lower limit of errors
         real(dp) :: lim_hi                                                      ! upper limit of errors
-        real(dp) :: sum_err                                                     ! sum of errors
+        real(dp) :: err_av                                                      ! average error
         real(dp), allocatable :: tot_lim(:)                                     ! total lower or upper limit
         real(dp), allocatable :: tot_err(:)                                     ! total sum of errors
         integer :: istat                                                        ! status
         logical :: ind_plot                                                     ! individual plot or not
         
         ! set up local tot_dim
-        tot_dim_loc = [shape(A),4]
-        if (present(tot_dim)) tot_dim_loc = [tot_dim,4]
+        tot_dim_loc = [shape(A),5]
+        if (present(tot_dim)) tot_dim_loc = [tot_dim,5]
         
         ! set up local grp_dim and grp_offset
         if (present(grp_dim)) then
-            grp_dim_loc = [grp_dim,4]
+            grp_dim_loc = [grp_dim,5]
         else
             grp_dim_loc = tot_dim_loc
         end if
         if (present(grp_offset)) then
-            grp_offset_loc = [grp_offset,4]
+            grp_offset_loc = [grp_offset,5]
         else
             grp_offset_loc = [0,0,0,0]
         end if
@@ -1404,17 +1402,19 @@ contains
             &tot_dim_loc(3).eq.grp_dim_loc(3)) ind_plot = .true.
         
         ! set up plot_var
-        allocate(plot_var(grp_dim_loc(1),grp_dim_loc(2),grp_dim_loc(3),4))
+        allocate(plot_var(grp_dim_loc(1),grp_dim_loc(2),grp_dim_loc(3),5))
         plot_var(:,:,:,1) = A
         plot_var(:,:,:,2) = B
-        plot_var(:,:,:,3) = diff(A,B,grp_dim_loc,rel=.true.)
-        plot_var(:,:,:,4) = diff(A,B,grp_dim_loc,rel=.false.)
+        plot_var(:,:,:,3) = diff(A,B,grp_dim_loc,rel=.true.)                    ! rel. diff.
+        plot_var(:,:,:,4) = log10(abs(diff(A,B,grp_dim_loc,rel=.true.)))        ! log of abs. value of rel. diff.
+        plot_var(:,:,:,5) = diff(A,B,grp_dim_loc,rel=.false.)                   ! abs. diff.
         
         ! set up var_names
         var_names(1) = 'v1'
         var_names(2) = 'v2'
         var_names(3) = 'rel v1 - v2'
-        var_names(4) = 'abs v1 - v2'
+        var_names(4) = 'log abs rel v1 - v2'
+        var_names(5) = 'abs v1 - v2'
         
         ! plot
         call print_HDF5_arr(var_names,file_name,plot_var,tot_dim=tot_dim_loc,&
@@ -1423,33 +1423,65 @@ contains
         
         ! output message if requested
         if (output_message_loc) then
+            call writo('Information about errors:')
             call lvl_ud(1)
-            call writo('Information about relative and absolute error:')
-            call lvl_ud(1)
-            ! calculate limits on relative error
-            lim_lo = minval(plot_var(:,:,:,3))
-            lim_hi = maxval(plot_var(:,:,:,3))
-            sum_err = sum(plot_var(:,:,:,3))
-            ! get most stringent limits from all processes
-            if (.not.ind_plot) then
-                istat = get_ser_var([lim_lo],tot_lim)
-                CHCKSTT
-                lim_lo = minval(tot_lim)
-                istat = get_ser_var([lim_hi],tot_lim)
-                CHCKSTT
-                lim_hi = maxval(tot_lim)
-                istat = get_ser_var([sum_err],tot_err)
-                CHCKSTT
-                sum_err = sum(tot_err)
-            end if
-            ! output limits on relative error
+            ! relative error
+            call stats(tot_dim_loc(1:3),plot_var(:,:,:,3),lim_lo,lim_hi,err_av)
             call writo(trim(r2strt(lim_lo))//' < rel. err. < '//&
                 &trim(r2strt(lim_hi))//', average value: '//&
-                &trim(r2strt(sum_err/product(tot_dim_loc(1:3)))))
+                &trim(r2strt(err_av)))
+            ! log of absolute relative error
+            call stats(tot_dim_loc(1:3),plot_var(:,:,:,4),lim_lo,lim_hi,err_av)
+            call writo(trim(r2strt(lim_lo))//' < log(abs(rel. err.)) < '//&
+                &trim(r2strt(lim_hi))//', average value: '//&
+                &trim(r2strt(err_av)))
+            ! absolute error
+            call stats(tot_dim_loc(1:3),plot_var(:,:,:,5),lim_lo,lim_hi,err_av)
+            call writo(trim(r2strt(lim_lo))//' < abs. err. < '//&
+                &trim(r2strt(lim_hi))//', average value: '//&
+                &trim(r2strt(err_av)))
+            call lvl_ud(-1)
+        end if
+    contains
+        ! returns relative or absolute difference between inputs A and B
+        function diff(A,B,dims,rel) result(C)
+            ! local variables
+            real(dp) :: max_diff = 1.E10                                        ! maximum absolute difference
+            
+            ! input / output
+            real(dp), intent(in) :: A(:,:,:)                                    ! input A
+            real(dp), intent(in) :: B(:,:,:)                                    ! input B
+            integer, intent(in) :: dims(3)                                      ! dimensions of A and B
+            logical, intent(in) :: rel                                          ! .true. if relative and .false. if absolute error
+            real(dp) :: C(dims(1),dims(2),dims(3))                              ! output C
+            
+            ! return output
+            if (rel) then
+                C = min(max_diff,max(-max_diff,(A-B)/(A+B)))
+            else
+                C = abs(A-B)
+            end if
+        end function diff
+        
+        ! returns limits and average value
+        subroutine stats(tot_dims,var,lim_lo,lim_hi,err_av)
+            use MPI_utilities, only: get_ser_var
+            
+            ! input / output
+            integer, intent(in) :: tot_dims(3)                                  ! total dimensions of grid
+            real(dp), intent(in) :: var(:,:,:)                                  ! input variable for which to calculate statistics
+            real(dp), intent(inout) :: lim_lo                                   ! lower limit of errors
+            real(dp), intent(inout) :: lim_hi                                   ! upper limit of errors
+            real(dp), intent(inout) :: err_av                                   ! average error
+            
+            ! local variables
+            real(dp) :: sum_err                                                 ! sum of errors
+            
             ! calculate limits on absolute error
-            lim_lo = minval(plot_var(:,:,:,4))
-            lim_hi = maxval(plot_var(:,:,:,4))
-            sum_err = sum(plot_var(:,:,:,4))
+            lim_lo = minval(var)
+            lim_hi = maxval(var)
+            sum_err = sum(var)
+            
             ! get most stringent limits from all processes
             if (.not.ind_plot) then
                 istat = get_ser_var([lim_lo],tot_lim)
@@ -1462,12 +1494,9 @@ contains
                 CHCKSTT
                 sum_err = sum(tot_err)
             end if
-            ! output limits on absolute error
-            call writo(trim(r2strt(lim_lo))//' < abs. err. < '//&
-                &trim(r2strt(lim_hi))//', average value: '//&
-                &trim(r2strt(sum_err/product(tot_dim_loc(1:3)))))
-            call lvl_ud(-1)
-            call lvl_ud(-1)
-        end if
+            
+            ! calculate average error
+            err_av = sum_err/product(tot_dims)
+        end subroutine
     end subroutine plot_diff_HDF5
 end module output_ops

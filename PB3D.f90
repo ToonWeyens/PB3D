@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.73                                                              !
+!   Version: 0.74                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -23,6 +23,7 @@
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D
+    use num_vars, only: ltest
     use str_ops, only: r2str, i2str
     use messages, only: init_messages, lvl_ud, writo, init_time, &
         &start_time, passed_time, print_hello, print_goodbye
@@ -33,7 +34,7 @@ program PB3D
     use input_ops, only: read_input
     use utilities, only: init_utilities
     use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, broadcast_input_vars
-    use eq_ops, only: read_eq, calc_norm_const
+    use eq_ops, only: read_eq, calc_normalization_const, normalize_input
     use test, only: generic_tests
     
     implicit none
@@ -41,13 +42,13 @@ program PB3D
     ! local variables
     integer :: ierr                                                             ! error
     
-    write(*,*) 'CALC_V_INT SHOULD WORK WITH FAST FOURIER TRANSFORM!!!'
-    
     write(*,*) 'TEST PRESSURE BALANCE'
     
     write(*,*) 'INVESTIGATE HOW IMPROVING THE DERIVATIVES CAN &
         &HELP YOU GET RID OF UNSTABLE SIDE OF SPECTRUM !!!!!!!!!!!!!!!!!!!!!!!'
     write(*,*) 'DOING THIS IN THIS ROUTINE ALREADY HELPED A LOT!!!!!'
+    write(*,*) 'THERE IS, FOR EXAMPLE, A GIGANTIC ERROR IN THE DERIVATIVES OF &
+        &HELENA PROFILES IF AND ONLY IF  TOROIDAL FLUX IS USED! SEE test_D12h_H'
     
     write(*,*) '!!! HDF5 PLOT CHOULD CHECK IF IT IS REALLY AXISYMMETRIC IF IT &
         &DOES A 2D PLOT BECAUSE ONE DIMENSION EQUAL TO 1 !!!'
@@ -80,7 +81,9 @@ program PB3D
     CHCKERR
     ierr = open_output()                                                        ! open output file per alpha group
     CHCKERR
-    ierr = calc_norm_const()                                                    ! set up normalization constants
+    ierr = calc_normalization_const()                                           ! set up normalization constants
+    CHCKERR
+    ierr = normalize_input()                                                    ! normalize the input
     CHCKERR
     ierr = broadcast_input_vars()                                               ! broadcast to other processors
     CHCKERR
@@ -89,19 +92,21 @@ program PB3D
     call writo('')
     call lvl_ud(-1)
     
+#if ldebug
     !-------------------------------------------------------
     !   Do some tests
     !-------------------------------------------------------
-#if ldebug
-    call start_time
-    call writo('Generic Tests')
-    call lvl_ud(1)
-    ierr = generic_tests()
-    CHCKERR
-    call writo('')
-    call passed_time
-    call writo('')
-    call lvl_ud(-1)
+    if (ltest) then
+        call start_time
+        call writo('Generic Tests')
+        call lvl_ud(1)
+        ierr = generic_tests()
+        CHCKERR
+        call writo('')
+        call passed_time
+        call writo('')
+        call lvl_ud(-1)
+    end if
 #endif
     
     !-------------------------------------------------------

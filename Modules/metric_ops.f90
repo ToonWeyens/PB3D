@@ -6,7 +6,7 @@ module metric_ops
     use str_ops
     use output_ops
     use messages
-    use num_vars, only: dp, max_deriv, max_str_ln
+    use num_vars, only: dp, max_deriv, max_str_ln, pi
     use utilities, only: check_deriv
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
@@ -16,10 +16,9 @@ module metric_ops
     private
     public calc_T_VC, calc_g_C, calc_jac_C, calc_g_V, calc_jac_V, &
         &calc_jac_H, calc_T_HF, calc_T_VF, calc_h_H, &
-        &calc_inv_met, calc_g_F, calc_jac_F, normalize_metric_vars, &
-        &calc_f_deriv
+        &calc_inv_met, calc_g_F, calc_jac_F, transf_deriv
 #if ldebug
-    public test_T_EF, test_p, test_jac_F, test_g_V, test_D12h_H, &
+    public test_T_EF, test_p, test_jac_F, test_g_V, test_B_V, test_D12h_H, &
         &debug_calc_inv_met_ind
 #endif
     
@@ -61,9 +60,9 @@ module metric_ops
         module procedure calc_inv_met_ind, calc_inv_met_arr, &
             &calc_inv_met_ind_0D, calc_inv_met_arr_0D
     end interface
-    interface calc_f_deriv
-        module procedure calc_f_deriv_3_ind, calc_f_deriv_3_arr, &
-            &calc_f_deriv_3_arr_2D, calc_f_deriv_1_ind
+    interface transf_deriv
+        module procedure transf_deriv_3_ind, transf_deriv_3_arr, &
+            &transf_deriv_3_arr_2D, transf_deriv_1_ind
     end interface
     
     ! global variables
@@ -190,11 +189,19 @@ contains
         if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
             !met%h_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         else if (sum(deriv).eq.0) then                                          ! no derivatives
-            met%h_E(:,:,:,c([1,1],.true.),0,0,0) = h_H_11
-            met%h_E(:,:,:,c([1,2],.true.),0,0,0) = h_H_12
-            met%h_E(:,:,:,c([3,3],.true.),0,0,0) = h_H_33
-            met%h_E(:,:,:,c([2,2],.true.),0,0,0) = 1._dp/h_H_11 * &
-                &(1._dp/(met%jac_E(:,:,:,0,0,0)**2*h_H_33) + h_H_12**2)
+            do jd = 1,grid%n(2)
+                met%h_E(:,jd,:,c([1,1],.true.),0,0,0) = &
+                    &h_H_11(:,grid%i_min:grid%i_max)
+                met%h_E(:,jd,:,c([1,2],.true.),0,0,0) = &
+                    &h_H_12(:,grid%i_min:grid%i_max)
+                met%h_E(:,jd,:,c([3,3],.true.),0,0,0) = &
+                    &h_H_33(:,grid%i_min:grid%i_max)
+                met%h_E(:,jd,:,c([2,2],.true.),0,0,0) = &
+                    &1._dp/h_H_11(:,grid%i_min:grid%i_max) * &
+                    &(1._dp/(met%jac_E(:,jd,:,0,0,0)**2*&
+                    &h_H_33(:,grid%i_min:grid%i_max)) + &
+                    &h_H_12(:,grid%i_min:grid%i_max)**2)
+            end do
         else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
             do ld = 1,6
                 do jd = 1,grid%n(2)
@@ -550,8 +557,10 @@ contains
             met%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         else if (sum(deriv).eq.0) then                                          ! no derivatives
             do kd = 1,grid%grp_n_r
-                met%jac_E(:,:,kd,0,0,0) = eq%q_saf_E(kd,0)/&
-                    &(h_H_33(:,:,kd)*RBphi(grid%i_min-1+kd))
+                do jd = 1,grid%n(2)
+                    met%jac_E(:,jd,kd,0,0,0) = eq%q_saf_E(kd,0)/&
+                        &(h_H_33(:,grid%i_min-1+kd)*RBphi(grid%i_min-1+kd))
+                end do
             end do
         else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
             do jd = 1,grid%n(2)
@@ -732,7 +741,7 @@ contains
     ! calculate the transformation matrix  between equilibrium V(mec) and F(lux)
     ! oordinate system
     integer function calc_T_VF_ind(grid,eq,met,deriv) result(ierr)
-        use num_vars, only: pi, use_pol_flux_F
+        use num_vars, only: use_pol_flux_F
         use utilities, only: add_arr_mult, c
         
         character(*), parameter :: rout_name = 'calc_T_VF_ind'
@@ -913,7 +922,7 @@ contains
     ! calculate the transformation matrix  between H(ELENA) and F(lux) oordinate
     ! system
     integer function calc_T_HF_ind(grid,eq,met,deriv) result(ierr)
-        use num_vars, only: use_pol_flux_F, pi
+        use num_vars, only: use_pol_flux_F
         use utilities, only: add_arr_mult, c
         
         character(*), parameter :: rout_name = 'calc_T_HF_ind'
@@ -1171,6 +1180,7 @@ contains
                 if (grp_n_procs.gt.1) call writo('WARNING: Debugging of &
                     &calc_inv_met_ind should be done with one processor only')
                 call writo('checking if X*Y = 1')
+                call lvl_ud(1)
                 allocate(XY(dims(1),dims(2),dims(3),9))
                 ierr = calc_mult(X(:,:,:,:,0,0,0),Y(:,:,:,:,0,0,0),XY,3)
                 CHCKERR('')
@@ -1184,6 +1194,7 @@ contains
                     end do
                 end do
                 deallocate(XY)
+                call lvl_ud(-1)
             end if
 #endif
         else                                                                    ! calculate using the other inverses
@@ -1321,8 +1332,8 @@ contains
         end do
     end function calc_inv_met_arr_0D
     
-    ! calculate the derivatives in the flux coordinates from derivatives in VMEC
-    ! coordinates.
+    ! Calculates  derivatives in  a coordinate  system B  from derivatives  in a
+    ! coordinates system A, making use of the transformation matrix T_BA.
     ! The routine works  by exchanging the derivatives in the  coordinates B for
     ! derivatives in coordinates A using the formula
     !   D^m_B X = T_BA D_A (D^m-1_B X)
@@ -1335,11 +1346,11 @@ contains
     ! obtained recursively from the lower orders in the coordinates B and higher
     ! orders in the coordinates A
     ! see [ADD REF] for more detailed information
-    integer recursive function calc_f_deriv_3_ind(X_A,T_BA,X_B,max_deriv,&
+    integer recursive function transf_deriv_3_ind(X_A,T_BA,X_B,max_deriv,&
         &deriv_B,deriv_A_input) result(ierr)                                    ! normal variable version
         use utilities, only: add_arr_mult, c
         
-        character(*), parameter :: rout_name = 'calc_f_deriv_3_ind'
+        character(*), parameter :: rout_name = 'transf_deriv_3_ind'
         
         ! input / output
         real(dp), intent(in) :: X_A(1:,1:,1:,0:,0:,0:)                          ! variable and derivs. in coord. system A
@@ -1370,7 +1381,7 @@ contains
         
         ! check the derivatives requested
         ! (every B deriv. needs all the A derivs. -> sum(deriv_B) needed)
-        ierr = check_deriv(deriv_A + sum(deriv_B),max_deriv,'calc_f_deriv')
+        ierr = check_deriv(deriv_A + sum(deriv_B),max_deriv,'transf_deriv')
         CHCKERR('')
         
         ! detect first deriv. in the B coord. system that needs to be exchanged,
@@ -1422,7 +1433,7 @@ contains
                             
                             ! recursively call the subroutine again to calculate
                             ! X_B_x for the current derivatives
-                            ierr = calc_f_deriv_3_ind(X_A,T_BA,&
+                            ierr = transf_deriv_3_ind(X_A,T_BA,&
                                 &X_B_x(:,:,:,jd,kd,ld),max_deriv,deriv_B_x,&
                                 &deriv_A_x)
                             CHCKERR('')
@@ -1438,10 +1449,10 @@ contains
                 CHCKERR('')
             end do
         end if
-    end function calc_f_deriv_3_ind
-    integer function calc_f_deriv_3_arr(X_A,T_BA,X_B,max_deriv,derivs) &
+    end function transf_deriv_3_ind
+    integer function transf_deriv_3_arr(X_A,T_BA,X_B,max_deriv,derivs) &
         &result(ierr)                                                           ! matrix version
-        character(*), parameter :: rout_name = 'calc_f_deriv_3_arr'
+        character(*), parameter :: rout_name = 'transf_deriv_3_arr'
         
         ! input / output
         real(dp), intent(in) :: X_A(1:,1:,1:,0:,0:,0:)                             ! variable and derivs. in coord. system A
@@ -1454,17 +1465,17 @@ contains
         integer :: id                                                           ! counter
         
         do id = 1, size(derivs,2)
-            ierr = calc_f_deriv_3_ind(X_A,T_BA,&
+            ierr = transf_deriv_3_ind(X_A,T_BA,&
                 &X_B(:,:,:,derivs(1,id),derivs(2,id),derivs(3,id)),&
                 &max_deriv,derivs(:,id))
             CHCKERR('')
         end do
-    end function calc_f_deriv_3_arr
-    integer function calc_f_deriv_3_arr_2D(X_A,T_BA,X_B,max_deriv,derivs) &
+    end function transf_deriv_3_arr
+    integer function transf_deriv_3_arr_2D(X_A,T_BA,X_B,max_deriv,derivs) &
         &result(ierr)                                                           ! matrix version
         use utilities, only: is_sym, c
         
-        character(*), parameter :: rout_name = 'calc_f_deriv_3_arr_2D'
+        character(*), parameter :: rout_name = 'transf_deriv_3_arr_2D'
         
         ! input / output
         real(dp), intent(in) :: X_A(1:,1:,1:,1:,0:,0:,0:)                       ! variable and derivs. in coord. system A
@@ -1490,18 +1501,18 @@ contains
         
         do kd = 1,size(X_A,4)
             do id = 1, size(derivs,2)
-                ierr = calc_f_deriv_3_ind(X_A(:,:,:,kd,:,:,:),T_BA,&
+                ierr = transf_deriv_3_ind(X_A(:,:,:,kd,:,:,:),T_BA,&
                     &X_B(:,:,:,kd,derivs(1,id),derivs(2,id),derivs(3,id)),&
                     &max_deriv,derivs(:,id))
                 CHCKERR('')
             end do
         end do
-    end function calc_f_deriv_3_arr_2D
-    integer recursive function calc_f_deriv_1_ind(X_A,T_BA,X_B,max_deriv,&
+    end function transf_deriv_3_arr_2D
+    integer recursive function transf_deriv_1_ind(X_A,T_BA,X_B,max_deriv,&
         &deriv_B,deriv_A_input) result(ierr)                                    ! flux variable version
         use utilities, only: add_arr_mult
         
-        character(*), parameter :: rout_name = 'calc_f_deriv_1_ind'
+        character(*), parameter :: rout_name = 'transf_deriv_1_ind'
         
         ! input / output
         real(dp), intent(in) :: X_A(1:,0:)                                      ! variable and derivs. in coord. system A
@@ -1530,7 +1541,7 @@ contains
         
         ! check the derivatives requested
         ! (every B deriv. needs all the A derivs. -> sum(deriv_B) needed)
-        ierr = check_deriv([deriv_A+deriv_B,0,0],max_deriv,'calc_f_deriv')
+        ierr = check_deriv([deriv_A+deriv_B,0,0],max_deriv,'transf_deriv')
         CHCKERR('')
         
         ! calculate the  derivative in coord.  deriv_id_B of coord. system  B of
@@ -1558,7 +1569,7 @@ contains
                 
                 ! recursively call  the subroutine again to  calculate X_B_x for
                 ! the current derivatives
-                ierr = calc_f_deriv_1_ind(X_A,T_BA,X_B_x(:,jd),max_deriv,&
+                ierr = transf_deriv_1_ind(X_A,T_BA,X_B_x(:,jd),max_deriv,&
                     &deriv_B_x,deriv_A_input=deriv_A_x)
                 CHCKERR('')
             end do
@@ -1567,52 +1578,15 @@ contains
             ierr = add_arr_mult(T_BA(:,0:),X_B_x(:,0:),X_B,[deriv_A,0,0])
             CHCKERR('')
         end if
-    end function calc_f_deriv_1_ind
-    
-    ! normalizes metric coefficients  and jacobian in flux  coordinates, as well
-    ! as the  poloidal and toroidal flux
-    subroutine normalize_metric_vars(met)
-        use eq_vars, only: R_0, B_0, psi_0
-        
-        ! input / output
-        type(metric_type), intent(inout) :: met                                 ! metric to be normalized
-        
-        ! local variables
-        real(dp) :: g_0(6)                                                      ! normalization factor for the covariant metric factors
-        integer :: id                                                           ! counter
-        
-        ! set up g_0
-        g_0(1) = R_0 * R_0
-        g_0(2) = 1._dp/B_0
-        g_0(3) = R_0 * R_0
-        g_0(4) = 1._dp/(R_0 * B_0) * 1/(R_0 * B_0)
-        g_0(5) = 1._dp/B_0
-        g_0(6) = R_0 * R_0
-        
-        ! normalize the metric coefficients
-        do id = 1,6
-            met%g_FD(:,:,:,id,:,:,:) = met%g_FD(:,:,:,id,:,:,:) / g_0(id)
-            met%h_FD(:,:,:,id,:,:,:) = met%h_FD(:,:,:,id,:,:,:) * g_0(id)
-        end do
-        do id = 1,size(met%g_FD,5)-1                                            ! derivatives in alpha are scaled by A
-            met%g_FD(:,:,:,:,:,id,:) = met%g_FD(:,:,:,:,:,id,:) * psi_0**id 
-            met%h_FD(:,:,:,:,:,id,:) = met%h_FD(:,:,:,:,:,id,:) * psi_0**id
-        end do
-        
-        ! normalize the Jacobian
-        met%jac_FD = met%jac_FD * B_0/R_0
-        do id = 1,size(met%jac_FD,5)-1                                          ! derivatives in alpha are scaled by A
-            met%jac_FD(:,:,:,:,id,:) = met%jac_FD(:,:,:,:,id,:) * psi_0**id
-        end do
-    end subroutine normalize_metric_vars
+    end function transf_deriv_1_ind
     
 #if ldebug
     ! See if T_EF it complies with the theory of [ADD REF]
     integer function test_T_EF(grid_eq,eq,met) result(ierr)
-        use num_vars, only: use_pol_flux_F, pi, eq_style
+        use num_vars, only: use_pol_flux_F, eq_style
         use grid_vars, only: destroy_grid
         use grid_ops, only: trim_grid
-        use utilities, only: c, diff
+        use utilities, only: c
         use output_ops, only: plot_diff_HDF5
         
         character(*), parameter :: rout_name = 'test_T_EF'
@@ -1753,6 +1727,11 @@ contains
         ! set up plot variables for calculated values
         do id = 1,3
             do kd = 1,3
+                ! user output
+                call writo('Testing T_EF('//trim(i2str(kd))//','//&
+                    &trim(i2str(id))//')')
+                call lvl_ud(1)
+                
                 ! set some variables
                 file_name = 'TEST_T_EF_'//trim(i2str(kd))//'_'//trim(i2str(id))
                 description = 'Testing calculated with given value for T_EF('//&
@@ -1763,6 +1742,8 @@ contains
                     &met%T_EF(:,:,1:grid_trim%grp_n_r,c([kd,id],.false.),&
                     &0,0,0),file_name,tot_dim,grp_dim,grp_offset,description,&
                     &output_message=.true.)
+                
+                call lvl_ud(-1)
             end do
         end do
         
@@ -1777,6 +1758,7 @@ contains
     ! performs tests on pressure balance
     !   - mu_0 D2p = 1/J (D3 B_2 - D2 B_3)
     !   - mu_0 J D3p = 0 => D3 B_1 = D1 B_3
+    ! (working in the (modified) Flux coordinates (alpha,psi,theta)_F)
     integer function test_p(grid_eq,eq,met) result(ierr)
         use utilities, only: c
         use num_vars, only: mu_0
@@ -1830,7 +1812,7 @@ contains
             &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,1) - &
             &met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,0,0)*&
             &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,1,0))/ &
-            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2
+            &(met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2)
         res(:,:,:,1) = res(:,:,:,1)/met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)
         
         ! save mu_0 D2p in res
@@ -1887,7 +1869,7 @@ contains
     !   - comparing it with the determinant of g_F
     !   - comparing it with the direct formula
     integer function test_jac_F(grid_eq,eq,met) result(ierr)
-        use num_vars, only: pi, eq_style, use_pol_flux_F
+        use num_vars, only: eq_style, use_pol_flux_F
         use grid_ops, only: trim_grid
         use utilities, only: calc_det
         use HELENA, only: h_H_33, RBphi
@@ -1901,7 +1883,7 @@ contains
         
         ! local variables
         real(dp), allocatable :: res(:,:,:)                                     ! result variable
-        integer :: kd                                                           ! counter
+        integer :: jd, kd                                                       ! counters
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
         integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total and group dimensions and group offset
@@ -1972,8 +1954,11 @@ contains
                 end do
             case (2)                                                            ! HELENA
                 do kd = 1,grid_trim%grp_n_r
-                    res(:,:,kd) = 2*pi/Dflux(kd)*eq%q_saf_E(kd,0)/&
-                        &(h_H_33(:,:,kd)*RBphi(grid_eq%i_min-1+kd))             ! h_H_33 = 1/R^2 and RBphi = F are tabulated in eq. grid
+                    do jd = 1,grid_trim%n(2)
+                        res(:,jd,kd) = 2*pi/Dflux(kd)*eq%q_saf_E(kd,0)/&
+                            &(h_H_33(:,grid_eq%i_min-1+kd)*&
+                            &RBphi(grid_eq%i_min-1+kd))                         ! h_H_33 = 1/R^2 and RBphi = F are tabulated in eq. grid
+                    end do
                 end do
             case default
                 err_msg = 'No equilibrium style associated with '//&
@@ -2069,6 +2054,11 @@ contains
         ! set up plot variables for calculated values
         do id = 1,3
             do kd = 1,3
+                ! user output
+                call writo('Testing g_V('//trim(i2str(kd))//','//&
+                    &trim(i2str(id))//')')
+                call lvl_ud(1)
+                
                 ! set some variables
                 file_name = 'TEST_g_V_'//trim(i2str(kd))//'_'//trim(i2str(id))
                 description = 'Testing calculated with given value for g_V('//&
@@ -2079,6 +2069,8 @@ contains
                     &met%g_E(:,:,1:grid_trim%grp_n_r,c([kd,id],.true.),&
                     &0,0,0),file_name,tot_dim,grp_dim,grp_offset,description,&
                     &output_message=.true.)
+                
+                call lvl_ud(-1)
             end do
         end do
         
@@ -2086,6 +2078,103 @@ contains
         call lvl_ud(-1)
         call writo('Test complete')
     end function test_g_V
+    
+    ! Tests whether B_V is calculated correctly
+    integer function test_B_V(grid_eq,eq,met) result(ierr)
+        use grid_ops, only: trim_grid
+        use utilities, only: c
+        
+        character(*), parameter :: rout_name = 'test_B_V'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        
+        ! local variables
+        integer :: id, kd                                                       ! counters
+        real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
+        real(dp), allocatable :: res2(:,:,:,:)                                  ! result variable
+        character(len=max_str_ln) :: file_name                                  ! name of plot file
+        character(len=max_str_ln) :: description                                ! description of plot
+        integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total and group dimensions and group offset
+        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! output
+        call writo('Going to test whether the magnetic field in the VMEC &
+            &coords. B_V is calculated correctly')
+        call lvl_ud(1)
+        
+        ! trim extended grid into plot grid
+        ierr = trim_grid(grid_eq,grid_trim)
+        CHCKERR('')
+        
+        ! set up res and res2
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,4))
+        allocate(res2(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,4))
+        
+        ! set total and group dimensions and group offset
+        tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
+        grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r]
+        grp_offset = [0,0,grid_trim%i_min-1]
+        
+        ! calculate covariant components of B_V
+        do id = 1,3
+            do kd = 1,grid_trim%grp_n_r
+                res(:,:,kd,id) = -eq%flux_p_E(kd,1)/&
+                    &(2*pi*met%jac_E(:,:,kd,0,0,0)) * &
+                    &((1-eq%q_saf_E(kd,0)*eq%L_E(:,:,kd,0,0,1)) * &
+                    &met%g_E(:,:,kd,c([id,2],.true.),0,0,0) + &
+                    &eq%q_saf_E(kd,0)*(1+eq%L_E(:,:,kd,0,1,0)) * &
+                    &met%g_E(:,:,kd,c([id,3],.true.),0,0,0))
+            end do
+        end do
+        
+        ! calculate the magniture of B_V
+        do kd = 1,grid_trim%grp_n_r
+            res(:,:,kd,4) = sqrt((eq%flux_p_E(kd,1)/&
+                &(2*pi*met%jac_E(:,:,kd,0,0,0)))**2 * &
+                &((1-eq%q_saf_E(kd,0)*eq%L_E(:,:,kd,0,0,1)) * &
+                &met%g_E(:,:,kd,c([2,2],.true.),0,0,0)) + &
+                &2*(1-eq%q_saf_E(kd,0)*eq%L_E(:,:,kd,0,0,1)) * &
+                &eq%q_saf_E(kd,0)*(1+eq%L_E(:,:,kd,0,1,0)) * &
+                &met%g_E(:,:,kd,c([3,2],.true.),0,0,0) + &
+                &eq%q_saf_E(kd,0)*(1+eq%L_E(:,:,kd,0,1,0)) * &
+                &met%g_E(:,:,kd,c([3,3],.true.),0,0,0) )
+        end do
+        
+        ! get covariant components of B_V from VMEC
+        
+        ! set up plot variables for calculated values
+        do id = 1,3
+            do kd = 1,3
+                ! user output
+                call writo('Testing g_V('//trim(i2str(kd))//','//&
+                    &trim(i2str(id))//')')
+                call lvl_ud(1)
+                
+                ! set some variables
+                file_name = 'TEST_g_V_'//trim(i2str(kd))//'_'//trim(i2str(id))
+                description = 'Testing calculated with given value for g_V('//&
+                    &trim(i2str(kd))//','//trim(i2str(id))//')'
+                
+                ! plot difference
+                call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.)),&
+                    &met%g_E(:,:,1:grid_trim%grp_n_r,c([kd,id],.true.),&
+                    &0,0,0),file_name,tot_dim,grp_dim,grp_offset,description,&
+                    &output_message=.true.)
+                
+                call lvl_ud(-1)
+            end do
+        end do
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Test complete')
+    end function test_B_V
     
     ! Tests whether D1 D2 h_H is calculated correctly
     integer function test_D12h_H(grid_eq,met) result(ierr)
@@ -2139,16 +2228,24 @@ contains
         ! set up plot variables for calculated values
         do id = 1,3
             do kd = 1,3
+                ! user output
+                call writo('Testing h_H('//trim(i2str(kd))//','//&
+                    &trim(i2str(id))//')')
+                call lvl_ud(1)
+                
                 ! set some variables
-                file_name = 'TEST_D12h_H_'//trim(i2str(kd))//'_'//trim(i2str(id))
-                description = 'Testing calculated with given value for D12h_H('//&
-                    &trim(i2str(kd))//','//trim(i2str(id))//')'
+                file_name = 'TEST_D12h_H_'//trim(i2str(kd))//'_'//&
+                    &trim(i2str(id))
+                description = 'Testing calculated with given value for D12h_H('&
+                    &//trim(i2str(kd))//','//trim(i2str(id))//')'
                 
                 ! plot difference
                 call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.)),&
                     &met%h_E(:,:,1:grid_trim%grp_n_r,c([kd,id],.true.),&
                     &1,1,0),file_name,tot_dim,grp_dim,grp_offset,description,&
                     &output_message=.true.)
+                
+                call lvl_ud(-1)
             end do
         end do
         

@@ -12,14 +12,14 @@ module num_vars
         &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups, &
         &next_job, next_job_win, &
         &pi, mu_0, iu, &
-        &minim_style, grid_style, EV_style, eq_style, plot_jq, plot_grid, &
+        &minim_style, EV_style, eq_style, rho_style, plot_jq, plot_grid, &
         &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
-        &use_normalization, n_sol_requested, n_sol_plotted, &
+        &use_normalization, EV_BC, &
         &max_it_r, tol_r, no_guess, &
         &max_it_NR, tol_NR, nyq_fac, &
-        &input_i, eq_i, eq_name, output_i, max_n_plots, no_plots, no_messages, &
+        &input_i, eq_i, eq_name, output_i, no_plots, no_messages, &
         &output_style, plot_dir, script_dir, data_dir, n_theta_plot, &
-        &n_zeta_plot, &
+        &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
         &n_alpha, min_alpha, max_alpha, alpha_job_nr, &
         &spline_type
 
@@ -32,8 +32,8 @@ module num_vars
     integer, parameter :: max_args = 10                                         ! maximum number of input arguments
     integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
+    character(len=max_str_ln) :: prog_version = '0.74'                          ! version number
     character(len=max_str_ln) :: output_name                                    ! will hold name of output file
-    character(len=max_str_ln) :: prog_version = '0.73'                          ! version number
 
     ! MPI variables
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha
@@ -57,9 +57,9 @@ module num_vars
     ! concerning runtime
     integer :: minim_style                                                      ! determines the method used for minimization
         ! 1 [def] : Euler-Lagrange min., finite diff and Richardson's method
-    integer :: grid_style                                                       ! how equilibrium grid is calculated
     integer :: EV_style                                                         ! determines the method used for solving an EV problem
     integer :: eq_style                                                         ! either 1 (VMEC) or 2 (HELENA)
+    integer :: rho_style                                                        ! style for equilibrium density profile, currently only 1 (constant)
     logical :: plot_jq                                                          ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0 (only global master)
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates (only group masters)
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates (only global master)
@@ -67,8 +67,7 @@ module num_vars
     logical :: use_pol_flux_E                                                   ! .true. if Equilibrium coordinates use pol. flux and .false. if tor. flux
     logical :: use_pol_flux_F                                                   ! .true. if Flux coordinates use pol. flux and .false. if tor. flux
     logical :: use_normalization                                                ! whether to use normalization or not
-    integer :: n_sol_requested                                                  ! how many solutions requested
-    integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
+    real(dp) :: EV_BC
     
     ! concerning Richardson extrapolation
     integer :: max_it_r                                                         ! number of levels for Richardson extrapolation
@@ -85,7 +84,6 @@ module num_vars
     integer :: eq_i                                                             ! file number of equilibrium file from VMEC or HELENA
     character(len=max_str_ln) :: eq_name                                        ! name of equilibrium file
     integer :: output_i                                                         ! file number of output file
-    integer :: max_n_plots                                                      ! max. nr. of modes for which to output a plot
     logical :: no_plots = .false.                                               ! true if no plots should be made
     logical :: no_messages = .false.                                            ! true if no messages should be shown
     integer :: output_style                                                     ! style of output (GNUPlot, HDF5, ...)
@@ -94,6 +92,9 @@ module num_vars
     character(len=4) :: data_dir = 'Data'                                       ! directory where to save data for plots
     integer :: n_theta_plot                                                     ! nr. of poloidal points in plot
     integer :: n_zeta_plot                                                      ! nr. of toroidal points in plot
+    integer :: n_sol_requested                                                  ! how many solutions requested
+    integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
+    logical :: retain_all_sol                                                   ! retain also faulty solutions
     
     ! concerning the various field lines for which to do the calculations
     integer :: n_alpha                                                          ! how many field lines

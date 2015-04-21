@@ -1,11 +1,11 @@
 !------------------------------------------------------------------------------!
 !   Variables that have to do with equilibrium quantities and the grid used in !
-!   the calculations.                                                          !
-!   Notes about XDMF:                                                          !
+!   the calculations:                                                          !
 !       -  The  equilibrium  variables  are comprised  of  the  variable  that !
 !       result from the equilibrium  calculation, such as pressure, rotational !
 !       transform, etc.                                                        !
-! - These variables are tabulated on a 3D grid, following the magnetic field:  !
+!       - These variables  are tabulated on a 3D grid,  following the magnetic !
+!       field:                                                                 !
 !           + In the normal coordinate,  they are tabulated in the equilibrium !
 !           grid.                                                              !
 !           +  In  the   angular  coordinates,  they  are   tabulated  in  the !
@@ -41,21 +41,8 @@ module eq_vars
     ! The arrays here are of the form (except for rho):
     !   - (r,Dr)                        for flux quantities
     !   - (angle_1,angle_2,r,D1,D2,D3)  for normal quantities
-    ! where angle_1 and angle_2 can be any angle that completely describe a flux
-    ! surface. For example, they  can refer to a grid of  theta and zeta values,
-    ! but they  can also refer  to (Modified)  flux coordinates with  a parallel
-    ! angle and a field line coordinate (alpha).
-    ! For normal usage here, angle_1 is  chosen equal to the parallel coordinate
-    ! and angle_2 equal to the field line  label (so the second dimension of the
-    ! matrices is then chosen  to be of size 1 for the  calculations on a single
-    ! field  line).  At  the  same  time,  the  parallel  coordinate,  in  which
-    ! integrations will have  to be done, ocupies the first  index. This is good
-    ! for numerical efficiency.
-    ! An  equilibrium type  should be  complemented  by grid  type, which  gives
-    ! information about the grid points  at which the equilibrium quantities are
-    ! tabulated.
-    ! It is important that this order  of the coordinates in space is consistent
-    ! among all the variables.
+    ! where it is refered to the discussion  of the grid type for an explanation
+    ! of the angles angle_1 and angle_2.
     ! The last three indices refer to the  derivatives in coordinate 1, 2 and 3,
     ! which refer to the coordinates described in [ADD REF]: 
     !   - For E(quilibrium) coordinates, they are (r,theta,zeta)_E
@@ -72,11 +59,13 @@ module eq_vars
         real(dp), allocatable :: pres_E(:,:)                                    ! pressure, and norm. Deriv. in E(equilibrium) coords.
         real(dp), allocatable :: q_saf_E(:,:)                                   ! safety factor in E(equilibrium) coordinates
         real(dp), allocatable :: rot_t_E(:,:)                                   ! rot. transform in E(equilibrium) coordinates
-        real(dp), pointer :: flux_p_E(:,:), flux_t_E(:,:)                       ! pol. and tor. flux and norm. Deriv. in E(equilibrium) coords.
+        real(dp), pointer :: flux_p_E(:,:) => null()                            ! poloidal flux and norm. Deriv. in E(equilibrium) coords.
+        real(dp), pointer :: flux_t_E(:,:) => null()                            ! toroidal flux and norm. Deriv. in E(equilibrium) coords.
         real(dp), allocatable :: pres_FD(:,:)                                   ! pressure, and norm. Deriv. with values and Derivs. in F(lux) coords.
         real(dp), allocatable :: q_saf_FD(:,:)                                  ! safety factor, Deriv. in F(lux) coords.
         real(dp), allocatable :: rot_t_FD(:,:)                                  ! rot. transform, Deriv. in F(lux) coords.
-        real(dp), pointer :: flux_p_FD(:,:), flux_t_FD(:,:)                     ! pol. and tor. flux, and norm. Deriv. with values and Derivs. in F(lux) coords.
+        real(dp), pointer :: flux_p_FD(:,:) => null()                           ! poloidal flux, and norm. Deriv. with values and Derivs. in F(lux) coords.
+        real(dp), pointer :: flux_t_FD(:,:) => null()                           ! toroidal flux, and norm. Deriv. with values and Derivs. in F(lux) coords.
     end type
 
 contains
@@ -185,10 +174,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! deallocate general variables
-        deallocate(eq%flux_p_E)
-        deallocate(eq%flux_t_E)
-        
         ! choose which equilibrium style is being used:
         !   1:  VMEC
         !   2:  HELENA
@@ -220,6 +205,8 @@ contains
         deallocate(eq%pres_E)
         deallocate(eq%q_saf_E)
         deallocate(eq%rot_t_E)
+        deallocate(eq%flux_p_E)
+        deallocate(eq%flux_t_E)
         
         deallocate(eq%rho)
     end subroutine dealloc_eq_final

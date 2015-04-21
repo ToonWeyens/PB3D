@@ -112,7 +112,8 @@ contains
         ! concerns eq variables and met variables)
         allocate(grp_r_eq(grid_X%grp_n_r))
         do kd = 1,grid_X%grp_n_r
-            call con2dis(grid_X%grp_r_F(kd),grp_r_eq(kd),grid_eq%grp_r_F)
+            ierr = con2dis(grid_X%grp_r_F(kd),grp_r_eq(kd),grid_eq%grp_r_F)
+            CHCKERR('')
         end do
         
         ! initialize multiplicative factors fac_0 and fac_0 and par_fac
@@ -447,7 +448,7 @@ contains
     contains
         ! plots the harmonics and their maximum in 2D
         integer function plot_harmonics(grid_X,X,X_id) result(ierr)
-            use MPI_ops, only: wait_MPI, get_ghost_arr, get_ser_var
+            use MPI_utilities, only: wait_MPI, get_ghost_arr, get_ser_var
             use output_ops, only: merge_GP
             use num_vars, only: grp_n_procs, grp_rank, alpha_job_nr
             

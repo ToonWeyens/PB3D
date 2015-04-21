@@ -14,12 +14,13 @@ module X_ops
 
     implicit none
     private
-    public prepare_X, solve_EV_system, calc_PV, calc_KV, calc_U, calc_extra
+    public prepare_X, solve_EV_system, calc_PV, calc_KV, calc_U, calc_extra, &
+        &calc_magn_ints
 
 contains
     ! prepare the matrix elements by calculating  KV_i and PV_i, which then will
     ! have to be integrated, with a complex exponential weighting function
-    integer function prepare_X(eq,grid,met,X) result(ierr)
+    integer function prepare_X(grid,eq,met,X) result(ierr)
         use num_vars, only: use_pol_flux_F, plot_jq, grp_nr
         use X_vars, only: dealloc_X, X_type
         use utilities, only: c
@@ -27,8 +28,8 @@ contains
         character(*), parameter :: rout_name = 'prepare_X'
         
         ! input / output
+        type(grid_type) :: grid                                                 ! equilibrium grid variables
         type(eq_type) :: eq                                                     ! equilibrium variables
-        type(grid_type) :: grid                                                 ! grid variables
         type(metric_type) :: met                                                ! metric variables
         type(X_type) :: X                                                       ! perturbation variables
         
@@ -122,34 +123,6 @@ contains
         call calc_KV(eq,grid,met,X)
         call lvl_ud(-1)
         
-        ! Calculate PV_int = <PV e^(k-m)ang_par_F>
-        call writo('Taking field average of PV')
-        call lvl_ud(1)
-        ierr = calc_int_magn(grid,met,X%exp_ang_par_F,X%n_mod,X%PV_0(:,:,:,:),&
-            &X%PV_int_0(:,:,:))
-        CHCKERR('')
-        ierr = calc_int_magn(grid,met,X%exp_ang_par_F,X%n_mod,X%PV_1(:,:,:,:),&
-            &X%PV_int_1(:,:,:))
-        CHCKERR('')
-        ierr = calc_int_magn(grid,met,X%exp_ang_par_F,X%n_mod,X%PV_2(:,:,:,:),&
-            &X%PV_int_2(:,:,:))
-        CHCKERR('')
-        call lvl_ud(-1)
-        
-        ! Calculate KV_int = <KV e^(k-m)ang_par_F>
-        call writo('Taking field average of KV')
-        call lvl_ud(1)
-        ierr = calc_int_magn(grid,met,X%exp_ang_par_F,X%n_mod,X%KV_0(:,:,:,:),&
-            &X%KV_int_0(:,:,:))
-        CHCKERR('')
-        ierr = calc_int_magn(grid,met,X%exp_ang_par_F,X%n_mod,X%KV_1(:,:,:,:),&
-            &X%KV_int_1(:,:,:))
-        CHCKERR('')
-        ierr = calc_int_magn(grid,met,X%exp_ang_par_F,X%n_mod,X%KV_2(:,:,:,:),&
-            &X%KV_int_2(:,:,:))
-        CHCKERR('')
-        call lvl_ud(-1)
-        
         ! deallocate equilibrium variables
         call writo('deallocating unused variables')
         call dealloc_X(X)
@@ -173,7 +146,7 @@ contains
         use grid_vars, only: destroy_grid
         use eq_vars, only: max_flux_p_F, max_flux_t_F
         use grid_ops, only: trim_grid
-        use MPI_ops, only: get_ser_var
+        use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'resonance_plot'
         
@@ -405,7 +378,8 @@ contains
             ! local variables
             integer :: id                                                       ! counters
             real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)        ! pol. and tor. angle of plot
-            real(dp), allocatable :: r_plot(:)                                  ! normal coordinates of plot
+            real(dp), allocatable :: r_plot_E(:)                                ! normal E coordinates of plot
+            real(dp), allocatable :: r_plot_F(:)                                ! normal F coordinates of plot
             real(dp), allocatable :: X_plot(:,:,:,:), Y_plot(:,:,:,:), &
                 &Z_plot(:,:,:,:)                                                ! X, Y and Z of plot of all surfaces
             real(dp), allocatable :: X_plot_ind(:,:,:), Y_plot_ind(:,:,:), &
@@ -434,9 +408,17 @@ contains
             ! set dimensions
             plot_dim = [n_theta_plot,n_zeta_plot,1,X%n_mod]
             
-            ! calculate normal coords. in Equilibrium coords.
-            allocate(r_plot(X%n_mod))
-            ierr = coord_F2E(grid,eq,x_vars(n_r,2:X%n_mod+1),r_plot)
+            ! setup normal vars in F coords.
+            allocate(r_plot_F(X%n_mod))
+            if (use_pol_flux_F) then
+                r_plot_F = x_vars(n_r,2:X%n_mod+1)*max_flux_p_F/(2*pi)
+            else
+                r_plot_F = x_vars(n_r,2:X%n_mod+1)*max_flux_t_F/(2*pi)
+            end if
+            
+            ! calculate normal vars in Equilibrium coords.
+            allocate(r_plot_E(X%n_mod))
+            ierr = coord_F2E(grid,eq,r_plot_F,r_plot_E)
             CHCKERR('')
             
             ! create plot grid
@@ -453,7 +435,7 @@ contains
             ! loop over all resonant surfaces to calculate X, Y and Z values
             do id = 1,X%n_mod
                 ! set grp_r_E of plot grid
-                grid_plot%grp_r_E = r_plot(id)
+                grid_plot%grp_r_E = r_plot_E(id)
                 
                 ierr = calc_XYZ_grid(grid_plot,X_plot_ind,Y_plot_ind,Z_plot_ind)
                 CHCKERR('')
@@ -474,7 +456,7 @@ contains
             
             ! deallocate local variables
             deallocate(vars)
-            deallocate(theta_plot,zeta_plot,r_plot)
+            deallocate(theta_plot,zeta_plot,r_plot_E,r_plot_F)
             
             ! delete plot grid
             call destroy_grid(grid_plot)
@@ -490,7 +472,7 @@ contains
     ! (or replacing q by iota and m/n by n/m).
     ! [MPI] Parts by all processes, parts only by global master
     integer function check_modes(eq,X) result(ierr)
-        use MPI_ops, only: get_ser_var
+        use MPI_utilities, only: get_ser_var
         use num_vars, only: glb_rank, use_pol_flux_F, eq_style
         
         character(*), parameter :: rout_name = 'check_modes'
@@ -671,13 +653,9 @@ contains
         end select
     end function solve_EV_system
     
-    ! Calculate  rho  from  user input.  This   is  done  here  in stead  of  in
-    ! calc_flux_q  because  normalized quantities  are  necessary  to apply  the
-    ! adiabatic law:
-    !   rho p^gamma = rho_0 p_0^gamma.
+    ! Calculate rho according to the style specified by user input.
     integer function calc_rho(eq,grid) result(ierr)
-        use num_vars, only: eq_style, use_normalization
-        use VMEC, only: gam
+        use num_vars, only: rho_style, use_normalization
         use eq_vars, only: rho_0
         
         character(*), parameter :: rout_name = 'calc_rho'
@@ -687,9 +665,6 @@ contains
         type(grid_type) :: grid                                                 ! grid
         
         ! local variables
-        integer :: kd                                                           ! counter
-        real(dp) :: expon                                                       ! exponent = 1/gam
-        real(dp), parameter :: tol = 1.0E-10_dp                                 ! tolerance for negative pressure
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -698,34 +673,14 @@ contains
         ! allocate rho
         allocate(eq%rho(grid%grp_n_r))
         
-        ! choose which equilibrium style is being used:
-        !   1:  VMEC
-        !   2:  HELENA
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ! set exp
-                expon = 1.0_dp/gam
-                
-                ! loop over all normal points
-                do kd = 1,grid%grp_n_r
-                    if (eq%pres_FD(kd,0).gt.0) then
-                        eq%rho(kd) = eq%pres_FD(kd,0)**expon
-                    else
-                        eq%rho(kd) = eq%rho(kd-1)
-                        if (eq%pres_FD(kd,0).lt.-tol) &
-                        call writo('WARNING: pressure was negative ('//&
-                            &trim(r2strt(eq%pres_FD(kd,0)))//') at point '&
-                            &//trim(i2str(grid%i_min-1+kd))//'/'//&
-                            &trim(i2str(grid%i_max))//&
-                            &' so density is set to '//&
-                            &trim(r2str(eq%rho(kd))),persistent=.true.)
-                    end if
-                end do
-            case (2)                                                            ! HELENA
-                eq%rho = 1.0_dp                                                 ! arbitrarily constant (normalized value)
+        ! choose which density style is being used:
+        !   1:  constant, equal to rho_0
+        select case (rho_style)
+            case (1)                                                            ! HELENA
+                eq%rho = rho_0                                                  ! arbitrarily constant (normalized value)
             case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
+                err_msg = 'No density style associated with '//&
+                    &trim(i2str(rho_style))
                 ierr = 1
                 CHCKERR(err_msg)
         end select
@@ -905,8 +860,10 @@ contains
     ! Note: The normal derivatives have the  factor i/n or i/m included already,
     ! as opposed to [ADD REF]
     integer function calc_U(eq,grid,met,X) result(ierr)
-        use num_vars, only: use_pol_flux_F, mu_0, use_normalization, eq_style
+        use num_vars, only: use_pol_flux_F, mu_0, use_normalization, eq_style, &
+            &ltest
         use utilities, only: c
+        use input_ops, only: get_log, pause_prog
         
         character(*), parameter :: rout_name = 'calc_U'
         
@@ -1030,6 +987,17 @@ contains
                 CHCKERR(err_msg)
         end select
         
+#if ldebug
+        if (ltest) then
+            call writo('Test calculation of DU')
+            if(get_log(.false.,ind=.true.)) then
+                ierr = test_DU()
+                CHCKERR('')
+                call pause_prog(ind=.true.)
+            end if
+        end if
+#endif
+        
         ! deallocate
         deallocate(djq,mn)
         deallocate(fac_n,fac_m)
@@ -1121,10 +1089,10 @@ contains
                     ! calculate X%U_1 and X%DU_1
                     X%U_1(:,:,kd,jd) = iu/mn(jd) * &
                         &(1 + n_frac/mn(jd) * g13(:,:,kd)/g33(:,:,kd))
-                    X%DU_1(:,:,kd,jd) = iu/mn(jd) * &
-                        &(n_frac/mn(jd) * (D3g13(:,:,kd)/g33(:,:,kd) - &
-                        &D3g33(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)**2) + &
-                        &iu*n_frac*X%U_1(:,:,kd,jd) )
+                    X%DU_1(:,:,kd,jd) = iu/mn(jd) * n_frac/mn(jd) * &
+                        &( D3g13(:,:,kd)/g33(:,:,kd) - &
+                        &  g13(:,:,kd)*D3g33(:,:,kd)/g33(:,:,kd)**2 ) + &
+                        &iu*n_frac*X%U_1(:,:,kd,jd) 
                 end do
             end do
             
@@ -1140,16 +1108,18 @@ contains
             character(*), parameter :: rout_name = 'calc_U_HEL'
             
             ! local variablas
-            real(dp), allocatable :: D3_var(:,:,:)                              ! derivative of variable
+            complex(dp), allocatable :: D3_var(:,:)                             ! derivative of variable
             
             ! allocate extra helper variables
-            allocate(D3_var(grid%n(1),grid%n(2),2))
+            allocate(D3_var(grid%n(1),grid%n(2)))
             
             ! initialize ierr
             ierr = 0
             
             ! loop over the M elements of U_X and DU
             do jd = 1,X%n_mod
+            write(*,*) '!!! THIS IS WRONG: YOU HAVE TO TAKE T_ZETA, NOT T_THETA !!!!'
+            write(*,*) 'I CHANGED theta_F to ang_par_F, THIS CAUSED INFINITIES!!!'
                 ! set up helper variables
                 g_frac = g13/g33
                 T_theta = h23/h22
@@ -1157,7 +1127,7 @@ contains
                 do kd = 1,grid%grp_n_r
                     do id = 1,grid%n(2)
                         ierr = calc_deriv(T_theta(:,id,kd),D3T_theta(:,id,kd),&
-                            &grid%theta_F(:,id,kd),1,2)                         ! higher precision because other derivative will be taken later
+                            &ang_par_F(:,id,kd),1,2)                            ! higher precision because other derivative will be taken later
                     end do
                 end do
                 
@@ -1176,32 +1146,139 @@ contains
                         &( g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) - &
                         &g23(:,:,kd) )) + U_corr(:,:,kd,jd)
                     do id = 1,grid%n(2)
-                        ierr = calc_deriv(realpart(X%U_0(:,id,kd,jd)),&
-                            &D3_var(:,id,1),grid%theta_F(:,id,kd),1,1)
-                        ierr = calc_deriv(imagpart(X%U_0(:,id,kd,jd)),&
-                            &D3_var(:,id,2),grid%theta_F(:,id,kd),1,1)
-                        end do
-                        CHCKERR('')
-                    X%DU_0(:,:,kd,jd) = D3_var(:,:,1) + iu*D3_var(:,:,2) + &
-                        &iu*n_frac*X%U_0(:,:,kd,jd)
+                        ierr = calc_deriv(X%U_0(:,id,kd,jd),D3_var(:,id),&
+                            &ang_par_F(:,id,kd),1,2)
+                    end do
+                    CHCKERR('')
+                    X%DU_0(:,:,kd,jd) = D3_var + iu*n_frac*X%U_0(:,:,kd,jd)
                     ! calculate X%U_1 and X%DU_1
                     X%U_1(:,:,kd,jd) = iu/mn(jd) * &
                         &(1 + n_frac/mn(jd) * g13(:,:,kd)/g33(:,:,kd))
                     do id = 1,grid%n(2)
-                        ierr = calc_deriv(realpart(X%U_1(:,id,kd,jd)),&
-                            &D3_var(:,id,1),grid%theta_F(:,id,kd),1,1)
-                        ierr = calc_deriv(imagpart(X%U_1(:,id,kd,jd)),&
-                            &D3_var(:,id,2),grid%theta_F(:,id,kd),1,1)
+                        ierr = calc_deriv(X%U_1(:,id,kd,jd),D3_var(:,id),&
+                            &ang_par_F(:,id,kd),1,2)
                     end do
                     CHCKERR('')
-                    X%DU_1(:,:,kd,jd) = D3_var(:,:,1) + iu*D3_var(:,:,2) + &
-                        &iu*n_frac*X%U_1(:,:,kd,jd)
+                    X%DU_1(:,:,kd,jd) = D3_var + iu*n_frac*X%U_1(:,:,kd,jd)
                 end do
             end do
             
             ! deallocate
             deallocate(D3_var)
         end function calc_U_HEL
+        
+#if ldebug
+        ! test calculation of DU by deriving U numerically
+        integer function test_DU() result(ierr)
+            use utilities, only: calc_deriv
+            use grid_ops, only: trim_grid
+            use output_ops, only: plot_diff_HDF5
+            
+            character(*), parameter :: rout_name = 'test_DU'
+            
+            ! local variables
+            integer :: id, jd, kd                                               ! counters
+            complex(dp), allocatable :: DU_0(:,:,:)                             ! alternative calculation for DU_0
+            complex(dp), allocatable :: DU_1(:,:,:)                             ! alternative calculation for DU_1
+            type(grid_type) :: grid_trim                                        ! trimmed equilibrium grid
+            integer :: tot_dim(3), grp_dim(3), grp_offset(3)                    ! total and group dimensions and group offset
+            character(len=max_str_ln) :: file_name                              ! name of plot file
+            character(len=max_str_ln) :: description                            ! description of plot
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! warning
+            call writo('WARNING: This test is only representable if there &
+                &are enough parallel points in the grid!')
+            
+            ! output
+            call writo('Going to test whether DU is consistent with U')
+            call lvl_ud(1)
+            
+            ! set up DU_0 and DU_1
+            allocate(DU_0(grid%n(1),grid%n(2),grid%grp_n_r))
+            allocate(DU_1(grid%n(1),grid%n(2),grid%grp_n_r))
+            
+            ! trim extended grid into plot grid
+            ierr = trim_grid(grid,grid_trim)
+            CHCKERR('')
+            
+            ! set total and group dimensions and group offset
+            tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
+            grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r]
+            grp_offset = [0,0,grid_trim%i_min-1]
+            
+            ! loop over all modes
+            do jd = 1,X%n_mod
+                ! loop over all normal points
+                do kd = 1,grid%grp_n_r
+                    ! derive numerically
+                    do id = 1,grid%n(2)
+                        ierr = calc_deriv(X%U_0(:,id,kd,jd),DU_0(:,id,kd),&
+                            &ang_par_F(:,id,kd),1,2)
+                        CHCKERR('')
+                        ierr = calc_deriv(X%U_1(:,id,kd,jd),DU_1(:,id,kd),&
+                            &ang_par_F(:,id,kd),1,2)
+                        CHCKERR('')
+                    end do
+                    
+                    ! add the second part
+                    n_frac = X%n(jd)*fac_n(kd)-X%m(jd)*fac_m(kd)
+                    DU_0(:,:,kd) = DU_0(:,:,kd) + iu*n_frac*X%U_0(:,:,kd,jd)
+                    DU_1(:,:,kd) = DU_1(:,:,kd) + iu*n_frac*X%U_1(:,:,kd,jd)
+                end do
+                
+                ! set some variables
+                file_name = 'TEST_RE_DU_0_'//trim(i2str(jd))
+                description = 'Verifying DU_0 by deriving U_0 numerically for &
+                    &mode '//trim(i2str(jd)//', real part')
+                
+                ! plot difference for RE DU_0
+                call plot_diff_HDF5(realpart(DU_0(:,:,1:grid_trim%grp_n_r)),&
+                    &realpart(X%DU_0(:,:,1:grid_trim%grp_n_r,jd)),file_name,&
+                    &tot_dim,grp_dim,grp_offset,description,&
+                    &output_message=.true.)
+                
+                ! set some variables
+                file_name = 'TEST_IM_DU_0_'//trim(i2str(jd))
+                description = 'Verifying DU_0 by deriving U_0 numerically for &
+                    &mode '//trim(i2str(jd)//', imaginary part')
+                
+                ! plot difference for IM DU_0
+                call plot_diff_HDF5(imagpart(DU_0(:,:,1:grid_trim%grp_n_r)),&
+                    &imagpart(X%DU_0(:,:,1:grid_trim%grp_n_r,jd)),file_name,&
+                    &tot_dim,grp_dim,grp_offset,description,&
+                    &output_message=.true.)
+                
+                ! set some variables
+                file_name = 'TEST_RE_DU_1_'//trim(i2str(jd))
+                description = 'Verifying DU_1 by deriving U_1 numerically for &
+                    &mode '//trim(i2str(jd)//', real part')
+                
+                ! plot difference for RE DU_1
+                call plot_diff_HDF5(realpart(DU_1(:,:,1:grid_trim%grp_n_r)),&
+                    &realpart(X%DU_1(:,:,1:grid_trim%grp_n_r,jd)),file_name,&
+                    &tot_dim,grp_dim,grp_offset,description,&
+                    &output_message=.true.)
+                
+                ! set some variables
+                file_name = 'TEST_IM_DU_1_'//trim(i2str(jd))
+                description = 'Verifying DU_1 by deriving U_1 numerically for &
+                    &mode '//trim(i2str(jd)//', imaginary part')
+                
+                ! plot difference for IM DU_1
+                call plot_diff_HDF5(imagpart(DU_1(:,:,1:grid_trim%grp_n_r)),&
+                    &imagpart(X%DU_1(:,:,1:grid_trim%grp_n_r,jd)),file_name,&
+                    &tot_dim,grp_dim,grp_offset,description,&
+                    &output_message=.true.)
+            end do
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Test complete')
+        end function test_DU
+#endif
     end function calc_U
     
     ! Calculate mu0sigma, extra1, extra2 and extra3:
@@ -1315,98 +1392,148 @@ contains
         nullify(h23)
     end function calc_extra
     
-    ! calculates magnetic integral of V, defined as the matrix
-    !   <V e^[i(k-m)theta_F]> = [ oint J V(k,m) e^i(k-m)theta_F dtheta_F ],
-    ! or
-    !   <V e^[i(m-k)zeta_F]> = [ oint J V(k,m) e^i(m-k)zeta_F dzeta_F ],
-    ! depending on whether poloidal or toroidal flux is used as normal coord.
-    integer function calc_int_magn(grid,met,exp_ang,n_mod,V,V_int) result(ierr)
-        use num_vars, only: use_pol_flux_F
-        use utilities, only: calc_mult, c, con, is_sym
-        
-        character(*), parameter :: rout_name = 'calc_int_magn'
+    ! Calculate the  magnetic integrals  from PV_i and  KV_i. All  the variables
+    ! should thus be field-line oriented.
+    integer function calc_magn_ints(grid_eq,met,X) result(ierr)
+        character(*), parameter :: rout_name = 'calc_magn_ints'
         
         ! input / output
-        type(grid_type) :: grid                                                 ! grid
-        type(metric_type) :: met                                                ! metric variables
-        complex(dp), intent(in) :: exp_ang(:,:,:,:)                             ! exponential of Flux parallel angle
-        integer, intent(in) :: n_mod                                            ! number of 
-        complex(dp), intent(in) :: V(:,:,:,:)                                   ! input V(n_par,n_geo,n_r,size_X^2)
-        complex(dp), intent(inout) :: V_int(:,:,:)                              ! output <V e^i(k-m)ang_par_F> integrated in parallel Flux coord.
-        
-        ! local variables
-        integer :: k, m, id, jd, kd                                             ! counters
-        integer :: nn_mod                                                       ! number of indices for V and V_int
-        integer :: k_min                                                        ! minimum k
-        logical :: sym                                                          ! whether V and V_int are symmetric
-        complex(dp), allocatable :: V_J_e(:,:,:,:)                              ! V*J*exp_ang
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), pointer :: ang_par_F(:,:,:)                                   ! parallel angle
-        integer :: dims(3)                                                      ! real dimensions
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(X_type), intent(inout) :: X                                        ! perturbation variables
         
         ! initialize ierr
         ierr = 0
         
-        ! set nn_mod
-        nn_mod = size(V,4)
+        ! user output
+        call writo('Calculating field-line averages')
+        call lvl_ud(1)
         
-        ! tests
-        if (size(V_int,1).ne.nn_mod) then
-            ierr = 1
-            err_msg = 'V and V_int need to have the same storage convention'
-            CHCKERR(err_msg)
-        end if
-        
-        ! set up dims
-        dims = [grid%n(1),grid%n(2),grid%grp_n_r]
-        
-        ! set up V_J_e
-        allocate(V_J_e(dims(1),dims(2),dims(3),nn_mod))
-        
-        ! set up ang_par_F
-        if (use_pol_flux_F) then
-            ang_par_F => grid%theta_F
-        else
-            ang_par_F => grid%zeta_F
-        end if
-        
-        ! determine whether matrices are symmetric or not
-        ierr = is_sym(n_mod,nn_mod,sym)
+        ! Calculate PV_int = <PV e^(k-m)ang_par_F>
+        call writo('Taking field average of PV')
+        call lvl_ud(1)
+        ierr = calc_int_magn(grid_eq,met,X%exp_ang_par_F,X%n_mod,&
+            &X%PV_0,X%PV_int_0)
         CHCKERR('')
+        ierr = calc_int_magn(grid_eq,met,X%exp_ang_par_F,X%n_mod,&
+            &X%PV_1,X%PV_int_1)
+        CHCKERR('')
+        ierr = calc_int_magn(grid_eq,met,X%exp_ang_par_F,X%n_mod,&
+            &X%PV_2,X%PV_int_2)
+        CHCKERR('')
+        call lvl_ud(-1)
         
-        ! set up k_min
-        k_min = 1
+        ! Calculate KV_int = <KV e^(k-m)ang_par_F>
+        call writo('Taking field average of KV')
+        call lvl_ud(1)
+        ierr = calc_int_magn(grid_eq,met,X%exp_ang_par_F,X%n_mod,&
+            &X%KV_0,X%KV_int_0)
+        CHCKERR('')
+        ierr = calc_int_magn(grid_eq,met,X%exp_ang_par_F,X%n_mod,&
+            &X%KV_1,X%KV_int_1)
+        CHCKERR('')
+        ierr = calc_int_magn(grid_eq,met,X%exp_ang_par_F,X%n_mod,&
+            &X%KV_2,X%KV_int_2)
+        CHCKERR('')
+        call lvl_ud(-1)
         
-        ! multiply V by Jacobian and exponential
-        do m = 1,n_mod
-            if (sym) k_min = m
-            do k = k_min,n_mod
-                V_J_e(:,:,:,c([k,m],sym,n_mod)) = met%jac_FD(:,:,:,0,0,0) * &
-                    &con(exp_ang(:,:,:,c([k,m],.true.,n_mod)),&
-                    &[k,m],.true.,dims) * &
-                    &con(V(:,:,:,c([k,m],sym,n_mod)),[k,m],sym,dims)
-            end do
-        end do
-        
-        ! integrate term  over ang_par_F for  all equilibrium grid  points using
-        ! the recursive formula int_1^n f(x) dx
-        !   = int_1^(n-1) f(x) dx + (f(n)+f(n-1))*(x(n)-x(n-1))/2
-        V_int = 0.0_dp
-        ! loop over all geodesic points on this process
-        do kd = 1,grid%grp_n_r
-            ! loop over all normal points on this process
-            do jd = 1,grid%n(2)
-                ! parallel integration loop
-                do id = 2,grid%n(1)
-                    V_int(:,jd,kd) = V_int(:,jd,kd) + &
-                        &(V_J_e(id,jd,kd,:)+V_J_e(id-1,jd,kd,:))/2 * &
-                        &(ang_par_F(id,jd,kd)-ang_par_F(id-1,jd,kd))
+        ! user output
+        call lvl_ud(-1)
+        call writo('Field-line averages calculated')
+    contains
+        ! calculates magnetic integral of V, defined as the matrix
+        !   <V e^[i(k-m)theta_F]> = [ oint J V(k,m) e^i(k-m)theta_F dtheta_F ],
+        ! or
+        !   <V e^[i(m-k)zeta_F]> = [ oint J V(k,m) e^i(m-k)zeta_F dzeta_F ],
+        ! depending on whether pol. or tor. flux is used as normal coord.
+        integer function calc_int_magn(grid,met,exp_ang,n_mod,V,V_int) result(ierr)
+            use num_vars, only: use_pol_flux_F
+            use utilities, only: calc_mult, c, con, is_sym
+            
+            character(*), parameter :: rout_name = 'calc_int_magn'
+            
+            ! input / output
+            type(grid_type) :: grid                                             ! grid
+            type(metric_type) :: met                                            ! metric variables
+            complex(dp), intent(in) :: exp_ang(:,:,:,:)                         ! exponential of Flux parallel angle
+            integer, intent(in) :: n_mod                                        ! number of 
+            complex(dp), intent(in) :: V(:,:,:,:)                               ! input V(n_par,n_geo,n_r,size_X^2)
+            complex(dp), intent(inout) :: V_int(:,:,:)                          ! output <V e^i(k-m)ang_par_F> integrated in parallel Flux coord.
+            
+            ! local variables
+            integer :: k, m, id, jd, kd                                         ! counters
+            integer :: nn_mod                                                   ! number of indices for V and V_int
+            integer :: k_min                                                    ! minimum k
+            logical :: sym                                                      ! whether V and V_int are symmetric
+            complex(dp), allocatable :: V_J_e(:,:,:,:)                          ! V*J*exp_ang
+            character(len=max_str_ln) :: err_msg                                ! error message
+            real(dp), pointer :: ang_par_F(:,:,:)                               ! parallel angle
+            integer :: dims(3)                                                  ! real dimensions
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set nn_mod
+            nn_mod = size(V,4)
+            
+            ! tests
+            if (size(V_int,1).ne.nn_mod) then
+                ierr = 1
+                err_msg = 'V and V_int need to have the same storage convention'
+                CHCKERR(err_msg)
+            end if
+            
+            ! set up dims
+            dims = [grid%n(1),grid%n(2),grid%grp_n_r]
+            
+            ! set up V_J_e
+            allocate(V_J_e(dims(1),dims(2),dims(3),nn_mod))
+            
+            ! set up ang_par_F
+            if (use_pol_flux_F) then
+                ang_par_F => grid%theta_F
+            else
+                ang_par_F => grid%zeta_F
+            end if
+            
+            ! determine whether matrices are symmetric or not
+            ierr = is_sym(n_mod,nn_mod,sym)
+            CHCKERR('')
+            
+            ! set up k_min
+            k_min = 1
+            
+            ! multiply V by Jacobian and exponential
+            do m = 1,n_mod
+                if (sym) k_min = m
+                do k = k_min,n_mod
+                    V_J_e(:,:,:,c([k,m],sym,n_mod)) = met%jac_FD(:,:,:,0,0,0) &
+                        &* con(exp_ang(:,:,:,c([k,m],.true.,n_mod)),&
+                        &[k,m],.true.,dims) * &
+                        &con(V(:,:,:,c([k,m],sym,n_mod)),[k,m],sym,dims)
                 end do
             end do
-        end do
-        
-        ! deallocate local variables
-        deallocate(V_J_e)
-        nullify(ang_par_F)
-    end function calc_int_magn
+            
+            ! integrate  term over  ang_par_F  for all  equilibrium grid  points
+            ! using the recursive formula int_1^n f(x) dx
+            !   = int_1^(n-1) f(x) dx + (f(n)+f(n-1))*(x(n)-x(n-1))/2
+            V_int = 0.0_dp
+            ! loop over all geodesic points on this process
+            do kd = 1,grid%grp_n_r
+                ! loop over all normal points on this process
+                do jd = 1,grid%n(2)
+                    ! parallel integration loop
+                    do id = 2,grid%n(1)
+                        V_int(:,jd,kd) = V_int(:,jd,kd) + &
+                            &(V_J_e(id,jd,kd,:)+V_J_e(id-1,jd,kd,:))/2 * &
+                            &(ang_par_F(id,jd,kd)-ang_par_F(id-1,jd,kd))
+                    end do
+                end do
+            end do
+            
+            ! deallocate local variables
+            deallocate(V_J_e)
+            nullify(ang_par_F)
+        end function calc_int_magn
+    end function calc_magn_ints
 end module

@@ -11,6 +11,9 @@ To set up:
 1. git clone https://ToonWeyens@bitbucket.org/ToonWeyens/pb3d.git
 2. change PB3D_DIR in the makefile
 3. copy or add symbolic links to the output files (e.g. wout_cdxu or cbm18a)
+4. Libraries to install:
+    - HDF5: libhdf5-openmpi-dev
+    - FFTW: libfftw3-dev
 
 CHANGELOG
 
@@ -38,3 +41,13 @@ CHANGELOG
       - Implemented successful testing of g_V.
       - Moved checking of HELENA to testing routine.
       - Implemented checking of Jac_F also for Helena and it is found to be correct.
+
+0.74: - Split off MPI_utilities from MPI_ops, containing the numerical utilities that have to do with MPI.
+      - Put diff from utilities in output_ops, so now output_ops is indeed below utilities (but not MPI_utilities)
+      - con2dis and dis2con are now an error-reporting function.
+      - Restructured the code to calculate HELENA on HELENA specified grid and afterwards interpolating on X grid.
+      - Results are similar to previous ones when poloidal flux is used, but discrepancies for toroidal flux.
+      - Simplified normalization: now input is normalized directly.
+      - Fixed bug in DU_1: factor i/n or i/m was duplicated.
+      - Fixed confusion about rho: Its profile is indeed free to be chosen and has no influence on the marginal stability.
+      - Faulty solutions are removed by default; Can be overriden using retain_all_sol.

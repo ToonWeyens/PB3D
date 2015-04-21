@@ -4,7 +4,6 @@
 module MPI_ops
 #include <PB3D_macros.h>
     use str_ops
-    use output_ops
     use messages
     use MPI
     use num_vars, only: dp, max_str_ln, pi
@@ -12,20 +11,7 @@ module MPI_ops
     implicit none
     private
     public start_MPI, stop_MPI, split_MPI, abort_MPI, broadcast_input_vars, &
-        &merge_MPI, get_next_job, divide_X_grid, get_ser_var, get_ghost_arr, &
-        &wait_MPI, broadcast_var
-    
-    ! interfaces
-    interface get_ser_var
-        module procedure get_ser_var_complex, get_ser_var_real, get_ser_var_int
-    end interface
-    interface get_ghost_arr
-        module procedure get_ghost_arr_2D_complex, get_ghost_arr_1D_real
-    end interface
-    interface broadcast_var
-        module procedure broadcast_var_real, broadcast_var_int, &
-            &broadcast_var_log
-    end interface
+        &merge_MPI, get_next_job, divide_X_grid
     
 contains
     ! start MPI and gather information
@@ -258,8 +244,8 @@ contains
                 &use_pol_flux_F, eq_style
             use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
                 &calc_deriv, round_with_tol
-            use VMEC, only: phi, Dphi, iotaf
-            use HELENA, only: flux_H, qs
+            use VMEC, only: flux_t_V, Dflux_t_V, rot_t_V
+            use HELENA, only: flux_p_H, qs
             use X_vars, only: min_n_r_X, min_r_X, max_r_X
             
             character(*), parameter :: rout_name = 'calc_eq_r_range'
@@ -269,7 +255,7 @@ contains
             
             ! local variables
             real(dp), allocatable :: flux_F(:), flux_E(:)                       ! either pol. or tor. flux in F and E
-            real(dp), allocatable :: Dflux_H(:)                                 ! normal derivative of flux_H
+            real(dp), allocatable :: Dflux_p_H(:)                               ! normal derivative of flux_p_H
             integer :: X_limits(2)                                              ! min. and max. index of X grid for this process
             real(dp) :: grp_min_r_eq_F_con                                      ! grp_min_r_eq in continuous F coords.
             real(dp) :: grp_min_r_eq_E_con                                      ! grp_min_r_eq in continuous E coords.
@@ -291,37 +277,37 @@ contains
                 case (1)                                                        ! VMEC
                     ! set up F flux
                     if (use_pol_flux_F) then
-                        ierr = calc_int(-iotaf*Dphi,1.0_dp/(n_r_eq-1.0_dp),&
-                            &flux_F)                                            ! conversion VMEC LH -> RH coord. system
+                        ierr = calc_int(-rot_t_V*Dflux_t_V,&
+                            &1.0_dp/(n_r_eq-1.0_dp),flux_F)                     ! conversion VMEC LH -> RH coord. system
                         CHCKERR('')
                     else
-                        flux_F = phi
+                        flux_F = flux_t_V
                     end if
                     ! set up E flux
                     if (use_pol_flux_E) then
-                        ierr = calc_int(iotaf*Dphi,1.0_dp/(n_r_eq-1.0_dp),&
-                            &flux_E)
+                        ierr = calc_int(rot_t_V*Dflux_t_V,&
+                            &1.0_dp/(n_r_eq-1.0_dp),flux_E)
                         CHCKERR('')
                     else
-                        flux_E = phi
+                        flux_E = flux_t_V
                     end if
                 case (2)                                                        ! HELENA
-                    ! calculate normal derivative of flux_H
-                    allocate(Dflux_H(n_r_eq))
-                    ierr = calc_deriv(flux_H,Dflux_H,flux_H,1,1)
+                    ! calculate normal derivative of flux_p_H
+                    allocate(Dflux_p_H(n_r_eq))
+                    ierr = calc_deriv(flux_p_H,Dflux_p_H,flux_p_H,1,1)
                     CHCKERR('')
                     ! set up F flux
                     if (use_pol_flux_F) then
-                        flux_F = flux_H
+                        flux_F = flux_p_H
                     else
-                        ierr = calc_int(qs*Dflux_H,flux_H,flux_F)
+                        ierr = calc_int(qs*Dflux_p_H,flux_p_H,flux_F)
                         CHCKERR('')
                     end if
                     ! set up E flux
                     if (use_pol_flux_E) then
-                        flux_E = flux_H
+                        flux_E = flux_p_H
                     else
-                        ierr = calc_int(qs*Dflux_H,flux_H,flux_E)
+                        ierr = calc_int(qs*Dflux_p_H,flux_p_H,flux_E)
                         CHCKERR('')
                     end if
                 case default
@@ -350,7 +336,8 @@ contains
                 &grp_min_r_eq_F_con,flux_F)
             CHCKERR('')
             ! 4. discrete equilibrium grid, unrounded
-            call con2dis(grp_min_r_eq_E_con,grp_min_r_eq_E_dis,flux_E)
+            ierr = con2dis(grp_min_r_eq_E_con,grp_min_r_eq_E_dis,flux_E)
+            CHCKERR('')
             ! 5. discrete equilibrium grid, rounded down
             eq_limits(1) = floor(grp_min_r_eq_E_dis)
             
@@ -361,8 +348,9 @@ contains
             ! 2. discrete perturbation grid (1..min_n_r_X)
             grp_max_r_eq_F_dis = X_limits(2)
             ! 3. continous perturbation grid (0..1)
-            call dis2con(grp_max_r_eq_F_dis,grp_max_r_eq_F_con,[1,min_n_r_X],&
+            ierr = dis2con(grp_max_r_eq_F_dis,grp_max_r_eq_F_con,[1,min_n_r_X],&
                 &[min_r_X,max_r_X])                                             ! the perturbation grid is equidistant
+            CHCKERR('')
             ! 4 round with tolerance
             ierr = round_with_tol(grp_max_r_eq_F_con,0._dp,1._dp)
             CHCKERR('')
@@ -371,7 +359,8 @@ contains
                 &grp_max_r_eq_F_con,flux_F)
             CHCKERR('')
             ! 6. discrete equilibrium grid, unrounded
-            call con2dis(grp_max_r_eq_E_con,grp_max_r_eq_E_dis,flux_E)
+            ierr = con2dis(grp_max_r_eq_E_con,grp_max_r_eq_E_dis,flux_E)
+            CHCKERR('')
             ! 7. discrete equlibrium grid, rounded up
             eq_limits(2) = ceiling(grp_max_r_eq_E_dis)
             
@@ -415,19 +404,6 @@ contains
         call MPI_Barrier(MPI_COMM_WORLD,ierr)
         CHCKERR('Coulnd''t set barrier')
     end function merge_MPI
-    
-    ! MPI Barrier
-    integer function wait_MPI() result(ierr)
-        use num_vars, only: MPI_Comm_groups
-        
-        character(*), parameter :: rout_name = 'wait_MPI'
-        
-        ! initialize ierr
-        ierr = 0
-        
-        call MPI_Barrier(MPI_Comm_groups,ierr)
-        CHCKERR('MPI Barrier failed')
-    end function wait_MPI
     
     ! stop MPI
     ! [MPI] Collective call
@@ -505,317 +481,6 @@ contains
         call MPI_Bcast(next_job,1,MPI_INTEGER,0,MPI_Comm_groups,ierr)
         CHCKERR('MPI broadcast failed')
     end function get_next_job
-    
-    ! Gather parallel variable in serial version on group master or, optionally,
-    ! to all the processes, using the variable "scatter"
-    ! Note:  the serial variable  has to be  allocatable and if  unallocated, it
-    ! will be allocated.
-    ! [MPI] Collective call
-    integer function get_ser_var_complex(var,ser_var,scatter) result(ierr)      ! complex version
-        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
-        
-        character(*), parameter :: rout_name = 'get_ser_var'
-        
-        ! input / output
-        complex(dp), intent(in) :: var(:)                                       ! parallel vector
-        complex(dp), allocatable, intent(inout) :: ser_var(:)                   ! serial vector
-        logical, intent(in), optional :: scatter                                ! optionally scatter the result to all the processes
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer, allocatable :: recvcounts(:)                                   ! counts of nr. of elements received from each processor
-        integer, allocatable :: displs(:)                                       ! displacements elements received from each processor
-        integer :: id                                                           ! counter
-        logical :: scatter_loc                                                  ! local copy of scatter
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local copy of scatter
-        scatter_loc = .false.
-        if (present(scatter)) scatter_loc = scatter
-        
-        ! gather local size  of var of all groups onto  main processor, to serve
-        ! as receive counts on group master
-        if (grp_rank.eq.0 .or. scatter_loc) then
-            allocate(recvcounts(grp_n_procs))
-            allocate(displs(grp_n_procs))
-        else
-            allocate(recvcounts(0))
-            allocate(displs(0))
-        end if
-        if (scatter_loc) then
-            call MPI_Allgather(size(var),1,MPI_INTEGER,recvcounts,1,&
-                &MPI_INTEGER,MPI_Comm_groups,ierr)
-        else
-            call MPI_Gather(size(var),1,MPI_INTEGER,recvcounts,1,&
-                &MPI_INTEGER,0,MPI_Comm_groups,ierr)
-        end if
-        err_msg = 'Failed to gather size of parallel variable'
-        CHCKERR(err_msg)
-        
-        ! allocate serial variable
-        if (allocated(ser_var)) then
-            if (size(ser_var).ne.sum(recvcounts)) then
-                ierr = 1
-                err_msg = 'ser_var has wrong dimensions'
-                CHCKERR(err_msg)
-            end if
-        else
-            allocate(ser_var(sum(recvcounts)))
-        end if
-        
-        ! deduce displacements by summing recvcounts
-        if (grp_rank.eq.0 .or. scatter_loc) then
-            displs(1) = 0
-            do id = 2,grp_n_procs
-                displs(id) = displs(id-1) + recvcounts(id-1)
-            end do
-        end if
-        
-        if (scatter_loc) then
-            call MPI_Allgatherv(var,size(var),MPI_DOUBLE_COMPLEX,ser_var,&
-                &recvcounts,displs,MPI_DOUBLE_COMPLEX,MPI_Comm_groups,ierr)
-        else
-            call MPI_Gatherv(var,size(var),MPI_DOUBLE_COMPLEX,ser_var,&
-                &recvcounts,displs,MPI_DOUBLE_COMPLEX,0,MPI_Comm_groups,ierr)
-        end if
-        err_msg = 'Failed to gather parallel variable'
-        CHCKERR(err_msg)
-    end function get_ser_var_complex
-    integer function get_ser_var_real(var,ser_var,scatter) result(ierr)         ! real version
-        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
-        
-        character(*), parameter :: rout_name = 'get_ser_var_real'
-        
-        ! input / output
-        real(dp), intent(in) :: var(:)                                          ! parallel vector
-        real(dp), allocatable, intent(inout) :: ser_var(:)                      ! serial vector
-        logical, intent(in), optional :: scatter                                ! optionally scatter the result to all the processes
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer, allocatable :: recvcounts(:)                                   ! counts of nr. of elements received from each processor
-        integer, allocatable :: displs(:)                                       ! displacements elements received from each processor
-        integer :: id                                                           ! counter
-        logical :: scatter_loc                                                  ! local copy of scatter
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local copy of scatter
-        scatter_loc = .false.
-        if (present(scatter)) scatter_loc = scatter
-        
-        ! gather local size  of var of all groups onto  main processor, to serve
-        ! as receive counts on group master
-        if (grp_rank.eq.0 .or. scatter_loc) then
-            allocate(recvcounts(grp_n_procs))
-            allocate(displs(grp_n_procs))
-        else
-            allocate(recvcounts(0))
-            allocate(displs(0))
-        end if
-        if (scatter_loc) then
-            call MPI_Allgather(size(var),1,MPI_INTEGER,recvcounts,1,&
-                &MPI_INTEGER,MPI_Comm_groups,ierr)
-        else
-            call MPI_Gather(size(var),1,MPI_INTEGER,recvcounts,1,&
-                &MPI_INTEGER,0,MPI_Comm_groups,ierr)
-        end if
-        err_msg = 'Failed to gather size of parallel variable'
-        CHCKERR(err_msg)
-        
-        ! allocate serial variable
-        if (allocated(ser_var)) then
-            if (size(ser_var).ne.sum(recvcounts)) then
-                ierr = 1
-                err_msg = 'ser_var has wrong dimensions'
-                CHCKERR(err_msg)
-            end if
-        else
-            allocate(ser_var(sum(recvcounts)))
-        end if
-        
-        ! deduce displacements by summing recvcounts
-        if (grp_rank.eq.0 .or. scatter_loc) then
-            displs(1) = 0
-            do id = 2,grp_n_procs
-                displs(id) = displs(id-1) + recvcounts(id-1)
-            end do
-        end if
-        
-        if (scatter_loc) then
-            call MPI_Allgatherv(var,size(var),MPI_DOUBLE_PRECISION,ser_var,&
-                &recvcounts,displs,MPI_DOUBLE_PRECISION,MPI_Comm_groups,ierr)
-        else
-            call MPI_Gatherv(var,size(var),MPI_DOUBLE_PRECISION,ser_var,&
-                &recvcounts,displs,MPI_DOUBLE_PRECISION,0,MPI_Comm_groups,ierr)
-        end if
-        err_msg = 'Failed to gather parallel variable'
-        CHCKERR(err_msg)
-    end function get_ser_var_real
-    integer function get_ser_var_int(var,ser_var,scatter) result(ierr)          ! integer version
-        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
-        
-        character(*), parameter :: rout_name = 'get_ser_var_int'
-        
-        ! input / output
-        integer, intent(in) :: var(:)                                           ! parallel vector
-        integer, allocatable, intent(inout) :: ser_var(:)                       ! serial vector
-        logical, intent(in), optional :: scatter                                ! optionally scatter the result to all the processes
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer, allocatable :: recvcounts(:)                                   ! counts of nr. of elements received from each processor
-        integer, allocatable :: displs(:)                                       ! displacements elements received from each processor
-        integer :: id                                                           ! counter
-        logical :: scatter_loc                                                  ! local copy of scatter
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local copy of scatter
-        scatter_loc = .false.
-        if (present(scatter)) scatter_loc = scatter
-        
-        ! gather local size  of var of all groups onto  main processor, to serve
-        ! as receive counts on group master
-        if (grp_rank.eq.0 .or. scatter_loc) then
-            allocate(recvcounts(grp_n_procs))
-            allocate(displs(grp_n_procs))
-        else
-            allocate(recvcounts(0))
-            allocate(displs(0))
-        end if
-        if (scatter_loc) then
-            call MPI_Allgather(size(var),1,MPI_INTEGER,recvcounts,1,&
-                &MPI_INTEGER,MPI_Comm_groups,ierr)
-        else
-            call MPI_Gather(size(var),1,MPI_INTEGER,recvcounts,1,&
-                &MPI_INTEGER,0,MPI_Comm_groups,ierr)
-        end if
-        err_msg = 'Failed to gather size of parallel variable'
-        CHCKERR(err_msg)
-        
-        ! allocate serial variable
-        if (allocated(ser_var)) then
-            if (size(ser_var).ne.sum(recvcounts)) then
-                ierr = 1
-                err_msg = 'ser_var has wrong dimensions'
-                CHCKERR(err_msg)
-            end if
-        else
-            allocate(ser_var(sum(recvcounts)))
-        end if
-        
-        ! deduce displacements by summing recvcounts
-        if (grp_rank.eq.0 .or. scatter_loc) then
-            displs(1) = 0
-            do id = 2,grp_n_procs
-                displs(id) = displs(id-1) + recvcounts(id-1)
-            end do
-        end if
-        
-        if (scatter_loc) then
-            call MPI_Allgatherv(var,size(var),MPI_INTEGER,ser_var,&
-                &recvcounts,displs,MPI_INTEGER,MPI_Comm_groups,ierr)
-        else
-            call MPI_Gatherv(var,size(var),MPI_INTEGER,ser_var,&
-                &recvcounts,displs,MPI_INTEGER,0,MPI_Comm_groups,ierr)
-        end if
-        err_msg = 'Failed to gather parallel variable'
-        CHCKERR(err_msg)
-    end function get_ser_var_int
-    
-    ! Fill the ghost regions in an array  by sending the first normal point of a
-    ! process to  the left process. Every  message is identified by  its sending
-    ! process. The array should have the extended size, including ghost regions.
-    ! [MPI] Collective call
-    integer function get_ghost_arr_2D_complex(arr,size_ghost) result(ierr)      ! 2D complex version
-        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
-        
-        character(*), parameter :: rout_name = 'get_ghost_arr_2D_complex'
-        
-        ! input / output
-        complex(dp), intent(inout) :: arr(:,:)                                  ! divided array
-        integer, intent(in) :: size_ghost                                       ! width of ghost region
-        
-        ! local variables
-        integer :: n_modes                                                      ! number of modes
-        integer :: tot_size                                                     ! total size (including ghost region)
-        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! initialize number of modes and total size
-        n_modes = size(arr,1)
-        tot_size = size(arr,2)
-        
-        ! ghost regions only make sense if there is more than 1 process
-        if (grp_n_procs.gt.1) then
-            if (grp_rank.eq.0) then                                             ! first rank only receives
-                call MPI_Recv(arr(:,tot_size-size_ghost+1:tot_size),&
-                    &size_ghost*n_modes,MPI_DOUBLE_COMPLEX,grp_rank+1,&
-                    &grp_rank+1,MPI_Comm_groups,istat,ierr)
-                CHCKERR('Failed to receive')
-            else if (grp_rank+1.eq.grp_n_procs) then                            ! last rank only sends
-                call MPI_Send(arr(:,1:size_ghost),size_ghost*n_modes,&
-                    &MPI_DOUBLE_COMPLEX,grp_rank-1,grp_rank,MPI_Comm_groups,&
-                    &ierr)
-                CHCKERR('Failed to send')
-            else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(arr(:,1:size_ghost),size_ghost*n_modes,&
-                    &MPI_DOUBLE_COMPLEX,grp_rank-1,grp_rank,&
-                    &arr(:,tot_size-size_ghost+1:tot_size),size_ghost*n_modes,&
-                    &MPI_DOUBLE_COMPLEX,grp_rank+1,grp_rank+1,MPI_Comm_groups,&
-                    &istat,ierr)
-                CHCKERR('Failed to send and receive')
-            end if
-        end if
-    end function get_ghost_arr_2D_complex
-    integer function get_ghost_arr_1D_real(arr,size_ghost) result(ierr)         ! 1D real version
-        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs
-        
-        character(*), parameter :: rout_name = 'get_ghost_arr_1D_real'
-        
-        ! input / output
-        real(dp), intent(in) :: arr(:)                                          ! divided array
-        integer, intent(in) :: size_ghost                                       ! width of ghost region
-        
-        ! local variables
-        integer :: tot_size                                                     ! total size (including ghost region)
-        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! initialize number of modes and total size
-        tot_size = size(arr)
-        
-        ! ghost regions only make sense if there is more than 1 process
-        if (grp_n_procs.gt.1) then
-            if (grp_rank.eq.0) then                                             ! first rank only receives
-                call MPI_Recv(arr(tot_size-size_ghost+1:tot_size),&
-                    &size_ghost,MPI_DOUBLE_PRECISION,grp_rank+1,&
-                    &grp_rank+1,MPI_Comm_groups,istat,ierr)
-                CHCKERR('Failed to receive')
-            else if (grp_rank+1.eq.grp_n_procs) then                            ! last rank only sends
-                call MPI_Send(arr(1:size_ghost),size_ghost,&
-                    &MPI_DOUBLE_PRECISION,grp_rank-1,grp_rank,MPI_Comm_groups,&
-                    &ierr)
-                CHCKERR('Failed to send')
-            else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(arr(1:size_ghost),size_ghost,&
-                    &MPI_DOUBLE_PRECISION,grp_rank-1,grp_rank,&
-                    &arr(tot_size-size_ghost+1:tot_size),size_ghost,&
-                    &MPI_DOUBLE_PRECISION,grp_rank+1,grp_rank+1,&
-                    &MPI_Comm_groups,istat,ierr)
-                CHCKERR('Failed to send and receive')
-            end if
-        end if
-    end function get_ghost_arr_1D_real
     
     ! divides a  grid of  n_r_X points  under the  ranks of  MPI_Comm_groups and
     ! assigns grp_n_r_X and grp_min_r_X and  grp_max_r_X to each rank. Also sets
@@ -909,66 +574,6 @@ contains
         end function divide_X_grid_ind
     end function divide_X_grid
     
-    ! wrapper function to broadcast a single variable
-    integer function broadcast_var_real(var,source) result(ierr)                ! version for reals
-        character(*), parameter :: rout_name = 'broadcast_var_real'
-        
-        ! input / output
-        real(dp), intent(in) :: var                                             ! variable to be broadcast
-        integer, intent(in), optional :: source                                 ! process that sends
-        
-        ! local variables
-        integer :: source_loc = 0                                               ! local value for source
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local source if given
-        if (present(source)) source_loc = source
-        
-        call MPI_Bcast(var,1,MPI_DOUBLE_PRECISION,source_loc,MPI_COMM_WORLD,&
-            &ierr)
-        CHCKERR('MPI broadcast failed')
-    end function broadcast_var_real
-    integer function broadcast_var_int(var,source) result(ierr)                 ! version for integers
-        character(*), parameter :: rout_name = 'broadcast_var_int'
-        
-        ! input / output
-        integer, intent(in) :: var                                              ! variable to be broadcast
-        integer, intent(in), optional :: source                                 ! process that sends
-        
-        ! local variables
-        integer :: source_loc = 0                                               ! local value for source
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local source if given
-        if (present(source)) source_loc = source
-        
-        call MPI_Bcast(var,1,MPI_INTEGER,source_loc,MPI_COMM_WORLD,ierr)
-        CHCKERR('MPI broadcast failed')
-    end function broadcast_var_int
-    integer function broadcast_var_log(var,source) result(ierr)                 ! version for logicals
-        character(*), parameter :: rout_name = 'broadcast_var_log'
-        
-        ! input / output
-        logical, intent(in) :: var                                              ! variable to be broadcast
-        integer, intent(in), optional :: source                                 ! process that sends
-        
-        ! local variables
-        integer :: source_loc = 0                                               ! local value for source
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local source if given
-        if (present(source)) source_loc = source
-        
-        call MPI_Bcast(var,1,MPI_LOGICAL,source_loc,MPI_COMM_WORLD,ierr)
-        CHCKERR('MPI broadcast failed')
-    end function broadcast_var_log
-    
     ! Broadcasts all  the relevant variable that have been  determined so far in
     ! the global master process using the inputs to the other processes
     ! [MPI] Collective call
@@ -977,13 +582,13 @@ contains
             &max_it_NR, max_it_r, n_alpha, n_procs_per_alpha, minim_style, &
             &max_alpha, min_alpha, tol_NR, glb_rank, glb_n_procs, no_guess, &
             &n_sol_requested, nyq_fac, tol_r, use_pol_flux_F, use_pol_flux_E, &
-            &max_n_plots, plot_flux_q, plot_grid, no_plots, output_style, &
+            &retain_all_sol, plot_flux_q, plot_grid, no_plots, output_style, &
             &eq_style, use_normalization, n_sol_plotted, n_theta_plot, &
-            &n_zeta_plot, grid_style, plot_jq
-        use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, iotaf, gam, R_c, &
-            &R_s, Z_c, Z_s, L_c, L_s, phi, Dphi, presf
-        use HELENA, only: R_0_H, B_0_H, p0, qs, flux_H, nchi, chi_H, ias, &
-            &h_H_11_full, h_H_12_full, h_H_33_full, RBphi, R_H, Z_H
+            &n_zeta_plot, plot_jq, EV_BC, rho_style
+        use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
+            &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
+        use HELENA, only: R_0_H, B_0_H, pres_H, qs, flux_p_H, nchi, chi_H, &
+            &ias, h_H_11, h_H_12, h_H_33, RBphi, R_H, Z_H
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_n_r_X, &
             &min_r_X, max_r_X
@@ -1029,6 +634,8 @@ contains
             call MPI_Bcast(use_normalization,1,MPI_LOGICAL,0,MPI_COMM_WORLD,&
                 &ierr)
             CHCKERR('MPI broadcast failed')
+            call MPI_Bcast(rho_style,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+            CHCKERR('MPI broadcast failed')
             call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(max_it_r,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
@@ -1040,8 +647,6 @@ contains
             call MPI_Bcast(n_r_eq,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(EV_style,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(grid_style,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(n_procs_per_alpha,1,MPI_INTEGER,0,MPI_COMM_WORLD,&
                 &ierr)
@@ -1062,7 +667,7 @@ contains
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(nyq_fac,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(max_n_plots,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            call MPI_Bcast(retain_all_sol,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(output_style,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
@@ -1104,6 +709,8 @@ contains
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(rho_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
+            call MPI_Bcast(EV_BC,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+            CHCKERR('MPI broadcast failed')
             
             ! For  specific variables, choose  which equilibrium style  is being
             ! used:
@@ -1121,54 +728,55 @@ contains
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(nfp,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(phi)
+                    call bcast_size_1_R(flux_t_V)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(phi,size(phi),MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(flux_t_V,size(flux_t_V),&
+                        &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+                    CHCKERR('MPI broadcast failed')
+                    call bcast_size_1_R(Dflux_t_V)
+                    CHCKERR('MPI broadcast failed')
+                    call MPI_Bcast(Dflux_t_V,size(Dflux_t_V),&
+                        &MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(Dphi)
+                    call bcast_size_1_R(rot_t_V)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(Dphi,size(Dphi),MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(rot_t_V,size(rot_t_V),MPI_DOUBLE_PRECISION,&
+                        &0,MPI_COMM_WORLD,ierr)
+                    CHCKERR('MPI broadcast failed')
+                    call bcast_size_4_R(R_V_c)
+                    CHCKERR('MPI broadcast failed')
+                    call MPI_Bcast(R_V_c,size(R_V_c),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(iotaf)
+                    call bcast_size_4_R(R_V_s)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(iotaf,size(iotaf),MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(R_V_s,size(R_V_s),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(R_c)
+                    call bcast_size_4_R(Z_V_c)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(R_c,size(R_c),MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(Z_V_c,size(Z_V_c),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(R_s)
+                    call bcast_size_4_R(Z_V_s)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(R_s,size(R_s),MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(Z_V_s,size(Z_V_s),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(Z_c)
+                    call bcast_size_4_R(L_V_c)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(Z_c,size(Z_c),MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(L_V_c,size(L_V_c),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(Z_s)
+                    call bcast_size_4_R(L_V_s)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(Z_s,size(Z_s),MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(L_V_s,size(L_V_s),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(L_c)
+                    call bcast_size_1_R(pres_V)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(L_c,size(L_c),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_COMM_WORLD,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(L_s)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(L_s,size(L_s),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_COMM_WORLD,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(presf)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(presf,size(presf),MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(pres_V,size(pres_V),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                 case (2)                                                        ! HELENA
@@ -1176,7 +784,7 @@ contains
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(ias,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(flux_H)
+                    call bcast_size_1_R(flux_p_H)
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(R_0_H,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
@@ -1184,17 +792,17 @@ contains
                     call MPI_Bcast(B_0_H,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(flux_H,size(flux_H),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_COMM_WORLD,ierr)
+                    call MPI_Bcast(flux_p_H,size(flux_p_H),&
+                        &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                     call bcast_size_1_R(qs)
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(qs,size(qs),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(p0)
+                    call bcast_size_1_R(pres_H)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(p0,size(p0),MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(pres_H,size(pres_H),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                     call bcast_size_1_R(chi_H)
@@ -1217,19 +825,19 @@ contains
                     call MPI_Bcast(Z_H,size(Z_H),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_2_R(h_H_11_full)
+                    call bcast_size_2_R(h_H_11)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(h_H_11_full,size(h_H_11_full),&
+                    call MPI_Bcast(h_H_11,size(h_H_11),&
                         &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_2_R(h_H_12_full)
+                    call bcast_size_2_R(h_H_12)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(h_H_12_full,size(h_H_12_full),&
+                    call MPI_Bcast(h_H_12,size(h_H_12),&
                         &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_2_R(h_H_33_full)
+                    call bcast_size_2_R(h_H_33)
                     CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(h_H_33_full,size(h_H_33_full),&
+                    call MPI_Bcast(h_H_33,size(h_H_33),&
                         &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                 case default
@@ -1301,4 +909,4 @@ contains
                 &0:arr_size(4)-1))
         end subroutine bcast_size_4_R
     end function broadcast_input_vars
-end module
+end module MPI_ops

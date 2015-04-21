@@ -168,6 +168,7 @@ contains
     ! Note: For normal usage, i_geo should be 1, or not present.
     integer function setup_matrices(grid_eq,grid_X,X,A,B,i_geo) result(ierr)
         use num_vars, only: grp_n_procs, grp_rank
+        use grid_ops, only: get_norm_interp_data
         
         character(*), parameter :: rout_name = 'setup_matrices'
         
@@ -207,9 +208,9 @@ contains
             grp_n_r_X_loc = grid_X%grp_n_r
         end if
         
-        ! set  up arrays  grp_r_eq that  determine how  to fill  the
-        ! matrices
-        call get_interp_data(grp_r_eq)
+        ! set up arrays grp_r_eq that determine how to fill the matrices
+        ierr = get_norm_interp_data(grid_eq,grid_X,grp_r_eq)
+        CHCKERR('')
         
         ! create a  matrix A and B  with the appropriate number  of preallocated
         ! entries (excluding ghost regions)
@@ -545,18 +546,19 @@ contains
         end subroutine interp_V
         
         ! Sets the  boundary conditions by overwriting  the Hermitian components
-        ! written in  fill_mat. An artificial  Eigenvalue EV_0 is  introduced by
-        ! setting the diagonal  components of A to  EV_0 and of B to  1, and the
+        ! written in fill_mat.  An artificial Eigenvalue EV_BC  is introduced by
+        ! setting the diagonal components  of A to EV_BC and of B  to 1, and the
         ! off-diagonal elements to zero.
         ! The boundary condition at the plasma surface IS STILL AN OPEN QUESTION
         integer function set_mat_BC(A,B) result(ierr)
+            use num_vars, only: EV_BC
+            
             character(*), parameter :: rout_name = 'set_mat_BC'
             
             ! input / output
             Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
             
             ! local variables
-            PetscScalar, parameter :: EV_0 = 1.0E00_dp                          ! EV corresponding to first normal point (artificial)
             PetscScalar, allocatable :: loc_block_one(:,:)                      ! (n_mod,n_mod) block matrix for 1 normal point, one
             PetscScalar, allocatable :: loc_block_zero(:,:)                     ! (n_mod,n_mod) block matrix for 1 normal point, zero
             PetscInt, allocatable :: loc_k(:), loc_m(:)                         ! the locations at which to add the blocks to the matrices
@@ -585,9 +587,9 @@ contains
                 loc_k = [(id, id = 0,X%n_mod-1)]
                 loc_m = loc_k
                 
-                ! set the values of A (EV_0)
+                ! set the values of A (EV_BC)
                 call MatSetValues(A,X%n_mod,loc_k,X%n_mod,loc_m,&
-                    &EV_0*loc_block_one,INSERT_VALUES,ierr)
+                    &EV_BC*loc_block_one,INSERT_VALUES,ierr)
                 CHCKERR('')
                 
                 ! set the values of B (one)
@@ -634,9 +636,9 @@ contains
                 loc_k = [(id, id = 0,X%n_mod-1)] + (grid_X%n(3)-1)*X%n_mod
                 loc_m = loc_k
                 
-                ! set the values of A (EV_0)
+                ! set the values of A (EV_BC)
                 call MatSetValues(A,X%n_mod,loc_k,X%n_mod,loc_m,&
-                    &EV_0*loc_block_one,INSERT_VALUES,ierr)
+                    &EV_BC*loc_block_one,INSERT_VALUES,ierr)
                 CHCKERR('')
                 
                 ! set the values of B (one)
@@ -685,35 +687,6 @@ contains
             call MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY,ierr)
             CHCKERR('Coulnd''t end assembly of matrix')
         end function set_mat_BC
-        
-        ! Calculates the  variable grp_r_eq,  which is  later used  to calculate
-        ! V_interp_i from the tabulated values in the equilibrium grid.
-        subroutine get_interp_data(grp_r_eq)
-            use utilities, only: con2dis, interp_fun
-            
-            ! input / output
-            PetscReal, allocatable, intent(inout) :: grp_r_eq(:)                ! unrounded index in tables V_int
-            
-            ! local variables
-            PetscInt :: kd                                                      ! counter
-            integer :: grp_n_r                                                  ! nr. of normal point in group for perturbation grid
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! set grp_n_r
-            grp_n_r = size(grid_X%grp_r_F)
-            
-            ! allocate grp_r_eq and continuous version
-            allocate(grp_r_eq(grp_n_r))
-            
-            ! get the table  indices between which to  interpolate by converting
-            ! the continuous equilibrium points to the discretized values
-            ! loop over all normal points
-            do kd = 1,grp_n_r
-                call con2dis(grid_X%grp_r_F(kd),grp_r_eq(kd),grid_eq%grp_r_F)
-            end do
-        end subroutine get_interp_data
     end function setup_matrices
     
     ! sets up EV solver
@@ -933,8 +906,7 @@ contains
     ! stores the results
     integer function store_results(grid_X,X,solver,max_n_EV) result(ierr)
         use eq_vars, only: T_0
-        use num_vars, only: use_normalization, n_sol_requested, grp_n_procs, &
-            &grp_rank
+        use num_vars, only: use_normalization, grp_n_procs, grp_rank, EV_BC
         
         character(*), parameter :: rout_name = 'store_results'
         
@@ -945,12 +917,16 @@ contains
         PetscInt, intent(inout) :: max_n_EV                                     ! nr. of EV's saved, up to n_conv
         
         ! local variables
-        PetscInt :: id                                                          ! counter
+        PetscInt :: id, id_tot                                                  ! counters
         Vec :: sol_vec                                                          ! solution EV parallel vector
         PetscReal :: error                                                      ! error of EPS solver
         PetscInt :: one = 1                                                     ! one
         PetscReal, parameter :: infinity = 1.E40_dp                             ! beyond this value, modes are not saved
-        integer :: grp_n_r_X_loc                                                ! local copy of grp_n_r of X grid
+        PetscInt :: grp_n_r_X_loc                                               ! local copy of grp_n_r of X grid
+        PetscScalar :: EV_loc                                                   ! local copy of EV
+        PetscReal :: tol_complex = 1.E-5_dp                                     ! tolerance for an EV to be considered complex
+        PetscReal :: tol_EV_BC = 1.E-3_dp                                       ! tolerance for an EV to be considered due to the BC
+        PetscReal :: EV_BC_loc                                                  ! local copy of EV_BC
         
         ! initialize ierr
         ierr = 0
@@ -969,69 +945,88 @@ contains
             &grid_X%n(3)*X%n_mod,PETSC_NULL_SCALAR,sol_vec,ierr)
         CHCKERR('Failed to create MPI vector with arrays')
         
-        ! Calculate Alfven time T_0 = sqrt(mu_0 rho_0) R_0 / B_0
+        ! set local EV_BC and user output
         if (use_normalization) then
             call writo('inverse normalization factor:')
             call lvl_ud(1)
             call writo('omega_0 = 1/T_0^2 = '//trim(r2strt(1/(T_0**2)))//&
                 &' s^-2')
+            EV_BC_loc = EV_BC/(T_0**2)
             call lvl_ud(-1)
+        else
+            EV_BC_loc = EV_BC
         end if
         
         ! allocate vec
         if (allocated(X%vec)) deallocate(X%vec)
-        allocate(X%vec(1:X%n_mod,1:grp_n_r_X_loc,1:n_sol_requested))
+        allocate(X%vec(1:X%n_mod,1:grp_n_r_X_loc,1:max_n_EV))
         X%vec = 0.0_dp
         
         ! allocate val
         if (allocated(X%val)) deallocate(X%val)
-        allocate(X%val(1:n_sol_requested))
+        allocate(X%val(1:max_n_EV))
         X%val = 0.0_dp
         
-        write(*,*) 'TEMPORARILY NOT GOING BACK FROM NORMALIZATION !!!'
+        ! start id
+        id = 1
+        id_tot = 1
         
         ! store them
-        do id = 1,max_n_EV
+        do while (id.le.max_n_EV)
             ! get EV solution in vector X vec
             call VecPlaceArray(sol_vec,X%vec(:,:,id),ierr)                      ! place array sol_vec in X vec
             CHCKERR('Failed to place array')
-            call EPSGetEigenpair(solver,id-1,X%val(id),PETSC_NULL_OBJECT,&
+            call EPSGetEigenpair(solver,id_tot-1,X%val(id),PETSC_NULL_OBJECT,&
                 &sol_vec,PETSC_NULL_OBJECT,ierr)                                ! get solution EV vector and value (starts at index 0)
             CHCKERR('EPSGetEigenpair failed')
-            !!!ierr = get_ghost_arr(X%vec(:,:,id),1)                               ! no need to get ghost array
-            !!!CHCKERR('')
-            call EPSComputeRelativeError(solver,id-1,error,ierr)                ! get error (starts at index 0)
+            call EPSComputeRelativeError(solver,id_tot-1,error,ierr)            ! get error (starts at index 0)
             CHCKERR('EPSComputeRelativeError failed')
-            call writo('for solution '//trim(i2str(id))//&
-                &'/'//trim(i2str(max_n_EV))//':')
             
-            ! test for infinity
-            if (abs(X%val(id)).gt.infinity) then
-                max_n_EV = id-1
-                call writo('The next Eigenvalues are larger than '//&
-                    &trim(r2strt(infinity))//' and are discarded')
-                exit
-            end if
-            
-            !! visualize solution
-            !call PetscViewerDrawOpen(PETSC_COMM_WORLD,PETSC_NULL_CHARACTER,&
-                !&'solution '//trim(i2str(id))//' vector with '//&
-                !&trim(i2str(grid_X%n(3)))//' points',0,&
-                !&0,1000,1000,guess_viewer,istat)
-            !call VecView(sol_vec,guess_viewer,istat)
-            
+            ! user output
+            call writo(trim(i2str(id))//'/'//trim(i2str(max_n_EV))//':')
             call lvl_ud(1)
             
-            !! go back to  physical values from normalization  by multiplying the
-            !! Eigenvalues by 1/T_0^2
-            !if (use_normalization) then
-                !X%val(id) = X%val(id)/(T_0**2)
-            !end if
+            ! go back to  physical values from normalization  by multiplying the
+            ! Eigenvalues by 1/T_0^2
+            if (use_normalization) then
+                EV_loc = X%val(id)
+                X%val(id) = X%val(id)/(T_0**2)
+            end if
             
             ! print output
             call writo('eigenvalue: '//trim(r2strt(realpart(X%val(id))))//&
                 &' + '//trim(r2strt(imagpart(X%val(id))))//' i')
+            if (use_normalization) call writo('(normalized: '//&
+                &trim(r2strt(realpart(EV_loc)))//' + '//&
+                &trim(r2strt(imagpart(EV_loc)))//' i)')
             call writo('with rel. error: '//trim(r2str(error)))
+            
+            ! tests
+            if (abs(imagpart(X%val(id))/realpart(X%val(id))).gt.tol_complex) &
+                &then                                                           ! test for unphysical complex solution
+                call writo('WARNING: Unphysical complex Eigenvalue!')
+                call remove_EV(id,max_n_EV)
+            else if (abs(realpart(X%val(id)-EV_BC_loc)/EV_BC_loc).lt.&
+                &tol_EV_BC) then                                                ! test for artificial EV due to BC
+                call writo('WARNING: Eigenvalue probably due to BC''s &
+                    &(artifically set to '//trim(r2strt(EV_BC))//')')
+                call remove_EV(id,max_n_EV)
+            else if (abs(X%val(id)).gt.infinity) then                           ! test for infinity
+                call writo('WARNING: The next Eigenvalues are larger than '//&
+                    &trim(r2strt(infinity))//' and are discarded')
+                call remove_EV(id,max_n_EV,remove_next=.true.)
+                exit
+            else                                                                ! tests passed
+                ! increment id
+                id = id + 1
+            end if
+            
+            !! visualize solution
+            !call PetscViewerDrawOpen(PETSC_COMM_WORLD,PETSC_NULL_CHARACTER,&
+                !&'solution '//trim(i2str(id-1))//' vector with '//&
+                !&trim(i2str(grid_X%n(3)))//' points',0,&
+                !&0,1000,1000,guess_viewer,istat)
+            !call VecView(sol_vec,guess_viewer,istat)
             
             !call writo('Eigenvector = ')
             !call VecView(sol_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
@@ -1042,6 +1037,9 @@ contains
             ! reset vector
             call VecResetArray(sol_vec,ierr)
             CHCKERR('Failed to reset array')
+            
+            ! increment total id
+            id_tot = id_tot+1
         end do
         
         !call writo('Summary:')
@@ -1051,6 +1049,75 @@ contains
         CHCKERR('Failed to destroy sol_vec')
         
         call lvl_ud(-1)
+    contains
+        ! Removes id'th  Eigenvalue and  -vector. Optionally, all  the following
+        ! can be removed as well.
+        subroutine remove_EV(id,max_id,remove_next)
+            use num_vars, only: retain_all_sol
+            
+            ! input / output
+            PetscInt, intent(inout) :: id                                       ! id of faulty values
+            PetscInt, intent(inout) :: max_id                                   ! maximum id
+            PetscBool, intent(in), optional :: remove_next                      ! whether all next values have to be removed as well
+            
+            ! local variables
+            PetscScalar, allocatable :: X_val_loc(:)                            ! local copy of X_val
+            PetscScalar, allocatable :: X_vec_loc(:,:,:)                        ! local copy of X_vec
+            PetscBool :: remove_next_loc = .false.                              ! local copy of remove_next
+            
+            ! only remove if faulty solutions are not optionally retained
+            if (retain_all_sol) then
+                id = id+1                                                       ! increment the solution
+            else
+                ! set up local remove_next
+                if (present(remove_next)) remove_next_loc = remove_next
+                
+                ! user output
+                call lvl_ud(1)
+                if (remove_next_loc) then
+                    call writo('All next solutions are removed')
+                else
+                    call writo('Current solution is removed')
+                end if
+                call writo('(Override using "retain_all_sol")')
+                
+                ! save old arrays
+                allocate(X_val_loc(max_id))
+                allocate(X_vec_loc(X%n_mod,grp_n_r_X_loc,max_id))
+                X_val_loc = X%val
+                X_vec_loc = X%vec
+                
+                ! reallocate arrays
+                deallocate(X%val,X%vec)
+                if (remove_next_loc) then
+                    allocate(X%val(id-1))
+                    allocate(X%vec(X%n_mod,grp_n_r_X_loc,id-1))
+                else
+                    allocate(X%val(max_id-1))
+                    allocate(X%vec(X%n_mod,grp_n_r_X_loc,max_id-1))
+                end if
+                
+                ! copy other values
+                X%val(1:id-1) = X_val_loc(1:id-1)
+                X%vec(:,:,1:id-1) = X_vec_loc(:,:,1:id-1)
+                if (.not.remove_next_loc) then
+                    X%val(id:max_id-1) = X_val_loc(id+1:max_id)
+                    X%vec(:,:,id:max_id-1) = X_vec_loc(:,:,id+1:max_id)
+                end if
+                
+                ! adapt max_id
+                if (remove_next_loc) then
+                    max_id = id-1
+                else
+                    max_id = max_id-1
+                end if
+                
+                ! clean up
+                deallocate(X_val_loc,X_vec_loc)
+                
+                call lvl_ud(-1)
+            end if
+        end subroutine remove_EV
     end function store_results
     
     ! stop PETSC and SLEPC

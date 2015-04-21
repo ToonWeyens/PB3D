@@ -11,32 +11,32 @@ module VMEC
     use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
         &lasym, VMEC_version => version_, lfreeb, &                             ! stellerator symmetry, version number, free boundary or not
         &n_r_VMEC => ns, mpol, ntor, xn, xm, mnmax, nfp, &                      ! mpol, ntor = # modes
-        &phi, Dphi => phipf, &                                                  ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
-        &iotaf, &                                                               ! iota = 1/q (FM)
-        &presf, gmns, gmnc, &                                                   ! pressure (FM) jacobian (HM)
+        &flux_t_V => phi, Dflux_t_V => phipf, &                                 ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
+        &rot_t_V => iotaf, &                                                    ! rotational transform = 1/q (FM)
+        &pres_V => presf, &                                                     ! pressure (FM)
+        &lrfp, &                                                                ! whether or not the poloidal flux is used as radial variable
+        &gam => gamma, &                                                        ! gamma in adiabatic law (NOT important here because of incompressibility)
         &bsubumns, bsubumnc, bsubvmns, bsubvmnc, bsubsmns, bsubsmnc, &          ! B_theta (HM), B_zeta (HM), B_r (FM)
         &bmns, bmnc, &                                                          ! magnitude of B (HM)
         &lmns, lmnc, rmns, rmnc, zmns, zmnc, &                                  ! lambda (HM), R (FM), Z(FM)
         &rmax_surf, rmin_surf, zmax_surf, &                                     ! max and min values of R, Z
-        &lrfp, &                                                                ! whether or not the poloidal flux is used as radial variable
-        &gam => gamma                                                           ! gamma in adiabatic law
+        &gmnc, gmns                                                             ! Jacobian in VMEC coordinates
+    
     implicit none
     private
-    public read_VMEC, dealloc_VMEC_final, repack, &
-        &mnmax, rmnc, mpol, ntor, nfp, R_c, R_s, Z_c, Z_s, L_c, L_s, &
-        &presf, rmax_surf, rmin_surf, zmax_surf, iotaf, lasym, &
-        &lfreeb, phi, Dphi, VMEC_version, gam, &
-        &B_V_sub_s_M, B_V_sub_c_M, B_V_c_H, B_V_s_H, &
-        &jac_V_c_H, jac_V_s_H
+    public read_VMEC, dealloc_VMEC_final, repack, normalize_VMEC, &
+        &mpol, ntor, nfp, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, &
+        &pres_V, rot_t_V, lasym, flux_t_V, Dflux_t_V, VMEC_version, gam, lfreeB
+#if ldebug
+    public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, jac_V_c, jac_V_s
+#endif
 
-    real(dp), allocatable :: &
-        &R_c(:,:,:,:), R_s(:,:,:,:), &                                          ! Coeff. of R in (co)sine series (FM) and norm. deriv.
-        &Z_c(:,:,:,:), Z_s(:,:,:,:), &                                          ! Coeff. of Z in (co)sine series (FM) and norm. deriv.
-        &L_c(:,:,:,:), L_s(:,:,:,:)                                             ! Coeff. of lambda in (co)sine series (HM) and norm. deriv.
-    real(dp), allocatable :: &
-        &B_V_sub_c_M(:,:,:,:), B_V_sub_s_M(:,:,:,:), &                          ! Coeff. of B_i in (co)sine series (last index: r,theta,phi) (FM, HM, HM)
-        &B_V_c_H(:,:,:), B_V_s_H(:,:,:), &                                      ! Coeff. of magnitude of B (HM)
-        &jac_V_c_H(:,:,:), jac_V_s_H(:,:,:)                                     ! Jacobian in VMEC coordinates (HM)
+    real(dp), allocatable :: R_V_c(:,:,:,:), R_V_s(:,:,:,:)                     ! Coeff. of R in (co)sine series (FM) and norm. deriv.
+    real(dp), allocatable :: Z_V_c(:,:,:,:), Z_V_s(:,:,:,:)                     ! Coeff. of Z in (co)sine series (FM) and norm. deriv.
+    real(dp), allocatable :: L_V_c(:,:,:,:), L_V_s(:,:,:,:)                     ! Coeff. of lambda in (co)sine series (HM) and norm. deriv.
+    real(dp), allocatable :: B_V_sub_c(:,:,:,:), B_V_sub_s(:,:,:,:)             ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM)
+    real(dp), allocatable :: B_V_c(:,:,:), B_V_s(:,:,:)                         ! Coeff. of magnitude of B (HM and FM)
+    real(dp), allocatable :: jac_V_c(:,:,:), jac_V_s(:,:,:)                     ! Jacobian in VMEC coordinates (HM and FM)
 
 contains
     ! Reads the VMEC equilibrium data
@@ -58,6 +58,9 @@ contains
         real(dp), allocatable :: L_c_H(:,:,:,:)                                 ! temporary HM variable
         real(dp), allocatable :: L_s_H(:,:,:,:)                                 ! temporary HM variable
         character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), allocatable :: B_V_sub_c_M(:,:,:,:), B_V_sub_s_M(:,:,:,:)     ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM, HM, HM)
+        real(dp), allocatable :: B_V_c_H(:,:,:), B_V_s_H(:,:,:)                 ! Coeff. of magnitude of B (HM)
+        real(dp), allocatable :: jac_V_c_H(:,:,:), jac_V_s_H(:,:,:)             ! Jacobian in VMEC coordinates (HM)
         
         ! initialize ierr
         ierr = 0
@@ -118,26 +121,26 @@ contains
         call writo('Reading the grid parameters')
         call lvl_ud(1)
         
-        ! Allocate and repack the Fourier coefficients to translate them for
-        ! use in this code
-        allocate(R_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-        allocate(Z_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-        allocate(L_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+        ! Allocate and repack the Fourier coefficients to translate them for use
+        ! in this code
+        allocate(R_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+        allocate(Z_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+        allocate(L_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
         allocate(L_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
         !if (lasym) then                                                        ! following only needed in assymetric situations
-            allocate(R_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-            allocate(Z_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-            allocate(L_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+            allocate(R_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+            allocate(Z_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
+            allocate(L_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
             allocate(L_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
         !end if
         
-        ! factors R_c,s; Z_c,s and L_C,s and HM varieties
-        R_c(:,:,:,0) = repack(rmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-        Z_s(:,:,:,0) = repack(zmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+        ! factors R_V_c,s; Z_V_c,s and L_C,s and HM varieties
+        R_V_c(:,:,:,0) = repack(rmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+        Z_V_s(:,:,:,0) = repack(zmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
         L_s_H(:,:,:,0) = repack(lmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
         !if (lasym) then                                                        ! following only needed in assymetric situations
-            R_s(:,:,:,0) = repack(rmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            Z_c(:,:,:,0) = repack(zmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            R_V_s(:,:,:,0) = repack(rmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            Z_V_c(:,:,:,0) = repack(zmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
             L_c_H(:,:,:,0) = repack(lmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
         !end if
         
@@ -148,21 +151,21 @@ contains
         do kd = 1,max_deriv+1
             do jd = -ntor,ntor
                 do id = 0,mpol-1
-                    ierr = calc_deriv(R_c(id,jd,:,0),R_c(id,jd,:,kd),&
+                    ierr = calc_deriv(R_V_c(id,jd,:,0),R_V_c(id,jd,:,kd),&
                         &n_r_eq-1._dp,kd,1)
                     CHCKERR('')
-                    ierr = calc_deriv(Z_s(id,jd,:,0),Z_s(id,jd,:,kd),&
+                    ierr = calc_deriv(Z_V_s(id,jd,:,0),Z_V_s(id,jd,:,kd),&
                         &n_r_eq-1._dp,kd,1)
                     CHCKERR('')
                     ierr = calc_deriv(L_s_H(id,jd,:,0),&
                         &L_s_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                     CHCKERR('')
                     !if (lasym) then                                            ! following only needed in assymetric situations
-                        ierr = calc_deriv(R_s(id,jd,:,0),&
-                            &R_s(id,jd,:,kd),n_r_eq-1._dp,kd,1)
+                        ierr = calc_deriv(R_V_s(id,jd,:,0),&
+                            &R_V_s(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                         CHCKERR('')
-                        ierr = calc_deriv(Z_c(id,jd,:,0),&
-                            &Z_c(id,jd,:,kd),n_r_eq-1._dp,kd,1)
+                        ierr = calc_deriv(Z_V_c(id,jd,:,0),&
+                            &Z_V_c(id,jd,:,kd),n_r_eq-1._dp,kd,1)
                         CHCKERR('')
                         ierr = calc_deriv(L_c_H(id,jd,:,0),&
                             &L_c_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
@@ -176,12 +179,11 @@ contains
         do kd = 0,max_deriv+1
             do jd = -ntor,ntor
                 do id = 0,mpol-1
-                    ierr = conv_FHM(L_s_H(id,jd,:,kd),L_s(id,jd,:,kd),&
-                        &.false.)
+                    ierr = conv_FHM(L_s_H(id,jd,:,kd),L_V_s(id,jd,:,kd),.false.)
                     CHCKERR('')
                     !if (lasym) then                                            ! following only needed in assymetric situations
-                        ierr = conv_FHM(L_c_H(id,jd,:,kd),&
-                            &L_c(id,jd,:,kd),.false.)
+                        ierr = conv_FHM(L_c_H(id,jd,:,kd),L_V_c(id,jd,:,kd),&
+                            &.false.)
                         CHCKERR('')
                     !end if
                 end do
@@ -191,6 +193,7 @@ contains
 #if ldebug
         ! for tests
         if (ltest) then
+            ! allocate helper variables
             allocate(B_V_sub_c_M(0:mpol-1,-ntor:ntor,1:n_r_eq,3))
             allocate(B_V_sub_s_M(0:mpol-1,-ntor:ntor,1:n_r_eq,3))
             allocate(B_V_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
@@ -198,34 +201,56 @@ contains
             allocate(jac_V_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
             allocate(jac_V_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
             
-            B_V_sub_c_M(:,:,:,1) = repack(bsubsmnc,mnmax,n_r_eq,mpol,ntor,&
-                &xm,xn)
-            B_V_sub_s_M(:,:,:,1) = repack(bsubsmns,mnmax,n_r_eq,mpol,ntor,&
-                &xm,xn)
-            B_V_sub_c_M(:,:,:,2) = repack(bsubumnc,mnmax,n_r_eq,mpol,ntor,&
-                &xm,xn)
-            B_V_sub_s_M(:,:,:,2) = repack(bsubumns,mnmax,n_r_eq,mpol,ntor,&
-                &xm,xn)
-            B_V_sub_c_M(:,:,:,3) = repack(bsubvmnc,mnmax,n_r_eq,mpol,ntor,&
-                &xm,xn)
-            B_V_sub_s_M(:,:,:,3) = repack(bsubvmns,mnmax,n_r_eq,mpol,ntor,&
-                &xm,xn)
+            ! store in helper variables
+            B_V_sub_c_M(:,:,:,1) = repack(bsubsmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            B_V_sub_s_M(:,:,:,1) = repack(bsubsmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            B_V_sub_c_M(:,:,:,2) = repack(bsubumnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            B_V_sub_s_M(:,:,:,2) = repack(bsubumns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            B_V_sub_c_M(:,:,:,3) = repack(bsubvmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            B_V_sub_s_M(:,:,:,3) = repack(bsubvmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
             B_V_c_H(:,:,:) = repack(bmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
             B_V_s_H(:,:,:) = repack(bmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            jac_V_c_H(:,:,:) = -repack(gmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            jac_V_s_H(:,:,:) = -repack(gmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            jac_V_c_H(:,:,:) = repack(gmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            jac_V_s_H(:,:,:) = repack(gmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            
+            ! allocate FM variables
+            allocate(B_V_sub_c(0:mpol-1,-ntor:ntor,1:n_r_eq,3))
+            allocate(B_V_sub_s(0:mpol-1,-ntor:ntor,1:n_r_eq,3))
+            allocate(B_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq))
+            allocate(B_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq))
+            allocate(jac_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq))
+            allocate(jac_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq))
+            
+            ! conversion HM -> FM (B_V_sub, B_V, jac_V)
+            do jd = -ntor,ntor
+                do id = 0,mpol-1
+                    do kd = 1,3
+                        ierr = conv_FHM(B_V_sub_c_M(id,jd,:,kd),&
+                            &B_V_sub_c(id,jd,:,kd),.false.)
+                        CHCKERR('')
+                        ierr = conv_FHM(B_V_sub_s_M(id,jd,:,kd),&
+                            &B_V_sub_s(id,jd,:,kd),.false.)
+                        CHCKERR('')
+                    end do
+                    ierr = conv_FHM(B_V_c_H(id,jd,:),B_V_c(id,jd,:),.false.)
+                    CHCKERR('')
+                    ierr = conv_FHM(B_V_s_H(id,jd,:),B_V_s(id,jd,:),.false.)
+                    CHCKERR('')
+                    ierr = conv_FHM(jac_V_c_H(id,jd,:),jac_V_c(id,jd,:),.false.)
+                    CHCKERR('')
+                    ierr = conv_FHM(jac_V_s_H(id,jd,:),jac_V_s(id,jd,:),.false.)
+                    CHCKERR('')
+                end do
+            end do
+            
+            ! deallocate helper variables
+            deallocate(B_V_sub_c_M,B_V_sub_s_M)
+            deallocate(B_V_c_H,B_V_s_H)
+            deallocate(jac_V_c_H,jac_V_s_H)
         end if
 #endif
         
-        call lvl_ud(-1)
-        call writo('Grid parameters successfully read')
-    end function read_VMEC
-    
-    ! deallocates VMEC quantities that are not used anymore
-    subroutine dealloc_VMEC_final
-        deallocate(phi,Dphi)
-        deallocate(iotaf)
-        deallocate(presf)
+        ! deallocate repacked variables
         if (allocated(gmns)) deallocate(gmns)
         if (allocated(gmnc)) deallocate(gmnc)
         if (allocated(bsubumns)) deallocate(bsubumns)
@@ -242,18 +267,30 @@ contains
         if (allocated(rmnc)) deallocate(rmnc)
         if (allocated(zmns)) deallocate(zmns)
         if (allocated(zmnc)) deallocate(zmnc)
-        if (allocated(R_c)) deallocate(R_c)
-        if (allocated(R_s)) deallocate(R_s)
-        if (allocated(Z_c)) deallocate(Z_c)
-        if (allocated(Z_s)) deallocate(Z_s)
-        if (allocated(L_c)) deallocate(L_c)
-        if (allocated(L_s)) deallocate(L_s)
-        if (allocated(B_V_sub_c_M)) deallocate(B_V_sub_c_M)
-        if (allocated(B_V_sub_s_M)) deallocate(B_V_sub_s_M)
-        if (allocated(B_V_c_H)) deallocate(B_V_c_H)
-        if (allocated(B_V_s_H)) deallocate(B_V_s_H)
-        if (allocated(jac_V_c_H)) deallocate(jac_V_c_H)
-        if (allocated(jac_V_s_H)) deallocate(jac_V_s_H)
+        
+        call lvl_ud(-1)
+        call writo('Grid parameters successfully read')
+    end function read_VMEC
+    
+    ! deallocates VMEC quantities that are not used anymore
+    subroutine dealloc_VMEC_final
+        deallocate(flux_t_V,Dflux_t_V)
+        deallocate(rot_t_V)
+        deallocate(pres_V)
+        if (allocated(R_V_c)) deallocate(R_V_c)
+        if (allocated(R_V_s)) deallocate(R_V_s)
+        if (allocated(Z_V_c)) deallocate(Z_V_c)
+        if (allocated(Z_V_s)) deallocate(Z_V_s)
+        if (allocated(L_V_c)) deallocate(L_V_c)
+        if (allocated(L_V_s)) deallocate(L_V_s)
+#if ldebug
+        if (allocated(B_V_sub_c)) deallocate(B_V_sub_c)
+        if (allocated(B_V_sub_s)) deallocate(B_V_sub_s)
+        if (allocated(B_V_c)) deallocate(B_V_c)
+        if (allocated(B_V_s)) deallocate(B_V_s)
+        if (allocated(jac_V_c)) deallocate(jac_V_c)
+        if (allocated(jac_V_s)) deallocate(jac_V_s)
+#endif
     end subroutine dealloc_VMEC_final
 
     ! Repack  variables  representing the  Fourier  composition  such as  R,  Z,
@@ -304,4 +341,22 @@ contains
             repack = 0.0_dp
         end if
     end function repack
+    
+    ! Normalizes VMEC input
+    ! Note  that  the normal  VMEC coordinate  runs from  0 to  1, whatever  the
+    ! normalization.
+    subroutine normalize_VMEC
+        use eq_vars, only: pres_0, psi_0, R_0
+        
+        ! scale the VMEC quantities
+        pres_V = pres_V/pres_0
+        flux_t_V = flux_t_V/psi_0
+        Dflux_t_V = Dflux_t_V/psi_0
+        R_V_c = R_V_c/R_0
+        R_V_s = R_V_s/R_0
+        Z_V_c = Z_V_c/R_0
+        Z_V_s = Z_V_s/R_0
+        L_V_c = L_V_c
+        L_V_s = L_V_s
+    end subroutine normalize_VMEC
 end module VMEC

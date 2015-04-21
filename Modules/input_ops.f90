@@ -19,7 +19,7 @@ contains
     function get_log(yes,ind) result(val)
         use messages, only: start_time, stop_time
         use num_vars, only: glb_rank
-        use MPI_ops, only: wait_MPI, broadcast_var
+        use MPI_utilities, only: wait_MPI, broadcast_var
         
         ! input / output
         logical :: val                                                          ! output value
@@ -74,7 +74,7 @@ contains
     function get_real(lim_lo,lim_hi,ind) result(val)
         use messages, only: start_time, stop_time
         use num_vars, only: glb_rank
-        use MPI_ops, only: wait_MPI, broadcast_var
+        use MPI_utilities, only: wait_MPI, broadcast_var
         
         ! input / output
         real(dp) :: val                                                         ! output value
@@ -148,7 +148,7 @@ contains
     function get_int(lim_lo,lim_hi,ind) result(val)
         use messages, only: start_time, stop_time
         use num_vars, only: glb_rank
-        use MPI_ops, only: wait_MPI, broadcast_var
+        use MPI_utilities, only: wait_MPI, broadcast_var
         
         ! input / output
         integer :: val                                                          ! output value
@@ -220,7 +220,7 @@ contains
     ! [MPI] All ranks or, optinally, only current rank
     subroutine pause_prog(ind)
         use messages, only: start_time, stop_time
-        use MPI_ops, only: wait_MPI
+        use MPI_utilities, only: wait_MPI
         use num_vars, only: glb_rank, grp_rank
         
         ! input / output
@@ -234,7 +234,7 @@ contains
         ! output message
         if (grp_rank.eq.0) then
             write(*,'(A)',advance='no') empty_str                               ! first print empty string so that output is visible
-            write(*,'(A)',advance='no') 'Paused. Press any button...'
+            write(*,'(A)',advance='no') 'Paused. Press enter...'
         end if
         
         ! set local ind
@@ -262,11 +262,11 @@ contains
     integer function read_input() result(ierr)
         use num_vars, only: &
             &minim_style, min_alpha, max_alpha, n_alpha, max_it_NR, tol_NR, &
-            &max_it_r, input_i, use_pol_flux_F, grid_style, EV_style, &
-            &n_procs_per_alpha, plot_jq, tol_r, n_sol_requested, nyq_fac, &
-            &max_n_plots, glb_rank, nyq_fac, plot_grid, plot_flux_q, &
-            &output_style, use_normalization, n_sol_plotted, n_theta_plot, &
-            &n_zeta_plot
+            &max_it_r, input_i, use_pol_flux_F, EV_style, n_procs_per_alpha, &
+            &plot_jq, tol_r, n_sol_requested, nyq_fac, glb_rank, nyq_fac, &
+            &plot_grid, plot_flux_q, output_style, use_normalization, &
+            &n_sol_plotted, n_theta_plot, n_zeta_plot, EV_BC, rho_style, &
+            &retain_all_sol
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files, only: input_name
@@ -285,9 +285,9 @@ contains
             &max_par_X, min_alpha, max_alpha, n_par_X, n_alpha, max_it_NR, &
             &tol_NR, max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
             &max_r_X, EV_style, n_procs_per_alpha, plot_jq, n_sol_requested, &
-            &nyq_fac, rho_0, max_n_plots, use_pol_flux_F, plot_grid, &
+            &EV_BC, rho_style, nyq_fac, rho_0, use_pol_flux_F, plot_grid, &
             &output_style, plot_flux_q, use_normalization, n_sol_plotted, &
-            &n_theta_plot, n_zeta_plot
+            &n_theta_plot, n_zeta_plot, retain_all_sol
         
         ! initialize ierr
         ierr = 0
@@ -306,9 +306,6 @@ contains
                 &default values')
             call default_input
             
-            ! initialize non-input file variables
-            grid_style = 1                                                      ! nonzero for debugging, not for users
-            
             ! read user input
             if (input_name.ne.'') then                                          ! otherwise, defaults are loaded
                 read (input_i, nml=inputdata, iostat=istat)                     ! read input data
@@ -324,6 +321,9 @@ contains
                     
                     ! adapt run-time variables if needed
                     call adapt_run
+                    
+                    ! adapt output variables if needed
+                    call adapt_output
                     
                     ! adapt plotting variables if needed
                     call adapt_plot
@@ -393,13 +393,15 @@ contains
             plot_jq = .false.                                                   ! do not plot the q-profile with nq-m = 0
             plot_grid = .false.                                                 ! do not plot the grid
             plot_flux_q = .false.                                               ! do not plot the flux quantities
-            n_sol_requested = 3                                                 ! request solutions with 3 highes EV
-            max_n_plots = 4                                                     ! maximum nr. of modes for which to plot output in plot_X_vecs
             output_style = 1                                                    ! GNUPlot output
             use_normalization = .true.                                          ! use normalization for the variables
+            EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
+            rho_style = 1                                                       ! constant pressure profile, equal to rho_0
             
-            ! variables concerning plotting
+            ! variables concerning output
             n_sol_plotted = n_sol_requested                                     ! plot all solutions
+            n_sol_requested = 3                                                 ! request solutions with 3 highes EV
+            retain_all_sol = .false.                                            ! don't retain faulty ones
             ! default   values   of  n_theta_plot  and   n_zeta_plot  depend  on
             ! equilibrium style being used:
             !   1:  VMEC
@@ -416,7 +418,7 @@ contains
             ! variables concerning poloidal mode numbers m
             min_par_X = -4.0_dp                                                 ! minimum parallel angle [pi]
             max_par_X = 4.0_dp                                                  ! maximum parallel angle [pi]
-            nyq_fac = 5                                                         ! need at least 5 points per period for perturbation quantitites
+            nyq_fac = 10                                                        ! need at least 10 points per period for perturbation quantitites
             prim_X = 20                                                         ! main mode number of perturbation
             min_sec_X = prim_X                                                  ! min. of. secondary mode number of perturbation
             max_sec_X = prim_X                                                  ! max. of. secondary mode number of perturbation
@@ -439,29 +441,34 @@ contains
         end subroutine
         
         ! checks whether the variables concerning run-time are chosen correctly.
-        ! n_procs_per_alpha and n_sol_requested have to be at least 1
-        ! output_style has to be 1 (GNUPlot) or 2 (HDF5) (see output_ops)
+        ! n_procs_per_alpha has to be at least 1
+        ! rho_style has to be 1 (constant rho = rho_0)
         subroutine adapt_run
             if (n_procs_per_alpha.lt.1) then
                 n_procs_per_alpha = 1
                 call writo('WARNING: n_procs_per_alpha has been increased to '&
                     &//trim(i2str(n_procs_per_alpha)))
             end if
+            if (rho_style.ne.1) then
+                rho_style = 1
+                call writo('WARNING: rho_style set to default (1: constant)')
+            end if
+        end subroutine adapt_run
+        
+        ! checks whether the variables concerning output are chosen correctly.
+        ! output_style has to be 1 (GNUPlot) or 2 (HDF5) (see output_ops)
+        ! n_sol_requested has to be at least one
+        subroutine adapt_output
             if (n_sol_requested.lt.1) then
                 n_sol_requested = 1
                 call writo('WARNING: n_sol_requested has been increased to '&
                     &//trim(i2str(n_sol_requested)))
             end if
-            if (max_n_plots.lt.0) then
-                max_n_plots = 0
-                call writo('WARNING: max_n_plots cannot be negative and is &
-                    &set to '//trim(i2str(max_n_plots)))
-            end if
             if (output_style.lt.1 .or. output_style.gt.2) then
                 output_style = 1
                 call writo('WARNING: output_style set to default (1: GNUPlot)')
             end if
-        end subroutine adapt_run
+        end subroutine adapt_output
         
         ! checks whether the variables concerning plotting are chosen correctly.
         ! n_theta and n_zeta_plot have to be positive

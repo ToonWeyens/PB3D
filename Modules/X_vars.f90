@@ -4,7 +4,6 @@
 module X_vars
 #include <PB3D_macros.h>
     use str_ops
-    use output_ops
     use messages
     use num_vars, only: dp, max_str_ln, iu
     use grid_vars, only: grid_type
@@ -33,9 +32,9 @@ module X_vars
     !   - (angle_1,angle_2,r,n_mod)         for U_X_i, DU_X_i
     !   - (angle_1,angle_2,r,nn_mod)        for PVi, KVi, exp_ang_par_F
     !   - (nn_mod,angle_2,r,3)              for KV_int, PV_int
-    ! where  a discussion  of the  coordinates is  given in  the description  of
-    ! eq_type. Also, like  with the equilibrium type, the metric  type should be
-    ! complemented by grid type.
+    ! where it is refered to the discussion  of the grid type for an explanation
+    ! of the angles angle_1 and angle_2.
+    ! nn_mod refers to the number of nonzero entries, as discussed in create_X.
     type :: X_type
         integer :: n_mod                                                        ! size of n and m (nr. of modes)
         integer :: min_n                                                        ! lowest poloidal mode number m
@@ -50,14 +49,16 @@ module X_vars
         real(dp), allocatable :: extra1(:,:,:)                                  ! extra terms in PV_0 (see routine calc_extra)
         real(dp), allocatable :: extra2(:,:,:)                                  ! extra terms in PV_0 (see routine calc_extra)
         real(dp), allocatable :: extra3(:,:,:)                                  ! extra terms in PV_0 (see routine calc_extra)
-        complex(dp), pointer :: U_0(:,:,:,:), U_1(:,:,:,:)                      ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
-        complex(dp), pointer :: DU_0(:,:,:,:), DU_1(:,:,:,:)                    ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
-        complex(dp), allocatable :: PV_0(:,:,:,:)                               ! ~PV^0 coefficient
-        complex(dp), allocatable :: PV_1(:,:,:,:)                               ! ~PV^1 coefficient
-        complex(dp), allocatable :: PV_2(:,:,:,:)                               ! ~PV^2 coefficient
-        complex(dp), allocatable :: KV_0(:,:,:,:)                               ! ~KV^0 coefficient
-        complex(dp), allocatable :: KV_1(:,:,:,:)                               ! ~KV^1 coefficient
-        complex(dp), allocatable :: KV_2(:,:,:,:)                               ! ~KV^2 coefficient
+        complex(dp), pointer :: U_0(:,:,:,:) => null()                          ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
+        complex(dp), pointer :: U_1(:,:,:,:) => null()                          ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
+        complex(dp), pointer :: DU_0(:,:,:,:) => null()                         ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
+        complex(dp), pointer :: DU_1(:,:,:,:) => null()                         ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
+        complex(dp), pointer :: PV_0(:,:,:,:) => null()                         ! ~PV^0 coefficient
+        complex(dp), pointer :: PV_1(:,:,:,:) => null()                         ! ~PV^1 coefficient
+        complex(dp), pointer :: PV_2(:,:,:,:) => null()                         ! ~PV^2 coefficient
+        complex(dp), pointer :: KV_0(:,:,:,:) => null()                         ! ~KV^0 coefficient
+        complex(dp), pointer :: KV_1(:,:,:,:) => null()                         ! ~KV^1 coefficient
+        complex(dp), pointer :: KV_2(:,:,:,:) => null()                         ! ~KV^2 coefficient
         complex(dp), allocatable :: exp_ang_par_F(:,:,:,:)                      ! exp(i (k-m) ang_par_F)
         complex(dp), allocatable :: PV_int_0(:,:,:)                             ! <~PV^0 e^i(k-m)ang_par_F> coefficient
         complex(dp), allocatable :: PV_int_1(:,:,:)                             ! <~PV^1 e^i(k-m)ang_par_F> coefficient
@@ -169,9 +170,6 @@ contains
         ! input / output
         type(X_type), intent(inout) :: X                                        ! perturbation variables
         
-        deallocate(X%U_0,X%U_1,X%DU_0,X%DU_1)
-        deallocate(X%PV_0,X%PV_1,X%PV_2,X%KV_0,X%KV_1,X%KV_2)
-        deallocate(X%exp_ang_par_F)
         deallocate(X%mu0sigma,X%extra2,X%extra3)
     end subroutine dealloc_X
     
@@ -181,10 +179,14 @@ contains
         ! input / output
         type(X_type), intent(inout) :: X                                        ! perturbation variables
         
+        nullify(X%U_0,X%U_1,X%DU_0,X%DU_1)
+        nullify(X%PV_0,X%PV_1,X%PV_2,X%KV_0,X%KV_1,X%KV_2)
         deallocate(X%n,X%m)
-        deallocate(X%vec,X%val)
+        if (allocated(X%vec)) deallocate(X%vec)                                 ! are only allocated if system of equations solved with this X
+        if (allocated(X%val)) deallocate(X%val)                                 ! are only allocated if system of equations solved with this X
+        deallocate(X%exp_ang_par_F)
+        deallocate(X%extra1)                                                    ! extra1 is needed in decomposition of energy
         deallocate(X%PV_int_0,X%PV_int_1,X%PV_int_2)
         deallocate(X%KV_int_0,X%KV_int_1,X%KV_int_2)
-        deallocate(X%extra1)                                                    ! extra1 is needed in decomposition of energy
     end subroutine dealloc_X_final
 end module
