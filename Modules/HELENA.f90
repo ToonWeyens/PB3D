@@ -15,16 +15,13 @@ module HELENA
     implicit none
     private
     public read_HEL, dealloc_HEL, dealloc_HEL_final, adapt_to_B_HEL, &
-        &normalize_HEL, &
-        &R_0_H, B_0_H, pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, h_H_12, &
-        &h_H_33, RBphi, R_H, Z_H
+        &pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, h_H_12, h_H_33, &
+        &RBphi, R_H, Z_H, R_0_H, B_0_H
 #if ldebug
     public test_metrics_H
 #endif
     
     ! global variables
-    real(dp) :: R_0_H = 1.0_dp                                                  ! R of magnetic axis (normalization constant)
-    real(dp) :: B_0_H = 1.0_dp                                                  ! B at magnetic axis (normalization constant)
     real(dp), allocatable :: chi_H(:)                                           ! poloidal angle
     real(dp), allocatable :: flux_p_H(:)                                        ! normal coordinate values (poloidal flux)
     real(dp), allocatable :: pres_H(:)                                          ! pressure profile
@@ -35,30 +32,33 @@ module HELENA
     real(dp), allocatable :: h_H_33(:,:)                                        ! adapted upper metric factor 33 (1/gem33)
     real(dp), allocatable :: R_H(:,:)                                           ! major radius R (xout)
     real(dp), allocatable :: Z_H(:,:)                                           ! height Z (yout)
+    real(dp), parameter :: R_0_H = 2.0_dp                                       ! normalization radius
+    real(dp), parameter :: B_0_H = 2.0_dp                                       ! normalization magnetic field
     integer :: nchi                                                             ! nr. of poloidal points (nchi)
     integer :: ias                                                              ! 0 if top-bottom symmetric, 1 if not
 
 contains
     ! Reads the HELENA equilibrium data
     ! (from HELENA routine IODSK)
-    ! Note: The variables in HELENA output are normalized wrt.:
+    ! Note: The variables in HELENA output are normalized globally w.r.t.
     !   - R_m: radius of magnetic axis at equilibrium
     !   - B_m: magnetic field at magnetic axis at equilibrium ,
     ! These have to be specified (see global variables above)
-    ! However, the variables R_H and Z_H are also normalized wrt.:
+    ! Moreover, the variables R_H and Z_H  are also normalized w.r.t. a radius a
+    ! and a diameter R_0:
     !   - R_H = (R-R_0)/a
     !   - Z_H = Z/a ,
-    ! where R_0 and a are found through the variable "radius" and "eps":
+    ! where R_0 and a are found through the variable "radius" and "eps"
     !   - radius = a / R_m
     !   - eps = a / R_0 ,
-    ! which link R_0 and a to R_m.
-    ! Furthermore, the varaible "cs" contains the sqrt of the normalized flux on
-    ! the  normal positions,  where  the normalization  factor  is contained  in
-    ! "cpsurf", which is the poloidal flux at the surface.
+    ! as a function of R_m, which is the global normalization factor used here.
+    ! Furthermore,  the  varaible  "cs"  contains the  sqrt  of  the  normalized
+    ! flux/2pi  on  the normal  positions,  where  the normalization  factor  is
+    ! contained in "cpsurf", which is the poloidal flux at the surface.
     ! Finally, some variables are not tabulated on the magnetic axis.
     ! [MPI] only global master
     integer function read_HEL(n_r_eq,use_pol_flux_H) result(ierr)
-        use num_vars, only: eq_name, eq_i, mu_0
+        use num_vars, only: eq_name, eq_i
         
         character(*), parameter :: rout_name = 'read_HEL'
         
@@ -132,7 +132,6 @@ contains
             &n_r_eq*nchi)                                                       ! (gem11)
         CHCKERR(err_msg)
         h_H_11(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
-        h_H_11 = h_H_11 * (R_0_H * B_0_H)**2                                    ! rescale h_H_11
         
         allocate(h_H_12(nchi,n_r_eq))                                           ! upper metric factor 1,2
         read(eq_i,*,IOSTAT=ierr) &
@@ -140,12 +139,10 @@ contains
             &id=nchi+1,n_r_eq*nchi)                                             ! (gem12)
         CHCKERR(err_msg)
         h_H_12(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
-        h_H_12 = h_H_12 * B_0_H                                                 ! rescale h_H_12
         
         read(eq_i,*,IOSTAT=ierr) cpsurf, radius                                 ! poloidal flux on surface, minor radius
         CHCKERR(err_msg)
-        cpsurf = cpsurf * R_0_H**2 * B_0_H                                      ! back to real space
-        flux_p_H = flux_p_H**2 * cpsurf                                         ! rescale poloidal flux
+        flux_p_H = 2*pi*flux_p_H**2 * cpsurf                                    ! rescale poloidal flux (HELENA uses psi_pol/2pi as flux)
         
         allocate(h_H_33(nchi,n_r_eq))                                           ! upper metric factor 3,3
         read(eq_i,*,IOSTAT=ierr) &
@@ -153,7 +150,6 @@ contains
             &n_r_eq*nchi)                                                       ! (gem33)
         h_H_33(:,:) = 1._dp/h_H_33(:,:)                                         ! HELENA gives R^2, but need 1/R^2
         h_H_33(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
-        h_H_11 = h_H_11 / (R_0_H**2)                                            ! rescale h_H_33
         
         read(eq_i,*,IOSTAT=ierr) raxis                                          ! major radius
         CHCKERR(err_msg)
@@ -161,7 +157,6 @@ contains
         allocate(pres_H(n_r_eq))                                                ! pressure profile
         read(eq_i,*,IOSTAT=ierr) (pres_H(kd),kd=1,n_r_eq)
         CHCKERR(err_msg)
-        pres_H = pres_H * B_0_H**2/mu_0                                         ! rescale pressure
         
         read(eq_i,*,IOSTAT=ierr) Dpres_H_0,Dpres_H_e                            ! derivarives of pressure on axis and surface
         CHCKERR(err_msg)
@@ -169,7 +164,6 @@ contains
         allocate(RBphi(n_r_eq))                                                 ! R B_phi (= F)
         read(eq_i,*,IOSTAT=ierr) (RBphi(kd),kd=1,n_r_eq)
         CHCKERR(err_msg)
-        RBphi = RBphi * R_0_H * B_0_H                                           ! rescale F
         
         read(eq_i,*,IOSTAT=ierr) dRBphi0,dRBphie                                ! derivatives of R B_phi on axis and surface
         CHCKERR(err_msg)
@@ -190,14 +184,14 @@ contains
         read(eq_i,*,IOSTAT=ierr) &
             &(R_H(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,n_r_eq*nchi)        ! (xout)
         CHCKERR(err_msg)
-        R_H = R_0_H*radius*(1._dp/eps + R_H)                                    ! back to real space
+        R_H = radius*(1._dp/eps + R_H)                                          ! from a to R
         
         allocate(Z_H(nchi,n_r_eq))                                              ! height Z
         Z_H(:,1) = 0._dp                                                        ! values on axis are not given by HELENA -> set to zero
         read(eq_i,*,IOSTAT=ierr) &
             &(Z_H(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,n_r_eq*nchi)        ! (yout)
         CHCKERR(err_msg)
-        Z_H = R_0_H*radius*Z_H                                                  ! back to real space
+        Z_H = radius*Z_H                                                        ! from a to R
        
         ! HELENA always uses the poloidal flux
         use_pol_flux_H = .true.
@@ -518,21 +512,6 @@ contains
         end subroutine interp_var_7D_real
     end function adapt_to_B_HEL
     
-    ! Normalizes HELENA input
-    subroutine normalize_HEL
-        use eq_vars, only: pres_0, psi_0, R_0, B_0
-        
-        ! scale the HELENA quantities
-        pres_H = pres_H/pres_0
-        flux_p_H = flux_p_H/psi_0
-        R_H = R_H/R_0
-        Z_H = Z_H/R_0
-        RBphi = RBphi/(R_0*B_0)
-        h_H_11 = h_H_11/(R_0**2)*psi_0**2
-        h_H_12 = h_H_12/(R_0**2)*psi_0
-        h_H_33 = h_H_33/(R_0**2)
-    end subroutine normalize_HEL
-    
 #if ldebug
     ! Checks whether the metric elements  provided by HELENA are consistent with
     ! a direct calculation using the coordinate transformations:
@@ -561,16 +540,17 @@ contains
         real(dp), allocatable :: h_H_33_alt(:,:,:)                              ! alternative calculation for upper metric factor 33
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: r_min = 3                                                    ! first normal index that has meaning
+        integer :: r_min = 4                                                    ! first normal index that has meaning
+        real(dp), allocatable :: tempvar(:,:,:,:)                               ! temporary variable
         
         ! initialize ierr
         ierr = 0
         
-        ! user output
-        call writo('Checking consistency of metric factors')
-        call lvl_ud(1)
-        
         if (glb_rank.eq.0) then
+            ! user output
+            call writo('Checking consistency of metric factors')
+            call lvl_ud(1)
+            
             ! calculate  the  auxiliary quantities  Zchi,  zpsi,  Rchi and  Rpsi
             ! containing the derivatives as well as jac
             allocate(Rchi(nchi,n_r),Rpsi(nchi,n_r))
@@ -578,15 +558,15 @@ contains
             allocate(jac(nchi,n_r))
             
             do id = 1,nchi
-                ierr = calc_deriv(R_H(id,:),Rpsi(id,:),flux_p_H,1,1)
+                ierr = calc_deriv(R_H(id,:),Rpsi(id,:),flux_p_H/(2*pi),1,2)
                 CHCKERR('')
-                ierr = calc_deriv(Z_H(id,:),Zpsi(id,:),flux_p_H,1,1)
+                ierr = calc_deriv(Z_H(id,:),Zpsi(id,:),flux_p_H/(2*pi),1,2)
                 CHCKERR('')
             end do
             do kd = 1,n_r
-                ierr = calc_deriv(R_H(:,kd),Rchi(:,kd),chi_H,1,1)
+                ierr = calc_deriv(R_H(:,kd),Rchi(:,kd),chi_H,1,2)
                 CHCKERR('')
-                ierr = calc_deriv(Z_H(:,kd),Zchi(:,kd),chi_H,1,1)
+                ierr = calc_deriv(Z_H(:,kd),Zchi(:,kd),chi_H,1,2)
                 CHCKERR('')
             end do
             jac = Zpsi*Rchi - Zchi*Rpsi
@@ -632,11 +612,60 @@ contains
             call plot_diff_HDF5(h_H_33_alt(:,:,r_min:n_r),&
                 &reshape(h_H_33(:,r_min:n_r),[nchi,1,n_r-r_min+1]),&
                 &file_name,description=description,output_message=.true.)
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Test complete')
+            
+            ! user output
+            call writo('Checking pressure balance')
+            call lvl_ud(1)
+            
+            ! calculate auxiliary  quantities:
+            !   1: d1 F ,
+            !   2: d1 p ,
+            !   3: d1 (q/F h_11) ,
+            !   4: d2 (q/F h_12) .
+            allocate(tempvar(nchi,1,n_r,4))
+            do id = 1,nchi
+                ierr = calc_deriv(RBphi,tempvar(id,1,:,1),flux_p_H/(2*pi),1,1)
+                CHCKERR('')
+                ierr = calc_deriv(pres_H,tempvar(id,1,:,2),flux_p_H/(2*pi),1,1)
+                CHCKERR('')
+                ierr = calc_deriv(qs/RBphi*h_H_11(id,:),tempvar(id,1,:,3),&
+                    &flux_p_H/(2*pi),1,1)
+                CHCKERR('')
+            end do
+            do kd = 1,n_r
+                ierr = calc_deriv(qs(kd)/RBphi(kd)*h_H_12(:,kd),&
+                    &tempvar(:,1,kd,4),chi_H,1,1)
+                CHCKERR('')
+            end do
+            
+            ! calculate pressure  balance in tempvar(1) and  copy given pressure
+            ! gradient in tempvar(2):
+            !   mu_0 p' = F/(qR^2) (d/d1 (h_11 q/F) + d/d2 (h_12 q/F) + q F')
+            do kd = 1,n_r
+                tempvar(:,1,kd,1) = -RBphi(kd)*h_H_33(:,kd)/qs(kd) * &
+                    &(tempvar(:,1,kd,1)*qs(kd) + tempvar(:,1,kd,3) + &
+                    &tempvar(:,1,kd,4))
+                tempvar(:,1,kd,2) = tempvar(:,1,kd,2)
+            end do
+            
+            ! output difference with p'
+            ! set some variables
+            file_name = 'TEST_p_H'
+            description = 'Testing whether the HELENA pressure balance is &
+                &consistent'
+            
+            ! plot difference
+            call plot_diff_HDF5(tempvar(:,:,:,1),tempvar(:,:,:,2),&
+                &file_name,description=description,output_message=.true.)
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Test complete')
         end if
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Test complete')
     end function test_metrics_H
 #endif
 end module HELENA

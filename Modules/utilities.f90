@@ -1805,7 +1805,6 @@ contains
         
         ! input / output
         real(dp), intent(inout) :: zero_NR                                      ! output
-        real(dp), intent(in) :: guess                                           ! first guess
         interface
             function fun(x)                                                     ! the function
                 use num_vars, only: dp
@@ -1818,6 +1817,7 @@ contains
                 real(dp), intent(in) :: x
             end function dfun
         end interface
+        real(dp), intent(in) :: guess                                           ! first guess
         
         ! local variables
         integer :: jd

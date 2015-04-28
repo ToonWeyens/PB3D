@@ -200,6 +200,8 @@ contains
                 ierr = calc_deriv(X%vec(jd,:,X_id),DX_vec,&
                     &grid_X%grp_r_F(1:grp_n_r_X_loc),1,2)
                 CHCKERR('')
+            else
+                DX_vec = 0._dp
             end if
             
             ! iterate over all normal points in X grid (of this group)
@@ -300,8 +302,8 @@ contains
         character(len=max_str_ln) :: description                                ! description
         complex(dp) :: omega                                                    ! sqrt of Eigenvalue
         integer :: plot_dim(4)                                                  ! dimensions of plot
-        integer :: plot_grp_dim(4)                                              ! group dimensions of plot
         integer :: plot_offset(4)                                               ! group offset of plot
+        integer :: col                                                          ! collection type for HDF5 plot
         real(dp), allocatable :: X_plot(:,:,:,:)                                ! copies of XYZ(1)
         real(dp), allocatable :: Y_plot(:,:,:,:)                                ! copies of XYZ(2)
         real(dp), allocatable :: Z_plot(:,:,:,:)                                ! copies of XYZ(3)
@@ -358,6 +360,13 @@ contains
                     n_t(2) = 4                                                  ! 4 quarter periods
                 end if
                 
+                ! set collection type
+                if (product(n_t).gt.1) then
+                    col = 2                                                     ! temporal collection
+                else
+                    col = 1                                                     ! no collection
+                end if
+                
                 ! set up local grp_n_r of X grid
                 if (grp_rank.lt.grp_n_procs-1) then
                     grp_n_r_X_loc = grid_X%grp_n_r - 1                          ! grp_n_r of X grid has ghost region
@@ -370,18 +379,16 @@ contains
                 ! size from the X grid.
                 plot_dim = [grid_eq%n(1), grid_eq%n(2),grid_X%n(3),&
                     &product(n_t)]
-                plot_grp_dim = [grid_eq%n(1), grid_eq%n(2),grid_X%grp_n_r,&
-                    &product(n_t)]
                 plot_offset = [0,0,grid_X%i_min-1,product(n_t)]
                 
                 ! set up copies  of XYZ(1), XYZ(2) and XYZ(3) in  X, Y and Z
                 ! for plot
-                allocate(X_plot(plot_grp_dim(1),plot_grp_dim(2),&
-                    &plot_grp_dim(3),plot_grp_dim(4)))
-                allocate(Y_plot(plot_grp_dim(1),plot_grp_dim(2),&
-                    &plot_grp_dim(3),plot_grp_dim(4)))
-                allocate(Z_plot(plot_grp_dim(1),plot_grp_dim(2),&
-                    &plot_grp_dim(3),plot_grp_dim(4)))
+                allocate(X_plot(grid_eq%n(1),grid_eq%n(2),grid_X%grp_n_r,&
+                    &product(n_t)))
+                allocate(Y_plot(grid_eq%n(1),grid_eq%n(2),grid_X%grp_n_r,&
+                    &product(n_t)))
+                allocate(Z_plot(grid_eq%n(1),grid_eq%n(2),grid_X%grp_n_r,&
+                    &product(n_t)))
                 
                 ! For each time step, calculate the time (as fraction of Alfvén
                 ! time) and make a copy of XYZ for X, Y and Z
@@ -404,8 +411,8 @@ contains
                 if (imagpart(omega).gt.0) omega = - omega                       ! exploding solution, not the decaying one
                 
                 ! calculate the function to plot: normal perturbation X_F
-                allocate(f_plot(plot_grp_dim(1),plot_grp_dim(2),&
-                    &plot_grp_dim(3),plot_grp_dim(4)))
+                allocate(f_plot(grid_eq%n(1),grid_eq%n(2),grid_X%grp_n_r,&
+                    &product(n_t)))
                 ierr = calc_real_XUQ(grid_eq,eq,grid_X,X,id,1,time,f_plot)
                 CHCKERR('')
                 
@@ -425,9 +432,9 @@ contains
                             &trim(i2str(output_style))//' implemented yet')
                     case(2)                                                     ! HDF5 output
                         call print_HDF5([var_name],file_name,f_plot,&
-                            &tot_dim=plot_dim,grp_dim=plot_grp_dim,&
-                            &grp_offset=plot_offset,X=X_plot,Y=Y_plot,&
-                            &Z=Z_plot,col=2,description=description)
+                            &tot_dim=plot_dim,grp_offset=plot_offset,&
+                            &X=X_plot,Y=Y_plot,Z=Z_plot,col=col,&
+                            &description=description)
                     case default
                         err_msg = 'No style associated with '//&
                             &trim(i2str(output_style))
@@ -450,7 +457,9 @@ contains
         integer function plot_harmonics(grid_X,X,X_id) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ghost_arr, get_ser_var
             use output_ops, only: merge_GP
-            use num_vars, only: grp_n_procs, grp_rank, alpha_job_nr
+            use num_vars, only: grp_n_procs, grp_rank, alpha_job_nr, &
+                &use_pol_flux_F
+            use eq_vars, only: max_flux_p_F, max_flux_t_F
             
             character(*), parameter :: rout_name = 'plot_harmonics'
             
@@ -563,6 +572,13 @@ contains
             do kd = 1,X%n_mod
                 X_vec_max(kd) = grid_X%grp_r_F(maxloc(abs(X%vec(kd,:,X_id)),1))
             end do
+            
+            ! scale by flux
+            if (use_pol_flux_F) then
+                X_vec_max = X_vec_max*2*pi/max_flux_p_F
+            else
+                X_vec_max = X_vec_max*2*pi/max_flux_t_F
+            end if
             
             ! gather all parllel X_vec_max arrays in one serial array
             ierr = get_ser_var(X_vec_max,ser_X_vec_max)

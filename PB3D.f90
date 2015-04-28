@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.74                                                              !
+!   Version: 0.75                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -47,11 +47,6 @@ program PB3D
     write(*,*) 'INVESTIGATE HOW IMPROVING THE DERIVATIVES CAN &
         &HELP YOU GET RID OF UNSTABLE SIDE OF SPECTRUM !!!!!!!!!!!!!!!!!!!!!!!'
     write(*,*) 'DOING THIS IN THIS ROUTINE ALREADY HELPED A LOT!!!!!'
-    write(*,*) 'THERE IS, FOR EXAMPLE, A GIGANTIC ERROR IN THE DERIVATIVES OF &
-        &HELENA PROFILES IF AND ONLY IF  TOROIDAL FLUX IS USED! SEE test_D12h_H'
-    
-    write(*,*) '!!! HDF5 PLOT CHOULD CHECK IF IT IS REALLY AXISYMMETRIC IF IT &
-        &DOES A 2D PLOT BECAUSE ONE DIMENSION EQUAL TO 1 !!!'
     
     !-------------------------------------------------------
     !   Initialize some routines

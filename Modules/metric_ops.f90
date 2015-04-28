@@ -6,7 +6,7 @@ module metric_ops
     use str_ops
     use output_ops
     use messages
-    use num_vars, only: dp, max_deriv, max_str_ln, pi
+    use num_vars, only: dp, max_deriv, max_str_ln, pi, grp_rank
     use utilities, only: check_deriv
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
@@ -18,7 +18,8 @@ module metric_ops
         &calc_jac_H, calc_T_HF, calc_T_VF, calc_h_H, &
         &calc_inv_met, calc_g_F, calc_jac_F, transf_deriv
 #if ldebug
-    public test_T_EF, test_p, test_jac_F, test_g_V, test_B_V, test_D12h_H, &
+    public test_T_EF, test_p, test_jac_F, test_g_V, test_B_F, test_D12h_H, &
+        &test_jac_V, &
         &debug_calc_inv_met_ind
 #endif
     
@@ -968,10 +969,7 @@ contains
             CHCKERR('')
             ! (1,2)
             if (sum(deriv).eq.0) then
-                do kd = 1,dims(3)
-                    met%T_EF(:,:,kd,c([1,2],.false.),0,0,0) = &
-                        &eq%flux_p_E(kd,deriv(1)+1)/(2*pi)
-                end do
+                met%T_EF(:,:,:,c([1,2],.false.),0,0,0) = 1._dp
             !else
                 !met%T_EF(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) = &
                     !&0.0_dp
@@ -1012,10 +1010,7 @@ contains
             ! determinant
             met%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-                do kd = 1,dims(3)
-                    met%det_T_EF(:,:,kd,deriv(1),0,0) = &
-                        &eq%flux_p_E(kd,deriv(1)+1)/(2*pi)
-                end do
+                met%det_T_EF(:,:,:,deriv(1),0,0) = 1._dp
             !else
                 !met%det_T_EF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             end if
@@ -1038,7 +1033,7 @@ contains
             if (deriv(2).eq.0 .and. deriv(3).eq.0) then
                 do kd = 1,dims(3)
                     met%T_EF(:,:,kd,c([1,2],.false.),deriv(1),0,0) = &
-                        &eq%flux_t_E(kd,deriv(1)+1)/(2*pi)
+                        &eq%q_saf_E(kd,deriv(1))
                 end do
             !else
                 !met%T_EF(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) = &
@@ -1081,8 +1076,7 @@ contains
             met%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
             if (deriv(2).eq.0 .and. deriv(3).eq.0) then
                 do kd = 1,dims(3)
-                    met%det_T_EF(:,:,kd,deriv(1),0,0) = &
-                        &eq%flux_t_E(kd,deriv(1)+1)/(2*pi)
+                    met%det_T_EF(:,:,kd,deriv(1),0,0) = eq%q_saf_E(kd,deriv(1))
                 end do
             !else
                 !met%det_T_EF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
@@ -1601,7 +1595,7 @@ contains
         real(dp), allocatable :: res(:,:,:,:)                                   ! calculated result
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total and group dimensions and group offset
+        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         character(len=max_str_ln) :: err_msg                                    ! error message
         
@@ -1618,11 +1612,10 @@ contains
         
         ! set total and group dimensions and group offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r]
         grp_offset = [0,0,grid_trim%i_min-1]
         
         ! set up res
-        allocate(res(grp_dim(1),grp_dim(2),grp_dim(3),9))
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,9))
         res = 0.0_dp
         
         ! calc  res,  depending  on flux  used  in F  coordinates  and on  which
@@ -1740,7 +1733,7 @@ contains
                 ! plot difference
                 call plot_diff_HDF5(res(:,:,:,c([kd,id],.false.)),&
                     &met%T_EF(:,:,1:grid_trim%grp_n_r,c([kd,id],.false.),&
-                    &0,0,0),file_name,tot_dim,grp_dim,grp_offset,description,&
+                    &0,0,0),file_name,tot_dim,grp_offset,description,&
                     &output_message=.true.)
                 
                 call lvl_ud(-1)
@@ -1760,9 +1753,11 @@ contains
     !   - mu_0 J D3p = 0 => D3 B_1 = D1 B_3
     ! (working in the (modified) Flux coordinates (alpha,psi,theta)_F)
     integer function test_p(grid_eq,eq,met) result(ierr)
-        use utilities, only: c
-        use num_vars, only: mu_0
+        use utilities, only: c, calc_deriv
         use grid_ops, only: trim_grid
+        use eq_vars, only: vac_perm
+        use num_vars, only: eq_style
+        use HELENA, only: RBphi, h_H_11, h_H_12
         
         character(*), parameter :: rout_name = 'test_p'
         
@@ -1773,11 +1768,12 @@ contains
         
         ! local variables
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
-        integer :: kd                                                           ! counter
+        integer :: id, jd, kd                                                   ! counters
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total and group dimensions and group offset
+        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        integer :: n_H(2)                                                       ! indices in Helena coords.
         
         ! initialize ierr
         ierr = 0
@@ -1795,12 +1791,11 @@ contains
         allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,2))
         
         ! user output
-        call writo('Checking if mu_0 D1 p = 1/J (D3 B_2 - D2_B3)')
+        call writo('Checking if mu_0 D2 p = 1/J (D3 B_2 - D2_B3)')
         call lvl_ud(1)
         
         ! set total and group dimensions and group offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r]
         grp_offset = [0,0,grid_trim%i_min-1]
         
         ! calculate mu_0 D2p
@@ -1817,22 +1812,21 @@ contains
         
         ! save mu_0 D2p in res
         do kd = 1,grid_trim%grp_n_r
-            res(:,:,kd,2) = mu_0*eq%pres_FD(kd,1)
+            res(:,:,kd,2) = vac_perm*eq%pres_FD(kd,1)
         end do
         
         ! set some variables
-        file_name = 'TEST_D1p'
-        description = 'Testing whether mu_0 D1 p = 1/J (D3 B_2 - D2_B3)'
+        file_name = 'TEST_D2p'
+        description = 'Testing whether mu_0 D2 p = 1/J (D3 B_2 - D2_B3)'
         
         ! plot difference
-        call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),&
-            &file_name,tot_dim,grp_dim,grp_offset,description,&
-            &output_message=.true.)
+        call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
+            &grp_offset,description,output_message=.true.)
         
         call lvl_ud(-1)
         
         ! user output
-        call writo('Checking if mu_0 J D3p = 0 => D3 B_1 = D1 B_3)')
+        call writo('Checking if mu_0 J D1p = 0 => D3 B_1 = D2 B_3')
         call lvl_ud(1)
         
         ! calculate D3 B1
@@ -1850,15 +1844,88 @@ contains
             &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2
         
         ! set some variables
-        file_name = 'TEST_D3p'
-        description = 'Testing whether D3 B_1 = D1 B_3)'
+        file_name = 'TEST_D1p'
+        description = 'Testing whether D3 B_1 = D1 B_3'
         
         ! plot difference
-        call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),&
-            &file_name,tot_dim,grp_dim,grp_offset,description,&
-            &output_message=.true.)
+        call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
+            &grp_offset,description,output_message=.true.)
         
         call lvl_ud(-1)
+        
+        ! extra testing if Helena
+        if (eq_style.eq.2) then
+            ! set n_H
+            n_H = [grid_eq%i_min,grid_eq%i_min+grid_trim%grp_n_r-1]
+            
+            ! user output
+            call writo('Checking if D2 B_3 |F = D1 (qF+qh_11/F) |H')
+            call lvl_ud(1)
+            
+            ! calculate if D2 B_3 = D1 (qF) + D1 (q/F h_11)
+            res(:,:,:,1) = 1._dp/met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) * &
+                &(met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,1,0)/&
+                &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) - &
+                &met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,0,0)*&
+                &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,1,0)/ &
+                &(met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2))
+            do jd = 1,grid_trim%n(2)
+                do id = 1,grid_trim%n(1)
+                    ierr = calc_deriv(eq%q_saf_E(:,0)*RBphi(n_H(1):n_H(2))+&
+                        &eq%q_saf_E(:,0)*h_H_11(id,n_H(1):n_H(2))/&
+                        &RBphi(n_H(1):n_H(2)),res(id,jd,:,2),&
+                        &grid_trim%grp_r_E,1,1)
+                    CHCKERR('')
+                end do
+            end do
+            
+            ! set some variables
+            file_name = 'TEST_D2B_3'
+            description = 'Testing whether D2 B_3 |F = D1 (qF+qh_11/F) |H'
+            
+            ! plot difference
+            call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
+                &grp_offset,description,output_message=.true.)
+            
+            call lvl_ud(-1)
+            
+            ! user output
+            call writo('Checking if D3 B_2 |F = D2 -(qh_11/F) + q''F |H')
+            call lvl_ud(1)
+            
+            ! calculate if D2 B_3 = D1 (q/F h_11) + q'F
+            res(:,:,:,1) = 1._dp/met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) * &
+                &(met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,1)/&
+                &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) - &
+                &met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,0)*&
+                &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,1)/ &
+                &(met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2))
+            do jd = 1,grid_trim%n(2)
+                do id = 1,grid_trim%n(1)
+                    ierr = calc_deriv(eq%q_saf_E(:,0)*h_H_12(id,n_H(1):n_H(2))/&
+                        &RBphi(n_H(1):n_H(2))+&
+                        &eq%q_saf_E(:,1)*RBphi(n_H(1):n_H(2)),res(id,jd,:,2),&
+                        &grid_trim%grp_r_E,1,1)
+                    CHCKERR('')
+                end do
+            end do
+            
+            ! set some variables
+            file_name = 'TEST_D3B_2'
+            description = 'Testing whether D3 B_2 |F = -D2 (qh_12/F) +q''F |H'
+            
+            ! plot difference
+            call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
+                &grp_offset,description,output_message=.true.)
+            
+            call lvl_ud(-1)
+            
+            call print_HDF5('B_2_TEST','B_2_TEST',&
+                &met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,0)/&
+                &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0),tot_dim=tot_dim,&
+                &grp_offset=grp_offset)
+            
+        end if
         
         ! user output
         call lvl_ud(-1)
@@ -1886,7 +1953,7 @@ contains
         integer :: jd, kd                                                       ! counters
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total and group dimensions and group offset
+        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), pointer :: Dflux(:)                                           ! points to D flux_p or D flux_t in E coordinates
@@ -1909,7 +1976,6 @@ contains
         
         ! set total and group dimensions and group offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r]
         grp_offset = [0,0,grid_trim%i_min-1]
         
         ! 1. Compare with determinant of g_F
@@ -1926,8 +1992,7 @@ contains
         ! plot difference
         call plot_diff_HDF5(res(:,:,:),&
             &met%jac_F(:,:,1:grid_trim%grp_n_r,0,0,0)**2,&
-            &file_name,tot_dim,grp_dim,grp_offset,description,&
-            &output_message=.true.)
+            &file_name,tot_dim,grp_offset,description,output_message=.true.)
         
         ! 2. Compare with explicit formula
         
@@ -1955,7 +2020,7 @@ contains
             case (2)                                                            ! HELENA
                 do kd = 1,grid_trim%grp_n_r
                     do jd = 1,grid_trim%n(2)
-                        res(:,jd,kd) = 2*pi/Dflux(kd)*eq%q_saf_E(kd,0)/&
+                        res(:,jd,kd) = eq%q_saf_E(kd,0)/&
                             &(h_H_33(:,grid_eq%i_min-1+kd)*&
                             &RBphi(grid_eq%i_min-1+kd))                         ! h_H_33 = 1/R^2 and RBphi = F are tabulated in eq. grid
                     end do
@@ -1974,9 +2039,8 @@ contains
         
         ! plot difference
         call plot_diff_HDF5(res(:,:,:),&
-            &met%jac_F(:,:,1:grid_trim%grp_n_r,0,0,0),&
-            &file_name,tot_dim,grp_dim,grp_offset,description,&
-            &output_message=.true.)
+            &met%jac_F(:,:,1:grid_trim%grp_n_r,0,0,0),file_name,tot_dim,&
+            &grp_offset,description,output_message=.true.)
         
         ! clean up
         nullify(Dflux)
@@ -2003,7 +2067,7 @@ contains
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total and group dimensions and group offset
+        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         
         ! initialize ierr
@@ -2022,7 +2086,6 @@ contains
         
         ! set total and group dimensions and group offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r]
         grp_offset = [0,0,grid_trim%i_min-1]
         
         ! calculate g_V(1,1)
@@ -2067,7 +2130,7 @@ contains
                 ! plot difference
                 call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.)),&
                     &met%g_E(:,:,1:grid_trim%grp_n_r,c([kd,id],.true.),&
-                    &0,0,0),file_name,tot_dim,grp_dim,grp_offset,description,&
+                    &0,0,0),file_name,tot_dim,grp_offset,description,&
                     &output_message=.true.)
                 
                 call lvl_ud(-1)
@@ -2079,12 +2142,81 @@ contains
         call writo('Test complete')
     end function test_g_V
     
-    ! Tests whether B_V is calculated correctly
-    integer function test_B_V(grid_eq,eq,met) result(ierr)
+    ! Tests whether jac_V is calculated correctly
+    integer function test_jac_V(grid_eq,met) result(ierr)
+        use grid_ops, only: trim_grid
+        use fourier_ops, only: fourier2real
+        use VMEC, only: jac_V_c, jac_V_s
+        
+        character(*), parameter :: rout_name = 'test_jac_V'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(metric_type), intent(in) :: met                                    ! metric variables
+        
+        ! local variables
+        real(dp), allocatable :: res(:,:,:)                                     ! result variable
+        character(len=max_str_ln) :: file_name                                  ! name of plot file
+        character(len=max_str_ln) :: description                                ! description of plot
+        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
+        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! output
+        call writo('Going to test whether the Jacobian in the VMEC &
+            &coords. jac_V is calculated correctly')
+        call lvl_ud(1)
+        
+        ! trim extended grid into plot grid
+        ierr = trim_grid(grid_eq,grid_trim)
+        CHCKERR('')
+        
+        ! set total and group dimensions and group offset
+        tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
+        grp_offset = [0,0,grid_trim%i_min-1]
+        
+        ! set up res
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r))
+        
+        ! get jac_V from VMEC
+        ierr = fourier2real(jac_V_c(:,:,grid_trim%i_min:grid_trim%i_max),&
+            &jac_V_s(:,:,grid_trim%i_min:grid_trim%i_max),&
+            &grid_eq%trigon_factors(:,:,:,:,1:grid_trim%grp_n_r,:),&
+            &res,[0,0])
+        CHCKERR('')
+        write(*,*) 'done calculating fourier'
+        
+        ! user output
+        call writo('Testing jac_V')
+        call lvl_ud(1)
+        
+        ! set some variables
+        file_name = 'TEST_jac_V'
+        description = 'Testing calculated with given value for jac_V'
+        
+        ! plot difference
+        call plot_diff_HDF5(res(:,:,:),&
+            &met%jac_E(:,:,1:grid_trim%grp_n_r,0,0,0),file_name,&
+            &tot_dim,grp_offset,description,output_message=.true.)
+        
+        call lvl_ud(-1)
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Test complete')
+    end function test_jac_V
+    
+    ! Tests whether B_F is calculated correctly
+    integer function test_B_F(grid_eq,eq,met) result(ierr)
+        use num_vars, only: eq_style
         use grid_ops, only: trim_grid
         use utilities, only: c
+        use fourier_ops, only: fourier2real
+        use VMEC, only: B_V_sub_s, B_V_sub_c, B_V_c, B_V_s
         
-        character(*), parameter :: rout_name = 'test_B_V'
+        character(*), parameter :: rout_name = 'test_B_F'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
@@ -2097,15 +2229,16 @@ contains
         real(dp), allocatable :: res2(:,:,:,:)                                  ! result variable
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total and group dimensions and group offset
+        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
         ! output
-        call writo('Going to test whether the magnetic field in the VMEC &
-            &coords. B_V is calculated correctly')
+        call writo('Going to test whether the magnetic field is calculated &
+            &correctly')
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
@@ -2118,63 +2251,102 @@ contains
         
         ! set total and group dimensions and group offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r]
         grp_offset = [0,0,grid_trim%i_min-1]
         
-        ! calculate covariant components of B_V
-        do id = 1,3
-            do kd = 1,grid_trim%grp_n_r
-                res(:,:,kd,id) = -eq%flux_p_E(kd,1)/&
-                    &(2*pi*met%jac_E(:,:,kd,0,0,0)) * &
-                    &((1-eq%q_saf_E(kd,0)*eq%L_E(:,:,kd,0,0,1)) * &
-                    &met%g_E(:,:,kd,c([id,2],.true.),0,0,0) + &
-                    &eq%q_saf_E(kd,0)*(1+eq%L_E(:,:,kd,0,1,0)) * &
-                    &met%g_E(:,:,kd,c([id,3],.true.),0,0,0))
-            end do
-        end do
+        ! get covariant components and magnitude of B_E
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                do id = 1,3
+                    ierr = fourier2real(&
+                        &B_V_sub_c(:,:,grid_trim%i_min:grid_trim%i_max,id),&
+                        &B_V_sub_s(:,:,grid_trim%i_min:grid_trim%i_max,id),&
+                        &grid_eq%trigon_factors(:,:,:,:,1:grid_trim%grp_n_r,:),&
+                        &res(:,:,:,id),[0,0])
+                    CHCKERR('')
+                end do
+                ierr = fourier2real(B_V_c(:,:,grid_trim%i_min:grid_trim%i_max),&
+                    &B_V_s(:,:,grid_trim%i_min:grid_trim%i_max),&
+                    &grid_eq%trigon_factors(:,:,:,:,1:grid_trim%grp_n_r,:),&
+                    &res(:,:,:,4),[0,0])
+                CHCKERR('')
+            case (2)                                                            ! HELENA
+                res(:,:,:,1) = &
+                    &met%g_E(:,:,1:grid_trim%grp_n_r,c([1,2],.true.),0,0,0)
+                res(:,:,:,2) = &
+                    &met%g_E(:,:,1:grid_trim%grp_n_r,c([2,2],.true.),0,0,0)
+                do kd = 1,grid_trim%grp_n_r
+                    res(:,:,kd,3) = eq%q_saf_E(kd,0)*&
+                        &met%g_E(:,:,kd,c([3,3],.true.),0,0,0)
+                    res(:,:,kd,4) = &
+                        &sqrt(met%g_E(:,:,kd,c([2,2],.true.),0,0,0) + &
+                        &eq%q_saf_E(kd,0)**2*&
+                        &met%g_E(:,:,kd,c([3,3],.true.),0,0,0))
+                end do
+                do id = 1,4
+                    do kd = 1,grid_trim%grp_n_r
+                        res(:,:,kd,id) = res(:,:,kd,id)/met%jac_E(:,:,kd,0,0,0)
+                    end do
+                end do
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
         
-        ! calculate the magniture of B_V
-        do kd = 1,grid_trim%grp_n_r
-            res(:,:,kd,4) = sqrt((eq%flux_p_E(kd,1)/&
-                &(2*pi*met%jac_E(:,:,kd,0,0,0)))**2 * &
-                &((1-eq%q_saf_E(kd,0)*eq%L_E(:,:,kd,0,0,1)) * &
-                &met%g_E(:,:,kd,c([2,2],.true.),0,0,0)) + &
-                &2*(1-eq%q_saf_E(kd,0)*eq%L_E(:,:,kd,0,0,1)) * &
-                &eq%q_saf_E(kd,0)*(1+eq%L_E(:,:,kd,0,1,0)) * &
-                &met%g_E(:,:,kd,c([3,2],.true.),0,0,0) + &
-                &eq%q_saf_E(kd,0)*(1+eq%L_E(:,:,kd,0,1,0)) * &
-                &met%g_E(:,:,kd,c([3,3],.true.),0,0,0) )
-        end do
-        
-        ! get covariant components of B_V from VMEC
-        
-        ! set up plot variables for calculated values
+        ! transform them to Flux coord. system
+        res2 = 0._dp
         do id = 1,3
             do kd = 1,3
-                ! user output
-                call writo('Testing g_V('//trim(i2str(kd))//','//&
-                    &trim(i2str(id))//')')
-                call lvl_ud(1)
-                
-                ! set some variables
-                file_name = 'TEST_g_V_'//trim(i2str(kd))//'_'//trim(i2str(id))
-                description = 'Testing calculated with given value for g_V('//&
-                    &trim(i2str(kd))//','//trim(i2str(id))//')'
-                
-                ! plot difference
-                call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.)),&
-                    &met%g_E(:,:,1:grid_trim%grp_n_r,c([kd,id],.true.),&
-                    &0,0,0),file_name,tot_dim,grp_dim,grp_offset,description,&
-                    &output_message=.true.)
-                
-                call lvl_ud(-1)
+                res2(:,:,:,id) = res(:,:,:,kd) * &
+                    &met%T_FE(:,:,1:grid_trim%grp_n_r,c([id,kd],.false.),0,0,0)
             end do
+        end do
+        res2(:,:,:,4) = res(:,:,:,4)
+        
+        ! set up plot variables for calculated values
+        do id = 1,4
+            ! user output
+            if (id.lt.4) then
+                call writo('Testing B_F_'//trim(i2str(id)))
+            else
+                call writo('Testing B_F')
+            end if
+            call lvl_ud(1)
+            
+            ! set some variables
+            if (id.lt.4) then
+                file_name = 'TEST_B_F_'//trim(i2str(id))
+                description = 'Testing calculated with given value for B_F_'//&
+                    &trim(i2str(id))
+            else
+                file_name = 'TEST_B_F'
+                description = 'Testing calculated with given value for B_F'
+            end if
+            
+            ! plot difference
+            if (id.lt.4) then
+                call plot_diff_HDF5(res2(:,:,:,id),&
+                    &met%g_F(:,:,1:grid_trim%grp_n_r,c([3,id],.true.),0,0,0)/&
+                    &met%jac_F(:,:,1:grid_trim%grp_n_r,0,0,0),file_name,&
+                    &tot_dim,grp_offset,description,output_message=.true.)
+            else
+                call plot_diff_HDF5(res2(:,:,:,id),sqrt(&
+                    &met%g_F(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,0,0))/&
+                    &met%jac_F(:,:,1:grid_trim%grp_n_r,0,0,0),file_name,&
+                    &tot_dim,grp_offset,description,output_message=.true.)
+            end if
+            
+            call lvl_ud(-1)
         end do
         
         ! user output
         call lvl_ud(-1)
         call writo('Test complete')
-    end function test_B_V
+    end function test_B_F
     
     ! Tests whether D1 D2 h_H is calculated correctly
     integer function test_D12h_H(grid_eq,met) result(ierr)
@@ -2192,7 +2364,7 @@ contains
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_dim(3), grp_offset(3)                        ! total and group dimensions and group offset
+        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         
         ! initialize ierr
@@ -2211,7 +2383,6 @@ contains
         
         ! set total and group dimensions and group offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r]
         grp_offset = [0,0,grid_trim%i_min-1]
         
         ! calculate D1 D2 h_H alternatively
@@ -2241,9 +2412,9 @@ contains
                 
                 ! plot difference
                 call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.)),&
-                    &met%h_E(:,:,1:grid_trim%grp_n_r,c([kd,id],.true.),&
-                    &1,1,0),file_name,tot_dim,grp_dim,grp_offset,description,&
-                    &output_message=.true.)
+                    &met%h_E(:,:,grid_trim%i_min:grid_trim%i_max,&
+                    &c([kd,id],.true.),1,1,0),file_name,tot_dim,grp_offset,&
+                    &description,output_message=.true.)
                 
                 call lvl_ud(-1)
             end do

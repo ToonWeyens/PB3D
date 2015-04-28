@@ -31,19 +31,18 @@ contains
         output_name = "PB3D_out"                                                ! standard output name
         ltest = .false.                                                         ! don't call the testing routines
         lvl = 1
-        allocate(opt_args(9), inc_args(9))
+        allocate(opt_args(8), inc_args(8))
         opt_args = ''
         inc_args = 0
-        opt_args(1) = '-o'                                                      ! in which file to output
-        opt_args(2) = '-t'
-        opt_args(3) = '--test'
-        opt_args(4) = '--no_guess'
-        opt_args(5) = '--no_plots'
-        opt_args(6) = '--no_messages'
-        opt_args(7) = '-st_pc_factor_shift_type'
-        opt_args(8) = '-st_pc_type'
-        opt_args(9) = '-st_pc_factor_mat_solver_package'
-        inc_args = [1,0,0,0,0,0,1,1,1]
+        opt_args(1) = '-t'
+        opt_args(2) = '--test'
+        opt_args(3) = '--no_guess'
+        opt_args(4) = '--no_plots'
+        opt_args(5) = '--no_messages'
+        opt_args(6) = '-st_pc_factor_shift_type'
+        opt_args(7) = '-st_pc_type'
+        opt_args(8) = '-st_pc_factor_mat_solver_package'
+        inc_args = [0,0,0,0,0,1,1,1]
     end subroutine
 
     ! parses the command line arguments
@@ -125,7 +124,7 @@ contains
     ! [MPI] Only global master
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, glb_rank, &
-            &output_name, no_guess, no_plots, eq_style, eq_name, no_messages
+            &no_guess, no_plots, eq_style, eq_name, no_messages
 #if ldebug
         use num_vars, only: ltest
 #endif
@@ -236,8 +235,7 @@ contains
                                 &trim(command_arg(id)) // '" already set, &
                                 &ignoring...')
                         else                                                    ! option not yet taken
-                            ierr = apply_opt(jd,id)
-                            CHCKERR('')
+                            call apply_opt(jd,id)
                             opt_taken(jd) = .true.
                         end if
                         id = id + inc_args(jd)                                  ! skip a number of next arguments
@@ -255,26 +253,12 @@ contains
         end subroutine
         
         ! this subroutine applies chosen options
-        integer function apply_opt(opt_nr,arg_nr) result(ierr)
-            character(*), parameter :: rout_name = 'apply_opt'
-            
+        subroutine apply_opt(opt_nr,arg_nr)
             ! input / output
             integer :: opt_nr, arg_nr
             
-            ! initialize ierr
-            ierr = 0
-            
             select case(opt_nr)
-                case (1)                                                        ! option -o
-                    if (trim(command_arg(arg_nr+1))=='') then
-                        ierr = 1
-                        CHCKERR('no output file name give')
-                    else
-                        output_name = trim(command_arg(arg_nr+1))
-                        call writo('output file "' // trim(output_name) // &
-                            &'" chosen')
-                    end if
-                case (2,3)                                                      ! option test
+                case (1,2)                                                      ! option test
 #if ldebug
                     call writo('option test chosen')
                     ltest = .true.
@@ -282,29 +266,29 @@ contains
                     call writo('WARNING: option test not available. &
                         &Recompile with cpp flag ''ldebug''...')
 #endif
-                case (4)                                                        ! disable guessing Eigenfunction from previous Richardson level
+                case (3)                                                        ! disable guessing Eigenfunction from previous Richardson level
                     call writo('option no_guess chosen: Eigenfunction not &
                         &guessed from previous Richardson level')
                     no_guess = .true.
-                case (5)                                                        ! disable plotting
+                case (4)                                                        ! disable plotting
                     call writo('option no_plots chosen: plotting disabled')
                     no_plots = .true.
-                case (6)                                                        ! disable messages
+                case (5)                                                        ! disable messages
                     call writo('option no_messages chosen: messages disabled')
                     no_messages = .true.
-                case (7)
+                case (6)
                     call writo('option st_pc_factor_shift_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (8)
+                case (7)
                     call writo('option st_pc_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (9)
+                case (8)
                     call writo('option st_pc_factor_mat_solver_package '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
                 case default
                     call writo('WARNING: Invalid option number')
             end select
-        end function apply_opt
+        end subroutine apply_opt
     end function open_input
 
     ! open an output file

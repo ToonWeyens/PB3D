@@ -51,3 +51,13 @@ CHANGELOG
       - Fixed bug in DU_1: factor i/n or i/m was duplicated.
       - Fixed confusion about rho: Its profile is indeed free to be chosen and has no influence on the marginal stability.
       - Faulty solutions are removed by default; Can be overriden using retain_all_sol.
+
+0.75: - simplified HDF5 plotting: Group dimensions now read from variable size, individual version calls array version.
+      - Corrected bug in HDF5 plotting: Symmetry is checked explicitely when one of the dimensions is 1.
+      - Plotting of q, iota and other flux quantities now has correct normalization in both normal axis and function values.
+      - Run scripts now create a new folder based on the date and time.
+      - Added check on jacobian and magnetic field: Persistent error of a few percent, for various VMEC input parameters; Probably due to Fourier transform. Much better for HELENA.
+      - Corrected a bug: the normal component of the curvature had the wrong sign in PV.
+      - Improved normalization (and fixed bug for HELENA): Now mu_0 is also normalized so the equations don't change form.
+      - As HELENA already provides normalized outputs, normalization is not necessary any more.
+      - Improved running by putting output name in run script and not in PB3D itself.

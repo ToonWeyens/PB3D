@@ -78,7 +78,9 @@ contains
         ! read VMEC output using LIBSTELL
         call read_wout_file(eq_i,ierr)                                          ! read the VMEC file number
         CHCKERR('Failed to read the VMEC file')
-        close(eq_i)                                                             ! close the VMEC file
+        
+        ! close the VMEC file
+        close(eq_i)
         
         ! set some variables
         n_r_eq = n_r_VMEC
@@ -346,7 +348,8 @@ contains
     ! Note  that  the normal  VMEC coordinate  runs from  0 to  1, whatever  the
     ! normalization.
     subroutine normalize_VMEC
-        use eq_vars, only: pres_0, psi_0, R_0
+        use num_vars, only: ltest
+        use eq_vars, only: pres_0, psi_0, R_0, B_0
         
         ! scale the VMEC quantities
         pres_V = pres_V/pres_0
@@ -358,5 +361,15 @@ contains
         Z_V_s = Z_V_s/R_0
         L_V_c = L_V_c
         L_V_s = L_V_s
+#if ldebug
+        if (ltest) then
+            B_V_sub_s = B_V_sub_s/(R_0*B_0)
+            B_V_sub_c = B_V_sub_c/(R_0*B_0)
+            B_V_c = B_V_c/B_0
+            B_V_s = B_V_s/B_0
+            jac_V_c = jac_V_c/(R_0**3)
+            jac_V_s = jac_V_s/(R_0**3)
+        end if
+#endif
     end subroutine normalize_VMEC
 end module VMEC

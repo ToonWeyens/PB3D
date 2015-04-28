@@ -255,7 +255,7 @@ contains
                 pmone = -1                                                      ! conversion VMEC LH -> RH coord. system
             case (2)                                                            ! HELENA
                 flux_E => eq%flux_p_E(:,0)
-                r_E_factor = 1._dp
+                r_E_factor = 2*pi
                 pmone = 1
             case default
                 err_msg = 'No equilibrium style associated with '//&
@@ -826,8 +826,9 @@ contains
     ! allocated.  They  can  also  be  passed unallocated,  in  which  case  the
     ! allocation happens automatically.
     integer function calc_XYZ_grid(grid,X,Y,Z,L) result(ierr)
-        use num_vars, only: eq_style
+        use num_vars, only: eq_style, use_normalization
         use utilities, only: interp_fun, round_with_tol
+        use eq_vars, only: R_0
         
         character(*), parameter :: rout_name = 'calc_XYZ_grid'
         
@@ -902,6 +903,13 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
+        
+        ! if normalized, return to physical value
+        if (use_normalization) then
+            X = X*R_0
+            Y = Y*R_0
+            Z = Z*R_0
+        end if
     contains
         ! VMEC version
         integer function calc_XYZ_grid_VMEC(grid,X,Y,Z,L) result(ierr)
@@ -1717,7 +1725,7 @@ contains
                             grp_r = eq%flux_t_FD(:,0)/max_flux_t_F
                         end if
                     case (2)                                                    ! HELENA
-                        grp_r = eq%flux_p_FD(:,0)                               ! poloidal flux
+                        grp_r = eq%flux_p_FD(:,0)/(2*pi)                        ! poloidal flux / 2pi
                     case default
                         err_msg = 'No equilibrium style associated with '//&
                             &trim(i2str(eq_style))

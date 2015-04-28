@@ -187,8 +187,7 @@ contains
         n_r = grid_trim%n(3)
         
         ! Get serial version  of safety factor or rot. transform  and print user
-        ! message.  As  the normal  coordinate  is  rescaled  to 0..1,  the  ith
-        ! derivative has to be rescaled by the factor (max_flux_F/2pi)^i.
+        ! message.
         if (use_pol_flux_F) then
             call writo('Plotting safety factor q and resonant surfaces &
                 &q = m/n')
@@ -196,7 +195,7 @@ contains
             do jd = 0,2
                 ierr = get_ser_var(eq%q_saf_FD(1:grid_trim%grp_n_r,jd),jq_loc)
                 CHCKERR('')
-                if(grp_rank.eq.0) jq(:,jd) = jq_loc*(max_flux_p_F/(2*pi))**jd
+                if(grp_rank.eq.0) jq(:,jd) = jq_loc
             end do
         else
             call writo('Plotting rotational transform iota and resonant &
@@ -205,7 +204,7 @@ contains
             do jd = 0,2
                 ierr = get_ser_var(eq%rot_t_FD(1:grid_trim%grp_n_r,jd),jq_loc)
                 CHCKERR('')
-                if(grp_rank.eq.0) jq(:,jd) = jq_loc*(max_flux_t_F/(2*pi))**jd
+                if(grp_rank.eq.0) jq(:,jd) = jq_loc
             end do
         end if
         
@@ -218,7 +217,7 @@ contains
             allocate(y_vars(n_r,X%n_mod+1)); y_vars = 0
             
             ! set x_vars and y_vars for first column
-            x_vars(:,1) = grid_trim%r_F/grid_trim%r_F(n_r)
+            x_vars(:,1) = grid_trim%r_F
             y_vars(:,1) = jq(:,0)
             
             ! save old tol_NR and max_it_NR
@@ -244,18 +243,19 @@ contains
                 end if
                 
                 ! calculate zero using Newton-Rhapson
-                istat = calc_zero_NR(jq_sol,jq_fun,jq_dfun,1.0_dp)
+                istat = calc_zero_NR(jq_sol,jq_fun,jq_dfun,&
+                    &(maxval(x_vars(:,1))+minval(x_vars(:,1)))/2)               ! guess halfway between minimum and maximum normal range
                 
                 ! intercept error
                 if (istat.ne.0) then
                     call writo('Error intercepted: Couldn''t find resonating &
                         &surface for (n,m) = ('//trim(i2str(X%n(jd)))//','//&
                         &trim(i2str(X%m(jd)))//')')
-                else if (jq_sol.lt.0.0_dp) then
+                else if (jq_sol.lt.minval(x_vars(:,1))) then
                     call writo('Mode (n,m) = ('//trim(i2str(X%n(jd)))//','//&
                         &trim(i2str(X%m(jd)))//') does not resonate in plasma')
                 else
-                    if (jq_sol.gt.1.0_dp) then
+                    if (jq_sol.gt.maxval(x_vars(:,1))) then
                         call writo('Mode (n,m) = ('//trim(i2str(X%n(jd)))//','&
                             &//trim(i2str(X%m(jd)))//') does not resonate &
                             &in plasma')
@@ -293,6 +293,13 @@ contains
             ! plot according to output_style
             select case(output_style)
                 case(1)                                                             ! GNUPlot output
+                    ! rescale x_vars by max_flux_F/2*pi
+                    if (use_pol_flux_F) then
+                        x_vars = x_vars*2*pi/max_flux_p_F
+                    else
+                        x_vars = x_vars*2*pi/max_flux_t_F
+                    end if
+                    
                     ! plot on screen
                     call print_GP_2D(plot_title,trim(file_name)//'.dat.',&
                         &y_vars(:,1:kd-1),x=x_vars(:,1:kd-1))
@@ -301,6 +308,7 @@ contains
                     call draw_GP(plot_title,trim(file_name)//'.dat.',kd-1,&
                         &.true.,.false.)
                 case(2)                                                             ! HDF5 output
+                    ! call HDF5 subroutine
                     ierr = resonance_plot_HDF5()
                     CHCKERR('')
                 case default
@@ -327,16 +335,26 @@ contains
             ! input / output
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
             
+            ! local variables
+            integer :: i_min, i_max                                             ! index of minimum and maximum value of x
+            real(dp) :: x_min, x_max                                            ! minimum and maximum value of x
+            
             ! initialize res
             res = 0
             
+            ! set up min. and max index and value
+            x_min = minval(x_vars(:,1))
+            x_max = maxval(x_vars(:,1))
+            i_min = minloc(x_vars(:,1),1)
+            i_max = maxloc(x_vars(:,1),1)
+            
             ! check whether to interpolate or extrapolate
-            if (pt.lt.x_vars(1,1)) then                                         ! point requested lower than minimum x
-                ! extrapolate variable from 1
-                res = jq(1,0) - mnfrac_fun + jq(1,1)*(pt-x_vars(1,1))
-            else if (pt.gt.x_vars(n_r,1)) then                                  ! point requested higher than maximum x
-                ! extrapolate variable from n_r
-                res = jq(n_r,0) - mnfrac_fun + jq(n_r,1)*(pt-x_vars(n_r,1))
+            if (pt.lt.x_min) then                                               ! point requested lower than minimum x
+                ! extrapolate variable from minimum value
+                res = jq(i_min,0) - mnfrac_fun + jq(i_min,1)*(pt-x_min)
+            else if (pt.gt.x_max) then                                          ! point requested higher than maximum x
+                ! extrapolate variable from maximum value
+                res = jq(i_max,0) - mnfrac_fun + jq(i_max,1)*(pt-x_max)
             else                                                                ! point requested between 0 and 1
                 ! interpolate using interp_fun
                 istat = interp_fun(res,jq(:,0)-mnfrac_fun,pt,x_vars(:,1))
@@ -350,16 +368,26 @@ contains
             ! input / output
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
             
+            ! local variables
+            integer :: i_min, i_max                                             ! index of minimum and maximum value of x
+            real(dp) :: x_min, x_max                                            ! minimum and maximum value of x
+            
             ! initialize res
             res = 0
             
+            ! set up min. and max index and value
+            x_min = minval(x_vars(:,1))
+            x_max = maxval(x_vars(:,1))
+            i_min = minloc(x_vars(:,1),1)
+            i_max = maxloc(x_vars(:,1),1)
+            
             ! check whether to interpolate or extrapolate
-            if (pt.lt.x_vars(1,1)) then                                         ! point requested lower than minimum x
-                ! extrapolate variable from 1
-                res = jq(1,1) + jq(1,2)*(pt-x_vars(1,1))
-            else if (pt.gt.x_vars(n_r,1)) then                                  ! point requested higher than maximum x
-                ! extrapolate variable from n_r
-                res = jq(n_r,1) + jq(n_r,2)*(pt-x_vars(n_r,1))
+            if (pt.lt.x_min) then                                               ! point requested lower than minimum x
+                ! extrapolate variable from minimum value
+                res = jq(i_min,1) + jq(i_min,2)*(pt-x_min)
+            else if (pt.gt.x_max) then                                          ! point requested higher than maximum x
+                ! extrapolate variable from maximum value
+                res = jq(i_max,0) + jq(i_max,2)*(pt-x_max)
             else                                                                ! point requested between 0 and 1
                 ! interpolate using interp_fun
                 istat = interp_fun(res,jq(:,1),pt,x=x_vars(:,1))
@@ -379,7 +407,6 @@ contains
             integer :: id                                                       ! counters
             real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)        ! pol. and tor. angle of plot
             real(dp), allocatable :: r_plot_E(:)                                ! normal E coordinates of plot
-            real(dp), allocatable :: r_plot_F(:)                                ! normal F coordinates of plot
             real(dp), allocatable :: X_plot(:,:,:,:), Y_plot(:,:,:,:), &
                 &Z_plot(:,:,:,:)                                                ! X, Y and Z of plot of all surfaces
             real(dp), allocatable :: X_plot_ind(:,:,:), Y_plot_ind(:,:,:), &
@@ -387,6 +414,7 @@ contains
             integer :: plot_dim(4)                                              ! plot dimensions (total = group because only group masters)
             real(dp), allocatable :: vars(:,:,:,:)                              ! variable to plot
             type(grid_type) :: grid_plot                                        ! grid for plotting
+            character(len=max_str_ln), allocatable :: plot_titles(:)            ! name of plots
             
             ! initialize ierr
             ierr = 0
@@ -405,20 +433,20 @@ contains
                 vars(:,:,:,id) = y_vars(n_r,id+1)
             end do
             
+            ! set up plot titles
+            allocate(plot_titles(X%n_mod))
+            do id = 1,X%n_mod
+                plot_titles(id) = trim(plot_title)//' for m,n = '//&
+                    &trim(i2str(X%m(id)))//','//trim(i2str(X%n(id)))
+            end do
+            
             ! set dimensions
             plot_dim = [n_theta_plot,n_zeta_plot,1,X%n_mod]
             
-            ! setup normal vars in F coords.
-            allocate(r_plot_F(X%n_mod))
-            if (use_pol_flux_F) then
-                r_plot_F = x_vars(n_r,2:X%n_mod+1)*max_flux_p_F/(2*pi)
-            else
-                r_plot_F = x_vars(n_r,2:X%n_mod+1)*max_flux_t_F/(2*pi)
-            end if
-            
             ! calculate normal vars in Equilibrium coords.
             allocate(r_plot_E(X%n_mod))
-            ierr = coord_F2E(grid,eq,r_plot_F,r_plot_E)
+            ierr = coord_F2E(grid,eq,x_vars(n_r,2:X%n_mod+1),r_plot_E,&
+                &r_F_array=grid%r_F,r_E_array=grid%r_E)
             CHCKERR('')
             
             ! create plot grid
@@ -450,13 +478,12 @@ contains
             end do
             
             ! print using HDF5
-            call print_HDF5([plot_title],file_name,vars,plot_dim,plot_dim,&
-                &[0,0,0,0],X=X_plot,Y=Y_plot,Z=Z_plot,col=3,&
-                &description='resonant surfaces')
+            call print_HDF5(plot_titles,file_name,vars,X=X_plot,Y=Y_plot,&
+                &Z=Z_plot,col=1,description='resonant surfaces')
             
             ! deallocate local variables
             deallocate(vars)
-            deallocate(theta_plot,zeta_plot,r_plot_E,r_plot_F)
+            deallocate(theta_plot,zeta_plot,r_plot_E)
             
             ! delete plot grid
             call destroy_grid(grid_plot)
@@ -693,7 +720,8 @@ contains
     ! eq grp_n_r values
     ! (see [ADD REF] for details)
     subroutine calc_PV(eq,grid,met,X)
-        use num_vars, only: use_pol_flux_F, use_normalization, mu_0
+        use num_vars, only: use_pol_flux_F
+        use eq_vars, only: vac_perm
         use utilities, only: c
         
         ! use input / output
@@ -706,7 +734,6 @@ contains
         integer :: m, k, kd                                                     ! counters
         real(dp), allocatable :: com_fac(:,:,:)                                 ! common factor |nabla psi|^2/(J^2*B^2)
         real(dp), allocatable :: fac_n(:), fac_m(:)                             ! multiplicative factors for n and m
-        real(dp) :: mu_0_loc                                                    ! local version of mu_0
         integer :: c1                                                           ! value of c, to avoid compiler hang
         
         ! submatrices
@@ -725,16 +752,9 @@ contains
         ! upper metric factors
         h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
         
-        ! set up local mu_0
-        if (use_normalization) then
-            mu_0_loc = 1._dp
-        else
-            mu_0_loc = mu_0
-        end if
-        
         ! set up common factor for PV_i
         allocate(com_fac(grid%n(1),grid%n(2),grid%grp_n_r))
-        com_fac = h22/(g33*mu_0_loc)
+        com_fac = h22/(g33*vac_perm)
         
         ! set up fac_n and fac_m
         allocate(fac_n(grid%grp_n_r),fac_m(grid%grp_n_r))
@@ -753,16 +773,15 @@ contains
                 X%PV_0(:,:,:,c([k,m],.true.,X%n_mod)) = &
                     &com_fac*(X%DU_0(:,:,:,m) - X%extra1 - X%extra2 ) * &
                     &(conjg(X%DU_0(:,:,:,k)) - X%extra1 - X%extra2) - &
-                    &mu_0/mu_0_loc * &
-                    &(X%mu0sigma/J * (X%extra1 + X%extra2) - X%extra3)
+                    &X%mu0sigma/(vac_perm*J) * (X%extra1 + X%extra2) - X%extra3
                 
-                ! add (nq-k)*(nq-m)/(J^2 |nabla psi|^2) to PV_0
+                ! add (nq-k)*(nq-m)/(mu_0J^2 |nabla psi|^2) to PV_0
                 do kd = 1,grid%grp_n_r
                     c1 = c([k,m],.true.,X%n_mod)
-                    X%PV_0(:,:,kd,c1) = X%PV_0(:,:,kd,c1) + 1._dp/mu_0_loc * &
+                    X%PV_0(:,:,kd,c1) = X%PV_0(:,:,kd,c1) + &
                         &(X%n(m)*fac_n(kd)-X%m(m)*fac_m(kd))*&
                         &(X%n(k)*fac_n(kd)-X%m(k)*fac_m(kd)) / &
-                        &( J(:,:,kd)**2*h22(:,:,kd) )
+                        &( vac_perm*J(:,:,kd)**2*h22(:,:,kd) )
                 end do
                 
                 ! calculate PV_2
@@ -860,10 +879,10 @@ contains
     ! Note: The normal derivatives have the  factor i/n or i/m included already,
     ! as opposed to [ADD REF]
     integer function calc_U(eq,grid,met,X) result(ierr)
-        use num_vars, only: use_pol_flux_F, mu_0, use_normalization, eq_style, &
-            &ltest
+        use num_vars, only: use_pol_flux_F, eq_style, ltest
         use utilities, only: c
         use input_ops, only: get_log, pause_prog
+        use eq_vars, only: vac_perm
         
         character(*), parameter :: rout_name = 'calc_U'
         
@@ -875,7 +894,6 @@ contains
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
-        real(dp) :: mu_0_loc                                                    ! local version of mu_0
         real(dp) :: n_frac                                                      ! nq-m (pol. flux) or n-iotam (tor. flux)
         real(dp), allocatable :: djq(:)                                         ! either q' (pol. flux) or -iota' (tor. flux)
         real(dp), allocatable :: fac_n(:), fac_m(:)                             ! multiplicative factors for n and m
@@ -887,8 +905,8 @@ contains
         
         ! helper variables for the correction to U
         real(dp), pointer :: g_frac(:,:,:)                                      ! g_alpha,theta / g_theta,theta
-        real(dp), pointer :: T_theta(:,:,:), D1T_theta(:,:,:), &
-            &D3T_theta(:,:,:)                                                   ! Theta^theta and derivatives
+        real(dp), pointer :: Theta_3(:,:,:), D1Theta_3(:,:,:), &
+            &D3Theta_3(:,:,:)                                                   ! Theta^theta and derivatives
         ! jacobian
         real(dp), pointer :: J(:,:,:)                                           ! jac
         real(dp), pointer :: D3J(:,:,:)                                         ! D_theta jac
@@ -911,13 +929,6 @@ contains
         
         ! initialize ierr
         ierr = 0
-        
-        ! set up local mu_0
-        if (use_normalization) then
-            mu_0_loc = 1._dp
-        else
-            mu_0_loc = mu_0
-        end if
         
         ! set up parallel angle in flux coordinates
         if (use_pol_flux_F) then
@@ -945,9 +956,9 @@ contains
         allocate(U_corr(grid%n(1),grid%n(2),grid%grp_n_r,X%n_mod))
         allocate(D3U_corr(grid%n(1),grid%n(2),grid%grp_n_r,X%n_mod))
         allocate(g_frac(grid%n(1),grid%n(2),grid%grp_n_r))
-        allocate(T_theta(grid%n(1),grid%n(2),grid%grp_n_r))
-        allocate(D1T_theta(grid%n(1),grid%n(2),grid%grp_n_r))
-        allocate(D3T_theta(grid%n(1),grid%n(2),grid%grp_n_r))
+        allocate(Theta_3(grid%n(1),grid%n(2),grid%grp_n_r))
+        allocate(D1Theta_3(grid%n(1),grid%n(2),grid%grp_n_r))
+        allocate(D3Theta_3(grid%n(1),grid%n(2),grid%grp_n_r))
         
         ! set up submatrices
         ! jacobian
@@ -977,6 +988,17 @@ contains
         select case (eq_style)
             case (1)                                                            ! VMEC
                 call calc_U_VMEC
+        
+#if ldebug
+                if (ltest) then
+                    call writo('Test calculation of DU')
+                    if(get_log(.false.,ind=.true.)) then
+                        ierr = test_DU()
+                        CHCKERR('')
+                        call pause_prog(ind=.true.)
+                    end if
+                end if
+#endif
             case (2)                                                            ! HELENA
                 ierr = calc_U_HEL()
                 CHCKERR('')
@@ -987,17 +1009,6 @@ contains
                 CHCKERR(err_msg)
         end select
         
-#if ldebug
-        if (ltest) then
-            call writo('Test calculation of DU')
-            if(get_log(.false.,ind=.true.)) then
-                ierr = test_DU()
-                CHCKERR('')
-                call pause_prog(ind=.true.)
-            end if
-        end if
-#endif
-        
         ! deallocate
         deallocate(djq,mn)
         deallocate(fac_n,fac_m)
@@ -1006,14 +1017,14 @@ contains
         nullify(g13,D3g13,g23,D3g23,g33,D3g33)
         nullify(h12,D3h12,h22,D1h22,D3h22,h23,D1h23,D3h23)
         nullify(g_frac)
-        nullify(T_theta,D1T_theta,D3T_theta)
+        nullify(Theta_3,D1Theta_3,D3Theta_3)
     contains
         ! VMEC version
         subroutine calc_U_VMEC
             ! local variables
             ! extra helper variables for the correction to U
             real(dp), allocatable :: D3g_frac(:,:,:)                            ! D_theta g_frac
-            real(dp), allocatable :: D13T_theta(:,:,:), D33T_theta(:,:,:)       ! Theta^theta derivatives
+            real(dp), allocatable :: D13Theta_3(:,:,:), D33Theta_3(:,:,:)       ! Theta^theta derivatives
             ! extra upper metric factors
             real(dp), allocatable :: D13h22(:,:,:)                              ! D^2_alpha,theta h^psi,psi
             real(dp), allocatable :: D33h22(:,:,:)                              ! D^2_theta,theta h^psi,psi
@@ -1022,8 +1033,8 @@ contains
             
             ! allocate extra helper variables
             allocate(D3g_frac(grid%n(1),grid%n(2),grid%grp_n_r))
-            allocate(D13T_theta(grid%n(1),grid%n(2),grid%grp_n_r))
-            allocate(D33T_theta(grid%n(1),grid%n(2),grid%grp_n_r))
+            allocate(D13Theta_3(grid%n(1),grid%n(2),grid%grp_n_r))
+            allocate(D33Theta_3(grid%n(1),grid%n(2),grid%grp_n_r))
             
             ! set up extra submatrices
             ! upper metric factors
@@ -1041,12 +1052,12 @@ contains
                 ! set up helper variables
                 g_frac = g13/g33
                 D3g_frac = D3g13/g33 - g13*D3g33/(g33**2)
-                T_theta = h23/h22
-                D1T_theta = D1h23/h22 - h23*D1h22/(h22**2)
-                D3T_theta = D3h23/h22 - h23*D3h22/(h22**2)
-                D13T_theta = D13h23/h22 - (D3h23*D1h22+D1h23*D3h22)/(h22**2) &
+                Theta_3 = h23/h22
+                D1Theta_3 = D1h23/h22 - h23*D1h22/(h22**2)
+                D3Theta_3 = D3h23/h22 - h23*D3h22/(h22**2)
+                D13Theta_3 = D13h23/h22 - (D3h23*D1h22+D1h23*D3h22)/(h22**2) &
                     &- h23*D13h22/(h22**2) + 2*h23*D3h22*D1h22/(h22**3)
-                D33T_theta = D33h23/h22 - 2*D3h23*D3h22/(h22**2) &
+                D33Theta_3 = D33h23/h22 - 2*D3h23*D3h22/(h22**2) &
                     &- h23*D33h22/(h22**2) + 2*h23*D3h22**2/(h22**3)
                 
                 ! loop over all normal points
@@ -1055,32 +1066,32 @@ contains
                     n_frac = X%n(jd)*fac_n(kd)-X%m(jd)*fac_m(kd)
                     ! set up U correction
                     U_corr(:,:,kd,jd) = iu/mn(jd)*n_frac/mn(jd)*&
-                        &(g_frac(:,:,kd)*(D3T_theta(:,:,kd)+&
-                        &iu*n_frac*T_theta(:,:,kd))+D1T_theta(:,:,kd))
+                        &(g_frac(:,:,kd)*(D3Theta_3(:,:,kd)+&
+                        &iu*n_frac*Theta_3(:,:,kd))+D1Theta_3(:,:,kd))
                     ! set up D_theta U correction
                     D3U_corr(:,:,kd,jd) = iu/mn(jd)*n_frac/mn(jd)*&
                         &(D3g_frac(:,:,kd)*&
-                        &(D3T_theta(:,:,kd)+iu*n_frac*T_theta(:,:,kd))+&
+                        &(D3Theta_3(:,:,kd)+iu*n_frac*Theta_3(:,:,kd))+&
                         &g_frac(:,:,kd)*&
-                        &(D33T_theta(:,:,kd)+iu*n_frac*D3T_theta(:,:,kd))+&
-                        &D13T_theta(:,:,kd))
+                        &(D33Theta_3(:,:,kd)+iu*n_frac*D3Theta_3(:,:,kd))+&
+                        &D13Theta_3(:,:,kd))
                     ! calculate X%U_0 and X%DU_0
                     X%U_0(:,:,kd,jd) = &
                         &-(h12(:,:,kd)/h22(:,:,kd) + djq(kd)*ang_par_F(:,:,kd))&
                         &+ iu/(mn(jd)*g33(:,:,kd)) * (g13(:,:,kd)*djq(kd) + &
-                        &J(:,:,kd)**2*eq%pres_FD(kd,1)*mu_0_loc + iu*n_frac * &
+                        &J(:,:,kd)**2*eq%pres_FD(kd,1)*vac_perm + iu*n_frac * &
                         &( g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) - &
                         &g23(:,:,kd) )) + U_corr(:,:,kd,jd)
                     X%DU_0(:,:,kd,jd) = -(D3h12(:,:,kd)/h22(:,:,kd) - &
                         &D3h22(:,:,kd)*h12(:,:,kd)/h22(:,:,kd)**2 + djq(kd)) - &
                         &iu*D3g33(:,:,kd)/(mn(jd)*g33(:,:,kd)**2) * &
                         &(g13(:,:,kd)*djq(kd)+ &
-                        &J(:,:,kd)**2*eq%pres_FD(kd,1)*mu_0_loc + &
+                        &J(:,:,kd)**2*eq%pres_FD(kd,1)*vac_perm + &
                         &iu*n_frac * &
                         &( g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) &
                         &- g23(:,:,kd) )) + &
                         &iu/(mn(jd)*g33(:,:,kd)) * (D3g13(:,:,kd)*djq(kd) + &
-                        &2*D3J(:,:,kd)*J(:,:,kd)*eq%pres_FD(kd,1)*mu_0_loc + &
+                        &2*D3J(:,:,kd)*J(:,:,kd)*eq%pres_FD(kd,1)*vac_perm + &
                         &iu*n_frac &
                         &* ( D3g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) + &
                         &g13(:,:,kd)*djq(kd) - D3g23(:,:,kd) )) + &
@@ -1098,37 +1109,44 @@ contains
             
             ! deallocate
             deallocate(D3g_frac)
-            deallocate(D13T_theta,D33T_theta)
+            deallocate(D13Theta_3,D33Theta_3)
         end subroutine calc_U_VMEC
         
         ! HELENA version
+        ! Note:  The parallel  derivatives are  done here  numerically. However,
+        ! these  must be  translated to  numerical derivatives  in the  poloidal
+        ! coordinate. This depends on the flux on which the normal coordinate is
+        ! based:
+        ! - poloidal flux: parallel deriv. equal to poloidal deriv,
+        ! - toroidal flux: parallel deriv. equal to iota * poloidal deriv.
         integer function calc_U_HEL() result(ierr)
             use utilities, only: calc_deriv
             
             character(*), parameter :: rout_name = 'calc_U_HEL'
             
             ! local variablas
-            complex(dp), allocatable :: D3_var(:,:)                             ! derivative of variable
+            complex(dp), allocatable :: D3var(:,:)                              ! derivative of variable
             
             ! allocate extra helper variables
-            allocate(D3_var(grid%n(1),grid%n(2)))
+            allocate(D3var(grid%n(1),grid%n(2)))
             
             ! initialize ierr
             ierr = 0
             
             ! loop over the M elements of U_X and DU
             do jd = 1,X%n_mod
-            write(*,*) '!!! THIS IS WRONG: YOU HAVE TO TAKE T_ZETA, NOT T_THETA !!!!'
-            write(*,*) 'I CHANGED theta_F to ang_par_F, THIS CAUSED INFINITIES!!!'
                 ! set up helper variables
                 g_frac = g13/g33
-                T_theta = h23/h22
+                Theta_3 = h23/h22
                 ! loop over all normal points
                 do kd = 1,grid%grp_n_r
                     do id = 1,grid%n(2)
-                        ierr = calc_deriv(T_theta(:,id,kd),D3T_theta(:,id,kd),&
-                            &ang_par_F(:,id,kd),1,2)                            ! higher precision because other derivative will be taken later
+                        ierr = calc_deriv(Theta_3(:,id,kd),D3Theta_3(:,id,kd),&
+                            &grid%theta_F(:,id,kd),1,2)                         ! higher precision because other derivative will be taken later
+                        CHCKERR('')
                     end do
+                    if (.not.use_pol_flux_F) D3Theta_3(:,:,kd) = &
+                        &D3Theta_3(:,:,kd)*eq%rot_t_FD(kd,0)                    ! parallel deriv. equal to iota * poloidal deriv.
                 end do
                 
                 ! loop over all normal points
@@ -1137,34 +1155,36 @@ contains
                     n_frac = X%n(jd)*fac_n(kd)-X%m(jd)*fac_m(kd)
                     ! set up U correction
                     U_corr(:,:,kd,jd) = iu/mn(jd)*n_frac/mn(jd)*(g_frac(:,:,kd)*&
-                        &(D3T_theta(:,:,kd)+iu*n_frac*T_theta(:,:,kd)))
+                        &(D3Theta_3(:,:,kd)+iu*n_frac*Theta_3(:,:,kd)))
                     ! calculate X%U_0 and X%DU_0
                     X%U_0(:,:,kd,jd) = &
                         &-(h12(:,:,kd)/h22(:,:,kd) + djq(kd)*ang_par_F(:,:,kd))&
                         &+ iu/(mn(jd)*g33(:,:,kd)) * (g13(:,:,kd)*djq(kd) + &
-                        &J(:,:,kd)**2*eq%pres_FD(kd,1)*mu_0_loc + iu*n_frac * &
+                        &J(:,:,kd)**2*eq%pres_FD(kd,1)*vac_perm + iu*n_frac * &
                         &( g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) - &
                         &g23(:,:,kd) )) + U_corr(:,:,kd,jd)
                     do id = 1,grid%n(2)
-                        ierr = calc_deriv(X%U_0(:,id,kd,jd),D3_var(:,id),&
-                            &ang_par_F(:,id,kd),1,2)
+                        ierr = calc_deriv(X%U_0(:,id,kd,jd),D3var(:,id),&
+                            &grid%theta_F(:,id,kd),1,2)
+                        CHCKERR('')
                     end do
-                    CHCKERR('')
-                    X%DU_0(:,:,kd,jd) = D3_var + iu*n_frac*X%U_0(:,:,kd,jd)
+                    if (.not.use_pol_flux_F) D3var = D3var*eq%rot_t_FD(kd,0)    ! parallel deriv. equal to iota * poloidal deriv.
+                    X%DU_0(:,:,kd,jd) = D3var + iu*n_frac*X%U_0(:,:,kd,jd)
                     ! calculate X%U_1 and X%DU_1
                     X%U_1(:,:,kd,jd) = iu/mn(jd) * &
                         &(1 + n_frac/mn(jd) * g13(:,:,kd)/g33(:,:,kd))
                     do id = 1,grid%n(2)
-                        ierr = calc_deriv(X%U_1(:,id,kd,jd),D3_var(:,id),&
-                            &ang_par_F(:,id,kd),1,2)
+                        ierr = calc_deriv(X%U_1(:,id,kd,jd),D3var(:,id),&
+                            &grid%theta_F(:,id,kd),1,2)
+                        CHCKERR('')
                     end do
-                    CHCKERR('')
-                    X%DU_1(:,:,kd,jd) = D3_var + iu*n_frac*X%U_1(:,:,kd,jd)
+                    if (.not.use_pol_flux_F) D3var = D3var*eq%rot_t_FD(kd,0)    ! parallel deriv. equal to iota * poloidal deriv.
+                    X%DU_1(:,:,kd,jd) = D3var + iu*n_frac*X%U_1(:,:,kd,jd)
                 end do
             end do
             
             ! deallocate
-            deallocate(D3_var)
+            deallocate(D3var)
         end function calc_U_HEL
         
 #if ldebug
@@ -1181,7 +1201,7 @@ contains
             complex(dp), allocatable :: DU_0(:,:,:)                             ! alternative calculation for DU_0
             complex(dp), allocatable :: DU_1(:,:,:)                             ! alternative calculation for DU_1
             type(grid_type) :: grid_trim                                        ! trimmed equilibrium grid
-            integer :: tot_dim(3), grp_dim(3), grp_offset(3)                    ! total and group dimensions and group offset
+            integer :: tot_dim(3), grp_offset(3)                                ! total dimensions and group offset
             character(len=max_str_ln) :: file_name                              ! name of plot file
             character(len=max_str_ln) :: description                            ! description of plot
             
@@ -1206,7 +1226,6 @@ contains
             
             ! set total and group dimensions and group offset
             tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-            grp_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r]
             grp_offset = [0,0,grid_trim%i_min-1]
             
             ! loop over all modes
@@ -1237,8 +1256,7 @@ contains
                 ! plot difference for RE DU_0
                 call plot_diff_HDF5(realpart(DU_0(:,:,1:grid_trim%grp_n_r)),&
                     &realpart(X%DU_0(:,:,1:grid_trim%grp_n_r,jd)),file_name,&
-                    &tot_dim,grp_dim,grp_offset,description,&
-                    &output_message=.true.)
+                    &tot_dim,grp_offset,description,output_message=.true.)
                 
                 ! set some variables
                 file_name = 'TEST_IM_DU_0_'//trim(i2str(jd))
@@ -1248,8 +1266,7 @@ contains
                 ! plot difference for IM DU_0
                 call plot_diff_HDF5(imagpart(DU_0(:,:,1:grid_trim%grp_n_r)),&
                     &imagpart(X%DU_0(:,:,1:grid_trim%grp_n_r,jd)),file_name,&
-                    &tot_dim,grp_dim,grp_offset,description,&
-                    &output_message=.true.)
+                    &tot_dim,grp_offset,description,output_message=.true.)
                 
                 ! set some variables
                 file_name = 'TEST_RE_DU_1_'//trim(i2str(jd))
@@ -1259,8 +1276,7 @@ contains
                 ! plot difference for RE DU_1
                 call plot_diff_HDF5(realpart(DU_1(:,:,1:grid_trim%grp_n_r)),&
                     &realpart(X%DU_1(:,:,1:grid_trim%grp_n_r,jd)),file_name,&
-                    &tot_dim,grp_dim,grp_offset,description,&
-                    &output_message=.true.)
+                    &tot_dim,grp_offset,description,output_message=.true.)
                 
                 ! set some variables
                 file_name = 'TEST_IM_DU_1_'//trim(i2str(jd))
@@ -1270,8 +1286,7 @@ contains
                 ! plot difference for IM DU_1
                 call plot_diff_HDF5(imagpart(DU_1(:,:,1:grid_trim%grp_n_r)),&
                     &imagpart(X%DU_1(:,:,1:grid_trim%grp_n_r,jd)),file_name,&
-                    &tot_dim,grp_dim,grp_offset,description,&
-                    &output_message=.true.)
+                    &tot_dim,grp_offset,description,output_message=.true.)
             end do
             
             ! user output
@@ -1290,7 +1305,7 @@ contains
     !   parallel current mu0sigma = B . nabla x B / B^2
     !   normal curvature kn = nabla psi / h^psi,psi * nabla (mu0 p + B^2/2)
     integer function calc_extra(eq,grid,met,X) result(ierr)
-        use num_vars, only: mu_0
+        use eq_vars, only: vac_perm
         use utilities, only: c
         
         character(*), parameter :: rout_name = 'calc_extra'
@@ -1368,7 +1383,7 @@ contains
         ! calculate extra3
         do kd = 1,grid%grp_n_r
             X%extra3(:,:,kd) = eq%pres_FD(kd,1) * &
-                &( 2*J(:,:,kd)**2*mu_0*eq%pres_FD(kd,1)/g33(:,:,kd) + &
+                &( 2*J(:,:,kd)**2*vac_perm*eq%pres_FD(kd,1)/g33(:,:,kd) + &
                 &1._dp/h22(:,:,kd) * ( &
                 &h12(:,:,kd) * ( D1g33(:,:,kd)/g33(:,:,kd) - &
                 &2*D1J(:,:,kd)/J(:,:,kd) ) + &

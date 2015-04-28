@@ -648,7 +648,7 @@ contains
         
         ierr = extend_grid(grid_eq,grid_eq_ext,grid_eq=grid_eq,eq=eq)           ! extend eq grid and convert to F
         CHCKERR('')
-        ierr = extend_grid(grid_X,grid_X_ext,grid_eq,eq)                        ! extend X grid and convert to F
+        ierr = extend_grid(grid_X,grid_X_ext,grid_eq=grid_eq,eq=eq)             ! extend X grid and convert to F
         CHCKERR('')
         ierr = calc_XYZ_grid(grid_X_ext,X_ind,Y_ind,Z_ind)                      ! calculate X, Y and Z on extended X grid
         CHCKERR('')
@@ -680,8 +680,9 @@ contains
         ! back up no_plots and no_messages and set to .true.
         no_plots_loc = no_plots
         no_messages_loc = no_messages
-        no_plots = .true.
-        no_messages = .true.
+        write(*,*) 'TEMPORARILIY DO NOT BLOCK MESSAGES'
+        !!no_plots = .true.
+        !!no_messages = .true.
         ! create extended perturbation
         call create_X(grid_eq_ext,X_ext)
         ! create  equilibrium,  metric   and   some  perturbation  variables  on
@@ -793,7 +794,7 @@ contains
                     &final Eigenvalues omega^2 [log]'
                 call print_GP_2D(plot_title,'Eigenvalues_'//&
                     &trim(i2str(alpha_job_nr))//'.dat',&
-                    &log10(abs(realpart(X%val(1:n_sol_found)))))
+                    &log10(abs(realpart(X%val(1:n_sol_found)))),draw=.false.)
                 ! same output in file as well
                 call draw_GP(plot_title,'Eigenvalues_'//&
                     &trim(i2str(alpha_job_nr))//'.dat',1,.true.,.false.)
@@ -806,7 +807,7 @@ contains
                     call print_GP_2D(plot_title,'Eigenvalues_'//&
                         &trim(i2str(alpha_job_nr))//'_unstable.dat',&
                         &realpart(X%val(1:last_unstable_id)),&
-                        &x=[(id*1._dp,id=1,last_unstable_id)])
+                        &x=[(id*1._dp,id=1,last_unstable_id)],draw=.false.)
                     ! same output in file as well
                     call draw_GP(plot_title,'Eigenvalues_'//&
                         &trim(i2str(alpha_job_nr))//'_unstable.dat',1,&
@@ -821,7 +822,8 @@ contains
                     call print_GP_2D(plot_title,'Eigenvalues_'//&
                         &trim(i2str(alpha_job_nr))//'_stable.dat',&
                         &realpart(X%val(last_unstable_id+1:n_sol_found)),&
-                        &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)])
+                        &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)],&
+                        &draw=.false.)
                     ! same output in file as well
                     call draw_GP(plot_title,'Eigenvalues_'//&
                         &trim(i2str(alpha_job_nr))//'_stable.dat',1,&

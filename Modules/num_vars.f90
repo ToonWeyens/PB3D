@@ -11,7 +11,7 @@ module num_vars
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
         &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups, &
         &next_job, next_job_win, &
-        &pi, mu_0, iu, &
+        &pi, mu_0_original, iu, &
         &minim_style, EV_style, eq_style, rho_style, plot_jq, plot_grid, &
         &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
         &use_normalization, EV_BC, &
@@ -32,7 +32,7 @@ module num_vars
     integer, parameter :: max_args = 10                                         ! maximum number of input arguments
     integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
     character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
-    character(len=max_str_ln) :: prog_version = '0.74'                          ! version number
+    character(len=max_str_ln) :: prog_version = '0.75'                          ! version number
     character(len=max_str_ln) :: output_name                                    ! will hold name of output file
 
     ! MPI variables
@@ -51,7 +51,7 @@ module num_vars
 
     ! physical and mathematical variables
     real(dp), parameter :: pi=4_dp*datan(1.0_dp)                                ! pi
-    real(dp), parameter :: mu_0 = 4E-7_dp*pi                                    ! permeability of free space
+    real(dp), parameter :: mu_0_original = 4E-7_dp*pi                           ! permeability of free space
     complex(dp), parameter :: iu = (0,1)                                        ! complex unit
 
     ! concerning runtime

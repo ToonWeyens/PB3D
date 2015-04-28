@@ -325,43 +325,43 @@ contains
             
             ! use min_r_X and max_r_X, with grp_n_procs to get the minimum bound
             ! grp_min_r_eq for this rank
-            ! 1. continuous perturbation grid (0..1)
+            ! 1. continuous F coords (min_r_X..max_r_X)
             grp_min_r_eq_F_con = min_r_X + &
                 &grp_rank*(max_r_X-min_r_X)/grp_n_procs
             ! 2 round with tolerance
             ierr = round_with_tol(grp_min_r_eq_F_con,0._dp,1._dp)
             CHCKERR('')
-            ! 3. continuous equilibrium grid (0..1)
+            ! 3. continuous E coords
             ierr = interp_fun(grp_min_r_eq_E_con,flux_E,&
                 &grp_min_r_eq_F_con,flux_F)
             CHCKERR('')
-            ! 4. discrete equilibrium grid, unrounded
+            ! 4. discrete E index, unrounded
             ierr = con2dis(grp_min_r_eq_E_con,grp_min_r_eq_E_dis,flux_E)
             CHCKERR('')
-            ! 5. discrete equilibrium grid, rounded down
+            ! 5. discrete E index, rounded down
             eq_limits(1) = floor(grp_min_r_eq_E_dis)
             
             ! use min_r_X and max_r_X to calculate grp_max_r_eq
             ! 1. divide_X_grid for min_n_r_X normal points
             ierr = divide_X_grid(min_n_r_X,X_limits)                            ! divide the grid for the min_n_r_X tot. normal points
             CHCKERR('')
-            ! 2. discrete perturbation grid (1..min_n_r_X)
+            ! 2. discrete F coords (1..min_n_r_X)
             grp_max_r_eq_F_dis = X_limits(2)
-            ! 3. continous perturbation grid (0..1)
+            ! 3. continous F coords
             ierr = dis2con(grp_max_r_eq_F_dis,grp_max_r_eq_F_con,[1,min_n_r_X],&
                 &[min_r_X,max_r_X])                                             ! the perturbation grid is equidistant
             CHCKERR('')
             ! 4 round with tolerance
             ierr = round_with_tol(grp_max_r_eq_F_con,0._dp,1._dp)
             CHCKERR('')
-            ! 5. continuous equilibrium grid (0..1)
+            ! 5. continuous E coords
             ierr = interp_fun(grp_max_r_eq_E_con,flux_E,&
                 &grp_max_r_eq_F_con,flux_F)
             CHCKERR('')
-            ! 6. discrete equilibrium grid, unrounded
+            ! 6. discrete E index, unrounded
             ierr = con2dis(grp_max_r_eq_E_con,grp_max_r_eq_E_dis,flux_E)
             CHCKERR('')
-            ! 7. discrete equlibrium grid, rounded up
+            ! 7. discrete E index, rounded up
             eq_limits(2) = ceiling(grp_max_r_eq_E_dis)
             
             deallocate(flux_F,flux_E)
@@ -587,12 +587,15 @@ contains
             &n_zeta_plot, plot_jq, EV_BC, rho_style
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
-        use HELENA, only: R_0_H, B_0_H, pres_H, qs, flux_p_H, nchi, chi_H, &
-            &ias, h_H_11, h_H_12, h_H_33, RBphi, R_H, Z_H
-        use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0
+        use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
+            &h_H_12, h_H_33, RBphi, R_H, Z_H
+        use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_n_r_X, &
             &min_r_X, max_r_X
         use grid_vars, only: n_r_eq, n_par_X, min_par_X, max_par_X
+#if ldebug
+        use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
+#endif
         
         character(*), parameter :: rout_name = 'broadcast_input_vars'
         
@@ -709,6 +712,11 @@ contains
             CHCKERR('MPI broadcast failed')
             call MPI_Bcast(rho_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
+            call MPI_Bcast(T_0,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+            CHCKERR('MPI broadcast failed')
+            call MPI_Bcast(vac_perm,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,&
+                &ierr)
+            CHCKERR('MPI broadcast failed')
             call MPI_Bcast(EV_BC,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
             CHCKERR('MPI broadcast failed')
             
@@ -744,32 +752,32 @@ contains
                     call MPI_Bcast(rot_t_V,size(rot_t_V),MPI_DOUBLE_PRECISION,&
                         &0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(R_V_c)
+                    call bcast_size_4_R(R_V_c,0)
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(R_V_c,size(R_V_c),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(R_V_s)
+                    call bcast_size_4_R(R_V_s,0)
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(R_V_s,size(R_V_s),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(Z_V_c)
+                    call bcast_size_4_R(Z_V_c,0)
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(Z_V_c,size(Z_V_c),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(Z_V_s)
+                    call bcast_size_4_R(Z_V_s,0)
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(Z_V_s,size(Z_V_s),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(L_V_c)
+                    call bcast_size_4_R(L_V_c,0)
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(L_V_c,size(L_V_c),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(L_V_s)
+                    call bcast_size_4_R(L_V_s,0)
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(L_V_s,size(L_V_s),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
@@ -779,18 +787,46 @@ contains
                     call MPI_Bcast(pres_V,size(pres_V),MPI_DOUBLE_PRECISION,0,&
                         &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
+#if ldebug
+                    if (ltest) then                                             ! ltest has already been broadcast
+                        call bcast_size_4_R(B_V_sub_c,1)
+                        CHCKERR('MPI broadcast failed')
+                        call MPI_Bcast(B_V_sub_c,size(B_V_sub_c),&
+                            &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+                        CHCKERR('MPI broadcast failed')
+                        call bcast_size_4_R(B_V_sub_s,1)
+                        CHCKERR('MPI broadcast failed')
+                        call MPI_Bcast(B_V_sub_s,size(B_V_sub_s),&
+                            &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+                        CHCKERR('MPI broadcast failed')
+                        call bcast_size_3_R(B_V_c)
+                        CHCKERR('MPI broadcast failed')
+                        call MPI_Bcast(B_V_c,size(B_V_c),&
+                            &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+                        CHCKERR('MPI broadcast failed')
+                        call bcast_size_3_R(B_V_s)
+                        CHCKERR('MPI broadcast failed')
+                        call MPI_Bcast(B_V_s,size(B_V_s),&
+                            &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+                        CHCKERR('MPI broadcast failed')
+                        call bcast_size_3_R(jac_V_c)
+                        CHCKERR('MPI broadcast failed')
+                        call MPI_Bcast(jac_V_c,size(jac_V_c),&
+                            &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+                        CHCKERR('MPI broadcast failed')
+                        call bcast_size_3_R(jac_V_s)
+                        CHCKERR('MPI broadcast failed')
+                        call MPI_Bcast(jac_V_s,size(jac_V_s),&
+                            &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+                        CHCKERR('MPI broadcast failed')
+                    end if
+#endif
                 case (2)                                                        ! HELENA
                     call MPI_Bcast(nchi,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(ias,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                     call bcast_size_1_R(flux_p_H)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(R_0_H,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_COMM_WORLD,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(B_0_H,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_COMM_WORLD,ierr)
                     CHCKERR('MPI broadcast failed')
                     call MPI_Bcast(flux_p_H,size(flux_p_H),&
                         &MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
@@ -892,10 +928,11 @@ contains
             call MPI_Bcast(arr_size,2,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             if (glb_rank.ne.0) allocate(arr(1:arr_size(1),1:arr_size(2)))
         end subroutine bcast_size_2_R
-        ! The array index is (0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv)
-        subroutine bcast_size_4_R(arr)                                          ! version with 4 real arguments
+        ! The array index is (0:mpol-1,-ntor:ntor,1:n_r_eq,start_id)
+        subroutine bcast_size_4_R(arr,start_id)                                 ! version with 4 real arguments
             ! input / output
             real(dp), intent(inout), allocatable :: arr(:,:,:,:)
+            integer, intent(in) :: start_id
             
             ! local variables
             integer :: arr_size(4)                                              ! sent ahead so arrays can be allocated
@@ -906,7 +943,21 @@ contains
             call MPI_Bcast(arr_size,4,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
             if (glb_rank.ne.0) allocate(arr(0:arr_size(1)-1,&
                 &-(arr_size(2)-1)/2:(arr_size(2)-1)/2,1:arr_size(3),&
-                &0:arr_size(4)-1))
+                &start_id:arr_size(4)+start_id-1))
         end subroutine bcast_size_4_R
+        ! The array index is (0:mpol-1,-ntor:ntor,1:n_r_eq)
+        subroutine bcast_size_3_R(arr)                                          ! version with 3 real arguments
+            ! input / output
+            real(dp), intent(inout), allocatable :: arr(:,:,:)
+            
+            ! local variables
+            integer :: arr_size(3)                                              ! sent ahead so arrays can be allocated
+            
+            if (glb_rank.eq.0) arr_size = [size(arr,1),size(arr,2),size(arr,3)]
+            
+            call MPI_Bcast(arr_size,3,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+            if (glb_rank.ne.0) allocate(arr(0:arr_size(1)-1,&
+                &-(arr_size(2)-1)/2:(arr_size(2)-1)/2,1:arr_size(3)))
+        end subroutine bcast_size_3_R
     end function broadcast_input_vars
 end module MPI_ops

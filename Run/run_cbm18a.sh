@@ -2,7 +2,8 @@
 # Display usage function
 display_usage() { 
     echo -e "\nUsage:\n$0 [OPTS] NR_PROCS \n" 
-    echo -e "    OPTS: -d use Valgrind debugging"
+    echo -e "    OPTS: -o specify output name"
+    echo -e "          -d use Valgrind debugging"
     echo -e "          -s trace sources of errors in Valgrind\n"
     } 
 #
@@ -11,17 +12,23 @@ slepc_opt="-st_pc_factor_shift_type NONZERO -st_pc_type lu -st_pc_factor_mat_sol
 debug_opt=""
 extra_debug_opt=""
 n_opt_args=0
+use_out_loc=false
 #
 # Catching options
-while getopts "ds" opt; do
+while getopts "o:ds" opt; do
     case $opt in
+        o) 
+            out_loc=$OPTARG
+            use_out_loc=true
+            n_opt_args=$((n_opt_args+2))                                        # 2 arguments
+        ;;
         d)
             debug_opt="valgrind"
-            n_opt_args=$((n_opt_args+1))
+            n_opt_args=$((n_opt_args+1))                                        # 1 argument
         ;;
         s)
             extra_debug_opt="--track-origins=yes"
-            n_opt_args=$((n_opt_args+1))
+            n_opt_args=$((n_opt_args+1))                                        # 1 argument
         ;;
         \?)
             display_usage
@@ -30,7 +37,7 @@ while getopts "ds" opt; do
     esac
 done
 #
-# Checking for number of input arguments
+# Checking for number of input arguments (need at least 1 for # procs)
 if [ "$#" -lt $((n_opt_args+1)) ]; then
     display_usage
     exit 1
@@ -50,5 +57,29 @@ fi
 # Shift arguments to skip options
 shift $n_opt_args
 #
-# Running command
-cp ../PB3D . && mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2}
+# Make new folder
+if [ "$use_out_loc" = true ]; then
+    out=$out_loc
+else
+    get_date=$(date +"%Y-%m-%d-%H-%M-%S")
+    out=$get_date
+fi
+{
+mkdir $out $out/Plots $out/Data $out/Scripts &&
+# success
+echo "Working in directory $out/"
+echo ""
+# Copy inputs and the program
+cp input_cbm18a $out
+cp cbm18a $out
+cp ../PB3D $out
+cd $out
+mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2}
+echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2}" > command
+cd ../
+#
+# failure
+} || {
+echo "Error: unable to create directory $out/"
+echo "Do you have the correct permissions?"
+}

@@ -28,7 +28,7 @@ module HDF5_ops
     ! global variables
     integer, parameter :: max_xml_ln = 300                                      ! max. length of xml string
     character(len=6) :: xmf_fmt = '(999A)'                                      ! format to write the xmf file
-    logical :: debug = .false.                                                  ! set to true to debug information
+    logical :: debug_HDF5_ops = .false.                                         ! set to true to debug information
     
     ! XML strings used in XDMF
     type :: XML_str_type
@@ -113,14 +113,19 @@ contains
         integer(HID_T) :: HDF5_i                                                ! file identifier 
         integer(HID_T) :: plist_id                                              ! property list identifier 
         integer :: MPI_Comm                                                     ! MPI Communicator used
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
         
         ! initialize ierr
         ierr = 0
         
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
+        
         ! set up MPI Communicator
-        MPI_Comm = MPI_Comm_groups                                              ! default group communicator
-        if (present(ind_plot)) then
-            if (ind_plot) MPI_Comm = MPI_Comm_self                              ! individual plot
+        if (ind_plot_loc) then
+            MPI_Comm = MPI_Comm_self                                            ! individual plot
+        else
+            MPI_Comm = MPI_Comm_groups                                          ! default group communicator
         end if
         
         ! set up full file name
@@ -147,11 +152,8 @@ contains
         file_info%HDF5_i = HDF5_i
         file_info%name = file_name
         
-        ! user output
-        call writo('HDF5 file "'//trim(full_file_name)//'" created')
-            
-        ! only if group master
-        if (grp_rank.eq.0) then
+        ! only group master if parallel plot or current rank if individual plot
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
             ! open accompanying xmf file
             full_file_name = data_dir//'/'//trim(file_name)//'.xmf'
             open(unit=nextunit(file_info%XDMF_i),file=full_file_name,&
@@ -159,7 +161,10 @@ contains
             CHCKERR('Failed to open xmf file')
             
             ! user output
-            call writo('XDMF file "'//trim(full_file_name)//'" created')
+            call writo('HDF5 file "'//trim(full_file_name)//'" created',&
+                &persistent=.true.)
+            call writo('XDMF file "'//trim(full_file_name)//'" created',&
+                &persistent=.true.)
             
             ! write header if group master
             write(file_info%XDMF_i,xmf_fmt) '<?xml version="1.0" ?>'
@@ -178,21 +183,26 @@ contains
     
     ! Closes an HDF5 file and writes the accompanying xmf file
     ! [MPI] Parts by all processes, parts only by group master
-    integer function close_HDF5_file(file_info) result(ierr)
+    integer function close_HDF5_file(file_info,ind_plot) result(ierr)
         use num_vars, only: grp_rank
         
         character(*), parameter :: rout_name = 'close_HDF5_file'
         
         ! input / output
         type(HDF5_file_type) :: file_info                                       ! info about HDF5 file
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln) :: full_file_name                             ! full file name
         integer(HID_T) :: HDF5_i                                                ! file identifier 
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
         
         ! initialize ierr
         ierr = 0
+        
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! set full file name and HDF5_i (converting integers)
         full_file_name = data_dir//'/'//trim(file_info%name)//'.h5'
@@ -207,16 +217,11 @@ contains
         err_msg = 'Failed to close FORTRAN HDF5 interface'
         CHCKERR(err_msg)
         
-        ! user output
-        call writo('HDF5 file "'//trim(full_file_name)//'" closed')
-            
-        ! only if group master
-        if (grp_rank.eq.0) then
+        ! only group master if parallel plot or current rank if individual plot
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
             ! close header
-            if (grp_rank.eq.0) then
-                write(file_info%XDMF_i,xmf_fmt) '</Domain>'
-                write(file_info%XDMF_i,xmf_fmt) '</Xdmf>'
-            end if
+            write(file_info%XDMF_i,xmf_fmt) '</Domain>'
+            write(file_info%XDMF_i,xmf_fmt) '</Xdmf>'
             
             ! set full file name
             full_file_name = data_dir//'/'//trim(file_info%name)//'.xmf'
@@ -226,7 +231,10 @@ contains
             CHCKERR('Failed to close xmf file')
             
             ! user output
-            call writo('XDMF file "'//trim(full_file_name)//'" closed')
+            call writo('HDF5 file "'//trim(full_file_name)//'" closed',&
+                &persistent=.true.)
+            call writo('XDMF file "'//trim(full_file_name)//'" closed',&
+                &persistent=.true.)
         end if
     end function close_HDF5_file
     
@@ -234,21 +242,26 @@ contains
     ! Note:  This  should  only  be  used  with  grids  (or for  topologies  and
     ! geometries that are used throughout)
     ! [MPI] Only group master
-    subroutine add_HDF5_item(file_info,XDMF_item,reset)
+    subroutine add_HDF5_item(file_info,XDMF_item,reset,ind_plot)
         use num_vars, only: grp_rank
         
         ! input / output
         type(HDF5_file_type) :: file_info                                       ! info about HDF5 file
         type(XML_str_type) :: XDMF_item                                         ! XDMF item to add
         logical, intent(in), optional :: reset                                  ! if .true., XDMF_item is reset
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
         integer :: id                                                           ! counter
         integer :: item_len                                                     ! length of item
         logical :: reset_loc                                                    ! local copy of reset
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
         
-        ! only if group master
-        if (grp_rank.eq.0) then
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! only group master if parallel plot or current rank if individual plot
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
             ! set item_len
             item_len = size(XDMF_item%xml_str)
             
@@ -265,7 +278,7 @@ contains
             end do
             
             ! reset if requested
-            if (reset_loc) call reset_HDF5_item(XDMF_item)
+            if (reset_loc) call reset_HDF5_item(XDMF_item,ind_plot_loc)
         end if
     end subroutine add_HDF5_item
     
@@ -273,27 +286,32 @@ contains
     ! Note: individual version cannot make use of array version because then the
     ! deallocation does not work properly>
     ! [MPI] Only group master
-    subroutine reset_HDF5_item_arr(XDMF_items)                                  ! array vesion
+    subroutine reset_HDF5_item_arr(XDMF_items,ind_plot)                         ! array version
         use num_vars, only: grp_rank
         
         ! input / output
         type(XML_str_type) :: XDMF_items(:)                                     ! XDMF items to reset
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
         integer :: id                                                           ! counter
         integer :: n_items                                                      ! nr. of items
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! set n_items
         n_items = size(XDMF_items)
         
-        ! only if group master
-        if (grp_rank.eq.0) then
+        ! only group master if parallel plot or current rank if individual plot
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
             do id = 1,n_items
                 if (.not.allocated(XDMF_items(id)%xml_str)) then
                     call writo('WARNING: Could not reset HDF5 XDMF item "'&
                         &//trim(XDMF_items(id)%name)//'"')
                 else
-                    if (debug) write(*,*) 'reset "'//&
+                    if (debug_HDF5_ops) write(*,*) 'reset "'//&
                         &trim(XDMF_items(id)%name)//'"'
                     XDMF_items(id)%name = ''
                     deallocate(XDMF_items(id)%xml_str)
@@ -301,19 +319,27 @@ contains
             end do
         end if
     end subroutine reset_HDF5_item_arr
-    subroutine reset_HDF5_item_ind(XDMF_item)                                   ! individual vesion
+    subroutine reset_HDF5_item_ind(XDMF_item,ind_plot)                          ! individual version
         use num_vars, only: grp_rank
         
         ! input / output
         type(XML_str_type) :: XDMF_item                                         ! XDMF item to reset
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
-        ! only if group master
-        if (grp_rank.eq.0) then
+        ! local variables
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! only group master if parallel plot or current rank if individual plot
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
             if (.not.allocated(XDMF_item%xml_str)) then
                 call writo('WARNING: Could not reset HDF5 XDMF item "'&
                     &//trim(XDMF_item%name)//'"')
             else
-                if (debug) write(*,*) 'reset "'//trim(XDMF_item%name)//'"'
+                if (debug_HDF5_ops) write(*,*) 'reset "'//trim(XDMF_item%name)&
+                    &//'"'
                 XDMF_item%name = ''
                 deallocate(XDMF_item%xml_str)
             end if
@@ -325,7 +351,7 @@ contains
     ! specified as well.
     ! [MPI] Parts by all processes, parts only by group master
     integer function print_HDF5_3D_data_item(dataitem_id,file_info,var_name,&
-        &var,tot_dim,grp_dim,grp_offset,init_val) result(ierr)
+        &var,tot_dim,grp_dim,grp_offset,init_val,ind_plot) result(ierr)
         use num_vars, only: grp_rank
         
         character(*), parameter :: rout_name = 'print_HDF5_3D_data_item'
@@ -339,6 +365,7 @@ contains
         integer, intent(in), optional :: grp_dim(3)                             ! dimensions in this group
         integer, intent(in), optional :: grp_offset(3)                          ! offset in this group
         real(dp), intent(in), optional :: init_val                              ! initial fill value
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
         integer :: id                                                           ! counter
@@ -356,17 +383,18 @@ contains
         integer(HSIZE_T) :: mem_count(3)                                        ! nr. of repetitions of block in memory
         character(len=max_str_ln) :: dim_str                                    ! string with dimensions
         character(len=max_str_ln) :: err_msg                                    ! error message
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
         
         ! initialize ierr
         ierr = 0
+        
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! set the group dimensions and offset
         ierr = check_for_parallel_3D(tot_dim,grp_dim_loc,grp_offset_loc,&
             &grp_dim,grp_offset)
         CHCKERR('')
-        
-        ! find out if var_name contains a group name ("/")
-        !!!!!!!!!!! TO DO !!!!!!!!!!!!!!!!!
         
         ! create the data spaces for the dataset. 
         dimsf = tot_dim
@@ -437,8 +465,8 @@ contains
         call H5Dclose_f(dset_id,ierr)
         CHCKERR('Failed to close data set')
         
-        ! set XDMF dataitem ID if group master
-        if (grp_rank.eq.0) then
+        ! only group master if parallel plot or current rank if individual plot
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
             ! set up dimensions string
             dim_str = ''
             do id = 1,size(tot_dim)
@@ -454,7 +482,7 @@ contains
                 &trim(var_name)
             dataitem_id%xml_str(3) = '</DataItem>'
             
-            if (debug) write(*,*) 'created data item "'//&
+            if (debug_HDF5_ops) write(*,*) 'created data item "'//&
                 &trim(dataitem_id%name)//'"'
         end if
     contains
@@ -503,7 +531,8 @@ contains
     
     ! prints an HDF5 attribute
     ! [MPI] Only group master
-    subroutine print_HDF5_att(att_id,att_dataitem,att_name,att_center,reset)
+    subroutine print_HDF5_att(att_id,att_dataitem,att_name,att_center,reset,&
+        &ind_plot)
         use num_vars, only: grp_rank
         
         ! input / output
@@ -512,14 +541,19 @@ contains
         character(len=*), intent(in) :: att_name                                ! name of attribute
         integer, intent(in) :: att_center                                       ! center of attribute
         logical, intent(in), optional :: reset                                  ! if .true., data items are reset
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
         integer :: dataitem_len                                                 ! length of data item
         integer :: id                                                           ! counter
         logical :: reset_loc                                                    ! local copy of reset
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
         
-        ! only if group master
-        if (grp_rank.eq.0) then
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! only group master if parallel plot or current rank if individual plot
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
             ! set dataitem_len
             dataitem_len = size(att_dataitem%xml_str)
             
@@ -541,31 +575,37 @@ contains
             end do
             att_id%xml_str(dataitem_len+2) = '</Attribute>'
             
-            if (debug) write(*,*) 'created attribute "'//trim(att_id%name)//'"'
+            if (debug_HDF5_ops) write(*,*) 'created attribute "'//&
+                &trim(att_id%name)//'"'
             
             ! reset if requested
-            if (reset_loc) call reset_HDF5_item(att_dataitem)
+            if (reset_loc) call reset_HDF5_item(att_dataitem,ind_plot_loc)
         end if
     end subroutine print_HDF5_att
     
     ! prints an HDF5 topology
     ! Note: currently only structured grids supported
     ! [MPI] Only group master
-    subroutine print_HDF5_top(top_id,top_type,top_n_elem)
+    subroutine print_HDF5_top(top_id,top_type,top_n_elem,ind_plot)
         use num_vars, only: grp_rank
         
         ! input / output
         type(XML_str_type) ::  top_id                                           ! ID of topology
         integer, intent(in) :: top_type                                         ! type
         integer, intent(in) :: top_n_elem(:)                                    ! nr. of elements
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
         integer :: id                                                           ! counter
         integer :: n_dims                                                       ! nr. of dimensions
         character(len=max_str_ln) :: work_str                                   ! work string
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
         
-        ! only if group master
-        if (grp_rank.eq.0) then
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! only group master if parallel plot or current rank if individual plot
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
             ! set n_dims
             n_dims = size(top_n_elem)
             
@@ -583,13 +623,14 @@ contains
                 &trim(XDMF_top_types(top_type))//'" NumberOfElements="'//&
                 &trim(work_str)//'"/>'
             
-            if (debug) write(*,*) 'created topology "'//trim(top_id%name)//'"'
+            if (debug_HDF5_ops) write(*,*) 'created topology "'//&
+                &trim(top_id%name)//'"'
         end if
     end subroutine print_HDF5_top
     
     ! prints an HDF5 geometry
     ! [MPI] Only group master
-    subroutine print_HDF5_geom(geom_id,geom_type,geom_dataitems,reset)
+    subroutine print_HDF5_geom(geom_id,geom_type,geom_dataitems,reset,ind_plot)
         use num_vars, only: grp_rank
         
         ! input / output
@@ -597,6 +638,7 @@ contains
         integer, intent(in) :: geom_type                                        ! type of geometry
         type(XML_str_type) :: geom_dataitems(:)                                 ! data items of geometry
         logical, intent(in), optional :: reset                                  ! if .true., data items are reset
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
         integer :: id, jd                                                       ! counters
@@ -604,9 +646,13 @@ contains
         integer, allocatable :: dataitem_len(:)                                 ! length of data item
         integer :: n_dataitems                                                  ! nr. of data items
         logical :: reset_loc                                                    ! local copy of reset
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
         
-        ! only if group master
-        if (grp_rank.eq.0) then
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! only group master if parallel plot or current rank if individual plot
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
             ! set n_dataitems
             n_dataitems = size(geom_dataitems)
             
@@ -637,10 +683,11 @@ contains
             end do
             geom_id%xml_str(id_sum) = '</Geometry>'
             
-            if (debug) write(*,*) 'created geometry "'//trim(geom_id%name)//'"'
+            if (debug_HDF5_ops) write(*,*) 'created geometry "'//&
+                &trim(geom_id%name)//'"'
             
             ! reset if requested
-            if (reset_loc) call reset_HDF5_item(geom_dataitems)
+            if (reset_loc) call reset_HDF5_item(geom_dataitems,ind_plot_loc)
         end if
     end subroutine print_HDF5_geom
     
@@ -652,7 +699,7 @@ contains
     ! specified (for the grids in a collection grid).
     ! [MPI] Only group master
     integer function print_HDF5_grid(grid_id,grid_name,grid_type,grid_time,&
-        &grid_top,grid_geom,grid_atts,grid_grids,reset) result(ierr)
+        &grid_top,grid_geom,grid_atts,grid_grids,reset,ind_plot) result(ierr)
         use num_vars, only: grp_rank
         
         character(*), parameter :: rout_name = 'print_HDF5_grid'
@@ -667,6 +714,7 @@ contains
         type(XML_str_type), optional :: grid_atts(:)                            ! attributes
         type(XML_str_type), optional :: grid_grids(:)                           ! grids
         logical, intent(in), optional :: reset                                  ! if .true., top, geom and atts or grids are reset
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
         integer :: id, jd                                                       ! counters
@@ -680,12 +728,16 @@ contains
         integer, allocatable :: grids_len(:)                                    ! lengths of grids
         logical :: reset_loc                                                    ! local copy of reset
         character(len=max_str_ln) :: err_msg                                    ! error message
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
         
         ! initialize ierr
         ierr = 0
         
-        ! only if group master
-        if (grp_rank.eq.0) then
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! only group master if parallel plot or current rank if individual plot
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
             ! test whether the correct arguments are provided
             if (grid_type.eq.1) then                                            ! uniform grid
                 ! no  requirements: topology and/or  geometry can be  defined in
@@ -809,16 +861,21 @@ contains
             end if
             grid_id%xml_str(id_sum) = '</Grid>'
             
-            if (debug) write(*,*) 'created grid "'//trim(grid_id%name)//'"'
+            if (debug_HDF5_ops) write(*,*) 'created grid "'//&
+                &trim(grid_id%name)//'"'
             
             ! reset if requested
             if (reset_loc) then
                 if (grid_type.eq.1)  then
-                    if (present(grid_top)) call reset_HDF5_item(grid_top)
-                    if (present(grid_geom)) call reset_HDF5_item(grid_geom)
-                    if (present(grid_atts)) call reset_HDF5_item(grid_atts)
+                    if (present(grid_top)) &
+                        &call reset_HDF5_item(grid_top,ind_plot_loc)
+                    if (present(grid_geom)) &
+                        &call reset_HDF5_item(grid_geom,ind_plot_loc)
+                    if (present(grid_atts)) &
+                        &call reset_HDF5_item(grid_atts,ind_plot_loc)
                 else if (grid_type.eq.2 .or. grid_type.eq.3) then
-                    if (present(grid_grids)) call reset_HDF5_item(grid_grids)
+                    if (present(grid_grids)) &
+                        &call reset_HDF5_item(grid_grids,ind_plot_loc)
                 end if
             end if
         end if

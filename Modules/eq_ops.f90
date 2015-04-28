@@ -93,7 +93,7 @@ contains
 #if ldebug
         use num_vars, only: ltest
         use metric_ops, only: test_T_EF, test_p, test_jac_F, test_g_V, &
-            &test_D12h_H, test_B_V
+            &test_D12h_H, test_B_F, test_jac_V
 #endif
         
         use utilities, only: calc_det, calc_inv, calc_mult, c
@@ -158,6 +158,9 @@ contains
                 ! calculate  angular grid  points for equilibrium grid
                 ierr = calc_ang_grid_eq(grid_eq,eq,alpha)
                 CHCKERR('')
+                write(*,*) 'ANGULAR GRID SHOULD BE CALCULATED OUTSIDE OF CALC_EQ!!!!!'
+                write(*,*) 'BECAUSE FOR PLOTTING, A NON-ALIGNED GRID IS USED !!!!!!!!'
+                write(*,*) 'BUT ALSO, FLUX QUANTITIES ARE NEEDED TO DETERMINE THIS GRID...'
                 
                 ! plot grid if requested
                 if (plot_grid) then
@@ -220,6 +223,13 @@ contains
                             CHCKERR('')
                         end do
                         
+                        ! calculate the jacobian in the VMEC coordinate system
+                        call writo('Calculate jac_V...')
+                        do id = 0,max_deriv
+                            ierr = calc_jac_V(met,derivs(id))
+                            CHCKERR('')
+                        end do
+                        
 #if ldebug
                         if (ltest) then
                             call writo('Test calculation of g_V?')
@@ -228,21 +238,14 @@ contains
                                 CHCKERR('')
                                 call pause_prog
                             end if
-                            call writo('Test calculation of B_V?')
+                            call writo('Test calculation of jac_V?')
                             if(get_log(.false.)) then
-                                ierr = test_B_V(grid_eq,eq,met)
+                                ierr = test_jac_V(grid_eq,met)
                                 CHCKERR('')
                                 call pause_prog
                             end if
                         end if
 #endif
-                        
-                        ! calculate the jacobian in the VMEC coordinate system
-                        call writo('Calculate jac_V...')
-                        do id = 0,max_deriv
-                            ierr = calc_jac_V(met,derivs(id))
-                            CHCKERR('')
-                        end do
                         
                         ! calculate the transformation matrix V(MEC) -> F(lux)
                         call writo('Calculate T_VF...')
@@ -349,6 +352,12 @@ contains
                     call writo('Test Jacobian in Flux coordinates?')
                     if(get_log(.false.)) then
                         ierr = test_jac_F(grid_eq,eq,met)
+                        CHCKERR('')
+                        call pause_prog
+                    end if
+                    call writo('Test calculation of B_F?')
+                    if(get_log(.false.)) then
+                        ierr = test_B_F(grid_eq,eq,met)
                         CHCKERR('')
                         call pause_prog
                     end if
@@ -595,7 +604,7 @@ contains
             allocate(Dflux_p_full(grid_eq%n(3)),flux_p_full(grid_eq%n(3)))
             Dflux_p_full = rot_t_V*Dflux_t_V
             ierr = calc_int(Dflux_p_full,1.0_dp/(grid_eq%n(3)-1.0_dp),&
-                &flux_p_full)
+                &flux_p_full)                                                   ! equidistant grid (0..1) with n(3) points
             CHCKERR('')
             
             ! max flux and normal coord. of eq grid in Equilibrium coordinates
@@ -673,7 +682,7 @@ contains
         end function calc_flux_q_VMEC
         
         ! HELENA version
-        ! The HELENA normal coord. is the poloidal flux
+        ! The HELENA normal coord. is the poloidal flux divided by 2pi
         integer function calc_flux_q_HEL() result(ierr)
             use HELENA, only: qs, flux_p_H, pres_H
             
@@ -701,8 +710,8 @@ contains
             ! (uses poloidal flux by default)
             max_flux_p_E = flux_p_H(grid_eq%n(3))
             max_flux_t_E = flux_t_full(grid_eq%n(3))
-            grid_eq%r_E = flux_p_H
-            grid_eq%grp_r_E = flux_p_H(grid_eq%i_min:grid_eq%i_max)
+            grid_eq%r_E = flux_p_H/(2*pi)
+            grid_eq%grp_r_E = flux_p_H(grid_eq%i_min:grid_eq%i_max)/(2*pi)
             
             ! max flux and normal coord. of eq grid in Flux coordinates
             max_flux_p_F = flux_p_H(grid_eq%n(3))
@@ -840,6 +849,9 @@ contains
     contains
         ! plots the pressure and fluxes in GNUplot
         integer function flux_q_plot_GP() result(ierr)
+            use eq_vars, only: max_flux_p_F, max_flux_t_F, pres_0, psi_0
+            use num_vars, only: use_pol_flux_F, use_normalization
+            
             character(*), parameter :: rout_name = 'flux_q_plot_GP'
             
             ! local variables
@@ -899,6 +911,13 @@ contains
                     CHCKERR(err_msg)
             end select
             
+            ! rescale if normalized
+            if (use_normalization .and. glb_rank.eq.0) then
+                Y_plot_2D(:,3) = Y_plot_2D(:,3)*pres_0                          ! pressure
+                Y_plot_2D(:,4) = Y_plot_2D(:,4)*psi_0                           ! flux_p
+                Y_plot_2D(:,5) = Y_plot_2D(:,5)*psi_0                           ! flux_t
+            end if
+            
             ! continue the plot if global master
             if (glb_rank.eq.0) then
                 ! deallocate local serial variables
@@ -910,7 +929,11 @@ contains
                 file_name(2) = 'flux'
                 
                 ! 2D normal variable (normalized F coordinate)
-                X_plot_2D(:,1) = grid_trim%r_F/grid_trim%r_F(grid_trim%n(3))
+                if (use_pol_flux_F) then
+                    X_plot_2D(:,1) = grid_trim%r_F*2*pi/max_flux_p_F
+                else
+                    X_plot_2D(:,1) = grid_trim%r_F*2*pi/max_flux_t_F
+                end if
                 do id = 2,n_vars
                     X_plot_2D(:,id) = X_plot_2D(:,1)
                 end do
@@ -956,7 +979,6 @@ contains
             real(dp), allocatable :: Z_plot(:,:,:,:)                            ! z values of total plot
             real(dp), allocatable :: f_plot(:,:,:,:)                            ! values of variable of total plot
             integer :: plot_dim(4)                                              ! total plot dimensions
-            integer :: plot_grp_dim(4)                                          ! group plot dimensions
             integer :: plot_offset(4)                                           ! plot offset
             type(grid_type) :: grid_plot                                        ! grid for plotting
             character(len=max_str_ln) :: file_name                              ! file name
@@ -1000,21 +1022,19 @@ contains
             ierr = calc_XYZ_grid(grid_plot,X_plot_3D,Y_plot_3D,Z_plot_3D)
             CHCKERR('')
             
-            ! set up plot_dim, plot_grp_dim and plot_offset
+            ! set up plot_dim and plot_offset
             plot_dim = [grid_plot%n(1),grid_plot%n(2),grid_plot%n(3),n_vars]
-            plot_grp_dim = [grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r,&
-                &n_vars]
             plot_offset = [0,0,grid_plot%i_min-1,n_vars]
             
             ! set up total plot variables
-            allocate(X_plot(plot_grp_dim(1),plot_grp_dim(2),plot_grp_dim(3),&
-                &plot_grp_dim(4)))
-            allocate(Y_plot(plot_grp_dim(1),plot_grp_dim(2),plot_grp_dim(3),&
-                &plot_grp_dim(4)))
-            allocate(Z_plot(plot_grp_dim(1),plot_grp_dim(2),plot_grp_dim(3),&
-                &plot_grp_dim(4)))
-            allocate(f_plot(plot_grp_dim(1),plot_grp_dim(2),plot_grp_dim(3),&
-                &plot_grp_dim(4)))
+            allocate(X_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r,&
+                &n_vars))
+            allocate(Y_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r,&
+                &n_vars))
+            allocate(Z_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r,&
+                &n_vars))
+            allocate(f_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r,&
+                &n_vars))
             do id = 1,n_vars
                 X_plot(:,:,:,id) = X_plot_3D
                 Y_plot(:,:,:,id) = Y_plot_3D
@@ -1029,9 +1049,8 @@ contains
             end do
             
             ! print the output using HDF5
-            call print_HDF5(plot_titles,file_name,f_plot,plot_dim,&
-                &plot_grp_dim,plot_offset,X_plot,Y_plot,Z_plot,col=1,&
-                &description='Flux quantities')
+            call print_HDF5(plot_titles,file_name,f_plot,plot_dim,plot_offset,&
+                &X_plot,Y_plot,Z_plot,col=1,description='Flux quantities')
             
             ! deallocate and destroy grid
             deallocate(Y_plot_2D)
@@ -1049,7 +1068,7 @@ contains
     !   psi_0:  reference flux (= R_0^2 B_0)
     ! [MPI] only global master
     integer function calc_normalization_const() result(ierr)
-        use num_vars, only: glb_rank, eq_style, mu_0, use_normalization
+        use num_vars, only: glb_rank, eq_style, mu_0_original, use_normalization
         use eq_vars, only: T_0, B_0, pres_0, psi_0, R_0, rho_0
         
         character(*), parameter :: rout_name = 'calc_normalization_const'
@@ -1084,15 +1103,18 @@ contains
             end if
             
             ! Alfven velocity
-            T_0 = sqrt(mu_0*rho_0)*R_0/B_0 
+            T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0 
             
-            call writo('Major radius    R_0 = '//trim(r2strt(R_0))//' m')
+            call writo('Major radius    R_0    = '//trim(r2strt(R_0))//' m')
             call writo('Pressure        pres_0 = '//trim(r2strt(pres_0))//' Pa')
-            call writo('Mass density    rho_0 = '//trim(r2strt(rho_0))&
+            call writo('Mass density    rho_0  = '//trim(r2strt(rho_0))&
                 &//' kg/m^3')
-            call writo('Magnetic field  B_0 = '//trim(r2strt(B_0))//' T')
-            call writo('Magnetic flux   psi_0 = '//trim(r2strt(psi_0))//' Tm^2')
-            call writo('Alfven time     T_0 = '//trim(r2strt(T_0))//' s')
+            call writo('Magnetic field  B_0    = '//trim(r2strt(B_0))//' T')
+            call writo('Magnetic flux   psi_0  = '//trim(r2strt(psi_0))//&
+                &' Tm^2')
+            call writo('Alfven time     T_0    = '//trim(r2strt(T_0))//' s')
+            call writo('Vacuum perm.    mu_0   = '//trim(r2strt(mu_0_original))&
+                &//' Tm/A')
             
             ! user output
             call lvl_ud(-1)
@@ -1115,8 +1137,9 @@ contains
             ! set pres_0 as pressure on axis
             pres_0 = pres_V(1)
             
-            ! set the reference value for B_0 from B_0 = sqrt(mu_0 pres_0)
-            B_0 = sqrt(pres_0 * mu_0)
+            ! set  the  reference value  for B_0  from B_0  = sqrt(mu_0_original
+            ! pres_0)
+            B_0 = sqrt(pres_0 * mu_0_original)
             
             ! set reference flux
             psi_0 = R_0**2 * B_0
@@ -1135,8 +1158,8 @@ contains
             ! parameter
             B_0 = B_0_H
             
-            ! set pres_0 as B_0^2/mu_0
-            pres_0 = B_0**2/mu_0
+            ! set pres_0 as B_0^2/mu_0_original
+            pres_0 = B_0**2/mu_0_original
             
             ! set reference flux
             psi_0 = R_0**2 * B_0
@@ -1145,9 +1168,9 @@ contains
     
     ! normalize input quantities
     integer function normalize_input() result(ierr)
-        use num_vars, only: use_normalization, eq_style
+        use num_vars, only: use_normalization, eq_style, mu_0_original, glb_rank
         use VMEC, only: normalize_VMEC
-        use HELENA, only: normalize_HEL
+        use eq_vars, only: vac_perm
         
         character(*), parameter :: rout_name = 'normalize_input'
         
@@ -1157,10 +1180,14 @@ contains
         ! initialize ierr
         ierr = 0
         
-        if (use_normalization) then
+        ! only normalize if needed
+        if (use_normalization .and. glb_rank.eq.0) then
             ! user output
             call writo('Start normalizing the input variables')
             call lvl_ud(1)
+            
+            ! normalize common variables
+            vac_perm = vac_perm/mu_0_original
             
             ! choose which equilibrium style is being used:
             !   1:  VMEC
@@ -1169,7 +1196,7 @@ contains
                 case (1)                                                        ! VMEC
                     call normalize_VMEC
                 case (2)                                                        ! HELENA
-                    call normalize_HEL
+                    ! HELENA input already normalized
                 case default
                     err_msg = 'No equilibrium style associated with '//&
                         &trim(i2str(eq_style))
