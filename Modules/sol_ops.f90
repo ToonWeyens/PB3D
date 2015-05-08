@@ -10,7 +10,7 @@ module sol_ops
     use num_vars, only: dp, iu, max_str_ln, pi
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
-    use metric_vars, only: metric_type
+    use met_vars, only: met_type
     use X_vars, only: X_type
 
     implicit none
@@ -54,7 +54,7 @@ contains
         integer, intent(in) :: XUQ_style                                        ! whether to calculate X, U, Qn or Qg
         real(dp), intent(in) :: time(:)                                         ! time range
         real(dp), intent(inout) :: XUQ(:,:,:,:)                                 ! X, U, Qn or Qg
-        type(metric_type), optional, intent(in) :: met                          ! metric variables
+        type(met_type), optional, intent(in) :: met                             ! metric variables
         logical, intent(in), optional :: deriv                                  ! return parallel derivative
         
         ! local variables
@@ -182,8 +182,8 @@ contains
                         CHCKERR('')
                     else
                         do kd = 1,grid_eq%grp_n_r
-                            fac_0(:,:,kd) = (X%DU_0(:,:,kd,jd)-&
-                                &X%extra1(:,:,kd))/met%jac_FD(:,:,kd,0,0,0)
+                            fac_0(:,:,kd) = -eq%S(:,:,kd) +&
+                                &X%DU_0(:,:,kd,jd)/met%jac_FD(:,:,kd,0,0,0)
                             fac_1(:,:,kd) = X%DU_1(:,:,kd,jd)/&
                                 &met%jac_FD(:,:,kd,0,0,0)
                         end do
@@ -249,7 +249,7 @@ contains
         integer, intent(in) :: XUQ_style                                        ! whether to calculate X, U, Qn or Qg
         real(dp), intent(in) :: time                                            ! time
         real(dp), intent(inout) :: XUQ(:,:,:)                                   ! normal component of perturbation
-        type(metric_type), optional, intent(in) :: met                          ! metric variables
+        type(met_type), optional, intent(in) :: met                             ! metric variables
         logical, intent(in), optional :: deriv                                  ! return parallel derivative
         
         ! local variables
@@ -277,7 +277,7 @@ contains
         &min_id,max_id) result(ierr)
         use num_vars, only: alpha_job_nr, grp_rank, grp_n_procs, &
             &output_style
-        use output_ops, only: print_HDF5
+        use output_ops, only: plot_HDF5
         
         character(*), parameter :: rout_name = 'plot_X_vecs'
         
@@ -431,7 +431,7 @@ contains
                         call writo('No Eigenvector plot for output style '//&
                             &trim(i2str(output_style))//' implemented yet')
                     case(2)                                                     ! HDF5 output
-                        call print_HDF5([var_name],file_name,f_plot,&
+                        call plot_HDF5([var_name],file_name,f_plot,&
                             &tot_dim=plot_dim,grp_offset=plot_offset,&
                             &X=X_plot,Y=Y_plot,Z=Z_plot,col=col,&
                             &description=description)

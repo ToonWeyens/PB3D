@@ -6,8 +6,8 @@ module num_vars
     
     implicit none
     private
-    public dp, qp, max_str_ln, max_args, max_deriv, prog_name, output_name, &
-        &prog_version, &
+    public dp, qp, max_str_ln, max_deriv, prog_name, output_name, &
+        &prog_version, prog_style, &
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
         &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups, &
         &next_job, next_job_win, &
@@ -17,10 +17,11 @@ module num_vars
         &use_normalization, EV_BC, &
         &max_it_r, tol_r, no_guess, &
         &max_it_NR, tol_NR, nyq_fac, &
-        &input_i, eq_i, eq_name, output_i, no_plots, no_messages, &
-        &output_style, plot_dir, script_dir, data_dir, n_theta_plot, &
-        &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
-        &n_alpha, min_alpha, max_alpha, alpha_job_nr, &
+        &group_output, input_i, eq_i, eq_name, output_i, no_plots, &
+        &no_messages, output_style, plot_dir, script_dir, data_dir, &
+        &n_theta_plot, n_zeta_plot, n_sol_requested, n_sol_plotted, &
+        &retain_all_sol, &
+        &n_alpha, min_alpha, max_alpha, alpha_job_nr, rich_lvl_nr, &
         &spline_type
 
     ! technical variables
@@ -28,12 +29,12 @@ module num_vars
     !integer, parameter :: qp = selected_real_kind (32)                          ! quadruple precision
     integer, parameter :: dp = REAL64                                           ! double precision
     integer, parameter :: qp = REAL128                                          ! quadruple precision
-    integer, parameter :: max_str_ln = 100                                      ! maximum length of filenames
-    integer, parameter :: max_args = 10                                         ! maximum number of input arguments
+    integer, parameter :: max_str_ln = 120                                      ! maximum length of filenames
     integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
-    character(len=max_str_ln) :: prog_name = 'PB3D'                             ! name of program, used for info
-    character(len=max_str_ln) :: prog_version = '0.75'                          ! version number
-    character(len=max_str_ln) :: output_name                                    ! will hold name of output file
+    integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_PP)
+    character(len=max_str_ln) :: prog_name                                      ! name of program, used for info
+    character(len=max_str_ln) :: prog_version                                   ! version number
+    character(len=max_str_ln) :: output_name                                    ! name of output file
 
     ! MPI variables
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha
@@ -80,6 +81,7 @@ module num_vars
     integer :: nyq_fac                                                          ! Nyquist factor to avoid aliasing in perturbation integrals
 
     ! input / output
+    logical :: group_output                                                     ! whether also the non-master groups can output
     integer :: input_i                                                          ! file number of input file
     integer :: eq_i                                                             ! file number of equilibrium file from VMEC or HELENA
     character(len=max_str_ln) :: eq_name                                        ! name of equilibrium file
@@ -96,10 +98,12 @@ module num_vars
     integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
     logical :: retain_all_sol                                                   ! retain also faulty solutions
     
-    ! concerning the various field lines for which to do the calculations
+    ! concerning   the  various   field   lines   and  levels   of  Richardson's
+    ! extrapolation for which to do the calculations
     integer :: n_alpha                                                          ! how many field lines
     real(dp) :: min_alpha, max_alpha                                            ! min. and max. value for alpha, should be (0...2pi)
     integer :: alpha_job_nr                                                     ! which alpha job is being calculated
+    integer :: rich_lvl_nr                                                      ! which Richardson's level is being calculated
     
     ! concerning  spline interpolation
     ! The type of the spline is determined by "spline_type":

@@ -9,7 +9,7 @@ module grid_vars
 
     implicit none
     private
-    public create_grid, destroy_grid, grid_type, &
+    public create_grid, dealloc_grid, grid_type, &
         &n_r_eq, n_par_X, min_par_X, max_par_X
 
     ! type for grids
@@ -176,7 +176,7 @@ contains
     end function create_grid_1D
     
     ! destroy a grid
-    subroutine destroy_grid(grid)
+    subroutine dealloc_grid(grid)
         ! input / output
         type(grid_type) :: grid                                                 ! grid to be created
         
@@ -189,5 +189,5 @@ contains
         if (associated(grid%grp_r_E)) nullify(grid%grp_r_E)
         if (associated(grid%grp_r_F)) nullify(grid%grp_r_F)
         if (allocated(grid%trigon_factors)) deallocate(grid%trigon_factors)
-    end subroutine destroy_grid
+    end subroutine dealloc_grid
 end module grid_vars

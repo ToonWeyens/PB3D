@@ -1,71 +1,60 @@
 ! (from http://patorjk.com/software/taag/ ANSI shadow)
 
-!   ██████╗ ██████╗ ██████╗ ██████╗ 
-!   ██╔══██╗██╔══██╗╚════██╗██╔══██╗
-!   ██████╔╝██████╔╝ █████╔╝██║  ██║
-!   ██╔═══╝ ██╔══██╗ ╚═══██╗██║  ██║
-!   ██║     ██████╔╝██████╔╝██████╔╝
-!   ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ 
+!   ██████╗ ██████╗ ██████╗ ██████╗     ██████╗ ██████╗ 
+!   ██╔══██╗██╔══██╗╚════██╗██╔══██╗    ██╔══██╗██╔══██╗
+!   ██████╔╝██████╔╝ █████╔╝██║  ██║    ██████╔╝██████╔╝
+!   ██╔═══╝ ██╔══██╗ ╚═══██╗██║  ██║    ██╔═══╝ ██╔═══╝ 
+!   ██║     ██████╔╝██████╔╝██████╔╝    ██║     ██║     
+!   ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝     ╚═╝     ╚═╝     
 
 !------------------------------------------------------------------------------!
-!   Main program Peeling Ballooning in 3D                                      !
+!   Postprocessing program of Peeling Ballooning in 3D                         !
 !------------------------------------------------------------------------------!
 !   Author: Toon Weyens                                                        !
 !   Institution: Departamento de Física,                                       !
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.76                                                              !
+!   Version: 0.10                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
 !           devices, eq. (6.12) and (6.16)                                     !
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
-program PB3D
-    use num_vars, only: ltest, prog_name, prog_version, prog_style
-    use str_ops, only: r2str, i2str
-    use messages, only: init_messages, lvl_ud, writo, init_time, &
-        &start_time, passed_time, print_hello, print_goodbye
+program PB3D_PP
+    use str_ops, only: i2str
+    use num_vars, only: prog_name, prog_version, ltest, prog_style
+    use messages, only: writo, print_goodbye, lvl_ud, print_hello, &
+        &init_messages, init_time, start_time, stop_time, passed_time
     use HDF5_ops, only: init_HDF5
-    use driver, only: run_driver
-    use post_process, only: run_post_processing
-    use files_ops, only: open_input, open_output, parse_args, init_files, &
+    use MPI_ops, only: start_MPI, stop_MPI
+    use files_ops, only: init_files, parse_args, open_input, open_output, &
         &close_output
-    use input_ops, only: read_input
-    use utilities, only: init_utilities
-    use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, broadcast_input_vars
-    use eq_ops, only: read_eq, calc_normalization_const, normalize_input
-    use test, only: generic_tests
+    use input_ops, only: read_PB3D
     
     implicit none
 
     ! local variables
     integer :: ierr                                                             ! error
     
-    write(*,*) 'TEST PRESSURE BALANCE FOR VMEC'
-    write(*,*) 'INVESTIGATE HOW IMPROVING THE DERIVATIVES CAN &
-        &HELP YOU GET RID OF UNSTABLE SIDE OF SPECTRUM !!!!!!!!!!!!!!!!!!!!!!!'
-    write(*,*) 'DOING THIS IN THIS ROUTINE ALREADY HELPED A LOT!!!!!'
-    
     !-------------------------------------------------------
     !   Initialize some routines
     !-------------------------------------------------------
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
-    prog_name = 'PB3D'
-    prog_version = '0.76'
+    prog_name = 'PB3D_PP'
+    prog_version = '0.10'
     prog_style = 1
     call print_hello
     call init_messages                                                          ! initialize message operations
     ierr = init_files()                                                         ! initialize file operations
     CHCKERR
-    call init_utilities                                                         ! initialize utilities
     call init_time                                                              ! initialize time
     call init_HDF5                                                              ! initialize HDF5
  
     !-------------------------------------------------------
-    !   Read the user-provided input file and the VMEC output
+    !   Read the PB3D output
     !-------------------------------------------------------
     call start_time
     call writo('Initialization')
@@ -74,18 +63,12 @@ program PB3D
     CHCKERR
     ierr = open_input()                                                         ! open the input files
     CHCKERR
-    ierr = read_eq()                                                            ! read equilibrium file
-    CHCKERR
-    ierr = read_input()                                                         ! read input files
+    ierr = read_PB3D()                                                          ! read the PB3D file
     CHCKERR
     ierr = open_output()                                                        ! open output file per alpha group
     CHCKERR
-    ierr = calc_normalization_const()                                           ! set up normalization constants
-    CHCKERR
-    ierr = normalize_input()                                                    ! normalize the input
-    CHCKERR
-    ierr = broadcast_input_vars()                                               ! broadcast to other processors
-    CHCKERR
+    !ierr = broadcast_input_vars()                                               ! broadcast to other processors
+    !CHCKERR
     call writo('')
     call passed_time
     call writo('')
@@ -99,8 +82,8 @@ program PB3D
         call start_time
         call writo('Generic Tests')
         call lvl_ud(1)
-        ierr = generic_tests()
-        CHCKERR
+        !ierr = generic_tests()
+        !CHCKERR
         call writo('')
         call passed_time
         call writo('')
@@ -114,13 +97,13 @@ program PB3D
     call start_time
     call writo('Main driver')
     call lvl_ud(1)
-    ierr = run_driver()
-    CHCKERR
+    !ierr = run_driver()
+    !CHCKERR
     call writo('')
     call passed_time
     call writo('')
     call lvl_ud(-1)
-    
+
     !-------------------------------------------------------
     !   cleaning up
     !-------------------------------------------------------
@@ -128,7 +111,8 @@ program PB3D
     call lvl_ud(1)
     ierr = stop_MPI()
     CHCKERR
-    call close_output
+    ierr = close_output()
+    CHCKERR
     call lvl_ud(-1)
     
     call print_goodbye
@@ -138,6 +122,7 @@ contains
     ! as a special case, if ierr = 66, no error message is printed
     subroutine sudden_stop(ierr)
         use num_vars, only: glb_rank
+        use MPI_ops, only: abort_MPI
         
         ! input / output
         integer, intent(in) :: ierr                                             ! error to output
@@ -163,4 +148,4 @@ contains
         call lvl_ud(-1)
         stop
     end subroutine
-end program PB3D 
+end program PB3D_PP

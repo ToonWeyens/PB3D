@@ -9,28 +9,27 @@ module X_ops
     use num_vars, only: dp, iu, max_str_ln, pi
     use grid_vars, onlY: grid_type
     use eq_vars, only: eq_type
-    use metric_vars, only: metric_type
+    use met_vars, only: met_type
     use X_vars, only: X_type
 
     implicit none
     private
-    public prepare_X, solve_EV_system, calc_PV, calc_KV, calc_U, calc_extra, &
-        &calc_magn_ints
+    public prepare_X, solve_EV_system, calc_PV, calc_KV, calc_U, calc_magn_ints
 
 contains
     ! prepare the matrix elements by calculating  KV_i and PV_i, which then will
     ! have to be integrated, with a complex exponential weighting function
-    integer function prepare_X(grid,eq,met,X) result(ierr)
+    integer function prepare_X(grid_eq,eq,met,X) result(ierr)
         use num_vars, only: use_pol_flux_F, plot_jq, grp_nr
-        use X_vars, only: dealloc_X, X_type
+        use X_vars, only: X_type, create_X
         use utilities, only: c
         
         character(*), parameter :: rout_name = 'prepare_X'
         
         ! input / output
-        type(grid_type) :: grid                                                 ! equilibrium grid variables
+        type(grid_type) :: grid_eq                                              ! equilibrium grid variables
         type(eq_type) :: eq                                                     ! equilibrium variables
-        type(metric_type) :: met                                                ! metric variables
+        type(met_type) :: met                                                   ! metric variables
         type(X_type) :: X                                                       ! perturbation variables
         
         ! local variables
@@ -45,24 +44,25 @@ contains
         call writo('Preparing perturbation variables')
         call lvl_ud(1)
         
+        ! create perturbation
+        call create_X(grid_eq,X)
+        
         ! tests
         ierr = check_modes(eq,X)
         CHCKERR('')
         
         ! set up parallel angle in flux coordinates
         if (use_pol_flux_F) then
-            ang_par_F => grid%theta_F
+            ang_par_F => grid_eq%theta_F
         else
-            ang_par_F => grid%zeta_F
+            ang_par_F => grid_eq%zeta_F
         end if
         
         ! plot resonances if requested
         if (plot_jq) then
             call writo('Resonance plot requested')
-            call lvl_ud(1)
-            if (grp_nr.eq.0) ierr = resonance_plot(eq,grid,X)
+            if (grp_nr.eq.0) ierr = resonance_plot(eq,grid_eq,X)
             CHCKERR('')
-            call lvl_ud(-1)
             call writo('Resonance plot done')
         end if
         
@@ -98,14 +98,7 @@ contains
         ! calculate U and DU
         call writo('Calculating U and DU...')
         call lvl_ud(1)
-        ierr = calc_U(eq,grid,met,X)
-        CHCKERR('')
-        call lvl_ud(-1)
-        
-        ! calculate extra equilibrium quantities
-        call writo('Calculating extra equilibrium quantities...')
-        call lvl_ud(1)
-        ierr = calc_extra(eq,grid,met,X)
+        ierr = calc_U(eq,grid_eq,met,X)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -113,23 +106,19 @@ contains
         ! normal coordinate
         call writo('Calculating PV...')
         call lvl_ud(1)
-        call calc_PV(eq,grid,met,X)
+        call calc_PV(eq,grid_eq,met,X)
         call lvl_ud(-1)
         
         ! Calculate KV_i for all (k,m) pairs and n_r (equilibrium) values of the
         ! normal coordinate
         call writo('Calculating KV...')
         call lvl_ud(1)
-        call calc_KV(eq,grid,met,X)
+        call calc_KV(eq,grid_eq,met,X)
         call lvl_ud(-1)
-        
-        ! deallocate equilibrium variables
-        call writo('deallocating unused variables')
-        call dealloc_X(X)
         
         call lvl_ud(-1)
         
-        call writo('Done calculating')
+        call writo('Done setting up tables')
         
         ! user output
         call lvl_ud(-1)
@@ -143,7 +132,7 @@ contains
         use num_vars, only: use_pol_flux_F, output_style, grp_rank, tol_NR, &
             &max_it_NR, no_plots
         use utilities, only: calc_zero_NR, interp_fun
-        use grid_vars, only: destroy_grid
+        use grid_vars, only: dealloc_grid
         use eq_vars, only: max_flux_p_F, max_flux_t_F
         use grid_ops, only: trim_grid
         use MPI_utilities, only: get_ser_var
@@ -176,6 +165,8 @@ contains
         ! initialize ierr
         ierr = 0
         
+        call lvl_ud(1)
+        
         ! bypass plots if no_plots
         if (no_plots) return
         
@@ -190,7 +181,7 @@ contains
         ! message.
         if (use_pol_flux_F) then
             call writo('Plotting safety factor q and resonant surfaces &
-                &q = m/n')
+                &q = m/n...')
             if (grp_rank.eq.0) allocate(jq(n_r,0:2))
             do jd = 0,2
                 ierr = get_ser_var(eq%q_saf_FD(1:grid_trim%grp_n_r,jd),jq_loc)
@@ -199,7 +190,7 @@ contains
             end do
         else
             call writo('Plotting rotational transform iota and resonant &
-                &surfaces iota = n/m')
+                &surfaces iota = n/m...')
             if (grp_rank.eq.0) allocate(jq(n_r,0:2))
             do jd = 0,2
                 ierr = get_ser_var(eq%rot_t_FD(1:grid_trim%grp_n_r,jd),jq_loc)
@@ -207,6 +198,8 @@ contains
                 if(grp_rank.eq.0) jq(:,jd) = jq_loc
             end do
         end if
+        
+        call lvl_ud(1)
         
         ! the rest is done only by global master
         if (grp_rank.eq.0) then
@@ -290,6 +283,8 @@ contains
                 file_name = 'rot_t'
             end if
             
+            call lvl_ud(1)
+            
             ! plot according to output_style
             select case(output_style)
                 case(1)                                                             ! GNUPlot output
@@ -318,14 +313,16 @@ contains
                     CHCKERR(err_msg)
             end select
             
+            call lvl_ud(-1)
+            
             ! deallocate local variables
             deallocate(jq)
-            call destroy_grid(grid_trim)
+            call dealloc_grid(grid_trim)
         
         end if
         
         call lvl_ud(-1)
-        call writo('Done plotting')
+        call lvl_ud(-1)
     contains
         ! Returns q-m/n or  iota-n/m in Flux coordinates, used to  solve for q =
         ! m/n or iota = n/m.
@@ -397,8 +394,8 @@ contains
         ! plots the resonance plot in 3D in HDF5 format
         integer function resonance_plot_HDF5() result(ierr)
             use num_vars, only: n_theta_plot, n_zeta_plot
-            use output_ops, only: print_HDF5
-            use grid_vars, only: create_grid, destroy_grid
+            use output_ops, only: plot_HDF5
+            use grid_vars, only: create_grid, dealloc_grid
             use grid_ops, only: calc_XYZ_grid, calc_eqd_grid, coord_F2E
             
             character(*), parameter :: rout_name = 'resonance_plot_HDF5'
@@ -478,7 +475,7 @@ contains
             end do
             
             ! print using HDF5
-            call print_HDF5(plot_titles,file_name,vars,X=X_plot,Y=Y_plot,&
+            call plot_HDF5(plot_titles,file_name,vars,X=X_plot,Y=Y_plot,&
                 &Z=Z_plot,col=1,description='resonant surfaces')
             
             ! deallocate local variables
@@ -486,7 +483,7 @@ contains
             deallocate(theta_plot,zeta_plot,r_plot_E)
             
             ! delete plot grid
-            call destroy_grid(grid_plot)
+            call dealloc_grid(grid_plot)
         end function resonance_plot_HDF5
     end function resonance_plot
     
@@ -539,7 +536,7 @@ contains
             call lvl_ud(1)
             
             ! user output
-            call writo('The tolerance used is '//trim(r2strt(tol)))
+            call writo('The tolerance used is '//trim(r2strt(tol))//'...')
             
             ! set  up  plus  minus  one  to  convert  from Equilibrium  to  Flux
             ! coordinates
@@ -635,7 +632,7 @@ contains
             ! output message
             call writo('The modes are all within the allowed range of '//&
                 &trim(r2strt(min_sec_X))//' < '//mode_name//' < '//&
-                &trim(r2strt(max_sec_X)))
+                &trim(r2strt(max_sec_X))//'...')
             
             call lvl_ud(-1)
             call writo('Mode numbers checked')
@@ -680,42 +677,6 @@ contains
         end select
     end function solve_EV_system
     
-    ! Calculate rho according to the style specified by user input.
-    integer function calc_rho(eq,grid) result(ierr)
-        use num_vars, only: rho_style, use_normalization
-        use eq_vars, only: rho_0
-        
-        character(*), parameter :: rout_name = 'calc_rho'
-        
-        ! input / output
-        type(eq_type) :: eq                                                     ! equilibrium variables
-        type(grid_type) :: grid                                                 ! grid
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! allocate rho
-        allocate(eq%rho(grid%grp_n_r))
-        
-        ! choose which density style is being used:
-        !   1:  constant, equal to rho_0
-        select case (rho_style)
-            case (1)                                                            ! HELENA
-                eq%rho = rho_0                                                  ! arbitrarily constant (normalized value)
-            case default
-                err_msg = 'No density style associated with '//&
-                    &trim(i2str(rho_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-        
-        ! normalize rho
-        if (use_normalization) eq%rho = eq%rho/rho_0
-    end function calc_rho
-    
     ! calculate  ~PV_(k,m)^i  (pol.  flux)  or ~PV_(l,n)^i  (tor.  flux) at  all
     ! eq grp_n_r values
     ! (see [ADD REF] for details)
@@ -727,7 +688,7 @@ contains
         ! use input / output
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(grid_type), intent(in) :: grid                                     ! grid
-        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(met_type), intent(in) :: met                                       ! metric variables
         type(X_type), intent(inout) :: X                                        ! perturbation variables
         
         ! local variables
@@ -770,18 +731,21 @@ contains
         do m = 1,X%n_mod
             do k = m,X%n_mod
                 ! calculate PV_0
-                X%PV_0(:,:,:,c([k,m],.true.,X%n_mod)) = &
-                    &com_fac*(X%DU_0(:,:,:,m) - X%extra1 - X%extra2 ) * &
-                    &(conjg(X%DU_0(:,:,:,k)) - X%extra1 - X%extra2) - &
-                    &X%mu0sigma/(vac_perm*J) * (X%extra1 + X%extra2) - X%extra3
+                X%PV_0(:,:,:,c([k,m],.true.,X%n_mod)) = com_fac*&
+                    &(X%DU_0(:,:,:,m) - eq%S*J - vac_perm*eq%sigma*g33/h22 ) * &
+                    &(conjg(&
+                    &X%DU_0(:,:,:,k)) - eq%S*J - vac_perm*eq%sigma*g33/h22) - &
+                    &vac_perm*eq%sigma/(vac_perm*J) * &
+                    &(eq%S*J + vac_perm*eq%sigma*g33/h22)
                 
-                ! add (nq-k)*(nq-m)/(mu_0J^2 |nabla psi|^2) to PV_0
+                ! add (nq-k)*(nq-m)/(mu_0J^2 |nabla psi|^2) - 2p'kappa_n to PV_0
                 do kd = 1,grid%grp_n_r
                     c1 = c([k,m],.true.,X%n_mod)
                     X%PV_0(:,:,kd,c1) = X%PV_0(:,:,kd,c1) + &
                         &(X%n(m)*fac_n(kd)-X%m(m)*fac_m(kd))*&
                         &(X%n(k)*fac_n(kd)-X%m(k)*fac_m(kd)) / &
-                        &( vac_perm*J(:,:,kd)**2*h22(:,:,kd) )
+                        &( vac_perm*J(:,:,kd)**2*h22(:,:,kd) ) - &
+                        &2*eq%pres_FD(kd,1)*eq%kappa_n(:,:,kd)
                 end do
                 
                 ! calculate PV_2
@@ -796,7 +760,7 @@ contains
                 ! calculate PV_1
                 X%PV_1(:,:,:,c([k,m],.false.,X%n_mod)) = &
                     &com_fac * X%DU_1(:,:,:,m) * &
-                    &(conjg(X%DU_0(:,:,:,k)) - X%extra1 - X%extra2)
+                    &(conjg(X%DU_0(:,:,:,k)) - eq%S*J - vac_perm*eq%sigma*g33/h22)
             end do
         end do
         
@@ -814,7 +778,7 @@ contains
         ! use input / output
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(grid_type), intent(in) :: grid                                     ! grid
-        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(met_type), intent(in) :: met                                       ! metric variables
         type(X_type), intent(inout) :: X                                        ! perturbation variables
         
         ! local variables
@@ -889,7 +853,7 @@ contains
         ! input / output
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
-        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(met_type), intent(in) :: met                                       ! metric variables
         type(X_type), intent(inout) :: X                                        ! perturbation variables
         
         ! local variables
@@ -1296,117 +1260,6 @@ contains
 #endif
     end function calc_U
     
-    ! Calculate mu0sigma, extra1, extra2 and extra3:
-    !   extra1 = S*J
-    !   extra2 = mu0sigma*J*B^2/h^psi,psi
-    !   extra3 = 2*p'*kn
-    ! with
-    !   shear S = - d Theta^alpha/d_theta 1 / J
-    !   parallel current mu0sigma = B . nabla x B / B^2
-    !   normal curvature kn = nabla psi / h^psi,psi * nabla (mu0 p + B^2/2)
-    integer function calc_extra(eq,grid,met,X) result(ierr)
-        use eq_vars, only: vac_perm
-        use utilities, only: c
-        
-        character(*), parameter :: rout_name = 'calc_extra'
-        
-        ! input / output
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(grid_type), intent(in) :: grid                                     ! equilibrium grid
-        type(metric_type), intent(in) :: met                                    ! metric variables
-        type(X_type), intent(inout) :: X                                        ! perturbation variables
-        
-        ! local variables
-        integer :: kd                                                           ! counter
-        
-        ! submatrices
-        ! jacobian
-        real(dp), pointer :: J(:,:,:)                                           ! jac
-        real(dp), pointer :: D1J(:,:,:)                                         ! D_alpha jac
-        real(dp), pointer :: D2J(:,:,:)                                         ! D_psi jac
-        real(dp), pointer :: D3J(:,:,:)                                         ! D_theta jac
-        ! lower metric factors
-        real(dp), pointer :: g13(:,:,:)                                         ! g_alpha,theta
-        real(dp), pointer :: D2g13(:,:,:)                                       ! D_psi g_alpha,theta
-        real(dp), pointer :: D3g13(:,:,:)                                       ! D_theta g_alpha,theta
-        real(dp), pointer :: g23(:,:,:)                                         ! g_psi,theta
-        real(dp), pointer :: D1g23(:,:,:)                                       ! D_alpha g_psi,theta
-        real(dp), pointer :: D3g23(:,:,:)                                       ! D_theta g_psi,theta
-        real(dp), pointer :: g33(:,:,:)                                         ! g_theta,theta
-        real(dp), pointer :: D1g33(:,:,:)                                       ! D_alpha g_theta,theta
-        real(dp), pointer :: D2g33(:,:,:)                                       ! D_psi g_theta,theta
-        real(dp), pointer :: D3g33(:,:,:)                                       ! D_theta g_theta,theta
-        ! upper metric factors
-        real(dp), pointer :: h12(:,:,:)                                         ! h^alpha,psi
-        real(dp), pointer :: D3h12(:,:,:)                                       ! D_theta h^alpha,psi
-        real(dp), pointer :: h22(:,:,:)                                         ! h^psi,psi
-        real(dp), pointer :: D3h22(:,:,:)                                       ! D_theta h^psi,psi
-        real(dp), pointer :: h23(:,:,:)                                         ! h^psi,theta
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up submatrices
-        ! jacobian
-        J => met%jac_FD(:,:,:,0,0,0)
-        D1J => met%jac_FD(:,:,:,1,0,0)
-        D2J => met%jac_FD(:,:,:,0,1,0)
-        D3J => met%jac_FD(:,:,:,0,0,1)
-        ! lower metric factors
-        g13 => met%g_FD(:,:,:,c([1,3],.true.),0,0,0)
-        D2g13 => met%g_FD(:,:,:,c([1,3],.true.),0,1,0)
-        D3g13 => met%g_FD(:,:,:,c([1,3],.true.),0,0,1)
-        g23 => met%g_FD(:,:,:,c([2,3],.true.),0,0,0)
-        D1g23 => met%g_FD(:,:,:,c([2,3],.true.),1,0,0)
-        D3g23 => met%g_FD(:,:,:,c([2,3],.true.),0,0,1)
-        g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,0)
-        D1g33 => met%g_FD(:,:,:,c([3,3],.true.),1,0,0)
-        D2g33 => met%g_FD(:,:,:,c([3,3],.true.),0,1,0)
-        D3g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,1)
-        ! upper metric factors
-        h12 => met%h_FD(:,:,:,c([1,2],.true.),0,0,0)
-        D3h12 => met%h_FD(:,:,:,c([1,2],.true.),0,0,1)
-        h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
-        D3h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,1)
-        h23 => met%h_FD(:,:,:,c([2,3],.true.),0,0,0)
-        
-        ! calculate mu0sigma
-        X%mu0sigma = 1._dp/(J*g33) * (g13*(D2g33-D3g23) + g23*(D3g13-D1g33) &
-            &+ g33*(D1g23-D2g13))
-        
-        ! calculate extra1
-        X%extra1 = -D3h12/h22 + D3h22*h12/h22**2
-        
-        ! calculate extra2
-        X%extra2 = g33/h22 * X%mu0sigma / J
-        
-        ! calculate extra3
-        do kd = 1,grid%grp_n_r
-            X%extra3(:,:,kd) = eq%pres_FD(kd,1) * &
-                &( 2*J(:,:,kd)**2*vac_perm*eq%pres_FD(kd,1)/g33(:,:,kd) + &
-                &1._dp/h22(:,:,kd) * ( &
-                &h12(:,:,kd) * ( D1g33(:,:,kd)/g33(:,:,kd) - &
-                &2*D1J(:,:,kd)/J(:,:,kd) ) + &
-                &h22(:,:,kd) * ( D2g33(:,:,kd)/g33(:,:,kd) - &
-                &2*D2J(:,:,kd)/J(:,:,kd) ) + &
-                &h23(:,:,kd) * ( D3g33(:,:,kd)/g33(:,:,kd) - &
-                &2*D3J(:,:,kd)/J(:,:,kd) ) ) )
-        end do
-        
-        ! calculate rho from input (best done with normalized pressure already)
-        ierr = calc_rho(eq,grid)
-        CHCKERR('')
-        
-        ! deallocate local variables
-        nullify(J, D1J, D2J, D3J)
-        nullify(g13, D2g13, D3g13)
-        nullify(g23, D1g23, D3g23)
-        nullify(g33, D1g33, D2g33, D3g33)
-        nullify(h12, D3h12)
-        nullify(h22, D3h22)
-        nullify(h23)
-    end function calc_extra
-    
     ! Calculate the  magnetic integrals  from PV_i and  KV_i. All  the variables
     ! should thus be field-line oriented.
     integer function calc_magn_ints(grid_eq,met,X) result(ierr)
@@ -1414,7 +1267,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(met_type), intent(in) :: met                                       ! metric variables
         type(X_type), intent(inout) :: X                                        ! perturbation variables
         
         ! initialize ierr
@@ -1469,7 +1322,7 @@ contains
             
             ! input / output
             type(grid_type) :: grid                                             ! grid
-            type(metric_type) :: met                                            ! metric variables
+            type(met_type) :: met                                               ! metric variables
             complex(dp), intent(in) :: exp_ang(:,:,:,:)                         ! exponential of Flux parallel angle
             integer, intent(in) :: n_mod                                        ! number of 
             complex(dp), intent(in) :: V(:,:,:,:)                               ! input V(n_par,n_geo,n_r,size_X^2)

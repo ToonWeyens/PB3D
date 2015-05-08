@@ -9,12 +9,12 @@ module HELENA
     use messages
     use num_vars, only: dp, max_str_ln
     use grid_vars, only: grid_type
-    use metric_vars, only: metric_type
+    use met_vars, only: met_type
     use X_vars, only: X_type
     
     implicit none
     private
-    public read_HEL, dealloc_HEL, dealloc_HEL_final, adapt_to_B_HEL, &
+    public read_HEL, dealloc_HEL, adapt_to_B_HEL, &
         &pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, h_H_12, h_H_33, &
         &RBphi, R_H, Z_H, R_0_H, B_0_H
 #if ldebug
@@ -82,6 +82,7 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! user output
         call writo('Reading data from HELENA output "' &
             &// trim(eq_name) // '"')
         call lvl_ud(1)
@@ -196,22 +197,21 @@ contains
         ! HELENA always uses the poloidal flux
         use_pol_flux_H = .true.
         
+        ! user output
         call writo('HELENA output given on '//trim(i2str(nchi))//&
             &' poloidal and '//trim(i2str(n_r_eq))//' normal points')
         call lvl_ud(-1)
-        call writo('Grid parameters successfully read')
+        call writo('Data from HELENA output succesfully read')
+        
+        ! close the HELENA file
+        close(eq_i)
     end function read_HEL
     
-    ! deallocates  HELENA  quantities  that  are not  used  any  more after  the
-    ! equilibrium phase
+    ! deallocates HELENA quantities that are not used any more
     subroutine dealloc_HEL
         deallocate(h_H_11)
         deallocate(h_H_12)
         deallocate(h_H_33)
-    end subroutine dealloc_HEL
-    
-    ! deallocates HELENA quantities that are not used any more
-    subroutine dealloc_HEL_final
         deallocate(chi_H)
         deallocate(flux_p_H)
         deallocate(pres_H)
@@ -219,7 +219,7 @@ contains
         deallocate(RBphi)
         deallocate(R_H)
         deallocate(Z_H)
-    end subroutine dealloc_HEL_final
+    end subroutine dealloc_HEL
     
     ! calculate interpolation  factors for angular interpolation  in grid_out of
     ! quantities defined on grid_in. This version  is specific for an input grid
@@ -349,8 +349,8 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq, grid_eq_B                       ! general and field-aligned equilibrium grid
-        type(metric_type), intent(in) :: met                                    ! general metric variables
-        type(metric_type), intent(inout) :: met_B                               ! field-aligned metric variables
+        type(met_type), intent(in) :: met                                       ! general metric variables
+        type(met_type), intent(inout) :: met_B                                  ! field-aligned metric variables
         type(X_type), intent(in) :: X                                           ! general perturbation variables
         type(X_type), intent(inout) :: X_B                                      ! field-aligned perturbation variables
         
@@ -515,11 +515,12 @@ contains
 #if ldebug
     ! Checks whether the metric elements  provided by HELENA are consistent with
     ! a direct calculation using the coordinate transformations:
-    !   |nabla psi|^2       = 1/jac^2 ((dZ/dchi)^2 + (dR/dchi)^2)
-    !   nabla psi nabla chi = 1/jac^2 (dZ/dchi dZ/dpsi + dR/dchi dR/dpsi)
-    !   |nabla chi|^2       = 1/jac^2 ((dZ/dpsi)^2 + (dR/dpsi)^2)
-    !   |nabla phi|^2       = 1/R^2
+    !   |nabla psi|^2           = 1/jac^2 ((dZ/dchi)^2 + (dR/dchi)^2)
+    !   |nabla psi nabla chi|   = 1/jac^2 (dZ/dchi dZ/dpsi + dR/dchi dR/dpsi)
+    !   |nabla chi|^2           = 1/jac^2 ((dZ/dpsi)^2 + (dR/dpsi)^2)
+    !   |nabla phi|^2           = 1/R^2
     ! with jac = dZ/dpsi dR/dchi - dR/dpsi dZ/dchi
+    ! Also, test whether the pressure balance is satisfied.
     integer function test_metrics_H(n_r) result(ierr)
         use num_vars, only: glb_rank
         use utilities, only: calc_deriv
@@ -622,10 +623,10 @@ contains
             call lvl_ud(1)
             
             ! calculate auxiliary  quantities:
-            !   1: d1 F ,
-            !   2: d1 p ,
-            !   3: d1 (q/F h_11) ,
-            !   4: d2 (q/F h_12) .
+            !   1: D1 F ,
+            !   2: D1 p ,
+            !   3: D1 (q/F h_11) ,
+            !   4: D2 (q/F h_12) .
             allocate(tempvar(nchi,1,n_r,4))
             do id = 1,nchi
                 ierr = calc_deriv(RBphi,tempvar(id,1,:,1),flux_p_H/(2*pi),1,1)
@@ -642,14 +643,12 @@ contains
                 CHCKERR('')
             end do
             
-            ! calculate pressure  balance in tempvar(1) and  copy given pressure
-            ! gradient in tempvar(2):
+            ! calculate pressure  balance in tempvar(1)
             !   mu_0 p' = F/(qR^2) (d/d1 (h_11 q/F) + d/d2 (h_12 q/F) + q F')
             do kd = 1,n_r
                 tempvar(:,1,kd,1) = -RBphi(kd)*h_H_33(:,kd)/qs(kd) * &
                     &(tempvar(:,1,kd,1)*qs(kd) + tempvar(:,1,kd,3) + &
                     &tempvar(:,1,kd,4))
-                tempvar(:,1,kd,2) = tempvar(:,1,kd,2)
             end do
             
             ! output difference with p'

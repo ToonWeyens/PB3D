@@ -76,8 +76,11 @@ LINK    = $(LINK_DIR) $(LINK_FLAGS)
 ##############################################################################
 #   Rules
 ##############################################################################
-PB3D:	$(ObjectFiles)
-	$(LINK) -o $@ $(ObjectFiles) $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
+PB3D:	$(ObjectFiles) PB3D.o
+	$(LINK) -o $@ $(ObjectFiles) PB3D.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
+
+PB3D_PP:	$(ObjectFiles) PB3D_PP.o
+	$(LINK) -o $@ $(ObjectFiles) PB3D_PP.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
 %.o : %.f90
 	$(COMPILE) -c $<

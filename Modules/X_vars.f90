@@ -11,7 +11,7 @@ module X_vars
     implicit none
     
     private
-    public dealloc_X, dealloc_X_final, create_X, &
+    public dealloc_X, create_X, &
         &X_type, &
         &min_n_r_X, min_n_X, max_n_X, min_m_X, max_m_X, min_r_X, &
         &max_r_X
@@ -28,7 +28,6 @@ module X_vars
     
     ! perturbation type
     ! The arrays here are of the form:
-    !   - (angle_1,angle_2,r)               for mu0sigma, extrai
     !   - (angle_1,angle_2,r,n_mod)         for U_X_i, DU_X_i
     !   - (angle_1,angle_2,r,nn_mod)        for PVi, KVi, exp_ang_par_F
     !   - (nn_mod,angle_2,r,3)              for KV_int, PV_int
@@ -45,10 +44,6 @@ module X_vars
         integer, allocatable :: m(:)                                            ! vector of poloidal mode numbers
         complex(dp), allocatable :: vec(:,:,:)                                  ! Eigenvector solution, with ghost region
         complex(dp), allocatable :: val(:)                                      ! Eigenvalue solution
-        real(dp), allocatable :: mu0sigma(:,:,:)                                ! parallel current
-        real(dp), allocatable :: extra1(:,:,:)                                  ! extra terms in PV_0 (see routine calc_extra)
-        real(dp), allocatable :: extra2(:,:,:)                                  ! extra terms in PV_0 (see routine calc_extra)
-        real(dp), allocatable :: extra3(:,:,:)                                  ! extra terms in PV_0 (see routine calc_extra)
         complex(dp), pointer :: U_0(:,:,:,:) => null()                          ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
         complex(dp), pointer :: U_1(:,:,:,:) => null()                          ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
         complex(dp), pointer :: DU_0(:,:,:,:) => null()                         ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
@@ -83,10 +78,6 @@ contains
         integer :: n_par, n_geo                                                 ! tot. nr. of angular points in parallel and geodesic direction
         integer :: nn_mod_1, nn_mod_2                                           ! number of indices for a quantity that is symmetric or not
         
-        ! user output
-        call writo('Create perturbation...')
-        call lvl_ud(1)
-        
         ! set local variables
         grp_n_r = grid%grp_n_r
         n_par = grid%n(1)
@@ -113,18 +104,6 @@ contains
             X%n = [(id, id = min_n_X, max_n_X)]
             X%m = min_m_X
         end if
-        
-        ! mu0sigma
-        allocate(X%mu0sigma(n_par,n_geo,grp_n_r))
-        
-        ! extra1
-        allocate(X%extra1(n_par,n_geo,grp_n_r))
-        
-        ! extra2
-        allocate(X%extra2(n_par,n_geo,grp_n_r))
-        
-        ! extra3
-        allocate(X%extra3(n_par,n_geo,grp_n_r))
         
         ! U_0
         allocate(X%U_0(n_par,n_geo,grp_n_r,X%n_mod))
@@ -160,22 +139,11 @@ contains
         allocate(X%KV_int_0(nn_mod_2,n_geo,grp_n_r))                            ! symmetric
         allocate(X%KV_int_1(nn_mod_1,n_geo,grp_n_r))                            ! not symmetric
         allocate(X%KV_int_2(nn_mod_2,n_geo,grp_n_r))                            ! symmetric
-        
-        call lvl_ud(-1)
     end subroutine create_X
     
     ! deallocates  perturbation quantities that  are not used anymore  after the
-    ! equilibrium phase
-    subroutine dealloc_X(X)
-        ! input / output
-        type(X_type), intent(inout) :: X                                        ! perturbation variables
-        
-        deallocate(X%mu0sigma,X%extra2,X%extra3)
-    end subroutine dealloc_X
-    
-    ! deallocates  perturbation quantities that  are not used anymore  after the
     ! calculations for a certain alpha
-    subroutine dealloc_X_final(X)
+    subroutine dealloc_X(X)
         ! input / output
         type(X_type), intent(inout) :: X                                        ! perturbation variables
         
@@ -185,8 +153,7 @@ contains
         if (allocated(X%vec)) deallocate(X%vec)                                 ! are only allocated if system of equations solved with this X
         if (allocated(X%val)) deallocate(X%val)                                 ! are only allocated if system of equations solved with this X
         deallocate(X%exp_ang_par_F)
-        deallocate(X%extra1)                                                    ! extra1 is needed in decomposition of energy
         deallocate(X%PV_int_0,X%PV_int_1,X%PV_int_2)
         deallocate(X%KV_int_0,X%KV_int_1,X%KV_int_2)
-    end subroutine dealloc_X_final
+    end subroutine dealloc_X
 end module

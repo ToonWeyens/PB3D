@@ -2,17 +2,19 @@ ObjectFiles = \
 HDF5_ops.o \
 grid_vars.o \
 grid_ops.o \
+post_process.o \
 driver.o \
 driver_rich.o \
 eq_ops.o \
 eq_vars.o \
-files.o \
+files_ops.o \
+files_utilities.o \
 fourier_ops.o \
 HELENA.o \
 input_ops.o \
 messages.o \
-metric_ops.o \
-metric_vars.o \
+met_ops.o \
+met_vars.o \
 MPI_ops.o \
 num_vars.o \
 output_ops.o \
@@ -25,4 +27,3 @@ VMEC.o \
 X_ops.o \
 X_vars.o \
 test.o \
-PB3D.o \

@@ -132,7 +132,7 @@ contains
         ! tests
         if (size(trigon_factors,6).ne.2) then
             ierr = 1
-            err_msg = 'trigon_factors need to contain sines and cosines'
+            err_msg = 'trigon_factors needs to contain sines and cosines'
             CHCKERR(err_msg)
         end if
         if (size(trigon_factors,1).ne.mpol .or. &

@@ -19,14 +19,13 @@
 module eq_vars
 #include <PB3D_macros.h>
     use str_ops
-    use output_ops
     use messages
     use num_vars, only: dp, pi, max_str_ln, mu_0_original
     use grid_vars, only: grid_type
 
     implicit none
     private
-    public create_eq, dealloc_eq, dealloc_eq_final, &
+    public create_eq, dealloc_eq, &
         &eq_type, &
         &R_0, pres_0, B_0, psi_0, rho_0, T_0, max_flux_p_E, max_flux_p_F, &
         &max_flux_t_E, max_flux_t_F, vac_perm
@@ -56,7 +55,6 @@ module eq_vars
         real(dp), allocatable :: R_E(:,:,:,:,:,:)                               ! R in E(quilibrium) coord
         real(dp), allocatable :: Z_E(:,:,:,:,:,:)                               ! Z in E(quilibrium) coords.
         real(dp), allocatable :: L_E(:,:,:,:,:,:)                               ! L(ambda) in E(quilibrium) coords.
-        real(dp), allocatable :: rho(:)                                         ! density (in all coord. systems)
         real(dp), allocatable :: pres_E(:,:)                                    ! pressure, and norm. Deriv. in E(equilibrium) coords.
         real(dp), allocatable :: q_saf_E(:,:)                                   ! safety factor in E(equilibrium) coordinates
         real(dp), allocatable :: rot_t_E(:,:)                                   ! rot. transform in E(equilibrium) coordinates
@@ -67,20 +65,25 @@ module eq_vars
         real(dp), allocatable :: rot_t_FD(:,:)                                  ! rot. transform, Deriv. in F(lux) coords.
         real(dp), pointer :: flux_p_FD(:,:) => null()                           ! poloidal flux, and norm. Deriv. with values and Derivs. in F(lux) coords.
         real(dp), pointer :: flux_t_FD(:,:) => null()                           ! toroidal flux, and norm. Deriv. with values and Derivs. in F(lux) coords.
+        real(dp), allocatable :: rho(:)                                         ! density (in all coord. systems)
+        real(dp), allocatable :: S(:,:,:)                                       ! magnetic shear
+        real(dp), allocatable :: kappa_n(:,:,:)                                 ! normal curvature
+        real(dp), allocatable :: kappa_g(:,:,:)                                 ! geodesic curvature
+        real(dp), allocatable :: sigma(:,:,:)                                   ! parallel current
     end type
 
 contains
     ! creates new equilibrium
     ! The normal and angular grid can be  in any coord. system, as only the grid
     ! sizes are used, not the coordinate values.
-    integer function create_eq(eq,grid) result(ierr)
+    integer function create_eq(grid,eq) result(ierr)
         use num_vars, only: max_deriv, eq_style
         
         character(*), parameter :: rout_name = 'create_eq'
         
         ! input / output
-        type(eq_type), intent(inout) :: eq                                      ! equilibrium to be created
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
+        type(eq_type), intent(inout) :: eq                                      ! equilibrium to be created
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -89,10 +92,6 @@ contains
         
         ! initialize ierr
         ierr = 0
-        
-        ! user output
-        call writo('Create equilibrium...')
-        call lvl_ud(1)
         
         ! set local variables
         grp_n_r = grid%grp_n_r
@@ -130,6 +129,21 @@ contains
         ! rot_t_E
         allocate(eq%rot_t_E(grp_n_r,0:max_deriv+1))
         
+        ! rho
+        allocate(eq%rho(grid%grp_n_r))
+        
+        ! magnetic shear
+        allocate(eq%S(n_par,n_geo,grp_n_r))
+        
+        ! normal curvature
+        allocate(eq%kappa_n(n_par,n_geo,grp_n_r))
+        
+        ! geodesic curvature
+        allocate(eq%kappa_g(n_par,n_geo,grp_n_r))
+        
+        ! parallel current
+        allocate(eq%sigma(n_par,n_geo,grp_n_r))
+        
         ! initialize variables that are specificic to which equilibrium style is
         ! being used:
         !   1:  VMEC
@@ -155,8 +169,6 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
-        
-        call lvl_ud(-1)
     end function create_eq
     
     ! deallocates  equilibrium quantities  that are not  used anymore  after the
@@ -175,6 +187,25 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! deallocate general quantities
+        deallocate(eq%pres_E)
+        deallocate(eq%q_saf_E)
+        deallocate(eq%rot_t_E)
+        deallocate(eq%flux_p_E)
+        deallocate(eq%flux_t_E)
+        
+        deallocate(eq%pres_FD)
+        deallocate(eq%flux_p_FD,eq%flux_t_FD)
+        deallocate(eq%q_saf_FD)
+        deallocate(eq%rot_t_FD)
+        
+        deallocate(eq%rho)
+        deallocate(eq%S)
+        deallocate(eq%kappa_n)
+        deallocate(eq%kappa_g)
+        deallocate(eq%sigma)
+        
+        ! deallocate specific quantities
         ! choose which equilibrium style is being used:
         !   1:  VMEC
         !   2:  HELENA
@@ -190,25 +221,4 @@ contains
                 CHCKERR(err_msg)
         end select
     end function dealloc_eq
-    
-    ! deallocates  equilibrium quantities  that are not  used anymore  after the
-    ! calculation for a certain alpha
-    subroutine dealloc_eq_final(eq)
-        ! input / output
-        type(eq_type), intent(inout) :: eq                                      ! equilibrium to be deallocated
-        
-        ! deallocate general variables
-        deallocate(eq%pres_FD)
-        deallocate(eq%flux_p_FD,eq%flux_t_FD)
-        deallocate(eq%q_saf_FD)
-        deallocate(eq%rot_t_FD)
-        
-        deallocate(eq%pres_E)
-        deallocate(eq%q_saf_E)
-        deallocate(eq%rot_t_E)
-        deallocate(eq%flux_p_E)
-        deallocate(eq%flux_t_E)
-        
-        deallocate(eq%rho)
-    end subroutine dealloc_eq_final
 end module eq_vars

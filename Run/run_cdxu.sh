@@ -18,7 +18,7 @@ use_out_loc=false
 while getopts "o:ds" opt; do
     case $opt in
         o) 
-            out_loc=$OPTARG
+            out_loc=${OPTARG%/}
             use_out_loc=true
             n_opt_args=$((n_opt_args+2))                                        # 2 arguments
         ;;
@@ -64,8 +64,8 @@ else
     get_date=$(date +"%Y-%m-%d-%H-%M-%S")
     out=$get_date
 fi
+mkdir -p $out $out/Plots $out/Data $out/Scripts &&
 {
-mkdir $out $out/Plots $out/Data $out/Scripts &&
 # success
 echo "Working in directory $out/"
 echo ""
@@ -74,9 +74,12 @@ cp input_cdxu $out
 cp wout_cdxu.txt $out
 cp ../PB3D $out
 cd $out
-mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D cdxu cdxu.txt $slepc_opt ${@:2}
-echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D cdxu cdxu.txt $slepc_opt ${@:2}" > command
+mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cdxu wout_cdxu.txt $slepc_opt ${@:2}
+echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cdxu wout_cdxu.txt $slepc_opt ${@:2}" > command
 cd ../
+echo ""
+echo "Leaving directory $out/"
+echo ""
 #
 # failure
 } || {

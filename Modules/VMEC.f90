@@ -6,6 +6,7 @@ module VMEC
     use str_ops
     use output_ops
     use messages
+    use grid_vars, only: grid_type
     use num_vars, only: &
         &dp, max_str_ln, pi
     use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
@@ -24,7 +25,7 @@ module VMEC
     
     implicit none
     private
-    public read_VMEC, dealloc_VMEC_final, repack, normalize_VMEC, &
+    public read_VMEC, dealloc_VMEC, repack, normalize_VMEC, &
         &mpol, ntor, nfp, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, &
         &pres_V, rot_t_V, lasym, flux_t_V, Dflux_t_V, VMEC_version, gam, lfreeB
 #if ldebug
@@ -69,17 +70,17 @@ contains
             &// trim(eq_name) // '"')
         call lvl_ud(1)
         
-        ! rewind input file
-        rewind(eq_i)
-        close(eq_i)
-        eq_i = 50
-        open(eq_i,file=trim(eq_name))
+        !!!! rewind input file
+        !!!rewind(eq_i)
+        !!!close(eq_i)
+        !!!eq_i = 50
+        !!!open(eq_i,file=trim(eq_name))
         
         ! read VMEC output using LIBSTELL
         call read_wout_file(eq_i,ierr)                                          ! read the VMEC file number
         CHCKERR('Failed to read the VMEC file')
         
-        ! close the VMEC file
+        ! close the VMEC output file
         close(eq_i)
         
         ! set some variables
@@ -120,7 +121,7 @@ contains
         call lvl_ud(-1)
         call writo('Data from VMEC output successfully read')
         
-        call writo('Reading the grid parameters')
+        call writo('Converting VMEC output to PB3D format')
         call lvl_ud(1)
         
         ! Allocate and repack the Fourier coefficients to translate them for use
@@ -271,11 +272,11 @@ contains
         if (allocated(zmnc)) deallocate(zmnc)
         
         call lvl_ud(-1)
-        call writo('Grid parameters successfully read')
+        call writo('Conversion complete')
     end function read_VMEC
     
     ! deallocates VMEC quantities that are not used anymore
-    subroutine dealloc_VMEC_final
+    subroutine dealloc_VMEC
         deallocate(flux_t_V,Dflux_t_V)
         deallocate(rot_t_V)
         deallocate(pres_V)
@@ -293,7 +294,7 @@ contains
         if (allocated(jac_V_c)) deallocate(jac_V_c)
         if (allocated(jac_V_s)) deallocate(jac_V_s)
 #endif
-    end subroutine dealloc_VMEC_final
+    end subroutine dealloc_VMEC
 
     ! Repack  variables  representing the  Fourier  composition  such as  R,  Z,
     ! lambda, ...  In VMEC these  are stored as  (1:mnmax, 1:ns) with  mnmax the

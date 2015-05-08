@@ -4,14 +4,23 @@ PB3D.o : \
     num_vars.o \
     MPI_ops.o \
     VMEC.o \
-    files.o \
+    files_ops.o \
     driver.o \
+    post_process.o \
     str_ops.o \
     utilities.o \
     input_ops.o \
     messages.o \
     eq_ops.o \
     eq_vars.o \
+
+PB3D_PP.o : \
+    num_vars.o \
+    messages.o \
+    MPI_ops.o \
+    files_ops.o \
+    HDF5_ops.o \
+    input_ops.o \
 
 test.o : \
     str_ops.o \
@@ -24,7 +33,6 @@ test.o : \
 grid_vars.o : \
     num_vars.o \
     messages.o \
-    output_ops.o \
 
 sol_ops.o : \
     num_vars.o \
@@ -57,23 +65,29 @@ driver.o : \
     messages.o \
     str_ops.o \
 
+post_process.o : \
+    num_vars.o \
+    messages.o \
+    str_ops.o \
+    X_ops.o \
+
 driver_rich.o : \
     num_vars.o \
     MPI_ops.o \
-    files.o \
     str_ops.o \
     output_ops.o \
     messages.o \
     eq_vars.o \
-    metric_ops.o \
+    met_ops.o \
     eq_ops.o \
     X_ops.o \
     X_vars.o \
     SLEPC_ops.o \
-    metric_ops.o \
+    met_ops.o \
     VMEC.o \
     HELENA.o \
     utilities.o \
+    MPI_utilities.o \
     grid_ops.o \
     grid_vars.o \
     sol_ops.o \
@@ -85,12 +99,14 @@ SLEPC_ops.o : \
     grid_ops.o \
     X_vars.o \
     utilities.o \
+    files_ops.o \
+    MPI_utilities.o \
 
 X_ops.o : \
     num_vars.o \
     eq_ops.o \
     eq_vars.o \
-    metric_ops.o \
+    met_ops.o \
     utilities.o \
     MPI_utilities.o \
     VMEC.o \
@@ -108,12 +124,13 @@ X_vars.o : \
 
 eq_ops.o : \
     num_vars.o \
+    met_vars.o \
     input_ops.o \
     eq_vars.o \
     X_vars.o \
     output_ops.o \
     messages.o \
-    metric_ops.o \
+    met_ops.o \
     utilities.o \
     MPI_utilities.o \
     VMEC.o \
@@ -125,25 +142,30 @@ messages.o : \
     str_ops.o \
 
 output_ops.o : \
+    grid_vars.o \
+    eq_vars.o \
+    met_vars.o \
+    X_vars.o \
     HDF5_ops.o \
     num_vars.o \
     str_ops.o \
     messages.o \
-    files.o \
     MPI_utilities.o \
 
 HDF5_ops.o : \
+    files_utilities.o \
+    MPI_utilities.o \
     num_vars.o \
     str_ops.o \
     messages.o \
-    files.o \
 
 input_ops.o : \
+    files_ops.o \
     messages.o \
     str_ops.o \
     num_vars.o \
     eq_vars.o \
-    files.o \
+    files_ops.o \
     X_vars.o \
     grid_vars.o \
     MPI_utilities.o \
@@ -153,17 +175,25 @@ fourier_ops.o : \
     num_vars.o \
     VMEC.o \
 
-files.o : \
+files_ops.o : \
     num_vars.o \
     str_ops.o \
     messages.o \
+    MPI_utilities.o \
 
+files_utilities.o : \
+    str_ops.o \
+    messages.o \
+    num_vars.o \
+    
 VMEC.o : \
+    MPI_utilities.o \
     num_vars.o \
     str_ops.o \
     messages.o \
     utilities.o \
     eq_vars.o \
+    grid_vars.o \
 
 HELENA.o : \
     num_vars.o \
@@ -171,9 +201,10 @@ HELENA.o : \
     messages.o \
     utilities.o \
     output_ops.o \
-    metric_vars.o \
+    met_vars.o \
     X_vars.o \
     eq_vars.o \
+    MPI_utilities.o \
 
 utilities.o : \
     num_vars.o \
@@ -187,7 +218,7 @@ eq_vars.o : \
     str_ops.o \
     grid_vars.o \
 
-metric_ops.o : \
+met_ops.o : \
     num_vars.o \
     messages.o \
     str_ops.o \
@@ -195,9 +226,10 @@ metric_ops.o : \
     X_vars.o \
     utilities.o \
     HELENA.o \
-    metric_vars.o \
+    met_vars.o \
+    grid_ops.o \
 
-metric_vars.o : \
+met_vars.o : \
     num_vars.o \
     str_ops.o \
 
@@ -208,7 +240,7 @@ MPI_ops.o : \
     VMEC.o \
     X_vars.o \
     eq_vars.o \
-    files.o \
+    files_ops.o \
     utilities.o \
     HELENA.o \
     grid_vars.o \

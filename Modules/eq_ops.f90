@@ -9,11 +9,12 @@ module eq_ops
     use num_vars, only: pi, dp, max_str_ln
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
-    use metric_vars, only: metric_type
+    use met_vars, only: met_type
     
     implicit none
     private
-    public read_eq, calc_normalization_const, normalize_input, calc_eq
+    public read_eq, calc_normalization_const, normalize_input, calc_eq, &
+        &calc_flux_q, print_output_eq
     
     interface calc_RZL
         module procedure calc_RZL_ind, calc_RZL_arr
@@ -78,22 +79,19 @@ contains
     ! grp_n_r_eq .le.  n_r_eq is the  normal extent  in the equilibrium  grid of
     ! this rank. It is determined so  that the perturbation quantities that will
     ! be needed in this rank are fully covered, so no communication is necessary
-    integer function calc_eq(grid_eq,eq,met,alpha) result(ierr)
-        use eq_vars, only: dealloc_eq
-        use metric_ops, only: calc_g_C, calc_T_VC, calc_g_V, calc_T_VF, &
+    integer function calc_eq(grid_eq,eq,met) result(ierr)
+        use met_ops, only: calc_g_C, calc_T_VC, calc_g_V, calc_T_VF, &
             &calc_inv_met, calc_g_F, calc_jac_C, calc_jac_V, calc_jac_F, &
             &transf_deriv, calc_jac_H, calc_T_HF, calc_h_H
-        use metric_vars, only: create_metric, dealloc_metric
+        use met_vars, only: create_met
         use utilities, only: derivs
         use input_ops, only: get_log, pause_prog
-        use num_vars, only: max_deriv, plot_grid, eq_style
-        use grid_ops, only: calc_ang_grid_eq, plot_grid_real
-        use HELENA, only: dealloc_HEL
+        use num_vars, only: max_deriv, eq_style
         use MPI_utilities, only: wait_MPI
 #if ldebug
         use num_vars, only: ltest
-        use metric_ops, only: test_T_EF, test_p, test_jac_F, test_g_V, &
-            &test_D12h_H, test_B_F, test_jac_V
+        use met_ops, only: test_T_EF, test_p, test_jac_F, test_g_V, &
+            &test_D12h_H, test_B_F, test_jac_V, test_Dg_E
 #endif
         
         use utilities, only: calc_det, calc_inv, calc_mult, c
@@ -103,8 +101,7 @@ contains
         ! input / output
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
         type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
-        type(metric_type), intent(inout) :: met                                 ! metric variables
-        real(dp), intent(in) :: alpha                                           ! field line coordinate of current equilibrium
+        type(met_type), intent(inout) :: met                                    ! metric variables
         
         ! local variables
         integer :: id
@@ -135,47 +132,15 @@ contains
         end select
         
         call lvl_ud(1)
-        
-            call writo('Start initializing variables')
+            
+            call writo('Calculating quantities on equilibrium grid')
             call lvl_ud(1)
-                
+            
                 ! initialize metric quantities
                 call writo('Initialize metric quantities...')
-                ierr = create_metric(grid_eq,met)
+                ierr = create_met(grid_eq,met)
                 CHCKERR('')
                 
-                ! calculate flux quantities and complete equilibrium grid
-                call writo('Calculate flux quantities...')
-                ierr = calc_flux_q(eq,grid_eq)
-                CHCKERR('')
-                
-            call lvl_ud(-1)
-            call writo('Variables initialized')
-            
-            call writo('Start determining the equilibrium grid')
-            call lvl_ud(1)
-            
-                ! calculate  angular grid  points for equilibrium grid
-                ierr = calc_ang_grid_eq(grid_eq,eq,alpha)
-                CHCKERR('')
-                write(*,*) 'ANGULAR GRID SHOULD BE CALCULATED OUTSIDE OF CALC_EQ!!!!!'
-                write(*,*) 'BECAUSE FOR PLOTTING, A NON-ALIGNED GRID IS USED !!!!!!!!'
-                write(*,*) 'BUT ALSO, FLUX QUANTITIES ARE NEEDED TO DETERMINE THIS GRID...'
-                
-                ! plot grid if requested
-                if (plot_grid) then
-                    ierr = plot_grid_real(grid_eq)
-                    CHCKERR('')
-                else
-                    call writo('Grid plot not requested')
-                end if
-            
-            call lvl_ud(-1)
-            call writo('Equilibrium grid determined')
-            
-            call writo('Calculating equilibrium quantities on equilibrium grid')
-            call lvl_ud(1)
-            
                 ! choose which equilibrium style is being used:
                 !   1:  VMEC
                 !   2:  HELENA
@@ -272,13 +237,6 @@ contains
                             CHCKERR('')
                         end do
                         
-                        ! calculate the inverse g_H of the metric factors h_H
-                        call writo('Calculate g_H...')
-                        do id = 0,max_deriv
-                            ierr = calc_inv_met(met%g_E,met%h_E,derivs(id))
-                            CHCKERR('')
-                        end do
-                        
 #if ldebug
                         if (ltest) then
                             call writo('Test calculation of D1 D2 h_H?')
@@ -289,6 +247,13 @@ contains
                             end if
                         end if
 #endif
+                        
+                        ! calculate the inverse g_H of the metric factors h_H
+                        call writo('Calculate g_H...')
+                        do id = 0,max_deriv
+                            ierr = calc_inv_met(met%g_E,met%h_E,derivs(id))
+                            CHCKERR('')
+                        end do
                         
                         ! calculate the transformation matrix H(ELENA) -> F(lux)
                         call writo('Calculate T_HF...')
@@ -308,6 +273,12 @@ contains
                 
 #if ldebug
                 if (ltest) then
+                    call writo('Test calculation of the derivatives of g_E?')
+                    if(get_log(.false.)) then
+                        ierr = test_Dg_E(grid_eq,met)
+                        CHCKERR('')
+                        call pause_prog
+                    end if
                     call writo('Test calculation of T_EF?')
                     if(get_log(.false.)) then
                         ierr = test_T_EF(grid_eq,eq,met)
@@ -427,31 +398,11 @@ contains
                     end if
                 end if
 #endif
+                ! calculate derived equilibrium quantities
+                call writo('Calculate derived equilibrium quantities...')
+                ierr = calc_derived_q(grid_eq,eq,met)
+                CHCKERR('')
                 
-                ! deallocate unused equilibrium quantities
-                call writo('Deallocate unused equilibrium and metric &
-                    &quantities...')
-                ierr = dealloc_metric(met)
-                CHCKERR('')
-                ! general equilibrium
-                ierr = dealloc_eq(eq)
-                CHCKERR('')
-                ! specific equilibrium
-                ! choose which equilibrium style is being used:
-                !   1:  VMEC
-                !   2:  HELENA
-                select case (eq_style)
-                    case (1)                                                    ! VMEC
-                        ! nothing
-                    case (2)                                                    ! HELENA
-                        call dealloc_HEL
-                    case default
-                        err_msg = 'No equilibrium style associated with '//&
-                            &trim(i2str(eq_style))
-                        ierr = 1
-                        CHCKERR(err_msg)
-                end select
-            
             call lvl_ud(-1)
             call writo('Equilibrium quantities calculated on equilibrium grid')
             
@@ -535,8 +486,9 @@ contains
         end do
     end function calc_RZL_arr
     
-    ! Calculates flux quantities  and normal derivatives in  the VMEC coordinate
-    ! system. Also sets the normal coordinate in the equilibrium grid.
+    ! Calculates  flux  quantities and  normal  derivatives  in the  Equilibrium
+    ! coordinate  system. Also  sets the  normal coordinate  in the  Equilibrium
+    ! grid.
     integer function calc_flux_q(eq,grid_eq) result(ierr)
         use num_vars, only: eq_style, max_deriv, grp_nr, use_pol_flux_E, &
             &use_pol_flux_F, plot_flux_q
@@ -547,8 +499,8 @@ contains
         character(*), parameter :: rout_name = 'calc_flux_q'
         
         ! input / output
-        type(eq_type), intent(inout) :: eq                                      ! equilibrium for this alpha
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -773,6 +725,122 @@ contains
         end function calc_flux_q_HEL
     end function calc_flux_q
     
+    ! Calculates derived  equilibrium quantities  in the  Equilibrium coordinate
+    ! system [ADD REF]:
+    !   - particle density rho
+    !   - magnetic shear S
+    !   - normal curvature kappa_n
+    !   - geodesic curvature kappa_g
+    !   - parallel current sigma
+    integer function calc_derived_q(grid_eq,eq,met) result(ierr)
+        use utilities, only: c
+        use num_vars, only: rho_style, use_normalization
+        use eq_vars, only: rho_0, vac_perm
+        
+        character(*), parameter :: rout_name = 'calc_derived_q'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
+        type(met_type), intent(in) :: met                                       ! metric variables
+        
+        ! local variables
+        integer :: kd                                                           ! counter
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        ! submatrices
+        ! jacobian
+        real(dp), pointer :: J(:,:,:)                                           ! jac
+        real(dp), pointer :: D1J(:,:,:)                                         ! D_alpha jac
+        real(dp), pointer :: D2J(:,:,:)                                         ! D_psi jac
+        real(dp), pointer :: D3J(:,:,:)                                         ! D_theta jac
+        ! lower metric factors
+        real(dp), pointer :: g13(:,:,:)                                         ! g_alpha,theta
+        real(dp), pointer :: D2g13(:,:,:)                                       ! D_psi g_alpha,theta
+        real(dp), pointer :: D3g13(:,:,:)                                       ! D_theta g_alpha,theta
+        real(dp), pointer :: g23(:,:,:)                                         ! g_psi,theta
+        real(dp), pointer :: D1g23(:,:,:)                                       ! D_alpha g_psi,theta
+        real(dp), pointer :: D3g23(:,:,:)                                       ! D_theta g_psi,theta
+        real(dp), pointer :: g33(:,:,:)                                         ! g_theta,theta
+        real(dp), pointer :: D1g33(:,:,:)                                       ! D_alpha g_theta,theta
+        real(dp), pointer :: D2g33(:,:,:)                                       ! D_psi g_theta,theta
+        real(dp), pointer :: D3g33(:,:,:)                                       ! D_theta g_theta,theta
+        ! upper metric factors
+        real(dp), pointer :: h12(:,:,:)                                         ! h^alpha,psi
+        real(dp), pointer :: D3h12(:,:,:)                                       ! D_theta h^alpha,psi
+        real(dp), pointer :: h22(:,:,:)                                         ! h^psi,psi
+        real(dp), pointer :: D3h22(:,:,:)                                       ! D_theta h^psi,psi
+        real(dp), pointer :: h23(:,:,:)                                         ! h^psi,theta
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up submatrices
+        ! jacobian
+        J => met%jac_FD(:,:,:,0,0,0)
+        D1J => met%jac_FD(:,:,:,1,0,0)
+        D2J => met%jac_FD(:,:,:,0,1,0)
+        D3J => met%jac_FD(:,:,:,0,0,1)
+        ! lower metric factors
+        g13 => met%g_FD(:,:,:,c([1,3],.true.),0,0,0)
+        D2g13 => met%g_FD(:,:,:,c([1,3],.true.),0,1,0)
+        D3g13 => met%g_FD(:,:,:,c([1,3],.true.),0,0,1)
+        g23 => met%g_FD(:,:,:,c([2,3],.true.),0,0,0)
+        D1g23 => met%g_FD(:,:,:,c([2,3],.true.),1,0,0)
+        D3g23 => met%g_FD(:,:,:,c([2,3],.true.),0,0,1)
+        g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+        D1g33 => met%g_FD(:,:,:,c([3,3],.true.),1,0,0)
+        D2g33 => met%g_FD(:,:,:,c([3,3],.true.),0,1,0)
+        D3g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,1)
+        ! upper metric factors
+        h12 => met%h_FD(:,:,:,c([1,2],.true.),0,0,0)
+        D3h12 => met%h_FD(:,:,:,c([1,2],.true.),0,0,1)
+        h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+        D3h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,1)
+        h23 => met%h_FD(:,:,:,c([2,3],.true.),0,0,0)
+        
+        ! Calculate particle density rho
+        ! choose which density style is being used:
+        !   1:  constant, equal to rho_0
+        select case (rho_style)
+            case (1)                                                            ! HELENA
+                eq%rho = rho_0                                                  ! arbitrarily constant (normalized value)
+            case default
+                err_msg = 'No density style associated with '//&
+                    &trim(i2str(rho_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        ! normalize rho if necessary
+        if (use_normalization) eq%rho = eq%rho/rho_0
+        
+        ! Calculate the shear S
+        eq%S = -(D3h12/h22 - D3h22*h12/h22**2)/J
+        
+        ! Calculate the normal curvature kappa_n
+        do kd = 1,grid_eq%grp_n_r
+            eq%kappa_n(:,:,kd) = J(:,:,kd)**2*eq%pres_FD(kd,1)/g33(:,:,kd) + &
+                &1._dp/(2*h22(:,:,kd)) * ( &
+                &h12(:,:,kd) * ( D1g33(:,:,kd)/g33(:,:,kd) - &
+                &2*D1J(:,:,kd)/J(:,:,kd) ) + &
+                &h22(:,:,kd) * ( D2g33(:,:,kd)/g33(:,:,kd) - &
+                &2*D2J(:,:,kd)/J(:,:,kd) ) + &
+                &h23(:,:,kd) * ( D3g33(:,:,kd)/g33(:,:,kd) - &
+                &2*D3J(:,:,kd)/J(:,:,kd) ) )
+        end do
+        
+        ! Calculate the geodesic curvature kappa_g
+        eq%kappa_g(:,:,:) = (0.5*D1g33/g33 - D1J/J) - &
+            &g13/g33*(0.5*D3g33/g33 - D3J/J)
+        
+        ! Calculate the parallel current sigma
+        eq%sigma = 1._dp/vac_perm*&
+            &(D1g23/J - g23*D1J/J**2 - D2g13/J + g13*D2J/J**2)
+        do kd = 1,grid_eq%grp_n_r
+            eq%sigma(:,:,kd) = eq%sigma(:,:,kd) - &
+                &eq%pres_FD(kd,1)*J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)
+        end do 
+    end function calc_derived_q
+    
     ! plots the flux quantities in the perturbation grid
     !   safety factor q_saf
     !   rotational transform rot
@@ -962,10 +1030,9 @@ contains
         
         ! plots the flux quantities in HDF5
         integer function flux_q_plot_HDF5() result(ierr)
-            use output_ops, only: print_HDF5
-            use grid_ops, only: calc_XYZ_grid, calc_eqd_grid, trim_grid, &
-                &extend_grid
-            use grid_vars, only: create_grid, destroy_grid
+            use output_ops, only: plot_HDF5
+            use grid_ops, only: calc_XYZ_grid, trim_grid, extend_grid
+            use grid_vars, only: create_grid, dealloc_grid
             
             character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
             
@@ -1049,14 +1116,14 @@ contains
             end do
             
             ! print the output using HDF5
-            call print_HDF5(plot_titles,file_name,f_plot,plot_dim,plot_offset,&
+            call plot_HDF5(plot_titles,file_name,f_plot,plot_dim,plot_offset,&
                 &X_plot,Y_plot,Z_plot,col=1,description='Flux quantities')
             
             ! deallocate and destroy grid
             deallocate(Y_plot_2D)
             deallocate(X_plot_3D,Y_plot_3D,Z_plot_3D)
             deallocate(X_plot,Y_plot,Z_plot,f_plot)
-            call destroy_grid(grid_plot)
+            call dealloc_grid(grid_plot)
         end function flux_q_plot_HDF5
     end function flux_q_plot
     
@@ -1209,4 +1276,460 @@ contains
             call writo('Normalization done')
         end if
     end function normalize_input
+    
+    ! Print equilibrium quantities to an output file:
+    !   - grid:     r_F, theta_F, zeta_F
+    !   - eq:       pres_FD, q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, rho, S,
+    !               kappa_n, kappa_g, sigma
+    !   - metric:   g_FD, h_FD, jac_FD
+    !   - VMEC:     R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s
+    !   - HELENA:   R_H, Z_H
+    ! Note: The equilibrium quantities are outputted in Flux coordinates.
+    integer function print_output_eq(grid_eq,eq,met) result(ierr)
+        use num_vars, only: output_style
+        
+        character(*), parameter :: rout_name = 'print_output_eq'
+        
+        ! input / output
+        type(grid_type) :: grid_eq                                              ! equilibrium grid variables
+        type(eq_type) :: eq                                                     ! equilibrium variables
+        type(met_type) :: met                                                   ! metric variables
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Writing equilibrium variables to output file')
+        call lvl_ud(1)
+        
+        ! print according to output_style
+        select case(output_style)
+            case(1)                                                             ! GNUPlot output
+                call writo('WARNING: No possibility to save equilibrium &
+                    &results for output style '//trim(i2str(output_style))//&
+                    &' implemented')
+            case(2)                                                             ! HDF5 output
+                ierr = print_output_eq_HDF5(grid_eq,eq,met)
+                CHCKERR('')
+            case default
+                err_msg = 'No style associated with '//&
+                    &trim(i2str(output_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Equilibrium variables written to output')
+    contains
+        ! HDF5 version
+        integer function print_output_eq_HDF5(grid_eq,eq,met) result(ierr)
+            use num_vars, only: eq_style, max_deriv
+            use HDF5_ops, only: print_HDF5_arrs, &
+                &var_1D
+            use HELENA, only: R_H, Z_H, nchi
+            use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor
+            use grid_ops, only: trim_grid
+            
+            character(*), parameter :: rout_name = 'print_output_eq_HDF5'
+            
+            ! input / output
+            type(grid_type) :: grid_eq                                          ! equilibrium grid variables
+            type(eq_type) :: eq                                                 ! equilibrium variables
+            type(met_type) :: met                                               ! metric variables
+            
+            ! local variables
+            type(var_1D), pointer :: eq_1D(:)                                   ! 1D equivalent of eq. variables
+            type(var_1D), pointer :: eq_1D_loc                                  ! local element in eq_1D
+            character(len=max_str_ln) :: err_msg                                ! error message
+            type(grid_type) :: grid_trim                                        ! trimmed grid
+            integer :: i_min, i_max                                             ! min. and max. index of variables
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! user output
+            call writo('Preparing variables for writing')
+            call lvl_ud(1)
+            
+            ! trim grid
+            ierr = trim_grid(grid_eq,grid_trim)
+            CHCKERR('')
+            
+            ! set i_min and i_max
+            i_min = 1
+            i_max = grid_trim%grp_n_r
+            
+            ! Set up the 1D equivalents  of the equilibrium variables, with size
+            ! depending on equilibrium style
+            !   1:  VMEC
+            !   2:  HELENA
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    allocate(eq_1D(22))
+                case (2)                                                        ! HELENA
+                    allocate(eq_1D(18))
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+            
+            ! Set up common variables
+            
+            ! 1. r_F
+            eq_1D_loc => eq_1D(1)
+            eq_1D_loc%var_name = 'r_F'
+            allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
+            allocate(eq_1D_loc%grp_i_min(1),eq_1D_loc%grp_i_max(1))
+            eq_1D_loc%tot_i_min = [1]
+            eq_1D_loc%tot_i_max = [grid_trim%n(3)]
+            eq_1D_loc%grp_i_min = [grid_trim%i_min]
+            eq_1D_loc%grp_i_max = [grid_trim%i_max]
+            allocate(eq_1D_loc%p(size(grid_trim%r_F)))
+            eq_1D_loc%p = grid_trim%r_F(i_min:i_max)
+            
+            ! 2. theta_F
+            eq_1D_loc => eq_1D(2)
+            eq_1D_loc%var_name = 'theta_F'
+            allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+            allocate(eq_1D_loc%grp_i_min(3),eq_1D_loc%grp_i_max(3))
+            eq_1D_loc%tot_i_min = [1,1,1]
+            eq_1D_loc%tot_i_max = grid_trim%n
+            eq_1D_loc%grp_i_min = [1,1,grid_trim%i_min]
+            eq_1D_loc%grp_i_max = &
+                &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
+            allocate(eq_1D_loc%p(size(grid_trim%theta_F(:,:,i_min:i_max))))
+            eq_1D_loc%p = reshape(grid_trim%theta_F(:,:,i_min:i_max),&
+                &[size(grid_trim%theta_F(:,:,i_min:i_max))])
+            
+            ! 3. zeta_F
+            eq_1D_loc => eq_1D(3)
+            eq_1D_loc%var_name = 'zeta_F'
+            allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+            allocate(eq_1D_loc%grp_i_min(3),eq_1D_loc%grp_i_max(3))
+            eq_1D_loc%tot_i_min = [1,1,1]
+            eq_1D_loc%tot_i_max = grid_trim%n
+            eq_1D_loc%grp_i_min = [1,1,grid_trim%i_min]
+            eq_1D_loc%grp_i_max = &
+                &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
+            allocate(eq_1D_loc%p(size(grid_trim%zeta_F(:,:,i_min:i_max))))
+            eq_1D_loc%p = reshape(grid_trim%zeta_F(:,:,i_min:i_max),&
+                &[size(grid_trim%zeta_F(:,:,i_min:i_max))])
+            
+            ! 4. pres_FD
+            eq_1D_loc => eq_1D(4)
+            eq_1D_loc%var_name = 'pres_FD'
+            allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
+            allocate(eq_1D_loc%grp_i_min(2),eq_1D_loc%grp_i_max(2))
+            eq_1D_loc%tot_i_min = [1,0]
+            eq_1D_loc%tot_i_max = [grid_trim%n(3),max_deriv]
+            eq_1D_loc%grp_i_min = [grid_trim%i_min,0]
+            eq_1D_loc%grp_i_max = [grid_trim%i_max,max_deriv]
+            allocate(eq_1D_loc%p(size(eq%pres_FD(i_min:i_max,:))))
+            eq_1D_loc%p = reshape(eq%pres_FD(i_min:i_max,:),&
+                &[size(eq%pres_FD(i_min:i_max,:))])
+            
+            ! 5. q_saf_FD
+            eq_1D_loc => eq_1D(5)
+            eq_1D_loc%var_name = 'q_saf_FD'
+            allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
+            allocate(eq_1D_loc%grp_i_min(2),eq_1D_loc%grp_i_max(2))
+            eq_1D_loc%tot_i_min = [1,0]
+            eq_1D_loc%tot_i_max = [grid_trim%n(3),max_deriv]
+            eq_1D_loc%grp_i_min = [grid_trim%i_min,0]
+            eq_1D_loc%grp_i_max = [grid_trim%i_max,max_deriv]
+            allocate(eq_1D_loc%p(size(eq%q_saf_FD(i_min:i_max,:))))
+            eq_1D_loc%p = reshape(eq%q_saf_FD(i_min:i_max,:),&
+                &[size(eq%q_saf_FD(i_min:i_max,:))])
+            
+            ! 6. rot_t_FD
+            eq_1D_loc => eq_1D(6)
+            eq_1D_loc%var_name = 'rot_t_FD'
+            allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
+            allocate(eq_1D_loc%grp_i_min(2),eq_1D_loc%grp_i_max(2))
+            eq_1D_loc%tot_i_min = [1,0]
+            eq_1D_loc%tot_i_max = [grid_trim%n(3),max_deriv]
+            eq_1D_loc%grp_i_min = [grid_trim%i_min,0]
+            eq_1D_loc%grp_i_max = [grid_trim%i_max,max_deriv]
+            allocate(eq_1D_loc%p(size(eq%rot_t_FD(i_min:i_max,:))))
+            eq_1D_loc%p = reshape(eq%rot_t_FD(i_min:i_max,:),&
+                &[size(eq%rot_t_FD(i_min:i_max,:))])
+            
+            ! 7. flux_p_FD
+            eq_1D_loc => eq_1D(7)
+            eq_1D_loc%var_name = 'flux_p_FD'
+            allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
+            allocate(eq_1D_loc%grp_i_min(2),eq_1D_loc%grp_i_max(2))
+            eq_1D_loc%tot_i_min = [1,0]
+            eq_1D_loc%tot_i_max = [grid_trim%n(3),max_deriv]
+            eq_1D_loc%grp_i_min = [grid_trim%i_min,0]
+            eq_1D_loc%grp_i_max = [grid_trim%i_max,max_deriv]
+            allocate(eq_1D_loc%p(size(eq%flux_p_FD(i_min:i_max,:))))
+            eq_1D_loc%p = reshape(eq%flux_p_FD(i_min:i_max,:),&
+                &[size(eq%flux_p_FD(i_min:i_max,:))])
+            
+            ! 8. flux_t_FD
+            eq_1D_loc => eq_1D(8)
+            eq_1D_loc%var_name = 'flux_t_FD'
+            allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
+            allocate(eq_1D_loc%grp_i_min(2),eq_1D_loc%grp_i_max(2))
+            eq_1D_loc%tot_i_min = [1,0]
+            eq_1D_loc%tot_i_max = [grid_trim%n(3),max_deriv]
+            eq_1D_loc%grp_i_min = [grid_trim%i_min,0]
+            eq_1D_loc%grp_i_max = [grid_trim%i_max,max_deriv]
+            allocate(eq_1D_loc%p(size(eq%flux_t_FD(i_min:i_max,:))))
+            eq_1D_loc%p = reshape(eq%flux_t_FD(i_min:i_max,:),&
+                &[size(eq%flux_t_FD(i_min:i_max,:))])
+            
+            ! 9. rho
+            eq_1D_loc => eq_1D(9)
+            eq_1D_loc%var_name = 'rho'
+            allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
+            allocate(eq_1D_loc%grp_i_min(1),eq_1D_loc%grp_i_max(1))
+            eq_1D_loc%tot_i_min = 1
+            eq_1D_loc%tot_i_max = grid_trim%n(3)
+            eq_1D_loc%grp_i_min = grid_trim%i_min
+            eq_1D_loc%grp_i_max = grid_trim%i_max
+            allocate(eq_1D_loc%p(size(eq%rho(i_min:i_max))))
+            eq_1D_loc%p = eq%rho(i_min:i_max)
+            
+            ! 10. S
+            eq_1D_loc => eq_1D(10)
+            eq_1D_loc%var_name = 'S'
+            allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+            allocate(eq_1D_loc%grp_i_min(3),eq_1D_loc%grp_i_max(3))
+            eq_1D_loc%tot_i_min = [1,1,1]
+            eq_1D_loc%tot_i_max = grid_trim%n
+            eq_1D_loc%grp_i_min = [1,1,grid_trim%i_min]
+            eq_1D_loc%grp_i_max = &
+                &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
+            allocate(eq_1D_loc%p(size(eq%S(:,:,i_min:i_max))))
+            eq_1D_loc%p = reshape(eq%S(:,:,i_min:i_max),&
+                &[size(eq%S(:,:,i_min:i_max))])
+            
+            ! 11. kappa_n
+            eq_1D_loc => eq_1D(11)
+            eq_1D_loc%var_name = 'kappa_n'
+            allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+            allocate(eq_1D_loc%grp_i_min(3),eq_1D_loc%grp_i_max(3))
+            eq_1D_loc%tot_i_min = [1,1,1]
+            eq_1D_loc%tot_i_max = grid_trim%n
+            eq_1D_loc%grp_i_min = [1,1,grid_trim%i_min]
+            eq_1D_loc%grp_i_max = &
+                &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
+            allocate(eq_1D_loc%p(size(eq%kappa_n(:,:,i_min:i_max))))
+            eq_1D_loc%p = reshape(eq%kappa_n(:,:,i_min:i_max),&
+                &[size(eq%kappa_n(:,:,i_min:i_max))])
+            
+            ! 12. kappa_g
+            eq_1D_loc => eq_1D(12)
+            eq_1D_loc%var_name = 'kappa_g'
+            allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+            allocate(eq_1D_loc%grp_i_min(3),eq_1D_loc%grp_i_max(3))
+            eq_1D_loc%tot_i_min = [1,1,1]
+            eq_1D_loc%tot_i_max = grid_trim%n
+            eq_1D_loc%grp_i_min = [1,1,grid_trim%i_min]
+            eq_1D_loc%grp_i_max = &
+                &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
+            allocate(eq_1D_loc%p(size(eq%kappa_g(:,:,i_min:i_max))))
+            eq_1D_loc%p = reshape(eq%kappa_g(:,:,i_min:i_max),&
+                &[size(eq%kappa_g(:,:,i_min:i_max))])
+            
+            ! 13. sigma
+            eq_1D_loc => eq_1D(13)
+            eq_1D_loc%var_name = 'sigma'
+            allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+            allocate(eq_1D_loc%grp_i_min(3),eq_1D_loc%grp_i_max(3))
+            eq_1D_loc%tot_i_min = [1,1,1]
+            eq_1D_loc%tot_i_max = grid_trim%n
+            eq_1D_loc%grp_i_min = [1,1,grid_trim%i_min]
+            eq_1D_loc%grp_i_max = &
+                &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
+            allocate(eq_1D_loc%p(size(eq%sigma(:,:,i_min:i_max))))
+            eq_1D_loc%p = reshape(eq%sigma(:,:,i_min:i_max),&
+                &[size(eq%sigma(:,:,i_min:i_max))])
+            
+            ! 14. g_FD
+            eq_1D_loc => eq_1D(14)
+            eq_1D_loc%var_name = 'g_FD'
+            allocate(eq_1D_loc%tot_i_min(7),eq_1D_loc%tot_i_max(7))
+            allocate(eq_1D_loc%grp_i_min(7),eq_1D_loc%grp_i_max(7))
+            eq_1D_loc%tot_i_min = [1,1,1,1,0,0,0]
+            eq_1D_loc%tot_i_max = [grid_trim%n,6,max_deriv,max_deriv,max_deriv]
+            eq_1D_loc%grp_i_min = [1,1,grid_trim%i_min,1,0,0,0]
+            eq_1D_loc%grp_i_max = [grid_trim%n(1),grid_trim%n(2),&
+                &grid_trim%i_max,6,max_deriv,max_deriv,max_deriv]
+            allocate(eq_1D_loc%p(size(met%g_FD(:,:,i_min:i_max,:,:,:,:))))
+            eq_1D_loc%p = reshape(met%g_FD(:,:,i_min:i_max,:,:,:,:),&
+                &[size(met%g_FD(:,:,i_min:i_max,:,:,:,:))])
+            
+            ! 15. h_FD
+            eq_1D_loc => eq_1D(15)
+            eq_1D_loc%var_name = 'h_FD'
+            allocate(eq_1D_loc%tot_i_min(7),eq_1D_loc%tot_i_max(7))
+            allocate(eq_1D_loc%grp_i_min(7),eq_1D_loc%grp_i_max(7))
+            eq_1D_loc%tot_i_min = [1,1,1,1,0,0,0]
+            eq_1D_loc%tot_i_max = [grid_trim%n,6,max_deriv,max_deriv,max_deriv]
+            eq_1D_loc%grp_i_min = [1,1,grid_trim%i_min,1,0,0,0]
+            eq_1D_loc%grp_i_max = [grid_trim%n(1),grid_trim%n(2),&
+                &grid_trim%i_max,6,max_deriv,max_deriv,max_deriv]
+            allocate(eq_1D_loc%p(size(met%h_FD(:,:,i_min:i_max,:,:,:,:))))
+            eq_1D_loc%p = reshape(met%h_FD(:,:,i_min:i_max,:,:,:,:),&
+                &[size(met%h_FD(:,:,i_min:i_max,:,:,:,:))])
+            
+            ! 16. jac_FD
+            eq_1D_loc => eq_1D(16)
+            eq_1D_loc%var_name = 'jac_FD'
+            allocate(eq_1D_loc%tot_i_min(6),eq_1D_loc%tot_i_max(6))
+            allocate(eq_1D_loc%grp_i_min(6),eq_1D_loc%grp_i_max(6))
+            eq_1D_loc%tot_i_min = [1,1,1,0,0,0]
+            eq_1D_loc%tot_i_max = [grid_trim%n,max_deriv,max_deriv,max_deriv]
+            eq_1D_loc%grp_i_min = [1,1,grid_trim%i_min,0,0,0]
+            eq_1D_loc%grp_i_max = [grid_trim%n(1),grid_trim%n(2),&
+                &grid_trim%i_max,max_deriv,max_deriv,max_deriv]
+            allocate(eq_1D_loc%p(size(met%jac_FD(:,:,i_min:i_max,:,:,:))))
+            eq_1D_loc%p = reshape(met%jac_FD(:,:,i_min:i_max,:,:,:),&
+                &[size(met%jac_FD(:,:,i_min:i_max,:,:,:))])
+            
+            ! Set up particular variables, depending on equilibrium style
+            !   1:  VMEC
+            !   2:  HELENA
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ! 17. R_V_c
+                    eq_1D_loc => eq_1D(17)
+                    eq_1D_loc%var_name = 'R_V_c'
+                    allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+                    allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+                    eq_1D_loc%tot_i_min = [0,-ntor,1,0]
+                    eq_1D_loc%tot_i_max = [mpol-1,ntor,grid_trim%n(3),max_deriv]
+                    eq_1D_loc%grp_i_min = [0,-ntor,grid_trim%i_min,0]
+                    eq_1D_loc%grp_i_max = &
+                        &[mpol-1,ntor,grid_trim%i_max,max_deriv]
+                    allocate(eq_1D_loc%p(size(R_V_c(:,:,i_min:i_max,:))))
+                    eq_1D_loc%p = reshape(R_V_c(:,:,i_min:i_max,:),&
+                        &[size(R_V_c(:,:,i_min:i_max,:))])
+                    
+                    ! 18. R_V_s
+                    eq_1D_loc => eq_1D(18)
+                    eq_1D_loc%var_name = 'R_V_s'
+                    allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+                    allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+                    eq_1D_loc%tot_i_min = [0,-ntor,1,0]
+                    eq_1D_loc%tot_i_max = [mpol-1,ntor,grid_trim%n(3),max_deriv]
+                    eq_1D_loc%grp_i_min = [0,-ntor,grid_trim%i_min,0]
+                    eq_1D_loc%grp_i_max = &
+                        &[mpol-1,ntor,grid_trim%i_max,max_deriv]
+                    allocate(eq_1D_loc%p(size(R_V_s(:,:,i_min:i_max,:))))
+                    eq_1D_loc%p = reshape(R_V_s(:,:,i_min:i_max,:),&
+                        &[size(R_V_s(:,:,i_min:i_max,:))])
+                    
+                    ! 19. Z_V_c
+                    eq_1D_loc => eq_1D(19)
+                    eq_1D_loc%var_name = 'Z_V_c'
+                    allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+                    allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+                    eq_1D_loc%tot_i_min = [0,-ntor,1,0]
+                    eq_1D_loc%tot_i_max = [mpol-1,ntor,grid_trim%n(3),max_deriv]
+                    eq_1D_loc%grp_i_min = [0,-ntor,grid_trim%i_min,0]
+                    eq_1D_loc%grp_i_max = &
+                        &[mpol-1,ntor,grid_trim%i_max,max_deriv]
+                    allocate(eq_1D_loc%p(size(Z_V_c(:,:,i_min:i_max,:))))
+                    eq_1D_loc%p = reshape(Z_V_c(:,:,i_min:i_max,:),&
+                        &[size(Z_V_c(:,:,i_min:i_max,:))])
+                    
+                    ! 20. Z_V_s
+                    eq_1D_loc => eq_1D(20)
+                    eq_1D_loc%var_name = 'Z_V_s'
+                    allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+                    allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+                    eq_1D_loc%tot_i_min = [0,-ntor,1,0]
+                    eq_1D_loc%tot_i_max = [mpol-1,ntor,grid_trim%n(3),max_deriv]
+                    eq_1D_loc%grp_i_min = [0,-ntor,grid_trim%i_min,0]
+                    eq_1D_loc%grp_i_max = &
+                        &[mpol-1,ntor,grid_trim%i_max,max_deriv]
+                    allocate(eq_1D_loc%p(size(Z_V_s(:,:,i_min:i_max,:))))
+                    eq_1D_loc%p = reshape(Z_V_s(:,:,i_min:i_max,:),&
+                        &[size(Z_V_s(:,:,i_min:i_max,:))])
+                    
+                    ! 21. L_V_c
+                    eq_1D_loc => eq_1D(21)
+                    eq_1D_loc%var_name = 'L_V_c'
+                    allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+                    allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+                    eq_1D_loc%tot_i_min = [0,-ntor,1,0]
+                    eq_1D_loc%tot_i_max = [mpol-1,ntor,grid_trim%n(3),max_deriv]
+                    eq_1D_loc%grp_i_min = [0,-ntor,grid_trim%i_min,0]
+                    eq_1D_loc%grp_i_max = &
+                        &[mpol-1,ntor,grid_trim%i_max,max_deriv]
+                    allocate(eq_1D_loc%p(size(L_V_c(:,:,i_min:i_max,:))))
+                    eq_1D_loc%p = reshape(L_V_c(:,:,i_min:i_max,:),&
+                        &[size(L_V_c(:,:,i_min:i_max,:))])
+                    
+                    ! 22. L_V_s
+                    eq_1D_loc => eq_1D(22)
+                    eq_1D_loc%var_name = 'L_V_s'
+                    allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+                    allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+                    eq_1D_loc%tot_i_min = [0,-ntor,1,0]
+                    eq_1D_loc%tot_i_max = [mpol-1,ntor,grid_trim%n(3),max_deriv]
+                    eq_1D_loc%grp_i_min = [0,-ntor,grid_trim%i_min,0]
+                    eq_1D_loc%grp_i_max = &
+                        &[mpol-1,ntor,grid_trim%i_max,max_deriv]
+                    allocate(eq_1D_loc%p(size(L_V_s(:,:,i_min:i_max,:))))
+                    eq_1D_loc%p = reshape(L_V_s(:,:,i_min:i_max,:),&
+                        &[size(L_V_s(:,:,i_min:i_max,:))])
+                case (2)                                                        ! HELENA
+                    ! 17. R_H
+                    eq_1D_loc => eq_1D(17)
+                    eq_1D_loc%var_name = 'R_H'
+                    allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
+                    allocate(eq_1D_loc%grp_i_min(2),eq_1D_loc%grp_i_max(2))
+                    eq_1D_loc%tot_i_min = [1,1]
+                    eq_1D_loc%tot_i_max = [nchi,grid_trim%n(3)]
+                    eq_1D_loc%grp_i_min = [1,grid_trim%i_min]
+                    eq_1D_loc%grp_i_max = [nchi,grid_trim%i_max]
+                    allocate(eq_1D_loc%p(size(R_H(:,i_min:i_max))))
+                    eq_1D_loc%p = reshape(R_H(:,i_min:i_max),&
+                        &[size(R_H(:,i_min:i_max))])
+                    
+                    ! 18. Z_H
+                    eq_1D_loc => eq_1D(18)
+                    eq_1D_loc%var_name = 'Z_H'
+                    allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
+                    allocate(eq_1D_loc%grp_i_min(2),eq_1D_loc%grp_i_max(2))
+                    eq_1D_loc%tot_i_min = [1,1]
+                    eq_1D_loc%tot_i_max = [nchi,grid_trim%n(3)]
+                    eq_1D_loc%grp_i_min = [1,grid_trim%i_min]
+                    eq_1D_loc%grp_i_max = [nchi,grid_trim%i_max]
+                    allocate(eq_1D_loc%p(size(Z_H(:,i_min:i_max))))
+                    eq_1D_loc%p = reshape(Z_H(:,i_min:i_max),&
+                        &[size(Z_H(:,i_min:i_max))])
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+            
+            call lvl_ud(-1)
+            
+            ! user output
+            call writo('Writing using HDF5')
+            call lvl_ud(1)
+            
+            ! write
+            ierr = print_HDF5_arrs(eq_1D)
+            CHCKERR('')
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Writing complete')
+        end function print_output_eq_HDF5
+    end function print_output_eq
 end module eq_ops

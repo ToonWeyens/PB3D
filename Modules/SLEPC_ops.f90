@@ -1,5 +1,9 @@
 !------------------------------------------------------------------------------!
-!   Operations that use SLEPC (and PETSC) routines
+!   Operations that use SLEPC (and PETSC) routines                             !
+!------------------------------------------------------------------------------!
+! References:                                                                  !
+! [1]   http://slepc.upv.es/documentation/current/docs/manualpages/EPS/        !
+!       EPSComputeRelativeError.html                                           !
 !------------------------------------------------------------------------------!
 module SLEPC_ops
 #include <PB3D_macros.h>
@@ -103,7 +107,7 @@ contains
     ! processors
     integer function start_SLEPC(n_r_X) result(ierr)
         use num_vars, only: MPI_Comm_groups, grp_n_procs
-        use files, only: opt_args
+        use files_ops, only: opt_args
         
         character(*), parameter :: rout_name = 'start_SLEPC'
         
@@ -906,7 +910,9 @@ contains
     ! stores the results
     integer function store_results(grid_X,X,solver,max_n_EV) result(ierr)
         use eq_vars, only: T_0
-        use num_vars, only: use_normalization, grp_n_procs, grp_rank, EV_BC
+        use num_vars, only: use_normalization, grp_n_procs, grp_rank, EV_BC, &
+            &output_name, alpha_job_nr, rich_lvl_nr, n_alpha, max_it_r
+        use files_utilities, only: nextunit
         
         character(*), parameter :: rout_name = 'store_results'
         
@@ -923,10 +929,16 @@ contains
         PetscInt :: one = 1                                                     ! one
         PetscReal, parameter :: infinity = 1.E40_dp                             ! beyond this value, modes are not saved
         PetscInt :: grp_n_r_X_loc                                               ! local copy of grp_n_r of X grid
-        PetscScalar :: EV_loc                                                   ! local copy of EV
         PetscReal :: tol_complex = 1.E-5_dp                                     ! tolerance for an EV to be considered complex
         PetscReal :: tol_EV_BC = 1.E-3_dp                                       ! tolerance for an EV to be considered due to the BC
-        PetscReal :: EV_BC_loc                                                  ! local copy of EV_BC
+        PetscScalar :: X_val_loc                                                ! local X val
+        character(len=max_str_ln) :: full_output_name                           ! full name
+        character(len=max_str_ln) :: format_val                                 ! format
+        character(len=max_str_ln) :: format_head                                ! header
+        character(len=max_str_ln) :: EV_err_str                                 ! String with information about EV error
+        integer :: output_EV_i                                                  ! file number
+        integer :: n_digits                                                     ! nr. of digits for the integer number
+        integer :: n_err(3)                                                     ! how many errors there were
         
         ! initialize ierr
         ierr = 0
@@ -945,18 +957,6 @@ contains
             &grid_X%n(3)*X%n_mod,PETSC_NULL_SCALAR,sol_vec,ierr)
         CHCKERR('Failed to create MPI vector with arrays')
         
-        ! set local EV_BC and user output
-        if (use_normalization) then
-            call writo('inverse normalization factor:')
-            call lvl_ud(1)
-            call writo('omega_0 = 1/T_0^2 = '//trim(r2strt(1/(T_0**2)))//&
-                &' s^-2')
-            EV_BC_loc = EV_BC/(T_0**2)
-            call lvl_ud(-1)
-        else
-            EV_BC_loc = EV_BC
-        end if
-        
         ! allocate vec
         if (allocated(X%vec)) deallocate(X%vec)
         allocate(X%vec(1:X%n_mod,1:grp_n_r_X_loc,1:max_n_EV))
@@ -971,6 +971,42 @@ contains
         id = 1
         id_tot = 1
         
+        ! set up EV error string and format string:
+        !   1: index of EV
+        !   2: Real part
+        !   3: Imaginary part
+        !   4: relative error ||Ax - EV Bx||_2/||EV x||_2 [1]
+        n_err = 0
+        n_digits = ceiling(log10(1._dp*max_n_EV))
+        EV_err_str = ''
+        format_val = '(I'//trim(i2str(n_digits))//'," ",ES23.16," ",ES23.16,&
+            &" ",ES23.16)'
+        format_head = '(A'//trim(i2str(n_digits+3))//'," ",A23," ",A23," ",A23)'
+        
+        ! open output file for the log
+        full_output_name = trim(output_name)//'_EV'
+        if (n_alpha.gt.0) full_output_name = &
+            &trim(full_output_name)//'_A'//trim(i2str(alpha_job_nr))            ! append alpha job number
+        if (max_it_r.gt.1) full_output_name = &
+            &trim(full_output_name)//'_R'//trim(i2str(rich_lvl_nr))             ! append Richardson level
+        full_output_name = trim(full_output_name)//'.txt'
+        open(unit=nextunit(output_EV_i),file=full_output_name,iostat=ierr)
+        CHCKERR('Cannot open EV output file')
+        
+        ! output to file
+        if (use_normalization) then
+            write(output_EV_i,'(A)') '# Eigenvalues normalized to the squared &
+                & Alfven frequency omega_A^2 = '
+            write(output_EV_i,'(A)') '#     ('//trim(r2str(1._dp/T_0))//&
+                &' Hz)^2 = '//trim(r2str(1._dp/T_0**2))//' Hz^2'
+        else
+            write(output_EV_i,'(A)') '# Eigenvalues'
+        end if
+        write(output_EV_i,format_head) '#  I                                ', &
+            &'real part                                                     ', &
+            &'imaginary part                                                ', &
+            &'relative precision                                            '
+        
         ! store them
         do while (id.le.max_n_EV)
             ! get EV solution in vector X vec
@@ -982,42 +1018,46 @@ contains
             call EPSComputeRelativeError(solver,id_tot-1,error,ierr)            ! get error (starts at index 0)
             CHCKERR('EPSComputeRelativeError failed')
             
-            ! user output
-            call writo(trim(i2str(id))//'/'//trim(i2str(max_n_EV))//':')
-            call lvl_ud(1)
-            
-            ! go back to  physical values from normalization  by multiplying the
-            ! Eigenvalues by 1/T_0^2
-            if (use_normalization) then
-                EV_loc = X%val(id)
-                X%val(id) = X%val(id)/(T_0**2)
-            end if
-            
-            ! print output
-            call writo('eigenvalue: '//trim(r2strt(realpart(X%val(id))))//&
-                &' + '//trim(r2strt(imagpart(X%val(id))))//' i')
-            if (use_normalization) call writo('(normalized: '//&
-                &trim(r2strt(realpart(EV_loc)))//' + '//&
-                &trim(r2strt(imagpart(EV_loc)))//' i)')
-            call writo('with rel. error: '//trim(r2str(error)))
+            ! set up local X val
+            X_val_loc = X%val(id)
             
             ! tests
             if (abs(imagpart(X%val(id))/realpart(X%val(id))).gt.tol_complex) &
                 &then                                                           ! test for unphysical complex solution
-                call writo('WARNING: Unphysical complex Eigenvalue!')
+                EV_err_str = '# WARNING: Unphysical complex Eigenvalue!'
+                n_err(1) = n_err(1)+1
                 call remove_EV(id,max_n_EV)
-            else if (abs(realpart(X%val(id)-EV_BC_loc)/EV_BC_loc).lt.&
-                &tol_EV_BC) then                                                ! test for artificial EV due to BC
-                call writo('WARNING: Eigenvalue probably due to BC''s &
-                    &(artifically set to '//trim(r2strt(EV_BC))//')')
+            else if (abs(realpart(X%val(id)-EV_BC)/EV_BC).lt.tol_EV_BC) then    ! test for artificial EV due to BC
+                EV_err_str = '# WARNING: Eigenvalue probably due to BC''s &
+                    &(artifically set to '//trim(r2strt(EV_BC))//')'
+                n_err(2) = n_err(2)+1
                 call remove_EV(id,max_n_EV)
             else if (abs(X%val(id)).gt.infinity) then                           ! test for infinity
-                call writo('WARNING: The next Eigenvalues are larger than '//&
-                    &trim(r2strt(infinity))//' and are discarded')
+                EV_err_str = '# WARNING: The next Eigenvalues are larger &
+                    &than '//trim(r2strt(infinity))//' and are discarded'
+                n_err(3) = 1
                 call remove_EV(id,max_n_EV,remove_next=.true.)
                 exit
+            end if
+            
+            ! if error, comment the next line
+            if (EV_err_str.ne.'') then
+                write(output_EV_i,'(A)',advance='no') '# '
+            else
+                write(output_EV_i,'(A)',advance='no') '  '
+            end if
+            
+            ! output EV to file
+            write(output_EV_i,format_val) id,realpart(X_val_loc),&
+                &imagpart(X_val_loc),error
+            
+            ! if error, print explanation
+            if (EV_err_str.ne.'') write(output_EV_i,'(A)') trim(EV_err_str)
+            
+            ! reinitialize error string if error and increment counter if not
+            if (EV_err_str.ne.'') then
+                EV_err_str = ''
             else                                                                ! tests passed
-                ! increment id
                 id = id + 1
             end if
             
@@ -1032,8 +1072,6 @@ contains
             !call VecView(sol_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
             !CHCKERR('Cannot view vector')
             
-            call lvl_ud(-1)
-            
             ! reset vector
             call VecResetArray(sol_vec,ierr)
             CHCKERR('Failed to reset array')
@@ -1042,7 +1080,23 @@ contains
             id_tot = id_tot+1
         end do
         
-        !call writo('Summary:')
+        ! user output
+        call writo(trim(i2str(max_n_EV))//' Eigenvalues were written in the &
+            &file "'//trim(full_output_name)//'"')
+        if (sum(n_err).ne.0) then
+            call writo('there were some Eigenvalues that were removed:')
+            call lvl_ud(1)
+            
+            if (n_err(1).gt.0) call writo(trim(i2str(n_err(1)))//&
+                &' unphysical complex Eigenvalues')
+            if (n_err(2).gt.0) call writo(trim(i2str(n_err(2)))//&
+                &' Eigenvalues due to the boundary conditions')
+            if (n_err(3).gt.0) call writo('The final Eigenvalues became &
+                &infinite')
+            
+            call lvl_ud(-1)
+            call writo('(Override this behavior using "retain_all_sol")')
+        end if
         !call EPSPrintSolution(solver,PETSC_NULL_OBJECT,ierr)
         
         call VecDestroy(sol_vec,ierr)                                           ! destroy compatible vector
@@ -1071,15 +1125,6 @@ contains
             else
                 ! set up local remove_next
                 if (present(remove_next)) remove_next_loc = remove_next
-                
-                ! user output
-                call lvl_ud(1)
-                if (remove_next_loc) then
-                    call writo('All next solutions are removed')
-                else
-                    call writo('Current solution is removed')
-                end if
-                call writo('(Override using "retain_all_sol")')
                 
                 ! save old arrays
                 allocate(X_val_loc(max_id))
@@ -1114,8 +1159,6 @@ contains
                 
                 ! clean up
                 deallocate(X_val_loc,X_vec_loc)
-                
-                call lvl_ud(-1)
             end if
         end subroutine remove_EV
     end function store_results

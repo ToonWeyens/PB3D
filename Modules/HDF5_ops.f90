@@ -22,8 +22,9 @@ module HDF5_ops
     private
     public init_HDF5, print_HDF5_grid, print_HDF5_geom, print_HDF5_top, &
         &print_HDF5_att, print_HDF5_3D_data_item, open_HDF5_file, &
-        &close_HDF5_file, &
-        &XML_str_type, HDF5_file_type, add_HDF5_item, reset_HDF5_item
+        &close_HDF5_file, print_HDF5_arrs, reset_HDF5_item, add_HDF5_item, &
+        &create_output_HDF5, &
+        &XML_str_type, HDF5_file_type, var_1D
     
     ! global variables
     integer, parameter :: max_xml_ln = 300                                      ! max. length of xml string
@@ -37,12 +38,20 @@ module HDF5_ops
         character(len=max_xml_ln), allocatable :: xml_str(:)                    ! XML string
     end type XML_str_type
     
-    ! HDF5 data tyipe
+    ! HDF5 data tipe
     type :: HDF5_file_type                                                      ! type containing the information about HDF5 files
         integer :: HDF5_i                                                       ! HDF5 file handle
         integer :: XDMF_i                                                       ! XDMF file handle
         character(len=max_str_ln) :: name                                       ! name of files (without extensions ".h5" and ".xmf")
     end type HDF5_file_type
+    
+    ! 1D equivalent of multidimensional variables
+    type var_1D
+        real(dp), allocatable :: p(:)                                           ! 1D equivalent of data of variable
+        integer, allocatable :: tot_i_min(:), tot_i_max(:)                      ! total min. and max. of indices of variable
+        integer, allocatable :: grp_i_min(:), grp_i_max(:)                      ! group min. and max. of indices of variable
+        character(len=max_str_ln) :: var_name                                   ! name of variable
+    end type var_1D
     
     ! XDMF possibilities
     character(len=max_str_ln) :: XDMF_num_types(2)                              ! possible XDMF number types
@@ -98,7 +107,7 @@ contains
         &ind_plot) result(ierr)
         use num_vars, only: MPI_Comm_groups, grp_rank
         use MPI
-        use files, only: nextunit
+        use files_utilities, only: nextunit
         
         character(*), parameter :: rout_name = 'open_HDF5_file'
         
@@ -118,6 +127,8 @@ contains
         ! initialize ierr
         ierr = 0
         
+        write(*,*) '!!! CHECK FOR HDF5 VERSION !!!'
+        
         ! set up local ind_plot
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
@@ -129,7 +140,7 @@ contains
         end if
         
         ! set up full file name
-        full_file_name = data_dir//'/'//trim(file_name)//'.h5'
+        full_file_name = data_dir//'/'//trim(file_name)
         
         ! initialize FORTRAN predefined datatypes
         call H5open_f(ierr) 
@@ -142,8 +153,8 @@ contains
         CHCKERR('Failed to set file access property')
         
         ! create the file collectively.
-        call H5Fcreate_f(trim(full_file_name),H5F_ACC_TRUNC_F,HDF5_i,ierr,&
-            &access_prp=plist_id)
+        call H5Fcreate_f(trim(full_file_name)//'.h5',H5F_ACC_TRUNC_F,HDF5_i,&
+            &ierr,access_prp=plist_id)
         CHCKERR('Failed to create file')
         call H5Pclose_f(plist_id,ierr)
         CHCKERR('Failed to close property list')
@@ -155,15 +166,14 @@ contains
         ! only group master if parallel plot or current rank if individual plot
         if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
             ! open accompanying xmf file
-            full_file_name = data_dir//'/'//trim(file_name)//'.xmf'
-            open(unit=nextunit(file_info%XDMF_i),file=full_file_name,&
-                &iostat=ierr)
+            open(unit=nextunit(file_info%XDMF_i),&
+                &file=trim(full_file_name)//'.xmf',iostat=ierr)
             CHCKERR('Failed to open xmf file')
             
             ! user output
-            call writo('HDF5 file "'//trim(full_file_name)//'" created',&
+            call writo('HDF5 file "'//trim(full_file_name)//'.h5" created',&
                 &persistent=.true.)
-            call writo('XDMF file "'//trim(full_file_name)//'" created',&
+            call writo('XDMF file "'//trim(full_file_name)//'.xmf" created',&
                 &persistent=.true.)
             
             ! write header if group master
@@ -205,7 +215,7 @@ contains
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! set full file name and HDF5_i (converting integers)
-        full_file_name = data_dir//'/'//trim(file_info%name)//'.h5'
+        full_file_name = data_dir//'/'//trim(file_info%name)
         HDF5_i = file_info%HDF5_i
         
         ! close the HDF5 file
@@ -223,17 +233,14 @@ contains
             write(file_info%XDMF_i,xmf_fmt) '</Domain>'
             write(file_info%XDMF_i,xmf_fmt) '</Xdmf>'
             
-            ! set full file name
-            full_file_name = data_dir//'/'//trim(file_info%name)//'.xmf'
-            
             ! close accompanying xmf file
             close(file_info%XDMF_i,IOSTAT=ierr)
             CHCKERR('Failed to close xmf file')
             
             ! user output
-            call writo('HDF5 file "'//trim(full_file_name)//'" closed',&
+            call writo('HDF5 file "'//trim(full_file_name)//'.h5" closed',&
                 &persistent=.true.)
-            call writo('XDMF file "'//trim(full_file_name)//'" closed',&
+            call writo('XDMF file "'//trim(full_file_name)//'.xmf" closed',&
                 &persistent=.true.)
         end if
     end function close_HDF5_file
@@ -377,19 +384,24 @@ contains
         integer(HID_T) :: memspace                                              ! Dataspace identifier in memory
         integer(HID_T) :: plist_id                                              ! property list identifier 
         integer(HID_T) :: dset_id                                               ! dataset identifier 
-        integer(HSSIZE_T) :: mem_offset(3)                                      ! offset in memory
+        !!!integer(HSSIZE_T) :: mem_offset(3)                                      ! offset in memory
+        integer(HSIZE_T) :: mem_offset(3)                                       ! offset in memory
         integer(HSIZE_T) :: mem_block(3)                                        ! block size in memory
         integer(HSIZE_T) :: mem_stride(3)                                       ! stride in memory
         integer(HSIZE_T) :: mem_count(3)                                        ! nr. of repetitions of block in memory
         character(len=max_str_ln) :: dim_str                                    ! string with dimensions
         character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        integer(HID_T) :: HDF5_kind_64                                          ! HDF5 type corresponding to dp
         
         ! initialize ierr
         ierr = 0
         
         ! set up local ind_plot
         if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! set HDF5 type corresponding to dp
+        HDF5_kind_64 = H5kind_to_type(dp,H5_REAL_KIND)
         
         ! set the group dimensions and offset
         ierr = check_for_parallel_3D(tot_dim,grp_dim_loc,grp_offset_loc,&
@@ -409,19 +421,19 @@ contains
         !call H5Pset_chunk_f(plist_id,size(dimsm),dimsm,ierr)
         !CHCKERR('Failed to set chunk property')                                 ! DOESN'T SEEM TO WORK WITH CHUNKED PROPERTY!!!
         
-        ! set initial fill value if provided
+        ! set initial fill value if provided and create data set
         if (present(init_val)) then
             call H5Pcreate_f(H5P_DATASET_CREATE_F,plist_id,ierr)
             err_msg = 'Failed to create property list'
             CHCKERR(err_msg)
-            call H5Pset_fill_value_f(plist_id,H5T_NATIVE_DOUBLE,init_val,ierr) 
+            call H5Pset_fill_value_f(plist_id,HDF5_kind_64,init_val,ierr) 
             err_msg = 'Failed to set default fill value property'
             CHCKERR(err_msg)
-            call H5Dcreate_f(file_info%HDF5_i,trim(var_name),H5T_NATIVE_DOUBLE,&
+            call H5Dcreate_f(file_info%HDF5_i,trim(var_name),HDF5_kind_64,&
                 &filespace,dset_id,ierr,plist_id)
             CHCKERR('Failed to create file data set')
         else
-            call H5Dcreate_f(file_info%HDF5_i,trim(var_name),H5T_NATIVE_DOUBLE,&
+            call H5Dcreate_f(file_info%HDF5_i,trim(var_name),HDF5_kind_64,&
                 &filespace,dset_id,ierr)
             CHCKERR('Failed to create file data set')
         end if
@@ -437,9 +449,9 @@ contains
         mem_offset = grp_offset_loc
         call H5Dget_space_f(dset_id,filespace,ierr)
         CHCKERR('Failed to get file space')
-        call H5Sselect_hyperslab_f (filespace,H5S_SELECT_SET_F,mem_offset,&
+        call H5Sselect_hyperslab_f(filespace,H5S_SELECT_SET_F,mem_offset,&
             &mem_count,ierr,mem_stride,mem_block)
-        CHCKERR('Failed to select chunk hyperslab')
+        CHCKERR('Failed to select hyperslab')
         
         ! create property list for collective dataset write
         call H5Pcreate_f(H5P_DATASET_XFER_F,plist_id,ierr) 
@@ -448,12 +460,12 @@ contains
         CHCKERR('Failed to set parallel property')
         
         ! write the dataset collectively. 
-        dimsf = tot_dim
-        call H5Dwrite_f(dset_id,H5T_NATIVE_DOUBLE,var,dimsf,ierr,&
+        !!!dimsf = tot_dim
+        call H5Dwrite_f(dset_id,HDF5_kind_64,var,dimsf,ierr,&
             &file_space_id=filespace,mem_space_id=memspace,xfer_prp=plist_id)
         CHCKERR('Failed to write data set')
         call H5Pclose_f(plist_id,ierr)
-        CHCKERR('Failed to create property list')
+        CHCKERR('Failed to close property list')
         
         ! close dataspaces.
         call H5Sclose_f(filespace,ierr)
@@ -880,4 +892,285 @@ contains
             end if
         end if
     end function print_HDF5_grid
+    
+    ! creates an HDF5 output file
+    integer function create_output_HDF5() result(ierr)
+        use num_vars, only: grp_rank, output_name, alpha_job_nr, n_alpha
+        
+        character(*), parameter :: rout_name = 'create_output_HDF5'
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer(HID_T) :: HDF5_i                                                ! file identifier 
+        character(len=max_str_ln) :: full_output_name                           ! full name
+        
+        ! initialize ierr
+        ierr = 0
+        
+        write(*,*) '!!! CHECK FOR HDF5 VERSION !!!'
+        
+        ! set full output name
+        full_output_name = trim(output_name)
+        if (n_alpha.gt.0) full_output_name = &
+            &trim(full_output_name)//'_A'//trim(i2str(alpha_job_nr))            ! append alpha job number
+        full_output_name = trim(full_output_name)//'.h5'
+        
+        ! only for group master
+        if (grp_rank.eq.0) then
+            ! initialize FORTRAN predefined datatypes
+            call H5open_f(ierr) 
+            CHCKERR('Failed to initialize HDF5')
+            
+            ! create the file by group master
+            call H5Fcreate_f(full_output_name,H5F_ACC_TRUNC_F,HDF5_i,&
+                &ierr)
+            CHCKERR('Failed to create file')
+            
+            ! close the HDF5 file
+            call H5Fclose_f(HDF5_i,ierr)
+            CHCKERR('failed to close HDF5 file')
+            
+            ! close FORTRAN interfaces and HDF5 library.
+            call H5Close_f(ierr)
+            err_msg = 'Failed to close FORTRAN HDF5 interface'
+            CHCKERR(err_msg)
+        end if
+        
+        ! user output
+        call writo('HDF5 output file '//trim(full_output_name)//' created')
+    end function create_output_HDF5
+    
+    ! Prints a series of arrays, in the form of an array of pointers, to an HDF5
+    ! file.
+    ! Note: See https://www.hdfgroup.org/HDF5/doc/UG/12_Dataspaces.html, 7.4.2.3
+    ! for an explanation of the selection of the dataspaces.
+    integer function print_HDF5_arrs(vars) result(ierr)
+        use num_vars, only: MPI_Comm_groups, grp_n_procs, output_name, &
+            &alpha_job_nr, n_alpha
+        use messages, only: lvl_ud
+        use MPI
+        
+        character(*), parameter :: rout_name = 'print_HDF5_arrs'
+        
+        ! input / output
+        type(var_1D), intent(in) :: vars(:)                                     ! variables to write
+        
+        ! local variables
+        integer :: id, jd                                                       ! counter
+        integer :: MPI_Comm                                                     ! MPI Communicator used
+        integer :: prev_dims                                                    ! total dimensions previous to divided dimension
+        integer :: next_dims                                                    ! total dimensions next to divided dimension
+        integer :: div_dim                                                      ! index of divided dimension
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=max_str_ln) :: full_output_name                           ! full name
+        integer(HID_T) :: plist_id                                              ! property list identifier 
+        integer(HID_T) :: HDF5_i                                                ! file identifier 
+        integer(HID_T) :: HDF5_kind_64                                          ! HDF5 type corresponding to dp
+        integer(HID_T) :: filespace                                             ! dataspace identifier in file 
+        integer(HID_T) :: memspace                                              ! Dataspace identifier in memory
+        integer(HID_T) :: dset_id                                               ! dataset identifier 
+        integer(HID_T) :: group_id                                              ! group identifier
+        integer(HSIZE_T) :: dimsf(1)                                            ! total dataset dimensions
+        integer(HSIZE_T) :: dimsm(1)                                            ! group dataset dimensions
+        integer(HSIZE_T) :: mem_block(1)                                        ! block size in memory
+        integer(HSIZE_T) :: file_block(1)                                       ! block size in file
+        integer(HSIZE_T) :: mem_stride(1)                                       ! stride in memory
+        integer(HSIZE_T) :: mem_count(1)                                        ! nr. of repetitions of block in memory
+        integer(HSIZE_T) :: mem_offset(1)                                       ! offset in memory
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Preparing...')
+        
+        ! set up full output name
+        full_output_name = trim(output_name)
+        if (n_alpha.gt.0) full_output_name = &
+            &trim(full_output_name)//'_A'//trim(i2str(alpha_job_nr))            ! append alpha job number
+        full_output_name = trim(full_output_name)//'.h5'
+        
+        ! set up MPI Communicator
+        if (grp_n_procs.eq.1) then
+            MPI_Comm = MPI_Comm_self                                            ! individual plot
+        else
+            MPI_Comm = MPI_Comm_groups                                          ! default group communicator
+        end if
+        
+        ! initialize FORTRAN predefined datatypes
+        call H5open_f(ierr) 
+        CHCKERR('Failed to initialize HDF5')
+        
+        ! setup file access property list with parallel I/O access if needed
+        call H5Pcreate_f(H5P_FILE_ACCESS_F,plist_id,ierr)
+        CHCKERR('Failed to create property list')
+        call H5Pset_fapl_mpio_f(plist_id,MPI_Comm,MPI_INFO_NULL,ierr)
+        CHCKERR('Failed to set file access property')
+        
+        ! open the file collectively
+        call H5Fopen_f(trim(full_output_name),H5F_ACC_RDWR_F,HDF5_i,ierr,&
+            &access_prp=plist_id)
+        CHCKERR('Failed to open file')
+        call H5Pclose_f(plist_id,ierr)
+        CHCKERR('Failed to close property list')
+        ! set HDF5 type corresponding to dp
+        HDF5_kind_64 = H5kind_to_type(dp,H5_REAL_KIND)
+        
+        ! user output
+        call writo('Writing variables...')
+        call lvl_ud(1)
+        
+        ! loop over all elements in vars
+        do id = 1,size(vars)
+            ! user output
+            call writo('Writing '//trim(vars(id)%var_name))
+            
+            ! create group
+            call H5gcreate_f(HDF5_i,trim(vars(id)%var_name),group_id,ierr)
+            CHCKERR('Failed to create group')
+            
+            ! calculate memory variables block, offset, count and stride
+            call calc_bocs
+            
+            ! create file and memory data space for the real dataset
+            dimsf = file_block                                                  ! file space has total dimensions
+            call H5Screate_simple_f(1,dimsf*next_dims,filespace,ierr)
+            CHCKERR('Failed to create file space')
+            dimsm = mem_block                                                   ! memory space has group dimensions
+            call H5Screate_simple_f(1,dimsm*next_dims,memspace,ierr)
+            CHCKERR('Failed to create memory space')
+            
+            ! create file data set in group
+            call H5Dcreate_f(group_id,'var',HDF5_kind_64,filespace,dset_id,&
+                &ierr)
+            CHCKERR('Failed to create file data set')
+            
+            ! get the data space identifier for the file data set
+            call H5Dget_space_f(dset_id,filespace,ierr)
+            CHCKERR('Failed to get file space')
+            
+            ! select first hyperslab in the file
+            call H5Sselect_hyperslab_f(filespace,H5S_SELECT_SET_F,&
+                &mem_offset,mem_count,ierr,mem_stride,mem_block)
+            CHCKERR('Failed to select hyperslab')
+            
+            ! iterate over all the next dimensions to sum the other hyperslabs
+            do jd = 2,next_dims
+                ! select hyperslab in the file.
+                call H5Sselect_hyperslab_f(filespace,H5S_SELECT_OR_F,&
+                    &mem_offset+(jd-1)*dimsf,mem_count,ierr,mem_stride,&
+                    &mem_block)
+                CHCKERR('Failed to select hyperslab')
+            end do
+            
+            ! create property list for collective dataset write
+            call H5Pcreate_f(H5P_DATASET_XFER_F,plist_id,ierr) 
+            CHCKERR('Failed to create property list')
+            call H5Pset_dxpl_mpio_f(plist_id,H5FD_MPIO_COLLECTIVE_F,ierr)
+            CHCKERR('Failed to set parallel property')
+            
+            ! write the dataset collectively. 
+            call H5Dwrite_f(dset_id,HDF5_kind_64,vars(id)%p,dimsf*next_dims,&
+                &ierr,file_space_id=filespace,mem_space_id=memspace,&
+                &xfer_prp=plist_id)
+            CHCKERR('Failed to write data set')
+            call H5Pclose_f(plist_id,ierr)
+            CHCKERR('Failed to close property list')
+            
+            ! close dataspaces.
+            call H5Sclose_f(filespace,ierr)
+            CHCKERR('Unable to close file space')
+            call H5Sclose_f(memspace,ierr)
+            CHCKERR('Unable to close memory space')
+            
+            ! close the dataset.
+            call H5Dclose_f(dset_id,ierr)
+            CHCKERR('Failed to close data set')
+            
+            ! close the group
+            call H5gclose_f(group_id,ierr)
+            CHCKERR('')
+        end do
+        
+        call lvl_ud(-1)
+        
+        ! close the HDF5 file
+        call H5Fclose_f(HDF5_i,ierr)
+        CHCKERR('failed to close HDF5 file')
+        
+        ! close FORTRAN interfaces and HDF5 library.
+        call H5Close_f(ierr)
+        err_msg = 'Failed to close FORTRAN HDF5 interface'
+        CHCKERR(err_msg)
+        
+        ! user output
+        call writo('Variables written in '//trim(full_output_name)//'...')
+    contains
+        ! Calculate the 1D memory block, offset, count and stride:
+        !   -  block corresponds  to the  group size  in the  divided dimension,
+        !   multiplied by the total sizes of the previous dimensions
+        !   - offset corresponds to i_min in the divided dimension multiplied by
+        !   the total sizes of the previous dimensions
+        !   - count is one
+        !   - stride is one
+        subroutine calc_bocs
+            ! local variables
+            integer :: kd                                                       ! counter
+            
+            ! intialize local variables
+            prev_dims = 1
+            next_dims = 1
+            div_dim = 0
+            
+            ! get divided dimension
+            if (grp_n_procs.gt.1) then
+                ! find divided dimension
+                do kd = 1,size(vars(id)%tot_i_min)
+                    if (vars(id)%grp_i_max(kd)-vars(id)%grp_i_min(kd) .lt. &
+                        &vars(id)%tot_i_max(kd)-vars(id)%tot_i_min(kd)) then    ! dimension is divided
+                        if (div_dim.le.0) then                                  ! first divided dimension
+                            div_dim = kd
+                        else                                                    ! already divided dimension
+                            ierr = 1
+                            err_msg = 'Only one divided dimension possible'
+                            CHCKERR(err_msg)
+                        end if
+                    end if
+                end do
+                
+                ! check if divided dimension has been found
+                if (div_dim.le.0) then
+                    ierr = 1
+                    err_msg = 'No divided dimension found'
+                    CHCKERR(err_msg)
+                end if
+            else                                                                ! equivalent with div_dim at last index
+                div_dim = size(vars(id)%tot_i_min)
+            end if
+                
+            ! set prev_dims
+            do kd = 1,div_dim-1
+                prev_dims = prev_dims*&
+                    &(vars(id)%tot_i_max(kd)-vars(id)%tot_i_min(kd)+1)
+            end do
+            
+            ! set next_dims
+            do kd = div_dim+1,size(vars(id)%tot_i_min)
+                next_dims = next_dims*&
+                    &(vars(id)%tot_i_max(kd)-vars(id)%tot_i_min(kd)+1)
+            end do
+            
+            ! set memory variables
+            mem_block = prev_dims*&
+                &(vars(id)%grp_i_max(div_dim)-vars(id)%grp_i_min(div_dim)+1)
+            mem_offset = prev_dims*&
+                &(vars(id)%grp_i_min(div_dim)-vars(id)%tot_i_min(div_dim))
+            mem_count = 1
+            mem_stride = 1
+            
+            ! set file variables
+            file_block = prev_dims*&
+                &(vars(id)%tot_i_max(div_dim)-vars(id)%tot_i_min(div_dim)+1)
+        end subroutine calc_bocs
+    end function print_HDF5_arrs
 end module HDF5_ops

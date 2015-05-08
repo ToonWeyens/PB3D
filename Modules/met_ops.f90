@@ -1,7 +1,7 @@
 !------------------------------------------------------------------------------!
 !   Operations that have to do with the metric elements                        !
 !------------------------------------------------------------------------------!
-module metric_ops 
+module met_ops 
 #include <PB3D_macros.h>
     use str_ops
     use output_ops
@@ -10,7 +10,7 @@ module metric_ops
     use utilities, only: check_deriv
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
-    use metric_vars, only: metric_type
+    use met_vars, only: met_type
     
     implicit none
     private
@@ -19,7 +19,7 @@ module metric_ops
         &calc_inv_met, calc_g_F, calc_jac_F, transf_deriv
 #if ldebug
     public test_T_EF, test_p, test_jac_F, test_g_V, test_B_F, test_D12h_H, &
-        &test_jac_V, &
+        &test_jac_V, test_Dg_E, &
         &debug_calc_inv_met_ind
 #endif
     
@@ -80,7 +80,7 @@ contains
         
         ! input / output
         type(eq_type), intent(in) :: eq                                         ! equilibrium
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:)
         
         ! initialize ierr
@@ -107,7 +107,7 @@ contains
         
         ! input / output
         type(eq_type), intent(in) :: eq                                         ! equilibrium
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:,:)
         
         ! local variables
@@ -130,7 +130,7 @@ contains
         character(*), parameter :: rout_name = 'calc_g_V_ind'
         
         ! input / output
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:)
         
         ! initialize ierr
@@ -147,7 +147,7 @@ contains
         character(*), parameter :: rout_name = 'calc_g_V_arr'
         
         ! input / output
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:,:)
         
         ! local variables
@@ -170,7 +170,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! grid
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:)
         
         ! local variables
@@ -268,7 +268,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! grid
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:,:)
         
         ! local variables
@@ -289,7 +289,7 @@ contains
         character(*), parameter :: rout_name = 'calc_g_F_ind'
         
         ! input / output
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:)
         
         ! initialize ierr
@@ -307,7 +307,7 @@ contains
         character(*), parameter :: rout_name = 'calc_g_F_arr'
         
         ! input / output
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:,:)
         
         ! local variables
@@ -453,7 +453,7 @@ contains
         
         ! input / output
         type(eq_type), intent(in) :: eq                                         ! equilibrium
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:)
         
         ! initialize ierr
@@ -471,7 +471,7 @@ contains
         
         ! input / output
         type(eq_type), intent(in) :: eq                                         ! equilibrium
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:,:)
         
         ! local variables
@@ -493,7 +493,7 @@ contains
         character(*), parameter :: rout_name = 'calc_jac_V_ind'
         
         ! input / output
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:)
         
         ! initialize ierr
@@ -515,7 +515,7 @@ contains
         character(*), parameter :: rout_name = 'calc_jac_V_arr'
         
         ! input / output
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:,:)
         
         ! local variables
@@ -539,7 +539,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:)
         
         ! local variables
@@ -617,7 +617,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:,:)
         
         ! local variables
@@ -639,7 +639,7 @@ contains
         character(*), parameter :: rout_name = 'calc_jac_F_ind'
         
         ! input / output
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:)
         
         ! initialize ierr
@@ -661,7 +661,7 @@ contains
         character(*), parameter :: rout_name = 'calc_jac_F_arr'
         
         ! input / output
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:,:)
         
         ! local variables
@@ -682,7 +682,7 @@ contains
         
         ! input / output
         type(eq_type), intent(in) :: eq                                         ! equilibrium
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:)
         
         ! check the derivatives requested
@@ -727,7 +727,7 @@ contains
         
         ! input / output
         type(eq_type), intent(in) :: eq                                         ! equilibrium
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:,:)
         
         ! local variables
@@ -750,7 +750,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:)
         
         ! local variables
@@ -758,7 +758,7 @@ contains
         real(dp), allocatable :: theta_s(:,:,:,:,:,:)                           ! theta_F and derivatives
         real(dp), allocatable :: zeta_s(:,:,:,:,:,:)                            ! - zeta_F and derivatives
         integer :: dims(3)                                                      ! dimensions
-        integer :: c1                                                           ! 2D coordinate in metric_type storage convention
+        integer :: c1                                                           ! 2D coordinate in met_type storage convention
         
         ! initialize ierr
         ierr = 0
@@ -908,7 +908,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:,:)
         
         ! local variables
@@ -931,7 +931,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:)
             
         ! local variables
@@ -1009,7 +1009,7 @@ contains
             
             ! determinant
             met%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+            if (sum(deriv).eq.0) then
                 met%det_T_EF(:,:,:,deriv(1),0,0) = 1._dp
             !else
                 !met%det_T_EF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
@@ -1089,7 +1089,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium
-        type(metric_type), intent(inout) :: met                                 ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric variables
         integer, intent(in) :: deriv(:,:)
         
         ! local variables
@@ -1578,7 +1578,7 @@ contains
     ! See if T_EF it complies with the theory of [ADD REF]
     integer function test_T_EF(grid_eq,eq,met) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style
-        use grid_vars, only: destroy_grid
+        use grid_vars, only: dealloc_grid
         use grid_ops, only: trim_grid
         use utilities, only: c
         use output_ops, only: plot_diff_HDF5
@@ -1588,7 +1588,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(met_type), intent(in) :: met                                       ! metric variables
         
         ! local variables
         integer :: id, kd                                                       ! counter
@@ -1741,7 +1741,7 @@ contains
         end do
         
         ! clean up
-        call destroy_grid(grid_trim)
+        call dealloc_grid(grid_trim)
         
         ! user output
         call lvl_ud(-1)
@@ -1763,7 +1763,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(met_type), intent(in) :: met                                       ! metric variables
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         
         ! local variables
@@ -1863,7 +1863,7 @@ contains
             call lvl_ud(1)
             
             ! calculate if D2 B_3 = D1 (qF) + D1 (q/F h_11)
-            res(:,:,:,1) = 1._dp/met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) * &
+            res(:,:,:,1) = &
                 &(met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,1,0)/&
                 &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) - &
                 &met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,0,0)*&
@@ -1890,41 +1890,35 @@ contains
             call lvl_ud(-1)
             
             ! user output
-            call writo('Checking if D3 B_2 |F = D2 -(qh_11/F) + q''F |H')
+            call writo('Checking if D3 B_2 |F = -q/F D2 h_11 + F q'' |H')
             call lvl_ud(1)
             
-            ! calculate if D2 B_3 = D1 (q/F h_11) + q'F
-            res(:,:,:,1) = 1._dp/met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) * &
-                &(met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,1)/&
+            ! calculate if D3 B_2 = -q/F D2 h_11 + F D1 q
+            res(:,:,:,1) = &
+                &met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,1)/&
                 &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) - &
                 &met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,0)*&
                 &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,1)/ &
-                &(met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2))
-            do jd = 1,grid_trim%n(2)
-                do id = 1,grid_trim%n(1)
-                    ierr = calc_deriv(eq%q_saf_E(:,0)*h_H_12(id,n_H(1):n_H(2))/&
-                        &RBphi(n_H(1):n_H(2))+&
-                        &eq%q_saf_E(:,1)*RBphi(n_H(1):n_H(2)),res(id,jd,:,2),&
-                        &grid_trim%grp_r_E,1,1)
+                &(met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2)
+            do kd = 1,grid_trim%grp_n_r
+                do jd = 1,grid_trim%n(2)
+                    ierr = calc_deriv(h_H_12(:,n_H(1)+kd-1),res(:,jd,kd,2),&
+                        &grid_trim%theta_E(:,jd,kd),1,1)
                     CHCKERR('')
                 end do
+                res(:,:,kd,2) = -eq%q_saf_E(kd,0)/RBphi(n_H(1)+kd-1) * &
+                    &res(:,:,kd,2) + RBphi(n_H(1)+kd-1)*eq%q_saf_E(kd,1)
             end do
             
             ! set some variables
             file_name = 'TEST_D3B_2'
-            description = 'Testing whether D3 B_2 |F = -D2 (qh_12/F) +q''F |H'
+            description = 'Testing whether D3 B_2 |F = -D2 (qh_12/F) + f q'' |H'
             
             ! plot difference
             call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
                 &grp_offset,description,output_message=.true.)
             
             call lvl_ud(-1)
-            
-            call print_HDF5('B_2_TEST','B_2_TEST',&
-                &met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,0)/&
-                &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0),tot_dim=tot_dim,&
-                &grp_offset=grp_offset)
-            
         end if
         
         ! user output
@@ -1945,7 +1939,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(met_type), intent(in) :: met                                       ! metric variables
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         
         ! local variables
@@ -2059,7 +2053,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(met_type), intent(in) :: met                                       ! metric variables
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         
         ! local variables
@@ -2152,7 +2146,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(met_type), intent(in) :: met                                       ! metric variables
         
         ! local variables
         real(dp), allocatable :: res(:,:,:)                                     ! result variable
@@ -2220,7 +2214,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(met_type), intent(in) :: met                                       ! metric variables
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         
         ! local variables
@@ -2357,7 +2351,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(metric_type), intent(in) :: met                                    ! metric variables
+        type(met_type), intent(in) :: met                                       ! metric variables
         
         ! local variables
         integer :: id, jd, kd, ld                                               ! counters
@@ -2424,5 +2418,229 @@ contains
         call lvl_ud(-1)
         call writo('Test complete')
     end function test_D12h_H
+    
+    ! Tests whether the derivatives of g_E are calculated correctly
+    integer function test_Dg_E(grid_eq,met) result(ierr)
+        use grid_ops, only: trim_grid
+        use utilities, only: c, calc_deriv
+        
+        character(*), parameter :: rout_name = 'test_Dg_E'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(met_type), intent(in) :: met                                       ! metric variables
+        
+        ! local variables
+        integer :: id, jd, kd, ld                                               ! counters
+        real(dp), allocatable :: res(:,:,:,:,:)                                 ! result variable
+        character(len=max_str_ln) :: file_name                                  ! name of plot file
+        character(len=max_str_ln) :: description                                ! description of plot
+        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
+        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        integer :: deriv(3)                                                     ! derivatives
+        integer :: deriv2(3)                                                    ! derivatives
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! output
+        call writo('Going to test whether the derivatives of g_E are &
+            &calculated correctly')
+        call lvl_ud(1)
+        
+        ! trim extended grid into plot grid
+        ierr = trim_grid(grid_eq,grid_trim)
+        CHCKERR('')
+        
+        ! set up res
+        ! Note: last index:
+        !   1..3: Di,   i=1..3
+        !   4..12: Dij, i=1..3, j=1..3
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,6,12))
+        
+        ! set total and group dimensions and group offset
+        tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
+        grp_offset = [0,0,grid_trim%i_min-1]
+        
+        ! calculate first derivatives of g_E individually
+        ! D1 (psi)
+        call writo('calculating derivatives in r')
+        do ld = 1,6
+            do jd = 1,grid_trim%n(2)
+                do id = 1,grid_trim%n(1)
+                    ierr = calc_deriv(met%g_E(id,jd,:,ld,0,0,0),&
+                        &res(id,jd,:,ld,1),grid_trim%grp_r_E,1,2)
+                    CHCKERR('')
+                end do
+            end do
+        end do
+        ! D2 (theta)
+        call writo('calculating derivatives in theta')
+        do ld = 1,6
+            do kd = 1,grid_trim%grp_n_r
+                do jd = 1,grid_trim%n(2)
+                    ierr = calc_deriv(met%g_E(:,jd,kd,ld,0,0,0),&
+                        &res(:,jd,kd,ld,2),grid_trim%theta_E(:,jd,kd),1,2)
+                    CHCKERR('')
+                end do
+            end do
+        end do
+        ! D3 (zeta)
+        call writo('calculating derivatives in zeta')
+        res(:,:,:,:,3) = 0._dp
+        
+        ! calculate second derivatives of g_E individually
+        ! D11 (psi,psi)
+        call writo('calculating derivatives in r,r')
+        do ld = 1,6
+            do jd = 1,grid_trim%n(2)
+                do id = 1,grid_trim%n(1)
+                    ierr = calc_deriv(met%g_E(id,jd,:,ld,1,0,0),&
+                        &res(id,jd,:,ld,4),grid_trim%grp_r_E,1,1)
+                    CHCKERR('')
+                end do
+            end do
+        end do
+        ! D21 (theta,psi)
+        call writo('calculating derivatives in theta,r')
+        do ld = 1,6
+            do jd = 1,grid_trim%n(2)
+                do id = 1,grid_trim%n(1)
+                    ierr = calc_deriv(met%g_E(id,jd,:,ld,0,1,0),&
+                        &res(id,jd,:,ld,5),grid_trim%grp_r_E,1,1)
+                    CHCKERR('')
+                end do
+            end do
+        end do
+        ! D31 (zeta,psi)
+        call writo('calculating derivatives in zeta,r')
+        do ld = 1,6
+            do jd = 1,grid_trim%n(2)
+                do id = 1,grid_trim%n(1)
+                    ierr = calc_deriv(met%g_E(id,jd,:,ld,0,0,1),&
+                        &res(id,jd,:,ld,6),grid_trim%grp_r_E,1,1)
+                    CHCKERR('')
+                end do
+            end do
+        end do
+        ! D12 (r,theta)
+        call writo('calculating derivatives in r,theta')
+        do ld = 1,6
+            do kd = 1,grid_trim%grp_n_r
+                do jd = 1,grid_trim%n(2)
+                    ierr = calc_deriv(met%g_E(:,jd,kd,ld,1,0,0),&
+                        &res(:,jd,kd,ld,7),grid_trim%theta_E(:,jd,kd),1,1)
+                    CHCKERR('')
+                end do
+            end do
+        end do
+        ! D22 (theta,theta)
+        call writo('calculating derivatives in theta,theta')
+        do ld = 1,6
+            do kd = 1,grid_trim%grp_n_r
+                do jd = 1,grid_trim%n(2)
+                    ierr = calc_deriv(met%g_E(:,jd,kd,ld,0,1,0),&
+                        &res(:,jd,kd,ld,8),grid_trim%theta_E(:,jd,kd),1,1)
+                    CHCKERR('')
+                end do
+            end do
+        end do
+        ! D32 (zeta,theta)
+        call writo('calculating derivatives in zeta,theta')
+        do ld = 1,6
+            do kd = 1,grid_trim%grp_n_r
+                do jd = 1,grid_trim%n(2)
+                    ierr = calc_deriv(met%g_E(:,jd,kd,ld,0,0,1),&
+                        &res(:,jd,kd,ld,9),grid_trim%theta_E(:,jd,kd),1,1)
+                    CHCKERR('')
+                end do
+            end do
+        end do
+        ! D13 (r,zeta)
+        call writo('calculating derivatives in r,zeta')
+        res(:,:,:,:,10) = 0._dp
+        ! D23 (r,zeta)
+        call writo('calculating derivatives in theta,zeta')
+        res(:,:,:,:,11) = 0._dp
+        ! D33 (r,zeta)
+        call writo('calculating derivatives in zeta,zeta')
+        res(:,:,:,:,12) = 0._dp
+        
+        ! set up plot variables for calculated values
+        do id = 1,3
+            do kd = 1,3
+                ! set some variables
+                file_name = 'TEST_g_E_'//trim(i2str(kd))//'_'//trim(i2str(id))
+                description = 'Testing calculated with given value for g_E('//&
+                    &trim(i2str(kd))//','//trim(i2str(id))//')'
+                
+                ! plot underived quantity
+                call plot_HDF5(file_name,file_name,&
+                    &met%g_E(:,:,grid_trim%i_min:grid_trim%i_max,&
+                    &c([kd,id],.true.),0,0,0),tot_dim=tot_dim,&
+                    &grp_offset=grp_offset,description=description)
+                do ld = 1,3
+                    ! user output
+                    call writo('Testing D'//trim(i2str(ld))//'g_E('//&
+                        &trim(i2str(kd))//','//trim(i2str(id))//')')
+                    call lvl_ud(1)
+                    
+                    ! set some variables
+                    file_name = 'TEST_D'//trim(i2str(ld))//'g_E_'//&
+                        &trim(i2str(kd))//'_'//trim(i2str(id))
+                    description = 'Testing calculated with given value for D'//&
+                        &trim(i2str(ld))//'g_E('//trim(i2str(kd))//','//&
+                        &trim(i2str(id))//')'
+                    
+                    ! set derivative
+                    deriv = 0
+                    deriv(ld) = 1
+                    
+                    ! plot difference
+                    call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.),ld),&
+                        &met%g_E(:,:,grid_trim%i_min:grid_trim%i_max,&
+                        &c([kd,id],.true.),deriv(1),deriv(2),deriv(3)),&
+                        &file_name,tot_dim,grp_offset,description,&
+                        &output_message=.true.)
+                    
+                    call lvl_ud(-1)
+                    
+                    do jd = 1,3
+                        ! user output
+                        call writo('Testing D'//trim(i2str(ld))//&
+                            &trim(i2str(jd))//'g_E('//trim(i2str(kd))//','//&
+                            &trim(i2str(id))//')')
+                        call lvl_ud(1)
+                        
+                        ! set some variables
+                        file_name = 'TEST_D'//trim(i2str(ld))//&
+                            &trim(i2str(jd))//'g_E_'//trim(i2str(kd))//'_'//&
+                            &trim(i2str(id))
+                        description = 'Testing calculated with given value for &
+                            &D'//trim(i2str(ld))//trim(i2str(jd))//'g_E('//&
+                            &trim(i2str(kd))//','//trim(i2str(id))//')'
+                        
+                        ! set derivative 2
+                        deriv2 = 0
+                        deriv2(jd) = 1
+                        
+                        ! plot difference
+                        call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.),&
+                            &3+ld+(jd-1)*3),met%g_E(:,:,&
+                            &grid_trim%i_min:grid_trim%i_max,c([kd,id],.true.),&
+                            &deriv(1)+deriv2(1),deriv(2)+deriv2(2),&
+                            &deriv(3)+deriv2(3)),file_name,tot_dim,grp_offset,&
+                            &description,output_message=.true.)
+                        
+                        call lvl_ud(-1)
+                    end do
+                end do
+            end do
+        end do
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Test complete')
+    end function test_Dg_E
 #endif
-end module metric_ops
+end module met_ops

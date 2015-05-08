@@ -17,9 +17,11 @@ contains
     end function i2str
 
     ! Convert a real (double) to string
+    ! Note: See http://www.fortran90.org/src/best-practices.html how to not lose
+    ! precision
     elemental character(len=max_str_ln) function r2str(k)
         real(dp), intent(in) :: k
-        write (r2str, *) k
+        write (r2str, '(ES23.16)') k
         r2str = adjustl(r2str)
     end function r2str
 

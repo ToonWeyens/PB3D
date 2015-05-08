@@ -10,7 +10,7 @@ module driver_rich
     use num_vars, only: max_it_r, dp, pi, max_str_ln
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
-    use metric_vars, only: metric_type
+    use met_vars, only: met_type
     use X_vars, only: X_type
     
     implicit none
@@ -26,13 +26,18 @@ contains
     !       the other groups
     integer function run_rich_driver() result(ierr)
         use num_vars, only: min_alpha, max_alpha, n_alpha, glb_rank, grp_nr, &
-            &max_alpha, alpha_job_nr, use_pol_flux_F, eq_style
+            &max_alpha, alpha_job_nr, use_pol_flux_F, eq_style, group_output, &
+            &output_name, output_style, n_groups
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
+        use MPI_utilities, only: wait_MPI
+        use eq_vars, only: create_eq, dealloc_eq
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
-        use VMEC, only: dealloc_VMEC_final
-        use HELENA, only: dealloc_HEL_final
+        use eq_ops, only: calc_flux_q
+        use VMEC, only: dealloc_VMEC
+        use HELENA, only: dealloc_HEL
         use grid_ops, only: calc_eqd_grid, setup_grid_eq
         use grid_vars, only: n_r_eq
+        use HDF5_ops, only: create_output_HDF5
         
         character(*), parameter :: rout_name = 'run_rich_driver'
         
@@ -40,9 +45,9 @@ contains
         character(len=8) :: flux_name                                           ! toroidal or poloidal
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid of this process
-        type(grid_type) :: grid_eq                                              ! equilibrium grid
-        type(grid_type) :: grid_X                                               ! perturbation grid
         real(dp), allocatable :: alpha(:)                                       ! all field line labes all
+        type(grid_type) :: grid_eq                                              ! equilibrium grid
+        type(eq_type) :: eq                                                     ! equilibrium for this alpha
         
         ! initialize ierr
         ierr = 0
@@ -77,19 +82,26 @@ contains
         ierr = calc_eqd_grid(alpha,min_alpha*pi,max_alpha*pi,excl_last=.true.)
         CHCKERR('')
         
-        ! split  the  communicator MPI_COMM_WORLD into subcommunicators
+        ! split  the  communicator MPI_Comm_world into subcommunicators
         call writo('Setting up groups for dynamical load balancing')
         call lvl_ud(1)
         ierr = split_MPI(n_r_eq,eq_limits)
         CHCKERR('')
         call lvl_ud(-1)
         
-        ! create equilibrium grid
-        call writo('Setting up equilibrium grid')
-        call lvl_ud(1)
+        ! setup equilibrium grid
         ierr = setup_grid_eq(grid_eq,eq_limits)
         CHCKERR('')
-        call lvl_ud(-1)
+        
+        ! create equilibrium
+        call writo('Initializing equilibrium quantities')
+        ierr = create_eq(grid_eq,eq)
+        CHCKERR('')
+        
+        ! calculate flux quantities and complete equilibrium grid
+        call writo('Calculating flux quantities')
+        ierr = calc_flux_q(eq,grid_eq)
+        CHCKERR('')
         
         ! do the calculations for every  field line, where initially every group
         ! is assigned a field line. On completion of a job, the completing group
@@ -97,22 +109,45 @@ contains
         ! next group that has to be done
         ! loop over all fied lines
         field_lines: do
+            ! non-global group masters cannot output (any more)
+            group_output = .false.
+            
             ! get next job for current group
             ierr = get_next_job(alpha_job_nr)
             CHCKERR('')
             
             ! Do the calculations for a field line alpha
             if (alpha_job_nr.gt.0) then
+                ! non-global group masters can output
+                group_output = .true.
+                
                 ! display message
                 call writo('Job '//trim(i2str(alpha_job_nr))//': Calculations &
                     &for field line alpha = '//&
                     &trim(r2strt(alpha(alpha_job_nr)))//&
-                    &', allocated to group '//trim(i2str(grp_nr)))
+                    &', allocated to group '//trim(i2str(grp_nr+1)))
                 
                 call lvl_ud(1)                                                  ! starting calculation for current fied line
                 
-                ! calculate
-                ierr = run_for_alpha(grid_eq,grid_X,alpha(alpha_job_nr))
+                ! open output file for this job depending on output style
+                select case(output_style)
+                    case(1)                                                     ! GNUPlot output
+                        call writo('WARNING: No possibility to save output &
+                            &for output style '//trim(i2str(output_style))&
+                            &//' implemented')
+                    case(2)                                                     ! HDF5 output
+                        ! open HDF5 file for output
+                        ierr = create_output_HDF5()
+                        CHCKERR('')
+                    case default
+                        err_msg = 'No style associated with '//&
+                            &trim(i2str(output_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
+                end select
+                
+                ! calculate for this alpha job
+                ierr = run_for_alpha(grid_eq,eq,alpha(alpha_job_nr))
                 CHCKERR('')
                 
                 ! display message
@@ -120,22 +155,24 @@ contains
                 call writo('Job '//trim(i2str(alpha_job_nr))//&
                     &': Calculations for field line alpha = '//&
                     &trim(r2strt(alpha(alpha_job_nr)))//&
-                    &', completed by group '//trim(i2str(grp_nr)))
+                    &', completed by group '//trim(i2str(grp_nr+1)))
             else
-                call writo('Finished all jobs')
                 exit field_lines
             end if
         end do field_lines
         
-        ! deallocate equilibrium variables
+        ! deallocate variables
+        ierr = dealloc_eq(eq)
+        CHCKERR('')
+        
         ! choose which equilibrium style is being used:
         !   1:  VMEC
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                call dealloc_VMEC_final
+                call dealloc_VMEC
             case (2)                                                            ! HELENA
-                call dealloc_HEL_final
+                call dealloc_HEL
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
@@ -143,10 +180,26 @@ contains
                 CHCKERR(err_msg)
         end select
         
-        ! merge  the subcommunicator into communicator MPI_COMM_WORLD
+        ! wait on all the groups
+        ierr = wait_MPI(2)
+        CHCKERR('')
+        
+        ! merge  the subcommunicator into communicator MPI_Comm_world
         if (glb_rank.eq.0) then
-            call writo('Stability analysis concluded at all '//&
-                &trim(i2str(n_alpha))//' fieldlines')
+            if (n_alpha.gt.1) then
+                call writo('Stability analysis concluded at all '//&
+                    &trim(i2str(n_alpha))//' fieldlines')
+            else
+                call writo('Stability analysis concluded')
+            end if
+            if (n_groups.eq.2) then
+                call writo('The outputs of the other group is saved in "'//&
+                    &trim(output_name)//'_2"')
+            else if (n_groups.gt.2) then
+                call writo('The outputs of the other groups 2..'//&
+                    &trim(i2str(n_alpha))//' i are saved in "'//&
+                    &trim(output_name)//'_2..'//trim(i2str(n_alpha))//'"')
+            end if
             call writo('Merging groups for dynamical load balancing back &
                 &together')
         end if
@@ -157,33 +210,29 @@ contains
     end function run_rich_driver
     
     ! Runs the  calculations for one  of the alpha's.
-    integer function run_for_alpha(grid_eq,grid_X,alpha) result(ierr)
+    integer function run_for_alpha(grid_eq,eq,alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, no_guess, &
-            &alpha_job_nr, grp_rank
-        use eq_vars, only: dealloc_eq_final
-        use X_vars, only: dealloc_X, dealloc_X_final, create_X
-        use X_ops, only: solve_EV_system, calc_magn_ints
-        use metric_vars, only: dealloc_metric, dealloc_metric_final, &
-            &create_metric
+            &rich_lvl_nr, grp_rank, alpha_job_nr
+        use X_vars, only: dealloc_X
+        use eq_ops, only: calc_eq, print_output_eq
+        use X_ops, only: solve_EV_system, calc_magn_ints, prepare_X
+        use met_vars, only: dealloc_met
         use MPI_ops, only: divide_X_grid
-        use grid_vars, only: create_grid, destroy_grid
-        use grid_ops, only: coord_F2E, setup_and_calc_grid_B
-        
-        !use utilities, only: c
+        use grid_vars, only: create_grid, dealloc_grid
+        use grid_ops, only: coord_F2E, setup_and_calc_grid_B, calc_ang_grid_eq
         
         character(*), parameter :: rout_name = 'run_for_alpha'
         
         ! input / output
         type(grid_type), intent(inout), target :: grid_eq                       ! equilibrium grid
-        type(grid_type), intent(inout) :: grid_X                                ! perturbation grid
+        type(eq_type), intent(inout) :: eq                                      ! equilibrium for this alpha
         real(dp), intent(in) :: alpha                                           ! alpha at which to run the calculations
         
         ! local variables
+        type(grid_type) :: grid_X                                               ! perturbation grid
         type(grid_type), pointer :: grid_eq_B => null()                         ! field-aligned equilibrium grid
-        type(eq_type) :: eq                                                     ! equilibrium for this alpha
-        type(metric_type) :: met, met_B                                         ! general and field-aligned metric variables
+        type(met_type) :: met, met_B                                            ! general and field-aligned metric variables
         type(X_type) :: X, X_B                                                  ! general and field-aligned perturbation variables
-        integer :: ir                                                           ! counter for richardson extrapolation
         integer :: n_r_X                                                        ! total number of normal points in X grid for this step in Richardson ex.
         integer :: X_limits(2)                                                  ! min. and max. index of X grid for this process
         real(dp), allocatable :: grp_r_X(:)                                     ! normal points in Flux coords., globally normalized to (min_r_X..max_r_X)
@@ -199,61 +248,39 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! create perturbation
-        call create_X(grid_eq,X)
+        ! calculate  angular grid  points for equilibrium grid
+        ierr = calc_ang_grid_eq(grid_eq,eq,alpha)
+        CHCKERR('')
         
-        ! calculate necessary quantities on equilibrium grid
-        ierr = calculate_vars_in_eq_grid(grid_eq,eq,met,X,alpha)
+        ! calculate the non-flux equilibrium quantities for current alpha
+        ierr = calc_eq(grid_eq,eq,met)
+        CHCKERR('')
+        
+        ! write equilibrium variables to output
+        ierr = print_output_eq(grid_eq,eq,met)
+        CHCKERR('')
+        
+        ! prepare matrix elements
+        ierr = prepare_X(grid_eq,eq,met,X)
         CHCKERR('')
         
         ! set up field-aligned equilibrium grid
         ierr = setup_and_calc_grid_B(grid_eq,grid_eq_B,eq,alpha)
         CHCKERR('')
         
-        ! create  new metric  and perturbation  variables but  deallocate unused
-        ! variables
-        ierr = create_metric(grid_eq_B,met_B)
-        CHCKERR('')
-        ierr = dealloc_metric(met_B)
-        CHCKERR('')
-        call create_X(grid_eq_B,X_B)
-        call dealloc_X(X_B)
-        
-        ! adapt variables to field-aligned grid
+        ! adapt variables to a field-aligned grid
         ierr = adapt_to_B(grid_eq,grid_eq_B,met,met_B,X,X_B)
         CHCKERR('')
         
         ! deallocate original X
-        call dealloc_X_final(X)
+        call dealloc_X(X)
         
         ! calculate magnetic integrals
         ierr = calc_magn_ints(grid_eq_B,met_B,X_B)
         CHCKERR('')
         
-        !do m = 1,X_B%n_mod
-        !do k = 1,X_B%n_mod
-        !write(*,*) '----------> k,m = ', k,m
-        !call print_HDF5('RE KV_0','RE KV_0',realpart(X_B%KV_0(:,:,:,c([k,m],.true.,X_B%n_mod))))
-        !call print_HDF5('IM KV_0','IM KV_0',imagpart(X_B%KV_0(:,:,:,c([k,m],.true.,X_B%n_mod))))
-        !call print_HDF5('RE KV_1','RE KV_1',realpart(X_B%KV_1(:,:,:,c([k,m],.false.,X_B%n_mod))))
-        !call print_HDF5('IM KV_1','IM KV_1',imagpart(X_B%KV_1(:,:,:,c([k,m],.false.,X_B%n_mod))))
-        !call print_HDF5('RE KV_2','RE KV_2',realpart(X_B%KV_2(:,:,:,c([k,m],.true.,X_B%n_mod))))
-        !call print_HDF5('IM KV_2','IM KV_2',imagpart(X_B%KV_2(:,:,:,c([k,m],.true.,X_B%n_mod))))
-        !call print_HDF5('RE U_1_'//trim(i2str(k)),'RE U_1_'//trim(i2str(k)),realpart(X_B%U_1(:,:,:,k)))
-        !call print_HDF5('IM U_1_'//trim(i2str(k)),'IM U_1_'//trim(i2str(k)),imagpart(X_B%U_1(:,:,:,k)))
-        !call print_HDF5('RE U_1_'//trim(i2str(m)),'RE U_1_'//trim(i2str(m)),realpart(X_B%U_1(:,:,:,m)))
-        !call print_HDF5('IM U_1_'//trim(i2str(m)),'IM U_1_'//trim(i2str(m)),imagpart(X_B%U_1(:,:,:,m)))
-        !call print_GP_2D('RE KV0_int','',realpart(X_B%KV_int_0(c([k,m],.true.,X_B%n_mod),1,:)))
-        !call print_GP_2D('IM KV0_int','',imagpart(X_B%KV_int_0(c([k,m],.true.,X_B%n_mod),1,:)))
-        !call print_GP_2D('RE KV1_int','',realpart(X_B%KV_int_1(c([k,m],.false.,X_B%n_mod),1,:)))
-        !call print_GP_2D('IM KV1_int','',imagpart(X_B%KV_int_1(c([k,m],.false.,X_B%n_mod),1,:)))
-        !call print_GP_2D('RE KV2_int','',realpart(X_B%KV_int_2(c([k,m],.true.,X_B%n_mod),1,:)))
-        !call print_GP_2D('IM KV2_int','',imagpart(X_B%KV_int_2(c([k,m],.true.,X_B%n_mod),1,:)))
-        !end do
-        !end do
-        
         ! Initalize some variables for Richardson loop
-        ir = 1
+        rich_lvl_nr = 1
         done_richard = .false.
         if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
             allocate(X_val_rich(1:max_it_r,1:max_it_r,1:n_sol_requested))
@@ -274,9 +301,9 @@ contains
         ! initialize use_guess for first Richardson loop
         use_guess = .true.
         
-        Richard: do while (.not.done_richard .and. ir.le.max_it_r)
+        Richard: do while (.not.done_richard .and. rich_lvl_nr.le.max_it_r)
             if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
-                call writo('Level ' // trim(i2str(ir)) // &
+                call writo('Level ' // trim(i2str(rich_lvl_nr)) // &
                     &' of Richardson extrapolation')
                 call lvl_ud(1)                                                  ! beginning of one richardson loop
             end if
@@ -285,7 +312,7 @@ contains
             ! Richardson loops and save in n_r_X
             call writo('calculating the normal points')
             call lvl_ud(1)
-            call calc_n_r_X(ir,n_r_X)
+            call calc_n_r_X(rich_lvl_nr,n_r_X)
             call lvl_ud(-1)
             
             ! divide  perturbation grid  under group processes,  calculating the
@@ -319,13 +346,14 @@ contains
             ! Richardson extrapolation
             if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
                 ! update the x axis of the Eigenvalue plot
-                x_axis(ir,:) = 1.0_dp*n_r_X
+                x_axis(rich_lvl_nr,:) = 1.0_dp*n_r_X
                 
                 ! update  the  variable  X_val_rich  with the  results  of  this
                 ! Richardson level
                 call writo('updating Richardson extrapolation variables')
                 call lvl_ud(1)
-                ierr = calc_rich_ex(ir,X%val,X_val_rich,done_richard,use_guess)
+                ierr = calc_rich_ex(rich_lvl_nr,X_B%val,X_val_rich,&
+                    &done_richard,use_guess)
                 CHCKERR('')
                 call lvl_ud(-1)
             else                                                                ! if not, Richardson is done
@@ -333,7 +361,7 @@ contains
             end if
             
             ! destroy grid if not yet done with Richardson Extrapolation
-            if (.not.done_richard) call destroy_grid(grid_X)
+            if (.not.done_richard) call dealloc_grid(grid_X)
             
             if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
                 call lvl_ud(-1)                                                 ! end of one richardson loop
@@ -352,33 +380,26 @@ contains
         if (max_it_r.gt.1 .and. grp_rank.eq.0) then
             call writo('Plotting Eigenvalues as function of nr. of normal &
                 &points in Richardson Extrapolation')
+            !write(*,*) '!!!! TEMPORARILY DISABLED BECAUSE RICH. EXT. NOT &
+                !&WORKING PROPERLY !!!'
             call lvl_ud(1)
             
             ! output on screen
             plot_title = 'job '//trim(i2str(alpha_job_nr))//' - Eigenvalues &
                 &as function of nr. of normal points [log]'
-            call print_GP_2D(plot_title,'Eigenvalues_'//&
+            call print_GP_2D(plot_title,'Eigenvalues_A'//&
                 &trim(i2str(alpha_job_nr))//'_richardson.dat',&
-                &log10(abs(realpart(X_val_rich(1:ir,1,:)))),&
-                &x=x_axis(1:ir,:))
+                &log10(abs(realpart(X_val_rich(1:rich_lvl_nr,1,:)))),&
+                &x=x_axis(1:rich_lvl_nr,:),draw=.false.)
             
             ! same output in file as well
-            call draw_GP(plot_title,'Eigenvalues_'//trim(i2str(alpha_job_nr))//&
-                &'_richardson.dat',n_sol_requested,.true.,.false.)
+            call draw_GP(plot_title,'Eigenvalues_A'//&
+                &trim(i2str(alpha_job_nr))//'_richardson.dat',&
+                &n_sol_requested,.true.,.false.)
             
             call lvl_ud(-1)
             call writo('Done plotting Eigenvalues')
         end if
-            
-        ! process output
-        call writo('Processing output')
-        call lvl_ud(1)
-        
-        ierr = process_output(grid_eq_B,eq,grid_X,X_B,n_sol_found,alpha)
-        CHCKERR('')
-        
-        call lvl_ud(-1)
-        call writo('Done processing output')
         
         ! deallocate Richardson loop variables
         if (max_it_r.gt.1) then                                                 ! only do this if more than 1 Richardson level
@@ -387,14 +408,14 @@ contains
         end if
         
         ! destroy grid
-        call destroy_grid(grid_X)
+        call dealloc_grid(grid_X)
         
-        ! deallocate remaining equilibrium quantities
-        call writo('Deallocate remaining quantities')
-        call dealloc_eq_final(eq)
-        call dealloc_metric_final(met)
-        call dealloc_metric_final(met_B)
-        call dealloc_X_final(X_B)
+        ! deallocate equilibrium quantities in Flux coords.
+        ierr = dealloc_met(met)
+        CHCKERR('')
+        ierr = dealloc_met(met_B)
+        CHCKERR('')
+        call dealloc_X(X_B)
     contains
         ! calculates the number of normal  points for the perturbation n_r_X for
         ! the various Richardson iterations
@@ -414,11 +435,11 @@ contains
             else
                 n_r_X = 2 * n_r_X - 1
             end if
-            call writo(trim(i2str(n_r_X))//' normal points for this level')
+            call writo(trim(i2str(n_r_X))//' normal points for this level...')
         end subroutine calc_n_r_X
         
         ! calculates  the  coefficients of  the  Eigenvalues  in the  Richardson
-        ! extrapolati                                                         on
+        ! extrapolation
         ! This is done using the recursive formula
         !   X_val_rich(ir,ir2,:) = X_val_rich(ir,ir2-1,:) +  1/(2^(2ir2) - 1) * 
         !       (X_val_rich(ir,ir2-1,:) - X_val_rich(ir-1,ir2-1,:)),
@@ -447,10 +468,11 @@ contains
             
             ! initialize ierr
             ierr = 0
+            write(*,*) '!!! FOR RICHARDSON EXTRAPOLATION YOU HAVE TO FIND &
+                &CONSTANT EIGENVALUES !!!'
             
             ! tests
             if (size(X_val_rich,1).ne.size(X_val_rich,2) .or. &
-                &size(X_val_rich,3).ne.size(X_val) .or. &
                 &ir.gt.size(X_val_rich,1)) then
                 ierr = 1
                 err_msg = 'X_val_rich has to have correct dimensions'
@@ -461,23 +483,26 @@ contains
             allocate(corr(size(X_val))); corr = 1.0E15
             
             ! do calculations if ir > 1
-            X_val_rich(ir,1,:) = X_val
+            X_val_rich(ir,1,1:size(X_val)) = X_val
             do ir2 = 2,ir
                 corr = 1./(2**(2*ir2)-1.) * &
-                    &(X_val_rich(ir,ir2-1,:) - X_val_rich(ir-1,ir2-1,:))
-                X_val_rich(ir,ir2,:) = X_val_rich(ir,ir2-1,:) + corr
+                    &(X_val_rich(ir,ir2-1,1:size(X_val)) - &
+                    &X_val_rich(ir-1,ir2-1,1:size(X_val)))
+                X_val_rich(ir,ir2,1:size(X_val)) = &
+                    &X_val_rich(ir,ir2-1,1:size(X_val)) + corr
             end do
             
             if (ir.gt.1) then                                                   ! only do this if in Richardson level higher than 1
                 ! get maximum and location of maximum for relative correction
-                max_corr = maxval(abs(corr/X_val_rich(ir,ir,:)))
-                loc_max_corr = maxloc(abs(corr/X_val_rich(ir,ir,:)))
+                max_corr = maxval(abs(corr/X_val_rich(ir,ir,1:size(X_val))))
+                loc_max_corr = maxloc(abs(corr/X_val_rich(ir,ir,1:size(X_val))))
                 call writo('maximum relative error: '//trim(r2strt(max_corr))//&
                     &' for Eigenvalue '//trim(i2str(loc_max_corr(1))))
                 
                 ! check whether tolerance has been  reached for last value ir2 =
                 ! ir
-                if (maxval(abs(corr/X_val_rich(ir,ir,:))) .lt. tol_r) then
+                if (maxval(abs(corr/X_val_rich(ir,ir,1:size(X_val))))&
+                    &.lt.tol_r) then
                     done_richard = .true.
                     call writo('tolerance '//trim(r2strt(tol_r))//&
                         &' reached after '//trim(i2str(ir))//' iterations')
@@ -504,397 +529,65 @@ contains
                 end if
             end if
         end function calc_rich_ex
-        
-        ! Adapt some variables to a field-aligned grid, depending on equilibrium
-        ! type.
-        integer function adapt_to_B(grid_eq,grid_eq_B,met,met_B,X,X_B) &
-            &result(ierr)
-            use num_vars, only: eq_style
-            use HELENA, only: adapt_to_B_HEL
-            
-            character(*), parameter :: rout_name = 'adapt_to_B'
-            
-            ! input / output
-            type(grid_type), intent(in) :: grid_eq, grid_eq_B                   ! general and field-aligned equilibrium grid
-            type(metric_type), intent(in) :: met                                ! general metric variables
-            type(metric_type), intent(inout) :: met_B                           ! field-aligned metric variables
-            type(X_type), intent(in) :: X                                       ! general perturbation variables
-            type(X_type), intent(inout) :: X_B                                  ! field-aligned perturbation variables
-            
-            ! local variables
-            character(len=max_str_ln) :: err_msg                                ! error message
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! choose which equilibrium style is being used:
-            !   1:  VMEC
-            !   2:  HELENA
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    ! no conversion necessary: already in field-aligned grid
-                    met_B%jac_FD = met%jac_FD
-                    met_B%g_FD = met%g_FD
-                    met_B%h_FD = met%h_FD
-                    X_B%exp_ang_par_f = X%exp_ang_par_f
-                    X_B%U_0 = X%U_0
-                    X_B%U_1 = X%U_1
-                    X_B%DU_0 = X%DU_0
-                    X_B%DU_1 = X%DU_1
-                    X_B%PV_0 = X%PV_0
-                    X_B%PV_1 = X%PV_1
-                    X_B%PV_2 = X%PV_2
-                    X_B%KV_0 = X%KV_0
-                    X_B%KV_1 = X%KV_1
-                    X_B%KV_2 = X%KV_2
-                case (2)                                                        ! HELENA
-                    ! call HELENA version
-                    ierr = adapt_to_B_HEL(grid_eq,grid_eq_B,met,met_B,X,X_B)
-                    CHCKERR('')
-                case default
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
-        end function adapt_to_B
     end function run_for_alpha
     
-    ! sets  up the equilibrium, metric  and some perturbation quantities  on the
-    ! equilibrium grid
-    integer function calculate_vars_in_eq_grid(grid_eq,eq,met,X,alpha) &
-        &result(ierr)
-        use eq_vars, only: create_eq
-        use eq_ops, only: calc_eq
-        use X_ops, only: prepare_X
+    ! Adapt some  variables to  a field-aligned  grid, depending  on equilibrium
+    ! type.
+    integer function adapt_to_B(grid_eq,grid_eq_B,met,met_B,X,X_B) result(ierr)
+        use num_vars, only: eq_style
+        use HELENA, only: adapt_to_B_HEL
+        use X_vars, only: create_X
+        use met_vars, only: create_met
         
-        character(*), parameter :: rout_name = 'calculate_vars_in_eq_grid'
-        
-        ! input / output
-        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
-        type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
-        type(metric_type), intent(inout) :: met                                 ! metric variables
-        type(X_type), intent(inout) :: X                                        ! perturbation variables
-        real(dp), intent(in) :: alpha                                           ! field line label alpha
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! 1. create equilibrium
-        ierr = create_eq(eq,grid_eq)
-        CHCKERR('')
-        
-        ! 2. Calculate the equilibrium quantities for current alpha
-        ierr = calc_eq(grid_eq,eq,met,alpha)
-        CHCKERR('')
-        
-        ! 3. Prepare the matrix elements
-        ierr = prepare_X(grid_eq,eq,met,X)
-        CHCKERR('')
-    end function calculate_vars_in_eq_grid
-    
-    ! Processes the output of the simulations for vizualization, analysis, etc.
-    integer function process_output(grid_eq,eq,grid_X,X,n_sol_found,alpha) &
-        &result(ierr)
-        use num_vars, only: no_plots, no_messages
-        use grid_vars, only: create_grid, destroy_grid
-        use eq_vars, only: dealloc_eq, dealloc_eq_final
-        use metric_vars, only: dealloc_metric, dealloc_metric_final
-        use X_vars, only: dealloc_X, dealloc_X_final, create_X
-        use grid_ops, only: coord_E2F, calc_XYZ_grid, extend_grid, calc_XYZ_grid
-        use X_ops, only: prepare_X
-        use sol_ops, only: plot_X_vecs
-        
-        character(*), parameter :: rout_name = 'process_output'
+        character(*), parameter :: rout_name = 'adapt_to_B'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_type), intent(in) :: eq                                         ! equilibirum variables
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_type), intent(in) :: X                                           ! perturbation variables
-        integer, intent(in) :: n_sol_found                                      ! how many solutions found and saved
-        real(dp), intent(in) :: alpha                                           ! field line label alpha
+        type(grid_type), intent(in) :: grid_eq, grid_eq_B                       ! general and field-aligned equilibrium grid
+        type(met_type), intent(in) :: met                                       ! general metric variables
+        type(met_type), intent(inout) :: met_B                                  ! field-aligned metric variables
+        type(X_type), intent(in) :: X                                           ! general perturbation variables
+        type(X_type), intent(inout) :: X_B                                      ! field-aligned perturbation variables
         
         ! local variables
-        integer :: min_id(3), max_id(3)                                         ! min. and max. index of range 1, 2 and 3
-        integer :: last_unstable_id                                             ! index of last unstable EV
-        type(grid_type) :: grid_eq_ext                                          ! extended equilibrium grid, covering whole geometry
-        type(grid_type) :: grid_X_ext                                           ! extended perturbation grid, covering whole geometry
-        type(eq_type) :: eq_ext                                                 ! extended equilibrium variables
-        type(metric_type) :: met_ext                                            ! extended metric variables
-        type(X_type) :: X_ext                                                   ! extended perturbation variables
-        logical :: no_plots_loc                                                 ! local copy of no_plots
-        logical :: no_messages_loc                                              ! local copy of no_messages
-        real(dp), allocatable :: X_ind(:,:,:), Y_ind(:,:,:), Z_ind(:,:,:)       ! individual versions of X, Y and Z
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
-        ! getting range of EV to plot
-        call find_plot_ranges(X%val,n_sol_found,min_id,max_id,&
-            &last_unstable_id)
-        
-        ! user output
-        call writo('plotting the Eigenvalues')
-        call lvl_ud(1)
-        
-        call plot_X_vals(X,n_sol_found,last_unstable_id)
-        
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('creating extended plot grids')
-        call lvl_ud(1)
-        
-        ierr = extend_grid(grid_eq,grid_eq_ext,grid_eq=grid_eq,eq=eq)           ! extend eq grid and convert to F
+        ! create new metric and perturbation variables
+        ierr = create_met(grid_eq_B,met_B)
         CHCKERR('')
-        ierr = extend_grid(grid_X,grid_X_ext,grid_eq=grid_eq,eq=eq)             ! extend X grid and convert to F
-        CHCKERR('')
-        ierr = calc_XYZ_grid(grid_X_ext,X_ind,Y_ind,Z_ind)                      ! calculate X, Y and Z on extended X grid
-        CHCKERR('')
+        call create_X(grid_eq_B,X_B)
         
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('plotting the Eigenvectors')
-        call lvl_ud(1)
-        
-        ! Since the equations have been solved  for a single field line normally
-        ! the  equilibrium, metric  and perturbation  quantities that  have been
-        ! used have  to be recalculated for  the entire angular range,  which is
-        ! done  below.  However,  since  here  only  the  equilibrium  variables
-        ! flux_q_FD or q_saf_FD or used, the plotting of the Eigenvectors can be
-        ! done already.
-        ierr = plot_X_vecs(grid_eq_ext,eq_ext,grid_X,X,&
-            &reshape([X_ind,Y_ind,Z_ind],&
-            &[grid_X_ext%n(1),grid_X_ext%n(2),grid_X_ext%grp_n_r,3]),&
-            &n_sol_found,min_id,max_id)
-        CHCKERR('')
-        
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('calculating variables on plot grid')
-        call lvl_ud(1)
-        
-        ! back up no_plots and no_messages and set to .true.
-        no_plots_loc = no_plots
-        no_messages_loc = no_messages
-        write(*,*) 'TEMPORARILIY DO NOT BLOCK MESSAGES'
-        !!no_plots = .true.
-        !!no_messages = .true.
-        ! create extended perturbation
-        call create_X(grid_eq_ext,X_ext)
-        ! create  equilibrium,  metric   and   some  perturbation  variables  on
-        ! equilibrium grid
-        ierr = calculate_vars_in_eq_grid(grid_eq_ext,eq_ext,met_ext,X_ext,alpha)
-        CHCKERR('')
-        ! reset no_plots and no_messages
-        no_plots = no_plots_loc
-        no_messages = no_messages_loc
-        ! copy the Eigenvectors and -values into the extended X
-        X_ext%val = X%val
-        X_ext%vec = X%vec
-        
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('Decomposing the energy into its terms')
-        call lvl_ud(1)
-        
-        !!!ierr = decompose_energy(grid_eq,eq,grid_X,X,n_sol_found)
-        !!!CHCKERR('')
-        
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('Cleaning up')
-        call lvl_ud(1)
-        
-        deallocate(X_ind,Y_ind,Z_ind)
-        call destroy_grid(grid_eq_ext)
-        call destroy_grid(grid_X_ext)
-        call dealloc_eq_final(eq_ext)
-        call dealloc_metric_final(met_ext)
-        CHCKERR('')
-        call dealloc_X_final(X_ext)
-        
-        call lvl_ud(-1)
-    contains
-        ! finds the plot ranges min_id and max_id
-        subroutine find_plot_ranges(X_val,n_sol_found,min_id,max_id,&
-            &last_unstable_id)
-            use num_vars, only: n_sol_plotted
-            
-            ! input / output
-            complex(dp), intent(in) :: X_val(:)                                 ! Eigenvalues
-            integer, intent(in) :: n_sol_found                                  ! how many solutions found and saved
-            integer, intent(inout) :: min_id(3), max_id(3)                      ! min. and max. index of range 1, 2 and 3
-            integer, intent(inout) :: last_unstable_id                          ! index of last unstable EV
-            
-            ! local variables
-            integer :: id                                                       ! counter
-            
-            ! find last unstable index (if ends with 0, no unstable EV)
-            last_unstable_id = 0
-            do id = 1,n_sol_found
-                if (realpart(X_val(id)).lt.0._dp) last_unstable_id = id
-            end do
-            ! set up min. and max. of range 1
-            if (last_unstable_id.gt.0) then                                     ! there is an unstable range
-                min_id(1) = 1                                                   ! start from most unstable EV
-                max_id(1) = min(n_sol_plotted(1),last_unstable_id)              ! end with n_sol_plotted(1) first unstable values if available
-            else                                                                ! no unstable range
-                min_id(1) = 1                                                   ! no unstable values to plot
-                max_id(1) = 0                                                   ! no unstable values to plot
-            end if
-            ! set up min. and max. of range 2
-            if (last_unstable_id.gt.0) then                                     ! there is an unstable range
-                min_id(2) = last_unstable_id - n_sol_plotted(2) + 1             ! start from n_sol_plotted(2) last unstable values
-                max_id(2) = &
-                    &min(last_unstable_id + n_sol_plotted(3),n_sol_found)       ! end with n_sol_plotted(3) first stable values if available
-            else                                                                ! no unstable range
-                min_id(2) = 1                                                   ! start from first EV (stable)
-                max_id(2) = min(n_sol_plotted(3),n_sol_found)                   ! end with n_sol_plotted(3) first stable values if available
-            end if
-            ! set up min. and max. of range 3
-            min_id(3) = n_sol_found - n_sol_plotted(4) + 1                      ! start from n_sol_plotted(4) last stable values
-            max_id(3) = n_sol_found                                             ! end with most stable EV
-            ! merge ranges 2 and 3 if overlap
-            if (min_id(3).le.max_id(2)) then
-                max_id(2) = max_id(3)                                           ! range 3 merged with range 2
-                min_id(3) = 1                                                   ! range 3 not used any more
-                max_id(3) = 0                                                   ! range 3 not used any more
-            end if
-            ! merge ranges 1 and 2 if overlap
-            if (min_id(2).le.max_id(1)) then
-                max_id(1) = max_id(2)                                           ! range 2 merged with range 1
-                min_id(2) = 1                                                   ! range 2 not used any more
-                max_id(2) = 0                                                   ! range 2 not used any more
-            end if
-        end subroutine find_plot_ranges
-        
-        ! plots Eigenvalues
-        subroutine plot_X_vals(X,n_sol_found,last_unstable_id)
-            use num_vars, only: grp_rank, alpha_job_nr
-            
-            ! input / output
-            type(X_type), intent(in) :: X                                       ! perturbation variables
-            integer, intent(in) :: n_sol_found                                  ! how many solutions found and saved
-            integer, intent(in) :: last_unstable_id                             ! index of last unstable EV
-            
-            ! local variables
-            character(len=max_str_ln) :: plot_title                             ! title for plots
-            integer :: id                                                       ! counter
-            
-            if (grp_rank.eq.0) then
-                ! Last Eigenvalues
-                ! output on screen
-                plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
-                    &final Eigenvalues omega^2 [log]'
-                call print_GP_2D(plot_title,'Eigenvalues_'//&
-                    &trim(i2str(alpha_job_nr))//'.dat',&
-                    &log10(abs(realpart(X%val(1:n_sol_found)))),draw=.false.)
-                ! same output in file as well
-                call draw_GP(plot_title,'Eigenvalues_'//&
-                    &trim(i2str(alpha_job_nr))//'.dat',1,.true.,.false.)
-                
-                ! Last Eigenvalues: unstable range
-                if (last_unstable_id.gt.0) then
-                    ! output on screen
-                    plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
-                        &final unstable Eigenvalues omega^2'
-                    call print_GP_2D(plot_title,'Eigenvalues_'//&
-                        &trim(i2str(alpha_job_nr))//'_unstable.dat',&
-                        &realpart(X%val(1:last_unstable_id)),&
-                        &x=[(id*1._dp,id=1,last_unstable_id)],draw=.false.)
-                    ! same output in file as well
-                    call draw_GP(plot_title,'Eigenvalues_'//&
-                        &trim(i2str(alpha_job_nr))//'_unstable.dat',1,&
-                        &.true.,.false.)
-                end if
-                
-                ! Last Eigenvalues: stable range
-                if (last_unstable_id.lt.n_sol_found) then
-                    ! output on screen
-                    plot_title = 'job '//trim(i2str(alpha_job_nr))//' - &
-                        &final stable Eigenvalues omega^2'
-                    call print_GP_2D(plot_title,'Eigenvalues_'//&
-                        &trim(i2str(alpha_job_nr))//'_stable.dat',&
-                        &realpart(X%val(last_unstable_id+1:n_sol_found)),&
-                        &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)],&
-                        &draw=.false.)
-                    ! same output in file as well
-                    call draw_GP(plot_title,'Eigenvalues_'//&
-                        &trim(i2str(alpha_job_nr))//'_stable.dat',1,&
-                        &.true.,.false.)
-                end if
-            end if
-        end subroutine plot_X_vals
-        
-        ! Decomposes the  energy to see the fraction of  the individual terms in
-        ! the total energy on a grid.
-        ! The terms are:
-        !   - normal line bending term = Qn^2/mu_0 1/|nabla psi|^2
-        !   - geodesic line bending term = Qg^2/mu_0 |nabla psi|^2/B^2
-        !   - normal ballooning term = -2 X X* p' kappa_n
-        !   - geodesic ballooning term = -2 X U* p' kappa_g
-        !   - normal kink term = -sigma X* Qg
-        !   - geodesic kink term = sigma U* Qn
-        integer function decompose_energy(grid_eq,eq,grid_X,X,n_sol_found) &
-            &result(ierr)
-            use sol_ops, only: calc_real_XUQ
-            use grid_ops, only: calc_eqd_grid
-            
-            character(*), parameter :: rout_name = 'decompose_energy'
-            
-            ! input / output
-            type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid
-            type(eq_type), intent(in) :: eq                                     ! equilibirum variables
-            type(grid_type), intent(in) :: grid_X                               ! perturbation grid
-            type(X_type), intent(in) :: X                                       ! perturbation variables
-            integer, intent(in) :: n_sol_found                                  ! how many solutions found and saved
-            
-            !! local variables
-            !integer :: jd                                                       ! counter
-            !integer :: n_t = 10                                                 ! nr. of time steps
-            !real(dp), allocatable :: time(:)                                    ! time at which to calculate decomposition
-            !real(dp), allocatable :: X_F(:,:,:,:)                               ! normal comp. of perturbation
-            !real(dp), allocatable :: D3X_F(:,:,:,:)                             ! parallel deriv. of X
-            !real(dp), allocatable :: U_F(:,:,:,:)                               ! geodesic comp. of perturbation
-            !real(dp), allocatable :: D3U_F(:,:,:,:)                             ! parallel deriv. of U
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! user output
-            call writo('Merging perturbation and equilibrium grid into custom &
-                &grid')
-            call lvl_ud(1)
-            
-            !! intialize variables
-            !!allocate(time(n_t))
-            !!allocate(X_F(grid%n(1),grid%n(2),grid%grp_n_r,n_t))
-            !!allocate(D3X_F(grid%n(1),grid%n(2),grid%grp_n_r,n_t))
-            !!allocate(U_F(grid%n(1),grid%n(2),grid%grp_n_r,n_t))
-            !!allocate(D3U_F(grid%n(1),grid%n(2),grid%grp_n_r,n_t))
-            
-            !! user output
-            !call writo('Calculating X, U, Qn and Qg')
-            !call lvl_ud(1)
-            
-            !! set up time
-            !ierr = calc_eqd_grid(time,0.0_dp,1.0_dp,excl_last=.true.)
-            !CHCKERR('')
-            
-            !! loop over all Eigenvalues
-            !do jd = 1,n_sol_found
-                !! calculate X, U, Qn and Qg in real space
-                !!ierr = calc_real_XUQ(eq,grid_eq,X,jd,time,X_F)
-                !CHCKERR('')
-            !end do
-            
-            call lvl_ud(-1)
-        end function decompose_energy
-    end function process_output
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! no conversion necessary: already in field-aligned grid
+                met_B%jac_FD = met%jac_FD
+                met_B%g_FD = met%g_FD
+                met_B%h_FD = met%h_FD
+                X_B%exp_ang_par_f = X%exp_ang_par_f
+                X_B%U_0 = X%U_0
+                X_B%U_1 = X%U_1
+                X_B%DU_0 = X%DU_0
+                X_B%DU_1 = X%DU_1
+                X_B%PV_0 = X%PV_0
+                X_B%PV_1 = X%PV_1
+                X_B%PV_2 = X%PV_2
+                X_B%KV_0 = X%KV_0
+                X_B%KV_1 = X%KV_1
+                X_B%KV_2 = X%KV_2
+            case (2)                                                            ! HELENA
+                ! call HELENA version
+                ierr = adapt_to_B_HEL(grid_eq,grid_eq_B,met,met_B,X,X_B)
+                CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+    end function adapt_to_B
 end module driver_rich

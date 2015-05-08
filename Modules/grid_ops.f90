@@ -127,10 +127,9 @@ contains
                 grid_eq_B => grid_eq
             case (2)                                                            ! HELENA
                 ! user output
-                call writo('Setting up and calculating field-aligned &
-                    &equilibrium grid in '//trim(i2str(n_par_X))//&
-                    &' parallel and '//trim(i2str(grid_eq%n(3)))//&
-                    &' normal points')
+                call writo('Start determining field-aligned grid in '//&
+                    &trim(i2str(n_par_X))//' parallel and '//&
+                    &trim(i2str(grid_eq%n(3)))//' normal points')
                 call lvl_ud(1)
                 
                 ! create the grid
@@ -151,7 +150,7 @@ contains
                 
                 ! user output
                 call lvl_ud(-1)
-                call writo('Field-aligned equilibrium grid ready')
+                call writo('Field-aligned equilibrium grid set up')
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
@@ -183,6 +182,9 @@ contains
         ! initialize ierr
         ierr = 0
         
+        call writo('Start determining the equilibrium grid')
+        call lvl_ud(1)
+        
         ! choose which equilibrium style is being used:
         !   1:  VMEC
         !   2:  HELENA
@@ -209,12 +211,15 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
+        
+        call lvl_ud(-1)
+        call writo('Equilibrium grid determined')
     end function calc_ang_grid_eq
     
     ! Calculate grid that follows magnetic field lines.
     integer function calc_ang_grid_B(grid_eq,eq,alpha) result(ierr)
         use num_vars, only: use_pol_flux_F, use_pol_flux_E, &
-            &eq_style, tol_NR
+            &eq_style, tol_NR, plot_grid
         use grid_vars, only: min_par_X, max_par_X
         use eq_vars, only: max_flux_p_E, max_flux_t_E
         
@@ -318,13 +323,21 @@ contains
         deallocate(r_E_loc)
         nullify(flux_F,flux_E)
         
+        ! plot grid if requested
+        if (plot_grid) then
+            ierr = plot_grid_real(grid_eq)
+            CHCKERR('')
+        else
+            call writo('Magnetic grid plot not requested')
+        end if
+        
 #if ldebug
         if (debug_calc_ang_grid_B) then
             call writo('Plotting theta_E, theta_F, zeta_E and zeta_F')
-            call print_HDF5('TEST_theta_E','TEST_theta_E',grid_eq%theta_E)
-            call print_HDF5('TEST_theta_F','TEST_theta_F',grid_eq%theta_F)
-            call print_HDF5('TEST_zeta_E','TEST_zeta_E',grid_eq%zeta_E)
-            call print_HDF5('TEST_zeta_F','TEST_zeta_F',grid_eq%zeta_F)
+            call plot_HDF5('TEST_theta_E','TEST_theta_E',grid_eq%theta_E)
+            call plot_HDF5('TEST_theta_F','TEST_theta_F',grid_eq%theta_F)
+            call plot_HDF5('TEST_zeta_E','TEST_zeta_E',grid_eq%zeta_E)
+            call plot_HDF5('TEST_zeta_F','TEST_zeta_F',grid_eq%zeta_F)
         end if
 #endif
     end function calc_ang_grid_B
@@ -1210,7 +1223,7 @@ contains
     integer function plot_grid_real(grid) result(ierr)
         use num_vars, only: output_style, alpha_job_nr, grp_rank, grp_n_procs, &
             &no_plots, n_theta_plot, n_zeta_plot
-        use grid_vars, only: create_grid, destroy_grid
+        use grid_vars, only: create_grid, dealloc_grid
         
         character(*), parameter :: rout_name = 'plot_grid_real'
         
@@ -1268,8 +1281,8 @@ contains
         ierr = calc_XYZ_grid(grid_plot,X_1,Y_1,Z_1)
         CHCKERR('')
         
-        ! destroy grid
-        call destroy_grid(grid_plot)
+        ! dealloc grid
+        call dealloc_grid(grid_plot)
         
         ! 2. plot field lines
         call writo('writing field lines')
@@ -1282,9 +1295,9 @@ contains
         ierr = calc_XYZ_grid(grid_plot,X_2,Y_2,Z_2)
         CHCKERR('')
         
-        ! destroy grids
-        call destroy_grid(grid_plot)
-        call destroy_grid(grid_ext)
+        ! dealloc grids
+        call dealloc_grid(grid_plot)
+        call dealloc_grid(grid_ext)
         
         ! get pointers to full X, Y and Z
         ! The reason for  this is that the  plot is not as simple  as usual, and

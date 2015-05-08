@@ -8,12 +8,17 @@ module output_ops
     use messages
     use num_vars, only: dp, max_str_ln, no_plots, iu, plot_dir, data_dir, &
         &script_dir
-    use files, only: nextunit
+    use files_utilities, only: nextunit
+    use grid_vars, only: grid_type
+    use eq_vars, only: eq_type
+    use met_vars, only: met_type
+    use X_vars, only: X_type
+    
     
     implicit none
     private
     public print_GP_2D, print_GP_3D, draw_GP, draw_GP_animated, merge_GP, &
-        &print_HDF5, plot_diff_HDF5
+        &plot_HDF5, plot_diff_HDF5
     
     ! interfaces
     interface print_GP_2D
@@ -22,8 +27,8 @@ module output_ops
     interface print_GP_3D
         module procedure print_GP_3D_ind, print_GP_3D_arr
     end interface
-    interface print_HDF5
-        module procedure print_HDF5_ind, print_HDF5_arr
+    interface plot_HDF5
+        module procedure plot_HDF5_ind, plot_HDF5_arr
     end interface
     interface draw_GP
         module procedure draw_GP_ind, draw_GP_arr
@@ -467,8 +472,8 @@ contains
         
         ! call GNUPlot
         call execute_command_line('gnuplot "'//trim(script_name)//&
-            !&'" 2> /dev/null',EXITSTAT=istat)
-            &'"',EXITSTAT=istat)
+            &'" 2> /dev/null',EXITSTAT=istat)
+            !&'"',EXITSTAT=istat)
         
         if (plot_on_screen) then
             if (istat.ne.0) then
@@ -711,8 +716,8 @@ contains
         
         ! call GNUPlot
         call execute_command_line('gnuplot "'//trim(script_name)//&
-            !&'" 2> /dev/null',EXITSTAT=istat)
-            &'"',EXITSTAT=istat)
+            &'" 2> /dev/null',EXITSTAT=istat)
+            !&'"',EXITSTAT=istat)
         
         if (istat.eq.0) then
             call writo('Created animated plot in output file '''//&
@@ -862,7 +867,7 @@ contains
     ! col_id. (This could  be implemented by changing how n_plot  is defined and
     ! selectively  letting  each  processer  write  in  the  main  loop  at  its
     ! corresponding indices.)
-    subroutine print_HDF5_arr(var_names,file_name,vars,tot_dim,grp_offset,&
+    subroutine plot_HDF5_arr(var_names,file_name,vars,tot_dim,grp_offset,&
         &X,Y,Z,col_id,col,description)                                          ! array version
         use HDF5_ops, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
             &print_HDF5_geom, print_HDF5_3D_data_item, print_HDF5_att, &
@@ -934,13 +939,13 @@ contains
         ! tests
         if (tot_dim_loc(col_id_loc).ne.n_plot) then
             istat = 1
-            call writo('WARNING: In print_HDF5, all the processes need to have &
+            call writo('WARNING: In plot_HDF5, all the processes need to have &
                 &the full range in the dimension given by col_id')
             CHCKSTT
         end if
         if (n_plot.eq.1 .and. col_loc.ne.1) then
             istat = 1
-            call writo('WARNING: In print_HDF5, if single plot, the collection &
+            call writo('WARNING: In plot_HDF5, if single plot, the collection &
                 &type needs to be one')
             CHCKSTT
         end if
@@ -1249,8 +1254,8 @@ contains
                 CHCKSTT
             end if
         end subroutine assign_pointers
-    end subroutine print_HDF5_arr
-    subroutine print_HDF5_ind(var_name,file_name,var,tot_dim,grp_offset,&
+    end subroutine plot_HDF5_arr
+    subroutine plot_HDF5_ind(var_name,file_name,var,tot_dim,grp_offset,&
         &X,Y,Z,description)                                                     ! individual version
         
         ! input / output
@@ -1276,7 +1281,7 @@ contains
         if (present(X)) then
             if (present(Y)) then
                 if (present(Z)) then
-                    call print_HDF5_arr([var_name],file_name,&
+                    call plot_HDF5_arr([var_name],file_name,&
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,grp_offset_loc,&
                         &X=reshape(X,[size(X,1),size(X,2),size(X,3),1]),&
@@ -1284,7 +1289,7 @@ contains
                         &Z=reshape(Z,[size(Z,1),size(Z,2),size(Z,3),1]),&
                         &col=1,description=description)
                 else
-                    call print_HDF5_arr([var_name],file_name,&
+                    call plot_HDF5_arr([var_name],file_name,&
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,grp_offset_loc,&
                         &X=reshape(X,[size(X,1),size(X,2),size(X,3),1]),&
@@ -1293,14 +1298,14 @@ contains
                 end if
             else
                 if (present(Z)) then
-                    call print_HDF5_arr([var_name],file_name,&
+                    call plot_HDF5_arr([var_name],file_name,&
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,grp_offset_loc,&
                         &X=reshape(X,[size(X,1),size(X,2),size(X,3),1]),&
                         &Z=reshape(Z,[size(Z,1),size(Z,2),size(Z,3),1]),&
                         &col=1,description=description)
                 else
-                    call print_HDF5_arr([var_name],file_name,&
+                    call plot_HDF5_arr([var_name],file_name,&
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,grp_offset_loc,&
                         &X=reshape(X,[size(X,1),size(X,2),size(X,3),1]),&
@@ -1310,14 +1315,14 @@ contains
         else
             if (present(Y)) then
                 if (present(Z)) then
-                    call print_HDF5_arr([var_name],file_name,&
+                    call plot_HDF5_arr([var_name],file_name,&
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,grp_offset_loc,&
                         &Y=reshape(Y,[size(Y,1),size(Y,2),size(Y,3),1]),&
                         &Z=reshape(Z,[size(Z,1),size(Z,2),size(Z,3),1]),&
                         &col=1,description=description)
                 else
-                    call print_HDF5_arr([var_name],file_name,&
+                    call plot_HDF5_arr([var_name],file_name,&
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,grp_offset_loc,&
                         &Y=reshape(Y,[size(Y,1),size(Y,2),size(Y,3),1]),&
@@ -1325,23 +1330,23 @@ contains
                 end if
             else
                 if (present(Z)) then
-                    call print_HDF5_arr([var_name],file_name,&
+                    call plot_HDF5_arr([var_name],file_name,&
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,grp_offset_loc,&
                         &col=1,Z=reshape(Z,[size(Z,1),size(Z,2),size(Z,3),1]),&
                         &description=description)
                 else
-                    call print_HDF5_arr([var_name],file_name,&
+                    call plot_HDF5_arr([var_name],file_name,&
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,grp_offset_loc,&
                         &col=1,description=description)
                 end if
             end if
         end if
-    end subroutine print_HDF5_ind
+    end subroutine plot_HDF5_ind
     
     ! Takes  two input  vectors and  plots  these as  well as  the relative  and
-    ! absolute difference in a HDF5  file, similar to print_HDF5. Optionally, an
+    ! absolute difference in  a HDF5 file, similar to  plot_HDF5. Optionally, an
     ! output message  can be displayed on  screen with the maximum  relative and
     ! absolute error.
     subroutine plot_diff_HDF5(A,B,file_name,tot_dim,grp_offset,description,&
@@ -1408,7 +1413,7 @@ contains
         var_names(5) = 'abs v1 - v2'
         
         ! plot
-        call print_HDF5_arr(var_names,file_name,plot_var,tot_dim=tot_dim_loc,&
+        call plot_HDF5_arr(var_names,file_name,plot_var,tot_dim=tot_dim_loc,&
             &grp_offset=grp_offset_loc,col=1,description=description)
         
         ! output message if requested

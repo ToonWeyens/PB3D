@@ -44,7 +44,7 @@ CHANGELOG
 
 0.74: - Split off MPI_utilities from MPI_ops, containing the numerical utilities that have to do with MPI.
       - Put diff from utilities in output_ops, so now output_ops is indeed below utilities (but not MPI_utilities)
-      - con2dis and dis2con are now an error-reporting function.
+      - Con2dis and dis2con are now an error-reporting function.
       - Restructured the code to calculate HELENA on HELENA specified grid and afterwards interpolating on X grid.
       - Results are similar to previous ones when poloidal flux is used, but discrepancies for toroidal flux.
       - Simplified normalization: now input is normalized directly.
@@ -52,7 +52,7 @@ CHANGELOG
       - Fixed confusion about rho: Its profile is indeed free to be chosen and has no influence on the marginal stability.
       - Faulty solutions are removed by default; Can be overriden using retain_all_sol.
 
-0.75: - simplified HDF5 plotting: Group dimensions now read from variable size, individual version calls array version.
+0.75: - Simplified HDF5 plotting: Group dimensions now read from variable size, individual version calls array version.
       - Corrected bug in HDF5 plotting: Symmetry is checked explicitely when one of the dimensions is 1.
       - Plotting of q, iota and other flux quantities now has correct normalization in both normal axis and function values.
       - Run scripts now create a new folder based on the date and time.
@@ -61,3 +61,17 @@ CHANGELOG
       - Improved normalization (and fixed bug for HELENA): Now mu_0 is also normalized so the equations don't change form.
       - As HELENA already provides normalized outputs, normalization is not necessary any more.
       - Improved running by putting output name in run script and not in PB3D itself.
+
+0.76: - Implemented a test for the derivatives of g_E. There are some serious issues with the quality of the higher order numerical derivatives.
+      - Fixed a bug in the calculation of the jacobian for Helena: The derivatives of the determinant of the transformation matrix are zero. Now the pressure balance for HELENA is good.
+      - Reorganized the code by creating a new module for post processing, which is called after the main driver.
+      - Moved the calculation of the extra quantities, such as shear, curvature, ... to the equilibrium module and improved the calculation of sigma.
+      - Fixed a bug in the calculation of sigma.
+      - HDF5 routines now use a type corresponding to REAL64 instead of deprecated H5T_NATIVE_DOUBLE.
+      - Reorganized basic structure of programme.
+      - Now there is a global variable prog_style that indicates whether some common routines are used for PB3D or PB3D_PP.
+      - Now there is a global variable group_output that indicates whether all group mastes can output. If true, the output on screen indicates the outputting group and the file output is directed to the correct one.
+      - MPI_wait can now also wait on all the groups.
+      - Outputs revised: One text output per group, one HDF5 output and EV output per alpha job and level of Richardson's extrapolation.
+      - Deallocation revised.
+      - ERROR in richardson extrapolation: You can only do this for constant Eigenvalues! So need an algorithm to select these!

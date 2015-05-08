@@ -10,7 +10,7 @@ module MPI_utilities
     
     implicit none
     private
-    public get_ser_var, get_ghost_arr, broadcast_var, wait_MPI
+    public get_ser_var, get_ghost_arr, broadcast_var, wait_MPI, calc_n_groups
     
     ! interfaces
     interface get_ser_var
@@ -396,16 +396,52 @@ contains
         CHCKERR('MPI broadcast failed')
     end function broadcast_var_log
     
-    ! MPI Barrier
-    integer function wait_MPI() result(ierr)
+    ! MPI wait
+    ! Optionally, a style can be provided:
+    !   - 1: wait on group [default]
+    !   - 2: wait on all groups
+    integer function wait_MPI(style) result(ierr)
         use num_vars, only: MPI_Comm_groups
         
         character(*), parameter :: rout_name = 'wait_MPI'
         
+        ! input / output
+        integer, intent(in), optional :: style                                  ! style
+        
+        ! local variables
+        integer :: style_loc                                                    ! local copy of style
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
         ! initialize ierr
         ierr = 0
         
-        call MPI_Barrier(MPI_Comm_groups,ierr)
+        ! set local style
+        style_loc = 1
+        if (present(style)) style_loc = style
+        
+        ! barrier according 
+        select case (style_loc)
+            case (1)
+                call MPI_Barrier(MPI_Comm_groups,ierr)
+            case (2)
+                call MPI_Barrier(MPI_Comm_world,ierr)
+            case default
+                err_msg = 'No style associated with '//trim(i2str(style_loc))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
         CHCKERR('MPI Barrier failed')
     end function wait_MPI
+    
+    ! calculates number of groups based on n_procs_per_alpha:
+    !   - if there are less processes than n_procs_per_alpha, there is one group
+    !   - limit number of possible groups to number of alpha jobs.
+    subroutine calc_n_groups(n_groups)
+        use num_vars, only: glb_n_procs, n_procs_per_alpha, n_alpha
+        
+        ! input / output
+        integer, intent(inout) :: n_groups                                      ! number of groups
+        
+        n_groups = min(glb_n_procs/min(n_procs_per_alpha,glb_n_procs),n_alpha)  ! how many groups of alpha, limited by nr. of alpha jobs
+    end subroutine calc_n_groups
 end module MPI_utilities

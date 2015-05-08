@@ -10,7 +10,7 @@ module input_ops
     
     implicit none
     private
-    public read_input, pause_prog, get_real, get_int, get_log
+    public read_input, read_PB3D, pause_prog, get_real, get_int, get_log
     
 contains
     ! Queries for a logical value yes or no, where the default answer is also to
@@ -256,7 +256,6 @@ contains
         end if
     end subroutine pause_prog
     
-    
     ! reads input from user-provided input file
     ! [MPI] only global master
     integer function read_input() result(ierr)
@@ -269,7 +268,7 @@ contains
             &retain_all_sol
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
-        use files, only: input_name
+        use files_ops, only: input_name
         use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X, min_n_r_X, &
             &min_n_X, min_r_X, max_r_X
         use grid_vars, only: n_par_X, min_par_X, max_par_X
@@ -308,7 +307,7 @@ contains
             
             ! read user input
             if (input_name.ne.'') then                                          ! otherwise, defaults are loaded
-                read (input_i, nml=inputdata, iostat=istat)                     ! read input data
+                read(input_i, nml=inputdata, iostat=istat)                     ! read input data
                 
                 ! check input if successful read
                 if (istat.eq.0) then                                            ! input file succesfully read
@@ -357,6 +356,10 @@ contains
                     call writo('WARNING: Cannot open user-provided file "' // &
                         &trim(input_name) // '". Using defaults')
                 end if
+                
+                ! user output
+                call writo('Close input file')
+                close(input_i)
             end if
             
             ! set up min_n_X, max_n_X, min_m_X, max_m_X
@@ -637,4 +640,16 @@ contains
             end if
         end function adapt_normalization
     end function read_input
+    
+    ! reads PB3D output from user-provided input file
+    ! [MPI] only global master
+    integer function read_PB3D() result(ierr)
+        
+        character(*), parameter :: rout_name = 'read_PB3D'
+        
+        ! initialize ierr
+        ierr = 0
+        
+        write(*,*) '!!!!!!!!!!! CONTINUE HERE !!!!!!!!!!!!!!!!!!!!!!'
+    end function read_PB3D
 end module input_ops

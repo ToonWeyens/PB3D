@@ -10,8 +10,7 @@ module messages
     public init_messages, lvl_ud, writo, print_ar_1, print_ar_2, &
         &print_err_msg, init_time, start_time, stop_time, passed_time, &
         &print_hello, print_goodbye, &
-        &temp_output_id, max_len_temp_output, temp_output, lvl, lvl_sep, &
-        &temp_output_active, temp_output_omitted, time_sep
+        &temp_output, lvl, lvl_sep, temp_output_active, time_sep
 
     ! global variables
     integer :: lvl                                                              ! lvl determines the indenting. higher lvl = more indenting
@@ -21,15 +20,14 @@ module messages
     real(dp) :: t1, t2                                                          ! end points of time interval
     logical :: running                                                          ! whether the timer is running
     logical :: temp_output_active                                               ! true if temporary output is to be written in temp_output
-    integer :: temp_output_omitted                                              ! how many temporary outputs omitted
-    integer :: temp_output_id                                                   ! counts the entries in temp_output
-    integer, parameter :: max_len_temp_output = 70                              ! max. length of array of chars temp_output
     character(len=max_str_ln), allocatable :: temp_output(:)                    ! temporary output, before output file is opened
     
 contains
     ! initialize the variables for the module
     ! [MPI] All ranks
     subroutine init_messages
+        use num_vars, only: group_output
+        
         ! output level
         lvl = 1
         
@@ -39,11 +37,12 @@ contains
         t2 = 0
         running = .false. 
         
+        ! only global master can output
+        group_output = .false.
+        
         ! temporary output
         temp_output_active = .true.
-        temp_output_omitted = 0
-        temp_output_id = 1
-        allocate(temp_output(max_len_temp_output))
+        allocate(temp_output(0))
     end subroutine init_messages
     
     ! prints first message
@@ -51,8 +50,7 @@ contains
         use num_vars, only: glb_rank, prog_name, prog_version
         
         if (glb_rank.eq.0) then
-            write(*,*) 'Simulation started on '//get_date()//&
-                &', at '//get_clock()
+            write(*,*) 'started on '//get_date()//', at '//get_clock()
             write(*,*) trim(prog_name)//' version: '//trim(prog_version)
             write(*,*) ''
         end if
@@ -116,10 +114,10 @@ contains
         character(len=6) :: time_units(4) = ['day   ','hour  ','minute',&
             &'second']
         integer :: id                                                           ! counter
-
+        
         ! stop at current time if running
         if (running) call stop_time
-
+        
         begin_str = '(this took'
         if (deltat.lt.1) then
             end_str = ' less than 1 second)'
@@ -218,12 +216,9 @@ contains
     !       masters  of the  groups of  alpha  write their  output to  different
     !       files, which  are then read  by the  global master when  the group's
     !       work is done
-    !       Before the groups are created, the group rank is set to be identical
-    !       to  the global  rank. This  way,  the group  rank always  determines
-    !       whether a  process outputs  or not,  also when  there are  no groups
-    !       (yet)
     subroutine writo(input_str,persistent)
-        use num_vars, only: grp_rank, output_i, no_messages
+        use num_vars, only: glb_rank, grp_rank, output_i, no_messages, &
+            &group_output
         
         ! input / output
         character(len=*), intent(in) :: input_str                               ! the name that is searched for
@@ -232,17 +227,21 @@ contains
         ! local variables
         character(len=max_str_ln) :: output_str                                 ! the name that is searched for
         character(len=max_str_ln) :: header_str                                 ! the name that is searched for
-        character(len=max_str_ln) :: temp_output_err_str(2)                     ! error if temp_output is full
         integer :: id, i_part                                                   ! counters
         integer :: max_len_part, num_parts, st_part, en_part                    ! variables controlling strings
         logical :: ignore                                                       ! normally, everybody but group master is ignored
+        character(len=max_str_ln), allocatable :: temp_output_loc(:)            ! local temporary output
         
         ! bypass messages if no_messages
         if (no_messages) return
         
         ! setup ignore
         ignore = .true.                                                         ! ignore by default
-        if (grp_rank.eq.0) ignore = .false.                                     ! group masters can output
+        if (group_output) then                                                  ! non-global group masters can output
+            if (grp_rank.eq.0) ignore = .false.
+        else                                                                    ! only global group masters can output
+            if (glb_rank.eq.0) ignore = .false.
+        end if
         if (present(persistent)) ignore = .not.persistent                       ! persistent can override this
         
         if (.not.ignore) then                                                   ! only group master (= global master if no groups) or persistent
@@ -268,42 +267,24 @@ contains
                 end do
                 header_str = '          '//trim(header_str)
                 
-                ! error string for temporary output
-                temp_output_err_str(1) = 'WARNING: not enough space in &
-                    &temp_output, start omiting output from log file'           ! error message
-                temp_output_err_str(2) = 'Increase the variable &
-                    &"max_len_temp_output" in output_ops'                       ! error message
-                
                 ! write output to file output_i or to temporary output
                 if (temp_output_active) then                                    ! temporary output to internal variable temp_output
-                    if (temp_output_id.le.max_len_temp_output-3) then           ! still room for at least 3 lines of temporary output
-                        if (lvl.eq.1) then                                      ! first level
-                            temp_output(temp_output_id) = header_str            ! first level gets extra lines
-                            temp_output_id = temp_output_id + 1
-                            temp_output(temp_output_id) = output_str
-                            temp_output_id = temp_output_id + 1
-                            temp_output(temp_output_id) = header_str
-                            temp_output_id = temp_output_id + 1                 ! increase counter by 3
-                        else                                                    ! other levels only need one line (but error needs 2)
-                            temp_output(temp_output_id) = output_str
-                            temp_output_id = temp_output_id + 1                 ! increase counter by 1
-                        end if
-                    else                                                        ! maximum 2 lines left for temporary output: for error
-                        if (temp_output_omitted.eq.0) then                      ! up to now success: first error
-                            ! error message
-                            do id = 1,2
-                                call format_str(lvl,temp_output_err_str(id))    ! format error message
-                                temp_output(temp_output_id) = &
-                                    &temp_output_err_str(id)                    ! save error message as final temporary output
-                                write(*,*) temp_output_err_str(id)              ! write error message on screen
-                                temp_output_id = temp_output_id + 1             ! 2 last entries in log file
-                            end do
-                        end if
-                        if (lvl.eq.1) then                                      ! first level
-                            temp_output_omitted = temp_output_omitted + 3       ! 3 output lines omitted
-                        else                                                    ! other levels
-                            temp_output_omitted = temp_output_omitted + 1       ! 1 output lines omitted
-                        end if
+                    ! back up previous temporary output in local variable
+                    allocate(temp_output_loc(size(temp_output)))
+                    temp_output_loc = temp_output
+                    
+                    ! reallocate temp_output
+                    deallocate(temp_output)
+                    if (lvl.eq.1) then                                          ! first level
+                        allocate(temp_output(size(temp_output_loc)+3))
+                        temp_output(1:size(temp_output_loc)) = temp_output_loc
+                        temp_output(size(temp_output_loc)+1) = header_str       ! first level gets extra lines
+                        temp_output(size(temp_output_loc)+2) = output_str
+                        temp_output(size(temp_output_loc)+3) = header_str
+                    else                                                        ! other levels only need one line
+                        allocate(temp_output(size(temp_output_loc)+1))
+                        temp_output(1:size(temp_output_loc)) = temp_output_loc
+                        temp_output(size(temp_output_loc)+1) = output_str
                     end if
                 else                                                            ! normal output to file output_i
                     if (lvl.eq.1) write(output_i,*) header_str                  ! first level gets extra lines
@@ -312,12 +293,13 @@ contains
                 end if
                 
                 ! also write output to screen
-                if (lvl.eq.1) write(*,*) header_str                             ! first level gets extra lines
-                write(*,*) output_str
-                if (lvl.eq.1) write(*,*) header_str
+                if (lvl.eq.1) call write_on_screen(header_str)
+                call write_on_screen(output_str)
+                if (lvl.eq.1) call write_on_screen(header_str)
             end do
         end if
     contains
+        ! formats the string
         subroutine format_str(lvl,str)
             ! input / output
             character(len=*), intent(inout) :: str                              ! string that is to be formatted for the lvl
@@ -331,6 +313,39 @@ contains
             end do
             str = get_clock()//': '//trim(str)
         end subroutine format_str
+        
+        ! writes a string on screen, possibly prepended by the group number
+        subroutine write_on_screen(str)
+            use num_vars, only: glb_n_procs, grp_nr
+            
+            ! input / output
+            character(len=*), intent(in) :: str                                 ! string to write
+            
+            ! local variables
+            integer :: n_digits                                                 ! nr. of digits for the integer group number
+            character(len=max_str_ln) :: format_str                             ! format of string
+            
+            ! get n_digits to print on screen
+            n_digits = ceiling(log10(1._dp*glb_n_procs))
+            
+            if (n_digits.gt.0) then
+                ! set string  format according to whether  non-global groups can
+                ! output
+                if (group_output) then
+                    format_str = &
+                        &'(" [group ",I'//trim(i2str(n_digits))//',"] ",A)'
+                    write(*,format_str) grp_nr, trim(str)
+                else
+                    format_str = &
+                        &'("        ",A'//trim(i2str(n_digits))//',"  ",A)'
+                    write(*,format_str) '', trim(str)
+                end if
+            else
+                write(*,*) trim(str)
+            end if
+            
+            ! write group number or empty spaces
+        end subroutine write_on_screen
     end subroutine
 
     ! print an array of dimension 2 on the screen
@@ -387,10 +402,10 @@ contains
             
             
             if (str_full) then                                                  ! truncate
-                write (var_str, '(ES9.2)') arr(size(arr))                            ! last variable
+                write (var_str, '(ES9.2)') arr(size(arr))                       ! last variable
                 var_str = ' ... ' // trim(var_str)
             else 
-                write (var_str, '(ES9.2)') arr(id)                                   ! current variable
+                write (var_str, '(ES9.2)') arr(id)                              ! current variable
                 var_str = ' ' // trim(var_str)
             end if
             output_str = trim(output_str) // trim(var_str)
