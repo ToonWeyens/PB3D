@@ -985,7 +985,7 @@ contains
         
         ! open output file for the log
         full_output_name = trim(output_name)//'_EV'
-        if (n_alpha.gt.0) full_output_name = &
+        if (n_alpha.gt.1) full_output_name = &
             &trim(full_output_name)//'_A'//trim(i2str(alpha_job_nr))            ! append alpha job number
         if (max_it_r.gt.1) full_output_name = &
             &trim(full_output_name)//'_R'//trim(i2str(rich_lvl_nr))             ! append Richardson level

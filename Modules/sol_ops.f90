@@ -15,7 +15,7 @@ module sol_ops
 
     implicit none
     private
-    public calc_real_XUQ, plot_X_vecs
+    public calc_real_XUQ, plot_X_vecs, decompose_energy
     
     ! interfaces
     interface calc_real_XUQ
@@ -40,7 +40,7 @@ contains
     ! 1D grid.
     integer function calc_real_XUQ_arr(grid_eq,eq,grid_X,X,X_id,XUQ_style,time,&
         &XUQ,met,deriv) result(ierr)                                            ! (time) array version
-        use num_vars, only: use_pol_flux_F, grp_rank, grp_n_procs
+        use num_vars, only: use_pol_flux_F
         use utilities, only: con2dis, calc_deriv
         
         character(*), parameter :: rout_name = 'calc_real_XUQ_arr'
@@ -63,7 +63,6 @@ contains
         integer :: id, jd, kd                                                   ! counter
         complex(dp) :: sqrt_X_val_norm                                          ! normalized sqrt(X_val)
         logical :: deriv_loc                                                    ! local copy of deriv
-        integer :: grp_n_r_X_loc                                                ! local copy of grp_n_r of X grid
         complex(dp), allocatable :: DX_vec(:)                                   ! normal derivative of X_vec for a specific mode
         complex(dp), allocatable :: fac_0(:,:,:), fac_1(:,:,:)                  ! factor to be multiplied with X and DX
         complex(dp), allocatable :: par_fac(:)                                  ! multiplicative factor due to parallel derivative
@@ -91,13 +90,6 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! set up local grp_n_r of X grid
-        if (grp_rank.lt.grp_n_procs-1) then
-            grp_n_r_X_loc = grid_X%grp_n_r - 1                                  ! grp_n_r of X grid has ghost region
-        else
-            grp_n_r_X_loc = grid_X%grp_n_r
-        end if
-        
         ! set up local copy of deriv
         deriv_loc = .false.
         if (present(deriv)) deriv_loc = deriv
@@ -122,7 +114,7 @@ contains
         allocate(par_fac(grid_eq%grp_n_r))
         
         ! set up DX_vec
-        allocate(DX_vec(grp_n_r_X_loc))
+        allocate(DX_vec(grid_X%grp_n_r))
         
         ! initialize XUQ
         XUQ = 0._dp
@@ -198,14 +190,14 @@ contains
             ! set up normal derivative of X vec
             if (XUQ_style.eq.3 .or. XUQ_style.eq.4) then
                 ierr = calc_deriv(X%vec(jd,:,X_id),DX_vec,&
-                    &grid_X%grp_r_F(1:grp_n_r_X_loc),1,2)
+                    &grid_X%grp_r_F(1:grid_X%grp_n_r),1,2)
                 CHCKERR('')
             else
                 DX_vec = 0._dp
             end if
             
             ! iterate over all normal points in X grid (of this group)
-            do kd = 1,grp_n_r_X_loc
+            do kd = 1,grid_X%grp_n_r
                 ! set lower and upper index for this normal point
                 i_lo = floor(grp_r_eq(kd))
                 i_hi = ceiling(grp_r_eq(kd))
@@ -273,10 +265,9 @@ contains
     ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
     ! equilibrium  grid and  the normal  part of  the provided  perturbation
     ! grid.
-    integer function plot_X_vecs(grid_eq,eq,grid_X,X,XYZ,n_sol_found,&
-        &min_id,max_id) result(ierr)
-        use num_vars, only: alpha_job_nr, grp_rank, grp_n_procs, &
-            &output_style
+    integer function plot_X_vecs(grid_eq,eq,grid_X,X,XYZ,min_id,max_id) &
+            &result(ierr)
+        use num_vars, only: output_style
         use output_ops, only: plot_HDF5
         
         character(*), parameter :: rout_name = 'plot_X_vecs'
@@ -287,13 +278,11 @@ contains
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_type), intent(in) :: X                                           ! perturbation variables
         real(dp), intent(in) :: XYZ(:,:,:,:)                                    ! X, Y and Z of extended eq_grid
-        integer, intent(in) :: n_sol_found                                      ! how many solutions found and saved
         integer, intent(in) :: min_id(3), max_id(3)                             ! min. and max. index of range 1, 2 and 3
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
         integer :: n_t(2)                                                       ! nr. of time steps in quarter period, nr. of quarter periods
-        integer :: grp_n_r_X_loc                                                ! local copy of grp_n_r of X grid
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: f_plot(:,:,:,:)                                ! the function to plot
         real(dp), allocatable :: time(:)                                        ! fraction of Alfvén time
@@ -329,16 +318,15 @@ contains
         ! three ranges
         do jd = 1,3
             if (min_id(jd).le.max_id(jd)) call &
-                &writo('Plotting results for modes '//&
-                &trim(i2str(min_id(jd)))//'..'//trim(i2str(max_id(jd)))&
-                &//' of range '//trim(i2str(jd)))
+                &writo('RANGE '//trim(i2str(jd))//': modes '//&
+                &trim(i2str(min_id(jd)))//'..'//trim(i2str(max_id(jd))))
             call lvl_ud(1)
             
             ! indices in each range
             do id = min_id(jd),max_id(jd)
                 ! user output
                 call writo('Mode '//trim(i2str(id))//'/'//&
-                    &trim(i2str(n_sol_found))//', with eigenvalue '&
+                    &trim(i2str(size(X%val)))//', with eigenvalue '&
                     &//trim(r2strt(realpart(X%val(id))))//' + '//&
                     &trim(r2strt(imagpart(X%val(id))))//' i')
                 
@@ -365,13 +353,6 @@ contains
                     col = 2                                                     ! temporal collection
                 else
                     col = 1                                                     ! no collection
-                end if
-                
-                ! set up local grp_n_r of X grid
-                if (grp_rank.lt.grp_n_procs-1) then
-                    grp_n_r_X_loc = grid_X%grp_n_r - 1                          ! grp_n_r of X grid has ghost region
-                else
-                    grp_n_r_X_loc = grid_X%grp_n_r
                 end if
                 
                 ! set up plot dimensions and group dimensions
@@ -418,10 +399,8 @@ contains
                 
                 ! set up var_name, file_name and description
                 var_name = 'Solution vector X_vec'
-                file_name = 'X_vec_'//trim(i2str(alpha_job_nr))//'_'//&
-                    &trim(i2str(id))
-                description = 'Job '//trim(i2str(alpha_job_nr))//&
-                    &' - Solution vector X_vec for Eigenvalue '//&
+                file_name = 'X_vec_'//trim(i2str(id))
+                description = 'Solution vector X_vec for Eigenvalue '//&
                     &trim(i2str(id))//' with omega = '//&
                     &trim(r2str(realpart(omega)))
                 
@@ -457,8 +436,7 @@ contains
         integer function plot_harmonics(grid_X,X,X_id) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ghost_arr, get_ser_var
             use output_ops, only: merge_GP
-            use num_vars, only: grp_n_procs, grp_rank, alpha_job_nr, &
-                &use_pol_flux_F
+            use num_vars, only: grp_n_procs, grp_rank, use_pol_flux_F
             use eq_vars, only: max_flux_p_F, max_flux_t_F
             
             character(*), parameter :: rout_name = 'plot_harmonics'
@@ -500,10 +478,8 @@ contains
             
             ! absolute amplitude
             ! set up file name of this rank and plot title
-            file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//&
-                &'_abs.dat'
-            plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
-                &trim(i2str(X_id))//' - absolute value'
+            file_name = 'Eigenvector_abs.dat'
+            plot_title = 'EV '//trim(i2str(X_id))//' - absolute value'
             
             ! print amplitude of harmonics of eigenvector for each rank
             call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
@@ -534,10 +510,8 @@ contains
             
             ! perturbation at midplane theta = zeta = 0
             ! set up file name of this rank and plot title
-            file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//&
-                &'_midplane.dat'
-            plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
-                &trim(i2str(X_id))//' - midplane'
+            file_name = 'Eigenvector_midplane.dat'
+            plot_title = 'EV '//trim(i2str(X_id))//' - midplane'
             
             ! print amplitude of harmonics of eigenvector for each rank
             call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
@@ -593,9 +567,8 @@ contains
                 end do
                 
                 ! set up file name of this rank and plot title
-                file_name = 'Eigenvector_'//trim(i2str(alpha_job_nr))//'_max.dat'
-                plot_title = 'job '//trim(i2str(alpha_job_nr))//' - EV '//&
-                    &trim(i2str(X_id))//' - maximum of modes'
+                file_name = 'Eigenvector_max.dat'
+                plot_title = 'EV '//trim(i2str(X_id))//' - maximum of modes'
                 
                 ! plot the maximum
                 call print_GP_2D(trim(plot_title),trim(file_name),&
@@ -613,4 +586,18 @@ contains
             call writo('Finished plot of the harmonics')
         end function plot_harmonics
     end function plot_X_vecs
+    
+    ! Decomposes  the  plasma potential  and  kinetic energy  in its  individual
+    ! terms.
+    integer function decompose_energy(grid_eq,eq) result(ierr)
+        character(*), parameter :: rout_name = 'decompose_energy'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        
+        ! initialize ierr
+        ierr = 0
+        
+    end function decompose_energy
 end module sol_ops

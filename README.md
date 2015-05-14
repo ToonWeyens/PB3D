@@ -75,3 +75,13 @@ CHANGELOG
       - Outputs revised: One text output per group, one HDF5 output and EV output per alpha job and level of Richardson's extrapolation.
       - Deallocation revised.
       - ERROR in richardson extrapolation: You can only do this for constant Eigenvalues! So need an algorithm to select these!
+
+0.77: - Created postprocessing programme PB3D_PP.
+      - Removed the postprocessing module.
+      - print_output_eq and print_output_X ready.
+      - Implemented reading of variables from PB3D.
+      - Prog_version is now a real variable.
+      - The main PP driver is under process: It has three PB3D variables: one from output, one field-aligned and one plot-extended.
+      - Removed usage of grp_r_X_loc in sol_ops, as X grid has no ghost regions and also because the routines should be called using a trimmed grid.
+      - Implemented the post-processing program until decompose_energy.
+      - However: Untested routines!

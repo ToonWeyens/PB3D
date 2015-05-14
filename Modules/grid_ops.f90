@@ -14,7 +14,7 @@ module grid_ops
     private
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, &
         &calc_ang_grid_eq, calc_ang_grid_B, plot_grid_real, trim_grid, &
-        &extend_grid, setup_grid_eq, setup_and_calc_grid_B, &
+        &extend_grid_E, setup_grid_eq, setup_and_calc_grid_B, &
         &get_norm_interp_data
 #if ldebug
     public debug_calc_ang_grid_B, debug_get_norm_interp_data
@@ -1263,7 +1263,7 @@ contains
         n_zeta_plot = 160
         
         ! extend grid
-        ierr = extend_grid(grid,grid_ext)
+        ierr = extend_grid_E(grid,grid_ext)
         CHCKERR('')
         
         ! restore n_theta_plot and n_zeta_plot
@@ -1597,8 +1597,8 @@ contains
         type(grid_type), intent(inout) :: grid_out                              ! trimmed grid
         
         ! local variables
-        integer, allocatable :: tot_i_min(:)                                    ! i_min of Equilibrium grid of all processes
-        integer, allocatable :: tot_i_max(:)                                    ! i_max of Equilibrium grid of all processes
+        integer, allocatable :: tot_i_min(:)                                    ! i_min of grid of all processes
+        integer, allocatable :: tot_i_max(:)                                    ! i_max of grid of all processes
         integer :: i_lim_out(2)                                                 ! i_lim of output grid
         integer :: n_out(3)                                                     ! n of output grid
         
@@ -1631,10 +1631,12 @@ contains
         CHCKERR('')
         
         ! copy arrays
-        grid_out%theta_E = grid_in%theta_E(:,:,1:grid_out%grp_n_r)
-        grid_out%zeta_E = grid_in%zeta_E(:,:,1:grid_out%grp_n_r)
-        grid_out%theta_F = grid_in%theta_F(:,:,1:grid_out%grp_n_r)
-        grid_out%zeta_F = grid_in%zeta_F(:,:,1:grid_out%grp_n_r)
+        if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3D grid
+            grid_out%theta_E = grid_in%theta_E(:,:,1:grid_out%grp_n_r)
+            grid_out%zeta_E = grid_in%zeta_E(:,:,1:grid_out%grp_n_r)
+            grid_out%theta_F = grid_in%theta_F(:,:,1:grid_out%grp_n_r)
+            grid_out%zeta_F = grid_in%zeta_F(:,:,1:grid_out%grp_n_r)
+        end if
         grid_out%r_E = grid_in%r_E(tot_i_min(1):tot_i_max(grp_n_procs))         ! copy total r
         grid_out%r_F = grid_in%r_F(tot_i_min(1):tot_i_max(grp_n_procs))
         if (grid_in%divided) then                                               ! but if input grid divided, grp_r gets priority
@@ -1647,11 +1649,11 @@ contains
     ! n_zeta_plot angular and  own grp_n_r points in  E coordinates. Optionally,
     ! the grid can  also be converted to  F coordinates if equilibrium  grid and
     ! the variables are provided.
-    integer function extend_grid(grid_in,grid_ext,grid_eq,eq) result(ierr)
+    integer function extend_grid_E(grid_in,grid_ext,grid_eq,eq) result(ierr)
         use num_vars, only: n_theta_plot, n_zeta_plot
         use grid_vars, only: create_grid
         
-        character(*), parameter :: rout_name = 'extend_grid'
+        character(*), parameter :: rout_name = 'extend_grid_E'
         
         ! input / output
         type(grid_type), intent(in) :: grid_in                                  ! grid to be extended
@@ -1692,7 +1694,7 @@ contains
                 &grid_ext%grp_r_F,grid_ext%theta_F,grid_ext%zeta_F)
             CHCKERR('')
         end if
-    end function extend_grid
+    end function extend_grid_E
     
     ! calculates grp_r_E (style 1) or grp_r_F (style 2)
     integer function calc_grp_r(grid_eq,eq,grp_r,style) result (ierr)

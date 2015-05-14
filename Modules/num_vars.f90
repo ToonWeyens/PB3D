@@ -20,7 +20,7 @@ module num_vars
         &group_output, input_i, eq_i, eq_name, output_i, no_plots, &
         &no_messages, output_style, plot_dir, script_dir, data_dir, &
         &n_theta_plot, n_zeta_plot, n_sol_requested, n_sol_plotted, &
-        &retain_all_sol, &
+        &retain_all_sol, PB3D_i, PB3D_name, &
         &n_alpha, min_alpha, max_alpha, alpha_job_nr, rich_lvl_nr, &
         &spline_type
 
@@ -33,8 +33,8 @@ module num_vars
     integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_PP)
     character(len=max_str_ln) :: prog_name                                      ! name of program, used for info
-    character(len=max_str_ln) :: prog_version                                   ! version number
     character(len=max_str_ln) :: output_name                                    ! name of output file
+    real(dp), parameter :: prog_version = 0.77_dp                               ! version number
 
     ! MPI variables
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha
@@ -84,7 +84,9 @@ module num_vars
     logical :: group_output                                                     ! whether also the non-master groups can output
     integer :: input_i                                                          ! file number of input file
     integer :: eq_i                                                             ! file number of equilibrium file from VMEC or HELENA
-    character(len=max_str_ln) :: eq_name                                        ! name of equilibrium file
+    character(len=max_str_ln) :: eq_name                                        ! name of equilibrium file from VMEC or HELENA
+    integer :: PB3D_i                                                           ! file number of PB3D output file
+    character(len=max_str_ln) :: PB3D_name                                      ! name of PB3D output file
     integer :: output_i                                                         ! file number of output file
     logical :: no_plots = .false.                                               ! true if no plots should be made
     logical :: no_messages = .false.                                            ! true if no messages should be shown

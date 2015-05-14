@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.10                                                              !
+!   Version: 0.77                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -24,19 +24,27 @@
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D_PP
     use str_ops, only: i2str
-    use num_vars, only: prog_name, prog_version, ltest, prog_style
+    use num_vars, only: prog_name, prog_style
     use messages, only: writo, print_goodbye, lvl_ud, print_hello, &
         &init_messages, init_time, start_time, stop_time, passed_time
     use HDF5_ops, only: init_HDF5
-    use MPI_ops, only: start_MPI, stop_MPI
+    use utilities, only: init_utilities
+    use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_vars
     use files_ops, only: init_files, parse_args, open_input, open_output, &
         &close_output
-    use input_ops, only: read_PB3D
+    use input_ops, only: read_input
+    use PB3D_ops, only: read_PB3D
+    use driver_PP, only: run_driver_PP
     
     implicit none
 
     ! local variables
     integer :: ierr                                                             ! error
+    write(*,*) '!!!!! FOR VMEC: COPY ALSO THE EQUILIBRIUM QUANTITIES TO BE ABLE &
+        &TO CALCULATE EVERYTHING FOR A NON-ALIGNED PLOT GRID !!!'
+    write(*,*) '!!!!! FOR HELENA: COPY ALSO THE FIELD-ALIGNED GRID AND &
+        &INTERPOLATE THE QUANTITIES TO THIS GRID !!!'
+    write(*,*) 'THIS WAY YOU HAVE TWO GRIDS: FIELD ALIGNED AND PLOT'
     
     !-------------------------------------------------------
     !   Initialize some routines
@@ -44,12 +52,12 @@ program PB3D_PP
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
     prog_name = 'PB3D_PP'
-    prog_version = '0.10'
-    prog_style = 1
+    prog_style = 2
     call print_hello
     call init_messages                                                          ! initialize message operations
     ierr = init_files()                                                         ! initialize file operations
     CHCKERR
+    call init_utilities                                                         ! initialize utilities
     call init_time                                                              ! initialize time
     call init_HDF5                                                              ! initialize HDF5
  
@@ -65,31 +73,16 @@ program PB3D_PP
     CHCKERR
     ierr = read_PB3D()                                                          ! read the PB3D file
     CHCKERR
+    ierr = read_input()                                                         ! read input file
+    CHCKERR
     ierr = open_output()                                                        ! open output file per alpha group
     CHCKERR
-    !ierr = broadcast_input_vars()                                               ! broadcast to other processors
-    !CHCKERR
+    ierr = broadcast_input_vars()                                               ! broadcast to other processors
+    CHCKERR
     call writo('')
     call passed_time
     call writo('')
     call lvl_ud(-1)
-    
-#if ldebug
-    !-------------------------------------------------------
-    !   Do some tests
-    !-------------------------------------------------------
-    if (ltest) then
-        call start_time
-        call writo('Generic Tests')
-        call lvl_ud(1)
-        !ierr = generic_tests()
-        !CHCKERR
-        call writo('')
-        call passed_time
-        call writo('')
-        call lvl_ud(-1)
-    end if
-#endif
     
     !-------------------------------------------------------
     !   Main driver
@@ -97,8 +90,8 @@ program PB3D_PP
     call start_time
     call writo('Main driver')
     call lvl_ud(1)
-    !ierr = run_driver()
-    !CHCKERR
+    ierr = run_driver_PP()
+    CHCKERR
     call writo('')
     call passed_time
     call writo('')
@@ -111,8 +104,7 @@ program PB3D_PP
     call lvl_ud(1)
     ierr = stop_MPI()
     CHCKERR
-    ierr = close_output()
-    CHCKERR
+    call close_output
     call lvl_ud(-1)
     
     call print_goodbye
@@ -131,7 +123,7 @@ contains
         integer :: ierr_abort                                                   ! error to output
         
         if (ierr.ne.66) then
-            call writo('>> calling routine: PB3D (main) of rank '//&
+            call writo('>> calling routine: PB3D_PP (main) of rank '//&
                 &trim(i2str(glb_rank)),persistent=.true.)
             call writo('ERROR CODE '//trim(i2str(ierr))//&
                 &'. Aborting MPI rank '//trim(i2str(glb_rank)),&

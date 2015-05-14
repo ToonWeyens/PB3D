@@ -83,7 +83,7 @@ contains
         CHCKERR('')
         
         ! split  the  communicator MPI_Comm_world into subcommunicators
-        call writo('Setting up groups for dynamical load balancing')
+        call writo('Set up groups for dynamical load balancing')
         call lvl_ud(1)
         ierr = split_MPI(n_r_eq,eq_limits)
         CHCKERR('')
@@ -94,12 +94,12 @@ contains
         CHCKERR('')
         
         ! create equilibrium
-        call writo('Initializing equilibrium quantities')
+        call writo('Initialize equilibrium quantities')
         ierr = create_eq(grid_eq,eq)
         CHCKERR('')
         
         ! calculate flux quantities and complete equilibrium grid
-        call writo('Calculating flux quantities')
+        call writo('Calculate flux quantities')
         ierr = calc_flux_q(eq,grid_eq)
         CHCKERR('')
         
@@ -147,7 +147,7 @@ contains
                 end select
                 
                 ! calculate for this alpha job
-                ierr = run_for_alpha(grid_eq,eq,alpha(alpha_job_nr))
+                ierr = run_rich_driver_for_alpha(grid_eq,eq,alpha(alpha_job_nr))
                 CHCKERR('')
                 
                 ! display message
@@ -210,18 +210,19 @@ contains
     end function run_rich_driver
     
     ! Runs the  calculations for one  of the alpha's.
-    integer function run_for_alpha(grid_eq,eq,alpha) result(ierr)
+    integer function run_rich_driver_for_alpha(grid_eq,eq,alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, no_guess, &
             &rich_lvl_nr, grp_rank, alpha_job_nr
         use X_vars, only: dealloc_X
         use eq_ops, only: calc_eq, print_output_eq
-        use X_ops, only: solve_EV_system, calc_magn_ints, prepare_X
+        use X_ops, only: solve_EV_system, calc_magn_ints, prepare_X, &
+            &print_output_X
         use met_vars, only: dealloc_met
         use MPI_ops, only: divide_X_grid
         use grid_vars, only: create_grid, dealloc_grid
         use grid_ops, only: coord_F2E, setup_and_calc_grid_B, calc_ang_grid_eq
         
-        character(*), parameter :: rout_name = 'run_for_alpha'
+        character(*), parameter :: rout_name = 'run_rich_driver_for_alpha'
         
         ! input / output
         type(grid_type), intent(inout), target :: grid_eq                       ! equilibrium grid
@@ -243,8 +244,6 @@ contains
         integer :: n_sol_found                                                  ! how many solutions found and saved
         character(len=max_str_ln) :: plot_title                                 ! title for plots
         
-        !integer :: k,m
-        
         ! initialize ierr
         ierr = 0
         
@@ -256,16 +255,16 @@ contains
         ierr = calc_eq(grid_eq,eq,met)
         CHCKERR('')
         
-        ! write equilibrium variables to output
-        ierr = print_output_eq(grid_eq,eq,met)
-        CHCKERR('')
-        
         ! prepare matrix elements
         ierr = prepare_X(grid_eq,eq,met,X)
         CHCKERR('')
         
         ! set up field-aligned equilibrium grid
         ierr = setup_and_calc_grid_B(grid_eq,grid_eq_B,eq,alpha)
+        CHCKERR('')
+        
+        ! write equilibrium variables to output
+        ierr = print_output_eq(grid_eq,grid_eq_B,eq,met,alpha)
         CHCKERR('')
         
         ! adapt variables to a field-aligned grid
@@ -342,6 +341,10 @@ contains
             ierr = solve_EV_system(grid_eq_B,grid_X,X_B,use_guess,n_sol_found)
             CHCKERR('')
             call lvl_ud(-1)
+            
+            ! write X variables to output
+            ierr = print_output_X(grid_X,X_B)
+            CHCKERR('')
             
             ! Richardson extrapolation
             if (max_it_r.gt.1) then                                             ! only do this if more than 1 Richardson level
@@ -529,13 +532,17 @@ contains
                 end if
             end if
         end function calc_rich_ex
-    end function run_for_alpha
+    end function run_rich_driver_for_alpha
     
-    ! Adapt some  variables to  a field-aligned  grid, depending  on equilibrium
-    ! type.
+    ! Adapt  some variables  angularly  to a  field-aligned  grid, depending  on
+    ! equilibrium type:
+    !   1. met: jac_FD, g_FD, h_FD
+    !   2. X: exp_ang_par_f, U_i, DU_i, PV_i, KV_i
+    ! Note that this, by definition, does not affect and thus doesn not apply to
+    ! flux functions.
     integer function adapt_to_B(grid_eq,grid_eq_B,met,met_B,X,X_B) result(ierr)
         use num_vars, only: eq_style
-        use HELENA, only: adapt_to_B_HEL
+        use HELENA, only: interp_HEL_on_grid
         use X_vars, only: create_X
         use met_vars, only: create_met
         
@@ -580,8 +587,9 @@ contains
                 X_B%KV_1 = X%KV_1
                 X_B%KV_2 = X%KV_2
             case (2)                                                            ! HELENA
-                ! call HELENA version
-                ierr = adapt_to_B_HEL(grid_eq,grid_eq_B,met,met_B,X,X_B)
+                ! call HELENA grid interpolation
+                ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,met,met_B,X,X_B,&
+                    &grid_name='field-aligned grid')
                 CHCKERR('')
             case default
                 err_msg = 'No equilibrium style associated with '//&

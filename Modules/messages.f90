@@ -51,7 +51,7 @@ contains
         
         if (glb_rank.eq.0) then
             write(*,*) 'started on '//get_date()//', at '//get_clock()
-            write(*,*) trim(prog_name)//' version: '//trim(prog_version)
+            write(*,*) trim(prog_name)//' version: '//trim(r2strt(prog_version))
             write(*,*) ''
         end if
     end subroutine print_hello

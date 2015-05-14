@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.76                                                              !
+!   Version: 0.77                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -23,13 +23,12 @@
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D
-    use num_vars, only: ltest, prog_name, prog_version, prog_style
+    use num_vars, only: ltest, prog_name, prog_style
     use str_ops, only: r2str, i2str
     use messages, only: init_messages, lvl_ud, writo, init_time, &
         &start_time, passed_time, print_hello, print_goodbye
     use HDF5_ops, only: init_HDF5
     use driver, only: run_driver
-    use post_process, only: run_post_processing
     use files_ops, only: open_input, open_output, parse_args, init_files, &
         &close_output
     use input_ops, only: read_input
@@ -54,7 +53,6 @@ program PB3D
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
     prog_name = 'PB3D'
-    prog_version = '0.76'
     prog_style = 1
     call print_hello
     call init_messages                                                          ! initialize message operations
@@ -76,7 +74,7 @@ program PB3D
     CHCKERR
     ierr = read_eq()                                                            ! read equilibrium file
     CHCKERR
-    ierr = read_input()                                                         ! read input files
+    ierr = read_input()                                                         ! read input file
     CHCKERR
     ierr = open_output()                                                        ! open output file per alpha group
     CHCKERR

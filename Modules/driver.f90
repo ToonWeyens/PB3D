@@ -11,6 +11,7 @@ module driver
     use messages
     use driver_rich, only: run_rich_driver
     use num_vars, only: minim_style, max_str_ln
+    
     implicit none
     private
     public run_driver

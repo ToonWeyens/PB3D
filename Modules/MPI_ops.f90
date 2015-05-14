@@ -7,11 +7,12 @@ module MPI_ops
     use messages
     use MPI
     use num_vars, only: dp, max_str_ln, pi
+    use output_ops, only: print_GP_2D
     
     implicit none
     private
-    public start_MPI, stop_MPI, split_MPI, abort_MPI, broadcast_input_vars, &
-        &merge_MPI, get_next_job, divide_X_grid
+    public start_MPI, stop_MPI, split_MPI, split_MPI_PP, abort_MPI, &
+        &broadcast_input_vars, merge_MPI, get_next_job, divide_X_grid
     
 contains
     ! start MPI and gather information
@@ -93,11 +94,12 @@ contains
         id = 1
         do while (remainder.gt.0)
             n_procs(id) = n_procs(id)+1
-            if (id.lt.n_groups) then                                            ! go to next group
-                id = id+1
-            else                                                                ! back to first group
-                id = 1
-            end if
+            !!!if (id.lt.n_groups) then                                            ! go to next group
+                !!!id = id+1
+            !!!else                                                                ! back to first group
+                !!!id = 1
+            !!!end if
+            id = mod(id,n_groups)+1
             remainder = remainder - 1
         end do
         
@@ -374,6 +376,94 @@ contains
         end function calc_eq_r_range
     end function split_MPI
     
+    ! Divides a perturbation grid over all  the processes and use this to divide
+    ! the equilibrium grid  as well. From now  on, there is supposed  to be only
+    ! one group so  group nr. is equal  to global nr. This makes  using the PB3D
+    ! routines easier.
+    integer function split_MPI_PP(r_F_eq,r_F_X,i_lim_eq,i_lim_X) result(ierr)
+        use num_vars, only: grp_nr, n_groups, grp_n_procs, glb_n_procs, grp_rank
+        use MPI_utilities, only: get_ser_var
+        
+        character(*), parameter :: rout_name = 'split_MPI_PP'
+        
+        ! input / output
+        real(dp), intent(in) :: r_F_eq(:), r_F_X(:)                             ! equilibrium and perturbation r_F
+        integer, intent(inout) :: i_lim_eq(2), i_lim_X(2)                       ! i_lim of equilibrium and perturbation
+        
+        ! local variables
+        integer :: n_r_eq, n_r_X                                                ! total nr. of normal points in eq and X grid
+        integer, allocatable :: grp_n_r_eq(:), grp_n_r_X(:)                     ! group nr. of normal points in eq and X grid
+        integer :: remainder                                                    ! remainder of division
+        integer :: id                                                           ! counter
+        real(dp) :: min_X, max_X                                                ! min. and max. of r_F_X in range of this process
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer, allocatable :: tot_i_min_eq(:)                                 ! i_min of equilibrium grid of all processes
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set some variables
+        n_groups = 1
+        grp_nr = 1
+        grp_n_procs = glb_n_procs
+        n_r_eq = size(r_F_eq)
+        n_r_X = size(r_F_X)
+        allocate(grp_n_r_eq(glb_n_procs),grp_n_r_X(glb_n_procs))
+        
+        ! divide the perturbation grid equally over all the processes
+        grp_n_r_X = n_r_X/glb_n_procs
+        
+        ! add an extra process if the remainder is not zero
+        remainder = mod(n_r_X,glb_n_procs)
+        id = 1
+        do while (remainder.gt.0)
+            grp_n_r_X(id) = grp_n_r_X(id)+1
+            id = mod(id,glb_n_procs)+1
+            remainder = remainder - 1
+        end do
+        
+        ! set i_lim_X
+        i_lim_X = [sum(grp_n_r_X(1:grp_rank))+1,sum(grp_n_r_X(1:grp_rank+1))]
+        min_X = minval(r_F_X(i_lim_X(1):i_lim_X(2)))
+        max_X = maxval(r_F_X(i_lim_X(1):i_lim_X(2)))
+        
+        ! determine i_lim_eq: smallest eq range comprising X range
+        i_lim_eq = [0,size(r_F_eq)+1]
+        if (r_F_eq(1).lt.r_F_eq(size(r_F_eq))) then                             ! ascending r_F_eq
+            do id = 1,size(r_F_eq)
+                if (r_F_eq(id).lt.min_X) i_lim_eq(1) = id                       ! move lower limit up
+                if (r_F_eq(size(r_F_eq)-id+1).gt.max_X) &
+                    &i_lim_eq(2) = size(r_F_eq)-id+1                            ! move upper limit down
+            end do
+        else                                                                    ! descending r_F_eq
+            do id = 1,size(r_F_eq)
+                if (r_F_eq(size(r_F_eq)-id+1).lt.min_X) &
+                    &i_lim_eq(1) = size(r_F_eq)-id+1                            ! move lower limit up
+                if (r_F_eq(id).gt.max_X) i_lim_eq(2) = id                       ! move upper limit down
+            end do
+        end if
+        
+        ! check if valid limits found
+        if (i_lim_eq(1).lt.1 .or. i_lim_eq(2).gt.size(r_F_eq)) then
+            ierr = 1
+            err_msg = 'Perturbation range not contained in equilibrium range'
+            CHCKERR(err_msg)
+        end if
+        
+        ! get all min_i's of the 
+        ierr = get_ser_var([i_lim_eq(1)],tot_i_min_eq,scatter=.true.)
+        CHCKERR('')
+        
+        ! modify  limits to add up  to a nicely trimmed  equlibrium grid without
+        ! holes
+        if (grp_rank.eq.0) i_lim_eq(1) = 1
+        if (grp_rank.lt.glb_n_procs-1) then
+            i_lim_eq(2) = tot_i_min_eq(grp_rank+2)-1+1                          ! ghost region of width 1 necessary for eq_grid to fully enclose X_grid
+        else
+            i_lim_eq(2) = size(r_F_eq)
+        end if
+    end function split_MPI_PP
+    
     ! merge the MPI groups back to MPI_Comm_world
     ! [MPI] Collective call
     integer function merge_MPI() result(ierr)
@@ -590,7 +680,7 @@ contains
             &n_sol_requested, nyq_fac, tol_r, use_pol_flux_F, use_pol_flux_E, &
             &retain_all_sol, plot_flux_q, plot_grid, no_plots, output_style, &
             &eq_style, use_normalization, n_sol_plotted, n_theta_plot, &
-            &n_zeta_plot, plot_jq, EV_BC, rho_style
+            &n_zeta_plot, plot_jq, EV_BC, rho_style, prog_style
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
@@ -599,6 +689,8 @@ contains
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_n_r_X, &
             &min_r_X, max_r_X
         use grid_vars, only: n_r_eq, n_par_X, min_par_X, max_par_X
+        use HDF5_ops, only: var_1D
+        use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B, vars_1D_X
 #if ldebug
         use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
@@ -607,9 +699,13 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: id                                                           ! counter
         
         ! initialize ierr
         ierr = 0
+        
+        ! set err_msg
+        err_msg = 'MPI broadcast failed'
         
         if (glb_n_procs.gt.1) then                                              ! need to broadcast from global rank 0 to other processes
             ! print message
@@ -618,113 +714,231 @@ contains
             
             ! broadcast eq_style to determine what else to broadcast
             call MPI_Bcast(eq_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
+            CHCKERR(err_msg)
             
-            ! variables that are sent for every equilibrium style:
+            ! variables that are sent for every program style:
             call MPI_Bcast(output_name,max_str_ln,MPI_CHARACTER,0,&
                 &MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(ltest,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(use_pol_flux_F,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(use_pol_flux_E,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(no_guess,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(plot_flux_q,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(plot_grid,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(plot_jq,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
+            CHCKERR(err_msg)
+            call MPI_Bcast(output_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(min_r_X,1,MPI_DOUBLE_PRECISION,0,&
+                &MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(max_r_X,1,MPI_DOUBLE_PRECISION,0,&
+                &MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(min_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(max_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
             call MPI_Bcast(use_normalization,1,MPI_LOGICAL,0,MPI_Comm_world,&
                 &ierr)
-            CHCKERR('MPI broadcast failed')
+            CHCKERR(err_msg)
             call MPI_Bcast(rho_style,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(max_it_r,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(minim_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(n_par_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(n_r_eq,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(EV_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(n_procs_per_alpha,1,MPI_INTEGER,0,MPI_Comm_world,&
-                &ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(n_alpha,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(min_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(max_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(n_sol_requested,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(min_n_r_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(nyq_fac,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(retain_all_sol,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(output_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(n_theta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(n_zeta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(n_sol_plotted,4,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(min_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
-                &ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(max_alpha,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
-                &ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(min_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(max_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(tol_NR,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(tol_r,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(min_par_X,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
-                &ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(max_par_X,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
-                &ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(gam,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(R_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(pres_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(B_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(psi_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(rho_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(T_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(vac_perm,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
-                &ierr)
-            CHCKERR('MPI broadcast failed')
-            call MPI_Bcast(EV_BC,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR('MPI broadcast failed')
+            CHCKERR(err_msg)
+            
+            ! select according to program style
+            select case (prog_style)
+                case(1)                                                         ! PB3D
+                    call MPI_Bcast(ltest,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(use_pol_flux_F,1,MPI_LOGICAL,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(use_pol_flux_E,1,MPI_LOGICAL,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(no_guess,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(plot_flux_q,1,MPI_LOGICAL,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(plot_grid,1,MPI_LOGICAL,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(plot_jq,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_it_r,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(minim_style,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(n_par_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(n_r_eq,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(EV_style,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(n_procs_per_alpha,1,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(n_alpha,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(n_sol_requested,1,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(min_n_r_X,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(nyq_fac,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(retain_all_sol,1,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(n_theta_plot,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(n_zeta_plot,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(min_alpha,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_alpha,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(tol_NR,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(tol_r,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(min_par_X,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_par_X,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(gam,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(R_0,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(pres_0,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(B_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(psi_0,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(rho_0,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(T_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(vac_perm,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(EV_BC,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                case(2)                                                         ! PB3D_PP
+                    call MPI_Bcast(n_sol_plotted,4,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(n_theta_plot,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(n_zeta_plot,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call bcast_size_1_var_1D(vars_1D_X)
+                    CHCKERR(err_msg)
+                    do id = 1,size(vars_1D_X)
+                        call bcast_size_1_R(vars_1D_X(id)%p)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_X(id)%p,size(vars_1D_X(id)%p),&
+                            &MPI_DOUBLE_PRECISION,&
+                            &0,MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call bcast_size_1_I(vars_1D_X(id)%tot_i_min)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_X(id)%tot_i_min,&
+                            &size(vars_1D_X(id)%tot_i_min),MPI_INTEGER,0,&
+                            &MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call bcast_size_1_I(vars_1D_X(id)%tot_i_max)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_X(id)%tot_i_max,&
+                            &size(vars_1D_X(id)%tot_i_max),MPI_INTEGER,0,&
+                            &MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_X(id)%var_name,max_str_ln,&
+                            &MPI_CHARACTER,0,MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                    end do
+                    call bcast_size_1_var_1D(vars_1D_eq)
+                    CHCKERR(err_msg)
+                    do id = 1,size(vars_1D_eq)
+                        call bcast_size_1_R(vars_1D_eq(id)%p)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_eq(id)%p,size(vars_1D_eq(id)%p),&
+                            &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call bcast_size_1_I(vars_1D_eq(id)%tot_i_min)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_eq(id)%tot_i_min,&
+                            &size(vars_1D_eq(id)%tot_i_min),MPI_INTEGER,0,&
+                            &MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call bcast_size_1_I(vars_1D_eq(id)%tot_i_max)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_eq(id)%tot_i_max,&
+                            &size(vars_1D_eq(id)%tot_i_max),MPI_INTEGER,0,&
+                            &MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_eq(id)%var_name,max_str_ln,&
+                            &MPI_CHARACTER,0,MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                    end do
+                    call bcast_size_1_var_1D(vars_1D_eq_B)
+                    CHCKERR(err_msg)
+                    do id = 1,size(vars_1D_eq_B)
+                        call bcast_size_1_R(vars_1D_eq_B(id)%p)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_eq_B(id)%p,&
+                            &size(vars_1D_eq_B(id)%p),MPI_DOUBLE_PRECISION,0,&
+                            &MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call bcast_size_1_I(vars_1D_eq_B(id)%tot_i_min)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_eq_B(id)%tot_i_min,&
+                            &size(vars_1D_eq_B(id)%tot_i_min),MPI_INTEGER,0,&
+                            &MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call bcast_size_1_I(vars_1D_eq_B(id)%tot_i_max)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_eq_B(id)%tot_i_max,&
+                            &size(vars_1D_eq_B(id)%tot_i_max),MPI_INTEGER,0,&
+                            &MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_eq_B(id)%var_name,max_str_ln,&
+                            &MPI_CHARACTER,0,MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                    end do
+                case default
+                    err_msg = 'No program style associated with '//&
+                        &trim(i2str(prog_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
             
             ! For  specific variables, choose  which equilibrium style  is being
             ! used:
@@ -732,156 +946,184 @@ contains
             !   2:  HELENA
             select case (eq_style)
                 case (1)                                                        ! VMEC
-                    call MPI_Bcast(lasym,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(lfreeb,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(mpol,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(ntor,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(nfp,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(flux_t_V)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(flux_t_V,size(flux_t_V),&
-                        &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(Dflux_t_V)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(Dflux_t_V,size(Dflux_t_V),&
-                        &MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(rot_t_V)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(rot_t_V,size(rot_t_V),MPI_DOUBLE_PRECISION,&
-                        &0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(R_V_c,0)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(R_V_c,size(R_V_c),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(R_V_s,0)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(R_V_s,size(R_V_s),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(Z_V_c,0)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(Z_V_c,size(Z_V_c),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(Z_V_s,0)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(Z_V_s,size(Z_V_s),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(L_V_c,0)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(L_V_c,size(L_V_c),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_4_R(L_V_s,0)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(L_V_s,size(L_V_s),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(pres_V)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(pres_V,size(pres_V),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
+                    ! select according to program style
+                    select case (prog_style)
+                        case(1)                                                 ! PB3D
+                            call bcast_size_1_R(flux_t_V)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(flux_t_V,size(flux_t_V),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_1_R(Dflux_t_V)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(Dflux_t_V,size(Dflux_t_V),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_1_R(rot_t_V)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(rot_t_V,size(rot_t_V),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_1_R(pres_V)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(pres_V,size(pres_V),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(lasym,1,MPI_LOGICAL,0,&
+                                &MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(lfreeb,1,MPI_LOGICAL,0,&
+                                &MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(mpol,1,MPI_INTEGER,0,&
+                                &MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(ntor,1,MPI_INTEGER,0,MPI_Comm_world,&
+                                &ierr)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(nfp,1,MPI_INTEGER,0,MPI_Comm_world,&
+                                    &ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_4_R(R_V_c,0)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(R_V_c,size(R_V_c),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_4_R(R_V_s,0)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(R_V_s,size(R_V_s),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_4_R(Z_V_c,0)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(Z_V_c,size(Z_V_c),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_4_R(Z_V_s,0)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(Z_V_s,size(Z_V_s),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_4_R(L_V_c,0)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(L_V_c,size(L_V_c),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_4_R(L_V_s,0)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(L_V_s,size(L_V_s),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
 #if ldebug
-                    if (ltest) then                                             ! ltest has already been broadcast
-                        call bcast_size_4_R(B_V_sub_c,1)
-                        CHCKERR('MPI broadcast failed')
-                        call MPI_Bcast(B_V_sub_c,size(B_V_sub_c),&
-                            &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                        CHCKERR('MPI broadcast failed')
-                        call bcast_size_4_R(B_V_sub_s,1)
-                        CHCKERR('MPI broadcast failed')
-                        call MPI_Bcast(B_V_sub_s,size(B_V_sub_s),&
-                            &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                        CHCKERR('MPI broadcast failed')
-                        call bcast_size_3_R(B_V_c)
-                        CHCKERR('MPI broadcast failed')
-                        call MPI_Bcast(B_V_c,size(B_V_c),&
-                            &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                        CHCKERR('MPI broadcast failed')
-                        call bcast_size_3_R(B_V_s)
-                        CHCKERR('MPI broadcast failed')
-                        call MPI_Bcast(B_V_s,size(B_V_s),&
-                            &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                        CHCKERR('MPI broadcast failed')
-                        call bcast_size_3_R(jac_V_c)
-                        CHCKERR('MPI broadcast failed')
-                        call MPI_Bcast(jac_V_c,size(jac_V_c),&
-                            &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                        CHCKERR('MPI broadcast failed')
-                        call bcast_size_3_R(jac_V_s)
-                        CHCKERR('MPI broadcast failed')
-                        call MPI_Bcast(jac_V_s,size(jac_V_s),&
-                            &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                        CHCKERR('MPI broadcast failed')
-                    end if
+                            if (ltest) then                                     ! ltest has already been broadcast
+                                call bcast_size_4_R(B_V_sub_c,1)
+                                CHCKERR(err_msg)
+                                call MPI_Bcast(B_V_sub_c,size(B_V_sub_c),&
+                                    &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                                CHCKERR(err_msg)
+                                call bcast_size_4_R(B_V_sub_s,1)
+                                CHCKERR(err_msg)
+                                call MPI_Bcast(B_V_sub_s,size(B_V_sub_s),&
+                                    &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                                CHCKERR(err_msg)
+                                call bcast_size_3_R(B_V_c)
+                                CHCKERR(err_msg)
+                                call MPI_Bcast(B_V_c,size(B_V_c),&
+                                    &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                                CHCKERR(err_msg)
+                                call bcast_size_3_R(B_V_s)
+                                CHCKERR(err_msg)
+                                call MPI_Bcast(B_V_s,size(B_V_s),&
+                                    &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                                CHCKERR(err_msg)
+                                call bcast_size_3_R(jac_V_c)
+                                CHCKERR(err_msg)
+                                call MPI_Bcast(jac_V_c,size(jac_V_c),&
+                                    &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                                CHCKERR(err_msg)
+                                call bcast_size_3_R(jac_V_s)
+                                CHCKERR(err_msg)
+                                call MPI_Bcast(jac_V_s,size(jac_V_s),&
+                                    &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                                CHCKERR(err_msg)
+                            end if
 #endif
+                        case(2)                                                 ! PB3D_PP
+                            ! do nothing extra
+                        case default
+                            err_msg = 'No program style associated with '//&
+                                &trim(i2str(prog_style))
+                            ierr = 1
+                            CHCKERR(err_msg)
+                    end select
                 case (2)                                                        ! HELENA
-                    call MPI_Bcast(nchi,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(ias,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(flux_p_H)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(flux_p_H,size(flux_p_H),&
-                        &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(qs)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(qs,size(qs),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(pres_H)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(pres_H,size(pres_H),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(chi_H)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(chi_H,size(chi_H),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_1_R(RBphi)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(RBphi,size(RBphi),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_2_R(R_H)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(R_H,size(R_H),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_2_R(Z_H)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(Z_H,size(Z_H),MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_2_R(h_H_11)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(h_H_11,size(h_H_11),&
-                        &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_2_R(h_H_12)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(h_H_12,size(h_H_12),&
-                        &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
-                    call bcast_size_2_R(h_H_33)
-                    CHCKERR('MPI broadcast failed')
-                    call MPI_Bcast(h_H_33,size(h_H_33),&
-                        &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                    CHCKERR('MPI broadcast failed')
+                    ! select according to program style
+                    select case (prog_style)
+                        case(1)                                                 ! PB3D
+                            call bcast_size_2_R(R_H)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(R_H,size(R_H),MPI_DOUBLE_PRECISION,&
+                                &0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_2_R(Z_H)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(Z_H,size(Z_H),MPI_DOUBLE_PRECISION,&
+                                &0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_1_R(chi_H)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(chi_H,size(chi_H),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_1_R(flux_p_H)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(flux_p_H,size(flux_p_H),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(nchi,1,MPI_INTEGER,0,MPI_Comm_world,&
+                                &ierr)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(ias,1,MPI_INTEGER,0,MPI_Comm_world,&
+                                &ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_1_R(qs)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(qs,size(qs),MPI_DOUBLE_PRECISION,0,&
+                                &MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_1_R(pres_H)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(pres_H,size(pres_H),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_1_R(RBphi)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(RBphi,size(RBphi),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_2_R(h_H_11)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(h_H_11,size(h_H_11),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_2_R(h_H_12)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(h_H_12,size(h_H_12),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                            call bcast_size_2_R(h_H_33)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(h_H_33,size(h_H_33),&
+                                &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
+                        case(2)                                                 ! PB3D_PP
+                            ! do nothing extra
+                        case default
+                            err_msg = 'No program style associated with '//&
+                                &trim(i2str(prog_style))
+                            ierr = 1
+                            CHCKERR(err_msg)
+                    end select
                 case default
                     err_msg = 'No equilibrium style associated with '//&
                         &trim(i2str(eq_style))
@@ -895,7 +1137,7 @@ contains
     contains
         ! broadcasts the size of an array, so this array can be allocated in the
         ! slave processes
-        ! The index of this array is (1:n_r_eq)
+        ! The index of this array is (1:)
         subroutine bcast_size_1_I(arr)                                          ! version with 1 integer argument
             ! input / output
             integer, intent(inout), allocatable :: arr(:)
@@ -908,7 +1150,7 @@ contains
             call MPI_Bcast(arr_size,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             if (glb_rank.ne.0) allocate(arr(1:arr_size))
         end subroutine bcast_size_1_I
-        ! The index of this array is (1:n_r_eq)
+        ! The index of this array is (1:)
         subroutine bcast_size_1_R(arr)                                          ! version with 1 real argument
             ! input / output
             real(dp), intent(inout), allocatable :: arr(:)
@@ -921,7 +1163,20 @@ contains
             call MPI_Bcast(arr_size,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             if (glb_rank.ne.0) allocate(arr(1:arr_size))
         end subroutine bcast_size_1_R
-        ! The array index is (1:n_par,1:n_r_eq)
+        ! The index of this array is (1:)
+        subroutine bcast_size_1_var_1D(arr)                                     ! version with 1D var argument (see HDF5_ops)
+            ! input / output
+            type(var_1D), intent(inout), allocatable :: arr(:)
+            
+            ! local variables
+            integer :: arr_size                                                 ! sent ahead so arrays can be allocated
+            
+            if (glb_rank.eq.0) arr_size = size(arr)
+            
+            call MPI_Bcast(arr_size,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            if (glb_rank.ne.0) allocate(arr(1:arr_size))
+        end subroutine bcast_size_1_var_1D
+        ! The array index is (1:,1:)
         subroutine bcast_size_2_R(arr)                                          ! version with 2 real arguments
             ! input / output
             real(dp), intent(inout), allocatable :: arr(:,:)
@@ -934,7 +1189,7 @@ contains
             call MPI_Bcast(arr_size,2,MPI_INTEGER,0,MPI_Comm_world,ierr)
             if (glb_rank.ne.0) allocate(arr(1:arr_size(1),1:arr_size(2)))
         end subroutine bcast_size_2_R
-        ! The array index is (0:mpol-1,-ntor:ntor,1:n_r_eq,start_id)
+        ! The array index is (0:mpol-1,-ntor:ntor,1:,start_id)
         subroutine bcast_size_4_R(arr,start_id)                                 ! version with 4 real arguments
             ! input / output
             real(dp), intent(inout), allocatable :: arr(:,:,:,:)
@@ -951,7 +1206,7 @@ contains
                 &-(arr_size(2)-1)/2:(arr_size(2)-1)/2,1:arr_size(3),&
                 &start_id:arr_size(4)+start_id-1))
         end subroutine bcast_size_4_R
-        ! The array index is (0:mpol-1,-ntor:ntor,1:n_r_eq)
+        ! The array index is (0:mpol-1,-ntor:ntor,1:)
         subroutine bcast_size_3_R(arr)                                          ! version with 3 real arguments
             ! input / output
             real(dp), intent(inout), allocatable :: arr(:,:,:)

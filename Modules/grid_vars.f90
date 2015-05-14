@@ -92,31 +92,37 @@ contains
             end if
         end if
         
-        ! set divided and grp_n_r
-        grid%divided = .false.
-        if (present(i_lim)) then                                                ! might be divided grid
-            grid%i_min = i_lim(1)
-            grid%i_max = i_lim(2)
-            grid%grp_n_r = i_lim(2)-i_lim(1)+1
-            if (i_lim(2)-i_lim(1)+1.lt.n(3)) grid%divided = .true.              ! only divided if difference between group and total
-        else                                                                    ! certainly not divided grid
-            grid%grp_n_r = n(3)
-        end if
-        
-        ! copy the values
-        grid%n = n
-        allocate(grid%theta_E(n(1),n(2),grid%grp_n_r))
-        allocate(grid%zeta_E(n(1),n(2),grid%grp_n_r))
-        allocate(grid%theta_F(n(1),n(2),grid%grp_n_r))
-        allocate(grid%zeta_F(n(1),n(2),grid%grp_n_r))
-        allocate(grid%r_E(n(3)))
-        allocate(grid%r_F(n(3)))
-        if (grid%divided) then
-            allocate(grid%grp_r_E(grid%grp_n_r))
-            allocate(grid%grp_r_F(grid%grp_n_r))
+        ! check if 1D version has to be called
+        if (n(1).eq.0 .and. n(2).eq.0) then
+            ierr = create_grid_1D(grid,n(3),i_lim)
+            CHCKERR('')
         else
-            grid%grp_r_E => grid%r_E
-            grid%grp_r_F => grid%r_F
+            ! set divided and grp_n_r
+            grid%divided = .false.
+            if (present(i_lim)) then                                            ! might be divided grid
+                grid%i_min = i_lim(1)
+                grid%i_max = i_lim(2)
+                grid%grp_n_r = i_lim(2)-i_lim(1)+1
+                if (i_lim(2)-i_lim(1)+1.lt.n(3)) grid%divided = .true.          ! only divided if difference between group and total
+            else                                                                ! certainly not divided grid
+                grid%grp_n_r = n(3)
+            end if
+            
+            ! copy the values
+            grid%n = n
+            allocate(grid%theta_E(n(1),n(2),grid%grp_n_r))
+            allocate(grid%zeta_E(n(1),n(2),grid%grp_n_r))
+            allocate(grid%theta_F(n(1),n(2),grid%grp_n_r))
+            allocate(grid%zeta_F(n(1),n(2),grid%grp_n_r))
+            allocate(grid%r_E(n(3)))
+            allocate(grid%r_F(n(3)))
+            if (grid%divided) then
+                allocate(grid%grp_r_E(grid%grp_n_r))
+                allocate(grid%grp_r_F(grid%grp_n_r))
+            else
+                grid%grp_r_E => grid%r_E
+                grid%grp_r_F => grid%r_F
+            end if
         end if
     end function create_grid_3D
     integer function create_grid_1D(grid,n,i_lim) result(ierr)                  ! 1D version

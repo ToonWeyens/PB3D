@@ -2009,7 +2009,8 @@ contains
         if (ind_lo.eq.0 .or. ind_hi.eq.size_c+1) then                           ! not within range
             pt_d = -1._dp
             ierr = 1
-            err_msg = 'pt_c not within range'
+            err_msg = 'pt_c '//trim(r2str(pt_c))//' not within range '//&
+                &trim(r2str(minval(var_c)))//'..'//trim(r2str(maxval(var_c)))
             CHCKERR(err_msg)
         end if
         

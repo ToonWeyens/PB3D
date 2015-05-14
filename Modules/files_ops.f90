@@ -55,18 +55,17 @@ contains
                 opt_args(8) = '-st_pc_factor_mat_solver_package'
                 inc_args = [0,0,0,0,0,1,1,1]
             case(2)                                                             ! PB3D_PP
-                output_name = "PB3D_out"                                        ! standard output name
+                output_name = "PB3D_PP_out"                                     ! standard output name
                 ltest = .false.                                                 ! don't call the testing routines
                 lvl = 1
-                allocate(opt_args(5), inc_args(5))
+                allocate(opt_args(4), inc_args(4))
                 opt_args = ''
                 inc_args = 0
                 opt_args(1) = '-t'
                 opt_args(2) = '--test'
-                opt_args(3) = '--no_guess'
-                opt_args(4) = '--no_plots'
-                opt_args(5) = '--no_messages'
-                inc_args = [0,0,0,0,0]
+                opt_args(3) = '--no_plots'
+                opt_args(4) = '--no_messages'
+                inc_args = [0,0,0,0]
             case default
                 err_msg = 'No program style associated with '//&
                     &trim(i2str(prog_style))
@@ -180,8 +179,8 @@ contains
     ! open the input files
     ! [MPI] Only global master
     integer function open_input() result(ierr)
-        use num_vars, only: eq_i, input_i, glb_rank, prog_style, &
-            &no_guess, no_plots, eq_style, eq_name, no_messages
+        use num_vars, only: eq_i, input_i, glb_rank, prog_style, no_guess, &
+            &no_plots, eq_style, eq_name, no_messages, PB3D_i, PB3D_name
         use files_utilities, only: search_file
 #if ldebug
         use num_vars, only: ltest
@@ -203,7 +202,7 @@ contains
             call writo("Opening files")
             call lvl_ud(1)
             
-            ! select depending on type
+            ! select depending on program style
             select case (prog_style)
                 case(1)                                                         ! PB3D
                     ! check for correct input file and use default if needed
@@ -257,17 +256,27 @@ contains
                         CHCKERR('')
                     end if
                 case(2)                                                         ! PB3D_PP
-                    ! check  for input  file and  print error  if not  found (no
-                    ! default!)
+                    ! check for correct input file and use default if needed
                     input_name = command_arg(1)                                 ! first argument is the name of the input file
                     call search_file(input_i,input_name)
                     if (input_name.eq."") then
+                        call writo('No input file found. Default used')
+                    else 
+                        call writo('Input file "' // trim(input_name) &
+                            &// '" opened at number ' // trim(i2str(input_i)))
+                    end if
+                    
+                    ! check  for PB3D  file and  print  error if  not found  (no
+                    ! default!)
+                    PB3D_name = command_arg(2)
+                    call search_file(PB3D_i,PB3D_name)
+                    if (PB3D_name.eq."") then
                         ierr = 1
-                        err_msg = 'No PB3D output file found.'
+                        err_msg = 'No PB3D file found and no default possible.'
                         CHCKERR(err_msg)
                     else
-                        call writo('PB3D output file "' // trim(input_name) &
-                            &// '" opened at number ' // trim(i2str(eq_i)))
+                        call writo('PB3D file "' // trim(PB3D_name) &
+                            &// '" opened at number ' // trim(i2str(PB3D_i)))
                     end if
                 case default
                     err_msg = 'No program style associated with '//&
@@ -388,14 +397,10 @@ contains
                     call writo('WARNING: option test not available. &
                         &Recompile with cpp flag ''ldebug''...')
 #endif
-                case (3)                                                        ! disable guessing Eigenfunction from previous Richardson level
-                    call writo('option no_guess chosen: Eigenfunction not &
-                        &guessed from previous Richardson level')
-                    no_guess = .true.
-                case (4)                                                        ! disable plotting
+                case (3)                                                        ! disable plotting
                     call writo('option no_plots chosen: plotting disabled')
                     no_plots = .true.
-                case (5)                                                        ! disable messages
+                case (4)                                                        ! disable messages
                     call writo('option no_messages chosen: messages disabled')
                     no_messages = .true.
                 case default
@@ -412,7 +417,8 @@ contains
     ! Afterwards, it  can be called again  and more output files  can be created
     ! for the other groups.
     integer function open_output() result(ierr)
-        use num_vars, only: output_i, grp_rank, output_name, grp_nr, n_groups
+        use num_vars, only: output_i, grp_rank, output_name, grp_nr, n_groups, &
+            &prog_style
         use messages, only: temp_output, temp_output_active
         use files_utilities, only: nextunit
         use MPI_utilities, only: calc_n_groups
@@ -423,6 +429,7 @@ contains
         integer :: id                                                           ! counter
         character(len=max_str_ln) :: full_output_name                           ! full name
         integer :: n_groups_loc                                                 ! local n_groups
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -433,18 +440,29 @@ contains
             call writo('Attempting to open output file')
             call lvl_ud(1)
             
-            ! set local n_groups
-            call calc_n_groups(n_groups_loc)
-            
-            ! set full output name
-            full_output_name = trim(output_name)
-            if (n_groups.eq.0) then                                             ! n_groups not yet initialized
-                if (n_groups_loc.gt.1) full_output_name = &
-                    &trim(full_output_name)//'_G1'                              ! there will be more than 1 groups: append group number (+1)
-            else
-                full_output_name = &
-                    &trim(full_output_name)//'_G'//trim(i2str(grp_nr+1))        ! append group number (+1)
-            end if
+            ! select according to program style
+            select case (prog_style)
+                case(1)                                                         ! PB3D
+                    ! set local n_groups
+                    call calc_n_groups(n_groups_loc)
+                    
+                    ! set full output name
+                    full_output_name = trim(output_name)
+                    if (n_groups.eq.0) then                                     ! n_groups not yet initialized
+                        if (n_groups_loc.gt.1) full_output_name = &
+                            &trim(full_output_name)//'_G1'                      ! there will be more than 1 groups: append group number (+1)
+                    else
+                        full_output_name = trim(full_output_name)//'_G'//&
+                            &trim(i2str(grp_nr+1))                              ! append group number (+1)
+                    end if
+                case(2)                                                         ! PB3D_PP
+                    full_output_name = trim(output_name)
+                case default
+                    err_msg = 'No program style associated with '//&
+                        &trim(i2str(prog_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
             full_output_name = trim(full_output_name)//'.txt'
             
             ! open file

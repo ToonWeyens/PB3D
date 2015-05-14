@@ -42,7 +42,7 @@ module X_vars
         integer :: max_m                                                        ! highest poloidal mode number m
         integer, allocatable :: n(:)                                            ! vector of poloidal mode numbers
         integer, allocatable :: m(:)                                            ! vector of poloidal mode numbers
-        complex(dp), allocatable :: vec(:,:,:)                                  ! Eigenvector solution, with ghost region
+        complex(dp), allocatable :: vec(:,:,:)                                  ! Eigenvector solution
         complex(dp), allocatable :: val(:)                                      ! Eigenvalue solution
         complex(dp), pointer :: U_0(:,:,:,:) => null()                          ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
         complex(dp), pointer :: U_1(:,:,:,:) => null()                          ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)

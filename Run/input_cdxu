@@ -1,4 +1,4 @@
-&INPUTDATA
+&inputdata_PB3D
     n_par_X                 = 10
     min_par_X               = -1.0
     max_par_X               = 1.0
@@ -16,7 +16,6 @@
     max_sec_X               = 20
     use_pol_flux_F          = .true.
     n_sol_requested         = 1000
-    n_sol_plotted           = 10,10,10,10
     min_n_r_X               = 30
     plot_jq                 = .true.
     plot_grid               = .false.

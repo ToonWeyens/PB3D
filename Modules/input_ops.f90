@@ -10,7 +10,7 @@ module input_ops
     
     implicit none
     private
-    public read_input, read_PB3D, pause_prog, get_real, get_int, get_log
+    public read_input, pause_prog, get_real, get_int, get_log
     
 contains
     ! Queries for a logical value yes or no, where the default answer is also to
@@ -265,7 +265,7 @@ contains
             &plot_jq, tol_r, n_sol_requested, nyq_fac, glb_rank, nyq_fac, &
             &plot_grid, plot_flux_q, output_style, use_normalization, &
             &n_sol_plotted, n_theta_plot, n_zeta_plot, EV_BC, rho_style, &
-            &retain_all_sol
+            &retain_all_sol, prog_style
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files_ops, only: input_name
@@ -278,15 +278,18 @@ contains
         ! local variables
         integer :: istat                                                        ! error
         integer :: prim_X, min_sec_X, max_sec_X                                 ! n_X and m_X (pol. flux) or m_X and n_X (tor. flux)
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! input options
-        namelist /inputdata/ minim_style, min_par_X, min_n_r_X, &
+        namelist /inputdata_PB3D/ minim_style, min_par_X, min_n_r_X, &
             &max_par_X, min_alpha, max_alpha, n_par_X, n_alpha, max_it_NR, &
             &tol_NR, max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
             &max_r_X, EV_style, n_procs_per_alpha, plot_jq, n_sol_requested, &
             &EV_BC, rho_style, nyq_fac, rho_0, use_pol_flux_F, plot_grid, &
-            &output_style, plot_flux_q, use_normalization, n_sol_plotted, &
-            &n_theta_plot, n_zeta_plot, retain_all_sol
+            &output_style, plot_flux_q, use_normalization, n_theta_plot, &
+            &n_zeta_plot, retain_all_sol
+        namelist /inputdata_PB3D_PP/ output_style, n_sol_plotted, &
+            &use_normalization, n_theta_plot, n_zeta_plot
         
         ! initialize ierr
         ierr = 0
@@ -303,83 +306,114 @@ contains
             ! initialize input variables (optionally overwritten by user later)
             if (input_name.ne.'') call writo('Initialize all the inputs with &
                 &default values')
-            call default_input
+            ! select depending on program style
+            select case (prog_style)
+                case(1)                                                         ! PB3D
+                    call default_input_PB3D
+                case(2)                                                         ! PB3D_PP
+                    call default_input_PB3D_PP
+                case default
+                    err_msg = 'No program style associated with '//&
+                        &trim(i2str(prog_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
             
             ! read user input
             if (input_name.ne.'') then                                          ! otherwise, defaults are loaded
-                read(input_i, nml=inputdata, iostat=istat)                     ! read input data
-                
-                ! check input if successful read
-                if (istat.eq.0) then                                            ! input file succesfully read
-                    call writo('Overwriting with user-provided file "' // &
-                        &trim(input_name) // '"')
-                    
-                    call writo('Checking user-provided file')
-                    
-                    call lvl_ud(1)
-                    
-                    ! adapt run-time variables if needed
-                    call adapt_run
-                    
-                    ! adapt output variables if needed
-                    call adapt_output
-                    
-                    ! adapt plotting variables if needed
-                    call adapt_plot
-                    
-                    ! adapt alpha variables if needed
-                    call adapt_n_alpha
-                    
-                    ! adapt n_par_X if needed
-                    call adapt_n_par_X
-                    
-                    ! adapt min_r_X and max_r_X if needed
-                    ierr = adapt_X()
-                    CHCKERR('')
-                    
-                    ! adapt Richardson variables if needed
-                    call adapt_r
-                    
-                    ! adapt Newton-Rhapson variables if needed
-                    call adapt_NR
-                    
-                    ! adapt m variables if needed
-                    ierr = adapt_m()
-                    CHCKERR('')
-                    
-                    ! adapt normalization variables if needed
-                    ierr = adapt_normalization()
-                    CHCKERR('')
-                    
-                    call lvl_ud(-1)
-                else                                                            ! cannot read input data
-                    call writo('WARNING: Cannot open user-provided file "' // &
-                        &trim(input_name) // '". Using defaults')
-                end if
+                ! select depending on program style
+                select case (prog_style)
+                    case(1)                                                     ! PB3D
+                        read(input_i,nml=inputdata_PB3D,iostat=istat)           ! read input data
+                        
+                        ! check input if successful read
+                        if (istat.eq.0) then                                    ! input file succesfully read
+                            call writo('Overwriting with user-provided file "'&
+                                &//trim(input_name) // '"')
+                            
+                            call writo('Checking user-provided file')
+                            
+                            call lvl_ud(1)
+                            
+                            ! adapt run-time variables if needed
+                            call adapt_run
+                            
+                            ! adapt output variables if needed
+                            call adapt_output
+                            
+                            ! adapt plotting variables if needed
+                            call adapt_plot
+                            
+                            ! adapt alpha variables if needed
+                            call adapt_n_alpha
+                            
+                            ! adapt n_par_X if needed
+                            call adapt_n_par_X
+                            
+                            ! adapt min_r_X and max_r_X if needed
+                            ierr = adapt_X()
+                            CHCKERR('')
+                            
+                            ! adapt Richardson variables if needed
+                            call adapt_r
+                            
+                            ! adapt Newton-Rhapson variables if needed
+                            call adapt_NR
+                            
+                            ! adapt m variables if needed
+                            ierr = adapt_m()
+                            CHCKERR('')
+                            
+                            ! adapt normalization variables if needed
+                            ierr = adapt_normalization()
+                            CHCKERR('')
+                            
+                            call lvl_ud(-1)
+                        else                                                    ! cannot read input data
+                            call writo('WARNING: Cannot open user-provided &
+                                &file "'//trim(input_name)//'". Using defaults')
+                        end if
+                        
+                        ! set up min_n_X, max_n_X, min_m_X, max_m_X
+                        if (use_pol_flux_F) then
+                            min_n_X = prim_X
+                            max_n_X = prim_X
+                            min_m_X = min_sec_X
+                            max_m_X = max_sec_X
+                        else
+                            min_m_X = prim_X
+                            max_m_X = prim_X
+                            min_n_X = min_sec_X
+                            max_n_X = max_sec_X
+                        end if
+                    case(2)                                                     ! PB3D_PP
+                        read(input_i,nml=inputdata_PB3D_PP,iostat=istat)        ! read input data
+                        
+                        ! check input if successful read
+                        if (istat.eq.0) then                                    ! input file succesfully read
+                            call writo('Overwriting with user-provided file "'&
+                                &//trim(input_name) // '"')
+                        else                                                    ! cannot read input data
+                            call writo('WARNING: Cannot open user-provided &
+                                &file "'//trim(input_name)//'". Using defaults')
+                        end if
+                    case default
+                        err_msg = 'No program style associated with '//&
+                            &trim(i2str(prog_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
+                end select
                 
                 ! user output
                 call writo('Close input file')
                 close(input_i)
             end if
             
-            ! set up min_n_X, max_n_X, min_m_X, max_m_X
-            if (use_pol_flux_F) then
-                min_n_X = prim_X
-                max_n_X = prim_X
-                min_m_X = min_sec_X
-                max_m_X = max_sec_X
-            else
-                min_m_X = prim_X
-                max_m_X = prim_X
-                min_n_X = min_sec_X
-                max_n_X = max_sec_X
-            end if
-            
             call lvl_ud(-1)
             call writo('Input values set')
         end if
     contains
-        subroutine default_input
+        subroutine default_input_PB3D
             use num_vars, only: eq_style, use_pol_flux_E
             
             ! concerning Newton-Rhapson
@@ -402,7 +436,6 @@ contains
             rho_style = 1                                                       ! constant pressure profile, equal to rho_0
             
             ! variables concerning output
-            n_sol_plotted = n_sol_requested                                     ! plot all solutions
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
             retain_all_sol = .false.                                            ! don't retain faulty ones
             ! default   values   of  n_theta_plot  and   n_zeta_plot  depend  on
@@ -441,7 +474,30 @@ contains
             
             ! variables concerning normalization
             rho_0 = 10E-6_dp                                                    ! for fusion, particle density of around 1E21, mp around 1E-27
-        end subroutine
+        end subroutine default_input_PB3D
+        
+        subroutine default_input_PB3D_PP
+            use num_vars, only: eq_style
+            
+            ! runtime variables
+            output_style = 1                                                    ! GNUPlot output
+            use_normalization = .true.                                          ! use normalization for the variables
+            
+            ! variables concerning output
+            n_sol_plotted = n_sol_requested                                     ! plot all solutions
+            ! default   values   of  n_theta_plot  and   n_zeta_plot  depend  on
+            ! equilibrium style being used:
+            !   1:  VMEC
+            !   2:  HELENA
+            select case(eq_style)
+                case (1)                                                        ! VMEC
+                    n_theta_plot = 201                                          ! nr. poloidal points in plot
+                    n_zeta_plot = 101                                           ! nr. toroidal points in plot
+                case (2)                                                        ! HELENA
+                    n_theta_plot = 501                                          ! nr. poloidal points in plot
+                    n_zeta_plot = 1                                             ! nr. toroidal points in plot
+            end select
+        end subroutine default_input_PB3D_PP
         
         ! checks whether the variables concerning run-time are chosen correctly.
         ! n_procs_per_alpha has to be at least 1
@@ -640,16 +696,4 @@ contains
             end if
         end function adapt_normalization
     end function read_input
-    
-    ! reads PB3D output from user-provided input file
-    ! [MPI] only global master
-    integer function read_PB3D() result(ierr)
-        
-        character(*), parameter :: rout_name = 'read_PB3D'
-        
-        ! initialize ierr
-        ierr = 0
-        
-        write(*,*) '!!!!!!!!!!! CONTINUE HERE !!!!!!!!!!!!!!!!!!!!!!'
-    end function read_PB3D
 end module input_ops

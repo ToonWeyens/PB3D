@@ -1,22 +1,21 @@
-&INPUTDATA
+&inputdata_PB3D
     n_par_X                 = 50
     min_par_X               = -1.0
     max_par_X               = 1.0
-    n_alpha                 = 2
+    n_alpha                 = 1
     min_alpha               = 0.0
     max_alpha               = 2.0
     min_r_X                 = 0.1
     max_r_X                 = 0.95
     max_it_NR               = 500
-    max_it_r                = 3
+    max_it_r                = 1
     tol_r                   = 5.0E-6
-    n_procs_per_alpha       = 1
+    n_procs_per_alpha       = 2
     prim_X                  = 10
     min_sec_X               = 15
     max_sec_X               = 16
     use_pol_flux_F          = .true.
     n_sol_requested         = 1000
-    n_sol_plotted           = 10,10,5,5
     min_n_r_X               = 50
     plot_jq                 = .true.
     plot_grid               = .false.

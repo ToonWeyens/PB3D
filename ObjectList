@@ -2,9 +2,9 @@ ObjectFiles = \
 HDF5_ops.o \
 grid_vars.o \
 grid_ops.o \
-post_process.o \
 driver.o \
 driver_rich.o \
+driver_PP.o \
 eq_ops.o \
 eq_vars.o \
 files_ops.o \
@@ -27,3 +27,5 @@ VMEC.o \
 X_ops.o \
 X_vars.o \
 test.o \
+PB3D_vars.o \
+PB3D_ops.o \

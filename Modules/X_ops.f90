@@ -14,7 +14,8 @@ module X_ops
 
     implicit none
     private
-    public prepare_X, solve_EV_system, calc_PV, calc_KV, calc_U, calc_magn_ints
+    public prepare_X, solve_EV_system, calc_PV, calc_KV, calc_U, &
+        &calc_magn_ints, print_output_X
 
 contains
     ! prepare the matrix elements by calculating  KV_i and PV_i, which then will
@@ -1404,4 +1405,212 @@ contains
             nullify(ang_par_F)
         end function calc_int_magn
     end function calc_magn_ints
+    
+    ! Print perturbation quantities to an output file:
+    !   - grid:     r_F, theta_F, zeta_F
+    !   - X:        pres_FD, q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, rho, S,
+    !               kappa_n, kappa_g, sigma
+    ! Note: The equilibrium quantities are outputted in Flux coordinates.
+    integer function print_output_X(grid_X,X) result(ierr)
+        use num_vars, only: output_style
+        
+        character(*), parameter :: rout_name = 'print_output_X'
+        
+        ! input / output
+        type(grid_type) :: grid_X                                               ! perturbation grid variables
+        type(X_type) :: X                                                       ! perturbation variables
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Writing perturbation variables to output file')
+        call lvl_ud(1)
+        
+        ! print according to output_style
+        select case(output_style)
+            case(1)                                                             ! GNUPlot output
+                call writo('WARNING: No possibility to save perturbation &
+                    &results for output style '//trim(i2str(output_style))//&
+                    &' implemented')
+            case(2)                                                             ! HDF5 output
+                ierr = print_output_X_HDF5(grid_X,X)
+                CHCKERR('')
+            case default
+                err_msg = 'No style associated with '//&
+                    &trim(i2str(output_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Perturbation variables written to output')
+    contains
+        ! HDF5 version
+        integer function print_output_X_HDF5(grid_X,X) result(ierr)
+            use num_vars, only: rich_lvl_nr, max_it_r, grp_rank
+            use HDF5_ops, only: print_HDF5_arrs, &
+                &var_1D
+            use grid_ops, only: trim_grid
+            use X_vars, only: min_r_X, max_r_X, min_m_X, max_m_X, min_n_X, &
+                &max_n_X
+            
+            character(*), parameter :: rout_name = 'print_output_eq_HDF5'
+            
+            ! input / output
+            type(grid_type) :: grid_X                                           ! perturbation grid variables
+            type(X_type) :: X                                                   ! perturbation variables
+            
+            ! local variables
+            type(var_1D), pointer :: eq_1D(:)                                   ! 1D equivalent of eq. variables
+            type(var_1D), pointer :: eq_1D_loc                                  ! local element in eq_1D
+            type(grid_type) :: grid_trim                                        ! trimmed grid
+            integer :: i_min, i_max                                             ! min. and max. index of variables
+            integer :: id                                                       ! counter
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! user output
+            call writo('Preparing variables for writing')
+            call lvl_ud(1)
+            
+            ! trim grid
+            ierr = trim_grid(grid_X,grid_trim)
+            CHCKERR('')
+            
+            ! set i_min and i_max
+            i_min = 1
+            i_max = grid_trim%grp_n_r
+            
+            ! Set up the 1D equivalents  of the perturbation variables
+            allocate(eq_1D(7))
+            id = 1
+            
+            ! r_F
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'r_F'
+            allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
+            allocate(eq_1D_loc%grp_i_min(1),eq_1D_loc%grp_i_max(1))
+            eq_1D_loc%tot_i_min = [1]
+            eq_1D_loc%tot_i_max = [grid_trim%n(3)]
+            eq_1D_loc%grp_i_min = [grid_trim%i_min]
+            eq_1D_loc%grp_i_max = [grid_trim%i_max]
+            allocate(eq_1D_loc%p(size(grid_trim%grp_r_F(i_min:i_max))))
+            eq_1D_loc%p = grid_trim%grp_r_F(i_min:i_max)
+            
+            ! r_E
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'r_E'
+            allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
+            allocate(eq_1D_loc%grp_i_min(1),eq_1D_loc%grp_i_max(1))
+            eq_1D_loc%tot_i_min = [1]
+            eq_1D_loc%tot_i_max = [grid_trim%n(3)]
+            eq_1D_loc%grp_i_min = [grid_trim%i_min]
+            eq_1D_loc%grp_i_max = [grid_trim%i_max]
+            allocate(eq_1D_loc%p(size(grid_trim%grp_r_E(i_min:i_max))))
+            eq_1D_loc%p = grid_trim%grp_r_E(i_min:i_max)
+            
+            ! RE_X_val
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'RE_X_val'
+            allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
+            allocate(eq_1D_loc%grp_i_min(1),eq_1D_loc%grp_i_max(1))
+            eq_1D_loc%tot_i_min = [1]
+            eq_1D_loc%tot_i_max = [size(X%val)]
+            eq_1D_loc%grp_i_min = [1]
+            if (grp_rank.eq.0) then
+                eq_1D_loc%grp_i_max = [size(X%val)]
+                allocate(eq_1D_loc%p(size(X%val)))
+                eq_1D_loc%p = realpart(X%val)
+            else
+                eq_1D_loc%grp_i_max = [0]
+                allocate(eq_1D_loc%p(0))
+            end if
+            
+            ! IM_X_val
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'IM_X_val'
+            allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
+            allocate(eq_1D_loc%grp_i_min(1),eq_1D_loc%grp_i_max(1))
+            eq_1D_loc%tot_i_min = [1]
+            eq_1D_loc%tot_i_max = [size(X%val)]
+            eq_1D_loc%grp_i_min = [1]
+            if (grp_rank.eq.0) then
+                eq_1D_loc%grp_i_max = [size(X%val)]
+                allocate(eq_1D_loc%p(size(X%val)))
+                eq_1D_loc%p = imagpart(X%val)
+            else
+                eq_1D_loc%grp_i_max = [0]
+                allocate(eq_1D_loc%p(0))
+            end if
+            
+            ! RE_X_vec
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'RE_X_vec'
+            allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+            allocate(eq_1D_loc%grp_i_min(3),eq_1D_loc%grp_i_max(3))
+            eq_1D_loc%grp_i_min = [1,grid_trim%i_min,1]
+            eq_1D_loc%grp_i_max = [X%n_mod,grid_trim%i_max,size(X%vec,3)]
+            eq_1D_loc%tot_i_min = [1,1,1]
+            eq_1D_loc%tot_i_max = [X%n_mod,grid_trim%n(3),size(X%vec,3)]
+            allocate(eq_1D_loc%p(size(X%vec(:,i_min:i_max,:))))
+            eq_1D_loc%p = reshape(realpart(X%vec(:,i_min:i_max,:)),&
+                &[size(X%vec(:,i_min:i_max,:))])
+            
+            ! IM_X_vec
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'IM_X_vec'
+            allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+            allocate(eq_1D_loc%grp_i_min(3),eq_1D_loc%grp_i_max(3))
+            eq_1D_loc%grp_i_min = [1,grid_trim%i_min,1]
+            eq_1D_loc%grp_i_max = [X%n_mod,grid_trim%i_max,size(X%vec,3)]
+            eq_1D_loc%tot_i_min = [1,1,1]
+            eq_1D_loc%tot_i_max = [X%n_mod,grid_trim%n(3),size(X%vec,3)]
+            allocate(eq_1D_loc%p(size(X%vec(:,i_min:i_max,:))))
+            eq_1D_loc%p = reshape(imagpart(X%vec(:,i_min:i_max,:)),&
+                &[size(X%vec(:,i_min:i_max,:))])
+            
+            ! misc_X
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'misc_X'
+            allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
+            allocate(eq_1D_loc%grp_i_min(1),eq_1D_loc%grp_i_max(1))
+            if (grp_rank.eq.0) then
+                eq_1D_loc%grp_i_min = [1]
+                eq_1D_loc%grp_i_max = [6]
+                allocate(eq_1D_loc%p(6))
+                eq_1D_loc%p = [min_r_X,max_r_X,min_n_X*1._dp,max_n_X*1._dp,&
+                    &min_m_X*1._dp,max_m_X*1._dp]
+            else
+                eq_1D_loc%grp_i_min = [1]
+                eq_1D_loc%grp_i_max = [0]
+                allocate(eq_1D_loc%p(0))
+            end if
+            eq_1D_loc%tot_i_min = [1]
+            eq_1D_loc%tot_i_max = [6]
+            
+            call lvl_ud(-1)
+            
+            ! user output
+            call writo('Writing using HDF5')
+            call lvl_ud(1)
+            
+            ! write
+            if (max_it_r.gt.1) then
+                ierr = print_HDF5_arrs(eq_1D,'X_R'//trim(i2str(rich_lvl_nr)))
+            else
+                ierr = print_HDF5_arrs(eq_1D,'X')
+            end if
+            CHCKERR('')
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Writing complete')
+        end function print_output_X_HDF5
+    end function print_output_X
 end module
