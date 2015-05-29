@@ -39,7 +39,7 @@ contains
         use met_vars, only: create_met
         use X_vars, only: create_X
         use X_ops, only: prepare_X
-        use sol_ops, only: plot_X_vecs, decompose_energy
+        use sol_ops, only: plot_X_vec, decompose_energy
         use eq_ops, only: calc_eq
         use HELENA, only: interp_HEL_on_grid
         
@@ -49,6 +49,7 @@ contains
         type(PB3D_type), target :: PB3D                                         ! output PB3D for which to do postprocessing
         type(PB3D_type), pointer :: PB3D_B => null()                            ! PB3D variables on a field-aligned grid
         type(PB3D_type) :: PB3D_plot                                            ! PB3D variables on a plot grid
+        integer :: id, jd                                                       ! counter
         integer :: min_id(3), max_id(3)                                         ! min. and max. index of range 1, 2 and 3
         integer :: last_unstable_id                                             ! index of last unstable EV
         logical :: no_plots_loc                                                 ! local copy of no_plots
@@ -96,7 +97,19 @@ contains
                 CHCKERR('')
                 ierr = create_met(PB3D_B%grid_eq,PB3D_B%met)
                 CHCKERR('')
+                ierr = create_grid(PB3D_B%grid_X,PB3D%grid_X%n,&
+                    &[PB3D%grid_X%i_min,PB3D%grid_X%i_max])
+                CHCKERR('')
+                PB3D_B%grid_X%r_F = PB3D%grid_X%r_F
+                PB3D_B%grid_X%r_e = PB3D%grid_X%r_E
+                PB3D_B%grid_X%grp_r_F = PB3D%grid_X%grp_r_F
+                PB3D_B%grid_X%grp_r_e = PB3D%grid_X%grp_r_E
                 call create_X(PB3D_B%grid_eq,PB3D_B%X)
+                allocate(PB3D_B%X%val(size(PB3D%X%val)))
+                allocate(PB3D_B%X%vec(size(PB3D%X%vec,1),size(PB3D%X%vec,2),&
+                    &size(PB3D%X%vec,3)))
+                PB3D_B%X%val = PB3D%X%val
+                PB3D_B%X%vec = PB3D%X%vec
                 call lvl_ud(-1)
                 call writo('Quantities prepared')
                 ! call HELENA grid interpolation
@@ -128,7 +141,7 @@ contains
         call lvl_ud(-1)
         call writo('Grid set up')
         
-        ! depends on equilibrium style
+        ! calculating variables on plot grid depends on equilibrium style
         select case (eq_style)
             case (1)                                                            ! VMEC
                 call writo('Preparing quantities')
@@ -141,6 +154,7 @@ contains
                 PB3D_plot%eq%rot_t_E = PB3D%eq%rot_t_E
                 PB3D_plot%eq%flux_p_E = PB3D%eq%flux_p_E
                 PB3D_plot%eq%flux_t_E = PB3D%eq%flux_t_E
+                PB3D_plot%eq%rho = PB3D%eq%rho
                 call lvl_ud(-1)
                 call writo('Quantities prepared')
                 
@@ -210,36 +224,66 @@ contains
         
         call lvl_ud(-1)
         
-        ! user output
-        call writo('Plot the Eigenvectors on plot grid')
-        call lvl_ud(1)
-        
-        ! TEMPORARY: Since  the equations  have been solved  for a  single field
-        ! line normally the equilibrium, metric and perturbation quantities that
-        ! have been used  have to be recalculated for the  entire angular range,
-        ! which  is  done  below.  However,  since  here  only  the  equilibrium
-        ! variables  flux_q_FD  or  q_saf_FD  or   used,  the  plotting  of  the
-        ! Eigenvectors can be done already.
-        ierr = calc_XYZ_grid(PB3D_plot%grid_X,X_plot,Y_plot,Z_plot)             ! calculate X, Y and Z on plot grid
-        CHCKERR('')
-        ierr = plot_X_vecs(PB3D_plot%grid_eq,PB3D_plot%eq,PB3D_plot%grid_X,&
-            &PB3D_plot%X,reshape([X_plot,Y_plot,Z_plot],[PB3D_plot%grid_X%n(1),&
-            &PB3D_plot%grid_X%n(2),PB3D_plot%grid_X%grp_n_r,3]),min_id,max_id)
+        ! calculate X, Y and Z on plot grid
+        ierr = calc_XYZ_grid(PB3D_plot%grid_X,X_plot,Y_plot,Z_plot)
         CHCKERR('')
         
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('Decompose the energy into its terms')
-        call lvl_ud(1)
-        
-        ierr = decompose_energy(PB3D%grid_eq,PB3D%eq)
-        CHCKERR('')
-        
-        call lvl_ud(-1)
+        ! loop over three ranges
+        do jd = 1,3
+            if (min_id(jd).le.max_id(jd)) call &
+                &writo('RANGE '//trim(i2str(jd))//': modes '//&
+                &trim(i2str(min_id(jd)))//'..'//trim(i2str(max_id(jd))))
+            call lvl_ud(1)
+            
+            ! indices in each range
+            do id = min_id(jd),max_id(jd)
+                ! user output
+                call writo('Mode '//trim(i2str(id))//'/'//&
+                    &trim(i2str(size(PB3D%X%val)))//', with eigenvalue '&
+                    &//trim(r2strt(realpart(PB3D%X%val(id))))//' + '//&
+                    &trim(r2strt(imagpart(PB3D%X%val(id))))//' i')
+                call lvl_ud(1)
+                
+                call writo('Plot the Eigenvector')
+                call lvl_ud(1)
+                ierr = plot_X_vec(PB3D_plot%grid_eq,PB3D_plot%eq,&
+                    &PB3D_plot%grid_X,PB3D_plot%X,&
+                    &reshape([X_plot,Y_plot,Z_plot],[PB3D_plot%grid_X%n(1),&
+                    &PB3D_plot%grid_X%n(2),PB3D_plot%grid_X%grp_n_r,3]),id)
+                CHCKERR('')
+                call lvl_ud(-1)
+                
+                ! user output
+                call writo('Decompose the energy into its terms')
+                call lvl_ud(1)
+                ierr = decompose_energy(PB3D_B,id,PB3D_plot,&
+                    &reshape([X_plot,Y_plot,Z_plot],[PB3D_plot%grid_X%n(1),&
+                    &PB3D_plot%grid_X%n(2),PB3D_plot%grid_X%grp_n_r,3]))
+                CHCKERR('')
+                call lvl_ud(-1)
+                
+                call lvl_ud(-1)
+            end do
+            
+            call lvl_ud(-1)
+        end do
     end function run_driver_PP
     
     ! finds the plot ranges min_id and max_id
+    ! There are three ranges, calculated using n_sol_plotted, which indicates:
+    !   1. how many of the first EV's in the unstable range
+    !   2. how many of the last EV's in the unstable range
+    !   3. how many of the first EV's in the stable range
+    !   4. how many of the last EV's in the stable range
+    ! have  to be  plotted. This  yields maximally  three different  ranges: One
+    ! starting at  the first unstable  EV, one centered  around the zero  of the
+    ! EV's and one  ending at the last  EV. These ranges can be  disjoint but do
+    ! not have  to be. Also,  it is  possible that a  range does not  exist, for
+    ! example if there are no unstable EV's.
+    ! Note: A negative value for the elements in n_sol_plotted means "all values
+    ! in range":
+    !   1. or 2. full unstable range
+    !   3. or 4. full stable range
     subroutine find_stab_ranges(X,min_id,max_id,last_unstable_id)
         use num_vars, only: n_sol_plotted
         
@@ -262,23 +306,43 @@ contains
         end do
         ! set up min. and max. of range 1
         if (last_unstable_id.gt.0) then                                         ! there is an unstable range
-            min_id(1) = 1                                                       ! start from most unstable EV
-            max_id(1) = min(n_sol_plotted(1),last_unstable_id)                  ! end with n_sol_plotted(1) first unstable values if available
+            if (n_sol_plotted(1).gt.0) then
+                min_id(1) = 1                                                   ! start from most unstable EV
+                max_id(1) = min(n_sol_plotted(1),last_unstable_id)              ! end with n_sol_plotted(1) first unstable values if available
+            else
+                min_id(1) = 1                                                   ! start from most unstable EV
+                max_id(1) = last_unstable_id                                    ! end with last unstable EV
+            end if
         else                                                                    ! no unstable range
             min_id(1) = 1                                                       ! no unstable values to plot
             max_id(1) = 0                                                       ! no unstable values to plot
         end if
         ! set up min. and max. of range 2
         if (last_unstable_id.gt.0) then                                         ! there is an unstable range
-            min_id(2) = last_unstable_id - n_sol_plotted(2) + 1                 ! start from n_sol_plotted(2) last unstable values
-            max_id(2) = &
-                &min(last_unstable_id + n_sol_plotted(3),n_sol_found)           ! end with n_sol_plotted(3) first stable values if available
+            if (n_sol_plotted(2).gt.0) then
+                min_id(2) = last_unstable_id - n_sol_plotted(2) + 1             ! start from n_sol_plotted(2) last unstable values
+            else
+                min_id(2) = 1                                                   ! start from 1
+            end if
+            if (n_sol_plotted(3).gt.0) then
+                max_id(2) = min(last_unstable_id + n_sol_plotted(3),n_sol_found)! end with n_sol_plotted(3) first stable values if available
+            else
+                max_id(2) = n_sol_found                                         ! end with last EV
+            end if
         else                                                                    ! no unstable range
             min_id(2) = 1                                                       ! start from first EV (stable)
-            max_id(2) = min(n_sol_plotted(3),n_sol_found)                       ! end with n_sol_plotted(3) first stable values if available
+            if (n_sol_plotted(3).gt.0) then
+                max_id(2) = min(n_sol_plotted(3),n_sol_found)                   ! end with n_sol_plotted(3) first stable values if available
+            else
+                max_id(2) = n_sol_found                                         ! end with last EV
+            end if
         end if
         ! set up min. and max. of range 3
-        min_id(3) = n_sol_found - n_sol_plotted(4) + 1                          ! start from n_sol_plotted(4) last stable values
+        if (n_sol_plotted(4).gt.0) then
+            min_id(3) = n_sol_found - n_sol_plotted(4) + 1                      ! start from n_sol_plotted(4) last stable values
+        else
+            min_id(3) = last_unstable_id + 1                                    ! start from n_sol_plotted(4) last stable values
+        end if
         max_id(3) = n_sol_found                                                 ! end with most stable EV
         ! merge ranges 2 and 3 if overlap
         if (min_id(3).le.max_id(2)) then

@@ -85,3 +85,10 @@ CHANGELOG
       - Removed usage of grp_r_X_loc in sol_ops, as X grid has no ghost regions and also because the routines should be called using a trimmed grid.
       - Implemented the post-processing program until decompose_energy.
       - However: Untested routines!
+
+0.78: - Calc_real_XUQ now becomes calc_XUQ because the output is complex.
+      - Moved calculation of rho to calc_flux_q, since it is a flux quantity.
+      - Fixed a bug in plot_HDF5 when the variable name 'var' was used.
+      - Fixed two bugs in calc_XUQ considering fac_0 and fac_1.
+      - Implemented decompose_energy, but some output still missing.
+      - Moved calc_int_magn to grid_ops and implemented calc_int_vol.

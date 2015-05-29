@@ -1,5 +1,5 @@
 &INPUTDATA_PB3D_PP
-    n_sol_plotted           = 10,10,10,10
+    n_sol_plotted           = -1,-1,-1,-1
     use_normalization       = .true.
     output_style            = 2
     n_zeta_plot             = 1

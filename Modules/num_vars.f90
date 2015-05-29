@@ -34,7 +34,7 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_PP)
     character(len=max_str_ln) :: prog_name                                      ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! name of output file
-    real(dp), parameter :: prog_version = 0.77_dp                               ! version number
+    real(dp), parameter :: prog_version = 0.78_dp                               ! version number
 
     ! MPI variables
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha

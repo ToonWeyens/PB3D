@@ -406,6 +406,12 @@ contains
             case(1)                                                             ! PB3D
                 ! do nothing
             case(2)                                                             ! PB3D_PP
+                eq_B%pres_FD = eq%pres_FD
+                eq_B%q_saf_FD = eq%q_saf_FD
+                eq_B%rot_t_FD = eq%rot_t_FD
+                eq_B%flux_p_FD = eq%flux_p_FD
+                eq_B%flux_t_FD = eq%flux_t_FD
+                eq_B%rho = eq%rho
                 call interp_var_3D_real(eq%S,theta_i,eq_B%S)
                 call interp_var_3D_real(eq%sigma,theta_i,eq_B%sigma)
                 call interp_var_3D_real(eq%kappa_n,theta_i,eq_B%kappa_n)

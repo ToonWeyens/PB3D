@@ -7,6 +7,7 @@ module PB3D_ops
 #include <PB3D_macros.h>
     use str_ops
     use messages
+    use output_ops
     use num_vars, only: dp, pi, max_str_ln, iu
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
@@ -151,6 +152,8 @@ contains
         integer :: g_FD_id, h_FD_id, jac_FD_id                                  ! index of g_FD, h_FD, jac_FD
         integer :: misc_eq_id, misc_eq_V_id, misc_eq_H_id                       ! index of misc_eq, misc_eq_V, misc_eq_H
         integer :: misc_X_id                                                    ! index of misc_X
+        integer :: RE_U_0_id, IM_U_0_id, RE_U_1_id, IM_U_1_id                   ! index of RE_U_0, IM_U_0, RE_U_1, IM_U_1
+        integer :: RE_DU_0_id, IM_DU_0_id, RE_DU_1_id, IM_DU_1_id               ! index of RE_DU_0, IM_DU_0, RE_DU_1, IM_DU_1
         integer :: RE_X_val_id, IM_X_val_id                                     ! index of RE_X_val, IM_X_val
         integer :: RE_X_vec_id, IM_X_vec_id                                     ! index of RE_X_vec, IM_X_vec
         integer :: i_lim_eq(2), i_lim_X(2)                                      ! i_lim of equilibrium and perturbation
@@ -174,6 +177,22 @@ contains
         ierr = retrieve_var_1D_id(vars_1D_X,'r_E',r_E_X_id)
         CHCKERR('')
         ierr = retrieve_var_1D_id(vars_1D_X,'misc_X',misc_X_id)
+        CHCKERR('')
+        ierr = retrieve_var_1D_id(vars_1D_X,'RE_U_0',RE_U_0_id)
+        CHCKERR('')
+        ierr = retrieve_var_1D_id(vars_1D_X,'IM_U_0',IM_U_0_id)
+        CHCKERR('')
+        ierr = retrieve_var_1D_id(vars_1D_X,'RE_U_1',RE_U_1_id)
+        CHCKERR('')
+        ierr = retrieve_var_1D_id(vars_1D_X,'IM_U_1',IM_U_1_id)
+        CHCKERR('')
+        ierr = retrieve_var_1D_id(vars_1D_X,'RE_DU_0',RE_DU_0_id)
+        CHCKERR('')
+        ierr = retrieve_var_1D_id(vars_1D_X,'IM_DU_0',IM_DU_0_id)
+        CHCKERR('')
+        ierr = retrieve_var_1D_id(vars_1D_X,'RE_DU_1',RE_DU_1_id)
+        CHCKERR('')
+        ierr = retrieve_var_1D_id(vars_1D_X,'IM_DU_1',IM_DU_1_id)
         CHCKERR('')
         ierr = retrieve_var_1D_id(vars_1D_X,'RE_X_val',RE_X_val_id)
         CHCKERR('')
@@ -530,6 +549,8 @@ contains
         deallocate(dum_1D)
         
         call writo('Setting perturbation')
+        call lvl_ud(1)
+        
         call conv_1D2ND(vars_1D_X(misc_X_id),dum_1D)
         min_r_X = dum_1D(1)
         max_r_X = dum_1D(2)
@@ -539,7 +560,48 @@ contains
         max_m_X = nint(dum_1D(6))
         deallocate(dum_1D)
         
+        ! user output
+        call writo('The PB3D output')
+        call lvl_ud(1)
+        if (use_pol_flux_F) then
+            call writo('has modes n = '//trim(i2str(min_n_X))//&
+                &' and m = '//trim(i2str(min_m_X))//'..'//trim(i2str(max_m_X)))
+            call writo('works with the poloidal flux as normal coordinate')
+        else
+            call writo('has modes m = '//trim(i2str(min_m_X))//&
+                &' and n='//trim(i2str(min_n_X))//'..'//trim(i2str(max_n_X)))
+            call writo('works with the toroidal flux as normal coordinate')
+        end if
+        call writo('and its normal boundaries are '//trim(r2strt(min_r_X))//&
+            &' and '//trim(r2strt(max_r_X)))
+        call lvl_ud(-1)
+        
         call create_X(PB3D%grid_eq,PB3D%X)
+        
+        call conv_1D2ND(vars_1D_X(RE_U_0_id),dum_4D)
+        PB3D%X%U_0 = dum_4D(:,:,i_lim_eq(1):i_lim_eq(2),:)
+        deallocate(dum_4D)
+        call conv_1D2ND(vars_1D_X(IM_U_0_id),dum_4D)
+        PB3D%X%U_0 = PB3D%X%U_0 + iu*dum_4D(:,:,i_lim_eq(1):i_lim_eq(2),:)
+        deallocate(dum_4D)
+        call conv_1D2ND(vars_1D_X(RE_U_1_id),dum_4D)
+        PB3D%X%U_1 = dum_4D(:,:,i_lim_eq(1):i_lim_eq(2),:)
+        deallocate(dum_4D)
+        call conv_1D2ND(vars_1D_X(IM_U_1_id),dum_4D)
+        PB3D%X%U_1 = PB3D%X%U_1 + iu*dum_4D(:,:,i_lim_eq(1):i_lim_eq(2),:)
+        deallocate(dum_4D)
+        call conv_1D2ND(vars_1D_X(RE_DU_0_id),dum_4D)
+        PB3D%X%DU_0 = dum_4D(:,:,i_lim_eq(1):i_lim_eq(2),:)
+        deallocate(dum_4D)
+        call conv_1D2ND(vars_1D_X(IM_DU_0_id),dum_4D)
+        PB3D%X%DU_0 = PB3D%X%DU_0 + iu*dum_4D(:,:,i_lim_eq(1):i_lim_eq(2),:)
+        deallocate(dum_4D)
+        call conv_1D2ND(vars_1D_X(RE_DU_1_id),dum_4D)
+        PB3D%X%DU_1 = dum_4D(:,:,i_lim_eq(1):i_lim_eq(2),:)
+        deallocate(dum_4D)
+        call conv_1D2ND(vars_1D_X(IM_DU_1_id),dum_4D)
+        PB3D%X%DU_1 = PB3D%X%DU_1 + iu*dum_4D(:,:,i_lim_eq(1):i_lim_eq(2),:)
+        deallocate(dum_4D)
         
         allocate(PB3D%X%val(vars_1D_X(RE_X_val_id)%tot_i_min(1):&
             &vars_1D_X(RE_X_val_id)%tot_i_max(1)))
@@ -560,6 +622,8 @@ contains
         call conv_1D2ND(vars_1D_X(IM_X_vec_id),dum_3D)
         PB3D%X%vec = PB3D%X%vec + iu*dum_3D(:,i_lim_X(1):i_lim_X(2),:)
         deallocate(dum_3D)
+        
+        call lvl_ud(-1)
         
         call lvl_ud(-1)
         call writo('Variables reconstructed')

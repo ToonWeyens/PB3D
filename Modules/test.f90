@@ -6,7 +6,7 @@ module test
     use str_ops
     use output_ops
     use messages
-    use num_vars, only: pi, dp, max_str_ln
+    use num_vars, only: pi, dp, max_str_ln, iu
     
     implicit none
     private
@@ -19,25 +19,45 @@ contains
     ! performs generic tests
     integer function generic_tests() result(ierr)
         use input_ops, only: pause_prog, get_log
+        use num_vars, only: prog_style
         
         character(*), parameter :: rout_name = 'generic_tests'
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
-        call writo('Test calculation of derivatives?')
-        if(get_log(.false.)) then
-            ierr = test_calc_deriv()
-            CHCKERR('')
-            call pause_prog
-        end if
-        
-        call writo('Test conversion between full and half mesh?')
-        if(get_log(.false.)) then
-            ierr = test_conv_FHM()
-            CHCKERR('')
-            call pause_prog
-        end if
+        ! select according to program style
+        select case (prog_style)
+            case(1)                                                             ! PB3D
+                call writo('Test calculation of derivatives?')
+                if(get_log(.false.)) then
+                    ierr = test_calc_deriv()
+                    CHCKERR('')
+                    call pause_prog
+                end if
+                
+                call writo('Test conversion between full and half mesh?')
+                if(get_log(.false.)) then
+                    ierr = test_conv_FHM()
+                    CHCKERR('')
+                    call pause_prog
+                end if
+            case(2)                                                             ! PB3D_PP
+                call writo('Test calculation of volume integral?')
+                if(get_log(.false.)) then
+                    ierr = test_calc_int_vol()
+                    CHCKERR('')
+                    call pause_prog
+                end if
+            case default
+                err_msg = 'No program style associated with '//&
+                    &trim(i2str(prog_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
     end function generic_tests
     
     ! tests the calculation of derivatives
@@ -405,5 +425,165 @@ contains
         call lvl_ud(-1)
         call writo('Test complete')
     end function test_conv_FHM
+    
+    ! tests calculation of volume integral
+    integer function test_calc_int_vol() result(ierr)
+        use num_vars, only: grp_rank
+        use input_ops, only: get_int
+        use grid_vars, only: create_grid
+        use grid_ops, only: calc_eqd_grid, calc_int_vol
+        
+        character(*), parameter :: rout_name = 'test_calc_int_vol'
+        
+        ! local variables
+        real(dp), allocatable :: theta(:,:,:), zeta(:,:,:)                      ! angles
+        complex(dp), allocatable :: fun(:,:,:,:)                                ! function to integrate
+        real(dp), allocatable :: J(:,:,:)                                       ! Jacobian
+        real(dp), allocatable :: X(:,:,:), Y(:,:,:), Z(:,:,:)                   ! X,Y and Z for plot
+        real(dp), allocatable :: norm(:)                                        ! normal variable
+        real(dp), allocatable :: r(:)                                           ! radius
+        real(dp) :: R_0                                                         ! geometric axis of torus
+        complex(dp), allocatable :: fun_int(:,:,:)                              ! integrated function
+        integer, allocatable :: dims(:,:)                                       ! dimensions of grid
+        integer :: n_steps                                                      ! nr. of steps
+        integer :: id, jd, kd                                                   ! counters
+        real(dp), allocatable :: eqd_grid_dum(:)                                ! equidistant grid dummy
+        character(len=max_str_ln) :: var_name(3), file_name(3)                  ! name of variable and of file
+        complex(dp), allocatable :: fun_int_plot(:,:)                           ! results for plotting
+        
+        
+        ! initialize ierr
+        ierr = 0
+        
+        if (grp_rank.eq.0) then
+            call writo('Checking integral of')
+            call lvl_ud(1)
+            call writo('f = 1 - r^2 + i cos(theta)')
+            call lvl_ud(-1)
+            call writo('on a torus')
+            
+            call writo('How many different grid sizes?')
+            n_steps = get_int(lim_lo=1)
+            
+            allocate(dims(3,n_steps))
+            allocate(eqd_grid_dum(n_steps))
+            
+            ! get dimensions
+            if (n_steps.gt.1) then
+                do kd = 1,size(dims,1)
+                    call writo('Starting dimension '//trim(i2str(kd)))
+                    dims(kd,1) = get_int(lim_lo=4)
+                    call writo('Final dimension '//trim(i2str(kd)))
+                    dims(kd,n_steps) = get_int(lim_lo=dims(kd,1)+n_steps)
+                    ierr = calc_eqd_grid(eqd_grid_dum,1._dp*dims(kd,1),&
+                        &1._dp*dims(kd,n_steps))
+                    CHCKERR('')
+                    dims(kd,:) = nint(eqd_grid_dum)
+                end do
+                call writo('Performing calculations for '//&
+                    &trim(i2str(n_steps))//' grid sizes')
+            else
+                do kd = 1,size(dims)
+                    call writo('Dimension '//trim(i2str(kd)))
+                    dims(kd,1) = get_int(lim_lo=1)
+                end do
+            end if
+            
+            allocate(fun_int(2,1,n_steps))
+            
+            do jd = 1,n_steps
+                ! user output
+                call writo('grid size = ['//trim(i2str(dims(1,jd)))//' ,'//&
+                    &trim(i2str(dims(2,jd)))//', '//trim(i2str(dims(3,jd)))//&
+                    &']')
+                call lvl_ud(1)
+                
+                ! set up variables
+                allocate(theta(dims(1,jd),dims(2,jd),dims(3,jd)))
+                allocate(zeta(dims(1,jd),dims(2,jd),dims(3,jd)))
+                allocate(J(dims(1,jd),dims(2,jd),dims(3,jd)))
+                allocate(fun(dims(1,jd),dims(2,jd),dims(3,jd),1))
+                allocate(X(dims(1,jd),dims(2,jd),dims(3,jd)))
+                allocate(Y(dims(1,jd),dims(2,jd),dims(3,jd)))
+                allocate(Z(dims(1,jd),dims(2,jd),dims(3,jd)))
+                allocate(norm(dims(3,jd)))
+                allocate(r(dims(3,jd)))
+                
+                R_0 = 2._dp
+                ierr = calc_eqd_grid(theta,0*pi,2*pi,1)
+                CHCKERR('')
+                ierr = calc_eqd_grid(zeta,0*pi,2*pi,2)
+                CHCKERR('')
+                ierr = calc_eqd_grid(norm,0._dp,1._dp)
+                CHCKERR('')
+                do kd = 1,dims(3,jd)
+                    r(kd) = (kd-1._dp)/(dims(3,jd)-1)
+                    fun(:,:,kd,1) = 1._dp - r(kd)**2 + iu*cos(theta(:,:,kd))
+                    do id = 1,dims(1,jd)
+                        J(id,:,kd) = r(kd)*(R_0+r(kd)*cos(theta(id,:,kd)))
+                    end do
+                    X(:,:,kd) = cos(zeta(:,:,kd))*(R_0+r(kd)*cos(theta(:,:,kd)))
+                    Y(:,:,kd) = sin(zeta(:,:,kd))*(R_0+r(kd)*cos(theta(:,:,kd)))
+                    Z(:,:,kd) = r(kd)*sin(theta(:,:,kd))
+                end do
+                
+                var_name(1) = 'TEST_J_torus'
+                var_name(2) = 'TEST_RE_fun_torus'
+                var_name(3) = 'TEST_IM_fun_torus'
+                file_name(1) = 'TEST_J_torus'
+                file_name(2) = 'TEST_RE_fun_torus'
+                file_name(3) = 'TEST_IM_fun_torus'
+                if (n_steps.gt.1) then
+                    do kd = 1,3
+                        file_name(kd) = trim(file_name(kd))//'_'//trim(i2str(jd))
+                    end do
+                end if
+                call plot_HDF5(var_name(1),file_name(1),J,X=X,Y=Y,Z=Z)
+                call plot_HDF5(var_name(2),file_name(2),realpart(fun(:,:,:,1)),&
+                    &X=X,Y=Y,Z=Z)
+                call plot_HDF5(var_name(3),file_name(3),imagpart(fun(:,:,:,1)),&
+                    &X=X,Y=Y,Z=Z)
+                
+                ! user output
+                call writo('Analytically calculating integral')
+                
+                ! calculate integral analytically
+                fun_int(1,1,jd) = R_0*pi**2 + iu*2*pi**2/3
+                
+                ! user output
+                call writo('Numerically calculating integral')
+                
+                ! calculate integral numerically
+                ierr = calc_int_vol(theta,zeta,norm,J,fun,fun_int(2,:,jd))
+                CHCKERR('')
+                
+                ! output
+                call writo('Analytical value: '//&
+                    &trim(r2str(realpart(fun_int(1,1,jd))))//&
+                    &' + iu '//trim(r2str(imagpart(fun_int(1,1,jd)))))
+                call writo('Numerical value: '//&
+                    &trim(r2str(realpart(fun_int(2,1,jd))))//&
+                    &' + iu '//trim(r2str(imagpart(fun_int(2,1,jd)))))
+                
+                ! clean up
+                deallocate(theta,zeta,J,fun)
+                deallocate(X,Y,Z)
+                deallocate(norm,r)
+                
+                call lvl_ud(-1)
+            end do
+            
+            if (n_steps.gt.1) then
+                allocate(fun_int_plot(n_steps,2))
+                do jd = 1,n_steps
+                    fun_int_plot(jd,:) = fun_int(:,1,jd)/fun_int(1,1,jd)
+                end do
+                call print_GP_2D('analytical vs. numerical integral, real','',&
+                    &realpart(fun_int_plot))
+                call print_GP_2D('analytical vs. numerical integral, imag.','',&
+                    &imagpart(fun_int_plot))
+            end if
+        end if 
+    end function test_calc_int_vol
 #endif
 end module test

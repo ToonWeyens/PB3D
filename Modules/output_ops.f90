@@ -400,11 +400,7 @@ contains
         if (nplt.gt.10) write(cmd_i,*) 'set nokey;'
         
         ! set up line styles
-        if (present(draw_ops)) then
-            do ifl = 1,nfl
-                write(cmd_i,*) trim(draw_ops(ifl))//';'
-            end do
-        else
+        if (.not.present(draw_ops)) then
             do plt_count = 1,min(nplt*nfl,size(line_clrs))
                 write(cmd_i,*) 'set style line '//trim(i2str(plt_count))//&
                     &' lc rgb '//line_clrs(plt_count)//' '//trim(line_style)
@@ -422,7 +418,7 @@ contains
                 plot_cmd = ''
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
-                        loc_draw_op = trim(i2str(ifl))
+                        loc_draw_op = trim(draw_ops(ifl))
                     else
                         loc_draw_op = 'with linespoints linestyle '//&
                             &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
@@ -443,7 +439,7 @@ contains
                 plot_cmd = ''
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
-                        loc_draw_op = trim(i2str(ifl))
+                        loc_draw_op = trim(draw_ops(ifl))
                     else
                         loc_draw_op = 'with linespoints linestyle '//&
                             &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
@@ -654,12 +650,7 @@ contains
         !if (nfl.gt.10) write(cmd_i,*) 'set nokey;'
         
         ! set up line styles
-        if (present(draw_ops)) then
-            do ifl = 1,nfl
-                write(cmd_i,*) 'set style line '//trim(i2str(ifl))//' '//&
-                    &trim(draw_ops(ifl))//';'
-            end do
-        else
+        if (.not.present(draw_ops)) then
             do plt_count = 1,min(nplt*nfl,size(line_clrs))
                 write(cmd_i,*) 'set style line '//trim(i2str(plt_count))//&
                     &' lc rgb '//line_clrs(plt_count)//' '//trim(line_style)
@@ -673,7 +664,7 @@ contains
                 plot_cmd = 'plot'
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
-                        loc_draw_op = trim(i2str(ifl))
+                        loc_draw_op = trim(draw_ops(ifl))
                     else
                         loc_draw_op = 'with linespoints linestyle '//&
                             &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
@@ -692,7 +683,7 @@ contains
                 plot_cmd = 'splot '
                 do ifl = 1,nfl
                     if (present(draw_ops)) then
-                        loc_draw_op = trim(i2str(ifl))
+                        loc_draw_op = trim(draw_ops(ifl))
                     else
                         loc_draw_op = 'with linespoints linestyle '//&
                             &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
@@ -850,7 +841,7 @@ contains
     ! where X corresponds to the first dimensions,  Y to the second and Z to the
     ! third.
     ! Additionally, the  total grid  size and  group offset  can be  provided in
-    ! "tot_dim" and "grp_offset" to run this routine in parallel.
+    ! "tot_dim" and "grp_offset" to run this routine in parallel automatically.
     ! Optionally, one of the dimensions (col_id, default 4) can be associated to
     ! a collection dimension using "col" different from 1:
     !   col = 1: no collection, just plots of different variables
@@ -1030,7 +1021,7 @@ contains
                     end do
                     call writo('WARNING: Not enough variable names provided')
                 end if
-                grd_names = 'var'
+                grd_names = 'default_grid_name'
             else                                                                ! multiple plots: grid name is important
                 if (size(var_names).eq.n_plot) then                             ! the right number of variable names provided
                     grd_names = var_names
@@ -1044,13 +1035,13 @@ contains
                     end do
                     call writo('WARNING: Not enough variable names provided')
                 end if
-                att_names = 'var'
+                att_names = 'default_att_name'
             end if
         else                                                                    ! collections: attribute name is important
             att_names = var_names(1)
             if (size(var_names).gt.1) call writo('WARNING: For collections, &
                 &only the first variable name is used')
-            grd_names = 'grid'
+            grd_names = 'default_grid_name'
         end if
         
         ! open HDF5 file

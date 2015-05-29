@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.77                                                              !
+!   Version: 0.78                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -24,7 +24,7 @@
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D_PP
     use str_ops, only: i2str
-    use num_vars, only: prog_name, prog_style
+    use num_vars, only: prog_name, prog_style, ltest
     use messages, only: writo, print_goodbye, lvl_ud, print_hello, &
         &init_messages, init_time, start_time, stop_time, passed_time
     use HDF5_ops, only: init_HDF5
@@ -35,6 +35,7 @@ program PB3D_PP
     use input_ops, only: read_input
     use PB3D_ops, only: read_PB3D
     use driver_PP, only: run_driver_PP
+    use test, only: generic_tests
     
     implicit none
 
@@ -83,6 +84,23 @@ program PB3D_PP
     call passed_time
     call writo('')
     call lvl_ud(-1)
+    
+#if ldebug
+    !-------------------------------------------------------
+    !   Do some tests
+    !-------------------------------------------------------
+    if (ltest) then
+        call start_time
+        call writo('Generic Tests')
+        call lvl_ud(1)
+        ierr = generic_tests()
+        CHCKERR
+        call writo('')
+        call passed_time
+        call writo('')
+        call lvl_ud(-1)
+    end if
+#endif
     
     !-------------------------------------------------------
     !   Main driver

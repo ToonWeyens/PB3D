@@ -717,16 +717,13 @@ contains
             CHCKERR(err_msg)
             
             ! variables that are sent for every program style:
+            call MPI_Bcast(use_normalization,1,MPI_LOGICAL,0,MPI_Comm_world,&
+                &ierr)
+            CHCKERR(err_msg)
             call MPI_Bcast(output_name,max_str_ln,MPI_CHARACTER,0,&
                 &MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(output_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
-            call MPI_Bcast(min_r_X,1,MPI_DOUBLE_PRECISION,0,&
-                &MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
-            call MPI_Bcast(max_r_X,1,MPI_DOUBLE_PRECISION,0,&
-                &MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
@@ -736,7 +733,11 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(max_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(use_normalization,1,MPI_LOGICAL,0,MPI_Comm_world,&
+            call MPI_Bcast(min_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(max_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(vac_perm,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
                 &ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(rho_style,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
@@ -842,9 +843,6 @@ contains
                     CHCKERR(err_msg)
                     call MPI_Bcast(T_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
                         &ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(vac_perm,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(EV_BC,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)

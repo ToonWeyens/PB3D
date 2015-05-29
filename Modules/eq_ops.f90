@@ -400,8 +400,7 @@ contains
 #endif
                 ! calculate derived equilibrium quantities
                 call writo('Calculate derived equilibrium quantities...')
-                ierr = calc_derived_q(grid_eq,eq,met)
-                CHCKERR('')
+                call calc_derived_q(grid_eq,eq,met)
                 
             call lvl_ud(-1)
             call writo('Equilibrium quantities calculated on equilibrium grid')
@@ -491,10 +490,10 @@ contains
     ! grid.
     integer function calc_flux_q(eq,grid_eq) result(ierr)
         use num_vars, only: eq_style, max_deriv, grp_nr, use_pol_flux_E, &
-            &use_pol_flux_F, plot_flux_q
+            &use_pol_flux_F, plot_flux_q, rho_style, use_normalization
         use utilities, only: calc_deriv, calc_int
         use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &
-            &max_flux_t_F
+            &max_flux_t_F, rho_0
         
         character(*), parameter :: rout_name = 'calc_flux_q'
         
@@ -524,6 +523,21 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
+        
+        ! Calculate particle density rho
+        ! choose which density style is being used:
+        !   1:  constant, equal to rho_0
+        select case (rho_style)
+            case (1)                                                            ! arbitrarily constant (normalized value)
+                eq%rho = rho_0
+            case default
+                err_msg = 'No density style associated with '//&
+                    &trim(i2str(rho_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        ! normalize rho if necessary
+        if (use_normalization) eq%rho = eq%rho/rho_0
         
         ! plot flux quantities if requested
         call lvl_ud(1)
@@ -727,17 +741,13 @@ contains
     
     ! Calculates derived  equilibrium quantities  in the  Equilibrium coordinate
     ! system [ADD REF]:
-    !   - particle density rho
     !   - magnetic shear S
     !   - normal curvature kappa_n
     !   - geodesic curvature kappa_g
     !   - parallel current sigma
-    integer function calc_derived_q(grid_eq,eq,met) result(ierr)
+    subroutine calc_derived_q(grid_eq,eq,met)
         use utilities, only: c
-        use num_vars, only: rho_style, use_normalization
-        use eq_vars, only: rho_0, vac_perm
-        
-        character(*), parameter :: rout_name = 'calc_derived_q'
+        use eq_vars, only: vac_perm
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
@@ -746,7 +756,6 @@ contains
         
         ! local variables
         integer :: kd                                                           ! counter
-        character(len=max_str_ln) :: err_msg                                    ! error message
         ! submatrices
         ! jacobian
         real(dp), pointer :: J(:,:,:)                                           ! jac
@@ -771,9 +780,6 @@ contains
         real(dp), pointer :: D3h22(:,:,:)                                       ! D_theta h^psi,psi
         real(dp), pointer :: h23(:,:,:)                                         ! h^psi,theta
         
-        ! initialize ierr
-        ierr = 0
-        
         ! set up submatrices
         ! jacobian
         J => met%jac_FD(:,:,:,0,0,0)
@@ -797,21 +803,6 @@ contains
         h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
         D3h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,1)
         h23 => met%h_FD(:,:,:,c([2,3],.true.),0,0,0)
-        
-        ! Calculate particle density rho
-        ! choose which density style is being used:
-        !   1:  constant, equal to rho_0
-        select case (rho_style)
-            case (1)                                                            ! HELENA
-                eq%rho = rho_0                                                  ! arbitrarily constant (normalized value)
-            case default
-                err_msg = 'No density style associated with '//&
-                    &trim(i2str(rho_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-        ! normalize rho if necessary
-        if (use_normalization) eq%rho = eq%rho/rho_0
         
         ! Calculate the shear S
         eq%S = -(D3h12/h22 - D3h22*h12/h22**2)/J
@@ -839,7 +830,7 @@ contains
             eq%sigma(:,:,kd) = eq%sigma(:,:,kd) - &
                 &eq%pres_FD(kd,1)*J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)
         end do 
-    end function calc_derived_q
+    end subroutine calc_derived_q
     
     ! plots the flux quantities in the perturbation grid
     !   safety factor q_saf

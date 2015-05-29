@@ -9,13 +9,14 @@ module grid_ops
     use num_vars, only: dp, pi, max_str_ln
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
+    use met_vars, only: met_type
 
     implicit none
     private
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, &
         &calc_ang_grid_eq, calc_ang_grid_B, plot_grid_real, trim_grid, &
         &extend_grid_E, setup_grid_eq, setup_and_calc_grid_B, &
-        &get_norm_interp_data
+        &get_norm_interp_data, calc_int_magn, calc_int_vol
 #if ldebug
     public debug_calc_ang_grid_B, debug_get_norm_interp_data
 #endif
@@ -1759,6 +1760,297 @@ contains
                 CHCKERR(err_msg)
         end select
     end function calc_grp_r
+    
+    ! Calculates magnetic integral of V, defined as the matrix
+    !   <V e^[i(k-m)theta_F]> = [ int J V(k,m) e^i(k-m)theta_F dtheta_F ],
+    ! or
+    !   <V e^[i(m-k)zeta_F]> = [ int J V(k,m) e^i(m-k)zeta_F dzeta_F ],
+    ! depending on whether pol. or tor. flux is used as normal coord.
+    integer function calc_int_magn(grid,met,exp_ang,n_mod,V,V_int) result(ierr)
+        use num_vars, only: use_pol_flux_F
+        use utilities, only: c, con, is_sym
+        
+        character(*), parameter :: rout_name = 'calc_int_magn'
+        
+        ! input / output
+        type(grid_type) :: grid                                                 ! grid
+        type(met_type) :: met                                                   ! metric variables
+        complex(dp), intent(in) :: exp_ang(:,:,:,:)                             ! exponential of Flux parallel angle
+        integer, intent(in) :: n_mod                                            ! number of 
+        complex(dp), intent(in) :: V(:,:,:,:)                                   ! input V(n_par,n_geo,n_r,size_X^2)
+        complex(dp), intent(inout) :: V_int(:,:,:)                              ! output <V e^i(k-m)ang_par_F> integrated in parallel Flux coord.
+        
+        ! local variables
+        integer :: k, m, id, jd, kd                                             ! counters
+        integer :: nn_mod                                                       ! number of indices for V and V_int
+        integer :: k_min                                                        ! minimum k
+        logical :: sym                                                          ! whether V and V_int are symmetric
+        complex(dp), allocatable :: V_J_e(:,:,:,:)                              ! V*J*exp_ang
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), pointer :: ang_par_F(:,:,:)                                   ! parallel angle
+        integer :: dims(3)                                                      ! real dimensions
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set nn_mod
+        nn_mod = size(V,4)
+        
+        ! tests
+        if (size(V_int,1).ne.nn_mod) then
+            ierr = 1
+            err_msg = 'V and V_int need to have the same storage convention'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set up dims
+        dims = [grid%n(1),grid%n(2),grid%grp_n_r]
+        
+        ! set up V_J_e
+        allocate(V_J_e(dims(1),dims(2),dims(3),nn_mod))
+        
+        ! set up ang_par_F
+        if (use_pol_flux_F) then
+            ang_par_F => grid%theta_F
+        else
+            ang_par_F => grid%zeta_F
+        end if
+        
+        ! determine whether matrices are symmetric or not
+        ierr = is_sym(n_mod,nn_mod,sym)
+        CHCKERR('')
+        
+        ! set up k_min
+        k_min = 1
+        
+        ! multiply V by Jacobian and exponential
+        do m = 1,n_mod
+            if (sym) k_min = m
+            do k = k_min,n_mod
+                V_J_e(:,:,:,c([k,m],sym,n_mod)) = met%jac_FD(:,:,:,0,0,0) &
+                    &* con(exp_ang(:,:,:,c([k,m],.true.,n_mod)),&
+                    &[k,m],.true.,dims) * &
+                    &con(V(:,:,:,c([k,m],sym,n_mod)),[k,m],sym,dims)
+            end do
+        end do
+        
+        ! integrate  term over  ang_par_F  for all  equilibrium grid  points
+        ! using the recursive formula int_1^n f(x) dx
+        !   = int_1^(n-1) f(x) dx + (f(n)+f(n-1))*(x(n)-x(n-1))/2
+        V_int = 0.0_dp
+        ! loop over all geodesic points on this process
+        do kd = 1,grid%grp_n_r
+            ! loop over all normal points on this process
+            do jd = 1,grid%n(2)
+                ! parallel integration loop
+                do id = 2,grid%n(1)
+                    V_int(:,jd,kd) = V_int(:,jd,kd) + &
+                        &(V_J_e(id,jd,kd,:)+V_J_e(id-1,jd,kd,:))/2 * &
+                        &(ang_par_F(id,jd,kd)-ang_par_F(id-1,jd,kd))
+                end do
+            end do
+        end do
+        
+        ! deallocate local variables
+        deallocate(V_J_e)
+        nullify(ang_par_F)
+    end function calc_int_magn
+    
+    ! Calculates integral over whole volume (of plasma)
+    ! Two angular and  one normal variable has  to be provided on a  3D grid. If
+    ! the  i'th dimension  of the  grid  is equal  to  one, the  function to  be
+    ! integrated is assumed not to vary in this dimension.
+    ! Furthermore, if i is 1 or  2, the corresponding i'th (angular) variable is
+    ! the only  variable that is  assumed to vary  in that dimension.  The other
+    ! angular variable as well as the normal variable are assumed to be constant
+    ! like the function  itself. 
+    ! However, if  i is 3, an  error is displayed  as this does not  represent a
+    ! physical situation.
+    ! A common  case through which to  understand this is the  axisymmetric case
+    ! where the first  angular variable theta varies in the  dimensions 1 and 3,
+    ! the second angular  variable zeta varies only in the  dimension 2, and the
+    ! normal variable only varies in the dimension 3.
+    ! Alternatively,  there is  the case  of a  grid-aligned set  of coordinates
+    ! theta and  alpha, where the  first dimension corresponds to  the direction
+    ! along the magnetic field line, the  second to the geodesical direction and
+    ! the thirs to the normal direction. If the calculations for different field
+    ! lines are  decoupled, the variation in  the second dimension is  not taken
+    ! into account and no integration happens along it.
+    ! Internally, the angular  variables and the normal variable  are related to
+    ! the coordinates (x,y,z) that correspond to the three dimensions. They thus
+    ! form a computational orthogonal grid to which the original coordinates are
+    ! related through the transformation of Jacobians:
+    !   Jxyz = J r_F_z (theta_x zeta_y - theta_y zeta_x) ,
+    ! so that the integral becomes
+    !   sum_xyz f(x,y,z) J(x,y,z) r_F_z (theta_x zeta_y - theta_y zeta_x) dxdydz
+    ! where dx, dy and dz are all trivially equal to 1.
+    ! The integrand has to be evaluated at the intermediate positions inside the
+    ! cells. This is done  by taking the average of the 8 points  for fJ as well
+    ! as the transformation of the Jacobian.
+    integer function calc_int_vol(ang_1,ang_2,norm,J,f,f_int) result(ierr)
+        character(*), parameter :: rout_name = 'calc_int_vol'
+        
+        ! input / output
+        real(dp), intent(in) :: ang_1(:,:,:), ang_2(:,:,:), norm(:)             ! coordinate variables
+        real(dp), intent(in) :: J(:,:,:)                                        ! Jacobian
+        complex(dp), intent(in) :: f(:,:,:,:)                                   ! input f(n_par,n_geo,n_r,size_X^2)
+        complex(dp), intent(inout) :: f_int(:)                                  ! output integrated f
+        
+        ! local variables
+        integer :: id, jd, kd, ld                                               ! counters
+        integer :: nn_mod                                                       ! number of indices for V and V_int
+        integer :: k_min                                                        ! minimum k
+        integer :: dims(3)                                                      ! real dimensions
+        real(dp), allocatable :: transf_J(:,:,:,:)                              ! comps. of transf. between J and Jxyz: theta_x, zeta_y, theta_y, zeta_x and r_F_z
+        complex(dp), allocatable :: Jf(:,:,:,:)                                 ! J*f
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: i_a(3), i_b(3)                                               ! limits of building blocks of intermediary variables
+        logical :: dim_1(2)                                                     ! whether the dimension is equal to one
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set nn_mod
+        nn_mod = size(f,4)
+        
+        ! tests
+        if (size(f_int).ne.nn_mod) then
+            ierr = 1
+            err_msg = 'f and f_int need to have the same storage convention'
+            CHCKERR(err_msg)
+        end if
+        if (size(ang_1).ne.size(ang_2) .or. size(ang_1,3).ne.size(norm)) then
+            ierr = 1
+            err_msg = 'The angular variables have to be compatible'
+            CHCKERR(err_msg)
+        end if
+        if (size(norm).eq.1) then
+            ierr = 1
+            err_msg = 'The normal grid size has to be greater than one'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set up dims
+        dims = shape(ang_1)
+        
+        ! set up dim_1
+        dim_1 = .false.
+        if (size(ang_1,1).eq.1) dim_1(1) = .true.
+        if (size(ang_1,2).eq.1) dim_1(2) = .true.
+        
+        ! set up Jf and transf_J
+        allocate(Jf(max(dims(1)-1,1),max(dims(2)-1,1),dims(3)-1,nn_mod))
+        allocate(transf_J(max(dims(1)-1,1),max(dims(2)-1,1),dims(3)-1,5))
+        
+        ! set up k_min
+        k_min = 1
+        
+        ! get intermediate Jf and components of transf_J:
+        !   1: ang_1_x
+        !   2: ang_2_y
+        !   3: ang_1_y
+        !   4: ang_2_x
+        !   5: r_F_z
+        ! Note: the are always 8 terms in the summation, hence the factor 0.125
+        Jf = 0._dp
+        transf_J = 0._dp
+        do kd = 1,2
+            if (kd.eq.1) then
+                i_a(3) = 1
+                i_b(3) = dims(3)-1
+            else
+                i_a(3) = 2
+                i_b(3) = dims(3)
+            end if
+            do jd = 1,2
+                if (dim_1(2)) then
+                        i_a(2) = 1
+                        i_b(2) = dims(2)
+                else
+                    if (jd.eq.1) then
+                        i_a(2) = 1
+                        i_b(2) = dims(2)-1
+                    else
+                        i_a(2) = 2
+                        i_b(2) = dims(2)
+                    end if
+                end if
+                do id = 1,2
+                    if (dim_1(1)) then
+                            i_a(1) = 1
+                            i_b(1) = dims(1)
+                    else
+                        if (id.eq.1) then
+                            i_a(1) = 1
+                            i_b(1) = dims(1)-1
+                        else
+                            i_a(1) = 2
+                            i_b(1) = dims(1)
+                        end if
+                    end if
+                    do ld = 1,nn_mod
+                        ! Jf
+                        Jf(:,:,:,ld) = Jf(:,:,:,ld) + 0.125_dp * &
+                            &J(i_a(1):i_b(1),i_a(2):i_b(2),i_a(3):i_b(3)) * &
+                            &f(i_a(1):i_b(1),i_a(2):i_b(2),i_a(3):i_b(3),ld)
+                    end do
+                    if (dim_1(1)) then
+                        ! transf_J(1): ang_1_x
+                        transf_J(:,:,:,1) = 1._dp
+                        ! transf_J(4): ang_2_x
+                        transf_J(:,:,:,4) = 0._dp
+                    else
+                        do ld = 1,dims(1)-1
+                            ! transf_J(1): ang_1_x
+                            transf_J(ld,:,:,1) = transf_J(ld,:,:,1) + &
+                                &0.125_dp * ( &
+                                &ang_1(ld+1,i_a(2):i_b(2),i_a(3):i_b(3)) - &
+                                &ang_1(ld,i_a(2):i_b(2),i_a(3):i_b(3)) )
+                            ! transf_J(4): ang_2_x
+                            transf_J(ld,:,:,4) = transf_J(ld,:,:,4) + &
+                                &0.125_dp * ( &
+                                &ang_2(ld+1,i_a(2):i_b(2),i_a(3):i_b(3)) - &
+                                &ang_2(ld,i_a(2):i_b(2),i_a(3):i_b(3)) )
+                        end do
+                    end if
+                    if (dim_1(2)) then
+                        ! transf_J(2): ang_2_y
+                        transf_J(:,:,:,2) = 1._dp
+                        ! transf_J(3): ang_1_y
+                        transf_J(:,:,:,3) = 0._dp
+                    else
+                        do ld = 1,dims(2)-1
+                            ! transf_J(2): ang_2_y
+                            transf_J(:,ld,:,2) = transf_J(:,ld,:,2) + &
+                                &0.125_dp * ( &
+                                &ang_2(i_a(1):i_b(1),ld+1,i_a(3):i_b(3)) - &
+                                &ang_2(i_a(1):i_b(1),ld,i_a(3):i_b(3)) )
+                            ! transf_J(3): ang_1_y
+                            transf_J(:,ld,:,3) = transf_J(:,ld,:,3) + &
+                                &0.125_dp * ( &
+                                &ang_1(i_a(1):i_b(1),ld+1,i_a(3):i_b(3)) - &
+                                &ang_1(i_a(1):i_b(1),ld,i_a(3):i_b(3)) )
+                        end do
+                    end if
+                    do ld = 1,dims(3)-1
+                        ! transf_J(5): r_F_z
+                        transf_J(:,:,ld,5) = transf_J(:,:,ld,5) + 0.125_dp * ( &
+                            &norm(ld+1) - norm(ld) )
+                    end do
+                end do
+            end do
+        end do
+        
+        ! integrate term  over ang_par_F for all equilibrium  grid points, using
+        ! dx = dy = dz =1
+        do ld = 1,nn_mod
+            f_int(ld) = sum(Jf(:,:,:,ld)*(transf_J(:,:,:,1)*transf_J(:,:,:,2)-&
+                &transf_J(:,:,:,3)*transf_J(:,:,:,4))*transf_J(:,:,:,5))
+        end do
+        
+        ! deallocate local variables
+        deallocate(Jf,transf_J)
+    end function calc_int_vol
     
     ! calculate interpolation  factors for  normal interpolation in  grid_out of
     ! quantities defined on grid_in.

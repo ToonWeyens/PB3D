@@ -27,16 +27,17 @@ contains
     integer function run_rich_driver() result(ierr)
         use num_vars, only: min_alpha, max_alpha, n_alpha, glb_rank, grp_nr, &
             &max_alpha, alpha_job_nr, use_pol_flux_F, eq_style, group_output, &
-            &output_name, output_style, n_groups
+            &output_name, output_style, n_groups, max_it_r
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
         use MPI_utilities, only: wait_MPI
         use eq_vars, only: create_eq, dealloc_eq
-        use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X
+        use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_r_X, &
+            &max_r_X, min_n_r_X
         use eq_ops, only: calc_flux_q
         use VMEC, only: dealloc_VMEC
         use HELENA, only: dealloc_HEL
         use grid_ops, only: calc_eqd_grid, setup_grid_eq
-        use grid_vars, only: n_r_eq
+        use grid_vars, only: n_r_eq, n_par_X, min_par_X, max_par_X
         use HDF5_ops, only: create_output_HDF5
         
         character(*), parameter :: rout_name = 'run_rich_driver'
@@ -59,12 +60,30 @@ contains
             flux_name = 'toroidal'
         end if
         
-        ! output concerning n_alpha
+        ! user output
         call writo('The calculations will be done')
         call lvl_ud(1)
+        
+        if (max_it_r.eq.1) then
+            call writo('for '//trim(i2str(min_n_r_X))//' values on &
+                &normal range '//trim(r2strt(min_r_X))//'..'//&
+                &trim(r2strt(max_r_X)))
+        else
+            call writo('for minimally '//trim(i2str(min_n_r_X))//' values on &
+                &normal range '//trim(r2strt(min_r_X))//'..'//&
+                &trim(r2strt(max_r_X)))
+        end if
+        call writo('for '//trim(i2str(n_par_X))//' values on parallel &
+            &range '//trim(r2strt(min_par_X))//'..'//trim(r2strt(max_par_X)))
+        if (n_alpha.eq.1) then
+            call writo('for alpha = '//trim(r2strt(min_alpha*pi)))
+        else
+            call writo('for '//trim(i2str(n_alpha))//&
+                &' values of alpha '//trim(r2strt(min_alpha*pi))//'..'//&
+                &trim(r2strt(max_alpha*pi)))
+        end if
         call writo('using the '//trim(flux_name)//' flux as the normal &
             &variable')
-        call writo('for '//trim(i2str(n_alpha))//' values of alpha')
         if (use_pol_flux_F) then
             call writo('with toroidal mode number n = '//trim(i2str(min_n_X)))
             call writo('and poloidal mode number m = '//trim(i2str(min_m_X))//&
@@ -74,6 +93,7 @@ contains
             call writo('and toroidal mode number n = '//trim(i2str(min_n_X))//&
                 &'..'//trim(i2str(max_n_X)))
         end if
+        
         call lvl_ud(-1)
         
         ! determine the magnetic field lines for which to run the calculations 
@@ -243,6 +263,7 @@ contains
         logical :: use_guess                                                    ! whether a guess is formed from previous level of Richardson
         integer :: n_sol_found                                                  ! how many solutions found and saved
         character(len=max_str_ln) :: plot_title                                 ! title for plots
+        character(len=max_str_ln) :: draw_ops                                   ! optional drawing options
         
         ! initialize ierr
         ierr = 0
@@ -270,9 +291,6 @@ contains
         ! adapt variables to a field-aligned grid
         ierr = adapt_to_B(grid_eq,grid_eq_B,met,met_B,X,X_B)
         CHCKERR('')
-        
-        ! deallocate original X
-        call dealloc_X(X)
         
         ! calculate magnetic integrals
         ierr = calc_magn_ints(grid_eq_B,met_B,X_B)
@@ -343,7 +361,7 @@ contains
             call lvl_ud(-1)
             
             ! write X variables to output
-            ierr = print_output_X(grid_X,X_B)
+            ierr = print_output_X(grid_eq,grid_X,X,X_B)
             CHCKERR('')
             
             ! Richardson extrapolation
@@ -383,9 +401,10 @@ contains
         if (max_it_r.gt.1 .and. grp_rank.eq.0) then
             call writo('Plotting Eigenvalues as function of nr. of normal &
                 &points in Richardson Extrapolation')
-            !write(*,*) '!!!! TEMPORARILY DISABLED BECAUSE RICH. EXT. NOT &
-                !&WORKING PROPERLY !!!'
             call lvl_ud(1)
+            
+            ! set up drawing options
+            draw_ops = 'pt 7 ps 0.2'
             
             ! output on screen
             plot_title = 'job '//trim(i2str(alpha_job_nr))//' - Eigenvalues &
@@ -398,7 +417,7 @@ contains
             ! same output in file as well
             call draw_GP(plot_title,'Eigenvalues_A'//&
                 &trim(i2str(alpha_job_nr))//'_richardson.dat',&
-                &n_sol_requested,.true.,.false.)
+                &n_sol_requested,.true.,.false.,draw_ops=draw_ops)
             
             call lvl_ud(-1)
             call writo('Done plotting Eigenvalues')
@@ -418,6 +437,7 @@ contains
         CHCKERR('')
         ierr = dealloc_met(met_B)
         CHCKERR('')
+        call dealloc_X(X)
         call dealloc_X(X_B)
     contains
         ! calculates the number of normal  points for the perturbation n_r_X for
@@ -433,11 +453,15 @@ contains
             integer, intent(in) :: ir
             integer, intent(inout) :: n_r_X
             
-            if (ir.eq.1) then
-                n_r_X = min_n_r_X
-            else
-                n_r_X = 2 * n_r_X - 1
-            end if
+            write(*,*) '!!!! TEMPORARILY DISABLED BECAUSE RICH. EXT. NOT &
+                &WORKING PROPERLY !!!'
+            
+            n_r_X = min_n_r_X*ir
+            !!!if (ir.eq.1) then
+                !!!n_r_X = min_n_r_X
+            !!!else
+                !!!n_r_X = 2 * n_r_X - 1
+            !!!end if
             call writo(trim(i2str(n_r_X))//' normal points for this level...')
         end subroutine calc_n_r_X
         
@@ -520,6 +544,10 @@ contains
             else
                 use_guess_for_next_level = .true.                               ! for first Richardson level, set guess for next level to true
             end if
+            
+            !!! TEMPORARILY !!!
+            call writo('!!!!! DO NOT USE GUESS FOR MODIFIED RICHARDSON !!!')
+            use_guess_for_next_level = .false.
             
             ! check for convergence
             if (.not.done_richard) then

@@ -1264,6 +1264,8 @@ contains
     ! Calculate the  magnetic integrals  from PV_i and  KV_i. All  the variables
     ! should thus be field-line oriented.
     integer function calc_magn_ints(grid_eq,met,X) result(ierr)
+        use grid_ops, only: calc_int_magn
+        
         character(*), parameter :: rout_name = 'calc_magn_ints'
         
         ! input / output
@@ -1309,101 +1311,6 @@ contains
         ! user output
         call lvl_ud(-1)
         call writo('Field-line averages calculated')
-    contains
-        ! calculates magnetic integral of V, defined as the matrix
-        !   <V e^[i(k-m)theta_F]> = [ oint J V(k,m) e^i(k-m)theta_F dtheta_F ],
-        ! or
-        !   <V e^[i(m-k)zeta_F]> = [ oint J V(k,m) e^i(m-k)zeta_F dzeta_F ],
-        ! depending on whether pol. or tor. flux is used as normal coord.
-        integer function calc_int_magn(grid,met,exp_ang,n_mod,V,V_int) result(ierr)
-            use num_vars, only: use_pol_flux_F
-            use utilities, only: calc_mult, c, con, is_sym
-            
-            character(*), parameter :: rout_name = 'calc_int_magn'
-            
-            ! input / output
-            type(grid_type) :: grid                                             ! grid
-            type(met_type) :: met                                               ! metric variables
-            complex(dp), intent(in) :: exp_ang(:,:,:,:)                         ! exponential of Flux parallel angle
-            integer, intent(in) :: n_mod                                        ! number of 
-            complex(dp), intent(in) :: V(:,:,:,:)                               ! input V(n_par,n_geo,n_r,size_X^2)
-            complex(dp), intent(inout) :: V_int(:,:,:)                          ! output <V e^i(k-m)ang_par_F> integrated in parallel Flux coord.
-            
-            ! local variables
-            integer :: k, m, id, jd, kd                                         ! counters
-            integer :: nn_mod                                                   ! number of indices for V and V_int
-            integer :: k_min                                                    ! minimum k
-            logical :: sym                                                      ! whether V and V_int are symmetric
-            complex(dp), allocatable :: V_J_e(:,:,:,:)                          ! V*J*exp_ang
-            character(len=max_str_ln) :: err_msg                                ! error message
-            real(dp), pointer :: ang_par_F(:,:,:)                               ! parallel angle
-            integer :: dims(3)                                                  ! real dimensions
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! set nn_mod
-            nn_mod = size(V,4)
-            
-            ! tests
-            if (size(V_int,1).ne.nn_mod) then
-                ierr = 1
-                err_msg = 'V and V_int need to have the same storage convention'
-                CHCKERR(err_msg)
-            end if
-            
-            ! set up dims
-            dims = [grid%n(1),grid%n(2),grid%grp_n_r]
-            
-            ! set up V_J_e
-            allocate(V_J_e(dims(1),dims(2),dims(3),nn_mod))
-            
-            ! set up ang_par_F
-            if (use_pol_flux_F) then
-                ang_par_F => grid%theta_F
-            else
-                ang_par_F => grid%zeta_F
-            end if
-            
-            ! determine whether matrices are symmetric or not
-            ierr = is_sym(n_mod,nn_mod,sym)
-            CHCKERR('')
-            
-            ! set up k_min
-            k_min = 1
-            
-            ! multiply V by Jacobian and exponential
-            do m = 1,n_mod
-                if (sym) k_min = m
-                do k = k_min,n_mod
-                    V_J_e(:,:,:,c([k,m],sym,n_mod)) = met%jac_FD(:,:,:,0,0,0) &
-                        &* con(exp_ang(:,:,:,c([k,m],.true.,n_mod)),&
-                        &[k,m],.true.,dims) * &
-                        &con(V(:,:,:,c([k,m],sym,n_mod)),[k,m],sym,dims)
-                end do
-            end do
-            
-            ! integrate  term over  ang_par_F  for all  equilibrium grid  points
-            ! using the recursive formula int_1^n f(x) dx
-            !   = int_1^(n-1) f(x) dx + (f(n)+f(n-1))*(x(n)-x(n-1))/2
-            V_int = 0.0_dp
-            ! loop over all geodesic points on this process
-            do kd = 1,grid%grp_n_r
-                ! loop over all normal points on this process
-                do jd = 1,grid%n(2)
-                    ! parallel integration loop
-                    do id = 2,grid%n(1)
-                        V_int(:,jd,kd) = V_int(:,jd,kd) + &
-                            &(V_J_e(id,jd,kd,:)+V_J_e(id-1,jd,kd,:))/2 * &
-                            &(ang_par_F(id,jd,kd)-ang_par_F(id-1,jd,kd))
-                    end do
-                end do
-            end do
-            
-            ! deallocate local variables
-            deallocate(V_J_e)
-            nullify(ang_par_F)
-        end function calc_int_magn
     end function calc_magn_ints
     
     ! Print perturbation quantities to an output file:
@@ -1411,14 +1318,16 @@ contains
     !   - X:        pres_FD, q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, rho, S,
     !               kappa_n, kappa_g, sigma
     ! Note: The equilibrium quantities are outputted in Flux coordinates.
-    integer function print_output_X(grid_X,X) result(ierr)
+    integer function print_output_X(grid_eq,grid_X,X,X_B) result(ierr)
         use num_vars, only: output_style
         
         character(*), parameter :: rout_name = 'print_output_X'
         
         ! input / output
-        type(grid_type) :: grid_X                                               ! perturbation grid variables
-        type(X_type) :: X                                                       ! perturbation variables
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
+        type(X_type), intent(in) :: X                                           ! perturbation variables (for U_0, etc.)
+        type(X_type), intent(in) :: X_B                                         ! field-aligned perturbation variables (for val, vec, etc)
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1437,7 +1346,7 @@ contains
                     &results for output style '//trim(i2str(output_style))//&
                     &' implemented')
             case(2)                                                             ! HDF5 output
-                ierr = print_output_X_HDF5(grid_X,X)
+                ierr = print_output_X_HDF5(grid_eq,grid_X,X,X_B)
                 CHCKERR('')
             case default
                 err_msg = 'No style associated with '//&
@@ -1451,7 +1360,7 @@ contains
         call writo('Perturbation variables written to output')
     contains
         ! HDF5 version
-        integer function print_output_X_HDF5(grid_X,X) result(ierr)
+        integer function print_output_X_HDF5(grid_eq,grid_X,X,X_B) result(ierr)
             use num_vars, only: rich_lvl_nr, max_it_r, grp_rank
             use HDF5_ops, only: print_HDF5_arrs, &
                 &var_1D
@@ -1462,14 +1371,18 @@ contains
             character(*), parameter :: rout_name = 'print_output_eq_HDF5'
             
             ! input / output
-            type(grid_type) :: grid_X                                           ! perturbation grid variables
-            type(X_type) :: X                                                   ! perturbation variables
+            type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid variables
+            type(grid_type), intent(in) :: grid_X                               ! perturbation grid variables
+            type(X_type), intent(in) :: X                                       ! perturbation variables (for U_0, etc.)
+            type(X_type), intent(in) :: X_B                                     ! field-aligned perturbation variables (for val, vec, etc)
             
             ! local variables
             type(var_1D), pointer :: eq_1D(:)                                   ! 1D equivalent of eq. variables
             type(var_1D), pointer :: eq_1D_loc                                  ! local element in eq_1D
-            type(grid_type) :: grid_trim                                        ! trimmed grid
-            integer :: i_min, i_max                                             ! min. and max. index of variables
+            type(grid_type) :: grid_X_trim                                      ! trimmed X grid
+            type(grid_type) :: grid_eq_trim                                     ! trimmed eq grid
+            integer :: i_min_X, i_max_X                                         ! min. and max. index of variables
+            integer :: i_min_eq, i_max_eq                                       ! min. and max. index of variables
             integer :: id                                                       ! counter
             
             ! initialize ierr
@@ -1479,16 +1392,20 @@ contains
             call writo('Preparing variables for writing')
             call lvl_ud(1)
             
-            ! trim grid
-            ierr = trim_grid(grid_X,grid_trim)
+            ! trim grids
+            ierr = trim_grid(grid_X,grid_X_trim)
+            CHCKERR('')
+            ierr = trim_grid(grid_eq,grid_eq_trim)
             CHCKERR('')
             
             ! set i_min and i_max
-            i_min = 1
-            i_max = grid_trim%grp_n_r
+            i_min_X = 1
+            i_max_X = grid_X_trim%grp_n_r
+            i_min_eq = 1
+            i_max_eq = grid_eq_trim%grp_n_r
             
             ! Set up the 1D equivalents  of the perturbation variables
-            allocate(eq_1D(7))
+            allocate(eq_1D(15))
             id = 1
             
             ! r_F
@@ -1497,11 +1414,11 @@ contains
             allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
             allocate(eq_1D_loc%grp_i_min(1),eq_1D_loc%grp_i_max(1))
             eq_1D_loc%tot_i_min = [1]
-            eq_1D_loc%tot_i_max = [grid_trim%n(3)]
-            eq_1D_loc%grp_i_min = [grid_trim%i_min]
-            eq_1D_loc%grp_i_max = [grid_trim%i_max]
-            allocate(eq_1D_loc%p(size(grid_trim%grp_r_F(i_min:i_max))))
-            eq_1D_loc%p = grid_trim%grp_r_F(i_min:i_max)
+            eq_1D_loc%tot_i_max = [grid_X_trim%n(3)]
+            eq_1D_loc%grp_i_min = [grid_X_trim%i_min]
+            eq_1D_loc%grp_i_max = [grid_X_trim%i_max]
+            allocate(eq_1D_loc%p(size(grid_X_trim%grp_r_F(i_min_X:i_max_X))))
+            eq_1D_loc%p = grid_X_trim%grp_r_F(i_min_X:i_max_X)
             
             ! r_E
             eq_1D_loc => eq_1D(id); id = id+1
@@ -1509,11 +1426,123 @@ contains
             allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
             allocate(eq_1D_loc%grp_i_min(1),eq_1D_loc%grp_i_max(1))
             eq_1D_loc%tot_i_min = [1]
-            eq_1D_loc%tot_i_max = [grid_trim%n(3)]
-            eq_1D_loc%grp_i_min = [grid_trim%i_min]
-            eq_1D_loc%grp_i_max = [grid_trim%i_max]
-            allocate(eq_1D_loc%p(size(grid_trim%grp_r_E(i_min:i_max))))
-            eq_1D_loc%p = grid_trim%grp_r_E(i_min:i_max)
+            eq_1D_loc%tot_i_max = [grid_X_trim%n(3)]
+            eq_1D_loc%grp_i_min = [grid_X_trim%i_min]
+            eq_1D_loc%grp_i_max = [grid_X_trim%i_max]
+            allocate(eq_1D_loc%p(size(grid_X_trim%grp_r_E(i_min_X:i_max_X))))
+            eq_1D_loc%p = grid_X_trim%grp_r_E(i_min_X:i_max_X)
+            
+            ! RE_U_0
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'RE_U_0'
+            allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+            allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+            eq_1D_loc%tot_i_min = [1,1,1,1]
+            eq_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
+            eq_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
+            eq_1D_loc%grp_i_max = &
+                &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
+            allocate(eq_1D_loc%p(size(X%U_0(:,:,i_min_eq:i_max_eq,:))))
+            eq_1D_loc%p = reshape(realpart(X%U_0(:,:,i_min_eq:i_max_eq,:)),&
+                &[size(X%U_0(:,:,i_min_eq:i_max_eq,:))])
+            
+            ! IM_U_0
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'IM_U_0'
+            allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+            allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+            eq_1D_loc%tot_i_min = [1,1,1,1]
+            eq_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
+            eq_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
+            eq_1D_loc%grp_i_max = &
+                &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
+            allocate(eq_1D_loc%p(size(X%U_0(:,:,i_min_eq:i_max_eq,:))))
+            eq_1D_loc%p = reshape(imagpart(X%U_0(:,:,i_min_eq:i_max_eq,:)),&
+                &[size(X%U_0(:,:,i_min_eq:i_max_eq,:))])
+            
+            ! RE_U_1
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'RE_U_1'
+            allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+            allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+            eq_1D_loc%tot_i_min = [1,1,1,1]
+            eq_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
+            eq_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
+            eq_1D_loc%grp_i_max = &
+                &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
+            allocate(eq_1D_loc%p(size(X%U_1(:,:,i_min_eq:i_max_eq,:))))
+            eq_1D_loc%p = reshape(realpart(X%U_1(:,:,i_min_eq:i_max_eq,:)),&
+                &[size(X%U_1(:,:,i_min_eq:i_max_eq,:))])
+            
+            ! IM_U_1
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'IM_U_1'
+            allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+            allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+            eq_1D_loc%tot_i_min = [1,1,1,1]
+            eq_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
+            eq_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
+            eq_1D_loc%grp_i_max = &
+                &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
+            allocate(eq_1D_loc%p(size(X%U_1(:,:,i_min_eq:i_max_eq,:))))
+            eq_1D_loc%p = reshape(imagpart(X%U_1(:,:,i_min_eq:i_max_eq,:)),&
+                &[size(X%U_1(:,:,i_min_eq:i_max_eq,:))])
+            
+            ! RE_DU_0
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'RE_DU_0'
+            allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+            allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+            eq_1D_loc%tot_i_min = [1,1,1,1]
+            eq_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
+            eq_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
+            eq_1D_loc%grp_i_max = &
+                &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
+            allocate(eq_1D_loc%p(size(X%DU_0(:,:,i_min_eq:i_max_eq,:))))
+            eq_1D_loc%p = reshape(realpart(X%DU_0(:,:,i_min_eq:i_max_eq,:)),&
+                &[size(X%DU_0(:,:,i_min_eq:i_max_eq,:))])
+            
+            ! IM_DU_0
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'IM_DU_0'
+            allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+            allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+            eq_1D_loc%tot_i_min = [1,1,1,1]
+            eq_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
+            eq_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
+            eq_1D_loc%grp_i_max = &
+                &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
+            allocate(eq_1D_loc%p(size(X%DU_0(:,:,i_min_eq:i_max_eq,:))))
+            eq_1D_loc%p = reshape(imagpart(X%DU_0(:,:,i_min_eq:i_max_eq,:)),&
+                &[size(X%DU_0(:,:,i_min_eq:i_max_eq,:))])
+            
+            ! RE_DU_1
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'RE_DU_1'
+            allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+            allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+            eq_1D_loc%tot_i_min = [1,1,1,1]
+            eq_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
+            eq_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
+            eq_1D_loc%grp_i_max = &
+                &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
+            allocate(eq_1D_loc%p(size(X%DU_1(:,:,i_min_eq:i_max_eq,:))))
+            eq_1D_loc%p = reshape(realpart(X%DU_1(:,:,i_min_eq:i_max_eq,:)),&
+                &[size(X%DU_1(:,:,i_min_eq:i_max_eq,:))])
+            
+            ! IM_DU_1
+            eq_1D_loc => eq_1D(id); id = id+1
+            eq_1D_loc%var_name = 'IM_DU_1'
+            allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
+            allocate(eq_1D_loc%grp_i_min(4),eq_1D_loc%grp_i_max(4))
+            eq_1D_loc%tot_i_min = [1,1,1,1]
+            eq_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
+            eq_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
+            eq_1D_loc%grp_i_max = &
+                &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
+            allocate(eq_1D_loc%p(size(X%DU_1(:,:,i_min_eq:i_max_eq,:))))
+            eq_1D_loc%p = reshape(imagpart(X%DU_1(:,:,i_min_eq:i_max_eq,:)),&
+                &[size(X%DU_1(:,:,i_min_eq:i_max_eq,:))])
             
             ! RE_X_val
             eq_1D_loc => eq_1D(id); id = id+1
@@ -1521,12 +1550,12 @@ contains
             allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
             allocate(eq_1D_loc%grp_i_min(1),eq_1D_loc%grp_i_max(1))
             eq_1D_loc%tot_i_min = [1]
-            eq_1D_loc%tot_i_max = [size(X%val)]
+            eq_1D_loc%tot_i_max = [size(X_B%val)]
             eq_1D_loc%grp_i_min = [1]
             if (grp_rank.eq.0) then
-                eq_1D_loc%grp_i_max = [size(X%val)]
-                allocate(eq_1D_loc%p(size(X%val)))
-                eq_1D_loc%p = realpart(X%val)
+                eq_1D_loc%grp_i_max = [size(X_B%val)]
+                allocate(eq_1D_loc%p(size(X_B%val)))
+                eq_1D_loc%p = realpart(X_B%val)
             else
                 eq_1D_loc%grp_i_max = [0]
                 allocate(eq_1D_loc%p(0))
@@ -1538,12 +1567,12 @@ contains
             allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
             allocate(eq_1D_loc%grp_i_min(1),eq_1D_loc%grp_i_max(1))
             eq_1D_loc%tot_i_min = [1]
-            eq_1D_loc%tot_i_max = [size(X%val)]
+            eq_1D_loc%tot_i_max = [size(X_B%val)]
             eq_1D_loc%grp_i_min = [1]
             if (grp_rank.eq.0) then
-                eq_1D_loc%grp_i_max = [size(X%val)]
-                allocate(eq_1D_loc%p(size(X%val)))
-                eq_1D_loc%p = imagpart(X%val)
+                eq_1D_loc%grp_i_max = [size(X_B%val)]
+                allocate(eq_1D_loc%p(size(X_B%val)))
+                eq_1D_loc%p = imagpart(X_B%val)
             else
                 eq_1D_loc%grp_i_max = [0]
                 allocate(eq_1D_loc%p(0))
@@ -1554,26 +1583,26 @@ contains
             eq_1D_loc%var_name = 'RE_X_vec'
             allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
             allocate(eq_1D_loc%grp_i_min(3),eq_1D_loc%grp_i_max(3))
-            eq_1D_loc%grp_i_min = [1,grid_trim%i_min,1]
-            eq_1D_loc%grp_i_max = [X%n_mod,grid_trim%i_max,size(X%vec,3)]
+            eq_1D_loc%grp_i_min = [1,grid_X_trim%i_min,1]
+            eq_1D_loc%grp_i_max = [X_B%n_mod,grid_X_trim%i_max,size(X_B%vec,3)]
             eq_1D_loc%tot_i_min = [1,1,1]
-            eq_1D_loc%tot_i_max = [X%n_mod,grid_trim%n(3),size(X%vec,3)]
-            allocate(eq_1D_loc%p(size(X%vec(:,i_min:i_max,:))))
-            eq_1D_loc%p = reshape(realpart(X%vec(:,i_min:i_max,:)),&
-                &[size(X%vec(:,i_min:i_max,:))])
+            eq_1D_loc%tot_i_max = [X_B%n_mod,grid_X_trim%n(3),size(X_B%vec,3)]
+            allocate(eq_1D_loc%p(size(X_B%vec(:,i_min_X:i_max_X,:))))
+            eq_1D_loc%p = reshape(realpart(X_B%vec(:,i_min_X:i_max_X,:)),&
+                &[size(X_B%vec(:,i_min_X:i_max_X,:))])
             
             ! IM_X_vec
             eq_1D_loc => eq_1D(id); id = id+1
             eq_1D_loc%var_name = 'IM_X_vec'
             allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
             allocate(eq_1D_loc%grp_i_min(3),eq_1D_loc%grp_i_max(3))
-            eq_1D_loc%grp_i_min = [1,grid_trim%i_min,1]
-            eq_1D_loc%grp_i_max = [X%n_mod,grid_trim%i_max,size(X%vec,3)]
+            eq_1D_loc%grp_i_min = [1,grid_X_trim%i_min,1]
+            eq_1D_loc%grp_i_max = [X_B%n_mod,grid_X_trim%i_max,size(X_B%vec,3)]
             eq_1D_loc%tot_i_min = [1,1,1]
-            eq_1D_loc%tot_i_max = [X%n_mod,grid_trim%n(3),size(X%vec,3)]
-            allocate(eq_1D_loc%p(size(X%vec(:,i_min:i_max,:))))
-            eq_1D_loc%p = reshape(imagpart(X%vec(:,i_min:i_max,:)),&
-                &[size(X%vec(:,i_min:i_max,:))])
+            eq_1D_loc%tot_i_max = [X_B%n_mod,grid_X_trim%n(3),size(X_B%vec,3)]
+            allocate(eq_1D_loc%p(size(X_B%vec(:,i_min_X:i_max_X,:))))
+            eq_1D_loc%p = reshape(imagpart(X_B%vec(:,i_min_X:i_max_X,:)),&
+                &[size(X_B%vec(:,i_min_X:i_max_X,:))])
             
             ! misc_X
             eq_1D_loc => eq_1D(id); id = id+1

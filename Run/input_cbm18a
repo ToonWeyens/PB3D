@@ -1,7 +1,7 @@
 &inputdata_PB3D
-    n_par_X                 = 50
-    min_par_X               = -1.0
-    max_par_X               = 1.0
+    n_par_X                 = 60
+    min_par_X               = -2.0
+    max_par_X               = 2.0
     n_alpha                 = 1
     min_alpha               = 0.0
     max_alpha               = 2.0
