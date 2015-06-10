@@ -265,7 +265,7 @@ contains
             &plot_jq, tol_r, n_sol_requested, nyq_fac, glb_rank, nyq_fac, &
             &plot_grid, plot_flux_q, output_style, use_normalization, &
             &n_sol_plotted, n_theta_plot, n_zeta_plot, EV_BC, rho_style, &
-            &retain_all_sol, prog_style
+            &retain_all_sol, prog_style, norm_disc_style
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files_ops, only: input_name
@@ -287,7 +287,7 @@ contains
             &max_r_X, EV_style, n_procs_per_alpha, plot_jq, n_sol_requested, &
             &EV_BC, rho_style, nyq_fac, rho_0, use_pol_flux_F, plot_grid, &
             &output_style, plot_flux_q, use_normalization, n_theta_plot, &
-            &n_zeta_plot, retain_all_sol
+            &n_zeta_plot, retain_all_sol, norm_disc_style
         namelist /inputdata_PB3D_PP/ output_style, n_sol_plotted, &
             &use_normalization, n_theta_plot, n_zeta_plot
         
@@ -434,6 +434,7 @@ contains
             use_normalization = .true.                                          ! use normalization for the variables
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
             rho_style = 1                                                       ! constant pressure profile, equal to rho_0
+            norm_disc_style = 1                                                 ! order 1 for all terms
             
             ! variables concerning output
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV

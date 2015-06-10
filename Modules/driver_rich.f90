@@ -408,10 +408,10 @@ contains
             
             ! output on screen
             plot_title = 'job '//trim(i2str(alpha_job_nr))//' - Eigenvalues &
-                &as function of nr. of normal points [log]'
+                &as function of nr. of normal points'
             call print_GP_2D(plot_title,'Eigenvalues_A'//&
                 &trim(i2str(alpha_job_nr))//'_richardson.dat',&
-                &log10(abs(realpart(X_val_rich(1:rich_lvl_nr,1,:)))),&
+                &realpart(X_val_rich(1:rich_lvl_nr,1,:)),&
                 &x=x_axis(1:rich_lvl_nr,:),draw=.false.)
             
             ! same output in file as well

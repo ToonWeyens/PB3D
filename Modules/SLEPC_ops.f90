@@ -102,7 +102,7 @@ contains
         ierr = stop_SLEPC(grid_X,A,B,solver,guess_start_id,prev_n_EV,max_n_EV)
         CHCKERR('')
     end function solve_EV_system_SLEPC
-        
+    
     !  This  subroutine starts  PETSC  and  SLEPC  with  the correct  number  of
     ! processors
     integer function start_SLEPC(n_r_X) result(ierr)
@@ -118,6 +118,9 @@ contains
         PetscBool :: flg                                                        ! flag to catch options
         PetscInt :: id                                                          ! counters
         character(len=max_str_ln) :: option_name                                ! options
+#if !defined(PETSC_USE_COMPLEX)
+        character(len=max_str_ln) :: err_msg                                    ! error message
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -171,8 +174,8 @@ contains
     ! the variable i_geo.
     ! Note: For normal usage, i_geo should be 1, or not present.
     integer function setup_matrices(grid_eq,grid_X,X,A,B,i_geo) result(ierr)
-        use num_vars, only: grp_n_procs, grp_rank
-        use grid_ops, only: get_norm_interp_data
+        use num_vars, only: grp_n_procs, grp_rank, norm_disc_style
+        use grid_ops, only: get_norm_interp_data, trim_grid
         
         character(*), parameter :: rout_name = 'setup_matrices'
         
@@ -184,11 +187,12 @@ contains
         integer, intent(in), optional :: i_geo                                  ! at which geodesic index to perform the calculations
         
         ! local variables
+        type(grid_type) :: grid_X_trim                                          ! trimmed X grid
         PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
         PetscInt, allocatable :: o_nz(:)                                        ! nr. of off-diagonal non-zeros
         PetscReal, allocatable :: grp_r_eq(:)                                   ! unrounded index in tables V_int
         integer :: i_geo_loc                                                    ! local copy of i_geo
-        integer :: grp_n_r_X_loc                                                ! local copy of grp_n_r of X grid
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
 #if ldebug
         Mat :: A_t                                                              ! Hermitian transpose of A
@@ -201,16 +205,32 @@ contains
         
         call lvl_ud(1)
         
+        ! user output
+        call writo('Normal discretization style: '//&
+            &trim(i2str(norm_disc_style)))
+        call lvl_ud(1)
+        select case (norm_disc_style)
+            case (1)
+                call writo('All derivatives approximated by finite differences &
+                    &of order 1')
+            case (2)
+                call writo('First derivatives approximated by finite &
+                    &differences of order 2 and second derivatives of order 1')
+            case default
+                err_msg = 'No normal discretization style associated with '&
+                    &//trim(i2str(norm_disc_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        call lvl_ud(-1)
+        
         ! set up local i_geo
         i_geo_loc = 1
         if (present(i_geo)) i_geo_loc = i_geo
         
-        ! set up local grp_n_r of X grid
-        if (grp_rank.lt.grp_n_procs-1) then
-            grp_n_r_X_loc = grid_X%grp_n_r - 1                                  ! grp_n_r of X grid has ghost region
-        else
-            grp_n_r_X_loc = grid_X%grp_n_r
-        end if
+        ! trim X grid
+        ierr = trim_grid(grid_X,grid_X_trim)
+        CHCKERR('')
         
         ! set up arrays grp_r_eq that determine how to fill the matrices
         ierr = get_norm_interp_data(grid_eq,grid_X,grp_r_eq)
@@ -219,29 +239,64 @@ contains
         ! create a  matrix A and B  with the appropriate number  of preallocated
         ! entries (excluding ghost regions)
         ! the numbers of non-zeros in the diagonal and off-diagonal parts
-        allocate(d_nz(grp_n_r_X_loc*X%n_mod)); d_nz = 0
-        allocate(o_nz(grp_n_r_X_loc*X%n_mod)); o_nz = 0
-        if (grp_n_r_X_loc.eq.1) then                                            ! 1 normal point in the process
-            d_nz = X%n_mod
-            o_nz = 2*X%n_mod
-        else                                                                    ! more than 1 normal point in the process
-            d_nz(1:X%n_mod) = 2*X%n_mod
-            d_nz(X%n_mod+1:(grp_n_r_X_loc-1)*X%n_mod) = 3*X%n_mod
-            d_nz((grp_n_r_X_loc-1)*X%n_mod+1:grp_n_r_X_loc*X%n_mod) = &
-                &2*X%n_mod
-            if(grp_rank.ne.0) then
-                o_nz(1:X%n_mod) = X%n_mod
-            end if
-            if (grp_rank.ne.grp_n_procs-1) then
-                o_nz((grp_n_r_X_loc-1)*X%n_mod+1:grp_n_r_X_loc*X%n_mod) = &
-                    &X%n_mod
-            end if
-        end if
+        allocate(d_nz(grid_X_trim%grp_n_r*X%n_mod)); d_nz = 0
+        allocate(o_nz(grid_X_trim%grp_n_r*X%n_mod)); o_nz = 0
+        ! number of nonzero entries depends on normal discretization style
+        select case (norm_disc_style)
+            case (1)
+                if (grid_X_trim%grp_n_r.eq.1) then                              ! 1 normal point in the process
+                    d_nz = X%n_mod
+                    o_nz = 2*X%n_mod
+                else                                                            ! more than 1 normal point in the process
+                    d_nz(1:X%n_mod) = 2*X%n_mod
+                    d_nz(X%n_mod+1:(grid_X_trim%grp_n_r-1)*X%n_mod) = &
+                        &3*X%n_mod
+                    d_nz((grid_X_trim%grp_n_r-1)*X%n_mod+1:&
+                        &grid_X_trim%grp_n_r*X%n_mod) = 2*X%n_mod
+                    if(grp_rank.ne.0) then
+                        o_nz(1:X%n_mod) = X%n_mod
+                    end if
+                    if (grp_rank.ne.grp_n_procs-1) then
+                        o_nz((grid_X_trim%grp_n_r-1)*X%n_mod+1:&
+                            &grid_X_trim%grp_n_r*X%n_mod) = X%n_mod
+                    end if
+                end if
+            case (2)
+                if (grid_X_trim%grp_n_r.eq.1) then                              ! 1 normal point in the process
+                    d_nz = X%n_mod
+                    o_nz = 4*X%n_mod
+                else                                                            ! more than 1 normal point in the process
+                    d_nz(1:X%n_mod) = 3*X%n_mod
+                    d_nz(X%n_mod+1:2*X%n_mod) = 4*X%n_mod
+                    d_nz(2*X%n_mod+1:(grid_X_trim%grp_n_r-2)*X%n_mod) = &
+                        &5*X%n_mod
+                    d_nz((grid_X_trim%grp_n_r-2)*X%n_mod+1:&
+                        &(grid_X_trim%grp_n_r-1)*X%n_mod) = 4*X%n_mod
+                    d_nz((grid_X_trim%grp_n_r-1)*X%n_mod+1:&
+                        &grid_X_trim%grp_n_r*X%n_mod) = 3*X%n_mod
+                    if(grp_rank.ne.0) then
+                        o_nz(1:X%n_mod) = 2*X%n_mod
+                        o_nz(X%n_mod+1:2*X%n_mod) = X%n_mod
+                    end if
+                    if (grp_rank.ne.grp_n_procs-1) then
+                        o_nz((grid_X_trim%grp_n_r-2)*X%n_mod+1:&
+                            &(grid_X_trim%grp_n_r-1)*X%n_mod) = X%n_mod
+                        o_nz((grid_X_trim%grp_n_r-1)*X%n_mod+1:&
+                            &grid_X_trim%grp_n_r*X%n_mod) = 2*X%n_mod
+                    end if
+                end if
+            case default
+                err_msg = 'No normal discretization style associated with '&
+                    &//trim(i2str(norm_disc_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
         
         ! create matrix A
-        call MatCreateAIJ(PETSC_COMM_WORLD,grp_n_r_X_loc*X%n_mod,&
-            &grp_n_r_X_loc*X%n_mod,grid_X%n(3)*X%n_mod,grid_X%n(3)*X%n_mod,&
-            &PETSC_NULL_INTEGER,d_nz,PETSC_NULL_INTEGER,o_nz,A,ierr)
+        call MatCreateAIJ(PETSC_COMM_WORLD,grid_X_trim%grp_n_r*X%n_mod,&
+            &grid_X_trim%grp_n_r*X%n_mod,grid_X%n(3)*X%n_mod,&
+            &grid_X%n(3)*X%n_mod,PETSC_NULL_INTEGER,d_nz,PETSC_NULL_INTEGER,&
+            &o_nz,A,ierr)
         CHCKERR('MatCreateAIJ failed for matrix A')
         
         ! deallocate d_nz and o_nz
@@ -268,6 +323,10 @@ contains
         
 #if ldebug
         if (debug_setup_matrices) then
+            call writo('Testing if A and B are Hermitian by multiplying with &
+                &their Hermitian Transpose and subtracting 1')
+            call lvl_ud(1)
+            
             ! test if A and B hermitian
             call MatHermitianTranspose(A,MAT_INITIAL_MATRIX,A_t,ierr)
             CHCKERR('Hermitian transpose of A failed')
@@ -280,15 +339,15 @@ contains
             
             ! visualize the matrices
             call PetscOptionsSetValue('-draw_pause','-1',ierr)
-            write(*,*) 'A ='
+            call writo('A =')
             call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
             !call MatView(A,PETSC_VIEWER_DRAW_WORLD,ierr)
-            write(*,*) 'B ='
+            call writo('B =')
             call MatView(B,PETSC_VIEWER_STDOUT_WORLD,ierr)
             !call MatView(B,PETSC_VIEWER_DRAW_WORLD,ierr)
-            write(*,*) 'A_t ='
+            call writo('A_t =')
             call MatView(A_t,PETSC_VIEWER_STDOUT_WORLD,ierr)
-            write(*,*) 'B_t ='
+            call writo('B_t =')
             call MatView(B_t,PETSC_VIEWER_STDOUT_WORLD,ierr)
             
             ! destroy matrices
@@ -296,6 +355,8 @@ contains
             CHCKERR('Failed to destroy matrix A_t')
             call MatDestroy(B_t,ierr)
             CHCKERR('Failed to destroy matrix B_t')
+            
+            call lvl_ud(-1)
         end if
 #endif
         
@@ -305,14 +366,19 @@ contains
         
 #if ldebug
         if (debug_setup_matrices) then
+            call writo('Visualizing A and B after inserting BC''s')
+            call lvl_ud(1)
+            
             ! visualize the matrices
             call PetscOptionsSetValue('-draw_pause','-1',ierr)
-            write(*,*) 'A ='
+            call writo('A =')
             call MatView(A,PETSC_VIEWER_STDOUT_WORLD,ierr)
             !call MatView(A,PETSC_VIEWER_DRAW_WORLD,ierr)
-            write(*,*) 'B ='
+            call writo('B =')
             call MatView(B,PETSC_VIEWER_STDOUT_WORLD,ierr)
             !call MatView(B,PETSC_VIEWER_DRAW_WORLD,ierr)
+            
+            call lvl_ud(-1)
         end if
 #endif
         
@@ -321,9 +387,11 @@ contains
         
         call lvl_ud(-1)
     contains
-        ! fills a  matrix according to  [ADD REF]. Is  used for both  the matrix
-        ! A  and  B,  corresponding  to  the plasma  potential  energy  and  the
-        ! (perpendicular) kinetic energy
+        ! fills a  matrix according to norm_disc_style [ADD REF]:
+        !   1. first order accuracy for all terms
+        !   2. higher order accuracy for internal first order derivatives
+        ! it is used  for both the matrix  A and B, corresponding  to the plasma
+        ! potential energy and the (perpendicular) kinetic energy
         ! The procedure is as follows:
         !   1. Tables  are set  up for  (k,m) pairs in the equilibrium grid.
         !   2. At the first normal point  in the perturbation grid, belonging to
@@ -336,7 +404,7 @@ contains
         ! Note: the factors i/n or i/m are already included.
         ! !!!! THE REAL BOUNDARY CONDITIONS ARE STILL MISSING !!!!!!
         integer function fill_mat(V_0,V_1,V_2,mat) result(ierr)
-            use num_vars, only: use_pol_flux_F
+            use num_vars, only: use_pol_flux_F, norm_disc_style
             use X_vars, only: min_r_X, max_r_X
             use utilities, only: c, con
             use eq_vars, only: max_flux_p_F, max_flux_t_F
@@ -359,11 +427,13 @@ contains
             PetscScalar, allocatable :: V_int_0_next(:)                         ! interpolated V_0 at next normal point
             PetscScalar, allocatable :: V_int_1_next(:)                         ! interpolated V_1 at next normal point
             PetscScalar, allocatable :: V_int_2_next(:)                         ! interpolated V_2 at next normal point
+            PetscScalar, allocatable :: V_int_0_next_next(:)                    ! interpolated V_0 at second next normal point
+            PetscScalar, allocatable :: V_int_1_next_next(:)                    ! interpolated V_1 at second next normal point
+            PetscScalar, allocatable :: V_int_2_next_next(:)                    ! interpolated V_2 at second next normal point
             PetscInt, allocatable :: loc_k(:), loc_m(:)                         ! the locations at which to add the blocks to the matrices
             PetscReal :: step_size                                              ! step size in flux coordinates
             PetscInt :: id, jd                                                  ! counters
             PetscInt :: k, m                                                    ! counters
-            integer :: i_max_X_loc                                              ! local copy of i_max of X grid
             PetscReal :: max_flux_F                                             ! maximum flux in Flux coordinates
             
             ! for tests
@@ -383,24 +453,6 @@ contains
             nn_mod_1 = X%n_mod**2
             nn_mod_2 = X%n_mod*(X%n_mod+1)/2
             
-            ! set up local grp_n_r of X grid
-            if (grp_rank.lt.grp_n_procs-1) then
-                i_max_X_loc = grid_X%i_max - 1                                  ! i_max of X grid includes ghost region
-            else
-                i_max_X_loc = grid_X%i_max
-            end if
-            
-            ! allocate variables
-            allocate(V_int_0(nn_mod_2))
-            allocate(V_int_1(nn_mod_1))
-            allocate(V_int_2(nn_mod_2))
-            allocate(V_int_0_next(nn_mod_2))
-            allocate(V_int_1_next(nn_mod_1))
-            allocate(V_int_2_next(nn_mod_2))
-            allocate(loc_block(X%n_mod,X%n_mod))
-            allocate(loc_k(X%n_mod))
-            allocate(loc_m(X%n_mod))
-            
             ! test whether the matrix range coincides with i_min and i_max
             call MatGetOwnershipRange(mat,r_X_start,r_X_end,ierr)               ! starting and ending row r_X_start and r_X_end
             err_msg = 'Couldn''t get ownership range of matrix'
@@ -413,7 +465,7 @@ contains
                     &with tabulated value'
                 CHCKERR(err_msg)
             end if
-            if (i_max_X_loc.ne.r_X_end) then
+            if (grid_X_trim%i_max.ne.r_X_end) then
                 ierr = 1
                 err_msg = 'end of matrix in this process does not coincide &
                     &with tabulated value'
@@ -423,13 +475,46 @@ contains
             ! set up step_size
             step_size = (max_r_X-min_r_X)/(grid_X%n(3)-1.0) * max_flux_F        ! equidistant perturbation grid in perturb. coords.
             
+            ! allocate common variables
+            allocate(V_int_0(nn_mod_2))
+            allocate(V_int_1(nn_mod_1))
+            allocate(V_int_2(nn_mod_2))
+            allocate(V_int_0_next(nn_mod_2))
+            allocate(V_int_1_next(nn_mod_1))
+            allocate(V_int_2_next(nn_mod_2))
+            allocate(loc_block(X%n_mod,X%n_mod))
+            allocate(loc_k(X%n_mod))
+            allocate(loc_m(X%n_mod))
+            
             ! get the interpolated terms in V_int_i_next
             call interp_V(V_0,grp_r_eq(1),V_int_0_next)
             call interp_V(V_1,grp_r_eq(1),V_int_1_next)
             call interp_V(V_2,grp_r_eq(1),V_int_2_next)
             
+            ! specific actions depending on normal discretization style
+            select case (norm_disc_style)
+                case (1)
+                case (2)
+                    ! allocate specific variables
+                    allocate(V_int_0_next_next(nn_mod_2))
+                    allocate(V_int_1_next_next(nn_mod_1))
+                    allocate(V_int_2_next_next(nn_mod_2))
+                    
+                    ! get the interpolated terms in V_int_i_next_next
+                    call interp_V(V_0,grp_r_eq(2),V_int_0_next_next)
+                    call interp_V(V_1,grp_r_eq(2),V_int_1_next_next)
+                    call interp_V(V_2,grp_r_eq(2),V_int_2_next_next)
+                case default
+                    err_msg = 'No normal discretization style associated with '&
+                        &//trim(i2str(norm_disc_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+            
             ! iterate over all rows of this rank
-            do id = grid_X%i_min-1, i_max_X_loc-1                               ! (indices start with 0 here)
+            do id = grid_X%i_min-1,grid_X_trim%i_max-1                          ! (indices start with 0 here)
+                ! common actions
+                
                 ! fill V_int_i with V_int_i_next of previous step
                 V_int_0 = V_int_0_next
                 V_int_1 = V_int_1_next
@@ -438,6 +523,7 @@ contains
                 ! ---------------!
                 ! BLOCKS (id,id) !
                 ! ---------------!
+                ! common actions for all normal discretization styles
                 loc_block = 0
                 do m = 1,X%n_mod
                     do k = 1,X%n_mod
@@ -473,31 +559,71 @@ contains
                 ! -----------------------------------------!
                 ! BLOCKS (id,id+1) and hermitian conjugate !
                 ! -----------------------------------------!
-                if (id.ne.grid_X%n(3)-1) then                                   ! don't do the right block for last normal point
-                    ! get the interpolated terms in V_int_i_next
-                    call interp_V(V_0,grp_r_eq(id-grid_X%i_min+3),V_int_0_next)
-                    call interp_V(V_1,grp_r_eq(id-grid_X%i_min+3),V_int_1_next)
-                    call interp_V(V_2,grp_r_eq(id-grid_X%i_min+3),V_int_2_next)
+                if (id.lt.grid_X%n(3)-1) then                                   ! don't do the right block for last normal point
+                    ! specific actions depending on normal discretization style
+                    select case (norm_disc_style)
+                        case (1)
+                            ! get the interpolated terms in V_int_i_next
+                            call interp_V(V_0,grp_r_eq(id-grid_X%i_min+3),&
+                                &V_int_0_next)
+                            call interp_V(V_1,grp_r_eq(id-grid_X%i_min+3),&
+                                &V_int_1_next)
+                            call interp_V(V_2,grp_r_eq(id-grid_X%i_min+3),&
+                                &V_int_2_next)
+                            
+                            loc_block = 0
+                            do m = 1,X%n_mod
+                                do k = 1,X%n_mod
+                                    ! part ~ V1*(i+1)
+                                    loc_block(k,m) = loc_block(k,m) + &
+                                        &1.0_dp/(2*step_size) * &
+                                        &conjg(V_int_1_next(c([m,k],.false.,&
+                                        &X%n_mod)))                             ! transpose, asymetric matrices don't need con()
+                                    ! part ~ V1(i)
+                                    loc_block(k,m) = loc_block(k,m) + &
+                                        &1.0_dp/(2*step_size) * &
+                                        &V_int_1(c([k,m],.false.,X%n_mod))      ! asymetric matrices don't need con()
+                                    ! part ~ V2(i+1/2)
+                                    loc_block(k,m) = loc_block(k,m) + con(&
+                                        &V_int_2(c([k,m],.true.,X%n_mod)) + &
+                                        &V_int_2_next(c([k,m],.true.,X%n_mod)),&
+                                        &[k,m],.true.)/2 * 1.0/(step_size)**2
+                                end do
+                            end do
+                        case (2)
+                            ! fill V_int_i_next with  V_int_i_next_next of prev.
+                            ! step
+                            V_int_0_next = V_int_0_next_next
+                            V_int_1_next = V_int_1_next_next
+                            V_int_2_next = V_int_2_next_next
+                            
+                            loc_block = 0
+                            do m = 1,X%n_mod
+                                do k = 1,X%n_mod
+                                    ! part ~ V1*(i+1)
+                                    loc_block(k,m) = loc_block(k,m) + &
+                                        &2.0_dp/(3*step_size) * &
+                                        &conjg(V_int_1_next(c([m,k],.false.,&
+                                        &X%n_mod)))                             ! transpose, asymetric matrices don't need con()
+                                    ! part ~ V1(i)
+                                    loc_block(k,m) = loc_block(k,m) + &
+                                        &2.0_dp/(3*step_size) * &
+                                        &V_int_1(c([k,m],.false.,X%n_mod))      ! asymetric matrices don't need con()
+                                    ! part ~ V2(i+1/2)
+                                    loc_block(k,m) = loc_block(k,m) + con(&
+                                        &V_int_2(c([k,m],.true.,X%n_mod)) + &
+                                        &V_int_2_next(c([k,m],.true.,X%n_mod)),&
+                                        &[k,m],.true.)/2 * 1.0/(step_size)**2
+                                end do
+                            end do
+                        case default
+                            err_msg = 'No normal discretization style &
+                                &associated with '//trim(i2str(norm_disc_style))
+                            ierr = 1
+                            CHCKERR(err_msg)
+                    end select
                     
-                    loc_block = 0
-                    do m = 1,X%n_mod
-                        do k = 1,X%n_mod
-                            ! part ~ V1*(i+1)
-                            loc_block(k,m) = loc_block(k,m) + &
-                                &1.0_dp/(2*step_size) * &
-                                &conjg(V_int_1_next(c([m,k],.false.,X%n_mod)))  ! transpose, assymetric matrices don't need con()
-                            ! part ~ V1(i)
-                            loc_block(k,m) = loc_block(k,m) + &
-                                &1.0_dp/(2*step_size) * &
-                                &V_int_1(c([k,m],.false.,X%n_mod))              ! assymetric matrices don't need con()
-                            ! part ~ V2(i+1/2)
-                            loc_block(k,m) = loc_block(k,m) + &
-                                &con(V_int_2(c([k,m],.true.,X%n_mod)) + &
-                                &V_int_2_next(c([k,m],.true.,X%n_mod)),&
-                                &[k,m],.true.)/2 * 1.0/(step_size)**2
-                        end do
-                    end do
-                    
+                    ! common actions for all normal discretization styles
                     ! add block to the matrix
                     loc_k = [(jd, jd = 0,X%n_mod-1)] + id*X%n_mod
                     loc_m = loc_k+X%n_mod
@@ -512,6 +638,60 @@ contains
                         &loc_block,INSERT_VALUES,ierr)
                     err_msg = 'Couldn''t add values to matrix'
                     CHCKERR(err_msg)
+                end if
+                
+                ! -----------------------------------------!
+                ! BLOCKS (id,id+2) and hermitian conjugate !
+                ! -----------------------------------------!
+                if (id.lt.grid_X%n(3)-2) then                                   ! don't do the next to right block for next to last normal point
+                    ! specific actions depending on normal discretization style
+                    select case (norm_disc_style)
+                        case (1)
+                            ! do nothing
+                        case (2)
+                            ! get the interpolated terms in V_int_i_next_next
+                            call interp_V(V_0,grp_r_eq(id-grid_X%i_min+4),&
+                                &V_int_0_next_next)
+                            call interp_V(V_1,grp_r_eq(id-grid_X%i_min+4),&
+                                &V_int_1_next_next)
+                            call interp_V(V_2,grp_r_eq(id-grid_X%i_min+4),&
+                                &V_int_2_next_next)
+                            
+                            loc_block = 0
+                            do m = 1,X%n_mod
+                                do k = 1,X%n_mod
+                                    ! part ~ V1*(i+1)
+                                    loc_block(k,m) = loc_block(k,m) + &
+                                        &1.0_dp/(12*step_size) * &
+                                        &conjg(V_int_1_next_next(c([m,k],&
+                                        &.false.,X%n_mod)))                     ! transpose, asymetric matrices don't need con()
+                                    ! part ~ V1(i)
+                                    loc_block(k,m) = loc_block(k,m) + &
+                                        &1.0_dp/(12*step_size) * &
+                                        &V_int_1(c([k,m],.false.,X%n_mod))      ! asymetric matrices don't need con()
+                                end do
+                            end do
+                            
+                            ! add block to the matrix
+                            loc_k = [(jd, jd = 0,X%n_mod-1)] + id*X%n_mod
+                            loc_m = loc_k+2*X%n_mod
+                            call MatSetValues(mat,X%n_mod,loc_k,X%n_mod,loc_m,&
+                                &loc_block,INSERT_VALUES,ierr)
+                            err_msg = 'Couldn''t add values to matrix'
+                            CHCKERR(err_msg)
+                            
+                            ! add Hermitian conjugate
+                            loc_block = conjg(transpose(loc_block))
+                            call MatSetValues(mat,X%n_mod,loc_m,X%n_mod,loc_k,&
+                                &loc_block,INSERT_VALUES,ierr)
+                            err_msg = 'Couldn''t add values to matrix'
+                            CHCKERR(err_msg)
+                        case default
+                            err_msg = 'No normal discretization style &
+                                &associated with '//trim(i2str(norm_disc_style))
+                            ierr = 1
+                            CHCKERR(err_msg)
+                    end select
                 end if
             end do
             
@@ -555,7 +735,7 @@ contains
         ! off-diagonal elements to zero.
         ! The boundary condition at the plasma surface IS STILL AN OPEN QUESTION
         integer function set_mat_BC(A,B) result(ierr)
-            use num_vars, only: EV_BC
+            use num_vars, only: EV_BC, norm_disc_style
             
             character(*), parameter :: rout_name = 'set_mat_BC'
             
@@ -567,6 +747,7 @@ contains
             PetscScalar, allocatable :: loc_block_zero(:,:)                     ! (n_mod,n_mod) block matrix for 1 normal point, zero
             PetscInt, allocatable :: loc_k(:), loc_m(:)                         ! the locations at which to add the blocks to the matrices
             PetscInt :: id                                                      ! counter
+            character(len=max_str_ln) :: err_msg                                ! error message
             
             ! initialize ierr
             ierr = 0
@@ -583,7 +764,8 @@ contains
                 loc_block_zero(id,id) = 0._dp
             end do
             
-            if (grp_rank.eq.0) then
+            ! common actions
+            if (grid_X%i_min.eq.1) then                                         ! first block is in this process
                 ! -------------!
                 ! BLOCKS (0,0) !
                 ! -------------!
@@ -632,7 +814,7 @@ contains
                 CHCKERR('')
             end if
             
-            if (grp_rank.eq.grp_n_procs-1) then
+            if (grid_X%i_max.eq.grid_X%n(3)) then                               ! last block is in this process
                 ! -------------------------!
                 ! BLOCKS (n-1,n-1) !
                 ! -------------------------!
@@ -680,6 +862,83 @@ contains
                     &INSERT_VALUES,ierr)
                 CHCKERR('')
             end if
+                
+            ! specific actions depending on normal discretization style
+            select case (norm_disc_style)
+                case (1)
+                    ! do nothing
+                case (2)
+                    if (grid_X%i_min.le.2 .and. grid_X%i_max.ge.2) then         ! second block is in this process
+                        ! -------------!
+                        ! BLOCKS (0,2) !
+                        ! -------------!
+                        ! set indices where to insert the block
+                        loc_k = [(id, id = 0,X%n_mod-1)]
+                        loc_m = loc_k + 2*X%n_mod
+                        
+                        ! set the values of A (zero)
+                        call MatSetValues(A,X%n_mod,loc_k,X%n_mod,loc_m,&
+                            &loc_block_zero,INSERT_VALUES,ierr)
+                        CHCKERR('')
+                        
+                        ! set the values of B (zero)
+                        call MatSetValues(B,X%n_mod,loc_k,X%n_mod,loc_m,&
+                            &loc_block_zero,INSERT_VALUES,ierr)
+                        CHCKERR('')
+                        
+                        ! -------------!
+                        ! BLOCKS (2,0) !
+                        ! -------------!
+                        ! set the values of A (zero)
+                        call MatSetValues(A,X%n_mod,loc_m,X%n_mod,loc_k,&
+                            &loc_block_zero,INSERT_VALUES,ierr)
+                        CHCKERR('')
+                        
+                        ! set the values of B (zero)
+                        call MatSetValues(B,X%n_mod,loc_m,X%n_mod,loc_k,&
+                            &loc_block_zero,INSERT_VALUES,ierr)
+                        CHCKERR('')
+                    end if
+                    
+                    if (grid_X%i_min.le.grid_X%n(3)-1 .and. &
+                        &grid_X%i_max.ge.grid_X%n(3)-1) then                    ! next to last block is in this process
+                        ! -------------------------!
+                        ! BLOCKS (n-1,n-3) !
+                        ! -------------------------!
+                        ! set indices where to insert the block
+                        loc_k = [(id, id = 0,X%n_mod-1)] + &
+                            &(grid_X%n(3)-1)*X%n_mod
+                        loc_m = loc_k - 2*X%n_mod
+                        
+                        ! set the values of A (zero)
+                        call MatSetValues(A,X%n_mod,loc_k,X%n_mod,loc_m,&
+                            &loc_block_zero,INSERT_VALUES,ierr)
+                        CHCKERR('')
+                        
+                        ! set the values of B (zero)
+                        call MatSetValues(B,X%n_mod,loc_k,X%n_mod,loc_m,&
+                            &loc_block_zero,INSERT_VALUES,ierr)
+                        CHCKERR('')
+                        
+                        ! -------------------------!
+                        ! BLOCKS (n-3,n-1) !
+                        ! -------------------------!
+                        ! set the values of A (zero)
+                        call MatSetValues(A,X%n_mod,loc_m,X%n_mod,loc_k,&
+                            &loc_block_zero,INSERT_VALUES,ierr)
+                        CHCKERR('')
+                        
+                        ! set the values of B (zero)
+                        call MatSetValues(B,X%n_mod,loc_m,X%n_mod,loc_k,&
+                            &loc_block_zero,INSERT_VALUES,ierr)
+                        CHCKERR('')
+                    end if
+                case default
+                    err_msg = 'No normal discretization style associated &
+                        &with '//trim(i2str(norm_disc_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
             
             ! assemble the matrices
             call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr)
@@ -910,9 +1169,10 @@ contains
     ! stores the results
     integer function store_results(grid_X,X,solver,max_n_EV) result(ierr)
         use eq_vars, only: T_0
-        use num_vars, only: use_normalization, grp_n_procs, grp_rank, EV_BC, &
-            &output_name, alpha_job_nr, rich_lvl_nr, n_alpha, max_it_r
+        use num_vars, only: use_normalization, EV_BC, output_name, &
+            &alpha_job_nr, rich_lvl_nr, n_alpha, max_it_r
         use files_utilities, only: nextunit
+        use grid_ops, only: trim_grid
         
         character(*), parameter :: rout_name = 'store_results'
         
@@ -923,12 +1183,12 @@ contains
         PetscInt, intent(inout) :: max_n_EV                                     ! nr. of EV's saved, up to n_conv
         
         ! local variables
+        type(grid_type) :: grid_X_trim                                          ! trimmed X grid
         PetscInt :: id, id_tot                                                  ! counters
         Vec :: sol_vec                                                          ! solution EV parallel vector
         PetscReal :: error                                                      ! error of EPS solver
         PetscInt :: one = 1                                                     ! one
         PetscReal, parameter :: infinity = 1.E40_dp                             ! beyond this value, modes are not saved
-        PetscInt :: grp_n_r_X_loc                                               ! local copy of grp_n_r of X grid
         PetscReal :: tol_complex = 1.E-5_dp                                     ! tolerance for an EV to be considered complex
         PetscReal :: tol_EV_BC = 1.E-3_dp                                       ! tolerance for an EV to be considered due to the BC
         PetscScalar :: X_val_loc                                                ! local X val
@@ -945,21 +1205,19 @@ contains
         
         call lvl_ud(1)
         
-        ! set up local grp_n_r of X grid
-        if (grp_rank.lt.grp_n_procs-1) then
-            grp_n_r_X_loc = grid_X%grp_n_r - 1                                  ! grp_n_r of X grid has ghost region
-        else
-            grp_n_r_X_loc = grid_X%grp_n_r
-        end if
+        ! trim X grid
+        ierr = trim_grid(grid_X,grid_X_trim)
+        CHCKERR('')
         
         ! create solution vector
-        call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,grp_n_r_X_loc*X%n_mod,&
-            &grid_X%n(3)*X%n_mod,PETSC_NULL_SCALAR,sol_vec,ierr)
+        call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,&
+            &grid_X_trim%grp_n_r*X%n_mod,grid_X%n(3)*X%n_mod,PETSC_NULL_SCALAR,&
+            &sol_vec,ierr)
         CHCKERR('Failed to create MPI vector with arrays')
         
         ! allocate vec
         if (allocated(X%vec)) deallocate(X%vec)
-        allocate(X%vec(1:X%n_mod,1:grp_n_r_X_loc,1:max_n_EV))
+        allocate(X%vec(1:X%n_mod,1:grid_X_trim%grp_n_r,1:max_n_EV))
         X%vec = 0.0_dp
         
         ! allocate val
@@ -1128,7 +1386,7 @@ contains
                 
                 ! save old arrays
                 allocate(X_val_loc(max_id))
-                allocate(X_vec_loc(X%n_mod,grp_n_r_X_loc,max_id))
+                allocate(X_vec_loc(X%n_mod,grid_X_trim%grp_n_r,max_id))
                 X_val_loc = X%val
                 X_vec_loc = X%vec
                 
@@ -1136,10 +1394,10 @@ contains
                 deallocate(X%val,X%vec)
                 if (remove_next_loc) then
                     allocate(X%val(id-1))
-                    allocate(X%vec(X%n_mod,grp_n_r_X_loc,id-1))
+                    allocate(X%vec(X%n_mod,grid_X_trim%grp_n_r,id-1))
                 else
                     allocate(X%val(max_id-1))
-                    allocate(X%vec(X%n_mod,grp_n_r_X_loc,max_id-1))
+                    allocate(X%vec(X%n_mod,grid_X_trim%grp_n_r,max_id-1))
                 end if
                 
                 ! copy other values

@@ -12,8 +12,8 @@ module num_vars
         &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups, &
         &next_job, next_job_win, &
         &pi, mu_0_original, iu, &
-        &minim_style, EV_style, eq_style, rho_style, plot_jq, plot_grid, &
-        &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
+        &minim_style, EV_style, eq_style, rho_style, norm_disc_style, plot_jq, &
+        &plot_grid, plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
         &use_normalization, EV_BC, &
         &max_it_r, tol_r, no_guess, &
         &max_it_NR, tol_NR, nyq_fac, &
@@ -34,7 +34,7 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_PP)
     character(len=max_str_ln) :: prog_name                                      ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! name of output file
-    real(dp), parameter :: prog_version = 0.78_dp                               ! version number
+    real(dp), parameter :: prog_version = 0.79_dp                               ! version number
 
     ! MPI variables
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha
@@ -61,6 +61,7 @@ module num_vars
     integer :: EV_style                                                         ! determines the method used for solving an EV problem
     integer :: eq_style                                                         ! either 1 (VMEC) or 2 (HELENA)
     integer :: rho_style                                                        ! style for equilibrium density profile, currently only 1 (constant)
+    integer :: norm_disc_style                                                  ! style for normal discretization, either 1 (1st order) or 2 (higher order for internal first derivatives)
     logical :: plot_jq                                                          ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0 (only global master)
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates (only group masters)
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates (only global master)

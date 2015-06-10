@@ -13,7 +13,7 @@ PB3D.o : \
     eq_ops.o \
     eq_vars.o \
 
-PB3D_PP.o : \
+PB3D_POST.o : \
     num_vars.o \
     messages.o \
     MPI_ops.o \
@@ -21,7 +21,7 @@ PB3D_PP.o : \
     HDF5_ops.o \
     input_ops.o \
     PB3D_ops.o \
-    driver_PP.o \
+    driver_POST.o \
     utilities.o \
 
 PB3D_vars.o : \
@@ -110,7 +110,7 @@ driver_rich.o : \
     grid_ops.o \
     grid_vars.o \
 
-driver_PP.o : \
+driver_POST.o : \
     num_vars.o \
     str_ops.o \
     output_ops.o \

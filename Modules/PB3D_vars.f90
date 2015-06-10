@@ -31,5 +31,5 @@ module PB3D_vars
     
     ! global variables
     type(var_1D), allocatable :: vars_1D_eq(:), vars_1D_eq_B(:), vars_1D_X(:)   ! 1D variables
-    real(dp), parameter :: min_PB3D_version = 0.78                              ! minimum PB3D version
+    real(dp), parameter :: min_PB3D_version = 0.79_dp                           ! minimum PB3D version
 end module PB3D_vars

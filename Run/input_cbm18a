@@ -22,6 +22,7 @@
     plot_flux_q             = .false.
     use_normalization       = .true.
     output_style            = 2
+    norm_disc_style         = 2
 /
 
     prim_X                  = 240

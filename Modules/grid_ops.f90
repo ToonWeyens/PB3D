@@ -1682,6 +1682,7 @@ contains
             &[n_theta_plot,n_zeta_plot,grid_in%n(3)],&
             &[grid_in%i_min,grid_in%i_max])
         CHCKERR('')
+        grid_ext%r_E = grid_in%r_E
         grid_ext%grp_r_E = grid_in%grp_r_E
         ierr = calc_eqd_grid(grid_ext%theta_E,1*pi,3*pi,1)                      ! starting from pi gives nicer plots
         CHCKERR('')
@@ -1690,6 +1691,7 @@ contains
         
         ! convert all E coordinates to F coordinates if requested
         if (present(grid_eq)) then
+            grid_ext%r_F = grid_in%r_F
             ierr = coord_E2F(eq,grid_eq,&
                 &grid_ext%grp_r_E,grid_ext%theta_E,grid_ext%zeta_E,&
                 &grid_ext%grp_r_F,grid_ext%theta_F,grid_ext%zeta_F)

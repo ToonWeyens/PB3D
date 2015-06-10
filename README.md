@@ -92,3 +92,7 @@ CHANGELOG
       - Fixed two bugs in calc_XUQ considering fac_0 and fac_1.
       - Implemented decompose_energy, but some output still missing.
       - Moved calc_int_magn to grid_ops and implemented calc_int_vol.
+
+0.79: - When using Richardson extrapolation, the EV's for different levels are not displayed in log.
+      - Implemented higher order expression (only) for d/dx in EV problem, to be used with norm_disc_style 2.
+      - Changed the name from PB3D_PP to PB3D_POST.

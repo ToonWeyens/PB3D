@@ -79,8 +79,8 @@ LINK    = $(LINK_DIR) $(LINK_FLAGS)
 PB3D:	$(ObjectFiles) PB3D.o
 	$(LINK) -o $@ $(ObjectFiles) PB3D.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
-PB3D_PP:	$(ObjectFiles) PB3D_PP.o
-	$(LINK) -o $@ $(ObjectFiles) PB3D_PP.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
+PB3D_POST:	$(ObjectFiles) PB3D_POST.o
+	$(LINK) -o $@ $(ObjectFiles) PB3D_POST.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
 %.o : %.f90
 	$(COMPILE) -c $<

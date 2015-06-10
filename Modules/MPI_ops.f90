@@ -454,8 +454,7 @@ contains
         ierr = get_ser_var([i_lim_eq(1)],tot_i_min_eq,scatter=.true.)
         CHCKERR('')
         
-        ! modify  limits to add up  to a nicely trimmed  equlibrium grid without
-        ! holes
+        ! modify limits to add up to an equilibrium grid without holes
         if (grp_rank.eq.0) i_lim_eq(1) = 1
         if (grp_rank.lt.glb_n_procs-1) then
             i_lim_eq(2) = tot_i_min_eq(grp_rank+2)-1+1                          ! ghost region of width 1 necessary for eq_grid to fully enclose X_grid
@@ -587,7 +586,7 @@ contains
     ! perturbation point (so this is an asymetric ghost region)
     integer function divide_X_grid(n_r_X,X_limits,grp_r_X) result(ierr)
         use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs, &
-            &use_pol_flux_F
+            &use_pol_flux_F, norm_disc_style
         use X_vars, only: min_r_X, max_r_X
         use utilities, only: round_with_tol
         use eq_vars, only: max_flux_p_F, max_flux_t_F
@@ -605,6 +604,7 @@ contains
         integer :: id                                                           ! counter
         integer :: grp_n_r_X                                                    ! nr. of points in group normal X grid
         real(dp) :: max_flux_F                                                  ! either max_flux_p_F or max_flux_t_F
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -620,7 +620,18 @@ contains
         
         ! add ghost region if not last process
         if (grp_rank+1.lt.grp_n_procs) then
-            grp_n_r_X = grp_n_r_X + 1
+            ! specific actions depending on normal discretization style
+            select case (norm_disc_style)
+                case (1)
+                    grp_n_r_X = grp_n_r_X + 1                                   ! one needed for tridiagonal band matrix
+                case (2)
+                    grp_n_r_X = grp_n_r_X + 2                                   ! two needed for pentadiagonal band matrix
+                case default
+                    err_msg = 'No normal discretization style associated with '&
+                        &//trim(i2str(norm_disc_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
         end if
         
         ! calculate the starting index of this rank
@@ -680,7 +691,7 @@ contains
             &n_sol_requested, nyq_fac, tol_r, use_pol_flux_F, use_pol_flux_E, &
             &retain_all_sol, plot_flux_q, plot_grid, no_plots, output_style, &
             &eq_style, use_normalization, n_sol_plotted, n_theta_plot, &
-            &n_zeta_plot, plot_jq, EV_BC, rho_style, prog_style
+            &n_zeta_plot, plot_jq, EV_BC, rho_style, prog_style, norm_disc_style
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
@@ -773,6 +784,9 @@ contains
                     CHCKERR(err_msg)
                     call MPI_Bcast(minim_style,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(norm_disc_style,1,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(n_par_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)

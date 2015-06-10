@@ -470,7 +470,7 @@ contains
         integer function plot_harmonics(grid_X,X,X_id) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ghost_arr, get_ser_var
             use output_ops, only: merge_GP
-            use num_vars, only: grp_n_procs, grp_rank, use_pol_flux_F
+            use num_vars, only: grp_rank, use_pol_flux_F
             use eq_vars, only: max_flux_p_F, max_flux_t_F
             
             character(*), parameter :: rout_name = 'plot_harmonics'
@@ -483,12 +483,11 @@ contains
             ! local variables
             integer :: id, kd                                                   ! counters
             character(len=max_str_ln) :: file_name                              ! name of file of plots of this proc.
-            character(len=max_str_ln), allocatable :: file_names(:)             ! names of file of plots of different procs.
             character(len=max_str_ln) :: plot_title                             ! title for plots
             real(dp), allocatable :: x_plot(:,:)                                ! x values of plot
-            complex(dp), allocatable :: X_vec_ext(:,:)                          ! MPI Eigenvector extended with assymetric ghost region
+            complex(dp), allocatable :: X_vec_ser(:,:)                          ! serial MPI Eigenvector
+            complex(dp), allocatable :: X_vec_ser_loc(:)                        ! local X_vec_ser
             real(dp), allocatable :: X_vec_max(:)                               ! maximum position index of X_vec of rank
-            real(dp), allocatable :: ser_X_vec_max(:)                           ! maximum position index of X_vec of whole group
             
             ! initialize ierr
             ierr = 0
@@ -497,108 +496,61 @@ contains
             call writo('Started plot of the harmonics')
             call lvl_ud(1)
             
-            ! set up extended  X_vec with ghost values (grp_r_F of  X grid has a
-            ! ghost value but the EV returned does not)
-            allocate(X_vec_ext(X%n_mod,size(grid_X%grp_r_F)))
-            X_vec_ext(:,1:size(X%vec,2)) = X%vec(:,:,X_id)
-            ierr = get_ghost_arr(X_vec_ext,1)
-            CHCKERR('')
-            
-            ! set up x_plot
-            allocate(x_plot(size(grid_X%grp_r_F),X%n_mod))
-            do kd = 1,X%n_mod
-                x_plot(:,kd) = grid_X%grp_r_F
+            ! set up serial X_vec on group master
+            if (grp_rank.eq.0) allocate(X_vec_ser(1:X%n_mod,1:grid_X%n(3)))
+            do id = 1,X%n_mod
+                ierr = get_ser_var(X%vec(id,:,X_id),X_vec_ser_loc)
+                CHCKERR('')
+                if (grp_rank.eq.0) X_vec_ser(id,:) = X_vec_ser_loc
+                deallocate(X_vec_ser_loc)
             end do
             
-            ! absolute amplitude
-            ! set up file name of this rank and plot title
-            file_name = 'Eigenvector_abs.dat'
-            plot_title = 'EV '//trim(i2str(X_id))//' - absolute value'
-            
-            ! print amplitude of harmonics of eigenvector for each rank
-            call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
-                &trim(i2str(grp_rank)),abs(transpose(X_vec_ext(:,:))),&
-                &x=x_plot,draw=.false.)
-            
-            ! wait for all processes
-            ierr = wait_MPI()
-            CHCKERR('')
-            
-            ! plot by group master
+            ! the rest is done only by group master
             if (grp_rank.eq.0) then
-                ! set up file names in array
-                allocate(file_names(grp_n_procs))
-                do kd = 1,grp_n_procs
-                    file_names(kd) = trim(file_name)//'_'//trim(i2str(kd-1))
-                end do
-                
-                ! merge files
-                call merge_GP(file_names,file_name,delete=.true.)
-                
-                ! draw plot
-                call draw_GP(trim(plot_title),file_name,X%n_mod,.true.,.false.)
-                
-                ! deallocate
-                deallocate(file_names)
-            end if
-            
-            ! perturbation at midplane theta = zeta = 0
-            ! set up file name of this rank and plot title
-            file_name = 'Eigenvector_midplane.dat'
-            plot_title = 'EV '//trim(i2str(X_id))//' - midplane'
-            
-            ! print amplitude of harmonics of eigenvector for each rank
-            call print_GP_2D(trim(plot_title),trim(file_name)//'_'//&
-                &trim(i2str(grp_rank)),&
-                &realpart(transpose(X_vec_ext(:,:))),x=x_plot,draw=.false.)
-            
-            ! wait for all processes
-            ierr = wait_MPI()
-            CHCKERR('')
-            
-            ! plot by group master
-            if (grp_rank.eq.0) then
-                ! set up file names in array
-                allocate(file_names(grp_n_procs))
-                do kd = 1,grp_n_procs
-                    file_names(kd) = trim(file_name)//'_'//trim(i2str(kd-1))
-                end do
-                
-                ! merge files
-                call merge_GP(file_names,file_name,delete=.true.)
-                
-                ! draw plot
-                call draw_GP(trim(plot_title),file_name,X%n_mod,.true.,.false.)
-                
-                ! deallocate
-                deallocate(file_names)
-            end if
-            
-            ! maximum of each mode
-            allocate(X_vec_max(X%n_mod))
-            X_vec_max = 0.0_dp
-            do kd = 1,X%n_mod
-                X_vec_max(kd) = grid_X%grp_r_F(maxloc(abs(X%vec(kd,:,X_id)),1))
-            end do
-            
-            ! scale by flux
-            if (use_pol_flux_F) then
-                X_vec_max = X_vec_max*2*pi/max_flux_p_F
-            else
-                X_vec_max = X_vec_max*2*pi/max_flux_t_F
-            end if
-            
-            ! gather all parllel X_vec_max arrays in one serial array
-            ierr = get_ser_var(X_vec_max,ser_X_vec_max)
-            CHCKERR('')
-            
-            ! find the maximum of the different ranks and put it in X_vec_max of
-            ! group master
-            if (grp_rank.eq.0) then
+                ! set up x_plot
+                allocate(x_plot(grid_X%n(3),X%n_mod))
                 do kd = 1,X%n_mod
-                    X_vec_max(kd) = maxval([(ser_X_vec_max(kd+id*X%n_mod),&
-                        &id=0,grp_n_procs-1)])
+                    x_plot(:,kd) = grid_X%r_F
                 end do
+                
+                ! absolute amplitude
+                ! set up file name of this rank and plot title
+                file_name = 'Eigenvector_abs.dat'
+                plot_title = 'EV '//trim(i2str(X_id))//' - absolute value'
+                
+                ! print amplitude of harmonics of eigenvector
+                call print_GP_2D(trim(plot_title),trim(file_name),&
+                    &abs(transpose(X_vec_ser(:,:))),x=x_plot,draw=.false.)
+                
+                ! plot in file
+                call draw_GP(trim(plot_title),file_name,X%n_mod,.true.,.false.)
+                
+                ! perturbation at midplane theta = zeta = 0
+                ! set up file name of this rank and plot title
+                file_name = 'Eigenvector_midplane.dat'
+                plot_title = 'EV '//trim(i2str(X_id))//' - midplane'
+                
+                ! print amplitude of harmonics of eigenvector
+                call print_GP_2D(trim(plot_title),trim(file_name),&
+                    &realpart(transpose(X_vec_ser(:,:))),x=x_plot,draw=.false.)
+                
+                ! plot in file
+                call draw_GP(trim(plot_title),file_name,X%n_mod,.true.,.false.)
+                
+                ! maximum of each mode
+                allocate(X_vec_max(X%n_mod))
+                X_vec_max = 0.0_dp
+                do kd = 1,X%n_mod
+                    X_vec_max(kd) = &
+                        &grid_X%grp_r_F(maxloc(abs(X%vec(kd,:,X_id)),1))
+                end do
+                
+                ! scale by flux
+                if (use_pol_flux_F) then
+                    X_vec_max = X_vec_max*2*pi/max_flux_p_F
+                else
+                    X_vec_max = X_vec_max*2*pi/max_flux_t_F
+                end if
                 
                 ! set up file name of this rank and plot title
                 file_name = 'Eigenvector_max.dat'
@@ -608,12 +560,12 @@ contains
                 call print_GP_2D(trim(plot_title),trim(file_name),&
                     &[(kd*1._dp,kd=1,X%n_mod)],x=X_vec_max,draw=.false.)
                 
-                ! draw plot
+                ! draw plot in file
                 call draw_GP(trim(plot_title),file_name,1,.true.,.false.)
+                
+                ! deallocate
+                deallocate(x_plot,X_vec_ser)
             end if
-            
-            ! deallocate
-            deallocate(x_plot,X_vec_ext)
             
             ! user output
             call lvl_ud(-1)

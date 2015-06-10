@@ -67,7 +67,9 @@ contains
             call writo('Reading perturbation variables')
             call lvl_ud(1)
             ierr = read_HDF5_arrs(vars_1D_X,'X')
-            CHCKERR('')
+            err_msg = 'Maybe you wanted to use Richardson extrapolation? Not &
+                &yet implemented.'
+            CHCKERR(err_msg)
             call lvl_ud(-1)
             call writo('Perturbation variables read')
         end if
@@ -163,6 +165,7 @@ contains
         real(dp), allocatable :: dum_4D(:,:,:,:)                                ! dummy variables
         !real(dp), allocatable :: dum_5D(:,:,:,:,:)                              ! dummy variables
         real(dp), allocatable :: dum_6D(:,:,:,:,:,:), dum_7D(:,:,:,:,:,:,:)     ! dummy variables
+        real(dp), parameter :: tol_version = 1.E-8_dp                           ! tolerance for version control
         
         ! initialize ierr
         ierr = 0
@@ -632,7 +635,7 @@ contains
         call lvl_ud(1)
         
         call writo('PB3D version '//trim(r2strt(PB3D%version)))
-        if (PB3D%version.lt.min_PB3D_version) then
+        if (PB3D%version.lt.min_PB3D_version*(1-tol_version)) then
             ierr = 1
             err_msg = 'Need at least PB3D version '//&
                 &trim(r2strt(min_PB3D_version))
