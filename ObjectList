@@ -29,3 +29,4 @@ X_vars.o \
 test.o \
 PB3D_vars.o \
 PB3D_ops.o \
+vac.o \

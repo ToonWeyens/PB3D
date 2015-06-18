@@ -11,7 +11,7 @@ module MPI_ops
     
     implicit none
     private
-    public start_MPI, stop_MPI, split_MPI, split_MPI_PP, abort_MPI, &
+    public start_MPI, stop_MPI, split_MPI, split_MPI_POST, abort_MPI, &
         &broadcast_input_vars, merge_MPI, get_next_job, divide_X_grid
     
 contains
@@ -94,13 +94,8 @@ contains
         id = 1
         do while (remainder.gt.0)
             n_procs(id) = n_procs(id)+1
-            !!!if (id.lt.n_groups) then                                            ! go to next group
-                !!!id = id+1
-            !!!else                                                                ! back to first group
-                !!!id = 1
-            !!!end if
             id = mod(id,n_groups)+1
-            remainder = remainder - 1
+            remainder = remainder-1
         end do
         
         ! user messages
@@ -380,11 +375,11 @@ contains
     ! the equilibrium grid  as well. From now  on, there is supposed  to be only
     ! one group so  group nr. is equal  to global nr. This makes  using the PB3D
     ! routines easier.
-    integer function split_MPI_PP(r_F_eq,r_F_X,i_lim_eq,i_lim_X) result(ierr)
+    integer function split_MPI_POST(r_F_eq,r_F_X,i_lim_eq,i_lim_X) result(ierr)
         use num_vars, only: grp_nr, n_groups, grp_n_procs, glb_n_procs, grp_rank
         use MPI_utilities, only: get_ser_var
         
-        character(*), parameter :: rout_name = 'split_MPI_PP'
+        character(*), parameter :: rout_name = 'split_MPI_POST'
         
         ! input / output
         real(dp), intent(in) :: r_F_eq(:), r_F_X(:)                             ! equilibrium and perturbation r_F
@@ -461,7 +456,7 @@ contains
         else
             i_lim_eq(2) = size(r_F_eq)
         end if
-    end function split_MPI_PP
+    end function split_MPI_POST
     
     ! merge the MPI groups back to MPI_Comm_world
     ! [MPI] Collective call
@@ -585,11 +580,12 @@ contains
     ! expected because the routine fill_matrix  needs information about the next
     ! perturbation point (so this is an asymetric ghost region)
     integer function divide_X_grid(n_r_X,X_limits,grp_r_X) result(ierr)
-        use num_vars, only: MPI_Comm_groups, grp_rank, grp_n_procs, &
-            &use_pol_flux_F, norm_disc_style
+        use num_vars, only: MPI_Comm_groups, use_pol_flux_F, grp_rank, &
+            &grp_n_procs
         use X_vars, only: min_r_X, max_r_X
         use utilities, only: round_with_tol
         use eq_vars, only: max_flux_p_F, max_flux_t_F
+        !!!use num_vars, only: grp_rank, grp_n_procs, norm_disc_style
         
         character(*), parameter :: rout_name = 'divide_X_grid'
         
@@ -604,7 +600,6 @@ contains
         integer :: id                                                           ! counter
         integer :: grp_n_r_X                                                    ! nr. of points in group normal X grid
         real(dp) :: max_flux_F                                                  ! either max_flux_p_F or max_flux_t_F
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -618,20 +613,10 @@ contains
         ! calculate n_loc for this rank
         grp_n_r_X = divide_X_grid_ind(rank,n_r_X,n_procs)
         
+        ! Note: ghost region is only needed for output
         ! add ghost region if not last process
         if (grp_rank+1.lt.grp_n_procs) then
-            ! specific actions depending on normal discretization style
-            select case (norm_disc_style)
-                case (1)
-                    grp_n_r_X = grp_n_r_X + 1                                   ! one needed for tridiagonal band matrix
-                case (2)
-                    grp_n_r_X = grp_n_r_X + 2                                   ! two needed for pentadiagonal band matrix
-                case default
-                    err_msg = 'No normal discretization style associated with '&
-                        &//trim(i2str(norm_disc_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
+            grp_n_r_X = grp_n_r_X + 1
         end if
         
         ! calculate the starting index of this rank
@@ -641,6 +626,10 @@ contains
         end do
         ! calculate the end index of this rank
         X_limits(2) = X_limits(1) - 1 + grp_n_r_X
+        
+        ! limit grp_n_r_X and X_limits(2) to total n_r_X
+        X_limits(2) = min(X_limits(2),n_r_X)
+        grp_n_r_X = min(grp_n_r_X,X_limits(2)-X_limits(1)+1)
         
         ! set up grp_r_X if present (equidistant grid in Flux coordinates)
         if (present(grp_r_X)) then
@@ -689,9 +678,10 @@ contains
             &max_it_NR, max_it_r, n_alpha, n_procs_per_alpha, minim_style, &
             &max_alpha, min_alpha, tol_NR, glb_rank, glb_n_procs, no_guess, &
             &n_sol_requested, nyq_fac, tol_r, use_pol_flux_F, use_pol_flux_E, &
-            &retain_all_sol, plot_flux_q, plot_grid, no_plots, output_style, &
-            &eq_style, use_normalization, n_sol_plotted, n_theta_plot, &
-            &n_zeta_plot, plot_jq, EV_BC, rho_style, prog_style, norm_disc_style
+            &retain_all_sol, plot_flux_q, plot_grid, no_plots, eq_style, &
+            &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
+            &plot_resonance, EV_BC, rho_style, prog_style, max_it_inv, &
+            &norm_disc_style
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
@@ -734,8 +724,6 @@ contains
             call MPI_Bcast(output_name,max_str_ln,MPI_CHARACTER,0,&
                 &MPI_Comm_world,ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(output_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
             call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
@@ -753,6 +741,12 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(rho_style,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
+            call MPI_Bcast(plot_resonance,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(plot_flux_q,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(plot_grid,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
             
             ! select according to program style
             select case (prog_style)
@@ -769,18 +763,13 @@ contains
                     CHCKERR(err_msg)
                     call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(plot_flux_q,1,MPI_LOGICAL,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(plot_grid,1,MPI_LOGICAL,0,MPI_Comm_world,&
-                        &ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(plot_jq,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
                     call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(max_it_r,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_it_inv,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(minim_style,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
@@ -861,7 +850,7 @@ contains
                     call MPI_Bcast(EV_BC,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                case(2)                                                         ! PB3D_PP
+                case(2)                                                         ! PB3D_POST
                     call MPI_Bcast(n_sol_plotted,4,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
@@ -1060,7 +1049,7 @@ contains
                                 CHCKERR(err_msg)
                             end if
 #endif
-                        case(2)                                                 ! PB3D_PP
+                        case(2)                                                 ! PB3D_POST
                             ! do nothing extra
                         case default
                             err_msg = 'No program style associated with '//&
@@ -1128,7 +1117,7 @@ contains
                             call MPI_Bcast(h_H_33,size(h_H_33),&
                                 &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                             CHCKERR(err_msg)
-                        case(2)                                                 ! PB3D_PP
+                        case(2)                                                 ! PB3D_POST
                             ! do nothing extra
                         case default
                             err_msg = 'No program style associated with '//&

@@ -61,6 +61,7 @@ module X_vars
         complex(dp), allocatable :: KV_int_0(:,:,:)                             ! <~KV^0 e^i(k-m)ang_par_F> coefficient
         complex(dp), allocatable :: KV_int_1(:,:,:)                             ! <~KV^1 e^i(k-m)ang_par_F> coefficient
         complex(dp), allocatable :: KV_int_2(:,:,:)                             ! <~KV^2 e^i(k-m)ang_par_F> coefficient
+        complex(dp), allocatable :: vac_res(:,:)                                ! vacuum response
     end type
     
 contains
@@ -139,6 +140,9 @@ contains
         allocate(X%KV_int_0(nn_mod_2,n_geo,grp_n_r))                            ! symmetric
         allocate(X%KV_int_1(nn_mod_1,n_geo,grp_n_r))                            ! not symmetric
         allocate(X%KV_int_2(nn_mod_2,n_geo,grp_n_r))                            ! symmetric
+        
+        ! vacuum response
+        allocate(X%vac_res(X%n_mod,X%n_mod))
     end subroutine create_X
     
     ! deallocates  perturbation quantities that  are not used anymore  after the

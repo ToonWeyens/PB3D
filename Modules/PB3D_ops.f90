@@ -115,7 +115,7 @@ contains
     integer function reconstruct_PB3D(PB3D,grid_eq_B) result(ierr)
         use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B, vars_1D_X, &
             &min_PB3D_version
-        use MPI_ops, only: split_MPI_PP
+        use MPI_ops, only: split_MPI_POST
         use grid_vars, only: create_grid
         use met_vars, only: create_met
         use X_vars, only: create_X, &
@@ -319,7 +319,7 @@ contains
         call lvl_ud(1)
         
         ! split normal grids
-        ierr = split_MPI_PP(vars_1D_eq(r_F_eq_id)%p,vars_1D_X(r_F_X_id)%p,&
+        ierr = split_MPI_POST(vars_1D_eq(r_F_eq_id)%p,vars_1D_X(r_F_X_id)%p,&
             &i_lim_eq,i_lim_X)
         CHCKERR('')
         

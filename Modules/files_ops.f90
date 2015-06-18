@@ -42,7 +42,7 @@ contains
                 output_name = "PB3D_out"                                        ! standard output name
                 ltest = .false.                                                 ! don't call the testing routines
                 lvl = 1
-                allocate(opt_args(8), inc_args(8))
+                allocate(opt_args(9), inc_args(9))
                 opt_args = ''
                 inc_args = 0
                 opt_args(1) = '-t'
@@ -53,9 +53,10 @@ contains
                 opt_args(6) = '-st_pc_factor_shift_type'
                 opt_args(7) = '-st_pc_type'
                 opt_args(8) = '-st_pc_factor_mat_solver_package'
-                inc_args = [0,0,0,0,0,1,1,1]
-            case(2)                                                             ! PB3D_PP
-                output_name = "PB3D_PP_out"                                     ! standard output name
+                opt_args(9) = '-eps_monitor'
+                inc_args = [0,0,0,0,0,1,1,1,0]
+            case(2)                                                             ! PB3D_POST
+                output_name = "PB3D_POST_out"                                   ! standard output name
                 ltest = .false.                                                 ! don't call the testing routines
                 lvl = 1
                 allocate(opt_args(4), inc_args(4))
@@ -117,7 +118,7 @@ contains
                 open_help(6) = ""
                 open_help(7) = "(both can be entered in shortened form)"
                 min_args = 2
-            case(2)                                                             ! PB3D_PP
+            case(2)                                                             ! PB3D_POST
                 allocate(open_error(3))
                 allocate(open_help(6))
                 open_error(1) = ""                                              ! incorrect usage
@@ -255,7 +256,7 @@ contains
                             &variable IAS')
                         CHCKERR('')
                     end if
-                case(2)                                                         ! PB3D_PP
+                case(2)                                                         ! PB3D_POST
                     ! check for correct input file and use default if needed
                     input_name = command_arg(1)                                 ! first argument is the name of the input file
                     call search_file(input_i,input_name)
@@ -322,8 +323,8 @@ contains
                             select case (prog_style)
                                 case(1)                                         ! PB3D
                                     call apply_opt(jd,id)
-                                case(2)                                         ! PB3D_PP
-                                    call apply_opt_PP(jd)   
+                                case(2)                                         ! PB3D_POST
+                                    call apply_opt_POST(jd)   
                                 case default
                                     err_msg = 'No program style associated &
                                         &with '//trim(i2str(prog_style))
@@ -379,12 +380,14 @@ contains
                 case (8)
                     call writo('option st_pc_factor_mat_solver_package '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
+                case (9)
+                    call writo('option eps_monitor passed to SLEPC')
                 case default
                     call writo('WARNING: Invalid option number')
             end select
         end subroutine apply_opt
         
-        subroutine apply_opt_PP(opt_nr)                                         ! postprocessing version
+        subroutine apply_opt_POST(opt_nr)                                       ! postprocessing version
             ! input / output
             integer :: opt_nr
             
@@ -406,7 +409,7 @@ contains
                 case default
                     call writo('WARNING: Invalid option number')
             end select
-        end subroutine apply_opt_PP
+        end subroutine apply_opt_POST
     end function open_input
 
     ! open an output file
@@ -455,7 +458,7 @@ contains
                         full_output_name = trim(full_output_name)//'_G'//&
                             &trim(i2str(grp_nr+1))                              ! append group number (+1)
                     end if
-                case(2)                                                         ! PB3D_PP
+                case(2)                                                         ! PB3D_POST
                     full_output_name = trim(output_name)
                 case default
                     err_msg = 'No program style associated with '//&

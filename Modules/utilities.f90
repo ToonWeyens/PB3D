@@ -1266,7 +1266,7 @@ contains
     ! Calculate determinant of a matrix which is defined on a 3D grid . The size
     ! of  the  matrix  (last  two  indices)  should  be  small,  as  the  direct
     ! formula employing cofactors  is used. The storage  convention described in
-    ! metric_type is used.
+    ! met_type is used.
     integer recursive function calc_det_2D(detA,A,n) result (ierr)
         character(*), parameter :: rout_name = 'calc_det_2D'
         
@@ -1284,7 +1284,7 @@ contains
         integer, allocatable :: idx(:)                                          ! counts from 1 to size(A)
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: work(:,:,:)                                    ! work array
-        integer, allocatable :: c_sub(:)                                        ! indices of submatrix in storage convention of metric_type
+        integer, allocatable :: c_sub(:)                                        ! indices of submatrix in storage convention of met_type
         integer, allocatable :: k_sub(:)                                        ! first indices of submatrix in 2D
         
         ! initialize ierr
@@ -1402,7 +1402,7 @@ contains
     end function calc_det_0D
     
     ! calculate inverse of square matrix A  which has elements depending on a 3D
-    ! grid. The storage convention described in metric_type is used.
+    ! grid. The storage convention described in met_type is used.
     ! This method uses direct inversion using  Cramer's rule, since the matrix A
     ! is supposed to  be very small (i.e.  3x3) and since the inverse  has to be
     ! calculated at each of the points in the grid, this can be quite fast.
@@ -1422,7 +1422,7 @@ contains
         integer, allocatable :: slct(:,:)                                       ! 0 in between 1's selects which column to delete
         integer, allocatable :: idx(:)                                          ! counts from 1 to size(A)
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer, allocatable :: c_sub(:)                                        ! indices of submatrix in storage convention of metric_type
+        integer, allocatable :: c_sub(:)                                        ! indices of submatrix in storage convention of met_type
         integer, allocatable :: l_sub(:), k_sub(:)                              ! first and second indices of submatrix in 2D
         integer :: kd_min                                                       ! min. of kd
        
@@ -1543,7 +1543,7 @@ contains
     
     ! Calculate matrix multiplication of two square matrices AB = A B which have
     ! elements  defined  on a  3D  grid.  The  storage convention  described  in
-    ! metric_type is used.
+    ! met_type is used.
     ! Optionally, A and/or B can be transposed.
     integer function calc_mult_2D_real(A,B,AB,n,transp) result(ierr)            ! real version with matrix defined on 3D grid
         character(*), parameter :: rout_name = 'calc_mult_2D_real'
@@ -1748,7 +1748,7 @@ contains
     end function calc_mult_0D_real
     
     ! Converts a  (symmetric) matrix  A defined  on a 3D  grid with  the storage
-    ! convention  described in  metric_type. If  the matrix  is stored  with n^2
+    ! convention  described  in met_type.  If  the  matrix  is stored  with  n^2
     ! numbers, only  the lower diagonal elements  are kept in matrix  B. If only
     ! the  lower diagonal  elements are  stored, they  are copied  to the  upper
     ! diagonal ones of the matrix B as well.

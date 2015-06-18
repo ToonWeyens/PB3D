@@ -1222,8 +1222,8 @@ contains
     ! has to be 3D also in the axisymmetric case.
     ! [MPI] Collective call
     integer function plot_grid_real(grid) result(ierr)
-        use num_vars, only: output_style, alpha_job_nr, grp_rank, grp_n_procs, &
-            &no_plots, n_theta_plot, n_zeta_plot
+        use num_vars, only: alpha_job_nr, grp_rank, grp_n_procs, no_plots, &
+            &n_theta_plot, n_zeta_plot
         use grid_vars, only: create_grid, dealloc_grid
         
         character(*), parameter :: rout_name = 'plot_grid_real'
@@ -1232,7 +1232,6 @@ contains
         type(grid_type), intent(in) :: grid                                     ! fieldline-oriented grid
         
         ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)             ! X, Y and Z of surface in Axisymmetric coordinates
         real(dp), allocatable :: X_2(:,:,:), Y_2(:,:,:), Z_2(:,:,:)             ! X, Y and Z of magnetic field lines in Axisymmetric coordinates
         real(dp), pointer :: X_1_tot(:,:,:), Y_1_tot(:,:,:), Z_1_tot(:,:,:)     ! total X, Y and Z
@@ -1307,20 +1306,9 @@ contains
         call get_full_XYZ(X_1,Y_1,Z_1,X_1_tot,Y_1_tot,Z_1_tot,'flux surfaces')
         call get_full_XYZ(X_2,Y_2,Z_2,X_2_tot,Y_2_tot,Z_2_tot,'field lines')
         
-        ! delegate to child routines
-        select case(output_style)
-            case(1)                                                             ! GNUPlot output
-                call plot_grid_real_GP(X_1_tot,X_2_tot,Y_1_tot,Y_2_tot,Z_1_tot,&
-                    &Z_2_tot,anim_name)
-            case(2)                                                             ! HDF5 output
-                ierr = plot_grid_real_HDF5(X_1_tot,X_2_tot,Y_1_tot,Y_2_tot,&
-                    &Z_1_tot,Z_2_tot,anim_name)
-                CHCKERR('')
-            case default
-                err_msg = 'No style associated with '//trim(i2str(output_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
+        ierr = plot_grid_real_HDF5(X_1_tot,X_2_tot,Y_1_tot,Y_2_tot,&
+            &Z_1_tot,Z_2_tot,anim_name)
+        CHCKERR('')
         
         ! deallocate
         deallocate(X_1,Y_1,Z_1)
@@ -1386,63 +1374,6 @@ contains
                 Z_tot => Z
             end if
         end subroutine get_full_XYZ
-        
-        ! plot with GNUPlot
-        subroutine plot_grid_real_GP(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)
-            ! input / output
-            real(dp), intent(in) :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)          ! X, Y and Z of surface in Axisymmetric coordinates
-            real(dp), intent(in) :: X_2(:,:,:), Y_2(:,:,:), Z_2(:,:,:)          ! X, Y and Z of magnetic field lines in Axisymmetric coordinates
-            character(len=*), intent(in) :: anim_name                           ! name of animation
-            
-            ! local variables
-            character(len=max_str_ln) :: file_name(2), plot_title(2)            ! file name and title
-            character(len=max_str_ln) :: draw_ops(2)                            ! individual plot command
-            integer :: n_r                                                      ! number of normal points
-            
-            ! initialize ierr
-            ierr = 0
-           
-            ! only group masters
-            if (grp_rank.eq.0) then
-                ! user output
-                call writo('Drawing animation with GNUPlot')
-                call lvl_ud(1)
-                
-                ! set n_r
-                n_r = size(X_1,3)-1
-                
-                ! set names
-                plot_title(1) = 'Magnetic Flux Surface for alpha job '//&
-                    &trim(i2str(alpha_job_nr))
-                file_name(1) = 'Flux_surfaces_'//trim(i2str(alpha_job_nr))
-                plot_title(2) = 'Magnetic Field Line for alpha job '//&
-                    &trim(i2str(alpha_job_nr))
-                file_name(2) = 'B_field_'//trim(i2str(alpha_job_nr))
-                
-                ! write flux surfaces of this process
-                call print_GP_3D(trim(plot_title(1)),trim(file_name(1))//&
-                    &'.dat',Z_1(:,:,1:n_r),x=X_1(:,:,1:n_r),y=Y_1(:,:,1:n_r),&
-                    &draw=.false.)
-                
-                ! write magnetic field lines
-                call print_GP_3D(trim(plot_title(2)),trim(file_name(2))//&
-                    &'.dat',Z_2(:,:,2:n_r+1),x=X_2(:,:,2:n_r+1),&
-                    &y=Y_2(:,:,2:n_r+1),draw=.false.)
-                
-                ! add '.dat' to file names
-                do id = 1,2
-                    file_name(id) = trim(file_name(id))//'.dat'
-                end do
-                
-                ! draw both files
-                draw_ops(1) = 'linecolor rgb ''#d3d3d3'' linewidth 1'
-                draw_ops(2) = 'linecolor rgb ''black'' linewidth 3'
-                call draw_GP_animated(anim_name,file_name,n_r,.false.,&
-                    &delay=50,draw_ops=draw_ops)
-                
-                call lvl_ud(-1)
-            end if
-        end subroutine plot_grid_real_GP
         
         ! Plot with HDF5
         integer function plot_grid_real_HDF5(X_1,X_2,Y_1,Y_2,Z_1,Z_2,&
@@ -1583,6 +1514,66 @@ contains
                 call lvl_ud(-1)
             end if
         end function plot_grid_real_HDF5
+        
+#if ldebug
+        ! plot with GNUPlot
+        ! Note: discontinued
+        subroutine plot_grid_real_GP(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)
+            ! input / output
+            real(dp), intent(in) :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)          ! X, Y and Z of surface in Axisymmetric coordinates
+            real(dp), intent(in) :: X_2(:,:,:), Y_2(:,:,:), Z_2(:,:,:)          ! X, Y and Z of magnetic field lines in Axisymmetric coordinates
+            character(len=*), intent(in) :: anim_name                           ! name of animation
+            
+            ! local variables
+            character(len=max_str_ln) :: file_name(2), plot_title(2)            ! file name and title
+            character(len=max_str_ln) :: draw_ops(2)                            ! individual plot command
+            integer :: n_r                                                      ! number of normal points
+            
+            ! initialize ierr
+            ierr = 0
+           
+            ! only group masters
+            if (grp_rank.eq.0) then
+                ! user output
+                call writo('Drawing animation with GNUPlot')
+                call lvl_ud(1)
+                
+                ! set n_r
+                n_r = size(X_1,3)-1
+                
+                ! set names
+                plot_title(1) = 'Magnetic Flux Surface for alpha job '//&
+                    &trim(i2str(alpha_job_nr))
+                file_name(1) = 'Flux_surfaces_'//trim(i2str(alpha_job_nr))
+                plot_title(2) = 'Magnetic Field Line for alpha job '//&
+                    &trim(i2str(alpha_job_nr))
+                file_name(2) = 'B_field_'//trim(i2str(alpha_job_nr))
+                
+                ! write flux surfaces of this process
+                call print_GP_3D(trim(plot_title(1)),trim(file_name(1))//&
+                    &'.dat',Z_1(:,:,1:n_r),x=X_1(:,:,1:n_r),y=Y_1(:,:,1:n_r),&
+                    &draw=.false.)
+                
+                ! write magnetic field lines
+                call print_GP_3D(trim(plot_title(2)),trim(file_name(2))//&
+                    &'.dat',Z_2(:,:,2:n_r+1),x=X_2(:,:,2:n_r+1),&
+                    &y=Y_2(:,:,2:n_r+1),draw=.false.)
+                
+                ! add '.dat' to file names
+                do id = 1,2
+                    file_name(id) = trim(file_name(id))//'.dat'
+                end do
+                
+                ! draw both files
+                draw_ops(1) = 'linecolor rgb ''#d3d3d3'' linewidth 1'
+                draw_ops(2) = 'linecolor rgb ''black'' linewidth 3'
+                call draw_GP_animated(anim_name,file_name,n_r,2,delay=50,&
+                    &draw_ops=draw_ops)
+                
+                call lvl_ud(-1)
+            end if
+        end subroutine plot_grid_real_GP
+#endif
     end function plot_grid_real
     
     ! Trim a grid, removing any overlap between the different regions.
@@ -1602,6 +1593,8 @@ contains
         integer, allocatable :: tot_i_max(:)                                    ! i_max of grid of all processes
         integer :: i_lim_out(2)                                                 ! i_lim of output grid
         integer :: n_out(3)                                                     ! n of output grid
+        integer :: kd                                                           ! counter
+        integer :: kd_max                                                       ! maximum index
         
         ! initialize ierr
         ierr = 0
@@ -1614,36 +1607,53 @@ contains
         ierr = get_ser_var([grid_in%i_max],tot_i_max,scatter=.true.)
         CHCKERR('')
         
-        ! set i_lim of output grid
-        i_lim_out(1) = grid_in%i_min-tot_i_min(1)+1                             ! subtract i_min of first process
+        ! set i_lim of output grid (not yet shifted by first process' min)
+        i_lim_out(1) = grid_in%i_min
         if (grp_rank.lt.grp_n_procs-1) then                                     ! not last process
-            i_lim_out(2) = tot_i_min(grp_rank+2)-tot_i_min(1)                   ! take i_min of next process and subtract i_min of first
+            i_lim_out(2) = min(tot_i_min(grp_rank+2)-1,tot_i_max(grp_rank+1))   ! take i_min of next process or current maximum
         else                                                                    ! last process
-            i_lim_out(2) = grid_in%i_max-tot_i_min(1)+1                         ! end of this last group
+            i_lim_out(2) = grid_in%i_max                                        ! end of this last group
         end if
+        
+        ! get min_i's of the grid_out, not shifted by min of first process
+        ierr = get_ser_var([i_lim_out(1)],tot_i_min,scatter=.true.)
+        CHCKERR('')
+        
+        ! get max_i's of the grid_out, not shifted by min of first process
+        ierr = get_ser_var([i_lim_out(2)],tot_i_max,scatter=.true.)
+        CHCKERR('')
         
         ! set n of output grid
         n_out(1) = grid_in%n(1)
         n_out(2) = grid_in%n(2)
-        n_out(3) = tot_i_max(grp_n_procs)-tot_i_min(1)+1
+        n_out(3) = sum(tot_i_max-tot_i_min+1)
         
         ! create new grid
-        ierr = create_grid(grid_out,n_out,i_lim_out)
+        ierr = create_grid(grid_out,n_out,i_lim_out-tot_i_min(1)+1)             ! limits shifted by min of first process
         CHCKERR('')
+        
+        ! shift limits by min of current process
+        i_lim_out = i_lim_out-i_lim_out(1)+1
         
         ! copy arrays
         if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3D grid
-            grid_out%theta_E = grid_in%theta_E(:,:,1:grid_out%grp_n_r)
-            grid_out%zeta_E = grid_in%zeta_E(:,:,1:grid_out%grp_n_r)
-            grid_out%theta_F = grid_in%theta_F(:,:,1:grid_out%grp_n_r)
-            grid_out%zeta_F = grid_in%zeta_F(:,:,1:grid_out%grp_n_r)
+            grid_out%theta_E = grid_in%theta_E(:,:,i_lim_out(1):i_lim_out(2))
+            grid_out%zeta_E = grid_in%zeta_E(:,:,i_lim_out(1):i_lim_out(2))
+            grid_out%theta_F = grid_in%theta_F(:,:,i_lim_out(1):i_lim_out(2))
+            grid_out%zeta_F = grid_in%zeta_F(:,:,i_lim_out(1):i_lim_out(2))
         end if
-        grid_out%r_E = grid_in%r_E(tot_i_min(1):tot_i_max(grp_n_procs))         ! copy total r
-        grid_out%r_F = grid_in%r_F(tot_i_min(1):tot_i_max(grp_n_procs))
         if (grid_in%divided) then                                               ! but if input grid divided, grp_r gets priority
-            grid_out%grp_r_E = grid_in%grp_r_E(1:grid_out%grp_n_r)
-            grid_out%grp_r_F = grid_in%grp_r_F(1:grid_out%grp_n_r)
+            grid_out%grp_r_E = grid_in%grp_r_E(i_lim_out(1):i_lim_out(2))
+            grid_out%grp_r_F = grid_in%grp_r_F(i_lim_out(1):i_lim_out(2))
         end if
+        kd_max = 0
+        do kd = 1,grp_n_procs
+            grid_out%r_E(kd_max+1:kd_max+tot_i_max(kd)-tot_i_min(kd)+1) = &
+                &grid_in%r_E(tot_i_min(kd):tot_i_max(kd))
+            grid_out%r_F(kd_max+1:kd_max+tot_i_max(kd)-tot_i_min(kd)+1) = &
+                &grid_in%r_F(tot_i_min(kd):tot_i_max(kd))
+            kd_max = kd_max + tot_i_max(kd)-tot_i_min(kd)+1
+        end do
     end function trim_grid
     
     ! Extend a  grid angularly using  equidistant variables of  n_theta_plot and

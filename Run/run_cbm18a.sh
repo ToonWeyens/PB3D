@@ -8,7 +8,7 @@ display_usage() {
     } 
 #
 # Setting some variables
-slepc_opt="-st_pc_factor_shift_type NONZERO -st_pc_type lu -st_pc_factor_mat_solver_package mumps"
+slepc_opt="-st_pc_factor_shift_type NONZERO -st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_monitor"
 debug_opt=""
 extra_debug_opt=""
 n_opt_args=0

@@ -17,11 +17,10 @@
     use_pol_flux_F          = .true.
     n_sol_requested         = 1000
     min_n_r_X               = 30
-    plot_jq                 = .true.
+    plot_resonance          = .false.
     plot_grid               = .false.
     plot_flux_q             = .false.
     use_normalization       = .true.
-    output_style            = 2
     n_zeta_plot             = 1
 /
     n_par_X                 = 50

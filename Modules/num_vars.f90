@@ -12,15 +12,16 @@ module num_vars
         &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups, &
         &next_job, next_job_win, &
         &pi, mu_0_original, iu, &
-        &minim_style, EV_style, eq_style, rho_style, norm_disc_style, plot_jq, &
-        &plot_grid, plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
-        &use_normalization, EV_BC, &
+        &minim_style, EV_style, eq_style, rho_style, norm_disc_style, &
+        &plot_resonance, plot_grid, plot_flux_q, ltest, use_pol_flux_E, &
+        &use_pol_flux_F, use_normalization, EV_BC, &
         &max_it_r, tol_r, no_guess, &
+        &max_it_inv, &
         &max_it_NR, tol_NR, nyq_fac, &
-        &group_output, input_i, eq_i, eq_name, output_i, no_plots, &
-        &no_messages, output_style, plot_dir, script_dir, data_dir, &
-        &n_theta_plot, n_zeta_plot, n_sol_requested, n_sol_plotted, &
-        &retain_all_sol, PB3D_i, PB3D_name, &
+        &GP_max_size, group_output, input_i, eq_i, eq_name, output_i, &
+        &no_plots, no_messages, plot_dir, script_dir, data_dir, n_theta_plot, &
+        &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
+        &PB3D_i, PB3D_name, &
         &n_alpha, min_alpha, max_alpha, alpha_job_nr, rich_lvl_nr, &
         &spline_type
 
@@ -31,10 +32,10 @@ module num_vars
     integer, parameter :: qp = REAL128                                          ! quadruple precision
     integer, parameter :: max_str_ln = 120                                      ! maximum length of filenames
     integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
-    integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_PP)
+    integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=max_str_ln) :: prog_name                                      ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! name of output file
-    real(dp), parameter :: prog_version = 0.79_dp                               ! version number
+    real(dp), parameter :: prog_version = 0.80_dp                               ! version number
 
     ! MPI variables
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha
@@ -61,8 +62,8 @@ module num_vars
     integer :: EV_style                                                         ! determines the method used for solving an EV problem
     integer :: eq_style                                                         ! either 1 (VMEC) or 2 (HELENA)
     integer :: rho_style                                                        ! style for equilibrium density profile, currently only 1 (constant)
-    integer :: norm_disc_style                                                  ! style for normal discretization, either 1 (1st order) or 2 (higher order for internal first derivatives)
-    logical :: plot_jq                                                          ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0 (only global master)
+    integer :: norm_disc_style                                                  ! style for normal discretization, either 1 (1st order) or 2 (2nd order)
+    logical :: plot_resonance                                                   ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0 (only global master)
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates (only group masters)
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates (only global master)
     logical :: ltest                                                            ! whether or not to call the testing routines
@@ -75,6 +76,9 @@ module num_vars
     integer :: max_it_r                                                         ! number of levels for Richardson extrapolation
     real(dp) :: tol_r                                                           ! tolerance for Richardson extrapolation
     logical :: no_guess = .false.                                               ! disable guessing Eigenfunction from previous level of Richardson
+    
+    ! concerning finding the inverse
+    integer :: max_it_inv                                                       ! maximum number of iterations to find the inverse
 
     ! concerning finding the magnetic field lines
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
@@ -82,6 +86,7 @@ module num_vars
     integer :: nyq_fac                                                          ! Nyquist factor to avoid aliasing in perturbation integrals
 
     ! input / output
+    integer, parameter :: GP_max_size = 300                                     ! maximum size of matrices for GNUPlot
     logical :: group_output                                                     ! whether also the non-master groups can output
     integer :: input_i                                                          ! file number of input file
     integer :: eq_i                                                             ! file number of equilibrium file from VMEC or HELENA
@@ -91,7 +96,6 @@ module num_vars
     integer :: output_i                                                         ! file number of output file
     logical :: no_plots = .false.                                               ! true if no plots should be made
     logical :: no_messages = .false.                                            ! true if no messages should be shown
-    integer :: output_style                                                     ! style of output (GNUPlot, HDF5, ...)
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots
     character(len=4) :: data_dir = 'Data'                                       ! directory where to save data for plots

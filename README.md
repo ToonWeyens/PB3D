@@ -96,3 +96,15 @@ CHANGELOG
 0.79: - When using Richardson extrapolation, the EV's for different levels are not displayed in log.
       - Implemented higher order expression (only) for d/dx in EV problem, to be used with norm_disc_style 2.
       - Changed the name from PB3D_PP to PB3D_POST.
+
+0.80: - Fixed a bug in divide_X_grid for a high number of processes which would cause X_limits(2) to rise above n_r_X.
+      - Added vacuum module vac, which will be used to calculate the vacuum response. Temporarily, this is set to zero.
+      - Reordered the SLEPC routines to accomodate iteration for inverse.
+      - Rewrote the SLEPC routines with the updated theory taking into account the plasma edge.
+      - Fixed a bug in trim_grid when non-overlapping grids were used.
+      - Now no more ghost points are needed for the calculations. However, for plotting and writing output a ghost region of one is kept.
+      - HDF5 is now the only possibility, but some outputs are given with GNUPlot.
+      - draw_GP and draw_GP_animated now have the possibility to draw decoupled 3D plots using draw_dim which replaces is_2D.
+      - Introduced parameter GP_max_size, above which GNUPlot is not used.
+      - Changed plot_jq to plot_resonance. It also outputs the resonating flux surfaces in 2D HDF5.
+      - Harmonic plot now also plots the resonatic flux surfaces in 2D.

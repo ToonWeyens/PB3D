@@ -44,6 +44,11 @@ module output_ops
     !character(len=max_str_ln) :: line_style = 'lt 1 lw 1 pt 7 pi -1 ps 0.5; &
         !&set pointintervalbox 0.75;'                                            ! with little space in line connecting points
     character(len=max_str_ln) :: line_style = 'lt 1 lw 1 pt 7 ps 0.5;'          ! without little space in line connecting points
+#if ldebug
+    character(len=0) :: err_output_str = ''                                     ! string with error output
+#else
+    character(len=14) :: err_output_str = ' 2> /dev/null'                       ! string with error output (/dev/null)
+#endif
     
 contains
     ! print 2D output on a file
@@ -147,7 +152,7 @@ contains
         if (present(draw)) then
             if (.not.draw) return
         end if
-        call draw_GP(var_name,trim(file_name),nplt,.true.,.true.)
+        call draw_GP(var_name,trim(file_name),nplt,1,.true.)
         
         if (trim(file_name_i).eq.'') then
             call execute_command_line('rm '//data_dir//'/'//trim(file_name))
@@ -296,7 +301,7 @@ contains
         if (present(draw)) then
             if (.not.draw) return
         end if
-        call draw_GP(var_name,trim(file_name),nplt,.false.,.true.)
+        call draw_GP(var_name,trim(file_name),nplt,2,.true.)
         
         if (trim(file_name_i).eq.'') then
             call execute_command_line('rm '//data_dir//'/'//trim(file_name))
@@ -305,33 +310,33 @@ contains
     
     ! use GNUPlot to draw a plot
     ! The variable file_name(s) holds the file(s)  which are to be plot. Each of
-    ! them should  contain nplt plots,  arranged in columns.  Furthermore, is_2D
-    ! determines whether the  plot is to be 2D or  3D and plot_on_screen whether
-    ! the plot  is be  shown on  the screen,  or to  be saved  in a  file called
-    ! [var_name].pdf. Finally, for  each of the file names,  an optional command
-    ! draw_ops can be provided, that specifies the line style for the plots from
-    ! the file.
-    subroutine draw_GP_ind(var_name,file_name,nplt,is_2D,plot_on_screen,&
+    ! them should contain nplt plots, arranged in columns. Furthermore, draw_dim
+    ! determines  whether  the  plot  is  to  be 2D,  3D  or  decoupled  3D  and
+    ! plot_on_screen whether the plot is be shown  on the screen, or to be saved
+    ! in a file  called [var_name].pdf. Finally, for each of  the file names, an
+    ! optional command draw_ops  can be provided, that specifies  the line style
+    ! for the plots from the file.
+    subroutine draw_GP_ind(var_name,file_name,nplt,draw_dim,plot_on_screen,&
         &draw_ops)
         
         ! input / output
         character(len=*), intent(in) :: file_name                               ! name of file
         character(len=*), intent(in) :: var_name                                ! name of function
         integer, intent(in) :: nplt                                             ! number of plots
-        logical, intent(in) :: is_2D                                            ! True if 2D, false if 3D
+        integer, intent(in) :: draw_dim                                         ! 1: 2D, 2: 3D, 3: decoupled 3D
         logical, intent(in) :: plot_on_screen                                   ! True if on screen, false if in file
         character(len=*), intent(in), optional :: draw_ops                      ! extra drawing option
         
         ! call the array version
         if (present(draw_ops)) then
-            call draw_GP_arr(var_name,[file_name],nplt,is_2D,&
+            call draw_GP_arr(var_name,[file_name],nplt,draw_dim,&
                 &plot_on_screen,draw_ops=[draw_ops])
         else
-            call draw_GP_arr(var_name,[file_name],nplt,is_2D,&
+            call draw_GP_arr(var_name,[file_name],nplt,draw_dim,&
                 &plot_on_screen)
         end if
     end subroutine draw_GP_ind
-    subroutine draw_GP_arr(var_name,file_names,nplt,is_2D,plot_on_screen,&
+    subroutine draw_GP_arr(var_name,file_names,nplt,draw_dim,plot_on_screen,&
         &draw_ops)
         use num_vars, only: grp_rank
         
@@ -339,7 +344,7 @@ contains
         character(len=*), intent(in) :: file_names(:)                           ! name of file
         character(len=*), intent(in) :: var_name                                ! name of function
         integer, intent(in) :: nplt                                             ! number of plots
-        logical, intent(in) :: is_2D                                            ! True if 2D, false if 3D
+        integer, intent(in) :: draw_dim                                         ! 1: 2D, 2: 3D, 3: decoupled 3D
         logical, intent(in) :: plot_on_screen                                   ! True if on screen, false if in file
         character(len=*), intent(in), optional :: draw_ops(:)                   ! extra drawing options (one per file)
         
@@ -412,49 +417,78 @@ contains
         
         ! individual plots
         loc_draw_op = ''
-        if (is_2D) then
-            write(cmd_i,*) 'plot \'
-            do iplt = 1,nplt
-                plot_cmd = ''
-                do ifl = 1,nfl
-                    if (present(draw_ops)) then
-                        loc_draw_op = trim(draw_ops(ifl))
-                    else
-                        loc_draw_op = 'with linespoints linestyle '//&
-                            &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
-                    end if
-                    plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
-                    &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
-                    &':'//trim(i2str(nplt+iplt))//' title '''//trim(var_name)//&
-                    &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
-                    &')'' '//trim(loc_draw_op)//','
-                    if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
-                    plt_count = plt_count + 1
+        select case (draw_dim)
+            case (1)                                                            ! 2D
+                write(cmd_i,*) 'plot \'
+                do iplt = 1,nplt
+                    plot_cmd = ''
+                    do ifl = 1,nfl
+                        if (present(draw_ops)) then
+                            loc_draw_op = trim(draw_ops(ifl))
+                        else
+                            loc_draw_op = 'with linespoints linestyle '//&
+                                &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
+                        end if
+                        plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
+                        &trim(file_names(ifl))//''' using '//trim(i2str(iplt))&
+                        &//':'//trim(i2str(nplt+iplt))//' title '''//&
+                        &trim(var_name)//' ('//trim(i2str(iplt))//'/'//&
+                        &trim(i2str(nplt))//')'' '//trim(loc_draw_op)//','
+                        if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
+                        plt_count = plt_count + 1
+                    end do
+                    write(cmd_i,*) trim(plot_cmd)
                 end do
-                write(cmd_i,*) trim(plot_cmd)
-            end do
-        else
-            write(cmd_i,*) 'splot \'
-            do iplt = 1,nplt
-                plot_cmd = ''
-                do ifl = 1,nfl
-                    if (present(draw_ops)) then
-                        loc_draw_op = trim(draw_ops(ifl))
-                    else
-                        loc_draw_op = 'with linespoints linestyle '//&
-                            &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
-                    end if
-                    plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
-                    &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
-                    &':'//trim(i2str(nplt+iplt))//':'//trim(i2str(2*nplt+iplt))&
-                    &//' title '''//trim(var_name)//' ('//trim(i2str(iplt))&
-                    &//'/'//trim(i2str(nplt))//')'' '//trim(loc_draw_op)//','
-                    if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
-                    plt_count = plt_count + 1
+            case (2)                                                            ! 3D
+                write(cmd_i,*) 'splot \'
+                do iplt = 1,nplt
+                    plot_cmd = ''
+                    do ifl = 1,nfl
+                        if (present(draw_ops)) then
+                            loc_draw_op = trim(draw_ops(ifl))
+                        else
+                            loc_draw_op = 'with linespoints linestyle '//&
+                                &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
+                        end if
+                        plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
+                        &trim(file_names(ifl))//''' using '//trim(i2str(iplt))&
+                        &//':'//trim(i2str(nplt+iplt))//':'//&
+                        &trim(i2str(2*nplt+iplt))//' title '''//trim(var_name)&
+                        &//' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
+                        &')'' '//trim(loc_draw_op)//','
+                        if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
+                        plt_count = plt_count + 1
+                    end do
+                    write(cmd_i,*) trim(plot_cmd)
                 end do
-                write(cmd_i,*) trim(plot_cmd)
-            end do
-        end if
+            case (3)
+                write(cmd_i,*) 'splot \'
+                do iplt = 1,nplt
+                    plot_cmd = ''
+                    do ifl = 1,nfl
+                        if (present(draw_ops)) then
+                            loc_draw_op = trim(draw_ops(ifl))
+                        else
+                            loc_draw_op = 'with linespoints linestyle '//&
+                                &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
+                        end if
+                        plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
+                        &trim(file_names(ifl))//''' using ('//trim(i2str(iplt))&
+                        &//'):'//trim(i2str(iplt))//':'//trim(i2str(nplt+iplt))&
+                        &//' title '''//trim(var_name)//' ('//trim(i2str(iplt))&
+                        &//'/'//trim(i2str(nplt))//')'' '//trim(loc_draw_op)//&
+                        &','
+                        if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
+                        plt_count = plt_count + 1
+                    end do
+                    write(cmd_i,*) trim(plot_cmd)
+                end do
+            case default
+                call writo('No draw_dim associated with '//&
+                    &trim(i2str(draw_dim)))
+                istat = 1
+                CHCKSTT
+        end select
         
         ! finishing the GNUPlot command
         write(cmd_i,*) ''
@@ -467,15 +501,13 @@ contains
         call stop_time
         
         ! call GNUPlot
-        call execute_command_line('gnuplot "'//trim(script_name)//&
-            &'" 2> /dev/null',EXITSTAT=istat)
-            !&'"',EXITSTAT=istat)
+        call system('gnuplot "'//trim(script_name)//'"'//err_output_str,istat)
         
         if (plot_on_screen) then
             if (istat.ne.0) then
                 call writo('Failed to plot '//trim(var_name))
             end if
-            call execute_command_line('rm '//trim(script_name))
+            call system('rm '//trim(script_name))
         else
             if (istat.eq.0) then
                 call writo('Created plot in output file '''//&
@@ -483,6 +515,8 @@ contains
             else
                 call writo('Failed to create plot in output file '''//&
                     &trim(plot_dir)//'/'//trim(var_name)//'.pdf''')
+                call writo('Try running "gnuplot "'//trim(script_name)//'"'//&
+                    &'" manually')
             end if
         end if
         
@@ -490,41 +524,41 @@ contains
         call start_time
     end subroutine draw_GP_arr
     
-    ! use GNUPlot to draw an animated (gif) plot
     ! The variable file_name(s) holds the file(s)  which are to be plot. Each of
-    ! them should contain nplt plots, arranged  in columns. The plot is saved in
-    ! a file called [var_name].pdf. Subsequently, for each of the file names, an
+    ! them should contain nplt plots, arranged in columns. Furthermore, draw_dim
+    ! determines whether the plot  is to be 2D, 3D or decoupled  3D. The plot is
+    ! saved in  a file  called [var_name].pdf.  For each of  the file  names, an
     ! optional command draw_ops  can be provided, that specifies  the line style
     ! for  the plots  from the  file. Finally,  also optional  commands for  the
-    ! ranges of the figure and the delay between the frames can be specified
-    subroutine draw_GP_animated_ind(var_name,file_name,nplt,is_2D,ranges,delay,&
-        &draw_ops)
+    ! ranges of the figure and the delay between the frames can be specified.
+    subroutine draw_GP_animated_ind(var_name,file_name,nplt,draw_dim,ranges,&
+        &delay,draw_ops)
         
         ! input / output
         character(len=*), intent(in) :: file_name                               ! name of file
         character(len=*), intent(in) :: var_name                                ! name of function
         integer, intent(in) :: nplt                                             ! number of plots
-        logical, intent(in) :: is_2D                                            ! True if 2D, false if 3D
+        integer, intent(in) :: draw_dim                                         ! 1: 2D, 2: 3D, 3: decoupled 3D
         real(dp), intent(in), optional :: ranges(:,:)                           ! x and y range, and z range (if 3D) of plot
         integer, intent(in), optional :: delay                                  ! time delay between plots
         character(len=*), intent(in), optional :: draw_ops                      ! extra commands
         
         ! call the array version
         if (present(draw_ops)) then
-            call draw_GP_animated_arr(var_name,[file_name],nplt,is_2D,&
+            call draw_GP_animated_arr(var_name,[file_name],nplt,draw_dim,&
                 &ranges=ranges,delay=delay,draw_ops=[draw_ops])
         else
-            call draw_GP_animated_arr(var_name,[file_name],nplt,is_2D,&
+            call draw_GP_animated_arr(var_name,[file_name],nplt,draw_dim,&
                 &delay=delay,ranges=ranges)
         end if
     end subroutine draw_GP_animated_ind
-    subroutine draw_GP_animated_arr(var_name,file_names,nplt,is_2D,ranges,&
+    subroutine draw_GP_animated_arr(var_name,file_names,nplt,draw_dim,ranges,&
         &delay,draw_ops)
         ! input / output
         character(len=*), intent(in) :: file_names(:)                           ! name of file
         character(len=*), intent(in) :: var_name                                ! name of function
         integer, intent(in) :: nplt                                             ! number of plots
-        logical, intent(in) :: is_2D                                            ! True if 2D, false if 3D
+        integer, intent(in) :: draw_dim                                         ! 1: 2D, 2: 3D, 3: decoupled 3D
         real(dp), intent(in), optional :: ranges(:,:)                           ! x and y range, and z range (if 3D) of plot
         integer, intent(in), optional :: delay                                  ! time delay between plots
         character(len=*), intent(in), optional :: draw_ops(:)                   ! extra commands
@@ -584,67 +618,73 @@ contains
             &'.gif'';'
         
         ! find and set ranges
-        if (is_2D) then
-            ! find ranges
-            allocate(ranges_loc(2,2))
-            if (present(ranges)) then
-                if (size(ranges,1).eq.2 .and. size(ranges,2).eq.2) then
-                    ranges_loc = ranges
+        select case (draw_dim)
+            case (1,3)                                                          ! 2D or decoupled 3D
+                ! find ranges
+                allocate(ranges_loc(2,2))
+                if (present(ranges)) then
+                    if (size(ranges,1).eq.2 .and. size(ranges,2).eq.2) then
+                        ranges_loc = ranges
+                    else
+                        call writo('WARNING: invalid ranges given to &
+                            &draw_GP_animated')
+                    end if
                 else
-                    call writo('WARNING: invalid ranges given to &
-                        &draw_GP_animated')
+                    ! initialize ranges
+                    ranges_loc(:,1) = huge(1._dp)                               ! minimum value
+                    ranges_loc(:,2) = -huge(1._dp)                              ! maximum value
+                    
+                    do ifl = 1,nfl
+                        call get_ranges(file_names(ifl),ranges_loc)
+                    end do
                 end if
-            else
-                ! initialize ranges
-                ranges_loc(:,1) = huge(1._dp)                                   ! minimum value
-                ranges_loc(:,2) = -huge(1._dp)                                  ! maximum value
                 
-                do ifl = 1,nfl
-                    call get_ranges(file_names(ifl),ranges_loc)
-                end do
-            end if
-            
-            ! set ranges
-            write(cmd_i,*) 'set xrange ['//trim(r2str(ranges_loc(1,1)))//':'//&
-                &trim(r2str(ranges_loc(1,2)))//'];'
-            write(cmd_i,*) 'set yrange ['//trim(r2str(ranges_loc(2,1)))//':'//&
-                &trim(r2str(ranges_loc(2,2)))//'];'
-        else
-            ! find ranges
-            allocate(ranges_loc(3,2))
-            if (present(ranges)) then
-                if (size(ranges,1).eq.3 .and. size(ranges,2).eq.2) then
-                    ranges_loc = ranges
+                ! set ranges
+                write(cmd_i,*) 'set xrange ['//trim(r2str(ranges_loc(1,1)))//&
+                    &':'//trim(r2str(ranges_loc(1,2)))//'];'
+                write(cmd_i,*) 'set yrange ['//trim(r2str(ranges_loc(2,1)))//&
+                    &':'//trim(r2str(ranges_loc(2,2)))//'];'
+            case (2)
+                ! find ranges
+                allocate(ranges_loc(3,2))
+                if (present(ranges)) then
+                    if (size(ranges,1).eq.3 .and. size(ranges,2).eq.2) then
+                        ranges_loc = ranges
+                    else
+                        call writo('WARNING: invalid ranges given to &
+                            &draw_GP_animated')
+                    end if
                 else
-                    call writo('WARNING: invalid ranges given to &
-                        &draw_GP_animated')
+                    ranges_loc(:,1) = 1.E14_dp                                  ! minimum value
+                    ranges_loc(:,2) = -1.E14_dp                                 ! maximum value
+                    
+                    do ifl = 1,nfl
+                        call get_ranges(file_names(ifl),ranges_loc)
+                    end do
                 end if
-            else
-                ranges_loc(:,1) = 1.E14_dp                                      ! minimum value
-                ranges_loc(:,2) = -1.E14_dp                                     ! maximum value
                 
-                do ifl = 1,nfl
-                    call get_ranges(file_names(ifl),ranges_loc)
-                end do
-            end if
-            
-            ! set ranges
-            write(cmd_i,*) ' set xrange ['//trim(r2str(ranges_loc(1,1)))//':'//&
-                &trim(r2str(ranges_loc(1,2)))//'];'
-            ! y range
-            write(cmd_i,*) ' set yrange ['//trim(r2str(ranges_loc(2,1)))//':'//&
-                &trim(r2str(ranges_loc(2,2)))//'];'
-            ! z range
-            write(cmd_i,*) ' set zrange ['//trim(r2str(ranges_loc(3,1)))//':'//&
-                &trim(r2str(ranges_loc(3,2)))//'];'
-            ! color scale
-            write(cmd_i,*) ' set cbrange ['//trim(r2str(ranges_loc(3,1)))//':'//&
-                &trim(r2str(ranges_loc(3,2)))//'];'
-            
-            ! other definitions for 3D plots
-            write(cmd_i,*) 'set view 45,45;'
-            write(cmd_i,*) 'set hidden3d offset 0'
-        end if
+                ! set ranges
+                write(cmd_i,*) ' set xrange ['//trim(r2str(ranges_loc(1,1)))//&
+                    &':'//trim(r2str(ranges_loc(1,2)))//'];'
+                ! y range
+                write(cmd_i,*) ' set yrange ['//trim(r2str(ranges_loc(2,1)))//&
+                    &':'//trim(r2str(ranges_loc(2,2)))//'];'
+                ! z range
+                write(cmd_i,*) ' set zrange ['//trim(r2str(ranges_loc(3,1)))//&
+                    &':'//trim(r2str(ranges_loc(3,2)))//'];'
+                ! color scale
+                write(cmd_i,*) ' set cbrange ['//trim(r2str(ranges_loc(3,1)))//&
+                    &':'//trim(r2str(ranges_loc(3,2)))//'];'
+                
+                ! other definitions for 3D plots
+                write(cmd_i,*) 'set view 45,45;'
+                write(cmd_i,*) 'set hidden3d offset 0'
+            case default
+                call writo('No draw_dim associated with '//&
+                    &trim(i2str(draw_dim)))
+                istat = 1
+                CHCKSTT
+        end select
         
         ! no legend if too many plots
         !if (nfl.gt.10) write(cmd_i,*) 'set nokey;'
@@ -657,47 +697,79 @@ contains
             end do
         end if
         
+        ! set up plt_count
+        plt_count = 1
+        
         ! individual plots
         loc_draw_op = ''
-        if (is_2D) then
-            do iplt = 1,nplt
-                plot_cmd = 'plot'
-                do ifl = 1,nfl
-                    if (present(draw_ops)) then
-                        loc_draw_op = trim(draw_ops(ifl))
-                    else
-                        loc_draw_op = 'with linespoints linestyle '//&
-                            &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
-                    end if
-                    plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
-                    &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
-                    &':'//trim(i2str(nplt+iplt))//' title '''//trim(var_name)//&
-                    &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
-                    &')'' '//trim(loc_draw_op)
-                    if (ifl.ne.nfl) plot_cmd = trim(plot_cmd)//', '
+        select case (draw_dim)
+            case (1)                                                            ! 2D
+                do iplt = 1,nplt
+                    plot_cmd = 'plot'
+                    do ifl = 1,nfl
+                        if (present(draw_ops)) then
+                            loc_draw_op = trim(draw_ops(ifl))
+                        else
+                            loc_draw_op = 'with linespoints linestyle '//&
+                                &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
+                        end if
+                        plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
+                        &trim(file_names(ifl))//''' using '//trim(i2str(iplt))&
+                        &//':'//trim(i2str(nplt+iplt))//' title '''//&
+                        &trim(var_name)//' ('//trim(i2str(iplt))//'/'//&
+                        &trim(i2str(nplt))//')'' '//trim(loc_draw_op)
+                        if (ifl.ne.nfl) plot_cmd = trim(plot_cmd)//', '
+                        plt_count = plt_count + 1
+                    end do
+                    write(cmd_i,*) trim(plot_cmd)
                 end do
-                write(cmd_i,*) trim(plot_cmd)
-            end do
-        else
-            do iplt = 1,nplt
-                plot_cmd = 'splot '
-                do ifl = 1,nfl
-                    if (present(draw_ops)) then
-                        loc_draw_op = trim(draw_ops(ifl))
-                    else
-                        loc_draw_op = 'with linespoints linestyle '//&
-                            &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
-                    end if
-                    plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
-                    &trim(file_names(ifl))//''' using '//trim(i2str(iplt))//&
-                    &':'//trim(i2str(nplt+iplt))//':'//trim(i2str(2*nplt+iplt))&
-                    &//' title '''//trim(var_name)//' ('//trim(i2str(iplt))&
-                    &//'/'//trim(i2str(nplt))//')'' '//trim(loc_draw_op)
-                    if (ifl.ne.nfl) plot_cmd = trim(plot_cmd)//', '
+            case (2)                                                            ! 2D
+                do iplt = 1,nplt
+                    plot_cmd = 'splot '
+                    do ifl = 1,nfl
+                        if (present(draw_ops)) then
+                            loc_draw_op = trim(draw_ops(ifl))
+                        else
+                            loc_draw_op = 'with linespoints linestyle '//&
+                                &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
+                        end if
+                        plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
+                        &trim(file_names(ifl))//''' using '//trim(i2str(iplt))&
+                        &//':'//trim(i2str(nplt+iplt))//':'//&
+                        &trim(i2str(2*nplt+iplt))//' title '''//trim(var_name)&
+                        &//' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
+                        &')'' '//trim(loc_draw_op)
+                        if (ifl.ne.nfl) plot_cmd = trim(plot_cmd)//', '
+                        plt_count = plt_count + 1
+                    end do
+                    write(cmd_i,*) trim(plot_cmd)
                 end do
-                write(cmd_i,*) trim(plot_cmd)
-            end do
-        end if
+            case (3)
+                do iplt = 1,nplt
+                    plot_cmd = 'splot'
+                    do ifl = 1,nfl
+                        if (present(draw_ops)) then
+                            loc_draw_op = trim(draw_ops(ifl))
+                        else
+                            loc_draw_op = 'with linespoints linestyle '//&
+                                &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
+                        end if
+                        plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
+                        &trim(file_names(ifl))//''' using ('//trim(i2str(iplt))&
+                        &//'):'//trim(i2str(iplt))//':'//trim(i2str(nplt+iplt))&
+                        &//' title '''//trim(var_name)//' ('//trim(i2str(iplt))&
+                        &//'/'//trim(i2str(nplt))//')'' '//trim(loc_draw_op)
+                        if (ifl.ne.nfl) plot_cmd = trim(plot_cmd)//', '
+                        plt_count = plt_count + 1
+                    end do
+                    write(cmd_i,*) trim(plot_cmd)
+                end do
+            case default
+                call writo('No draw_dim associated with '//&
+                    &trim(i2str(draw_dim)))
+                istat = 1
+                CHCKSTT
+        end select
         
         ! finishing and closing the GNUPlot command
         write(cmd_i,*) 'set output'
@@ -706,9 +778,7 @@ contains
         ! no need to stop the time
         
         ! call GNUPlot
-        call execute_command_line('gnuplot "'//trim(script_name)//&
-            &'" 2> /dev/null',EXITSTAT=istat)
-            !&'"',EXITSTAT=istat)
+        call system('gnuplot "'//trim(script_name)//'"'//err_output_str,istat)
         
         if (istat.eq.0) then
             call writo('Created animated plot in output file '''//&
@@ -716,6 +786,8 @@ contains
         else
             call writo('Failed to create animated plot in output file '''//&
                 &trim(plot_dir)//'/'//trim(var_name)//'.gif''')
+            call writo('Try running "gnuplot "'//trim(script_name)//'"'//&
+                &'" manually')
         end if
     contains
         subroutine get_ranges(file_name,ranges)
@@ -734,11 +806,17 @@ contains
                 &status='old',iostat=istat)
             
             ! set up loc_data
-            if (is_2D) then
-                allocate(loc_data(2*nplt))
-            else
-                allocate(loc_data(3*nplt))
-            end if
+            select case (draw_dim)
+                case (1,3)                                                          ! 2D or decoupled 3D
+                    allocate(loc_data(2*nplt))
+                case (2)
+                    allocate(loc_data(3*nplt))
+                case default
+                    call writo('No draw_dim associated with '//&
+                        &trim(i2str(draw_dim)))
+                    istat = 1
+                    CHCKSTT
+            end select
             
             ! read the data file
             istat = 0
@@ -756,7 +834,7 @@ contains
                             &min(ranges(2,1),minval(loc_data(nplt+1:2*nplt)))
                         ranges(2,2) = &
                             &max(ranges(2,2),maxval(loc_data(nplt+1:2*nplt)))
-                        if (.not.is_2D) then
+                        if (draw_dim.eq.2) then
                             ranges(3,1) = min(ranges(3,1),&
                                 &minval(loc_data(2*nplt+1:3*nplt)))
                             ranges(3,2) = max(ranges(3,2),&

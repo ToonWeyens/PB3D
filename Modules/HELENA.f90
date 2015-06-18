@@ -370,10 +370,10 @@ contains
         ierr = 0
         
         ! tests
-        if (prog_style.eq.2) then                                               ! PB3D_PP
+        if (prog_style.eq.2) then                                               ! PB3D_POST
             if (.not.present(eq) .or. .not.present(eq_B)) then
                 ierr = 1
-                err_msg = 'For PB3D_PP, eq and eq_B are needed as well'
+                err_msg = 'For PB3D_POST, eq and eq_B are needed as well'
                 CHCKERR(err_msg)
             end if
         end if
@@ -405,7 +405,7 @@ contains
         select case (prog_style)
             case(1)                                                             ! PB3D
                 ! do nothing
-            case(2)                                                             ! PB3D_PP
+            case(2)                                                             ! PB3D_POST
                 eq_B%pres_FD = eq%pres_FD
                 eq_B%q_saf_FD = eq%q_saf_FD
                 eq_B%rot_t_FD = eq%rot_t_FD
@@ -436,6 +436,7 @@ contains
         call writo('Adapting perturbation quantities')
         call lvl_ud(1)
         ! adapt common variables for all program styles
+        X_B%vac_res = X%vac_res
         call interp_var_4D_complex(X%U_0,theta_i,X_B%U_0,sym_type=2)
         call interp_var_4D_complex(X%U_1,theta_i,X_B%U_1,sym_type=2)
         call interp_var_4D_complex(X%DU_0,theta_i,X_B%DU_0,sym_type=1)
@@ -451,7 +452,7 @@ contains
                 call interp_var_4D_complex(X%KV_0,theta_i,X_B%KV_0,sym_type=1)
                 call interp_var_4D_complex(X%KV_1,theta_i,X_B%KV_1,sym_type=1)
                 call interp_var_4D_complex(X%KV_2,theta_i,X_B%KV_2,sym_type=1)
-            case(2)                                                             ! PB3D_PP
+            case(2)                                                             ! PB3D_POST
                 ! do nothing
             case default
                 err_msg = 'No program style associated with '//&

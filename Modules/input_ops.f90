@@ -262,10 +262,10 @@ contains
         use num_vars, only: &
             &minim_style, min_alpha, max_alpha, n_alpha, max_it_NR, tol_NR, &
             &max_it_r, input_i, use_pol_flux_F, EV_style, n_procs_per_alpha, &
-            &plot_jq, tol_r, n_sol_requested, nyq_fac, glb_rank, nyq_fac, &
-            &plot_grid, plot_flux_q, output_style, use_normalization, &
+            &plot_resonance, tol_r, n_sol_requested, nyq_fac, glb_rank, &
+            &nyq_fac, plot_grid, plot_flux_q, use_normalization, &
             &n_sol_plotted, n_theta_plot, n_zeta_plot, EV_BC, rho_style, &
-            &retain_all_sol, prog_style, norm_disc_style
+            &retain_all_sol, prog_style, norm_disc_style, max_it_inv
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files_ops, only: input_name
@@ -284,12 +284,13 @@ contains
         namelist /inputdata_PB3D/ minim_style, min_par_X, min_n_r_X, &
             &max_par_X, min_alpha, max_alpha, n_par_X, n_alpha, max_it_NR, &
             &tol_NR, max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
-            &max_r_X, EV_style, n_procs_per_alpha, plot_jq, n_sol_requested, &
-            &EV_BC, rho_style, nyq_fac, rho_0, use_pol_flux_F, plot_grid, &
-            &output_style, plot_flux_q, use_normalization, n_theta_plot, &
-            &n_zeta_plot, retain_all_sol, norm_disc_style
-        namelist /inputdata_PB3D_PP/ output_style, n_sol_plotted, &
-            &use_normalization, n_theta_plot, n_zeta_plot
+            &max_r_X, EV_style, n_procs_per_alpha, plot_resonance, &
+            &n_sol_requested, EV_BC, rho_style, nyq_fac, rho_0, &
+            &use_pol_flux_F, plot_grid, plot_flux_q, use_normalization, &
+            &n_theta_plot, n_zeta_plot, retain_all_sol, norm_disc_style, &
+            &max_it_inv
+        namelist /inputdata_PB3D_POST/ n_sol_plotted, use_normalization, &
+            &n_theta_plot, n_zeta_plot, plot_resonance, plot_flux_q, plot_grid
         
         ! initialize ierr
         ierr = 0
@@ -310,8 +311,8 @@ contains
             select case (prog_style)
                 case(1)                                                         ! PB3D
                     call default_input_PB3D
-                case(2)                                                         ! PB3D_PP
-                    call default_input_PB3D_PP
+                case(2)                                                         ! PB3D_POST
+                    call default_input_PB3D_POST
                 case default
                     err_msg = 'No program style associated with '//&
                         &trim(i2str(prog_style))
@@ -357,6 +358,9 @@ contains
                             ! adapt Richardson variables if needed
                             call adapt_r
                             
+                            ! adapt variables for inverse if needed
+                            call adapt_inv
+                            
                             ! adapt Newton-Rhapson variables if needed
                             call adapt_NR
                             
@@ -386,8 +390,8 @@ contains
                             min_n_X = min_sec_X
                             max_n_X = max_sec_X
                         end if
-                    case(2)                                                     ! PB3D_PP
-                        read(input_i,nml=inputdata_PB3D_PP,iostat=istat)        ! read input data
+                    case(2)                                                     ! PB3D_POST
+                        read(input_i,nml=inputdata_PB3D_POST,iostat=istat)      ! read input data
                         
                         ! check input if successful read
                         if (istat.eq.0) then                                    ! input file succesfully read
@@ -421,20 +425,22 @@ contains
             tol_NR = 1.0E-10_dp                                                 ! wanted relative error in Newton-Rhapson iteration
             
             ! concerning Richardson extrapolation
-            max_it_r = 8                                                        ! maximum 5 levels of Richardson extrapolation
+            max_it_r = 1                                                        ! by default no Richardson extrapolation
             tol_r = 1E-5                                                        ! wanted relative error in Richardson extrapolation
+            
+            ! concerning calculating the inverse
+            max_it_inv = 1                                                      ! by default no iteration to calculate inverse
             
             ! runtime variables
             minim_style = 1                                                     ! Richardson Extrapolation with normal discretization
             n_procs_per_alpha = 1                                               ! 1 processor per field line
-            plot_jq = .false.                                                   ! do not plot the q-profile with nq-m = 0
+            plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
             plot_grid = .false.                                                 ! do not plot the grid
             plot_flux_q = .false.                                               ! do not plot the flux quantities
-            output_style = 1                                                    ! GNUPlot output
             use_normalization = .true.                                          ! use normalization for the variables
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
             rho_style = 1                                                       ! constant pressure profile, equal to rho_0
-            norm_disc_style = 1                                                 ! order 1 for all terms
+            norm_disc_style = 1                                                 ! order 1 normal discretization
             
             ! variables concerning output
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
@@ -477,12 +483,14 @@ contains
             rho_0 = 10E-6_dp                                                    ! for fusion, particle density of around 1E21, mp around 1E-27
         end subroutine default_input_PB3D
         
-        subroutine default_input_PB3D_PP
+        subroutine default_input_PB3D_POST
             use num_vars, only: eq_style
             
             ! runtime variables
-            output_style = 1                                                    ! GNUPlot output
             use_normalization = .true.                                          ! use normalization for the variables
+            plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
+            plot_flux_q = .false.                                               ! do not plot the flux quantities
+            plot_grid = .false.                                                 ! do not plot the grid
             
             ! variables concerning output
             n_sol_plotted = n_sol_requested                                     ! plot all solutions
@@ -498,7 +506,7 @@ contains
                     n_theta_plot = 501                                          ! nr. poloidal points in plot
                     n_zeta_plot = 1                                             ! nr. toroidal points in plot
             end select
-        end subroutine default_input_PB3D_PP
+        end subroutine default_input_PB3D_POST
         
         ! checks whether the variables concerning run-time are chosen correctly.
         ! n_procs_per_alpha has to be at least 1
@@ -516,17 +524,12 @@ contains
         end subroutine adapt_run
         
         ! checks whether the variables concerning output are chosen correctly.
-        ! output_style has to be 1 (GNUPlot) or 2 (HDF5) (see output_ops)
         ! n_sol_requested has to be at least one
         subroutine adapt_output
             if (n_sol_requested.lt.1) then
                 n_sol_requested = 1
                 call writo('WARNING: n_sol_requested has been increased to '&
                     &//trim(i2str(n_sol_requested)))
-            end if
-            if (output_style.lt.1 .or. output_style.gt.2) then
-                output_style = 1
-                call writo('WARNING: output_style set to default (1: GNUPlot)')
             end if
         end subroutine adapt_output
         
@@ -633,6 +636,15 @@ contains
                 call writo('WARNING: max_it_r has been increased to 1')
             end if
         end subroutine adapt_r
+        
+        ! checks whether  the variables  concerning calculating the  inverse are
+        ! correct. max_it_inv has to be at least 1
+        subroutine adapt_inv
+            if (max_it_inv.lt.1) then
+                max_it_inv = 1
+                call writo('WARNING: max_it_inv has been increased to 1')
+            end if
+        end subroutine adapt_inv
         
         ! checks  whether the  variables concerning Newton-Rhapson  are correct.
         ! max_it_NR has to be at least 2

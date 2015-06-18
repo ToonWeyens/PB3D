@@ -7,7 +7,7 @@ module driver_rich
     use str_ops
     use output_ops
     use messages
-    use num_vars, only: max_it_r, dp, pi, max_str_ln
+    use num_vars, only: dp, pi, max_str_ln
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
     use met_vars, only: met_type
@@ -27,13 +27,13 @@ contains
     integer function run_rich_driver() result(ierr)
         use num_vars, only: min_alpha, max_alpha, n_alpha, glb_rank, grp_nr, &
             &max_alpha, alpha_job_nr, use_pol_flux_F, eq_style, group_output, &
-            &output_name, output_style, n_groups, max_it_r
+            &output_name, n_groups, max_it_r, plot_flux_q
         use MPI_ops, only: split_MPI, merge_MPI, get_next_job
         use MPI_utilities, only: wait_MPI
         use eq_vars, only: create_eq, dealloc_eq
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_r_X, &
             &max_r_X, min_n_r_X
-        use eq_ops, only: calc_flux_q
+        use eq_ops, only: calc_flux_q, flux_q_plot
         use VMEC, only: dealloc_VMEC
         use HELENA, only: dealloc_HEL
         use grid_ops, only: calc_eqd_grid, setup_grid_eq
@@ -149,22 +149,9 @@ contains
                 
                 call lvl_ud(1)                                                  ! starting calculation for current fied line
                 
-                ! open output file for this job depending on output style
-                select case(output_style)
-                    case(1)                                                     ! GNUPlot output
-                        call writo('WARNING: No possibility to save output &
-                            &for output style '//trim(i2str(output_style))&
-                            &//' implemented')
-                    case(2)                                                     ! HDF5 output
-                        ! open HDF5 file for output
-                        ierr = create_output_HDF5()
-                        CHCKERR('')
-                    case default
-                        err_msg = 'No style associated with '//&
-                            &trim(i2str(output_style))
-                        ierr = 1
-                        CHCKERR(err_msg)
-                end select
+                ! open HDF5 file for output
+                ierr = create_output_HDF5()
+                CHCKERR('')
                 
                 ! calculate for this alpha job
                 ierr = run_rich_driver_for_alpha(grid_eq,eq,alpha(alpha_job_nr))
@@ -180,6 +167,14 @@ contains
                 exit field_lines
             end if
         end do field_lines
+        
+        ! plot flux quantities if requested
+        if (plot_flux_q .and. grp_nr.eq.0) then                                 ! only first group because it is the same for all the groups
+            ierr = flux_q_plot(eq,grid_eq)
+            CHCKERR('')
+        else
+            call writo('Flux quantities plot not requested')
+        end if
         
         ! deallocate variables
         ierr = dealloc_eq(eq)
@@ -241,6 +236,7 @@ contains
         use MPI_ops, only: divide_X_grid
         use grid_vars, only: create_grid, dealloc_grid
         use grid_ops, only: coord_F2E, setup_and_calc_grid_B, calc_ang_grid_eq
+        use vac, only: calc_vac
         
         character(*), parameter :: rout_name = 'run_rich_driver_for_alpha'
         
@@ -278,6 +274,10 @@ contains
         
         ! prepare matrix elements
         ierr = prepare_X(grid_eq,eq,met,X)
+        CHCKERR('')
+        
+        ! calculate vacuum response
+        ierr = calc_vac(X)
         CHCKERR('')
         
         ! set up field-aligned equilibrium grid
@@ -417,7 +417,7 @@ contains
             ! same output in file as well
             call draw_GP(plot_title,'Eigenvalues_A'//&
                 &trim(i2str(alpha_job_nr))//'_richardson.dat',&
-                &n_sol_requested,.true.,.false.,draw_ops=draw_ops)
+                &n_sol_requested,1,.false.,draw_ops=draw_ops)
             
             call lvl_ud(-1)
             call writo('Done plotting Eigenvalues')
@@ -614,6 +614,7 @@ contains
                 X_B%KV_0 = X%KV_0
                 X_B%KV_1 = X%KV_1
                 X_B%KV_2 = X%KV_2
+                X_B%vac_res = X%vac_res
             case (2)                                                            ! HELENA
                 ! call HELENA grid interpolation
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,met,met_B,X,X_B,&

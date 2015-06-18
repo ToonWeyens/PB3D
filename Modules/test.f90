@@ -45,7 +45,7 @@ contains
                     CHCKERR('')
                     call pause_prog
                 end if
-            case(2)                                                             ! PB3D_PP
+            case(2)                                                             ! PB3D_POST
                 call writo('Test calculation of volume integral?')
                 if(get_log(.false.)) then
                     ierr = test_calc_int_vol()

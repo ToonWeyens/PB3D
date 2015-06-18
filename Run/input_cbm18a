@@ -13,16 +13,16 @@
     n_procs_per_alpha       = 2
     prim_X                  = 10
     min_sec_X               = 15
-    max_sec_X               = 16
+    max_sec_X               = 19
     use_pol_flux_F          = .true.
     n_sol_requested         = 1000
     min_n_r_X               = 50
-    plot_jq                 = .true.
+    plot_resonance          = .false.
     plot_grid               = .false.
     plot_flux_q             = .false.
     use_normalization       = .true.
-    output_style            = 2
-    norm_disc_style         = 2
+    norm_disc_style         = 1
+    max_it_inv              = 1
 /
 
     prim_X                  = 240

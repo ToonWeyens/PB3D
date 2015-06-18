@@ -314,8 +314,8 @@ contains
     ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
     ! equilibrium  grid and  the normal  part of  the provided  perturbation
     ! grid.
-    integer function plot_X_vec(grid_eq,eq,grid_X,X,XYZ,X_id) result(ierr)
-        use num_vars, only: output_style
+    integer function plot_X_vec(grid_eq,eq,grid_X,X,XYZ,X_id,res_surf) &
+        &result(ierr)
         use output_ops, only: plot_HDF5
         
         character(*), parameter :: rout_name = 'plot_X_vec'
@@ -327,6 +327,7 @@ contains
         type(X_type), intent(in) :: X                                           ! perturbation variables
         real(dp), intent(in) :: XYZ(:,:,:,:)                                    ! X, Y and Z of extended eq_grid
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue (for output name)
+        real(dp), intent(in) :: res_surf(:,:)                                   ! resonant surfaces
         
         ! local variables
         integer :: kd                                                           ! counter
@@ -362,9 +363,19 @@ contains
             CHCKERR(err_msg)
         end if
         
+        ! user output
+        call writo('Plotting individual harmonics')
+        call lvl_ud(1)
+        
         ! plot information about harmonics
-        ierr = plot_harmonics(grid_X,X,X_id)
+        ierr = plot_harmonics(grid_X,X,X_id,res_surf)
         CHCKERR('')
+        
+        call lvl_ud(-1)
+        
+        ! user output
+        call writo('Plotting normal components')
+        call lvl_ud(1)
         
         ! set up n_t
         ! if the  Eigenvalue is negative,  the Eigenfunction explodes,  so limit
@@ -432,69 +443,58 @@ contains
         
         ! set up var_name, file_name and description
         var_name(1) = 'Normal comp. of EV'
-        file_name(1) = 'X_vec_'//trim(i2str(X_id))
+        file_name(1) = trim(i2str(X_id))//'_X_vec'
         description(1) = 'Normal component of solution vector X_vec &
             &for Eigenvalue '//trim(i2str(X_id))//' with omega = '//&
             &trim(r2str(realpart(omega)))
         var_name(2) = 'Geodesic comp. of EV'
-        file_name(2) = 'U_vec_'//trim(i2str(X_id))
+        file_name(2) = trim(i2str(X_id))//'_U_vec'
         description(2) = 'Geodesic compoment of solution vector U_vec &
             &for Eigenvalue '//trim(i2str(X_id))//' with omega = '//&
             &trim(r2str(realpart(omega)))
         
-        ! plot according to output_style
-        select case(output_style)
-            case(1)                                                             ! GNUPlot output
-                call writo('No Eigenvector plot for output style '//&
-                    &trim(i2str(output_style))//' implemented yet')
-            case(2)                                                             ! HDF5 output
-                do kd = 1,2
-                    call plot_HDF5([var_name(kd)],file_name(kd),&
-                        &realpart(f_plot(:,:,:,:,kd)),tot_dim=plot_dim,&
-                        &grp_offset=plot_offset,X=X_plot,Y=Y_plot,&
-                        &Z=Z_plot,col=col,description=description(kd))
-                end do
-            case default
-                err_msg = 'No style associated with '//&
-                    &trim(i2str(output_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
+        do kd = 1,2
+            call plot_HDF5([var_name(kd)],file_name(kd),&
+                &realpart(f_plot(:,:,:,:,kd)),tot_dim=plot_dim,&
+                &grp_offset=plot_offset,X=X_plot,Y=Y_plot,&
+                &Z=Z_plot,col=col,description=description(kd))
+        end do
         
         ! deallocate local variables
         deallocate(time)
         deallocate(f_plot)
         deallocate(X_plot,Y_plot,Z_plot)
+        
+        call lvl_ud(-1)
     contains
         ! plots the harmonics and their maximum in 2D
-        integer function plot_harmonics(grid_X,X,X_id) result(ierr)
+        integer function plot_harmonics(grid_X,X,X_id,res_surf) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ghost_arr, get_ser_var
             use output_ops, only: merge_GP
-            use num_vars, only: grp_rank, use_pol_flux_F
+            use num_vars, only: grp_rank, use_pol_flux_F, GP_max_size
             use eq_vars, only: max_flux_p_F, max_flux_t_F
             
             character(*), parameter :: rout_name = 'plot_harmonics'
             
             ! input / output
             type(grid_type), intent(in) :: grid_X                               ! perturbation grid
-            type(X_type), intent(in) :: X                                       ! perturbation variables/
+            type(X_type), intent(in) :: X                                       ! perturbation variables
             integer, intent(in) :: X_id                                         ! nr. of Eigenvalue (for output name)
+            real(dp), intent(in) :: res_surf(:,:)                               ! resonant surfaces
             
             ! local variables
             integer :: id, kd                                                   ! counters
             character(len=max_str_ln) :: file_name                              ! name of file of plots of this proc.
             character(len=max_str_ln) :: plot_title                             ! title for plots
             real(dp), allocatable :: x_plot(:,:)                                ! x values of plot
+            real(dp), allocatable :: y_plot(:,:)                                ! y values of plot
             complex(dp), allocatable :: X_vec_ser(:,:)                          ! serial MPI Eigenvector
             complex(dp), allocatable :: X_vec_ser_loc(:)                        ! local X_vec_ser
             real(dp), allocatable :: X_vec_max(:)                               ! maximum position index of X_vec of rank
+            real(dp), allocatable :: res_surf_loc(:,:)                          ! local copy of res_surf
             
             ! initialize ierr
             ierr = 0
-            
-            ! user output
-            call writo('Started plot of the harmonics')
-            call lvl_ud(1)
             
             ! set up serial X_vec on group master
             if (grp_rank.eq.0) allocate(X_vec_ser(1:X%n_mod,1:grid_X%n(3)))
@@ -513,63 +513,85 @@ contains
                     x_plot(:,kd) = grid_X%r_F
                 end do
                 
-                ! absolute amplitude
-                ! set up file name of this rank and plot title
-                file_name = 'Eigenvector_abs.dat'
-                plot_title = 'EV '//trim(i2str(X_id))//' - absolute value'
+                ! set up local res_surf
+                allocate(res_surf_loc(size(res_surf,1),size(res_surf,2)))
+                res_surf_loc = res_surf
                 
-                ! print amplitude of harmonics of eigenvector
-                call print_GP_2D(trim(plot_title),trim(file_name),&
-                    &abs(transpose(X_vec_ser(:,:))),x=x_plot,draw=.false.)
-                
-                ! plot in file
-                call draw_GP(trim(plot_title),file_name,X%n_mod,.true.,.false.)
-                
-                ! perturbation at midplane theta = zeta = 0
-                ! set up file name of this rank and plot title
-                file_name = 'Eigenvector_midplane.dat'
-                plot_title = 'EV '//trim(i2str(X_id))//' - midplane'
-                
-                ! print amplitude of harmonics of eigenvector
-                call print_GP_2D(trim(plot_title),trim(file_name),&
-                    &realpart(transpose(X_vec_ser(:,:))),x=x_plot,draw=.false.)
-                
-                ! plot in file
-                call draw_GP(trim(plot_title),file_name,X%n_mod,.true.,.false.)
-                
-                ! maximum of each mode
+                ! set up maximum of each mode at midplane
                 allocate(X_vec_max(X%n_mod))
                 X_vec_max = 0.0_dp
                 do kd = 1,X%n_mod
                     X_vec_max(kd) = &
-                        &grid_X%grp_r_F(maxloc(abs(X%vec(kd,:,X_id)),1))
+                        &grid_X%r_F(maxloc(abs(realpart(X_vec_ser(kd,:))),1))
                 end do
                 
-                ! scale by flux
+                ! scale x_plot, X_vec_max and res_surf_loc(2) by flux
                 if (use_pol_flux_F) then
+                    x_plot = x_plot*2*pi/max_flux_p_F
                     X_vec_max = X_vec_max*2*pi/max_flux_p_F
+                    res_surf_loc(:,2) = res_surf_loc(:,2)*2*pi/max_flux_p_F
                 else
+                    x_plot = x_plot*2*pi/max_flux_t_F
                     X_vec_max = X_vec_max*2*pi/max_flux_t_F
+                    res_surf_loc(:,2) = res_surf_loc(:,2)*2*pi/max_flux_t_F
                 end if
                 
                 ! set up file name of this rank and plot title
-                file_name = 'Eigenvector_max.dat'
-                plot_title = 'EV '//trim(i2str(X_id))//' - maximum of modes'
+                file_name = trim(i2str(X_id))//'_EV_midplane'
+                plot_title = 'EV - midplane'
                 
-                ! plot the maximum
-                call print_GP_2D(trim(plot_title),trim(file_name),&
-                    &[(kd*1._dp,kd=1,X%n_mod)],x=X_vec_max,draw=.false.)
+                ! plot using GNUPlot if not too big
+                if (X%n_mod*grid_X%n(3).le.GP_max_size) then
+                    ! print amplitude of harmonics of eigenvector at midplane
+                    call print_GP_2D(trim(i2str(X_id))//' - '//&
+                        &trim(plot_title),trim(file_name)//'.dat',&
+                        &realpart(transpose(X_vec_ser)),x=x_plot,draw=.false.)
+                    
+                    ! plot in file
+                    call draw_GP(trim(i2str(X_id))//' - '//trim(plot_title),&
+                        &trim(file_name)//'.dat',X%n_mod,1,.false.)
+                    
+                    ! plot in file using decoupled 3D
+                    call draw_GP(trim(i2str(X_id))//' - '//trim(plot_title)//&
+                        &' - 3D',trim(file_name)//'.dat',X%n_mod,3,.false.)
+                end if
+                
+                ! plot using HDF5
+                call plot_HDF5(trim(plot_title),trim(file_name),&
+                    &reshape(realpart(transpose(X_vec_ser)),&
+                    &[1,grid_X%n(3),X%n_mod]),y=reshape(x_plot,&
+                    &[1,grid_X%n(3),X%n_mod]))
+                
+                ! deallocate variables
+                deallocate(x_plot)
+                
+                ! set up file name of this rank and plot title
+                file_name = trim(i2str(X_id))//'_EV_max'
+                plot_title = trim(i2str(X_id))//' EV - maximum of modes'
+                
+                ! set up x_plot and y_plot
+                allocate(x_plot(X%n_mod,2))
+                allocate(y_plot(X%n_mod,2))
+                x_plot(:,1) = X_vec_max
+                y_plot(:,1) = [(kd*1._dp,kd=1,X%n_mod)]
+                x_plot(1:size(res_surf_loc,1),2) = res_surf_loc(:,2)
+                x_plot(size(res_surf_loc,1)+1:X%n_mod,2) = &
+                    &res_surf_loc(size(res_surf_loc,1),2)
+                y_plot(1:size(res_surf_loc,1),2) = res_surf_loc(:,1)
+                y_plot(size(res_surf_loc,1)+1:X%n_mod,2) = &
+                    &res_surf_loc(size(res_surf_loc,1),1)
+                
+                ! plot the maximum at midplane
+                call print_GP_2D(trim(plot_title),trim(file_name)//'.dat',&
+                    &y_plot,x=x_plot,draw=.false.)
                 
                 ! draw plot in file
-                call draw_GP(trim(plot_title),file_name,1,.true.,.false.)
+                call draw_GP(trim(plot_title),trim(file_name)//'.dat',2,1,&
+                    &.false.)
                 
                 ! deallocate
                 deallocate(x_plot,X_vec_ser)
             end if
-            
-            ! user output
-            call lvl_ud(-1)
-            call writo('Finished plot of the harmonics')
         end function plot_harmonics
     end function plot_X_vec
     
@@ -690,6 +712,17 @@ contains
         
         call lvl_ud(-1)
         
+        call writo('Ratio should be equal to:')
+        call lvl_ud(1)
+        
+        call writo('Eigenvalue:')
+        call lvl_ud(1)
+        call writo(trim(r2strt(realpart(PB3D%X%val(X_id))))//' + '//&
+            &trim(r2strt(imagpart(PB3D%X%val(X_id))))//' i')
+        call lvl_ud(-1)
+        
+        call lvl_ud(-1)
+        
         ! deallocate variables
         deallocate(E_pot,E_kin,E_pot_int,E_kin_int)
         
@@ -720,13 +753,13 @@ contains
             call lvl_ud(1)
             
             ! E_kin
-            file_name = 'E_kin_'//trim(i2str(X_id))
+            file_name = trim(i2str(X_id))//'_E_kin'
             description = 'Kinetic energy constituents'
-            call plot_HDF5(var_names_kin,'RE_'//trim(file_name),&
+            call plot_HDF5(var_names_kin,trim(file_name)//'_RE',&
                 &realpart(E_kin),tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
                 &X=X_tot(:,:,:,1:2),Y=Y_tot(:,:,:,1:2),Z=Z_tot(:,:,:,1:2),&
                 &description=description)
-            call plot_HDF5(var_names_kin,'IM_'//trim(file_name),&
+            call plot_HDF5(var_names_kin,trim(file_name)//'_IM',&
                 &imagpart(E_kin),tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
                 &X=X_tot(:,:,:,1:2),Y=Y_tot(:,:,:,1:2),Z=Z_tot(:,:,:,1:2),&
                 &description=description)
@@ -738,13 +771,13 @@ contains
             call lvl_ud(1)
             
             ! E_pot
-            file_name = 'E_pot_'//trim(i2str(X_id))
+            file_name = trim(i2str(X_id))//'_E_pot'
             description = 'Potential energy constituents'
-            call plot_HDF5(var_names_pot,'RE_'//trim(file_name),&
+            call plot_HDF5(var_names_pot,trim(file_name)//'_RE',&
                 &realpart(E_pot),tot_dim=[tot_dim,6],grp_offset=[grp_offset,0],&
                 &X=X_tot(:,:,:,1:6),Y=Y_tot(:,:,:,1:6),Z=Z_tot(:,:,:,1:6),&
                 &description=description)
-            call plot_HDF5(var_names_pot,'IM_'//trim(file_name),&
+            call plot_HDF5(var_names_pot,trim(file_name)//'_IM',&
                 &imagpart(E_pot),tot_dim=[tot_dim,6],grp_offset=[grp_offset,0],&
                 &X=X_tot(:,:,:,1:6),Y=Y_tot(:,:,:,1:6),Z=Z_tot(:,:,:,1:6),&
                 &description=description)
@@ -758,15 +791,15 @@ contains
             ! E_stab
             var_names(1) = '1. stabilizing term'
             var_names(2) = '2. destabilizing term'
-            file_name = 'E_stab_'//trim(i2str(X_id))
+            file_name = trim(i2str(X_id))//'_E_stab'
             description = '(de)stabilizing energy'
-            call plot_HDF5(var_names,'RE_'//trim(file_name),realpart(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_RE',realpart(reshape(&
                 &[E_pot(:,:,:,1)+E_pot(:,:,:,2),E_pot(:,:,:,3)+E_pot(:,:,:,4)+&
                 &E_pot(:,:,:,5)+E_pot(:,:,:,6)],[grp_dim,2])),&
                 &tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
                 &X=X_tot(:,:,:,1:2),Y=Y_tot(:,:,:,1:2),Z=Z_tot(:,:,:,1:2),&
                 &description=description)
-            call plot_HDF5(var_names,'IM_'//trim(file_name),imagpart(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_IM',imagpart(reshape(&
                 &[E_pot(:,:,:,1)+E_pot(:,:,:,2),E_pot(:,:,:,3)+E_pot(:,:,:,4)+&
                 &E_pot(:,:,:,5)+E_pot(:,:,:,6)],[grp_dim,2])),&
                 &tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
@@ -782,13 +815,13 @@ contains
             ! E
             var_names(1) = '1. potential energy'
             var_names(2) = '2. kinetic energy'
-            file_name = 'E_'//trim(i2str(X_id))
+            file_name = trim(i2str(X_id))//'_E'
             description = 'total potential and kinetic energy'
-            call plot_HDF5(var_names,'RE_'//trim(file_name),realpart(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_RE',realpart(reshape(&
                 &[sum(E_pot,4),sum(E_kin,4)],[grp_dim,2])),tot_dim=[tot_dim,2],&
                 &grp_offset=[grp_offset,0],X=X_tot(:,:,:,1:2),&
                 &Y=Y_tot(:,:,:,1:2),Z=Z_tot(:,:,:,1:2),description=description)
-            call plot_HDF5(var_names,'IM_'//trim(file_name),imagpart(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_IM',imagpart(reshape(&
                 &[sum(E_pot,4),sum(E_kin,4)],[grp_dim,2])),tot_dim=[tot_dim,2],&
                 &grp_offset=[grp_offset,0],X=X_tot(:,:,:,1:2),&
                 &Y=Y_tot(:,:,:,1:2),Z=Z_tot(:,:,:,1:2),description=description)
@@ -800,6 +833,7 @@ contains
             deallocate(X_tot,Y_tot,Z_tot)
         end if
     contains
+        ! calculate the energy terms
         integer function calc_E(PB3D,B_aligned,X_id,E_pot,E_kin,E_pot_int,&
             &E_kin_int) result(ierr)
             use num_vars, only: use_pol_flux_F
