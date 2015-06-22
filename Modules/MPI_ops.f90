@@ -244,7 +244,7 @@ contains
         ! [MPI] Collective call
         integer function calc_eq_r_range(eq_limits) result(ierr)
             use num_vars, only: grp_n_procs, grp_rank, use_pol_flux_E, &
-                &use_pol_flux_F, eq_style
+                &use_pol_flux_F, eq_style, tol_norm_r
             use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
                 &calc_deriv, round_with_tol
             use VMEC, only: flux_t_V, Dflux_t_V, rot_t_V
@@ -288,8 +288,9 @@ contains
                     end if
                     ! set up E flux
                     if (use_pol_flux_E) then
-                        ierr = calc_int(rot_t_V*Dflux_t_V,&
-                            &1.0_dp/(n_r_eq-1.0_dp),flux_E)
+                    write(*,*) '!!! CHANGED rot_t_V to -rot_t_V BUT NOT SURE !!'
+                        ierr = calc_int(-rot_t_V*Dflux_t_V,&
+                            &1.0_dp/(n_r_eq-1.0_dp),flux_E)                     ! conversion VMEC LH -> RH coord. system
                         CHCKERR('')
                     else
                         flux_E = flux_t_V
@@ -331,17 +332,20 @@ contains
             ! 1. continuous F coords (min_r_X..max_r_X)
             grp_min_r_eq_F_con = min_r_X + &
                 &grp_rank*(max_r_X-min_r_X)/grp_n_procs
-            ! 2 round with tolerance
+            ! 2. include tolerance for lowermost bound
+            if (grp_rank.eq.0) grp_min_r_eq_F_con = &
+                &max(grp_min_r_eq_F_con-tol_norm_r,0._dp)                       ! include tolerance for lowermost bound
+            ! 3 round with tolerance
             ierr = round_with_tol(grp_min_r_eq_F_con,0._dp,1._dp)
             CHCKERR('')
-            ! 3. continuous E coords
-            ierr = interp_fun(grp_min_r_eq_E_con,flux_E,&
-                &grp_min_r_eq_F_con,flux_F)
+            ! 4. continuous E coords
+            ierr = interp_fun(grp_min_r_eq_E_con,flux_E,grp_min_r_eq_F_con,&
+                &flux_F)
             CHCKERR('')
-            ! 4. discrete E index, unrounded
+            ! 5. discrete E index, unrounded
             ierr = con2dis(grp_min_r_eq_E_con,grp_min_r_eq_E_dis,flux_E)
             CHCKERR('')
-            ! 5. discrete E index, rounded down
+            ! 6. discrete E index, rounded down
             eq_limits(1) = floor(grp_min_r_eq_E_dis)
             
             ! use min_r_X and max_r_X to calculate grp_max_r_eq
@@ -354,17 +358,20 @@ contains
             ierr = dis2con(grp_max_r_eq_F_dis,grp_max_r_eq_F_con,[1,min_n_r_X],&
                 &[min_r_X,max_r_X])                                             ! the perturbation grid is equidistant
             CHCKERR('')
-            ! 4 round with tolerance
+            ! 4. include normal tolerance for uppermost bound
+            if (grp_rank.eq.grp_n_procs-1) grp_max_r_eq_F_con = &
+                min(grp_max_r_eq_F_con+tol_norm_r,1._dp)
+            ! 5. round with tolerance
             ierr = round_with_tol(grp_max_r_eq_F_con,0._dp,1._dp)
             CHCKERR('')
-            ! 5. continuous E coords
+            ! 6. continuous E coords
             ierr = interp_fun(grp_max_r_eq_E_con,flux_E,&
                 &grp_max_r_eq_F_con,flux_F)
             CHCKERR('')
-            ! 6. discrete E index, unrounded
+            ! 7. discrete E index, unrounded
             ierr = con2dis(grp_max_r_eq_E_con,grp_max_r_eq_E_dis,flux_E)
             CHCKERR('')
-            ! 7. discrete E index, rounded up
+            ! 8. discrete E index, rounded up
             eq_limits(2) = ceiling(grp_max_r_eq_E_dis)
             
             deallocate(flux_F,flux_E)
@@ -376,7 +383,8 @@ contains
     ! one group so  group nr. is equal  to global nr. This makes  using the PB3D
     ! routines easier.
     integer function split_MPI_POST(r_F_eq,r_F_X,i_lim_eq,i_lim_X) result(ierr)
-        use num_vars, only: grp_nr, n_groups, grp_n_procs, glb_n_procs, grp_rank
+        use num_vars, only: grp_nr, n_groups, grp_n_procs, glb_n_procs, &
+            &grp_rank, ghost_width_POST
         use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'split_MPI_POST'
@@ -391,8 +399,8 @@ contains
         integer :: remainder                                                    ! remainder of division
         integer :: id                                                           ! counter
         real(dp) :: min_X, max_X                                                ! min. and max. of r_F_X in range of this process
+        real(dp), parameter :: tol = 1.E-6                                      ! tolerance for grids
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer, allocatable :: tot_i_min_eq(:)                                 ! i_min of equilibrium grid of all processes
         
         ! initialize ierr
         ierr = 0
@@ -419,6 +427,9 @@ contains
         
         ! set i_lim_X
         i_lim_X = [sum(grp_n_r_X(1:grp_rank))+1,sum(grp_n_r_X(1:grp_rank+1))]
+        if (grp_rank.gt.0) i_lim_X(1) = i_lim_X(1)-ghost_width_POST             ! ghost region for num. deriv.
+        if (grp_rank.lt.glb_n_procs-1) i_lim_X(2) = &
+            &i_lim_X(2)+ghost_width_POST+1                                      ! ghost region for num. deriv. and overlap for int_vol
         min_X = minval(r_F_X(i_lim_X(1):i_lim_X(2)))
         max_X = maxval(r_F_X(i_lim_X(1):i_lim_X(2)))
         
@@ -426,15 +437,15 @@ contains
         i_lim_eq = [0,size(r_F_eq)+1]
         if (r_F_eq(1).lt.r_F_eq(size(r_F_eq))) then                             ! ascending r_F_eq
             do id = 1,size(r_F_eq)
-                if (r_F_eq(id).lt.min_X) i_lim_eq(1) = id                       ! move lower limit up
-                if (r_F_eq(size(r_F_eq)-id+1).gt.max_X) &
+                if (r_F_eq(id).le.min_X+tol) i_lim_eq(1) = id                   ! move lower limit up
+                if (r_F_eq(size(r_F_eq)-id+1).ge.max_X-tol) &
                     &i_lim_eq(2) = size(r_F_eq)-id+1                            ! move upper limit down
             end do
         else                                                                    ! descending r_F_eq
             do id = 1,size(r_F_eq)
-                if (r_F_eq(size(r_F_eq)-id+1).lt.min_X) &
+                if (r_F_eq(size(r_F_eq)-id+1).le.min_X+tol) &
                     &i_lim_eq(1) = size(r_F_eq)-id+1                            ! move lower limit up
-                if (r_F_eq(id).gt.max_X) i_lim_eq(2) = id                       ! move upper limit down
+                if (r_F_eq(id).ge.max_X-tol) i_lim_eq(2) = id                   ! move upper limit down
             end do
         end if
         
@@ -443,18 +454,6 @@ contains
             ierr = 1
             err_msg = 'Perturbation range not contained in equilibrium range'
             CHCKERR(err_msg)
-        end if
-        
-        ! get all min_i's of the 
-        ierr = get_ser_var([i_lim_eq(1)],tot_i_min_eq,scatter=.true.)
-        CHCKERR('')
-        
-        ! modify limits to add up to an equilibrium grid without holes
-        if (grp_rank.eq.0) i_lim_eq(1) = 1
-        if (grp_rank.lt.glb_n_procs-1) then
-            i_lim_eq(2) = tot_i_min_eq(grp_rank+2)-1+1                          ! ghost region of width 1 necessary for eq_grid to fully enclose X_grid
-        else
-            i_lim_eq(2) = size(r_F_eq)
         end if
     end function split_MPI_POST
     
@@ -585,7 +584,6 @@ contains
         use X_vars, only: min_r_X, max_r_X
         use utilities, only: round_with_tol
         use eq_vars, only: max_flux_p_F, max_flux_t_F
-        !!!use num_vars, only: grp_rank, grp_n_procs, norm_disc_style
         
         character(*), parameter :: rout_name = 'divide_X_grid'
         
@@ -664,8 +662,7 @@ contains
             
             n_loc = n/n_procs                                                   ! number of radial points on this processor
             if (mod(n,n_procs).gt.0) then                                       ! check if there is a remainder
-                if (mod(n,n_procs).gt.rank) &
-                    &n_loc = n_loc + 1                                          ! add a point to the first ranks if there is a remainder
+                if (mod(n,n_procs).gt.rank) n_loc = n_loc + 1                   ! add a point to the first ranks if there is a remainder
             end if
         end function divide_X_grid_ind
     end function divide_X_grid
@@ -681,7 +678,7 @@ contains
             &retain_all_sol, plot_flux_q, plot_grid, no_plots, eq_style, &
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, EV_BC, rho_style, prog_style, max_it_inv, &
-            &norm_disc_style
+            &norm_disc_style, tol_norm_r
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
@@ -807,6 +804,9 @@ contains
                         &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(min_alpha,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(tol_norm_r,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(max_alpha,1,MPI_DOUBLE_PRECISION,0,&

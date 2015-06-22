@@ -357,6 +357,8 @@ contains
         integer :: nfl                                                          ! number of files to plot
         integer :: cmd_i                                                        ! file number for script file
         integer :: plt_count                                                    ! counts the number of plots
+        integer :: cmdstat                                                      ! status of C system command
+        character(len=5*max_str_ln) :: cmdmessage                               ! error message of C system command
         
         ! return if no_plots
         if (no_plots) then
@@ -501,22 +503,30 @@ contains
         call stop_time
         
         ! call GNUPlot
-        call system('gnuplot "'//trim(script_name)//'"'//err_output_str,istat)
+        call execute_command_line('gnuplot "'//trim(script_name)//'"'//&
+            &err_output_str,EXITSTAT=istat,CMDSTAT=cmdstat,CMDMSG=cmdmessage)
         
-        if (plot_on_screen) then
-            if (istat.ne.0) then
-                call writo('Failed to plot '//trim(var_name))
-            end if
-            call system('rm '//trim(script_name))
+        if (istat.ne.0) then
+            call writo('Failed to plot '//trim(var_name))
         else
-            if (istat.eq.0) then
-                call writo('Created plot in output file '''//&
-                    &trim(plot_dir)//'/'//trim(var_name)//'.pdf''')
+            if (cmdstat.ne.0) then
+                call writo('Failed to plot '//trim(var_name))
+                call lvl_ud(1)
+                if (cmdstat.ne.0) call writo('System message: "'//&
+                    &trim(cmdmessage)//'"')
+                if (.not.plot_on_screen) call writo('Try running "gnuplot "'//&
+                    &trim(script_name)//'"'//'" manually')
+                call lvl_ud(-1)
             else
-                call writo('Failed to create plot in output file '''//&
-                    &trim(plot_dir)//'/'//trim(var_name)//'.pdf''')
-                call writo('Try running "gnuplot "'//trim(script_name)//'"'//&
-                    &'" manually')
+                if (plot_on_screen) then
+                    call system('rm '//trim(script_name))
+                    call execute_command_line('rm '//trim(script_name),&
+                        &EXITSTAT=istat,CMDSTAT=CMDSTAT,CMDMSG=cmdmessage)
+                    ! ignore errors
+                else
+                    call writo('Created plot in output file '''//&
+                        &trim(plot_dir)//'/'//trim(var_name)//'.pdf''')
+                end if
             end if
         end if
         
@@ -574,6 +584,8 @@ contains
         integer :: delay_loc                                                    ! local copy of delay
         real(dp), allocatable :: ranges_loc(:,:)                                ! local copy of ranges
         integer :: plt_count                                                    ! counts the number of plots
+        integer :: cmdstat                                                      ! status of C system command
+        character(len=5*max_str_ln) :: cmdmessage                               ! error message of C system command
         
         ! return if no_plots
         if (no_plots) then
@@ -778,16 +790,22 @@ contains
         ! no need to stop the time
         
         ! call GNUPlot
-        call system('gnuplot "'//trim(script_name)//'"'//err_output_str,istat)
+        call execute_command_line('gnuplot "'//trim(script_name)//'"'//&
+            &err_output_str,EXITSTAT=istat,CMDSTAT=cmdstat,CMDMSG=cmdmessage)
         
-        if (istat.eq.0) then
-            call writo('Created animated plot in output file '''//&
-                &trim(plot_dir)//'/'//trim(var_name)//'.gif''')
+        if (istat.ne.0) then
+            call writo('Failed to plot '//trim(var_name))
         else
-            call writo('Failed to create animated plot in output file '''//&
-                &trim(plot_dir)//'/'//trim(var_name)//'.gif''')
-            call writo('Try running "gnuplot "'//trim(script_name)//'"'//&
-                &'" manually')
+            if (cmdstat.ne.0) then
+                call writo('Failed to plot '//trim(var_name))
+                call lvl_ud(1)
+                if (cmdstat.ne.0) call writo('System message: "'//&
+                    &trim(cmdmessage)//'"')
+                call lvl_ud(-1)
+            else
+                call writo('Created animated plot in output file '''//&
+                    &trim(plot_dir)//'/'//trim(var_name)//'.pdf''')
+            end if
         end if
     contains
         subroutine get_ranges(file_name,ranges)

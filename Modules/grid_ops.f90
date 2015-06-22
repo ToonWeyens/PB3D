@@ -580,6 +580,7 @@ contains
     integer function coord_F2E_r(grid_eq,eq,r_F,r_E,r_F_array,r_E_array) &
         &result(ierr)                                                           ! version with only r
         use utilities, only: interp_fun
+        use num_vars, only: grp_rank
         
         character(*), parameter :: rout_name = 'coord_F2E_r'
         
@@ -1047,17 +1048,19 @@ contains
             ! interpolate HELENA output  R_H and Z_H for  every requested normal
             ! point
             ! Note:  R_H and  Z_H  are not  adapted to  the  parallel grid,  but
-            ! tabulated in the original HELENA poloidal grid
+            ! tabulated in the original HELENA poloidal grid.
+            ! Note:  HELENA uses poloidal  flux as normal coordinate  divided by
+            ! 2pi
             ! interpolate the HELENA tables in normal direction
             do kd = 1,grid%grp_n_r                                              ! loop over all normal points
                 do id = 1,size(R_H,1)
                     ierr = interp_fun(R_H_int(id),R_H(id,:),grid%grp_r_E(kd),&
-                        &x=flux_p_H)
+                        &x=flux_p_H/(2*pi))
                     CHCKERR('')
                 end do
                 do id = 1,size(Z_H,1)
                     ierr = interp_fun(Z_H_int(id),Z_H(id,:),grid%grp_r_E(kd),&
-                        &x=flux_p_H)
+                        &x=flux_p_H/(2*pi))
                     CHCKERR('')
                 end do
                 ! loop over toroidal points
@@ -1577,7 +1580,11 @@ contains
     end function plot_grid_real
     
     ! Trim a grid, removing any overlap between the different regions.
-    integer function trim_grid(grid_in,grid_out) result(ierr)
+    ! By  default, this  is done  by removing  from every  PREVIOUS process  the
+    ! region overlapping with the NEXT  process. However, using shift_grid (>0),
+    ! which indicates  how many positions to  change the point at  which regions
+    ! are cut.
+    integer function trim_grid(grid_in,grid_out,shift_grid) result(ierr)
         use grid_vars, only: create_grid
         use num_vars, only: grp_n_procs, grp_rank
         use MPI_utilities, only: get_ser_var
@@ -1587,6 +1594,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_in                                  ! input grid
         type(grid_type), intent(inout) :: grid_out                              ! trimmed grid
+        integer, intent(in), optional :: shift_grid                             ! by how much to shift the cutting point
         
         ! local variables
         integer, allocatable :: tot_i_min(:)                                    ! i_min of grid of all processes
@@ -1595,9 +1603,14 @@ contains
         integer :: n_out(3)                                                     ! n of output grid
         integer :: kd                                                           ! counter
         integer :: kd_max                                                       ! maximum index
+        integer :: shift_grid_loc                                               ! local version of shift_grid
         
         ! initialize ierr
         ierr = 0
+        
+        ! set up local shift_grid
+        shift_grid_loc = 0
+        if (present(shift_grid)) shift_grid_loc = shift_grid
         
         ! get min_i's of the grid_in
         ierr = get_ser_var([grid_in%i_min],tot_i_min,scatter=.true.)
@@ -1608,9 +1621,14 @@ contains
         CHCKERR('')
         
         ! set i_lim of output grid (not yet shifted by first process' min)
-        i_lim_out(1) = grid_in%i_min
+        if (grp_rank.eq.0) then
+            i_lim_out(1) = grid_in%i_min                                        ! minimum
+        else
+            i_lim_out(1) = grid_in%i_min+shift_grid_loc                         ! minimum, shifted by local shift_grid
+        end if
         if (grp_rank.lt.grp_n_procs-1) then                                     ! not last process
-            i_lim_out(2) = min(tot_i_min(grp_rank+2)-1,tot_i_max(grp_rank+1))   ! take i_min of next process or current maximum
+            i_lim_out(2) = min(tot_i_min(grp_rank+2)-1+shift_grid_loc,&
+                &tot_i_max(grp_rank+1))                                         ! i_min of next process, shifted by local shift_grid, or current maximum
         else                                                                    ! last process
             i_lim_out(2) = grid_in%i_max                                        ! end of this last group
         end if
@@ -1632,7 +1650,7 @@ contains
         ierr = create_grid(grid_out,n_out,i_lim_out-tot_i_min(1)+1)             ! limits shifted by min of first process
         CHCKERR('')
         
-        ! shift limits by min of current process
+        ! recycle i_lim_out for array indices, shifted by min of current process
         i_lim_out = i_lim_out-i_lim_out(1)+1
         
         ! copy arrays
@@ -1719,8 +1737,8 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        integer, intent(in) :: style                                            ! whether to calculate in E or F
         real(dp), intent(inout), allocatable :: grp_r(:)                        ! grp_r
+        integer, intent(in) :: style                                            ! whether to calculate in E or F
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1875,9 +1893,8 @@ contains
     ! Furthermore, if i is 1 or  2, the corresponding i'th (angular) variable is
     ! the only  variable that is  assumed to vary  in that dimension.  The other
     ! angular variable as well as the normal variable are assumed to be constant
-    ! like the function  itself. 
-    ! However, if  i is 3, an  error is displayed  as this does not  represent a
-    ! physical situation.
+    ! like the  function itself. However,  if i is 3,  an error is  displayed as
+    ! this does not represent a physical situation.
     ! A common  case through which to  understand this is the  axisymmetric case
     ! where the first  angular variable theta varies in the  dimensions 1 and 3,
     ! the second angular  variable zeta varies only in the  dimension 2, and the

@@ -227,7 +227,7 @@ contains
                 CHCKERR(err_msg)
         end select
         
-        ! copy the Eigenvectors and -values into the extended X
+        ! copy the Eigenvectors and -values into the plot X
         allocate(PB3D_plot%X%val(size(PB3D%X%val)))
         allocate(PB3D_plot%X%vec(size(PB3D%X%vec,1),size(PB3D%X%vec,2),&
             &size(PB3D%X%vec,3)))

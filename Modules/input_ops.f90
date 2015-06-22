@@ -211,7 +211,7 @@ contains
         ! if not individual, broadcast result
         if (.not.ind_loc) then
             istat = broadcast_var(val)
-            if (istat.ne.0) call writo('WARNING: In get_real, something went &
+            if (istat.ne.0) call writo('WARNING: In get_int, something went &
                 &wrong. Default of zero used.')
         end if
     end function get_int
@@ -265,7 +265,7 @@ contains
             &plot_resonance, tol_r, n_sol_requested, nyq_fac, glb_rank, &
             &nyq_fac, plot_grid, plot_flux_q, use_normalization, &
             &n_sol_plotted, n_theta_plot, n_zeta_plot, EV_BC, rho_style, &
-            &retain_all_sol, prog_style, norm_disc_style, max_it_inv
+            &retain_all_sol, prog_style, norm_disc_style, max_it_inv, tol_norm_r
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files_ops, only: input_name
@@ -288,7 +288,7 @@ contains
             &n_sol_requested, EV_BC, rho_style, nyq_fac, rho_0, &
             &use_pol_flux_F, plot_grid, plot_flux_q, use_normalization, &
             &n_theta_plot, n_zeta_plot, retain_all_sol, norm_disc_style, &
-            &max_it_inv
+            &max_it_inv, tol_norm_r
         namelist /inputdata_PB3D_POST/ n_sol_plotted, use_normalization, &
             &n_theta_plot, n_zeta_plot, plot_resonance, plot_flux_q, plot_grid
         
@@ -346,7 +346,7 @@ contains
                             call adapt_plot
                             
                             ! adapt alpha variables if needed
-                            call adapt_n_alpha
+                            call adapt_alpha
                             
                             ! adapt n_par_X if needed
                             call adapt_n_par_X
@@ -472,6 +472,7 @@ contains
             min_alpha = 0.0_dp                                                  ! minimum field line label [pi]
             max_alpha = 2.0_dp                                                  ! maximum field line label [pi]
             n_alpha = 10                                                        ! number of different field lines
+            tol_norm_r = 0.05                                                   ! tolerance for normal range
             
             ! variables concerning perturbation
             min_r_X = 0.1_dp                                                    ! minimum radius
@@ -683,13 +684,22 @@ contains
             end if
         end function adapt_m
         
-        ! checks whether n_alpha is chosen high enough
-        subroutine adapt_n_alpha
+        ! checks  whether  n_alpha  is  chosen high  enough  and whether  normal
+        ! tolerance is within 0 and 1
+        subroutine adapt_alpha
             if (n_alpha.lt.1) then
                 call writo('WARNING: n_alpha has been increased to 1')
                 n_alpha = 1
             end if
-        end subroutine adapt_n_alpha
+            if (tol_norm_r.lt.0) then
+                call writo('WARNING: tol_norm_r has been increased to 0')
+                tol_norm_r = 0._dp
+            end if
+            if (tol_norm_r.gt.1) then
+                call writo('WARNING: tol_norm_r has been decreased to 1')
+                tol_norm_r = 1._dp
+            end if
+        end subroutine adapt_alpha
         
         ! checks whether normalization variables are chosen correctly. rho_0 has
         ! to be positive

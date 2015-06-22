@@ -15,6 +15,26 @@
 !       the grid angles being aligned with  the grid (e.g. Providing theta and !
 !       zeta in  the equilibrium  grid so  that the  magnetic field  lines are !
 !       followed.                                                              !
+!   Note: In general in PB3D, there are two kinds of variables, differing from !
+!   one another in the way in which they are tabulated:                        !
+!       - variables tabulated on the full output grid of the equilibrium code  !
+!       - variables tabulated in an internal grid of this code                 !
+!   In many places  in the code a  range in the normal  coordinate is selected !
+!   for each of  the variables on different processors. This  selection has to !
+!   be done correctly  and things can get a little  bit complicated if trimmed !
+!   grids are used (grids that have no overlap between processes):             !
+!       -  Variables  on  full  output  grid  need to  keep  in  mind  that  a !
+!       grid  trimmed  internal  can  start   at  a  position  different  from !
+!       the  grid  starting position  of  the  full equilibrium  output  grid. !
+!       Therefore,  the   correct  way  to   indicate  the  normal   range  of !
+!       variables  tabulated in  the  full equilibrium  output  grid would  be !
+!       [grid%i_min:grid%i_min+grid_trim%grp_n_r], where grid is the untrimmed !
+!       and grid_trim the trimmed internal grid.                               !
+!       -  Internal  grid by  default  are  trimmed  keeping the  lower  range !
+!       unchanged,  so   the  usage   of  [1:grid_trim%grp_n_r]   is  allowed. !
+!       However,  using shift_grid  shifting the  grid  by an  amount a,  both !
+!       a+[1:grid_trim%grp_n_r]  or  [grid%i_min:grid%i_min+grid_trim%grp_n_r] !
+!       can be used.                                                           !
 !------------------------------------------------------------------------------!
 module eq_vars
 #include <PB3D_macros.h>

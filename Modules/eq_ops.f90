@@ -334,8 +334,8 @@ contains
                 end if
 #endif
                 
-                ! Transform  the derivatives in VMEC  coordinates to derivatives
-                ! in the Flux coordinates.
+                ! Transform the  derivatives in E coordinates  to derivatives in
+                ! the F coordinates.
                 call writo('Calculate derivatives in Flux coordinates...')
                 do id = 0,max_deriv
                     ! g_FD
@@ -358,13 +358,13 @@ contains
                         &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
                         &eq%pres_FD(:,id),max_deriv,id)
                     CHCKERR('')
-                        
+                    
                     ! flux_p_FD
                     ierr = transf_deriv(eq%flux_p_E,&
                         &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
                         &eq%flux_p_FD(:,id),max_deriv,id)
                     CHCKERR('')
-                        
+                    
                     ! flux_t_FD
                     ierr = transf_deriv(eq%flux_t_E,&
                         &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),&
@@ -1258,7 +1258,8 @@ contains
         type(var_1D), pointer :: eq_B_1D(:)                                     ! 1D equivalent of field-aligned eq. variables
         type(var_1D), pointer :: eq_1D_loc                                      ! local element in eq_1D
         type(grid_type) :: grid_trim, grid_trim_B                               ! trimmed grids
-        integer :: i_min, i_max                                                 ! min. and max. index of variables
+        integer :: i_min, i_max                                                 ! min. and max. index of variables tabulated in internal grid
+        integer :: i_min_full, i_max_full                                       ! min. and max. index of variables tabulated in full grid
         integer :: id                                                           ! counter
         
         ! initialize ierr
@@ -1278,9 +1279,13 @@ contains
         ierr = trim_grid(grid_eq_B,grid_trim_B)
         CHCKERR('')
         
-        ! set i_min and i_max
+        ! set i_min and i_max for variables tabulated on internal grid, trimmed
         i_min = 1
         i_max = grid_trim%grp_n_r
+        
+        ! set i_min and i_max for variables tabulated on full grid, trimmed
+        i_min_full = grid_eq%i_min
+        i_max_full = i_min_full+grid_trim%grp_n_r-1
         
         ! Set up the 1D equivalents  of the equilibrium variables, with size
         ! depending on equilibrium style
@@ -1768,8 +1773,8 @@ contains
                 eq_1D_loc%grp_i_max = &
                     &[mpol-1,ntor,grid_trim%i_max,size(R_V_c,4)-1]
                 allocate(eq_1D_loc%p(size(R_V_c(:,:,i_min:i_max,:))))
-                eq_1D_loc%p = reshape(R_V_c(:,:,i_min:i_max,:),&
-                    &[size(R_V_c(:,:,i_min:i_max,:))])
+                eq_1D_loc%p = reshape(R_V_c(:,:,i_min_full:i_max_full,:),&
+                    &[size(R_V_c(:,:,i_min_full:i_max_full,:))])
                 
                 ! R_V_s
                 eq_1D_loc => eq_1D(id); id = id+1
@@ -1783,8 +1788,8 @@ contains
                 eq_1D_loc%grp_i_max = &
                     &[mpol-1,ntor,grid_trim%i_max,size(R_V_s,4)-1]
                 allocate(eq_1D_loc%p(size(R_V_s(:,:,i_min:i_max,:))))
-                eq_1D_loc%p = reshape(R_V_s(:,:,i_min:i_max,:),&
-                    &[size(R_V_s(:,:,i_min:i_max,:))])
+                eq_1D_loc%p = reshape(R_V_s(:,:,i_min_full:i_max_full,:),&
+                    &[size(R_V_s(:,:,i_min_full:i_max_full,:))])
                 
                 ! Z_V_c
                 eq_1D_loc => eq_1D(id); id = id+1
@@ -1798,8 +1803,8 @@ contains
                 eq_1D_loc%grp_i_max = &
                     &[mpol-1,ntor,grid_trim%i_max,size(Z_V_c,4)-1]
                 allocate(eq_1D_loc%p(size(Z_V_c(:,:,i_min:i_max,:))))
-                eq_1D_loc%p = reshape(Z_V_c(:,:,i_min:i_max,:),&
-                    &[size(Z_V_c(:,:,i_min:i_max,:))])
+                eq_1D_loc%p = reshape(Z_V_c(:,:,i_min_full:i_max_full,:),&
+                    &[size(Z_V_c(:,:,i_min_full:i_max_full,:))])
                 
                 ! Z_V_s
                 eq_1D_loc => eq_1D(id); id = id+1
@@ -1813,8 +1818,8 @@ contains
                 eq_1D_loc%grp_i_max = &
                     &[mpol-1,ntor,grid_trim%i_max,size(Z_V_s,4)-1]
                 allocate(eq_1D_loc%p(size(Z_V_s(:,:,i_min:i_max,:))))
-                eq_1D_loc%p = reshape(Z_V_s(:,:,i_min:i_max,:),&
-                    &[size(Z_V_s(:,:,i_min:i_max,:))])
+                eq_1D_loc%p = reshape(Z_V_s(:,:,i_min_full:i_max_full,:),&
+                    &[size(Z_V_s(:,:,i_min_full:i_max_full,:))])
                 
                 ! L_V_c
                 eq_1D_loc => eq_1D(id); id = id+1
@@ -1828,8 +1833,8 @@ contains
                 eq_1D_loc%grp_i_max = &
                     &[mpol-1,ntor,grid_trim%i_max,size(L_V_c,4)-1]
                 allocate(eq_1D_loc%p(size(L_V_c(:,:,i_min:i_max,:))))
-                eq_1D_loc%p = reshape(L_V_c(:,:,i_min:i_max,:),&
-                    &[size(L_V_c(:,:,i_min:i_max,:))])
+                eq_1D_loc%p = reshape(L_V_c(:,:,i_min_full:i_max_full,:),&
+                    &[size(L_V_c(:,:,i_min_full:i_max_full,:))])
                 
                 ! L_V_s
                 eq_1D_loc => eq_1D(id); id = id+1
@@ -1843,8 +1848,8 @@ contains
                 eq_1D_loc%grp_i_max = &
                     &[mpol-1,ntor,grid_trim%i_max,size(L_V_s,4)-1]
                 allocate(eq_1D_loc%p(size(L_V_s(:,:,i_min:i_max,:))))
-                eq_1D_loc%p = reshape(L_V_s(:,:,i_min:i_max,:),&
-                    &[size(L_V_s(:,:,i_min:i_max,:))])
+                eq_1D_loc%p = reshape(L_V_s(:,:,i_min_full:i_max_full,:),&
+                    &[size(L_V_s(:,:,i_min_full:i_max_full,:))])
                 
                 ! misc_eq_V
                 eq_1D_loc => eq_1D(id); id = id+1
@@ -1878,9 +1883,8 @@ contains
                 eq_1D_loc%grp_i_max = [nchi,grid_trim%i_max]
                 allocate(eq_1D_loc%p(size(R_H(:,grid_trim%i_min:&
                     &grid_trim%i_max))))
-                eq_1D_loc%p = &
-                    &reshape(R_H(:,grid_trim%i_min:grid_trim%i_max),&
-                    &[size(R_H(:,grid_trim%i_min:grid_trim%i_max))])
+                eq_1D_loc%p = reshape(R_H(:,i_min_full:i_max_full),&
+                    &[size(R_H(:,i_min_full:i_max_full))])
                 
                 ! Z_H
                 eq_1D_loc => eq_1D(id); id = id+1
@@ -1893,9 +1897,8 @@ contains
                 eq_1D_loc%grp_i_max = [nchi,grid_trim%i_max]
                 allocate(eq_1D_loc%p(size(Z_H(:,grid_trim%i_min:&
                     &grid_trim%i_max))))
-                eq_1D_loc%p = &
-                    &reshape(Z_H(:,grid_trim%i_min:grid_trim%i_max),&
-                    &[size(Z_H(:,grid_trim%i_min:grid_trim%i_max))])
+                eq_1D_loc%p = reshape(Z_H(:,i_min_full:i_max_full),&
+                    &[size(Z_H(:,i_min_full:i_max_full))])
                 
                 ! chi_H
                 eq_1D_loc => eq_1D(id); id = id+1
@@ -1925,7 +1928,7 @@ contains
                 eq_1D_loc%grp_i_max = [grid_trim%i_max]
                 allocate(eq_1D_loc%p(size(flux_p_H(grid_trim%i_min:&
                     &grid_trim%i_max))))
-                eq_1D_loc%p = flux_p_H(grid_trim%i_min:grid_trim%i_max)
+                eq_1D_loc%p = flux_p_H(i_min_full:i_max_full)
                 
                 ! misc_eq_H
                 eq_1D_loc => eq_1D(id); id = id+1

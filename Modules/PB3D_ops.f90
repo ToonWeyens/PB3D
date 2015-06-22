@@ -333,6 +333,7 @@ contains
         call lvl_ud(1)
         
         call writo('Creating perturbation grid')
+        call lvl_ud(1)
         n_X = vars_1D_X(r_F_X_id)%tot_i_max(1)-&
             &vars_1D_X(r_F_X_id)%tot_i_min(1)+1
         ierr = create_grid(PB3D%grid_X,n_X,i_lim_X)
@@ -343,9 +344,12 @@ contains
         PB3D%grid_X%r_E = vars_1D_X(r_E_X_id)%p
         PB3D%grid_X%grp_r_E = &
             &vars_1D_X(r_E_X_id)%p(i_lim_X(1):i_lim_X(2))
+        call writo('normal size: '//trim(i2str(n_X)))
+        call lvl_ud(-1)
         
         if (present(grid_eq_B)) then
             call writo('Creating field-aligned equilibrium grid')
+            call lvl_ud(1)
             n_eq_B = vars_1D_eq_B(theta_F_B_id)%tot_i_max-&
                 &vars_1D_eq_B(theta_F_B_id)%tot_i_min+1
             ierr = create_grid(grid_eq_B,n_eq_B,i_lim_eq)
@@ -368,9 +372,14 @@ contains
             call conv_1D2ND(vars_1D_eq_B(zeta_E_B_id),dum_3D)
             grid_eq_B%zeta_E = dum_3D(:,:,i_lim_eq(1):i_lim_eq(2))
             deallocate(dum_3D)
+            call writo('angular size: ('//trim(i2str(n_eq_B(1)))//','//&
+                &trim(i2str(n_eq_B(2)))//')')
+            call writo('normal size: '//trim(i2str(n_eq_B(3))))
+            call lvl_ud(-1)
         end if
         
         call writo('Creating equilibrium grid for output tables')
+        call lvl_ud(1)
         n_eq = vars_1D_eq(theta_F_id)%tot_i_max-&
             &vars_1D_eq(theta_F_id)%tot_i_min+1
         ierr = create_grid(PB3D%grid_eq,n_eq,i_lim_eq)
@@ -393,6 +402,10 @@ contains
         call conv_1D2ND(vars_1D_eq(zeta_E_id),dum_3D)
         PB3D%grid_eq%zeta_E = dum_3D(:,:,i_lim_eq(1):i_lim_eq(2))
         deallocate(dum_3D)
+        call writo('angular size: ('//trim(i2str(n_eq_B(1)))//','//&
+            &trim(i2str(n_eq_B(2)))//')')
+        call writo('normal size: '//trim(i2str(n_eq_B(3))))
+        call lvl_ud(-1)
         
         call lvl_ud(-1)
         

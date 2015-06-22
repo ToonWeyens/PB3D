@@ -7,7 +7,7 @@ module num_vars
     implicit none
     private
     public dp, qp, max_str_ln, max_deriv, prog_name, output_name, &
-        &prog_version, prog_style, &
+        &prog_version, prog_style, ghost_width_POST, &
         &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
         &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups, &
         &next_job, next_job_win, &
@@ -17,7 +17,7 @@ module num_vars
         &use_pol_flux_F, use_normalization, EV_BC, &
         &max_it_r, tol_r, no_guess, &
         &max_it_inv, &
-        &max_it_NR, tol_NR, nyq_fac, &
+        &max_it_NR, tol_NR, nyq_fac, tol_norm_r, &
         &GP_max_size, group_output, input_i, eq_i, eq_name, output_i, &
         &no_plots, no_messages, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
@@ -35,7 +35,8 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=max_str_ln) :: prog_name                                      ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! name of output file
-    real(dp), parameter :: prog_version = 0.80_dp                               ! version number
+    real(dp), parameter :: prog_version = 0.81_dp                               ! version number
+    integer, parameter :: ghost_width_POST = 2                                  ! size of ghost region (numerical derivatives should not exceed)
 
     ! MPI variables
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha
@@ -84,8 +85,9 @@ module num_vars
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
     real(dp) :: tol_NR                                                          ! tolerance for Newton-Rhapson
     integer :: nyq_fac                                                          ! Nyquist factor to avoid aliasing in perturbation integrals
+    real(dp) :: tol_norm_r                                                      ! tolerance for normal range (normalized to 0..1)
 
-    ! input / output
+    ! concerning input / output
     integer, parameter :: GP_max_size = 300                                     ! maximum size of matrices for GNUPlot
     logical :: group_output                                                     ! whether also the non-master groups can output
     integer :: input_i                                                          ! file number of input file

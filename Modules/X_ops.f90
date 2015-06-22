@@ -373,6 +373,7 @@ contains
         &max_it_NR) result(ierr)
         use num_vars, only: use_pol_flux_F, grp_rank, tol_NR_loc => tol_NR, &
             &max_it_NR_loc => max_it_NR
+        use eq_vars, only: max_flux_p_F, max_flux_t_F
         use utilities, only: calc_zero_NR, interp_fun
         use grid_vars, only: dealloc_grid
         use grid_ops, only: trim_grid
@@ -401,6 +402,7 @@ contains
         real(dp), allocatable :: res_surf_loc(:,:)                              ! local copy of res_surf
         real(dp), allocatable :: jq_tot(:,:)                                    ! saf. fac. or rot. transf. and derivs. in Flux coords.
         real(dp), allocatable :: jq_loc(:)                                      ! local version of jq
+        real(dp) :: norm_factor                                                 ! normalization factor to make normal coordinate 0..1
         type(grid_type) :: grid_trim                                            ! trimmed version of grid
         real(dp) :: tol_NR_old                                                  ! old value of tol_NR
         integer :: max_it_NR_old                                                ! old value of max_it_NR
@@ -447,6 +449,13 @@ contains
             if (present(tol_NR)) tol_NR_loc = tol_NR
             if (present(max_it_NR)) max_it_NR_loc = max_it_NR
             
+            ! calculate normalization factor max_flux / 2pi
+            if (use_pol_flux_F) then
+                norm_factor = max_flux_p_F/(2*pi)
+            else
+                norm_factor = max_flux_t_F/(2*pi)
+            end if
+            
             ! loop over all modes (and shift the index in x and y_vars by 1)
             kd_loc = 1
             do kd = 1, X%n_mod
@@ -482,7 +491,7 @@ contains
                     if (info_loc) call writo('Mode (n,m) = ('//&
                         &trim(i2str(X%n(kd)))//','//trim(i2str(X%m(kd)))//&
                         &') resonates in plasma at normalized flux surface '//&
-                        &trim(r2str(res_surf_loc(kd_loc,2))))
+                        &trim(r2str(res_surf_loc(kd_loc,2)/norm_factor)))
                     kd_loc = kd_loc + 1                                         ! advance kd_loc
                 end if
             end do
@@ -578,7 +587,7 @@ contains
     ! [MPI] Parts by all processes, parts only by global master
     integer function check_modes(eq,X) result(ierr)
         use MPI_utilities, only: get_ser_var
-        use num_vars, only: glb_rank, use_pol_flux_F, eq_style
+        use num_vars, only: glb_rank, use_pol_flux_F, eq_style, tol_norm_r
         
         character(*), parameter :: rout_name = 'check_modes'
         
@@ -588,7 +597,6 @@ contains
         
         ! local variables
         integer :: id                                                           ! counter
-        real(dp) :: tol = 0.1_dp                                                ! tolerance for being out of range of q or iota values
         real(dp) :: min_jq, max_jq                                              ! min. and max. values of q or iota
         integer :: pmone                                                        ! plus or minus one
         integer :: pmone2                                                       ! plus or minus one
@@ -617,7 +625,8 @@ contains
             call lvl_ud(1)
             
             ! user output
-            call writo('The tolerance used is '//trim(r2strt(tol))//'...')
+            call writo('The tolerance used is '//trim(r2strt(tol_norm_r))//&
+                &'...')
             
             ! set  up  plus  minus  one  to  convert  from Equilibrium  to  Flux
             ! coordinates
@@ -669,8 +678,8 @@ contains
             ! q values or n/m inside the range of iota values
             do id = 1, X%n_mod
                 ! calculate upper and lower limits
-                lim_lo = max(min_jq-tol,min_jq/(1+pmone2*tol))
-                lim_hi = min(max_jq+tol,max_jq/(1-pmone2*tol))
+                lim_lo = max(min_jq-tol_norm_r,min_jq/(1+pmone2*tol_norm_r))
+                lim_hi = min(max_jq+tol_norm_r,max_jq/(1-pmone2*tol_norm_r))
                 
                 ! check if limits are met
                 if (use_pol_flux_F) then

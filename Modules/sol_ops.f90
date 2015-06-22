@@ -48,7 +48,7 @@ contains
     ! 1D grid.
     integer function calc_XUQ_arr(grid_eq,eq,grid_X,X,X_id,XUQ_style,time,XUQ,&
         &met,deriv) result(ierr)                                                ! (time) array version
-        use num_vars, only: use_pol_flux_F
+        use num_vars, only: use_pol_flux_F, ghost_width_POST
         use utilities, only: con2dis, calc_deriv
 #if ldebug
         use utilities, only: calc_int
@@ -72,6 +72,7 @@ contains
         integer :: n_t                                                          ! number of time points
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, jd, kd                                                   ! counter
+        integer :: deriv_ord                                                    ! order of derivative
         complex(dp) :: sqrt_X_val_norm                                          ! normalized sqrt(X_val)
         logical :: deriv_loc                                                    ! local copy of deriv
         complex(dp), allocatable :: DX_vec(:)                                   ! normal derivative of X_vec for a specific mode
@@ -103,6 +104,18 @@ contains
                 &provided'
             CHCKERR(err_msg)
         end if
+        
+        ! set up order of derivative
+        select case (ghost_width_POST)
+            case (:0)                                                           ! no ghost region
+                ierr = 1
+                err_msg = 'Need ghost region width of at least 1'
+                CHCKERR(err_msg)
+            case (1)
+                deriv_ord = 1                                                   ! 1 point available so derive with order 1
+            case (2:)
+                deriv_ord = 2                                                   ! 2 point available so derive with order 2
+        end select
         
         ! set up local copy of deriv
         deriv_loc = .false.
@@ -212,7 +225,7 @@ contains
             ! set up normal derivative of X vec
             if (XUQ_style.eq.2 .or. XUQ_style.eq.4) then
                 ierr = calc_deriv(X%vec(jd,:,X_id),DX_vec,&
-                    &grid_X%grp_r_F(1:grid_X%grp_n_r),1,2)
+                    &grid_X%grp_r_F(1:grid_X%grp_n_r),1,deriv_ord)
                 CHCKERR('')
 #if ldebug
                 if (debug_calc_XUQ_arr) then
@@ -317,6 +330,8 @@ contains
     integer function plot_X_vec(grid_eq,eq,grid_X,X,XYZ,X_id,res_surf) &
         &result(ierr)
         use output_ops, only: plot_HDF5
+        use grid_ops, only: trim_grid
+        use num_vars, only: grp_rank, ghost_width_POST
         
         character(*), parameter :: rout_name = 'plot_X_vec'
         
@@ -332,6 +347,7 @@ contains
         ! local variables
         integer :: kd                                                           ! counter
         integer :: n_t(2)                                                       ! nr. of time steps in quarter period, nr. of quarter periods
+        type(grid_type) :: grid_X_trim                                          ! trimmed X grid
         character(len=max_str_ln) :: err_msg                                    ! error message
         complex(dp), allocatable :: f_plot(:,:,:,:,:)                           ! the function to plot
         real(dp), allocatable :: time(:)                                        ! fraction of Alfvén time
@@ -342,6 +358,7 @@ contains
         integer :: plot_dim(4)                                                  ! dimensions of plot
         integer :: plot_offset(4)                                               ! group offset of plot
         integer :: col                                                          ! collection type for HDF5 plot
+        integer :: norm_ut(2)                                                   ! untrimmed normal indices for trimmed grids
         real(dp), allocatable :: X_plot(:,:,:,:)                                ! copies of XYZ(1)
         real(dp), allocatable :: Y_plot(:,:,:,:)                                ! copies of XYZ(2)
         real(dp), allocatable :: Z_plot(:,:,:,:)                                ! copies of XYZ(3)
@@ -363,12 +380,18 @@ contains
             CHCKERR(err_msg)
         end if
         
+        ! trim X grid
+        ierr = trim_grid(grid_X,grid_X_trim,shift_grid=ghost_width_POST)
+        CHCKERR('')
+        norm_ut = [1,grid_X_trim%grp_n_r]
+        if (grp_rank.gt.0) norm_ut = norm_ut + ghost_width_POST                 ! everything's shifted by ghost_width_POST if not first process
+        
         ! user output
         call writo('Plotting individual harmonics')
         call lvl_ud(1)
         
         ! plot information about harmonics
-        ierr = plot_harmonics(grid_X,X,X_id,res_surf)
+        ierr = plot_harmonics(grid_X_trim,X,X_id,res_surf)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -397,19 +420,18 @@ contains
         end if
         
         ! set up plot dimensions and group dimensions
-        ! Note: The  angular size is taken  from eq grid but  the normal
-        ! size from the X grid.
-        plot_dim = [grid_eq%n(1), grid_eq%n(2),grid_X%n(3),&
-            &product(n_t)]
-        plot_offset = [0,0,grid_X%i_min-1,product(n_t)]
+        ! Note: The  angular size is taken  from trimmed eq grid but  the normal
+        ! size from the trimmed X grid.
+        plot_dim = [grid_eq%n(1), grid_eq%n(2),grid_X_trim%n(3),product(n_t)]
+        plot_offset = [0,0,grid_X_trim%i_min-1,product(n_t)]
         
         ! set up copies  of XYZ(1), XYZ(2) and XYZ(3) in  X, Y and Z
         ! for plot
-        allocate(X_plot(grid_eq%n(1),grid_eq%n(2),grid_X%grp_n_r,&
+        allocate(X_plot(grid_eq%n(1),grid_eq%n(2),grid_X_trim%grp_n_r,&
             &product(n_t)))
-        allocate(Y_plot(grid_eq%n(1),grid_eq%n(2),grid_X%grp_n_r,&
+        allocate(Y_plot(grid_eq%n(1),grid_eq%n(2),grid_X_trim%grp_n_r,&
             &product(n_t)))
-        allocate(Z_plot(grid_eq%n(1),grid_eq%n(2),grid_X%grp_n_r,&
+        allocate(Z_plot(grid_eq%n(1),grid_eq%n(2),grid_X_trim%grp_n_r,&
             &product(n_t)))
         
         ! For each time step, calculate the time (as fraction of Alfvén
@@ -422,9 +444,9 @@ contains
                 time(kd) = (mod(kd-1,n_t(1))*1._dp/n_t(1) + &
                     &(kd-1)/n_t(1)) * 0.25
             end if
-            X_plot(:,:,:,kd) = XYZ(:,:,:,1)
-            Y_plot(:,:,:,kd) = XYZ(:,:,:,2)
-            Z_plot(:,:,:,kd) = XYZ(:,:,:,3)
+            X_plot(:,:,:,kd) = XYZ(:,:,norm_ut(1):norm_ut(2),1)
+            Y_plot(:,:,:,kd) = XYZ(:,:,norm_ut(1):norm_ut(2),2)
+            Z_plot(:,:,:,kd) = XYZ(:,:,norm_ut(1):norm_ut(2),3)
         end do
         
         ! calculate omega  = sqrt(X_val)  and make sure  to select  the decaying
@@ -455,8 +477,8 @@ contains
         
         do kd = 1,2
             call plot_HDF5([var_name(kd)],file_name(kd),&
-                &realpart(f_plot(:,:,:,:,kd)),tot_dim=plot_dim,&
-                &grp_offset=plot_offset,X=X_plot,Y=Y_plot,&
+                &realpart(f_plot(:,:,norm_ut(1):norm_ut(2),:,kd)),&
+                &tot_dim=plot_dim,grp_offset=plot_offset,X=X_plot,Y=Y_plot,&
                 &Z=Z_plot,col=col,description=description(kd))
         end do
         
@@ -468,6 +490,7 @@ contains
         call lvl_ud(-1)
     contains
         ! plots the harmonics and their maximum in 2D
+        ! Note: This routine needs a trimmed grid!
         integer function plot_harmonics(grid_X,X,X_id,res_surf) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ghost_arr, get_ser_var
             use output_ops, only: merge_GP
@@ -499,7 +522,8 @@ contains
             ! set up serial X_vec on group master
             if (grp_rank.eq.0) allocate(X_vec_ser(1:X%n_mod,1:grid_X%n(3)))
             do id = 1,X%n_mod
-                ierr = get_ser_var(X%vec(id,:,X_id),X_vec_ser_loc)
+                ierr = get_ser_var(X%vec(id,norm_ut(1):norm_ut(2),X_id),&
+                    &X_vec_ser_loc)
                 CHCKERR('')
                 if (grp_rank.eq.0) X_vec_ser(id,:) = X_vec_ser_loc
                 deallocate(X_vec_ser_loc)
@@ -615,6 +639,8 @@ contains
     ! and Z can be provided as well. If not plotting, they are ignored.
     integer function decompose_energy(PB3D,X_id,PB3D_plot,XYZ) result(ierr)
         use PB3D_vars, only: PB3D_type
+        use grid_ops, only: trim_grid
+        use num_vars, only: ghost_width_POST, grp_rank
         
         character(*), parameter :: rout_name = 'decompose_energy'
         
@@ -630,11 +656,18 @@ contains
         integer :: grp_dim(3)                                                   ! group dimension
         integer :: tot_dim(3)                                                   ! total dimensions
         integer :: grp_offset(3)                                                ! group offsets
-        complex(dp), allocatable :: E_pot(:,:,:,:)                              ! potential energy
-        complex(dp), allocatable :: E_kin(:,:,:,:)                              ! kinetic energy
+        integer :: norm_ut(2)                                                   ! untrimmed normal indices for trimmed grids
+        type(grid_type) :: grid_X_trim                                          ! trimmed X grid
+        complex(dp), allocatable, target :: E_pot(:,:,:,:)                      ! potential energy
+        complex(dp), allocatable, target :: E_kin(:,:,:,:)                      ! kinetic energy
         complex(dp), allocatable :: E_pot_int(:)                                ! integrated potential energy
         complex(dp), allocatable :: E_kin_int(:)                                ! integrated kinetic energy
-        real(dp), allocatable :: X_tot(:,:,:,:), Y_tot(:,:,:,:), Z_tot(:,:,:,:) ! multiple copies of X, Y and Z for collection plot
+        complex(dp), pointer :: E_pot_trim(:,:,:,:)                             ! trimmed part of E_pot
+        complex(dp), pointer :: E_kin_trim(:,:,:,:)                             ! trimmed part of E_kin
+        real(dp), allocatable, target :: X_tot(:,:,:,:), Y_tot(:,:,:,:), &
+            &Z_tot(:,:,:,:)                                                     ! multiple copies of X, Y and Z for collection plot
+        real(dp), pointer :: X_tot_trim(:,:,:,:), Y_tot_trim(:,:,:,:), &
+            &Z_tot_trim(:,:,:,:)                                                ! trimmed part of X, Y and Z
         character(len=max_str_ln), allocatable :: var_names_pot(:)              ! name of potential energy variables
         character(len=max_str_ln), allocatable :: var_names_kin(:)              ! name of kinetic energy variables
         character(len=max_str_ln), allocatable :: var_names(:)                  ! name of other variables that are plot
@@ -717,8 +750,8 @@ contains
         
         call writo('Eigenvalue:')
         call lvl_ud(1)
-        call writo(trim(r2strt(realpart(PB3D%X%val(X_id))))//' + '//&
-            &trim(r2strt(imagpart(PB3D%X%val(X_id))))//' i')
+        call writo(trim(r2str(realpart(PB3D%X%val(X_id))))//' + '//&
+            &trim(r2str(imagpart(PB3D%X%val(X_id))))//' i')
         call lvl_ud(-1)
         
         call lvl_ud(-1)
@@ -727,19 +760,28 @@ contains
         deallocate(E_pot,E_kin,E_pot_int,E_kin_int)
         
         if (plot_en) then
+            ! trim X grid
+            ierr = trim_grid(PB3D_plot%grid_X,grid_X_trim,&
+                &shift_grid=ghost_width_POST)
+            CHCKERR('')
+            
+            ! set up norm_ut
+            norm_ut = [1,grid_X_trim%grp_n_r]
+            if (grp_rank.gt.0) norm_ut = norm_ut + ghost_width_POST             ! everything's shifted by ghost_width_POST if not first process
+            
             ! set plot variables
             grp_dim = [PB3D_plot%grid_eq%n(1),PB3D_plot%grid_eq%n(2),&
-                &PB3D_plot%grid_X%grp_n_r]
+                &grid_X_trim%grp_n_r]
             tot_dim = [PB3D_plot%grid_eq%n(1),PB3D_plot%grid_eq%n(2),&
-                &PB3D_plot%grid_X%n(3)]
-            grp_offset = [0,0,PB3D_plot%grid_X%i_min-1]
+                &grid_X_trim%n(3)]
+            grp_offset = [0,0,grid_X_trim%i_min-1]
             allocate(X_tot(grp_dim(1),grp_dim(2),grp_dim(3),6))
             allocate(Y_tot(grp_dim(1),grp_dim(2),grp_dim(3),6))
             allocate(Z_tot(grp_dim(1),grp_dim(2),grp_dim(3),6))
             do kd = 1,6
-                X_tot(:,:,:,kd) = XYZ(:,:,:,1)
-                Y_tot(:,:,:,kd) = XYZ(:,:,:,2)
-                Z_tot(:,:,:,kd) = XYZ(:,:,:,3)
+                X_tot(:,:,:,kd) = XYZ(:,:,norm_ut(1):norm_ut(2),1)
+                Y_tot(:,:,:,kd) = XYZ(:,:,norm_ut(1):norm_ut(2),2)
+                Z_tot(:,:,:,kd) = XYZ(:,:,norm_ut(1):norm_ut(2),3)
             end do
             allocate(var_names(2))
             
@@ -748,6 +790,10 @@ contains
                 &E_kin_int)
             CHCKERR('')
             
+            ! point to the trimmed versions
+            E_pot_trim => E_pot(:,:,norm_ut(1):norm_ut(2),:)
+            E_kin_trim => E_kin(:,:,norm_ut(1):norm_ut(2),:)
+            
             ! user output
             call writo('Plot kinetic energy constituents')
             call lvl_ud(1)
@@ -755,14 +801,18 @@ contains
             ! E_kin
             file_name = trim(i2str(X_id))//'_E_kin'
             description = 'Kinetic energy constituents'
+            X_tot_trim => X_tot(:,:,:,1:2)
+            Y_tot_trim => Y_tot(:,:,:,1:2)
+            Z_tot_trim => Z_tot(:,:,:,1:2)
             call plot_HDF5(var_names_kin,trim(file_name)//'_RE',&
-                &realpart(E_kin),tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
-                &X=X_tot(:,:,:,1:2),Y=Y_tot(:,:,:,1:2),Z=Z_tot(:,:,:,1:2),&
-                &description=description)
+                &realpart(E_kin_trim),tot_dim=[tot_dim,2],&
+                &grp_offset=[grp_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
+                &Z=Z_tot_trim,description=description)
             call plot_HDF5(var_names_kin,trim(file_name)//'_IM',&
-                &imagpart(E_kin),tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
-                &X=X_tot(:,:,:,1:2),Y=Y_tot(:,:,:,1:2),Z=Z_tot(:,:,:,1:2),&
-                &description=description)
+                &imagpart(E_kin_trim),tot_dim=[tot_dim,2],&
+                &grp_offset=[grp_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
+                &Z=Z_tot_trim,description=description)
+            nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
             
             call lvl_ud(-1)
             
@@ -773,14 +823,18 @@ contains
             ! E_pot
             file_name = trim(i2str(X_id))//'_E_pot'
             description = 'Potential energy constituents'
+            X_tot_trim => X_tot(:,:,:,1:6)
+            Y_tot_trim => Y_tot(:,:,:,1:6)
+            Z_tot_trim => Z_tot(:,:,:,1:6)
             call plot_HDF5(var_names_pot,trim(file_name)//'_RE',&
-                &realpart(E_pot),tot_dim=[tot_dim,6],grp_offset=[grp_offset,0],&
-                &X=X_tot(:,:,:,1:6),Y=Y_tot(:,:,:,1:6),Z=Z_tot(:,:,:,1:6),&
-                &description=description)
+                &realpart(E_pot_trim),tot_dim=[tot_dim,6],&
+                &grp_offset=[grp_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
+                &Z=Z_tot_trim,description=description)
             call plot_HDF5(var_names_pot,trim(file_name)//'_IM',&
-                &imagpart(E_pot),tot_dim=[tot_dim,6],grp_offset=[grp_offset,0],&
-                &X=X_tot(:,:,:,1:6),Y=Y_tot(:,:,:,1:6),Z=Z_tot(:,:,:,1:6),&
-                &description=description)
+                &imagpart(E_pot_trim),tot_dim=[tot_dim,6],&
+                &grp_offset=[grp_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
+                &Z=Z_tot_trim,description=description)
+            nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
             
             call lvl_ud(-1)
             
@@ -793,18 +847,17 @@ contains
             var_names(2) = '2. destabilizing term'
             file_name = trim(i2str(X_id))//'_E_stab'
             description = '(de)stabilizing energy'
+            X_tot_trim => X_tot(:,:,:,1:2)
+            Y_tot_trim => Y_tot(:,:,:,1:2)
+            Z_tot_trim => Z_tot(:,:,:,1:2)
             call plot_HDF5(var_names,trim(file_name)//'_RE',realpart(reshape(&
-                &[E_pot(:,:,:,1)+E_pot(:,:,:,2),E_pot(:,:,:,3)+E_pot(:,:,:,4)+&
-                &E_pot(:,:,:,5)+E_pot(:,:,:,6)],[grp_dim,2])),&
-                &tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
-                &X=X_tot(:,:,:,1:2),Y=Y_tot(:,:,:,1:2),Z=Z_tot(:,:,:,1:2),&
-                &description=description)
+                &[sum(E_pot_trim(:,:,:,1:2),4),sum(E_pot_trim(:,:,:,3:6),4)],&
+                &[grp_dim,2])),tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
+                &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,description=description)
             call plot_HDF5(var_names,trim(file_name)//'_IM',imagpart(reshape(&
-                &[E_pot(:,:,:,1)+E_pot(:,:,:,2),E_pot(:,:,:,3)+E_pot(:,:,:,4)+&
-                &E_pot(:,:,:,5)+E_pot(:,:,:,6)],[grp_dim,2])),&
-                &tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
-                &X=X_tot(:,:,:,1:2),Y=Y_tot(:,:,:,1:2),Z=Z_tot(:,:,:,1:2),&
-                &description=description)
+                &[sum(E_pot_trim(:,:,:,1:2),4),sum(E_pot_trim(:,:,:,3:6),4)],&
+                &[grp_dim,2])),tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
+                &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,description=description)
             
             call lvl_ud(-1)
             
@@ -818,30 +871,33 @@ contains
             file_name = trim(i2str(X_id))//'_E'
             description = 'total potential and kinetic energy'
             call plot_HDF5(var_names,trim(file_name)//'_RE',realpart(reshape(&
-                &[sum(E_pot,4),sum(E_kin,4)],[grp_dim,2])),tot_dim=[tot_dim,2],&
-                &grp_offset=[grp_offset,0],X=X_tot(:,:,:,1:2),&
-                &Y=Y_tot(:,:,:,1:2),Z=Z_tot(:,:,:,1:2),description=description)
+                &[sum(E_pot_trim,4),sum(E_kin_trim,4)],[grp_dim,2])),&
+                &tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],X=X_tot_trim,&
+                &Y=Y_tot_trim,Z=Z_tot_trim,description=description)
             call plot_HDF5(var_names,trim(file_name)//'_IM',imagpart(reshape(&
-                &[sum(E_pot,4),sum(E_kin,4)],[grp_dim,2])),tot_dim=[tot_dim,2],&
-                &grp_offset=[grp_offset,0],X=X_tot(:,:,:,1:2),&
-                &Y=Y_tot(:,:,:,1:2),Z=Z_tot(:,:,:,1:2),description=description)
+                &[sum(E_pot_trim,4),sum(E_kin_trim,4)],[grp_dim,2])),&
+                &tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],X=X_tot_trim,&
+                &Y=Y_tot_trim,Z=Z_tot_trim,description=description)
             
             call lvl_ud(-1)
             
             ! deallocate variables
             deallocate(var_names)
             deallocate(X_tot,Y_tot,Z_tot)
+            nullify(E_kin_trim,E_pot_trim)
+            nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
         end if
     contains
         ! calculate the energy terms
         integer function calc_E(PB3D,B_aligned,X_id,E_pot,E_kin,E_pot_int,&
             &E_kin_int) result(ierr)
-            use num_vars, only: use_pol_flux_F
+            use num_vars, only: use_pol_flux_F, grp_rank, glb_n_procs, &
+                &ghost_width_POST
             use PB3D_vars, only: PB3D_type
             use eq_vars, only: vac_perm
             use utilities, only: c, con2dis
-            use grid_ops, only: calc_int_vol
-            use MPI_utilities, only: get_ser_var
+            use grid_ops, only: calc_int_vol, trim_grid
+            use MPI_utilities, only: get_ser_var, wait_MPI, get_ghost_arr
             
             character(*), parameter :: rout_name = 'calc_E'
             
@@ -858,6 +914,9 @@ contains
             integer :: kd                                                       ! counter
             integer :: i_lo, i_hi                                               ! upper and lower index for interpolation of eq grid to X grid
             integer :: grp_dim(3)                                               ! group dimension
+            integer :: grp_dim_1(3)                                             ! group dimension with ghost region of width 1
+            integer :: norm_ut(2)                                               ! untrimmed normal indices for trimmed grids
+            type(grid_type) :: grid_X_trim                                      ! trimmed X grid
             real(dp) :: grp_r_eq                                                ! grp_r_F of X grid interpolated in eq grid
             real(dp), allocatable :: h22(:,:,:), g33(:,:,:), J(:,:,:)           ! interpolated h_FD(2,2), g_FD(3,3) and J_FD
             real(dp), allocatable :: kappa_n(:,:,:), kappa_g(:,:,:)             ! interpolated kappa_n and kappa_g
@@ -868,7 +927,7 @@ contains
             complex(dp), allocatable :: E_int_tot(:)                            ! integrated potential or kinetic energy of all processes
             
             ! set grp_dim
-            grp_dim = [PB3D%grid_eq%n(1),PB3D%grid_eq%n(2),PB3D%grid_X%grp_n_r]
+            grp_dim = [PB3D%grid_eq%n(1:2),PB3D%grid_X%grp_n_r]                 ! includes ghost regions of width ghost_width_POST
             
             ! allocate local variables
             allocate(h22(grp_dim(1),grp_dim(2),grp_dim(3)))
@@ -889,7 +948,7 @@ contains
             allocate(E_kin_int(2))
             
             ! iterate over all normal points in X grid and interpolate
-            do kd = 1,PB3D%grid_X%grp_n_r
+            do kd = 1,grp_dim(3)
                 ierr = con2dis(PB3D%grid_X%grp_r_F(kd),grp_r_eq,&
                     &PB3D%grid_eq%grp_r_F)
                 CHCKERR('')
@@ -962,10 +1021,30 @@ contains
             E_pot(:,:,:,5) = -sigma*XUQ(:,:,:,4)*conjg(XUQ(:,:,:,1))
             E_pot(:,:,:,6) = sigma*XUQ(:,:,:,3)*conjg(XUQ(:,:,:,2))
             
-            ! integrate energy
-            ierr = calc_int_vol(ang_1,ang_2,norm,J,E_kin,E_kin_int)
+            ! trim X grid
+            ierr = trim_grid(PB3D%grid_X,grid_X_trim,&
+                &shift_grid=ghost_width_POST)
             CHCKERR('')
-            ierr = calc_int_vol(ang_1,ang_2,norm,J,E_pot,E_pot_int)
+            
+            ! set up norm_ut including ghosted region of width 1
+            norm_ut = [1,grid_X_trim%grp_n_r]
+            if (grp_rank.gt.0) norm_ut = norm_ut + ghost_width_POST             ! everything's shifted by ghost_width_POST if not first process
+            if (grp_rank.lt.glb_n_procs-1) norm_ut(2) = norm_ut(2)+1            ! ghost region of width 1
+            
+            ! set grp_dim ghosted with width 1
+            grp_dim_1 = [PB3D%grid_eq%n(1:2),grid_X_trim%grp_n_r]               ! trimmed
+            if (grp_rank.lt.glb_n_procs-1) grp_dim_1(3) = grp_dim_1(3)+1        ! ghost region of width 1 added (for integrals)
+            
+            ! integrate energy using ghosted variables
+            ierr = calc_int_vol(ang_1(:,:,norm_ut(1):norm_ut(2)),&
+                &ang_2(:,:,norm_ut(1):norm_ut(2)),norm(norm_ut(1):norm_ut(2)),&
+                &J(:,:,norm_ut(1):norm_ut(2)),&
+                &E_kin(:,:,norm_ut(1):norm_ut(2),:),E_kin_int)
+            CHCKERR('')
+            ierr = calc_int_vol(ang_1(:,:,norm_ut(1):norm_ut(2)),&
+                &ang_2(:,:,norm_ut(1):norm_ut(2)),norm(norm_ut(1):norm_ut(2)),&
+                &J(:,:,norm_ut(1):norm_ut(2)),&
+                &E_pot(:,:,norm_ut(1):norm_ut(2),:),E_pot_int)
             CHCKERR('')
             
             ! bundle all processes

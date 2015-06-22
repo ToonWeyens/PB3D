@@ -243,7 +243,7 @@ contains
             call writo(trim(mat_name)//' - '//trim(mat_name)//'^*T =')
             call MatView(mat_t,PETSC_VIEWER_STDOUT_WORLD,ierr)
             
-            ! destroy matrices
+            ! destroy matrices 
             call MatDestroy(mat_t,ierr)
             CHCKERR('Failed to destroy matrix mat_t')
             
@@ -478,7 +478,14 @@ contains
         ierr = fill_mat(X%PV_int_0(:,i_geo,:),X%PV_int_1(:,i_geo,:),&
             &X%PV_int_2(:,i_geo,:),step_size,A)
         CHCKERR('')
-        call writo('matrix A set up')
+        call writo('matrix A set up:')
+        
+        call lvl_ud(1)
+        
+        ierr = disp_mat_inf(A)
+        CHCKERR('')
+        
+        call lvl_ud(-1)
         
         ! duplicate A into B
         ! (the  advantage of  letting communication  and calculation  overlap by
@@ -491,7 +498,14 @@ contains
         ierr = fill_mat(X%KV_int_0(:,i_geo,:),X%KV_int_1(:,i_geo,:),&
             &X%KV_int_2(:,i_geo,:),step_size,B)
         CHCKERR('')
-        call writo('matrix B set up')
+        call writo('matrix B set up:')
+        
+        call lvl_ud(1)
+        
+        ierr = disp_mat_inf(B)
+        CHCKERR('')
+        
+        call lvl_ud(-1)
         
         call lvl_ud(-1)
     contains
@@ -781,6 +795,31 @@ contains
             deallocate(V_int_0,V_int_1,V_int_2)
             deallocate(loc_block)
         end function fill_mat
+        
+        ! display information about matrix
+        integer function disp_mat_inf(mat) result(ierr)
+            character(*), parameter :: rout_name = 'disp_mat_inf'
+            
+            ! input / output
+            Mat, intent(inout) :: mat                                           ! either A or B
+            
+            ! local variables
+            real(dp) :: mat_info(MAT_INFO_SIZE)                                 ! information about matrix
+            
+            ! initialize ierr
+            ierr = 0
+            
+            call MatGetInfo(mat,MAT_GLOBAL_SUM,mat_info,ierr)
+            CHCKERR('')
+            call writo('memory usage: '//&
+                &trim(r2strt(mat_info(MAT_INFO_MEMORY)/1000))//' MB')
+            call writo('nonzero''s allocated: '//&
+                &trim(r2strt(mat_info(MAT_INFO_NZ_ALLOCATED))))
+            call writo('nonzero''s used: '//&
+                &trim(r2strt(mat_info(MAT_INFO_NZ_USED))))
+            call writo('nonzero''s unneeded: '//&
+                &trim(r2strt(mat_info(MAT_INFO_NZ_UNNEEDED))))
+        end function disp_mat_inf
     end function setup_mats
     
     ! Sets the  boundary conditions:

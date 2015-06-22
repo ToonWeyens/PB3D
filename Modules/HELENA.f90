@@ -340,7 +340,7 @@ contains
     end function get_ang_interp_data_HEL
     
     ! Adapt  some variables  resulting from  HELENA equilibria  to field-aligned
-    ! grid:
+    ! grid (angularly):
     !   - equilibrium variables of interest are flux variables
     !   - metric variables: jac_FD, g_FD, h_FD
     !   - perturbation variables: U_i, DU_i, PV_i, KV_i

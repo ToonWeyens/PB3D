@@ -108,3 +108,8 @@ CHANGELOG
       - Introduced parameter GP_max_size, above which GNUPlot is not used.
       - Changed plot_jq to plot_resonance. It also outputs the resonating flux surfaces in 2D HDF5.
       - Harmonic plot now also plots the resonatic flux surfaces in 2D.
+
+0.81: - Fixed inconsistencies in plot_X_vec and decompose_energy: the numerical derivatives need two-sided ghost region.
+      - Introduced symmetric ghost regions in PB3D_POST with width ghost_width_POST, as this is needed for the numerical derivatives of X.
+      - Accompanying this, trim_grid is extended with shift_grid.
+      - Fixed bug in calc_XYZ_real where flux_p_H was not divided by 2 pi.

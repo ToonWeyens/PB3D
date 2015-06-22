@@ -124,7 +124,7 @@ contains
         allocate(Z_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
         allocate(L_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
         allocate(L_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-        !if (lasym) then                                                        ! following only needed in assymetric situations
+        !if (lasym) then                                                         ! following only needed in assymetric situations
             allocate(R_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
             allocate(Z_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
             allocate(L_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
@@ -135,7 +135,7 @@ contains
         R_V_c(:,:,:,0) = repack(rmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
         Z_V_s(:,:,:,0) = repack(zmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
         L_s_H(:,:,:,0) = repack(lmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-        !if (lasym) then                                                        ! following only needed in assymetric situations
+        !if (lasym) then                                                         ! following only needed in assymetric situations
             R_V_s(:,:,:,0) = repack(rmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
             Z_V_c(:,:,:,0) = repack(zmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
             L_c_H(:,:,:,0) = repack(lmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
