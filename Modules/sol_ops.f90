@@ -564,18 +564,17 @@ contains
                 file_name = trim(i2str(X_id))//'_EV_midplane'
                 plot_title = 'EV - midplane'
                 
-                ! plot using GNUPlot if not too big
+                ! print amplitude of harmonics of eigenvector at midplane
+                call print_GP_2D(trim(i2str(X_id))//' - '//&
+                    &trim(plot_title),trim(file_name)//'.dat',&
+                    &realpart(transpose(X_vec_ser)),x=x_plot,draw=.false.)
+                
+                ! plot in file
+                call draw_GP(trim(i2str(X_id))//' - '//trim(plot_title),&
+                    &trim(file_name)//'.dat',X%n_mod,1,.false.)
+                
+                ! plot in file using decoupled 3D in GNUPlot if not too big
                 if (X%n_mod*grid_X%n(3).le.GP_max_size) then
-                    ! print amplitude of harmonics of eigenvector at midplane
-                    call print_GP_2D(trim(i2str(X_id))//' - '//&
-                        &trim(plot_title),trim(file_name)//'.dat',&
-                        &realpart(transpose(X_vec_ser)),x=x_plot,draw=.false.)
-                    
-                    ! plot in file
-                    call draw_GP(trim(i2str(X_id))//' - '//trim(plot_title),&
-                        &trim(file_name)//'.dat',X%n_mod,1,.false.)
-                    
-                    ! plot in file using decoupled 3D
                     call draw_GP(trim(i2str(X_id))//' - '//trim(plot_title)//&
                         &' - 3D',trim(file_name)//'.dat',X%n_mod,3,.false.)
                 end if

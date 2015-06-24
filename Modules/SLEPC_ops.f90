@@ -547,7 +547,7 @@ contains
             PetscScalar, allocatable :: V_int_2(:)                              ! interpolated V_2 at different normal positions
             PetscInt :: id, jd, kd                                              ! counters
             PetscInt :: k, m                                                    ! counters
-            PetscInt :: i_max                                                   ! i_max of trimmed grid excluding last process(es)
+            PetscInt :: i_min, i_max                                            ! absolute limits excluding the BC's
             
             ! for tests
             PetscInt :: r_X_start, r_X_end                                      ! start block and end block
@@ -586,8 +586,9 @@ contains
                 CHCKERR(err_msg)
             end if
             
-            ! set up i_max
-            i_max = min(grid_X%i_max,grid_X%n(3)-norm_disc_ord)                 ! last norm_disc_ord rows write BC's
+            ! set up i_min and i_max
+            i_min = max(grid_X%i_min,1+norm_disc_ord)                           ! first norm_disc_ord rows write left BC's
+            i_max = min(grid_X%i_max,grid_X%n(3)-norm_disc_ord)                 ! last norm_disc_ord rows write right BC's
             
             ! allocate interpolated V_int_i and local block
             allocate(V_int_0(nn_mod_2))
@@ -596,7 +597,7 @@ contains
             allocate(loc_block(X%n_mod,X%n_mod))
             
             ! iterate over all rows of this rank
-            do kd = grid_X%i_min-1,i_max-1                                      ! (indices start with 0 here)
+            do kd = i_min-1,i_max-1                                             ! (indices start with 0 here)
                 ! get interpolated terms in V_int_i
                 call interp_V(V_0,grp_r_eq(kd+2-grid_X%i_min),V_int_0)
                 call interp_V(V_1,grp_r_eq(kd+2-grid_X%i_min),V_int_1)
@@ -649,8 +650,8 @@ contains
                 end do
                 
                 ! add block to kd + (-p..p,-p..p)
-                    do id = -norm_disc_ord,norm_disc_ord
                 do jd = -norm_disc_ord,norm_disc_ord
+                    do id = -norm_disc_ord,norm_disc_ord
                         ierr = insert_block_mat(-loc_block*&
                             &norm_disc_coeff(id+norm_disc_ord+1)*&
                             &norm_disc_coeff(jd+norm_disc_ord+1),mat,&
@@ -707,7 +708,7 @@ contains
     ! At the plasma surface, the surface energy is minimized as in [ADD REF].
     integer function set_BC(grid_X,X,A,B,grp_r_eq,i_geo,norm_disc_coeff) &
         &result(ierr)
-        use num_vars, only: norm_disc_ord
+        use num_vars, only: norm_disc_ord, BC_style
         use MPI_utilities, only: get_ser_var
         use utilities, only: con, c
         use grid_ops, only: trim_grid
@@ -721,6 +722,7 @@ contains
         PetscReal, intent(in) :: grp_r_eq(:)                                    ! unrounded index in tables V_int
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
         PetscReal, intent(in) :: norm_disc_coeff(:)                             ! discretization coefficients for normal derivatives
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! local variables
         type(grid_type) :: grid_X_trim                                          ! trimmed perturbation grid
@@ -746,8 +748,20 @@ contains
         ! iterate over all positions where to set left BC
         do kd = 1,norm_disc_ord
             if (grid_X_trim%i_min.le.kd .and. grid_X_trim%i_max.ge.kd) then     ! decide which process does the setting
-                ierr = set_left_BC(kd-1,A,B)                                    ! indices start at 0
-                CHCKERR('')
+                select case (BC_style(1))
+                    case (1)
+                        ierr = set_BC_1(kd-1,A,B,.false.)                       ! indices start at 0
+                        CHCKERR('')
+                    case (2)
+                        ierr = set_BC_2(kd-1,X,A,B,grp_r_eq(kd-grid_X%i_min+1),&
+                            &i_geo,norm_disc_coeff,.false.)                     ! indices start at 0
+                        CHCKERR('')
+                    case default
+                        err_msg = 'No BC style associated with '//&
+                            &trim(i2str(BC_style(1)))
+                        ierr = 1
+                        CHCKERR(err_msg)
+                end select
             end if
         end do
         
@@ -769,9 +783,20 @@ contains
         ! iterate over all positions where to set right BC
         do kd = grid_X%n(3),grid_X%n(3)-norm_disc_ord+1,-1
             if (grid_X_trim%i_min.le.kd .and. grid_X_trim%i_max.ge.kd) then     ! decide which process does the setting
-                ierr = set_right_BC(kd-1,X,A,B,grp_r_eq(kd-grid_X%i_min+1),&
-                    &i_geo,norm_disc_coeff)                                     ! indices start at 0
-                CHCKERR('')
+                select case (BC_style(2))
+                    case (1)
+                        ierr = set_BC_1(kd-1,A,B,.true.)                        ! indices start at 0
+                        CHCKERR('')
+                    case (2)
+                        ierr = set_BC_2(kd-1,X,A,B,grp_r_eq(kd-grid_X%i_min+1),&
+                            &i_geo,norm_disc_coeff,.true.)                      ! indices start at 0
+                        CHCKERR('')
+                    case default
+                        err_msg = 'No BC style associated with '//&
+                            &trim(i2str(BC_style(1)))
+                        ierr = 1
+                        CHCKERR(err_msg)
+                end select
             end if
         end do
         
@@ -789,25 +814,31 @@ contains
         
         call lvl_ud(-1)
     contains
-        ! set left BC:
-        !   A(ind_1,ind_1) = EV_BC, B(ind_1,ind_1) = 1,
-        !   A(ind_1,ind_2) = 0,     B(ind_1,ind_2) = 0,
-        ! where ind_1 and ind_2 are both a range
-        integer function set_left_BC(ind,A,B) result(ierr)
+        ! set BC style 1:
+        !   A(ind,ind) = EV_BC, B(ind,ind) = 1,
+        !   A(ind+1..ind+p,ind+1..ind+p) = 0, B(ind+1..ind+p,ind+1..ind+p) = 0,
+        ! where ind indicates the row where the BC is centered.
+        integer function set_BC_1(ind,A,B,BC_right) result(ierr)
             use num_vars, only: EV_BC, norm_disc_ord
             
-            character(*), parameter :: rout_name = 'set_left_BC'
+            character(*), parameter :: rout_name = 'set_BC_1'
             
             ! input / output
             integer, intent(in) :: ind                                          ! position at which to set BC
             Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
+            logical :: BC_right                                                 ! if BC is at right (so there are vacuum terms)
             
             ! local variables
             integer :: kd                                                       ! counter
             PetscScalar, allocatable :: loc_block(:,:)                          ! (n_mod,n_mod) block matrix for 1 normal point
+            PetscInt :: pmone                                                   ! plus or minus one
             
             ! initialize ierr
             ierr = 0
+            
+            ! user output
+            call writo('Boundary style at row '//trim(i2str(ind+1))//&
+                &': Eigenvector set to zero',persistent=.true.)
             
             ! initialize local blocks
             allocate(loc_block(X%n_mod,X%n_mod))
@@ -815,6 +846,13 @@ contains
             do kd = 1,X%n_mod
                 loc_block(kd,kd) = 1.0_dp
             end do
+            
+            ! set up plus minus one
+            if (BC_right) then
+                pmone = 1
+            else
+                pmone = -1
+            end if
             
             ! set block (ind,ind) and Hermitian conjugate
             ierr = insert_block_mat(EV_BC*loc_block,A,[ind,ind],&
@@ -825,20 +863,21 @@ contains
             
             ! iterate over range 2
             do kd = 1,2*norm_disc_ord
-                ! set block (ind,ind+kd) and Hermitian conjugate
-                ierr = insert_block_mat(0*loc_block,A,[ind,ind+kd],&
+                ! set block (ind,ind+/-kd) and Hermitian conjugate
+                ierr = insert_block_mat(0*loc_block,A,[ind,ind-pmone*kd],&
                     &overwrite=.true.,transp=.true.)
                 CHCKERR('')
-                ierr = insert_block_mat(0*loc_block,B,[ind,ind+kd],&
+                ierr = insert_block_mat(0*loc_block,B,[ind,ind-pmone*kd],&
                     &overwrite=.true.,transp=.true.)
                 CHCKERR('')
             end do
-        end function set_left_BC
+        end function set_BC_1
         
-        ! set right BC according to [ADD REF]
-        integer function set_right_BC(ind,X,A,B,grp_r_eq,i_geo,&
-            &norm_disc_coeff) result(ierr)
-            character(*), parameter :: rout_name = 'set_right_BC'
+        ! set BC style 2:
+        !   minimization of surface energy term (see [ADD REF])
+        integer function set_BC_2(ind,X,A,B,grp_r_eq,i_geo,norm_disc_coeff,&
+            &BC_right) result(ierr)
+            character(*), parameter :: rout_name = 'set_BC_2'
             
             ! input / output
             integer, intent(in) :: ind                                          ! position at which to set BC
@@ -847,6 +886,7 @@ contains
             PetscReal, intent(in) :: grp_r_eq                                   ! unrounded index in tables V_int
             integer, intent(in) :: i_geo                                        ! at which geodesic index to perform the calculations
             PetscReal, intent(in) :: norm_disc_coeff(:)                         ! discretization coefficients for normal derivatives
+            logical :: BC_right                                                 ! if BC is at right (so there are vacuum terms)
             
             ! local variables
             PetscInt :: jd                                                      ! counter
@@ -861,6 +901,10 @@ contains
             
             ! initialize ierr
             ierr = 0
+            
+            ! user output
+            call writo('Boundary style at row '//trim(i2str(ind+1))//&
+                &': Minimization of surface energy',persistent=.true.)
             
             ! set nn_mod_1 and nn_mod_2
             nn_mod_1 = X%n_mod**2
@@ -904,13 +948,15 @@ contains
             ! BLOCKS ~ vac !
             ! -------------!
             ! add block to ind + (0,-p..0) + Hermitian conjugate
-            do jd = -norm_disc_ord,-1
-                ierr = insert_block_mat(-X%vac_res*&
-                    &norm_disc_coeff(jd+norm_disc_ord+1),A,&
-                    &[ind,ind+jd],transp=.true.)
-                CHCKERR('')
-            end do
-        end function set_right_BC
+            if (BC_right) then
+                do jd = -norm_disc_ord,-1
+                    ierr = insert_block_mat(-X%vac_res*&
+                        &norm_disc_coeff(jd+norm_disc_ord+1),A,&
+                        &[ind,ind+jd],transp=.true.)
+                    CHCKERR('')
+                end do
+            end if
+        end function set_BC_2
         
         ! calculates V_0 + (V_1+delta) V_2^-1 (V_1+delta)^*T
         integer function calc_V_0_mod(PV_0,KV_0,PV_1,KV_1,PV_2,KV_2,V_0_mod) &
@@ -1285,8 +1331,9 @@ contains
     integer function store_results(grid_X,X,solver,max_n_EV) result(ierr)
         use eq_vars, only: T_0
         use num_vars, only: use_normalization, EV_BC, output_name, &
-            &alpha_job_nr, rich_lvl_nr, n_alpha, max_it_r
+            &alpha_job_nr, rich_lvl_nr, n_alpha, max_it_r, grp_n_procs
         use files_utilities, only: nextunit
+        use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'store_results'
         
@@ -1299,12 +1346,14 @@ contains
         ! local variables
         PetscInt :: id, id_tot                                                  ! counters
         Vec :: sol_vec                                                          ! solution EV parallel vector
-        PetscReal :: error                                                      ! error of EPS solver
         PetscInt :: one = 1                                                     ! one
-        PetscReal, parameter :: infinity = 1.E40_dp                             ! beyond this value, modes are not saved
+        PetscInt, allocatable :: X_vec_max_loc(:)                               ! location of X_vec_max of this process
+        PetscReal :: error                                                      ! error of EPS solver
         PetscReal :: tol_complex = 1.E-5_dp                                     ! tolerance for an EV to be considered complex
         PetscReal :: tol_EV_BC = 1.E-3_dp                                       ! tolerance for an EV to be considered due to the BC
+        PetscReal, parameter :: infinity = 1.E40_dp                             ! beyond this value, modes are not saved
         PetscScalar :: X_val_loc                                                ! local X val
+        PetscScalar, allocatable :: X_vec_max(:)                                ! max of X_vec of all processes, including phase at max
         character(len=max_str_ln) :: full_output_name                           ! full name
         character(len=max_str_ln) :: format_val                                 ! format
         character(len=max_str_ln) :: format_head                                ! header
@@ -1447,11 +1496,21 @@ contains
             id_tot = id_tot+1
         end do
         
-        ! rectify Eigenvectors to make output more easily comparable
+        ! normalize Eigenvectors to make output more easily comparable
+        allocate(X_vec_max(grp_n_procs))
+        allocate(X_vec_max_loc(2))
         do id = 1,size(X%vec,3)
-            if (sum(realpart(X%vec(:,:,id))).lt.0) X%vec(:,:,id) = &
-                &-X%vec(:,:,id)
+            ! find local maximum
+            X_vec_max_loc = maxloc(abs(X%vec(:,:,id)))
+            ierr = get_ser_var([X%vec(X_vec_max_loc(1),X_vec_max_loc(2),id)],&
+                &X_vec_max,scatter=.true.)
+            CHCKERR('')
+            ! find global maximum
+            X_vec_max_loc(1) = maxloc(abs(X_vec_max),1)
+            X%vec(:,:,id) = X%vec(:,:,id) / X_vec_max(X_vec_max_loc(1))
         end do
+        deallocate(X_vec_max_loc)
+        deallocate(X_vec_max)
         
         ! user output
         call writo(trim(i2str(max_n_EV))//' Eigenvalues were written in the &
@@ -1597,6 +1656,9 @@ contains
     integer function insert_block_mat(block,mat,ind,transp,overwrite) &
         &result(ierr)
         use MPI_utilities, only: wait_MPI
+#if ldebug
+        use num_vars, only: grp_rank
+#endif
         
         character(*), parameter :: rout_name = 'insert_block_mat'
         
@@ -1627,48 +1689,45 @@ contains
         ! set error message
         err_msg = 'Couldn''t add values to matrix'
         
-        ! only set values if indices positive
-        if (ind(1).ge.0 .and. ind(2).ge.0) then
-            ! set up local k and m
-            allocate(loc_k(size(block,1)))
-            allocate(loc_m(size(block,2)))
-            loc_k = [(kd, kd = 0,size(block,1)-1)] + ind(1)*size(block,1)
-            loc_m = [(kd, kd = 0,size(block,2)-1)] + ind(2)*size(block,2)
-            
-            ! set operation
-            if (overwrite_loc) then
-                operation = INSERT_VALUES
-            else
-                operation = ADD_VALUES
-            end if
+        ! set up local k and m
+        allocate(loc_k(size(block,1)))
+        allocate(loc_m(size(block,2)))
+        loc_k = [(kd, kd = 0,size(block,1)-1)] + ind(1)*size(block,1)
+        loc_m = [(kd, kd = 0,size(block,2)-1)] + ind(2)*size(block,2)
+        
+        ! set operation
+        if (overwrite_loc) then
+            operation = INSERT_VALUES
+        else
+            operation = ADD_VALUES
+        end if
 
 #if ldebug
-            if (debug_insert_block_mat) then
-                call writo('at (k,m) = ')
-                write(*,*) loc_k
-                write(*,*) loc_m
-                call writo('following local block is going to be added: ')
-                write(*,*) 'Re ='
-                call print_ar_2(realpart(block))
-                write(*,*) 'Im ='
-                call print_ar_2(imagpart(block))
-                read(*,*)
-                ierr = wait_MPI()
-                CHCKERR('')
-            endif
+        if (debug_insert_block_mat) then
+            call writo('at (k,m) = ')
+            write(*,*) loc_k
+            write(*,*) loc_m
+            call writo('following local block is going to be added: ')
+            write(*,*) 'Re ='
+            call print_ar_2(realpart(block))
+            write(*,*) 'Im ='
+            call print_ar_2(imagpart(block))
+            if (grp_rank.eq.0) read(*,*)
+            ierr = wait_MPI()
+            CHCKERR('')
+        endif
 #endif
-            
-            ! set values
-            call MatSetValues(mat,size(block,1),loc_k,size(block,2),loc_m,&
-                &block,operation,ierr)
+        
+        ! set values
+        call MatSetValues(mat,size(block,1),loc_k,size(block,2),loc_m,&
+            &block,operation,ierr)
+        CHCKERR(err_msg)
+        
+        ! set transpose if wanted
+        if (transp_loc) then
+            call MatSetValues(mat,size(block,2),loc_m,size(block,1),loc_k,&
+                &conjg(transpose(block)),operation,ierr)
             CHCKERR(err_msg)
-            
-            ! set transpose if wanted
-            if (transp_loc) then
-                call MatSetValues(mat,size(block,2),loc_m,size(block,1),loc_k,&
-                    &conjg(transpose(block)),operation,ierr)
-                CHCKERR(err_msg)
-            end if
         end if
     end function insert_block_mat
 end module

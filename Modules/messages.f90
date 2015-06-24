@@ -287,9 +287,11 @@ contains
                         temp_output(size(temp_output_loc)+1) = output_str
                     end if
                 else                                                            ! normal output to file output_i
-                    if (lvl.eq.1) write(output_i,*) header_str                  ! first level gets extra lines
-                    write(output_i,*) output_str
-                    if (lvl.eq.1) write(output_i,*) header_str
+                    if (output_i.ne.0) then
+                        if (lvl.eq.1) write(output_i,*) header_str              ! first level gets extra lines
+                        write(output_i,*) output_str
+                        if (lvl.eq.1) write(output_i,*) header_str
+                    end if
                 end if
                 
                 ! also write output to screen

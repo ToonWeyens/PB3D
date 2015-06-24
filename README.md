@@ -118,3 +118,6 @@ CHANGELOG
       - Fixed errors in calculating d_nz and o_nz.
       - Changed norm_disc_style to norm_disc_ord, only referring to the order.
       - Made fill_mat and set_BC generic for any order. The latter now employs set_left_BC and set_right_BC.
+
+0.83: - BC_style chooses which style for left and right boundary.
+      - Eigenvectors are now normalized with respect to their maximum modulus.
