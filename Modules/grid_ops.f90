@@ -580,7 +580,6 @@ contains
     integer function coord_F2E_r(grid_eq,eq,r_F,r_E,r_F_array,r_E_array) &
         &result(ierr)                                                           ! version with only r
         use utilities, only: interp_fun
-        use num_vars, only: grp_rank
         
         character(*), parameter :: rout_name = 'coord_F2E_r'
         

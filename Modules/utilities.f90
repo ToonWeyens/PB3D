@@ -13,9 +13,10 @@ module utilities
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun, calc_mult, &
         &init_utilities, derivs, con2dis, dis2con, round_with_tol, conv_sym, &
-        &is_sym, calc_spline_3, con
+        &is_sym, calc_spline_3, con, calc_coeff_fin_diff
 #if ldebug
-    public debug_interp_fun_0D_real, debug_calc_zero_NR, debug_con2dis_regular
+    public debug_interp_fun_0D_real, debug_calc_zero_NR, &
+        &debug_con2dis_regular, debug_calc_coeff_fin_diff
 #endif
     
     ! the possible derivatives of order i
@@ -70,6 +71,7 @@ module utilities
     logical :: debug_interp_fun_0D_real = .false.                               ! plot debug information for interp_fun_0D_real
     logical :: debug_calc_zero_NR = .false.                                     ! plot debug information for calc_zero_NR
     logical :: debug_con2dis_regular = .false.                                  ! plot debug information for con2dis_regular
+    logical :: debug_calc_coeff_fin_diff = .false.                              ! plot debug information for calc_coeff_fin_diff
 #endif
     
 contains
@@ -1945,6 +1947,7 @@ contains
         integer :: id                                                           ! counter
         real(dp) :: pt_c_loc                                                    ! local pt_c
         character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), parameter :: tol = 1.E-8_dp                                   ! tolerance for comparisons
         
         ! initialize ierr
         ierr = 0
@@ -1979,7 +1982,7 @@ contains
         ind_lo = 0
         ind_hi = size_c+1
         do id = 1,size_c
-            if (var_c_loc(id).le.pt_c_loc) then
+            if (var_c_loc(id).le.pt_c_loc*(1+tol)) then
                 ind_lo = id
 #if ldebug 
                 if (debug_con2dis_regular) call writo('for iteration '//&
@@ -1987,7 +1990,7 @@ contains
                     &trim(i2str(ind_lo)))
 #endif
             end if
-            if (var_c_inv(id).ge.pt_c_loc) then
+            if (var_c_inv(id).ge.pt_c_loc*(1-tol)) then
                 ind_hi = size_c+1-id
 #if ldebug 
                 if (debug_con2dis_regular) call writo('for iteration '//&
@@ -2351,6 +2354,100 @@ contains
         ! copy to y_out
         y_out = y_out_loc(1,1)
     end function interp_fun_0D_complex
+    
+    ! Calculate the  coefficients for central finite  differences representing a
+    ! derivative of degree deriv and order  ord, referring to (half) the stencil
+    ! width.
+    ! As stated in [ADD REF], these are found by solving the matrix equation
+    !   sum_(j=1)^(2ord+1) (j+1-ord)^(i-1)/(i-1)! coeff(j) = 2 for i = deriv ,
+    !                                                        0 else .
+    ! with i = 1..2ord+1.
+    ! The result  returned in coeff(j-1-ord), j=1..2ord+1 are used in
+    !   df/dx = sum_(j=-ord)^ord coeff(j-1-ord) f(j) .
+    integer function calc_coeff_fin_diff(deriv,ord,coeff) result(ierr)
+        character(*), parameter :: rout_name = 'calc_coeff_fin_diff'
+        
+        ! input / output
+        integer, intent(in) :: deriv                                            ! degree of derivative
+        integer, intent(in) :: ord                                              ! order
+        real(dp), intent(inout), allocatable :: coeff(:)                        ! output coefficients
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), allocatable :: A(:,:)                                         ! matrix of problem
+        real(dp), allocatable :: b(:)                                           ! rhs of problem
+        integer, allocatable :: ipiv(:)                                         ! pivot indices
+        integer :: id, jd                                                       ! counter
+        integer :: fac                                                          ! (i-1)!
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! test whether order and degree of derivative positive
+        if (deriv.le.0) then
+            ierr = 1
+            err_msg = 'The degree of the derivative has to be positive'
+            CHCKERR(err_msg)
+        end if
+        if (ord.le.0) then
+            ierr = 1
+            err_msg = 'The order of the finite differences has to be positive'
+            CHCKERR(err_msg)
+        end if
+        ! test whether order high enough for degree of derivative
+        if (deriv.gt.2*ord+1) then
+            ierr = 1
+            err_msg = 'For derivatives of degree '//trim(i2str(deriv))//&
+                &' a minimal order of '//trim(i2str(ceiling((deriv-1.)/2)))&
+                &//' is necsesary'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set up output
+        if (allocated(coeff)) deallocate(coeff)
+        allocate(coeff(1:2*ord+1))
+        
+        ! set up matrix
+        allocate(A(1:2*ord+1,1:2*ord+1))
+        A = 0._dp
+        do jd = 1,2*ord+1
+            fac = 1
+            do id = 1,size(A,1)
+                A(id,jd) = (jd-1._dp-ord)**(id-1._dp)/fac
+                fac = fac*id
+            end do
+        end do
+        
+        ! set up rhs
+        allocate(b(1:2*ord+1))
+        b = 0._dp
+        b(1+deriv) = 1._dp
+        
+#if ldebug
+        if (debug_calc_coeff_fin_diff) then
+            write(*,*) 'solving system of linear equations A x = b'
+            write(*,*) 'with A = '
+            call print_ar_2(A)
+            write(*,*) 'and b = '
+            call print_ar_1(b)
+        end if
+#endif
+        
+        ! solve system
+        allocate(ipiv(1:2*ord+1))
+        call dgesv(size(b),1,A,size(b),ipiv,b,size(b),ierr)
+        CHCKERR('Could not find solution')
+        
+        ! set solution
+        coeff = b
+        
+#if ldebug
+        if (debug_calc_coeff_fin_diff) then
+            write(*,*) 'solution x = '
+            call print_ar_1(coeff)
+        end if
+#endif
+    end function calc_coeff_fin_diff
     
     ! convert 2D  coordinates (i,j) to  the storage convention used  in (square)
     ! metric matrices:

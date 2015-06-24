@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.81                                                              !
+!   Version: 0.82                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !

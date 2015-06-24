@@ -29,7 +29,7 @@ module SLEPC_ops
     logical :: debug_setup_mats = .false.                                       ! plot debug information for setup_mats
     logical :: debug_set_BC = .false.                                           ! plot debug information for set_BC
     logical :: debug_insert_block_mat = .false.                                 ! plot debug information for insert_block_mat
-    logical :: debug_calc_V_0_tot = .false.                                     ! plot debug information for calc_V_0_tot
+    logical :: debug_calc_V_0_mod = .false.                                     ! plot debug information for calc_V_0_mod
 #endif
     
 contains
@@ -42,11 +42,12 @@ contains
     ! the variable i_geo.
     integer function solve_EV_system_SLEPC(grid_eq,grid_X,X,use_guess,&
         &max_n_EV,i_geo) result(ierr)
-        use num_vars, only: max_it_inv, use_pol_flux_F
+        use num_vars, only: max_it_inv, use_pol_flux_F, norm_disc_ord
         use grid_ops, only: get_norm_interp_data, trim_grid
         use grid_vars, only: dealloc_grid
         use eq_vars, only: max_flux_p_F, max_flux_t_F
         use X_vars, only: min_r_X, max_r_X
+        use utilities, only: calc_coeff_fin_diff
         
         character(*), parameter :: rout_name = 'solve_EV_system_SLEPC'
         
@@ -66,10 +67,11 @@ contains
         PetscInt, save :: guess_start_id = -10                                  ! start of index of previous vector, saved for next iteration
         PetscInt, save :: prev_n_EV                                             ! nr. of solutions of previous vector
         PetscInt :: inv_lvl_nr                                                  ! level of inverse calculation
-        PetscBool :: done_inverse                                               ! is it converged?
+        PetscInt :: i_geo_loc                                                   ! local copy of i_geo
         PetscReal, allocatable :: grp_r_eq(:)                                   ! unrounded index in tables V_int
+        PetscReal, allocatable :: norm_disc_coeff(:)                            ! discretization coefficients
         PetscReal :: step_size                                                  ! step size in flux coordinates
-        integer :: i_geo_loc                                                    ! local copy of i_geo
+        PetscBool :: done_inverse                                               ! is it converged?
         
         ! initialize ierr
         ierr = 0
@@ -96,10 +98,18 @@ contains
             step_size = (max_r_X-min_r_X)/(grid_X%n(3)-1.0) * max_flux_t_F      ! equidistant perturbation grid in perturb. coords.
         end if
         
+        ! get discretization coefficients
+        call writo('get discretization coefficients...')
+        call lvl_ud(1)
+        ierr = calc_coeff_fin_diff(1,norm_disc_ord,norm_disc_coeff)
+        CHCKERR('')
+        norm_disc_coeff = norm_disc_coeff/step_size                             ! scale by step size
+        call lvl_ud(-1)
+        
         ! set up the matrix
         call writo('set up matrices...')
         
-        ierr = setup_mats(grid_X_trim,X,step_size,A,B,grp_r_eq,i_geo_loc)
+        ierr = setup_mats(grid_X_trim,X,A,B,grp_r_eq,i_geo_loc,norm_disc_coeff)
         CHCKERR('')
         
 #if ldebug
@@ -141,7 +151,7 @@ contains
             ! set boundary conditions
             call writo('set up boundary conditions...')
             
-            ierr = set_BC(grid_X_trim,X,step_size,A,B,grp_r_eq,i_geo_loc)
+            ierr = set_BC(grid_X_trim,X,A,B,grp_r_eq,i_geo_loc,norm_disc_coeff)
             CHCKERR('')
             
 #if ldebug
@@ -371,29 +381,28 @@ contains
     ! The  geodesical index  at  which to  perform the  calculations  has to  be
     ! provided as well.
     ! Note: For normal usage, i_geo should be 1, or not present.
-    integer function setup_mats(grid_X,X,step_size,A,B,grp_r_eq,i_geo) &
+    integer function setup_mats(grid_X,X,A,B,grp_r_eq,i_geo,norm_disc_coeff) &
         &result(ierr)
-        use num_vars, only: norm_disc_style
+        use num_vars, only: norm_disc_ord
         
         character(*), parameter :: rout_name = 'setup_mats'
         
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_type), intent(in) :: X                                           ! perturbation variables
-        PetscReal, intent(in) :: step_size                                      ! step size in flux coordinates
         Mat, intent(inout) :: A, B                                              ! matrix A and B
         PetscReal, intent(in) :: grp_r_eq(:)                                    ! unrounded index in tables V_int
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
+        PetscReal, intent(in) :: norm_disc_coeff(:)                             ! discretization coefficients for normal derivatives
         
         ! local variables
         PetscInt :: kd                                                          ! counter
         PetscInt :: n_r                                                         ! n_r of trimmed X grid
         PetscInt :: grp_n_r                                                     ! grp_n_r of trimmed X grid
-        PetscInt :: red_o_nz                                                    ! reduction of o_nz for a point close to the edges
         PetscInt :: st_size                                                     ! half stencil size
+        PetscInt, allocatable :: tot_nz(:)                                      ! nr. of total non-zeros
         PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
         PetscInt, allocatable :: o_nz(:)                                        ! nr. of off-diagonal non-zeros
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -401,82 +410,75 @@ contains
         call lvl_ud(1)
         
         ! user output
-        call writo('Normal discretization style: '//&
-            &trim(i2str(norm_disc_style)))
-        call lvl_ud(1)
-        select case (norm_disc_style)
-            case (1)
-                call writo('Normal derivatives approximated by finite &
-                    &differences of order 1')
-            case (2)
-                call writo('Normal derivatives approximated by finite &
-                    &differences of order 2')
-            case default
-                err_msg = 'No normal discretization style associated with '&
-                    &//trim(i2str(norm_disc_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-        call lvl_ud(-1)
+        call writo('Normal discretization with central finite differences of &
+            &order '//trim(i2str(norm_disc_ord))//', stencil width '//&
+            &trim(i2str(4*norm_disc_ord+1)))
         
         ! set up grp_n_r and n_r
         grp_n_r = grid_X%grp_n_r
         n_r = grid_X%n(3)
         
+        ! set (half) stencil size
+        st_size = 2*norm_disc_ord
+        
         ! create a  matrix A and B  with the appropriate number  of preallocated
         ! entries (excluding ghost regions)
-        ! the numbers of non-zeros in the diagonal and off-diagonal parts
+        ! initialize the numbers of non-zeros in diagonal and off-diagonal
+        allocate(tot_nz(grp_n_r*X%n_mod)); tot_nz = 0
         allocate(d_nz(grp_n_r*X%n_mod)); d_nz = 0
         allocate(o_nz(grp_n_r*X%n_mod)); o_nz = 0
-        ! number of nonzero entries depends on normal discretization style
-        select case (norm_disc_style)
-            case (1)
-                st_size = 2
-            case (2)
-                st_size = 4
-            case default
-                err_msg = 'No normal discretization style associated with '&
-                    &//trim(i2str(norm_disc_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
+        
+        ! calculate number of total nonzero entries
+        tot_nz = 1+2*st_size
+        do kd = 1,st_size
+            if (kd.ge.grid_X%i_min .and. kd.le.grid_X%i_max) &                  ! limit due to left BC
+                &tot_nz((kd-grid_X%i_min)*X%n_mod+1:&
+                &(kd-grid_X%i_min+1)*X%n_mod) = &
+                &tot_nz((kd-grid_X%i_min)*X%n_mod+1:&
+                &(kd-grid_X%i_min+1)*X%n_mod) - &
+                &(st_size+1-kd)
+        end do
+        do kd = n_r,n_r-st_size+1,-1
+            if (kd.ge.grid_X%i_min .and. kd.le.grid_X%i_max) &                  ! limit due to right BC
+                &tot_nz((kd-grid_X%i_min)*X%n_mod+1:&
+                &(kd-grid_X%i_min+1)*X%n_mod) = &
+                &tot_nz((kd-grid_X%i_min)*X%n_mod+1:&
+                &(kd-grid_X%i_min+1)*X%n_mod) - &
+                &(kd-n_r+st_size)
+        end do
+        
         ! calculate number of nonzero diagonal entries
-        if (grp_n_r.le.(2*st_size-1)) then                                      ! up to (2*st_size - 1) normal points in this process
-            d_nz = grp_n_r*X%n_mod
-        else                                                                    ! more than (2*st_size - 1) normal points in this process
+        if (grp_n_r.le.(st_size+1)) then                                        ! up to (st_size+1) normal points in this process
+            d_nz = grp_n_r
+        else                                                                    ! more than (st_size+1) normal points in this process
             do kd = 1,st_size
                 d_nz((kd-1)*X%n_mod+1:kd*X%n_mod) = &
-                    &(st_size+kd)*X%n_mod
+                    &st_size+kd
                 d_nz((grp_n_r-kd)*X%n_mod+1:(grp_n_r-kd+1)*X%n_mod) = &
-                    &(st_size+kd)*X%n_mod
+                    &st_size+kd
             end do
             d_nz(st_size*X%n_mod+1:(grp_n_r-st_size)*X%n_mod) = &
-                &(2*st_size+1)*X%n_mod
+                &2*st_size+1
         end if
+        d_nz = min(d_nz,grp_n_r)                                                ! limit to grp_n_r
+        
         ! calculate number of nonzero off-diagonal entries
-        do kd = 1,grp_n_r
-            if (grid_X%i_min-1+kd.le.n_r/2) then
-                red_o_nz = max(0,st_size+1-(grid_X%i_min-1+kd))                 ! in upper half st_size + 1 - absolute position (or 0)
-            else
-                red_o_nz = max(0,st_size-n_r+(grid_X%i_min-1+kd))               ! in lower half st_size - (max n - absolute position) (or 0)
-            end if
-            o_nz((kd-1)*X%n_mod+1:kd*X%n_mod) = (2*st_size+1)*X%n_mod -&
-                & d_nz((kd-1)*X%n_mod+1:kd*X%n_mod) - red_o_nz*X%n_mod
+        do kd = 1,grp_n_r*X%n_mod
+            o_nz(kd) = tot_nz(kd)-d_nz(kd)
         end do
         
         ! create matrix A
-        call MatCreateAIJ(PETSC_COMM_WORLD,grp_n_r*X%n_mod,&
-            &grp_n_r*X%n_mod,grid_X%n(3)*X%n_mod,&
-            &grid_X%n(3)*X%n_mod,PETSC_NULL_INTEGER,d_nz,PETSC_NULL_INTEGER,&
-            &o_nz,A,ierr)
+        call MatCreateAIJ(PETSC_COMM_WORLD,grp_n_r*X%n_mod,grp_n_r*X%n_mod,&
+            &grid_X%n(3)*X%n_mod,grid_X%n(3)*X%n_mod,PETSC_NULL_INTEGER,&
+            &d_nz*X%n_mod,PETSC_NULL_INTEGER,o_nz*X%n_mod,A,ierr)
         CHCKERR('MatCreateAIJ failed for matrix A')
         
-        ! deallocate d_nz and o_nz
-        deallocate(d_nz,o_nz)
+        ! deallocate tot_nz, d_nz and o_nz
+        deallocate(tot_nz,d_nz,o_nz)
         
         ! fill the matrix A
         ierr = fill_mat(X%PV_int_0(:,i_geo,:),X%PV_int_1(:,i_geo,:),&
-            &X%PV_int_2(:,i_geo,:),step_size,A)
+            &X%PV_int_2(:,i_geo,:),norm_disc_coeff,A)
         CHCKERR('')
         call writo('matrix A set up:')
         
@@ -496,7 +498,7 @@ contains
         
         ! fill the matrix B
         ierr = fill_mat(X%KV_int_0(:,i_geo,:),X%KV_int_1(:,i_geo,:),&
-            &X%KV_int_2(:,i_geo,:),step_size,B)
+            &X%KV_int_2(:,i_geo,:),norm_disc_coeff,B)
         CHCKERR('')
         call writo('matrix B set up:')
         
@@ -509,7 +511,7 @@ contains
         
         call lvl_ud(-1)
     contains
-        ! fills a  matrix according to norm_disc_style [ADD REF]:
+        ! fills a  matrix according to norm_disc_ord [ADD REF]:
         !   1. first order accuracy for all terms
         !   2. higher order accuracy for internal first order derivatives
         ! it is used  for both the matrix  A and B, corresponding  to the plasma
@@ -523,8 +525,8 @@ contains
         !   the  corresponding  perturbation  grid. This  information,  as  well
         !   as  the interpolated  value  of  the previous  point  allow for  the
         !   calculation of every quantity.
-        integer function fill_mat(V_0,V_1,V_2,step_size,mat) result(ierr)
-            use num_vars, only: norm_disc_style
+        integer function fill_mat(V_0,V_1,V_2,norm_disc_coeff,mat) result(ierr)
+            use num_vars, only: norm_disc_ord
             use utilities, only: c, con
             
             character(*), parameter :: rout_name = 'fill_mat'
@@ -533,7 +535,7 @@ contains
             PetscScalar, intent(in) :: V_0(:,:)                                 ! either PV_int_0 or KV_int_0 in equilibrium normal grid
             PetscScalar, intent(in) :: V_1(:,:)                                 ! either PV_int_1 or KV_int_1 in equilibrium normal grid
             PetscScalar, intent(in) :: V_2(:,:)                                 ! either PV_int_2 or KV_int_2 in equilibrium normal grid
-            PetscReal, intent(in) :: step_size                                  ! step size in flux coordinates
+            PetscReal, intent(in) :: norm_disc_coeff(:)                         ! discretization coefficients for normal derivatives
             Mat, intent(inout) :: mat                                           ! either A or B
             
             ! local variables (not to be used in child routines)
@@ -543,7 +545,7 @@ contains
             PetscScalar, allocatable :: V_int_0(:)                              ! interpolated V_0 at different normal positions
             PetscScalar, allocatable :: V_int_1(:)                              ! interpolated V_1 at different normal positions
             PetscScalar, allocatable :: V_int_2(:)                              ! interpolated V_2 at different normal positions
-            PetscInt :: kd                                                      ! counters
+            PetscInt :: id, jd, kd                                              ! counters
             PetscInt :: k, m                                                    ! counters
             PetscInt :: i_max                                                   ! i_max of trimmed grid excluding last process(es)
             
@@ -576,19 +578,16 @@ contains
                 CHCKERR(err_msg)
             end if
             
+            ! test whether numerical coefficients matrix has right size
+            if (size(norm_disc_coeff).ne.2*norm_disc_ord+1) then
+                ierr = 1
+                err_msg = 'Array of discretization coefficients needs to have &
+                    &the correct size 2*norm_disc_ord+1'
+                CHCKERR(err_msg)
+            end if
+            
             ! set up i_max
-            i_max = grid_X%i_max
-            select case (norm_disc_style)
-                case (1)
-                    i_max = min(i_max,grid_X%n(3)-1)                            ! last process writes BC's
-                case (2)
-                    i_max = min(i_max,grid_X%n(3)-2)                            ! last 2 processes write BC's
-                case default
-                    err_msg = 'No normal discretization style associated &
-                        &with '//trim(i2str(norm_disc_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
+            i_max = min(grid_X%i_max,grid_X%n(3)-norm_disc_ord)                 ! last norm_disc_ord rows write BC's
             
             ! allocate interpolated V_int_i and local block
             allocate(V_int_0(nn_mod_2))
@@ -603,183 +602,62 @@ contains
                 call interp_V(V_1,grp_r_eq(kd+2-grid_X%i_min),V_int_1)
                 call interp_V(V_2,grp_r_eq(kd+2-grid_X%i_min),V_int_2)
                 
-                ! fill the blocks, depending on normal discretization style
-                select case (norm_disc_style)
-                    case (1)                                                    ! order 1
-                        ! -------------!
-                        ! BLOCKS ~ V_0 !
-                        ! -------------!
-                        ! fill local block
-                        do m = 1,X%n_mod
-                            do k = 1,X%n_mod
-                                loc_block(k,m) = con(&
-                                    &V_int_0(c([k,m],.true.,X%n_mod)),&
-                                    &[k,m],.true.)                              ! symmetric matrices need con()
-                            end do
-                        end do
-                        
-                        ! add block to (kd,kd)
-                        ierr = insert_block_mat(loc_block,mat,[kd,kd])
+                ! fill the blocks
+                
+                ! -------------!
+                ! BLOCKS ~ V_0 !
+                ! -------------!
+                ! fill local block
+                do m = 1,X%n_mod
+                    do k = 1,X%n_mod
+                        loc_block(k,m) = con(V_int_0(c([k,m],.true.,X%n_mod)),&
+                            &[k,m],.true.)                                      ! symmetric matrices need con()
+                    end do
+                end do
+                
+                ! add block to kd + (0,0)
+                ierr = insert_block_mat(loc_block,mat,[kd,kd])
+                CHCKERR('')
+                
+                ! -------------!
+                ! BLOCKS ~ V_1 !
+                ! -------------!
+                ! fill local block
+                do m = 1,X%n_mod
+                    do k = 1,X%n_mod
+                        loc_block(k,m) = V_int_1(c([k,m],.false.,X%n_mod))      ! asymetric matrices don't need con()
+                    end do
+                end do
+                
+                ! add block to kd + (0,-p..p) + Hermitian conjugate
+                do jd = -norm_disc_ord,norm_disc_ord
+                    ierr = insert_block_mat(loc_block*&
+                        &norm_disc_coeff(jd+norm_disc_ord+1),mat,&
+                        &[kd,kd+jd],transp=.true.)
+                    CHCKERR('')
+                end do
+                
+                ! -------------!
+                ! BLOCKS ~ V_2 !
+                ! -------------!
+                ! fill local block
+                do m = 1,X%n_mod
+                    do k = 1,X%n_mod
+                        loc_block(k,m) = con(V_int_2(c([k,m],.true.,X%n_mod)),&
+                            &[k,m],.true.)                                      ! symmetric matrices need con()
+                    end do
+                end do
+                
+                ! add block to kd + (-p..p,-p..p)
+                    do id = -norm_disc_ord,norm_disc_ord
+                do jd = -norm_disc_ord,norm_disc_ord
+                        ierr = insert_block_mat(-loc_block*&
+                            &norm_disc_coeff(id+norm_disc_ord+1)*&
+                            &norm_disc_coeff(jd+norm_disc_ord+1),mat,&
+                            &[kd+id,kd+jd])
                         CHCKERR('')
-                        
-                        ! -------------!
-                        ! BLOCKS ~ V_1 !
-                        ! -------------!
-                        ! fill local block
-                        do m = 1,X%n_mod
-                            do k = 1,X%n_mod
-                                loc_block(k,m) = 1.0_dp/(2*step_size) * &
-                                    &V_int_1(c([k,m],.false.,X%n_mod))          ! asymetric matrices don't need con()
-                            end do
-                        end do
-                        
-                        ! add block to (kd,kd-1) + Hermitian conjugate
-                        ierr = insert_block_mat(-loc_block,mat,[kd,kd-1],&
-                            &transp=.true.)
-                        CHCKERR('')
-                        
-                        ! add block to (kd,kd+1) + Hermitian conjugate
-                        ierr = insert_block_mat(loc_block,mat,[kd,kd+1],&
-                            &transp=.true.)
-                        CHCKERR('')
-                        
-                        ! -------------!
-                        ! BLOCKS ~ V_2 !
-                        ! -------------!
-                        ! fill local block
-                        do m = 1,X%n_mod
-                            do k = 1,X%n_mod
-                                loc_block(k,m) = (1.0_dp/(2*step_size))**2*&
-                                    &con(&
-                                    &V_int_2(c([k,m],.true.,X%n_mod)),&
-                                    &[k,m],.true.)                              ! symmetric matrices need con()
-                            end do
-                        end do
-                        
-                        ! add block to (kd-1,kd-1)
-                        ierr = insert_block_mat(-loc_block,mat,[kd-1,kd-1])
-                        CHCKERR('')
-                        
-                        ! add block to (kd+1,kd+1)
-                        ierr = insert_block_mat(-loc_block,mat,[kd+1,kd+1])
-                        CHCKERR('')
-                        
-                        ! add block to (kd-1,kd+1) + Hermitian conjugate
-                        ierr = insert_block_mat(loc_block,mat,[kd-1,kd+1],&
-                            &transp=.true.)
-                        CHCKERR('')
-                    case (2)                                                    ! order 2
-                        ! -------------!
-                        ! BLOCKS ~ V_0 !
-                        ! -------------!
-                        ! fill local block
-                        do m = 1,X%n_mod
-                            do k = 1,X%n_mod
-                                loc_block(k,m) = con(&
-                                    &V_int_0(c([k,m],.true.,X%n_mod)),&
-                                    &[k,m],.true.)                              ! symmetric matrices need con()
-                            end do
-                        end do
-                        
-                        ! add block to (kd,kd)
-                        ierr = insert_block_mat(loc_block,mat,[kd,kd])
-                        CHCKERR('')
-                        
-                        ! -------------!
-                        ! BLOCKS ~ V_1 !
-                        ! -------------!
-                        ! fill local block
-                        do m = 1,X%n_mod
-                            do k = 1,X%n_mod
-                                loc_block(k,m) = 1.0_dp/(2*step_size) * &
-                                    &V_int_1(c([k,m],.false.,X%n_mod))          ! asymetric matrices don't need con()
-                            end do
-                        end do
-                        
-                        ! add block to (kd,kd-2) + Hermitian conjugate
-                        ierr = insert_block_mat(loc_block,mat,[kd,kd-2],&
-                            &transp=.true.)
-                        CHCKERR('')
-                        
-                        ! add block to (kd,kd-1) + Hermitian conjugate
-                        ierr = insert_block_mat(-8*loc_block,mat,[kd,kd-1],&
-                            &transp=.true.)
-                        CHCKERR('')
-                        
-                        ! add block to (kd,kd+1) + Hermitian conjugate
-                        ierr = insert_block_mat(8*loc_block,mat,[kd,kd+1],&
-                            &transp=.true.)
-                        CHCKERR('')
-                        
-                        ! add block to (kd,kd+2) + Hermitian conjugate
-                        ierr = insert_block_mat(-loc_block,mat,[kd,kd+2],&
-                            &transp=.true.)
-                        CHCKERR('')
-                        
-                        ! -------------!
-                        ! BLOCKS ~ V_2 !
-                        ! -------------!
-                        ! fill local block
-                        do m = 1,X%n_mod
-                            do k = 1,X%n_mod
-                                loc_block(k,m) = (1.0_dp/(2*step_size))**2*&
-                                    &con(&
-                                    &V_int_2(c([k,m],.true.,X%n_mod)),&
-                                    &[k,m],.true.)                              ! symmetric matrices need con()
-                            end do
-                        end do
-                        
-                        ! add block to (kd-2,kd-2)
-                        ierr = insert_block_mat(-loc_block,mat,[kd-2,kd-2])
-                        CHCKERR('')
-                        
-                        ! add block to (kd-2,kd-1) + Hermitian conjugate
-                        ierr = insert_block_mat(8*loc_block,mat,[kd-2,kd-1],&
-                            &transp=.true.)
-                        CHCKERR('')
-                        
-                        ! add block to (kd-2,kd+1) + Hermitian conjugate
-                        ierr = insert_block_mat(-8*loc_block,mat,[kd-2,kd+1],&
-                            &transp=.true.)
-                        CHCKERR('')
-                        
-                        ! add block to (kd-2,kd+2) + Hermitian conjugate
-                        ierr = insert_block_mat(loc_block,mat,[kd-2,kd+2],&
-                            &transp=.true.)
-                        CHCKERR('')
-                        
-                        ! add block to (kd-1,kd-1)
-                        ierr = insert_block_mat(-64*loc_block,mat,[kd-1,kd-1])
-                        CHCKERR('')
-                        
-                        ! add block to (kd-1,kd+1) + Hermitian conjugate
-                        ierr = insert_block_mat(64*loc_block,mat,[kd-1,kd+1],&
-                            &transp=.true.)
-                        CHCKERR('')
-                        
-                        ! add block to (kd-1,kd+2) + Hermitian conjugate
-                        ierr = insert_block_mat(-8*loc_block,mat,[kd-1,kd+2],&
-                            &transp=.true.)
-                        CHCKERR('')
-                        
-                        ! add block to (kd+1,kd+1)
-                        ierr = insert_block_mat(-64*loc_block,mat,[kd+1,kd+1])
-                        CHCKERR('')
-                        
-                        ! add block to (kd+1,kd+2) + Hermitian conjugate
-                        ierr = insert_block_mat(8*loc_block,mat,[kd+1,kd+2],&
-                            &transp=.true.)
-                        CHCKERR('')
-                        
-                        ! add block to (kd+2,kd+2)
-                        ierr = insert_block_mat(-loc_block,mat,[kd+2,kd+2])
-                        CHCKERR('')
-                    case default
-                        err_msg = 'No normal discretization style associated &
-                            &with '//trim(i2str(norm_disc_style))
-                        ierr = 1
-                        CHCKERR(err_msg)
-                end select
+                    end do
+                end do
             end do
             
             ! assemble the matrix
@@ -817,7 +695,7 @@ contains
                 &trim(r2strt(mat_info(MAT_INFO_NZ_ALLOCATED))))
             call writo('nonzero''s used: '//&
                 &trim(r2strt(mat_info(MAT_INFO_NZ_USED))))
-            call writo('nonzero''s unneeded: '//&
+            call writo('nonzero''s unused: '//&
                 &trim(r2strt(mat_info(MAT_INFO_NZ_UNNEEDED))))
         end function disp_mat_inf
     end function setup_mats
@@ -827,121 +705,51 @@ contains
     ! setting the  diagonal components  of A  to EV_BC and  of B  to 1,  and the
     ! off-diagonal elements to zero.
     ! At the plasma surface, the surface energy is minimized as in [ADD REF].
-    integer function set_BC(grid_X,X,step_size,A,B,grp_r_eq,i_geo) result(ierr)
-        use num_vars, only: EV_BC, norm_disc_style, grp_rank, grp_n_procs
+    integer function set_BC(grid_X,X,A,B,grp_r_eq,i_geo,norm_disc_coeff) &
+        &result(ierr)
+        use num_vars, only: norm_disc_ord
         use MPI_utilities, only: get_ser_var
         use utilities, only: con, c
+        use grid_ops, only: trim_grid
         
         character(*), parameter :: rout_name = 'set_BC'
         
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_type), intent(in) :: X                                           ! perturbation variables
-        PetscReal, intent(in) :: step_size                                      ! step size in flux coordinates
         Mat, intent(inout) :: A, B                                              ! Matrices A and B from A X = lambda B X
         PetscReal, intent(in) :: grp_r_eq(:)                                    ! unrounded index in tables V_int
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
+        PetscReal, intent(in) :: norm_disc_coeff(:)                             ! discretization coefficients for normal derivatives
         
         ! local variables
-        PetscScalar, allocatable :: loc_block(:,:)                              ! (n_mod,n_mod) block matrix for 1 normal point
+        type(grid_type) :: grid_X_trim                                          ! trimmed perturbation grid
         PetscInt :: kd                                                          ! counter
-        PetscInt :: k, m                                                        ! counters
-        PetscInt :: nn_mod_1, nn_mod_2                                          ! number of indices for a quantity that is symmetric or not
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        PetscScalar, allocatable :: PV_int_0(:)                                 ! PV_int_0 in equilibrium normal grid
-        PetscScalar, allocatable :: PV_int_1(:)                                 ! PV_int_1 in equilibrium normal grid
-        PetscScalar, allocatable :: PV_int_2(:)                                 ! PV_int_2 in equilibrium normal grid
-        PetscScalar, allocatable :: KV_int_0(:)                                 ! KV_int_0 in equilibrium normal grid
-        PetscScalar, allocatable :: KV_int_1(:)                                 ! KV_int_1 in equilibrium normal grid
-        PetscScalar, allocatable :: KV_int_2(:)                                 ! KV_int_2 in equilibrium normal grid
-        PetscScalar, allocatable :: V_int_0_tot(:,:,:)                          ! V_0 + (V_1+delta) V_2 (V_1+delta)^*T
-        integer, allocatable :: i_min_tot(:), i_max_tot(:)                      ! i_min and max of all processes
-        PetscBool :: set_BC_N                                                   ! set BC at N if needed for discretization style
-        PetscBool :: set_BC_N_1                                                 ! set BC at N-1 if needed for discretization style
-        PetscReal :: grp_r_eq_loc                                               ! grp_r at which to interpolate V_i
         
         ! initialize ierr
         ierr = 0
         
         call lvl_ud(1)
         
-        ! set nn_mod_1 and nn_mod_2
-        nn_mod_1 = X%n_mod**2
-        nn_mod_2 = X%n_mod*(X%n_mod+1)/2
+        call writo('Preparing variables')
+        call lvl_ud(1)
         
-        ! initialize local blocks
-        allocate(loc_block(X%n_mod,X%n_mod))
-        loc_block = 0.0_dp
-        do kd = 1,X%n_mod
-            loc_block(kd,kd) = 1.0_dp
-        end do
+        ! trim grid
+        ierr = trim_grid(grid_X,grid_X_trim)
+        CHCKERR('')
         
-        ! initialize PV_i and KV_i
-        allocate(PV_int_0(nn_mod_2))
-        allocate(PV_int_1(nn_mod_1))
-        allocate(PV_int_2(nn_mod_2))
-        allocate(KV_int_0(nn_mod_2))
-        allocate(KV_int_1(nn_mod_1))
-        allocate(KV_int_2(nn_mod_2))
+        call lvl_ud(-1)
         
-        ! ------------------!
-        ! BLOCKS at left BC !
-        ! ------------------!
         call writo('Setting BC deep within plasma')
         call lvl_ud(1)
         
-        if (grp_rank.eq.0) then                                                 ! left BC's set by first process
-            ! common operations
-            
-            ! set block (0,0) and Hermitian conjugate
-            ierr = insert_block_mat(EV_BC*loc_block,A,[0,0],overwrite=.true.)
-            CHCKERR('')
-            ierr = insert_block_mat(loc_block,B,[0,0],overwrite=.true.)
-            CHCKERR('')
-            
-            ! set block (0,1) and Hermitian conjugate
-            ierr = insert_block_mat(0*loc_block,A,[0,1],overwrite=.true.,&
-                &transp=.true.)
-            CHCKERR('')
-            ierr = insert_block_mat(0*loc_block,B,[0,1],overwrite=.true.,&
-                &transp=.true.)
-            CHCKERR('')
-            
-            ! set block (0,2) and Hermitian conjugate
-            ierr = insert_block_mat(0*loc_block,A,[0,2],overwrite=.true.,&
-                &transp=.true.)
-            CHCKERR('')
-            ierr = insert_block_mat(0*loc_block,B,[0,2],overwrite=.true.,&
-                &transp=.true.)
-            CHCKERR('')
-            
-            ! operations depending on normal discretization style
-            select case (norm_disc_style)
-                case (1)                                                        ! order 1
-                    ! nothing left to do
-                case (2)                                                        ! order 2
-                    ! set block (0,3) and Hermitian conjugate
-                    ierr = insert_block_mat(0*loc_block,A,[0,3],&
-                        &overwrite=.true.,transp=.true.)
-                    CHCKERR('')
-                    ierr = insert_block_mat(0*loc_block,B,[0,3],&
-                        &overwrite=.true.,transp=.true.)
-                    CHCKERR('')
-                    
-                    ! set block (0,4) and Hermitian conjugate
-                    ierr = insert_block_mat(0*loc_block,A,[0,4],&
-                        &overwrite=.true.,transp=.true.)
-                    CHCKERR('')
-                    ierr = insert_block_mat(0*loc_block,B,[0,4],&
-                        &overwrite=.true.,transp=.true.)
-                    CHCKERR('')
-                case default
-                    err_msg = 'No normal discretization style associated &
-                        &with '//trim(i2str(norm_disc_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
-        end if
+        ! iterate over all positions where to set left BC
+        do kd = 1,norm_disc_ord
+            if (grid_X_trim%i_min.le.kd .and. grid_X_trim%i_max.ge.kd) then     ! decide which process does the setting
+                ierr = set_left_BC(kd-1,A,B)                                    ! indices start at 0
+                CHCKERR('')
+            end if
+        end do
         
         ! assemble the matrices (cannot mix overwrite and not)
         call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr)
@@ -955,149 +763,17 @@ contains
         
         call lvl_ud(-1)
         
-        ! -------------------!
-        ! BLOCKS at right BC !
-        ! -------------------!
         call writo('Setting BC at plasma edge')
         call lvl_ud(1)
         
-        ! decide which process is going to write BC's
-        set_BC_N = .false.
-        set_BC_N_1 = .false.
-        ! common actions
-        if (grp_rank.eq.grp_n_procs-1) then
-            set_BC_N = .true.                                                   ! last process does N
-        end if
-        ! actions specific for each normal discretization style
-        select case (norm_disc_style)
-            case (1)                                                            ! order 1
-                ! no BC at N-1
-            case (2)                                                            ! order 2
-                ierr = get_ser_var([grid_X%i_min],i_min_tot,scatter=.true.)
+        ! iterate over all positions where to set right BC
+        do kd = grid_X%n(3),grid_X%n(3)-norm_disc_ord+1,-1
+            if (grid_X_trim%i_min.le.kd .and. grid_X_trim%i_max.ge.kd) then     ! decide which process does the setting
+                ierr = set_right_BC(kd-1,X,A,B,grp_r_eq(kd-grid_X%i_min+1),&
+                    &i_geo,norm_disc_coeff)                                     ! indices start at 0
                 CHCKERR('')
-                ierr = get_ser_var([grid_X%i_max],i_max_tot,scatter=.true.)
-                CHCKERR('')
-                if (i_min_tot(grp_n_procs).le.grid_X%n(3)-1) then               ! last process can do N-1 too
-                    if (grp_rank.eq.grp_n_procs-1) set_BC_N_1 = .true.
-                else if (i_min_tot(grp_n_procs-1).le.grid_X%n(3)-1 .and. &
-                    &i_max_tot(grp_n_procs-1).ge.grid_X%n(3)-1) then            ! next to last process should do N-1
-                    if (grp_rank.eq.grp_n_procs-2) set_BC_N_1 = .true.
-                else
-                    ierr = 1
-                    CHCKERR('No process to set BC at N-1!')
-                end if
-            case default
-                err_msg = 'No normal discretization style associated &
-                    &with '//trim(i2str(norm_disc_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-        
-        ! common operations for all discretization styles
-        if (set_BC_N) then                                                      ! BC at N
-            ! set local grp_r_eq
-            grp_r_eq_loc = grp_r_eq(grid_X%n(3)-grid_X%i_min+1)                 ! last point
-            
-            ! get interpolated terms in V_int_i
-            call interp_V(X%PV_int_0(:,i_geo,:),grp_r_eq_loc,PV_int_0)
-            call interp_V(X%PV_int_1(:,i_geo,:),grp_r_eq_loc,PV_int_1)
-            call interp_V(X%PV_int_2(:,i_geo,:),grp_r_eq_loc,PV_int_2)
-            call interp_V(X%KV_int_0(:,i_geo,:),grp_r_eq_loc,KV_int_0)
-            call interp_V(X%KV_int_1(:,i_geo,:),grp_r_eq_loc,KV_int_1)
-            call interp_V(X%KV_int_2(:,i_geo,:),grp_r_eq_loc,KV_int_2)
-            
-            ! calculate total terms V_0
-            allocate(V_int_0_tot(X%n_mod,X%n_mod,2))
-            ierr = calc_V_0_tot(PV_int_0,KV_int_0,PV_int_1,KV_int_1,PV_int_2,&
-                &KV_int_2,V_int_0_tot)
-            CHCKERR('')
-            
-            ! add block to (N,N)
-            ierr = insert_block_mat(V_int_0_tot(:,:,1),A,&
-                &[grid_X%n(3),grid_X%n(3)]-1)
-            CHCKERR('')
-            ierr = insert_block_mat(V_int_0_tot(:,:,2),B,&
-                &[grid_X%n(3),grid_X%n(3)]-1)
-            CHCKERR('')
-            
-            ! deallocate variables
-            deallocate(V_int_0_tot)
-        end if
-        
-        ! operations depending on normal discretization style
-        select case (norm_disc_style)
-            case (1)                                                            ! order 1
-                if (set_BC_N) then                                              ! BC at N
-                    ! set vacuum terms
-                    
-                    ! add block to (N-1,N) and Hermitian conjugate
-                    ierr = insert_block_mat(1.0_dp/(2*step_size)*X%vac_res,A,&
-                        &[grid_X%n(3)-1,grid_X%n(3)]-1,transp=.true.)
-                    CHCKERR('')
-                end if
-            case (2)                                                            ! order 2
-                if (set_BC_N) then                                              ! BC at N
-                    ! set vacuum terms
-                    
-                    ! add block to (N-2,N) and Hermitian conjugate
-                    ierr = insert_block_mat(-1.0_dp/(2*step_size)*X%vac_res,A,&
-                        &[grid_X%n(3)-2,grid_X%n(3)]-1,transp=.true.)
-                    CHCKERR('')
-                    
-                    ! add block to (N-1,N) and Hermitian conjugate
-                    ierr = insert_block_mat(8.0_dp/(2*step_size)*X%vac_res,A,&
-                        &[grid_X%n(3)-1,grid_X%n(3)]-1,transp=.true.)
-                    CHCKERR('')
-                end if
-                if (set_BC_N_1) then                                            ! BC at N-1
-                    ! set vacuum terms
-                    
-                    ! add block to (N-3,N-1) and Hermitian conjugate
-                    ierr = insert_block_mat(-1.0_dp/(2*step_size)*X%vac_res,A,&
-                        &[grid_X%n(3)-3,grid_X%n(3)-1]-1,transp=.true.)
-                    CHCKERR('')
-                    
-                    ! add block to (N-2,N-1) and Hermitian conjugate
-                    ierr = insert_block_mat(8.0_dp/(2*step_size)*X%vac_res,A,&
-                        &[grid_X%n(3)-2,grid_X%n(3)-1]-1,transp=.true.)
-                    CHCKERR('')
-                    
-                    ! set total V_0 term at (N-1,N-1)
-                    
-                    ! set local grp_r_eq
-                    grp_r_eq_loc = grp_r_eq(grid_X%n(3)-grid_X%i_min)           ! next-to-last point
-                        
-                    ! get interpolated terms in V_int_i
-                    call interp_V(X%PV_int_0(:,i_geo,:),grp_r_eq_loc,PV_int_0)
-                    call interp_V(X%PV_int_1(:,i_geo,:),grp_r_eq_loc,PV_int_1)
-                    call interp_V(X%PV_int_2(:,i_geo,:),grp_r_eq_loc,PV_int_2)
-                    call interp_V(X%KV_int_0(:,i_geo,:),grp_r_eq_loc,KV_int_0)
-                    call interp_V(X%KV_int_1(:,i_geo,:),grp_r_eq_loc,KV_int_1)
-                    call interp_V(X%KV_int_2(:,i_geo,:),grp_r_eq_loc,KV_int_2)
-                    
-                    ! calculate total terms V_0
-                    allocate(V_int_0_tot(X%n_mod,X%n_mod,2))
-                    ierr = calc_V_0_tot(PV_int_0,KV_int_0,PV_int_1,KV_int_1,&
-                        &PV_int_2,KV_int_2,V_int_0_tot)
-                    CHCKERR('')
-                    
-                    ! add block to (N-1,N-1)
-                    ierr = insert_block_mat(V_int_0_tot(:,:,1),A,&
-                        &[grid_X%n(3)-1,grid_X%n(3)-1]-1)
-                    CHCKERR('')
-                    ierr = insert_block_mat(V_int_0_tot(:,:,2),B,&
-                        &[grid_X%n(3)-1,grid_X%n(3)-1]-1)
-                    CHCKERR('')
-                    
-                    ! deallocate variables
-                    deallocate(V_int_0_tot)
-                end if
-            case default
-                err_msg = 'No normal discretization style associated &
-                    &with '//trim(i2str(norm_disc_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
+            end if
+        end do
         
         ! assemble the matrices
         call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr)
@@ -1113,16 +789,139 @@ contains
         
         call lvl_ud(-1)
     contains
+        ! set left BC:
+        !   A(ind_1,ind_1) = EV_BC, B(ind_1,ind_1) = 1,
+        !   A(ind_1,ind_2) = 0,     B(ind_1,ind_2) = 0,
+        ! where ind_1 and ind_2 are both a range
+        integer function set_left_BC(ind,A,B) result(ierr)
+            use num_vars, only: EV_BC, norm_disc_ord
+            
+            character(*), parameter :: rout_name = 'set_left_BC'
+            
+            ! input / output
+            integer, intent(in) :: ind                                          ! position at which to set BC
+            Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
+            
+            ! local variables
+            integer :: kd                                                       ! counter
+            PetscScalar, allocatable :: loc_block(:,:)                          ! (n_mod,n_mod) block matrix for 1 normal point
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! initialize local blocks
+            allocate(loc_block(X%n_mod,X%n_mod))
+            loc_block = 0.0_dp
+            do kd = 1,X%n_mod
+                loc_block(kd,kd) = 1.0_dp
+            end do
+            
+            ! set block (ind,ind) and Hermitian conjugate
+            ierr = insert_block_mat(EV_BC*loc_block,A,[ind,ind],&
+                &overwrite=.true.)
+            CHCKERR('')
+            ierr = insert_block_mat(loc_block,B,[ind,ind],overwrite=.true.)
+            CHCKERR('')
+            
+            ! iterate over range 2
+            do kd = 1,2*norm_disc_ord
+                ! set block (ind,ind+kd) and Hermitian conjugate
+                ierr = insert_block_mat(0*loc_block,A,[ind,ind+kd],&
+                    &overwrite=.true.,transp=.true.)
+                CHCKERR('')
+                ierr = insert_block_mat(0*loc_block,B,[ind,ind+kd],&
+                    &overwrite=.true.,transp=.true.)
+                CHCKERR('')
+            end do
+        end function set_left_BC
+        
+        ! set right BC according to [ADD REF]
+        integer function set_right_BC(ind,X,A,B,grp_r_eq,i_geo,&
+            &norm_disc_coeff) result(ierr)
+            character(*), parameter :: rout_name = 'set_right_BC'
+            
+            ! input / output
+            integer, intent(in) :: ind                                          ! position at which to set BC
+            type(X_type), intent(in) :: X                                       ! perturbation variables
+            Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
+            PetscReal, intent(in) :: grp_r_eq                                   ! unrounded index in tables V_int
+            integer, intent(in) :: i_geo                                        ! at which geodesic index to perform the calculations
+            PetscReal, intent(in) :: norm_disc_coeff(:)                         ! discretization coefficients for normal derivatives
+            
+            ! local variables
+            PetscInt :: jd                                                      ! counter
+            PetscInt :: nn_mod_1, nn_mod_2                                      ! number of indices for a quantity that is symmetric or not
+            PetscScalar, allocatable :: PV_int_0(:)                             ! PV_int_0 in equilibrium normal grid
+            PetscScalar, allocatable :: PV_int_1(:)                             ! PV_int_1 in equilibrium normal grid
+            PetscScalar, allocatable :: PV_int_2(:)                             ! PV_int_2 in equilibrium normal grid
+            PetscScalar, allocatable :: KV_int_0(:)                             ! KV_int_0 in equilibrium normal grid
+            PetscScalar, allocatable :: KV_int_1(:)                             ! KV_int_1 in equilibrium normal grid
+            PetscScalar, allocatable :: KV_int_2(:)                             ! KV_int_2 in equilibrium normal grid
+            PetscScalar, allocatable :: V_int_0_mod(:,:,:)                      ! V_0 + (V_1+delta) V_2 (V_1+delta)^*T
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set nn_mod_1 and nn_mod_2
+            nn_mod_1 = X%n_mod**2
+            nn_mod_2 = X%n_mod*(X%n_mod+1)/2
+            
+            ! initialize PV_i and KV_i
+            allocate(PV_int_0(nn_mod_2))
+            allocate(PV_int_1(nn_mod_1))
+            allocate(PV_int_2(nn_mod_2))
+            allocate(KV_int_0(nn_mod_2))
+            allocate(KV_int_1(nn_mod_1))
+            allocate(KV_int_2(nn_mod_2))
+           
+            ! get interpolated terms in V_int_i
+            call interp_V(X%PV_int_0(:,i_geo,:),grp_r_eq,PV_int_0)
+            call interp_V(X%PV_int_1(:,i_geo,:),grp_r_eq,PV_int_1)
+            call interp_V(X%PV_int_2(:,i_geo,:),grp_r_eq,PV_int_2)
+            call interp_V(X%KV_int_0(:,i_geo,:),grp_r_eq,KV_int_0)
+            call interp_V(X%KV_int_1(:,i_geo,:),grp_r_eq,KV_int_1)
+            call interp_V(X%KV_int_2(:,i_geo,:),grp_r_eq,KV_int_2)
+            
+            ! -----------------!
+            ! BLOCKS ~ V_0,mod !
+            ! -----------------!
+            ! calculate modified terms V_int_0_mod
+            allocate(V_int_0_mod(X%n_mod,X%n_mod,2))
+            ierr = calc_V_0_mod(PV_int_0,KV_int_0,PV_int_1,KV_int_1,PV_int_2,&
+                &KV_int_2,V_int_0_mod)
+            CHCKERR('')
+            
+            ! add block to ind + (0,0)
+            ierr = insert_block_mat(V_int_0_mod(:,:,1),A,[ind,ind])
+            CHCKERR('')
+            ierr = insert_block_mat(V_int_0_mod(:,:,2),B,[ind,ind])
+            CHCKERR('')
+            
+            ! deallocate modified V_0
+            deallocate(V_int_0_mod)
+            
+            ! -------------!
+            ! BLOCKS ~ vac !
+            ! -------------!
+            ! add block to ind + (0,-p..0) + Hermitian conjugate
+            do jd = -norm_disc_ord,-1
+                ierr = insert_block_mat(-X%vac_res*&
+                    &norm_disc_coeff(jd+norm_disc_ord+1),A,&
+                    &[ind,ind+jd],transp=.true.)
+                CHCKERR('')
+            end do
+        end function set_right_BC
+        
         ! calculates V_0 + (V_1+delta) V_2^-1 (V_1+delta)^*T
-        integer function calc_V_0_tot(PV_0,KV_0,PV_1,KV_1,PV_2,KV_2,V_0_tot) &
+        integer function calc_V_0_mod(PV_0,KV_0,PV_1,KV_1,PV_2,KV_2,V_0_mod) &
             &result(ierr)
-            character(*), parameter :: rout_name = 'calc_V_0_tot'
+            character(*), parameter :: rout_name = 'calc_V_0_mod'
             
             ! input / output
             complex(dp), intent(in) :: PV_0(:), KV_0(:)                         ! PV_0 and KV_0
             complex(dp), intent(in) :: PV_1(:), KV_1(:)                         ! PV_1 and KV_1
             complex(dp), intent(in) :: PV_2(:), KV_2(:)                         ! PV_2 and KV_2
-            complex(dp), intent(inout) :: V_0_tot(:,:,:)                        ! output V_0_tot
+            complex(dp), intent(inout) :: V_0_mod(:,:,:)                        ! output V_0_mod
             
             ! local variables
             complex(dp), allocatable :: KV_2_inv(:,:)                           ! inverse of KV_2
@@ -1130,6 +929,7 @@ contains
             complex(dp), allocatable :: PV_1_loc(:,:)                           ! local copy of PV_1
             complex(dp), allocatable :: V_triple(:,:)                           ! product of 3 V's
             character :: uplo                                                   ! upper or lower Cholesky factorization used to invert KV_2
+            PetscInt :: k, m                                                    ! counters
             
             ! initialize ierr
             ierr = 0
@@ -1150,7 +950,7 @@ contains
             end do
             
 #if ldebug
-            if (debug_calc_V_0_tot) then
+            if (debug_calc_V_0_mod) then
                 write(*,*) 'KV_2 = '
                 
                 write(*,*) 'real part:'
@@ -1193,11 +993,11 @@ contains
             ! fill local block
             do m = 1,X%n_mod
                 do k = 1,X%n_mod
-                    V_0_tot(k,m,1) = &
+                    V_0_mod(k,m,1) = &
                         &con(PV_0(c([k,m],.true.,X%n_mod)),[k,m],.true.)        ! symmetric matrices need con()
                 end do
             end do
-            V_0_tot(:,:,1) = V_0_tot(:,:,1) + &
+            V_0_mod(:,:,1) = V_0_mod(:,:,1) + &
                 &V_triple + conjg(transpose(V_triple))
             
             ! -------------!
@@ -1210,17 +1010,16 @@ contains
             ! multiply with KV_1^*T and save in V_triple
             V_triple = matmul(V_triple,conjg(transpose(KV_1_loc)))
             
-            ! fill V_0_tot(1)
+            ! fill V_0_mod(1)
             do m = 1,X%n_mod
                 do k = 1,X%n_mod
-                    V_0_tot(k,m,2) = &
+                    V_0_mod(k,m,2) = &
                         &con(KV_0(c([k,m],.true.,X%n_mod)),[k,m],.true.)        ! symmetric matrices need con()
                 end do
             end do
-            V_0_tot(:,:,2) = V_0_tot(:,:,2) + V_triple
-            
+            V_0_mod(:,:,2) = V_0_mod(:,:,2) + V_triple
 #if ldebug
-        if (debug_calc_V_0_tot) then
+        if (debug_calc_V_0_mod) then
             write(*,*) 'KV_2^-1 = '
             
             write(*,*) 'real part:'
@@ -1249,22 +1048,23 @@ contains
             write(*,*) 'imaginary part:'
             call print_ar_2(imagpart(KV_1_loc))
             
-            write(*,*) 'PV_0_tot = '
+            write(*,*) 'PV_0_mod = '
             
             write(*,*) 'real part:'
-            call print_ar_2(realpart(V_0_tot(:,:,1)))
+            call print_ar_2(realpart(V_0_mod(:,:,1)))
             write(*,*) 'imaginary part:'
-            call print_ar_2(imagpart(V_0_tot(:,:,1)))
+            call print_ar_2(imagpart(V_0_mod(:,:,1)))
             
-            write(*,*) 'KV_0_tot = '
+            write(*,*) 'KV_0_mod = '
             
             write(*,*) 'real part:'
-            call print_ar_2(realpart(V_0_tot(:,:,2)))
+            call print_ar_2(realpart(V_0_mod(:,:,2)))
             write(*,*) 'imaginary part:'
-            call print_ar_2(imagpart(V_0_tot(:,:,2)))
+            call print_ar_2(imagpart(V_0_mod(:,:,2)))
         end if
 #endif
-        end function calc_V_0_tot
+        end function calc_V_0_mod
+        
     end function set_BC
     
     ! sets up EV solver
@@ -1647,6 +1447,12 @@ contains
             id_tot = id_tot+1
         end do
         
+        ! rectify Eigenvectors to make output more easily comparable
+        do id = 1,size(X%vec,3)
+            if (sum(realpart(X%vec(:,:,id))).lt.0) X%vec(:,:,id) = &
+                &-X%vec(:,:,id)
+        end do
+        
         ! user output
         call writo(trim(i2str(max_n_EV))//' Eigenvalues were written in the &
             &file "'//trim(full_output_name)//'"')
@@ -1790,6 +1596,8 @@ contains
     ! also set the Hermitian transpose and / or overwrite instead of add value.
     integer function insert_block_mat(block,mat,ind,transp,overwrite) &
         &result(ierr)
+        use MPI_utilities, only: wait_MPI
+        
         character(*), parameter :: rout_name = 'insert_block_mat'
         
         ! input / output
@@ -1844,6 +1652,9 @@ contains
                 call print_ar_2(realpart(block))
                 write(*,*) 'Im ='
                 call print_ar_2(imagpart(block))
+                read(*,*)
+                ierr = wait_MPI()
+                CHCKERR('')
             endif
 #endif
             

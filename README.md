@@ -113,3 +113,8 @@ CHANGELOG
       - Introduced symmetric ghost regions in PB3D_POST with width ghost_width_POST, as this is needed for the numerical derivatives of X.
       - Accompanying this, trim_grid is extended with shift_grid.
       - Fixed bug in calc_XYZ_real where flux_p_H was not divided by 2 pi.
+
+0.82: - Fixed an error in fill_mat for order 2: factor 12 in stead of 2.
+      - Fixed errors in calculating d_nz and o_nz.
+      - Changed norm_disc_style to norm_disc_ord, only referring to the order.
+      - Made fill_mat and set_BC generic for any order. The latter now employs set_left_BC and set_right_BC.

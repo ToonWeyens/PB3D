@@ -235,9 +235,8 @@ contains
         ! grp_rank*(r_max-r_min)/grp_n_procs) and the maximum of the equilibrium
         ! range is to  be given by the  grid point that includes  the highest of
         ! the possible perturbation  points, at n_r_X at its  lowest value (i.e.
-        ! given  by  divide_X_grid  with  cumul  .true.)  plus  1,  because  the
-        ! perturbation  quantity of  perturbation  normal point  (i) depends  on
-        ! perturbation normal point (i+1)
+        ! given by divide_X_grid) plus 1,  because the plotting routines need an
+        ! assymetric ghost region.
         ! Furthermore, for the conversion between points on the continuous range
         ! (0..1) and  discrete grid points  in the equilbrium  grid (1..n_r_eq),
         ! the subroutine  con2dis is used.
@@ -576,7 +575,7 @@ contains
     ! up  grp_r_X, which contains the  normal variable in the  perturbation grid
     ! for this rank (global range (min_r_X..max_r_X))
     ! Note: for  the first ranks,  the upper index is  one higher than  might be
-    ! expected because the routine fill_matrix  needs information about the next
+    ! expected because  the plotting  routines need  information about  the next
     ! perturbation point (so this is an asymetric ghost region)
     integer function divide_X_grid(n_r_X,X_limits,grp_r_X) result(ierr)
         use num_vars, only: MPI_Comm_groups, use_pol_flux_F, grp_rank, &
@@ -678,7 +677,7 @@ contains
             &retain_all_sol, plot_flux_q, plot_grid, no_plots, eq_style, &
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, EV_BC, rho_style, prog_style, max_it_inv, &
-            &norm_disc_style, tol_norm_r
+            &norm_disc_ord, tol_norm_r
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
@@ -771,7 +770,7 @@ contains
                     call MPI_Bcast(minim_style,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(norm_disc_style,1,MPI_INTEGER,0,&
+                    call MPI_Bcast(norm_disc_ord,1,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(n_par_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)

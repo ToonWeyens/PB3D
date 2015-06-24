@@ -265,7 +265,7 @@ contains
             &plot_resonance, tol_r, n_sol_requested, nyq_fac, glb_rank, &
             &nyq_fac, plot_grid, plot_flux_q, use_normalization, &
             &n_sol_plotted, n_theta_plot, n_zeta_plot, EV_BC, rho_style, &
-            &retain_all_sol, prog_style, norm_disc_style, max_it_inv, tol_norm_r
+            &retain_all_sol, prog_style, norm_disc_ord, max_it_inv, tol_norm_r
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files_ops, only: input_name
@@ -287,7 +287,7 @@ contains
             &max_r_X, EV_style, n_procs_per_alpha, plot_resonance, &
             &n_sol_requested, EV_BC, rho_style, nyq_fac, rho_0, &
             &use_pol_flux_F, plot_grid, plot_flux_q, use_normalization, &
-            &n_theta_plot, n_zeta_plot, retain_all_sol, norm_disc_style, &
+            &n_theta_plot, n_zeta_plot, retain_all_sol, norm_disc_ord, &
             &max_it_inv, tol_norm_r
         namelist /inputdata_PB3D_POST/ n_sol_plotted, use_normalization, &
             &n_theta_plot, n_zeta_plot, plot_resonance, plot_flux_q, plot_grid
@@ -440,7 +440,7 @@ contains
             use_normalization = .true.                                          ! use normalization for the variables
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
             rho_style = 1                                                       ! constant pressure profile, equal to rho_0
-            norm_disc_style = 1                                                 ! order 1 normal discretization
+            norm_disc_ord = 1                                                   ! order 1 normal discretization
             
             ! variables concerning output
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
@@ -478,7 +478,7 @@ contains
             min_r_X = 0.1_dp                                                    ! minimum radius
             max_r_X = 1.0_dp                                                    ! maximum radius
             EV_style = 1                                                        ! slepc solver for EV problem
-            min_n_r_X = 10                                                      ! at least 10 points in perturbation grid
+            min_n_r_X = 20                                                      ! at least 20 points in perturbation grid
             
             ! variables concerning normalization
             rho_0 = 10E-6_dp                                                    ! for fusion, particle density of around 1E21, mp around 1E-27
@@ -570,7 +570,8 @@ contains
         ! 1.0 and has to  be larger than min_r_X
         ! the absolute  value of prim_X  has to be  at least 5  (arbitrary), but
         ! preferibly at least 10 (arbitrary)
-        ! min_n_r_X has  to be at  least 2 (for 2 grid points)
+        ! min_n_r_X has to be at  least 6*norm_disc_ord+2 (for at least two full
+        ! points)
         integer function adapt_X() result(ierr)
             use grid_vars, only: n_r_eq
             
@@ -599,8 +600,8 @@ contains
             end if
             
             ! check min_n_r_X
-            if (min_n_r_X.lt.2) then
-                min_n_r_X = 2
+            if (min_n_r_X.lt.6*norm_disc_ord+2) then
+                min_n_r_X = 6*norm_disc_ord+2
                 call writo('WARNING: min_n_r_X has been increased to '//&
                     &trim(i2str(min_n_r_X)))
             end if
