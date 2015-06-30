@@ -121,3 +121,8 @@ CHANGELOG
 
 0.83: - BC_style chooses which style for left and right boundary.
       - Eigenvectors are now normalized with respect to their maximum modulus.
+
+0.84: - The output name of draw_GP(_animated) is now consistent with the system used for HDF5: a new variable draw_name is introduced.
+      - Energy decomposition output is now written in a file PB3D_out_EV.txt
+      - HDF5 output now shows less messages.
+      - PB3D_POST run script now takes PB3D_out.h5 from a directory specified and by default runs in that directory.

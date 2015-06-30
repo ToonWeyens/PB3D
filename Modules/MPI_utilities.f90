@@ -10,7 +10,8 @@ module MPI_utilities
     
     implicit none
     private
-    public get_ser_var, get_ghost_arr, broadcast_var, wait_MPI, calc_n_groups
+    public get_ser_var, get_ghost_arr, broadcast_var, wait_MPI, calc_n_groups, &
+        &cycle_plt_master
     
     ! interfaces
     interface get_ser_var
@@ -532,4 +533,20 @@ contains
         
         n_groups = min(glb_n_procs/min(n_procs_per_alpha,glb_n_procs),n_alpha)  ! how many groups of alpha, limited by nr. of alpha jobs
     end subroutine calc_n_groups
+    
+    ! cycles plot master: plt_rank i becomes plt_rank i+1
+    ! Optionally, the cycle parameter can be passed
+    subroutine cycle_plt_master(c_par)
+        use num_vars, only: plt_rank, grp_n_procs
+        
+        ! input / output
+        integer, intent(in), optional :: c_par                                  ! cycle parameter
+        
+        ! local variables
+        integer :: c_par_loc                                                    ! local cycle parameter
+        
+        c_par_loc = 1
+        if (present(c_par)) c_par_loc = c_par
+        plt_rank = mod(plt_rank+c_par_loc,grp_n_procs)
+    end subroutine cycle_plt_master
 end module MPI_utilities

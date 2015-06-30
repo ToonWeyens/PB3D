@@ -259,6 +259,7 @@ contains
         logical :: use_guess                                                    ! whether a guess is formed from previous level of Richardson
         integer :: n_sol_found                                                  ! how many solutions found and saved
         character(len=max_str_ln) :: plot_title                                 ! title for plots
+        character(len=max_str_ln) :: plot_name                                  ! name of plot
         character(len=max_str_ln) :: draw_ops                                   ! optional drawing options
         
         ! initialize ierr
@@ -409,14 +410,14 @@ contains
             ! output on screen
             plot_title = 'job '//trim(i2str(alpha_job_nr))//' - Eigenvalues &
                 &as function of nr. of normal points'
-            call print_GP_2D(plot_title,'Eigenvalues_A'//&
-                &trim(i2str(alpha_job_nr))//'_richardson.dat',&
+            plot_name = 'Eigenvalues_A'//trim(i2str(alpha_job_nr))//&
+                &'_richardson'
+            call print_GP_2D(plot_title,plot_name,&
                 &realpart(X_val_rich(1:rich_lvl_nr,1,:)),&
                 &x=x_axis(1:rich_lvl_nr,:),draw=.false.)
             
             ! same output in file as well
-            call draw_GP(plot_title,'Eigenvalues_A'//&
-                &trim(i2str(alpha_job_nr))//'_richardson.dat',&
+            call draw_GP(plot_title,plot_name,plot_name,&
                 &n_sol_requested,1,.false.,draw_ops=draw_ops)
             
             call lvl_ud(-1)

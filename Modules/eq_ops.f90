@@ -829,7 +829,7 @@ contains
     !   toroidal flux flux_t
     ! [MPI] Only first group
     integer function flux_q_plot(eq,grid_eq) result(ierr)
-        use num_vars, only: eq_style, glb_rank, no_plots
+        use num_vars, only: glb_rank, no_plots
         use grid_ops, only: trim_grid
         use MPI_utilities, only: get_ser_var
         
@@ -842,7 +842,6 @@ contains
         ! local variables
         integer :: id                                                           ! counter
         integer :: n_vars = 5                                                   ! nr. of variables to plot
-        character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln), allocatable :: plot_titles(:)                ! plot titles
         type(grid_type) :: grid_trim                                            ! trimmed grid
         integer :: grp_n_r                                                      ! grp_n_r of trimmed grid
@@ -951,18 +950,18 @@ contains
                 
                 ! plot the  individual 2D output  of this process  (except q_saf
                 ! and rot_t, as they are already in plot_resonance)
-                call print_GP_2D(plot_titles(3),trim(file_name(1))//'.dat',&
+                call print_GP_2D(plot_titles(3),file_name(1),&
                     &Y_plot_2D(:,3),X_plot_2D(:,3),draw=.false.)
                 ! fluxes
                 call print_GP_2D(trim(plot_titles(4))//', '//&
-                    &trim(plot_titles(5)),trim(file_name(2))//'.dat',&
+                    &trim(plot_titles(5)),file_name(2),&
                     &Y_plot_2D(:,4:5),X_plot_2D(:,4:5),draw=.false.)
                 
                 ! draw plot
-                call draw_GP(plot_titles(3),trim(file_name(1))//'.dat',1,1,&
+                call draw_GP(plot_titles(3),file_name(1),file_name(1),1,1,&
                     &.false.)                                                   ! pressure
                 call draw_GP(trim(plot_titles(4))//', '//trim(plot_titles(5)),&
-                    &trim(file_name(2))//'.dat',2,1,.false.)                    ! fluxes
+                    &file_name(2),file_name(2),2,1,.false.)                     ! fluxes
                 
                 ! user output
                 call writo('Safety factor and rotational transform are plotted &
@@ -1003,28 +1002,12 @@ contains
             
             ! fill the 2D version of the plot
             allocate(Y_plot_2D(grid_trim%grp_n_r,n_vars))
-            ! choose which equilibrium style is being used:
-            !   1:  VMEC
-            !   2:  HELENA
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    Y_plot_2D(:,1) = -eq%q_saf_E(1:grp_n_r,0)                   ! conversion VMEC LH -> RH coord. system
-                    Y_plot_2D(:,2) = -eq%rot_t_E(1:grp_n_r,0)                   ! conversion VMEC LH -> RH coord. system
-                    Y_plot_2D(:,3) = eq%pres_E(1:grp_n_r,0)
-                    Y_plot_2D(:,4) = eq%flux_p_E(1:grp_n_r,0)
-                    Y_plot_2D(:,5) = -eq%flux_t_E(1:grp_n_r,0)                  ! conversion VMEC LH -> RH coord. system
-                case (2)                                                        ! HELENA
-                    Y_plot_2D(:,1) = eq%q_saf_E(1:grp_n_r,0)
-                    Y_plot_2D(:,2) = eq%rot_t_E(1:grp_n_r,0)
-                    Y_plot_2D(:,3) = eq%pres_E(1:grp_n_r,0)
-                    Y_plot_2D(:,4) = eq%flux_p_E(1:grp_n_r,0)
-                    Y_plot_2D(:,5) = eq%flux_t_E(1:grp_n_r,0)
-                case default
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
+            
+            Y_plot_2D(:,1) = eq%q_saf_FD(1:grp_n_r,0)
+            Y_plot_2D(:,2) = eq%rot_t_FD(1:grp_n_r,0)
+            Y_plot_2D(:,3) = eq%pres_FD(1:grp_n_r,0)
+            Y_plot_2D(:,4) = eq%flux_p_FD(1:grp_n_r,0)
+            Y_plot_2D(:,5) = eq%flux_t_FD(1:grp_n_r,0)
             
             ! extend trimmed equilibrium grid
             ierr = extend_grid_E(grid_trim,grid_plot)

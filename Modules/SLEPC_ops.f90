@@ -30,6 +30,7 @@ module SLEPC_ops
     logical :: debug_set_BC = .false.                                           ! plot debug information for set_BC
     logical :: debug_insert_block_mat = .false.                                 ! plot debug information for insert_block_mat
     logical :: debug_calc_V_0_mod = .false.                                     ! plot debug information for calc_V_0_mod
+    logical :: debug_store_results = .true.                                     ! plot debug information for store_results
 #endif
     
 contains
@@ -1331,7 +1332,7 @@ contains
     integer function store_results(grid_X,X,solver,max_n_EV) result(ierr)
         use eq_vars, only: T_0
         use num_vars, only: use_normalization, EV_BC, output_name, &
-            &alpha_job_nr, rich_lvl_nr, n_alpha, max_it_r, grp_n_procs
+            &alpha_job_nr, rich_lvl_nr, n_alpha, max_it_r, grp_n_procs, grp_rank
         use files_utilities, only: nextunit
         use MPI_utilities, only: get_ser_var
         
@@ -1361,6 +1362,10 @@ contains
         integer :: output_EV_i                                                  ! file number
         integer :: n_digits                                                     ! nr. of digits for the integer number
         integer :: n_err(3)                                                     ! how many errors there were
+#if ldebug
+        Vec :: err_vec                                                          ! Ax - omega BX
+        PetscScalar, allocatable :: err_vec_loc(:,:)                            ! local array for err_vec
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -1393,35 +1398,41 @@ contains
         !   3: Imaginary part
         !   4: relative error ||Ax - EV Bx||_2/||EV x||_2 [1]
         n_err = 0
-        n_digits = ceiling(log10(1._dp*max_n_EV))
         EV_err_str = ''
-        format_val = '(I'//trim(i2str(n_digits))//'," ",ES23.16," ",ES23.16,&
-            &" ",ES23.16)'
-        format_head = '(A'//trim(i2str(n_digits+3))//'," ",A23," ",A23," ",A23)'
+        if (grp_rank.eq.0) then
+            n_digits = ceiling(log10(1._dp*max_n_EV))
+            format_val = '(I'//trim(i2str(n_digits))//'," ",ES23.16," ",&
+                &ES23.16," ",ES23.16)'
+            format_head = '(A'//trim(i2str(n_digits+3))//'," ",A23," ",A23," ",&
+                &A23)'
+        end if
         
         ! open output file for the log
-        full_output_name = trim(output_name)//'_EV'
-        if (n_alpha.gt.1) full_output_name = &
-            &trim(full_output_name)//'_A'//trim(i2str(alpha_job_nr))            ! append alpha job number
-        if (max_it_r.gt.1) full_output_name = &
-            &trim(full_output_name)//'_R'//trim(i2str(rich_lvl_nr))             ! append Richardson level
-        full_output_name = trim(full_output_name)//'.txt'
-        open(unit=nextunit(output_EV_i),file=full_output_name,iostat=ierr)
-        CHCKERR('Cannot open EV output file')
+        if (grp_rank.eq.0) then
+            full_output_name = trim(output_name)//'_EV'
+            if (n_alpha.gt.1) full_output_name = &
+                &trim(full_output_name)//'_A'//trim(i2str(alpha_job_nr))        ! append alpha job number
+            if (max_it_r.gt.1) full_output_name = &
+                &trim(full_output_name)//'_R'//trim(i2str(rich_lvl_nr))         ! append Richardson level
+            full_output_name = trim(full_output_name)//'.txt'
+            open(unit=nextunit(output_EV_i),file=full_output_name,iostat=ierr)
+            CHCKERR('Cannot open EV output file')
+        end if
         
         ! output to file
-        if (use_normalization) then
-            write(output_EV_i,'(A)') '# Eigenvalues normalized to the squared &
-                & Alfven frequency omega_A^2 = '
-            write(output_EV_i,'(A)') '#     ('//trim(r2str(1._dp/T_0))//&
-                &' Hz)^2 = '//trim(r2str(1._dp/T_0**2))//' Hz^2'
-        else
-            write(output_EV_i,'(A)') '# Eigenvalues'
+        if (grp_rank.eq.0) then
+            if (use_normalization) then
+                write(output_EV_i,'(A)') '# Eigenvalues normalized to the &
+                    &squared  Alfven frequency omega_A^2 = '
+                write(output_EV_i,'(A)') '#     ('//trim(r2str(1._dp/T_0))//&
+                    &' Hz)^2 = '//trim(r2str(1._dp/T_0**2))//' Hz^2'
+            else
+                write(output_EV_i,'(A)') '# Eigenvalues'
+            end if
+            write(output_EV_i,format_head) '#  I                            ', &
+                &'real part               ', 'imaginary part          ', &
+                &'relative precision      '
         end if
-        write(output_EV_i,format_head) '#  I                                ', &
-            &'real part                                                     ', &
-            &'imaginary part                                                ', &
-            &'relative precision                                            '
         
         ! store them
         do while (id.le.max_n_EV)
@@ -1458,17 +1469,19 @@ contains
             
             ! if error, comment the next line
             if (EV_err_str.ne.'') then
-                write(output_EV_i,'(A)',advance='no') '# '
+                if (grp_rank.eq.0) write(output_EV_i,'(A)',advance='no') '# '
             else
-                write(output_EV_i,'(A)',advance='no') '  '
+                if (grp_rank.eq.0) write(output_EV_i,'(A)',advance='no') '  '
             end if
             
-            ! output EV to file
-            write(output_EV_i,format_val) id,realpart(X_val_loc),&
-                &imagpart(X_val_loc),error
-            
-            ! if error, print explanation
-            if (EV_err_str.ne.'') write(output_EV_i,'(A)') trim(EV_err_str)
+            if (grp_rank.eq.0) then
+                ! output EV to file
+                write(output_EV_i,format_val) id,realpart(X_val_loc),&
+                    &imagpart(X_val_loc),error
+                
+                ! if error, print explanation
+                if (EV_err_str.ne.'') write(output_EV_i,'(A)') trim(EV_err_str)
+            end if
             
             ! reinitialize error string if error and increment counter if not
             if (EV_err_str.ne.'') then
@@ -1495,6 +1508,9 @@ contains
             ! increment total id
             id_tot = id_tot+1
         end do
+        
+        ! close output file
+        close(output_EV_i)
         
         ! normalize Eigenvectors to make output more easily comparable
         allocate(X_vec_max(grp_n_procs))
@@ -1529,7 +1545,32 @@ contains
             call lvl_ud(-1)
             call writo('(Override this behavior using "retain_all_sol")')
         end if
+        
+        call writo('basic statistics:')
+        call lvl_ud(1)
+        
+        call writo('min: '//trim(r2strt(realpart(X%val(1))))//' + '//&
+            &trim(r2strt(realpart(X%val(1))))//' i')
+        call writo('max: '//trim(r2strt(realpart(X%val(max_n_EV))))//' + '//&
+            &trim(r2strt(realpart(X%val(max_n_EV))))//' i')
+        
+        call lvl_ud(-1)
+        
         !call EPSPrintSolution(solver,PETSC_NULL_OBJECT,ierr)
+        
+#if ldebug
+        if (debug_store_results) then
+            call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,&
+                &grid_X%grp_n_r*X%n_mod,grid_X%n(3)*X%n_mod,PETSC_NULL_SCALAR,&
+                &err_vec,ierr)                                                  ! create Vec
+            allocate(err_vec_loc(1:X%n_mod,1:grid_X%grp_n_r))                   ! allocate array
+            err_vec_loc = 0.0_dp
+            call VecPlaceArray(err_vec,err_vec_loc,ierr)                        ! place array sol_vec in X vec
+            CHCKERR('Failed to place array')
+            !call MatMult(A,sol_vec,err_vec,ierr)
+            !CHCKERR('Failed to multiply')
+        end if
+#endif
         
         call VecDestroy(sol_vec,ierr)                                           ! destroy compatible vector
         CHCKERR('Failed to destroy sol_vec')

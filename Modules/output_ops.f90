@@ -102,7 +102,8 @@ contains
         
         ! return if no_plots
         if (no_plots) then
-            call writo('WARNING: plot ignored because no_plots is on')
+            call writo('WARNING: plot ignored because no_plots is on',&
+                &persistent=.true.)
             return
         end if
         
@@ -112,7 +113,7 @@ contains
         if (present(x)) then
             if (size(x,1).ne.size(y,1) .or. size(x,2).ne.size(y,2)) then
                 call writo('WARNING: In print_GP_2D, the size of x and y has &
-                    &to be the same... Skipping plot')
+                    &to be the same... Skipping plot',persistent=.true.)
             end if
         end if
         
@@ -128,13 +129,13 @@ contains
         
         ! set default file name if empty
         if (trim(file_name_i).eq.'') then
-            file_name = 'temp_data_print_GP_2D_'//trim(i2str(grp_rank))//'.dat'
+            file_name = 'temp_data_print_GP_2D_'//trim(i2str(grp_rank))
         else
             file_name = trim(file_name_i)
         end if
         
         ! open output file
-        open(unit=nextunit(file_i),file=data_dir//'/'//trim(file_name),&
+        open(unit=nextunit(file_i),file=data_dir//'/'//trim(file_name)//'.dat',&
             &iostat=istat)
         
         ! write to output file
@@ -152,10 +153,11 @@ contains
         if (present(draw)) then
             if (.not.draw) return
         end if
-        call draw_GP(var_name,trim(file_name),nplt,1,.true.)
+        call draw_GP(var_name,file_name,file_name,nplt,1,.true.)
         
         if (trim(file_name_i).eq.'') then
-            call execute_command_line('rm '//data_dir//'/'//trim(file_name))
+            call execute_command_line('rm '//data_dir//'/'//trim(file_name)//&
+                &'.dat')
         end if
     end subroutine print_GP_2D_arr
     
@@ -226,7 +228,8 @@ contains
         
         ! return if no_plots
         if (no_plots) then
-            call writo('WARNING: plot ignored because no_plots is on')
+            call writo('WARNING: plot ignored because no_plots is on',&
+                &persistent=.true.)
             return
         end if
         
@@ -238,7 +241,7 @@ contains
             if (size(x,1).ne.size(z,1) .or. size(x,2).ne.size(z,2) .or. &
                 &size(x,3).ne.size(z,3)) then
                 call writo('WARNING: In print_GP, the size of x and z has to &
-                    &be the same... Skipping plot')
+                    &be the same... Skipping plot',persistent=.true.)
                 return
             end if
         end if
@@ -246,7 +249,7 @@ contains
             if (size(y,1).ne.size(z,1) .or. size(y,2).ne.size(z,2) .or. &
                 &size(y,3).ne.size(z,3)) then
                 call writo('WARNING: In print_GP, the size of y and z has to &
-                    &be the same... Skipping plot')
+                    &be the same... Skipping plot',persistent=.true.)
                 return
             end if
         end if
@@ -279,7 +282,7 @@ contains
         end if
         
         ! open output file
-        open(unit=nextunit(file_i),file=data_dir//'/'//trim(file_name),&
+        open(unit=nextunit(file_i),file=data_dir//'/'//trim(file_name)//'.dat',&
             &iostat=istat)
         
         ! write to output file
@@ -301,10 +304,11 @@ contains
         if (present(draw)) then
             if (.not.draw) return
         end if
-        call draw_GP(var_name,trim(file_name),nplt,2,.true.)
+        call draw_GP(var_name,file_name,file_name,nplt,2,.true.)
         
         if (trim(file_name_i).eq.'') then
-            call execute_command_line('rm '//data_dir//'/'//trim(file_name))
+            call execute_command_line('rm '//data_dir//'/'//trim(file_name)//&
+                &'.dat')
         end if
     end subroutine print_GP_3D_arr
     
@@ -316,37 +320,41 @@ contains
     ! in a file  called [var_name].pdf. Finally, for each of  the file names, an
     ! optional command draw_ops  can be provided, that specifies  the line style
     ! for the plots from the file.
-    subroutine draw_GP_ind(var_name,file_name,nplt,draw_dim,plot_on_screen,&
-        &draw_ops)
+    subroutine draw_GP_ind(var_name,file_name,draw_name,nplt,draw_dim,&
+        &plot_on_screen,draw_ops,extra_ops)
         
         ! input / output
+        character(len=*), intent(in) :: draw_name                               ! name of drawing
         character(len=*), intent(in) :: file_name                               ! name of file
         character(len=*), intent(in) :: var_name                                ! name of function
         integer, intent(in) :: nplt                                             ! number of plots
         integer, intent(in) :: draw_dim                                         ! 1: 2D, 2: 3D, 3: decoupled 3D
         logical, intent(in) :: plot_on_screen                                   ! True if on screen, false if in file
-        character(len=*), intent(in), optional :: draw_ops                      ! extra drawing option
+        character(len=*), intent(in), optional :: draw_ops                      ! drawing option
+        character(len=*), intent(in), optional :: extra_ops                     ! extra option
         
         ! call the array version
         if (present(draw_ops)) then
-            call draw_GP_arr(var_name,[file_name],nplt,draw_dim,&
-                &plot_on_screen,draw_ops=[draw_ops])
+            call draw_GP_arr(var_name,[file_name],draw_name,nplt,draw_dim,&
+                &plot_on_screen,draw_ops=[draw_ops],extra_ops=extra_ops)
         else
-            call draw_GP_arr(var_name,[file_name],nplt,draw_dim,&
-                &plot_on_screen)
+            call draw_GP_arr(var_name,[file_name],draw_name,nplt,draw_dim,&
+                &plot_on_screen,extra_ops=extra_ops)
         end if
     end subroutine draw_GP_ind
-    subroutine draw_GP_arr(var_name,file_names,nplt,draw_dim,plot_on_screen,&
-        &draw_ops)
+    subroutine draw_GP_arr(var_name,file_names,draw_name,nplt,draw_dim,&
+        &plot_on_screen,draw_ops,extra_ops)
         use num_vars, only: grp_rank
         
         ! input / output
-        character(len=*), intent(in) :: file_names(:)                           ! name of file
         character(len=*), intent(in) :: var_name                                ! name of function
+        character(len=*), intent(in) :: file_names(:)                           ! name of file
+        character(len=*), intent(in) :: draw_name                               ! name of drawing
         integer, intent(in) :: nplt                                             ! number of plots
         integer, intent(in) :: draw_dim                                         ! 1: 2D, 2: 3D, 3: decoupled 3D
         logical, intent(in) :: plot_on_screen                                   ! True if on screen, false if in file
         character(len=*), intent(in), optional :: draw_ops(:)                   ! extra drawing options (one per file)
+        character(len=*), intent(in), optional :: extra_ops                     ! extra option
         
         ! local variables
         character(len=3*size(file_names)*max_str_ln) :: plot_cmd                ! individual plot command
@@ -362,7 +370,8 @@ contains
         
         ! return if no_plots
         if (no_plots) then
-            call writo('WARNING: plot ignored because no_plots is on')
+            call writo('WARNING: plot ignored because no_plots is on',&
+                &persistent=.true.)
             return
         end if
         
@@ -373,7 +382,7 @@ contains
         if (present(draw_ops)) then
             if (nfl.ne.size(draw_ops)) then
                 call writo('WARNING: in draw_GP, one value for draw_ops has to &
-                    &be provided for each file to plot')
+                    &be provided for each file to plot',persistent=.true.)
                 return
             end if
         end if
@@ -383,13 +392,14 @@ contains
             script_name = trim(script_dir)//'/'//'temp_script_draw_GP_'//&
                 &trim(i2str(grp_rank))//'.gnu'
         else
-            script_name = trim(script_dir)//'/'//trim(var_name)//'.gnu'
+            script_name = trim(script_dir)//'/'//trim(draw_name)//'.gnu'
         end if
         
         ! open script file
         open(unit=nextunit(cmd_i),file=trim(script_name),iostat=istat)
         if (istat.ne.0) then
-            call writo('WARNING: Could not open file for gnuplot command')
+            call writo('WARNING: Could not open file for gnuplot command',&
+                &persistent=.true.)
             return
         end if
         
@@ -400,11 +410,14 @@ contains
         else                                                                    ! pdf terminal
             write(cmd_i,*) 'set grid; set border 4095 front linetype -1 &
                 &linewidth 1.000; set terminal pdf; set output '''//&
-                &trim(plot_dir)//'/'//trim(var_name)//'.pdf'';'
+                &trim(plot_dir)//'/'//trim(draw_name)//'.pdf'';'
         end if
         
         ! no legend if too many plots
         if (nplt.gt.10) write(cmd_i,*) 'set nokey;'
+        
+        ! write extra options
+        if (present(extra_ops)) write(cmd_i,*) trim(extra_ops)
         
         ! set up line styles
         if (.not.present(draw_ops)) then
@@ -432,10 +445,10 @@ contains
                                 &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
                         end if
                         plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
-                        &trim(file_names(ifl))//''' using '//trim(i2str(iplt))&
-                        &//':'//trim(i2str(nplt+iplt))//' title '''//&
-                        &trim(var_name)//' ('//trim(i2str(iplt))//'/'//&
-                        &trim(i2str(nplt))//')'' '//trim(loc_draw_op)//','
+                        &trim(file_names(ifl))//'.dat'' using '//&
+                        &trim(i2str(iplt))//':'//trim(i2str(nplt+iplt))//&
+                        &' title '''//trim(var_name)//' ('//trim(i2str(iplt))//&
+                        &'/'//trim(i2str(nplt))//')'' '//trim(loc_draw_op)//','
                         if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
                         plt_count = plt_count + 1
                     end do
@@ -453,8 +466,8 @@ contains
                                 &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
                         end if
                         plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
-                        &trim(file_names(ifl))//''' using '//trim(i2str(iplt))&
-                        &//':'//trim(i2str(nplt+iplt))//':'//&
+                        &trim(file_names(ifl))//'.dat'' using '//&
+                        &trim(i2str(iplt))//':'//trim(i2str(nplt+iplt))//':'//&
                         &trim(i2str(2*nplt+iplt))//' title '''//trim(var_name)&
                         &//' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
                         &')'' '//trim(loc_draw_op)//','
@@ -475,11 +488,11 @@ contains
                                 &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
                         end if
                         plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
-                        &trim(file_names(ifl))//''' using ('//trim(i2str(iplt))&
-                        &//'):'//trim(i2str(iplt))//':'//trim(i2str(nplt+iplt))&
-                        &//' title '''//trim(var_name)//' ('//trim(i2str(iplt))&
-                        &//'/'//trim(i2str(nplt))//')'' '//trim(loc_draw_op)//&
-                        &','
+                        &trim(file_names(ifl))//'.dat'' using ('//&
+                        &trim(i2str(iplt))//'):'//trim(i2str(iplt))//':'//&
+                        &trim(i2str(nplt+iplt))//' title '''//trim(var_name)//&
+                        &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
+                        &')'' '//trim(loc_draw_op)//','
                         if (ifl.eq.nfl) plot_cmd = trim(plot_cmd)//' \'
                         plt_count = plt_count + 1
                     end do
@@ -487,7 +500,7 @@ contains
                 end do
             case default
                 call writo('No draw_dim associated with '//&
-                    &trim(i2str(draw_dim)))
+                    &trim(i2str(draw_dim)),persistent=.true.)
                 istat = 1
                 CHCKSTT
         end select
@@ -507,25 +520,27 @@ contains
             &err_output_str,EXITSTAT=istat,CMDSTAT=cmdstat,CMDMSG=cmdmessage)
         
         if (istat.ne.0) then
-            call writo('Failed to plot '//trim(var_name))
+            call writo('Failed to plot '//trim(draw_name)//'.pdf',&
+                &persistent=.true.)
         else
             if (cmdstat.ne.0) then
-                call writo('Failed to plot '//trim(var_name))
+                call writo('Failed to plot '//trim(draw_name)//'.pdf',&
+                    &persistent=.true.)
                 call lvl_ud(1)
                 if (cmdstat.ne.0) call writo('System message: "'//&
-                    &trim(cmdmessage)//'"')
+                    &trim(cmdmessage)//'"',persistent=.true.)
                 if (.not.plot_on_screen) call writo('Try running "gnuplot "'//&
-                    &trim(script_name)//'"'//'" manually')
+                    &trim(script_name)//'"'//'" manually',persistent=.true.)
                 call lvl_ud(-1)
             else
                 if (plot_on_screen) then
-                    call system('rm '//trim(script_name))
                     call execute_command_line('rm '//trim(script_name),&
                         &EXITSTAT=istat,CMDSTAT=CMDSTAT,CMDMSG=cmdmessage)
                     ! ignore errors
                 else
                     call writo('Created plot in output file '''//&
-                        &trim(plot_dir)//'/'//trim(var_name)//'.pdf''')
+                        &trim(plot_dir)//'/'//trim(draw_name)//'.pdf''',&
+                        &persistent=.true.)
                 end if
             end if
         end if
@@ -541,37 +556,42 @@ contains
     ! optional command draw_ops  can be provided, that specifies  the line style
     ! for  the plots  from the  file. Finally,  also optional  commands for  the
     ! ranges of the figure and the delay between the frames can be specified.
-    subroutine draw_GP_animated_ind(var_name,file_name,nplt,draw_dim,ranges,&
-        &delay,draw_ops)
+    subroutine draw_GP_animated_ind(var_name,file_name,draw_name,nplt,draw_dim,&
+        &ranges,delay,draw_ops,extra_ops)
         
         ! input / output
-        character(len=*), intent(in) :: file_name                               ! name of file
         character(len=*), intent(in) :: var_name                                ! name of function
+        character(len=*), intent(in) :: file_name                               ! name of file
+        character(len=*), intent(in) :: draw_name                               ! name of drawing
         integer, intent(in) :: nplt                                             ! number of plots
         integer, intent(in) :: draw_dim                                         ! 1: 2D, 2: 3D, 3: decoupled 3D
         real(dp), intent(in), optional :: ranges(:,:)                           ! x and y range, and z range (if 3D) of plot
         integer, intent(in), optional :: delay                                  ! time delay between plots
         character(len=*), intent(in), optional :: draw_ops                      ! extra commands
+        character(len=*), intent(in), optional :: extra_ops                     ! extra option
         
         ! call the array version
         if (present(draw_ops)) then
-            call draw_GP_animated_arr(var_name,[file_name],nplt,draw_dim,&
-                &ranges=ranges,delay=delay,draw_ops=[draw_ops])
+            call draw_GP_animated_arr(var_name,[file_name],draw_name,nplt,&
+                &draw_dim,ranges=ranges,delay=delay,draw_ops=[draw_ops],&
+                &extra_ops=extra_ops)
         else
-            call draw_GP_animated_arr(var_name,[file_name],nplt,draw_dim,&
-                &delay=delay,ranges=ranges)
+            call draw_GP_animated_arr(var_name,[file_name],draw_name,nplt,&
+                &draw_dim,delay=delay,ranges=ranges,extra_ops=extra_ops)
         end if
     end subroutine draw_GP_animated_ind
-    subroutine draw_GP_animated_arr(var_name,file_names,nplt,draw_dim,ranges,&
-        &delay,draw_ops)
+    subroutine draw_GP_animated_arr(var_name,file_names,draw_name,nplt,&
+        &draw_dim,ranges,delay,draw_ops,extra_ops)
         ! input / output
-        character(len=*), intent(in) :: file_names(:)                           ! name of file
         character(len=*), intent(in) :: var_name                                ! name of function
+        character(len=*), intent(in) :: file_names(:)                           ! name of file
+        character(len=*), intent(in) :: draw_name                               ! name of drawing
         integer, intent(in) :: nplt                                             ! number of plots
         integer, intent(in) :: draw_dim                                         ! 1: 2D, 2: 3D, 3: decoupled 3D
         real(dp), intent(in), optional :: ranges(:,:)                           ! x and y range, and z range (if 3D) of plot
         integer, intent(in), optional :: delay                                  ! time delay between plots
         character(len=*), intent(in), optional :: draw_ops(:)                   ! extra commands
+        character(len=*), intent(in), optional :: extra_ops                     ! extra option
         
         ! local variables
         character(len=3*size(file_names)*max_str_ln) :: plot_cmd                ! individual plot command
@@ -589,7 +609,8 @@ contains
         
         ! return if no_plots
         if (no_plots) then
-            call writo('WARNING: plot ignored because no_plots is on')
+            call writo('WARNING: plot ignored because no_plots is on',&
+                &persistent=.true.)
             return
         end if
         
@@ -600,7 +621,8 @@ contains
         if (present(draw_ops)) then
             if (nfl.ne.size(draw_ops)) then
                 call writo('WARNING: in draw_GP_animated, one value for &
-                    &draw_ops has to be provided for each file to plot')
+                    &draw_ops has to be provided for each file to plot',&
+                    &persistent=.true.)
                 return
             end if
         end if
@@ -613,12 +635,13 @@ contains
         end if
         
         ! create the GNUPlot command
-        script_name = ''//trim(script_dir)//'/'//trim(var_name)//'.gnu'
+        script_name = ''//trim(script_dir)//'/'//trim(draw_name)//'.gnu'
         
         ! open script file
         open(unit=nextunit(cmd_i),file=trim(script_name),iostat=istat)
         if (istat.ne.0) then
-            call writo('WARNING: Could not open file for gnuplot command')
+            call writo('WARNING: Could not open file for gnuplot command',&
+                &persistent=.true.)
             return
         end if
         
@@ -626,7 +649,7 @@ contains
         write(cmd_i,*) 'set grid; set border 4095 front &
             &linetype -1 linewidth 1.000; set terminal gif animate delay '//&
             &trim(i2str(delay_loc))//' size 1280, 720; &
-            &set output '''//trim(plot_dir)//'/'//trim(var_name)//&
+            &set output '''//trim(plot_dir)//'/'//trim(draw_name)//&
             &'.gif'';'
         
         ! find and set ranges
@@ -639,7 +662,7 @@ contains
                         ranges_loc = ranges
                     else
                         call writo('WARNING: invalid ranges given to &
-                            &draw_GP_animated')
+                            &draw_GP_animated',persistent=.true.)
                     end if
                 else
                     ! initialize ranges
@@ -664,7 +687,7 @@ contains
                         ranges_loc = ranges
                     else
                         call writo('WARNING: invalid ranges given to &
-                            &draw_GP_animated')
+                            &draw_GP_animated',persistent=.true.)
                     end if
                 else
                     ranges_loc(:,1) = 1.E14_dp                                  ! minimum value
@@ -693,13 +716,16 @@ contains
                 write(cmd_i,*) 'set hidden3d offset 0'
             case default
                 call writo('No draw_dim associated with '//&
-                    &trim(i2str(draw_dim)))
+                    &trim(i2str(draw_dim)),persistent=.true.)
                 istat = 1
                 CHCKSTT
         end select
         
         ! no legend if too many plots
         !if (nfl.gt.10) write(cmd_i,*) 'set nokey;'
+        
+        ! write extra options
+        if (present(extra_ops)) write(cmd_i,*) trim(extra_ops)
         
         ! set up line styles
         if (.not.present(draw_ops)) then
@@ -726,10 +752,10 @@ contains
                                 &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
                         end if
                         plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
-                        &trim(file_names(ifl))//''' using '//trim(i2str(iplt))&
-                        &//':'//trim(i2str(nplt+iplt))//' title '''//&
-                        &trim(var_name)//' ('//trim(i2str(iplt))//'/'//&
-                        &trim(i2str(nplt))//')'' '//trim(loc_draw_op)
+                        &trim(file_names(ifl))//'.dat'' using '//&
+                        &trim(i2str(iplt))//':'//trim(i2str(nplt+iplt))//&
+                        &' title '''//trim(var_name)//' ('//trim(i2str(iplt))//&
+                        &'/'//trim(i2str(nplt))//')'' '//trim(loc_draw_op)
                         if (ifl.ne.nfl) plot_cmd = trim(plot_cmd)//', '
                         plt_count = plt_count + 1
                     end do
@@ -746,8 +772,8 @@ contains
                                 &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
                         end if
                         plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
-                        &trim(file_names(ifl))//''' using '//trim(i2str(iplt))&
-                        &//':'//trim(i2str(nplt+iplt))//':'//&
+                        &trim(file_names(ifl))//'.dat'' using '//&
+                        &trim(i2str(iplt))//':'//trim(i2str(nplt+iplt))//':'//&
                         &trim(i2str(2*nplt+iplt))//' title '''//trim(var_name)&
                         &//' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
                         &')'' '//trim(loc_draw_op)
@@ -767,10 +793,11 @@ contains
                                 &trim(i2str(mod(plt_count-1,size(line_clrs))+1))
                         end if
                         plot_cmd = trim(plot_cmd)//' '''//trim(data_dir)//'/'//&
-                        &trim(file_names(ifl))//''' using ('//trim(i2str(iplt))&
-                        &//'):'//trim(i2str(iplt))//':'//trim(i2str(nplt+iplt))&
-                        &//' title '''//trim(var_name)//' ('//trim(i2str(iplt))&
-                        &//'/'//trim(i2str(nplt))//')'' '//trim(loc_draw_op)
+                        &trim(file_names(ifl))//'.dat'' using ('//&
+                        &trim(i2str(iplt))//'):'//trim(i2str(iplt))//':'//&
+                        &trim(i2str(nplt+iplt))//' title '''//trim(var_name)//&
+                        &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//&
+                        &')'' '//trim(loc_draw_op)
                         if (ifl.ne.nfl) plot_cmd = trim(plot_cmd)//', '
                         plt_count = plt_count + 1
                     end do
@@ -778,7 +805,7 @@ contains
                 end do
             case default
                 call writo('No draw_dim associated with '//&
-                    &trim(i2str(draw_dim)))
+                    &trim(i2str(draw_dim)),persistent=.true.)
                 istat = 1
                 CHCKSTT
         end select
@@ -794,17 +821,20 @@ contains
             &err_output_str,EXITSTAT=istat,CMDSTAT=cmdstat,CMDMSG=cmdmessage)
         
         if (istat.ne.0) then
-            call writo('Failed to plot '//trim(var_name))
+            call writo('Failed to plot '//trim(draw_name)//'.pdf',&
+                &persistent=.true.)
         else
             if (cmdstat.ne.0) then
-                call writo('Failed to plot '//trim(var_name))
+                call writo('Failed to plot '//trim(draw_name)//'.pdf',&
+                &persistent=.true.)
                 call lvl_ud(1)
                 if (cmdstat.ne.0) call writo('System message: "'//&
-                    &trim(cmdmessage)//'"')
+                    &trim(cmdmessage)//'"',persistent=.true.)
                 call lvl_ud(-1)
             else
                 call writo('Created animated plot in output file '''//&
-                    &trim(plot_dir)//'/'//trim(var_name)//'.pdf''')
+                    &trim(plot_dir)//'/'//trim(draw_name)//'.pdf''',&
+                    &persistent=.true.)
             end if
         end if
     contains
@@ -831,7 +861,7 @@ contains
                     allocate(loc_data(3*nplt))
                 case default
                     call writo('No draw_dim associated with '//&
-                        &trim(i2str(draw_dim)))
+                        &trim(i2str(draw_dim)),persistent=.true.)
                     istat = 1
                     CHCKSTT
             end select
@@ -898,7 +928,7 @@ contains
         ! concatenate using shell
         call execute_command_line(trim(shell_cmd),EXITSTAT=istat)
         if (istat.ne.0) then
-            call writo('WARNING: merge_GP failed to merge')
+            call writo('WARNING: merge_GP failed to merge',persistent=.true.)
             return
         end if
         
@@ -920,7 +950,8 @@ contains
             ! delete using shell
             call execute_command_line(trim(shell_cmd),EXITSTAT=istat)
             if (istat.ne.0) then
-                call writo('WARNING: merge_GP failed to delete')
+                call writo('WARNING: merge_GP failed to delete',&
+                &persistent=.true.)
                 return
             end if
         end if
@@ -1027,13 +1058,14 @@ contains
         if (tot_dim_loc(col_id_loc).ne.n_plot) then
             istat = 1
             call writo('WARNING: In plot_HDF5, all the processes need to have &
-                &the full range in the dimension given by col_id')
+                &the full range in the dimension given by col_id',&
+                &persistent=.true.)
             CHCKSTT
         end if
         if (n_plot.eq.1 .and. col_loc.ne.1) then
             istat = 1
             call writo('WARNING: In plot_HDF5, if single plot, the collection &
-                &type needs to be one')
+                &type needs to be one',persistent=.true.)
             CHCKSTT
         end if
         
@@ -1109,13 +1141,15 @@ contains
                     att_names = var_names
                 else if (size(var_names).gt.n_plot) then                        ! too many variable names provided
                     att_names = var_names(1:n_plot)
-                    call writo('WARNING: Too many variable names provided')
+                    call writo('WARNING: Too many variable names provided',&
+                &persistent=.true.)
                 else                                                            ! not enough variable names provided
                     att_names(1:size(var_names)) = var_names
                     do id = size(var_names)+1,n_plot
                         att_names(id) = 'unnamed variable '//trim(i2str(id))
                     end do
-                    call writo('WARNING: Not enough variable names provided')
+                    call writo('WARNING: Not enough variable names provided',&
+                &persistent=.true.)
                 end if
                 grd_names = 'default_grid_name'
             else                                                                ! multiple plots: grid name is important
@@ -1123,20 +1157,22 @@ contains
                     grd_names = var_names
                 else if (size(var_names).gt.n_plot) then                        ! too many variable names provided
                     grd_names = var_names(1:n_plot)
-                    call writo('WARNING: Too many variable names provided')
+                    call writo('WARNING: Too many variable names provided',&
+                &persistent=.true.)
                 else                                                            ! not enough variable names provided
                     grd_names(1:size(var_names)) = var_names
                     do id = size(var_names)+1,n_plot
                         grd_names(id) = 'unnamed variable '//trim(i2str(id))
                     end do
-                    call writo('WARNING: Not enough variable names provided')
+                    call writo('WARNING: Not enough variable names provided',&
+                &persistent=.true.)
                 end if
                 att_names = 'default_att_name'
             end if
         else                                                                    ! collections: attribute name is important
             att_names = var_names(1)
             if (size(var_names).gt.1) call writo('WARNING: For collections, &
-                &only the first variable name is used')
+                &only the first variable name is used',persistent=.true.)
             grd_names = 'default_grid_name'
         end if
         
@@ -1204,7 +1240,8 @@ contains
                 case default                                                    ! no symmetry
                     istat = 1
                     call writo('WARNING: symmetry type '//&
-                        &trim(i2str(sym_type))//' not recognized')
+                        &trim(i2str(sym_type))//' not recognized',&
+                        &persistent=.true.)
                     CHCKSTT
             end select
             
@@ -1472,7 +1509,7 @@ contains
         if (size(A,1).ne.size(B,1) .or. size(A,2).ne.size(B,2) .or. &
             &size(A,3).ne.size(B,3)) then
             call writo('WARNING: in plot_diff_HDF5, A and B need to have the &
-                &correct size')
+                &correct size',persistent=.true.)
             return
         end if
         
@@ -1505,23 +1542,23 @@ contains
         
         ! output message if requested
         if (output_message_loc) then
-            call writo('Information about errors:')
+            call writo('Information about errors:',persistent=.true.)
             call lvl_ud(1)
             ! relative error
             call stats(tot_dim_loc(1:3),plot_var(:,:,:,3),lim_lo,lim_hi,err_av)
             call writo(trim(r2strt(lim_lo))//' < rel. err. < '//&
                 &trim(r2strt(lim_hi))//', average value: '//&
-                &trim(r2strt(err_av)))
+                &trim(r2strt(err_av)),persistent=.true.)
             ! log of absolute relative error
             call stats(tot_dim_loc(1:3),plot_var(:,:,:,4),lim_lo,lim_hi,err_av)
             call writo(trim(r2strt(lim_lo))//' < log(abs(rel. err.)) < '//&
                 &trim(r2strt(lim_hi))//', average value: '//&
-                &trim(r2strt(err_av)))
+                &trim(r2strt(err_av)),persistent=.true.)
             ! absolute error
             call stats(tot_dim_loc(1:3),plot_var(:,:,:,5),lim_lo,lim_hi,err_av)
             call writo(trim(r2strt(lim_lo))//' < abs. err. < '//&
                 &trim(r2strt(lim_hi))//', average value: '//&
-                &trim(r2strt(err_av)))
+                &trim(r2strt(err_av)),persistent=.true.)
             call lvl_ud(-1)
         end if
     contains

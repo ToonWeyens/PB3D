@@ -26,7 +26,7 @@ contains
     ! initialize the variables for the module
     ! [MPI] All ranks
     integer function init_files() result(ierr)
-        use num_vars, only: ltest, output_name, prog_style
+        use num_vars, only: ltest, prog_style
         
         character(*), parameter :: rout_name = 'init_files'
         
@@ -39,7 +39,6 @@ contains
         ! select according to program style
         select case (prog_style)
             case(1)                                                             ! PB3D
-                output_name = "PB3D_out"                                        ! standard output name
                 ltest = .false.                                                 ! don't call the testing routines
                 lvl = 1
                 allocate(opt_args(9), inc_args(9))
@@ -56,7 +55,6 @@ contains
                 opt_args(9) = '-eps_monitor'
                 inc_args = [0,0,0,0,0,1,1,1,0]
             case(2)                                                             ! PB3D_POST
-                output_name = "PB3D_POST_out"                                   ! standard output name
                 ltest = .false.                                                 ! don't call the testing routines
                 lvl = 1
                 allocate(opt_args(4), inc_args(4))

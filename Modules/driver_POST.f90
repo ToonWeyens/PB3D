@@ -32,7 +32,7 @@ contains
     ! [MPI] All ranks
     integer function run_driver_POST() result(ierr)
         use num_vars, only: no_messages, no_plots, eq_style, plot_resonance, &
-            &plot_flux_q, plot_grid
+            &plot_flux_q, plot_grid, output_name, grp_rank
         use PB3D_ops, only: reconstruct_PB3D
         use grid_vars, only: create_grid
         use eq_vars, only: create_eq
@@ -43,6 +43,8 @@ contains
         use X_ops, only: prepare_X, resonance_plot, calc_res_surf
         use sol_ops, only: plot_X_vec, decompose_energy
         use HELENA, only: interp_HEL_on_grid
+        use files_utilities, only: nextunit
+        use MPI_utilities, only: cycle_plt_master
         
         character(*), parameter :: rout_name = 'run_driver_POST'
         
@@ -53,11 +55,14 @@ contains
         integer :: id, jd                                                       ! counter
         integer :: min_id(3), max_id(3)                                         ! min. and max. index of range 1, 2 and 3
         integer :: last_unstable_id                                             ! index of last unstable EV
+        integer :: output_EN_i                                                  ! file number
         logical :: no_plots_loc                                                 ! local copy of no_plots
         logical :: no_messages_loc                                              ! local copy of no_messages
         real(dp), allocatable :: X_plot(:,:,:), Y_plot(:,:,:), Z_plot(:,:,:)    ! X, Y and Z on plot grid
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
         character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=max_str_ln) :: full_output_name                           ! full name
+        character(len=max_str_ln) :: format_head                                ! header
         
         ! initialize ierr
         ierr = 0
@@ -253,7 +258,7 @@ contains
         call lvl_ud(-1)
         
         ! user output
-        call writo('Prepare Eigenvector plot')
+        call writo('Prepare plots')
         call lvl_ud(1)
         
         call writo('Calculate plot grid')
@@ -267,6 +272,40 @@ contains
         ierr = calc_res_surf(PB3D%grid_eq,PB3D%eq,PB3D%X,res_surf,info=.false.,&
             &tol_NR=1.E-8_dp,max_it_NR=5000)
         CHCKERR('')
+        call lvl_ud(-1)
+        
+        call writo('Open decomposition log file')
+        call lvl_ud(1)
+        if (grp_rank.eq.0) then
+            ! set format strings
+            format_head = '("#  ",A23," ",A23," ",A23," ",A23)'
+            ! open output file for the log
+            full_output_name = trim(output_name)//'_EN.txt'
+            open(unit=nextunit(output_EN_i),file=full_output_name,&
+                &iostat=ierr)
+            CHCKERR('Cannot open EN output file')
+            call writo('Log file opened in '//trim(full_output_name))
+            write(output_EN_i,'(A)') '# Energy decomposition using the &
+                &solution Eigenvectors:'
+            write(output_EN_i,format_head) &
+                &'RE Eigenvalue          ', 'RE E_pot/E_kin         ', &
+                &'RE E_pot               ', 'RE E_kin               '
+            write(output_EN_i,format_head) &
+                &'IM Eigenvalue          ', 'IM E_pot/E_kin         ', &
+                &'IM E_pot               ', 'IM E_kin               '
+            write(output_EN_i,format_head) &
+                &'RE E_kin_n             ', 'RE E_kin_g             '
+            write(output_EN_i,format_head) &
+                &'IM E_kin_n             ', 'IM E_kin_g             '
+            write(output_EN_i,format_head) &
+                &'RE E_pot line_bending_n', 'RE E_pot line_bending_g', &
+                &'RE E_pot ballooning_n  ', 'RE E_pot ballooning_g  ', &
+                &'RE E_pot kink_n        ', 'RE E_pot kink_g        '
+            write(output_EN_i,format_head) &
+                &'IM E_pot line_bending_n', 'IM E_pot line_bending_g', &
+                &'IM E_pot ballooning_n  ', 'IM E_pot ballooning_g  ', &
+                &'IM E_pot kink_n        ', 'IM E_pot kink_g        '
+        end if
         call lvl_ud(-1)
         
         call lvl_ud(-1)
@@ -300,17 +339,23 @@ contains
                 ! user output
                 call writo('Decompose the energy into its terms')
                 call lvl_ud(1)
-                ierr = decompose_energy(PB3D_B,id,PB3D_plot,&
+                ierr = decompose_energy(PB3D_B,id,output_EN_i,PB3D_plot,&
                     &reshape([X_plot,Y_plot,Z_plot],[PB3D_plot%grid_X%n(1),&
                     &PB3D_plot%grid_X%n(2),PB3D_plot%grid_X%grp_n_r,3]))
                 CHCKERR('')
                 call lvl_ud(-1)
                 
                 call lvl_ud(-1)
+                
+                ! cycle group master
+                call cycle_plt_master
             end do
             
             call lvl_ud(-1)
         end do
+        
+        ! close output
+        if (grp_rank.eq.0) close(output_EN_i)
     end function run_driver_POST
     
     ! finds the plot ranges min_id and max_id
@@ -412,6 +457,7 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: plot_title                                 ! title for plots
+        character(len=max_str_ln) :: plot_name                                  ! file name for plots
         integer :: n_sol_found                                                  ! how many solutions found and saved
         integer :: id                                                           ! counter
         
@@ -423,32 +469,35 @@ contains
             ! Last Eigenvalues
             ! output on screen
             plot_title = 'final Eigenvalues omega^2 [log]'
-            call print_GP_2D(plot_title,'Eigenvalues.dat',&
+            plot_name = 'Eigenvalues'
+            call print_GP_2D(plot_title,plot_name,&
                 &log10(abs(realpart(X%val(1:n_sol_found)))),draw=.false.)
             ! same output in file as well
-            call draw_GP(plot_title,'Eigenvalues.dat',1,1,.false.)
+            call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
             
             ! Last Eigenvalues: unstable range
             if (last_unstable_id.gt.0) then
                 ! output on screen
                 plot_title = 'final unstable Eigenvalues omega^2'
-                call print_GP_2D(plot_title,'Eigenvalues_unstable.dat',&
+                plot_name = 'Eigenvalues_unstable'
+                call print_GP_2D(plot_title,plot_name,&
                     &realpart(X%val(1:last_unstable_id)),&
                     &x=[(id*1._dp,id=1,last_unstable_id)],draw=.false.)
                 ! same output in file as well
-                call draw_GP(plot_title,'Eigenvalues_unstable.dat',1,1,.false.)
+                call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
             end if
             
             ! Last Eigenvalues: stable range
             if (last_unstable_id.lt.n_sol_found) then
                 ! output on screen
                 plot_title = 'final stable Eigenvalues omega^2'
-                call print_GP_2D(plot_title,'Eigenvalues_stable.dat',&
+                plot_name = 'Eigenvalues_stable'
+                call print_GP_2D(plot_title,plot_name,&
                     &realpart(X%val(last_unstable_id+1:n_sol_found)),&
                     &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)],&
                     &draw=.false.)
                 ! same output in file as well
-                call draw_GP(plot_title,'Eigenvalues_stable.dat',1,1,.false.)
+                call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
             end if
         end if
     end subroutine plot_X_vals

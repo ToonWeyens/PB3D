@@ -168,12 +168,6 @@ contains
                 &file=trim(full_file_name)//'.xmf',iostat=ierr)
             CHCKERR('Failed to open xmf file')
             
-            ! user output
-            call writo('HDF5 file "'//trim(full_file_name)//'.h5" created',&
-                &persistent=.true.)
-            !call writo('XDMF file "'//trim(full_file_name)//'.xmf" created',&
-                !&persistent=.true.)
-            
             ! write header if group master
             write(file_info%XDMF_i,xmf_fmt) '<?xml version="1.0" ?>'
             write(file_info%XDMF_i,xmf_fmt) '<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" &
@@ -236,10 +230,8 @@ contains
             CHCKERR('Failed to close xmf file')
             
             ! user output
-            call writo('HDF5 file "'//trim(full_file_name)//'.h5" closed',&
-                &persistent=.true.)
-            !call writo('XDMF file "'//trim(full_file_name)//'.xmf" closed',&
-                !&persistent=.true.)
+            call writo('Created HDF5/XMF plot in output file "'//&
+                &trim(full_file_name)//'.xmf''')
         end if
     end function close_HDF5_file
     

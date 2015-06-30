@@ -1516,66 +1516,6 @@ contains
                 call lvl_ud(-1)
             end if
         end function plot_grid_real_HDF5
-        
-#if ldebug
-        ! plot with GNUPlot
-        ! Note: discontinued
-        subroutine plot_grid_real_GP(X_1,X_2,Y_1,Y_2,Z_1,Z_2,anim_name)
-            ! input / output
-            real(dp), intent(in) :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)          ! X, Y and Z of surface in Axisymmetric coordinates
-            real(dp), intent(in) :: X_2(:,:,:), Y_2(:,:,:), Z_2(:,:,:)          ! X, Y and Z of magnetic field lines in Axisymmetric coordinates
-            character(len=*), intent(in) :: anim_name                           ! name of animation
-            
-            ! local variables
-            character(len=max_str_ln) :: file_name(2), plot_title(2)            ! file name and title
-            character(len=max_str_ln) :: draw_ops(2)                            ! individual plot command
-            integer :: n_r                                                      ! number of normal points
-            
-            ! initialize ierr
-            ierr = 0
-           
-            ! only group masters
-            if (grp_rank.eq.0) then
-                ! user output
-                call writo('Drawing animation with GNUPlot')
-                call lvl_ud(1)
-                
-                ! set n_r
-                n_r = size(X_1,3)-1
-                
-                ! set names
-                plot_title(1) = 'Magnetic Flux Surface for alpha job '//&
-                    &trim(i2str(alpha_job_nr))
-                file_name(1) = 'Flux_surfaces_'//trim(i2str(alpha_job_nr))
-                plot_title(2) = 'Magnetic Field Line for alpha job '//&
-                    &trim(i2str(alpha_job_nr))
-                file_name(2) = 'B_field_'//trim(i2str(alpha_job_nr))
-                
-                ! write flux surfaces of this process
-                call print_GP_3D(trim(plot_title(1)),trim(file_name(1))//&
-                    &'.dat',Z_1(:,:,1:n_r),x=X_1(:,:,1:n_r),y=Y_1(:,:,1:n_r),&
-                    &draw=.false.)
-                
-                ! write magnetic field lines
-                call print_GP_3D(trim(plot_title(2)),trim(file_name(2))//&
-                    &'.dat',Z_2(:,:,2:n_r+1),x=X_2(:,:,2:n_r+1),&
-                    &y=Y_2(:,:,2:n_r+1),draw=.false.)
-                
-                ! add '.dat' to file names
-                do id = 1,2
-                    file_name(id) = trim(file_name(id))//'.dat'
-                end do
-                
-                ! draw both files
-                draw_ops(1) = 'linecolor rgb ''#d3d3d3'' linewidth 1'
-                draw_ops(2) = 'linecolor rgb ''black'' linewidth 3'
-                call draw_GP_animated(anim_name,file_name,n_r,2,delay=50,&
-                    &draw_ops=draw_ops)
-                
-                call lvl_ud(-1)
-            end if
-        end subroutine plot_grid_real_GP
-#endif
     end function plot_grid_real
     
     ! Trim a grid, removing any overlap between the different regions.
@@ -1676,7 +1616,7 @@ contains
     ! Extend a  grid angularly using  equidistant variables of  n_theta_plot and
     ! n_zeta_plot angular and  own grp_n_r points in  E coordinates. Optionally,
     ! the grid can  also be converted to  F coordinates if equilibrium  grid and
-    ! the variables are provided.
+    ! eq variables are provided.
     integer function extend_grid_E(grid_in,grid_ext,grid_eq,eq) result(ierr)
         use num_vars, only: n_theta_plot, n_zeta_plot
         use grid_vars, only: create_grid
@@ -1885,8 +1825,8 @@ contains
         nullify(ang_par_F)
     end function calc_int_magn
     
-    ! Calculates integral over whole volume (of plasma)
-    ! Two angular and  one normal variable has  to be provided on a  3D grid. If
+    ! Calculates volume integral on a 3D grid.
+    ! Two angular and  one normal variable has  to be provided on a the grid. If
     ! the  i'th dimension  of the  grid  is equal  to  one, the  function to  be
     ! integrated is assumed not to vary in this dimension.
     ! Furthermore, if i is 1 or  2, the corresponding i'th (angular) variable is
@@ -1913,8 +1853,8 @@ contains
     !   sum_xyz f(x,y,z) J(x,y,z) r_F_z (theta_x zeta_y - theta_y zeta_x) dxdydz
     ! where dx, dy and dz are all trivially equal to 1.
     ! The integrand has to be evaluated at the intermediate positions inside the
-    ! cells. This is done  by taking the average of the 8 points  for fJ as well
-    ! as the transformation of the Jacobian.
+    ! cells. This is  done by taking the  average of the 2^3=8 points  for fJ as
+    ! well as the transformation of the Jacobian.
     integer function calc_int_vol(ang_1,ang_2,norm,J,f,f_int) result(ierr)
         character(*), parameter :: rout_name = 'calc_int_vol'
         
@@ -1964,7 +1904,7 @@ contains
         ! set up dim_1
         dim_1 = .false.
         if (size(ang_1,1).eq.1) dim_1(1) = .true.
-        if (size(ang_1,2).eq.1) dim_1(2) = .true.
+        if (size(ang_2,2).eq.1) dim_1(2) = .true.
         
         ! set up Jf and transf_J
         allocate(Jf(max(dims(1)-1,1),max(dims(2)-1,1),dims(3)-1,nn_mod))

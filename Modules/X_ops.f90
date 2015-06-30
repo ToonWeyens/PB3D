@@ -317,11 +317,10 @@ contains
             end if
             
             ! print to file
-            call print_GP_2D(plot_title,trim(file_name)//'.dat',&
-                &y_vars,x=x_vars,draw=.false.)
+            call print_GP_2D(plot_title,file_name,y_vars,x=x_vars,draw=.false.)
             
             ! plot using GNUPlot
-            call draw_GP(plot_title,trim(file_name)//'.dat',n_mod_loc+1,1,&
+            call draw_GP(plot_title,file_name,file_name,n_mod_loc+1,1,&
                 &.false.)
             
             call lvl_ud(-1)
@@ -371,7 +370,7 @@ contains
     ! Note: Has to be called by all processes
     integer function calc_res_surf(grid,eq,X,res_surf,info,jq,tol_NR,&
         &max_it_NR) result(ierr)
-        use num_vars, only: use_pol_flux_F, grp_rank, tol_NR_loc => tol_NR, &
+        use num_vars, only: use_pol_flux_F, tol_NR_loc => tol_NR, &
             &max_it_NR_loc => max_it_NR
         use eq_vars, only: max_flux_p_F, max_flux_t_F
         use utilities, only: calc_zero_NR, interp_fun
@@ -419,95 +418,94 @@ contains
         CHCKERR('')
         
         ! get serial version of safety factor or rot. transform
-        if (grp_rank.eq.0) allocate(jq_tot(grid_trim%n(3),0:2))
+        allocate(jq_tot(grid_trim%n(3),0:2))
         if (use_pol_flux_F) then
             do kd = 0,2
-                ierr = get_ser_var(eq%q_saf_FD(1:grid_trim%grp_n_r,kd),jq_loc)
+                ierr = get_ser_var(eq%q_saf_FD(1:grid_trim%grp_n_r,kd),jq_loc,&
+                    &scatter=.true.)
                 CHCKERR('')
-                if(grp_rank.eq.0) jq_tot(:,kd) = jq_loc
+                jq_tot(:,kd) = jq_loc
             end do
         else
             do kd = 0,2
-                ierr = get_ser_var(eq%rot_t_FD(1:grid_trim%grp_n_r,kd),jq_loc)
+                ierr = get_ser_var(eq%rot_t_FD(1:grid_trim%grp_n_r,kd),jq_loc,&
+                    &scatter=.true.)
                 CHCKERR('')
-                if(grp_rank.eq.0) jq_tot(:,kd) = jq_loc
+                jq_tot(:,kd) = jq_loc
             end do
         end if
-        if (present(jq) .and. grp_rank.eq.0) then
+        if (present(jq)) then
             allocate(jq(grid_trim%n(3)))
             jq = jq_tot(:,0)
         end if
         
-        ! the rest is done only by global master
-        if (grp_rank.eq.0) then
-            ! initialize local res_surf
-            allocate(res_surf_loc(1:X%n_mod,3))
+        ! initialize local res_surf
+        allocate(res_surf_loc(1:X%n_mod,3))
+        
+        ! save old tol_NR and max_it_NR and modify them if needed
+        tol_NR_old = tol_NR_loc
+        max_it_NR_old = max_it_NR_loc
+        if (present(tol_NR)) tol_NR_loc = tol_NR
+        if (present(max_it_NR)) max_it_NR_loc = max_it_NR
+        
+        ! calculate normalization factor max_flux / 2pi
+        if (use_pol_flux_F) then
+            norm_factor = max_flux_p_F/(2*pi)
+        else
+            norm_factor = max_flux_t_F/(2*pi)
+        end if
+        
+        ! loop over all modes (and shift the index in x and y_vars by 1)
+        kd_loc = 1
+        do kd = 1, X%n_mod
+            ! find place  where q  = m/n or  iota = n/m  in Flux  coordinates by
+            ! solving q-m/n = 0 or iota-n/m=0, using the functin jq_fun
             
-            ! save old tol_NR and max_it_NR and modify them if needed
-            tol_NR_old = tol_NR_loc
-            max_it_NR_old = max_it_NR_loc
-            if (present(tol_NR)) tol_NR_loc = tol_NR
-            if (present(max_it_NR)) max_it_NR_loc = max_it_NR
-            
-            ! calculate normalization factor max_flux / 2pi
+            ! set up mnfrac for function
             if (use_pol_flux_F) then
-                norm_factor = max_flux_p_F/(2*pi)
-            else
-                norm_factor = max_flux_t_F/(2*pi)
+                mnfrac_fun = 1.0_dp*X%m(kd)/X%n(kd)
+            else                             
+                mnfrac_fun = 1.0_dp*X%n(kd)/X%m(kd)
             end if
             
-            ! loop over all modes (and shift the index in x and y_vars by 1)
-            kd_loc = 1
-            do kd = 1, X%n_mod
-                ! find place where q = m/n or  iota = n/m in Flux coordinates by
-                ! solving q-m/n = 0 or iota-n/m=0, using the functin jq_fun
-                
-                ! set up mnfrac for function
-                if (use_pol_flux_F) then
-                    mnfrac_fun = 1.0_dp*X%m(kd)/X%n(kd)
-                else                             
-                    mnfrac_fun = 1.0_dp*X%n(kd)/X%m(kd)
-                end if
-                
-                ! calculate zero using Newton-Rhapson
-                res_surf_loc(kd_loc,1) = kd
-                res_surf_loc(kd_loc,3) = mnfrac_fun
-                istat = calc_zero_NR(res_surf_loc(kd_loc,2),jq_fun,jq_dfun,&
-                    &(maxval(grid_trim%r_F)+minval(grid_trim%r_F))/2)           ! guess halfway between minimum and maximum normal range
-                
-                ! intercept error
-                if (istat.ne.0) then
-                    call lvl_ud(1)
-                    if (info_loc) call writo('Error intercepted: Couldn''t &
-                        &find resonating surface for (n,m) = ('//&
-                        &trim(i2str(X%n(kd)))//','//trim(i2str(X%m(kd)))//')')
-                    call lvl_ud(-1)
-                else if (res_surf_loc(kd_loc,2).lt.minval(grid_trim%r_F) .or. &
-                    &res_surf_loc(kd_loc,2).gt.maxval(grid_trim%r_F)) then
-                    if (info_loc) call writo('Mode (n,m) = ('//&
-                        &trim(i2str(X%n(kd)))//','//trim(i2str(X%m(kd)))//&
-                        &') does not resonate in plasma')
-                else
-                    if (info_loc) call writo('Mode (n,m) = ('//&
-                        &trim(i2str(X%n(kd)))//','//trim(i2str(X%m(kd)))//&
-                        &') resonates in plasma at normalized flux surface '//&
-                        &trim(r2str(res_surf_loc(kd_loc,2)/norm_factor)))
-                    kd_loc = kd_loc + 1                                         ! advance kd_loc
-                end if
-            end do
+            ! calculate zero using Newton-Rhapson
+            res_surf_loc(kd_loc,1) = kd
+            res_surf_loc(kd_loc,3) = mnfrac_fun
+            istat = calc_zero_NR(res_surf_loc(kd_loc,2),jq_fun,jq_dfun,&
+                &(maxval(grid_trim%r_F)+minval(grid_trim%r_F))/2)               ! guess halfway between minimum and maximum normal range
             
-            ! set res_surf from local copy
-            allocate(res_surf(kd_loc-1,3))
-            res_surf = res_surf_loc(1:kd_loc-1,:)
-            
-            ! recover old tol_NR and max_it_NR
-            tol_NR_loc = tol_NR_old
-            max_it_NR_loc = max_it_NR_old
-            
-            ! deallocate local variables
-            deallocate(jq_tot)
-            call dealloc_grid(grid_trim)
-        end if
+            ! intercept error
+            if (istat.ne.0) then
+                call lvl_ud(1)
+                if (info_loc) call writo('Error intercepted: Couldn''t &
+                    &find resonating surface for (n,m) = ('//&
+                    &trim(i2str(X%n(kd)))//','//trim(i2str(X%m(kd)))//')')
+                call lvl_ud(-1)
+            else if (res_surf_loc(kd_loc,2).lt.minval(grid_trim%r_F) .or. &
+                &res_surf_loc(kd_loc,2).gt.maxval(grid_trim%r_F)) then
+                if (info_loc) call writo('Mode (n,m) = ('//&
+                    &trim(i2str(X%n(kd)))//','//trim(i2str(X%m(kd)))//&
+                    &') does not resonate in plasma')
+            else
+                if (info_loc) call writo('Mode (n,m) = ('//&
+                    &trim(i2str(X%n(kd)))//','//trim(i2str(X%m(kd)))//&
+                    &') resonates in plasma at normalized flux surface '//&
+                    &trim(r2str(res_surf_loc(kd_loc,2)/norm_factor)))
+                kd_loc = kd_loc + 1                                             ! advance kd_loc
+            end if
+        end do
+        
+        ! set res_surf from local copy
+        allocate(res_surf(kd_loc-1,3))
+        res_surf = res_surf_loc(1:kd_loc-1,:)
+        
+        ! recover old tol_NR and max_it_NR
+        tol_NR_loc = tol_NR_old
+        max_it_NR_loc = max_it_NR_old
+        
+        ! deallocate local variables
+        deallocate(jq_tot)
+        call dealloc_grid(grid_trim)
     contains
         ! Returns q-m/n or  iota-n/m in Flux coordinates, used to  solve for q =
         ! m/n or iota = n/m.
@@ -720,8 +718,8 @@ contains
             
             ! output message
             call writo('The modes are all within the allowed range of '//&
-                &trim(r2strt(min_sec_X))//' < '//mode_name//' < '//&
-                &trim(r2strt(max_sec_X))//'...')
+                &trim(i2str(ceiling(min_sec_X)))//' < '//mode_name//' < '//&
+                &trim(i2str(floor(max_sec_X)))//'...')
             
             call lvl_ud(-1)
             call writo('Mode numbers checked')

@@ -7,7 +7,6 @@ module MPI_ops
     use messages
     use MPI
     use num_vars, only: dp, max_str_ln, pi
-    use output_ops, only: print_GP_2D
     
     implicit none
     private
@@ -18,7 +17,7 @@ contains
     ! start MPI and gather information
     ! [MPI] Collective call
     integer function start_MPI() result(ierr)
-        use num_vars, only: glb_rank, glb_n_procs, grp_rank, n_groups
+        use num_vars, only: glb_rank, glb_n_procs, grp_rank, n_groups, plt_rank
         
         character(*), parameter :: rout_name = 'start_MPI'
         
@@ -33,8 +32,9 @@ contains
         call MPI_Comm_size(MPI_Comm_world,glb_n_procs,ierr)                     ! nr. processes
         CHCKERR('MPI size failed')
         
-        ! no alpha groups yet, so set group rank to global rank
+        ! no alpha groups yet, so set group and plot rank to global rank
         grp_rank = glb_rank
+        plt_rank = glb_rank
         
         ! initialize n_groups to 0
         n_groups = 0
@@ -48,7 +48,7 @@ contains
         use X_vars, only: min_n_r_X
         use num_vars, only: n_procs_per_alpha, n_procs, n_alpha, &
             &MPI_Comm_groups, glb_rank, glb_n_procs, grp_rank, next_job, &
-            &grp_n_procs, grp_nr, n_groups, next_job_win
+            &grp_n_procs, grp_nr, n_groups, next_job_win, plt_rank
         use files_ops, only: open_output
         use MPI_utilities, only: calc_n_groups
         !use num_vars, only: MPI_Comm_masters
@@ -154,6 +154,9 @@ contains
         call MPI_Comm_split(MPI_Comm_world,grp_nr,grp_rank,MPI_Comm_groups,&
             &ierr)
         CHCKERR('Failed to split in groups')
+        
+        ! set plot rank equal to grp_rank
+        plt_rank = grp_rank
         
         ! increment n_r_X if lower than grp_n_procs
         if (grp_n_procs.gt.min_n_r_X) then
@@ -459,7 +462,8 @@ contains
     ! merge the MPI groups back to MPI_Comm_world
     ! [MPI] Collective call
     integer function merge_MPI() result(ierr)
-        use num_vars, only: MPI_Comm_groups, grp_rank, next_job_win, glb_rank
+        use num_vars, only: MPI_Comm_groups, grp_rank, next_job_win, glb_rank, &
+            &plt_rank
         !use num_vars, only: n_groups, MPI_Comm_masters
         
         character(*), parameter :: rout_name = 'merge_MPI'
@@ -485,8 +489,9 @@ contains
             !end if
         !end if
         
-        ! reset meaningless grp_rank to glb_rank (for output, etc...)
+        ! reset meaningless grp_rank and plt_rank to glb_rank
         grp_rank = glb_rank
+        plt_rank = glb_rank
         
         ! barrier
         call MPI_Barrier(MPI_Comm_world,ierr)
@@ -670,14 +675,14 @@ contains
     ! the global master process using the inputs to the other processes
     ! [MPI] Collective call
     integer function broadcast_input_vars() result(ierr)
-        use num_vars, only: max_str_ln, output_name, ltest, EV_style, &
-            &max_it_NR, max_it_r, n_alpha, n_procs_per_alpha, minim_style, &
-            &max_alpha, min_alpha, tol_NR, glb_rank, glb_n_procs, no_guess, &
-            &n_sol_requested, nyq_fac, tol_r, use_pol_flux_F, use_pol_flux_E, &
-            &retain_all_sol, plot_flux_q, plot_grid, no_plots, eq_style, &
-            &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
-            &plot_resonance, EV_BC, rho_style, prog_style, max_it_inv, &
-            &norm_disc_ord, BC_style, tol_norm_r
+        use num_vars, only: max_str_ln, ltest, EV_style, max_it_NR, max_it_r, &
+            &n_alpha, n_procs_per_alpha, minim_style, max_alpha, min_alpha, &
+            &tol_NR, glb_rank, glb_n_procs, no_guess, n_sol_requested, &
+            &nyq_fac, tol_r, use_pol_flux_F, use_pol_flux_E, retain_all_sol, &
+            &plot_flux_q, plot_grid, no_plots, eq_style, use_normalization, &
+            &n_sol_plotted, n_theta_plot, n_zeta_plot, plot_resonance, EV_BC, &
+            &rho_style, prog_style, max_it_inv, norm_disc_ord, BC_style, &
+            &tol_norm_r
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
@@ -716,9 +721,6 @@ contains
             ! variables that are sent for every program style:
             call MPI_Bcast(use_normalization,1,MPI_LOGICAL,0,MPI_Comm_world,&
                 &ierr)
-            CHCKERR(err_msg)
-            call MPI_Bcast(output_name,max_str_ln,MPI_CHARACTER,0,&
-                &MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)

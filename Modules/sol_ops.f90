@@ -331,6 +331,7 @@ contains
         &result(ierr)
         use output_ops, only: plot_HDF5
         use grid_ops, only: trim_grid
+        use grid_vars, only: dealloc_grid
         use num_vars, only: grp_rank, ghost_width_POST
         
         character(*), parameter :: rout_name = 'plot_X_vec'
@@ -486,6 +487,7 @@ contains
         deallocate(time)
         deallocate(f_plot)
         deallocate(X_plot,Y_plot,Z_plot)
+        call dealloc_grid(grid_X_trim)
         
         call lvl_ud(-1)
     contains
@@ -494,7 +496,7 @@ contains
         integer function plot_harmonics(grid_X,X,X_id,res_surf) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ghost_arr, get_ser_var
             use output_ops, only: merge_GP
-            use num_vars, only: grp_rank, use_pol_flux_F, GP_max_size
+            use num_vars, only: plt_rank, use_pol_flux_F, GP_max_size
             use eq_vars, only: max_flux_p_F, max_flux_t_F
             
             character(*), parameter :: rout_name = 'plot_harmonics'
@@ -509,28 +511,29 @@ contains
             integer :: id, kd                                                   ! counters
             character(len=max_str_ln) :: file_name                              ! name of file of plots of this proc.
             character(len=max_str_ln) :: plot_title                             ! title for plots
+            real(dp) :: norm_factor                                             ! conversion factor max_flux/2pi from flux to normal coordinate
             real(dp), allocatable :: x_plot(:,:)                                ! x values of plot
             real(dp), allocatable :: y_plot(:,:)                                ! y values of plot
-            complex(dp), allocatable :: X_vec_ser(:,:)                          ! serial MPI Eigenvector
-            complex(dp), allocatable :: X_vec_ser_loc(:)                        ! local X_vec_ser
             real(dp), allocatable :: X_vec_max(:)                               ! maximum position index of X_vec of rank
             real(dp), allocatable :: res_surf_loc(:,:)                          ! local copy of res_surf
+            complex(dp), allocatable :: X_vec_ser(:,:)                          ! serial MPI Eigenvector
+            complex(dp), allocatable :: X_vec_ser_loc(:)                        ! local X_vec_ser
             
             ! initialize ierr
             ierr = 0
             
             ! set up serial X_vec on group master
-            if (grp_rank.eq.0) allocate(X_vec_ser(1:X%n_mod,1:grid_X%n(3)))
+            if (plt_rank.eq.0) allocate(X_vec_ser(1:X%n_mod,1:grid_X%n(3)))
             do id = 1,X%n_mod
                 ierr = get_ser_var(X%vec(id,norm_ut(1):norm_ut(2),X_id),&
-                    &X_vec_ser_loc)
+                    &X_vec_ser_loc,scatter=.true.)
                 CHCKERR('')
-                if (grp_rank.eq.0) X_vec_ser(id,:) = X_vec_ser_loc
+                if (plt_rank.eq.0) X_vec_ser(id,:) = X_vec_ser_loc
                 deallocate(X_vec_ser_loc)
             end do
             
-            ! the rest is done only by group master
-            if (grp_rank.eq.0) then
+            ! the rest is done only by plot master
+            if (plt_rank.eq.0) then
                 ! set up x_plot
                 allocate(x_plot(grid_X%n(3),X%n_mod))
                 do kd = 1,X%n_mod
@@ -549,34 +552,31 @@ contains
                         &grid_X%r_F(maxloc(abs(realpart(X_vec_ser(kd,:))),1))
                 end do
                 
-                ! scale x_plot, X_vec_max and res_surf_loc(2) by flux
+                ! scale x_plot, X_vec_max and res_surf_loc(2) by max_flux/2pi
                 if (use_pol_flux_F) then
-                    x_plot = x_plot*2*pi/max_flux_p_F
-                    X_vec_max = X_vec_max*2*pi/max_flux_p_F
-                    res_surf_loc(:,2) = res_surf_loc(:,2)*2*pi/max_flux_p_F
+                    norm_factor = max_flux_p_F/(2*pi)
                 else
-                    x_plot = x_plot*2*pi/max_flux_t_F
-                    X_vec_max = X_vec_max*2*pi/max_flux_t_F
-                    res_surf_loc(:,2) = res_surf_loc(:,2)*2*pi/max_flux_t_F
+                    norm_factor = max_flux_t_F/(2*pi)
                 end if
+                x_plot = x_plot/norm_factor
+                X_vec_max = X_vec_max/norm_factor
+                res_surf_loc(:,2) = res_surf_loc(:,2)/norm_factor
                 
                 ! set up file name of this rank and plot title
                 file_name = trim(i2str(X_id))//'_EV_midplane'
                 plot_title = 'EV - midplane'
                 
                 ! print amplitude of harmonics of eigenvector at midplane
-                call print_GP_2D(trim(i2str(X_id))//' - '//&
-                    &trim(plot_title),trim(file_name)//'.dat',&
+                call print_GP_2D(plot_title,file_name,&
                     &realpart(transpose(X_vec_ser)),x=x_plot,draw=.false.)
                 
                 ! plot in file
-                call draw_GP(trim(i2str(X_id))//' - '//trim(plot_title),&
-                    &trim(file_name)//'.dat',X%n_mod,1,.false.)
+                call draw_GP(plot_title,file_name,file_name,X%n_mod,1,.false.)
                 
                 ! plot in file using decoupled 3D in GNUPlot if not too big
                 if (X%n_mod*grid_X%n(3).le.GP_max_size) then
-                    call draw_GP(trim(i2str(X_id))//' - '//trim(plot_title)//&
-                        &' - 3D',trim(file_name)//'.dat',X%n_mod,3,.false.)
+                    call draw_GP(trim(plot_title)//' - 3D',file_name,&
+                        &trim(file_name)//'_3D',X%n_mod,3,.false.)
                 end if
                 
                 ! plot using HDF5
@@ -605,12 +605,14 @@ contains
                     &res_surf_loc(size(res_surf_loc,1),1)
                 
                 ! plot the maximum at midplane
-                call print_GP_2D(trim(plot_title),trim(file_name)//'.dat',&
-                    &y_plot,x=x_plot,draw=.false.)
+                call print_GP_2D(plot_title,file_name,y_plot,x=x_plot,&
+                    &draw=.false.)
                 
                 ! draw plot in file
-                call draw_GP(trim(plot_title),trim(file_name)//'.dat',2,1,&
-                    &.false.)
+                call draw_GP(plot_title,file_name,file_name,2,1,.false.,&
+                    &extra_ops='set xrange ['//&
+                    &trim(r2str(grid_X%r_F(1)/norm_factor))//':'//&
+                    &trim(r2str(grid_X%r_F(grid_X%n(3))/norm_factor))//']')
                 
                 ! deallocate
                 deallocate(x_plot,X_vec_ser)
@@ -636,9 +638,11 @@ contains
     ! quantities defined on the eq grid, and angularly in the eq grid.
     ! Optionally, the results can be plotted  by providing PB3D_plot, where X, Y
     ! and Z can be provided as well. If not plotting, they are ignored.
-    integer function decompose_energy(PB3D,X_id,PB3D_plot,XYZ) result(ierr)
+    integer function decompose_energy(PB3D,X_id,log_i,PB3D_plot,XYZ) &
+        &result(ierr)
         use PB3D_vars, only: PB3D_type
         use grid_ops, only: trim_grid
+        use grid_vars, only: dealloc_grid
         use num_vars, only: ghost_width_POST, grp_rank
         
         character(*), parameter :: rout_name = 'decompose_energy'
@@ -646,6 +650,7 @@ contains
         ! input / output
         type(PB3D_type), intent(in) :: PB3D                                     ! field-aligned PB3D variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
+        integer, intent(in) :: log_i                                            ! file number of log file
         type(PB3D_type), intent(in), optional :: PB3D_plot                      ! optionally provide plot variables
         real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z for plotting
         
@@ -672,6 +677,7 @@ contains
         character(len=max_str_ln), allocatable :: var_names(:)                  ! name of other variables that are plot
         character(len=max_str_ln) :: file_name                                  ! name of file
         character(len=max_str_ln) :: description                                ! description
+        character(len=max_str_ln) :: format_val                                 ! format
         
         ! initialize ierr
         ierr = 0
@@ -683,6 +689,16 @@ contains
         ! user output
         call writo('Prepare calculations')
         call lvl_ud(1)
+        
+        ! set up format string:
+        !   row 1: EV, E_pot/E_kin
+        !   row 2: E_pot, E_kin
+        !   row 3: E_kin(1), E_kin(2)
+        !   row 4: E_pot(1), E_pot(2)
+        !   row 5: E_pot(3), E_pot(4)
+        !   row 6: E_pot(5), E_pot(6)
+        if (grp_rank.eq.0) format_val = '("  ",ES23.16," ",ES23.16," ",&
+            &ES23.16," ",ES23.16," ",ES23.16," ",ES23.16," ",ES23.16)'
         
         ! set up potential energy variable names
         allocate(var_names_pot(6))
@@ -708,50 +724,40 @@ contains
         
         call lvl_ud(-1)
         
-        call writo('Kinetic energy: (normalized)')
+        call writo('Write to log file')
         call lvl_ud(1)
+        if (grp_rank.eq.0) write(log_i,'(A)') '# Eigenvalue '//trim(i2str(X_id))
         
-        do kd = 1,2
-            call writo(trim(var_names_kin(kd)))
-            call lvl_ud(1)
-            call writo(trim(r2str(realpart(E_kin_int(kd))))//&
-                &' + i '//trim(r2str(imagpart(E_kin_int(kd)))))
-            call lvl_ud(-1)
-        end do
-        call writo('Total:')
-        call lvl_ud(1)
-        call writo(trim(r2str(realpart(sum(E_kin_int))))//&
-            &' + i '//trim(r2str(imagpart(sum(E_kin_int)))))
-        call lvl_ud(-1)
-        
-        call lvl_ud(-1)
-        
-        call writo('Potential energy (normalized):')
-        call lvl_ud(1)
-        
-        do kd = 1,6
-            call writo(trim(var_names_pot(kd)))
-            call lvl_ud(1)
-            call writo(trim(r2str(realpart(E_pot_int(kd))))//&
-                &' + i '//trim(r2str(imagpart(E_pot_int(kd)))))
-            call lvl_ud(-1)
-        end do
-        call writo('Total:')
-        call lvl_ud(1)
-        call writo(trim(r2str(realpart(sum(E_pot_int))))//&
-            &' + i '//trim(r2str(imagpart(sum(E_pot_int)))))
-        call lvl_ud(-1)
-        
-        call lvl_ud(-1)
-        
-        call writo('Ratio should be equal to:')
-        call lvl_ud(1)
-        
-        call writo('Eigenvalue:')
-        call lvl_ud(1)
-        call writo(trim(r2str(realpart(PB3D%X%val(X_id))))//' + '//&
-            &trim(r2str(imagpart(PB3D%X%val(X_id))))//' i')
-        call lvl_ud(-1)
+        if (grp_rank.eq.0) write(log_i,format_val) &
+            &realpart(PB3D%X%val(X_id)),&
+            &realpart(sum(E_pot_int)/sum(E_kin_int)),&
+            &realpart(sum(E_kin_int)),&
+            &realpart(sum(E_pot_int))
+        if (grp_rank.eq.0) write(log_i,format_val) &
+            &imagpart(PB3D%X%val(X_id)),&
+            &imagpart(sum(E_pot_int)/sum(E_kin_int)), &
+            &imagpart(sum(E_kin_int)),&
+            &imagpart(sum(E_pot_int))
+        if (grp_rank.eq.0) write(log_i,format_val) &
+            &realpart(E_kin_int(1)),&
+            &realpart(E_kin_int(2))
+        if (grp_rank.eq.0) write(log_i,format_val) &
+            &imagpart(E_kin_int(1)),&
+            &imagpart(E_kin_int(2))
+        if (grp_rank.eq.0) write(log_i,format_val) &
+            &realpart(E_pot_int(1)),&
+            &realpart(E_pot_int(2)),&
+            &realpart(E_pot_int(3)),&
+            &realpart(E_pot_int(4)),&
+            &realpart(E_pot_int(5)),&
+            &realpart(E_pot_int(6))
+        if (grp_rank.eq.0) write(log_i,format_val) &
+            &imagpart(E_pot_int(1)),&
+            &imagpart(E_pot_int(2)),&
+            &imagpart(E_pot_int(3)),&
+            &imagpart(E_pot_int(4)),&
+            &imagpart(E_pot_int(5)),&
+            &imagpart(E_pot_int(6))
         
         call lvl_ud(-1)
         
@@ -794,7 +800,7 @@ contains
             E_kin_trim => E_kin(:,:,norm_ut(1):norm_ut(2),:)
             
             ! user output
-            call writo('Plot kinetic energy constituents')
+            call writo('Plot energy terms')
             call lvl_ud(1)
             
             ! E_kin
@@ -813,12 +819,6 @@ contains
                 &Z=Z_tot_trim,description=description)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
             
-            call lvl_ud(-1)
-            
-            ! user output
-            call writo('Plot potential energy constituents')
-            call lvl_ud(1)
-            
             ! E_pot
             file_name = trim(i2str(X_id))//'_E_pot'
             description = 'Potential energy constituents'
@@ -834,12 +834,6 @@ contains
                 &grp_offset=[grp_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
                 &Z=Z_tot_trim,description=description)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
-            
-            call lvl_ud(-1)
-            
-            ! user output
-            call writo('Plot (de)stabilizing terms')
-            call lvl_ud(1)
             
             ! E_stab
             var_names(1) = '1. stabilizing term'
@@ -857,12 +851,6 @@ contains
                 &[sum(E_pot_trim(:,:,:,1:2),4),sum(E_pot_trim(:,:,:,3:6),4)],&
                 &[grp_dim,2])),tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,description=description)
-            
-            call lvl_ud(-1)
-            
-            ! user output
-            call writo('Plot potential and kinetic energy and fraction')
-            call lvl_ud(1)
             
             ! E
             var_names(1) = '1. potential energy'
@@ -885,6 +873,7 @@ contains
             deallocate(X_tot,Y_tot,Z_tot)
             nullify(E_kin_trim,E_pot_trim)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
+            call dealloc_grid(grid_X_trim)
         end if
     contains
         ! calculate the energy terms
@@ -985,8 +974,8 @@ contains
                         ang_1(:,:,kd) = PB3D%grid_eq%zeta_F(:,:,i_lo)+&
                             &(grp_r_eq-i_lo)*(PB3D%grid_eq%zeta_F(:,:,i_hi)-&
                             &PB3D%grid_eq%zeta_F(:,:,i_lo))                     ! zeta
-                        ang_2(:,:,kd) = PB3D%alpha                              ! alpha
                     end if
+                    ang_2(:,:,kd) = PB3D%alpha                              ! alpha
                 else
                     ang_1(:,:,kd) = PB3D%grid_eq%theta_F(:,:,i_lo)+&
                         &(grp_r_eq-i_lo)*(PB3D%grid_eq%theta_F(:,:,i_hi)-&
@@ -1065,6 +1054,9 @@ contains
             E_pot = E_pot/sum(E_kin_int)
             E_kin_int = E_kin_int/sum(E_kin_int)
             E_pot_int = E_pot_int/sum(E_kin_int)
+            
+            ! deallocate variables
+            call dealloc_grid(grid_X_trim)
         end function calc_E
     end function decompose_energy
 end module sol_ops

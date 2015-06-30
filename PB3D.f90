@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.83                                                              !
+!   Version: 0.84                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -23,7 +23,7 @@
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D
-    use num_vars, only: ltest, prog_name, prog_style
+    use num_vars, only: ltest, prog_name, prog_style, output_name
     use str_ops, only: r2str, i2str
     use messages, only: init_messages, lvl_ud, writo, init_time, &
         &start_time, passed_time, print_hello, print_goodbye
@@ -50,6 +50,7 @@ program PB3D
     !-------------------------------------------------------
     !   Initialize some routines
     !-------------------------------------------------------
+    output_name = 'PB3D_out'
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
     prog_name = 'PB3D'

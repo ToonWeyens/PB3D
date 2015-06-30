@@ -18,11 +18,13 @@ PB3D_POST.o : \
     messages.o \
     MPI_ops.o \
     files_ops.o \
+    files_utilities.o \
     HDF5_ops.o \
     input_ops.o \
     PB3D_ops.o \
     driver_POST.o \
     utilities.o \
+    MPI_utilities.o \
 
 PB3D_vars.o : \
     num_vars.o \
@@ -68,6 +70,7 @@ sol_ops.o : \
     output_ops.o \
     str_ops.o \
     messages.o \
+    grid_vars.o \
 
 grid_ops.o : \
     HDF5_ops.o \
