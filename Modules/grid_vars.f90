@@ -60,11 +60,12 @@ module grid_vars
 contains
     ! creates a new grid
     ! Optionally, the group limits can be provided for a divided grid.
+    ! Note: intent(out) automatically deallocates the variable
     integer function create_grid_3D(grid,n,i_lim) result(ierr)                  ! 3D version
         character(*), parameter :: rout_name = 'create_grid_3D'
         
         ! input / output
-        type(grid_type), intent(inout) :: grid                                  ! grid to be created
+        type(grid_type), intent(out) :: grid                                    ! grid to be created
         integer :: n(3)                                                         ! tot. nr. of points (par,r,alpha)
         integer, optional :: i_lim(2)                                           ! min. and max. group normal index
         
@@ -75,14 +76,6 @@ contains
         ierr = 0
         
         ! tests
-        if (associated(grid%r_E) .or.  associated(grid%grp_r_E) .or. &
-            &associated(grid%r_F) .or.  associated(grid%grp_r_F) .or. &
-            &associated(grid%theta_E) .or.  associated(grid%zeta_E) .or. &
-            &associated(grid%theta_F) .or.  associated(grid%zeta_F)) then
-            ierr = 1
-            err_msg = 'Cannot create same grid more than once'
-            CHCKERR(err_msg)
-        end if
         if (present(i_lim)) then
             if (i_lim(2)-i_lim(1)+1.gt.n(3)) then
                 ierr = 1
@@ -129,7 +122,7 @@ contains
         character(*), parameter :: rout_name = 'create_grid_1D'
         
         ! input / output
-        type(grid_type), intent(inout) :: grid                                  ! grid to be created
+        type(grid_type), intent(out) :: grid                                    ! grid to be created
         integer :: n                                                            ! tot. nr. of points (par,r,alpha)
         integer, optional :: i_lim(2)                                           ! min. and max. group normal index
         
@@ -140,14 +133,6 @@ contains
         ierr = 0
         
         ! tests
-        if (associated(grid%r_E) .or.  associated(grid%grp_r_E) .or. &
-            &associated(grid%r_F) .or.  associated(grid%grp_r_F) .or. &
-            &associated(grid%theta_E) .or.  associated(grid%zeta_E) .or. &
-            &associated(grid%theta_F) .or.  associated(grid%zeta_F)) then
-            ierr = 1
-            err_msg = 'Cannot create same grid more than once'
-            CHCKERR(err_msg)
-        end if
         if (present(i_lim)) then
             if (i_lim(2)-i_lim(1)+1.gt.n) then
                 ierr = 1
@@ -181,19 +166,32 @@ contains
         end if
     end function create_grid_1D
     
-    ! destroy a grid
+    ! deallocates a grid
     subroutine dealloc_grid(grid)
         ! input / output
-        type(grid_type) :: grid                                                 ! grid to be created
+        type(grid_type), intent(inout) :: grid                                  ! grid to be deallocated
         
-        if (associated(grid%theta_E)) nullify(grid%theta_E)
-        if (associated(grid%zeta_E)) nullify(grid%zeta_E)
-        if (associated(grid%theta_F)) nullify(grid%theta_F)
-        if (associated(grid%zeta_F)) nullify(grid%zeta_F)
-        if (associated(grid%r_E)) nullify(grid%r_E)
-        if (associated(grid%r_F)) nullify(grid%r_F)
-        if (associated(grid%grp_r_E)) nullify(grid%grp_r_E)
-        if (associated(grid%grp_r_F)) nullify(grid%grp_r_F)
-        if (allocated(grid%trigon_factors)) deallocate(grid%trigon_factors)
+        ! deallocate allocated pointers
+        deallocate(grid%r_E,grid%r_F)
+        if (grid%n(1).ne.0 .and. grid%n(2).ne.0) then                           ! 3D grid
+            deallocate(grid%theta_E,grid%zeta_E)
+            deallocate(grid%theta_F,grid%zeta_F)
+        end if
+        if (grid%divided) deallocate(grid%grp_r_E,grid%grp_r_F)
+        
+        ! nullify pointers
+        nullify(grid%r_E,grid%r_F)
+        nullify(grid%theta_E,grid%zeta_E)
+        nullify(grid%theta_F,grid%zeta_F)
+        nullify(grid%grp_r_E,grid%grp_r_F)
+        
+        ! deallocate allocatable variables
+        call dealloc_grid_final(grid)
+    contains
+        ! Note: intent(out) automatically deallocates the variable
+        subroutine dealloc_grid_final(grid)
+            ! input / output
+            type(grid_type), intent(out) :: grid                                ! grid to be deallocated
+        end subroutine dealloc_grid_final
     end subroutine dealloc_grid
 end module grid_vars

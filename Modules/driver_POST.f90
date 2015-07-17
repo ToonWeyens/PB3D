@@ -11,7 +11,8 @@ module driver_POST
     use eq_vars, only: eq_type
     use met_vars, only: met_type
     use X_vars, only: X_type
-        use PB3D_vars, only: PB3D_type
+        use PB3D_vars, only: dealloc_PB3D, &
+            &PB3D_type
     
     implicit none
     private
@@ -263,6 +264,12 @@ contains
         
         call writo('Calculate plot grid')
         call lvl_ud(1)
+        allocate(X_plot(PB3D_plot%grid_X%n(1),PB3D_plot%grid_X%n(2),&
+            &PB3D_plot%grid_X%grp_n_r))
+        allocate(Y_plot(PB3D_plot%grid_X%n(1),PB3D_plot%grid_X%n(2),&
+            &PB3D_plot%grid_X%grp_n_r))
+        allocate(Z_plot(PB3D_plot%grid_X%n(1),PB3D_plot%grid_X%n(2),&
+            &PB3D_plot%grid_X%grp_n_r))
         ierr = calc_XYZ_grid(PB3D_plot%grid_X,X_plot,Y_plot,Z_plot)
         CHCKERR('')
         call lvl_ud(-1)
@@ -278,7 +285,7 @@ contains
         call lvl_ud(1)
         if (grp_rank.eq.0) then
             ! set format strings
-            format_head = '("#  ",A23," ",A23," ",A23," ",A23)'
+            format_head = '("#  ",A23," ",A23," ",A23," ",A23," ",A23," ",A23)'
             ! open output file for the log
             full_output_name = trim(output_name)//'_EN.txt'
             open(unit=nextunit(output_EN_i),file=full_output_name,&
@@ -353,6 +360,12 @@ contains
             
             call lvl_ud(-1)
         end do
+        
+        ! clean up 
+        call dealloc_PB3D(PB3D)
+        call dealloc_PB3D(PB3D_plot)
+        if (eq_style.eq.2) call dealloc_PB3D(PB3D_B)                            ! only for HELENA
+        nullify(PB3D_B)
         
         ! close output
         if (grp_rank.eq.0) close(output_EN_i)

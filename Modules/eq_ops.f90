@@ -7,7 +7,7 @@ module eq_ops
     use output_ops
     use messages
     use num_vars, only: pi, dp, max_str_ln
-    use grid_vars, only: grid_type
+    use grid_vars, only: grid_type, dealloc_grid
     use eq_vars, only: eq_type
     use met_vars, only: met_type
     
@@ -15,10 +15,18 @@ module eq_ops
     private
     public read_eq, calc_normalization_const, normalize_input, calc_eq, &
         &calc_flux_q, print_output_eq, flux_q_plot
+#if ldebug
+    public debug_calc_derived_q
+#endif
     
     interface calc_RZL
         module procedure calc_RZL_ind, calc_RZL_arr
     end interface
+    
+    ! global variables
+#if ldebug
+    logical :: debug_calc_derived_q = .true.                                    ! plot debug information for calc_derived_q
+#endif
 
 contains
     ! reads the equilibrium input file
@@ -737,6 +745,12 @@ contains
     subroutine calc_derived_q(grid_eq,eq,met)
         use utilities, only: c
         use eq_vars, only: vac_perm
+#if ldebug
+        use num_vars, only: use_pol_flux_F
+        use utilities, only: calc_deriv
+        use grid_ops, only: trim_grid
+        use grid_vars, only: dealloc_grid
+#endif
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
@@ -747,27 +761,35 @@ contains
         integer :: kd                                                           ! counter
         ! submatrices
         ! jacobian
-        real(dp), pointer :: J(:,:,:)                                           ! jac
-        real(dp), pointer :: D1J(:,:,:)                                         ! D_alpha jac
-        real(dp), pointer :: D2J(:,:,:)                                         ! D_psi jac
-        real(dp), pointer :: D3J(:,:,:)                                         ! D_theta jac
+        real(dp), pointer :: J(:,:,:) => null()                                 ! jac
+        real(dp), pointer :: D1J(:,:,:) => null()                               ! D_alpha jac
+        real(dp), pointer :: D2J(:,:,:) => null()                               ! D_psi jac
+        real(dp), pointer :: D3J(:,:,:) => null()                               ! D_theta jac
         ! lower metric factors
-        real(dp), pointer :: g13(:,:,:)                                         ! g_alpha,theta
-        real(dp), pointer :: D2g13(:,:,:)                                       ! D_psi g_alpha,theta
-        real(dp), pointer :: D3g13(:,:,:)                                       ! D_theta g_alpha,theta
-        real(dp), pointer :: g23(:,:,:)                                         ! g_psi,theta
-        real(dp), pointer :: D1g23(:,:,:)                                       ! D_alpha g_psi,theta
-        real(dp), pointer :: D3g23(:,:,:)                                       ! D_theta g_psi,theta
-        real(dp), pointer :: g33(:,:,:)                                         ! g_theta,theta
-        real(dp), pointer :: D1g33(:,:,:)                                       ! D_alpha g_theta,theta
-        real(dp), pointer :: D2g33(:,:,:)                                       ! D_psi g_theta,theta
-        real(dp), pointer :: D3g33(:,:,:)                                       ! D_theta g_theta,theta
+        real(dp), pointer :: g13(:,:,:) => null()                               ! g_alpha,theta
+        real(dp), pointer :: D2g13(:,:,:) => null()                             ! D_psi g_alpha,theta
+        real(dp), pointer :: D3g13(:,:,:) => null()                             ! D_theta g_alpha,theta
+        real(dp), pointer :: g23(:,:,:) => null()                               ! g_psi,theta
+        real(dp), pointer :: D1g23(:,:,:) => null()                             ! D_alpha g_psi,theta
+        real(dp), pointer :: D3g23(:,:,:) => null()                             ! D_theta g_psi,theta
+        real(dp), pointer :: g33(:,:,:) => null()                               ! g_theta,theta
+        real(dp), pointer :: D1g33(:,:,:) => null()                             ! D_alpha g_theta,theta
+        real(dp), pointer :: D2g33(:,:,:) => null()                             ! D_psi g_theta,theta
+        real(dp), pointer :: D3g33(:,:,:) => null()                             ! D_theta g_theta,theta
         ! upper metric factors
-        real(dp), pointer :: h12(:,:,:)                                         ! h^alpha,psi
-        real(dp), pointer :: D3h12(:,:,:)                                       ! D_theta h^alpha,psi
-        real(dp), pointer :: h22(:,:,:)                                         ! h^psi,psi
-        real(dp), pointer :: D3h22(:,:,:)                                       ! D_theta h^psi,psi
-        real(dp), pointer :: h23(:,:,:)                                         ! h^psi,theta
+        real(dp), pointer :: h12(:,:,:) => null()                               ! h^alpha,psi
+        real(dp), pointer :: D3h12(:,:,:) => null()                             ! D_theta h^alpha,psi
+        real(dp), pointer :: h22(:,:,:) => null()                               ! h^psi,psi
+        real(dp), pointer :: D3h22(:,:,:) => null()                             ! D_theta h^psi,psi
+        real(dp), pointer :: h23(:,:,:) => null()                               ! h^psi,theta
+#if ldebug
+        type(grid_type) :: grid_eq_trim                                         ! trimmed equilibrium grid
+        real(dp), allocatable :: D3sigma(:,:,:)                                 ! D_theta sigma
+        real(dp), allocatable :: D3sigma_ALT(:,:,:)                             ! alternative D_theta sigma
+        real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle theta_F or zeta_F
+        integer :: istat                                                        ! status
+        integer :: jd                                                           ! counter
+#endif
         
         ! set up submatrices
         ! jacobian
@@ -798,7 +820,8 @@ contains
         
         ! Calculate the normal curvature kappa_n
         do kd = 1,grid_eq%grp_n_r
-            eq%kappa_n(:,:,kd) = J(:,:,kd)**2*eq%pres_FD(kd,1)/g33(:,:,kd) + &
+            eq%kappa_n(:,:,kd) = &
+                &vac_perm*J(:,:,kd)**2*eq%pres_FD(kd,1)/g33(:,:,kd) + &
                 &1._dp/(2*h22(:,:,kd)) * ( &
                 &h12(:,:,kd) * ( D1g33(:,:,kd)/g33(:,:,kd) - &
                 &2*D1J(:,:,kd)/J(:,:,kd) ) + &
@@ -819,6 +842,70 @@ contains
             eq%sigma(:,:,kd) = eq%sigma(:,:,kd) - &
                 &eq%pres_FD(kd,1)*J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)
         end do 
+        
+#if ldebug
+        ! test whether -2 p' J kappa_g = D3sigma
+        if (debug_calc_derived_q) then
+            call lvl_ud(1)
+            
+            call writo('Testing whether -2 p'' J kappa_g = D3sigma')
+            call lvl_ud(1)
+            
+            ! trim equilibrium grid
+            istat = trim_grid(grid_eq,grid_eq_trim)
+            CHCKSTT
+            
+            ! allocate variables
+            allocate(D3sigma(grid_eq_trim%n(1),grid_eq_trim%n(2),&
+                &grid_eq_trim%grp_n_r))
+            allocate(D3sigma_ALT(grid_eq_trim%n(1),grid_eq_trim%n(2),&
+                &grid_eq_trim%grp_n_r))
+            
+            ! point parallel angle
+            if (use_pol_flux_F) then
+                ang_par_F => grid_eq_trim%theta_F
+            else
+                ang_par_F => grid_eq_trim%zeta_F
+            end if
+            
+            ! get derived sigma
+            do kd = 1,grid_eq_trim%grp_n_r
+                do jd = 1,grid_eq_trim%n(2)
+                    istat = calc_deriv(eq%sigma(:,jd,kd),D3sigma(:,jd,kd),&
+                        &ang_par_F(:,jd,kd),1,1)
+                    CHCKSTT
+                end do
+            end do
+            
+            ! calculate alternatively derived sigma
+            do kd = 1,grid_eq_trim%grp_n_r
+                D3sigma_ALT(:,:,kd) = -2*eq%pres_FD(kd,1)*eq%kappa_g(:,:,kd)*&
+                    &J(:,:,kd)
+            end do
+            
+            ! plot output
+            call plot_diff_HDF5(D3sigma,D3sigma_ALT,'TEST_D3sigma',&
+                &grid_eq_trim%n,[0,0,grid_eq_trim%i_min-1],&
+                &description='To test whether -2 p'' J kappa_g = D3sigma',&
+                &output_message=.true.)
+            
+            ! clean up
+            nullify(ang_par_F)
+            call dealloc_grid(grid_eq_trim)
+            
+            call lvl_ud(-1)
+            call lvl_ud(-1)
+        end if
+#endif
+        
+        ! clean up
+        nullify(J,D1J,D2J,D3J)
+        nullify(g13,D2g13,D3g13)
+        nullify(g23,D1g23,D3g23)
+        nullify(g33,D1g33,D2g33,D3g33)
+        nullify(h12,D3h12)
+        nullify(h22,D3h22)
+        nullify(h23)
     end subroutine calc_derived_q
     
     ! plots the flux quantities in the perturbation grid
@@ -881,6 +968,9 @@ contains
         ! plot using GNUPlot
         ierr = flux_q_plot_GP()
         CHCKERR('')
+        
+        ! clean up
+        call dealloc_grid(grid_trim)
         
         call lvl_ud(-1)
     contains
@@ -982,9 +1072,6 @@ contains
             
             ! local variables
             integer :: kd                                                       ! counter
-            real(dp), allocatable :: X_plot_3D(:,:,:)                           ! x values of 3D plot
-            real(dp), allocatable :: Y_plot_3D(:,:,:)                           ! y values of 3D plot
-            real(dp), allocatable :: Z_plot_3D(:,:,:)                           ! z values of 3D plot
             real(dp), allocatable :: X_plot(:,:,:,:)                            ! x values of total plot
             real(dp), allocatable :: Y_plot(:,:,:,:)                            ! y values of total plot
             real(dp), allocatable :: Z_plot(:,:,:,:)                            ! z values of total plot
@@ -1013,10 +1100,6 @@ contains
             ierr = extend_grid_E(grid_trim,grid_plot)
             CHCKERR('')
             
-            ! calculate 3D X,Y and Z
-            ierr = calc_XYZ_grid(grid_plot,X_plot_3D,Y_plot_3D,Z_plot_3D)
-            CHCKERR('')
-            
             ! set up plot_dim and plot_offset
             plot_dim = [grid_plot%n(1),grid_plot%n(2),grid_plot%n(3),n_vars]
             plot_offset = [0,0,grid_plot%i_min-1,n_vars]
@@ -1030,11 +1113,17 @@ contains
                 &n_vars))
             allocate(f_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r,&
                 &n_vars))
-            do id = 1,n_vars
-                X_plot(:,:,:,id) = X_plot_3D
-                Y_plot(:,:,:,id) = Y_plot_3D
-                Z_plot(:,:,:,id) = Z_plot_3D
+            
+            ! calculate 3D X,Y and Z
+            ierr = calc_XYZ_grid(grid_plot,X_plot(:,:,:,1),Y_plot(:,:,:,1),&
+                &Z_plot(:,:,:,1))
+            CHCKERR('')
+            do id = 2,n_vars
+                X_plot(:,:,:,id) = X_plot(:,:,:,1)
+                Y_plot(:,:,:,id) = Y_plot(:,:,:,1)
+                Z_plot(:,:,:,id) = Z_plot(:,:,:,1)
             end do
+            
             do kd = 1,grid_plot%grp_n_r
                 f_plot(:,:,kd,1) = Y_plot_2D(kd,1)                              ! safey factor
                 f_plot(:,:,kd,2) = Y_plot_2D(kd,2)                              ! rotational transform
@@ -1049,7 +1138,6 @@ contains
             
             ! deallocate and destroy grid
             deallocate(Y_plot_2D)
-            deallocate(X_plot_3D,Y_plot_3D,Z_plot_3D)
             deallocate(X_plot,Y_plot,Z_plot,f_plot)
             call dealloc_grid(grid_plot)
         end function flux_q_plot_HDF5
@@ -1216,7 +1304,7 @@ contains
     integer function print_output_eq(grid_eq,grid_eq_B,eq,met,alpha) &
         &result(ierr)
         use num_vars, only: eq_style, rho_style, grp_rank, prog_version, &
-            &use_pol_flux_E, use_pol_flux_F
+            &use_pol_flux_E, use_pol_flux_F, use_normalization
         use HDF5_ops, only: print_HDF5_arrs, &
             &var_1D
         use HELENA, only: R_H, Z_H, nchi, chi_H, ias, flux_p_H
@@ -1237,9 +1325,9 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        type(var_1D), pointer :: eq_1D(:)                                       ! 1D equivalent of eq. variables
-        type(var_1D), pointer :: eq_B_1D(:)                                     ! 1D equivalent of field-aligned eq. variables
-        type(var_1D), pointer :: eq_1D_loc                                      ! local element in eq_1D
+        type(var_1D), allocatable, target :: eq_1D(:)                           ! 1D equivalent of eq. variables
+        type(var_1D), allocatable, target :: eq_B_1D(:)                         ! 1D equivalent of field-aligned eq. variables
+        type(var_1D), pointer :: eq_1D_loc => null()                            ! local element in eq_1D
         type(grid_type) :: grid_trim, grid_trim_B                               ! trimmed grids
         integer :: i_min, i_max                                                 ! min. and max. index of variables tabulated in internal grid
         integer :: i_min_full, i_max_full                                       ! min. and max. index of variables tabulated in full grid
@@ -1652,21 +1740,22 @@ contains
         allocate(eq_1D_loc%grp_i_min(1),eq_1D_loc%grp_i_max(1))
         if (grp_rank.eq.0) then
             eq_1D_loc%grp_i_min = [1]
-            eq_1D_loc%grp_i_max = [17]
-            allocate(eq_1D_loc%p(17))
+            eq_1D_loc%grp_i_max = [18]
+            allocate(eq_1D_loc%p(18))
             eq_1D_loc%p = [prog_version,eq_style*1._dp,rho_style*1._dp,&
                 &alpha,R_0,pres_0,B_0,psi_0,rho_0,T_0,vac_perm,&
                 &max_flux_p_E,max_flux_t_E,max_flux_p_F,max_flux_t_F,&
-                &-1._dp,-1._dp]
+                &-1._dp,-1._dp,-1._dp]
             if (use_pol_flux_E) eq_1D_loc%p(16) = 1._dp
             if (use_pol_flux_F) eq_1D_loc%p(17) = 1._dp
+            if (use_normalization) eq_1D_loc%p(18) = 1._dp
         else
             eq_1D_loc%grp_i_min = [1]
             eq_1D_loc%grp_i_max = [0]
             allocate(eq_1D_loc%p(0))
         end if
         eq_1D_loc%tot_i_min = [1]
-        eq_1D_loc%tot_i_max = [17]
+        eq_1D_loc%tot_i_max = [18]
         
         ! Set up particular variables, depending on equilibrium style
         !   1: VMEC needs the flux quantities in E coords. and VMEC variables in
@@ -1950,6 +2039,12 @@ contains
             ierr = print_HDF5_arrs(eq_B_1D,'eq_B')
             CHCKERR('')
         end if
+        
+        ! clean up
+        call dealloc_grid(grid_trim)
+        call dealloc_grid(grid_trim_B)
+        deallocate(eq_1D,eq_B_1D)
+        nullify(eq_1D_loc)
         
         ! user output
         call lvl_ud(-1)

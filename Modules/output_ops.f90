@@ -1032,10 +1032,10 @@ contains
         logical :: ind_plot                                                     ! individual plot
         real(dp), allocatable :: sym_ang(:,:,:)                                 ! angle to be checked for symmetry
         real(dp) :: tol_sym = 1.E-8_dp                                          ! tolerance for symmetry determination
-        real(dp), pointer :: var_3D(:,:,:)                                      ! pointer to vars
-        real(dp), pointer :: X_3D(:,:,:)                                        ! pointer to X
-        real(dp), pointer :: Y_3D(:,:,:)                                        ! pointer to Y 
-        real(dp), pointer :: Z_3D(:,:,:)                                        ! pointer to Z
+        real(dp), pointer :: var_3D(:,:,:) => null()                            ! pointer to vars
+        real(dp), pointer :: X_3D(:,:,:) => null()                              ! pointer to X
+        real(dp), pointer :: Y_3D(:,:,:) => null()                              ! pointer to Y 
+        real(dp), pointer :: Z_3D(:,:,:) => null()                              ! pointer to Z
         character(len=max_str_ln), allocatable :: grd_names(:)                  ! grid names
         character(len=max_str_ln), allocatable :: att_names(:)                  ! attribute names
         
@@ -1298,6 +1298,10 @@ contains
         ! close HDF5 file
         istat = close_HDF5_file(file_info,ind_plot=ind_plot)
         CHCKSTT
+        
+        ! clean up
+        nullify(var_3D)
+        nullify(X_3D,Y_3D,Z_3D)
     contains
         ! assigns the 3D subarray pointer variables
         subroutine assign_pointers(id)

@@ -1,14 +1,14 @@
 ! (from http://patorjk.com/software/taag/ ANSI shadow)
 
-!   ██████╗ ██████╗ ██████╗ ██████╗ 
-!   ██╔══██╗██╔══██╗╚════██╗██╔══██╗
-!   ██████╔╝██████╔╝ █████╔╝██║  ██║
-!   ██╔═══╝ ██╔══██╗ ╚═══██╗██║  ██║
-!   ██║     ██████╔╝██████╔╝██████╔╝
-!   ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ 
+!   ██████╗ ██████╗ ██████╗ ██████╗     ██████╗  ██████╗ ███████╗████████╗
+!   ██╔══██╗██╔══██╗╚════██╗██╔══██╗    ██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝
+!   ██████╔╝██████╔╝ █████╔╝██║  ██║    ██████╔╝██║   ██║███████╗   ██║   
+!   ██╔═══╝ ██╔══██╗ ╚═══██╗██║  ██║    ██╔═══╝ ██║   ██║╚════██║   ██║   
+!   ██║     ██████╔╝██████╔╝██████╔╝    ██║     ╚██████╔╝███████║   ██║   
+!   ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝     ╚═╝      ╚═════╝ ╚══════╝   ╚═╝   
 
 !------------------------------------------------------------------------------!
-!   Main program Peeling Ballooning in 3D                                      !
+!   Postprocessing program of Peeling Ballooning in 3D                         !
 !------------------------------------------------------------------------------!
 !   Author: Toon Weyens                                                        !
 !   Institution: Departamento de Física,                                       !
@@ -22,38 +22,39 @@
 !           devices, eq. (6.12) and (6.16)                                     !
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
-program PB3D
-    use num_vars, only: ltest, prog_name, prog_style, output_name
-    use str_ops, only: r2str, i2str
-    use messages, only: init_messages, lvl_ud, writo, init_time, &
-        &start_time, passed_time, print_hello, print_goodbye
+program PB3D_POST
+    use str_ops, only: i2str
+    use num_vars, only: prog_name, prog_style, ltest, output_name
+    use messages, only: writo, print_goodbye, lvl_ud, print_hello, &
+        &init_messages, init_time, start_time, stop_time, passed_time
     use HDF5_ops, only: init_HDF5
-    use driver, only: run_driver
-    use files_ops, only: open_input, open_output, parse_args, init_files, &
+    use utilities, only: init_utilities
+    use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_vars
+    use files_ops, only: init_files, parse_args, open_input, open_output, &
         &close_output
     use input_ops, only: read_input
-    use utilities, only: init_utilities
-    use MPI_ops, only: start_MPI, stop_MPI, abort_MPI, broadcast_input_vars
-    use eq_ops, only: read_eq, calc_normalization_const, normalize_input
+    use PB3D_ops, only: read_PB3D
+    use driver_POST, only: run_driver_POST
     use test, only: generic_tests
     
     implicit none
 
     ! local variables
     integer :: ierr                                                             ! error
-    
-    write(*,*) '¡¡¡TEST PRESSURE BALANCE FOR VMEC!!!'
-    write(*,*) '¡¡¡FLUX IS NEGATIVE FOR QPS!!!'
-    write(*,*) '¡¡¡ADD SMALL DISSIPATIVE TERM!!!'
+    write(*,*) '!!!!! FOR VMEC: COPY ALSO THE EQUILIBRIUM QUANTITIES TO BE ABLE &
+        &TO CALCULATE EVERYTHING FOR A NON-ALIGNED PLOT GRID !!!'
+    write(*,*) '!!!!! FOR HELENA: COPY ALSO THE FIELD-ALIGNED GRID AND &
+        &INTERPOLATE THE QUANTITIES TO THIS GRID !!!'
+    write(*,*) 'THIS WAY YOU HAVE TWO GRIDS: FIELD ALIGNED AND PLOT'
     
     !-------------------------------------------------------
     !   Initialize some routines
     !-------------------------------------------------------
-    output_name = 'PB3D_out'
+    output_name = 'PB3D_POST_out'
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
-    prog_name = 'PB3D'
-    prog_style = 1
+    prog_name = 'PB3D_POST'
+    prog_style = 2
     call print_hello
     call init_messages                                                          ! initialize message operations
     ierr = init_files()                                                         ! initialize file operations
@@ -63,7 +64,7 @@ program PB3D
     call init_HDF5                                                              ! initialize HDF5
  
     !-------------------------------------------------------
-    !   Read the user-provided input file and the VMEC output
+    !   Read the PB3D output
     !-------------------------------------------------------
     call start_time
     call writo('Initialization')
@@ -72,15 +73,11 @@ program PB3D
     CHCKERR
     ierr = open_input()                                                         ! open the input files
     CHCKERR
-    ierr = read_eq()                                                            ! read equilibrium file
+    ierr = read_PB3D()                                                          ! read the PB3D file
     CHCKERR
     ierr = read_input()                                                         ! read input file
     CHCKERR
     ierr = open_output()                                                        ! open output file per alpha group
-    CHCKERR
-    ierr = calc_normalization_const()                                           ! set up normalization constants
-    CHCKERR
-    ierr = normalize_input()                                                    ! normalize the input
     CHCKERR
     ierr = broadcast_input_vars()                                               ! broadcast to other processors
     CHCKERR
@@ -112,13 +109,13 @@ program PB3D
     call start_time
     call writo('Main driver')
     call lvl_ud(1)
-    ierr = run_driver()
+    ierr = run_driver_POST()
     CHCKERR
     call writo('')
     call passed_time
     call writo('')
     call lvl_ud(-1)
-    
+
     !-------------------------------------------------------
     !   cleaning up
     !-------------------------------------------------------
@@ -136,6 +133,7 @@ contains
     ! as a special case, if ierr = 66, no error message is printed
     subroutine sudden_stop(ierr)
         use num_vars, only: glb_rank
+        use MPI_ops, only: abort_MPI
         
         ! input / output
         integer, intent(in) :: ierr                                             ! error to output
@@ -144,7 +142,7 @@ contains
         integer :: ierr_abort                                                   ! error to output
         
         if (ierr.ne.66) then
-            call writo('>> calling routine: PB3D (main) of rank '//&
+            call writo('>> calling routine: PB3D_POST (main) of rank '//&
                 &trim(i2str(glb_rank)),persistent=.true.)
             call writo('ERROR CODE '//trim(i2str(ierr))//&
                 &'. Aborting MPI rank '//trim(i2str(glb_rank)),&
@@ -161,4 +159,4 @@ contains
         call lvl_ud(-1)
         stop
     end subroutine
-end program PB3D 
+end program PB3D_POST

@@ -41,7 +41,7 @@ contains
             case(1)                                                             ! PB3D
                 ltest = .false.                                                 ! don't call the testing routines
                 lvl = 1
-                allocate(opt_args(9), inc_args(9))
+                allocate(opt_args(12), inc_args(12))
                 opt_args = ''
                 inc_args = 0
                 opt_args(1) = '-t'
@@ -53,7 +53,10 @@ contains
                 opt_args(7) = '-st_pc_type'
                 opt_args(8) = '-st_pc_factor_mat_solver_package'
                 opt_args(9) = '-eps_monitor'
-                inc_args = [0,0,0,0,0,1,1,1,0]
+                opt_args(10) = '-eps_tol'
+                opt_args(11) = '-eps_ncv'
+                opt_args(12) = '-eps_mpd'
+                inc_args = [0,0,0,0,0,1,1,1,0,1,1,1]
             case(2)                                                             ! PB3D_POST
                 ltest = .false.                                                 ! don't call the testing routines
                 lvl = 1

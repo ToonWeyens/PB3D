@@ -122,7 +122,8 @@ contains
             &min_r_X, max_r_X, min_n_X, max_n_X, min_m_X, max_m_X
         use eq_vars, only: create_eq, R_0, pres_0, B_0, psi_0, rho_0, T_0, &
             &vac_perm, max_flux_p_E, max_flux_t_E, max_flux_p_F, max_flux_t_F
-        use num_vars, only: eq_style, max_deriv, use_pol_flux_E, use_pol_flux_F
+        use num_vars, only: eq_style, max_deriv, use_pol_flux_E, &
+            &use_pol_flux_F, use_normalization
         use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor, &
             &nfp, lfreeB, lasym
         use HELENA, only: R_H, Z_H, chi_H, flux_p_H, ias, nchi
@@ -560,8 +561,10 @@ contains
         max_flux_t_F = dum_1D(15)
         use_pol_flux_E = .false.
         use_pol_flux_F = .false.
+        use_normalization = .false.
         if (dum_1D(16).gt.0) use_pol_flux_E = .true.
         if (dum_1D(17).gt.0) use_pol_flux_F = .true.
+        if (dum_1D(18).gt.0) use_normalization = .true.
         deallocate(dum_1D)
         
         call writo('Setting perturbation')

@@ -14,7 +14,7 @@ module SLEPC_ops
     use messages
     use slepceps
     use num_vars, only: iu, dp, max_str_ln
-    use grid_vars, only: grid_type
+    use grid_vars, only: grid_type, dealloc_grid
     use X_vars, only: X_type
 
     implicit none
@@ -811,6 +811,9 @@ contains
         call MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY,ierr)
         CHCKERR('Coulnd''t end assembly of matrix')
         
+        ! clean up
+        call dealloc_grid(grid_X_trim)
+        
         call lvl_ud(-1)
         
         call lvl_ud(-1)
@@ -1312,9 +1315,13 @@ contains
         CHCKERR('EPSGetIterationNumber failed')
         call EPSGetDimensions(solver,n_ev,ncv,mpd,ierr)                         ! nr. of requested EV, ...
         CHCKERR('EPSGetDimensions failed')
-        call writo(trim(i2str(n_conv))//' converged solutions &
-            &after '//trim(i2str(n_it))//' iterations, with '//&
-            &trim(i2str(n_ev))//' requested solution')
+        call writo('number of iterations: '//trim(i2str(n_it)))
+        call writo('number of converged solutions: '//trim(i2str(n_conv)))
+        call writo('number of requested solutions: '//trim(i2str(n_ev)))
+        call writo('maximum dimension of the subspace to be used by solver: '//&
+            &trim(i2str(ncv)))
+        call writo('maximum dimension allowed for projected problem : '//&
+            &trim(i2str(mpd)))
         
         ! set maximum nr of solutions to be saved
         if (n_sol_requested.gt.n_conv) then
@@ -1509,8 +1516,8 @@ contains
             id_tot = id_tot+1
         end do
         
-        ! close output file
-        close(output_EV_i)
+        ! close output file if group master
+        if (grp_rank.eq.0) close(output_EV_i)
         
         ! normalize Eigenvectors to make output more easily comparable
         allocate(X_vec_max(grp_n_procs))
@@ -1529,8 +1536,9 @@ contains
         deallocate(X_vec_max)
         
         ! user output
-        call writo(trim(i2str(max_n_EV))//' Eigenvalues were written in the &
-            &file "'//trim(full_output_name)//'"')
+        if (grp_rank.eq.0) call writo(trim(i2str(max_n_EV))//&
+            &' Eigenvalues were written in the file "'//&
+            &trim(full_output_name)//'"')
         if (sum(n_err).ne.0) then
             call writo('there were some Eigenvalues that were removed:')
             call lvl_ud(1)
@@ -1550,9 +1558,9 @@ contains
         call lvl_ud(1)
         
         call writo('min: '//trim(r2strt(realpart(X%val(1))))//' + '//&
-            &trim(r2strt(realpart(X%val(1))))//' i')
+            &trim(r2strt(imagpart(X%val(1))))//' i')
         call writo('max: '//trim(r2strt(realpart(X%val(max_n_EV))))//' + '//&
-            &trim(r2strt(realpart(X%val(max_n_EV))))//' i')
+            &trim(r2strt(imagpart(X%val(max_n_EV))))//' i')
         
         call lvl_ud(-1)
         
@@ -1569,10 +1577,13 @@ contains
             CHCKERR('Failed to place array')
             !call MatMult(A,sol_vec,err_vec,ierr)
             !CHCKERR('Failed to multiply')
+            
+            call VecDestroy(err_vec,ierr)                                       ! destroy error vector
+            CHCKERR('Failed to destroy err_vec')
         end if
 #endif
         
-        call VecDestroy(sol_vec,ierr)                                           ! destroy compatible vector
+        call VecDestroy(sol_vec,ierr)                                           ! destroy solution vector
         CHCKERR('Failed to destroy sol_vec')
         
         call lvl_ud(-1)

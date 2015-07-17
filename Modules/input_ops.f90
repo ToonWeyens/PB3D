@@ -290,8 +290,8 @@ contains
             &use_pol_flux_F, plot_grid, plot_flux_q, use_normalization, &
             &n_theta_plot, n_zeta_plot, retain_all_sol, norm_disc_ord, &
             &BC_style, max_it_inv, tol_norm_r
-        namelist /inputdata_PB3D_POST/ n_sol_plotted, use_normalization, &
-            &n_theta_plot, n_zeta_plot, plot_resonance, plot_flux_q, plot_grid
+        namelist /inputdata_PB3D_POST/ n_sol_plotted, n_theta_plot, &
+            &n_zeta_plot, plot_resonance, plot_flux_q, plot_grid
         
         ! initialize ierr
         ierr = 0
@@ -490,7 +490,6 @@ contains
             use num_vars, only: eq_style
             
             ! runtime variables
-            use_normalization = .true.                                          ! use normalization for the variables
             plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
             plot_flux_q = .false.                                               ! do not plot the flux quantities
             plot_grid = .false.                                                 ! do not plot the grid

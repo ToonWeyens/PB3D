@@ -147,7 +147,8 @@ contains
         !      fac_1 = DU_1/J
         ! and par_fac is a helper variable.
         ! Note that if the resolution for X_vec is bad, the numerical derivative
-        ! is very inaccurate.
+        ! is very  inaccurate, therefore  only smooth (i.e.  physical) solutions
+        ! should be looked at.
         allocate(fac_0(grid_eq%n(1),grid_eq%n(2),grid_eq%grp_n_r))
         allocate(fac_1(grid_eq%n(1),grid_eq%n(2),grid_eq%grp_n_r))
         allocate(par_fac(grid_eq%grp_n_r))
@@ -666,12 +667,13 @@ contains
         complex(dp), allocatable, target :: E_kin(:,:,:,:)                      ! kinetic energy
         complex(dp), allocatable :: E_pot_int(:)                                ! integrated potential energy
         complex(dp), allocatable :: E_kin_int(:)                                ! integrated kinetic energy
-        complex(dp), pointer :: E_pot_trim(:,:,:,:)                             ! trimmed part of E_pot
-        complex(dp), pointer :: E_kin_trim(:,:,:,:)                             ! trimmed part of E_kin
+        complex(dp), pointer :: E_pot_trim(:,:,:,:) => null()                   ! trimmed part of E_pot
+        complex(dp), pointer :: E_kin_trim(:,:,:,:) => null()                   ! trimmed part of E_kin
         real(dp), allocatable, target :: X_tot(:,:,:,:), Y_tot(:,:,:,:), &
             &Z_tot(:,:,:,:)                                                     ! multiple copies of X, Y and Z for collection plot
-        real(dp), pointer :: X_tot_trim(:,:,:,:), Y_tot_trim(:,:,:,:), &
-            &Z_tot_trim(:,:,:,:)                                                ! trimmed part of X, Y and Z
+        real(dp), pointer :: X_tot_trim(:,:,:,:) => null()                      ! trimmed part of X
+        real(dp), pointer :: Y_tot_trim(:,:,:,:) => null()                      ! trimmed part of Y
+        real(dp), pointer :: Z_tot_trim(:,:,:,:) => null()                      ! trimmed part of Z
         character(len=max_str_ln), allocatable :: var_names_pot(:)              ! name of potential energy variables
         character(len=max_str_ln), allocatable :: var_names_kin(:)              ! name of kinetic energy variables
         character(len=max_str_ln), allocatable :: var_names(:)                  ! name of other variables that are plot
@@ -868,9 +870,7 @@ contains
             
             call lvl_ud(-1)
             
-            ! deallocate variables
-            deallocate(var_names)
-            deallocate(X_tot,Y_tot,Z_tot)
+            ! clean up
             nullify(E_kin_trim,E_pot_trim)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
             call dealloc_grid(grid_X_trim)
@@ -969,13 +969,12 @@ contains
                         ang_1(:,:,kd) = PB3D%grid_eq%theta_F(:,:,i_lo)+&
                             &(grp_r_eq-i_lo)*(PB3D%grid_eq%theta_F(:,:,i_hi)-&
                             &PB3D%grid_eq%theta_F(:,:,i_lo))                    ! theta
-                        ang_2(:,:,kd) = PB3D%alpha                              ! alpha
                     else
                         ang_1(:,:,kd) = PB3D%grid_eq%zeta_F(:,:,i_lo)+&
                             &(grp_r_eq-i_lo)*(PB3D%grid_eq%zeta_F(:,:,i_hi)-&
                             &PB3D%grid_eq%zeta_F(:,:,i_lo))                     ! zeta
                     end if
-                    ang_2(:,:,kd) = PB3D%alpha                              ! alpha
+                    ang_2(:,:,kd) = PB3D%alpha                                  ! alpha
                 else
                     ang_1(:,:,kd) = PB3D%grid_eq%theta_F(:,:,i_lo)+&
                         &(grp_r_eq-i_lo)*(PB3D%grid_eq%theta_F(:,:,i_hi)-&

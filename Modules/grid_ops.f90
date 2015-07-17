@@ -234,7 +234,8 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: r_E_loc(:)                                     ! flux in Equilibrium coords.
-        real(dp), pointer :: flux_F(:), flux_E(:)                               ! flux that the F and E use as normal coord.
+        real(dp), pointer :: flux_F(:) => null()                                ! flux that the F uses as normal coord.
+        real(dp), pointer :: flux_E(:) => null()                                ! flux that the E uses as normal coord.
         real(dp) :: r_F_factor, r_E_factor                                      ! mult. factors for r_F and r_E
         integer :: pmone                                                        ! plus or minus one
         integer :: kd                                                           ! counter
@@ -848,8 +849,8 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! grid for which to calculate X, Y, Z and optionally L
-        real(dp), intent(inout), allocatable :: X(:,:,:), Y(:,:,:), Z(:,:,:)    ! X, Y and Z of grid
-        real(dp), intent(inout), allocatable, optional :: L(:,:,:)              ! lambda of grid
+        real(dp), intent(inout) :: X(:,:,:), Y(:,:,:), Z(:,:,:)                 ! X, Y and Z of grid
+        real(dp), intent(inout), optional :: L(:,:,:)                           ! lambda of grid
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -858,46 +859,30 @@ contains
         ierr = 0
         
         ! test
-        if (allocated(X)) then
-            if (size(X,1).ne.grid%n(1) .or. size(X,2).ne.grid%n(2) .or. &
-                &size(X,3).ne.grid%grp_n_r) then
-                ierr = 1
-                err_msg =  'X needs to have the correct dimensions'
-                CHCKERR(err_msg)
-            end if
-        else
-            allocate(X(grid%n(1),grid%n(2),grid%grp_n_r))
+        if (size(X,1).ne.grid%n(1) .or. size(X,2).ne.grid%n(2) .or. &
+            &size(X,3).ne.grid%grp_n_r) then
+            ierr = 1
+            err_msg =  'X needs to have the correct dimensions'
+            CHCKERR(err_msg)
         end if
-        if (allocated(Y)) then
-            if (size(Y,1).ne.grid%n(1) .or. size(Y,2).ne.grid%n(2) .or. &
-                &size(Y,3).ne.grid%grp_n_r) then
-                ierr = 1
-                err_msg =  'Y needs to have the correct dimensions'
-                CHCKERR(err_msg)
-            end if
-        else
-            allocate(Y(grid%n(1),grid%n(2),grid%grp_n_r))
+        if (size(Y,1).ne.grid%n(1) .or. size(Y,2).ne.grid%n(2) .or. &
+            &size(Y,3).ne.grid%grp_n_r) then
+            ierr = 1
+            err_msg =  'Y needs to have the correct dimensions'
+            CHCKERR(err_msg)
         end if
-        if (allocated(Z)) then
-            if (size(Z,1).ne.grid%n(1) .or. size(Z,2).ne.grid%n(2) .or. &
-                &size(Z,3).ne.grid%grp_n_r) then
-                ierr = 1
-                err_msg =  'Z needs to have the correct dimensions'
-                CHCKERR(err_msg)
-            end if
-        else
-            allocate(Z(grid%n(1),grid%n(2),grid%grp_n_r))
+        if (size(Z,1).ne.grid%n(1) .or. size(Z,2).ne.grid%n(2) .or. &
+            &size(Z,3).ne.grid%grp_n_r) then
+            ierr = 1
+            err_msg =  'Z needs to have the correct dimensions'
+            CHCKERR(err_msg)
         end if
         if (present(L)) then
-            if (allocated(L)) then
-                if (size(L,1).ne.grid%n(1) .or. size(L,2).ne.grid%n(2) .or. &
-                    &size(L,3).ne.grid%grp_n_r) then
-                    ierr = 1
-                    err_msg =  'L needs to have the correct dimensions'
-                    CHCKERR(err_msg)
-                end if
-            else
-                allocate(L(grid%n(1),grid%n(2),grid%grp_n_r))
+            if (size(L,1).ne.grid%n(1) .or. size(L,2).ne.grid%n(2) .or. &
+                &size(L,3).ne.grid%grp_n_r) then
+                ierr = 1
+                err_msg =  'L needs to have the correct dimensions'
+                CHCKERR(err_msg)
             end if
         end if
         
@@ -1236,8 +1221,12 @@ contains
         ! local variables
         real(dp), allocatable :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)             ! X, Y and Z of surface in Axisymmetric coordinates
         real(dp), allocatable :: X_2(:,:,:), Y_2(:,:,:), Z_2(:,:,:)             ! X, Y and Z of magnetic field lines in Axisymmetric coordinates
-        real(dp), pointer :: X_1_tot(:,:,:), Y_1_tot(:,:,:), Z_1_tot(:,:,:)     ! total X, Y and Z
-        real(dp), pointer :: X_2_tot(:,:,:), Y_2_tot(:,:,:), Z_2_tot(:,:,:)     ! total X, Y and Z
+        real(dp), pointer :: X_1_tot(:,:,:) => null()                           ! total X
+        real(dp), pointer :: Y_1_tot(:,:,:) => null()                           ! total Y
+        real(dp), pointer :: Z_1_tot(:,:,:) => null()                           ! total Z
+        real(dp), pointer :: X_2_tot(:,:,:) => null()                           ! total X
+        real(dp), pointer :: Y_2_tot(:,:,:) => null()                           ! total Y
+        real(dp), pointer :: Z_2_tot(:,:,:) => null()                           ! total Z
         type(grid_type) :: grid_ext                                             ! angularly extended grid
         type(grid_type) :: grid_plot                                            ! grid for plotting
         integer :: id, jd                                                       ! counters
@@ -1280,6 +1269,9 @@ contains
         call writo('writing flux surfaces')
         
         ! calculate X_1,Y_1 and Z_1
+        allocate(X_1(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r))
+        allocate(Y_1(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r))
+        allocate(Z_1(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r))
         ierr = calc_XYZ_grid(grid_plot,X_1,Y_1,Z_1)
         CHCKERR('')
         
@@ -1294,6 +1286,9 @@ contains
         CHCKERR('')
         
         ! calculate X_2,Y_2 and Z_2
+        allocate(X_2(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r))
+        allocate(Y_2(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r))
+        allocate(Z_2(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r))
         ierr = calc_XYZ_grid(grid_plot,X_2,Y_2,Z_2)
         CHCKERR('')
         
@@ -1312,9 +1307,7 @@ contains
             &Z_1_tot,Z_2_tot,anim_name)
         CHCKERR('')
         
-        ! deallocate
-        deallocate(X_1,Y_1,Z_1)
-        deallocate(X_2,Y_2,Z_2)
+        ! clean up
         nullify(X_1_tot,Y_1_tot,Z_1_tot)
         nullify(X_2_tot,Y_2_tot,Z_2_tot)
         
@@ -1328,8 +1321,9 @@ contains
             
             ! input / output
             real(dp), intent(in), target :: X(:,:,:), Y(:,:,:), Z(:,:,:)        ! X, Y and Z of either flux surfaces or magnetic field lines
-            real(dp), intent(inout), pointer :: X_tot(:,:,:), Y_tot(:,:,:), &
-                &Z_tot(:,:,:)                                                   ! pointer to full X, Y and Z
+            real(dp), intent(inout), pointer :: X_tot(:,:,:)                    ! pointer to full X
+            real(dp), intent(inout), pointer :: Y_tot(:,:,:)                    ! pointer to full Y
+            real(dp), intent(inout), pointer :: Z_tot(:,:,:)                    ! pointer to full Z
             character(len=*) :: merge_name                                      ! name of variable to be merged
             
             ! local variables
@@ -1756,7 +1750,7 @@ contains
         logical :: sym                                                          ! whether V and V_int are symmetric
         complex(dp), allocatable :: V_J_e(:,:,:,:)                              ! V*J*exp_ang
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), pointer :: ang_par_F(:,:,:)                                   ! parallel angle
+        real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle
         integer :: dims(3)                                                      ! real dimensions
         
         ! initialize ierr
@@ -1820,8 +1814,7 @@ contains
             end do
         end do
         
-        ! deallocate local variables
-        deallocate(V_J_e)
+        ! clean up
         nullify(ang_par_F)
     end function calc_int_magn
     
@@ -2043,7 +2036,8 @@ contains
         integer :: kd                                                           ! counter
         integer :: grp_n_r                                                      ! nr. of normal points in output grid
         logical :: use_E_loc                                                    ! local version of use_E
-        real(dp), pointer :: grp_r_in(:), grp_r_out(:)                          ! grp_r_F or grp_r_E of grids
+        real(dp), pointer :: grp_r_in(:) => null()                              ! grp_r_F or grp_r_E of grids
+        real(dp), pointer :: grp_r_out(:) => null()                             ! grp_r_F or grp_r_E of grids
 #if ldebug
         real(dp), allocatable :: grp_r_ALT(:)                                   ! alternative calculation for grp_r
 #endif

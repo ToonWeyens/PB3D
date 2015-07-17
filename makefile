@@ -65,7 +65,7 @@ LINK_LIB = $(HOME_BIN)/libstell.a -lgfortran -llapack -lblas \
 	   -L/usr/lib/x86_64-linux-gnu/libhdf5hl_fortran.a /usr/lib/x86_64-linux-gnu/libhdf5_hl.a \
            /usr/lib/x86_64-linux-gnu/libhdf5_fortran.a /usr/lib/x86_64-linux-gnu/libhdf5.a -Wl,-z,relro \
            -lpthread -lz -ldl -lm # -Wl,-Bsymbolic-functions -Wl,-rpath -Wl,/usr/lib/x86_64-linux-gnu
-# (To switch between own install of hdf5 and ubuntu packages, probably replace "/usr/lib/x86_64-linux-gnu" by "/opt/HDF5/lib/")
+# (To switch between own install of hdf5 and ubuntu packages, probably replace "/usr/lib/x86_64-linux-gnu" by "/opt/HDF5xxx/lib/")
 # (ALTERNATIVE from http://www.hdfgroup.org/ftp/HDF5/examples/howto/makefiles/Makefilef:
 	   #-I/opt/HDF5/include /opt/HDF5/lib/libhdf5_fortran.a /opt/HDF5/lib/libhdf5.a)
 

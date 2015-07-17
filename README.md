@@ -126,3 +126,7 @@ CHANGELOG
       - Energy decomposition output is now written in a file PB3D_out_EV.txt
       - HDF5 output now shows less messages.
       - PB3D_POST run script now takes PB3D_out.h5 from a directory specified and by default runs in that directory.
+
+0.85: - Reduced (eliminated?)  memory leaks by properly nullifying and deallocating pointers.
+      - Use_normalization cannot any more be passed to PB3D_POST, but is instead read from PB3D output.
+      - Corrected bug where mu_0 was forgotten in kappa_n.

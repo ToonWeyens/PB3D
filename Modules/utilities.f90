@@ -409,7 +409,10 @@ contains
         integer :: max_order(2) = [3,1]                                         ! maximum orders for precisions
         integer :: max_prec = 2                                                 ! maximum precision
         real(dp), allocatable, target :: delta(:)                               ! delta(i) = x(i+1)-x(i) (called delta_(i+1/2) in text)
-        real(dp), pointer :: a(:), b(:), c(:), d(:)                             ! pointers to parts of delta
+        real(dp), pointer :: a(:) => null()                                     ! pointers to parts of delta
+        real(dp), pointer :: b(:) => null()                                     ! pointers to parts of delta
+        real(dp), pointer :: c(:) => null()                                     ! pointers to parts of delta
+        real(dp), pointer :: d(:) => null()                                     ! pointers to parts of delta
         
         ! initialize ierr
         ierr = 0
@@ -458,6 +461,9 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
+        
+        ! clean up
+        nullify(a,b,c,d)
     contains
         subroutine prec1
             ! test whether enough points are given

@@ -96,6 +96,7 @@ contains
     ! creates new equilibrium
     ! The normal and angular grid can be  in any coord. system, as only the grid
     ! sizes are used, not the coordinate values.
+    ! Note: intent(out) automatically deallocates the variable
     integer function create_eq(grid,eq) result(ierr)
         use num_vars, only: max_deriv, eq_style
         
@@ -103,7 +104,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
-        type(eq_type), intent(inout) :: eq                                      ! equilibrium to be created
+        type(eq_type), intent(out) :: eq                                        ! equilibrium to be created
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -191,54 +192,26 @@ contains
         end select
     end function create_eq
     
-    ! deallocates  equilibrium quantities  that are not  used anymore  after the
-    ! equilibrium phase
-    integer function dealloc_eq(eq) result(ierr)
-        use num_vars, only: eq_style
-        
-        character(*), parameter :: rout_name = 'dealloc_eq'
-        
+    ! deallocates equilibrium quantities
+    subroutine dealloc_eq(eq)
         ! input / output
         type(eq_type), intent(inout) :: eq                                      ! equilibrium to be deallocated
         
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! deallocate general quantities
-        deallocate(eq%pres_E)
-        deallocate(eq%q_saf_E)
-        deallocate(eq%rot_t_E)
-        deallocate(eq%flux_p_E)
-        deallocate(eq%flux_t_E)
-        
-        deallocate(eq%pres_FD)
+        ! deallocate allocated pointers
+        deallocate(eq%flux_p_E,eq%flux_t_E)
         deallocate(eq%flux_p_FD,eq%flux_t_FD)
-        deallocate(eq%q_saf_FD)
-        deallocate(eq%rot_t_FD)
         
-        deallocate(eq%rho)
-        deallocate(eq%S)
-        deallocate(eq%kappa_n)
-        deallocate(eq%kappa_g)
-        deallocate(eq%sigma)
+        ! nullify pointers
+        nullify(eq%flux_p_E,eq%flux_t_E)
+        nullify(eq%flux_p_FD,eq%flux_t_FD)
         
-        ! deallocate specific quantities
-        ! choose which equilibrium style is being used:
-        !   1:  VMEC
-        !   2:  HELENA
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                deallocate(eq%R_E,eq%Z_E,eq%L_E)
-            case (2)                                                            ! HELENA
-                ! nothing
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-    end function dealloc_eq
+        ! deallocate allocatable variables
+        call dealloc_eq_final(eq)
+    contains
+        ! Note: intent(out) automatically deallocates the variable
+        subroutine dealloc_eq_final(eq)
+            ! input / output
+            type(eq_type), intent(out) :: eq                                    ! equilibrium to be deallocated
+        end subroutine dealloc_eq_final
+    end subroutine dealloc_eq
 end module eq_vars

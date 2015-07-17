@@ -37,7 +37,8 @@ contains
         use VMEC, only: dealloc_VMEC
         use HELENA, only: dealloc_HEL
         use grid_ops, only: calc_eqd_grid, setup_grid_eq
-        use grid_vars, only: n_r_eq, n_par_X, min_par_X, max_par_X
+        use grid_vars, only: dealloc_grid, &
+            &n_r_eq, n_par_X, min_par_X, max_par_X
         use HDF5_ops, only: create_output_HDF5
         
         character(*), parameter :: rout_name = 'run_rich_driver'
@@ -74,7 +75,8 @@ contains
                 &trim(r2strt(max_r_X)))
         end if
         call writo('for '//trim(i2str(n_par_X))//' values on parallel &
-            &range '//trim(r2strt(min_par_X))//'..'//trim(r2strt(max_par_X)))
+            &range '//trim(r2strt(min_par_X*pi))//'..'//&
+            &trim(r2strt(max_par_X*pi)))
         if (n_alpha.eq.1) then
             call writo('for alpha = '//trim(r2strt(min_alpha*pi)))
         else
@@ -177,8 +179,8 @@ contains
         end if
         
         ! deallocate variables
-        ierr = dealloc_eq(eq)
-        CHCKERR('')
+        call dealloc_eq(eq)
+        call dealloc_grid(grid_eq)
         
         ! choose which equilibrium style is being used:
         !   1:  VMEC
@@ -227,7 +229,7 @@ contains
     ! Runs the  calculations for one  of the alpha's.
     integer function run_rich_driver_for_alpha(grid_eq,eq,alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, no_guess, &
-            &rich_lvl_nr, grp_rank, alpha_job_nr
+            &rich_lvl_nr, grp_rank, alpha_job_nr, eq_style
         use X_vars, only: dealloc_X
         use eq_ops, only: calc_eq, print_output_eq
         use X_ops, only: solve_EV_system, calc_magn_ints, prepare_X, &
@@ -434,12 +436,12 @@ contains
         call dealloc_grid(grid_X)
         
         ! deallocate equilibrium quantities in Flux coords.
-        ierr = dealloc_met(met)
-        CHCKERR('')
-        ierr = dealloc_met(met_B)
-        CHCKERR('')
+        call dealloc_met(met)
+        call dealloc_met(met_B)
         call dealloc_X(X)
         call dealloc_X(X_B)
+        if (eq_style.eq.2) call dealloc_grid(grid_eq_B)                         ! only for HELENA
+        nullify(grid_eq_B)
     contains
         ! calculates the number of normal  points for the perturbation n_r_X for
         ! the various Richardson iterations

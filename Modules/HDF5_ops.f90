@@ -1249,7 +1249,7 @@ contains
         ! iterate over all elements in group
         do id = 1, nr_lnks_head
             call H5Lget_name_by_idx_f(head_group_id,'.',H5_INDEX_NAME_F,&
-                &H5_ITER_INC_F,id-1,group_name,ierr,size=name_len)
+                &H5_ITER_NATIVE_F,id-1,group_name,ierr,size=name_len)
             CHCKERR('Failed to get name')
             
             ! check length

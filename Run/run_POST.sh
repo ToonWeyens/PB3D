@@ -1,7 +1,7 @@
 #!/bin/bash
 # Display usage function
 display_usage() { 
-    echo -e "\nUsage:\n$0 [OPTS] NR_PROCS \n" 
+    echo -e "\nUsage:\n$0 [OPTS] PB3D_DIR NR_PROCS \n" 
     echo -e "    OPTS: -o specify output name"
     echo -e "          -d use Valgrind debugging"
     echo -e "          -s trace sources of errors in Valgrind\n"
@@ -9,11 +9,12 @@ display_usage() {
     } 
 #
 # Setting some variables
-slepc_opt="-st_pc_factor_shift_type NONZERO -st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_monitor"
 debug_opt=""
 extra_debug_opt=""
 n_opt_args=0
 use_out_loc=false
+PB3D_out_name="PB3D_out.h5"
+POST_in_name="input_POST"
 #
 # Catching options
 while getopts "o:dsl" opt; do
@@ -43,7 +44,7 @@ while getopts "o:dsl" opt; do
 done
 #
 # Checking for number of input arguments (need at least 1 for # procs)
-if [ "$#" -lt $((n_opt_args+1)) ]; then
+if [ "$#" -lt $((n_opt_args+2)) ]; then
     display_usage
     exit 1
 fi
@@ -62,12 +63,25 @@ fi
 # Shift arguments to skip options
 shift $n_opt_args
 #
-# Make new folder
+# Check existence of PB3D folder
+#
+if [[ -d "$1" ]] ; then
+    if [[ ! -f "${1%/}/$PB3D_out_name" ]] ; then
+        echo 'Error: PB3D output file does not exist.'
+        display_usage
+        exit 1
+    fi
+else
+    echo 'Error: PB3D Directory does not exist.'
+    display_usage
+    exit 1
+fi
+#
+# Make new output folder if requested
 if [ "$use_out_loc" = true ]; then
     out=$out_loc
 else
-    get_date=$(date +"%Y-%m-%d-%H-%M-%S")
-    out=$get_date
+    out=${1%/}
 fi
 mkdir -p $out $out/Plots $out/Data $out/Scripts &&
 {
@@ -75,13 +89,15 @@ mkdir -p $out $out/Plots $out/Data $out/Scripts &&
 echo "Working in directory $out/"
 echo ""
 # Copy inputs and the program
-cp input_cdxu $out
-cp wout_cdxu.txt $out
-cp ../PB3D $out
-chmod +x $out/PB3D
+cp $POST_in_name $out
+cp ../PB3D_POST $out
+chmod +x $out/PB3D_POST
+if [ "$use_out_loc" = true ]; then
+    cp ${1%/}/$PB3D_out_name $out
+fi
 cd $out
-echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cdxu wout_cdxu.txt $slepc_opt ${@:2}" > command
-mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cdxu wout_cdxu.txt $slepc_opt ${@:2}
+echo "mpirun -np $2 $debug_opt $extra_debug_opt ./PB3D_POST $POST_in_name PB3D_out.h5 ${@:3}" > command_POST
+mpirun -np $2 $debug_opt $extra_debug_opt ./PB3D_POST $POST_in_name $PB3D_out_name  ${@:3}
 cd ../
 echo ""
 echo "Leaving directory $out/"

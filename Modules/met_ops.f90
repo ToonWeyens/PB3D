@@ -8,7 +8,7 @@ module met_ops
     use messages
     use num_vars, only: dp, max_deriv, max_str_ln, pi, grp_rank
     use utilities, only: check_deriv
-    use grid_vars, only: grid_type
+    use grid_vars, only: grid_type, dealloc_grid
     use eq_vars, only: eq_type
     use met_vars, only: met_type
     
@@ -1921,6 +1921,9 @@ contains
             call lvl_ud(-1)
         end if
         
+        ! clean up
+        call dealloc_grid(grid_trim)
+        
         ! user output
         call lvl_ud(-1)
         call writo('Test complete')
@@ -1950,7 +1953,7 @@ contains
         integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), pointer :: Dflux(:)                                           ! points to D flux_p or D flux_t in E coordinates
+        real(dp), pointer :: Dflux(:) => null()                                 ! points to D flux_p or D flux_t in E coordinates
         integer :: pmone                                                        ! plus or minus one
         
         ! initialize ierr
@@ -2038,6 +2041,7 @@ contains
         
         ! clean up
         nullify(Dflux)
+        call dealloc_grid(grid_trim)
         
         ! user output
         call lvl_ud(-1)
@@ -2131,6 +2135,9 @@ contains
             end do
         end do
         
+        ! clean up
+        call dealloc_grid(grid_trim)
+        
         ! user output
         call lvl_ud(-1)
         call writo('Test complete')
@@ -2196,6 +2203,9 @@ contains
             &tot_dim,grp_offset,description,output_message=.true.)
         
         call lvl_ud(-1)
+        
+        ! clean up
+        call dealloc_grid(grid_trim)
         
         ! user output
         call lvl_ud(-1)
@@ -2337,6 +2347,9 @@ contains
             call lvl_ud(-1)
         end do
         
+        ! clean up
+        call dealloc_grid(grid_trim)
+        
         ! user output
         call lvl_ud(-1)
         call writo('Test complete')
@@ -2413,6 +2426,9 @@ contains
                 call lvl_ud(-1)
             end do
         end do
+        
+        ! clean up
+        call dealloc_grid(grid_trim)
         
         ! user output
         call lvl_ud(-1)
@@ -2637,6 +2653,9 @@ contains
                 end do
             end do
         end do
+        
+        ! clean up
+        call dealloc_grid(grid_trim)
         
         ! user output
         call lvl_ud(-1)

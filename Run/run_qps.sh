@@ -75,13 +75,13 @@ mkdir -p $out $out/Plots $out/Data $out/Scripts &&
 echo "Working in directory $out/"
 echo ""
 # Copy inputs and the program
-cp input_cdxu $out
-cp wout_cdxu.txt $out
+cp input_qps $out
+cp wout_qps.txt $out
 cp ../PB3D $out
 chmod +x $out/PB3D
 cd $out
-echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cdxu wout_cdxu.txt $slepc_opt ${@:2}" > command
-mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cdxu wout_cdxu.txt $slepc_opt ${@:2}
+echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_qps wout_qps.txt $slepc_opt ${@:2}" > command
+mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_qps wout_qps.txt $slepc_opt ${@:2}
 cd ../
 echo ""
 echo "Leaving directory $out/"

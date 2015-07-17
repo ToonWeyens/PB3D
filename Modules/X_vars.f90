@@ -66,12 +66,13 @@ module X_vars
     
 contains
     ! initialize the variable m and check and/or plot it
+    ! Note: intent(out) automatically deallocates the variable
     subroutine create_X(grid,X)
         use num_vars, only: use_pol_flux_F
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
-        type(X_type), intent(inout) :: X                                        ! perturbation variables
+        type(X_type), intent(out) :: X                                          ! perturbation variables
         
         ! local variables
         integer :: id                                                           ! counter
@@ -145,19 +146,30 @@ contains
         allocate(X%vac_res(X%n_mod,X%n_mod))
     end subroutine create_X
     
-    ! deallocates  perturbation quantities that  are not used anymore  after the
-    ! calculations for a certain alpha
+    ! deallocates perturbation variables
     subroutine dealloc_X(X)
         ! input / output
-        type(X_type), intent(inout) :: X                                        ! perturbation variables
+        type(X_type), intent(inout) :: X                                        ! perturbation variables to be deallocated
         
-        nullify(X%U_0,X%U_1,X%DU_0,X%DU_1)
-        nullify(X%PV_0,X%PV_1,X%PV_2,X%KV_0,X%KV_1,X%KV_2)
-        deallocate(X%n,X%m)
-        if (allocated(X%vec)) deallocate(X%vec)                                 ! are only allocated if system of equations solved with this X
-        if (allocated(X%val)) deallocate(X%val)                                 ! are only allocated if system of equations solved with this X
-        deallocate(X%exp_ang_par_F)
-        deallocate(X%PV_int_0,X%PV_int_1,X%PV_int_2)
-        deallocate(X%KV_int_0,X%KV_int_1,X%KV_int_2)
+        ! deallocate allocated pointers
+        deallocate(X%U_0,X%U_1)
+        deallocate(X%DU_0,X%DU_1)
+        deallocate(X%PV_0,X%PV_1,X%PV_2)
+        deallocate(X%KV_0,X%KV_1,X%KV_2)
+        
+        ! nullify pointers
+        nullify(X%U_0,X%U_1)
+        nullify(X%DU_0,X%DU_1)
+        nullify(X%PV_0,X%PV_1,X%PV_2)
+        nullify(X%KV_0,X%KV_1,X%KV_2)
+        
+        ! deallocate allocatable variables
+        call dealloc_X_final(X)
+    contains
+        ! Note: intent(out) automatically deallocates the variable
+        subroutine dealloc_X_final(X)
+            ! input / output
+            type(X_type), intent(out) :: X                                      ! perturbation variables to be deallocated
+        end subroutine dealloc_X_final
     end subroutine dealloc_X
 end module

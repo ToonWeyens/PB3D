@@ -258,7 +258,7 @@ contains
         logical :: td_sym_loc                                                   ! local version of td_sym
         logical :: use_E_loc                                                    ! local version of use_E
         real(dp) :: theta_loc                                                   ! local theta of output grid
-        real(dp), pointer :: theta_in(:)                                        ! input theta
+        real(dp), pointer :: theta_in(:) => null()                              ! input theta
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr

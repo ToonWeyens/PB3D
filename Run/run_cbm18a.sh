@@ -5,6 +5,7 @@ display_usage() {
     echo -e "    OPTS: -o specify output name"
     echo -e "          -d use Valgrind debugging"
     echo -e "          -s trace sources of errors in Valgrind\n"
+    echo -e "          -l check leaks in Valgrind\n"
     } 
 #
 # Setting some variables
@@ -15,7 +16,7 @@ n_opt_args=0
 use_out_loc=false
 #
 # Catching options
-while getopts "o:ds" opt; do
+while getopts "o:dsl" opt; do
     case $opt in
         o) 
             out_loc=${OPTARG%/}
@@ -27,7 +28,11 @@ while getopts "o:ds" opt; do
             n_opt_args=$((n_opt_args+1))                                        # 1 argument
         ;;
         s)
-            extra_debug_opt="--track-origins=yes"
+            extra_debug_opt=$extra_debug_opt" --track-origins=yes"
+            n_opt_args=$((n_opt_args+1))                                        # 1 argument
+        ;;
+        l)
+            extra_debug_opt=$extra_debug_opt" --leak-check=full"
             n_opt_args=$((n_opt_args+1))                                        # 1 argument
         ;;
         \?)
@@ -49,7 +54,7 @@ if [ -n "$debug_opt" ]; then
     fi
 else
     if [ -n "$extra_debug_opt" ]; then
-        echo "Ignoring tracking of sources of errors because no debugging"
+        echo "Ignoring extra debugging options because no debugging"
         extra_debug_opt=""
     fi
 fi
@@ -73,9 +78,10 @@ echo ""
 cp input_cbm18a $out
 cp cbm18a $out
 cp ../PB3D $out
+chmod +x $out/PB3D
 cd $out
-mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2}
 echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2}" > command
+mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2}
 cd ../
 echo ""
 echo "Leaving directory $out/"
