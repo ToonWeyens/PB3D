@@ -16,9 +16,10 @@ module grid_ops
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, &
         &calc_ang_grid_eq, calc_ang_grid_B, plot_grid_real, trim_grid, &
         &extend_grid_E, setup_grid_eq, setup_and_calc_grid_B, &
-        &get_norm_interp_data, calc_int_magn, calc_int_vol
+        &get_norm_interp_data, calc_int_magn, calc_int_vol, untrim_grid
 #if ldebug
-    public debug_calc_ang_grid_B, debug_get_norm_interp_data
+    public debug_calc_ang_grid_B, debug_get_norm_interp_data, &
+        &debug_calc_int_vol
 #endif
     
     interface coord_F2E
@@ -35,6 +36,7 @@ module grid_ops
 #if ldebug
     logical :: debug_calc_ang_grid_B = .false.                                  ! plot debug information for calc_ang_grid_B
     logical :: debug_get_norm_interp_data = .false.                             ! plot debug information for get_norm_interp_data
+    logical :: debug_calc_int_vol = .false.                                     ! plot debug information for calc_int_vol
 #endif
     
 contains
@@ -284,7 +286,7 @@ contains
         ! and use this to calculate the other angle as well
         if (use_pol_flux_F) then                                                ! parallel angle theta
             ierr = calc_eqd_grid(grid_eq%theta_F,min_par_X*pi,&
-                &max_par_X*pi,1)                                                ! first index corresponds to parallel angle
+                &max_par_X*pi,1,excl_last=.true.)                               ! first index corresponds to parallel angle
             CHCKERR('')
             do kd = 1,grid_eq%grp_n_r
                 grid_eq%zeta_F(:,:,kd) = pmone*eq%q_saf_E(kd,0)*&
@@ -293,7 +295,7 @@ contains
             grid_eq%zeta_F = grid_eq%zeta_F + alpha
         else                                                                    ! parallel angle zeta
             ierr = calc_eqd_grid(grid_eq%zeta_F,min_par_X*pi,&
-                &max_par_X*pi,1)                                                ! first index corresponds to parallel angle
+                &max_par_X*pi,1,excl_last=.true.)                               ! first index corresponds to parallel angle
             CHCKERR('')
             do kd = 1,grid_eq%grp_n_r
                 grid_eq%theta_F(:,:,kd) = pmone*eq%rot_t_E(kd,0)*&
@@ -1093,8 +1095,8 @@ contains
         end function calc_XYZ_grid_HEL
     end function calc_XYZ_grid
 
-    ! calculate grid of equidistant points,  where optionally the last point can
-    ! be excluded
+    ! Calculate grid of equidistant points,  where optionally the last point can
+    ! be excluded.
     integer function calc_eqd_grid_3D(var,min_grid,max_grid,grid_dim,&
         &excl_last) result(ierr)                                                ! 3D version
         character(*), parameter :: rout_name = 'calc_eqd_grid_3D'
@@ -1521,6 +1523,9 @@ contains
         use grid_vars, only: create_grid
         use num_vars, only: grp_n_procs, grp_rank
         use MPI_utilities, only: get_ser_var
+#if ldebug
+        use MPI_utilities, only: wait_MPI
+#endif
         
         character(*), parameter :: rout_name = 'trim_grid'
         
@@ -1534,9 +1539,9 @@ contains
         integer, allocatable :: tot_i_max(:)                                    ! i_max of grid of all processes
         integer :: i_lim_out(2)                                                 ! i_lim of output grid
         integer :: n_out(3)                                                     ! n of output grid
-        integer :: kd                                                           ! counter
-        integer :: kd_max                                                       ! maximum index
         integer :: shift_grid_loc                                               ! local version of shift_grid
+        !integer :: kd                                                           ! counter
+        !integer :: kd_max                                                       ! maximum index
         
         ! initialize ierr
         ierr = 0
@@ -1553,7 +1558,7 @@ contains
         ierr = get_ser_var([grid_in%i_max],tot_i_max,scatter=.true.)
         CHCKERR('')
         
-        ! set i_lim of output grid (not yet shifted by first process' min)
+        ! set i_lim of trimmed output grid (not yet shifted by first proc min)
         if (grp_rank.eq.0) then
             i_lim_out(1) = grid_in%i_min                                        ! minimum
         else
@@ -1561,7 +1566,7 @@ contains
         end if
         if (grp_rank.lt.grp_n_procs-1) then                                     ! not last process
             i_lim_out(2) = min(tot_i_min(grp_rank+2)-1+shift_grid_loc,&
-                &tot_i_max(grp_rank+1))                                         ! i_min of next process, shifted by local shift_grid, or current maximum
+                &tot_i_max(grp_rank+1))                                         ! next i_min, shifted by local shift_grid, or current maximum
         else                                                                    ! last process
             i_lim_out(2) = grid_in%i_max                                        ! end of this last group
         end if
@@ -1597,15 +1602,74 @@ contains
             grid_out%grp_r_E = grid_in%grp_r_E(i_lim_out(1):i_lim_out(2))
             grid_out%grp_r_F = grid_in%grp_r_F(i_lim_out(1):i_lim_out(2))
         end if
-        kd_max = 0
-        do kd = 1,grp_n_procs
-            grid_out%r_E(kd_max+1:kd_max+tot_i_max(kd)-tot_i_min(kd)+1) = &
-                &grid_in%r_E(tot_i_min(kd):tot_i_max(kd))
-            grid_out%r_F(kd_max+1:kd_max+tot_i_max(kd)-tot_i_min(kd)+1) = &
-                &grid_in%r_F(tot_i_min(kd):tot_i_max(kd))
-            kd_max = kd_max + tot_i_max(kd)-tot_i_min(kd)+1
-        end do
+        grid_out%r_E = grid_in%r_E(tot_i_min(1):tot_i_max(grp_n_procs))
+        grid_out%r_F = grid_in%r_F(tot_i_min(1):tot_i_max(grp_n_procs))
     end function trim_grid
+    
+    ! Untrims a trimmed  grid by introducing an assymetric ghost  regions at the
+    ! right. The width of the ghost region has to be provided.
+    ! Note: The ghosted grid should be deallocated (with dealloc_grid).
+    ! Note: The input grid HAS to be trimmed!
+    integer function untrim_grid(grid_in,grid_out,size_ghost) result(ierr)
+        use num_vars, only: grp_n_procs, grp_rank
+        use grid_vars, only: create_grid
+        use MPI_utilities, only: get_ghost_arr, get_ser_var
+        
+        character(*), parameter :: rout_name = 'untrim_grid'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_in                                  ! input grid
+        type(grid_type), intent(inout) :: grid_out                              ! ghosted grid
+        integer, intent(in) :: size_ghost                                       ! width of ghost region
+        
+        ! local variables
+        integer :: i_lim_in(2)                                                  ! limits of input grid
+        integer :: i_lim_out(2)                                                 ! limits of ghosted grid
+        integer, allocatable :: tot_grp_n_r(:)                                  ! grp_n_r of all processes
+        integer :: size_ghost_loc                                               ! local size_ghost
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! get array sizes of all processes
+        ierr = get_ser_var([grid_in%grp_n_r],tot_grp_n_r,scatter=.true.)
+        CHCKERR('')
+        
+        ! set local size_ghost
+        size_ghost_loc = min(size_ghost,minval(tot_grp_n_r)-1)
+        
+        ! set i_lim_in and i_lim_out
+        i_lim_in = [grid_in%i_min,grid_in%i_max]
+        i_lim_out = i_lim_in
+        if (grp_rank.lt.grp_n_procs-1) &
+            &i_lim_out(2) = i_lim_out(2)+size_ghost_loc
+        
+        ! create grid
+        ierr = create_grid(grid_out,grid_in%n,i_lim_out)
+        CHCKERR('')
+        
+        ! set ghosted variables
+        if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3D grid
+            grid_out%theta_E(:,:,1:grid_in%grp_n_r) = grid_in%theta_E
+            grid_out%zeta_E(:,:,1:grid_in%grp_n_r) = grid_in%zeta_E
+            grid_out%theta_F(:,:,1:grid_in%grp_n_r) = grid_in%theta_F
+            grid_out%zeta_F(:,:,1:grid_in%grp_n_r) = grid_in%zeta_F
+            ierr = get_ghost_arr(grid_out%theta_E,size_ghost_loc)
+            CHCKERR('')
+            ierr = get_ghost_arr(grid_out%zeta_E,size_ghost_loc)
+            CHCKERR('')
+            ierr = get_ghost_arr(grid_out%theta_F,size_ghost_loc)
+            CHCKERR('')
+            ierr = get_ghost_arr(grid_out%zeta_F,size_ghost_loc)
+            CHCKERR('')
+        end if
+        if (grid_in%divided) then                                               ! but if input grid divided, grp_r gets priority
+            grid_out%grp_r_E = grid_in%r_E(i_lim_out(1):i_lim_out(2))
+            grid_out%grp_r_F = grid_in%r_F(i_lim_out(1):i_lim_out(2))
+        end if
+        grid_out%r_E = grid_in%r_E
+        grid_out%r_F = grid_in%r_F
+    end function untrim_grid
     
     ! Extend a  grid angularly using  equidistant variables of  n_theta_plot and
     ! n_zeta_plot angular and  own grp_n_r points in  E coordinates. Optionally,
@@ -1849,6 +1913,10 @@ contains
     ! cells. This is  done by taking the  average of the 2^3=8 points  for fJ as
     ! well as the transformation of the Jacobian.
     integer function calc_int_vol(ang_1,ang_2,norm,J,f,f_int) result(ierr)
+#if ldebug
+        use num_vars, only: grp_rank
+#endif
+        
         character(*), parameter :: rout_name = 'calc_int_vol'
         
         ! input / output
@@ -1863,10 +1931,14 @@ contains
         integer :: k_min                                                        ! minimum k
         integer :: dims(3)                                                      ! real dimensions
         real(dp), allocatable :: transf_J(:,:,:,:)                              ! comps. of transf. between J and Jxyz: theta_x, zeta_y, theta_y, zeta_x and r_F_z
+        real(dp), allocatable :: transf_J_tot(:,:,:)                            ! transf. between J and Jxyz: (theta_x*zeta_y-theta_y*zeta_x)*r_F_z
         complex(dp), allocatable :: Jf(:,:,:,:)                                 ! J*f
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: i_a(3), i_b(3)                                               ! limits of building blocks of intermediary variables
         logical :: dim_1(2)                                                     ! whether the dimension is equal to one
+#if ldebug
+        character(len=max_str_ln), allocatable :: var_names(:,:)                ! names of variables
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -1902,6 +1974,7 @@ contains
         ! set up Jf and transf_J
         allocate(Jf(max(dims(1)-1,1),max(dims(2)-1,1),dims(3)-1,nn_mod))
         allocate(transf_J(max(dims(1)-1,1),max(dims(2)-1,1),dims(3)-1,5))
+        allocate(transf_J_tot(max(dims(1)-1,1),max(dims(2)-1,1),dims(3)-1))
         
         ! set up k_min
         k_min = 1
@@ -2002,15 +2075,51 @@ contains
             end do
         end do
         
+        ! set up total transf_J
+        transf_J_tot = (transf_J(:,:,:,1)*transf_J(:,:,:,2)-&
+            &transf_J(:,:,:,3)*transf_J(:,:,:,4))*transf_J(:,:,:,5)
+        
         ! integrate term  over ang_par_F for all equilibrium  grid points, using
         ! dx = dy = dz =1
         do ld = 1,nn_mod
-            f_int(ld) = sum(Jf(:,:,:,ld)*(transf_J(:,:,:,1)*transf_J(:,:,:,2)-&
-                &transf_J(:,:,:,3)*transf_J(:,:,:,4))*transf_J(:,:,:,5))
+            f_int(ld) = sum(Jf(:,:,:,ld)*transf_J_tot)
         end do
         
+#if ldebug
+        if (debug_calc_int_vol) then
+            call writo('Testing whether volume integral is calculated &
+                &correctly')
+            call lvl_ud(1)
+            
+            allocate(var_names(nn_mod,2))
+            var_names(:,1) = 'real part of integrand J f'
+            var_names(:,2) = 'imaginary part of integrand J f'
+            do ld = 1,nn_mod
+                var_names(ld,1) = trim(var_names(ld,1))//' '//trim(i2str(ld))
+                var_names(ld,2) = trim(var_names(ld,2))//' '//trim(i2str(ld))
+            end do
+            
+            call plot_HDF5(var_names(:,1),'TEST_RE_Jf_'//trim(i2str(grp_rank)),&
+                &realpart(Jf))
+            call plot_HDF5(var_names(:,2),'TEST_IM_Jf_'//trim(i2str(grp_rank)),&
+                &imagpart(Jf))
+            call plot_HDF5('transformation of Jacobians',&
+                &'TEST_transf_J_'//trim(i2str(grp_rank)),transf_J_tot)
+            
+            call writo('Resulting integral: ')
+            call lvl_ud(1)
+            do ld = 1,nn_mod
+                call writo('integral '//trim(i2str(ld))//': '//&
+                    &trim(c2str(f_int(ld))))
+            end do
+            call lvl_ud(-1)
+            
+            call lvl_ud(-1)
+        end if
+#endif
+        
         ! deallocate local variables
-        deallocate(Jf,transf_J)
+        deallocate(Jf,transf_J,transf_J_tot)
     end function calc_int_vol
     
     ! calculate interpolation  factors for  normal interpolation in  grid_out of

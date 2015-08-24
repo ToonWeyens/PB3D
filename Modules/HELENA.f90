@@ -415,7 +415,8 @@ contains
                 call interp_var_3D_real(eq%S,theta_i,eq_B%S)
                 call interp_var_3D_real(eq%sigma,theta_i,eq_B%sigma)
                 call interp_var_3D_real(eq%kappa_n,theta_i,eq_B%kappa_n)
-                call interp_var_3D_real(eq%kappa_g,theta_i,eq_B%kappa_g)
+                call interp_var_3D_real(eq%kappa_g,theta_i,eq_B%kappa_g,&
+                    &sym_type=2)
             case default
                 err_msg = 'No program style associated with '//&
                     &trim(i2str(prog_style))
@@ -471,21 +472,27 @@ contains
         ! There  is  an  optional  variable   sym_type  that  allows  for  extra
         ! operations to be done on the variable if top-down symmetry is applied:
         !   - sym_type = 0: var(2pi-theta) = var(theta)
-        !   - sym_type = 1: var(2pi-theta) = var(theta)*
+        !   - sym_type = 1: var(2pi-theta) = var(theta)*    (only for complex)
         !   - sym_type = 2: var(2pi-theta) = -var(theta)*
         ! When top-down  symmetry has been  used to calculate  the interpolation
         ! factors, this is indicated by a  negative factor instead of a positive
         ! one.
         ! (also  correct  if i_hi = i_lo)
-        subroutine interp_var_3D_real(var,theta_i,var_int)                      ! 3D_real version
+        subroutine interp_var_3D_real(var,theta_i,var_int,sym_type)             ! 3D_real version
             ! input / output
             real(dp), intent(in) :: var(:,:,:)                                  ! variable to be interpolated
             real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
             real(dp), intent(inout) :: var_int(:,:,:)                           ! interpolated var
+            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
             
             ! local variables
             integer :: i_lo, i_hi                                               ! upper and lower index
             integer :: id, jd, kd                                               ! counters
+            integer :: sym_type_loc                                             ! local version of symmetry type
+            
+            ! set up local symmetry type
+            sym_type_loc = 0
+            if (present(sym_type)) sym_type_loc = sym_type
             
             ! iterate over all normal points
             do kd = 1,size(var_int,3)
@@ -500,19 +507,29 @@ contains
                         var_int(id,jd,kd) = var(i_lo,1,kd) + &
                             &(var(i_hi,1,kd)-var(i_lo,1,kd))*&
                             &(abs(theta_i(id,jd,kd))-i_lo)                      ! because i_hi - i_lo = 1
+                        if (theta_i(id,jd,kd).lt.0) then
+                            if (sym_type_loc.eq.2) var_int(id,jd,kd) = &
+                                &- var_int(id,jd,kd)
+                        end if
                     end do
                 end do
             end do
         end subroutine interp_var_3D_real
-        subroutine interp_var_6D_real(var,theta_i,var_int)                      ! 6D_real version
+        subroutine interp_var_6D_real(var,theta_i,var_int,sym_type)             ! 6D_real version
             ! input / output
             real(dp), intent(in) :: var(:,:,:,:,:,:)                            ! variable to be interpolated
             real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
             real(dp), intent(inout) :: var_int(:,:,:,:,:,:)                     ! interpolated var
+            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
             
             ! local variables
             integer :: i_lo, i_hi                                               ! upper and lower index
-            integer :: id, jd, kd                                               ! counters
+            integer :: id, jd, kd, ld                                           ! counters
+            integer :: sym_type_loc                                             ! local version of symmetry type
+            
+            ! set up local symmetry type
+            sym_type_loc = 0
+            if (present(sym_type)) sym_type_loc = sym_type
             
             ! iterate over all normal points
             do kd = 1,size(var_int,3)
@@ -527,19 +544,34 @@ contains
                         var_int(id,jd,kd,:,:,:) = var(i_lo,1,kd,:,:,:) + &
                             &(var(i_hi,1,kd,:,:,:)-var(i_lo,1,kd,:,:,:))*&
                             &(abs(theta_i(id,jd,kd))-i_lo)                      ! because i_hi - i_lo = 1
+                        if (theta_i(id,jd,kd).lt.0) then
+                            if (sym_type_loc.eq.2) var_int(id,jd,kd,:,:,:) = &
+                                &- var_int(id,jd,kd,:,:,:)
+                        end if
                     end do
                 end do
             end do
+            
+            ! transform d/dtheta
+            do ld = 1,size(var_int,6)
+                var_int(:,:,:,:,:,ld) = (-1)**(ld-1)*var_int(:,:,:,:,:,ld)
+            end do
         end subroutine interp_var_6D_real
-        subroutine interp_var_7D_real(var,theta_i,var_int)                      ! 7D_real version
+        subroutine interp_var_7D_real(var,theta_i,var_int,sym_type)             ! 7D_real version
             ! input / output
             real(dp), intent(in) :: var(:,:,:,:,:,:,:)                          ! variable to be interpolated
             real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
             real(dp), intent(inout) :: var_int(:,:,:,:,:,:,:)                   ! interpolated var
+            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
             
             ! local variables
             integer :: i_lo, i_hi                                               ! upper and lower index
-            integer :: id, jd, kd                                               ! counters
+            integer :: id, jd, kd, ld                                           ! counters
+            integer :: sym_type_loc                                             ! local version of symmetry type
+            
+            ! set up local symmetry type
+            sym_type_loc = 0
+            if (present(sym_type)) sym_type_loc = sym_type
             
             ! iterate over all normal points
             do kd = 1,size(var_int,3)
@@ -554,8 +586,17 @@ contains
                         var_int(id,jd,kd,:,:,:,:) = var(i_lo,1,kd,:,:,:,:) + &
                             &(var(i_hi,1,kd,:,:,:,:)-var(i_lo,1,kd,:,:,:,:))*&
                             &(abs(theta_i(id,jd,kd))-i_lo)                      ! because i_hi - i_lo = 1
+                        if (theta_i(id,jd,kd).lt.0) then
+                            if (sym_type_loc.eq.2) var_int(id,jd,kd,:,:,:,:) = &
+                                &- var_int(id,jd,kd,:,:,:,:)
+                        end if
                     end do
                 end do
+            end do
+            
+            ! transform d/dtheta
+            do ld = 1,size(var_int,7)
+                var_int(:,:,:,:,:,:,ld) = (-1)**(ld-1)*var_int(:,:,:,:,:,:,ld)
             end do
         end subroutine interp_var_7D_real
         subroutine interp_var_4D_complex(var,theta_i,var_int,sym_type)          ! 4D_complex version

@@ -7,8 +7,10 @@
 !------------------------------------------------------------------------------!
 module SLEPC_ops
 #include <PB3D_macros.h>
-#include <finclude/slepcepsdef.h>
-!#include <finclude/petscsys.h>
+! for slepc 3.6.0:
+#include <slepc/finclude/slepcepsdef.h>
+! for slepc 3.5.3:
+!#include <finclude/slepcepsdef.h>
     use str_ops
     use output_ops
     use messages
@@ -31,6 +33,8 @@ module SLEPC_ops
     logical :: debug_insert_block_mat = .false.                                 ! plot debug information for insert_block_mat
     logical :: debug_calc_V_0_mod = .false.                                     ! plot debug information for calc_V_0_mod
     logical :: debug_store_results = .true.                                     ! plot debug information for store_results
+    logical :: test_diff = .false.                                              ! test introduction of numerical diff
+    real(dp) :: diff_coeff                                                      ! diff coefficient
 #endif
     
 contains
@@ -203,11 +207,16 @@ contains
         CHCKERR('')
         
         ! store results
-        call writo('storing results for '//trim(i2str(max_n_EV))//' highest &
-            &Eigenvalues...')
+        call writo('storing results for '//trim(i2str(max_n_EV))//' least &
+            &stable Eigenvalues...')
         
+#if ldebug
+        ierr = store_results(grid_X_trim,X,solver,max_n_EV,A,B)
+        CHCKERR('')
+#else
         ierr = store_results(grid_X_trim,X,solver,max_n_EV)
         CHCKERR('')
+#endif
         
         ! finalize
         call writo('finalize SLEPC...')
@@ -385,6 +394,10 @@ contains
     integer function setup_mats(grid_X,X,A,B,grp_r_eq,i_geo,norm_disc_coeff) &
         &result(ierr)
         use num_vars, only: norm_disc_ord
+#if ldebug
+        use num_vars, only: ltest
+        use input_ops, only: get_real, get_log
+#endif
         
         character(*), parameter :: rout_name = 'setup_mats'
         
@@ -414,6 +427,19 @@ contains
         call writo('Normal discretization with central finite differences of &
             &order '//trim(i2str(norm_disc_ord))//', stencil width '//&
             &trim(i2str(4*norm_disc_ord+1)))
+        
+#if ldebug
+        if (ltest) then
+            call writo('Test introduction of numerical friction?')
+            if (get_log(.false.)) then
+                test_diff = .true.
+                call writo('The friction coefficient will be multiplied with &
+                    &the central block, and inserted in the off-diagonal parts')
+                call writo('How large should it be?')
+                if (get_log(.false.)) diff_coeff = get_real(lim_lo=0._dp)
+            end if
+        end if
+#endif
         
         ! set up grp_n_r and n_r
         grp_n_r = grid_X%grp_n_r
@@ -549,6 +575,9 @@ contains
             PetscInt :: id, jd, kd                                              ! counters
             PetscInt :: k, m                                                    ! counters
             PetscInt :: i_min, i_max                                            ! absolute limits excluding the BC's
+#if ldebug
+            PetscScalar, allocatable :: loc_block_0_backup(:,:)                 ! backed up V_0 local block
+#endif
             
             ! for tests
             PetscInt :: r_X_start, r_X_end                                      ! start block and end block
@@ -616,7 +645,15 @@ contains
                             &[k,m],.true.)                                      ! symmetric matrices need con()
                     end do
                 end do
-                
+
+# if ldebug
+                if (test_diff) then
+                    ! back up the V_0 block
+                    allocate(loc_block_0_backup(X%n_mod,X%n_mod))
+                    loc_block_0_backup = loc_block
+                end if
+#endif
+
                 ! add block to kd + (0,0)
                 ierr = insert_block_mat(loc_block,mat,[kd,kd])
                 CHCKERR('')
@@ -650,6 +687,13 @@ contains
                     end do
                 end do
                 
+#if ldebug
+                if (test_diff) then
+                    loc_block = loc_block + diff_coeff*loc_block_0_backup
+                    deallocate(loc_block_0_backup)
+                end if
+#endif
+            
                 ! add block to kd + (-p..p,-p..p)
                 do jd = -norm_disc_ord,norm_disc_ord
                     do id = -norm_disc_ord,norm_disc_ord
@@ -935,8 +979,8 @@ contains
             ! -----------------!
             ! calculate modified terms V_int_0_mod
             allocate(V_int_0_mod(X%n_mod,X%n_mod,2))
-            ierr = calc_V_0_mod(PV_int_0,KV_int_0,PV_int_1,KV_int_1,PV_int_2,&
-                &KV_int_2,V_int_0_mod)
+            ierr = calc_V_0_mod(PV_int_0,KV_int_0,PV_int_1,KV_int_1,KV_int_2,&
+                &V_int_0_mod)
             CHCKERR('')
             
             ! add block to ind + (0,0)
@@ -963,14 +1007,14 @@ contains
         end function set_BC_2
         
         ! calculates V_0 + (V_1+delta) V_2^-1 (V_1+delta)^*T
-        integer function calc_V_0_mod(PV_0,KV_0,PV_1,KV_1,PV_2,KV_2,V_0_mod) &
+        integer function calc_V_0_mod(PV_0,KV_0,PV_1,KV_1,KV_2,V_0_mod) &
             &result(ierr)
             character(*), parameter :: rout_name = 'calc_V_0_mod'
             
             ! input / output
             complex(dp), intent(in) :: PV_0(:), KV_0(:)                         ! PV_0 and KV_0
             complex(dp), intent(in) :: PV_1(:), KV_1(:)                         ! PV_1 and KV_1
-            complex(dp), intent(in) :: PV_2(:), KV_2(:)                         ! PV_2 and KV_2
+            complex(dp), intent(in) :: KV_2(:)                                  ! KV_2
             complex(dp), intent(inout) :: V_0_mod(:,:,:)                        ! output V_0_mod
             
             ! local variables
@@ -1198,7 +1242,8 @@ contains
             
             ! create vecctor guess_vec
             do kd = 1,prev_n_EV
-                call MatGetVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,istat)        ! get compatible parallel vectors to matrix A
+                !call MatGetVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,istat)        ! get compatible parallel vectors to matrix A (petsc 3.5.3)
+                call MatCreateVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,istat)     ! get compatible parallel vectors to matrix A (petsc 3.6.1)
                 call VecSetOption(guess_vec(kd),&
                     &VEC_IGNORE_NEGATIVE_INDICES,PETSC_TRUE,istat)              ! ignore negative indices for compacter notation
             end do
@@ -1336,7 +1381,11 @@ contains
     end function summarize_solution
     
     ! stores the results
+#if ldebug
+    integer function store_results(grid_X,X,solver,max_n_EV,A,B) result(ierr)
+#else
     integer function store_results(grid_X,X,solver,max_n_EV) result(ierr)
+#endif
         use eq_vars, only: T_0
         use num_vars, only: use_normalization, EV_BC, output_name, &
             &alpha_job_nr, rich_lvl_nr, n_alpha, max_it_r, grp_n_procs, grp_rank
@@ -1350,6 +1399,9 @@ contains
         type(X_type), intent(inout) :: X                                        ! perturbation variables
         EPS, intent(inout) :: solver                                            ! EV solver
         PetscInt, intent(inout) :: max_n_EV                                     ! nr. of EV's saved, up to n_conv
+#if ldebug
+        Mat, intent(inout) :: A, B                                              ! matrix A and B
+#endif
         
         ! local variables
         PetscInt :: id, id_tot                                                  ! counters
@@ -1370,8 +1422,11 @@ contains
         integer :: n_digits                                                     ! nr. of digits for the integer number
         integer :: n_err(3)                                                     ! how many errors there were
 #if ldebug
-        Vec :: err_vec                                                          ! Ax - omega BX
-        PetscScalar, allocatable :: err_vec_loc(:,:)                            ! local array for err_vec
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        Mat :: err_mat                                                          ! A - omega^2 B
+        Vec :: err_vec                                                          ! Ax - omega^2 BX
+        PetscReal :: err_norm                                                   ! norm of error
+        PetscReal :: error_est                                                  ! error estimate of EPS solver
 #endif
         
         ! initialize ierr
@@ -1449,8 +1504,15 @@ contains
             call EPSGetEigenpair(solver,id_tot-1,X%val(id),PETSC_NULL_OBJECT,&
                 &sol_vec,PETSC_NULL_OBJECT,ierr)                                ! get solution EV vector and value (starts at index 0)
             CHCKERR('EPSGetEigenpair failed')
-            call EPSComputeRelativeError(solver,id_tot-1,error,ierr)            ! get error (starts at index 0)
-            CHCKERR('EPSComputeRelativeError failed')
+            call EPSComputeError(solver,id_tot-1,EPS_ERROR_RELATIVE,error,ierr) ! get error (starts at index 0) (petsc 3.6.1)
+            !call EPSComputeRelativeError(solver,id_tot-1,error,ierr)            ! get error (starts at index 0) (petsc 3.5.3)
+            CHCKERR('EPSComputeError failed')
+#if ldebug
+            if (debug_store_results) then
+                call EPSGetErrorEstimate(solver,id_tot-1,error_est)             ! get error estimate
+                CHCKERR('EPSGetErrorEstimate failed')
+            end if
+#endif
             
             ! set up local X val
             X_val_loc = X%val(id)
@@ -1490,23 +1552,69 @@ contains
                 if (EV_err_str.ne.'') write(output_EV_i,'(A)') trim(EV_err_str)
             end if
             
+            !! visualize solution
+            !call PetscViewerDrawOpen(PETSC_COMM_WORLD,PETSC_NULL_CHARACTER,&
+                !&'solution '//trim(i2str(id))//' vector with '//&
+                !&trim(i2str(grid_X%n(3)))//' points',0,&
+                !&0,1000,1000,guess_viewer,ierr)
+            !call VecView(sol_vec,guess_viewer,ierr)
+            !CHCKERR('Cannot view vector')
+            
+            !call writo('Eigenvector = ')
+            !call VecView(sol_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            !CHCKERR('Cannot view vector')
+            
+#if ldebug
+            if (debug_store_results) then
+                ! user message
+                call writo('Testing whether A x - omega^2 B x = 0 for EV '//&
+                    &trim(i2str(id))//': '//trim(c2strt(X%val(id))))
+                call lvl_ud(1)
+                
+                ! set up error matrix A - omega^2 B
+                call MatDuplicate(A,MAT_SHARE_NONZERO_PATTERN,err_mat,ierr)
+                err_msg = 'failed to duplicate mat into err_mat'
+                CHCKERR(err_msg)
+                call MatCopy(A,err_mat,MAT_SHARE_NONZERO_PATTERN,ierr)          ! err_mat has same structure as A
+                CHCKERR('Failed to copy mat into mat_loc')
+                call MatAXPY(err_mat,-X%val(id),B,SAME_NONZERO_PATTERN,ierr)
+                CHCKERR('Failed to perform AXPY')
+                
+                ! set up error vector
+                call VecDuplicate(sol_vec,err_vec,ierr)
+                CHCKERR('Failed to duplicate vector')
+                
+                ! calculate Ax-lambdaBx
+                call MatMult(err_mat,sol_vec,err_vec,ierr)
+                CHCKERR('Failed to multiply')
+                
+                ! calculate absolute norm
+                call VecNorm(err_vec,NORM_2,err_norm,ierr)
+                CHCKERR('Failed to calculate norm')
+                
+                ! get relative norm
+                err_norm = err_norm/abs(X%val(id))
+                
+                ! visualize solution
+                call writo('error: '//trim(r2str(err_norm))//', given :'//&
+                    &trim(r2str(error))//', estimate: '//trim(r2str(error_est)))
+                !call VecView(err_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
+                !CHCKERR('Cannot view vector')
+                
+                call lvl_ud(-1)
+                
+                ! clean up
+                call VecDestroy(err_vec,ierr)                                   ! destroy error vector
+                CHCKERR('Failed to destroy err_vec')
+            end if
+#endif
+            
             ! reinitialize error string if error and increment counter if not
             if (EV_err_str.ne.'') then
                 EV_err_str = ''
             else                                                                ! tests passed
                 id = id + 1
             end if
-            
-            !! visualize solution
-            !call PetscViewerDrawOpen(PETSC_COMM_WORLD,PETSC_NULL_CHARACTER,&
-                !&'solution '//trim(i2str(id-1))//' vector with '//&
-                !&trim(i2str(grid_X%n(3)))//' points',0,&
-                !&0,1000,1000,guess_viewer,istat)
-            !call VecView(sol_vec,guess_viewer,istat)
-            
-            !call writo('Eigenvector = ')
-            !call VecView(sol_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
-            !CHCKERR('Cannot view vector')
             
             ! reset vector
             call VecResetArray(sol_vec,ierr)
@@ -1557,31 +1665,12 @@ contains
         call writo('basic statistics:')
         call lvl_ud(1)
         
-        call writo('min: '//trim(r2strt(realpart(X%val(1))))//' + '//&
-            &trim(r2strt(imagpart(X%val(1))))//' i')
-        call writo('max: '//trim(r2strt(realpart(X%val(max_n_EV))))//' + '//&
-            &trim(r2strt(imagpart(X%val(max_n_EV))))//' i')
+        call writo('min: '//trim(c2strt(X%val(1))))
+        call writo('max: '//trim(c2strt(X%val(max_n_EV))))
         
         call lvl_ud(-1)
         
         !call EPSPrintSolution(solver,PETSC_NULL_OBJECT,ierr)
-        
-#if ldebug
-        if (debug_store_results) then
-            call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,&
-                &grid_X%grp_n_r*X%n_mod,grid_X%n(3)*X%n_mod,PETSC_NULL_SCALAR,&
-                &err_vec,ierr)                                                  ! create Vec
-            allocate(err_vec_loc(1:X%n_mod,1:grid_X%grp_n_r))                   ! allocate array
-            err_vec_loc = 0.0_dp
-            call VecPlaceArray(err_vec,err_vec_loc,ierr)                        ! place array sol_vec in X vec
-            CHCKERR('Failed to place array')
-            !call MatMult(A,sol_vec,err_vec,ierr)
-            !CHCKERR('Failed to multiply')
-            
-            call VecDestroy(err_vec,ierr)                                       ! destroy error vector
-            CHCKERR('Failed to destroy err_vec')
-        end if
-#endif
         
         call VecDestroy(sol_vec,ierr)                                           ! destroy solution vector
         CHCKERR('Failed to destroy sol_vec')

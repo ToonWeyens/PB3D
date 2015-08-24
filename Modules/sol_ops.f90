@@ -17,7 +17,7 @@ module sol_ops
     private
     public calc_XUQ, plot_X_vec, decompose_energy
 #if ldebug
-    public debug_calc_XUQ_arr
+    public debug_calc_XUQ_arr, debug_calc_E, debug_DU
 #endif
     
     ! interfaces
@@ -28,6 +28,8 @@ module sol_ops
     ! global variables
 #if ldebug
     logical :: debug_calc_XUQ_arr = .false.                                     ! plot debug information for interp_fun_0D_real
+    logical :: debug_calc_E = .true.                                           ! plot debug information for interp_fun_0D_real
+    logical :: debug_DU = .false.                                               ! plot debug information for calculation of DU
 #endif
 
 contains
@@ -330,7 +332,6 @@ contains
     ! grid.
     integer function plot_X_vec(grid_eq,eq,grid_X,X,XYZ,X_id,res_surf) &
         &result(ierr)
-        use output_ops, only: plot_HDF5
         use grid_ops, only: trim_grid
         use grid_vars, only: dealloc_grid
         use num_vars, only: grp_rank, ghost_width_POST
@@ -495,7 +496,7 @@ contains
         ! plots the harmonics and their maximum in 2D
         ! Note: This routine needs a trimmed grid!
         integer function plot_harmonics(grid_X,X,X_id,res_surf) result(ierr)
-            use MPI_utilities, only: wait_MPI, get_ghost_arr, get_ser_var
+            use MPI_utilities, only: wait_MPI, get_ser_var
             use output_ops, only: merge_GP
             use num_vars, only: plt_rank, use_pol_flux_F, GP_max_size
             use eq_vars, only: max_flux_p_F, max_flux_t_F
@@ -686,7 +687,8 @@ contains
         
         ! set plot_en
         plot_en = .false.
-        if (present(PB3D_plot)) plot_en = .true.
+        !!!if (present(PB3D_plot)) plot_en = .true.
+        write(*,*) 'TEMPORARILY SET TO false !!!!!!!!!!!!'
         
         ! user output
         call writo('Prepare calculations')
@@ -793,9 +795,13 @@ contains
             allocate(var_names(2))
             
             ! calculate energy terms
+            call lvl_ud(1)
+            
             ierr = calc_E(PB3D_plot,.false.,X_id,E_pot,E_kin,E_pot_int,&
                 &E_kin_int)
             CHCKERR('')
+            
+            call lvl_ud(-1)
             
             ! point to the trimmed versions
             E_pot_trim => E_pot(:,:,norm_ut(1):norm_ut(2),:)
@@ -885,7 +891,10 @@ contains
             use eq_vars, only: vac_perm
             use utilities, only: c, con2dis
             use grid_ops, only: calc_int_vol, trim_grid
-            use MPI_utilities, only: get_ser_var, wait_MPI, get_ghost_arr
+            use MPI_utilities, only: get_ser_var, wait_MPI
+#if ldebug
+            use utilities, only: calc_deriv
+#endif
             
             character(*), parameter :: rout_name = 'calc_E'
             
@@ -899,7 +908,7 @@ contains
             complex(dp), intent(inout), allocatable :: E_kin_int(:)             ! integrated kinetic energy
             
             ! local variables
-            integer :: kd                                                       ! counter
+            integer :: jd, kd                                                   ! counter
             integer :: i_lo, i_hi                                               ! upper and lower index for interpolation of eq grid to X grid
             integer :: grp_dim(3)                                               ! group dimension
             integer :: grp_dim_1(3)                                             ! group dimension with ghost region of width 1
@@ -913,6 +922,11 @@ contains
             real(dp), allocatable :: ang_1(:,:,:), ang_2(:,:,:), norm(:)        ! coordinates of grid in which to calculate total energy
             complex(dp), allocatable :: XUQ(:,:,:,:)                            ! X, U, Q_n and Q_g
             complex(dp), allocatable :: E_int_tot(:)                            ! integrated potential or kinetic energy of all processes
+#if ldebug
+            real(dp), allocatable :: S(:,:,:)                                   ! interpolated S
+            complex(dp), allocatable :: DU(:,:,:)                               ! D_par U
+            real(dp), allocatable :: DU_ALT(:,:,:)                              ! DU calculated from U
+#endif
             
             ! set grp_dim
             grp_dim = [PB3D%grid_eq%n(1:2),PB3D%grid_X%grp_n_r]                 ! includes ghost regions of width ghost_width_POST
@@ -934,6 +948,12 @@ contains
             allocate(E_kin(grp_dim(1),grp_dim(2),grp_dim(3),2))
             allocate(E_pot_int(6))
             allocate(E_kin_int(2))
+#if ldebug
+            if (debug_calc_E .or. debug_DU) then
+                allocate(DU(grp_dim(1),grp_dim(2),grp_dim(3)))
+                allocate(S(grp_dim(1),grp_dim(2),grp_dim(3)))
+            end if
+#endif
             
             ! iterate over all normal points in X grid and interpolate
             do kd = 1,grp_dim(3)
@@ -985,11 +1005,17 @@ contains
                 end if
                 norm(kd) = PB3D%grid_eq%grp_r_F(i_lo)+(grp_r_eq-i_lo)*&
                     &(PB3D%grid_eq%grp_r_F(i_hi)-PB3D%grid_eq%grp_r_F(i_lo))
+#if ldebug
+                if (debug_calc_E) then
+                    S(:,:,kd) = PB3D%eq%S(:,:,i_lo)+(grp_r_eq-i_lo)*&
+                        &(PB3D%eq%S(:,:,i_hi)-PB3D%eq%S(:,:,i_lo))
+                end if
+#endif
             end do
             
             ! calculate X, U, Q_n and Q_g
             do kd = 1,4
-                ierr = calc_XUQ_ind(PB3D%grid_eq,PB3D%eq,PB3D%grid_X,PB3D%X,&
+                ierr = calc_XUQ(PB3D%grid_eq,PB3D%eq,PB3D%grid_X,PB3D%X,&
                     &X_id,kd,0._dp,XUQ(:,:,:,kd),met=PB3D%met)
                 CHCKERR('')
             end do
@@ -1007,6 +1033,90 @@ contains
             E_pot(:,:,:,4) = -2*D2p*kappa_g*XUQ(:,:,:,1)*conjg(XUQ(:,:,:,2))
             E_pot(:,:,:,5) = -sigma*XUQ(:,:,:,4)*conjg(XUQ(:,:,:,1))
             E_pot(:,:,:,6) = sigma*XUQ(:,:,:,3)*conjg(XUQ(:,:,:,2))
+            
+#if ldebug
+            if (debug_calc_E) then
+                call writo('Testing whether the total potential energy is &
+                    &equal to the alternative form given in [ADD REF]')
+                call lvl_ud(1)
+                
+                ! calculate D_par U
+                ierr = calc_XUQ(PB3D%grid_eq,PB3D%eq,PB3D%grid_X,PB3D%X,&
+                    &X_id,2,0._dp,DU,met=PB3D%met,deriv=.true.)
+                CHCKERR('')
+                
+                ! alternative formulation for E_pot, always real
+                E_pot(:,:,:,3) = (-2*D2p*kappa_n+sigma*S)*&
+                    &XUQ(:,:,:,1)*conjg(XUQ(:,:,:,1))
+                E_pot(:,:,:,4) = -sigma/J*2*realpart(XUQ(:,:,:,1)*conjg(DU))
+                E_pot(:,:,:,5:6) = 0._dp
+                
+                !! possible second alternative:
+                !E_pot(:,:,:,4) = -2*D2p*kappa_g*2*&
+                    !&realpart(XUQ(:,:,:,1)*conjg(XUQ(:,:,:,2)))
+                !E_pot(:,:,:,5) = sigma*2*&
+                    !&realpart(XUQ(:,:,:,2)*conjg(XUQ(:,:,:,3)))
+                !E_pot(:,:,:,6) = 0._dp
+                
+                !! plot output
+                !call plot_HDF5(['RE_E_pot'],'TEST_RE_E_pot_'//&
+                    !&trim(i2str(X_id)),realpart(E_pot),&
+                    !&[PB3D%grid_eq%n(1:2),PB3D%grid_X%n(3),6],&
+                    !&[0,0,PB3D%grid_X%i_min-1,0])
+                
+                call lvl_ud(-1)
+            end if
+            
+            if (debug_DU .and. B_aligned) then
+                call writo('Testing whether DU is indeed the parallel &
+                    &derivative of U')
+                call lvl_ud(1)
+                
+                allocate(DU_ALT(grp_dim(1),grp_dim(2),grp_dim(3)))
+                
+                ! real part
+                do kd = 1,grp_dim(3)
+                    do jd = 1,grp_dim(2)
+                        ierr = calc_deriv(realpart(XUQ(:,jd,kd,2)),&
+                            &DU_ALT(:,jd,kd),ang_1(:,jd,kd),1,1)
+                        CHCKERR('')
+                    end do
+                end do
+                call plot_HDF5('RE U','TEST_RE_U_'//&
+                    &trim(i2str(X_id)),realpart(XUQ(:,:,:,2)),&
+                    &[PB3D%grid_eq%n(1:2),PB3D%grid_X%n(3)],&
+                    &[0,0,PB3D%grid_X%i_min-1])
+                call plot_diff_HDF5(realpart(DU),DU_ALT,&
+                    &'TEST_RE_DU_'//trim(i2str(X_id)),&
+                    &[PB3D%grid_eq%n(1:2),PB3D%grid_X%n(3)],&
+                    &[0,0,PB3D%grid_X%i_min-1],description=&
+                    &'To test whether DU is parallel derivative of U',&
+                    &output_message=.true.)
+                
+                ! imaginary part
+                do kd = 1,grp_dim(3)
+                    do jd = 1,grp_dim(2)
+                        ierr = calc_deriv(imagpart(XUQ(:,jd,kd,2)),&
+                            &DU_ALT(:,jd,kd),ang_1(:,jd,kd),1,1)
+                        CHCKERR('')
+                    end do
+                end do
+                call plot_HDF5('IM U','TEST_IM_U_'//&
+                    &trim(i2str(X_id)),imagpart(XUQ(:,:,:,2)),&
+                    &[PB3D%grid_eq%n(1:2),PB3D%grid_X%n(3)],&
+                    &[0,0,PB3D%grid_X%i_min-1])
+                call plot_diff_HDF5(imagpart(DU),DU_ALT,&
+                    &'TEST_IM_DU_'//trim(i2str(X_id)),&
+                    &[PB3D%grid_eq%n(1:2),PB3D%grid_X%n(3)],&
+                    &[0,0,PB3D%grid_X%i_min-1],description=&
+                    &'To test whether DU is parallel derivative of U',&
+                    &output_message=.true.)
+                
+                deallocate(DU_ALT)
+                
+                call lvl_ud(-1)
+            end if
+#endif
             
             ! trim X grid
             ierr = trim_grid(PB3D%grid_X,grid_X_trim,&

@@ -329,8 +329,7 @@ contains
                 ! user output
                 call writo('Mode '//trim(i2str(id))//'/'//&
                     &trim(i2str(size(PB3D%X%val)))//', with eigenvalue '&
-                    &//trim(r2strt(realpart(PB3D%X%val(id))))//' + '//&
-                    &trim(r2strt(imagpart(PB3D%X%val(id))))//' i')
+                    &//trim(c2strt(PB3D%X%val(id))))
                 call lvl_ud(1)
                 
                 call writo('Plot the Eigenvector')

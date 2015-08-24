@@ -130,3 +130,7 @@ CHANGELOG
 0.85: - Reduced (eliminated?)  memory leaks by properly nullifying and deallocating pointers.
       - Use_normalization cannot any more be passed to PB3D_POST, but is instead read from PB3D output.
       - Corrected bug where mu_0 was forgotten in kappa_n.
+
+0.86: - Added new option 'debug_X_grid', which sets the perturbation grid equal to the equilibrium grid.
+      - Added new test 'test_diff' which looks for the effects of introducing artificial numerical diffusion.
+      - Implemented the 'debug_store_results' which checks whether the solution stored corresponds to the relative error returned.

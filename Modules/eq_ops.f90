@@ -884,6 +884,9 @@ contains
             end do
             
             ! plot output
+            call plot_HDF5('sigma','TEST_sigma',&
+                &eq%sigma(:,:,1:grid_eq_trim%grp_n_r),tot_dim=grid_eq_trim%n,&
+                &grp_offset=[0,0,grid_eq_trim%i_min-1])
             call plot_diff_HDF5(D3sigma,D3sigma_ALT,'TEST_D3sigma',&
                 &grid_eq_trim%n,[0,0,grid_eq_trim%i_min-1],&
                 &description='To test whether -2 p'' J kappa_g = D3sigma',&
@@ -1679,8 +1682,7 @@ contains
         eq_1D_loc%tot_i_min = [1,1,1]
         eq_1D_loc%tot_i_max = grid_trim%n
         eq_1D_loc%grp_i_min = [1,1,grid_trim%i_min]
-        eq_1D_loc%grp_i_max = &
-            &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
+        eq_1D_loc%grp_i_max = [grid_trim%n(1:2),grid_trim%i_max]
         allocate(eq_1D_loc%p(size(eq%sigma(:,:,i_min:i_max))))
         eq_1D_loc%p = reshape(eq%sigma(:,:,i_min:i_max),&
             &[size(eq%sigma(:,:,i_min:i_max))])

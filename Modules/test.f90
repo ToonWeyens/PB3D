@@ -33,21 +33,21 @@ contains
         select case (prog_style)
             case(1)                                                             ! PB3D
                 call writo('Test calculation of derivatives?')
-                if(get_log(.false.)) then
+                if (get_log(.false.)) then
                     ierr = test_calc_deriv()
                     CHCKERR('')
                     call pause_prog
                 end if
                 
                 call writo('Test conversion between full and half mesh?')
-                if(get_log(.false.)) then
+                if (get_log(.false.)) then
                     ierr = test_conv_FHM()
                     CHCKERR('')
                     call pause_prog
                 end if
             case(2)                                                             ! PB3D_POST
                 call writo('Test calculation of volume integral?')
-                if(get_log(.false.)) then
+                if (get_log(.false.)) then
                     ierr = test_calc_int_vol()
                     CHCKERR('')
                     call pause_prog
@@ -386,7 +386,7 @@ contains
                 maxerr(id) = maxval(abs(vardiff))
                 averr(id) = sum(abs(vardiff))/size(vardiff)
                 
-                if(ind_plot) then
+                if (ind_plot) then
                     call print_GP_2D('input with '//trim(i2str(n_r))&
                         &//' radial points ('//trim(i2str(id))//'/'//&
                         &trim(i2str(length))//')','',varin)
@@ -559,11 +559,9 @@ contains
                 
                 ! output
                 call writo('Analytical value: '//&
-                    &trim(r2str(realpart(fun_int(1,1,jd))))//&
-                    &' + iu '//trim(r2str(imagpart(fun_int(1,1,jd)))))
+                    &trim(c2str(fun_int(1,1,jd))))
                 call writo('Numerical value: '//&
-                    &trim(r2str(realpart(fun_int(2,1,jd))))//&
-                    &' + iu '//trim(r2str(imagpart(fun_int(2,1,jd)))))
+                    &trim(c2str(fun_int(2,1,jd))))
                 
                 ! clean up
                 deallocate(theta,zeta,J,fun)

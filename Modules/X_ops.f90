@@ -811,8 +811,11 @@ contains
         ! calculate PV_0 and PV_2 (Hermitian)
         do m = 1,X%n_mod
             do k = m,X%n_mod
+                ! set up c1
+                c1 = c([k,m],.true.,X%n_mod)
+                
                 ! calculate PV_0
-                X%PV_0(:,:,:,c([k,m],.true.,X%n_mod)) = com_fac*&
+                X%PV_0(:,:,:,c1) = com_fac*&
                     &(X%DU_0(:,:,:,m) - eq%S*J - eq%sigma/(com_fac*J)) * &
                     &(conjg(&
                     &X%DU_0(:,:,:,k)) - eq%S*J - eq%sigma/(com_fac*J)) - &
@@ -820,7 +823,6 @@ contains
                 
                 ! add (nq-k)*(nq-m)/(mu_0J^2 |nabla psi|^2) - 2p'kappa_n to PV_0
                 do kd = 1,grid%grp_n_r
-                    c1 = c([k,m],.true.,X%n_mod)
                     X%PV_0(:,:,kd,c1) = X%PV_0(:,:,kd,c1) + &
                         &(X%n(m)*fac_n(kd)-X%m(m)*fac_m(kd))*&
                         &(X%n(k)*fac_n(kd)-X%m(k)*fac_m(kd)) / &
@@ -829,7 +831,7 @@ contains
                 end do
                 
                 ! calculate PV_2
-                X%PV_2(:,:,:,c([k,m],.true.,X%n_mod)) = &
+                X%PV_2(:,:,:,c1) = &
                     &com_fac*X%DU_1(:,:,:,m)*conjg(X%DU_1(:,:,:,k))
             end do
         end do
@@ -868,9 +870,9 @@ contains
         ! jacobian
         real(dp), pointer :: J(:,:,:) => null()                                 ! jac
         ! lower metric factors
-        real(dp), pointer :: g33(:,:,:) => null()                               ! h^alpha,psi
+        real(dp), pointer :: g33(:,:,:) => null()                               ! h_theta,theta or h_zeta,zeta
         ! upper metric factors
-        real(dp), pointer :: h22(:,:,:) => null()                               ! h^alpha,psi
+        real(dp), pointer :: h22(:,:,:) => null()                               ! h^psi,psi
         
         ! set up submatrices
         ! jacobian

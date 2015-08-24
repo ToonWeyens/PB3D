@@ -16,6 +16,14 @@ module driver_rich
     implicit none
     private
     public run_rich_driver
+#if ldebug
+    public debug_X_grid
+#endif
+    
+    ! global variables
+#if ldebug
+    logical :: debug_X_grid = .false.                                           ! plot debug information for treatment of X grid
+#endif
     
 contains
     ! Implementation   of  the  driver,  using  Richardson's  extrapolation  and
@@ -239,6 +247,9 @@ contains
         use grid_vars, only: create_grid, dealloc_grid
         use grid_ops, only: coord_F2E, setup_and_calc_grid_B, calc_ang_grid_eq
         use vac, only: calc_vac
+#if ldebug
+        use grid_ops, only: trim_grid, untrim_grid
+#endif
         
         character(*), parameter :: rout_name = 'run_rich_driver_for_alpha'
         
@@ -263,6 +274,10 @@ contains
         character(len=max_str_ln) :: plot_title                                 ! title for plots
         character(len=max_str_ln) :: plot_name                                  ! name of plot
         character(len=max_str_ln) :: draw_ops                                   ! optional drawing options
+#if ldebug
+        type(grid_type) :: grid_eq_trim                                         ! trimmed equilibrium grid
+        type(grid_type) :: grid_eq_ghost                                        ! ghosted equilibrium grid
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -328,29 +343,71 @@ contains
                 call lvl_ud(1)                                                  ! beginning of one richardson loop
             end if
             
-            !  calculate  number  of  radial  points  for  the  perturbation  in
-            ! Richardson loops and save in n_r_X
-            call writo('calculating the normal points')
-            call lvl_ud(1)
-            call calc_n_r_X(rich_lvl_nr,n_r_X)
-            call lvl_ud(-1)
-            
-            ! divide  perturbation grid  under group processes,  calculating the
-            ! limits and the normal coordinate
-            ierr = divide_X_grid(n_r_X,X_limits,grp_r_X)
-            CHCKERR('')
-            
-            ! create  perturbation grid  with division  limits and  setup normal
-            ! coordinate
-            call writo('creating perturbation grid')
-            call lvl_ud(1)
-            ierr = create_grid(grid_X,n_r_X,X_limits)
-            CHCKERR('')
-            grid_X%grp_r_F = grp_r_X
-            deallocate(grp_r_X)
-            ierr = coord_F2E(grid_eq_B,eq,grid_X%grp_r_F,grid_X%grp_r_E)
-            CHCKERR('')
-            call lvl_ud(-1)
+#if ldebug
+            if (.not.debug_X_grid) then
+#endif
+                ! calculate  number of  radial points  for  the  perturbation in
+                ! Richardson loops and save in n_r_X
+                call writo('calculating the normal points')
+                call lvl_ud(1)
+                call calc_n_r_X(rich_lvl_nr,n_r_X)
+                call lvl_ud(-1)
+                
+                ! divide  perturbation grid  under group  processes, calculating
+                ! the limits and the normal coordinate
+                ierr = divide_X_grid(n_r_X,X_limits,grp_r_X)
+                CHCKERR('')
+                
+                ! create perturbation grid with division limits and setup normal
+                ! coordinate
+                call writo('creating perturbation grid')
+                call lvl_ud(1)
+                ierr = create_grid(grid_X,n_r_X,X_limits)
+                CHCKERR('')
+                grid_X%grp_r_F = grp_r_X
+                deallocate(grp_r_X)
+                ierr = coord_F2E(grid_eq_B,eq,grid_X%grp_r_F,grid_X%grp_r_E)
+                CHCKERR('')
+                call lvl_ud(-1)
+#if ldebug
+            else
+                ! user output
+                call writo('for debugging, equating the perturbation grid to &
+                    &the equilibrium grid with '//trim(i2str(grid_eq%n(3)))//&
+                    &' normal points')
+                call lvl_ud(1)
+                
+                ! trim equilibrium grid
+                ierr = trim_grid(grid_eq,grid_eq_trim)
+                CHCKERR('')
+                
+                ! untrim grid
+                ierr = untrim_grid(grid_eq_trim,grid_eq_ghost,1)
+                CHCKERR('')
+                
+                ! number of radial points given by equilibrium grid
+                n_r_X = grid_eq_ghost%n(3)
+                X_limits = [grid_eq_ghost%i_min,grid_eq_ghost%i_max]
+                
+                ! create grid
+                ierr = create_grid(grid_X,n_r_X,X_limits)
+                CHCKERR('')
+                
+                ! fill grid
+                if (grid_eq_ghost%divided) then                                 ! if input grid divided, grp_r gets priority
+                    grid_X%grp_r_E = grid_eq_ghost%grp_r_E
+                    grid_X%grp_r_F = grid_eq_ghost%grp_r_F
+                end if
+                grid_X%r_E = grid_eq_trim%r_E
+                grid_X%r_F = grid_eq_trim%r_F
+                
+                ! clean up
+                call dealloc_grid(grid_eq_trim)
+                call dealloc_grid(grid_eq_ghost)
+                
+                call lvl_ud(-1)
+            end if
+#endif
             
             ! set use_guess to .false. if no_guess
             if (no_guess) use_guess = .false.

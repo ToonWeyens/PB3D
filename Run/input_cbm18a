@@ -1,12 +1,12 @@
 &inputdata_PB3D
-    n_par_X                 = 60
+    n_par_X                 = 1000
     min_par_X               = -1.0
     max_par_X               = 1.0
     n_alpha                 = 1
     min_alpha               = 0.0
     max_alpha               = 2.0
-    min_r_X                 = 0.45
-    max_r_X                 = 0.85
+    min_r_X                 = 0.5
+    max_r_X                 = 0.8
     max_it_NR               = 500
     max_it_r                = 1
     tol_r                   = 5.0E-6
@@ -16,13 +16,14 @@
     max_sec_X               = 20
     use_pol_flux_F          = .true.
     n_sol_requested         = 300
-    min_n_r_X               = 150
+    min_n_r_X               = 100
     plot_resonance          = .true.
     plot_grid               = .false.
     plot_flux_q             = .false.
     use_normalization       = .true.
-    norm_disc_ord           = 1
+    norm_disc_ord           = 2
     max_it_inv              = 1
+    BC_style                = 1
 /
 
     prim_X                  = 240

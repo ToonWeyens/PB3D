@@ -617,9 +617,7 @@ contains
         
         ! Note: ghost region is only needed for output
         ! add ghost region if not last process
-        if (grp_rank+1.lt.grp_n_procs) then
-            grp_n_r_X = grp_n_r_X + 1
-        end if
+        if (grp_rank.lt.grp_n_procs-1) grp_n_r_X = grp_n_r_X + 1
         
         ! calculate the starting index of this rank
         X_limits(1) = 1

@@ -21,13 +21,17 @@ COMP_DIR = /usr/bin/mpif90 # mpi fortran
 # Linker
 LINK_DIR = /usr/bin/g++ # g++ (needed for C++ preprocessing)
 
-# PETSC directory
-PETSC_DIR = /opt/petsc-3.5.3
+# PETSC and SLEPC directories
+#PETSC_DIR = /opt/petsc-3.5.3
+PETSC_DIR = /opt/petsc-3.6.1
 PETSC_ARCH = debug-complex
 #PETSC_ARCH = debug-complex-seq
-SLEPC_DIR = /opt/slepc-3.5.3
-include  $(SLEPC_DIR)/conf/slepc_variables
-include  $(PETSC_DIR)/conf/variables
+#SLEPC_DIR = /opt/slepc-3.5.3
+SLEPC_DIR = /opt/slepc-3.6.0
+#include  $(PETSC_DIR)/conf/variables
+include  $(PETSC_DIR)/lib/petsc/conf/variables
+#include  $(SLEPC_DIR)/conf/slepc_variables
+include  $(SLEPC_DIR)/lib/slepc/conf/slepc_variables
 
 # Add "Modules" to the search path for the prerequisites
 VPATH = Modules
@@ -65,7 +69,7 @@ LINK_LIB = $(HOME_BIN)/libstell.a -lgfortran -llapack -lblas \
 	   -L/usr/lib/x86_64-linux-gnu/libhdf5hl_fortran.a /usr/lib/x86_64-linux-gnu/libhdf5_hl.a \
            /usr/lib/x86_64-linux-gnu/libhdf5_fortran.a /usr/lib/x86_64-linux-gnu/libhdf5.a -Wl,-z,relro \
            -lpthread -lz -ldl -lm # -Wl,-Bsymbolic-functions -Wl,-rpath -Wl,/usr/lib/x86_64-linux-gnu
-# (To switch between own install of hdf5 and ubuntu packages, probably replace "/usr/lib/x86_64-linux-gnu" by "/opt/HDF5xxx/lib/")
+# (To switch between own install of HDF5 and ubuntu packages, probably replace "/usr/lib/x86_64-linux-gnu" by "/opt/HDF5xxx/lib/")
 # (ALTERNATIVE from http://www.hdfgroup.org/ftp/HDF5/examples/howto/makefiles/Makefilef:
 	   #-I/opt/HDF5/include /opt/HDF5/lib/libhdf5_fortran.a /opt/HDF5/lib/libhdf5.a)
 
