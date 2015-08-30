@@ -134,3 +134,8 @@ CHANGELOG
 0.86: - Added new option 'debug_X_grid', which sets the perturbation grid equal to the equilibrium grid.
       - Added new test 'test_diff' which looks for the effects of introducing artificial numerical diffusion.
       - Implemented the 'debug_store_results' which checks whether the solution stored corresponds to the relative error returned.
+
+0.87: - Changed the routine 'divide_X_grid', which now returns the whole r_F instead of just grp_r_F.
+      - Changed the way the routine 'solve_EV_system_SLEPC' calculates the step size: It now makes use of grid_X%r_F.
+      - Corrected a VERY IMPORTANT bug by setting V_2 to - V_2.
+      - extremely uncorrect unstable spectrum largely corrected.

@@ -761,6 +761,9 @@ contains
     ! calculate  ~PV_(k,m)^i  (pol.  flux)  or ~PV_(l,n)^i  (tor.  flux) at  all
     ! eq grp_n_r values
     ! (see [ADD REF] for details)
+    ! Note: the minus sign in front of PV_2 is due to the fact that the geodesic
+    ! components Um_1 already  have the factor i/n or i/m  built in, in contrast
+    ! with the theory [ADD REF].
     subroutine calc_PV(eq,grid,met,X)
         use num_vars, only: use_pol_flux_F
         use eq_vars, only: vac_perm
@@ -832,7 +835,7 @@ contains
                 
                 ! calculate PV_2
                 X%PV_2(:,:,:,c1) = &
-                    &com_fac*X%DU_1(:,:,:,m)*conjg(X%DU_1(:,:,:,k))
+                    &- com_fac*X%DU_1(:,:,:,m)*conjg(X%DU_1(:,:,:,k))
             end do
         end do
         
@@ -853,6 +856,9 @@ contains
     ! calculate  ~KV_(k,m)^i  (pol.  flux)  or ~KV_(l,n)^i  (tor.  flux) at  all
     ! eq grp_n_r values
     ! (see [ADD REF] for details)
+    ! Note: the minus sign in front of KV_2 is due to the fact that the geodesic
+    ! components Um_1 already  have the factor i/n or i/m  built in, in contrast
+    ! with the theory [ADD REF].
     subroutine calc_KV(eq,grid,met,X)
         use utilities, only: c
         
@@ -895,7 +901,7 @@ contains
                     &X%U_0(:,:,:,m) * conjg(X%U_0(:,:,:,k)) + 1._dp/h22
                 
                 ! calculate KV_2
-                X%KV_2(:,:,:,c([k,m],.true.,X%n_mod)) = com_fac * &
+                X%KV_2(:,:,:,c([k,m],.true.,X%n_mod)) = - com_fac * &
                     &X%U_1(:,:,:,m) * conjg(X%U_1(:,:,:,k))
             end do
         end do

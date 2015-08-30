@@ -577,12 +577,12 @@ contains
     
     ! divides a  grid of  n_r_X points  under the  ranks of  MPI_Comm_groups and
     ! assigns grp_n_r_X and grp_min_r_X and  grp_max_r_X to each rank. Also sets
-    ! up  grp_r_X, which contains the  normal variable in the  perturbation grid
-    ! for this rank (global range (min_r_X..max_r_X))
+    ! up r_X, which contains the normal  variable in the perturbation grid (with
+    ! global range (min_r_X..max_r_X) translated to max_flux/2pi)
     ! Note: for  the first ranks,  the upper index is  one higher than  might be
     ! expected because  the plotting  routines need  information about  the next
     ! perturbation point (so this is an asymetric ghost region)
-    integer function divide_X_grid(n_r_X,X_limits,grp_r_X) result(ierr)
+    integer function divide_X_grid(n_r_X,X_limits,r_X) result(ierr)
         use num_vars, only: MPI_Comm_groups, use_pol_flux_F, grp_rank, &
             &grp_n_procs
         use X_vars, only: min_r_X, max_r_X
@@ -594,7 +594,7 @@ contains
         ! input / output
         integer, intent(in) :: n_r_X                                            ! tot. nr. of normal points in pert. grid
         integer, intent(inout) :: X_limits(2)                                   ! min. and max. index of X grid for this process
-        real(dp), intent(inout), allocatable, optional :: grp_r_X(:)            ! normal points in Flux coords., globally normalized to (min_r_X..max_r_X)
+        real(dp), intent(inout), allocatable, optional :: r_X(:)                ! normal points in Flux coords., globally normalized to (min_r_X..max_r_X)
         
         ! local variables
         integer :: n_procs                                                      ! nr. of procs.
@@ -631,8 +631,8 @@ contains
         X_limits(2) = min(X_limits(2),n_r_X)
         grp_n_r_X = min(grp_n_r_X,X_limits(2)-X_limits(1)+1)
         
-        ! set up grp_r_X if present (equidistant grid in Flux coordinates)
-        if (present(grp_r_X)) then
+        ! set up r_X if present (equidistant grid in Flux coordinates)
+        if (present(r_X)) then
             ! set up max_flux
             if (use_pol_flux_F) then
                 max_flux_F = max_flux_p_F
@@ -640,20 +640,20 @@ contains
                 max_flux_F = max_flux_t_F
             end if
             
-            ! allocate grp_r_X
-            if (allocated(grp_r_X)) deallocate(grp_r_X)
-            allocate(grp_r_X(grp_n_r_X))
+            ! allocate r_X
+            if (allocated(r_X)) deallocate(r_X)
+            allocate(r_X(n_r_X))
             
-            ! calculate grp_r_X in range from 0 to 1
-            grp_r_X = [(min_r_X + (X_limits(1)+id-2.0_dp)/(n_r_X-1.0_dp)*&
-                &(max_r_X-min_r_X),id=1,grp_n_r_X)]
+            ! calculate r_X in range from 0 to 1
+            r_X = [(min_r_X + (id-1.0_dp)/(n_r_X-1.0_dp)*(max_r_X-min_r_X),&
+                &id=1,n_r_X)]
             
             ! round with standard tolerance
-            ierr = round_with_tol(grp_r_X,0.0_dp,1.0_dp)
+            ierr = round_with_tol(r_X,0.0_dp,1.0_dp)
             CHCKERR('')
             
             ! translate to the real normal variable in range from 0..flux/2pi
-            grp_r_X = grp_r_X*max_flux_F/(2*pi)
+            r_X = r_X*max_flux_F/(2*pi)
         end if
     contains 
         integer function divide_X_grid_ind(rank,n,n_procs) result(n_loc)

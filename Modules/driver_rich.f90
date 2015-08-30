@@ -265,7 +265,7 @@ contains
         type(X_type) :: X, X_B                                                  ! general and field-aligned perturbation variables
         integer :: n_r_X                                                        ! total number of normal points in X grid for this step in Richardson ex.
         integer :: X_limits(2)                                                  ! min. and max. index of X grid for this process
-        real(dp), allocatable :: grp_r_X(:)                                     ! normal points in Flux coords., globally normalized to (min_r_X..max_r_X)
+        real(dp), allocatable :: r_X(:)                                         ! normal points in Flux coords.
         logical :: done_richard                                                 ! is it converged?
         complex(dp), allocatable :: X_val_rich(:,:,:)                           ! Richardson array of eigenvalues X val
         real(dp), allocatable :: x_axis(:,:)                                    ! x axis for plot of Eigenvalues with n_r_X
@@ -282,7 +282,7 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! calculate  angular grid  points for equilibrium grid
+        ! calculate angular grid points for equilibrium grid
         ierr = calc_ang_grid_eq(grid_eq,eq,alpha)
         CHCKERR('')
         
@@ -355,7 +355,7 @@ contains
                 
                 ! divide  perturbation grid  under group  processes, calculating
                 ! the limits and the normal coordinate
-                ierr = divide_X_grid(n_r_X,X_limits,grp_r_X)
+                ierr = divide_X_grid(n_r_X,X_limits,r_X)
                 CHCKERR('')
                 
                 ! create perturbation grid with division limits and setup normal
@@ -364,9 +364,14 @@ contains
                 call lvl_ud(1)
                 ierr = create_grid(grid_X,n_r_X,X_limits)
                 CHCKERR('')
-                grid_X%grp_r_F = grp_r_X
-                deallocate(grp_r_X)
-                ierr = coord_F2E(grid_eq_B,eq,grid_X%grp_r_F,grid_X%grp_r_E)
+                grid_X%r_F = r_X
+                grid_X%grp_r_F = r_X(X_limits(1):X_limits(2))
+                deallocate(r_X)
+                ierr = coord_F2E(grid_eq_B,eq,grid_X%r_F,grid_X%r_E,&
+                    &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
+                CHCKERR('')
+                ierr = coord_F2E(grid_eq_B,eq,grid_X%grp_r_F,grid_X%grp_r_E,&
+                    &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
                 call lvl_ud(-1)
 #if ldebug

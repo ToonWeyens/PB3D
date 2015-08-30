@@ -13,7 +13,7 @@
     n_procs_per_alpha       = 2
     prim_X                  = 10
     min_sec_X               = 20
-    max_sec_X               = 20
+    max_sec_X               = 40
     use_pol_flux_F          = .true.
     n_sol_requested         = 300
     min_n_r_X               = 100

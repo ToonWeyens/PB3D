@@ -32,7 +32,7 @@ module SLEPC_ops
     logical :: debug_set_BC = .false.                                           ! plot debug information for set_BC
     logical :: debug_insert_block_mat = .false.                                 ! plot debug information for insert_block_mat
     logical :: debug_calc_V_0_mod = .false.                                     ! plot debug information for calc_V_0_mod
-    logical :: debug_store_results = .true.                                     ! plot debug information for store_results
+    logical :: debug_store_results = .false.                                    ! plot debug information for store_results
     logical :: test_diff = .false.                                              ! test introduction of numerical diff
     real(dp) :: diff_coeff                                                      ! diff coefficient
 #endif
@@ -47,12 +47,14 @@ contains
     ! the variable i_geo.
     integer function solve_EV_system_SLEPC(grid_eq,grid_X,X,use_guess,&
         &max_n_EV,i_geo) result(ierr)
-        use num_vars, only: max_it_inv, use_pol_flux_F, norm_disc_ord
+        use num_vars, only: max_it_inv, norm_disc_ord
         use grid_ops, only: get_norm_interp_data, trim_grid
         use grid_vars, only: dealloc_grid
-        use eq_vars, only: max_flux_p_F, max_flux_t_F
-        use X_vars, only: min_r_X, max_r_X
         use utilities, only: calc_coeff_fin_diff
+#if ldebug
+        use num_vars, only: ltest
+        use input_ops, only: get_real, get_log
+#endif
         
         character(*), parameter :: rout_name = 'solve_EV_system_SLEPC'
         
@@ -66,8 +68,8 @@ contains
         
         ! local variables
         type(grid_type) :: grid_X_trim                                          ! trimmed X grid
-        Mat :: A                                                                ! matrix A in EV problem A X = lambda B X
-        Mat :: B                                                                ! matrix B in EV problem A X = lambda B X
+        Mat, target :: A                                                        ! matrix A in EV problem A X = lambda B X
+        Mat, target :: B                                                        ! matrix B in EV problem A X = lambda B X
         EPS :: solver                                                           ! EV solver
         PetscInt, save :: guess_start_id = -10                                  ! start of index of previous vector, saved for next iteration
         PetscInt, save :: prev_n_EV                                             ! nr. of solutions of previous vector
@@ -97,11 +99,7 @@ contains
         ierr = start_SLEPC(grid_X_trim%n(3))
         CHCKERR('')
         ! set up step size
-        if (use_pol_flux_F) then
-            step_size = (max_r_X-min_r_X)/(grid_X%n(3)-1.0) * max_flux_p_F      ! equidistant perturbation grid in perturb. coords.
-        else
-            step_size = (max_r_X-min_r_X)/(grid_X%n(3)-1.0) * max_flux_t_F      ! equidistant perturbation grid in perturb. coords.
-        end if
+        step_size = (grid_X%r_F(grid_X%n(3))-grid_X%r_F(1))/(grid_X%n(3)-1)
         
         ! get discretization coefficients
         call writo('get discretization coefficients...')
@@ -178,9 +176,32 @@ contains
             
             ! set up solver
             call writo('set up EV solver...')
-            
-            ierr = setup_solver(grid_X_trim,X,A,B,solver)
-            CHCKERR('')
+#if ldebug
+            if (ltest) then
+                call writo('Test spectrum of A or B instead of solving &
+                    &generalized Eigenvalue problem?')
+                if (get_log(.false.)) then
+                    call writo('Spectrum of A (true) or B (false)?')
+                    if (get_log(.true.)) then                                   ! A
+                        ierr = setup_solver(grid_X_trim,X,A,PETSC_NULL_OBJECT,&
+                            &solver)
+                        CHCKERR('')
+                    else                                                        ! B
+                        ierr = setup_solver(grid_X_trim,X,B,PETSC_NULL_OBJECT,&
+                            &solver)
+                        CHCKERR('')
+                    end if
+                else
+                    ierr = setup_solver(grid_X_trim,X,A,B,solver)
+                    CHCKERR('')
+                end if
+            else
+#endif
+                ierr = setup_solver(grid_X_trim,X,A,B,solver)
+                CHCKERR('')
+#if ldebug
+            end if
+#endif
             
             ! get solution
             call writo('get solution...')
@@ -225,13 +246,15 @@ contains
         ierr = stop_SLEPC(grid_X_trim,A,B,solver,guess_start_id,prev_n_EV,&
             &max_n_EV)
         CHCKERR('')
-        ! deallocate quantities
+        
+        ! clean up
         call dealloc_grid(grid_X_trim)
         deallocate(grp_r_eq)
 #if ldebug
     contains
         integer function test_mat_hermiticity(mat,mat_name) result(ierr)
-            use num_vars, only: data_dir, grp_rank
+            use num_vars, only: data_dir
+            !use num_vars, only: grp_rank
             
             character(*), parameter :: rout_name = 'test_mat_hermiticity'
             
@@ -241,7 +264,7 @@ contains
             
             ! local variables
             Mat :: mat_t                                                        ! Hermitian transpose of mat
-            Mat :: mat_loc                                                      ! local version of mat
+            !Mat :: mat_loc                                                      ! local version of mat
             PetscScalar :: one = 1.0                                            ! one
             PetscViewer :: file_viewer                                          ! viewer to write matrix to file
             character(len=max_str_ln) :: file_name                              ! file name
@@ -267,57 +290,56 @@ contains
             call MatDestroy(mat_t,ierr)
             CHCKERR('Failed to destroy matrix mat_t')
             
-            ! duplicate mat into mat_loc
-            call MatDuplicate(mat,MAT_SHARE_NONZERO_PATTERN,mat_loc,ierr)
-            CHCKERR('failed to duplicate mat into mat_loc')
+            !! duplicate mat into mat_loc
+            !call MatDuplicate(mat,MAT_SHARE_NONZERO_PATTERN,mat_loc,ierr)
+            !CHCKERR('failed to duplicate mat into mat_loc')
             
-            ! write real part to file
-            file_name = trim(data_dir)//'/'//trim(mat_name)//'_RE'
-            call MatCopy(mat,mat_loc,MAT_SHARE_NONZERO_PATTERN,ierr)            ! mat_loc has same structure as mat
-            CHCKERR('Failed to copy mat into mat_loc')
-            call MatRealPart(mat_loc,ierr)
-            CHCKERR('Failed to get real part')
+            ! write to file
+            !file_name = trim(data_dir)//'/'//trim(mat_name)//'_RE'
+            file_name = trim(data_dir)//'/'//trim(mat_name)
             call PetscViewerASCIIOpen(PETSC_COMM_WORLD,trim(file_name),&
                 &file_viewer,ierr)
             CHCKERR('Unable to open file viewer')
-            call PetscViewerSetFormat(file_viewer,PETSC_VIEWER_ASCII_DENSE,ierr)
+            !call PetscViewerSetFormat(file_viewer,PETSC_VIEWER_ASCII_DENSE,ierr)
+            call PetscViewerSetFormat(file_viewer,PETSC_VIEWER_ASCII_MATLAB,ierr)
             CHCKERR('Unable to set format')
-            call MatView(mat_loc,file_viewer,ierr)
+            !call MatView(mat_loc,file_viewer,ierr)
+            call MatView(mat,file_viewer,ierr)
             CHCKERR('Unable to write matrix to file')
             call PetscViewerDestroy(file_viewer,ierr)
             CHCKERR('Unable to destroy file viewer')
-            if (grp_rank.eq.0) then
-                call execute_command_line('tail -n +3 '//trim(file_name)//&
-                    &' > tempfile && mv tempfile '//trim(file_name),&
-                    &EXITSTAT=ierr)
-                CHCKERR('Failed to execute command')
-            end if
+            !if (grp_rank.eq.0) then
+                !call execute_command_line('tail -n +3 '//trim(file_name)//&
+                    !&' > tempfile && mv tempfile '//trim(file_name),&
+                    !&EXITSTAT=ierr)
+                !CHCKERR('Failed to execute command')
+            !end if
             
-            ! write imaginary part to file
-            file_name = trim(data_dir)//'/'//trim(mat_name)//'_IM'
-            call MatCopy(mat,mat_loc,MAT_SHARE_NONZERO_PATTERN,ierr)            ! mat_loc has same structure as mat
-            CHCKERR('Failed to copy mat into mat_loc')
-            call MatImaginaryPart(mat_loc,ierr)
-            CHCKERR('Failed to get imaginary part')
-            call PetscViewerASCIIOpen(PETSC_COMM_WORLD,trim(file_name),&
-                &file_viewer,ierr)
-            CHCKERR('Unable to open file viewer')
-            call PetscViewerSetFormat(file_viewer,PETSC_VIEWER_ASCII_DENSE,ierr)
-            CHCKERR('Unable to set format')
-            call MatView(mat_loc,file_viewer,ierr)
-            CHCKERR('Unable to write matrix to file')
-            call PetscViewerDestroy(file_viewer,ierr)
-            CHCKERR('Unable to destroy file viewer')
-            if (grp_rank.eq.0) then
-                call execute_command_line('tail -n +3 '//trim(file_name)//&
-                    &' > tempfile && mv tempfile '//trim(file_name),&
-                    &EXITSTAT=ierr)
-                CHCKERR('Failed to execute command')
-            end if
+            !! write imaginary part to file
+            !file_name = trim(data_dir)//'/'//trim(mat_name)//'_IM'
+            !call MatCopy(mat,mat_loc,MAT_SHARE_NONZERO_PATTERN,ierr)            ! mat_loc has same structure as mat
+            !CHCKERR('Failed to copy mat into mat_loc')
+            !call MatImaginaryPart(mat_loc,ierr)
+            !CHCKERR('Failed to get imaginary part')
+            !call PetscViewerASCIIOpen(PETSC_COMM_WORLD,trim(file_name),&
+                !&file_viewer,ierr)
+            !CHCKERR('Unable to open file viewer')
+            !call PetscViewerSetFormat(file_viewer,PETSC_VIEWER_ASCII_DENSE,ierr)
+            !CHCKERR('Unable to set format')
+            !call MatView(mat_loc,file_viewer,ierr)
+            !CHCKERR('Unable to write matrix to file')
+            !call PetscViewerDestroy(file_viewer,ierr)
+            !CHCKERR('Unable to destroy file viewer')
+            !if (grp_rank.eq.0) then
+                !call execute_command_line('tail -n +3 '//trim(file_name)//&
+                    !&' > tempfile && mv tempfile '//trim(file_name),&
+                    !&EXITSTAT=ierr)
+                !CHCKERR('Failed to execute command')
+            !end if
             
-            ! destroy matrices
-            call MatDestroy(mat_loc,ierr)
-            CHCKERR('Failed to destroy matrix mat_loc')
+            !! destroy matrices
+            !call MatDestroy(mat_loc,ierr)
+            !CHCKERR('Failed to destroy matrix mat_loc')
         end function test_mat_hermiticity
 #endif
     end function solve_EV_system_SLEPC
@@ -1034,11 +1056,12 @@ contains
             allocate(KV_1_loc(X%n_mod,X%n_mod))
             allocate(PV_1_loc(X%n_mod,X%n_mod))
             
-            ! make local copy of KV_2 into the inverse array
+            ! make local copy of -KV_2  into the inverse array (KV_2 is negative
+            ! definite)
             KV_2_inv = 0._dp
             do m = 1,X%n_mod
                 do k = 1,m                                                      ! only save upper diagonal part
-                    KV_2_inv(k,m) = con(KV_2(c([k,m],.true.,X%n_mod)),&
+                    KV_2_inv(k,m) = -con(KV_2(c([k,m],.true.,X%n_mod)),&
                         &[k,m],.true.)                                          ! symmetric matrices need con()
                 end do
             end do
@@ -1065,6 +1088,7 @@ contains
                     KV_2_inv(k,m) = conjg(KV_2_inv(m,k))
                 end do
             end do
+            KV_2_inv = - KV_2_inv                                               ! we took - KV_2
             
             ! save local copy of KV_1 and PV_1
             do m = 1,X%n_mod
@@ -1158,7 +1182,6 @@ contains
         end if
 #endif
         end function calc_V_0_mod
-        
     end function set_BC
     
     ! sets up EV solver
@@ -1186,7 +1209,6 @@ contains
         CHCKERR('EPSCreate failed')
         
         call EPSSetOperators(solver,A,B,ierr)                                   ! generalized EV problem A X = lambda B X
-        !call EPSSetOperators(solver,A,PETSC_NULL_OBJECT,ierr)                   ! normal EV problem A X = lambda X
         CHCKERR('EPSetOperators failed')
         
         !call EPSSetProblemType(solver,EPS_GHEP,ierr)
@@ -1853,6 +1875,11 @@ contains
             call print_ar_2(realpart(block))
             write(*,*) 'Im ='
             call print_ar_2(imagpart(block))
+            if (overwrite_loc) then
+                call writo('(with operation INSERT_VALUES)')
+            else
+                call writo('(with operation INSERT_VALUES)')
+            end if
             if (grp_rank.eq.0) read(*,*)
             ierr = wait_MPI()
             CHCKERR('')
