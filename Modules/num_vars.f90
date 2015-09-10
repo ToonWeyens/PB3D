@@ -14,7 +14,7 @@ module num_vars
         &pi, mu_0_original, iu, &
         &minim_style, EV_style, eq_style, rho_style, norm_disc_ord, BC_style, &
         &plot_resonance, plot_grid, plot_flux_q, ltest, use_pol_flux_E, &
-        &use_pol_flux_F, use_normalization, EV_BC, &
+        &use_pol_flux_F, use_normalization, EV_BC, tol_slepc, max_n_it_slepc, &
         &max_it_r, tol_r, no_guess, &
         &max_it_inv, &
         &max_it_NR, tol_NR, nyq_fac, tol_norm_r, &
@@ -35,7 +35,7 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=max_str_ln) :: prog_name                                      ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! name of output file
-    real(dp), parameter :: prog_version = 0.87_dp                               ! version number
+    real(dp), parameter :: prog_version = 0.88_dp                               ! version number
     integer, parameter :: ghost_width_POST = 2                                  ! size of ghost region (numerical derivatives should not exceed)
 
     ! MPI variables
@@ -66,6 +66,7 @@ module num_vars
     integer :: rho_style                                                        ! style for equilibrium density profile, currently only 1 (constant)
     integer :: norm_disc_ord                                                    ! order for normal discretization
     integer :: BC_style(2)                                                      ! style for BC left and right
+    integer :: max_n_it_slepc                                                   ! maximum nr. of iterations for SLEPC
     logical :: plot_resonance                                                   ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0 (only global master)
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates (only group masters)
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates (only global master)
@@ -74,6 +75,7 @@ module num_vars
     logical :: use_pol_flux_F                                                   ! .true. if Flux coordinates use pol. flux and .false. if tor. flux
     logical :: use_normalization                                                ! whether to use normalization or not
     real(dp) :: EV_BC
+    real(dp) :: tol_slepc                                                       ! tolerance for SLEPC
     
     ! concerning Richardson extrapolation
     integer :: max_it_r                                                         ! number of levels for Richardson extrapolation

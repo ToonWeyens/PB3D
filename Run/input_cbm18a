@@ -5,17 +5,17 @@
     n_alpha                 = 1
     min_alpha               = 0.0
     max_alpha               = 2.0
-    min_r_X                 = 0.5
-    max_r_X                 = 0.8
+    min_r_X                 = 0.2
+    max_r_X                 = 1.0
     max_it_NR               = 500
     max_it_r                = 1
     tol_r                   = 5.0E-6
     n_procs_per_alpha       = 2
     prim_X                  = 10
-    min_sec_X               = 20
-    max_sec_X               = 40
+    min_sec_X               = 13
+    max_sec_X               = 32
     use_pol_flux_F          = .true.
-    n_sol_requested         = 300
+    n_sol_requested         = 50
     min_n_r_X               = 100
     plot_resonance          = .true.
     plot_grid               = .false.
@@ -23,7 +23,8 @@
     use_normalization       = .true.
     norm_disc_ord           = 2
     max_it_inv              = 1
-    BC_style                = 1
+    BC_style                = 1 1
+    max_n_it_slepc          = 2000
 /
 
     prim_X                  = 240

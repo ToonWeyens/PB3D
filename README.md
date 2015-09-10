@@ -139,3 +139,7 @@ CHANGELOG
       - Changed the way the routine 'solve_EV_system_SLEPC' calculates the step size: It now makes use of grid_X%r_F.
       - Corrected a VERY IMPORTANT bug by setting V_2 to - V_2.
       - extremely uncorrect unstable spectrum largely corrected.
+
+0.88: - Introduced variables 'tol_slepc' and 'max_n_it_slepc', which are displayed before starting the solver.
+      - Fixed bugs considering BC's.
+      - Energies are not scaled by E_kin any more.

@@ -28,7 +28,7 @@ module sol_ops
     ! global variables
 #if ldebug
     logical :: debug_calc_XUQ_arr = .false.                                     ! plot debug information for interp_fun_0D_real
-    logical :: debug_calc_E = .true.                                           ! plot debug information for interp_fun_0D_real
+    logical :: debug_calc_E = .false.                                           ! plot debug information for interp_fun_0D_real
     logical :: debug_DU = .false.                                               ! plot debug information for calculation of DU
 #endif
 
@@ -687,8 +687,8 @@ contains
         
         ! set plot_en
         plot_en = .false.
-        !!!if (present(PB3D_plot)) plot_en = .true.
-        write(*,*) 'TEMPORARILY SET TO false !!!!!!!!!!!!'
+        if (present(PB3D_plot)) plot_en = .true.
+        !!!write(*,*) 'TEMPORARILY SET TO false !!!!!!!!!!!!'
         
         ! user output
         call writo('Prepare calculations')
@@ -735,13 +735,13 @@ contains
         if (grp_rank.eq.0) write(log_i,format_val) &
             &realpart(PB3D%X%val(X_id)),&
             &realpart(sum(E_pot_int)/sum(E_kin_int)),&
-            &realpart(sum(E_kin_int)),&
-            &realpart(sum(E_pot_int))
+            &realpart(sum(E_pot_int)),&
+            &realpart(sum(E_kin_int))
         if (grp_rank.eq.0) write(log_i,format_val) &
             &imagpart(PB3D%X%val(X_id)),&
             &imagpart(sum(E_pot_int)/sum(E_kin_int)), &
-            &imagpart(sum(E_kin_int)),&
-            &imagpart(sum(E_pot_int))
+            &imagpart(sum(E_pot_int)),&
+            &imagpart(sum(E_kin_int))
         if (grp_rank.eq.0) write(log_i,format_val) &
             &realpart(E_kin_int(1)),&
             &realpart(E_kin_int(2))
@@ -1159,10 +1159,10 @@ contains
             end do
             
             ! normalize energies
-            E_kin = E_kin/sum(E_kin_int)
-            E_pot = E_pot/sum(E_kin_int)
-            E_kin_int = E_kin_int/sum(E_kin_int)
-            E_pot_int = E_pot_int/sum(E_kin_int)
+            E_kin = E_kin
+            E_pot = E_pot
+            E_kin_int = E_kin_int
+            E_pot_int = E_pot_int
             
             ! deallocate variables
             call dealloc_grid(grid_X_trim)

@@ -679,8 +679,8 @@ contains
             &nyq_fac, tol_r, use_pol_flux_F, use_pol_flux_E, retain_all_sol, &
             &plot_flux_q, plot_grid, no_plots, eq_style, use_normalization, &
             &n_sol_plotted, n_theta_plot, n_zeta_plot, plot_resonance, EV_BC, &
-            &rho_style, prog_style, max_it_inv, norm_disc_ord, BC_style, &
-            &tol_norm_r
+            &tol_slepc, rho_style, prog_style, max_it_inv, norm_disc_ord, &
+            &BC_style, tol_norm_r, max_n_it_slepc
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
@@ -805,6 +805,9 @@ contains
                     call MPI_Bcast(n_zeta_plot,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
+                    call MPI_Bcast(max_n_it_slepc,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
                     call MPI_Bcast(min_alpha,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
@@ -850,6 +853,9 @@ contains
                         &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(EV_BC,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(tol_slepc,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                 case(2)                                                         ! PB3D_POST
