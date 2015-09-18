@@ -29,7 +29,7 @@ module X_vars
     ! perturbation type
     ! The arrays here are of the form:
     !   - (angle_1,angle_2,r,n_mod)         for U_X_i, DU_X_i
-    !   - (angle_1,angle_2,r,nn_mod)        for PVi, KVi, exp_ang_par_F
+    !   - (angle_1,angle_2,r,nn_mod)        for PVi, KVi, J_exp_ang_par_F
     !   - (nn_mod,angle_2,r,3)              for KV_int, PV_int
     ! where it is refered to the discussion  of the grid type for an explanation
     ! of the angles angle_1 and angle_2.
@@ -54,7 +54,7 @@ module X_vars
         complex(dp), pointer :: KV_0(:,:,:,:) => null()                         ! ~KV^0 coefficient
         complex(dp), pointer :: KV_1(:,:,:,:) => null()                         ! ~KV^1 coefficient
         complex(dp), pointer :: KV_2(:,:,:,:) => null()                         ! ~KV^2 coefficient
-        complex(dp), allocatable :: exp_ang_par_F(:,:,:,:)                      ! exp(i (k-m) ang_par_F)
+        complex(dp), allocatable :: J_exp_ang_par_F(:,:,:,:)                    ! J_F exp(i (k-m) ang_par_F)
         complex(dp), allocatable :: PV_int_0(:,:,:)                             ! <~PV^0 e^i(k-m)ang_par_F> coefficient
         complex(dp), allocatable :: PV_int_1(:,:,:)                             ! <~PV^1 e^i(k-m)ang_par_F> coefficient
         complex(dp), allocatable :: PV_int_2(:,:,:)                             ! <~PV^2 e^i(k-m)ang_par_F> coefficient
@@ -129,8 +129,8 @@ contains
         allocate(X%KV_1(n_par,n_geo,grp_n_r,nn_mod_1))                          ! not symmetric
         allocate(X%KV_2(n_par,n_geo,grp_n_r,nn_mod_2))                          ! symmetric
         
-        ! exp_ang_par_F
-        allocate(X%exp_ang_par_F(n_par,n_geo,grp_n_r,nn_mod_2))                 ! symmetric
+        ! J_exp_ang_par_F
+        allocate(X%J_exp_ang_par_F(n_par,n_geo,grp_n_r,nn_mod_2))               ! symmetric
         
         ! PV_int_i
         allocate(X%PV_int_0(nn_mod_2,n_geo,grp_n_r))                            ! symmetric

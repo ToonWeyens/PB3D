@@ -15,7 +15,8 @@ module X_ops
     implicit none
     private
     public prepare_X, solve_EV_system, calc_PV, calc_KV, calc_U, &
-        &calc_magn_ints, print_output_X, resonance_plot, calc_res_surf
+        &calc_magn_ints, print_output_X, print_output_sol, resonance_plot, &
+        &calc_res_surf
 
 contains
     ! prepare the matrix elements by calculating  KV_i and PV_i, which then will
@@ -67,19 +68,19 @@ contains
             call writo('Resonance plot not requested')
         end if
         
-        ! set exp_ang_par_F
+        ! set J_exp_ang_par_F
         if (use_pol_flux_F) then
             do m = 1,X%n_mod
                 do k = m,X%n_mod
-                    X%exp_ang_par_F(:,:,:,c([k,m],.true.,X%n_mod)) = &
-                        &exp(iu*(k-m)*ang_par_F)
+                    X%J_exp_ang_par_F(:,:,:,c([k,m],.true.,X%n_mod)) = &
+                        &met%jac_F(:,:,:,0,0,0)*exp(iu*(k-m)*ang_par_F)
                 end do
             end do
         else
             do m = 1,X%n_mod
                 do k = m,X%n_mod
-                    X%exp_ang_par_F(:,:,:,c([k,m],.true.,X%n_mod)) = &
-                        &exp(iu*(m-k)*ang_par_F)
+                    X%J_exp_ang_par_F(:,:,:,c([k,m],.true.,X%n_mod)) = &
+                        &met%jac_F(:,:,:,0,0,0)*exp(iu*(m-k)*ang_par_F)
                 end do
             end do
         end if
@@ -1338,14 +1339,13 @@ contains
     
     ! Calculate the  magnetic integrals  from PV_i and  KV_i. All  the variables
     ! should thus be field-line oriented.
-    integer function calc_magn_ints(grid_eq,met,X) result(ierr)
+    integer function calc_magn_ints(grid_eq,X) result(ierr)
         use grid_ops, only: calc_int_magn
         
         character(*), parameter :: rout_name = 'calc_magn_ints'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(met_type), intent(in) :: met                                       ! metric variables
         type(X_type), intent(inout) :: X                                        ! perturbation variables
         
         ! initialize ierr
@@ -1358,13 +1358,13 @@ contains
         ! Calculate PV_int = <PV e^(k-m)ang_par_F>
         call writo('Taking field average of PV')
         call lvl_ud(1)
-        ierr = calc_int_magn(grid_eq,met,X%exp_ang_par_F,X%n_mod,&
+        ierr = calc_int_magn(grid_eq,X%J_exp_ang_par_F,X%n_mod,&
             &X%PV_0,X%PV_int_0)
         CHCKERR('')
-        ierr = calc_int_magn(grid_eq,met,X%exp_ang_par_F,X%n_mod,&
+        ierr = calc_int_magn(grid_eq,X%J_exp_ang_par_F,X%n_mod,&
             &X%PV_1,X%PV_int_1)
         CHCKERR('')
-        ierr = calc_int_magn(grid_eq,met,X%exp_ang_par_F,X%n_mod,&
+        ierr = calc_int_magn(grid_eq,X%J_exp_ang_par_F,X%n_mod,&
             &X%PV_2,X%PV_int_2)
         CHCKERR('')
         call lvl_ud(-1)
@@ -1372,13 +1372,13 @@ contains
         ! Calculate KV_int = <KV e^(k-m)ang_par_F>
         call writo('Taking field average of KV')
         call lvl_ud(1)
-        ierr = calc_int_magn(grid_eq,met,X%exp_ang_par_F,X%n_mod,&
+        ierr = calc_int_magn(grid_eq,X%J_exp_ang_par_F,X%n_mod,&
             &X%KV_0,X%KV_int_0)
         CHCKERR('')
-        ierr = calc_int_magn(grid_eq,met,X%exp_ang_par_F,X%n_mod,&
+        ierr = calc_int_magn(grid_eq,X%J_exp_ang_par_F,X%n_mod,&
             &X%KV_1,X%KV_int_1)
         CHCKERR('')
-        ierr = calc_int_magn(grid_eq,met,X%exp_ang_par_F,X%n_mod,&
+        ierr = calc_int_magn(grid_eq,X%J_exp_ang_par_F,X%n_mod,&
             &X%KV_2,X%KV_int_2)
         CHCKERR('')
         call lvl_ud(-1)
@@ -1393,7 +1393,7 @@ contains
     !   - X:        pres_FD, q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, rho, S,
     !               kappa_n, kappa_g, sigma
     ! Note: The equilibrium quantities are outputted in Flux coordinates.
-    integer function print_output_X(grid_eq,grid_X,X,X_B) result(ierr)
+    integer function print_output_X(grid_eq,grid_X,X) result(ierr)
         use num_vars, only: rich_lvl_nr, max_it_r, grp_rank
         use HDF5_ops, only: print_HDF5_arrs, &
             &var_1D
@@ -1406,7 +1406,6 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
         type(X_type), intent(in) :: X                                           ! perturbation variables (for U_0, etc.)
-        type(X_type), intent(in) :: X_B                                         ! field-aligned perturbation variables (for val, vec, etc)
         
         ! local variables
         type(var_1D), allocatable, target :: X_1D(:)                            ! 1D equivalent of eq. variables
@@ -1441,7 +1440,7 @@ contains
         i_max_eq = grid_eq_trim%grp_n_r
         
         ! Set up the 1D equivalents  of the perturbation variables
-        allocate(X_1D(15))
+        allocate(X_1D(11))
         id = 1
         
         ! r_F
@@ -1580,66 +1579,6 @@ contains
         X_1D_loc%p = reshape(imagpart(X%DU_1(:,:,i_min_eq:i_max_eq,:)),&
             &[size(X%DU_1(:,:,i_min_eq:i_max_eq,:))])
         
-        ! RE_X_val
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'RE_X_val'
-        allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
-        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
-        X_1D_loc%tot_i_min = [1]
-        X_1D_loc%tot_i_max = [size(X_B%val)]
-        X_1D_loc%grp_i_min = [1]
-        if (grp_rank.eq.0) then
-            X_1D_loc%grp_i_max = [size(X_B%val)]
-            allocate(X_1D_loc%p(size(X_B%val)))
-            X_1D_loc%p = realpart(X_B%val)
-        else
-            X_1D_loc%grp_i_max = [0]
-            allocate(X_1D_loc%p(0))
-        end if
-        
-        ! IM_X_val
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'IM_X_val'
-        allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
-        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
-        X_1D_loc%tot_i_min = [1]
-        X_1D_loc%tot_i_max = [size(X_B%val)]
-        X_1D_loc%grp_i_min = [1]
-        if (grp_rank.eq.0) then
-            X_1D_loc%grp_i_max = [size(X_B%val)]
-            allocate(X_1D_loc%p(size(X_B%val)))
-            X_1D_loc%p = imagpart(X_B%val)
-        else
-            X_1D_loc%grp_i_max = [0]
-            allocate(X_1D_loc%p(0))
-        end if
-        
-        ! RE_X_vec
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'RE_X_vec'
-        allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-        allocate(X_1D_loc%grp_i_min(3),X_1D_loc%grp_i_max(3))
-        X_1D_loc%grp_i_min = [1,grid_X_trim%i_min,1]
-        X_1D_loc%grp_i_max = [X_B%n_mod,grid_X_trim%i_max,size(X_B%vec,3)]
-        X_1D_loc%tot_i_min = [1,1,1]
-        X_1D_loc%tot_i_max = [X_B%n_mod,grid_X_trim%n(3),size(X_B%vec,3)]
-        allocate(X_1D_loc%p(size(X_B%vec(:,i_min_X:i_max_X,:))))
-        X_1D_loc%p = reshape(realpart(X_B%vec(:,i_min_X:i_max_X,:)),&
-            &[size(X_B%vec(:,i_min_X:i_max_X,:))])
-        
-        ! IM_X_vec
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'IM_X_vec'
-        allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-        allocate(X_1D_loc%grp_i_min(3),X_1D_loc%grp_i_max(3))
-        X_1D_loc%grp_i_min = [1,grid_X_trim%i_min,1]
-        X_1D_loc%grp_i_max = [X_B%n_mod,grid_X_trim%i_max,size(X_B%vec,3)]
-        X_1D_loc%tot_i_min = [1,1,1]
-        X_1D_loc%tot_i_max = [X_B%n_mod,grid_X_trim%n(3),size(X_B%vec,3)]
-        allocate(X_1D_loc%p(size(X_B%vec(:,i_min_X:i_max_X,:))))
-        X_1D_loc%p = reshape(imagpart(X_B%vec(:,i_min_X:i_max_X,:)),&
-            &[size(X_B%vec(:,i_min_X:i_max_X,:))])
-        
         ! misc_X
         X_1D_loc => X_1D(id); id = id+1
         X_1D_loc%var_name = 'misc_X'
@@ -1686,4 +1625,135 @@ contains
         call lvl_ud(-1)
         call writo('Perturbation variables written to output')
     end function print_output_X
+    
+    ! Print solution quantities to an output file:
+    !   - X:      X_val, X_vec
+    integer function print_output_sol(grid_X,X) result(ierr)
+        use num_vars, only: rich_lvl_nr, max_it_r, grp_rank
+        use HDF5_ops, only: print_HDF5_arrs, &
+            &var_1D
+        use grid_ops, only: trim_grid
+        
+        character(*), parameter :: rout_name = 'print_output_sol'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
+        type(X_type), intent(in) :: X                                           ! field-aligned perturbation variables (for val, vec, etc)
+        
+        ! local variables
+        type(var_1D), allocatable, target :: X_1D(:)                            ! 1D equivalent of eq. variables
+        type(var_1D), pointer :: X_1D_loc => null()                             ! local element in X_1D
+        type(grid_type) :: grid_X_trim                                          ! trimmed X grid
+        integer :: i_min_X, i_max_X                                             ! min. and max. index of variables
+        integer :: id                                                           ! counter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Writing solution variables to output file')
+        call lvl_ud(1)
+        
+        ! user output
+        call writo('Preparing variables for writing')
+        call lvl_ud(1)
+        
+        ! trim grids
+        ierr = trim_grid(grid_X,grid_X_trim)
+        CHCKERR('')
+        
+        ! set i_min and i_max
+        i_min_X = 1
+        i_max_X = grid_X_trim%grp_n_r
+        
+        ! Set up the 1D equivalents  of the perturbation variables
+        allocate(X_1D(4))
+        id = 1
+        
+        ! RE_X_val
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'RE_X_val'
+        allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
+        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
+        X_1D_loc%tot_i_min = [1]
+        X_1D_loc%tot_i_max = [size(X%val)]
+        X_1D_loc%grp_i_min = [1]
+        if (grp_rank.eq.0) then
+            X_1D_loc%grp_i_max = [size(X%val)]
+            allocate(X_1D_loc%p(size(X%val)))
+            X_1D_loc%p = realpart(X%val)
+        else
+            X_1D_loc%grp_i_max = [0]
+            allocate(X_1D_loc%p(0))
+        end if
+        
+        ! IM_X_val
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'IM_X_val'
+        allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
+        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
+        X_1D_loc%tot_i_min = [1]
+        X_1D_loc%tot_i_max = [size(X%val)]
+        X_1D_loc%grp_i_min = [1]
+        if (grp_rank.eq.0) then
+            X_1D_loc%grp_i_max = [size(X%val)]
+            allocate(X_1D_loc%p(size(X%val)))
+            X_1D_loc%p = imagpart(X%val)
+        else
+            X_1D_loc%grp_i_max = [0]
+            allocate(X_1D_loc%p(0))
+        end if
+        
+        ! RE_X_vec
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'RE_X_vec'
+        allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
+        allocate(X_1D_loc%grp_i_min(3),X_1D_loc%grp_i_max(3))
+        X_1D_loc%grp_i_min = [1,grid_X_trim%i_min,1]
+        X_1D_loc%grp_i_max = [X%n_mod,grid_X_trim%i_max,size(X%vec,3)]
+        X_1D_loc%tot_i_min = [1,1,1]
+        X_1D_loc%tot_i_max = [X%n_mod,grid_X_trim%n(3),size(X%vec,3)]
+        allocate(X_1D_loc%p(size(X%vec(:,i_min_X:i_max_X,:))))
+        X_1D_loc%p = reshape(realpart(X%vec(:,i_min_X:i_max_X,:)),&
+            &[size(X%vec(:,i_min_X:i_max_X,:))])
+        
+        ! IM_X_vec
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'IM_X_vec'
+        allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
+        allocate(X_1D_loc%grp_i_min(3),X_1D_loc%grp_i_max(3))
+        X_1D_loc%grp_i_min = [1,grid_X_trim%i_min,1]
+        X_1D_loc%grp_i_max = [X%n_mod,grid_X_trim%i_max,size(X%vec,3)]
+        X_1D_loc%tot_i_min = [1,1,1]
+        X_1D_loc%tot_i_max = [X%n_mod,grid_X_trim%n(3),size(X%vec,3)]
+        allocate(X_1D_loc%p(size(X%vec(:,i_min_X:i_max_X,:))))
+        X_1D_loc%p = reshape(imagpart(X%vec(:,i_min_X:i_max_X,:)),&
+            &[size(X%vec(:,i_min_X:i_max_X,:))])
+        
+        call lvl_ud(-1)
+        
+        ! user output
+        call writo('Writing using HDF5')
+        call lvl_ud(1)
+        
+        ! write
+        if (max_it_r.gt.1) then
+            ierr = print_HDF5_arrs(X_1D,'sol_R'//trim(i2str(rich_lvl_nr)))
+        else
+            ierr = print_HDF5_arrs(X_1D,'sol')
+        end if
+        CHCKERR('')
+        
+        ! clean up
+        call dealloc_grid(grid_X_trim)
+        nullify(X_1D_loc)
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Writing complete')
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Perturbation variables written to output')
+    end function print_output_sol
 end module

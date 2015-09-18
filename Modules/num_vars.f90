@@ -35,7 +35,7 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=max_str_ln) :: prog_name                                      ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! name of output file
-    real(dp), parameter :: prog_version = 0.88_dp                               ! version number
+    real(dp), parameter :: prog_version = 0.89_dp                               ! version number
     integer, parameter :: ghost_width_POST = 2                                  ! size of ghost region (numerical derivatives should not exceed)
 
     ! MPI variables

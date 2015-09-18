@@ -241,7 +241,7 @@ contains
         use X_vars, only: dealloc_X
         use eq_ops, only: calc_eq, print_output_eq
         use X_ops, only: solve_EV_system, calc_magn_ints, prepare_X, &
-            &print_output_X
+            &print_output_X, print_output_sol
         use met_vars, only: dealloc_met
         use MPI_ops, only: divide_X_grid
         use grid_vars, only: create_grid, dealloc_grid
@@ -261,7 +261,7 @@ contains
         ! local variables
         type(grid_type) :: grid_X                                               ! perturbation grid
         type(grid_type), pointer :: grid_eq_B => null()                         ! field-aligned equilibrium grid
-        type(met_type) :: met, met_B                                            ! general and field-aligned metric variables
+        type(met_type) :: met                                                   ! metric variables
         type(X_type) :: X, X_B                                                  ! general and field-aligned perturbation variables
         integer :: n_r_X                                                        ! total number of normal points in X grid for this step in Richardson ex.
         integer :: X_limits(2)                                                  ! min. and max. index of X grid for this process
@@ -306,12 +306,15 @@ contains
         ierr = print_output_eq(grid_eq,grid_eq_B,eq,met,alpha)
         CHCKERR('')
         
+        ! deallocate metric variables
+        call dealloc_met(met)
+        
         ! adapt variables to a field-aligned grid
-        ierr = adapt_to_B(grid_eq,grid_eq_B,met,met_B,X,X_B)
+        ierr = adapt_X_to_B(grid_eq,grid_eq_B,X,X_B)
         CHCKERR('')
         
         ! calculate magnetic integrals
-        ierr = calc_magn_ints(grid_eq_B,met_B,X_B)
+        ierr = calc_magn_ints(grid_eq_B,X_B)
         CHCKERR('')
         
         ! Initalize some variables for Richardson loop
@@ -343,6 +346,7 @@ contains
                 call lvl_ud(1)                                                  ! beginning of one richardson loop
             end if
             
+            ! setting up perturbation grid
 #if ldebug
             if (.not.debug_X_grid) then
 #endif
@@ -414,6 +418,13 @@ contains
             end if
 #endif
             
+            ! write X variables to output
+            ierr = print_output_X(grid_eq_B,grid_X,X)
+            CHCKERR('')
+            
+            ! deallocate non-aligned perturbation variables
+            call dealloc_X(X)
+            
             ! set use_guess to .false. if no_guess
             if (no_guess) use_guess = .false.
             
@@ -425,8 +436,8 @@ contains
             CHCKERR('')
             call lvl_ud(-1)
             
-            ! write X variables to output
-            ierr = print_output_X(grid_eq,grid_X,X,X_B)
+            ! write solution variables to output
+            ierr = print_output_sol(grid_X,X_B)
             CHCKERR('')
             
             ! Richardson extrapolation
@@ -497,10 +508,7 @@ contains
         ! destroy grid
         call dealloc_grid(grid_X)
         
-        ! deallocate equilibrium quantities in Flux coords.
-        call dealloc_met(met)
-        call dealloc_met(met_B)
-        call dealloc_X(X)
+        ! deallocate field-aligned quantities in Flux coords.
         call dealloc_X(X_B)
         if (eq_style.eq.2) call dealloc_grid(grid_eq_B)                         ! only for HELENA
         nullify(grid_eq_B)
@@ -627,24 +635,21 @@ contains
         end function calc_rich_ex
     end function run_rich_driver_for_alpha
     
-    ! Adapt  some variables  angularly  to a  field-aligned  grid, depending  on
+    ! Adapt  X  variables  angularly  to  a  field-aligned  grid,  depending  on
     ! equilibrium type:
-    !   1. met: jac_FD, g_FD, h_FD
-    !   2. X: exp_ang_par_f, U_i, DU_i, PV_i, KV_i
+    !   X: J_exp_ang_par_F, U_i, DU_i, PV_i, KV_i
     ! Note that this, by definition, does not affect and thus doesn not apply to
     ! flux functions.
-    integer function adapt_to_B(grid_eq,grid_eq_B,met,met_B,X,X_B) result(ierr)
+    integer function adapt_X_to_B(grid_eq,grid_eq_B,X,X_B) &
+        &result(ierr)
         use num_vars, only: eq_style
         use HELENA, only: interp_HEL_on_grid
         use X_vars, only: create_X
-        use met_vars, only: create_met
         
-        character(*), parameter :: rout_name = 'adapt_to_B'
+        character(*), parameter :: rout_name = 'adapt_X_to_B'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq, grid_eq_B                       ! general and field-aligned equilibrium grid
-        type(met_type), intent(in) :: met                                       ! general metric variables
-        type(met_type), intent(inout) :: met_B                                  ! field-aligned metric variables
         type(X_type), intent(in) :: X                                           ! general perturbation variables
         type(X_type), intent(inout) :: X_B                                      ! field-aligned perturbation variables
         
@@ -654,9 +659,7 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! create new metric and perturbation variables
-        ierr = create_met(grid_eq_B,met_B)
-        CHCKERR('')
+        ! create new perturbation variables
         call create_X(grid_eq_B,X_B)
         
         ! choose which equilibrium style is being used:
@@ -665,10 +668,7 @@ contains
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! no conversion necessary: already in field-aligned grid
-                met_B%jac_FD = met%jac_FD
-                met_B%g_FD = met%g_FD
-                met_B%h_FD = met%h_FD
-                X_B%exp_ang_par_f = X%exp_ang_par_f
+                X_B%J_exp_ang_par_F = X%J_exp_ang_par_F
                 X_B%U_0 = X%U_0
                 X_B%U_1 = X%U_1
                 X_B%DU_0 = X%DU_0
@@ -682,7 +682,7 @@ contains
                 X_B%vac_res = X%vac_res
             case (2)                                                            ! HELENA
                 ! call HELENA grid interpolation
-                ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,met,met_B,X,X_B,&
+                ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,X,X_B,&
                     &grid_name='field-aligned grid')
                 CHCKERR('')
             case default
@@ -691,5 +691,5 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
-    end function adapt_to_B
+    end function adapt_X_to_B
 end module driver_rich

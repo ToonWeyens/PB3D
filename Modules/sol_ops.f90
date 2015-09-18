@@ -853,11 +853,13 @@ contains
             Z_tot_trim => Z_tot(:,:,:,1:2)
             call plot_HDF5(var_names,trim(file_name)//'_RE',realpart(reshape(&
                 &[sum(E_pot_trim(:,:,:,1:2),4),sum(E_pot_trim(:,:,:,3:6),4)],&
-                &[grp_dim,2])),tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
+                &[grp_dim(1),grp_dim(2),grp_dim(3),2])),&
+                &tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,description=description)
             call plot_HDF5(var_names,trim(file_name)//'_IM',imagpart(reshape(&
                 &[sum(E_pot_trim(:,:,:,1:2),4),sum(E_pot_trim(:,:,:,3:6),4)],&
-                &[grp_dim,2])),tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
+                &[grp_dim(1),grp_dim(2),grp_dim(3),2])),&
+                &tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,description=description)
             
             ! E
@@ -866,11 +868,13 @@ contains
             file_name = trim(i2str(X_id))//'_E'
             description = 'total potential and kinetic energy'
             call plot_HDF5(var_names,trim(file_name)//'_RE',realpart(reshape(&
-                &[sum(E_pot_trim,4),sum(E_kin_trim,4)],[grp_dim,2])),&
+                &[sum(E_pot_trim,4),sum(E_kin_trim,4)],&
+                &[grp_dim(1),grp_dim(2),grp_dim(3),2])),&
                 &tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],X=X_tot_trim,&
                 &Y=Y_tot_trim,Z=Z_tot_trim,description=description)
             call plot_HDF5(var_names,trim(file_name)//'_IM',imagpart(reshape(&
-                &[sum(E_pot_trim,4),sum(E_kin_trim,4)],[grp_dim,2])),&
+                &[sum(E_pot_trim,4),sum(E_kin_trim,4)],&
+                &[grp_dim(1),grp_dim(2),grp_dim(3),2])),&
                 &tot_dim=[tot_dim,2],grp_offset=[grp_offset,0],X=X_tot_trim,&
                 &Y=Y_tot_trim,Z=Z_tot_trim,description=description)
             

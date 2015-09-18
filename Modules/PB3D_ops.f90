@@ -37,7 +37,7 @@ contains
         use grid_vars, only: create_grid
         use eq_vars, only: create_eq
         use X_vars, only: create_X
-        use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B, vars_1D_X
+        use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B, vars_1D_X, vars_1D_sol
         
         character(*), parameter :: rout_name = 'read_PB3D'
         
@@ -49,6 +49,10 @@ contains
         
         ! only global master
         if (glb_rank.eq.0) then
+            ! set common error message
+            err_msg = 'Maybe you wanted to use Richardson extrapolation? Not &
+                &yet implemented.'
+            
             call writo('Reading equilibrium variables')
             call lvl_ud(1)
             ierr = read_HDF5_arrs(vars_1D_eq,'eq')
@@ -67,11 +71,16 @@ contains
             call writo('Reading perturbation variables')
             call lvl_ud(1)
             ierr = read_HDF5_arrs(vars_1D_X,'X')
-            err_msg = 'Maybe you wanted to use Richardson extrapolation? Not &
-                &yet implemented.'
             CHCKERR(err_msg)
             call lvl_ud(-1)
             call writo('Perturbation variables read')
+            
+            call writo('Reading solution variables')
+            call lvl_ud(1)
+            ierr = read_HDF5_arrs(vars_1D_sol,'sol')
+            CHCKERR(err_msg)
+            call lvl_ud(-1)
+            call writo('Solution variables read')
         end if
     contains
         integer function set_eq_style() result(ierr)
@@ -113,7 +122,7 @@ contains
     ! interpolated. For VMEC, for every grid one has to start from the basis and
     ! run the routines from calc_eq.
     integer function reconstruct_PB3D(PB3D,grid_eq_B) result(ierr)
-        use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B, vars_1D_X, &
+        use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B, vars_1D_X, vars_1D_sol, &
             &min_PB3D_version
         use MPI_ops, only: split_MPI_POST
         use grid_vars, only: create_grid
@@ -198,13 +207,13 @@ contains
         CHCKERR('')
         ierr = retrieve_var_1D_id(vars_1D_X,'IM_DU_1',IM_DU_1_id)
         CHCKERR('')
-        ierr = retrieve_var_1D_id(vars_1D_X,'RE_X_val',RE_X_val_id)
+        ierr = retrieve_var_1D_id(vars_1D_sol,'RE_X_val',RE_X_val_id)
         CHCKERR('')
-        ierr = retrieve_var_1D_id(vars_1D_X,'IM_X_val',IM_X_val_id)
+        ierr = retrieve_var_1D_id(vars_1D_sol,'IM_X_val',IM_X_val_id)
         CHCKERR('')
-        ierr = retrieve_var_1D_id(vars_1D_X,'RE_X_vec',RE_X_vec_id)
+        ierr = retrieve_var_1D_id(vars_1D_sol,'RE_X_vec',RE_X_vec_id)
         CHCKERR('')
-        ierr = retrieve_var_1D_id(vars_1D_X,'IM_X_vec',IM_X_vec_id)
+        ierr = retrieve_var_1D_id(vars_1D_sol,'IM_X_vec',IM_X_vec_id)
         CHCKERR('')
         
         ! get 1D eq_B indices if present
@@ -622,23 +631,23 @@ contains
         PB3D%X%DU_1 = PB3D%X%DU_1 + iu*dum_4D(:,:,i_lim_eq(1):i_lim_eq(2),:)
         deallocate(dum_4D)
         
-        allocate(PB3D%X%val(vars_1D_X(RE_X_val_id)%tot_i_min(1):&
-            &vars_1D_X(RE_X_val_id)%tot_i_max(1)))
-        call conv_1D2ND(vars_1D_X(RE_X_val_id),dum_1D)
+        allocate(PB3D%X%val(vars_1D_sol(RE_X_val_id)%tot_i_min(1):&
+            &vars_1D_sol(RE_X_val_id)%tot_i_max(1)))
+        call conv_1D2ND(vars_1D_sol(RE_X_val_id),dum_1D)
         PB3D%X%val = dum_1D
         deallocate(dum_1D)
-        call conv_1D2ND(vars_1D_X(IM_X_val_id),dum_1D)
+        call conv_1D2ND(vars_1D_sol(IM_X_val_id),dum_1D)
         PB3D%X%val = PB3D%X%val + iu*dum_1D
         deallocate(dum_1D)
-        allocate(PB3D%X%vec(vars_1D_X(RE_X_vec_id)%tot_i_min(1):&
-            &vars_1D_X(RE_X_vec_id)%tot_i_max(1),&
+        allocate(PB3D%X%vec(vars_1D_sol(RE_X_vec_id)%tot_i_min(1):&
+            &vars_1D_sol(RE_X_vec_id)%tot_i_max(1),&
             &1:i_lim_X(2)-i_lim_X(1)+1,&
-            &vars_1D_X(RE_X_vec_id)%tot_i_min(3):&
-            &vars_1D_X(RE_X_vec_id)%tot_i_max(3)))
-        call conv_1D2ND(vars_1D_X(RE_X_vec_id),dum_3D)
+            &vars_1D_sol(RE_X_vec_id)%tot_i_min(3):&
+            &vars_1D_sol(RE_X_vec_id)%tot_i_max(3)))
+        call conv_1D2ND(vars_1D_sol(RE_X_vec_id),dum_3D)
         PB3D%X%vec = dum_3D(:,i_lim_X(1):i_lim_X(2),:)
         deallocate(dum_3D)
-        call conv_1D2ND(vars_1D_X(IM_X_vec_id),dum_3D)
+        call conv_1D2ND(vars_1D_sol(IM_X_vec_id),dum_3D)
         PB3D%X%vec = PB3D%X%vec + iu*dum_3D(:,i_lim_X(1):i_lim_X(2),:)
         deallocate(dum_3D)
         

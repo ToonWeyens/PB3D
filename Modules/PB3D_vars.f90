@@ -17,7 +17,8 @@ module PB3D_vars
     implicit none
     private
     public dealloc_PB3D, &
-        &PB3D_type, vars_1D_eq, vars_1D_eq_B, vars_1D_X, min_PB3D_version
+        &PB3D_type, vars_1D_eq, vars_1D_eq_B, vars_1D_X, vars_1D_sol, &
+        &min_PB3D_version
     
     ! PB3D type
     type :: PB3D_type
@@ -31,8 +32,9 @@ module PB3D_vars
     end type PB3D_type
     
     ! global variables
-    type(var_1D), allocatable :: vars_1D_eq(:), vars_1D_eq_B(:), vars_1D_X(:)   ! 1D variables
-    real(dp), parameter :: min_PB3D_version = 0.80_dp                           ! minimum PB3D version
+    type(var_1D), allocatable :: vars_1D_eq(:), vars_1D_eq_B(:), vars_1D_X(:), &
+        &vars_1D_sol(:)                                                         ! 1D variables
+    real(dp), parameter :: min_PB3D_version = 0.89_dp                           ! minimum PB3D version
     
 contains
     ! deallocates PB3D quantities

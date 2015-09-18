@@ -143,3 +143,10 @@ CHANGELOG
 0.88: - Introduced variables 'tol_slepc' and 'max_n_it_slepc', which are displayed before starting the solver.
       - Fixed bugs considering BC's.
       - Energies are not scaled by E_kin any more.
+
+0.89: - Improved makefile, adding support for quadrivium compilation.
+      - Changed things in 'output_ops' and 'sol_ops' that provoked a compilation bug on quadrivium: an array could not be used as a building block of a bigger array as in y = [x,5] where x = [1,2].
+      - Split the perturbation output in perturbation output and solution output, which are written to 2 different HDF5 groups.
+      - 'exp_ang_par_F' is now 'J_exp_ang_par_F' and contains the Jacobian as well.
+      - For PB3D, the metric variables are no longer interpolated on the field-aligned grid, as they are no longer necessary with the introduction of 'J_exp_ang_par_F'.
+      - Introduced a new run script, for qsub on quadrivium.

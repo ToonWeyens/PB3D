@@ -122,8 +122,8 @@ contains
                 call writo('Quantities prepared')
                 
                 ! call HELENA grid interpolation
-                ierr = interp_HEL_on_grid(PB3D%grid_eq,PB3D_B%grid_eq,PB3D%met,&
-                    &PB3D_B%met,PB3D%X,PB3D_B%X,eq=PB3D%eq,eq_B=PB3D_B%eq,&
+                ierr = interp_HEL_on_grid(PB3D%grid_eq,PB3D_B%grid_eq,PB3D%X,PB3D_B%X,&
+                    &met=PB3D%met,met_B=PB3D_B%met,eq=PB3D%eq,eq_B=PB3D_B%eq,&
                     &grid_name='field-aligned grid')
                 CHCKERR('')
                 
@@ -223,7 +223,7 @@ contains
                 
                 ! call HELENA grid interpolation
                 ierr = interp_HEL_on_grid(PB3D%grid_eq,PB3D_plot%grid_eq,&
-                    &PB3D%met,PB3D_plot%met,PB3D%X,PB3D_plot%X,eq=PB3D%eq,&
+                    &PB3D%X,PB3D_plot%X,met=PB3D%met,met_B=PB3D_plot%met,eq=PB3D%eq,&
                     &eq_B=PB3D_plot%eq,grid_name='plot grid')
                 CHCKERR('')
             case default

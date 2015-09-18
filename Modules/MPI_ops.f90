@@ -690,7 +690,7 @@ contains
             &min_r_X, max_r_X
         use grid_vars, only: n_r_eq, n_par_X, min_par_X, max_par_X
         use HDF5_ops, only: var_1D
-        use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B, vars_1D_X
+        use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B, vars_1D_X, vars_1D_sol
 #if ldebug
         use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
@@ -868,31 +868,6 @@ contains
                     call MPI_Bcast(n_zeta_plot,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
-                    call bcast_size_1_var_1D(vars_1D_X)
-                    CHCKERR(err_msg)
-                    do id = 1,size(vars_1D_X)
-                        call bcast_size_1_R(vars_1D_X(id)%p)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_X(id)%p,size(vars_1D_X(id)%p),&
-                            &MPI_DOUBLE_PRECISION,&
-                            &0,MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_X(id)%tot_i_min)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_X(id)%tot_i_min,&
-                            &size(vars_1D_X(id)%tot_i_min),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_X(id)%tot_i_max)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_X(id)%tot_i_max,&
-                            &size(vars_1D_X(id)%tot_i_max),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_X(id)%var_name,max_str_ln,&
-                            &MPI_CHARACTER,0,MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                    end do
                     call bcast_size_1_var_1D(vars_1D_eq)
                     CHCKERR(err_msg)
                     do id = 1,size(vars_1D_eq)
@@ -939,6 +914,56 @@ contains
                             &MPI_Comm_world,ierr)
                         CHCKERR(err_msg)
                         call MPI_Bcast(vars_1D_eq_B(id)%var_name,max_str_ln,&
+                            &MPI_CHARACTER,0,MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                    end do
+                    call bcast_size_1_var_1D(vars_1D_X)
+                    CHCKERR(err_msg)
+                    do id = 1,size(vars_1D_X)
+                        call bcast_size_1_R(vars_1D_X(id)%p)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_X(id)%p,size(vars_1D_X(id)%p),&
+                            &MPI_DOUBLE_PRECISION,&
+                            &0,MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call bcast_size_1_I(vars_1D_X(id)%tot_i_min)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_X(id)%tot_i_min,&
+                            &size(vars_1D_X(id)%tot_i_min),MPI_INTEGER,0,&
+                            &MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call bcast_size_1_I(vars_1D_X(id)%tot_i_max)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_X(id)%tot_i_max,&
+                            &size(vars_1D_X(id)%tot_i_max),MPI_INTEGER,0,&
+                            &MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_X(id)%var_name,max_str_ln,&
+                            &MPI_CHARACTER,0,MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                    end do
+                    call bcast_size_1_var_1D(vars_1D_sol)
+                    CHCKERR(err_msg)
+                    do id = 1,size(vars_1D_sol)
+                        call bcast_size_1_R(vars_1D_sol(id)%p)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_sol(id)%p,&
+                            &size(vars_1D_sol(id)%p),MPI_DOUBLE_PRECISION,&
+                            &0,MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call bcast_size_1_I(vars_1D_sol(id)%tot_i_min)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_sol(id)%tot_i_min,&
+                            &size(vars_1D_sol(id)%tot_i_min),MPI_INTEGER,0,&
+                            &MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call bcast_size_1_I(vars_1D_sol(id)%tot_i_max)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_sol(id)%tot_i_max,&
+                            &size(vars_1D_sol(id)%tot_i_max),MPI_INTEGER,0,&
+                            &MPI_Comm_world,ierr)
+                        CHCKERR(err_msg)
+                        call MPI_Bcast(vars_1D_sol(id)%var_name,max_str_ln,&
                             &MPI_CHARACTER,0,MPI_Comm_world,ierr)
                         CHCKERR(err_msg)
                     end do

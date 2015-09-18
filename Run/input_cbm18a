@@ -13,18 +13,18 @@
     n_procs_per_alpha       = 2
     prim_X                  = 10
     min_sec_X               = 13
-    max_sec_X               = 32
+    max_sec_X               = 16
     use_pol_flux_F          = .true.
-    n_sol_requested         = 50
+    n_sol_requested         = 5
     min_n_r_X               = 100
-    plot_resonance          = .true.
+    plot_resonance          = .false.
     plot_grid               = .false.
     plot_flux_q             = .false.
     use_normalization       = .true.
     norm_disc_ord           = 2
     max_it_inv              = 1
     BC_style                = 1 1
-    max_n_it_slepc          = 2000
+    max_n_it_slepc          = 100000
 /
 
     prim_X                  = 240

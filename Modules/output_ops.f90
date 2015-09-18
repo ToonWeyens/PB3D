@@ -189,21 +189,24 @@ contains
         if (present(y)) then
             if (present(x)) then
                 call print_GP_3D_arr(var_name,file_name,&
-                    &reshape(z,[npoints,1]),y=reshape(y,[npoints,1]),&
-                    &x=reshape(x,[npoints,1]),draw=draw)
+                    &reshape(z,[size(z,1),size(z,2),1]),&
+                    &y=reshape(y,[size(z,1),size(z,2),1]),&
+                    &x=reshape(x,[size(z,1),size(z,2),1]),draw=draw)
             else
                 call print_GP_3D_arr(var_name,file_name,&
-                    &reshape(z,[npoints,1]),y=reshape(y,[npoints,1]),&
+                    &reshape(z,[size(z,1),size(z,2),1]),&
+                    &y=reshape(y,[size(z,1),size(z,2),1]),&
                     &draw=draw)
             end if
         else
             if (present(x)) then
                 call print_GP_3D_arr(var_name,file_name,&
-                    &reshape(z,[npoints,1]),x=reshape(x,[npoints,1]),&
+                    &reshape(z,[size(z,1),size(z,2),1]),&
+                    &x=reshape(x,[size(z,1),size(z,2),1]),&
                     &draw=draw)
             else
                 call print_GP_3D_arr(var_name,file_name,&
-                    &reshape(z,[npoints,1]),draw=draw)
+                    &reshape(z,[size(z,1),size(z,2),1]),draw=draw)
             end if
         end if
     end subroutine print_GP_3D_ind

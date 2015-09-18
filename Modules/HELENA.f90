@@ -341,10 +341,11 @@ contains
     
     ! Adapt  some variables  resulting from  HELENA equilibria  to field-aligned
     ! grid (angularly):
+    !   - perturbation variables: U_i, DU_i, PV_i, KV_i
+    ! and optionally:
     !   - equilibrium variables of interest are flux variables
     !   - metric variables: jac_FD, g_FD, h_FD
-    !   - perturbation variables: U_i, DU_i, PV_i, KV_i
-    integer function interp_HEL_on_grid(grid_eq,grid_eq_B,met,met_B,X,X_B,&
+    integer function interp_HEL_on_grid(grid_eq,grid_eq_B,X,X_B,met,met_B,&
         &eq,eq_B,grid_name) result(ierr)
         use num_vars, only: prog_style
         
@@ -352,10 +353,10 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq, grid_eq_B                       ! general and field-aligned equilibrium grid
-        type(met_type), intent(in) :: met                                       ! general metric variables
-        type(met_type), intent(inout) :: met_B                                  ! field-aligned metric variables
         type(X_type), intent(in) :: X                                           ! general perturbation variables
         type(X_type), intent(inout) :: X_B                                      ! field-aligned perturbation variables
+        type(met_type), intent(in), optional :: met                             ! general metric variables
+        type(met_type), intent(inout), optional :: met_B                        ! field-aligned metric variables
         type(eq_type), intent(in), optional :: eq                               ! general equilibrium variables
         type(eq_type), intent(inout), optional :: eq_B                          ! field-aligned equilibrium variables
         character(len=*), intent(in), optional :: grid_name                     ! name of grid to which to adapt quantities
@@ -399,41 +400,6 @@ contains
         CHCKERR('')
         
         ! user output
-        call writo('Adapting equilibrium quantities')
-        call lvl_ud(1)
-        ! adapt custom variables depending on program style
-        select case (prog_style)
-            case(1)                                                             ! PB3D
-                ! do nothing
-            case(2)                                                             ! PB3D_POST
-                eq_B%pres_FD = eq%pres_FD
-                eq_B%q_saf_FD = eq%q_saf_FD
-                eq_B%rot_t_FD = eq%rot_t_FD
-                eq_B%flux_p_FD = eq%flux_p_FD
-                eq_B%flux_t_FD = eq%flux_t_FD
-                eq_B%rho = eq%rho
-                call interp_var_3D_real(eq%S,theta_i,eq_B%S)
-                call interp_var_3D_real(eq%sigma,theta_i,eq_B%sigma)
-                call interp_var_3D_real(eq%kappa_n,theta_i,eq_B%kappa_n)
-                call interp_var_3D_real(eq%kappa_g,theta_i,eq_B%kappa_g,&
-                    &sym_type=2)
-            case default
-                err_msg = 'No program style associated with '//&
-                    &trim(i2str(prog_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('Adapting metric quantities')
-        call lvl_ud(1)
-        call interp_var_6D_real(met%jac_FD,theta_i,met_B%jac_FD)
-        call interp_var_7D_real(met%g_FD,theta_i,met_B%g_FD)
-        call interp_var_7D_real(met%h_FD,theta_i,met_B%h_FD)
-        call lvl_ud(-1)
-        
-        ! user output
         call writo('Adapting perturbation quantities')
         call lvl_ud(1)
         ! adapt common variables for all program styles
@@ -445,8 +411,8 @@ contains
         ! adapt custom variables depending on program style
         select case (prog_style)
             case(1)                                                             ! PB3D
-                call interp_var_4D_complex(X%exp_ang_par_f,theta_i,&
-                    &X_B%exp_ang_par_f,sym_type=1)
+                call interp_var_4D_complex(X%J_exp_ang_par_F,theta_i,&
+                    &X_B%J_exp_ang_par_F,sym_type=1)
                 call interp_var_4D_complex(X%PV_0,theta_i,X_B%PV_0,sym_type=1)
                 call interp_var_4D_complex(X%PV_1,theta_i,X_B%PV_1,sym_type=1)
                 call interp_var_4D_complex(X%PV_2,theta_i,X_B%PV_2,sym_type=1)
@@ -462,6 +428,34 @@ contains
                 CHCKERR(err_msg)
         end select
         call lvl_ud(-1)
+        
+        if (present(eq).and.present(eq_B)) then
+            ! user output
+            call writo('Adapting equilibrium quantities')
+            call lvl_ud(1)
+            eq_B%pres_FD = eq%pres_FD
+            eq_B%q_saf_FD = eq%q_saf_FD
+            eq_B%rot_t_FD = eq%rot_t_FD
+            eq_B%flux_p_FD = eq%flux_p_FD
+            eq_B%flux_t_FD = eq%flux_t_FD
+            eq_B%rho = eq%rho
+            call interp_var_3D_real(eq%S,theta_i,eq_B%S)
+            call interp_var_3D_real(eq%sigma,theta_i,eq_B%sigma)
+            call interp_var_3D_real(eq%kappa_n,theta_i,eq_B%kappa_n)
+            call interp_var_3D_real(eq%kappa_g,theta_i,eq_B%kappa_g,&
+                &sym_type=2)
+            call lvl_ud(-1)
+        end if
+        
+        if (present(met).and.present(met_B)) then
+            ! user output
+            call writo('Adapting metric quantities')
+            call lvl_ud(1)
+            call interp_var_6D_real(met%jac_FD,theta_i,met_B%jac_FD)
+            call interp_var_7D_real(met%g_FD,theta_i,met_B%g_FD)
+            call interp_var_7D_real(met%h_FD,theta_i,met_B%h_FD)
+            call lvl_ud(-1)
+        end if
         
         ! user output
         call lvl_ud(-1)

@@ -1793,7 +1793,7 @@ contains
     ! or
     !   <V e^[i(m-k)zeta_F]> = [ int J V(k,m) e^i(m-k)zeta_F dzeta_F ],
     ! depending on whether pol. or tor. flux is used as normal coord.
-    integer function calc_int_magn(grid,met,exp_ang,n_mod,V,V_int) result(ierr)
+    integer function calc_int_magn(grid,J_exp_ang,n_mod,V,V_int) result(ierr)
         use num_vars, only: use_pol_flux_F
         use utilities, only: c, con, is_sym
         
@@ -1801,8 +1801,7 @@ contains
         
         ! input / output
         type(grid_type) :: grid                                                 ! grid
-        type(met_type) :: met                                                   ! metric variables
-        complex(dp), intent(in) :: exp_ang(:,:,:,:)                             ! exponential of Flux parallel angle
+        complex(dp), intent(in) :: J_exp_ang(:,:,:,:)                           ! J * exponential of Flux parallel angle
         integer, intent(in) :: n_mod                                            ! number of 
         complex(dp), intent(in) :: V(:,:,:,:)                                   ! input V(n_par,n_geo,n_r,size_X^2)
         complex(dp), intent(inout) :: V_int(:,:,:)                              ! output <V e^i(k-m)ang_par_F> integrated in parallel Flux coord.
@@ -1854,8 +1853,8 @@ contains
         do m = 1,n_mod
             if (sym) k_min = m
             do k = k_min,n_mod
-                V_J_e(:,:,:,c([k,m],sym,n_mod)) = met%jac_FD(:,:,:,0,0,0) &
-                    &* con(exp_ang(:,:,:,c([k,m],.true.,n_mod)),&
+                V_J_e(:,:,:,c([k,m],sym,n_mod)) = &
+                    &con(J_exp_ang(:,:,:,c([k,m],.true.,n_mod)),&
                     &[k,m],.true.,dims) * &
                     &con(V(:,:,:,c([k,m],sym,n_mod)),[k,m],sym,dims)
             end do
