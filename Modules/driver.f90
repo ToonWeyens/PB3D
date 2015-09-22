@@ -20,6 +20,8 @@ contains
     ! the main driver routine
     ! [MPI] All ranks
     integer function run_driver() result(ierr)
+        use input_ops, only: test_max_memory
+        
         character(*), parameter :: rout_name = 'run_driver'
         
         ! local variables
@@ -27,6 +29,10 @@ contains
         
         ! initialize ierr
         ierr = 0
+        
+        ! test maximum memory
+        ierr = test_max_memory()
+        CHCKERR('')
         
         ! run the appropriate driver depending on "minim_style"
         select case (minim_style)

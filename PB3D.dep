@@ -92,6 +92,7 @@ driver.o : \
     driver_rich.o \
     messages.o \
     str_ops.o \
+    input_ops.o \
 
 driver_rich.o : \
     num_vars.o \
@@ -127,6 +128,7 @@ driver_POST.o : \
     PB3D_vars.o \
     sol_ops.o \
     HELENA.o \
+    input_ops.o \
 
 SLEPC_ops.o : \
     num_vars.o \

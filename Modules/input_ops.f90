@@ -10,7 +10,7 @@ module input_ops
     
     implicit none
     private
-    public read_input, pause_prog, get_real, get_int, get_log
+    public read_input, pause_prog, get_real, get_int, get_log, test_max_memory
     
 contains
     ! Queries for a logical value yes or no, where the default answer is also to
@@ -261,12 +261,13 @@ contains
     integer function read_input() result(ierr)
         use num_vars, only: &
             &minim_style, min_alpha, max_alpha, n_alpha, max_it_NR, tol_NR, &
-            &max_it_r, input_i, use_pol_flux_F, EV_style, n_procs_per_alpha, &
-            &plot_resonance, tol_r, n_sol_requested, nyq_fac, glb_rank, &
-            &nyq_fac, plot_grid, plot_flux_q, use_normalization, &
-            &n_sol_plotted, n_theta_plot, n_zeta_plot, EV_BC, rho_style, &
-            &retain_all_sol, prog_style, norm_disc_ord, BC_style, max_it_inv, &
-            &tol_norm_r, tol_slepc, max_n_it_slepc
+            &max_it_r, input_i, use_pol_flux_F, EV_style, max_mem_per_proc, &
+            &n_procs_per_alpha, plot_resonance, tol_r, n_sol_requested, &
+            &nyq_fac, glb_rank, nyq_fac, plot_grid, plot_flux_q, &
+            &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
+            &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_ord, &
+            &BC_style, max_it_inv, tol_norm_r, tol_slepc, max_n_it_slepc, &
+            &glb_n_procs
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files_ops, only: input_name
@@ -282,16 +283,16 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! input options
-        namelist /inputdata_PB3D/ minim_style, min_par_X, min_n_r_X, &
-            &max_par_X, min_alpha, max_alpha, n_par_X, n_alpha, max_it_NR, &
-            &tol_NR, max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, min_r_X, &
-            &max_r_X, EV_style, n_procs_per_alpha, plot_resonance, &
+        namelist /inputdata_PB3D/ max_mem_per_proc, minim_style, min_par_X, &
+            &min_n_r_X, max_par_X, min_alpha, max_alpha, n_par_X, n_alpha, &
+            &max_it_NR, tol_NR, max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, &
+            &min_r_X, max_r_X, EV_style, n_procs_per_alpha, plot_resonance, &
             &n_sol_requested, EV_BC, tol_slepc, rho_style, nyq_fac, rho_0, &
             &use_pol_flux_F, plot_grid, plot_flux_q, use_normalization, &
             &n_theta_plot, n_zeta_plot, retain_all_sol, norm_disc_ord, &
             &BC_style, max_it_inv, tol_norm_r, max_n_it_slepc
-        namelist /inputdata_PB3D_POST/ n_sol_plotted, n_theta_plot, &
-            &n_zeta_plot, plot_resonance, plot_flux_q, plot_grid
+        namelist /inputdata_PB3D_POST/ max_mem_per_proc, n_sol_plotted, &
+            &n_theta_plot, n_zeta_plot, plot_resonance, plot_flux_q, plot_grid
         
         ! initialize ierr
         ierr = 0
@@ -308,6 +309,10 @@ contains
             ! initialize input variables (optionally overwritten by user later)
             if (input_name.ne.'') call writo('Initialize all the inputs with &
                 &default values')
+            
+            ! common variables for all program styles
+            max_mem_per_proc = 6000_dp/glb_n_procs                              ! count with 6GB
+            
             ! select depending on program style
             select case (prog_style)
                 case(1)                                                         ! PB3D
@@ -723,4 +728,42 @@ contains
             end if
         end function adapt_normalization
     end function read_input
+
+    ! test whether maximum memory feasible
+    integer function test_max_memory() result(ierr)
+        use num_vars, only: max_mem_per_proc
+        
+        character(*), parameter :: rout_name = 'test_max_memory'
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: n_max                                                        ! maximum size of array
+        real(dp), allocatable :: max_mem_arr(:,:)                               ! array with maximum size
+        
+        ! initialize ierr
+        ierr = 0
+        
+        call writo('Testing whether maximum memory per process of '//&
+            &trim(r2strt(max_mem_per_proc/1000))//'GB is possible')
+        
+        call lvl_ud(1)
+        
+        ! (lazy) allocation
+        n_max = ceiling(sqrt(max_mem_per_proc/(sizeof(1._dp)*1.E-6)))
+        call writo('Allocating doubles array of size '//trim(i2str(n_max))&
+            &//'x'//trim(i2str(n_max)))
+        allocate(max_mem_arr(n_max,n_max),STAT=ierr)
+        err_msg = 'cannot allocate this much memory. Try setting &
+            &"max_mem_per_proc" lower'
+        CHCKERR(err_msg)
+        
+        ! explicitely set elements
+        max_mem_arr = 0._dp                                                     ! this can fail while lazy allocation does not
+        
+        deallocate(max_mem_arr)
+        
+        call lvl_ud(-1)
+        call writo('Maximum memory allocatable')
+        
+    end function test_max_memory
 end module input_ops

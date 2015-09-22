@@ -1,5 +1,5 @@
 &inputdata_PB3D
-    n_par_X                 = 1000
+    n_par_X                 = 100
     min_par_X               = -1.0
     max_par_X               = 1.0
     n_alpha                 = 1

@@ -1393,7 +1393,7 @@ contains
     !   - X:        pres_FD, q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, rho, S,
     !               kappa_n, kappa_g, sigma
     ! Note: The equilibrium quantities are outputted in Flux coordinates.
-    integer function print_output_X(grid_eq,grid_X,X) result(ierr)
+    integer function print_output_X(grid_eq,X) result(ierr)
         use num_vars, only: rich_lvl_nr, max_it_r, grp_rank
         use HDF5_ops, only: print_HDF5_arrs, &
             &var_1D
@@ -1404,15 +1404,12 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
         type(X_type), intent(in) :: X                                           ! perturbation variables (for U_0, etc.)
         
         ! local variables
         type(var_1D), allocatable, target :: X_1D(:)                            ! 1D equivalent of eq. variables
         type(var_1D), pointer :: X_1D_loc => null()                             ! local element in X_1D
-        type(grid_type) :: grid_X_trim                                          ! trimmed X grid
         type(grid_type) :: grid_eq_trim                                         ! trimmed eq grid
-        integer :: i_min_X, i_max_X                                             ! min. and max. index of variables
         integer :: i_min_eq, i_max_eq                                           ! min. and max. index of variables
         integer :: id                                                           ! counter
         
@@ -1427,45 +1424,17 @@ contains
         call writo('Preparing variables for writing')
         call lvl_ud(1)
         
-        ! trim grids
-        ierr = trim_grid(grid_X,grid_X_trim)
-        CHCKERR('')
+        ! trim grid
         ierr = trim_grid(grid_eq,grid_eq_trim)
         CHCKERR('')
         
         ! set i_min and i_max
-        i_min_X = 1
-        i_max_X = grid_X_trim%grp_n_r
         i_min_eq = 1
         i_max_eq = grid_eq_trim%grp_n_r
         
         ! Set up the 1D equivalents  of the perturbation variables
-        allocate(X_1D(11))
+        allocate(X_1D(9))
         id = 1
-        
-        ! r_F
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'r_F'
-        allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
-        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
-        X_1D_loc%tot_i_min = [1]
-        X_1D_loc%tot_i_max = [grid_X_trim%n(3)]
-        X_1D_loc%grp_i_min = [grid_X_trim%i_min]
-        X_1D_loc%grp_i_max = [grid_X_trim%i_max]
-        allocate(X_1D_loc%p(size(grid_X_trim%grp_r_F(i_min_X:i_max_X))))
-        X_1D_loc%p = grid_X_trim%grp_r_F(i_min_X:i_max_X)
-        
-        ! r_E
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'r_E'
-        allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
-        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
-        X_1D_loc%tot_i_min = [1]
-        X_1D_loc%tot_i_max = [grid_X_trim%n(3)]
-        X_1D_loc%grp_i_min = [grid_X_trim%i_min]
-        X_1D_loc%grp_i_max = [grid_X_trim%i_max]
-        allocate(X_1D_loc%p(size(grid_X_trim%grp_r_E(i_min_X:i_max_X))))
-        X_1D_loc%p = grid_X_trim%grp_r_E(i_min_X:i_max_X)
         
         ! RE_U_0
         X_1D_loc => X_1D(id); id = id+1
@@ -1613,7 +1582,6 @@ contains
         CHCKERR('')
         
         ! clean up
-        call dealloc_grid(grid_X_trim)
         call dealloc_grid(grid_eq_trim)
         nullify(X_1D_loc)
         
@@ -1667,8 +1635,32 @@ contains
         i_max_X = grid_X_trim%grp_n_r
         
         ! Set up the 1D equivalents  of the perturbation variables
-        allocate(X_1D(4))
+        allocate(X_1D(6))
         id = 1
+        
+        ! r_F
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'r_F'
+        allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
+        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
+        X_1D_loc%tot_i_min = [1]
+        X_1D_loc%tot_i_max = [grid_X_trim%n(3)]
+        X_1D_loc%grp_i_min = [grid_X_trim%i_min]
+        X_1D_loc%grp_i_max = [grid_X_trim%i_max]
+        allocate(X_1D_loc%p(size(grid_X_trim%grp_r_F(i_min_X:i_max_X))))
+        X_1D_loc%p = grid_X_trim%grp_r_F(i_min_X:i_max_X)
+        
+        ! r_E
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'r_E'
+        allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
+        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
+        X_1D_loc%tot_i_min = [1]
+        X_1D_loc%tot_i_max = [grid_X_trim%n(3)]
+        X_1D_loc%grp_i_min = [grid_X_trim%i_min]
+        X_1D_loc%grp_i_max = [grid_X_trim%i_max]
+        allocate(X_1D_loc%p(size(grid_X_trim%grp_r_E(i_min_X:i_max_X))))
+        X_1D_loc%p = grid_X_trim%grp_r_E(i_min_X:i_max_X)
         
         ! RE_X_val
         X_1D_loc => X_1D(id); id = id+1

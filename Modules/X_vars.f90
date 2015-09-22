@@ -152,16 +152,28 @@ contains
         type(X_type), intent(inout) :: X                                        ! perturbation variables to be deallocated
         
         ! deallocate allocated pointers
-        deallocate(X%U_0,X%U_1)
-        deallocate(X%DU_0,X%DU_1)
-        deallocate(X%PV_0,X%PV_1,X%PV_2)
-        deallocate(X%KV_0,X%KV_1,X%KV_2)
+        if (associated(X%U_0)) deallocate(X%U_0)
+        if (associated(X%U_1)) deallocate(X%U_1)
+        if (associated(X%DU_0)) deallocate(X%DU_0)
+        if (associated(X%DU_1)) deallocate(X%DU_1)
+        if (associated(X%PV_0)) deallocate(X%PV_0)
+        if (associated(X%PV_1)) deallocate(X%PV_1)
+        if (associated(X%PV_2)) deallocate(X%PV_2)
+        if (associated(X%KV_0)) deallocate(X%KV_0)
+        if (associated(X%KV_1)) deallocate(X%KV_1)
+        if (associated(X%KV_2)) deallocate(X%KV_2)
         
         ! nullify pointers
-        nullify(X%U_0,X%U_1)
-        nullify(X%DU_0,X%DU_1)
-        nullify(X%PV_0,X%PV_1,X%PV_2)
-        nullify(X%KV_0,X%KV_1,X%KV_2)
+        if (associated(X%U_0)) nullify(X%U_0)
+        if (associated(X%U_1)) nullify(X%U_1)
+        if (associated(X%DU_0)) nullify(X%DU_0)
+        if (associated(X%DU_1)) nullify(X%DU_1)
+        if (associated(X%PV_0)) nullify(X%PV_0)
+        if (associated(X%PV_1)) nullify(X%PV_1)
+        if (associated(X%PV_2)) nullify(X%PV_2)
+        if (associated(X%KV_0)) nullify(X%KV_0)
+        if (associated(X%KV_1)) nullify(X%KV_1)
+        if (associated(X%KV_2)) nullify(X%KV_2)
         
         ! deallocate allocatable variables
         call dealloc_X_final(X)

@@ -8,9 +8,9 @@ module num_vars
     private
     public dp, qp, max_str_ln, max_deriv, prog_name, output_name, &
         &prog_version, prog_style, ghost_width_POST, &
-        &n_procs_per_alpha, n_procs, MPI_Comm_groups, MPI_Comm_masters, &
-        &glb_rank, glb_n_procs, grp_rank, grp_n_procs, grp_nr, n_groups, &
-        &plt_rank, next_job, next_job_win, &
+        &max_mem_per_proc, n_procs_per_alpha, n_procs, MPI_Comm_groups, &
+        &MPI_Comm_masters, glb_rank, glb_n_procs, grp_rank, grp_n_procs, &
+        &grp_nr, n_groups, plt_rank, next_job, next_job_win, &
         &pi, mu_0_original, iu, &
         &minim_style, EV_style, eq_style, rho_style, norm_disc_ord, BC_style, &
         &plot_resonance, plot_grid, plot_flux_q, ltest, use_pol_flux_E, &
@@ -35,10 +35,11 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=max_str_ln) :: prog_name                                      ! name of program, used for info
     character(len=max_str_ln) :: output_name                                    ! name of output file
-    real(dp), parameter :: prog_version = 0.89_dp                               ! version number
+    real(dp), parameter :: prog_version = 0.90_dp                               ! version number
     integer, parameter :: ghost_width_POST = 2                                  ! size of ghost region (numerical derivatives should not exceed)
 
     ! MPI variables
+    real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
     integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha
     integer, allocatable :: n_procs(:)                                          ! hwo many processors per group of alpha
     integer :: MPI_Comm_groups                                                  ! communicator for the groups of alpha

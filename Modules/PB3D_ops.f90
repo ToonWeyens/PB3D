@@ -185,10 +185,6 @@ contains
         call lvl_ud(1)
         
         ! get 1D X indices
-        ierr = retrieve_var_1D_id(vars_1D_X,'r_F',r_F_X_id)
-        CHCKERR('')
-        ierr = retrieve_var_1D_id(vars_1D_X,'r_E',r_E_X_id)
-        CHCKERR('')
         ierr = retrieve_var_1D_id(vars_1D_X,'misc_X',misc_X_id)
         CHCKERR('')
         ierr = retrieve_var_1D_id(vars_1D_X,'RE_U_0',RE_U_0_id)
@@ -206,6 +202,10 @@ contains
         ierr = retrieve_var_1D_id(vars_1D_X,'RE_DU_1',RE_DU_1_id)
         CHCKERR('')
         ierr = retrieve_var_1D_id(vars_1D_X,'IM_DU_1',IM_DU_1_id)
+        CHCKERR('')
+        ierr = retrieve_var_1D_id(vars_1D_sol,'r_F',r_F_X_id)
+        CHCKERR('')
+        ierr = retrieve_var_1D_id(vars_1D_sol,'r_E',r_E_X_id)
         CHCKERR('')
         ierr = retrieve_var_1D_id(vars_1D_sol,'RE_X_val',RE_X_val_id)
         CHCKERR('')
@@ -329,7 +329,7 @@ contains
         call lvl_ud(1)
         
         ! split normal grids
-        ierr = split_MPI_POST(vars_1D_eq(r_F_eq_id)%p,vars_1D_X(r_F_X_id)%p,&
+        ierr = split_MPI_POST(vars_1D_eq(r_F_eq_id)%p,vars_1D_sol(r_F_X_id)%p,&
             &i_lim_eq,i_lim_X)
         CHCKERR('')
         
@@ -344,16 +344,16 @@ contains
         
         call writo('Creating perturbation grid')
         call lvl_ud(1)
-        n_X = vars_1D_X(r_F_X_id)%tot_i_max(1)-&
-            &vars_1D_X(r_F_X_id)%tot_i_min(1)+1
+        n_X = vars_1D_sol(r_F_X_id)%tot_i_max(1)-&
+            &vars_1D_sol(r_F_X_id)%tot_i_min(1)+1
         ierr = create_grid(PB3D%grid_X,n_X,i_lim_X)
         CHCKERR('')
-        PB3D%grid_X%r_F = vars_1D_X(r_F_X_id)%p
+        PB3D%grid_X%r_F = vars_1D_sol(r_F_X_id)%p
         PB3D%grid_X%grp_r_F = &
-            &vars_1D_X(r_F_X_id)%p(i_lim_X(1):i_lim_X(2))
-        PB3D%grid_X%r_E = vars_1D_X(r_E_X_id)%p
+            &vars_1D_sol(r_F_X_id)%p(i_lim_X(1):i_lim_X(2))
+        PB3D%grid_X%r_E = vars_1D_sol(r_E_X_id)%p
         PB3D%grid_X%grp_r_E = &
-            &vars_1D_X(r_E_X_id)%p(i_lim_X(1):i_lim_X(2))
+            &vars_1D_sol(r_E_X_id)%p(i_lim_X(1):i_lim_X(2))
         call writo('normal size: '//trim(i2str(n_X)))
         call lvl_ud(-1)
         

@@ -309,9 +309,16 @@ contains
         ! deallocate metric variables
         call dealloc_met(met)
         
+        ! write X variables to output
+        ierr = print_output_X(grid_eq_B,X)
+        CHCKERR('')
+        
         ! adapt variables to a field-aligned grid
         ierr = adapt_X_to_B(grid_eq,grid_eq_B,X,X_B)
         CHCKERR('')
+        
+        ! deallocate non-aligned perturbation variables
+        call dealloc_X(X)
         
         ! calculate magnetic integrals
         ierr = calc_magn_ints(grid_eq_B,X_B)
@@ -371,10 +378,10 @@ contains
                 grid_X%r_F = r_X
                 grid_X%grp_r_F = r_X(X_limits(1):X_limits(2))
                 deallocate(r_X)
-                ierr = coord_F2E(grid_eq_B,eq,grid_X%r_F,grid_X%r_E,&
+                ierr = coord_F2E(grid_eq,eq,grid_X%r_F,grid_X%r_E,&
                     &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
-                ierr = coord_F2E(grid_eq_B,eq,grid_X%grp_r_F,grid_X%grp_r_E,&
+                ierr = coord_F2E(grid_eq,eq,grid_X%grp_r_F,grid_X%grp_r_E,&
                     &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
                 call lvl_ud(-1)
@@ -417,13 +424,6 @@ contains
                 call lvl_ud(-1)
             end if
 #endif
-            
-            ! write X variables to output
-            ierr = print_output_X(grid_eq_B,grid_X,X)
-            CHCKERR('')
-            
-            ! deallocate non-aligned perturbation variables
-            call dealloc_X(X)
             
             ! set use_guess to .false. if no_guess
             if (no_guess) use_guess = .false.
@@ -638,6 +638,7 @@ contains
     ! Adapt  X  variables  angularly  to  a  field-aligned  grid,  depending  on
     ! equilibrium type:
     !   X: J_exp_ang_par_F, U_i, DU_i, PV_i, KV_i
+    ! To save memory, the original quantities adapted are deallocated.
     ! Note that this, by definition, does not affect and thus doesn not apply to
     ! flux functions.
     integer function adapt_X_to_B(grid_eq,grid_eq_B,X,X_B) &
@@ -650,7 +651,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq, grid_eq_B                       ! general and field-aligned equilibrium grid
-        type(X_type), intent(in) :: X                                           ! general perturbation variables
+        type(X_type), intent(inout) :: X                                        ! general perturbation variables
         type(X_type), intent(inout) :: X_B                                      ! field-aligned perturbation variables
         
         ! local variables
@@ -669,17 +670,29 @@ contains
             case (1)                                                            ! VMEC
                 ! no conversion necessary: already in field-aligned grid
                 X_B%J_exp_ang_par_F = X%J_exp_ang_par_F
+                deallocate(X%J_exp_ang_par_F)
                 X_B%U_0 = X%U_0
+                deallocate(X%U_0); nullify(X%U_0)
                 X_B%U_1 = X%U_1
+                deallocate(X%U_1); nullify(X%U_1)
                 X_B%DU_0 = X%DU_0
+                deallocate(X%DU_0); nullify(X%DU_0)
                 X_B%DU_1 = X%DU_1
+                deallocate(X%DU_1); nullify(X%DU_1)
                 X_B%PV_0 = X%PV_0
+                deallocate(X%PV_0); nullify(X%PV_0)
                 X_B%PV_1 = X%PV_1
+                deallocate(X%PV_1); nullify(X%PV_1)
                 X_B%PV_2 = X%PV_2
+                deallocate(X%PV_2); nullify(X%PV_2)
                 X_B%KV_0 = X%KV_0
+                deallocate(X%KV_0); nullify(X%KV_0)
                 X_B%KV_1 = X%KV_1
+                deallocate(X%KV_1); nullify(X%KV_1)
                 X_B%KV_2 = X%KV_2
+                deallocate(X%KV_2); nullify(X%KV_2)
                 X_B%vac_res = X%vac_res
+                deallocate(X%vac_res)
             case (2)                                                            ! HELENA
                 ! call HELENA grid interpolation
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,X,X_B,&

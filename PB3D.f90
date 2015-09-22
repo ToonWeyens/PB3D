@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.89                                                              !
+!   Version: 0.90                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -44,7 +44,6 @@ program PB3D
     
     write(*,*) '¡¡¡TEST PRESSURE BALANCE FOR VMEC!!!'
     write(*,*) '¡¡¡FLUX IS NEGATIVE FOR QPS!!!'
-    write(*,*) '¡¡¡ADD SMALL DISSIPATIVE TERM!!!'
     
     !-------------------------------------------------------
     !   Initialize some routines

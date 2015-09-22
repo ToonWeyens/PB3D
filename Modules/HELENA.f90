@@ -353,7 +353,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq, grid_eq_B                       ! general and field-aligned equilibrium grid
-        type(X_type), intent(in) :: X                                           ! general perturbation variables
+        type(X_type), intent(inout) :: X                                        ! general perturbation variables
         type(X_type), intent(inout) :: X_B                                      ! field-aligned perturbation variables
         type(met_type), intent(in), optional :: met                             ! general metric variables
         type(met_type), intent(inout), optional :: met_B                        ! field-aligned metric variables

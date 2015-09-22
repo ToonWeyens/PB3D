@@ -46,6 +46,7 @@ contains
         use HELENA, only: interp_HEL_on_grid
         use files_utilities, only: nextunit
         use MPI_utilities, only: cycle_plt_master
+        use input_ops, only: test_max_memory
         
         character(*), parameter :: rout_name = 'run_driver_POST'
         
@@ -67,6 +68,10 @@ contains
         
         ! initialize ierr
         ierr = 0
+        
+        ! test maximum memory
+        ierr = test_max_memory()
+        CHCKERR('')
         
         ! reconstructing grids depends on equilibrium style
         select case (eq_style)
