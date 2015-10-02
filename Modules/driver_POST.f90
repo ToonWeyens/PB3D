@@ -11,8 +11,8 @@ module driver_POST
     use eq_vars, only: eq_type
     use met_vars, only: met_type
     use X_vars, only: X_type
-        use PB3D_vars, only: dealloc_PB3D, &
-            &PB3D_type
+    use PB3D_vars, only: dealloc_PB3D, &
+        &PB3D_type
     
     implicit none
     private
@@ -30,10 +30,9 @@ contains
     ! already given, but the  output on the plot grid has  to be calculated from
     ! scratch, while  for HELENA both outputs  have to be interpolated  from the
     ! output tables.
-    ! [MPI] All ranks
     integer function run_driver_POST() result(ierr)
         use num_vars, only: no_messages, no_plots, eq_style, plot_resonance, &
-            &plot_flux_q, plot_grid, output_name, grp_rank
+            &plot_flux_q, plot_grid, prog_name, output_name, rank
         use PB3D_ops, only: reconstruct_PB3D
         use grid_vars, only: create_grid
         use eq_vars, only: create_eq
@@ -46,7 +45,7 @@ contains
         use HELENA, only: interp_HEL_on_grid
         use files_utilities, only: nextunit
         use MPI_utilities, only: cycle_plt_master
-        use input_ops, only: test_max_memory
+        use utilities, only: calc_aux_utilities
         
         character(*), parameter :: rout_name = 'run_driver_POST'
         
@@ -69,9 +68,8 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! test maximum memory
-        ierr = test_max_memory()
-        CHCKERR('')
+        ! calculate auxiliary quantities for utilities
+        call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
         
         ! reconstructing grids depends on equilibrium style
         select case (eq_style)
@@ -82,7 +80,7 @@ contains
                 ! the field-aligned grid is identical to the output grid
                 PB3D_B => PB3D
                 ! normal call to reconstruct_PB3D
-                ierr = reconstruct_PB3D(PB3D)
+                ierr = reconstruct_PB3D(.true.,.true.,.true.,PB3D)
                 CHCKERR('')
                 call lvl_ud(-1)
                 
@@ -95,12 +93,13 @@ contains
                 ! the field-aligned grid is different form the output grid
                 allocate(PB3D_B)
                 ! additionally need field-aligned equilibrium grid
-                ierr = reconstruct_PB3D(PB3D,PB3D_B%grid_eq)
+                ierr = reconstruct_PB3D(.true.,.true.,.true.,PB3D,&
+                    &PB3D_B%grid_eq)
                 CHCKERR('')
                 call lvl_ud(-1)
                 
                 ! user output
-                call writo('Interpolate PB3D output on field-aligned grid')
+                call writo('Interpolate all PB3D output on field-aligned grid')
                 call lvl_ud(1)
                 
                 call writo('Preparing quantities')
@@ -115,8 +114,8 @@ contains
                 CHCKERR('')
                 PB3D_B%grid_X%r_F = PB3D%grid_X%r_F
                 PB3D_B%grid_X%r_e = PB3D%grid_X%r_E
-                PB3D_B%grid_X%grp_r_F = PB3D%grid_X%grp_r_F
-                PB3D_B%grid_X%grp_r_e = PB3D%grid_X%grp_r_E
+                PB3D_B%grid_X%loc_r_F = PB3D%grid_X%loc_r_F
+                PB3D_B%grid_X%loc_r_e = PB3D%grid_X%loc_r_E
                 call create_X(PB3D_B%grid_eq,PB3D_B%X)
                 allocate(PB3D_B%X%val(size(PB3D%X%val)))
                 allocate(PB3D_B%X%vec(size(PB3D%X%vec,1),size(PB3D%X%vec,2),&
@@ -151,7 +150,7 @@ contains
             call writo('Resonance plot not requested')
         end if
         if (plot_flux_q) then
-            ierr = flux_q_plot(PB3D%eq,PB3D%grid_eq)
+            ierr = flux_q_plot(PB3D%grid_eq,PB3D%eq)
             CHCKERR('')
         else
             call writo('Flux quantities plot not requested')
@@ -203,8 +202,8 @@ contains
                 no_plots_loc = no_plots; no_plots = .true.
                 no_messages_loc = no_messages; no_messages = .true.
                 ! calculate the non-flux equilibrium quantities for plot grid
-                ierr = calc_eq(PB3D_plot%grid_eq,PB3D_plot%eq,PB3D_plot%met)
-                CHCKERR('')
+                !!ierr = calc_eq(PB3D_plot%grid_eq,PB3D_plot%eq,PB3D_plot%met)
+                !!CHCKERR('')
                 ! prepare matrix elements for plot grid
                 ierr = prepare_X(PB3D_plot%grid_eq,PB3D_plot%eq,PB3D_plot%met,&
                     &PB3D_plot%X)
@@ -270,11 +269,11 @@ contains
         call writo('Calculate plot grid')
         call lvl_ud(1)
         allocate(X_plot(PB3D_plot%grid_X%n(1),PB3D_plot%grid_X%n(2),&
-            &PB3D_plot%grid_X%grp_n_r))
+            &PB3D_plot%grid_X%loc_n_r))
         allocate(Y_plot(PB3D_plot%grid_X%n(1),PB3D_plot%grid_X%n(2),&
-            &PB3D_plot%grid_X%grp_n_r))
+            &PB3D_plot%grid_X%loc_n_r))
         allocate(Z_plot(PB3D_plot%grid_X%n(1),PB3D_plot%grid_X%n(2),&
-            &PB3D_plot%grid_X%grp_n_r))
+            &PB3D_plot%grid_X%loc_n_r))
         ierr = calc_XYZ_grid(PB3D_plot%grid_X,X_plot,Y_plot,Z_plot)
         CHCKERR('')
         call lvl_ud(-1)
@@ -288,11 +287,11 @@ contains
         
         call writo('Open decomposition log file')
         call lvl_ud(1)
-        if (grp_rank.eq.0) then
+        if (rank.eq.0) then
             ! set format strings
             format_head = '("#  ",A23," ",A23," ",A23," ",A23," ",A23," ",A23)'
             ! open output file for the log
-            full_output_name = trim(output_name)//'_EN.txt'
+            full_output_name = prog_name//'_'//output_name//'_EN.txt'
             open(unit=nextunit(output_EN_i),file=full_output_name,&
                 &iostat=ierr)
             CHCKERR('Cannot open EN output file')
@@ -342,7 +341,7 @@ contains
                 ierr = plot_X_vec(PB3D_plot%grid_eq,PB3D_plot%eq,&
                     &PB3D_plot%grid_X,PB3D_plot%X,&
                     &reshape([X_plot,Y_plot,Z_plot],[PB3D_plot%grid_X%n(1),&
-                    &PB3D_plot%grid_X%n(2),PB3D_plot%grid_X%grp_n_r,3]),id,&
+                    &PB3D_plot%grid_X%n(2),PB3D_plot%grid_X%loc_n_r,3]),id,&
                     &res_surf)
                 CHCKERR('')
                 call lvl_ud(-1)
@@ -352,13 +351,13 @@ contains
                 call lvl_ud(1)
                 ierr = decompose_energy(PB3D_B,id,output_EN_i,PB3D_plot,&
                     &reshape([X_plot,Y_plot,Z_plot],[PB3D_plot%grid_X%n(1),&
-                    &PB3D_plot%grid_X%n(2),PB3D_plot%grid_X%grp_n_r,3]))
+                    &PB3D_plot%grid_X%n(2),PB3D_plot%grid_X%loc_n_r,3]))
                 CHCKERR('')
                 call lvl_ud(-1)
                 
                 call lvl_ud(-1)
                 
-                ! cycle group master
+                ! cycle master
                 call cycle_plt_master
             end do
             
@@ -372,7 +371,7 @@ contains
         nullify(PB3D_B)
         
         ! close output
-        if (grp_rank.eq.0) close(output_EN_i)
+        if (rank.eq.0) close(output_EN_i)
     end function run_driver_POST
     
     ! finds the plot ranges min_id and max_id
@@ -466,7 +465,7 @@ contains
     
     ! plots Eigenvalues
     subroutine plot_X_vals(X,last_unstable_id)
-        use num_vars, only: grp_rank
+        use num_vars, only: rank
         
         ! input / output
         type(X_type), intent(in) :: X                                           ! perturbation variables
@@ -481,8 +480,8 @@ contains
         ! set local variables
         n_sol_found = size(X%val)
         
-        ! only let group rank plot
-        if (grp_rank.eq.0) then
+        ! only let master plot
+        if (rank.eq.0) then
             ! Last Eigenvalues
             ! output on screen
             plot_title = 'final Eigenvalues omega^2 [log]'

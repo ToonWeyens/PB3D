@@ -10,7 +10,7 @@ module grid_vars
     implicit none
     private
     public create_grid, dealloc_grid, grid_type, &
-        &n_r_eq, n_par_X, min_par_X, max_par_X
+        &alpha, n_r_eq, n_par_X, min_par_X, max_par_X
 
     ! type for grids
     ! The grids  are saved in  the following format:  (angle_1,angle_2,r), where
@@ -31,13 +31,13 @@ module grid_vars
     ! among all the variables.
     type :: grid_type
         integer :: n(3)                                                         ! tot nr. of points
-        integer :: grp_n_r                                                      ! group nr. of normal points
+        integer :: loc_n_r                                                      ! local nr. of normal points
         integer :: i_min, i_max                                                 ! min. and max. normal index of this process in full arrays
-        logical :: divided                                                      ! whether the grid is split up among the processes in the group
+        logical :: divided                                                      ! whether the grid is split up among the processes
         real(dp), pointer :: r_E(:) => null()                                   ! E(quilibrium) coord. values at n points (should be intialized to n)
         real(dp), pointer :: r_F(:) => null()                                   ! F(lux) coord. values at n points (should be intialized to n)
-        real(dp), pointer :: grp_r_E(:) => null()                               ! E(quilibrium) coord. values at n points (should be intialized to n)
-        real(dp), pointer :: grp_r_F(:) => null()                               ! F(lux) coord. values at n points (should be intialized to n)
+        real(dp), pointer :: loc_r_E(:) => null()                               ! E(quilibrium) coord. values at n points (should be intialized to n)
+        real(dp), pointer :: loc_r_F(:) => null()                               ! F(lux) coord. values at n points (should be intialized to n)
         real(dp), pointer :: theta_E(:,:,:) => null()                           ! E(quilibrium) coord. values of first angle at n points in 3D
         real(dp), pointer :: theta_F(:,:,:) => null()                           ! F(lux) coord. values of first angle at n points in 3D
         real(dp), pointer :: zeta_E(:,:,:) => null()                            ! E(quilibrium) coord. values of second angle at n points in 3D
@@ -48,6 +48,7 @@ module grid_vars
     ! global variables
     ! (These  variables  should  be   used   only  until  the  grids  have  been
     ! established. They are put here for lack of a better place.)
+    real(dp) :: alpha                                                           ! field line label alpha
     integer :: n_r_eq                                                           ! nr. of normal points in equilibrium grid
     integer :: n_par_X                                                          ! nr. of parallel points in perturbation grid
     real(dp) :: min_par_X, max_par_X                                            ! min. and max. of parallel coordinate [pi] in pert. grid
@@ -59,7 +60,7 @@ module grid_vars
     
 contains
     ! creates a new grid
-    ! Optionally, the group limits can be provided for a divided grid.
+    ! Optionally, the local limits can be provided for a divided grid.
     ! Note: intent(out) automatically deallocates the variable
     integer function create_grid_3D(grid,n,i_lim) result(ierr)                  ! 3D version
         character(*), parameter :: rout_name = 'create_grid_3D'
@@ -67,7 +68,7 @@ contains
         ! input / output
         type(grid_type), intent(out) :: grid                                    ! grid to be created
         integer :: n(3)                                                         ! tot. nr. of points (par,r,alpha)
-        integer, optional :: i_lim(2)                                           ! min. and max. group normal index
+        integer, optional :: i_lim(2)                                           ! min. and max. local normal index
         
         ! local Variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -79,7 +80,7 @@ contains
         if (present(i_lim)) then
             if (i_lim(2)-i_lim(1)+1.gt.n(3)) then
                 ierr = 1
-                err_msg = 'The group nr. of normal points cannot be higher &
+                err_msg = 'The local nr. of normal points cannot be higher &
                     &than the total nr. of normal points'
                 CHCKERR(err_msg)
             end if
@@ -90,31 +91,31 @@ contains
             ierr = create_grid_1D(grid,n(3),i_lim)
             CHCKERR('')
         else
-            ! set divided and grp_n_r
+            ! set divided and loc_n_r
             grid%divided = .false.
             if (present(i_lim)) then                                            ! might be divided grid
                 grid%i_min = i_lim(1)
                 grid%i_max = i_lim(2)
-                grid%grp_n_r = i_lim(2)-i_lim(1)+1
-                if (i_lim(2)-i_lim(1)+1.lt.n(3)) grid%divided = .true.          ! only divided if difference between group and total
+                grid%loc_n_r = i_lim(2)-i_lim(1)+1
+                if (i_lim(2)-i_lim(1)+1.lt.n(3)) grid%divided = .true.          ! only divided if difference between local and total
             else                                                                ! certainly not divided grid
-                grid%grp_n_r = n(3)
+                grid%loc_n_r = n(3)
             end if
             
             ! copy the values
             grid%n = n
-            allocate(grid%theta_E(n(1),n(2),grid%grp_n_r))
-            allocate(grid%zeta_E(n(1),n(2),grid%grp_n_r))
-            allocate(grid%theta_F(n(1),n(2),grid%grp_n_r))
-            allocate(grid%zeta_F(n(1),n(2),grid%grp_n_r))
+            allocate(grid%theta_E(n(1),n(2),grid%loc_n_r))
+            allocate(grid%zeta_E(n(1),n(2),grid%loc_n_r))
+            allocate(grid%theta_F(n(1),n(2),grid%loc_n_r))
+            allocate(grid%zeta_F(n(1),n(2),grid%loc_n_r))
             allocate(grid%r_E(n(3)))
             allocate(grid%r_F(n(3)))
             if (grid%divided) then
-                allocate(grid%grp_r_E(grid%grp_n_r))
-                allocate(grid%grp_r_F(grid%grp_n_r))
+                allocate(grid%loc_r_E(grid%loc_n_r))
+                allocate(grid%loc_r_F(grid%loc_n_r))
             else
-                grid%grp_r_E => grid%r_E
-                grid%grp_r_F => grid%r_F
+                grid%loc_r_E => grid%r_E
+                grid%loc_r_F => grid%r_F
             end if
         end if
     end function create_grid_3D
@@ -124,7 +125,7 @@ contains
         ! input / output
         type(grid_type), intent(out) :: grid                                    ! grid to be created
         integer :: n                                                            ! tot. nr. of points (par,r,alpha)
-        integer, optional :: i_lim(2)                                           ! min. and max. group normal index
+        integer, optional :: i_lim(2)                                           ! min. and max. local normal index
         
         ! local Variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -136,21 +137,21 @@ contains
         if (present(i_lim)) then
             if (i_lim(2)-i_lim(1)+1.gt.n) then
                 ierr = 1
-                err_msg = 'The group nr. of normal points cannot be higher &
+                err_msg = 'The local nr. of normal points cannot be higher &
                     &than the total nr. of normal points'
                 CHCKERR(err_msg)
             end if
         end if
         
-        ! set divided and grp_n_r
+        ! set divided and loc_n_r
         grid%divided = .false.
         if (present(i_lim)) then                                                ! might be divided grid
             grid%i_min = i_lim(1)
             grid%i_max = i_lim(2)
-            grid%grp_n_r = i_lim(2)-i_lim(1)+1
-            if (i_lim(2)-i_lim(1)+1.lt.n) grid%divided = .true.                 ! only divided if difference between group and total
+            grid%loc_n_r = i_lim(2)-i_lim(1)+1
+            if (i_lim(2)-i_lim(1)+1.lt.n) grid%divided = .true.                 ! only divided if difference between local and total
         else                                                                    ! certainly not divided grid
-            grid%grp_n_r = n
+            grid%loc_n_r = n
         end if
         
         ! copy the values
@@ -158,11 +159,11 @@ contains
         allocate(grid%r_E(n))
         allocate(grid%r_F(n))
         if (grid%divided) then
-            allocate(grid%grp_r_E(grid%grp_n_r))
-            allocate(grid%grp_r_F(grid%grp_n_r))
+            allocate(grid%loc_r_E(grid%loc_n_r))
+            allocate(grid%loc_r_F(grid%loc_n_r))
         else
-            grid%grp_r_E => grid%r_E
-            grid%grp_r_F => grid%r_F
+            grid%loc_r_E => grid%r_E
+            grid%loc_r_F => grid%r_F
         end if
     end function create_grid_1D
     
@@ -177,13 +178,13 @@ contains
             deallocate(grid%theta_E,grid%zeta_E)
             deallocate(grid%theta_F,grid%zeta_F)
         end if
-        if (grid%divided) deallocate(grid%grp_r_E,grid%grp_r_F)
+        if (grid%divided) deallocate(grid%loc_r_E,grid%loc_r_F)
         
         ! nullify pointers
         nullify(grid%r_E,grid%r_F)
         nullify(grid%theta_E,grid%zeta_E)
         nullify(grid%theta_F,grid%zeta_F)
-        nullify(grid%grp_r_E,grid%grp_r_F)
+        nullify(grid%loc_r_E,grid%loc_r_F)
         
         ! deallocate allocatable variables
         call dealloc_grid_final(grid)

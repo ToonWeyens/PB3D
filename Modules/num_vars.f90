@@ -7,22 +7,24 @@ module num_vars
     implicit none
     private
     public dp, qp, max_str_ln, max_deriv, prog_name, output_name, &
-        &prog_version, prog_style, ghost_width_POST, &
-        &max_mem_per_proc, n_procs_per_alpha, n_procs, MPI_Comm_groups, &
-        &MPI_Comm_masters, glb_rank, glb_n_procs, grp_rank, grp_n_procs, &
-        &grp_nr, n_groups, plt_rank, next_job, next_job_win, &
+        &prog_version, prog_style, &
+        &max_mem_per_proc, n_procs, rank, plt_rank, jobs_data, &
+#if lold_MPI
+        &next_job, next_job_win, &
+#else
+        &jobs_taken, jobs_taken_win, &
+#endif
         &pi, mu_0_original, iu, &
-        &minim_style, EV_style, eq_style, rho_style, norm_disc_ord, BC_style, &
-        &plot_resonance, plot_grid, plot_flux_q, ltest, use_pol_flux_E, &
-        &use_pol_flux_F, use_normalization, EV_BC, tol_slepc, max_n_it_slepc, &
+        &EV_style, eq_style, rho_style, BC_style, plot_resonance, plot_grid, &
+        &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
+        &use_normalization, EV_BC, tol_slepc, max_it_slepc, rich_lvl_nr, &
+        &norm_disc_prec_eq, norm_disc_prec_X, norm_disc_prec_sol, &
         &max_it_r, tol_r, no_guess, &
         &max_it_inv, &
         &max_it_NR, tol_NR, nyq_fac, tol_norm_r, &
-        &GP_max_size, group_output, input_i, eq_i, eq_name, output_i, &
+        &GP_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
         &no_plots, no_messages, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
-        &PB3D_i, PB3D_name, &
-        &n_alpha, min_alpha, max_alpha, alpha_job_nr, rich_lvl_nr, &
         &spline_type
 
     ! technical variables
@@ -32,27 +34,24 @@ module num_vars
     integer, parameter :: qp = REAL128                                          ! quadruple precision
     integer, parameter :: max_str_ln = 120                                      ! maximum length of filenames
     integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
-    integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
-    character(len=max_str_ln) :: prog_name                                      ! name of program, used for info
-    character(len=max_str_ln) :: output_name                                    ! name of output file
-    real(dp), parameter :: prog_version = 0.90_dp                               ! version number
-    integer, parameter :: ghost_width_POST = 2                                  ! size of ghost region (numerical derivatives should not exceed)
+    integer :: prog_style                                                       ! program style (1: PB3D pre-perturbation, 2: PB3D perturbation, 3: PB3D_POST)
+    character(len=4) :: prog_name                                               ! name of program, used for info
+    character(len=3), parameter :: output_name = 'out'                          ! name of output file
+    real(dp), parameter :: prog_version = 0.91_dp                               ! version number
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
-    integer :: n_procs_per_alpha                                                ! how many processors are used per field line alpha
-    integer, allocatable :: n_procs(:)                                          ! hwo many processors per group of alpha
-    integer :: MPI_Comm_groups                                                  ! communicator for the groups of alpha
-    integer :: MPI_Comm_masters                                                 ! communicator for the masters of the groups of alpha
-    integer :: glb_rank                                                         ! global MPI rank
-    integer :: glb_n_procs                                                      ! global nr. MPI processes
-    integer :: grp_rank                                                         ! alpha group MPI rank
-    integer :: grp_n_procs                                                      ! alpha gropu nr. MPI processes
-    integer :: grp_nr                                                           ! group nr.
+    integer :: rank                                                             ! MPI rank
+    integer :: n_procs                                                          ! nr. of MPI processes
     integer :: plt_rank                                                         ! rank of plotting process (selected routines only)
-    integer :: n_groups                                                         ! nr. of groups
+    integer, allocatable :: jobs_data(:,:)                                      ! data about jobs: [min_k, max_k, min_m, max_m] for all jobs
+#if lold_MPI
     integer :: next_job                                                         ! next job to be done
     integer :: next_job_win                                                     ! window to next_job
+#else
+    integer :: jobs_taken_win                                                   ! window to jobs_taken
+    integer, allocatable :: jobs_taken(:)                                       ! jobs taken: (1: true, 0: false) for all jobs
+#endif
 
     ! physical and mathematical variables
     real(dp), parameter :: pi=4_dp*datan(1.0_dp)                                ! pi
@@ -60,14 +59,11 @@ module num_vars
     complex(dp), parameter :: iu = (0,1)                                        ! complex unit
 
     ! concerning runtime
-    integer :: minim_style                                                      ! determines the method used for minimization
-        ! 1 [def] : Euler-Lagrange min., finite diff and Richardson's method
     integer :: EV_style                                                         ! determines the method used for solving an EV problem
     integer :: eq_style                                                         ! either 1 (VMEC) or 2 (HELENA)
     integer :: rho_style                                                        ! style for equilibrium density profile, currently only 1 (constant)
-    integer :: norm_disc_ord                                                    ! order for normal discretization
     integer :: BC_style(2)                                                      ! style for BC left and right
-    integer :: max_n_it_slepc                                                   ! maximum nr. of iterations for SLEPC
+    integer :: max_it_slepc                                                     ! maximum nr. of iterations for SLEPC
     logical :: plot_resonance                                                   ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0 (only global master)
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates (only group masters)
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates (only global master)
@@ -77,6 +73,10 @@ module num_vars
     logical :: use_normalization                                                ! whether to use normalization or not
     real(dp) :: EV_BC
     real(dp) :: tol_slepc                                                       ! tolerance for SLEPC
+    integer :: rich_lvl_nr                                                      ! which Richardson's level is being calculated
+    integer :: norm_disc_prec_eq                                                ! precision for normal discretization for equilibrium
+    integer :: norm_disc_prec_X                                                 ! precision for normal discretization for perturbation
+    integer :: norm_disc_prec_sol                                               ! precision for normal discretization for solution
     
     ! concerning Richardson extrapolation
     integer :: max_it_r                                                         ! number of levels for Richardson extrapolation
@@ -94,12 +94,11 @@ module num_vars
 
     ! concerning input / output
     integer, parameter :: GP_max_size = 300                                     ! maximum size of matrices for GNUPlot
-    logical :: group_output                                                     ! whether also the non-master groups can output
     integer :: input_i                                                          ! file number of input file
     integer :: eq_i                                                             ! file number of equilibrium file from VMEC or HELENA
     character(len=max_str_ln) :: eq_name                                        ! name of equilibrium file from VMEC or HELENA
     integer :: PB3D_i                                                           ! file number of PB3D output file
-    character(len=max_str_ln) :: PB3D_name                                      ! name of PB3D output file
+    character(len=max_str_ln) :: PB3D_name                                      ! name of PB3D_PERT output file
     integer :: output_i                                                         ! file number of output file
     logical :: no_plots = .false.                                               ! true if no plots should be made
     logical :: no_messages = .false.                                            ! true if no messages should be shown
@@ -111,13 +110,6 @@ module num_vars
     integer :: n_sol_requested                                                  ! how many solutions requested
     integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
     logical :: retain_all_sol                                                   ! retain also faulty solutions
-    
-    ! concerning   the  various   field   lines   and  levels   of  Richardson's
-    ! extrapolation for which to do the calculations
-    integer :: n_alpha                                                          ! how many field lines
-    real(dp) :: min_alpha, max_alpha                                            ! min. and max. value for alpha, should be (0...2pi)
-    integer :: alpha_job_nr                                                     ! which alpha job is being calculated
-    integer :: rich_lvl_nr                                                      ! which Richardson's level is being calculated
     
     ! concerning  spline interpolation
     ! The type of the spline is determined by "spline_type":

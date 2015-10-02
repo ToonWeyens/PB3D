@@ -20,21 +20,9 @@
 !       - variables tabulated on the full output grid of the equilibrium code  !
 !       - variables tabulated in an internal grid of this code                 !
 !   In many places  in the code a  range in the normal  coordinate is selected !
-!   for each of  the variables on different processors. This  selection has to !
-!   be done correctly  and things can get a little  bit complicated if trimmed !
-!   grids are used (grids that have no overlap between processes):             !
-!       -  Variables  on  full  output  grid  need to  keep  in  mind  that  a !
-!       grid  trimmed  internal  can  start   at  a  position  different  from !
-!       the  grid  starting position  of  the  full equilibrium  output  grid. !
-!       Therefore,  the   correct  way  to   indicate  the  normal   range  of !
-!       variables  tabulated in  the  full equilibrium  output  grid would  be !
-!       [grid%i_min:grid%i_min+grid_trim%grp_n_r], where grid is the untrimmed !
-!       and grid_trim the trimmed internal grid.                               !
-!       -  Internal  grid by  default  are  trimmed  keeping the  lower  range !
-!       unchanged,  so   the  usage   of  [1:grid_trim%grp_n_r]   is  allowed. !
-!       However,  using shift_grid  shifting the  grid  by an  amount a,  both !
-!       a+[1:grid_trim%grp_n_r]  or  [grid%i_min:grid%i_min+grid_trim%grp_n_r] !
-!       can be used.                                                           !
+!   for each of the variables on different processes. This selection has to be !
+!   done correctly  and things  can get  a little  bit complicated  if trimmed !
+!   grids are used (grids that have no overlap between processes).             !
 !------------------------------------------------------------------------------!
 module eq_vars
 #include <PB3D_macros.h>
@@ -60,11 +48,11 @@ module eq_vars
     ! equilibrium type
     ! The arrays here are of the form (except for rho):
     !   - (r,Dr)                        for flux quantities
-    !   - (angle_1,angle_2,r,D1,D2,D3)  for normal quantities
+    !   - (angle_1,angle_2,r,D123)      for normal quantities
     ! where it is refered to the discussion  of the grid type for an explanation
     ! of the angles angle_1 and angle_2.
-    ! The last three indices refer to the  derivatives in coordinate 1, 2 and 3,
-    ! which refer to the coordinates described in [ADD REF]: 
+    ! The last index refers  to the derivatives in coordinate 1,  2 and 3, which
+    ! refer to the coordinates described in [ADD REF]:
     !   - For E(quilibrium) coordinates, they are (r,theta,zeta)_E
     !   - For F(lux) coordinates, they are (alpha,psi,ang_par)_F, where
     !       + alpha = zeta - q theta and ang_par = theta for pol. flux,
@@ -108,62 +96,62 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: grp_n_r, n                                                   ! group and total nr. of normal points
+        integer :: loc_n_r, n                                                   ! local and total nr. of normal points
         integer :: n_par, n_geo                                                 ! tot. nr. of angular points in parallel and geodesic direction
         
         ! initialize ierr
         ierr = 0
         
         ! set local variables
-        grp_n_r = grid%grp_n_r
+        loc_n_r = grid%loc_n_r
         n_par = grid%n(1)
         n_geo = grid%n(2)
         n = grid%n(3)
         
         ! pres_FD
-        allocate(eq%pres_FD(grp_n_r,0:max_deriv))
+        allocate(eq%pres_FD(loc_n_r,0:max_deriv))
         
         ! flux_p_FD
-        allocate(eq%flux_p_FD(grp_n_r,0:max_deriv))
+        allocate(eq%flux_p_FD(loc_n_r,0:max_deriv))
         
         ! flux_t_FD
-        allocate(eq%flux_t_FD(grp_n_r,0:max_deriv))
+        allocate(eq%flux_t_FD(loc_n_r,0:max_deriv))
         
         ! q_saf_FD
-        allocate(eq%q_saf_FD(grp_n_r,0:max_deriv))
+        allocate(eq%q_saf_FD(loc_n_r,0:max_deriv))
         
         ! rot_t_FD
-        allocate(eq%rot_t_FD(grp_n_r,0:max_deriv))
+        allocate(eq%rot_t_FD(loc_n_r,0:max_deriv))
         
         ! pres_E
-        allocate(eq%pres_E(grp_n_r,0:max_deriv+1))
+        allocate(eq%pres_E(loc_n_r,0:max_deriv+1))
         
         ! flux_p_E
-        allocate(eq%flux_p_E(grp_n_r,0:max_deriv+1))
+        allocate(eq%flux_p_E(loc_n_r,0:max_deriv+1))
         
         ! flux_t_E
-        allocate(eq%flux_t_E(grp_n_r,0:max_deriv+1))
+        allocate(eq%flux_t_E(loc_n_r,0:max_deriv+1))
         
         ! q_saf_E
-        allocate(eq%q_saf_E(grp_n_r,0:max_deriv+1))
+        allocate(eq%q_saf_E(loc_n_r,0:max_deriv+1))
         
         ! rot_t_E
-        allocate(eq%rot_t_E(grp_n_r,0:max_deriv+1))
+        allocate(eq%rot_t_E(loc_n_r,0:max_deriv+1))
         
         ! rho
-        allocate(eq%rho(grid%grp_n_r))
+        allocate(eq%rho(grid%loc_n_r))
         
         ! magnetic shear
-        allocate(eq%S(n_par,n_geo,grp_n_r))
+        allocate(eq%S(n_par,n_geo,loc_n_r))
         
         ! normal curvature
-        allocate(eq%kappa_n(n_par,n_geo,grp_n_r))
+        allocate(eq%kappa_n(n_par,n_geo,loc_n_r))
         
         ! geodesic curvature
-        allocate(eq%kappa_g(n_par,n_geo,grp_n_r))
+        allocate(eq%kappa_g(n_par,n_geo,loc_n_r))
         
         ! parallel current
-        allocate(eq%sigma(n_par,n_geo,grp_n_r))
+        allocate(eq%sigma(n_par,n_geo,loc_n_r))
         
         ! initialize variables that are specificic to which equilibrium style is
         ! being used:
@@ -172,15 +160,15 @@ contains
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! R
-                allocate(eq%R_E(n_par,n_geo,grp_n_r,&
+                allocate(eq%R_E(n_par,n_geo,loc_n_r,&
                     &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
                 
                 ! Z
-                allocate(eq%Z_E(n_par,n_geo,grp_n_r,&
+                allocate(eq%Z_E(n_par,n_geo,loc_n_r,&
                     &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
                 
                 ! lambda
-                allocate(eq%L_E(n_par,n_geo,grp_n_r,&
+                allocate(eq%L_E(n_par,n_geo,loc_n_r,&
                     &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
             case (2)                                                            ! HELENA
                 ! nothing

@@ -271,7 +271,7 @@ contains
             CHCKERR(err_msg)
         end if
         ! test whether normal sizes compatible
-        if (grid_in%grp_n_r.ne.grid_out%grp_n_r) then
+        if (grid_in%loc_n_r.ne.grid_out%loc_n_r) then
             ierr = 1
             err_msg = 'Grids are not compatible in normal direction'
             CHCKERR(err_msg)
@@ -284,14 +284,14 @@ contains
         if (present(td_sym)) td_sym_loc = td_sym
         
         ! allocate theta_i
-        allocate(theta_i(grid_out%n(1),grid_out%n(2),grid_out%grp_n_r))
+        allocate(theta_i(grid_out%n(1),grid_out%n(2),grid_out%loc_n_r))
         
         ! For every point on output grid, check to which half poloidal circle on
         ! the  axisymmetric input  grid  it  belongs to.  If  there is  top-down
         ! symmetry and the  angle theta lies in the bottom  part, the quantities
         ! have to be taken from their symmetric counterpart (2pi-theta).
         ! loop over all normal points of this rank
-        do kd = 1,grid_out%grp_n_r
+        do kd = 1,grid_out%loc_n_r
             ! point theta_in
             if (use_E) then
                 theta_in => grid_in%theta_E(:,1,kd)                             ! axisymmetric grid should not have only one toroidal point
@@ -371,7 +371,7 @@ contains
         ierr = 0
         
         ! tests
-        if (prog_style.eq.2) then                                               ! PB3D_POST
+        if (prog_style.eq.3) then                                               ! PB3D_POST
             if (.not.present(eq) .or. .not.present(eq_B)) then
                 ierr = 1
                 err_msg = 'For PB3D_POST, eq and eq_B are needed as well'
@@ -410,7 +410,7 @@ contains
         call interp_var_4D_complex(X%DU_1,theta_i,X_B%DU_1,sym_type=1)
         ! adapt custom variables depending on program style
         select case (prog_style)
-            case(1)                                                             ! PB3D
+            case(1)                                                             ! PB3D pre-perturbation
                 call interp_var_4D_complex(X%J_exp_ang_par_F,theta_i,&
                     &X_B%J_exp_ang_par_F,sym_type=1)
                 call interp_var_4D_complex(X%PV_0,theta_i,X_B%PV_0,sym_type=1)
@@ -419,7 +419,8 @@ contains
                 call interp_var_4D_complex(X%KV_0,theta_i,X_B%KV_0,sym_type=1)
                 call interp_var_4D_complex(X%KV_1,theta_i,X_B%KV_1,sym_type=1)
                 call interp_var_4D_complex(X%KV_2,theta_i,X_B%KV_2,sym_type=1)
-            case(2)                                                             ! PB3D_POST
+            case(2)                                                             ! PB3D perturbation
+            case(3)                                                             ! PB3D_POST
                 ! do nothing
             case default
                 err_msg = 'No program style associated with '//&
@@ -644,7 +645,7 @@ contains
     ! with jac = dZ/dpsi dR/dchi - dR/dpsi dZ/dchi
     ! Also, test whether the pressure balance is satisfied.
     integer function test_metrics_H(n_r) result(ierr)
-        use num_vars, only: glb_rank
+        use num_vars, only: rank, norm_disc_prec_eq
         use utilities, only: calc_deriv
         use output_ops, only: plot_diff_HDF5
         
@@ -669,7 +670,7 @@ contains
         ! initialize ierr
         ierr = 0
         
-        if (glb_rank.eq.0) then
+        if (rank.eq.0) then
             ! user output
             call writo('Checking consistency of metric factors')
             call lvl_ud(1)
@@ -681,15 +682,19 @@ contains
             allocate(jac(nchi,n_r))
             
             do id = 1,nchi
-                ierr = calc_deriv(R_H(id,:),Rpsi(id,:),flux_p_H/(2*pi),1,2)
+                ierr = calc_deriv(R_H(id,:),Rpsi(id,:),flux_p_H/(2*pi),1,&
+                    &norm_disc_prec_eq+1)
                 CHCKERR('')
-                ierr = calc_deriv(Z_H(id,:),Zpsi(id,:),flux_p_H/(2*pi),1,2)
+                ierr = calc_deriv(Z_H(id,:),Zpsi(id,:),flux_p_H/(2*pi),1,&
+                    &norm_disc_prec_eq+1)
                 CHCKERR('')
             end do
             do kd = 1,n_r
-                ierr = calc_deriv(R_H(:,kd),Rchi(:,kd),chi_H,1,2)
+                ierr = calc_deriv(R_H(:,kd),Rchi(:,kd),chi_H,1,&
+                    &norm_disc_prec_eq+1)
                 CHCKERR('')
-                ierr = calc_deriv(Z_H(:,kd),Zchi(:,kd),chi_H,1,2)
+                ierr = calc_deriv(Z_H(:,kd),Zchi(:,kd),chi_H,1,&
+                    &norm_disc_prec_eq+1)
                 CHCKERR('')
             end do
             jac = Zpsi*Rchi - Zchi*Rpsi
@@ -751,17 +756,19 @@ contains
             !   4: D2 (q/F h_12) .
             allocate(tempvar(nchi,1,n_r,4))
             do id = 1,nchi
-                ierr = calc_deriv(RBphi,tempvar(id,1,:,1),flux_p_H/(2*pi),1,1)
+                ierr = calc_deriv(RBphi,tempvar(id,1,:,1),flux_p_H/(2*pi),1,&
+                    &norm_disc_prec_eq)
                 CHCKERR('')
-                ierr = calc_deriv(pres_H,tempvar(id,1,:,2),flux_p_H/(2*pi),1,1)
+                ierr = calc_deriv(pres_H,tempvar(id,1,:,2),flux_p_H/(2*pi),1,&
+                    &norm_disc_prec_eq)
                 CHCKERR('')
                 ierr = calc_deriv(qs/RBphi*h_H_11(id,:),tempvar(id,1,:,3),&
-                    &flux_p_H/(2*pi),1,1)
+                    &flux_p_H/(2*pi),1,norm_disc_prec_eq)
                 CHCKERR('')
             end do
             do kd = 1,n_r
                 ierr = calc_deriv(qs(kd)/RBphi(kd)*h_H_12(:,kd),&
-                    &tempvar(:,1,kd,4),chi_H,1,1)
+                    &tempvar(:,1,kd,4),chi_H,1,norm_disc_prec_eq)
                 CHCKERR('')
             end do
             

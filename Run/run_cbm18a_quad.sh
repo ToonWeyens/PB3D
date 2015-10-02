@@ -78,34 +78,34 @@ echo ""
 # Copy inputs and the program
 cp input_cbm18a $out
 cp cbm18a $out
-cp ../PB3D $out
-chmod +x $out/PB3D
+cp ../PB3D_PREP $out
+chmod +x $out/PB3D_PREP
 cd $out
 echo "creating pbs script"
 # Create pbs script
-rm -f PB3D.pbs
-cat > PB3D.pbs << END
+rm -f PB3D_PREP.pbs
+cat > PB3D_PREP.pbs << END
 #!/bin/sh
 #PBS -N $out
 #PBS -l nodes=3:ppn=$1
 #PBS -l mem=30GB
 #PBS -q parallel_16
 #PBS -l walltime=04:00:00
-#PBS -o $(pwd)/PB3D.o
-#PBS -e $(pwd)/PB3D.e
+#PBS -o $(pwd)/PB3D_PREP.o
+#PBS -e $(pwd)/PB3D_PREP.e
 export PATH="/share/apps/gcc/4.6.4/bin:/share/apps/openmpi/1.6.5/gcc-4.6.4/bin:$PATH"
 export LD_LIBRARY_PATH="/share/apps/gcc/4.6.4/lib:/share/apps/gcc/4.6.4/lib64:/share/apps/openmpi/1.6.5/gcc-4.6.4/lib:usr/lib64:$LD_LIBRARY_PATH"
 cd $(pwd)
 echo "job is run on"
 pbsdsh uname -n
 . /opt/torque/etc/openmpi-setup.sh
-echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2} --no_plots" > command
-mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2} --no_plots
+echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D_PREP input_cbm18a cbm18a $slepc_opt ${@:2} --no_plots" > command
+mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D_PREP input_cbm18a cbm18a $slepc_opt ${@:2} --no_plots
 exit
 END
-chmod u+x PB3D.pbs
+chmod u+x PB3D_PREP.pbs
 echo "Submitting job to"
-qsub PB3D.pbs
+qsub PB3D_PREP.pbs
 cd ../
 echo ""
 echo "Leaving directory $out/"

@@ -43,7 +43,7 @@ contains
     ! Reads the VMEC equilibrium data
     ! [MPI] only global master
     integer function read_VMEC(n_r_eq,use_pol_flux_V) result(ierr)
-        use utilities, only: calc_deriv, conv_FHM
+        use utilities, only: conv_FHM
         use num_vars, only: max_deriv, eq_i, eq_name
 #if ldebug
         use num_vars, only: ltest
@@ -141,49 +141,16 @@ contains
             L_c_H(:,:,:,0) = repack(lmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
         !end if
         
-        ! normal derivatives of these factors
-        ! The VMEC normal coord. is  the toroidal (or poloidal) flux, normalized
-        ! wrt.  to  the  maximum  flux,  equidistantly,  so  the  step  size  is
-        ! 1/(n_r_eq-1).
-        do kd = 1,max_deriv+1
-            do jd = -ntor,ntor
-                do id = 0,mpol-1
-                    ierr = calc_deriv(R_V_c(id,jd,:,0),R_V_c(id,jd,:,kd),&
-                        &n_r_eq-1._dp,kd,1)
-                    CHCKERR('')
-                    ierr = calc_deriv(Z_V_s(id,jd,:,0),Z_V_s(id,jd,:,kd),&
-                        &n_r_eq-1._dp,kd,1)
-                    CHCKERR('')
-                    ierr = calc_deriv(L_s_H(id,jd,:,0),&
-                        &L_s_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
-                    CHCKERR('')
-                    !if (lasym) then                                            ! following only needed in assymetric situations
-                        ierr = calc_deriv(R_V_s(id,jd,:,0),&
-                            &R_V_s(id,jd,:,kd),n_r_eq-1._dp,kd,1)
-                        CHCKERR('')
-                        ierr = calc_deriv(Z_V_c(id,jd,:,0),&
-                            &Z_V_c(id,jd,:,kd),n_r_eq-1._dp,kd,1)
-                        CHCKERR('')
-                        ierr = calc_deriv(L_c_H(id,jd,:,0),&
-                            &L_c_H(id,jd,:,kd),n_r_eq-1._dp,kd,1)
-                        CHCKERR('')
-                    !end if
-                end do
-            end do
-        end do
-        
         ! conversion HM -> FM (L)
-        do kd = 0,max_deriv+1
-            do jd = -ntor,ntor
-                do id = 0,mpol-1
-                    ierr = conv_FHM(L_s_H(id,jd,:,kd),L_V_s(id,jd,:,kd),.false.)
+        do jd = -ntor,ntor
+            do id = 0,mpol-1
+                ierr = conv_FHM(L_s_H(id,jd,:,0),L_V_s(id,jd,:,0),.false.)
+                CHCKERR('')
+                !if (lasym) then                                                ! following only needed in assymetric situations
+                    ierr = conv_FHM(L_c_H(id,jd,:,0),L_V_c(id,jd,:,0),&
+                        &.false.)
                     CHCKERR('')
-                    !if (lasym) then                                            ! following only needed in assymetric situations
-                        ierr = conv_FHM(L_c_H(id,jd,:,kd),L_V_c(id,jd,:,kd),&
-                            &.false.)
-                        CHCKERR('')
-                    !end if
-                end do
+                !end if
             end do
         end do
         
@@ -301,7 +268,7 @@ contains
     ! [MPI] only global master
     !       (this is a precaution: only the global master should use it)
     function repack(var_VMEC,mnmax,n_r,mpol,ntor,xm,xn)
-        use num_vars, only: glb_rank
+        use num_vars, only: rank
         
         ! input / output
         integer, intent(in) :: mnmax, n_r, mpol, ntor
@@ -312,7 +279,7 @@ contains
         ! local variables
         integer :: mode, m, n
         
-        if (allocated(var_VMEC) .and. glb_rank.eq.0) then                       ! only global rank
+        if (allocated(var_VMEC) .and. rank.eq.0) then                           ! only global rank
             ! check if the  values in xm and xn don't  exceed the maximum number
             ! of poloidal and toroidal modes (xm  and xn are of length mnmax and
             ! contain the pol/tor mode number)

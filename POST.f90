@@ -1,34 +1,33 @@
 ! (from http://patorjk.com/software/taag/ ANSI shadow)
 
-!   ██████╗ ██████╗ ██████╗ ██████╗     ██████╗  ██████╗ ███████╗████████╗
-!   ██╔══██╗██╔══██╗╚════██╗██╔══██╗    ██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝
-!   ██████╔╝██████╔╝ █████╔╝██║  ██║    ██████╔╝██║   ██║███████╗   ██║   
-!   ██╔═══╝ ██╔══██╗ ╚═══██╗██║  ██║    ██╔═══╝ ██║   ██║╚════██║   ██║   
-!   ██║     ██████╔╝██████╔╝██████╔╝    ██║     ╚██████╔╝███████║   ██║   
-!   ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝     ╚═╝      ╚═════╝ ╚══════╝   ╚═╝   
+!   ██████╗  ██████╗ ███████╗████████╗
+!   ██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝
+!   ██████╔╝██║   ██║███████╗   ██║   
+!   ██╔═══╝ ██║   ██║╚════██║   ██║   
+!   ██║     ╚██████╔╝███████║   ██║   
+!   ╚═╝      ╚═════╝ ╚══════╝   ╚═╝   
 
 !------------------------------------------------------------------------------!
-!   Postprocessing program of Peeling Ballooning in 3D                         !
+!   program Peeling Ballooning in 3D: postprocessing                           !
 !------------------------------------------------------------------------------!
 !   Author: Toon Weyens                                                        !
 !   Institution: Departamento de Física,                                       !
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.90                                                              !
+!   Version: 0.91                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
 !           devices, eq. (6.12) and (6.16)                                     !
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
-program PB3D_POST
+program POST
     use str_ops, only: i2str
-    use num_vars, only: prog_name, prog_style, ltest, output_name
+    use num_vars, only: prog_name, prog_style, ltest
     use messages, only: writo, print_goodbye, lvl_ud, print_hello, &
         &init_messages, init_time, start_time, stop_time, passed_time
     use HDF5_ops, only: init_HDF5
-    use utilities, only: init_utilities
     use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_vars
     use files_ops, only: init_files, parse_args, open_input, open_output, &
         &close_output
@@ -41,25 +40,18 @@ program PB3D_POST
 
     ! local variables
     integer :: ierr                                                             ! error
-    write(*,*) '!!!!! FOR VMEC: COPY ALSO THE EQUILIBRIUM QUANTITIES TO BE ABLE &
-        &TO CALCULATE EVERYTHING FOR A NON-ALIGNED PLOT GRID !!!'
-    write(*,*) '!!!!! FOR HELENA: COPY ALSO THE FIELD-ALIGNED GRID AND &
-        &INTERPOLATE THE QUANTITIES TO THIS GRID !!!'
-    write(*,*) 'THIS WAY YOU HAVE TWO GRIDS: FIELD ALIGNED AND PLOT'
     
     !-------------------------------------------------------
     !   Initialize some routines
     !-------------------------------------------------------
-    output_name = 'PB3D_POST_out'
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
-    prog_name = 'PB3D_POST'
-    prog_style = 2
-    call print_hello
+    prog_name = 'POST'                                                          ! program name
+    prog_style = 3                                                              ! post-processing part
+    call print_hello                                                            ! print message with time, etc
     call init_messages                                                          ! initialize message operations
     ierr = init_files()                                                         ! initialize file operations
     CHCKERR
-    call init_utilities                                                         ! initialize utilities
     call init_time                                                              ! initialize time
     call init_HDF5                                                              ! initialize HDF5
  
@@ -73,7 +65,7 @@ program PB3D_POST
     CHCKERR
     ierr = open_input()                                                         ! open the input files
     CHCKERR
-    ierr = read_PB3D()                                                          ! read the PB3D file
+    ierr = read_PB3D(.true.,.true.)                                             ! read the PB3D_PREP and PB3D_PERT files
     CHCKERR
     ierr = read_input()                                                         ! read input file
     CHCKERR
@@ -132,7 +124,7 @@ contains
     ! stops the computations, aborting MPI, etc.
     ! as a special case, if ierr = 66, no error message is printed
     subroutine sudden_stop(ierr)
-        use num_vars, only: glb_rank
+        use num_vars, only: rank
         use MPI_ops, only: abort_MPI
         
         ! input / output
@@ -142,10 +134,10 @@ contains
         integer :: ierr_abort                                                   ! error to output
         
         if (ierr.ne.66) then
-            call writo('>> calling routine: PB3D_POST (main) of rank '//&
-                &trim(i2str(glb_rank)),persistent=.true.)
+            call writo('>> calling routine: POST (main) of rank '//&
+                &trim(i2str(rank)),persistent=.true.)
             call writo('ERROR CODE '//trim(i2str(ierr))//&
-                &'. Aborting MPI rank '//trim(i2str(glb_rank)),&
+                &'. Aborting MPI rank '//trim(i2str(rank)),&
                 &persistent=.true.)
             call lvl_ud(1)
             ierr_abort = abort_MPI()
@@ -159,4 +151,4 @@ contains
         call lvl_ud(-1)
         stop
     end subroutine
-end program PB3D_POST
+end program POST

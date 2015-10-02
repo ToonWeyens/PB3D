@@ -31,7 +31,7 @@ contains
         
         ! select according to program style
         select case (prog_style)
-            case(1)                                                             ! PB3D
+            case(1)                                                             ! PB3D pre-perturbation
                 call writo('Test calculation of derivatives?')
                 if (get_log(.false.)) then
                     ierr = test_calc_deriv()
@@ -45,7 +45,9 @@ contains
                     CHCKERR('')
                     call pause_prog
                 end if
-            case(2)                                                             ! PB3D_POST
+            case(2)                                                             ! PB3D perturbation
+                ! no tests
+            case(3)                                                             ! PB3D_POST
                 call writo('Test calculation of volume integral?')
                 if (get_log(.false.)) then
                     ierr = test_calc_int_vol()
@@ -62,7 +64,7 @@ contains
     
     ! tests the calculation of derivatives
     integer function test_calc_deriv() result(ierr)
-        use num_vars, only: glb_rank
+        use num_vars, only: rank
         use input_ops, only: get_log, get_int, get_real
         use utilities, only: calc_deriv
         
@@ -133,8 +135,8 @@ contains
         call lvl_ud(-1)
         input_type = get_int(lim_lo=1,lim_hi=6)
         
-        ! only do the tests by the group master
-        if (glb_rank.eq.0) then
+        ! only do the tests by the master
+        if (rank.eq.0) then
             ! set up max_deriv
             select case (prec)
                 case(1)
@@ -315,7 +317,7 @@ contains
     
     ! tests the conversion between full and half mesh
     integer function test_conv_FHM() result(ierr)
-        use num_vars, only: glb_rank
+        use num_vars, only: rank
         use utilities, only: conv_FHM
         use input_ops, only: get_log, get_int
         
@@ -351,8 +353,8 @@ contains
         call writo('logarithmic plot?')
         log_plot = get_log(.false.)
         
-        ! only do the tests by the group master
-        if (glb_rank.eq.0) then
+        ! only do the tests by the master
+        if (rank.eq.0) then
             ! set step
             step = n_max/length
             
@@ -428,7 +430,7 @@ contains
     
     ! tests calculation of volume integral
     integer function test_calc_int_vol() result(ierr)
-        use num_vars, only: grp_rank
+        use num_vars, only: rank
         use input_ops, only: get_int
         use grid_vars, only: create_grid
         use grid_ops, only: calc_eqd_grid, calc_int_vol
@@ -455,7 +457,7 @@ contains
         ! initialize ierr
         ierr = 0
         
-        if (grp_rank.eq.0) then
+        if (rank.eq.0) then
             call writo('Checking integral of')
             call lvl_ud(1)
             call writo('f = 1 - r^2 + i cos(theta)')

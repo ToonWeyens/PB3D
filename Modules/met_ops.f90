@@ -1,12 +1,13 @@
 !------------------------------------------------------------------------------!
 !   Operations that have to do with the metric elements                        !
+!   Also see note in met_vars.
 !------------------------------------------------------------------------------!
 module met_ops 
 #include <PB3D_macros.h>
     use str_ops
     use output_ops
     use messages
-    use num_vars, only: dp, max_deriv, max_str_ln, pi, grp_rank
+    use num_vars, only: dp, max_deriv, max_str_ln, pi
     use utilities, only: check_deriv
     use grid_vars, only: grid_type, dealloc_grid
     use eq_vars, only: eq_type
@@ -14,13 +15,10 @@ module met_ops
     
     implicit none
     private
-    public calc_T_VC, calc_g_C, calc_jac_C, calc_g_V, calc_jac_V, &
-        &calc_jac_H, calc_T_HF, calc_T_VF, calc_h_H, &
-        &calc_inv_met, calc_g_F, calc_jac_F, transf_deriv
+    public calc_met
+    
 #if ldebug
-    public test_T_EF, test_p, test_jac_F, test_g_V, test_B_F, test_D12h_H, &
-        &test_jac_V, test_Dg_E, &
-        &debug_calc_inv_met_ind
+    public debug_calc_inv_met_ind
 #endif
     
     ! interfaces
@@ -72,6 +70,311 @@ module met_ops
 #endif
 
 contains
+    ! Calculates  the metric  variables on  a grid  given by  'grid_eq' and  for
+    ! equilibrium variables given by 'eq'.
+    integer function calc_met(grid_eq,eq,met) result(ierr)
+        use num_vars, only: eq_style
+        use met_vars, only: create_met
+        use utilities, only: derivs, c
+#if ldebug
+        use num_vars, only: ltest
+        use input_ops, only: get_log, pause_prog
+        use HELENA, only: test_metrics_H
+#endif
+        
+        character(*), parameter :: rout_name = 'calc_met'
+        
+        ! input / output
+        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
+        type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
+        type(met_type), intent(inout) :: met                                    ! metric variables
+        
+        ! local variables
+        integer :: id
+        integer :: pmone                                                        ! plus or minus one
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! user output
+        call writo('Start setting up metric quantities in equilibrium &
+            &coordinates')
+        
+        call lvl_ud(1)
+        
+        ! create metric variables
+        call writo('Create metric variables')
+        call lvl_ud(1)
+        ierr = create_met(grid_eq,met)
+        CHCKERR('')
+        call lvl_ud(-1)
+        
+        ! Calcalations depending on equilibrium style being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! calculate the metrics in the cylindrical coordinate system
+                call writo('Calculate g_C')                                     ! h_C is not necessary
+                do id = 0,max_deriv
+                    ierr = calc_g_C(eq,met,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the jacobian in the cylindrical coordinate system
+                call writo('Calculate jac_C')
+                do id = 0,max_deriv
+                    ierr = calc_jac_C(eq,met,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the transformation matrix C(ylindrical) -> V(MEC)
+                call writo('Calculate T_VC')
+                do id = 0,max_deriv
+                    ierr = calc_T_VC(eq,met,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the metric factors in the VMEC coordinate system
+                call writo('Calculate g_V')
+                do id = 0,max_deriv
+                    ierr = calc_g_V(met,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the jacobian in the VMEC coordinate system
+                call writo('Calculate jac_V')
+                do id = 0,max_deriv
+                    ierr = calc_jac_V(met,derivs(id))
+                    CHCKERR('')
+                end do
+                
+#if ldebug
+                if (ltest) then
+                    call writo('Test calculation of g_V?')
+                    if(get_log(.false.)) then
+                        ierr = test_g_V(grid_eq,eq,met)
+                        CHCKERR('')
+                        call pause_prog
+                    end if
+                    call writo('Test calculation of jac_V?')
+                    if(get_log(.false.)) then
+                        ierr = test_jac_V(grid_eq,met)
+                        CHCKERR('')
+                        call pause_prog
+                    end if
+                end if
+#endif
+                
+                ! calculate the transformation matrix V(MEC) -> F(lux)
+                call writo('Calculate T_VF')
+                do id = 0,max_deriv
+                    ierr = calc_T_VF(grid_eq,eq,met,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! set up plus minus one
+                pmone = -1                                                      ! conversion VMEC LH -> RH coord. system
+            case (2)                                                            ! HELENA
+#if ldebug
+            if (ltest) then
+                call writo('Test consistency of metric factors?')
+                if(get_log(.false.,ind=.true.)) then
+                    ierr = test_metrics_H(grid_eq%n(3))
+                    CHCKERR('')
+                    call pause_prog(ind=.true.)
+                end if
+            end if
+#endif
+                
+                ! calculate the jacobian in the HELENA coordinate system        
+                call writo('Calculate jac_H')
+                do id = 0,max_deriv
+                    ierr = calc_jac_H(grid_eq,eq,met,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the metric factors in the HELENA coordinate system
+                call writo('Calculate h_H')
+                do id = 0,max_deriv
+                    ierr = calc_h_H(grid_eq,met,derivs(id))
+                    CHCKERR('')
+                end do
+                
+#if ldebug
+                if (ltest) then
+                    call writo('Test calculation of D1 D2 h_H?')
+                    if(get_log(.false.)) then
+                        ierr = test_D12h_H(grid_eq,met)
+                        CHCKERR('')
+                        call pause_prog
+                    end if
+                end if
+#endif
+                
+                ! calculate the inverse g_H of the metric factors h_H
+                call writo('Calculate g_H')
+                do id = 0,max_deriv
+                    ierr = calc_inv_met(met%g_E,met%h_E,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the transformation matrix H(ELENA) -> F(lux)        
+                call writo('Calculate T_HF')
+                do id = 0,max_deriv
+                    ierr = calc_T_HF(grid_eq,eq,met,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! set up plus minus one
+                pmone = 1
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        
+#if ldebug
+        if (ltest) then
+            call writo('Test calculation of the derivatives of g_E?')
+            if(get_log(.false.)) then
+                ierr = test_Dg_E(grid_eq,met)
+                CHCKERR('')
+                call pause_prog
+            end if
+            call writo('Test calculation of T_EF?')
+            if(get_log(.false.)) then
+                ierr = test_T_EF(grid_eq,eq,met)
+                CHCKERR('')
+                call pause_prog
+            end if
+        end if
+#endif
+        
+        ! calculate  the  inverse of  the transformation  matrix T_EF
+        call writo('Calculate T_FE')
+        do id = 0,max_deriv
+            ierr = calc_inv_met(met%T_FE,met%T_EF,derivs(id))
+            CHCKERR('')
+            ierr = calc_inv_met(met%det_T_FE,met%det_T_EF,derivs(id))
+            CHCKERR('')
+        end do
+        
+        ! calculate the metric factors in the Flux coordinate system
+        call writo('Calculate g_F')
+        do id = 0,max_deriv
+            ierr = calc_g_F(met,derivs(id))
+            CHCKERR('')
+        end do
+        
+        ! calculate the inverse h_F of the metric factors g_F
+        call writo('Calculate h_F')
+        do id = 0,max_deriv
+            ierr = calc_inv_met(met%h_F,met%g_F,derivs(id))
+            CHCKERR('')
+        end do
+        
+        ! calculate the jacobian in the Flux coordinate system
+        call writo('Calculate jac_F')
+        do id = 0,max_deriv
+            ierr = calc_jac_F(met,derivs(id))
+            CHCKERR('')
+        end do
+        
+#if ldebug
+        if (ltest) then
+            call writo('Test Jacobian in Flux coordinates?')
+            if(get_log(.false.)) then
+                ierr = test_jac_F(grid_eq,eq,met)
+                CHCKERR('')
+                call pause_prog
+            end if
+            call writo('Test calculation of B_F?')
+            if(get_log(.false.)) then
+                ierr = test_B_F(grid_eq,eq,met)
+                CHCKERR('')
+                call pause_prog
+            end if
+        end if
+#endif
+        
+        call lvl_ud(-1)
+        
+        call writo('Done setting up metric quantities in equilibrium &
+            &coordinates')
+        
+        ! user output
+        call writo('Transform metric quantities to flux coordinates')
+        
+        call lvl_ud(1)
+        
+        ! Transform the  derivatives in E coordinates  to derivatives in        
+        ! the F coordinates.
+        call writo('Calculate derivatives in Flux coordinates')
+        do id = 0,max_deriv
+            ! g_FD
+            ierr = transf_deriv(met%g_F,met%T_FE,met%g_FD,max_deriv,derivs(id))
+            CHCKERR('')
+            
+            ! h_FD
+            ierr = transf_deriv(met%h_F,met%T_FE,met%h_FD,max_deriv,derivs(id))
+            CHCKERR('')
+            
+            ! jac_FD
+            ierr = transf_deriv(met%jac_F,met%T_FE,met%jac_FD,max_deriv,&
+                &derivs(id))
+            CHCKERR('')
+            
+            ! pres_FD
+            ierr = transf_deriv(eq%pres_E,&
+                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%pres_FD(:,id),&
+                &max_deriv,id)
+            CHCKERR('')
+            
+            ! flux_p_FD
+            ierr = transf_deriv(eq%flux_p_E,&
+                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%flux_p_FD(:,id),&
+                &max_deriv,id)
+            CHCKERR('')
+            
+            ! flux_t_FD
+            ierr = transf_deriv(eq%flux_t_E,&
+                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%flux_t_FD(:,id),&
+                &max_deriv,id)
+            CHCKERR('')
+            eq%flux_t_FD(:,id) = pmone * eq%flux_t_FD(:,id)                     ! multiply by plus minus one
+            
+            ! q_saf_FD
+            ierr = transf_deriv(eq%q_saf_E,&
+                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%q_saf_FD(:,id),&
+                &max_deriv,id)
+            CHCKERR('')
+            eq%q_saf_FD(:,id) = pmone * eq%q_saf_FD(:,id)                       ! multiply by plus minus one
+            
+            ! rot_t_FD
+            ierr = transf_deriv(eq%rot_t_E,&
+                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%rot_t_FD(:,id),&
+                &max_deriv,id)
+            CHCKERR('')
+            eq%rot_t_FD(:,id) = pmone * eq%rot_t_FD(:,id)                       ! multiply by plus minus one
+        end do
+        
+#if ldebug
+        if (ltest) then
+            call writo('Test consistency with given pressure?')
+            if(get_log(.false.)) then
+                ierr = test_p(grid_eq,eq,met)
+                CHCKERR('')
+                call pause_prog
+            end if
+        end if
+#endif
+        
+        call lvl_ud(-1)
+        
+        call writo('Done transforming metric quantities to flux &
+            &coordinates')
+    end function calc_met
+    
     ! calculate the lower metric elements in the C(ylindrical) coordinate system
     integer function calc_g_C_ind(eq,met,deriv) result(ierr)
         use utilities, only: add_arr_mult, c
@@ -162,7 +465,7 @@ contains
     ! calculate the  metric coefficients in the  equilibrium H(ELENA) coordinate
     ! system using the HELENA output
     integer function calc_h_H_ind(grid,met,deriv) result(ierr)
-        use num_vars, only: max_deriv
+        use num_vars, only: max_deriv, norm_disc_prec_eq
         use HELENA, only: h_H_11, h_H_12, h_H_33
         use utilities, only: calc_deriv, c
         
@@ -208,7 +511,8 @@ contains
                 do jd = 1,grid%n(2)
                     do id = 1,grid%n(1)
                         ierr = calc_deriv(met%h_E(id,jd,:,ld,0,0,0),&
-                            &met%h_E(id,jd,:,ld,1,0,0),grid%grp_r_E,1,2)        ! use extra precision to later calculate mixed derivatives
+                            &met%h_E(id,jd,:,ld,1,0,0),grid%loc_r_E,1,&
+                            &norm_disc_prec_eq+1)                               ! use extra precision to later calculate mixed derivatives
                         CHCKERR('')
                     end do
                 end do
@@ -218,29 +522,31 @@ contains
                 do jd = 1,grid%n(2)
                     do id = 1,grid%n(1)
                         ierr = calc_deriv(met%h_E(id,jd,:,ld,0,0,0),&
-                            &met%h_E(id,jd,:,ld,2,0,0),grid%grp_r_E,2,1)
+                            &met%h_E(id,jd,:,ld,2,0,0),grid%loc_r_E,2,&
+                            &norm_disc_prec_eq)
                         CHCKERR('')
                     end do
                 end do
             end do
         else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
             do ld = 1,6
-                do kd = 1,grid%grp_n_r
+                do kd = 1,grid%loc_n_r
                     do jd = 1,grid%n(2)
                         ierr = calc_deriv(met%h_E(:,jd,kd,ld,0,0,0),&
                             &met%h_E(:,jd,kd,ld,0,1,0),&
-                            &grid%theta_E(:,jd,kd),1,2)                         ! use extra precision to later calculate mixed derivatives
+                            &grid%theta_E(:,jd,kd),1,&
+                            &norm_disc_prec_eq+1)                               ! use extra precision to later calculate mixed derivatives
                         CHCKERR('')
                     end do
                 end do
             end do
         else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
             do ld = 1,6
-                do kd = 1,grid%grp_n_r
+                do kd = 1,grid%loc_n_r
                     do jd = 1,grid%n(2)
                         ierr = calc_deriv(met%h_E(:,jd,kd,ld,0,0,0),&
                             &met%h_E(:,jd,kd,ld,0,2,0),&
-                            &grid%theta_E(:,jd,kd),2,1)
+                            &grid%theta_E(:,jd,kd),2,norm_disc_prec_eq)
                         CHCKERR('')
                     end do
                 end do
@@ -250,7 +556,8 @@ contains
                 do jd = 1,grid%n(2)
                     do id = 1,grid%n(1)
                         ierr = calc_deriv(met%h_E(id,jd,:,ld,0,1,0),&
-                            &met%h_E(id,jd,:,ld,1,1,0),grid%grp_r_E,1,1)
+                            &met%h_E(id,jd,:,ld,1,1,0),grid%loc_r_E,1,&
+                            &norm_disc_prec_eq)
                         CHCKERR('')
                     end do
                 end do
@@ -531,6 +838,7 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_jac_H_ind(grid,eq,met,deriv) result(ierr)
+        use num_vars, only: norm_disc_prec_eq
         use HELENA, only:  h_H_33, RBphi
         use utilities, only: calc_deriv
         
@@ -557,7 +865,7 @@ contains
         if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
             met%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         else if (sum(deriv).eq.0) then                                          ! no derivatives
-            do kd = 1,grid%grp_n_r
+            do kd = 1,grid%loc_n_r
                 do jd = 1,grid%n(2)
                     met%jac_E(:,jd,kd,0,0,0) = eq%q_saf_E(kd,0)/&
                         &(h_H_33(:,grid%i_min-1+kd)*RBphi(grid%i_min-1+kd))
@@ -567,7 +875,8 @@ contains
             do jd = 1,grid%n(2)
                 do id = 1,grid%n(1)
                     ierr = calc_deriv(met%jac_E(id,jd,:,0,0,0),&
-                        &met%jac_E(id,jd,:,1,0,0),grid%grp_r_E,1,2)             ! use extra precision to later calculate mixed derivatives
+                        &met%jac_E(id,jd,:,1,0,0),grid%loc_r_E,1,&
+                        &norm_disc_prec_eq+1)                                   ! use extra precision to later calculate mixed derivatives
                     CHCKERR('')
                 end do
             end do
@@ -575,31 +884,35 @@ contains
             do jd = 1,grid%n(2)
                 do id = 1,grid%n(1)
                     ierr = calc_deriv(met%jac_E(id,jd,:,0,0,0),&
-                        &met%jac_E(id,jd,:,2,0,0),grid%grp_r_E,2,1)
+                        &met%jac_E(id,jd,:,2,0,0),grid%loc_r_E,2,&
+                        &norm_disc_prec_eq)
                     CHCKERR('')
                 end do
             end do
         else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
-            do kd = 1,grid%grp_n_r
+            do kd = 1,grid%loc_n_r
                 do jd = 1,grid%n(2)
                     ierr = calc_deriv(met%jac_E(:,jd,kd,0,0,0),&
-                        &met%jac_E(:,jd,kd,0,1,0),grid%theta_E(:,jd,kd),1,2)    ! use extra precision to later calculate mixed derivatives
+                        &met%jac_E(:,jd,kd,0,1,0),grid%theta_E(:,jd,kd),1,&
+                        &norm_disc_prec_eq+1)                                   ! use extra precision to later calculate mixed derivatives
                     CHCKERR('')
                 end do
             end do
         else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
-            do kd = 1,grid%grp_n_r
+            do kd = 1,grid%loc_n_r
                 do jd = 1,grid%n(2)
                     ierr = calc_deriv(met%jac_E(:,jd,kd,0,0,0),&
-                        &met%jac_E(:,jd,kd,0,2,0),grid%theta_E(:,jd,kd),2,1)
+                        &met%jac_E(:,jd,kd,0,2,0),grid%theta_E(:,jd,kd),2,&
+                        &norm_disc_prec_eq)
                     CHCKERR('')
                 end do
             end do
         else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
-            do kd = 1,grid%grp_n_r
+            do kd = 1,grid%loc_n_r
                 do jd = 1,grid%n(2)
                     ierr = calc_deriv(met%jac_E(:,jd,kd,1,0,0),&
-                        &met%jac_E(:,jd,kd,1,1,0),grid%theta_E(:,jd,kd),1,1)
+                        &met%jac_E(:,jd,kd,1,1,0),grid%theta_E(:,jd,kd),1,&
+                        &norm_disc_prec_eq)
                     CHCKERR('')
                 end do
             end do
@@ -768,7 +1081,7 @@ contains
         CHCKERR('')
         
         ! set up dims
-        dims = [grid%n(1),grid%n(2),grid%grp_n_r]
+        dims = [grid%n(1),grid%n(2),grid%loc_n_r]
         
         ! initialize
         met%T_EF(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
@@ -948,7 +1261,7 @@ contains
         CHCKERR('')
         
         ! set up dims
-        dims = [grid%n(1),grid%n(2),grid%grp_n_r]
+        dims = [grid%n(1),grid%n(2),grid%loc_n_r]
         
         ! initialize
         met%T_EF(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
@@ -1108,7 +1421,7 @@ contains
     integer function calc_inv_met_ind(X,Y,deriv) result(ierr)                   ! matrix version
         use utilities, only: calc_inv, calc_mult, c, conv_sym
 #if ldebug
-        use num_vars, only: grp_n_procs
+        use num_vars, only: n_procs
 #endif
         
         character(*), parameter :: rout_name = 'calc_inv_met_ind'
@@ -1171,7 +1484,7 @@ contains
 #if ldebug
             ! check if X*Y is unity indeed if debugging
             if (debug_calc_inv_met_ind) then
-                if (grp_n_procs.gt.1) call writo('WARNING: Debugging of &
+                if (n_procs.gt.1) call writo('WARNING: Debugging of &
                     &calc_inv_met_ind should be done with one processor only')
                 call writo('checking if X*Y = 1')
                 call lvl_ud(1)
@@ -1592,10 +1905,11 @@ contains
         
         ! local variables
         integer :: id, kd                                                       ! counter
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         real(dp), allocatable :: res(:,:,:,:)                                   ! calculated result
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
+        integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         character(len=max_str_ln) :: err_msg                                    ! error message
         
@@ -1607,15 +1921,15 @@ contains
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
-        ierr = trim_grid(grid_eq,grid_trim)
+        ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
         
-        ! set total and group dimensions and group offset
+        ! set total and local dimensions and local offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_offset = [0,0,grid_trim%i_min-1]
+        loc_offset = [0,0,grid_trim%i_min-1]
         
         ! set up res
-        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,9))
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,9))
         res = 0.0_dp
         
         ! calc  res,  depending  on flux  used  in F  coordinates  and on  which
@@ -1626,48 +1940,49 @@ contains
             case (1)                                                            ! VMEC
                 if (use_pol_flux_F) then                                        ! using poloidal flux
                     ! calculate T_EF(1,1)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,1) = &
-                            &grid_trim%theta_F(:,:,kd)*eq%q_saf_E(kd,1) + &
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,1) = &
+                            &grid_eq%theta_F(:,:,kd)*eq%q_saf_E(kd,1) + &
                             &eq%L_E(:,:,kd,1,0,0)*eq%q_saf_E(kd,0)
                     end do
                     ! calculate T_EF(2,1)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,2) = &
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,2) = &
                             &(1._dp + eq%L_E(:,:,kd,0,1,0))*eq%q_saf_E(kd,0)
                     end do
                     ! calculate T_EF(3,1)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,3) = -1._dp + &
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,3) = -1._dp + &
                             &eq%L_E(:,:,kd,0,0,1)*eq%q_saf_E(kd,0)
                     end do
                     ! calculate T_EF(1,2)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,4) = eq%flux_p_E(kd,1)/(2*pi)
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,4) = eq%flux_p_E(kd,1)/(2*pi)
                     end do
                     ! calculate T_EF(1,3)
-                    res(:,:,:,7) = eq%L_E(:,:,1:grid_trim%grp_n_r,1,0,0)
+                    res(:,:,:,7) = eq%L_E(:,:,norm_id(1):norm_id(2),1,0,0)
                     ! calculate T_EF(2,3)
                     res(:,:,:,8) = 1._dp + &
-                        &eq%L_E(:,:,1:grid_trim%grp_n_r,0,1,0)
+                        &eq%L_E(:,:,norm_id(1):norm_id(2),0,1,0)
                     ! calculate T_EF(3,3)
-                    res(:,:,:,9) = eq%L_E(:,:,1:grid_trim%grp_n_r,0,0,1)
+                    res(:,:,:,9) = eq%L_E(:,:,norm_id(1):norm_id(2),0,0,1)
                 else                                                            ! using toroidal flux
                     ! calculate T_EF(1,1)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,1) = - eq%L_E(:,:,kd,1,0,0) + &
-                            &grid_trim%zeta_E(:,:,kd)*eq%rot_t_E(kd,1)
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,1) = - eq%L_E(:,:,kd,1,0,0) + &
+                            &grid_eq%zeta_E(:,:,kd)*eq%rot_t_E(kd,1)
                     end do
                     ! calculate T_EF(2,1)
                     res(:,:,:,2) = &
-                        &- (1._dp + eq%L_E(:,:,1:grid_trim%grp_n_r,0,1,0))
+                        &- (1._dp + eq%L_E(:,:,norm_id(1):norm_id(2),0,1,0))
                     ! calculate T_EF(3,1)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,3) = eq%rot_t_E(kd,0) - eq%L_E(:,:,kd,0,0,1)
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,3) = &
+                            &eq%rot_t_E(kd,0) - eq%L_E(:,:,kd,0,0,1)
                     end do
                     ! calculate T_EF(1,2)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,4) = - eq%flux_t_E(kd,1)/(2*pi)
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,4) = - eq%flux_t_E(kd,1)/(2*pi)
                     end do
                     ! calculate T_EF(3,3)
                     res(:,:,:,9) = -1._dp
@@ -1675,37 +1990,37 @@ contains
             case (2)                                                            ! HELENA
                 if (use_pol_flux_F) then                                        ! using poloidal flux
                     ! calculate T_EF(1,1)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,1) = &
-                            &- eq%q_saf_E(kd,1)*grid_trim%theta_E(:,:,kd)
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,1) = &
+                            &- eq%q_saf_E(kd,1)*grid_eq%theta_E(:,:,kd)
                     end do
                     ! calculate T_EF(2,1)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,2) = - eq%q_saf_E(kd,0)
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,2) = - eq%q_saf_E(kd,0)
                     end do
                     ! calculate T_EF(3,1)
                     res(:,:,:,3) = 1._dp
                     ! calculate T_EF(1,2)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,4) = eq%flux_p_E(kd,1)/(2*pi)
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,4) = eq%flux_p_E(kd,1)/(2*pi)
                     end do
                     ! calculate T_EF(2,3)
                     res(:,:,:,8) = 1._dp
                 else                                                            ! using toroidal flux
                     ! calculate T_EF(1,1)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,1) = &
-                            &eq%rot_t_E(kd,1)*grid_trim%zeta_E(:,:,kd)
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,1) = &
+                            &eq%rot_t_E(kd,1)*grid_eq%zeta_E(:,:,kd)
                     end do
                     ! calculate T_EF(2,1)
                     res(:,:,:,2) = -1._dp
                     ! calculate T_EF(3,1)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,3) = eq%rot_t_E(kd,0)
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,3) = eq%rot_t_E(kd,0)
                     end do
                     ! calculate T_EF(1,2)
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,4) = eq%flux_t_E(kd,1)/(2*pi)
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,4) = eq%flux_t_E(kd,1)/(2*pi)
                     end do
                     ! calculate T_EF(3,3)
                     res(:,:,:,9) = 1._dp
@@ -1732,8 +2047,8 @@ contains
                 
                 ! plot difference
                 call plot_diff_HDF5(res(:,:,:,c([kd,id],.false.)),&
-                    &met%T_EF(:,:,1:grid_trim%grp_n_r,c([kd,id],.false.),&
-                    &0,0,0),file_name,tot_dim,grp_offset,description,&
+                    &met%T_EF(:,:,norm_id(1):norm_id(2),c([kd,id],.false.),&
+                    &0,0,0),file_name,tot_dim,loc_offset,description,&
                     &output_message=.true.)
                 
                 call lvl_ud(-1)
@@ -1756,7 +2071,7 @@ contains
         use utilities, only: c, calc_deriv
         use grid_ops, only: trim_grid
         use eq_vars, only: vac_perm
-        use num_vars, only: eq_style
+        use num_vars, only: eq_style, norm_disc_prec_eq
         use HELENA, only: RBphi, h_H_11, h_H_12
         
         character(*), parameter :: rout_name = 'test_p'
@@ -1767,11 +2082,12 @@ contains
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         
         ! local variables
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
         integer :: id, jd, kd                                                   ! counters
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
+        integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         integer :: n_H(2)                                                       ! indices in Helena coords.
         
@@ -1784,35 +2100,35 @@ contains
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
-        ierr = trim_grid(grid_eq,grid_trim)
+        ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
         
         ! set up res
-        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,2))
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,2))
         
         ! user output
         call writo('Checking if mu_0 D2 p = 1/J (D3 B_2 - D2_B3)')
         call lvl_ud(1)
         
-        ! set total and group dimensions and group offset
+        ! set total and local dimensions and local offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_offset = [0,0,grid_trim%i_min-1]
+        loc_offset = [0,0,grid_trim%i_min-1]
         
         ! calculate mu_0 D2p
         res(:,:,:,1) = &
-            &(met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,1) - &
-            &met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,1,0))/&
-            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) - &
-            &(met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,0)*&
-            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,1) - &
-            &met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,0,0)*&
-            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,1,0))/ &
-            &(met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2)
-        res(:,:,:,1) = res(:,:,:,1)/met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)
+            &(met%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,1) - &
+            &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,1,0))/&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
+            &(met%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,0)*&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,1) - &
+            &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0)*&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,1,0))/ &
+            &(met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2)
+        res(:,:,:,1) = res(:,:,:,1)/met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)
         
         ! save mu_0 D2p in res
-        do kd = 1,grid_trim%grp_n_r
-            res(:,:,kd,2) = vac_perm*eq%pres_FD(kd,1)
+        do kd = norm_id(1),norm_id(2)
+            res(:,:,kd-norm_id(1)+1,2) = vac_perm*eq%pres_FD(kd,1)
         end do
         
         ! set some variables
@@ -1821,7 +2137,7 @@ contains
         
         ! plot difference
         call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
-            &grp_offset,description,output_message=.true.)
+            &loc_offset,description,output_message=.true.)
         
         call lvl_ud(-1)
         
@@ -1830,18 +2146,18 @@ contains
         call lvl_ud(1)
         
         ! calculate D3 B1
-        res(:,:,:,1) = met%g_FD(:,:,1:grid_trim%grp_n_r,c([1,3],.true.),0,0,1)/&
-            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) - &
-            &met%g_FD(:,:,1:grid_trim%grp_n_r,c([1,3],.true.),0,0,0)*&
-            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,1) / &
-            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2
+        res(:,:,:,1) = met%g_FD(:,:,norm_id(1):norm_id(2),c([1,3],.true.),0,0,1)/&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
+            &met%g_FD(:,:,norm_id(1):norm_id(2),c([1,3],.true.),0,0,0)*&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,1) / &
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2
         
         ! calculate D1 B3
-        res(:,:,:,2) = met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),1,0,0)/&
-            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) - &
-            &met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,0,0)*&
-            &met%jac_FD(:,:,1:grid_trim%grp_n_r,1,0,0) / &
-            &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2
+        res(:,:,:,2) = met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),1,0,0)/&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
+            &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0)*&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),1,0,0) / &
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2
         
         ! set some variables
         file_name = 'TEST_D1p'
@@ -1849,14 +2165,14 @@ contains
         
         ! plot difference
         call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
-            &grp_offset,description,output_message=.true.)
+            &loc_offset,description,output_message=.true.)
         
         call lvl_ud(-1)
         
         ! extra testing if Helena
         if (eq_style.eq.2) then
             ! set n_H
-            n_H = [grid_eq%i_min,grid_eq%i_min+grid_trim%grp_n_r-1]
+            n_H = grid_eq%i_min+norm_id-1
             
             ! user output
             call writo('Checking if D2 B_3 |F = D1 (qF+qh_11/F) |H')
@@ -1864,17 +2180,19 @@ contains
             
             ! calculate if D2 B_3 = D1 (qF) + D1 (q/F h_11)
             res(:,:,:,1) = &
-                &(met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,1,0)/&
-                &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) - &
-                &met%g_FD(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,0,0)*&
-                &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,1,0)/ &
-                &(met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2))
+                &(met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,1,0)/&
+                &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
+                &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0)*&
+                &met%jac_FD(:,:,norm_id(1):norm_id(2),0,1,0)/ &
+                &(met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2))
             do jd = 1,grid_trim%n(2)
                 do id = 1,grid_trim%n(1)
-                    ierr = calc_deriv(eq%q_saf_E(:,0)*RBphi(n_H(1):n_H(2))+&
-                        &eq%q_saf_E(:,0)*h_H_11(id,n_H(1):n_H(2))/&
+                    ierr = calc_deriv(eq%q_saf_E(norm_id(1):norm_id(2),0)*&
+                        &RBphi(n_H(1):n_H(2))+&
+                        &eq%q_saf_E(norm_id(1):norm_id(2),0)*&
+                        &h_H_11(id,n_H(1):n_H(2))/&
                         &RBphi(n_H(1):n_H(2)),res(id,jd,:,2),&
-                        &grid_trim%grp_r_E,1,1)
+                        &grid_trim%loc_r_E,1,norm_disc_prec_eq)
                     CHCKERR('')
                 end do
             end do
@@ -1885,7 +2203,7 @@ contains
             
             ! plot difference
             call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
-                &grp_offset,description,output_message=.true.)
+                &loc_offset,description,output_message=.true.)
             
             call lvl_ud(-1)
             
@@ -1895,19 +2213,22 @@ contains
             
             ! calculate if D3 B_2 = -q/F D2 h_11 + F D1 q
             res(:,:,:,1) = &
-                &met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,1)/&
-                &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0) - &
-                &met%g_FD(:,:,1:grid_trim%grp_n_r,c([2,3],.true.),0,0,0)*&
-                &met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,1)/ &
-                &(met%jac_FD(:,:,1:grid_trim%grp_n_r,0,0,0)**2)
-            do kd = 1,grid_trim%grp_n_r
+                &met%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,1)/&
+                &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
+                &met%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,0)*&
+                &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,1)/ &
+                &(met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2)
+            do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_trim%n(2)
-                    ierr = calc_deriv(h_H_12(:,n_H(1)+kd-1),res(:,jd,kd,2),&
-                        &grid_trim%theta_E(:,jd,kd),1,1)
+                    ierr = calc_deriv(h_H_12(:,kd+grid_eq%i_min-1),&
+                        &res(:,jd,kd-norm_id(1)+1,2),&
+                        &grid_eq%theta_E(:,jd,kd),1,norm_disc_prec_eq)
                     CHCKERR('')
                 end do
-                res(:,:,kd,2) = -eq%q_saf_E(kd,0)/RBphi(n_H(1)+kd-1) * &
-                    &res(:,:,kd,2) + RBphi(n_H(1)+kd-1)*eq%q_saf_E(kd,1)
+                res(:,:,kd-norm_id(1)+1,2) = &
+                    &-eq%q_saf_E(kd,0)/RBphi(kd+grid_eq%i_min-1) * &
+                    &res(:,:,kd-norm_id(1)+1,2) + RBphi(kd+grid_eq%i_min-1) * &
+                    &eq%q_saf_E(kd,1)
             end do
             
             ! set some variables
@@ -1916,7 +2237,7 @@ contains
             
             ! plot difference
             call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
-                &grp_offset,description,output_message=.true.)
+                &loc_offset,description,output_message=.true.)
             
             call lvl_ud(-1)
         end if
@@ -1946,11 +2267,12 @@ contains
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         
         ! local variables
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         real(dp), allocatable :: res(:,:,:)                                     ! result variable
         integer :: jd, kd                                                       ! counters
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
+        integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), pointer :: Dflux(:) => null()                                 ! points to D flux_p or D flux_t in E coordinates
@@ -1965,20 +2287,20 @@ contains
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
-        ierr = trim_grid(grid_eq,grid_trim)
+        ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
         
         ! set up res
-        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r))
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
         
-        ! set total and group dimensions and group offset
+        ! set total and local dimensions and local offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_offset = [0,0,grid_trim%i_min-1]
+        loc_offset = [0,0,grid_trim%i_min-1]
         
         ! 1. Compare with determinant of g_F
         
         ! calculate Jacobian from determinant of g_F
-        ierr = calc_det(res,met%g_F(:,:,1:grid_trim%grp_n_r,:,0,0,0),3)
+        ierr = calc_det(res,met%g_F(:,:,norm_id(1):norm_id(2),:,0,0,0),3)
         CHCKERR('')
         
         ! set some variables
@@ -1988,8 +2310,8 @@ contains
         
         ! plot difference
         call plot_diff_HDF5(res(:,:,:),&
-            &met%jac_F(:,:,1:grid_trim%grp_n_r,0,0,0)**2,&
-            &file_name,tot_dim,grp_offset,description,output_message=.true.)
+            &met%jac_F(:,:,norm_id(1):norm_id(2),0,0,0)**2,&
+            &file_name,tot_dim,loc_offset,description,output_message=.true.)
         
         ! 2. Compare with explicit formula
         
@@ -2008,18 +2330,19 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                do kd = 1,grid_trim%grp_n_r
-                    res(:,:,kd) = pmone * 2*pi * eq%R_E(:,:,kd,0,0,0)*&
+                do kd = norm_id(1),norm_id(2)
+                    res(:,:,kd-norm_id(1)+1) = pmone * 2*pi * &
+                        &eq%R_E(:,:,kd,0,0,0)*&
                         &(eq%R_E(:,:,kd,1,0,0)*eq%Z_E(:,:,kd,0,1,0) - &
                         &eq%Z_E(:,:,kd,1,0,0)*eq%R_E(:,:,kd,0,1,0)) / &
                         &(Dflux(kd)*(1+eq%L_E(:,:,kd,0,1,0)))
                 end do
             case (2)                                                            ! HELENA
-                do kd = 1,grid_trim%grp_n_r
+                do kd = norm_id(1),norm_id(2)
                     do jd = 1,grid_trim%n(2)
-                        res(:,jd,kd) = eq%q_saf_E(kd,0)/&
-                            &(h_H_33(:,grid_eq%i_min-1+kd)*&
-                            &RBphi(grid_eq%i_min-1+kd))                         ! h_H_33 = 1/R^2 and RBphi = F are tabulated in eq. grid
+                        res(:,jd,kd-norm_id(1)+1) = eq%q_saf_E(kd,0)/&
+                            &(h_H_33(:,kd+grid_eq%i_min-1)*&
+                            &RBphi(kd+grid_eq%i_min-1))                         ! h_H_33 = 1/R^2 and RBphi = F are tabulated in eq. grid
                     end do
                 end do
             case default
@@ -2036,8 +2359,8 @@ contains
         
         ! plot difference
         call plot_diff_HDF5(res(:,:,:),&
-            &met%jac_F(:,:,1:grid_trim%grp_n_r,0,0,0),file_name,tot_dim,&
-            &grp_offset,description,output_message=.true.)
+            &met%jac_F(:,:,norm_id(1):norm_id(2),0,0,0),file_name,tot_dim,&
+            &loc_offset,description,output_message=.true.)
         
         ! clean up
         nullify(Dflux)
@@ -2061,11 +2384,12 @@ contains
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         
         ! local variables
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: id, kd                                                       ! counters
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
+        integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         
         ! initialize ierr
@@ -2076,41 +2400,41 @@ contains
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
-        ierr = trim_grid(grid_eq,grid_trim)
+        ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
         
         ! set up res
-        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,6))
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,6))
         
-        ! set total and group dimensions and group offset
+        ! set total and local dimensions and local offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_offset = [0,0,grid_trim%i_min-1]
+        loc_offset = [0,0,grid_trim%i_min-1]
         
         ! calculate g_V(1,1)
-        res(:,:,:,1) = eq%R_E(:,:,1:grid_trim%grp_n_r,1,0,0)**2 + &
-            &eq%Z_E(:,:,1:grid_trim%grp_n_r,1,0,0)**2
+        res(:,:,:,1) = eq%R_E(:,:,norm_id(1):norm_id(2),1,0,0)**2 + &
+            &eq%Z_E(:,:,norm_id(1):norm_id(2),1,0,0)**2
         ! calculate g_V(2,1)
-        res(:,:,:,2) = eq%R_E(:,:,1:grid_trim%grp_n_r,1,0,0)*&
-            &eq%R_E(:,:,1:grid_trim%grp_n_r,0,1,0) + &
-            &eq%Z_E(:,:,1:grid_trim%grp_n_r,1,0,0)*&
-            &eq%Z_E(:,:,1:grid_trim%grp_n_r,0,1,0)
+        res(:,:,:,2) = eq%R_E(:,:,norm_id(1):norm_id(2),1,0,0)*&
+            &eq%R_E(:,:,norm_id(1):norm_id(2),0,1,0) + &
+            &eq%Z_E(:,:,norm_id(1):norm_id(2),1,0,0)*&
+            &eq%Z_E(:,:,norm_id(1):norm_id(2),0,1,0)
         ! calculate g_V(3,1)
-        res(:,:,:,3) = eq%R_E(:,:,1:grid_trim%grp_n_r,1,0,0)*&
-            &eq%R_E(:,:,1:grid_trim%grp_n_r,0,0,1) + &
-            &eq%Z_E(:,:,1:grid_trim%grp_n_r,1,0,0)*&
-            &eq%Z_E(:,:,1:grid_trim%grp_n_r,0,0,1)
+        res(:,:,:,3) = eq%R_E(:,:,norm_id(1):norm_id(2),1,0,0)*&
+            &eq%R_E(:,:,norm_id(1):norm_id(2),0,0,1) + &
+            &eq%Z_E(:,:,norm_id(1):norm_id(2),1,0,0)*&
+            &eq%Z_E(:,:,norm_id(1):norm_id(2),0,0,1)
         ! calculate g_V(2,2)
-        res(:,:,:,4) = eq%R_E(:,:,1:grid_trim%grp_n_r,0,1,0)**2 + &
-            &eq%Z_E(:,:,1:grid_trim%grp_n_r,0,1,0)**2
+        res(:,:,:,4) = eq%R_E(:,:,norm_id(1):norm_id(2),0,1,0)**2 + &
+            &eq%Z_E(:,:,norm_id(1):norm_id(2),0,1,0)**2
         ! calculate g_V(3,2)
-        res(:,:,:,5) = eq%R_E(:,:,1:grid_trim%grp_n_r,0,1,0)*&
-            &eq%R_E(:,:,1:grid_trim%grp_n_r,0,0,1) + &
-            &eq%Z_E(:,:,1:grid_trim%grp_n_r,0,1,0)*&
-            &eq%Z_E(:,:,1:grid_trim%grp_n_r,0,0,1)
+        res(:,:,:,5) = eq%R_E(:,:,norm_id(1):norm_id(2),0,1,0)*&
+            &eq%R_E(:,:,norm_id(1):norm_id(2),0,0,1) + &
+            &eq%Z_E(:,:,norm_id(1):norm_id(2),0,1,0)*&
+            &eq%Z_E(:,:,norm_id(1):norm_id(2),0,0,1)
         ! calculate g_V(3,3)
-        res(:,:,:,6) = eq%R_E(:,:,1:grid_trim%grp_n_r,0,0,1)**2 + &
-            &eq%Z_E(:,:,1:grid_trim%grp_n_r,0,0,1)**2 + &
-            &eq%R_E(:,:,1:grid_trim%grp_n_r,0,0,0)**2
+        res(:,:,:,6) = eq%R_E(:,:,norm_id(1):norm_id(2),0,0,1)**2 + &
+            &eq%Z_E(:,:,norm_id(1):norm_id(2),0,0,1)**2 + &
+            &eq%R_E(:,:,norm_id(1):norm_id(2),0,0,0)**2
         
         ! set up plot variables for calculated values
         do id = 1,3
@@ -2127,8 +2451,8 @@ contains
                 
                 ! plot difference
                 call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.)),&
-                    &met%g_E(:,:,1:grid_trim%grp_n_r,c([kd,id],.true.),&
-                    &0,0,0),file_name,tot_dim,grp_offset,description,&
+                    &met%g_E(:,:,norm_id(1):norm_id(2),c([kd,id],.true.),&
+                    &0,0,0),file_name,tot_dim,loc_offset,description,&
                     &output_message=.true.)
                 
                 call lvl_ud(-1)
@@ -2156,10 +2480,11 @@ contains
         type(met_type), intent(in) :: met                                       ! metric variables
         
         ! local variables
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         real(dp), allocatable :: res(:,:,:)                                     ! result variable
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
+        integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         
         ! initialize ierr
@@ -2171,20 +2496,22 @@ contains
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
-        ierr = trim_grid(grid_eq,grid_trim)
+        ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
         
-        ! set total and group dimensions and group offset
+        ! set total and local dimensions and local offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_offset = [0,0,grid_trim%i_min-1]
+        loc_offset = [0,0,grid_trim%i_min-1]
         
         ! set up res
-        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r))
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
         
         ! get jac_V from VMEC
-        ierr = fourier2real(jac_V_c(:,:,grid_trim%i_min:grid_trim%i_max),&
-            &jac_V_s(:,:,grid_trim%i_min:grid_trim%i_max),&
-            &grid_eq%trigon_factors(:,:,:,:,1:grid_trim%grp_n_r,:),&
+        ierr = fourier2real(jac_V_c(:,:,norm_id(1)+grid_eq%i_min-1:&
+            &norm_id(2)+grid_eq%i_min-1),&
+            &jac_V_s(:,:,norm_id(1)+grid_eq%i_min-1:&
+            &norm_id(2)+grid_eq%i_min-1),&
+            &grid_eq%trigon_factors(:,:,:,:,norm_id(1):norm_id(2),:),&
             &res,[0,0])
         CHCKERR('')
         write(*,*) 'done calculating fourier'
@@ -2199,8 +2526,8 @@ contains
         
         ! plot difference
         call plot_diff_HDF5(res(:,:,:),&
-            &met%jac_E(:,:,1:grid_trim%grp_n_r,0,0,0),file_name,&
-            &tot_dim,grp_offset,description,output_message=.true.)
+            &met%jac_E(:,:,norm_id(1):norm_id(2),0,0,0),file_name,&
+            &tot_dim,loc_offset,description,output_message=.true.)
         
         call lvl_ud(-1)
         
@@ -2228,12 +2555,13 @@ contains
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         
         ! local variables
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: id, kd                                                       ! counters
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
         real(dp), allocatable :: res2(:,:,:,:)                                  ! result variable
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
+        integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         character(len=max_str_ln) :: err_msg                                    ! error message
         
@@ -2246,16 +2574,16 @@ contains
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
-        ierr = trim_grid(grid_eq,grid_trim)
+        ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
         
         ! set up res and res2
-        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,4))
-        allocate(res2(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,4))
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,4))
+        allocate(res2(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,4))
         
-        ! set total and group dimensions and group offset
+        ! set total and local dimensions and local offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_offset = [0,0,grid_trim%i_min-1]
+        loc_offset = [0,0,grid_trim%i_min-1]
         
         ! get covariant components and magnitude of B_E
         ! choose which equilibrium style is being used:
@@ -2265,33 +2593,38 @@ contains
             case (1)                                                            ! VMEC
                 do id = 1,3
                     ierr = fourier2real(&
-                        &B_V_sub_c(:,:,grid_trim%i_min:grid_trim%i_max,id),&
-                        &B_V_sub_s(:,:,grid_trim%i_min:grid_trim%i_max,id),&
-                        &grid_eq%trigon_factors(:,:,:,:,1:grid_trim%grp_n_r,:),&
-                        &res(:,:,:,id),[0,0])
+                        &B_V_sub_c(:,:,norm_id(1)+grid_eq%i_min-1:&
+                        &norm_id(2)+grid_eq%i_min-1,id),&
+                        &B_V_sub_s(:,:,norm_id(1)+grid_eq%i_min-1:&
+                        &norm_id(2)+grid_eq%i_min-1,id),&
+                        &grid_eq%trigon_factors(:,:,:,:,norm_id(1):&
+                        &norm_id(2),:),res(:,:,:,id),[0,0])
                     CHCKERR('')
                 end do
-                ierr = fourier2real(B_V_c(:,:,grid_trim%i_min:grid_trim%i_max),&
-                    &B_V_s(:,:,grid_trim%i_min:grid_trim%i_max),&
-                    &grid_eq%trigon_factors(:,:,:,:,1:grid_trim%grp_n_r,:),&
+                ierr = fourier2real(B_V_c(:,:,norm_id(1)+grid_eq%i_min-1:&
+                        &norm_id(2)+grid_eq%i_min-1),&
+                    &B_V_s(:,:,norm_id(1)+grid_eq%i_min-1:&
+                        &norm_id(2)+grid_eq%i_min-1),&
+                    &grid_eq%trigon_factors(:,:,:,:,norm_id(1):norm_id(2),:),&
                     &res(:,:,:,4),[0,0])
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 res(:,:,:,1) = &
-                    &met%g_E(:,:,1:grid_trim%grp_n_r,c([1,2],.true.),0,0,0)
+                    &met%g_E(:,:,norm_id(1):norm_id(2),c([1,2],.true.),0,0,0)
                 res(:,:,:,2) = &
-                    &met%g_E(:,:,1:grid_trim%grp_n_r,c([2,2],.true.),0,0,0)
-                do kd = 1,grid_trim%grp_n_r
-                    res(:,:,kd,3) = eq%q_saf_E(kd,0)*&
+                    &met%g_E(:,:,norm_id(1):norm_id(2),c([2,2],.true.),0,0,0)
+                do kd = norm_id(1),norm_id(2)
+                    res(:,:,kd-norm_id(1)+1,3) = eq%q_saf_E(kd,0)*&
                         &met%g_E(:,:,kd,c([3,3],.true.),0,0,0)
-                    res(:,:,kd,4) = &
+                    res(:,:,kd-norm_id(1)+1,4) = &
                         &sqrt(met%g_E(:,:,kd,c([2,2],.true.),0,0,0) + &
                         &eq%q_saf_E(kd,0)**2*&
                         &met%g_E(:,:,kd,c([3,3],.true.),0,0,0))
                 end do
                 do id = 1,4
-                    do kd = 1,grid_trim%grp_n_r
-                        res(:,:,kd,id) = res(:,:,kd,id)/met%jac_E(:,:,kd,0,0,0)
+                    do kd = norm_id(1),norm_id(2)
+                        res(:,:,kd-norm_id(1)+1,id) = &
+                            &res(:,:,kd-norm_id(1)+1,id)/met%jac_E(:,:,kd,0,0,0)
                     end do
                 end do
             case default
@@ -2306,7 +2639,7 @@ contains
         do id = 1,3
             do kd = 1,3
                 res2(:,:,:,id) = res(:,:,:,kd) * &
-                    &met%T_FE(:,:,1:grid_trim%grp_n_r,c([id,kd],.false.),0,0,0)
+                    &met%T_FE(:,:,norm_id(1):norm_id(2),c([id,kd],.false.),0,0,0)
             end do
         end do
         res2(:,:,:,4) = res(:,:,:,4)
@@ -2334,14 +2667,14 @@ contains
             ! plot difference
             if (id.lt.4) then
                 call plot_diff_HDF5(res2(:,:,:,id),&
-                    &met%g_F(:,:,1:grid_trim%grp_n_r,c([3,id],.true.),0,0,0)/&
-                    &met%jac_F(:,:,1:grid_trim%grp_n_r,0,0,0),file_name,&
-                    &tot_dim,grp_offset,description,output_message=.true.)
+                    &met%g_F(:,:,norm_id(1):norm_id(2),c([3,id],.true.),0,0,0)/&
+                    &met%jac_F(:,:,norm_id(1):norm_id(2),0,0,0),file_name,&
+                    &tot_dim,loc_offset,description,output_message=.true.)
             else
                 call plot_diff_HDF5(res2(:,:,:,id),sqrt(&
-                    &met%g_F(:,:,1:grid_trim%grp_n_r,c([3,3],.true.),0,0,0))/&
-                    &met%jac_F(:,:,1:grid_trim%grp_n_r,0,0,0),file_name,&
-                    &tot_dim,grp_offset,description,output_message=.true.)
+                    &met%g_F(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0))/&
+                    &met%jac_F(:,:,norm_id(1):norm_id(2),0,0,0),file_name,&
+                    &tot_dim,loc_offset,description,output_message=.true.)
             end if
             
             call lvl_ud(-1)
@@ -2359,6 +2692,7 @@ contains
     integer function test_D12h_H(grid_eq,met) result(ierr)
         use grid_ops, only: trim_grid
         use utilities, only: c, calc_deriv
+        use num_vars, only: norm_disc_prec_eq
         
         character(*), parameter :: rout_name = 'test_D12h_H'
         
@@ -2367,11 +2701,12 @@ contains
         type(met_type), intent(in) :: met                                       ! metric variables
         
         ! local variables
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: id, jd, kd, ld                                               ! counters
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
+        integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         
         ! initialize ierr
@@ -2382,22 +2717,24 @@ contains
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
-        ierr = trim_grid(grid_eq,grid_trim)
+        ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
         
         ! set up res
-        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,6))
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,6))
         
-        ! set total and group dimensions and group offset
+        ! set total and local dimensions and local offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_offset = [0,0,grid_trim%i_min-1]
+        loc_offset = [0,0,grid_trim%i_min-1]
         
         ! calculate D1 D2 h_H alternatively
         do ld = 1,6
-            do kd = 1,grid_trim%grp_n_r
+            do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_trim%n(2)
                     ierr = calc_deriv(met%h_E(:,jd,kd,ld,1,0,0),&
-                        &res(:,jd,kd,ld),grid_trim%theta_E(:,jd,kd),1,1)
+                        &res(:,jd,kd-norm_id(1)+1,ld),&
+                        &grid_eq%theta_E(:,jd,kd),1,&
+                        &norm_disc_prec_eq)
                     CHCKERR('')
                 end do
             end do
@@ -2419,8 +2756,8 @@ contains
                 
                 ! plot difference
                 call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.)),&
-                    &met%h_E(:,:,grid_trim%i_min:grid_trim%i_max,&
-                    &c([kd,id],.true.),1,1,0),file_name,tot_dim,grp_offset,&
+                    &met%h_E(:,:,norm_id(1):norm_id(2),&
+                    &c([kd,id],.true.),1,1,0),file_name,tot_dim,loc_offset,&
                     &description,output_message=.true.)
                 
                 call lvl_ud(-1)
@@ -2437,6 +2774,7 @@ contains
     
     ! Tests whether the derivatives of g_E are calculated correctly
     integer function test_Dg_E(grid_eq,met) result(ierr)
+        use num_vars, only: norm_disc_prec_eq
         use grid_ops, only: trim_grid
         use utilities, only: c, calc_deriv
         
@@ -2447,11 +2785,12 @@ contains
         type(met_type), intent(in) :: met                                       ! metric variables
         
         ! local variables
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: id, jd, kd, ld                                               ! counters
         real(dp), allocatable :: res(:,:,:,:,:)                                 ! result variable
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), grp_offset(3)                                    ! total dimensions and group offset
+        integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         integer :: deriv(3)                                                     ! derivatives
         integer :: deriv2(3)                                                    ! derivatives
@@ -2465,18 +2804,18 @@ contains
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
-        ierr = trim_grid(grid_eq,grid_trim)
+        ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
         
         ! set up res
         ! Note: last index:
         !   1..3: Di,   i=1..3
         !   4..12: Dij, i=1..3, j=1..3
-        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%grp_n_r,6,12))
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,6,12))
         
-        ! set total and group dimensions and group offset
+        ! set total and local dimensions and local offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        grp_offset = [0,0,grid_trim%i_min-1]
+        loc_offset = [0,0,grid_trim%i_min-1]
         
         ! calculate first derivatives of g_E individually
         ! D1 (psi)
@@ -2484,8 +2823,9 @@ contains
         do ld = 1,6
             do jd = 1,grid_trim%n(2)
                 do id = 1,grid_trim%n(1)
-                    ierr = calc_deriv(met%g_E(id,jd,:,ld,0,0,0),&
-                        &res(id,jd,:,ld,1),grid_trim%grp_r_E,1,2)
+                    ierr = calc_deriv(met%g_E(id,jd,norm_id(1):norm_id(2),ld,&
+                        &0,0,0),res(id,jd,:,ld,1),grid_trim%loc_r_E,1,&
+                        &norm_disc_prec_eq+1)
                     CHCKERR('')
                 end do
             end do
@@ -2493,10 +2833,12 @@ contains
         ! D2 (theta)
         call writo('calculating derivatives in theta')
         do ld = 1,6
-            do kd = 1,grid_trim%grp_n_r
+            do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_trim%n(2)
                     ierr = calc_deriv(met%g_E(:,jd,kd,ld,0,0,0),&
-                        &res(:,jd,kd,ld,2),grid_trim%theta_E(:,jd,kd),1,2)
+                        &res(:,jd,kd-norm_id(1)+1,ld,2),&
+                        &grid_eq%theta_E(:,jd,kd),1,&
+                        &norm_disc_prec_eq+1)
                     CHCKERR('')
                 end do
             end do
@@ -2511,8 +2853,9 @@ contains
         do ld = 1,6
             do jd = 1,grid_trim%n(2)
                 do id = 1,grid_trim%n(1)
-                    ierr = calc_deriv(met%g_E(id,jd,:,ld,1,0,0),&
-                        &res(id,jd,:,ld,4),grid_trim%grp_r_E,1,1)
+                    ierr = calc_deriv(met%g_E(id,jd,norm_id(1):norm_id(2),ld,&
+                        &1,0,0),res(id,jd,:,ld,4),grid_trim%loc_r_E,1,&
+                        &norm_disc_prec_eq)
                     CHCKERR('')
                 end do
             end do
@@ -2522,8 +2865,9 @@ contains
         do ld = 1,6
             do jd = 1,grid_trim%n(2)
                 do id = 1,grid_trim%n(1)
-                    ierr = calc_deriv(met%g_E(id,jd,:,ld,0,1,0),&
-                        &res(id,jd,:,ld,5),grid_trim%grp_r_E,1,1)
+                    ierr = calc_deriv(met%g_E(id,jd,norm_id(1):norm_id(2),ld,&
+                        &0,1,0),res(id,jd,:,ld,5),grid_trim%loc_r_E,1,&
+                        &norm_disc_prec_eq)
                     CHCKERR('')
                 end do
             end do
@@ -2533,8 +2877,9 @@ contains
         do ld = 1,6
             do jd = 1,grid_trim%n(2)
                 do id = 1,grid_trim%n(1)
-                    ierr = calc_deriv(met%g_E(id,jd,:,ld,0,0,1),&
-                        &res(id,jd,:,ld,6),grid_trim%grp_r_E,1,1)
+                    ierr = calc_deriv(met%g_E(id,jd,norm_id(1):norm_id(2),ld,&
+                        &0,0,1),res(id,jd,:,ld,6),grid_trim%loc_r_E,1,&
+                        &norm_disc_prec_eq)
                     CHCKERR('')
                 end do
             end do
@@ -2542,10 +2887,11 @@ contains
         ! D12 (r,theta)
         call writo('calculating derivatives in r,theta')
         do ld = 1,6
-            do kd = 1,grid_trim%grp_n_r
+            do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_trim%n(2)
                     ierr = calc_deriv(met%g_E(:,jd,kd,ld,1,0,0),&
-                        &res(:,jd,kd,ld,7),grid_trim%theta_E(:,jd,kd),1,1)
+                        &res(:,jd,kd-norm_id(1)+1,ld,7),&
+                        &grid_eq%theta_E(:,jd,kd),1,norm_disc_prec_eq)
                     CHCKERR('')
                 end do
             end do
@@ -2553,10 +2899,11 @@ contains
         ! D22 (theta,theta)
         call writo('calculating derivatives in theta,theta')
         do ld = 1,6
-            do kd = 1,grid_trim%grp_n_r
+            do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_trim%n(2)
                     ierr = calc_deriv(met%g_E(:,jd,kd,ld,0,1,0),&
-                        &res(:,jd,kd,ld,8),grid_trim%theta_E(:,jd,kd),1,1)
+                        &res(:,jd,kd-norm_id(1)+1,ld,8),&
+                        &grid_eq%theta_E(:,jd,kd),1,norm_disc_prec_eq)
                     CHCKERR('')
                 end do
             end do
@@ -2564,10 +2911,11 @@ contains
         ! D32 (zeta,theta)
         call writo('calculating derivatives in zeta,theta')
         do ld = 1,6
-            do kd = 1,grid_trim%grp_n_r
+            do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_trim%n(2)
                     ierr = calc_deriv(met%g_E(:,jd,kd,ld,0,0,1),&
-                        &res(:,jd,kd,ld,9),grid_trim%theta_E(:,jd,kd),1,1)
+                        &res(:,jd,kd-norm_id(1)+1,ld,9),&
+                        &grid_eq%theta_E(:,jd,kd),1,norm_disc_prec_eq)
                     CHCKERR('')
                 end do
             end do
@@ -2592,9 +2940,9 @@ contains
                 
                 ! plot underived quantity
                 call plot_HDF5(file_name,file_name,&
-                    &met%g_E(:,:,grid_trim%i_min:grid_trim%i_max,&
+                    &met%g_E(:,:,norm_id(1):norm_id(2),&
                     &c([kd,id],.true.),0,0,0),tot_dim=tot_dim,&
-                    &grp_offset=grp_offset,description=description)
+                    &loc_offset=loc_offset,description=description)
                 do ld = 1,3
                     ! user output
                     call writo('Testing D'//trim(i2str(ld))//'g_E('//&
@@ -2614,9 +2962,9 @@ contains
                     
                     ! plot difference
                     call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.),ld),&
-                        &met%g_E(:,:,grid_trim%i_min:grid_trim%i_max,&
+                        &met%g_E(:,:,norm_id(1):norm_id(2),&
                         &c([kd,id],.true.),deriv(1),deriv(2),deriv(3)),&
-                        &file_name,tot_dim,grp_offset,description,&
+                        &file_name,tot_dim,loc_offset,description,&
                         &output_message=.true.)
                     
                     call lvl_ud(-1)
@@ -2643,9 +2991,9 @@ contains
                         ! plot difference
                         call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.),&
                             &3+ld+(jd-1)*3),met%g_E(:,:,&
-                            &grid_trim%i_min:grid_trim%i_max,c([kd,id],.true.),&
+                            &norm_id(1):norm_id(2),c([kd,id],.true.),&
                             &deriv(1)+deriv2(1),deriv(2)+deriv2(2),&
-                            &deriv(3)+deriv2(3)),file_name,tot_dim,grp_offset,&
+                            &deriv(3)+deriv2(3)),file_name,tot_dim,loc_offset,&
                             &description,output_message=.true.)
                         
                         call lvl_ud(-1)

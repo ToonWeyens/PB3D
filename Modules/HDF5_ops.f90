@@ -49,7 +49,7 @@ module HDF5_ops
     type var_1D
         real(dp), allocatable :: p(:)                                           ! 1D equivalent of data of variable
         integer, allocatable :: tot_i_min(:), tot_i_max(:)                      ! total min. and max. of indices of variable
-        integer, allocatable :: grp_i_min(:), grp_i_max(:)                      ! group min. and max. of indices of variable
+        integer, allocatable :: loc_i_min(:), loc_i_max(:)                      ! group min. and max. of indices of variable
         character(len=max_str_ln) :: var_name                                   ! name of variable
     end type var_1D
     
@@ -105,7 +105,7 @@ contains
     ! [MPI] Parts by all processes, parts only by group master
     integer function open_HDF5_file(file_info,file_name,description,&
         &ind_plot) result(ierr)
-        use num_vars, only: MPI_Comm_groups, grp_rank
+        use num_vars, only: rank
         use MPI
         use files_utilities, only: nextunit
         
@@ -134,7 +134,7 @@ contains
         if (ind_plot_loc) then
             MPI_Comm = MPI_Comm_self                                            ! individual plot
         else
-            MPI_Comm = MPI_Comm_groups                                          ! default group communicator
+            MPI_Comm = MPI_Comm_world                                           ! default world communicator
         end if
         
         ! set up full file name
@@ -162,7 +162,7 @@ contains
         file_info%name = file_name
         
         ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
             ! open accompanying xmf file
             open(unit=nextunit(file_info%XDMF_i),&
                 &file=trim(full_file_name)//'.xmf',iostat=ierr)
@@ -186,7 +186,7 @@ contains
     ! Closes an HDF5 file and writes the accompanying xmf file
     ! [MPI] Parts by all processes, parts only by group master
     integer function close_HDF5_file(file_info,ind_plot) result(ierr)
-        use num_vars, only: grp_rank
+        use num_vars, only: rank
         
         character(*), parameter :: rout_name = 'close_HDF5_file'
         
@@ -220,7 +220,7 @@ contains
         CHCKERR(err_msg)
         
         ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
             ! close header
             write(file_info%XDMF_i,xmf_fmt) '</Domain>'
             write(file_info%XDMF_i,xmf_fmt) '</Xdmf>'
@@ -240,7 +240,7 @@ contains
     ! geometries that are used throughout)
     ! [MPI] Only group master
     subroutine add_HDF5_item(file_info,XDMF_item,reset,ind_plot)
-        use num_vars, only: grp_rank
+        use num_vars, only: rank
         
         ! input / output
         type(HDF5_file_type) :: file_info                                       ! info about HDF5 file
@@ -258,7 +258,7 @@ contains
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
             ! set item_len
             item_len = size(XDMF_item%xml_str)
             
@@ -284,7 +284,7 @@ contains
     ! deallocation does not work properly>
     ! [MPI] Only group master
     subroutine reset_HDF5_item_arr(XDMF_items,ind_plot)                         ! array version
-        use num_vars, only: grp_rank
+        use num_vars, only: rank
         
         ! input / output
         type(XML_str_type) :: XDMF_items(:)                                     ! XDMF items to reset
@@ -302,7 +302,7 @@ contains
         n_items = size(XDMF_items)
         
         ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
             do id = 1,n_items
                 if (.not.allocated(XDMF_items(id)%xml_str)) then
                     call writo('WARNING: Could not reset HDF5 XDMF item "'&
@@ -317,7 +317,7 @@ contains
         end if
     end subroutine reset_HDF5_item_arr
     subroutine reset_HDF5_item_ind(XDMF_item,ind_plot)                          ! individual version
-        use num_vars, only: grp_rank
+        use num_vars, only: rank
         
         ! input / output
         type(XML_str_type) :: XDMF_item                                         ! XDMF item to reset
@@ -330,7 +330,7 @@ contains
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
             if (.not.allocated(XDMF_item%xml_str)) then
                 call writo('WARNING: Could not reset HDF5 XDMF item "'&
                     &//trim(XDMF_item%name)//'"')
@@ -348,8 +348,8 @@ contains
     ! specified as well.
     ! [MPI] Parts by all processes, parts only by group master
     integer function print_HDF5_3D_data_item(dataitem_id,file_info,var_name,&
-        &var,tot_dim,grp_dim,grp_offset,init_val,ind_plot) result(ierr)
-        use num_vars, only: grp_rank
+        &var,tot_dim,loc_dim,loc_offset,init_val,ind_plot) result(ierr)
+        use num_vars, only: rank
         
         character(*), parameter :: rout_name = 'print_HDF5_3D_data_item'
         
@@ -359,15 +359,15 @@ contains
         character(len=*), intent(in) :: var_name                                ! name of variable
         real(dp), intent(in) :: var(:,:,:)                                      ! variable to write
         integer, intent(in) :: tot_dim(3)                                       ! total dimensions of variable
-        integer, intent(in), optional :: grp_dim(3)                             ! dimensions in this group
-        integer, intent(in), optional :: grp_offset(3)                          ! offset in this group
+        integer, intent(in), optional :: loc_dim(3)                             ! dimensions in this group
+        integer, intent(in), optional :: loc_offset(3)                          ! offset in this group
         real(dp), intent(in), optional :: init_val                              ! initial fill value
         logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
         integer :: id                                                           ! counter
-        integer :: grp_dim_loc(3)                                               ! local copy of grp_dim
-        integer :: grp_offset_loc(3)                                            ! local copy of grp_offset
+        integer :: loc_dim_loc(3)                                               ! local copy of loc_dim
+        integer :: loc_offset_loc(3)                                            ! local copy of loc_offset
         integer(HSIZE_T) :: dimsf(3)                                            ! total dataset dimensions
         integer(HSIZE_T) :: dimsm(3)                                            ! group dataset dimensions
         integer(HID_T) :: filespace                                             ! dataspace identifier in file 
@@ -394,20 +394,20 @@ contains
         HDF5_kind_64 = H5kind_to_type(dp,H5_REAL_KIND)
         
         ! set the group dimensions and offset
-        ierr = check_for_parallel_3D(tot_dim,grp_dim_loc,grp_offset_loc,&
-            &grp_dim,grp_offset)
+        ierr = check_for_parallel_3D(tot_dim,loc_dim_loc,loc_offset_loc,&
+            &loc_dim,loc_offset)
         CHCKERR('')
         
         ! create the data spaces for the dataset. 
         dimsf = tot_dim
-        dimsm = grp_dim_loc
+        dimsm = loc_dim_loc
         call H5Screate_simple_f(size(dimsf),dimsf,filespace,ierr)
         CHCKERR('Failed to create file space')
         call H5Screate_simple_f(size(dimsm),dimsm,memspace,ierr)
         CHCKERR('Failed to create memory space')
         
         !! create chunked dataset.
-        !dimsm = file_info%grp_dim
+        !dimsm = file_info%loc_dim
         !call H5Pset_chunk_f(plist_id,size(dimsm),dimsm,ierr)
         !CHCKERR('Failed to set chunk property')                                 ! DOESN'T SEEM TO WORK WITH CHUNKED PROPERTY!!!
         
@@ -435,8 +435,8 @@ contains
         ! select hyperslab in the file.
         mem_count = 1
         mem_stride = 1
-        mem_block = grp_dim_loc
-        mem_offset = grp_offset_loc
+        mem_block = loc_dim_loc
+        mem_offset = loc_offset_loc
         call H5Dget_space_f(dset_id,filespace,ierr)
         CHCKERR('Failed to get file space')
         call H5Sselect_hyperslab_f(filespace,H5S_SELECT_SET_F,mem_offset,&
@@ -467,7 +467,7 @@ contains
         CHCKERR('Failed to close data set')
         
         ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
             ! set up dimensions string
             dim_str = ''
             do id = 1,size(tot_dim)
@@ -489,14 +489,14 @@ contains
     contains
         ! check whether the  dimensions provided are a  valid parallel indicator
         ! or not
-        integer function check_for_parallel_3D(tot_dim,grp_dim_out,&
-            &grp_offset_out,grp_dim_in,grp_offset_in) result(ierr)
+        integer function check_for_parallel_3D(tot_dim,loc_dim_out,&
+            &loc_offset_out,loc_dim_in,loc_offset_in) result(ierr)
             character(*), parameter :: rout_name = 'check_for_parallel_3D'
             
             ! input / output
             integer, intent(in) :: tot_dim(3)                                   ! total dimension
-            integer, intent(inout) :: grp_dim_out(3), grp_offset_out(3)         ! output group dimension and offset
-            integer, intent(in), optional :: grp_dim_in(3), grp_offset_in(3)    ! input group dimension and offset
+            integer, intent(inout) :: loc_dim_out(3), loc_offset_out(3)         ! output group dimension and offset
+            integer, intent(in), optional :: loc_dim_in(3), loc_offset_in(3)    ! input group dimension and offset
             
             ! local variables
             character(len=max_str_ln) :: err_msg                                ! error message
@@ -505,18 +505,18 @@ contains
             ! initialize ierr
             ierr = 0
             
-            if (present(grp_dim_in)) then
-                if (.not.present(grp_offset_in)) then
+            if (present(loc_dim_in)) then
+                if (.not.present(loc_offset_in)) then
                     err_msg = 'Need to specify offset as well as group &
                         &dimensions'
                     ierr = 1
                     CHCKERR(err_msg)
                 else
-                    grp_dim_out = grp_dim_in
-                    grp_offset_out = grp_offset_in
+                    loc_dim_out = loc_dim_in
+                    loc_offset_out = loc_offset_in
                 end if
                 do id = 1,size(tot_dim)
-                    if (grp_dim_in(id).gt.tot_dim(id)) then                     ! error in parallel file
+                    if (loc_dim_in(id).gt.tot_dim(id)) then                     ! error in parallel file
                         err_msg = 'Total dimension '//trim(i2str(id))//&
                             &' cannot be smaller than group dimension'
                         ierr = 1
@@ -524,8 +524,8 @@ contains
                     end if
                 end do
             else
-                grp_dim_out = tot_dim
-                grp_offset_out = 0
+                loc_dim_out = tot_dim
+                loc_offset_out = 0
             end if
         end function check_for_parallel_3D
     end function print_HDF5_3D_data_item
@@ -534,7 +534,7 @@ contains
     ! [MPI] Only group master
     subroutine print_HDF5_att(att_id,att_dataitem,att_name,att_center,reset,&
         &ind_plot)
-        use num_vars, only: grp_rank
+        use num_vars, only: rank
         
         ! input / output
         type(XML_str_type) :: att_id                                            ! ID of attribute
@@ -554,7 +554,7 @@ contains
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
             ! set dataitem_len
             dataitem_len = size(att_dataitem%xml_str)
             
@@ -588,7 +588,7 @@ contains
     ! Note: currently only structured grids supported
     ! [MPI] Only group master
     subroutine print_HDF5_top(top_id,top_type,top_n_elem,ind_plot)
-        use num_vars, only: grp_rank
+        use num_vars, only: rank
         
         ! input / output
         type(XML_str_type) ::  top_id                                           ! ID of topology
@@ -606,7 +606,7 @@ contains
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
             ! set n_dims
             n_dims = size(top_n_elem)
             
@@ -632,7 +632,7 @@ contains
     ! prints an HDF5 geometry
     ! [MPI] Only group master
     subroutine print_HDF5_geom(geom_id,geom_type,geom_dataitems,reset,ind_plot)
-        use num_vars, only: grp_rank
+        use num_vars, only: rank
         
         ! input / output
         type(XML_str_type) ::  geom_id                                          ! ID of geometry
@@ -653,7 +653,7 @@ contains
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
             ! set n_dataitems
             n_dataitems = size(geom_dataitems)
             
@@ -701,7 +701,7 @@ contains
     ! [MPI] Only group master
     integer function print_HDF5_grid(grid_id,grid_name,grid_type,grid_time,&
         &grid_top,grid_geom,grid_atts,grid_grids,reset,ind_plot) result(ierr)
-        use num_vars, only: grp_rank
+        use num_vars, only: rank
         
         character(*), parameter :: rout_name = 'print_HDF5_grid'
         
@@ -738,7 +738,7 @@ contains
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.grp_rank.eq.0) then
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
             ! test whether the correct arguments are provided
             if (grid_type.eq.1) then                                            ! uniform grid
                 ! no  requirements: topology and/or  geometry can be  defined in
@@ -884,7 +884,7 @@ contains
     
     ! creates an HDF5 output file
     integer function create_output_HDF5() result(ierr)
-        use num_vars, only: grp_rank, output_name, alpha_job_nr, n_alpha
+        use num_vars, only: rank, prog_name, output_name
         
         character(*), parameter :: rout_name = 'create_output_HDF5'
         
@@ -896,14 +896,16 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! user output
+        call writo('Creating HDF5 output file')
+        
+        call lvl_ud(1)
+        
         ! set full output name
-        full_output_name = trim(output_name)
-        if (n_alpha.gt.1) full_output_name = &
-            &trim(full_output_name)//'_A'//trim(i2str(alpha_job_nr))            ! append alpha job number
-        full_output_name = trim(full_output_name)//'.h5'
+        full_output_name = prog_name//'_'//output_name//'.h5'
         
         ! only for group master
-        if (grp_rank.eq.0) then
+        if (rank.eq.0) then
             ! initialize FORTRAN predefined datatypes
             call H5open_f(ierr) 
             CHCKERR('Failed to initialize HDF5')
@@ -924,6 +926,8 @@ contains
         end if
         
         ! user output
+        call lvl_ud(-1)
+        
         call writo('HDF5 output file '//trim(full_output_name)//' created')
     end function create_output_HDF5
     
@@ -932,8 +936,8 @@ contains
     ! Note: See https://www.hdfgroup.org/HDF5/doc/UG/12_Dataspaces.html, 7.4.2.3
     ! for an explanation of the selection of the dataspaces.
     integer function print_HDF5_arrs(vars,head_name) result(ierr)
-        use num_vars, only: MPI_Comm_groups, grp_n_procs, output_name, &
-            &alpha_job_nr, n_alpha, grp_rank
+        use num_vars, only: n_procs, prog_name, &
+            &output_name, rank
         use messages, only: lvl_ud
         use MPI
         
@@ -974,16 +978,13 @@ contains
         call writo('Preparing...')
         
         ! set up full output name
-        full_output_name = trim(output_name)
-        if (n_alpha.gt.1) full_output_name = &
-            &trim(full_output_name)//'_A'//trim(i2str(alpha_job_nr))            ! append alpha job number
-        full_output_name = trim(full_output_name)//'.h5'
+        full_output_name = prog_name//'_'//output_name//'.h5'
         
         ! set up MPI Communicator
-        if (grp_n_procs.eq.1) then
+        if (n_procs.eq.1) then
             MPI_Comm = MPI_Comm_self                                            ! individual plot
         else
-            MPI_Comm = MPI_Comm_groups                                          ! default group communicator
+            MPI_Comm = MPI_Comm_world                                           ! default world communicator
         end if
         
         ! initialize FORTRAN predefined datatypes
@@ -1092,7 +1093,7 @@ contains
             CHCKERR('Failed to create file data set')
             
             ! only group leader writes
-            if (grp_rank.eq.0) then
+            if (rank.eq.0) then
                 ! write the dataset
                 call H5Dwrite_f(dset_id,H5T_NATIVE_INTEGER,&
                     &[vars(id)%tot_i_min,vars(id)%tot_i_max],dimsf,ierr)
@@ -1143,10 +1144,10 @@ contains
             div_dim = 0
             
             ! get divided dimension
-            if (grp_n_procs.gt.1) then
+            if (n_procs.gt.1) then
                 ! find divided dimension
                 do kd = 1,size(vars(id)%tot_i_min)
-                    if (vars(id)%grp_i_max(kd)-vars(id)%grp_i_min(kd) .lt. &
+                    if (vars(id)%loc_i_max(kd)-vars(id)%loc_i_min(kd) .lt. &
                         &vars(id)%tot_i_max(kd)-vars(id)%tot_i_min(kd)) then    ! dimension is divided
                         if (div_dim.le.0) then                                  ! first divided dimension
                             div_dim = kd
@@ -1178,9 +1179,9 @@ contains
             
             ! set memory variables
             mem_block = prev_dims*&
-                &(vars(id)%grp_i_max(div_dim)-vars(id)%grp_i_min(div_dim)+1)
+                &(vars(id)%loc_i_max(div_dim)-vars(id)%loc_i_min(div_dim)+1)
             mem_offset = prev_dims*&
-                &(vars(id)%grp_i_min(div_dim)-vars(id)%tot_i_min(div_dim))
+                &(vars(id)%loc_i_min(div_dim)-vars(id)%tot_i_min(div_dim))
             mem_count = 1
             mem_stride = 1
             
@@ -1191,13 +1192,12 @@ contains
     end function print_HDF5_arrs
     
     ! reads a PB3D output file in HDF5 format
-    integer function read_HDF5_arrs(vars,head_name) result(ierr)
-        use num_vars, only: PB3D_name
-        
+    integer function read_HDF5_arrs(vars,PB3D_name,head_name) result(ierr)
         character(*), parameter :: rout_name = 'read_HDF5_arrs'
         
         ! input / output
         type(var_1D), intent(inout), allocatable :: vars(:)                     ! variables to write
+        character(len=*), intent(in) :: PB3D_name                               ! name of PB3D file (either PREP or PERT)
         character(len=*), intent(in) :: head_name                               ! head name of variables
         
         ! local variables

@@ -26,8 +26,6 @@ contains
     ! initialize the variables for the module
     ! [MPI] All ranks
     subroutine init_messages
-        use num_vars, only: group_output
-        
         ! output level
         lvl = 1
         
@@ -37,9 +35,6 @@ contains
         t2 = 0
         running = .false. 
         
-        ! only global master can output
-        group_output = .false.
-        
         ! temporary output
         temp_output_active = .true.
         allocate(temp_output(0))
@@ -47,20 +42,21 @@ contains
     
     ! prints first message
     subroutine print_hello
-        use num_vars, only: glb_rank, prog_name, prog_version
+        use num_vars, only: rank, prog_name, prog_version
         
-        if (glb_rank.eq.0) then
-            write(*,*) 'started on '//get_date()//', at '//get_clock()
-            write(*,*) trim(prog_name)//' version: '//trim(r2strt(prog_version))
+        if (rank.eq.0) then
+            write(*,*) 'Simulation started on '//get_date()//', at '//&
+                &get_clock()
+            write(*,*) prog_name//' version: '//trim(r2strt(prog_version))
             write(*,*) ''
         end if
     end subroutine print_hello
 
     ! prints last message
     subroutine print_goodbye
-        use num_vars, only: glb_rank
+        use num_vars, only: rank
         
-        if (glb_rank.eq.0) then
+        if (rank.eq.0) then
             write(*,*) ''
             write(*,*) 'Simulation finished on '//get_date()//&
                 &', at '//get_clock()
@@ -82,7 +78,7 @@ contains
         if (running) then
             call writo('WARNING: Tried to start timer, but was already running')
         else
-            call second0(t1)
+            call cpu_time(t1)
             running = .true.
         end if
     end subroutine
@@ -90,7 +86,7 @@ contains
     ! stop a timer
     subroutine stop_time
         if (running) then
-            call second0(t2)
+            call cpu_time(t2)
             
             ! increase deltat
             deltat = deltat+t2-t1
@@ -182,7 +178,7 @@ contains
     ! prints an error  message that is either user-provided, or  the name of the
     ! calling routine
     subroutine print_err_msg(err_msg,routine_name)
-        use num_vars, only: glb_rank
+        use num_vars, only: rank
         
         ! input / output
         character(len=*), intent(in) :: err_msg, routine_name
@@ -190,7 +186,7 @@ contains
         if (trim(err_msg).eq.'') then
             lvl = 2
             call writo('>> calling routine: '//trim(routine_name)//' of rank '&
-                &//trim(i2str(glb_rank)),persistent=.true.)
+                &//trim(i2str(rank)),persistent=.true.)
         else
             call writo('ERROR in '//trim(routine_name)//': '//trim(err_msg),&
                 &persistent=.true.)
@@ -217,8 +213,7 @@ contains
     !       files, which  are then read  by the  global master when  the group's
     !       work is done
     subroutine writo(input_str,persistent)
-        use num_vars, only: glb_rank, grp_rank, output_i, no_messages, &
-            &group_output
+        use num_vars, only: rank, output_i, no_messages
         
         ! input / output
         character(len=*), intent(in) :: input_str                               ! the name that is searched for
@@ -237,11 +232,7 @@ contains
         
         ! setup ignore
         ignore = .true.                                                         ! ignore by default
-        if (group_output) then                                                  ! non-global group masters can output
-            if (grp_rank.eq.0) ignore = .false.
-        else                                                                    ! only global group masters can output
-            if (glb_rank.eq.0) ignore = .false.
-        end if
+        if (rank.eq.0) ignore = .false.                                         ! master process can output
         if (present(persistent)) ignore = .not.persistent                       ! persistent can override this
         
         if (.not.ignore) then                                                   ! only group master (= global master if no groups) or persistent
@@ -295,9 +286,9 @@ contains
                 end if
                 
                 ! also write output to screen
-                if (lvl.eq.1) call write_on_screen(header_str)
-                call write_on_screen(output_str)
-                if (lvl.eq.1) call write_on_screen(header_str)
+                if (lvl.eq.1) write(*,*) header_str
+                write(*,*) output_str
+                if (lvl.eq.1) write(*,*) header_str
             end do
         end if
     contains
@@ -315,39 +306,6 @@ contains
             end do
             str = get_clock()//': '//trim(str)
         end subroutine format_str
-        
-        ! writes a string on screen, possibly prepended by the group number
-        subroutine write_on_screen(str)
-            use num_vars, only: glb_n_procs, grp_nr
-            
-            ! input / output
-            character(len=*), intent(in) :: str                                 ! string to write
-            
-            ! local variables
-            integer :: n_digits                                                 ! nr. of digits for the integer group number
-            character(len=max_str_ln) :: format_str                             ! format of string
-            
-            ! get n_digits to print on screen
-            n_digits = ceiling(log10(1._dp*glb_n_procs))
-            
-            if (n_digits.gt.0) then
-                ! set string  format according to whether  non-global groups can
-                ! output
-                if (group_output) then
-                    format_str = &
-                        &'(" [group ",I'//trim(i2str(n_digits))//',"] ",A)'
-                    write(*,format_str) grp_nr, trim(str)
-                else
-                    format_str = &
-                        &'("        ",A'//trim(i2str(n_digits))//',"  ",A)'
-                    write(*,format_str) '', trim(str)
-                end if
-            else
-                write(*,*) trim(str)
-            end if
-            
-            ! write group number or empty spaces
-        end subroutine write_on_screen
     end subroutine
 
     ! print an array of dimension 2 on the screen

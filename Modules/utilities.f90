@@ -12,19 +12,19 @@ module utilities
     private
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun, calc_mult, &
-        &init_utilities, derivs, con2dis, dis2con, round_with_tol, conv_sym, &
-        &is_sym, calc_spline_3, con, calc_coeff_fin_diff
+        &calc_aux_utilities, derivs, con2dis, dis2con, round_with_tol, &
+        &conv_sym, is_sym, calc_spline_3, con, calc_coeff_fin_diff, fac, &
+        &test_max_memory, calc_memory, &
+        &d, m, f
 #if ldebug
     public debug_interp_fun_0D_real, debug_calc_zero_NR, &
         &debug_con2dis_regular, debug_calc_coeff_fin_diff
 #endif
     
-    ! the possible derivatives of order i
-    integer, allocatable :: derivs_0(:,:)                                       ! all possible derivatives of order 0
-    integer, allocatable :: derivs_1(:,:)                                       ! all possible derivatives of order 1
-    integer, allocatable :: derivs_2(:,:)                                       ! all possible derivatives of order 2
-    integer, allocatable :: derivs_3(:,:)                                       ! all possible derivatives of order 3
-    integer, allocatable :: derivs_4(:,:)                                       ! all possible derivatives of order 3
+    ! global variables
+    integer, allocatable :: d(:,:,:)                                            ! 1D array indices of derivatives
+    integer, allocatable :: m(:,:)                                              ! 1D array indices of metric indices
+    integer, allocatable :: f(:,:)                                              ! 1D array indices of Fourier mode combination indices
 
     ! interfaces
     interface add_arr_mult
@@ -75,94 +75,189 @@ module utilities
 #endif
     
 contains
-    ! initialize utilities:
-    ! calculate all possible combinations of derivatives of a certain order
-    subroutine init_utilities
+    ! initialize utilities for fast future reference, depending on program style
+    !   - derivatives
+    !   - metrics
+    !   - Fourier modes (optionally)
+    ! If  Fourier modes  are also  initialized, the quantity  "n_mod" has  to be
+    ! provided as well.
+    subroutine calc_aux_utilities(n_mod)
+        use num_vars, only: max_deriv
+        
+        ! input / output
+        integer, intent(in), optional :: n_mod                                  ! n_mod for Fourier modes
+        
         ! local variables
-        integer :: id, jd, kd, ld                                               ! counters
-        integer :: ci, cj, ck, cl                                               ! counters
+        integer :: id, jd, kd                                                   ! counters
         
-        ! allocate
-        allocate(derivs_0(3,1))
-        allocate(derivs_1(3,3))
-        allocate(derivs_2(3,6))
-        allocate(derivs_3(3,10))
-        allocate(derivs_4(3,15))
+        ! common for all program stles
         
-        ci = 1
-        cj = 1
-        ck = 1
-        cl = 1
-        
-        derivs_0 = 0
-        derivs_1 = 0
-        derivs_2 = 0
-        derivs_3 = 0
-        derivs_4 = 0
-        
-        do id = 1,3
-            derivs_1(id,ci) = derivs_1(id,ci) + 1
-            ci = ci+1
-            do jd = 1,id
-                derivs_2(id,cj) = derivs_2(id,cj) + 1
-                derivs_2(jd,cj) = derivs_2(jd,cj) + 1
-                cj = cj+1
-                do kd = 1,jd
-                    derivs_3(id,ck) = derivs_3(id,ck) + 1
-                    derivs_3(jd,ck) = derivs_3(jd,ck) + 1
-                    derivs_3(kd,ck) = derivs_3(kd,ck) + 1
-                    ck = ck+1
-                    do ld = 1,kd
-                        derivs_4(id,cl) = derivs_4(id,cl) + 1
-                        derivs_4(jd,cl) = derivs_4(jd,cl) + 1
-                        derivs_4(kd,cl) = derivs_4(kd,cl) + 1
-                        derivs_4(ld,cl) = derivs_4(ld,cl) + 1
-                        cl = cl+1
-                    end do
+        ! derivatives d from 0 to max_deriv+1
+        allocate(d(0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+        do kd = 0,max_deriv+1
+            do jd = 0,max_deriv+1
+                do id = 0,max_deriv+1
+                    if (id+jd+kd.le.max_deriv+1) then                           ! valid derivatives
+                        d(id,jd,kd) = calc_derivs_1D_id([id,jd,kd],3)
+                    else                                                        ! derivatives too high
+                        d(id,jd,kd) = 0
+                    end if
                 end do
             end do
         end do
-    end subroutine
-    
-    function derivs(order)
-        ! input / output
-        integer, intent(in) :: order
-        integer, allocatable :: derivs(:,:)
         
-        select case (order)
-            case (0)
-                allocate(derivs(3,size(derivs_0,2)))
-                derivs = derivs_0
-            case (1)
-                allocate(derivs(3,size(derivs_1,2)))
-                derivs = derivs_1
-            case (2)
-                allocate(derivs(3,size(derivs_2,2)))
-                derivs = derivs_2
-            case (3)
-                allocate(derivs(3,size(derivs_3,2)))
-                derivs = derivs_3
-            case (4)
-                allocate(derivs(3,size(derivs_4,2)))
-                derivs = derivs_4
-            case default
-        end select
-    end function
+        ! metrics m from 1 to 3
+        allocate(m(1:3,1:3))
+        do jd = 1,3
+            do id = 1,3
+                m(id,jd) = calc_derivs_1D_id([id,jd],2)
+            end do
+        end do
+        
+        ! Fourier modes from 1 to n_mod only for PB3D_PERT and PB3D_POST
+        if (present(n_mod)) then
+            allocate(f(1:n_mod,1:n_mod))
+            do jd = 1,n_mod
+                do id = 1,n_mod
+                    f(id,jd) = calc_derivs_1D_id([id,jd],2)
+                end do
+            end do
+        end if
+    end subroutine calc_aux_utilities
+    
+    ! Calculate the  1D indices for  derivatives of  a certain order  in certain
+    ! dimensions.
+    ! The  algorithm  works by  considering a  structure such  as the  following
+    ! example in three dimensions:
+    !   1: (0,0,0)
+    !   2: (1,0,0)
+    !   3: (0,1,0)
+    !   4: (0,0,1)
+    !   5: (2,0,0)
+    !   6: (1,1,0)
+    !   7: (1,0,1)
+    !   8: (0,2,0)
+    !   9: (0,1,1)
+    !   10: (0,0,2)
+    !   11: (3,0,0)
+    !   12: (2,1,0)
+    ! etc...
+    ! By then defining  n_dims = size(deriv), tot_deriv =  sum(deriv) and id_max
+    ! as the  index of  the last  nonzero element in  deriv and  extending deriv
+    ! towards the left  by considering deriv(0)=0, the following  formula can be
+    ! deduced for the displacements in this table with respect to index 1:
+    !   sum_jd=0^id_max-1 sum_id=0^(tot_deriv-(deriv(0)+...+deriv(j))-1) 
+    !       (n_dims-jd+id-1,id) ,
+    ! making use of  the binomial coefficients (a,b) = a!/(b!(a-b)!).  It can be
+    ! seen that  each of  the terms in  the summation in  jd corresponds  to the
+    ! displacement in dimension  jd and the binomial coefficient  comes from the
+    ! classic stars and bars problem.
+    integer function calc_derivs_1D_id(deriv,dims) result(res)
+        ! input / output
+        integer, intent(in) :: deriv(:)                                         ! derivatives
+        integer, intent(in) :: dims                                             ! nr. of dimensions
+        
+        ! local variables
+        integer :: id, jd                                                       ! counters
+        integer :: id_max                                                       ! index of last nonzero element in deriv
+        integer :: tot_deriv                                                    ! total derivative
+        integer, allocatable :: deriv_loc(:)                                    ! local extended deriv
+        
+        ! set up local deriv
+        allocate(deriv_loc(0:size(deriv)))
+        deriv_loc(0) = 0
+        deriv_loc(1:size(deriv)) = deriv
+        
+        ! set up total derivative
+        tot_deriv = sum(deriv)
+        
+        ! initialize res
+        res = 1
+        
+        ! calculate  displacement  if total  deriv not  equal to  zero (assuming
+        ! deriv > 0)
+        if (tot_deriv.gt.0) then
+            ! get index of last nonzero element in deriv
+            id_max = 0
+            do id = 1,size(deriv)
+                if (deriv(id).gt.0) id_max = id
+            end do
+            
+            ! iterate over dimensions
+            do jd = 0,id_max-1
+                ! iterate over derivatives of dimension jd (where deriv(jd) = 0)
+                do id = 0,tot_deriv-sum(deriv_loc(0:jd))-1
+                    res = res + fac(dims-jd+id-1)/(fac(id)*fac(dims-jd-1))
+                end do
+            end do
+        end if
+    end function calc_derivs_1D_id
+    
+    ! Calculate all of the unique derivatives in certain dimensions of a certain
+    ! total order, e.g. for order 2 in 3 dimensions this would be:
+    !   (2,0,0), (1,1,0), (1,0,1), (0,2,0), (0,1,1) and (0,0,2)
+    !  The total  number of  derivatives  is found  through the  stars and  bars
+    ! problem to be the binomial coefficient 
+    !   (order+dims-1,order) = (order+dims-1)!/(order!(dims-1)!)
+    ! The number  of dimensions is taken to  be 3 by default but  can be changed
+    ! optionally.
+    recursive function derivs(order,dims) result(derivs_res)
+        ! input / output
+        integer, intent(in) :: order                                            ! order of derivative
+        integer, intent(in), optional :: dims                                   ! nr. of dimensions
+        integer, allocatable :: derivs_res(:,:)                                 ! array of all unique derivatives
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        integer, allocatable :: derivs_loc(:,:)                                 ! derivs of local subblock
+        integer :: id_tot                                                       ! counter for total dimension of local derivs.
+        integer :: dims_loc                                                     ! local version of dims
+        
+        ! set up local dims
+        dims_loc = 3
+        if (present(dims)) dims_loc = dims
+        
+        ! allocate resulting derivs
+        allocate(derivs_res(&
+            &dims_loc,fac(order+dims_loc-1)/(fac(order)*fac(dims_loc-1))))
+        
+        ! iterate over the first index if order greater than 0
+        if (order.gt.0) then
+            id_tot = 0
+            do id = order,0,-1
+                ! calculate  the  derivs  of  local  subblock  if  more  than  1
+                ! dimension
+                if (dims_loc.gt.1) then
+                    derivs_loc = derivs(order-id,dims_loc-1)                    ! calculate iteratively subblock
+                    derivs_res(1,id_tot+1:id_tot+size(derivs_loc,2)) = id       ! set first dimension
+                    derivs_res(2:dims_loc,id_tot+1:id_tot+size(derivs_loc,2)) &
+                        &= derivs_loc                                           ! set next dimensions
+                    id_tot = id_tot+size(derivs_loc,2)
+                else 
+                    derivs_res = order
+                end if
+            end do
+        else
+            derivs_res = 0
+        end if
+    end function derivs
     
     ! numerically derives  a function  whose values are  given on  a equidistant
     ! grid, specified by the inverse step size  to an order specified by ord and
     ! a precision  specified by  prec (which is  the power of  the step  size to
     ! which the result  is still correct. E.g.: for forward  differences, prec =
-    ! 0, and for central differences prec=1)
+    ! 0, and for central differences prec=1).
     integer function calc_deriv_equidistant_real(var,dvar,inv_step,ord,prec) &
         &result(ierr)                                                           ! equidistant version
         
         character(*), parameter :: rout_name = 'calc_deriv_equidistant_real'
         
         ! input / output
-        real(dp), intent(in) :: var(:), inv_step
-        real(dp), intent(inout) :: dvar(:)
-        integer, intent(in) :: ord, prec
+        real(dp), intent(in) :: var(:)                                          ! variable to derive
+        real(dp), intent(in) :: inv_step                                        ! inverse step size
+        real(dp), intent(inout) :: dvar(:)                                      ! derived variable
+        integer, intent(in) :: ord                                              ! order of derivative
+        integer, intent(in) :: prec                                             ! precision
         
         ! local variables
         integer :: max_n
@@ -173,6 +268,7 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! set max_n
         max_n = size(var)
         
         ! tests
@@ -202,6 +298,7 @@ contains
             case (2)
                 call prec2
             case default
+            write(*,*) '!!!!!!!!! IMPLEMENT GENERAL ORDER DERIVATIVES!!!!'
                 err_msg = 'Precision of order '//trim(i2str(prec))//&
                     &' not implemented'
                 ierr = 1
@@ -358,10 +455,11 @@ contains
         character(*), parameter :: rout_name = 'calc_deriv_equidistant_complex'
         
         ! input / output
-        complex(dp), intent(in) :: var(:)
-        real(dp), intent(in) :: inv_step
-        complex(dp), intent(inout) :: dvar(:)
-        integer, intent(in) :: ord, prec
+        complex(dp), intent(in) :: var(:)                                       ! variable to derive
+        real(dp), intent(in) :: inv_step                                        ! inverse step size
+        complex(dp), intent(inout) :: dvar(:)                                   ! derived variable
+        integer, intent(in) :: ord                                              ! order of derivative
+        integer, intent(in) :: prec                                             ! precision
         
         ! local variables
         real(dp), allocatable :: dvar_loc(:)
@@ -393,15 +491,16 @@ contains
     ! not  equidistant, grid,  to  an order  specified by  ord  and a  precision
     ! specified by prec (which is the power of the step size to which the result
     ! is still correct. E.g.: for forward differences, prec = 0, and for central
-    ! differences prec=1)
+    ! differences prec=1).
     integer function calc_deriv_regular_real(var,dvar,x,ord,prec) result(ierr)  ! regular, non-equidistant version
         character(*), parameter :: rout_name = 'calc_deriv_regular'
         
         ! input / output
-        real(dp), intent(in) :: var(:)
-        real(dp), intent(in) :: x(:)
-        real(dp), intent(inout) :: dvar(:)
-        integer, intent(in) :: ord, prec
+        real(dp), intent(in) :: var(:)                                          ! variable to derive
+        real(dp), intent(in) :: x(:)                                            ! independent variable
+        real(dp), intent(inout) :: dvar(:)                                      ! derived variable
+        integer, intent(in) :: ord                                              ! order of derivative
+        integer, intent(in) :: prec                                             ! precision
         
         ! local variables
         integer :: max_n
@@ -417,6 +516,7 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! set max_n
         max_n = size(var)
         
         ! tests
@@ -456,6 +556,7 @@ contains
             case (2)
                 call prec2
             case default
+            write(*,*) '!!!!!!!!! IMPLEMENT GENERAL ORDER DERIVATIVES!!!!'
                 err_msg = 'Precision of order '//trim(i2str(prec))//&
                     &' not implemented'
                 ierr = 1
@@ -736,10 +837,11 @@ contains
         character(*), parameter :: rout_name = 'calc_deriv_regular_complex'
         
         ! input / output
-        complex(dp), intent(in) :: var(:)
-        real(dp), intent(in) :: x(:)
-        complex(dp), intent(inout) :: dvar(:)
-        integer, intent(in) :: ord, prec
+        complex(dp), intent(in) :: var(:)                                       ! variable to derive
+        real(dp), intent(in) :: x(:)                                            ! independent variable
+        complex(dp), intent(inout) :: dvar(:)                                   ! derived variable
+        integer, intent(in) :: ord                                              ! order of derivative
+        integer, intent(in) :: prec                                             ! precision
         
         ! local variables
         real(dp), allocatable :: dvar_loc(:)
@@ -2581,4 +2683,120 @@ contains
             B = A
         end if
     end function con_0D
+    
+    ! calculate factorial
+    recursive function fac(n)  result(fact)
+        ! input / output
+        integer, intent(in) :: n
+        integer :: fact
+        
+        ! calculate recursively
+        if (n.eq.0) then
+            fact = 1
+        else
+            fact = n * fac(n-1)
+        end if
+    end function fac
+
+    ! test whether maximum memory feasible
+    integer function test_max_memory() result(ierr)
+        use ISO_C_BINDING
+        use num_vars, only: max_mem_per_proc, n_procs
+        
+        character(*), parameter :: rout_name = 'test_max_memory'
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), allocatable :: max_mem_arr(:,:)                               ! array with maximum size
+        integer(C_SIZE_T) :: dp_size                                            ! size of dp
+        integer :: n_max                                                        ! maximum size of array
+        
+        ! initialize ierr
+        ierr = 0
+        
+        call writo('Testing whether maximum memory per process of '//&
+            &trim(r2strt(max_mem_per_proc))//'MB is possible')
+        
+        call lvl_ud(1)
+        
+        write(*,*) 'TEMPORARILY NOT TESTING MAX MEMORY !!!'
+        !!! (lazy) allocation
+        !!dp_size = sizeof(1._dp)
+        !!n_max = ceiling(sqrt(max_mem_per_proc/(dp_size*1.E-6)))                 ! dp_size in B, max_mem_per_proc in MB
+        !!call writo('Allocating doubles array of size ('//trim(i2str(n_max))&
+            !!&//'x'//trim(i2str(n_max))//') on '//trim(i2str(n_procs))//&
+            !!&' MPI process(es)')
+        !!allocate(max_mem_arr(n_max,n_max),STAT=ierr)
+        !!err_msg = 'cannot allocate this much memory. Try setting &
+            !!&"max_mem_per_proc" lower'
+        !!CHCKERR(err_msg)
+        
+        !!! explicitely set elements
+        !!max_mem_arr = 0._dp                                                     ! this can fail while lazy allocation does not
+        
+        !!deallocate(max_mem_arr)
+        
+        call lvl_ud(-1)
+        call writo('Maximum memory allocatable')
+    end function test_max_memory
+
+    ! Calculate memory in MB necessary for X variables:
+    !   - 4x n_par_X x n_geo x loc_n_r x n_mod
+    !   - 2x n_par_X x n_geo x loc_n_r x nn_mod_1
+    !   - 4x n_par_X x n_geo x loc_n_r x nn_mod_2
+    ! where n_par_X x  n_geo x loc_n_r should be passed  as 'arr_size' and n_mod
+    ! as well.
+    ! Optionally, using  'block_mem', instead  of the total  memory for  all the
+    ! combinations  of modes,  the memory  required to  calculate a  subblock is
+    ! calculated. The  difference between  both lies  in the  fact that  not all
+    ! combinations are calculated, but only one at the time: A block of a matrix
+    ! is done, instead of the whole matrix.
+    function calc_memory(arr_size,n_mod,block_mem) result(mem_size)
+        use ISO_C_BINDING
+        use num_vars, only: eq_style
+        
+        ! input / output
+        integer, intent(in) :: arr_size                                         ! size of part of X array
+        integer, intent(in) :: n_mod                                            ! number of modes
+        logical, intent(in), optional :: block_mem                              ! number of modes in block
+        real(dp) :: mem_size                                                    ! total size
+        
+        ! local variables
+        integer :: nn_mod_1, nn_mod_2                                           ! number of indices for a quantity that is symmetric or not
+        integer(C_SIZE_T) :: dp_size                                            ! size of dp
+        logical :: block_mem_loc                                                ! local copy of block_mem
+        real(dp), parameter :: mem_scale_fac = 1.5                              ! scale factor of memory (because only estimation)
+        
+        call lvl_ud(1)
+        
+        ! set local block_mem
+        block_mem_loc = .false.
+        if (present(block_mem)) block_mem_loc = block_mem
+        
+        ! set nn_mod_1 and nn_mod_2
+        nn_mod_1 = n_mod**2
+        nn_mod_2 = n_mod*(n_mod+1)/2
+        
+        ! get size of complex variable
+        dp_size = 2*sizeof(1._dp)                                               ! complex variable
+        
+        ! set memory size
+        if (block_mem_loc) then
+            mem_size = arr_size*(4*n_mod+2*nn_mod_1+4*nn_mod_2)*dp_size
+        else
+            mem_size = arr_size*(2*4*n_mod+2*nn_mod_1+4*nn_mod_2)*dp_size       ! need twice as many values for U and DU
+        end if
+        
+        ! convert B to MB
+        mem_size = mem_size*1.E-6_dp
+        
+        ! use twice this for HELENA because of the need to calculate X_B from X
+        if (eq_style.eq.2) mem_size = mem_size*2
+        !!!! THIS SHOULD BE AVOIDED !!!!!!!!!
+        
+        ! scale memory to account for rough estimation
+        mem_size = mem_size*mem_scale_fac
+        
+        call lvl_ud(-1)
+    end function calc_memory
 end module utilities

@@ -22,7 +22,7 @@ contains
     ! prepare the matrix elements by calculating  KV_i and PV_i, which then will
     ! have to be integrated, with a complex exponential weighting function
     integer function prepare_X(grid_eq,eq,met,X) result(ierr)
-        use num_vars, only: use_pol_flux_F, plot_resonance, grp_nr
+        use num_vars, only: use_pol_flux_F, plot_resonance
         use X_vars, only: X_type, create_X
         use utilities, only: c
         
@@ -61,7 +61,7 @@ contains
         end if
         
         ! plot resonances if requested
-        if (plot_resonance .and. grp_nr.eq.0) then
+        if (plot_resonance) then
             ierr = resonance_plot(eq,grid_eq,X)
             CHCKERR('')
         else
@@ -133,14 +133,13 @@ contains
     ! plot  q-profile  or iota-profile  in  flux coordinates  with nq-m  = 0  or
     ! n-iotam = 0 indicate if requested
     integer function resonance_plot(eq,grid,X) result(ierr)
-        use num_vars, only: use_pol_flux_F, grp_rank, no_plots, n_theta_plot, &
+        use num_vars, only: use_pol_flux_F, rank, no_plots, n_theta_plot, &
             &n_zeta_plot
         use utilities, only: calc_zero_NR, interp_fun
         use grid_vars, only: create_grid, dealloc_grid
         use eq_vars, only: max_flux_p_F, max_flux_t_F
-        use grid_ops, only: trim_grid, calc_XYZ_grid, calc_eqd_grid, coord_F2E
+        use grid_ops, only: calc_XYZ_grid, calc_eqd_grid, coord_F2E, trim_grid
         use MPI_utilities, only: get_ser_var
-        use output_ops, only: plot_HDF5
         
         character(*), parameter :: rout_name = 'resonance_plot'
         
@@ -158,7 +157,7 @@ contains
         character(len=max_str_ln) :: plot_title, file_name                      ! name of plot, of file
         real(dp), allocatable :: jq(:)                                          ! saf. fac. or rot. transf. in Flux coords.
         integer :: n_r                                                          ! total number of normal points
-        integer :: plot_dim(4)                                                  ! plot dimensions (total = group because only group masters)
+        integer :: plot_dim(4)                                                  ! plot dimensions (total = local because only masters)
         type(grid_type) :: grid_trim                                            ! trimmed version of grid
         type(grid_type) :: grid_plot                                            ! grid for plotting
         real(dp), allocatable :: r_plot_E(:)                                    ! normal E coordinates of plot
@@ -206,8 +205,8 @@ contains
         
         call lvl_ud(-1)
         
-        ! only group master
-        if (grp_rank.eq.0) then
+        ! only master
+        if (rank.eq.0) then
             ! set local n_mod
             n_mod_loc = size(res_surf,1)
             
@@ -282,9 +281,10 @@ contains
             
             ! loop over all resonant surfaces to calculate X, Y and Z values
             do kd = 1,n_mod_loc
-                ! set grp_r_E of plot grid
-                grid_plot%grp_r_E = r_plot_E(kd)
+                ! set loc_r_E of plot grid
+                grid_plot%loc_r_E = r_plot_E(kd)
                 
+                ! calculate X, Y and Z
                 ierr = calc_XYZ_grid(grid_plot,X_plot(:,:,:,kd),&
                     &Y_plot(:,:,:,kd),Z_plot(:,:,:,kd))
                 CHCKERR('')
@@ -361,7 +361,7 @@ contains
     ! plasma range.
     ! Optionally, user  messages can be  displayed with info  and Newton-Rhapson
     ! tolerance and  max. nr. of  iterations. Also,  the total safety  factor or
-    ! rotational transform can be returned to the group master.
+    ! rotational transform can be returned to the master.
     ! Note: Has to be called by all processes
     integer function calc_res_surf(grid,eq,X,res_surf,info,jq,tol_NR,&
         &max_it_NR) result(ierr)
@@ -389,6 +389,7 @@ contains
         real(dp) :: mnfrac_fun                                                  ! fraction m/n or n/m to determine resonant flux surface
         
         ! local variables (not to be used in child functions)
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: kd                                                           ! counter
         integer :: kd_loc                                                       ! local kd
         logical :: info_loc                                                     ! local version of info
@@ -409,21 +410,21 @@ contains
         if (present(info)) info_loc = info
         
         ! get trimmed grid
-        ierr = trim_grid(grid,grid_trim)
+        ierr = trim_grid(grid,grid_trim,norm_id)
         CHCKERR('')
         
         ! get serial version of safety factor or rot. transform
         allocate(jq_tot(grid_trim%n(3),0:2))
         if (use_pol_flux_F) then
             do kd = 0,2
-                ierr = get_ser_var(eq%q_saf_FD(1:grid_trim%grp_n_r,kd),jq_loc,&
+                ierr = get_ser_var(eq%q_saf_FD(norm_id(1):norm_id(2),kd),jq_loc,&
                     &scatter=.true.)
                 CHCKERR('')
                 jq_tot(:,kd) = jq_loc
             end do
         else
             do kd = 0,2
-                ierr = get_ser_var(eq%rot_t_FD(1:grid_trim%grp_n_r,kd),jq_loc,&
+                ierr = get_ser_var(eq%rot_t_FD(norm_id(1):norm_id(2),kd),jq_loc,&
                     &scatter=.true.)
                 CHCKERR('')
                 jq_tot(:,kd) = jq_loc
@@ -580,7 +581,7 @@ contains
     ! [MPI] Parts by all processes, parts only by global master
     integer function check_modes(eq,X) result(ierr)
         use MPI_utilities, only: get_ser_var
-        use num_vars, only: glb_rank, use_pol_flux_F, eq_style, tol_norm_r
+        use num_vars, only: rank, use_pol_flux_F, eq_style, tol_norm_r
         
         character(*), parameter :: rout_name = 'check_modes'
         
@@ -613,7 +614,7 @@ contains
             CHCKERR('')
         end if
         
-        if (glb_rank.eq.0) then
+        if (rank.eq.0) then
             call writo('Checking mode numbers')
             call lvl_ud(1)
             
@@ -760,7 +761,7 @@ contains
     end function solve_EV_system
     
     ! calculate  ~PV_(k,m)^i  (pol.  flux)  or ~PV_(l,n)^i  (tor.  flux) at  all
-    ! eq grp_n_r values
+    ! eq loc_n_r values
     ! (see [ADD REF] for details)
     subroutine calc_PV(eq,grid,met,X)
         use num_vars, only: use_pol_flux_F
@@ -796,11 +797,11 @@ contains
         h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
         
         ! set up common factor for PV_i
-        allocate(com_fac(grid%n(1),grid%n(2),grid%grp_n_r))
+        allocate(com_fac(grid%n(1),grid%n(2),grid%loc_n_r))
         com_fac = h22/(g33*vac_perm)
         
         ! set up fac_n and fac_m
-        allocate(fac_n(grid%grp_n_r),fac_m(grid%grp_n_r))
+        allocate(fac_n(grid%loc_n_r),fac_m(grid%loc_n_r))
         if (use_pol_flux_F) then
             fac_n = eq%q_saf_FD(:,0)
             fac_m = 1.0_dp
@@ -823,7 +824,7 @@ contains
                     &eq%sigma/J * (eq%S*J + eq%sigma/(com_fac*J))
                 
                 ! add (nq-k)*(nq-m)/(mu_0J^2 |nabla psi|^2) - 2p'kappa_n to PV_0
-                do kd = 1,grid%grp_n_r
+                do kd = 1,grid%loc_n_r
                     X%PV_0(:,:,kd,c1) = X%PV_0(:,:,kd,c1) + &
                         &(X%n(m)*fac_n(kd)-X%m(m)*fac_m(kd))*&
                         &(X%n(k)*fac_n(kd)-X%m(k)*fac_m(kd)) / &
@@ -852,7 +853,7 @@ contains
     end subroutine calc_PV
     
     ! calculate  ~KV_(k,m)^i  (pol.  flux)  or ~KV_(l,n)^i  (tor.  flux) at  all
-    ! eq grp_n_r values
+    ! eq loc_n_r values
     ! (see [ADD REF] for details)
     subroutine calc_KV(eq,grid,met,X)
         use utilities, only: c
@@ -884,7 +885,7 @@ contains
         h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
         
         ! set up common factor
-        allocate(com_fac(grid%n(1),grid%n(2),grid%grp_n_r))
+        allocate(com_fac(grid%n(1),grid%n(2),grid%loc_n_r))
         com_fac = J**2*h22/g33
         
         ! for  Hermitian KV_0  and  KV_2, only  half  of the  terms  have to  be
@@ -911,7 +912,7 @@ contains
         end do
         
         ! multiply by rho
-        do kd = 1,grid%grp_n_r
+        do kd = 1,grid%loc_n_r
             X%KV_0(:,:,kd,:) = X%KV_0(:,:,kd,:)*eq%rho(kd)
             X%KV_1(:,:,kd,:) = X%KV_1(:,:,kd,:)*eq%rho(kd)
             X%KV_2(:,:,kd,:) = X%KV_2(:,:,kd,:)*eq%rho(kd)
@@ -921,7 +922,7 @@ contains
         nullify(J,g33,h22)
     end subroutine calc_KV
     
-    ! calculate U_m^0, U_m^1 or U_n^0, U_n^1  at eq grp_n_r values of the normal
+    ! calculate U_m^0, U_m^1 or U_n^0, U_n^1  at eq loc_n_r values of the normal
     ! coordinate, n_par values  of the parallel coordinate and  size_X values of
     ! the poloidal mode number,  or of the toroidal mode number,  as well as the
     ! poloidal derivatives
@@ -985,8 +986,8 @@ contains
         end if
         
         ! set up djq, fac_n, fac_m and mn
-        allocate(djq(grid%grp_n_r),mn(X%n_mod))
-        allocate(fac_n(grid%grp_n_r),fac_m(grid%grp_n_r))
+        allocate(djq(grid%loc_n_r),mn(X%n_mod))
+        allocate(fac_n(grid%loc_n_r),fac_m(grid%loc_n_r))
         if (use_pol_flux_F) then
             djq = eq%q_saf_FD(:,1)
             fac_n = eq%q_saf_FD(:,0)
@@ -1000,12 +1001,12 @@ contains
         end if
         
         ! allocate helper variables
-        allocate(U_corr(grid%n(1),grid%n(2),grid%grp_n_r,X%n_mod))
-        allocate(D3U_corr(grid%n(1),grid%n(2),grid%grp_n_r,X%n_mod))
-        allocate(g_frac(grid%n(1),grid%n(2),grid%grp_n_r))
-        allocate(Theta_3(grid%n(1),grid%n(2),grid%grp_n_r))
-        allocate(D1Theta_3(grid%n(1),grid%n(2),grid%grp_n_r))
-        allocate(D3Theta_3(grid%n(1),grid%n(2),grid%grp_n_r))
+        allocate(U_corr(grid%n(1),grid%n(2),grid%loc_n_r,X%n_mod))
+        allocate(D3U_corr(grid%n(1),grid%n(2),grid%loc_n_r,X%n_mod))
+        allocate(g_frac(grid%n(1),grid%n(2),grid%loc_n_r))
+        allocate(Theta_3(grid%n(1),grid%n(2),grid%loc_n_r))
+        allocate(D1Theta_3(grid%n(1),grid%n(2),grid%loc_n_r))
+        allocate(D3Theta_3(grid%n(1),grid%n(2),grid%loc_n_r))
         
         ! set up submatrices
         ! jacobian
@@ -1075,9 +1076,9 @@ contains
             real(dp), pointer :: D33h23(:,:,:) => null()                        ! D^2_theta,theta h^psi,theta
             
             ! allocate extra helper variables
-            allocate(D3g_frac(grid%n(1),grid%n(2),grid%grp_n_r))
-            allocate(D13Theta_3(grid%n(1),grid%n(2),grid%grp_n_r))
-            allocate(D33Theta_3(grid%n(1),grid%n(2),grid%grp_n_r))
+            allocate(D3g_frac(grid%n(1),grid%n(2),grid%loc_n_r))
+            allocate(D13Theta_3(grid%n(1),grid%n(2),grid%loc_n_r))
+            allocate(D33Theta_3(grid%n(1),grid%n(2),grid%loc_n_r))
             
             ! set up extra submatrices
             ! upper metric factors
@@ -1100,7 +1101,7 @@ contains
                     &- h23*D33h22/(h22**2) + 2*h23*D3h22**2/(h22**3)
                 
                 ! loop over all normal points
-                do kd = 1,grid%grp_n_r
+                do kd = 1,grid%loc_n_r
                     ! set up correction to U
                     n_frac = X%n(jd)*fac_n(kd)-X%m(jd)*fac_m(kd)
                     ! set up U correction
@@ -1159,6 +1160,7 @@ contains
         ! - toroidal flux: parallel deriv. equal to iota * poloidal deriv.
         integer function calc_U_HEL() result(ierr)
             use utilities, only: calc_deriv
+            use num_vars, only: norm_disc_prec_X
             
             character(*), parameter :: rout_name = 'calc_U_HEL'
             
@@ -1177,10 +1179,10 @@ contains
                 g_frac = g13/g33
                 Theta_3 = h23/h22
                 ! loop over all normal points
-                do kd = 1,grid%grp_n_r
+                do kd = 1,grid%loc_n_r
                     do id = 1,grid%n(2)
                         ierr = calc_deriv(Theta_3(:,id,kd),D3Theta_3(:,id,kd),&
-                            &grid%theta_F(:,id,kd),1,2)                         ! higher precision because other derivative will be taken later
+                            &grid%theta_F(:,id,kd),1,norm_disc_prec_X+1)        ! higher precision because other derivative will be taken later
                         CHCKERR('')
                     end do
                     if (.not.use_pol_flux_F) D3Theta_3(:,:,kd) = &
@@ -1188,12 +1190,13 @@ contains
                 end do
                 
                 ! loop over all normal points
-                do kd = 1,grid%grp_n_r
+                do kd = 1,grid%loc_n_r
                     ! set up correction to U
                     n_frac = X%n(jd)*fac_n(kd)-X%m(jd)*fac_m(kd)
                     ! set up U correction
-                    U_corr(:,:,kd,jd) = iu/mn(jd)*n_frac/mn(jd)*(g_frac(:,:,kd)*&
-                        &(D3Theta_3(:,:,kd)+iu*n_frac*Theta_3(:,:,kd)))
+                    U_corr(:,:,kd,jd) = iu/mn(jd)*n_frac/mn(jd)*&
+                        &(g_frac(:,:,kd)*(D3Theta_3(:,:,kd)+iu*n_frac*&
+                        &Theta_3(:,:,kd)))
                     ! calculate X%U_0 and X%DU_0
                     X%U_0(:,:,kd,jd) = &
                         &-(h12(:,:,kd)/h22(:,:,kd) + djq(kd)*ang_par_F(:,:,kd))&
@@ -1203,7 +1206,7 @@ contains
                         &g23(:,:,kd) )) + U_corr(:,:,kd,jd)
                     do id = 1,grid%n(2)
                         ierr = calc_deriv(X%U_0(:,id,kd,jd),D3var(:,id),&
-                            &grid%theta_F(:,id,kd),1,2)
+                            &grid%theta_F(:,id,kd),1,norm_disc_prec_X+1)        ! higher precision because previous derivative
                         CHCKERR('')
                     end do
                     if (.not.use_pol_flux_F) D3var = D3var*eq%rot_t_FD(kd,0)    ! parallel deriv. equal to iota * poloidal deriv.
@@ -1213,7 +1216,7 @@ contains
                         &(1 + n_frac/mn(jd) * g13(:,:,kd)/g33(:,:,kd))
                     do id = 1,grid%n(2)
                         ierr = calc_deriv(X%U_1(:,id,kd,jd),D3var(:,id),&
-                            &grid%theta_F(:,id,kd),1,2)
+                            &grid%theta_F(:,id,kd),1,norm_disc_prec_X+1)
                         CHCKERR('')
                     end do
                     if (.not.use_pol_flux_F) D3var = D3var*eq%rot_t_FD(kd,0)    ! parallel deriv. equal to iota * poloidal deriv.
@@ -1230,16 +1233,17 @@ contains
         integer function test_DU() result(ierr)
             use utilities, only: calc_deriv
             use grid_ops, only: trim_grid
-            use output_ops, only: plot_diff_HDF5
+            use num_vars, only: norm_disc_prec_X
             
             character(*), parameter :: rout_name = 'test_DU'
             
             ! local variables
+            integer :: norm_id(2)                                               ! untrimmed normal indices for trimmed grids
             integer :: id, jd, kd                                               ! counters
             complex(dp), allocatable :: DU_0(:,:,:)                             ! alternative calculation for DU_0
             complex(dp), allocatable :: DU_1(:,:,:)                             ! alternative calculation for DU_1
             type(grid_type) :: grid_trim                                        ! trimmed equilibrium grid
-            integer :: tot_dim(3), grp_offset(3)                                ! total dimensions and group offset
+            integer :: tot_dim(3), loc_offset(3)                                ! total dimensions and local offset
             character(len=max_str_ln) :: file_name                              ! name of plot file
             character(len=max_str_ln) :: description                            ! description of plot
             
@@ -1255,28 +1259,28 @@ contains
             call lvl_ud(1)
             
             ! set up DU_0 and DU_1
-            allocate(DU_0(grid%n(1),grid%n(2),grid%grp_n_r))
-            allocate(DU_1(grid%n(1),grid%n(2),grid%grp_n_r))
+            allocate(DU_0(grid%n(1),grid%n(2),grid%loc_n_r))
+            allocate(DU_1(grid%n(1),grid%n(2),grid%loc_n_r))
             
             ! trim extended grid into plot grid
-            ierr = trim_grid(grid,grid_trim)
+            ierr = trim_grid(grid,grid_trim,norm_id)
             CHCKERR('')
             
-            ! set total and group dimensions and group offset
+            ! set total and local dimensions and local offset
             tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-            grp_offset = [0,0,grid_trim%i_min-1]
+            loc_offset = [0,0,grid_trim%i_min-1]
             
             ! loop over all modes
             do jd = 1,X%n_mod
                 ! loop over all normal points
-                do kd = 1,grid%grp_n_r
+                do kd = 1,grid%loc_n_r
                     ! derive numerically
                     do id = 1,grid%n(2)
                         ierr = calc_deriv(X%U_0(:,id,kd,jd),DU_0(:,id,kd),&
-                            &ang_par_F(:,id,kd),1,2)
+                            &ang_par_F(:,id,kd),1,norm_disc_prec_X+1)
                         CHCKERR('')
                         ierr = calc_deriv(X%U_1(:,id,kd,jd),DU_1(:,id,kd),&
-                            &ang_par_F(:,id,kd),1,2)
+                            &ang_par_F(:,id,kd),1,norm_disc_prec_X+1)
                         CHCKERR('')
                     end do
                     
@@ -1292,9 +1296,9 @@ contains
                     &mode '//trim(i2str(jd)//', real part')
                 
                 ! plot difference for RE DU_0
-                call plot_diff_HDF5(realpart(DU_0(:,:,1:grid_trim%grp_n_r)),&
-                    &realpart(X%DU_0(:,:,1:grid_trim%grp_n_r,jd)),file_name,&
-                    &tot_dim,grp_offset,description,output_message=.true.)
+                call plot_diff_HDF5(realpart(DU_0(:,:,norm_id(1):norm_id(2))),&
+                    &realpart(X%DU_0(:,:,norm_id(1):norm_id(2),jd)),file_name,&
+                    &tot_dim,loc_offset,description,output_message=.true.)
                 
                 ! set some variables
                 file_name = 'TEST_IM_DU_0_'//trim(i2str(jd))
@@ -1302,9 +1306,9 @@ contains
                     &mode '//trim(i2str(jd)//', imaginary part')
                 
                 ! plot difference for IM DU_0
-                call plot_diff_HDF5(imagpart(DU_0(:,:,1:grid_trim%grp_n_r)),&
-                    &imagpart(X%DU_0(:,:,1:grid_trim%grp_n_r,jd)),file_name,&
-                    &tot_dim,grp_offset,description,output_message=.true.)
+                call plot_diff_HDF5(imagpart(DU_0(:,:,norm_id(1):norm_id(2))),&
+                    &imagpart(X%DU_0(:,:,norm_id(1):norm_id(2),jd)),file_name,&
+                    &tot_dim,loc_offset,description,output_message=.true.)
                 
                 ! set some variables
                 file_name = 'TEST_RE_DU_1_'//trim(i2str(jd))
@@ -1312,9 +1316,9 @@ contains
                     &mode '//trim(i2str(jd)//', real part')
                 
                 ! plot difference for RE DU_1
-                call plot_diff_HDF5(realpart(DU_1(:,:,1:grid_trim%grp_n_r)),&
-                    &realpart(X%DU_1(:,:,1:grid_trim%grp_n_r,jd)),file_name,&
-                    &tot_dim,grp_offset,description,output_message=.true.)
+                call plot_diff_HDF5(realpart(DU_1(:,:,norm_id(1):norm_id(2))),&
+                    &realpart(X%DU_1(:,:,norm_id(1):norm_id(2),jd)),file_name,&
+                    &tot_dim,loc_offset,description,output_message=.true.)
                 
                 ! set some variables
                 file_name = 'TEST_IM_DU_1_'//trim(i2str(jd))
@@ -1322,9 +1326,9 @@ contains
                     &mode '//trim(i2str(jd)//', imaginary part')
                 
                 ! plot difference for IM DU_1
-                call plot_diff_HDF5(imagpart(DU_1(:,:,1:grid_trim%grp_n_r)),&
-                    &imagpart(X%DU_1(:,:,1:grid_trim%grp_n_r,jd)),file_name,&
-                    &tot_dim,grp_offset,description,output_message=.true.)
+                call plot_diff_HDF5(imagpart(DU_1(:,:,norm_id(1):norm_id(2))),&
+                    &imagpart(X%DU_1(:,:,norm_id(1):norm_id(2),jd)),file_name,&
+                    &tot_dim,loc_offset,description,output_message=.true.)
             end do
             
             ! clean up
@@ -1394,7 +1398,7 @@ contains
     !               kappa_n, kappa_g, sigma
     ! Note: The equilibrium quantities are outputted in Flux coordinates.
     integer function print_output_X(grid_eq,X) result(ierr)
-        use num_vars, only: rich_lvl_nr, max_it_r, grp_rank
+        use num_vars, only: rich_lvl_nr, max_it_r, rank, norm_disc_prec_X
         use HDF5_ops, only: print_HDF5_arrs, &
             &var_1D
         use grid_ops, only: trim_grid
@@ -1407,10 +1411,10 @@ contains
         type(X_type), intent(in) :: X                                           ! perturbation variables (for U_0, etc.)
         
         ! local variables
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         type(var_1D), allocatable, target :: X_1D(:)                            ! 1D equivalent of eq. variables
         type(var_1D), pointer :: X_1D_loc => null()                             ! local element in X_1D
         type(grid_type) :: grid_eq_trim                                         ! trimmed eq grid
-        integer :: i_min_eq, i_max_eq                                           ! min. and max. index of variables
         integer :: id                                                           ! counter
         
         ! initialize ierr
@@ -1425,12 +1429,8 @@ contains
         call lvl_ud(1)
         
         ! trim grid
-        ierr = trim_grid(grid_eq,grid_eq_trim)
+        ierr = trim_grid(grid_eq,grid_eq_trim,norm_id)
         CHCKERR('')
-        
-        ! set i_min and i_max
-        i_min_eq = 1
-        i_max_eq = grid_eq_trim%grp_n_r
         
         ! Set up the 1D equivalents  of the perturbation variables
         allocate(X_1D(9))
@@ -1440,132 +1440,132 @@ contains
         X_1D_loc => X_1D(id); id = id+1
         X_1D_loc%var_name = 'RE_U_0'
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
-        allocate(X_1D_loc%grp_i_min(4),X_1D_loc%grp_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
         X_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
-        X_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
-        X_1D_loc%grp_i_max = &
+        X_1D_loc%loc_i_min = [1,1,grid_eq_trim%i_min,1]
+        X_1D_loc%loc_i_max = &
             &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
-        allocate(X_1D_loc%p(size(X%U_0(:,:,i_min_eq:i_max_eq,:))))
-        X_1D_loc%p = reshape(realpart(X%U_0(:,:,i_min_eq:i_max_eq,:)),&
-            &[size(X%U_0(:,:,i_min_eq:i_max_eq,:))])
+        allocate(X_1D_loc%p(size(X%U_0(:,:,norm_id(1):norm_id(2),:))))
+        X_1D_loc%p = reshape(realpart(X%U_0(:,:,norm_id(1):norm_id(2),:)),&
+            &[size(X%U_0(:,:,norm_id(1):norm_id(2),:))])
         
         ! IM_U_0
         X_1D_loc => X_1D(id); id = id+1
         X_1D_loc%var_name = 'IM_U_0'
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
-        allocate(X_1D_loc%grp_i_min(4),X_1D_loc%grp_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
         X_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
-        X_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
-        X_1D_loc%grp_i_max = &
+        X_1D_loc%loc_i_min = [1,1,grid_eq_trim%i_min,1]
+        X_1D_loc%loc_i_max = &
             &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
-        allocate(X_1D_loc%p(size(X%U_0(:,:,i_min_eq:i_max_eq,:))))
-        X_1D_loc%p = reshape(imagpart(X%U_0(:,:,i_min_eq:i_max_eq,:)),&
-            &[size(X%U_0(:,:,i_min_eq:i_max_eq,:))])
+        allocate(X_1D_loc%p(size(X%U_0(:,:,norm_id(1):norm_id(2),:))))
+        X_1D_loc%p = reshape(imagpart(X%U_0(:,:,norm_id(1):norm_id(2),:)),&
+            &[size(X%U_0(:,:,norm_id(1):norm_id(2),:))])
         
         ! RE_U_1
         X_1D_loc => X_1D(id); id = id+1
         X_1D_loc%var_name = 'RE_U_1'
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
-        allocate(X_1D_loc%grp_i_min(4),X_1D_loc%grp_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
         X_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
-        X_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
-        X_1D_loc%grp_i_max = &
+        X_1D_loc%loc_i_min = [1,1,grid_eq_trim%i_min,1]
+        X_1D_loc%loc_i_max = &
             &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
-        allocate(X_1D_loc%p(size(X%U_1(:,:,i_min_eq:i_max_eq,:))))
-        X_1D_loc%p = reshape(realpart(X%U_1(:,:,i_min_eq:i_max_eq,:)),&
-            &[size(X%U_1(:,:,i_min_eq:i_max_eq,:))])
+        allocate(X_1D_loc%p(size(X%U_1(:,:,norm_id(1):norm_id(2),:))))
+        X_1D_loc%p = reshape(realpart(X%U_1(:,:,norm_id(1):norm_id(2),:)),&
+            &[size(X%U_1(:,:,norm_id(1):norm_id(2),:))])
         
         ! IM_U_1
         X_1D_loc => X_1D(id); id = id+1
         X_1D_loc%var_name = 'IM_U_1'
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
-        allocate(X_1D_loc%grp_i_min(4),X_1D_loc%grp_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
         X_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
-        X_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
-        X_1D_loc%grp_i_max = &
+        X_1D_loc%loc_i_min = [1,1,grid_eq_trim%i_min,1]
+        X_1D_loc%loc_i_max = &
             &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
-        allocate(X_1D_loc%p(size(X%U_1(:,:,i_min_eq:i_max_eq,:))))
-        X_1D_loc%p = reshape(imagpart(X%U_1(:,:,i_min_eq:i_max_eq,:)),&
-            &[size(X%U_1(:,:,i_min_eq:i_max_eq,:))])
+        allocate(X_1D_loc%p(size(X%U_1(:,:,norm_id(1):norm_id(2),:))))
+        X_1D_loc%p = reshape(imagpart(X%U_1(:,:,norm_id(1):norm_id(2),:)),&
+            &[size(X%U_1(:,:,norm_id(1):norm_id(2),:))])
         
         ! RE_DU_0
         X_1D_loc => X_1D(id); id = id+1
         X_1D_loc%var_name = 'RE_DU_0'
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
-        allocate(X_1D_loc%grp_i_min(4),X_1D_loc%grp_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
         X_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
-        X_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
-        X_1D_loc%grp_i_max = &
+        X_1D_loc%loc_i_min = [1,1,grid_eq_trim%i_min,1]
+        X_1D_loc%loc_i_max = &
             &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
-        allocate(X_1D_loc%p(size(X%DU_0(:,:,i_min_eq:i_max_eq,:))))
-        X_1D_loc%p = reshape(realpart(X%DU_0(:,:,i_min_eq:i_max_eq,:)),&
-            &[size(X%DU_0(:,:,i_min_eq:i_max_eq,:))])
+        allocate(X_1D_loc%p(size(X%DU_0(:,:,norm_id(1):norm_id(2),:))))
+        X_1D_loc%p = reshape(realpart(X%DU_0(:,:,norm_id(1):norm_id(2),:)),&
+            &[size(X%DU_0(:,:,norm_id(1):norm_id(2),:))])
         
         ! IM_DU_0
         X_1D_loc => X_1D(id); id = id+1
         X_1D_loc%var_name = 'IM_DU_0'
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
-        allocate(X_1D_loc%grp_i_min(4),X_1D_loc%grp_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
         X_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
-        X_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
-        X_1D_loc%grp_i_max = &
+        X_1D_loc%loc_i_min = [1,1,grid_eq_trim%i_min,1]
+        X_1D_loc%loc_i_max = &
             &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
-        allocate(X_1D_loc%p(size(X%DU_0(:,:,i_min_eq:i_max_eq,:))))
-        X_1D_loc%p = reshape(imagpart(X%DU_0(:,:,i_min_eq:i_max_eq,:)),&
-            &[size(X%DU_0(:,:,i_min_eq:i_max_eq,:))])
+        allocate(X_1D_loc%p(size(X%DU_0(:,:,norm_id(1):norm_id(2),:))))
+        X_1D_loc%p = reshape(imagpart(X%DU_0(:,:,norm_id(1):norm_id(2),:)),&
+            &[size(X%DU_0(:,:,norm_id(1):norm_id(2),:))])
         
         ! RE_DU_1
         X_1D_loc => X_1D(id); id = id+1
         X_1D_loc%var_name = 'RE_DU_1'
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
-        allocate(X_1D_loc%grp_i_min(4),X_1D_loc%grp_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
         X_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
-        X_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
-        X_1D_loc%grp_i_max = &
+        X_1D_loc%loc_i_min = [1,1,grid_eq_trim%i_min,1]
+        X_1D_loc%loc_i_max = &
             &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
-        allocate(X_1D_loc%p(size(X%DU_1(:,:,i_min_eq:i_max_eq,:))))
-        X_1D_loc%p = reshape(realpart(X%DU_1(:,:,i_min_eq:i_max_eq,:)),&
-            &[size(X%DU_1(:,:,i_min_eq:i_max_eq,:))])
+        allocate(X_1D_loc%p(size(X%DU_1(:,:,norm_id(1):norm_id(2),:))))
+        X_1D_loc%p = reshape(realpart(X%DU_1(:,:,norm_id(1):norm_id(2),:)),&
+            &[size(X%DU_1(:,:,norm_id(1):norm_id(2),:))])
         
         ! IM_DU_1
         X_1D_loc => X_1D(id); id = id+1
         X_1D_loc%var_name = 'IM_DU_1'
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
-        allocate(X_1D_loc%grp_i_min(4),X_1D_loc%grp_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
         X_1D_loc%tot_i_max = [grid_eq_trim%n,X%n_mod]
-        X_1D_loc%grp_i_min = [1,1,grid_eq_trim%i_min,1]
-        X_1D_loc%grp_i_max = &
+        X_1D_loc%loc_i_min = [1,1,grid_eq_trim%i_min,1]
+        X_1D_loc%loc_i_max = &
             &[grid_eq_trim%n(1:2),grid_eq_trim%i_max,X%n_mod]
-        allocate(X_1D_loc%p(size(X%DU_1(:,:,i_min_eq:i_max_eq,:))))
-        X_1D_loc%p = reshape(imagpart(X%DU_1(:,:,i_min_eq:i_max_eq,:)),&
-            &[size(X%DU_1(:,:,i_min_eq:i_max_eq,:))])
+        allocate(X_1D_loc%p(size(X%DU_1(:,:,norm_id(1):norm_id(2),:))))
+        X_1D_loc%p = reshape(imagpart(X%DU_1(:,:,norm_id(1):norm_id(2),:)),&
+            &[size(X%DU_1(:,:,norm_id(1):norm_id(2),:))])
         
         ! misc_X
         X_1D_loc => X_1D(id); id = id+1
         X_1D_loc%var_name = 'misc_X'
         allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
-        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
-        if (grp_rank.eq.0) then
-            X_1D_loc%grp_i_min = [1]
-            X_1D_loc%grp_i_max = [6]
-            allocate(X_1D_loc%p(6))
+        allocate(X_1D_loc%loc_i_min(1),X_1D_loc%loc_i_max(1))
+        if (rank.eq.0) then
+            X_1D_loc%loc_i_min = [1]
+            X_1D_loc%loc_i_max = [7]
+            allocate(X_1D_loc%p(7))
             X_1D_loc%p = [min_r_X,max_r_X,min_n_X*1._dp,max_n_X*1._dp,&
-                &min_m_X*1._dp,max_m_X*1._dp]
+                &min_m_X*1._dp,max_m_X*1._dp,norm_disc_prec_X*1._dp]
         else
-            X_1D_loc%grp_i_min = [1]
-            X_1D_loc%grp_i_max = [0]
+            X_1D_loc%loc_i_min = [1]
+            X_1D_loc%loc_i_max = [0]
             allocate(X_1D_loc%p(0))
         end if
         X_1D_loc%tot_i_min = [1]
-        X_1D_loc%tot_i_max = [6]
+        X_1D_loc%tot_i_max = [7]
         
         call lvl_ud(-1)
         
@@ -1597,7 +1597,7 @@ contains
     ! Print solution quantities to an output file:
     !   - X:      X_val, X_vec
     integer function print_output_sol(grid_X,X) result(ierr)
-        use num_vars, only: rich_lvl_nr, max_it_r, grp_rank
+        use num_vars, only: rich_lvl_nr, max_it_r, rank
         use HDF5_ops, only: print_HDF5_arrs, &
             &var_1D
         use grid_ops, only: trim_grid
@@ -1609,10 +1609,10 @@ contains
         type(X_type), intent(in) :: X                                           ! field-aligned perturbation variables (for val, vec, etc)
         
         ! local variables
-        type(var_1D), allocatable, target :: X_1D(:)                            ! 1D equivalent of eq. variables
-        type(var_1D), pointer :: X_1D_loc => null()                             ! local element in X_1D
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        type(var_1D), allocatable, target :: sol_1D(:)                          ! 1D equivalent of eq. variables
+        type(var_1D), pointer :: sol_1D_loc => null()                           ! local element in sol_1D
         type(grid_type) :: grid_X_trim                                          ! trimmed X grid
-        integer :: i_min_X, i_max_X                                             ! min. and max. index of variables
         integer :: id                                                           ! counter
         
         ! initialize ierr
@@ -1627,100 +1627,96 @@ contains
         call lvl_ud(1)
         
         ! trim grids
-        ierr = trim_grid(grid_X,grid_X_trim)
+        ierr = trim_grid(grid_X,grid_X_trim,norm_id)
         CHCKERR('')
         
-        ! set i_min and i_max
-        i_min_X = 1
-        i_max_X = grid_X_trim%grp_n_r
-        
         ! Set up the 1D equivalents  of the perturbation variables
-        allocate(X_1D(6))
+        allocate(sol_1D(6))
         id = 1
         
         ! r_F
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'r_F'
-        allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
-        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
-        X_1D_loc%tot_i_min = [1]
-        X_1D_loc%tot_i_max = [grid_X_trim%n(3)]
-        X_1D_loc%grp_i_min = [grid_X_trim%i_min]
-        X_1D_loc%grp_i_max = [grid_X_trim%i_max]
-        allocate(X_1D_loc%p(size(grid_X_trim%grp_r_F(i_min_X:i_max_X))))
-        X_1D_loc%p = grid_X_trim%grp_r_F(i_min_X:i_max_X)
+        sol_1D_loc => sol_1D(id); id = id+1
+        sol_1D_loc%var_name = 'r_F'
+        allocate(sol_1D_loc%tot_i_min(1),sol_1D_loc%tot_i_max(1))
+        allocate(sol_1D_loc%loc_i_min(1),sol_1D_loc%loc_i_max(1))
+        sol_1D_loc%tot_i_min = [1]
+        sol_1D_loc%tot_i_max = [grid_X_trim%n(3)]
+        sol_1D_loc%loc_i_min = [grid_X_trim%i_min]
+        sol_1D_loc%loc_i_max = [grid_X_trim%i_max]
+        allocate(sol_1D_loc%p(size(grid_X_trim%loc_r_F(norm_id(1):norm_id(2)))))
+        sol_1D_loc%p = grid_X_trim%loc_r_F(norm_id(1):norm_id(2))
         
         ! r_E
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'r_E'
-        allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
-        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
-        X_1D_loc%tot_i_min = [1]
-        X_1D_loc%tot_i_max = [grid_X_trim%n(3)]
-        X_1D_loc%grp_i_min = [grid_X_trim%i_min]
-        X_1D_loc%grp_i_max = [grid_X_trim%i_max]
-        allocate(X_1D_loc%p(size(grid_X_trim%grp_r_E(i_min_X:i_max_X))))
-        X_1D_loc%p = grid_X_trim%grp_r_E(i_min_X:i_max_X)
+        sol_1D_loc => sol_1D(id); id = id+1
+        sol_1D_loc%var_name = 'r_E'
+        allocate(sol_1D_loc%tot_i_min(1),sol_1D_loc%tot_i_max(1))
+        allocate(sol_1D_loc%loc_i_min(1),sol_1D_loc%loc_i_max(1))
+        sol_1D_loc%tot_i_min = [1]
+        sol_1D_loc%tot_i_max = [grid_X_trim%n(3)]
+        sol_1D_loc%loc_i_min = [grid_X_trim%i_min]
+        sol_1D_loc%loc_i_max = [grid_X_trim%i_max]
+        allocate(sol_1D_loc%p(size(grid_X_trim%loc_r_E(norm_id(1):norm_id(2)))))
+        sol_1D_loc%p = grid_X_trim%loc_r_E(norm_id(1):norm_id(2))
         
         ! RE_X_val
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'RE_X_val'
-        allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
-        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
-        X_1D_loc%tot_i_min = [1]
-        X_1D_loc%tot_i_max = [size(X%val)]
-        X_1D_loc%grp_i_min = [1]
-        if (grp_rank.eq.0) then
-            X_1D_loc%grp_i_max = [size(X%val)]
-            allocate(X_1D_loc%p(size(X%val)))
-            X_1D_loc%p = realpart(X%val)
+        sol_1D_loc => sol_1D(id); id = id+1
+        sol_1D_loc%var_name = 'RE_X_val'
+        allocate(sol_1D_loc%tot_i_min(1),sol_1D_loc%tot_i_max(1))
+        allocate(sol_1D_loc%loc_i_min(1),sol_1D_loc%loc_i_max(1))
+        sol_1D_loc%tot_i_min = [1]
+        sol_1D_loc%tot_i_max = [size(X%val)]
+        sol_1D_loc%loc_i_min = [1]
+        if (rank.eq.0) then
+            sol_1D_loc%loc_i_max = [size(X%val)]
+            allocate(sol_1D_loc%p(size(X%val)))
+            sol_1D_loc%p = realpart(X%val)
         else
-            X_1D_loc%grp_i_max = [0]
-            allocate(X_1D_loc%p(0))
+            sol_1D_loc%loc_i_max = [0]
+            allocate(sol_1D_loc%p(0))
         end if
         
         ! IM_X_val
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'IM_X_val'
-        allocate(X_1D_loc%tot_i_min(1),X_1D_loc%tot_i_max(1))
-        allocate(X_1D_loc%grp_i_min(1),X_1D_loc%grp_i_max(1))
-        X_1D_loc%tot_i_min = [1]
-        X_1D_loc%tot_i_max = [size(X%val)]
-        X_1D_loc%grp_i_min = [1]
-        if (grp_rank.eq.0) then
-            X_1D_loc%grp_i_max = [size(X%val)]
-            allocate(X_1D_loc%p(size(X%val)))
-            X_1D_loc%p = imagpart(X%val)
+        sol_1D_loc => sol_1D(id); id = id+1
+        sol_1D_loc%var_name = 'IM_X_val'
+        allocate(sol_1D_loc%tot_i_min(1),sol_1D_loc%tot_i_max(1))
+        allocate(sol_1D_loc%loc_i_min(1),sol_1D_loc%loc_i_max(1))
+        sol_1D_loc%tot_i_min = [1]
+        sol_1D_loc%tot_i_max = [size(X%val)]
+        sol_1D_loc%loc_i_min = [1]
+        if (rank.eq.0) then
+            sol_1D_loc%loc_i_max = [size(X%val)]
+            allocate(sol_1D_loc%p(size(X%val)))
+            sol_1D_loc%p = imagpart(X%val)
         else
-            X_1D_loc%grp_i_max = [0]
-            allocate(X_1D_loc%p(0))
+            sol_1D_loc%loc_i_max = [0]
+            allocate(sol_1D_loc%p(0))
         end if
         
         ! RE_X_vec
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'RE_X_vec'
-        allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-        allocate(X_1D_loc%grp_i_min(3),X_1D_loc%grp_i_max(3))
-        X_1D_loc%grp_i_min = [1,grid_X_trim%i_min,1]
-        X_1D_loc%grp_i_max = [X%n_mod,grid_X_trim%i_max,size(X%vec,3)]
-        X_1D_loc%tot_i_min = [1,1,1]
-        X_1D_loc%tot_i_max = [X%n_mod,grid_X_trim%n(3),size(X%vec,3)]
-        allocate(X_1D_loc%p(size(X%vec(:,i_min_X:i_max_X,:))))
-        X_1D_loc%p = reshape(realpart(X%vec(:,i_min_X:i_max_X,:)),&
-            &[size(X%vec(:,i_min_X:i_max_X,:))])
+        sol_1D_loc => sol_1D(id); id = id+1
+        sol_1D_loc%var_name = 'RE_X_vec'
+        allocate(sol_1D_loc%tot_i_min(3),sol_1D_loc%tot_i_max(3))
+        allocate(sol_1D_loc%loc_i_min(3),sol_1D_loc%loc_i_max(3))
+        sol_1D_loc%loc_i_min = [1,grid_X_trim%i_min,1]
+        sol_1D_loc%loc_i_max = [X%n_mod,grid_X_trim%i_max,size(X%vec,3)]
+        sol_1D_loc%tot_i_min = [1,1,1]
+        sol_1D_loc%tot_i_max = [X%n_mod,grid_X_trim%n(3),size(X%vec,3)]
+        allocate(sol_1D_loc%p(size(X%vec(:,norm_id(1):norm_id(2),:))))
+        sol_1D_loc%p = reshape(realpart(X%vec(:,norm_id(1):norm_id(2),:)),&
+            &[size(X%vec(:,norm_id(1):norm_id(2),:))])
         
         ! IM_X_vec
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'IM_X_vec'
-        allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-        allocate(X_1D_loc%grp_i_min(3),X_1D_loc%grp_i_max(3))
-        X_1D_loc%grp_i_min = [1,grid_X_trim%i_min,1]
-        X_1D_loc%grp_i_max = [X%n_mod,grid_X_trim%i_max,size(X%vec,3)]
-        X_1D_loc%tot_i_min = [1,1,1]
-        X_1D_loc%tot_i_max = [X%n_mod,grid_X_trim%n(3),size(X%vec,3)]
-        allocate(X_1D_loc%p(size(X%vec(:,i_min_X:i_max_X,:))))
-        X_1D_loc%p = reshape(imagpart(X%vec(:,i_min_X:i_max_X,:)),&
-            &[size(X%vec(:,i_min_X:i_max_X,:))])
+        sol_1D_loc => sol_1D(id); id = id+1
+        sol_1D_loc%var_name = 'IM_X_vec'
+        allocate(sol_1D_loc%tot_i_min(3),sol_1D_loc%tot_i_max(3))
+        allocate(sol_1D_loc%loc_i_min(3),sol_1D_loc%loc_i_max(3))
+        sol_1D_loc%loc_i_min = [1,grid_X_trim%i_min,1]
+        sol_1D_loc%loc_i_max = [X%n_mod,grid_X_trim%i_max,size(X%vec,3)]
+        sol_1D_loc%tot_i_min = [1,1,1]
+        sol_1D_loc%tot_i_max = [X%n_mod,grid_X_trim%n(3),size(X%vec,3)]
+        allocate(sol_1D_loc%p(size(X%vec(:,norm_id(1):norm_id(2),:))))
+        sol_1D_loc%p = reshape(imagpart(X%vec(:,norm_id(1):norm_id(2),:)),&
+            &[size(X%vec(:,norm_id(1):norm_id(2),:))])
         
         call lvl_ud(-1)
         
@@ -1730,15 +1726,15 @@ contains
         
         ! write
         if (max_it_r.gt.1) then
-            ierr = print_HDF5_arrs(X_1D,'sol_R'//trim(i2str(rich_lvl_nr)))
+            ierr = print_HDF5_arrs(sol_1D,'sol_R'//trim(i2str(rich_lvl_nr)))
         else
-            ierr = print_HDF5_arrs(X_1D,'sol')
+            ierr = print_HDF5_arrs(sol_1D,'sol')
         end if
         CHCKERR('')
         
         ! clean up
         call dealloc_grid(grid_X_trim)
-        nullify(X_1D_loc)
+        nullify(sol_1D_loc)
         
         ! user output
         call lvl_ud(-1)

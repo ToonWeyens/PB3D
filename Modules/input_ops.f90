@@ -10,7 +10,7 @@ module input_ops
     
     implicit none
     private
-    public read_input, pause_prog, get_real, get_int, get_log, test_max_memory
+    public read_input, pause_prog, get_real, get_int, get_log
     
 contains
     ! Queries for a logical value yes or no, where the default answer is also to
@@ -18,7 +18,7 @@ contains
     ! [MPI] All ranks, but only global rank can give input
     function get_log(yes,ind) result(val)
         use messages, only: start_time, stop_time
-        use num_vars, only: glb_rank
+        use num_vars, only: rank
         use MPI_utilities, only: wait_MPI, broadcast_var
         
         ! input / output
@@ -36,8 +36,8 @@ contains
         ind_loc = .false.
         if (present(ind)) ind_loc = ind
         
-        ! only global master can receive input
-        if (glb_rank.eq.0) then
+        ! only master can receive input
+        if (rank.eq.0) then
             write(*,'(A)',advance='no') empty_str                               ! first print empty string so that output is visible
             if (yes) then
                 write(*,'(A)',advance='no') 'y(es)/n(o) [yes]: '
@@ -73,7 +73,7 @@ contains
     ! [MPI] All ranks, but only global rank can give input
     function get_real(lim_lo,lim_hi,ind) result(val)
         use messages, only: start_time, stop_time
-        use num_vars, only: glb_rank
+        use num_vars, only: rank
         use MPI_utilities, only: wait_MPI, broadcast_var
         
         ! input / output
@@ -95,8 +95,8 @@ contains
         ! initialize val
         val = 0._dp
         
-        ! only global master can receive input
-        if (glb_rank.eq.0) then
+        ! only master can receive input
+        if (rank.eq.0) then
             ! set up local limits
             lims_loc = [-huge(1._dp),huge(1._dp)]
             if (present(lim_lo)) lims_loc(1) = lim_lo
@@ -147,7 +147,7 @@ contains
     ! [MPI] All ranks, but only global rank can give input
     function get_int(lim_lo,lim_hi,ind) result(val)
         use messages, only: start_time, stop_time
-        use num_vars, only: glb_rank
+        use num_vars, only: rank
         use MPI_utilities, only: wait_MPI, broadcast_var
         
         ! input / output
@@ -169,8 +169,8 @@ contains
         ! initialize val
         val = 0
         
-        ! only global master can receive input
-        if (glb_rank.eq.0) then
+        ! only master can receive input
+        if (rank.eq.0) then
             ! set up local limits
             lims_loc = [-huge(1),huge(1)]
             if (present(lim_lo)) lims_loc(1) = lim_lo
@@ -221,7 +221,7 @@ contains
     subroutine pause_prog(ind)
         use messages, only: start_time, stop_time
         use MPI_utilities, only: wait_MPI
-        use num_vars, only: glb_rank, grp_rank
+        use num_vars, only: rank, rank
         
         ! input / output
         logical, intent(in), optional :: ind                                    ! individual pause or not
@@ -232,7 +232,7 @@ contains
         logical :: ind_loc                                                      ! local version of ind
         
         ! output message
-        if (grp_rank.eq.0) then
+        if (rank.eq.0) then
             write(*,'(A)',advance='no') empty_str                               ! first print empty string so that output is visible
             write(*,'(A)',advance='no') 'Paused. Press enter...'
         end if
@@ -241,8 +241,8 @@ contains
         ind_loc = .false.
         if (present(ind)) ind_loc = ind
         
-        ! only global master can receive input
-        if (glb_rank.eq.0) then
+        ! only master can receive input
+        if (rank.eq.0) then
             call stop_time
             read (*, *)
             call start_time
@@ -260,20 +260,19 @@ contains
     ! [MPI] only global master
     integer function read_input() result(ierr)
         use num_vars, only: &
-            &minim_style, min_alpha, max_alpha, n_alpha, max_it_NR, tol_NR, &
-            &max_it_r, input_i, use_pol_flux_F, EV_style, max_mem_per_proc, &
-            &n_procs_per_alpha, plot_resonance, tol_r, n_sol_requested, &
-            &nyq_fac, glb_rank, nyq_fac, plot_grid, plot_flux_q, &
+            &max_it_NR, tol_NR, max_it_r, input_i, use_pol_flux_F, EV_style, &
+            &max_mem_per_proc, plot_resonance, tol_r, n_sol_requested, &
+            &nyq_fac, rank, nyq_fac, plot_grid, plot_flux_q, &
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
-            &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_ord, &
-            &BC_style, max_it_inv, tol_norm_r, tol_slepc, max_n_it_slepc, &
-            &glb_n_procs
+            &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
+            &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
+            &tol_norm_r, tol_slepc, max_it_slepc, n_procs, pi
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files_ops, only: input_name
         use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X, min_n_r_X, &
             &min_n_X, min_r_X, max_r_X
-        use grid_vars, only: n_par_X, min_par_X, max_par_X
+        use grid_vars, only: alpha, n_par_X, min_par_X, max_par_X
         
         character(*), parameter :: rout_name = 'read_input'
         
@@ -283,21 +282,22 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! input options
-        namelist /inputdata_PB3D/ max_mem_per_proc, minim_style, min_par_X, &
-            &min_n_r_X, max_par_X, min_alpha, max_alpha, n_par_X, n_alpha, &
-            &max_it_NR, tol_NR, max_it_r, tol_r, prim_X, min_sec_X, max_sec_X, &
-            &min_r_X, max_r_X, EV_style, n_procs_per_alpha, plot_resonance, &
-            &n_sol_requested, EV_BC, tol_slepc, rho_style, nyq_fac, rho_0, &
-            &use_pol_flux_F, plot_grid, plot_flux_q, use_normalization, &
-            &n_theta_plot, n_zeta_plot, retain_all_sol, norm_disc_ord, &
-            &BC_style, max_it_inv, tol_norm_r, max_n_it_slepc
-        namelist /inputdata_PB3D_POST/ max_mem_per_proc, n_sol_plotted, &
-            &n_theta_plot, n_zeta_plot, plot_resonance, plot_flux_q, plot_grid
+        namelist /inputdata_PB3D/ n_par_X, min_par_X, max_par_X, alpha, &
+            &min_r_X, max_r_X, max_it_NR, tol_NR, use_pol_flux_F, &
+            &rho_style, nyq_fac, rho_0, plot_grid, plot_flux_q, prim_X, &
+            &min_sec_X, max_sec_X, use_normalization, n_theta_plot, &
+            &n_zeta_plot, norm_disc_prec_eq, tol_norm_r, max_it_NR, tol_NR, &
+            &max_mem_per_proc, min_n_r_X, max_it_r, tol_r, EV_style, &
+            &plot_resonance, n_sol_requested, EV_BC, tol_slepc, &
+            &retain_all_sol, norm_disc_prec_X, BC_style, max_it_inv, &
+            &tol_norm_r, max_it_slepc
+        namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
+            &plot_resonance, plot_flux_q, plot_grid, norm_disc_prec_sol
         
         ! initialize ierr
         ierr = 0
         
-        if (glb_rank.eq.0) then                                                 ! only global master
+        if (rank.eq.0) then                                                     ! only master
             if (input_name.ne.'') then                                          ! if open_input opened a file
                 call writo('Setting up user-provided input "' &       
                     &// trim(input_name) // '"')
@@ -311,14 +311,16 @@ contains
                 &default values')
             
             ! common variables for all program styles
-            max_mem_per_proc = 6000_dp/glb_n_procs                              ! count with 6GB
+            max_mem_per_proc = 6000_dp/n_procs                                  ! count with 6GB
             
             ! select depending on program style
             select case (prog_style)
-                case(1)                                                         ! PB3D
+                case(1)                                                         ! PB3D preparation
                     call default_input_PB3D
-                case(2)                                                         ! PB3D_POST
-                    call default_input_PB3D_POST
+                case(2)                                                         ! PB3D perturbation
+                    ! perturbation part is never called standalone
+                case(3)                                                         ! PB3D post-processing
+                    call default_input_POST
                 case default
                     err_msg = 'No program style associated with '//&
                         &trim(i2str(prog_style))
@@ -330,7 +332,7 @@ contains
             if (input_name.ne.'') then                                          ! otherwise, defaults are loaded
                 ! select depending on program style
                 select case (prog_style)
-                    case(1)                                                     ! PB3D
+                    case(1)                                                     ! PB3D pre-perturbation
                         read(input_i,nml=inputdata_PB3D,iostat=istat)           ! read input data
                         
                         ! check input if successful read
@@ -345,20 +347,31 @@ contains
                             ! adapt run-time variables if needed
                             call adapt_run
                             
-                            ! adapt output variables if needed
-                            call adapt_output
-                            
                             ! adapt plotting variables if needed
                             call adapt_plot
-                            
-                            ! adapt alpha variables if needed
-                            call adapt_alpha
                             
                             ! adapt n_par_X if needed
                             call adapt_n_par_X
                             
-                            ! adapt min_r_X and max_r_X if needed
-                            ierr = adapt_X()
+                            ! adapt tolerances if needed
+                            call adapt_tol_r
+                            
+                            ! adapt perturbation grid
+                            ierr = adapt_X_grid()
+                            CHCKERR('')
+                            
+                            ! adapt Newton-Rhapson variables if needed
+                            call adapt_NR
+                            
+                            ! adapt normalization variables if needed
+                            ierr = adapt_normalization()
+                            CHCKERR('')
+                            
+                            ! adapt output variables if needed
+                            call adapt_output
+                            
+                            ! adapt perturbation modes
+                            ierr = adapt_X_modes()
                             CHCKERR('')
                             
                             ! adapt Richardson variables if needed
@@ -369,14 +382,6 @@ contains
                             
                             ! adapt Newton-Rhapson variables if needed
                             call adapt_NR
-                            
-                            ! adapt m variables if needed
-                            ierr = adapt_m()
-                            CHCKERR('')
-                            
-                            ! adapt normalization variables if needed
-                            ierr = adapt_normalization()
-                            CHCKERR('')
                             
                             call lvl_ud(-1)
                         else                                                    ! cannot read input data
@@ -396,8 +401,10 @@ contains
                             min_n_X = min_sec_X
                             max_n_X = max_sec_X
                         end if
-                    case(2)                                                     ! PB3D_POST
-                        read(input_i,nml=inputdata_PB3D_POST,iostat=istat)      ! read input data
+                    case(2)                                                     ! PB3D perturbation
+                        ! perturbation part has no separate input file
+                    case(3)                                                     ! PB3D_POST
+                        read(input_i,nml=inputdata_POST,iostat=istat)           ! read input data
                         
                         ! check input if successful read
                         if (istat.eq.0) then                                    ! input file succesfully read
@@ -413,6 +420,9 @@ contains
                         ierr = 1
                         CHCKERR(err_msg)
                 end select
+                
+                ! multiply alpha by pi
+                alpha = alpha*pi
                 
                 ! user output
                 call writo('Close input file')
@@ -430,26 +440,22 @@ contains
             max_it_NR = 500                                                     ! maximum 500 Newton-Rhapson iterations
             tol_NR = 1.0E-10_dp                                                 ! wanted relative error in Newton-Rhapson iteration
             
-            ! concerning Richardson extrapolation
-            max_it_r = 1                                                        ! by default no Richardson extrapolation
-            tol_r = 1E-5                                                        ! wanted relative error in Richardson extrapolation
-            
-            ! concerning calculating the inverse
-            max_it_inv = 1                                                      ! by default no iteration to calculate inverse
-            
             ! runtime variables
-            minim_style = 1                                                     ! Richardson Extrapolation with normal discretization
-            n_procs_per_alpha = 1                                               ! 1 processor per field line
-            max_n_it_slepc = 1000                                               ! max. nr. of iterations for SLEPC
-            plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
-            plot_grid = .false.                                                 ! do not plot the grid
-            plot_flux_q = .false.                                               ! do not plot the flux quantities
             use_normalization = .true.                                          ! use normalization for the variables
+            rho_style = 1                                                       ! constant pressure profile, equal to rho_0
+            norm_disc_prec_eq = 1                                               ! precision 1 normal discretization of equilibrium
+            max_it_slepc = 10000                                                ! max. nr. of iterations for SLEPC
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
             tol_slepc = 1.E-8_dp                                                ! tolerance of 1E-8
             rho_style = 1                                                       ! constant pressure profile, equal to rho_0
-            norm_disc_ord = 1                                                   ! order 1 normal discretization
+            norm_disc_prec_X = 1                                                ! precision 1 normal discretization of perturbation
+            norm_disc_prec_eq = 1                                               ! precision 1 normal discretization of equilibrium
+            norm_disc_prec_sol = 0                                              ! not used in PB3D
             BC_style = [1,2]                                                    ! left BC zeroed and right BC through minimization of energy
+            plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
+            plot_grid = .false.                                                 ! do not plot the grid
+            plot_flux_q = .false.                                               ! do not plot the flux quantities
+            
             
             ! variables concerning output
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
@@ -468,6 +474,34 @@ contains
             end select
             
             ! variables concerning poloidal mode numbers m
+            nyq_fac = 10                                                        ! need at least 10 points per period for perturbation quantitites
+            n_par_X = 100                                                       ! number of parallel grid points in pert. grid
+            use_pol_flux_F = use_pol_flux_E                                     ! use same normal flux coordinate as the equilibrium
+            prim_X = 20                                                         ! main mode number of perturbation
+            min_sec_X = prim_X                                                  ! min. of. secondary mode number of perturbation
+            max_sec_X = prim_X                                                  ! max. of. secondary mode number of perturbation
+            
+            ! variables concerning alpha
+            alpha = 0._dp                                                       ! field line based in outboard
+            
+            ! variables concerning perturbation
+            min_r_X = 0.1_dp                                                    ! minimum normal range
+            max_r_X = 1.0_dp                                                    ! maximum normal range
+            tol_norm_r = 0.05                                                   ! tolerance for normal range
+            EV_style = 1                                                        ! slepc solver for EV problem
+            min_n_r_X = 20                                                      ! at least 20 points in perturbation grid
+            
+            ! variables concerning normalization
+            rho_0 = 10E-6_dp                                                    ! for fusion, particle density of around 1E21, mp around 1E-27
+            
+            ! concerning Richardson extrapolation
+            max_it_r = 1                                                        ! by default no Richardson extrapolation
+            tol_r = 1E-5                                                        ! wanted relative error in Richardson extrapolation
+            
+            ! concerning calculating the inverse
+            max_it_inv = 1                                                      ! by default no iteration to calculate inverse
+            
+            ! variables concerning poloidal mode numbers m
             min_par_X = -4.0_dp                                                 ! minimum parallel angle [pi]
             max_par_X = 4.0_dp                                                  ! maximum parallel angle [pi]
             nyq_fac = 10                                                        ! need at least 10 points per period for perturbation quantitites
@@ -476,30 +510,16 @@ contains
             max_sec_X = prim_X                                                  ! max. of. secondary mode number of perturbation
             n_par_X = 20                                                        ! number of parallel grid points in pert. grid
             use_pol_flux_F = use_pol_flux_E                                     ! use same normal flux coordinate as the equilibrium
-            
-            ! variables concerning alpha
-            min_alpha = 0.0_dp                                                  ! minimum field line label [pi]
-            max_alpha = 2.0_dp                                                  ! maximum field line label [pi]
-            n_alpha = 10                                                        ! number of different field lines
-            tol_norm_r = 0.05                                                   ! tolerance for normal range
-            
-            ! variables concerning perturbation
-            min_r_X = 0.1_dp                                                    ! minimum radius
-            max_r_X = 1.0_dp                                                    ! maximum radius
-            EV_style = 1                                                        ! slepc solver for EV problem
-            min_n_r_X = 20                                                      ! at least 20 points in perturbation grid
-            
-            ! variables concerning normalization
-            rho_0 = 10E-6_dp                                                    ! for fusion, particle density of around 1E21, mp around 1E-27
         end subroutine default_input_PB3D
         
-        subroutine default_input_PB3D_POST
+        subroutine default_input_POST
             use num_vars, only: eq_style
             
             ! runtime variables
             plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
             plot_flux_q = .false.                                               ! do not plot the flux quantities
             plot_grid = .false.                                                 ! do not plot the grid
+            norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
             
             ! variables concerning output
             n_sol_plotted = n_sol_requested                                     ! plot all solutions
@@ -515,17 +535,11 @@ contains
                     n_theta_plot = 501                                          ! nr. poloidal points in plot
                     n_zeta_plot = 1                                             ! nr. toroidal points in plot
             end select
-        end subroutine default_input_PB3D_POST
+        end subroutine default_input_POST
         
         ! checks whether the variables concerning run-time are chosen correctly.
-        ! n_procs_per_alpha has to be at least 1
         ! rho_style has to be 1 (constant rho = rho_0)
         subroutine adapt_run
-            if (n_procs_per_alpha.lt.1) then
-                n_procs_per_alpha = 1
-                call writo('WARNING: n_procs_per_alpha has been increased to '&
-                    &//trim(i2str(n_procs_per_alpha)))
-            end if
             if (rho_style.ne.1) then
                 rho_style = 1
                 call writo('WARNING: rho_style set to default (1: constant)')
@@ -557,11 +571,18 @@ contains
             end if
         end subroutine adapt_plot
         
-        ! checks  whether n_par_X  is  chosen  high enough  so  aliasing can  be
+        ! Checks  whether n_par_X  is  chosen  high enough  so  aliasing can  be
         ! avoided.  aliasing occurs  when there  are  not enough  points on  the
         ! parallel grid so the fast-moving functions e^(i(k-m)) V don't give the
-        ! wrong integrals in the perturbation part
+        ! wrong integrals in the perturbation  part. Also checks whether nyq_fac
+        ! is at least one.
         subroutine adapt_n_par_X
+            ! adapt nyq_fac
+            if (nyq_fac.lt.1) then
+                call writo('WARNING: nyq_fac has been increased to 1')
+                nyq_fac = 1
+            end if
+            
             if (n_par_X.lt.nyq_fac*max(max_sec_X-min_sec_X,1)*&
                 &(max_par_X-min_par_X)/2) then
                 n_par_X = int(nyq_fac*max(max_sec_X-min_sec_X,1)*&
@@ -572,18 +593,14 @@ contains
             end if
         end subroutine adapt_n_par_X
         
-        ! checks whether variables concerning  perturbation are correct. min_r_X
-        ! should not be  too close to zero because  the equilibrium calculations
-        ! yield an infinity at the magnetic  axis. max_r_X cannot be larger than
-        ! 1.0 and has to  be larger than min_r_X
+        ! checks whether  variables concerning  perturbation modes  are correct:
         ! the absolute  value of prim_X  has to be  at least 5  (arbitrary), but
-        ! preferibly at least 10 (arbitrary)
-        ! min_n_r_X has to be at  least 6*norm_disc_ord+2 (for at least two full
-        ! points)
-        integer function adapt_X() result(ierr)
+        ! preferibly at least 10 (arbitrary).  Also, max_sec_X has to be greater
+        ! than min_sec_X and nyq_fac has to be at least 1.
+        integer function adapt_X_modes() result(ierr)
             use grid_vars, only: n_r_eq
             
-            character(*), parameter :: rout_name = 'adapt_X'
+            character(*), parameter :: rout_name = 'adapt_X_modes'
             
             ! local variables
             character(len=max_str_ln) :: err_msg                                ! error message
@@ -607,12 +624,38 @@ contains
                     &results')
             end if
             
+            ! check min_sec_X, max_sec_X
+            if (max_sec_X.lt.min_sec_X) then
+                ierr = 1
+                err_msg = 'max_sec_X has to be larger or equal to min_sec_X'
+                CHCKERR(err_msg)
+            end if
+            
             ! check min_n_r_X
-            if (min_n_r_X.lt.6*norm_disc_ord+2) then
-                min_n_r_X = 6*norm_disc_ord+2
+            if (min_n_r_X.lt.6*norm_disc_prec_X+2) then
+                min_n_r_X = 6*norm_disc_prec_X+2
                 call writo('WARNING: min_n_r_X has been increased to '//&
                     &trim(i2str(min_n_r_X)))
             end if
+        end function adapt_X_modes
+        
+        ! Checks whether variables concerning the perturbation grid are correct:
+        ! min_r_X  should not  be  too  close to  zero  because the  equilibrium
+        ! calculations yield an infinity at the magnetic axis. max_r_X cannot be
+        ! larger than 1.0 and has to be larger than min_r_X.
+        integer function adapt_X_grid() result(ierr)
+            use grid_vars, only: n_r_eq
+            
+            character(*), parameter :: rout_name = 'adapt_X_grid'
+            
+            ! local variables
+            character(len=max_str_ln) :: err_msg                                ! error message
+            real(dp) :: one = 1.00000001_dp                                     ! one plus a little margin
+            integer :: abs_min_prim_X = 5                                       ! absolute minimum for the high-n theory
+            integer :: rec_min_prim_X = 10                                      ! recomended minimum for the high-n theory
+            
+            ! initialize ierr
+            ierr = 0
             
             ! check min_r_X
             if (min_r_X.lt.one/(n_r_eq-1)) then
@@ -636,7 +679,7 @@ contains
                     &trim(r2strt(1._dp/(n_r_eq-1)))
                 CHCKERR(err_msg)
             end if
-        end function adapt_X
+        end function adapt_X_grid
         
         ! checks  whether the variables concerning  Richardson extrapolation are
         ! correct. max_it_r has to be at least 1
@@ -665,41 +708,8 @@ contains
             end if
         end subroutine adapt_NR
         
-        ! checks whether the variables concerning the poloidal mode number m are
-        ! correct. max_sec_X has to be greater than min_sec_X and nyq_fac has to
-        ! be at least 1
-        ! sets up min_n_X, max_n_X, min_m_X, max_m_X using prim_X and min_sec_X,
-        ! max_sec_X
-        integer function adapt_m() result (ierr)
-            character(*), parameter :: rout_name = 'adapt_m'
-            
-            ! local variables
-            character(len=max_str_ln) :: err_msg                                ! error message
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! check min_sec_X, max_sec_X
-            if (max_sec_X.lt.min_sec_X) then
-                ierr = 1
-                err_msg = 'max_sec_X has to be larger or equal to min_sec_X'
-                CHCKERR(err_msg)
-            end if
-            
-            ! adapt nyq_fac
-            if (nyq_fac.lt.1) then
-                call writo('WARNING: nyq_fac has been increased to 1')
-                nyq_fac = 1
-            end if
-        end function adapt_m
-        
-        ! checks  whether  n_alpha  is  chosen high  enough  and whether  normal
-        ! tolerance is within 0 and 1
-        subroutine adapt_alpha
-            if (n_alpha.lt.1) then
-                call writo('WARNING: n_alpha has been increased to 1')
-                n_alpha = 1
-            end if
+        ! checks whether Richardson tolerances are correct
+        subroutine adapt_tol_r
             if (tol_norm_r.lt.0) then
                 call writo('WARNING: tol_norm_r has been increased to 0')
                 tol_norm_r = 0._dp
@@ -708,7 +718,7 @@ contains
                 call writo('WARNING: tol_norm_r has been decreased to 1')
                 tol_norm_r = 1._dp
             end if
-        end subroutine adapt_alpha
+        end subroutine adapt_tol_r
         
         ! checks whether normalization variables are chosen correctly. rho_0 has
         ! to be positive
@@ -728,42 +738,4 @@ contains
             end if
         end function adapt_normalization
     end function read_input
-
-    ! test whether maximum memory feasible
-    integer function test_max_memory() result(ierr)
-        use num_vars, only: max_mem_per_proc
-        
-        character(*), parameter :: rout_name = 'test_max_memory'
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: n_max                                                        ! maximum size of array
-        real(dp), allocatable :: max_mem_arr(:,:)                               ! array with maximum size
-        
-        ! initialize ierr
-        ierr = 0
-        
-        call writo('Testing whether maximum memory per process of '//&
-            &trim(r2strt(max_mem_per_proc/1000))//'GB is possible')
-        
-        call lvl_ud(1)
-        
-        ! (lazy) allocation
-        n_max = ceiling(sqrt(max_mem_per_proc/(sizeof(1._dp)*1.E-6)))
-        call writo('Allocating doubles array of size '//trim(i2str(n_max))&
-            &//'x'//trim(i2str(n_max)))
-        allocate(max_mem_arr(n_max,n_max),STAT=ierr)
-        err_msg = 'cannot allocate this much memory. Try setting &
-            &"max_mem_per_proc" lower'
-        CHCKERR(err_msg)
-        
-        ! explicitely set elements
-        max_mem_arr = 0._dp                                                     ! this can fail while lazy allocation does not
-        
-        deallocate(max_mem_arr)
-        
-        call lvl_ud(-1)
-        call writo('Maximum memory allocatable')
-        
-    end function test_max_memory
 end module input_ops

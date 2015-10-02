@@ -1,17 +1,16 @@
 PB3D.o : \
-    HDF5_ops.o \
-    test.o \
     num_vars.o \
-    MPI_ops.o \
-    VMEC.o \
-    files_ops.o \
-    driver.o \
     str_ops.o \
-    utilities.o \
-    input_ops.o \
     messages.o \
+    HDF5_ops.o \
+    driver_PREP.o \
+    driver_PERT.o \
+    files_ops.o \
+    input_ops.o \
+    utilities.o \
+    MPI_ops.o \
     eq_ops.o \
-    eq_vars.o \
+    test.o \
 
 PB3D_POST.o : \
     num_vars.o \
@@ -24,7 +23,6 @@ PB3D_POST.o : \
     PB3D_ops.o \
     driver_POST.o \
     utilities.o \
-    MPI_utilities.o \
 
 PB3D_vars.o : \
     num_vars.o \
@@ -87,33 +85,34 @@ grid_ops.o : \
     output_ops.o \
     messages.o \
 
-driver.o : \
+driver_PREP.o : \
     num_vars.o \
-    driver_rich.o \
-    messages.o \
-    str_ops.o \
-    input_ops.o \
-
-driver_rich.o : \
-    num_vars.o \
-    MPI_ops.o \
     str_ops.o \
     output_ops.o \
     messages.o \
     eq_vars.o \
     met_ops.o \
     eq_ops.o \
-    X_ops.o \
-    X_vars.o \
-    SLEPC_ops.o \
-    met_ops.o \
     VMEC.o \
     HELENA.o \
-    utilities.o \
     MPI_utilities.o \
     grid_ops.o \
     grid_vars.o \
+
+driver_PERT.o : \
+    str_ops.o \
+    output_ops.o \
+    messages.o \
+    num_vars.o \
+    grid_vars.o \
+    eq_vars.o \
+    met_vars.o \
+    X_vars.o \
+    X_ops.o \
+    MPI_ops.o \
     vac.o \
+    PB3D_vars.o \
+    PB3D_ops.o \
 
 driver_POST.o : \
     num_vars.o \
@@ -167,7 +166,6 @@ eq_ops.o : \
     X_vars.o \
     output_ops.o \
     messages.o \
-    met_ops.o \
     utilities.o \
     MPI_utilities.o \
     VMEC.o \
@@ -202,7 +200,6 @@ input_ops.o : \
     str_ops.o \
     num_vars.o \
     eq_vars.o \
-    files_ops.o \
     X_vars.o \
     grid_vars.o \
     MPI_utilities.o \
@@ -218,6 +215,7 @@ files_ops.o : \
     str_ops.o \
     messages.o \
     MPI_utilities.o \
+    HDF5_ops.o \
 
 files_utilities.o : \
     str_ops.o \
@@ -276,7 +274,9 @@ met_ops.o : \
     utilities.o \
     HELENA.o \
     met_vars.o \
+    input_ops.o \
     grid_ops.o \
+    grid_vars.o \
 
 met_vars.o : \
     num_vars.o \

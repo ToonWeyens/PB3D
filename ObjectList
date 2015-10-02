@@ -2,8 +2,8 @@ ObjectFiles = \
 HDF5_ops.o \
 grid_vars.o \
 grid_ops.o \
-driver.o \
-driver_rich.o \
+driver_PREP.o \
+driver_PERT.o \
 driver_POST.o \
 eq_ops.o \
 eq_vars.o \

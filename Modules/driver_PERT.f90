@@ -2,7 +2,7 @@
 !   Driver employing Richardson's extrapolation and normal discretization of   !
 !   the ODE's.                                                                 !
 !------------------------------------------------------------------------------!
-module driver_rich
+module driver_PERT
 #include <PB3D_macros.h>
     use str_ops
     use output_ops
@@ -15,7 +15,7 @@ module driver_rich
     
     implicit none
     private
-    public run_rich_driver
+    public run_driver_PERT
 #if ldebug
     public debug_X_grid
 #endif
@@ -32,45 +32,53 @@ contains
     !       other ranks only
     !       Here, the tasks are split and allocated dynamically by the master to 
     !       the other groups
-    integer function run_rich_driver() result(ierr)
-        use num_vars, only: min_alpha, max_alpha, n_alpha, glb_rank, grp_nr, &
-            &max_alpha, alpha_job_nr, use_pol_flux_F, eq_style, group_output, &
-            &output_name, n_groups, max_it_r, plot_flux_q
-        use MPI_ops, only: split_MPI, merge_MPI, get_next_job
+    integer function run_driver_PERT() result(ierr)
+        use num_vars, only: use_pol_flux_F, eq_style, max_it_r, jobs_data, rank
         use MPI_utilities, only: wait_MPI
-        use eq_vars, only: create_eq, dealloc_eq
+        use eq_vars, only: dealloc_eq
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_r_X, &
             &max_r_X, min_n_r_X
-        use eq_ops, only: calc_flux_q, flux_q_plot
         use VMEC, only: dealloc_VMEC
         use HELENA, only: dealloc_HEL
-        use grid_ops, only: calc_eqd_grid, setup_grid_eq
         use grid_vars, only: dealloc_grid, &
-            &n_r_eq, n_par_X, min_par_X, max_par_X
+            &alpha, n_r_eq, n_par_X, min_par_X, max_par_X
         use HDF5_ops, only: create_output_HDF5
+        use eq_ops, only: calc_eq, calc_derived_q, merge_eq_vars, &
+            &print_output_eq
+        use met_ops, only: calc_met
+        use met_vars, only: dealloc_met
+        use grid_ops, only: setup_and_calc_grid_B
+        use PB3D_ops, only: reconstruct_PB3D
+        use PB3D_vars, only: dealloc_PB3D, &
+            &PB3D_type
+        use utilities, only: test_max_memory
+        use MPI_ops, only: divide_X_jobs, get_next_job
+        !!use utilities, only: calc_aux_utilities
         
-        character(*), parameter :: rout_name = 'run_rich_driver'
+        character(*), parameter :: rout_name = 'run_driver'
         
         ! local variables
-        character(len=8) :: flux_name                                           ! toroidal or poloidal
+        type(PB3D_type), target :: PB3D                                         ! output PB3D for which to do postprocessing
+        type(PB3D_type), pointer :: PB3D_B => null()                            ! PB3D variables on a field-aligned grid
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid of this process
-        real(dp), allocatable :: alpha(:)                                       ! all field line labes all
-        type(grid_type) :: grid_eq                                              ! equilibrium grid
-        type(eq_type) :: eq                                                     ! equilibrium for this alpha
+        integer :: X_job_nr                                                     ! perturbation job nr.
         
         ! initialize ierr
         ierr = 0
         
-        ! set up flux_name
-        if (use_pol_flux_F) then
-            flux_name = 'poloidal'
-        else
-            flux_name = 'toroidal'
-        end if
+        call lvl_ud(1)
+        
+        ! some preliminary things
+        
+        ! test maximum memory
+        ierr = test_max_memory()
+        CHCKERR('')
+        
+        !!! calculate auxiliary quantities for utilities
+        !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
         
         ! user output
-        call writo('The calculations will be done')
+        call writo('Perturbations are analyzed')
         call lvl_ud(1)
         
         if (max_it_r.eq.1) then
@@ -85,15 +93,6 @@ contains
         call writo('for '//trim(i2str(n_par_X))//' values on parallel &
             &range '//trim(r2strt(min_par_X*pi))//'..'//&
             &trim(r2strt(max_par_X*pi)))
-        if (n_alpha.eq.1) then
-            call writo('for alpha = '//trim(r2strt(min_alpha*pi)))
-        else
-            call writo('for '//trim(i2str(n_alpha))//&
-                &' values of alpha '//trim(r2strt(min_alpha*pi))//'..'//&
-                &trim(r2strt(max_alpha*pi)))
-        end if
-        call writo('using the '//trim(flux_name)//' flux as the normal &
-            &variable')
         if (use_pol_flux_F) then
             call writo('with toroidal mode number n = '//trim(i2str(min_n_X)))
             call writo('and poloidal mode number m = '//trim(i2str(min_m_X))//&
@@ -106,152 +105,99 @@ contains
         
         call lvl_ud(-1)
         
-        ! determine the magnetic field lines for which to run the calculations 
-        ! (equidistant grid)
-        allocate(alpha(n_alpha))
-        ierr = calc_eqd_grid(alpha,min_alpha*pi,max_alpha*pi,excl_last=.true.)
-        CHCKERR('')
-        
-        ! split  the  communicator MPI_Comm_world into subcommunicators
-        call writo('Set up groups for dynamical load balancing')
+        ! reconstructing grids depends on equilibrium style
+        ! user output
+        call writo('Reconstructing PB3D output on output grid')
         call lvl_ud(1)
-        ierr = split_MPI(n_r_eq,eq_limits)
-        CHCKERR('')
-        call lvl_ud(-1)
-        
-        ! setup equilibrium grid
-        ierr = setup_grid_eq(grid_eq,eq_limits)
-        CHCKERR('')
-        
-        ! create equilibrium
-        call writo('Initialize equilibrium quantities')
-        ierr = create_eq(grid_eq,eq)
-        CHCKERR('')
-        
-        ! calculate flux quantities and complete equilibrium grid
-        call writo('Calculate flux quantities')
-        ierr = calc_flux_q(eq,grid_eq)
-        CHCKERR('')
-        
-        ! do the calculations for every  field line, where initially every group
-        ! is assigned a field line. On completion of a job, the completing group
-        ! inquires  all the other  groups using passive  1-sided MPI to  get the
-        ! next group that has to be done
-        ! loop over all fied lines
-        field_lines: do
-            ! non-global group masters cannot output (any more)
-            group_output = .false.
-            
-            ! get next job for current group
-            ierr = get_next_job(alpha_job_nr)
-            CHCKERR('')
-            
-            ! Do the calculations for a field line alpha
-            if (alpha_job_nr.gt.0) then
-                ! non-global group masters can output
-                group_output = .true.
-                
-                ! display message
-                call writo('Job '//trim(i2str(alpha_job_nr))//': Calculations &
-                    &for field line alpha = '//&
-                    &trim(r2strt(alpha(alpha_job_nr)))//&
-                    &', allocated to group '//trim(i2str(grp_nr+1)))
-                
-                call lvl_ud(1)                                                  ! starting calculation for current fied line
-                
-                ! open HDF5 file for output
-                ierr = create_output_HDF5()
-                CHCKERR('')
-                
-                ! calculate for this alpha job
-                ierr = run_rich_driver_for_alpha(grid_eq,eq,alpha(alpha_job_nr))
-                CHCKERR('')
-                
-                ! display message
-                call lvl_ud(-1)                                                 ! done with calculation for current field line
-                call writo('Job '//trim(i2str(alpha_job_nr))//&
-                    &': Calculations for field line alpha = '//&
-                    &trim(r2strt(alpha(alpha_job_nr)))//&
-                    &', completed by group '//trim(i2str(grp_nr+1)))
-            else
-                exit field_lines
-            end if
-        end do field_lines
-        
-        ! plot flux quantities if requested
-        if (plot_flux_q .and. grp_nr.eq.0) then                                 ! only first group because it is the same for all the groups
-            ierr = flux_q_plot(eq,grid_eq)
-            CHCKERR('')
-        else
-            call writo('Flux quantities plot not requested')
-        end if
-        
-        ! deallocate variables
-        call dealloc_eq(eq)
-        call dealloc_grid(grid_eq)
-        
-        ! choose which equilibrium style is being used:
-        !   1:  VMEC
-        !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                call dealloc_VMEC
+                ! the field-aligned grid is identical to the output grid
+                PB3D_B => PB3D
+                ! normal call to reconstruct_PB3D
+                ierr = reconstruct_PB3D(.true.,.false.,.false.,PB3D)
+                CHCKERR('')
             case (2)                                                            ! HELENA
-                call dealloc_HEL
+                ! the field-aligned grid is different form the output grid
+                allocate(PB3D_B)
+                ! additionally need field-aligned equilibrium grid
+                ierr = reconstruct_PB3D(.true.,.false.,.false.,PB3D,&
+                    &PB3D_B%grid_eq)
+                CHCKERR('')
             case default
+                ierr = 1
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
-                ierr = 1
                 CHCKERR(err_msg)
         end select
+        call lvl_ud(-1)
+        call writo('PB3D output reconstructed')
+        
+        ! divide perturbation jobs
+        ierr = divide_X_jobs(PB3D%grid_eq,&
+            &(max_m_X-min_m_X+1)*(max_n_X-min_n_X+1))
+        CHCKERR('')
+        
+        ! main loop over jobs
+        X_job_nr = 0
+        do while (X_job_nr.le.size(jobs_data,2))
+            ! get next job
+            ierr = get_next_job(X_job_nr)
+            CHCKERR('')
+            write(*,*) 'rank', rank, 'is doing job', X_job_nr
+        end do
+        
+        !! 1. Calculate the equilibrium quantities
+        !ierr = calc_eq(alpha,n_r_eq,grid_eq,eq)
+        !CHCKERR('')
+        
+        !! 2. Calculate the metric quantities
+        !ierr = calc_met(grid_eq,eq,met)
+        !CHCKERR('')
+        
+        !! 3. Calculate derived metric quantities
+        !call calc_derived_q(grid_eq,eq,met)
+        
+        !! 4. set up field-aligned equilibrium grid
+        !ierr = setup_and_calc_grid_B(grid_eq,grid_eq_B,eq,alpha)
+        !CHCKERR('')
+        
+        !! 5. write equilibrium variables to output
+        !ierr = print_output_eq(grid_eq,grid_eq_B,eq,met,alpha)
+        !CHCKERR('')
+        
+        !! 6. deallocate variables
+        !call dealloc_eq(eq)
+        !call dealloc_grid(grid_eq)
+        !nullify(grid_eq_B)
+        !call dealloc_met(met)
+        
+        !! 6. Sync results
+        !call writo('syncing MPI')
+        !ierr = wait_MPI()
+        !CHCKERR('')
         
         ! wait on all the groups
-        ierr = wait_MPI(2)
+        ierr = wait_MPI()
         CHCKERR('')
-        
-        ! merge  the subcommunicator into communicator MPI_Comm_world
-        if (glb_rank.eq.0) then
-            if (n_alpha.gt.1) then
-                call writo('Stability analysis concluded at all '//&
-                    &trim(i2str(n_alpha))//' fieldlines')
-            else
-                call writo('Stability analysis concluded')
-            end if
-            if (n_groups.eq.2) then
-                call writo('The outputs of the other group is saved in "'//&
-                    &trim(output_name)//'_2"')
-            else if (n_groups.gt.2) then
-                call writo('The outputs of the other groups 2..'//&
-                    &trim(i2str(n_alpha))//' i are saved in "'//&
-                    &trim(output_name)//'_2..'//trim(i2str(n_alpha))//'"')
-            end if
-            call writo('Merging groups for dynamical load balancing back &
-                &together')
-        end if
-        call lvl_ud(1)
-        ierr = merge_MPI()
-        CHCKERR('')
-        call lvl_ud(-1)
-    end function run_rich_driver
+    end function run_driver_PERT
     
     ! Runs the  calculations for one  of the alpha's.
-    integer function run_rich_driver_for_alpha(grid_eq,eq,alpha) result(ierr)
+    integer function run_driver_for_alpha(grid_eq,eq,alpha) result(ierr)
         use num_vars, only: n_sol_requested, max_it_r, no_guess, &
-            &rich_lvl_nr, grp_rank, alpha_job_nr, eq_style
+            &rich_lvl_nr, rank, eq_style, eq_style
         use X_vars, only: dealloc_X
-        use eq_ops, only: calc_eq, print_output_eq
+        use eq_ops, only: print_output_eq
         use X_ops, only: solve_EV_system, calc_magn_ints, prepare_X, &
             &print_output_X, print_output_sol
         use met_vars, only: dealloc_met
-        use MPI_ops, only: divide_X_grid
         use grid_vars, only: create_grid, dealloc_grid
-        use grid_ops, only: coord_F2E, setup_and_calc_grid_B, calc_ang_grid_eq
+        use grid_ops, only: coord_F2E, setup_and_calc_grid_B
         use vac, only: calc_vac
 #if ldebug
-        use grid_ops, only: trim_grid, untrim_grid
+        use grid_ops, only: trim_grid
 #endif
         
-        character(*), parameter :: rout_name = 'run_rich_driver_for_alpha'
+        character(*), parameter :: rout_name = 'run_driver_for_alpha'
         
         ! input / output
         type(grid_type), intent(inout), target :: grid_eq                       ! equilibrium grid
@@ -274,21 +220,13 @@ contains
         character(len=max_str_ln) :: plot_title                                 ! title for plots
         character(len=max_str_ln) :: plot_name                                  ! name of plot
         character(len=max_str_ln) :: draw_ops                                   ! optional drawing options
+        character(len=max_str_ln) :: err_msg                                    ! error message
 #if ldebug
         type(grid_type) :: grid_eq_trim                                         ! trimmed equilibrium grid
-        type(grid_type) :: grid_eq_ghost                                        ! ghosted equilibrium grid
 #endif
         
         ! initialize ierr
         ierr = 0
-        
-        ! calculate angular grid points for equilibrium grid
-        ierr = calc_ang_grid_eq(grid_eq,eq,alpha)
-        CHCKERR('')
-        
-        ! calculate the non-flux equilibrium quantities for current alpha
-        ierr = calc_eq(grid_eq,eq,met)
-        CHCKERR('')
         
         ! prepare matrix elements
         ierr = prepare_X(grid_eq,eq,met,X)
@@ -298,21 +236,22 @@ contains
         ierr = calc_vac(X)
         CHCKERR('')
         
-        ! set up field-aligned equilibrium grid
-        ierr = setup_and_calc_grid_B(grid_eq,grid_eq_B,eq,alpha)
-        CHCKERR('')
+        !! set up field-aligned equilibrium grid
+        !ierr = setup_and_calc_grid_B(grid_eq,grid_eq_B,eq,alpha)
+        !CHCKERR('')
         
-        ! write equilibrium variables to output
-        ierr = print_output_eq(grid_eq,grid_eq_B,eq,met,alpha)
-        CHCKERR('')
+        !! write equilibrium variables to output
+        !ierr = print_output_eq(grid_eq,grid_eq_B,eq,met,alpha)
+        !CHCKERR('')
         
-        ! deallocate metric variables
-        call dealloc_met(met)
+        !! deallocate metric variables
+        !call dealloc_met(met)
         
         ! write X variables to output
+        write(*,*) 'WHY GRID_EQ_B???? ISNT GRID_EQ CORRECT??????'
         ierr = print_output_X(grid_eq_B,X)
         CHCKERR('')
-        
+       
         ! adapt variables to a field-aligned grid
         ierr = adapt_X_to_B(grid_eq,grid_eq_B,X,X_B)
         CHCKERR('')
@@ -366,7 +305,7 @@ contains
                 
                 ! divide  perturbation grid  under group  processes, calculating
                 ! the limits and the normal coordinate
-                ierr = divide_X_grid(n_r_X,X_limits,r_X)
+                !ierr = divide_X_grid(n_r_X,X_limits,r_X)
                 CHCKERR('')
                 
                 ! create perturbation grid with division limits and setup normal
@@ -376,12 +315,12 @@ contains
                 ierr = create_grid(grid_X,n_r_X,X_limits)
                 CHCKERR('')
                 grid_X%r_F = r_X
-                grid_X%grp_r_F = r_X(X_limits(1):X_limits(2))
+                grid_X%loc_r_F = r_X(X_limits(1):X_limits(2))
                 deallocate(r_X)
                 ierr = coord_F2E(grid_eq,eq,grid_X%r_F,grid_X%r_E,&
                     &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
-                ierr = coord_F2E(grid_eq,eq,grid_X%grp_r_F,grid_X%grp_r_E,&
+                ierr = coord_F2E(grid_eq,eq,grid_X%loc_r_F,grid_X%loc_r_E,&
                     &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
                 call lvl_ud(-1)
@@ -397,29 +336,24 @@ contains
                 ierr = trim_grid(grid_eq,grid_eq_trim)
                 CHCKERR('')
                 
-                ! untrim grid
-                ierr = untrim_grid(grid_eq_trim,grid_eq_ghost,1)
-                CHCKERR('')
-                
                 ! number of radial points given by equilibrium grid
-                n_r_X = grid_eq_ghost%n(3)
-                X_limits = [grid_eq_ghost%i_min,grid_eq_ghost%i_max]
+                n_r_X = grid_eq_trim%n(3)
+                X_limits = [grid_eq_trim%i_min,grid_eq_trim%i_max]
                 
                 ! create grid
                 ierr = create_grid(grid_X,n_r_X,X_limits)
                 CHCKERR('')
                 
                 ! fill grid
-                if (grid_eq_ghost%divided) then                                 ! if input grid divided, grp_r gets priority
-                    grid_X%grp_r_E = grid_eq_ghost%grp_r_E
-                    grid_X%grp_r_F = grid_eq_ghost%grp_r_F
+                if (grid_eq_trim%divided) then                                  ! if input grid divided, loc_r gets priority
+                    grid_X%loc_r_E = grid_eq_trim%loc_r_E
+                    grid_X%loc_r_F = grid_eq_trim%loc_r_F
                 end if
                 grid_X%r_E = grid_eq_trim%r_E
                 grid_X%r_F = grid_eq_trim%r_F
                 
                 ! clean up
                 call dealloc_grid(grid_eq_trim)
-                call dealloc_grid(grid_eq_ghost)
                 
                 call lvl_ud(-1)
             end if
@@ -474,7 +408,7 @@ contains
         
         ! visualize  the  Richardson  Extrapolation by  plotting Eigenvalues  as
         ! function of nr. of normal points
-        if (max_it_r.gt.1 .and. grp_rank.eq.0) then
+        if (max_it_r.gt.1 .and. rank.eq.0) then
             call writo('Plotting Eigenvalues as function of nr. of normal &
                 &points in Richardson Extrapolation')
             call lvl_ud(1)
@@ -483,10 +417,8 @@ contains
             draw_ops = 'pt 7 ps 0.2'
             
             ! output on screen
-            plot_title = 'job '//trim(i2str(alpha_job_nr))//' - Eigenvalues &
-                &as function of nr. of normal points'
-            plot_name = 'Eigenvalues_A'//trim(i2str(alpha_job_nr))//&
-                &'_richardson'
+            plot_title = 'Eigenvalues as function of nr. of normal points'
+            plot_name = 'Eigenvalues_richardson'
             call print_GP_2D(plot_title,plot_name,&
                 &realpart(X_val_rich(1:rich_lvl_nr,1,:)),&
                 &x=x_axis(1:rich_lvl_nr,:),draw=.false.)
@@ -633,7 +565,7 @@ contains
                 end if
             end if
         end function calc_rich_ex
-    end function run_rich_driver_for_alpha
+    end function run_driver_for_alpha
     
     ! Adapt  X  variables  angularly  to  a  field-aligned  grid,  depending  on
     ! equilibrium type:
@@ -670,29 +602,17 @@ contains
             case (1)                                                            ! VMEC
                 ! no conversion necessary: already in field-aligned grid
                 X_B%J_exp_ang_par_F = X%J_exp_ang_par_F
-                deallocate(X%J_exp_ang_par_F)
                 X_B%U_0 = X%U_0
-                deallocate(X%U_0); nullify(X%U_0)
                 X_B%U_1 = X%U_1
-                deallocate(X%U_1); nullify(X%U_1)
                 X_B%DU_0 = X%DU_0
-                deallocate(X%DU_0); nullify(X%DU_0)
                 X_B%DU_1 = X%DU_1
-                deallocate(X%DU_1); nullify(X%DU_1)
                 X_B%PV_0 = X%PV_0
-                deallocate(X%PV_0); nullify(X%PV_0)
                 X_B%PV_1 = X%PV_1
-                deallocate(X%PV_1); nullify(X%PV_1)
                 X_B%PV_2 = X%PV_2
-                deallocate(X%PV_2); nullify(X%PV_2)
                 X_B%KV_0 = X%KV_0
-                deallocate(X%KV_0); nullify(X%KV_0)
                 X_B%KV_1 = X%KV_1
-                deallocate(X%KV_1); nullify(X%KV_1)
                 X_B%KV_2 = X%KV_2
-                deallocate(X%KV_2); nullify(X%KV_2)
                 X_B%vac_res = X%vac_res
-                deallocate(X%vac_res)
             case (2)                                                            ! HELENA
                 ! call HELENA grid interpolation
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,X,X_B,&
@@ -705,4 +625,4 @@ contains
                 CHCKERR(err_msg)
         end select
     end function adapt_X_to_B
-end module driver_rich
+end module driver_PERT

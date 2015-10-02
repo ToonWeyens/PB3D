@@ -13,10 +13,11 @@ module grid_ops
 
     implicit none
     private
-    public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, &
-        &calc_ang_grid_eq, calc_ang_grid_B, plot_grid_real, trim_grid, &
+    public coord_F2E, coord_E2F, calc_XYZ_grid, calc_norm_range, &
+        &calc_eqd_grid, calc_ang_grid_eq, calc_ang_grid_B, plot_grid_real, &
         &extend_grid_E, setup_grid_eq, setup_and_calc_grid_B, &
-        &get_norm_interp_data, calc_int_magn, calc_int_vol, untrim_grid
+        &get_norm_interp_data, calc_int_magn, calc_int_vol, trim_grid, &
+        &untrim_grid
 #if ldebug
     public debug_calc_ang_grid_B, debug_get_norm_interp_data, &
         &debug_calc_int_vol
@@ -40,6 +41,273 @@ module grid_ops
 #endif
     
 contains
+    ! Calculates   the  equilibrium   range   corresponding   to  the   required
+    ! perturbation  range, divided  into subranges  for every  process, with  an
+    ! assymetric  ghost region  of width  determined by  norm_disc_prec for  the
+    ! plotting routines.
+    integer function calc_norm_range(eq_limits,X_limits,r_F_eq,r_F_X) &
+        &result(ierr)
+        use num_vars, only: prog_style
+        
+        character(*), parameter :: rout_name = 'calc_norm_range'
+        
+        ! input / output
+        real(dp), intent(in), optional :: r_F_eq(:)                             ! equilibrium r_F
+        real(dp), intent(in), optional :: r_F_X(:)                              ! perturbation r_F
+        integer, intent(inout), optional :: eq_limits(2)                        ! min. and max. index of eq grid for this process
+        integer, intent(inout), optional :: X_limits(2)                         ! min. and max. index of X grid for this process
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! select depending on program style
+        select case (prog_style)
+            case(1)                                                             ! PB3D preparation
+                if (.not.present(eq_limits)) then
+                    ierr = 1
+                    CHCKERR('Incorrect variables provided.')
+                end if
+                ierr = calc_norm_range_PREP(eq_limits)
+                CHCKERR('')
+            case(2)                                                             ! PB3D perturbation
+                if (.not.present(eq_limits) .or. .not.present(r_F_eq)) then
+                    ierr = 1
+                    CHCKERR('Incorrect variables provided.')
+                end if
+                call calc_norm_range_PERT(eq_limits,r_F_eq)
+            case(3)                                                             ! PB3D post-processing
+                if (.not.present(eq_limits) .or. .not.present(X_limits) .or. &
+                    &.not.present(r_F_eq) .or. .not. present(r_F_X)) then
+                    ierr = 1
+                    CHCKERR('Incorrect variables provided.')
+                end if
+                ierr = calc_norm_range_POST(eq_limits,X_limits,r_F_eq,r_F_X)
+                CHCKERR('')
+            case default
+                err_msg = 'No program style associated with '//&
+                    &trim(i2str(prog_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+    contains
+        integer function calc_norm_range_PREP(eq_limits) result(ierr)           ! PREP version
+            use num_vars, only: n_procs, rank, use_pol_flux_E, &
+                &use_pol_flux_F, eq_style, tol_norm_r, norm_disc_prec_eq
+            use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
+                &calc_deriv, round_with_tol
+            use VMEC, only: flux_t_V, Dflux_t_V, rot_t_V
+            use HELENA, only: flux_p_H, qs
+            use X_vars, only: min_r_X, max_r_X
+            use grid_vars, only: n_r_eq
+            
+            character(*), parameter :: rout_name = 'calc_norm_range_PREP'
+            
+            ! input / output
+            integer, intent(inout) :: eq_limits(2)                              ! min. and max. index of eq. grid for this process
+            
+            ! local variables
+            real(dp), allocatable :: flux_F(:), flux_E(:)                       ! either pol. or tor. flux in F and E
+            real(dp), allocatable :: Dflux_p_H(:)                               ! normal derivative of flux_p_H
+            real(dp) :: tot_min_r_eq_F_con                                      ! tot_min_r_eq in continuous F coords.
+            real(dp) :: tot_max_r_eq_F_con                                      ! tot_max_r_eq in continuous F coords.
+            real(dp) :: tot_min_r_eq_E_con                                      ! tot_min_r_eq in continuous E coords.
+            real(dp) :: tot_max_r_eq_E_con                                      ! tot_max_r_eq in continuous E coords.
+            real(dp) :: tot_min_r_eq_E_dis                                      ! tot_min_r_eq in discrete E coords., unrounded
+            real(dp) :: tot_max_r_eq_E_dis                                      ! tot_max_r_eq in discrete E coords., unrounded
+            integer :: tot_eq_limits(2)                                         ! total min. and max. index of eq. grid
+            character(len=max_str_ln) :: err_msg                                ! error message
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set up flux_F and flux_E,  depending on which equilibrium style is
+            ! being used:
+            !   1:  VMEC
+            !   2:  HELENA
+            allocate(flux_F(n_r_eq),flux_E(n_r_eq))
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ! set up F flux
+                    if (use_pol_flux_F) then
+                        ierr = calc_int(-rot_t_V*Dflux_t_V,&
+                            &1.0_dp/(n_r_eq-1.0_dp),flux_F)                     ! conversion VMEC LH -> RH coord. system
+                        CHCKERR('')
+                    else
+                        flux_F = flux_t_V
+                    end if
+                    ! set up E flux
+                    if (use_pol_flux_E) then
+                    write(*,*) '!!! CHANGED rot_t_V to -rot_t_V BUT NOT SURE !!'
+                        ierr = calc_int(-rot_t_V*Dflux_t_V,&
+                            &1.0_dp/(n_r_eq-1.0_dp),flux_E)                     ! conversion VMEC LH -> RH coord. system
+                        CHCKERR('')
+                    else
+                        flux_E = flux_t_V
+                    end if
+                case (2)                                                        ! HELENA
+                    ! calculate normal derivative of flux_p_H
+                    allocate(Dflux_p_H(n_r_eq))
+                    ierr = calc_deriv(flux_p_H,Dflux_p_H,flux_p_H,1,&
+                        &norm_disc_prec_eq)
+                    CHCKERR('')
+                    ! set up F flux
+                    if (use_pol_flux_F) then
+                        flux_F = flux_p_H
+                    else
+                        ierr = calc_int(qs*Dflux_p_H,flux_p_H,flux_F)
+                        CHCKERR('')
+                    end if
+                    ! set up E flux
+                    if (use_pol_flux_E) then
+                        flux_E = flux_p_H
+                    else
+                        ierr = calc_int(qs*Dflux_p_H,flux_p_H,flux_E)
+                        CHCKERR('')
+                    end if
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+            
+            ! normalize flux_F and flux_E to (0..1)
+            ! Note: max_flux  is not yet  determined, so use  flux_F(n_r_eq) and
+            ! flux_E(n_r_eq), knowing that this is the full global range
+            flux_F = flux_F/flux_F(n_r_eq)
+            flux_E = flux_E/flux_E(n_r_eq)
+            
+            ! get lower and upper bound of total X range
+            ! 1. include tolerance
+            tot_min_r_eq_F_con = max(min_r_X-tol_norm_r,0._dp)
+            tot_max_r_eq_F_con = min(max_r_X+tol_norm_r,1._dp)
+            ! 2. round with tolerance
+            ierr = round_with_tol(tot_min_r_eq_F_con,0._dp,1._dp)
+            CHCKERR('')
+            ierr = round_with_tol(tot_max_r_eq_F_con,0._dp,1._dp)
+            CHCKERR('')
+            ! 3. continuous E coords
+            ierr = interp_fun(tot_min_r_eq_E_con,flux_E,tot_min_r_eq_F_con,&
+                &flux_F)
+            CHCKERR('')
+            ierr = interp_fun(tot_max_r_eq_E_con,flux_E,tot_max_r_eq_F_con,&
+                &flux_F)
+            CHCKERR('')
+            ! 4. discrete E index, unrounded
+            ierr = con2dis(tot_min_r_eq_E_con,tot_min_r_eq_E_dis,flux_E)
+            CHCKERR('')
+            ierr = con2dis(tot_max_r_eq_E_con,tot_max_r_eq_E_dis,flux_E)
+            CHCKERR('')
+            ! 5. discrete E index, rounded
+            tot_eq_limits(1) = floor(tot_min_r_eq_E_dis)
+            tot_eq_limits(2) = ceiling(tot_max_r_eq_E_dis)
+            
+            ! set equilibrium limits per group
+            eq_limits(1) = nint(tot_eq_limits(1) + 1._dp*rank*&
+                &(tot_eq_limits(2)-tot_eq_limits(1))/n_procs)
+            eq_limits(2) = nint(tot_eq_limits(1) + (1._dp+rank)*&
+                &(tot_eq_limits(2)-tot_eq_limits(1))/n_procs)
+            
+            ! increase lower limits for processes that are not first
+            if (rank.gt.0) eq_limits(1) = eq_limits(1)+1
+            
+            ! ghost regions of width 2*norm_disc_prec_eq
+            eq_limits(1) = &
+                &max(eq_limits(1)-2*norm_disc_prec_eq,tot_eq_limits(1))
+            eq_limits(2) = &
+                &min(eq_limits(2)+2*norm_disc_prec_eq,tot_eq_limits(2))
+            
+            ! clean up
+            deallocate(flux_F,flux_E)
+        end function calc_norm_range_PREP
+        
+        subroutine calc_norm_range_PERT(eq_limits,r_F_eq)                       ! PERT version
+            ! input / output
+            integer, intent(inout) :: eq_limits(2)                              ! min. and max. index of eq grid for this process
+            real(dp), intent(in) :: r_F_eq(:)                                   ! equilibrium r_F
+            
+            ! set eq_limits
+            eq_limits = [1,size(r_F_eq)]
+        end subroutine calc_norm_range_PERT
+        
+        integer function calc_norm_range_POST(eq_limits,X_limits,r_F_eq,r_F_X) &
+            &result(ierr)                                                       ! POST version
+            use num_vars, only: n_procs, rank, norm_disc_prec_sol
+            use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
+                &calc_deriv, round_with_tol
+            
+            character(*), parameter :: rout_name = 'calc_norm_range_POST'
+            
+            ! input / output
+            integer, intent(inout) :: eq_limits(2), X_limits(2)                 ! min. and max. index of eq and X grid for this process
+            real(dp), intent(in) :: r_F_eq(:), r_F_X(:)                         ! equilibrium and perturbation r_F
+            
+            ! local variables
+            integer :: n_r_eq, n_r_X                                            ! total nr. of normal points in eq and X grid
+            integer, allocatable :: grp_n_r_eq(:), grp_n_r_X(:)                 ! group nr. of normal points in eq and X grid
+            integer :: remainder                                                ! remainder of division
+            integer :: id                                                       ! counter
+            real(dp) :: min_X, max_X                                            ! min. and max. of r_F_X in range of this process
+            real(dp), parameter :: tol = 1.E-6                                  ! tolerance for grids
+            character(len=max_str_ln) :: err_msg                                ! error message
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set some variables
+            n_r_eq = size(r_F_eq)
+            n_r_X = size(r_F_X)
+            allocate(grp_n_r_eq(n_procs),grp_n_r_X(n_procs))
+            
+            ! divide the perturbation grid equally over all the processes
+            grp_n_r_X = n_r_X/n_procs
+            
+            ! add an extra process if the remainder is not zero
+            remainder = mod(n_r_X,n_procs)
+            id = 1
+            do while (remainder.gt.0)
+                grp_n_r_X(id) = grp_n_r_X(id)+1
+                id = mod(id,n_procs)+1
+                remainder = remainder - 1
+            end do
+            
+            ! set X_limits
+            X_limits = [sum(grp_n_r_X(1:rank))+1,sum(grp_n_r_X(1:rank+1))]
+            if (rank.gt.0) X_limits(1) = X_limits(1)-norm_disc_prec_sol         ! ghost region for num. deriv.
+            if (rank.lt.n_procs-1) X_limits(2) = &
+                &X_limits(2)+norm_disc_prec_sol+1                               ! ghost region for num. deriv. and overlap for int_vol
+            min_X = minval(r_F_X(X_limits(1):X_limits(2)))
+            max_X = maxval(r_F_X(X_limits(1):X_limits(2)))
+            
+            ! determine eq_limits: smallest eq range comprising X range
+            eq_limits = [0,size(r_F_eq)+1]
+            if (r_F_eq(1).lt.r_F_eq(size(r_F_eq))) then                         ! ascending r_F_eq
+                do id = 1,size(r_F_eq)
+                    if (r_F_eq(id).le.min_X+tol) eq_limits(1) = id              ! move lower limit up
+                    if (r_F_eq(size(r_F_eq)-id+1).ge.max_X-tol) &
+                        &eq_limits(2) = size(r_F_eq)-id+1                       ! move upper limit down
+                end do
+            else                                                                ! descending r_F_eq
+                do id = 1,size(r_F_eq)
+                    if (r_F_eq(size(r_F_eq)-id+1).le.min_X+tol) &
+                        &eq_limits(1) = size(r_F_eq)-id+1                       ! move lower limit up
+                    if (r_F_eq(id).ge.max_X-tol) eq_limits(2) = id              ! move upper limit down
+                end do
+            end if
+            
+            ! check if valid limits found
+            if (eq_limits(1).lt.1 .or. eq_limits(2).gt.size(r_F_eq)) then
+                ierr = 1
+                err_msg = 'Perturbation range not contained in equilibrium &
+                    &range'
+                CHCKERR(err_msg)
+            end if
+        end function calc_norm_range_POST
+    end function calc_norm_range
+
     ! Sets up the general equilibrium grid, in which the following variables are
     ! calculated:
     !   - equilibrium variables (eq)
@@ -68,7 +336,7 @@ contains
         
         ! input / output
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
-        integer, intent(in) :: eq_limits(2)                                     ! min. and max. index of eq. grid of this process
+        integer, intent(in) :: eq_limits(2)                                     ! min. and max. index of eq grid of this process
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -103,7 +371,7 @@ contains
     ! here.
     integer function setup_and_calc_grid_B(grid_eq,grid_eq_B,eq,alpha) &
         &result(ierr)
-        use num_vars, only: eq_style
+        use num_vars, only: eq_style, plot_grid
         use grid_vars, only: create_grid, &
             &n_par_X
         
@@ -126,6 +394,10 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
+                ! user output
+                call writo('Equilibrium grid is already field-aligned')
+                call lvl_ud(1)
+                
                 ! the general equilibrium grid is already field-aligned
                 grid_eq_B => grid_eq
             case (2)                                                            ! HELENA
@@ -142,24 +414,32 @@ contains
                 CHCKERR('')
                 
                 ! copy the normal coords.
-                grid_eq_B%grp_r_E = grid_eq%grp_r_E
-                grid_eq_B%grp_r_F = grid_eq%grp_r_F
+                grid_eq_B%loc_r_E = grid_eq%loc_r_E
+                grid_eq_B%loc_r_F = grid_eq%loc_r_F
                 grid_eq_B%r_E = grid_eq%r_E
                 grid_eq_B%r_F = grid_eq%r_F
                 
                 ! calculate the angular grid that follows the magnetic field
                 ierr = calc_ang_grid_B(grid_eq_B,eq,alpha)
                 CHCKERR('')
-                
-                ! user output
-                call lvl_ud(-1)
-                call writo('Field-aligned equilibrium grid set up')
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
                 ierr = 1
                 CHCKERR(err_msg)
         end select
+        
+        ! plot grid if requested
+        if (plot_grid) then
+            ierr = plot_grid_real(grid_eq_B)
+            CHCKERR('')
+        else
+            call writo('Magnetic grid plot not requested')
+        end if
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Field-aligned equilibrium grid set up')
     end function setup_and_calc_grid_B
     
     ! Calculate the angular equilibrium grid.
@@ -185,9 +465,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('Start determining the equilibrium grid')
-        call lvl_ud(1)
-        
         ! choose which equilibrium style is being used:
         !   1:  VMEC
         !   2:  HELENA
@@ -198,7 +475,7 @@ contains
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! calculate the angular grid from HELENA
-                do kd = 1,grid_eq%grp_n_r
+                do kd = 1,grid_eq%loc_n_r
                     do jd = 1,grid_eq%n(2)
                         grid_eq%theta_E(:,jd,kd) = chi_H
                     end do
@@ -214,15 +491,12 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
-        
-        call lvl_ud(-1)
-        call writo('Equilibrium grid determined')
     end function calc_ang_grid_eq
     
     ! Calculate grid that follows magnetic field lines.
     integer function calc_ang_grid_B(grid_eq,eq,alpha) result(ierr)
         use num_vars, only: use_pol_flux_F, use_pol_flux_E, &
-            &eq_style, tol_NR, plot_grid
+            &eq_style, tol_NR
         use grid_vars, only: min_par_X, max_par_X
         use eq_vars, only: max_flux_p_E, max_flux_t_E
         
@@ -246,7 +520,7 @@ contains
         ierr = 0
         
         ! set up flux_E and plus minus one
-        ! Note: this routine is similar  to calc_grp_r, but that routine
+        ! Note: this routine is similar  to calc_loc_r, but that routine
         ! cannot  be  used here  because  it  is  possible that  the  FD
         ! quantities are not yet defined.
         ! choose which equilibrium style is being used:
@@ -288,7 +562,7 @@ contains
             ierr = calc_eqd_grid(grid_eq%theta_F,min_par_X*pi,&
                 &max_par_X*pi,1,excl_last=.true.)                               ! first index corresponds to parallel angle
             CHCKERR('')
-            do kd = 1,grid_eq%grp_n_r
+            do kd = 1,grid_eq%loc_n_r
                 grid_eq%zeta_F(:,:,kd) = pmone*eq%q_saf_E(kd,0)*&
                     &grid_eq%theta_F(:,:,kd)
             end do
@@ -297,7 +571,7 @@ contains
             ierr = calc_eqd_grid(grid_eq%zeta_F,min_par_X*pi,&
                 &max_par_X*pi,1,excl_last=.true.)                               ! first index corresponds to parallel angle
             CHCKERR('')
-            do kd = 1,grid_eq%grp_n_r
+            do kd = 1,grid_eq%loc_n_r
                 grid_eq%theta_F(:,:,kd) = pmone*eq%rot_t_E(kd,0)*&
                     &grid_eq%zeta_F(:,:,kd)
             end do
@@ -311,29 +585,21 @@ contains
         ! custom flux_E and  flux_F because the Flux  quantities are not
         ! yet calculated)
         ierr = coord_F2E(eq,grid_eq,&
-            &grid_eq%grp_r_F,grid_eq%theta_F,grid_eq%zeta_F,&
+            &grid_eq%loc_r_F,grid_eq%theta_F,grid_eq%zeta_F,&
             &r_E_loc,grid_eq%theta_E,grid_eq%zeta_E,&
             &r_F_array=flux_F/r_F_factor,r_E_array=flux_E/r_E_factor)
         CHCKERR('')
         
-        ! test whether r_E_loc indeed corresponds to grp_r_E of eq. grid
-        if (maxval(abs(grid_eq%grp_r_E-r_E_loc)).gt.10*tol_NR) then
+        ! test whether r_E_loc indeed corresponds to loc_r_E of eq grid
+        if (maxval(abs(grid_eq%loc_r_E-r_E_loc)).gt.10*tol_NR) then
             ierr = 1
-            err_msg = 'grp_r_E of equilibrium grid is not recovered'
+            err_msg = 'loc_r_E of equilibrium grid is not recovered'
             CHCKERR(err_msg)
         end if
         
         ! deallocate local variables
         deallocate(r_E_loc)
         nullify(flux_F,flux_E)
-        
-        ! plot grid if requested
-        if (plot_grid) then
-            ierr = plot_grid_real(grid_eq)
-            CHCKERR('')
-        else
-            call writo('Magnetic grid plot not requested')
-        end if
         
 #if ldebug
         if (debug_calc_ang_grid_B) then
@@ -438,17 +704,17 @@ contains
             
             ! local variables
             real(dp), allocatable :: L_V_c_loc_ind(:,:), L_V_s_loc_ind(:,:)     ! individual versions of L_V_c_loc and L_V_s_loc
-            real(dp), allocatable :: grp_r_F(:)                                 ! grp_r in F coords.
+            real(dp), allocatable :: loc_r_F(:)                                 ! loc_r in F coords.
             
             ! initialize ierr
             ierr = 0
             
-            ! set up grp_r_F
+            ! set up loc_r_F
             if (present(r_F_array)) then
-                allocate(grp_r_F(grid_eq%grp_n_r))
-                grp_r_F = r_F_array
+                allocate(loc_r_F(grid_eq%loc_n_r))
+                loc_r_F = r_F_array
             else
-                ierr = calc_grp_r(grid_eq,eq,grp_r_F,style=2)
+                ierr = calc_loc_r(grid_eq,eq,loc_r_F,style=2)
                 CHCKERR('')
             end if
             
@@ -465,10 +731,10 @@ contains
             do kd = 1,n_r
                 ! interpolate L_V_c and L_V_s at requested normal point r_F
                 ierr = interp_fun(L_V_c_loc_ind,&
-                    &L_V_c(:,:,grid_eq%i_min:grid_eq%i_max,0),r_F(kd),grp_r_F)
+                    &L_V_c(:,:,grid_eq%i_min:grid_eq%i_max,0),r_F(kd),loc_r_F)
                 CHCKERR('')
                 ierr = interp_fun(L_V_s_loc_ind,&
-                    &L_V_s(:,:,grid_eq%i_min:grid_eq%i_max,0),r_F(kd),grp_r_F)
+                    &L_V_s(:,:,grid_eq%i_min:grid_eq%i_max,0),r_F(kd),loc_r_F)
                 CHCKERR('')
                 
                 ! copy individual to array version
@@ -597,7 +863,7 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_r                                                          ! dimension of the grid
         integer :: kd                                                           ! counter
-        real(dp), allocatable :: grp_r_E(:), grp_r_F(:)                         ! grp_r in E and F coords.
+        real(dp), allocatable :: loc_r_E(:), loc_r_F(:)                         ! loc_r in E and F coords.
         
         ! initialize ierr
         ierr = 0
@@ -617,22 +883,22 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! set up grp_r_E and grp_r_F
+        ! set up loc_r_E and loc_r_F
         if (present(r_F_array)) then
-            allocate(grp_r_E(grid_eq%grp_n_r))
-            allocate(grp_r_F(grid_eq%grp_n_r))
-            grp_r_E = r_E_array
-            grp_r_F = r_F_array
+            allocate(loc_r_E(grid_eq%loc_n_r))
+            allocate(loc_r_F(grid_eq%loc_n_r))
+            loc_r_E = r_E_array
+            loc_r_F = r_F_array
         else
-            ierr = calc_grp_r(grid_eq,eq,grp_r_E,style=1)
+            ierr = calc_loc_r(grid_eq,eq,loc_r_E,style=1)
             CHCKERR('')
-            ierr = calc_grp_r(grid_eq,eq,grp_r_F,style=2)
+            ierr = calc_loc_r(grid_eq,eq,loc_r_F,style=2)
             CHCKERR('')
         end if
         
         ! convert normal position
         do kd = 1,n_r
-            ierr = interp_fun(r_E(kd),grp_r_E,r_F(kd),grp_r_F)
+            ierr = interp_fun(r_E(kd),loc_r_E,r_F(kd),loc_r_F)
             CHCKERR('')
             r_E(kd) = r_E(kd)
         end do
@@ -725,17 +991,17 @@ contains
             real(dp), allocatable :: L_V_c_loc(:,:,:), L_V_s_loc(:,:,:)         ! local version of L_V_c and L_V_s
             real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:,:)            ! trigonometric factor cosine for the inverse fourier transf.
             real(dp), allocatable :: lam(:,:,:)                                 ! lambda
-            real(dp), allocatable :: grp_r_E(:)                                 ! grp_r in E coords.
+            real(dp), allocatable :: loc_r_E(:)                                 ! loc_r in E coords.
             
             ! initialize ierr
             ierr = 0
             
-            ! set up grp_r_E
+            ! set up loc_r_E
             if (present(r_E_array)) then
-                allocate(grp_r_E(grid_eq%grp_n_r))
-                grp_r_E = r_E_array
+                allocate(loc_r_E(grid_eq%loc_n_r))
+                loc_r_E = r_E_array
             else
-                ierr = calc_grp_r(grid_eq,eq,grp_r_E,style=1)
+                ierr = calc_loc_r(grid_eq,eq,loc_r_E,style=1)
                 CHCKERR('')
             end if
             
@@ -751,10 +1017,10 @@ contains
             ! loop over all normal points
             do kd = 1,n_r
                 ierr = interp_fun(L_V_c_loc(:,:,kd),&
-                    &L_V_c(:,:,grid_eq%i_min:grid_eq%i_max,0),r_E(kd),grp_r_E)
+                    &L_V_c(:,:,grid_eq%i_min:grid_eq%i_max,0),r_E(kd),loc_r_E)
                 CHCKERR('')
                 ierr = interp_fun(L_V_s_loc(:,:,kd),&
-                    &L_V_s(:,:,grid_eq%i_min:grid_eq%i_max,0),r_E(kd),grp_r_E)
+                    &L_V_s(:,:,grid_eq%i_min:grid_eq%i_max,0),r_E(kd),loc_r_E)
                 CHCKERR('')
             end do
             
@@ -793,7 +1059,7 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_r                                                          ! dimension of the grid
         integer :: kd                                                           ! counter
-        real(dp), allocatable :: grp_r_E(:), grp_r_F(:)                         ! grp_r in E and F coords.
+        real(dp), allocatable :: loc_r_E(:), loc_r_F(:)                         ! loc_r in E and F coords.
         
         ! initialize ierr
         ierr = 0
@@ -813,22 +1079,22 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! set up grp_r_E and grp_r_F
+        ! set up loc_r_E and loc_r_F
         if (present(r_F_array)) then
-            allocate(grp_r_E(grid_eq%grp_n_r))
-            allocate(grp_r_F(grid_eq%grp_n_r))
-            grp_r_E = r_E_array
-            grp_r_F = r_F_array
+            allocate(loc_r_E(grid_eq%loc_n_r))
+            allocate(loc_r_F(grid_eq%loc_n_r))
+            loc_r_E = r_E_array
+            loc_r_F = r_F_array
         else
-            ierr = calc_grp_r(grid_eq,eq,grp_r_E,style=1)
+            ierr = calc_loc_r(grid_eq,eq,loc_r_E,style=1)
             CHCKERR('')
-            ierr = calc_grp_r(grid_eq,eq,grp_r_F,style=2)
+            ierr = calc_loc_r(grid_eq,eq,loc_r_F,style=2)
             CHCKERR('')
         end if
         
         ! convert normal position
         do kd = 1,n_r
-            ierr = interp_fun(r_F(kd),grp_r_F,r_E(kd),grp_r_E)
+            ierr = interp_fun(r_F(kd),loc_r_F,r_E(kd),loc_r_E)
             CHCKERR('')
         end do
     end function coord_E2F_r
@@ -862,26 +1128,26 @@ contains
         
         ! test
         if (size(X,1).ne.grid%n(1) .or. size(X,2).ne.grid%n(2) .or. &
-            &size(X,3).ne.grid%grp_n_r) then
+            &size(X,3).ne.grid%loc_n_r) then
             ierr = 1
             err_msg =  'X needs to have the correct dimensions'
             CHCKERR(err_msg)
         end if
         if (size(Y,1).ne.grid%n(1) .or. size(Y,2).ne.grid%n(2) .or. &
-            &size(Y,3).ne.grid%grp_n_r) then
+            &size(Y,3).ne.grid%loc_n_r) then
             ierr = 1
             err_msg =  'Y needs to have the correct dimensions'
             CHCKERR(err_msg)
         end if
         if (size(Z,1).ne.grid%n(1) .or. size(Z,2).ne.grid%n(2) .or. &
-            &size(Z,3).ne.grid%grp_n_r) then
+            &size(Z,3).ne.grid%loc_n_r) then
             ierr = 1
             err_msg =  'Z needs to have the correct dimensions'
             CHCKERR(err_msg)
         end if
         if (present(L)) then
             if (size(L,1).ne.grid%n(1) .or. size(L,2).ne.grid%n(2) .or. &
-                &size(L,3).ne.grid%grp_n_r) then
+                &size(L,3).ne.grid%loc_n_r) then
                 ierr = 1
                 err_msg =  'L needs to have the correct dimensions'
                 CHCKERR(err_msg)
@@ -936,39 +1202,39 @@ contains
             ierr = 0
             
             ! set up interpolated R_V_c_int, ..
-            allocate(R_V_c_int(0:mpol-1,-ntor:ntor,1:grid%grp_n_r))
-            allocate(R_V_s_int(0:mpol-1,-ntor:ntor,1:grid%grp_n_r))
-            allocate(Z_V_c_int(0:mpol-1,-ntor:ntor,1:grid%grp_n_r))
-            allocate(Z_V_s_int(0:mpol-1,-ntor:ntor,1:grid%grp_n_r))
+            allocate(R_V_c_int(0:mpol-1,-ntor:ntor,1:grid%loc_n_r))
+            allocate(R_V_s_int(0:mpol-1,-ntor:ntor,1:grid%loc_n_r))
+            allocate(Z_V_c_int(0:mpol-1,-ntor:ntor,1:grid%loc_n_r))
+            allocate(Z_V_s_int(0:mpol-1,-ntor:ntor,1:grid%loc_n_r))
             if (present(L)) then
-                allocate(L_V_c_int(0:mpol-1,-ntor:ntor,1:grid%grp_n_r))
-                allocate(L_V_s_int(0:mpol-1,-ntor:ntor,1:grid%grp_n_r))
+                allocate(L_V_c_int(0:mpol-1,-ntor:ntor,1:grid%loc_n_r))
+                allocate(L_V_s_int(0:mpol-1,-ntor:ntor,1:grid%loc_n_r))
             end if
             
             ! interpolate VMEC tables for every requested normal point
-            do kd = 1,grid%grp_n_r                                              ! loop over all group normal points
+            do kd = 1,grid%loc_n_r                                              ! loop over all group normal points
                 ! interpolate the VMEC tables in normal direction
                 ! Note: VMEC uses an equidistant grid normalized from 0 to 1
                 do n = -ntor,ntor
                     do m = 0,mpol-1
                         ierr = interp_fun(R_V_c_int(m,n,kd),R_V_c(m,n,:,0),&
-                            &grid%grp_r_E(kd))
+                            &grid%loc_r_E(kd))
                         CHCKERR('')
                         ierr = interp_fun(R_V_s_int(m,n,kd),R_V_s(m,n,:,0),&
-                            &grid%grp_r_E(kd))
+                            &grid%loc_r_E(kd))
                         CHCKERR('')
                         ierr = interp_fun(Z_V_c_int(m,n,kd),Z_V_c(m,n,:,0),&
-                            &grid%grp_r_E(kd))
+                            &grid%loc_r_E(kd))
                         CHCKERR('')
                         ierr = interp_fun(Z_V_s_int(m,n,kd),Z_V_s(m,n,:,0),&
-                            &grid%grp_r_E(kd))
+                            &grid%loc_r_E(kd))
                         CHCKERR('')
                         if (present(L)) then
                             ierr = interp_fun(L_V_c_int(m,n,kd),L_V_c(m,n,:,0),&
-                                &grid%grp_r_E(kd))
+                                &grid%loc_r_E(kd))
                             CHCKERR('')
                             ierr = interp_fun(L_V_s_int(m,n,kd),L_V_s(m,n,:,0),&
-                                &grid%grp_r_E(kd))
+                                &grid%loc_r_E(kd))
                             CHCKERR('')
                         end if
                     end do
@@ -980,7 +1246,7 @@ contains
             CHCKERR('')
             
             ! allocate R
-            allocate(R(grid%n(1),grid%n(2),grid%grp_n_r))
+            allocate(R(grid%n(1),grid%n(2),grid%loc_n_r))
             
             ! inverse fourier transform with trigonometric factors
             ierr = fourier2real(R_V_c_int,R_V_s_int,trigon_factors,R,[0,0])
@@ -1026,7 +1292,7 @@ contains
             ierr = 0
             
             ! allocate R
-            allocate(R(grid%n(1),grid%n(2),grid%grp_n_r))
+            allocate(R(grid%n(1),grid%n(2),grid%loc_n_r))
             
             ! set up interpolated R and Z
             allocate(R_H_int(size(R_H,1)),Z_H_int(size(Z_H,1)))
@@ -1038,14 +1304,14 @@ contains
             ! Note:  HELENA uses poloidal  flux as normal coordinate  divided by
             ! 2pi
             ! interpolate the HELENA tables in normal direction
-            do kd = 1,grid%grp_n_r                                              ! loop over all normal points
+            do kd = 1,grid%loc_n_r                                              ! loop over all normal points
                 do id = 1,size(R_H,1)
-                    ierr = interp_fun(R_H_int(id),R_H(id,:),grid%grp_r_E(kd),&
+                    ierr = interp_fun(R_H_int(id),R_H(id,:),grid%loc_r_E(kd),&
                         &x=flux_p_H/(2*pi))
                     CHCKERR('')
                 end do
                 do id = 1,size(Z_H,1)
-                    ierr = interp_fun(Z_H_int(id),Z_H(id,:),grid%grp_r_E(kd),&
+                    ierr = interp_fun(Z_H_int(id),Z_H(id,:),grid%loc_r_E(kd),&
                         &x=flux_p_H/(2*pi))
                     CHCKERR('')
                 end do
@@ -1211,8 +1477,7 @@ contains
     ! has to be 3D also in the axisymmetric case.
     ! [MPI] Collective call
     integer function plot_grid_real(grid) result(ierr)
-        use num_vars, only: alpha_job_nr, grp_rank, grp_n_procs, no_plots, &
-            &n_theta_plot, n_zeta_plot
+        use num_vars, only: rank, n_procs, no_plots, n_theta_plot, n_zeta_plot
         use grid_vars, only: create_grid, dealloc_grid
         
         character(*), parameter :: rout_name = 'plot_grid_real'
@@ -1271,9 +1536,9 @@ contains
         call writo('writing flux surfaces')
         
         ! calculate X_1,Y_1 and Z_1
-        allocate(X_1(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r))
-        allocate(Y_1(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r))
-        allocate(Z_1(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r))
+        allocate(X_1(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r))
+        allocate(Y_1(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r))
+        allocate(Z_1(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r))
         ierr = calc_XYZ_grid(grid_plot,X_1,Y_1,Z_1)
         CHCKERR('')
         
@@ -1288,9 +1553,9 @@ contains
         CHCKERR('')
         
         ! calculate X_2,Y_2 and Z_2
-        allocate(X_2(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r))
-        allocate(Y_2(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r))
-        allocate(Z_2(grid_plot%n(1),grid_plot%n(2),grid_plot%grp_n_r))
+        allocate(X_2(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r))
+        allocate(Y_2(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r))
+        allocate(Z_2(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r))
         ierr = calc_XYZ_grid(grid_plot,X_2,Y_2,Z_2)
         CHCKERR('')
         
@@ -1334,7 +1599,7 @@ contains
             integer, allocatable :: tot_dim(:)                                  ! total dimensions for plot 
             
             ! merge plots for flux surfaces if more than one process
-            if (grp_n_procs.gt.1) then                                          ! merge group plots
+            if (n_procs.gt.1) then                                              ! merge group plots
                 ! user output
                 call writo('Merging group plots for '//merge_name)
                 
@@ -1343,7 +1608,7 @@ contains
                 CHCKERR('')
                 
                 ! allocate total X, Y and Z (should have same sizes)
-                if (grp_rank.eq.0) then
+                if (rank.eq.0) then
                     allocate(X_tot(size(X,1),size(X,2),sum(tot_dim)))
                     allocate(Y_tot(size(X,1),size(X,2),sum(tot_dim)))
                     allocate(Z_tot(size(X,1),size(X,2),sum(tot_dim)))
@@ -1355,15 +1620,15 @@ contains
                         loc_XYZ = X(id,jd,:)
                         ierr = get_ser_var(loc_XYZ,ser_loc_XYZ)
                         CHCKERR('')
-                        if (grp_rank.eq.0) X_tot(id,jd,:) = ser_loc_XYZ
+                        if (rank.eq.0) X_tot(id,jd,:) = ser_loc_XYZ
                         loc_XYZ = Y(id,jd,:)
                         ierr = get_ser_var(loc_XYZ,ser_loc_XYZ)
                         CHCKERR('')
-                        if (grp_rank.eq.0) Y_tot(id,jd,:) = ser_loc_XYZ
+                        if (rank.eq.0) Y_tot(id,jd,:) = ser_loc_XYZ
                         loc_XYZ = Z(id,jd,:)
                         ierr = get_ser_var(loc_XYZ,ser_loc_XYZ)
                         CHCKERR('')
-                        if (grp_rank.eq.0) Z_tot(id,jd,:) = ser_loc_XYZ
+                        if (rank.eq.0) Z_tot(id,jd,:) = ser_loc_XYZ
                     end do
                 end do
             else                                                                ! just point
@@ -1405,7 +1670,7 @@ contains
             ierr = 0
             
             ! only group masters
-            if (grp_rank.eq.0) then
+            if (rank.eq.0) then
                 ! user output
                 call writo('Drawing animation with HDF5')
                 call lvl_ud(1)
@@ -1416,16 +1681,12 @@ contains
                 n_r = size(X_1,3) - 1                                           ! should be same for all other X_i, Y_i and Z_i
                 
                 ! set up plot titles
-                plot_title(1) = 'Magnetic Flux Surface for alpha job '//&
-                    &trim(i2str(alpha_job_nr))
-                plot_title(2) = 'Magnetic Field Line for alpha job '//&
-                    &trim(i2str(alpha_job_nr))
+                plot_title(1) = 'Magnetic Flux Surfaces'
+                plot_title(2) = 'Magnetic Field Lines'
                 
                 ! open HDF5 file
-                ierr = open_HDF5_file(file_info,&
-                    &'field_lines_in_flux_surfaces_'//&
-                    &trim(i2str(alpha_job_nr)),description=anim_name,&
-                    &ind_plot=.true.)
+                ierr = open_HDF5_file(file_info,'field_lines_in_flux_surfaces',&
+                    &description=anim_name,ind_plot=.true.)
                 CHCKERR('')
                 
                 ! create grid for time collection
@@ -1514,165 +1775,8 @@ contains
         end function plot_grid_real_HDF5
     end function plot_grid_real
     
-    ! Trim a grid, removing any overlap between the different regions.
-    ! By  default, this  is done  by removing  from every  PREVIOUS process  the
-    ! region overlapping with the NEXT  process. However, using shift_grid (>0),
-    ! which indicates  how many positions to  change the point at  which regions
-    ! are cut.
-    integer function trim_grid(grid_in,grid_out,shift_grid) result(ierr)
-        use grid_vars, only: create_grid
-        use num_vars, only: grp_n_procs, grp_rank
-        use MPI_utilities, only: get_ser_var
-#if ldebug
-        use MPI_utilities, only: wait_MPI
-#endif
-        
-        character(*), parameter :: rout_name = 'trim_grid'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid_in                                  ! input grid
-        type(grid_type), intent(inout) :: grid_out                              ! trimmed grid
-        integer, intent(in), optional :: shift_grid                             ! by how much to shift the cutting point
-        
-        ! local variables
-        integer, allocatable :: tot_i_min(:)                                    ! i_min of grid of all processes
-        integer, allocatable :: tot_i_max(:)                                    ! i_max of grid of all processes
-        integer :: i_lim_out(2)                                                 ! i_lim of output grid
-        integer :: n_out(3)                                                     ! n of output grid
-        integer :: shift_grid_loc                                               ! local version of shift_grid
-        !integer :: kd                                                           ! counter
-        !integer :: kd_max                                                       ! maximum index
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local shift_grid
-        shift_grid_loc = 0
-        if (present(shift_grid)) shift_grid_loc = shift_grid
-        
-        ! get min_i's of the grid_in
-        ierr = get_ser_var([grid_in%i_min],tot_i_min,scatter=.true.)
-        CHCKERR('')
-        
-        ! get max_i's of the grid_in
-        ierr = get_ser_var([grid_in%i_max],tot_i_max,scatter=.true.)
-        CHCKERR('')
-        
-        ! set i_lim of trimmed output grid (not yet shifted by first proc min)
-        if (grp_rank.eq.0) then
-            i_lim_out(1) = grid_in%i_min                                        ! minimum
-        else
-            i_lim_out(1) = grid_in%i_min+shift_grid_loc                         ! minimum, shifted by local shift_grid
-        end if
-        if (grp_rank.lt.grp_n_procs-1) then                                     ! not last process
-            i_lim_out(2) = min(tot_i_min(grp_rank+2)-1+shift_grid_loc,&
-                &tot_i_max(grp_rank+1))                                         ! next i_min, shifted by local shift_grid, or current maximum
-        else                                                                    ! last process
-            i_lim_out(2) = grid_in%i_max                                        ! end of this last group
-        end if
-        
-        ! get min_i's of the grid_out, not shifted by min of first process
-        ierr = get_ser_var([i_lim_out(1)],tot_i_min,scatter=.true.)
-        CHCKERR('')
-        
-        ! get max_i's of the grid_out, not shifted by min of first process
-        ierr = get_ser_var([i_lim_out(2)],tot_i_max,scatter=.true.)
-        CHCKERR('')
-        
-        ! set n of output grid
-        n_out(1) = grid_in%n(1)
-        n_out(2) = grid_in%n(2)
-        n_out(3) = sum(tot_i_max-tot_i_min+1)
-        
-        ! create new grid
-        ierr = create_grid(grid_out,n_out,i_lim_out-tot_i_min(1)+1)             ! limits shifted by min of first process
-        CHCKERR('')
-        
-        ! recycle i_lim_out for array indices, shifted by min of current process
-        i_lim_out = i_lim_out-i_lim_out(1)+1
-        
-        ! copy arrays
-        if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3D grid
-            grid_out%theta_E = grid_in%theta_E(:,:,i_lim_out(1):i_lim_out(2))
-            grid_out%zeta_E = grid_in%zeta_E(:,:,i_lim_out(1):i_lim_out(2))
-            grid_out%theta_F = grid_in%theta_F(:,:,i_lim_out(1):i_lim_out(2))
-            grid_out%zeta_F = grid_in%zeta_F(:,:,i_lim_out(1):i_lim_out(2))
-        end if
-        if (grid_in%divided) then                                               ! but if input grid divided, grp_r gets priority
-            grid_out%grp_r_E = grid_in%grp_r_E(i_lim_out(1):i_lim_out(2))
-            grid_out%grp_r_F = grid_in%grp_r_F(i_lim_out(1):i_lim_out(2))
-        end if
-        grid_out%r_E = grid_in%r_E(tot_i_min(1):tot_i_max(grp_n_procs))
-        grid_out%r_F = grid_in%r_F(tot_i_min(1):tot_i_max(grp_n_procs))
-    end function trim_grid
-    
-    ! Untrims a trimmed  grid by introducing an assymetric ghost  regions at the
-    ! right. The width of the ghost region has to be provided.
-    ! Note: The ghosted grid should be deallocated (with dealloc_grid).
-    ! Note: The input grid HAS to be trimmed!
-    integer function untrim_grid(grid_in,grid_out,size_ghost) result(ierr)
-        use num_vars, only: grp_n_procs, grp_rank
-        use grid_vars, only: create_grid
-        use MPI_utilities, only: get_ghost_arr, get_ser_var
-        
-        character(*), parameter :: rout_name = 'untrim_grid'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid_in                                  ! input grid
-        type(grid_type), intent(inout) :: grid_out                              ! ghosted grid
-        integer, intent(in) :: size_ghost                                       ! width of ghost region
-        
-        ! local variables
-        integer :: i_lim_in(2)                                                  ! limits of input grid
-        integer :: i_lim_out(2)                                                 ! limits of ghosted grid
-        integer, allocatable :: tot_grp_n_r(:)                                  ! grp_n_r of all processes
-        integer :: size_ghost_loc                                               ! local size_ghost
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! get array sizes of all processes
-        ierr = get_ser_var([grid_in%grp_n_r],tot_grp_n_r,scatter=.true.)
-        CHCKERR('')
-        
-        ! set local size_ghost
-        size_ghost_loc = min(size_ghost,minval(tot_grp_n_r)-1)
-        
-        ! set i_lim_in and i_lim_out
-        i_lim_in = [grid_in%i_min,grid_in%i_max]
-        i_lim_out = i_lim_in
-        if (grp_rank.lt.grp_n_procs-1) &
-            &i_lim_out(2) = i_lim_out(2)+size_ghost_loc
-        
-        ! create grid
-        ierr = create_grid(grid_out,grid_in%n,i_lim_out)
-        CHCKERR('')
-        
-        ! set ghosted variables
-        if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3D grid
-            grid_out%theta_E(:,:,1:grid_in%grp_n_r) = grid_in%theta_E
-            grid_out%zeta_E(:,:,1:grid_in%grp_n_r) = grid_in%zeta_E
-            grid_out%theta_F(:,:,1:grid_in%grp_n_r) = grid_in%theta_F
-            grid_out%zeta_F(:,:,1:grid_in%grp_n_r) = grid_in%zeta_F
-            ierr = get_ghost_arr(grid_out%theta_E,size_ghost_loc)
-            CHCKERR('')
-            ierr = get_ghost_arr(grid_out%zeta_E,size_ghost_loc)
-            CHCKERR('')
-            ierr = get_ghost_arr(grid_out%theta_F,size_ghost_loc)
-            CHCKERR('')
-            ierr = get_ghost_arr(grid_out%zeta_F,size_ghost_loc)
-            CHCKERR('')
-        end if
-        if (grid_in%divided) then                                               ! but if input grid divided, grp_r gets priority
-            grid_out%grp_r_E = grid_in%r_E(i_lim_out(1):i_lim_out(2))
-            grid_out%grp_r_F = grid_in%r_F(i_lim_out(1):i_lim_out(2))
-        end if
-        grid_out%r_E = grid_in%r_E
-        grid_out%r_F = grid_in%r_F
-    end function untrim_grid
-    
     ! Extend a  grid angularly using  equidistant variables of  n_theta_plot and
-    ! n_zeta_plot angular and  own grp_n_r points in  E coordinates. Optionally,
+    ! n_zeta_plot angular and  own loc_n_r points in  E coordinates. Optionally,
     ! the grid can  also be converted to  F coordinates if equilibrium  grid and
     ! eq variables are provided.
     integer function extend_grid_E(grid_in,grid_ext,grid_eq,eq) result(ierr)
@@ -1708,7 +1812,7 @@ contains
             &[grid_in%i_min,grid_in%i_max])
         CHCKERR('')
         grid_ext%r_E = grid_in%r_E
-        grid_ext%grp_r_E = grid_in%grp_r_E
+        grid_ext%loc_r_E = grid_in%loc_r_E
         ierr = calc_eqd_grid(grid_ext%theta_E,1*pi,3*pi,1)                      ! starting from pi gives nicer plots
         CHCKERR('')
         ierr = calc_eqd_grid(grid_ext%zeta_E,0*pi,2*pi,2)
@@ -1718,23 +1822,23 @@ contains
         if (present(grid_eq)) then
             grid_ext%r_F = grid_in%r_F
             ierr = coord_E2F(eq,grid_eq,&
-                &grid_ext%grp_r_E,grid_ext%theta_E,grid_ext%zeta_E,&
-                &grid_ext%grp_r_F,grid_ext%theta_F,grid_ext%zeta_F)
+                &grid_ext%loc_r_E,grid_ext%theta_E,grid_ext%zeta_E,&
+                &grid_ext%loc_r_F,grid_ext%theta_F,grid_ext%zeta_F)
             CHCKERR('')
         end if
     end function extend_grid_E
     
-    ! calculates grp_r_E (style 1) or grp_r_F (style 2)
-    integer function calc_grp_r(grid_eq,eq,grp_r,style) result (ierr)
+    ! calculates loc_r_E (style 1) or loc_r_F (style 2)
+    integer function calc_loc_r(grid_eq,eq,loc_r,style) result (ierr)
         use num_vars, only: use_pol_flux_E, use_pol_flux_F, eq_style
         use eq_vars, only: max_flux_p_F, max_flux_t_F
         
-        character(*), parameter :: rout_name = 'calc_grp_r'
+        character(*), parameter :: rout_name = 'calc_loc_r'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        real(dp), intent(inout), allocatable :: grp_r(:)                        ! grp_r
+        real(dp), intent(inout), allocatable :: loc_r(:)                        ! loc_r
         integer, intent(in) :: style                                            ! whether to calculate in E or F
         
         ! local variables
@@ -1743,15 +1847,15 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! allocate grp_r if necessary
-        if (allocated(grp_r)) then
-            if (size(grp_r).ne.grid_eq%grp_n_r) then
+        ! allocate loc_r if necessary
+        if (allocated(loc_r)) then
+            if (size(loc_r).ne.grid_eq%loc_n_r) then
                 ierr = 1
-                err_msg = 'grp_r needs to have the correct dimensions'
+                err_msg = 'loc_r needs to have the correct dimensions'
                 CHCKERR(err_msg)
             end if
         else
-            allocate(grp_r(grid_eq%grp_n_r))
+            allocate(loc_r(grid_eq%loc_n_r))
         end if
         
         ! choose which style is being used:
@@ -1763,12 +1867,12 @@ contains
                 select case (eq_style)
                     case (1)                                                    ! VMEC
                         if (use_pol_flux_E) then                                ! normalized poloidal flux
-                            grp_r = eq%flux_p_FD(:,0)/max_flux_p_F
+                            loc_r = eq%flux_p_FD(:,0)/max_flux_p_F
                         else                                                    ! normalized toroidal flux
-                            grp_r = eq%flux_t_FD(:,0)/max_flux_t_F
+                            loc_r = eq%flux_t_FD(:,0)/max_flux_t_F
                         end if
                     case (2)                                                    ! HELENA
-                        grp_r = eq%flux_p_FD(:,0)/(2*pi)                        ! poloidal flux / 2pi
+                        loc_r = eq%flux_p_FD(:,0)/(2*pi)                        ! poloidal flux / 2pi
                     case default
                         err_msg = 'No equilibrium style associated with '//&
                             &trim(i2str(eq_style))
@@ -1777,16 +1881,16 @@ contains
                 end select
             case (2)                                                            ! F coords.
                 if (use_pol_flux_F) then                                        ! poloidal flux / 2pi
-                    grp_r = eq%flux_p_FD(:,0)/(2*pi)
+                    loc_r = eq%flux_p_FD(:,0)/(2*pi)
                 else                                                            ! toroidal flux / 2pi
-                    grp_r = eq%flux_t_FD(:,0)/(2*pi)
+                    loc_r = eq%flux_t_FD(:,0)/(2*pi)
                 end if
             case default
                 err_msg = 'No style associated with '//trim(i2str(style))
                 ierr = 1
                 CHCKERR(err_msg)
         end select
-    end function calc_grp_r
+    end function calc_loc_r
     
     ! Calculates magnetic integral of V, defined as the matrix
     !   <V e^[i(k-m)theta_F]> = [ int J V(k,m) e^i(k-m)theta_F dtheta_F ],
@@ -1830,7 +1934,7 @@ contains
         end if
         
         ! set up dims
-        dims = [grid%n(1),grid%n(2),grid%grp_n_r]
+        dims = [grid%n(1),grid%n(2),grid%loc_n_r]
         
         ! set up V_J_e
         allocate(V_J_e(dims(1),dims(2),dims(3),nn_mod))
@@ -1865,7 +1969,7 @@ contains
         !   = int_1^(n-1) f(x) dx + (f(n)+f(n-1))*(x(n)-x(n-1))/2
         V_int = 0.0_dp
         ! loop over all geodesic points on this process
-        do kd = 1,grid%grp_n_r
+        do kd = 1,grid%loc_n_r
             ! loop over all normal points on this process
             do jd = 1,grid%n(2)
                 ! parallel integration loop
@@ -1913,7 +2017,7 @@ contains
     ! well as the transformation of the Jacobian.
     integer function calc_int_vol(ang_1,ang_2,norm,J,f,f_int) result(ierr)
 #if ldebug
-        use num_vars, only: grp_rank
+        use num_vars, only: rank
 #endif
         
         character(*), parameter :: rout_name = 'calc_int_vol'
@@ -2098,12 +2202,12 @@ contains
                 var_names(ld,2) = trim(var_names(ld,2))//' '//trim(i2str(ld))
             end do
             
-            call plot_HDF5(var_names(:,1),'TEST_RE_Jf_'//trim(i2str(grp_rank)),&
+            call plot_HDF5(var_names(:,1),'TEST_RE_Jf_'//trim(i2str(rank)),&
                 &realpart(Jf))
-            call plot_HDF5(var_names(:,2),'TEST_IM_Jf_'//trim(i2str(grp_rank)),&
+            call plot_HDF5(var_names(:,2),'TEST_IM_Jf_'//trim(i2str(rank)),&
                 &imagpart(Jf))
             call plot_HDF5('transformation of Jacobians',&
-                &'TEST_transf_J_'//trim(i2str(grp_rank)),transf_J_tot)
+                &'TEST_transf_J_'//trim(i2str(rank)),transf_J_tot)
             
             call writo('Resulting integral: ')
             call lvl_ud(1)
@@ -2123,13 +2227,13 @@ contains
     
     ! calculate interpolation  factors for  normal interpolation in  grid_out of
     ! quantities defined on grid_in.
-    ! The output  grp_r consists of  an array of  real values where  the floored
+    ! The output  loc_r consists of  an array of  real values where  the floored
     ! integer of each  value indicates the base index of  the interpolated value
     ! in the output  grid and the modulus  is the the fraction  towards the next
     ! integer.
     ! By default, the variables in the Flux coord. system are used, but this can
     ! be changed optionally with the flag "use_E".
-    integer function get_norm_interp_data(grid_in,grid_out,grp_r,use_E) &
+    integer function get_norm_interp_data(grid_in,grid_out,loc_r,use_E) &
         &result(ierr)
         use utilities, only: con2dis
         
@@ -2137,17 +2241,17 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_in, grid_out                        ! input and output grid
-        real(dp), allocatable, intent(inout) :: grp_r(:)                        ! interpolation index
+        real(dp), allocatable, intent(inout) :: loc_r(:)                        ! interpolation index
         logical, intent(in), optional :: use_E                                  ! whether E is used instead of F
         
         ! local variables
         integer :: kd                                                           ! counter
-        integer :: grp_n_r                                                      ! nr. of normal points in output grid
+        integer :: loc_n_r                                                      ! nr. of normal points in output grid
         logical :: use_E_loc                                                    ! local version of use_E
-        real(dp), pointer :: grp_r_in(:) => null()                              ! grp_r_F or grp_r_E of grids
-        real(dp), pointer :: grp_r_out(:) => null()                             ! grp_r_F or grp_r_E of grids
+        real(dp), pointer :: loc_r_in(:) => null()                              ! loc_r_F or loc_r_E of grids
+        real(dp), pointer :: loc_r_out(:) => null()                             ! loc_r_F or loc_r_E of grids
 #if ldebug
-        real(dp), allocatable :: grp_r_ALT(:)                                   ! alternative calculation for grp_r
+        real(dp), allocatable :: loc_r_ALT(:)                                   ! alternative calculation for loc_r
 #endif
         
         ! initialize ierr
@@ -2157,63 +2261,219 @@ contains
         use_E_loc = .false.
         if (present(use_E)) use_E_loc = use_E
         
-        ! set grp_n_r
-        grp_n_r = size(grid_out%grp_r_F)
+        ! set loc_n_r
+        loc_n_r = size(grid_out%loc_r_F)
         
-        ! allocate grp_r
-        allocate(grp_r(grp_n_r))
+        ! allocate loc_r
+        allocate(loc_r(loc_n_r))
         
-        ! point grp_r_in and grp_r_out
+        ! point loc_r_in and loc_r_out
         if (use_E_loc) then
-            grp_r_in => grid_in%grp_r_E
-            grp_r_out => grid_out%grp_r_E
+            loc_r_in => grid_in%loc_r_E
+            loc_r_out => grid_out%loc_r_E
         else
-            grp_r_in => grid_in%grp_r_F
-            grp_r_out => grid_out%grp_r_F
+            loc_r_in => grid_in%loc_r_F
+            loc_r_out => grid_out%loc_r_F
         end if
         
 #if ldebug
         if (debug_get_norm_interp_data) then
-            call print_GP_2D('grp_r_in','',grp_r_in)
-            call print_GP_2D('grp_r_out','',grp_r_out)
+            call print_GP_2D('loc_r_in','',loc_r_in)
+            call print_GP_2D('loc_r_out','',loc_r_out)
         end if
 #endif
         
         ! get the table  indices between which to interpolate  by converting the
         ! continuous equilibrium points to the discretized values
         ! loop over all normal points
-        do kd = 1,grp_n_r
-            ierr = con2dis(grp_r_out(kd),grp_r(kd),grp_r_in)
+        do kd = 1,loc_n_r
+            ierr = con2dis(loc_r_out(kd),loc_r(kd),loc_r_in)
             CHCKERR('')
         end do
         
 #if ldebug
         if (debug_get_norm_interp_data) then
             ! now use the other variables to see whether the result is the same
-            ! point grp_r_in and grp_r_out
+            ! point loc_r_in and loc_r_out
             if (.not.use_E_loc) then
-                grp_r_in => grid_in%grp_r_E
-                grp_r_out => grid_out%grp_r_E
+                loc_r_in => grid_in%loc_r_E
+                loc_r_out => grid_out%loc_r_E
             else
-                grp_r_in => grid_in%grp_r_F
-                grp_r_out => grid_out%grp_r_F
+                loc_r_in => grid_in%loc_r_F
+                loc_r_out => grid_out%loc_r_F
             end if
-            ! allocate alternative grp_r
-            allocate(grp_r_ALT(grp_n_r))
+            ! allocate alternative loc_r
+            allocate(loc_r_ALT(loc_n_r))
             ! loop over all normal points
-            do kd = 1,grp_n_r
-                ierr = con2dis(grp_r_out(kd),grp_r_ALT(kd),grp_r_in)
+            do kd = 1,loc_n_r
+                ierr = con2dis(loc_r_out(kd),loc_r_ALT(kd),loc_r_in)
                 CHCKERR('')
             end do
             ! plot output
-            !call print_GP_2D('grp_r','',grp_r)
-            !call print_GP_2D('ALTERNATIVE grp_r','',grp_r_ALT)
+            !call print_GP_2D('loc_r','',loc_r)
+            !call print_GP_2D('ALTERNATIVE loc_r','',loc_r_ALT)
             call writo('Maximum difference: '//&
-                &trim(r2str(maxval(abs(grp_r-grp_r_ALT)))))
+                &trim(r2str(maxval(abs(loc_r-loc_r_ALT)))))
         end if
 #endif
         
         ! clean up
-        nullify(grp_r_in,grp_r_out)
+        nullify(loc_r_in,loc_r_out)
     end function get_norm_interp_data
+    
+    ! Trim a grid, removing any overlap between the different regions.
+    ! By default, the routine assumes a  symmetric ghost region and cuts as many
+    ! grid points from the end of the  previous process as from the beginning of
+    ! the next process, but if the number of overlapping grid points is odd, the
+    ! previous process looses one more point.
+    ! Optionally, the trimmed indices in the normal direction can be provided.
+    integer function trim_grid(grid_in,grid_out,norm_id) result(ierr)
+        use num_vars, only: n_procs, rank
+        use MPI_utilities, only: get_ser_var
+        use grid_vars, only: create_grid
+#if ldebug
+        use MPI_utilities, only: wait_MPI
+#endif
+        
+        character(*), parameter :: rout_name = 'trim_grid'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_in                                  ! input grid
+        type(grid_type), intent(inout) :: grid_out                              ! trimmed grid
+        integer, intent(inout), optional :: norm_id(2)                          ! normal indices corresponding to trimmed part
+        
+        ! local variables
+        integer, allocatable :: tot_i_min(:)                                    ! i_min of grid of all processes
+        integer, allocatable :: tot_i_max(:)                                    ! i_max of grid of all processes
+        integer :: i_lim_out(2)                                                 ! i_lim of output grid
+        integer :: n_out(3)                                                     ! n of output grid
+        integer :: norm_shift                                                   ! shift of normal indices
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! get min_i's of the grid_in
+        ierr = get_ser_var([grid_in%i_min],tot_i_min,scatter=.true.)
+        CHCKERR('')
+        
+        ! get max_i's of the grid_in
+        ierr = get_ser_var([grid_in%i_max],tot_i_max,scatter=.true.)
+        CHCKERR('')
+        
+        ! set i_lim of trimmed output grid (not yet shifted by first proc min)
+        if (rank.gt.0) then
+            i_lim_out(1) = max(tot_i_min(1),tot_i_min(rank+1)+&
+                &floor((tot_i_max(rank)-tot_i_min(rank+1)+1._dp)/2))
+        else
+            i_lim_out(1) = tot_i_min(1)
+        end if
+        if (rank.lt.n_procs-1) then
+            i_lim_out(2) = min(tot_i_max(n_procs),tot_i_max(rank+1)-&
+                &ceiling((tot_i_max(rank+1)-tot_i_min(rank+2)+1._dp)/2))
+        else
+            i_lim_out(2) = tot_i_max(n_procs)
+        end if
+        
+        ! normal shift between grids
+        norm_shift = i_lim_out(1) - grid_in%i_min
+        
+        ! get min_i's of the grid_out, not shifted by min of first process
+        ierr = get_ser_var([i_lim_out(1)],tot_i_min,scatter=.true.)
+        CHCKERR('')
+        
+        ! get max_i's of the grid_out, not shifted by min of first process
+        ierr = get_ser_var([i_lim_out(2)],tot_i_max,scatter=.true.)
+        CHCKERR('')
+        
+        ! set n of output grid
+        n_out(1) = grid_in%n(1)
+        n_out(2) = grid_in%n(2)
+        n_out(3) = sum(tot_i_max-tot_i_min+1)
+        
+        ! create new grid
+        ierr = create_grid(grid_out,n_out,i_lim_out-tot_i_min(1)+1)             ! limits shifted by min of first process
+        CHCKERR('')
+        
+        ! recycle i_lim_out for shifted array indices, set norm_id if requested
+        i_lim_out = i_lim_out - i_lim_out(1) + 1 + norm_shift
+        if (present(norm_id)) norm_id = i_lim_out
+        
+        ! copy arrays
+        if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3D grid
+            grid_out%theta_E = grid_in%theta_E(:,:,i_lim_out(1):i_lim_out(2))
+            grid_out%zeta_E = grid_in%zeta_E(:,:,i_lim_out(1):i_lim_out(2))
+            grid_out%theta_F = grid_in%theta_F(:,:,i_lim_out(1):i_lim_out(2))
+            grid_out%zeta_F = grid_in%zeta_F(:,:,i_lim_out(1):i_lim_out(2))
+        end if
+        if (grid_in%divided) then                                               ! but if input grid divided, loc_r gets priority
+            grid_out%loc_r_E = grid_in%loc_r_E(i_lim_out(1):i_lim_out(2))
+            grid_out%loc_r_F = grid_in%loc_r_F(i_lim_out(1):i_lim_out(2))
+        end if
+        grid_out%r_E = grid_in%r_E(tot_i_min(1):tot_i_max(n_procs))
+        grid_out%r_F = grid_in%r_F(tot_i_min(1):tot_i_max(n_procs))
+    end function trim_grid
+    
+    ! Untrims a trimmed  grid by introducing an assymetric ghost  regions at the
+    ! right. The width of the ghost region has to be provided.
+    ! Note: The ghosted grid should be deallocated (with dealloc_grid).
+    ! Note: The input grid HAS to be trimmed!
+    integer function untrim_grid(grid_in,grid_out,size_ghost) result(ierr)
+        use num_vars, only: n_procs, rank
+        use MPI_utilities, only: get_ghost_arr, get_ser_var
+        use grid_vars, only: create_grid
+        
+        character(*), parameter :: rout_name = 'untrim_grid'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_in                                  ! input grid
+        type(grid_type), intent(inout) :: grid_out                              ! ghosted grid
+        integer, intent(in) :: size_ghost                                       ! width of ghost region
+        
+        ! local variables
+        integer :: i_lim_in(2)                                                  ! limits of input grid
+        integer :: i_lim_out(2)                                                 ! limits of ghosted grid
+        integer, allocatable :: tot_loc_n_r(:)                                  ! loc_n_r of all processes
+        integer :: size_ghost_loc                                               ! local size_ghost
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! get array sizes of all processes
+        ierr = get_ser_var([grid_in%loc_n_r],tot_loc_n_r,scatter=.true.)
+        CHCKERR('')
+        
+        ! set local size_ghost
+        size_ghost_loc = min(size_ghost,minval(tot_loc_n_r)-1)
+        
+        ! set i_lim_in and i_lim_out
+        i_lim_in = [grid_in%i_min,grid_in%i_max]
+        i_lim_out = i_lim_in
+        if (rank.lt.n_procs-1) i_lim_out(2) = i_lim_out(2)+size_ghost_loc
+        
+        ! create grid
+        ierr = create_grid(grid_out,grid_in%n,i_lim_out)
+        CHCKERR('')
+        
+        ! set ghosted variables
+        if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3D grid
+            grid_out%theta_E(:,:,1:grid_in%loc_n_r) = grid_in%theta_E
+            grid_out%zeta_E(:,:,1:grid_in%loc_n_r) = grid_in%zeta_E
+            grid_out%theta_F(:,:,1:grid_in%loc_n_r) = grid_in%theta_F
+            grid_out%zeta_F(:,:,1:grid_in%loc_n_r) = grid_in%zeta_F
+            ierr = get_ghost_arr(grid_out%theta_E,size_ghost_loc)
+            CHCKERR('')
+            ierr = get_ghost_arr(grid_out%zeta_E,size_ghost_loc)
+            CHCKERR('')
+            ierr = get_ghost_arr(grid_out%theta_F,size_ghost_loc)
+            CHCKERR('')
+            ierr = get_ghost_arr(grid_out%zeta_F,size_ghost_loc)
+            CHCKERR('')
+        end if
+        if (grid_in%divided) then                                               ! but if input grid divided, loc_r gets priority
+            grid_out%loc_r_E = grid_in%r_E(i_lim_out(1):i_lim_out(2))
+            grid_out%loc_r_F = grid_in%r_F(i_lim_out(1):i_lim_out(2))
+        end if
+        grid_out%r_E = grid_in%r_E
+        grid_out%r_F = grid_in%r_F
+    end function untrim_grid
 end module grid_ops

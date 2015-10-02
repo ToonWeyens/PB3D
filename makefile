@@ -16,7 +16,8 @@ PB3D_DIR = $(HOME)/Documents/PHD/PB3D# laptop
 #PB3D_DIR = $(HOME)/Programs/PB3D# quadrivium
 
 # Comiler
-COMP_DIR = /usr/bin/mpif90# laptop
+COMP_DIR = /usr/bin/mpif90# laptop openmpi 1.6.3
+#COMP_DIR = /opt/openmpi/1.10.0/bin/mpifort# laptop custom openmpi 1.10.0
 #COMP_DIR = /share/apps/openmpi/1.6.5/gcc-4.6.4/bin/mpif90# quadrivium
 
 # Linker (needed for C++ preprocessing)
@@ -63,13 +64,16 @@ include $(OBJLIST)# Names of all the objects
 
 ##############################################################################
 #   Compiler specifications
+#  	options (used with -D[name]):
+# 		ldebug: debug
+# 		lold_MPI: MPI versions older than 1.8
 ##############################################################################
 # compiler flags
-COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -cpp -Dldebug# profiling
-#COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -cpp -Dldebug# no profiling
+COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -cpp -Dldebug -Dlold_MPI# profiling
+#COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -cpp -Dldebug -Dlold_MPI# no profiling
 
 # compiler include
-COMP_INC = -I$(HDF5_inc) -I$(HOME_BIN)/libstell_dir -I$(PB3D_DIR)/include
+COMP_INC = -I$(HDF5_inc) -I$(HOME_BIN)/libstell_dir -I$(PB3D_DIR)/include #-I/opt/openmpi/1.10.0/include
 
 # compiler command
 COMPILE = $(COMP_DIR) $(COMP_INC) $(PETSC_FC_INCLUDES) $(SLEPC_INCLUDE) $(COMP_FLAGS)
@@ -84,6 +88,7 @@ LINK_FLAGS = -fPIC -pg
 LINK_LIB = $(HOME_BIN)/libstell.a -lgfortran -llapack -lblas \
 	$(HDF5_lib)/libhdf5_fortran.a $(HDF5_lib)/libhdf5.a \
 	-lz -lpthread -ldl -lm
+	#L/opt/openmpi/1.10.0/lib -lmpi_usempi -lmpi_mpifh -lmpi
 
 
 # link command
@@ -92,18 +97,22 @@ LINK    = $(LINK_DIR) $(LINK_FLAGS)
 ##############################################################################
 #   Rules
 ##############################################################################
-all:	PB3D PB3D_POST
+all:	PB3D POST
 
 PB3D:	$(ObjectFiles) PB3D.o
 	$(LINK) -o $@ $(ObjectFiles) PB3D.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
-PB3D_POST:	$(ObjectFiles) PB3D_POST.o
-	$(LINK) -o $@ $(ObjectFiles) PB3D_POST.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
+POST:	$(ObjectFiles) POST.o
+	$(LINK) -o $@ $(ObjectFiles) POST.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
 %.o : %.f90
 	$(COMPILE) -c $<
+
 clean:
 	@rm -f *.o *.mod *~ fort.* 
+
+clean_all:
+	@rm -f *.o *.mod *~ fort.* PB3D POST
 
 code_stats:
 	cloc .

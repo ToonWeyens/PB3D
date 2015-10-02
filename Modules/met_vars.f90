@@ -1,5 +1,7 @@
 !------------------------------------------------------------------------------!
 !   Variables that have to do with the metric elements                         !
+!   Note:  In theory  these  form part  of the  equilibrium  variables but  to !
+!   maintain clarity, these have been split off in a separate module           !
 !------------------------------------------------------------------------------!
 module met_vars
 #include <PB3D_macros.h>
@@ -15,8 +17,8 @@ module met_vars
     
     ! metric type
     ! The arrays here are of the form:
-    !   - (angle_1,angle_2,r,D1,D2,D3)      for normal quantities
-    !   - (angle_1,angle_2,r,6/9,D1,D2,D3)  for metric matrices
+    !   - (angle_1,angle_2,r,D1,D2,D3)      for scalar quantities
+    !   - (angle_1,angle_2,r,6/9,D1,D2,D3)  for tensorial matrices
     ! where it is refered to the discussion  of the grid type for an explanation
     ! of the angles angle_1 and angle_2 and  to the discussion of eq_type for an
     ! explanation of the derivatives Di
@@ -70,7 +72,7 @@ contains
         ierr = 0
         
         ! set up local variables
-        dims = [grid%n(1),grid%n(2),grid%grp_n_r]
+        dims = [grid%n(1),grid%n(2),grid%loc_n_r]
         
         ! initialize variables that are used for all equilibrium styles
         ! g_E

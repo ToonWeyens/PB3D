@@ -151,4 +151,18 @@ CHANGELOG
       - For PB3D, the metric variables are no longer interpolated on the field-aligned grid, as they are no longer necessary with the introduction of 'J_exp_ang_par_F'.
       - Introduced a new run script, for qsub on quadrivium.
 
-0.90: 
+0.90: - LAST VERSION OF OLD PB3D WITH PARALLELIZATION IN THE NORMAL COORDINATE.
+      - Small bug fixes.
+      - Started implementing memory check.
+
+0.91: - NON-USABLE VERSION: SWITCHING BETWEEN PARALLELIZATIONS.
+      - Replaced the routines that calculate the possible derivatives of a certain order by a generic one.
+      - Implemented calc_derivs_1D_id which calculates the 1D index of derivatives. A table of these is stored in an array d for quick access.
+      - 'driver_rich.f90' has been renamed 'driver.f90' and the original 'driver.f90' was deleted.
+      - Introduced 'norm_disc_style' for eq, X and sol, so derivatives are done coherently.
+      - 'trim_grid' now optionally returns 'norm_id', the normal indices of the trimmed variables.
+      - The derivatives of VMEC outputs is now done in 'prepare_RZL' because the precision is not yet known before reading the input.
+      - 'calc_eq_r_range', 'divide_X_grid' and 'split_MPI' are now bundled in 'calc_norm_range'.
+      - 'reconstuct_PB3D' is also called in the pertubation phase, but only equilibrium variables are reconstructed.
+      - X variables now are all allocatable.
+      - The X jobs can either be found in a straightforward way, requiring the use of the mpirun option '--mca osc pt2pt', or in an intelligent way, but this requires an up-to-date version of openmpi. The flag 'lold_MPI' can be used to switch between the two versions.
