@@ -15,7 +15,7 @@ module met_ops
     
     implicit none
     private
-    public calc_met
+    public calc_met, calc_F_derivs
     
 #if ldebug
     public debug_calc_inv_met_ind
@@ -301,6 +301,48 @@ contains
         
         call writo('Done setting up metric quantities in equilibrium &
             &coordinates')
+    end function calc_met
+    
+    ! Transforms  derivatives of  the  equilibrium and  metric  quantities in  E
+    ! coordinates to derivatives in the F coordinates.
+    integer function calc_F_derivs(grid_eq,eq,met) result(ierr)
+        use num_vars, only: eq_style
+        use utilities, only: derivs, c
+#if ldebug
+        use num_vars, only: ltest
+        use input_ops, only: get_log, pause_prog
+        use HELENA, only: test_metrics_H
+#endif
+        
+        character(*), parameter :: rout_name = 'calc_F_derivs'
+        
+        ! input / output
+        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
+        type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
+        type(met_type), intent(inout) :: met                                    ! metric variables
+        
+        ! local variables
+        integer :: id
+        integer :: pmone                                                        ! plus or minus one
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! Set up pmone, depending on equilibrium style being used
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                pmone = -1                                                      ! conversion VMEC LH -> RH coord. system
+            case (2)                                                            ! HELENA
+                pmone = 1
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
         
         ! user output
         call writo('Transform metric quantities to flux coordinates')
@@ -373,7 +415,7 @@ contains
         
         call writo('Done transforming metric quantities to flux &
             &coordinates')
-    end function calc_met
+    end function calc_F_derivs
     
     ! calculate the lower metric elements in the C(ylindrical) coordinate system
     integer function calc_g_C_ind(eq,met,deriv) result(ierr)

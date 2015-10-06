@@ -10,7 +10,7 @@ module MPI_utilities
     
     implicit none
     private
-    public get_ser_var, get_ghost_arr, broadcast_var, wait_MPI, cycle_plt_master
+    public get_ser_var, get_ghost_arr, broadcast_var, wait_MPI
     
     ! interfaces
     interface get_ser_var
@@ -495,20 +495,4 @@ contains
         call MPI_Barrier(MPI_Comm_world,ierr)
         CHCKERR('MPI Barrier failed')
     end function wait_MPI
-    
-    ! cycles plot master: rank i becomes plt_rank i+1
-    ! Optionally, the cycle parameter can be passed
-    subroutine cycle_plt_master(c_par)
-        use num_vars, only: plt_rank, n_procs
-        
-        ! input / output
-        integer, intent(in), optional :: c_par                                  ! cycle parameter
-        
-        ! local variables
-        integer :: c_par_loc                                                    ! local cycle parameter
-        
-        c_par_loc = 1
-        if (present(c_par)) c_par_loc = c_par
-        plt_rank = mod(plt_rank+c_par_loc,n_procs)
-    end subroutine cycle_plt_master
 end module MPI_utilities

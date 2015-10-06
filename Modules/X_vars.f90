@@ -66,27 +66,40 @@ module X_vars
     
 contains
     ! initialize the variable m and check and/or plot it
+    ! Optionally, the limits  for n_X and/or m_X can be  specified. If not, they
+    ! are taken from the global variables in this module.
     ! Note: intent(out) automatically deallocates the variable
-    subroutine create_X(grid,X)
+    subroutine create_X(grid,X,lim_n_X,lim_m_X)
         use num_vars, only: use_pol_flux_F
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
         type(X_type), intent(out) :: X                                          ! perturbation variables
+        integer, intent(in), optional :: lim_n_X(2)                             ! min. and max. of n_X
+        integer, intent(in), optional :: lim_m_X(2)                             ! min. and max. of m_X
         
         ! local variables
         integer :: id                                                           ! counter
         integer :: loc_n_r                                                      ! local nr. of normal points
         integer :: n_par, n_geo                                                 ! tot. nr. of angular points in parallel and geodesic direction
         integer :: nn_mod_1, nn_mod_2                                           ! number of indices for a quantity that is symmetric or not
+        integer :: min_n_X_loc, max_n_X_loc, min_m_X_loc, max_m_X_loc           ! local versions of min_n_X, max_n_X, min_m_X, max_m_X
         
         ! set local variables
         loc_n_r = grid%loc_n_r
         n_par = grid%n(1)
         n_geo = grid%n(2)
+        min_n_X_loc = min_n_X
+        if (present(lim_n_X)) min_n_X_loc = lim_n_X(1)
+        max_n_X_loc = max_n_X
+        if (present(lim_n_X)) max_n_X_loc = lim_n_X(2)
+        min_m_X_loc = min_m_X
+        if (present(lim_m_X)) min_m_X_loc = lim_m_X(1)
+        max_m_X_loc = max_m_X
+        if (present(lim_m_X)) max_m_X_loc = lim_m_X(2)
         
         ! set n_mod
-        X%n_Mod = (max_m_X-min_m_X+1)*(max_n_X-min_n_X+1)
+        X%n_Mod = (max_m_X_loc-min_m_X_loc+1)*(max_n_X_loc-min_n_X_loc+1)
         
         ! set nn_mod_1 and nn_mod_2
         nn_mod_1 = X%n_mod**2
@@ -95,11 +108,11 @@ contains
         ! n and m
         allocate(X%n(X%n_mod),X%m(X%n_mod))
         if (use_pol_flux_F) then
-            X%n = min_n_X
-            X%m = [(id, id = min_m_X, max_m_X)]
+            X%n = min_n_X_loc
+            X%m = [(id, id = min_m_X_loc, max_m_X_loc)]
         else
-            X%n = [(id, id = min_n_X, max_n_X)]
-            X%m = min_m_X
+            X%n = [(id, id = min_n_X_loc, max_n_X_loc)]
+            X%m = min_m_X_loc
         end if
         
         ! U_0

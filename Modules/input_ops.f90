@@ -598,13 +598,10 @@ contains
         ! preferibly at least 10 (arbitrary).  Also, max_sec_X has to be greater
         ! than min_sec_X and nyq_fac has to be at least 1.
         integer function adapt_X_modes() result(ierr)
-            use grid_vars, only: n_r_eq
-            
             character(*), parameter :: rout_name = 'adapt_X_modes'
             
             ! local variables
             character(len=max_str_ln) :: err_msg                                ! error message
-            real(dp) :: one = 1.00000001_dp                                     ! one plus a little margin
             integer :: abs_min_prim_X = 5                                       ! absolute minimum for the high-n theory
             integer :: rec_min_prim_X = 10                                      ! recomended minimum for the high-n theory
             
@@ -651,8 +648,6 @@ contains
             ! local variables
             character(len=max_str_ln) :: err_msg                                ! error message
             real(dp) :: one = 1.00000001_dp                                     ! one plus a little margin
-            integer :: abs_min_prim_X = 5                                       ! absolute minimum for the high-n theory
-            integer :: rec_min_prim_X = 10                                      ! recomended minimum for the high-n theory
             
             ! initialize ierr
             ierr = 0

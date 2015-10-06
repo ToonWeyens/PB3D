@@ -227,6 +227,11 @@ contains
         logical :: ignore                                                       ! normally, everybody but group master is ignored
         character(len=max_str_ln), allocatable :: temp_output_loc(:)            ! local temporary output
         
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !! THIS SHOULD BE REWRITTEN MAKING USE OF MPI I/O                     !!
+        !! (USE http://beige.ucs.indiana.edu/I590/node89.html)                !!
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        
         ! bypass messages if no_messages
         if (no_messages) return
         

@@ -14,7 +14,7 @@ module utilities
         &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun, calc_mult, &
         &calc_aux_utilities, derivs, con2dis, dis2con, round_with_tol, &
         &conv_sym, is_sym, calc_spline_3, con, calc_coeff_fin_diff, fac, &
-        &test_max_memory, calc_memory, &
+        &test_max_memory, &
         &d, m, f
 #if ldebug
     public debug_interp_fun_0D_real, debug_calc_zero_NR, &
@@ -2720,18 +2720,19 @@ contains
         call lvl_ud(1)
         
         write(*,*) 'TEMPORARILY NOT TESTING MAX MEMORY !!!'
-        !!! (lazy) allocation
-        !!dp_size = sizeof(1._dp)
-        !!n_max = ceiling(sqrt(max_mem_per_proc/(dp_size*1.E-6)))                 ! dp_size in B, max_mem_per_proc in MB
-        !!call writo('Allocating doubles array of size ('//trim(i2str(n_max))&
-            !!&//'x'//trim(i2str(n_max))//') on '//trim(i2str(n_procs))//&
-            !!&' MPI process(es)')
-        !!allocate(max_mem_arr(n_max,n_max),STAT=ierr)
-        !!err_msg = 'cannot allocate this much memory. Try setting &
-            !!&"max_mem_per_proc" lower'
-        !!CHCKERR(err_msg)
         
-        !!! explicitely set elements
+        ! (lazy) allocation
+        dp_size = sizeof(1._dp)
+        n_max = ceiling(sqrt(max_mem_per_proc/(dp_size*1.E-6)))                 ! dp_size in B, max_mem_per_proc in MB
+        call writo('Allocating doubles array of size ('//trim(i2str(n_max))&
+            &//'x'//trim(i2str(n_max))//') on '//trim(i2str(n_procs))//&
+            &' MPI process(es)')
+        !!allocate(max_mem_arr(n_max,n_max),STAT=ierr)
+        err_msg = 'cannot allocate this much memory. Try setting &
+            &"max_mem_per_proc" lower'
+        CHCKERR(err_msg)
+        
+        ! explicitely set elements
         !!max_mem_arr = 0._dp                                                     ! this can fail while lazy allocation does not
         
         !!deallocate(max_mem_arr)
@@ -2739,64 +2740,4 @@ contains
         call lvl_ud(-1)
         call writo('Maximum memory allocatable')
     end function test_max_memory
-
-    ! Calculate memory in MB necessary for X variables:
-    !   - 4x n_par_X x n_geo x loc_n_r x n_mod
-    !   - 2x n_par_X x n_geo x loc_n_r x nn_mod_1
-    !   - 4x n_par_X x n_geo x loc_n_r x nn_mod_2
-    ! where n_par_X x  n_geo x loc_n_r should be passed  as 'arr_size' and n_mod
-    ! as well.
-    ! Optionally, using  'block_mem', instead  of the total  memory for  all the
-    ! combinations  of modes,  the memory  required to  calculate a  subblock is
-    ! calculated. The  difference between  both lies  in the  fact that  not all
-    ! combinations are calculated, but only one at the time: A block of a matrix
-    ! is done, instead of the whole matrix.
-    function calc_memory(arr_size,n_mod,block_mem) result(mem_size)
-        use ISO_C_BINDING
-        use num_vars, only: eq_style
-        
-        ! input / output
-        integer, intent(in) :: arr_size                                         ! size of part of X array
-        integer, intent(in) :: n_mod                                            ! number of modes
-        logical, intent(in), optional :: block_mem                              ! number of modes in block
-        real(dp) :: mem_size                                                    ! total size
-        
-        ! local variables
-        integer :: nn_mod_1, nn_mod_2                                           ! number of indices for a quantity that is symmetric or not
-        integer(C_SIZE_T) :: dp_size                                            ! size of dp
-        logical :: block_mem_loc                                                ! local copy of block_mem
-        real(dp), parameter :: mem_scale_fac = 1.5                              ! scale factor of memory (because only estimation)
-        
-        call lvl_ud(1)
-        
-        ! set local block_mem
-        block_mem_loc = .false.
-        if (present(block_mem)) block_mem_loc = block_mem
-        
-        ! set nn_mod_1 and nn_mod_2
-        nn_mod_1 = n_mod**2
-        nn_mod_2 = n_mod*(n_mod+1)/2
-        
-        ! get size of complex variable
-        dp_size = 2*sizeof(1._dp)                                               ! complex variable
-        
-        ! set memory size
-        if (block_mem_loc) then
-            mem_size = arr_size*(4*n_mod+2*nn_mod_1+4*nn_mod_2)*dp_size
-        else
-            mem_size = arr_size*(2*4*n_mod+2*nn_mod_1+4*nn_mod_2)*dp_size       ! need twice as many values for U and DU
-        end if
-        
-        ! convert B to MB
-        mem_size = mem_size*1.E-6_dp
-        
-        ! use twice this for HELENA because of the need to calculate X_B from X
-        if (eq_style.eq.2) mem_size = mem_size*2
-        !!!! THIS SHOULD BE AVOIDED !!!!!!!!!
-        
-        ! scale memory to account for rough estimation
-        mem_size = mem_size*mem_scale_fac
-        
-        call lvl_ud(-1)
-    end function calc_memory
 end module utilities

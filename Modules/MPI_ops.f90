@@ -18,7 +18,7 @@ contains
     ! start MPI and gather information
     ! [MPI] Collective call
     integer function start_MPI() result(ierr)
-        use num_vars, only: rank, n_procs, plt_rank
+        use num_vars, only: rank, n_procs
         
         character(*), parameter :: rout_name = 'start_MPI'
         
@@ -32,32 +32,15 @@ contains
         CHCKERR('MPI rank failed')
         call MPI_Comm_size(MPI_Comm_world,n_procs,ierr)                         ! nr. processes
         CHCKERR('MPI size failed')
-        
-        ! so set plot rank to rank
-        plt_rank = rank
     end function start_MPI
     
     ! stop MPI
     ! [MPI] Collective call
     integer function stop_MPI() result(ierr)
-#if lold_MPI
-        use num_vars, only: next_job_win
-#else
-        use num_vars, only: jobs_taken_win
-#endif
-        
         character(*), parameter :: rout_name = 'stop_MPI'
         
         ! initialize ierr
         ierr = 0
-        
-        ! free window
-#if lold_MPI
-        call MPI_Win_free(next_job_win,ierr)
-#else
-        call MPI_Win_free(jobs_taken_win,ierr)
-#endif
-        CHCKERR('Failed to free the window to jobs_taken')
         
         call writo('Stopping MPI')
         call MPI_finalize(ierr)
@@ -76,129 +59,35 @@ contains
         CHCKERR('MPI abort failed')
     end function abort_MPI
     
-    !! Finds a  suitable next job. If  none are left, set next_job  to a negative
-    !! value
-    ! [MPI] Collective call
-    integer function get_next_job(X_job_nr) result(ierr)
-#if lold_MPI
-        use num_vars, only: next_job_win
-#else
-        use num_vars, only: jobs_taken_win, jobs_taken, jobs_data
-#endif
-        
-        character(*), parameter :: rout_name = 'get_next_job'
-        
-        ! input / output
-        integer, intent(inout) :: X_job_nr                                      ! perturbation job nr.
-        
-        ! local variables
-        integer(kind=MPI_ADDRESS_KIND) :: null_disp = 0                         ! zero target displacement
-#if lold_MPI
-#else
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: current_job                                                  ! current job when calling this routine
-        integer :: n_jobs                                                       ! nr. of jobs
-        integer :: id                                                           ! counter
-        integer :: get_req                                                      ! get request
-        integer :: stat(MPI_STATUS_SIZE)                                        ! MPI status
-#endif
-        
-        ! initialize ierr
-        ierr = 0
-        
-#if lold_MPI
-        call MPI_Win_lock(MPI_LOCK_EXCLUSIVE,0,0,next_job_win,ierr)
-        CHCKERR('Failed to get lock window on master')
-        
-        call MPI_get(X_job_nr,1,MPI_INTEGER,0,null_disp,1,MPI_INTEGER,&
-            &next_job_win,ierr)
-        CHCKERR('Failed to get next_job')
-        
-        call MPI_accumulate(1,1,MPI_INTEGER,0,null_disp,1,MPI_INTEGER,&
-            &MPI_SUM,next_job_win,ierr)
-        CHCKERR('Failed to increment')
-        
-        call MPI_Win_unlock(0,next_job_win,ierr)
-        CHCKERR('Failed to unlock window')
-#else
-        ! set n_jobs
-        n_jobs = size(jobs_taken)
-        
-        ! save current job and reset next job to some negative value
-        current_job = X_job_nr
-        X_job_nr = -1
-        
-        ! get jobs_taken window
-        call MPI_Win_lock(MPI_LOCK_EXCLUSIVE,0,0,jobs_taken_win,ierr)
-        CHCKERR('Failed to lock window on master')
-        call MPI_Rget(jobs_taken,n_jobs,MPI_INTEGER,0,null_disp,n_jobs,&
-            &MPI_INTEGER,jobs_taken_win,get_req,ierr)
-        CHCKERR('Failed to increment jobs_taken on master')
-        call MPI_Wait(get_req,stat,ierr)
-        CHCKERR('Failed to wait')
-        
-        ! determine a suitable  next job by finding a job  whose columns or rows
-        ! match the previous one
-        do id = 1,n_jobs
-            if (jobs_taken(id).eq.0) then
-                if (jobs_data(1,id).eq.jobs_data(1,current_job) .and. &
-                    &jobs_data(2,id).eq.jobs_data(2,current_job) .or. &         ! columns match
-                    &jobs_data(3,id).eq.jobs_data(4,current_job) .and. &
-                    &jobs_data(4,id).eq.jobs_data(3,current_job)) then          ! rows match
-                    X_job_nr = id
-                end if
-            end if
-        end do
-        
-        ! if no easy job found, look for any job
-        if (X_job_nr.lt.1) then
-            do id = 1,n_jobs
-                if (jobs_taken(id).eq.0) X_job_nr= id
-            end do
-        end if
-        
-        ! if new job found, put back jobs_taken
-        if (X_job_nr.ge.1) then
-            jobs_taken(X_job_nr) = 1
-            call MPI_PUT(jobs_taken,n_jobs,MPI_INTEGER,0,null_disp,&
-                &n_jobs,MPI_INTEGER,jobs_taken_win,ierr)
-            err_msg = 'Failed to put back the updated jobs_taken'
-            CHCKERR(err_msg)
-        end if
-        
-        ! unlock window
-        call MPI_Win_unlock(0,jobs_taken_win,ierr)
-        CHCKERR('Failed to unlock window on master')
-#endif
-    end function get_next_job
-    
     ! divides the perturbation jobs
-    ! In the  end, all the  (k,m) pairs have to  be calculated, so  the smallest
-    ! possible  division  of  work  is  the  calculation  of  one  pair.  For  a
-    ! certain mode  number k, therefore, all  the pairs (k,m) can  be calculated
-    ! sequentially, saving  the values  for this  k in  the process  and cycling
-    ! through m.
+    ! All,  the (k,m)  pairs have  to be  calculated, so  the smallest  possible
+    ! division of work is the calculation of one pair. For a certain mode number
+    ! k, therefore, all  the pairs (k,m) can be  calculated sequentially, saving
+    ! the values for this k in the process and cycling through m.
     ! This  can be  directly  scaled  up to  a  block of  k  and  m values,  and
     ! ultimately, all the values simultaneously.
     ! Therefore, the whole  load is divided into jobs depending  on the sizes of
-    ! the blocks of k and m values  in memory. These jobs start by calculating U
-    ! and  DU, followed  by their  combinations in  PV and  KV. Then,  these are
-    ! integrated in  the parallel coordinate,  with a possible  interpolation in
-    ! between. Finally, the integrated values are saved and the next jobs stats.
-    integer function divide_X_jobs(grid,n_mod) result(ierr)
-        use num_vars, only: max_mem_per_proc, n_procs, jobs_data, rank
-#if lold_MPI
-        use num_vars, only: next_job_win, next_job
-#else
-        use num_vars, only: jobs_taken_win, jobs_taken
-#endif
-        use utilities, only: calc_memory
+    ! the blocks of k  and m values in memory. These jobs  start with the vector
+    ! phase  by calculating  U and  DU, followed  in the  tensor phase  by their
+    ! combinations in  PV and  KV. Then,  these are  integrated in  the parallel
+    ! coordinate,  with  a  possible  interpolation  in  between.  Finally,  the
+    ! integrated values are saved and the next jobs stats.
+    ! This  function does  the  job of  dividing the  grids  setting the  global
+    ! variables 'X_jobs_data'  and 'X_jobs_taken' for  data of a  certain order,
+    ! given by div_ord.  E.g. for the vector  phase, the order is 1  and for the
+    ! tensorial phase it is 2.
+    integer function divide_X_jobs(grid,n_mod,div_ord) result(ierr)
+        use num_vars, only: max_mem_per_proc, n_procs, X_jobs_data, rank, &
+            &X_jobs_file_name, X_jobs_taken
+        use files_utilities, only: nextunit
+        use MPI_utilities, only: wait_MPI
         
         character(*), parameter :: rout_name = 'divide_X_jobs'
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! grid on which X vars are tabulated
         integer, intent(in) :: n_mod                                            ! number of Fourier modes
+        integer, intent(in) :: div_ord                                          ! division order
         
         ! local variables
         integer :: arr_size                                                     ! array size
@@ -208,14 +97,14 @@ contains
         integer, allocatable :: n_mod_loc(:)                                    ! number of modes per block
         character(len=max_str_ln) :: block_message                              ! message about how many blocks
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: id, jd                                                       ! counters
-        integer(kind=MPI_ADDRESS_KIND) :: intlb, intsize                        ! lower bound and  size of integer
+        integer :: file_i                                                       ! file number
         
         ! initialize ierr
         ierr = 0
         
         ! user output
-        call writo('Dividing the perturbation jobs')
+        call writo('Dividing the perturbation jobs of order '//&
+            &trim(i2str(div_ord)))
         call lvl_ud(1)
         
         ! set arr_size
@@ -227,94 +116,260 @@ contains
         do while (mem_size.gt.max_mem_per_proc)
             n_div = n_div + 1
             n_mod_block = ceiling(n_mod*1._dp/n_div)
-            mem_size = calc_memory(arr_size,n_mod_block,block_mem=.true.)
+            ierr = calc_memory(div_ord,arr_size,n_mod_block,mem_size)
             if (n_div.gt.n_mod) then
                 ierr = 1
-                err_msg = 'The memory limit is too low - use less grid points &
-                    &or aument ''max_mem_per_proc'''
+                err_msg = 'The memory limit is too low'
                 CHCKERR(err_msg)
             end if
         end do
         if (n_div.gt.1) then
             block_message = 'The '//trim(i2str(n_mod))//&
                 &' Fourier modes are split into '//trim(i2str(n_div))//&
-                &' and '//trim(i2str(n_div**2))//' jobs are done separately'
-            if (n_procs.lt.n_div) then
+                &' and '//trim(i2str(n_div**div_ord))//&
+                &' jobs are done separately'
+            if (n_procs.lt.n_div**div_ord) then
                 block_message = trim(block_message)//', '//&
-                    &trim(i2str(n_procs))//' at the same time'
+                    &trim(i2str(n_procs))//' at a time'
             else
                 block_message = trim(block_message)//', but simultaneously'
             end if
         else
-            block_message = 'The whole range of Fourier modes can be done &
-                &without dividing it'
+            block_message = 'The '//trim(i2str(n_mod))//' Fourier modes &
+                &can be done without splitting them'
         end if
         call writo(block_message)
         call writo('The memory per process is estimated to be about '//&
             &trim(r2strt(mem_size))//'MB, whereas the maximum was '//&
             &trim(r2strt(max_mem_per_proc))//'MB')
         
-        ! set up jobs as illustrated below for 3 divisions, 9 jobs
+        ! set up jobs as illustrated below for 3 divisions, order 1:
+        !   [1,2,3]
+        ! or order 2:
         !   [1,4,7]
         !   [2,5,8]
         !   [3,6,9]
-        allocate(jobs_data(4,n_div**2))
-        allocate(n_mod_loc(n_div**2))
+        ! etc.
+        allocate(n_mod_loc(n_div))
         n_mod_loc = n_mod/n_div                                                 ! number of radial points on this processor
         n_mod_loc(1:mod(n_mod,n_div)) = n_mod_loc(1:mod(n_mod,n_div)) + 1       ! add a mode to if there is a remainder
-        do jd = 1,n_div
-            do id = 1,n_div
-                jobs_data(:,(jd-1)*n_div+id) = &
-                    &[sum(n_mod_loc(1:id-1))+1, &                               ! k_min
-                    &sum(n_mod_loc(1:id)), &                                    ! k_max
-                    &sum(n_mod_loc(1:jd-1))+1, &                                ! m_min
-                    &sum(n_mod_loc(1:jd))]                                      ! k_max
-            end do
-        end do
+        X_jobs_data = calc_X_jobs_data(n_mod_loc,div_ord)
+        if (allocated(X_jobs_taken)) deallocate(X_jobs_taken)
+        allocate(X_jobs_taken(n_div**div_ord))
+        X_jobs_taken = .false.
         
-        ! initialize global variable on master and set window
-#if lold_MPI
-        call MPI_Type_get_extent(MPI_INTEGER,intlb,intsize,ierr)
-        err_msg = 'Couldn''t determine the extent of an integer'
-        CHCKERR(err_msg)
-        if (rank.eq.0) then                                                     ! master
-            call MPI_Win_create(next_job,1*intsize,intsize,MPI_INFO_NULL,&
-                &MPI_Comm_world,next_job_win,ierr)
-        else
-            next_job = 0                                                        ! variable only has meaning on master
-            call MPI_Win_create(next_job,0*intsize,intsize,MPI_INFO_NULL,&
-                &MPI_Comm_world,next_job_win,ierr)
+        ! initialize file with global variable
+        if (rank.eq.0) then
+            open(STATUS='REPLACE',unit=nextunit(file_i),file=X_jobs_file_name,&
+                &iostat=ierr)
+            CHCKERR('Cannot open perturbation jobs file')
+            write(file_i,*) '# Process, X job'
+            close(file_i)
         end if
-        CHCKERR('Couldn''t create window to next_job')
         
-        ! set fence
-        call MPI_Win_fence(0,next_job_win,ierr) 
-        CHCKERR('Couldn''t set fence') 
-#else
-        allocate(jobs_taken(n_div**2))
-        call MPI_Type_get_extent(MPI_INTEGER,intlb,intsize,ierr)
-        err_msg = 'Couldn''t determine the extent of an integer'
-        CHCKERR(err_msg)
-        if (rank.eq.0) then                                                     ! master
-            jobs_taken = 0                                                      ! no jobs taken yet
-            call MPI_Win_create(jobs_taken,size(jobs_taken)*intsize,&
-                &intsize,MPI_INFO_NULL,MPI_Comm_world,jobs_taken_win,&
-                &ierr)
-        else
-            call MPI_Win_create(jobs_taken,0,1,MPI_INFO_NULL,&
-                &MPI_Comm_world,jobs_taken_win,ierr)
-        end if
-        CHCKERR('Couldn''t create window to jobs_taken')
-        
-        ! set fence
-        call MPI_Win_fence(0,jobs_taken_win,ierr) 
-        CHCKERR('Couldn''t set fence') 
-#endif
+        ! synchronize MPI
+        ierr = wait_MPI()
+        CHCKERR('')
         
         ! user output
         call lvl_ud(-1)
         call writo('Perturbation jobs divided')
+    contains
+        ! Calculate memory in MB necessary for X variables of a certain order
+        !   - order 1: 4x n_par_X x n_geo x loc_n_r x n_mod
+        !   - order 2: 2x n_par_X x n_geo x loc_n_r x nn_mod_1
+        !              4x n_par_X x n_geo x loc_n_r x nn_mod_2
+        !   - higher order: not used
+        ! where n_par_X  x n_geo x  loc_n_r should  be passed as  'arr_size' and
+        ! n_mod as well; nn_mod_1 and nn_mod_2 are derived from n_mod.
+        integer function calc_memory(ord,arr_size,n_mod,mem_size) result(ierr)
+            use ISO_C_BINDING
+            use num_vars, only: eq_style
+            
+            character(*), parameter :: rout_name = 'calc_memory'
+            
+            ! input / output
+            integer, intent(in) :: ord                                          ! order of data
+            integer, intent(in) :: arr_size                                     ! size of part of X array
+            integer, intent(in) :: n_mod                                        ! number of modes
+            real(dp), intent(inout) :: mem_size                                 ! total size
+            
+            ! local variables
+            integer :: nn_mod_1, nn_mod_2                                       ! number of indices for a quantity that is symmetric or not
+            integer(C_SIZE_T) :: dp_size                                        ! size of dp
+            real(dp), parameter :: mem_scale_fac = 1.5                          ! scale factor of memory (because only estimation)
+            character(len=max_str_ln) :: err_msg                                ! error message
+            
+            ! initialize ierr
+            ierr = 0
+            
+            call lvl_ud(1)
+            
+            ! get size of complex variable
+            dp_size = 2*sizeof(1._dp)                                           ! complex variable
+            
+            ! calculate memory depending on order
+            select case(ord)
+                case (1)                                                        ! vectorial data: U, DU
+                    ! set memory size
+                    mem_size = arr_size*(4*n_mod)*dp_size
+                case (2)                                                        ! tensorial data: PV, KV
+                    ! set nn_mod_1 and nn_mod_2
+                    nn_mod_1 = n_mod**2
+                    nn_mod_2 = n_mod*(n_mod+1)/2
+                    
+                    ! set memory size
+                    mem_size = arr_size*(2*nn_mod_1+4*nn_mod_2)*dp_size
+                case default
+                    ierr = 1
+                    err_msg = 'Orders > 2 are not implemented'
+                    CHCKERR(err_msg)
+            end select
+            
+            ! convert B to MB
+            mem_size = mem_size*1.E-6_dp
+            
+            ! use twice  this for HELENA  because of  the need to  calculate X_B
+            ! from X
+            if (eq_style.eq.2) mem_size = mem_size*2
+            !!!! THIS SHOULD BE AVOIDED !!!!!!!!!
+            
+            ! scale memory to account for rough estimation
+            mem_size = mem_size*mem_scale_fac
+            
+            call lvl_ud(-1)
+        end function calc_memory
+        
+        ! Calculate X_jobs_data.
+        recursive function calc_X_jobs_data(n_mod,ord) result(res)
+            ! input / output
+            integer, intent(in) :: n_mod(:)                                     ! X jobs data
+            integer, intent(in) :: ord                                          ! order of data
+            integer, allocatable :: res(:,:)                                    ! result
+            
+            ! local variables
+            integer, allocatable :: res_loc(:,:)                                ! local result
+            integer :: n_div                                                    ! nr. of divisions of modes
+            integer :: id                                                       ! counter
+            
+            ! set up nr. of divisions
+            n_div = size(n_mod)
+            
+            ! (re)allocate result
+            if (allocated(res)) deallocate(res)
+            allocate(res(2*ord,n_div**ord))
+            
+            ! loop over divisions
+            do id = 1,n_div
+                if (ord.gt.1) then                                              ! call lower order
+                    res_loc = calc_X_jobs_data(n_mod,ord-1)
+                    res(1:2*ord-2,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = res_loc
+                end if                                                          ! set for own order
+                res(2*ord-1,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = &
+                    &sum(n_mod_loc(1:id-1))+1
+                res(2*ord,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = &
+                    &sum(n_mod_loc(1:id))
+            end do
+        end function calc_X_jobs_data
     end function divide_X_jobs
+    
+    ! Finds a  suitable next job. If  none are left, set X_job_nr  to a negative
+    ! value
+    ! [MPI] Collective call
+    integer function get_next_job(X_job_nr) result(ierr)
+        use num_vars, only: X_jobs_taken, X_jobs_data, X_jobs_file_name, rank, &
+            &lock_file_name
+        use files_utilities, only: nextunit
+        
+        character(*), parameter :: rout_name = 'get_next_job'
+        
+        ! input / output
+        integer, intent(inout) :: X_job_nr                                      ! perturbation job nr.
+        
+        ! local variables
+        integer :: current_job                                                  ! current job when calling this routine
+        integer :: n_jobs                                                       ! nr. of jobs
+        integer :: id                                                           ! counter
+        integer :: open_stat                                                    ! file open status
+        logical :: file_exists                                                  ! file exists status
+        integer :: read_stat                                                    ! read status
+        integer :: X_file_i                                                     ! X file number
+        integer :: lock_file_i                                                  ! lock file number
+        integer :: proc                                                         ! process that did a job
+        integer :: X_job_done                                                   ! X_job done already
+        character :: dummy_char                                                 ! first char of text
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set n_jobs
+        n_jobs = size(X_jobs_taken)
+        
+        ! save current job and reset next job to some negative value
+        current_job = X_job_nr
+        X_job_nr = -1
+        
+        ! open X_jobs file if no lock-file exists
+        file_exists = .true.
+        do while (file_exists)
+            open(STATUS='NEW',unit=nextunit(lock_file_i),file=lock_file_name,&
+                &iostat=open_stat)
+            if (open_stat.eq.0) then
+                file_exists = .false.
+                open(STATUS='OLD',ACTION = 'READWRITE',unit=nextunit(X_file_i),&
+                    &file=X_jobs_file_name,iostat=ierr)
+                CHCKERR('Failed to open X jobs file')
+            else
+                call sleep(1)
+            end if
+        end do
+        
+        ! read X_jobs file and update X_jobs_taken
+        read(X_file_i,*,iostat=ierr) dummy_char
+        if (ierr.eq.0 .and. dummy_char.ne.'#') ierr = 1                         ! even if good read, first char must be #
+        CHCKERR('X_job file corrupt')
+        read_stat = 0
+        do while(read_stat.eq.0) 
+            read(X_file_i,*,iostat=read_stat) proc, X_job_done
+            if (read_stat.eq.0) X_jobs_taken(X_job_done) = .true.
+        end do
+        
+        ! determine a suitable  next job by finding a job  whose columns or rows
+        ! match the previous one
+        do id = 1,n_jobs
+            if (.not.X_jobs_taken(id) .and. current_job.gt.0) then              ! only if there was a previous job (current job > 0)
+                if (X_jobs_data(1,id).eq.X_jobs_data(1,current_job) .and. &
+                    &X_jobs_data(2,id).eq.X_jobs_data(2,current_job) .or. &     ! columns match
+                    &X_jobs_data(3,id).eq.X_jobs_data(4,current_job) .and. &
+                    &X_jobs_data(4,id).eq.X_jobs_data(3,current_job)) then      ! rows match
+                    X_job_nr = id
+                    exit
+                end if
+            end if
+        end do
+        
+        ! if no easy job found, look for any job
+        if (X_job_nr.lt.1) then
+            do id = 1,n_jobs
+                if (.not.X_jobs_taken(id)) then
+                    X_job_nr= id
+                    exit
+                end if
+            end do
+        end if
+        
+        ! if new job found, put back X_jobs_taken
+        if (X_job_nr.ge.1) then
+            backspace(UNIT=X_file_i)
+            write(X_file_i,*) rank, X_job_nr
+        end if
+        
+        ! close X_jobs file and lock file
+        close(X_file_i,iostat=ierr)
+        CHCKERR('Failed to close X jobs file')
+        close(lock_file_i,status='DELETE',iostat=ierr)
+        CHCKERR('Failed to close lock file')
+    end function get_next_job
     
     ! Broadcasts all  the relevant variable that have been  determined so far in
     ! the master process using the inputs to the other processes

@@ -8,12 +8,8 @@ module num_vars
     private
     public dp, qp, max_str_ln, max_deriv, prog_name, output_name, &
         &prog_version, prog_style, &
-        &max_mem_per_proc, n_procs, rank, plt_rank, jobs_data, &
-#if lold_MPI
-        &next_job, next_job_win, &
-#else
-        &jobs_taken, jobs_taken_win, &
-#endif
+        &max_mem_per_proc, n_procs, rank, X_jobs_data, X_jobs_taken, X_job_nr, &
+        &X_jobs_file_name, lock_file_name, &
         &pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, BC_style, plot_resonance, plot_grid, &
         &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
@@ -37,21 +33,17 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D pre-perturbation, 2: PB3D perturbation, 3: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 0.91_dp                               ! version number
+    real(dp), parameter :: prog_version = 0.92_dp                               ! version number
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
     integer :: rank                                                             ! MPI rank
     integer :: n_procs                                                          ! nr. of MPI processes
-    integer :: plt_rank                                                         ! rank of plotting process (selected routines only)
-    integer, allocatable :: jobs_data(:,:)                                      ! data about jobs: [min_k, max_k, min_m, max_m] for all jobs
-#if lold_MPI
-    integer :: next_job                                                         ! next job to be done
-    integer :: next_job_win                                                     ! window to next_job
-#else
-    integer :: jobs_taken_win                                                   ! window to jobs_taken
-    integer, allocatable :: jobs_taken(:)                                       ! jobs taken: (1: true, 0: false) for all jobs
-#endif
+    integer, allocatable :: X_jobs_data(:,:)                                    ! data about X jobs: [min_k, max_k, min_m, max_m] for all jobs
+    logical, allocatable :: X_jobs_taken(:)                                     ! X jobs taken
+    integer :: X_job_nr                                                         ! nr. of X job
+    character(len=10) :: X_jobs_file_name = 'X_jobs.txt'                        ! name of X jobs file
+    character(len=10) :: lock_file_name = '.lock_file'                          ! name of lock file
 
     ! physical and mathematical variables
     real(dp), parameter :: pi=4_dp*datan(1.0_dp)                                ! pi

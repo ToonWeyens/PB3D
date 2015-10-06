@@ -2352,53 +2352,69 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! get min_i's of the grid_in
-        ierr = get_ser_var([grid_in%i_min],tot_i_min,scatter=.true.)
-        CHCKERR('')
-        
-        ! get max_i's of the grid_in
-        ierr = get_ser_var([grid_in%i_max],tot_i_max,scatter=.true.)
-        CHCKERR('')
-        
-        ! set i_lim of trimmed output grid (not yet shifted by first proc min)
-        if (rank.gt.0) then
-            i_lim_out(1) = max(tot_i_min(1),tot_i_min(rank+1)+&
-                &floor((tot_i_max(rank)-tot_i_min(rank+1)+1._dp)/2))
+        ! detect whether grid divided
+        if (grid_in%divided) then
+            ! get min_i's of the grid_in
+            ierr = get_ser_var([grid_in%i_min],tot_i_min,scatter=.true.)
+            CHCKERR('')
+            
+            ! get max_i's of the grid_in
+            ierr = get_ser_var([grid_in%i_max],tot_i_max,scatter=.true.)
+            CHCKERR('')
+            
+            ! set  i_lim of trimmed output  grid (not yet shifted  by first proc
+            ! min)
+            if (rank.gt.0) then
+                i_lim_out(1) = max(tot_i_min(1),tot_i_min(rank+1)+&
+                    &floor((tot_i_max(rank)-tot_i_min(rank+1)+1._dp)/2))
+            else
+                i_lim_out(1) = tot_i_min(1)
+            end if
+            if (rank.lt.n_procs-1) then
+                i_lim_out(2) = min(tot_i_max(n_procs),tot_i_max(rank+1)-&
+                    &ceiling((tot_i_max(rank+1)-tot_i_min(rank+2)+1._dp)/2))
+            else
+                i_lim_out(2) = tot_i_max(n_procs)
+            end if
+            
+            ! normal shift between grids
+            norm_shift = i_lim_out(1) - grid_in%i_min
+            
+            ! get min_i's of the grid_out, not shifted by min of first process
+            ierr = get_ser_var([i_lim_out(1)],tot_i_min,scatter=.true.)
+            CHCKERR('')
+            
+            ! get max_i's of the grid_out, not shifted by min of first process
+            ierr = get_ser_var([i_lim_out(2)],tot_i_max,scatter=.true.)
+            CHCKERR('')
+            
+            ! set n of output grid
+            n_out(1) = grid_in%n(1)
+            n_out(2) = grid_in%n(2)
+            n_out(3) = sum(tot_i_max-tot_i_min+1)
+            
+            ! create new grid
+            ierr = create_grid(grid_out,n_out,i_lim_out-tot_i_min(1)+1)         ! limits shifted by min of first process
+            CHCKERR('')
+            
+            ! recycle  i_lim_out  for  shifted  array  indices, set  norm_id  if
+            ! requested
+            i_lim_out = i_lim_out - i_lim_out(1) + 1 + norm_shift
+            if (present(norm_id)) norm_id = i_lim_out
         else
-            i_lim_out(1) = tot_i_min(1)
+            ! set n of output grid
+            n_out = grid_in%n
+            
+            ! create new grid
+            ierr = create_grid(grid_out,n_out)                                  ! grid not divided
+            CHCKERR('')
+            
+            ! set i_lim_out and norm_id if requested
+            i_lim_out = [grid_in%i_min,grid_in%i_max]
+            if (present(norm_id)) norm_id = i_lim_out
         end if
-        if (rank.lt.n_procs-1) then
-            i_lim_out(2) = min(tot_i_max(n_procs),tot_i_max(rank+1)-&
-                &ceiling((tot_i_max(rank+1)-tot_i_min(rank+2)+1._dp)/2))
-        else
-            i_lim_out(2) = tot_i_max(n_procs)
-        end if
         
-        ! normal shift between grids
-        norm_shift = i_lim_out(1) - grid_in%i_min
-        
-        ! get min_i's of the grid_out, not shifted by min of first process
-        ierr = get_ser_var([i_lim_out(1)],tot_i_min,scatter=.true.)
-        CHCKERR('')
-        
-        ! get max_i's of the grid_out, not shifted by min of first process
-        ierr = get_ser_var([i_lim_out(2)],tot_i_max,scatter=.true.)
-        CHCKERR('')
-        
-        ! set n of output grid
-        n_out(1) = grid_in%n(1)
-        n_out(2) = grid_in%n(2)
-        n_out(3) = sum(tot_i_max-tot_i_min+1)
-        
-        ! create new grid
-        ierr = create_grid(grid_out,n_out,i_lim_out-tot_i_min(1)+1)             ! limits shifted by min of first process
-        CHCKERR('')
-        
-        ! recycle i_lim_out for shifted array indices, set norm_id if requested
-        i_lim_out = i_lim_out - i_lim_out(1) + 1 + norm_shift
-        if (present(norm_id)) norm_id = i_lim_out
-        
-        ! copy arrays
+        ! copy local arrays
         if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3D grid
             grid_out%theta_E = grid_in%theta_E(:,:,i_lim_out(1):i_lim_out(2))
             grid_out%zeta_E = grid_in%zeta_E(:,:,i_lim_out(1):i_lim_out(2))
@@ -2409,8 +2425,15 @@ contains
             grid_out%loc_r_E = grid_in%loc_r_E(i_lim_out(1):i_lim_out(2))
             grid_out%loc_r_F = grid_in%loc_r_F(i_lim_out(1):i_lim_out(2))
         end if
-        grid_out%r_E = grid_in%r_E(tot_i_min(1):tot_i_max(n_procs))
-        grid_out%r_F = grid_in%r_F(tot_i_min(1):tot_i_max(n_procs))
+        
+        ! if divided, set total arrays
+        if (grid_in%divided) then
+            grid_out%r_E = grid_in%r_E(tot_i_min(1):tot_i_max(n_procs))
+            grid_out%r_F = grid_in%r_F(tot_i_min(1):tot_i_max(n_procs))
+        else
+            grid_out%r_E = grid_in%r_E
+            grid_out%r_F = grid_in%r_F
+        end if
     end function trim_grid
     
     ! Untrims a trimmed  grid by introducing an assymetric ghost  regions at the

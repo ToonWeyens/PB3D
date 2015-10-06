@@ -81,8 +81,8 @@ cp cbm18a $out
 cp ../PB3D $out
 chmod +x $out/PB3D
 cd $out
-echo "mpirun --mca osc pt2pt -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a" > command
-mpirun --mca osc pt2pt -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a
+echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a" > command
+mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a
 cd ../
 echo ""
 echo "Leaving directory $out/"

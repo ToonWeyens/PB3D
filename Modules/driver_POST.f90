@@ -44,7 +44,6 @@ contains
         use sol_ops, only: plot_X_vec, decompose_energy
         use HELENA, only: interp_HEL_on_grid
         use files_utilities, only: nextunit
-        use MPI_utilities, only: cycle_plt_master
         use utilities, only: calc_aux_utilities
         
         character(*), parameter :: rout_name = 'run_driver_POST'
@@ -144,7 +143,7 @@ contains
         call lvl_ud(1)
         
         if (plot_resonance) then
-            ierr = resonance_plot(PB3D%eq,PB3D%grid_eq,PB3D%X)
+            ierr = resonance_plot(PB3D%eq,PB3D%grid_eq)
             CHCKERR('')
         else
             call writo('Resonance plot not requested')
@@ -280,9 +279,8 @@ contains
         
         call writo('Calculate resonant surfaces')
         call lvl_ud(1)
-        ierr = calc_res_surf(PB3D%grid_eq,PB3D%eq,PB3D%X,res_surf,info=.false.,&
+        ierr = calc_res_surf(PB3D%grid_eq,PB3D%eq,res_surf,info=.false.,&
             &tol_NR=1.E-8_dp,max_it_NR=5000)
-        CHCKERR('')
         call lvl_ud(-1)
         
         call writo('Open decomposition log file')
@@ -356,9 +354,6 @@ contains
                 call lvl_ud(-1)
                 
                 call lvl_ud(-1)
-                
-                ! cycle master
-                call cycle_plt_master
             end do
             
             call lvl_ud(-1)

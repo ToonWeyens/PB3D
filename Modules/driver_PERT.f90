@@ -33,18 +33,18 @@ contains
     !       Here, the tasks are split and allocated dynamically by the master to 
     !       the other groups
     integer function run_driver_PERT() result(ierr)
-        use num_vars, only: use_pol_flux_F, eq_style, max_it_r, jobs_data, rank
+        use num_vars, only: use_pol_flux_F, eq_style, max_it_r, X_jobs_data, &
+            &rank, plot_resonance, X_job_nr
         use MPI_utilities, only: wait_MPI
         use eq_vars, only: dealloc_eq
-        use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_r_X, &
-            &max_r_X, min_n_r_X
+        use X_vars, only: dealloc_X, create_X, &
+            &min_m_X, max_m_X, min_n_X, max_n_X, min_r_X, max_r_X, min_n_r_X
         use VMEC, only: dealloc_VMEC
         use HELENA, only: dealloc_HEL
         use grid_vars, only: dealloc_grid, &
             &alpha, n_r_eq, n_par_X, min_par_X, max_par_X
         use HDF5_ops, only: create_output_HDF5
-        use eq_ops, only: calc_eq, calc_derived_q, merge_eq_vars, &
-            &print_output_eq
+        use eq_ops, only: calc_eq, calc_derived_q, print_output_eq
         use met_ops, only: calc_met
         use met_vars, only: dealloc_met
         use grid_ops, only: setup_and_calc_grid_B
@@ -53,6 +53,8 @@ contains
             &PB3D_type
         use utilities, only: test_max_memory
         use MPI_ops, only: divide_X_jobs, get_next_job
+        use X_ops, only: prepare_X, check_X_modes, resonance_plot
+        use vac, only: calc_vac
         !!use utilities, only: calc_aux_utilities
         
         character(*), parameter :: rout_name = 'run_driver'
@@ -61,7 +63,6 @@ contains
         type(PB3D_type), target :: PB3D                                         ! output PB3D for which to do postprocessing
         type(PB3D_type), pointer :: PB3D_B => null()                            ! PB3D variables on a field-aligned grid
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: X_job_nr                                                     ! perturbation job nr.
         
         ! initialize ierr
         ierr = 0
@@ -132,51 +133,83 @@ contains
         call lvl_ud(-1)
         call writo('PB3D output reconstructed')
         
-        ! divide perturbation jobs
-        ierr = divide_X_jobs(PB3D%grid_eq,&
-            &(max_m_X-min_m_X+1)*(max_n_X-min_n_X+1))
+        ! tests
+        ierr = check_X_modes(PB3D%eq)
         CHCKERR('')
         
-        ! main loop over jobs
+        ! plot resonances if requested
+        if (plot_resonance .and. rank.eq.0) then
+            ierr = resonance_plot(PB3D%eq,PB3D%grid_eq)
+            CHCKERR('')
+        else
+            call writo('Resonance plot not requested')
+        end if
+        
+        ! divide perturbation jobs
+        ierr = divide_X_jobs(PB3D%grid_eq,&
+            &(max_m_X-min_m_X+1)*(max_n_X-min_n_X+1),1)
+        CHCKERR('')
+        
+        ! main loop over jobs or order 1
         X_job_nr = 0
-        do while (X_job_nr.le.size(jobs_data,2))
+        X_jobs_1: do
             ! get next job
             ierr = get_next_job(X_job_nr)
             CHCKERR('')
-            write(*,*) 'rank', rank, 'is doing job', X_job_nr
-        end do
+            if (X_job_nr.lt.0) exit
+            
+            ! user output
+            call writo('Job '//trim(i2str(X_job_nr))//' is started by process '&
+                &//trim(i2str(rank)),persistent=.true.)
+            call lvl_ud(1)
+            
+            ! calculate X variables, vector phase
+            !ierr = calc_X_vecs()
+            CHCKERR('')
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Job '//trim(i2str(X_job_nr))//' completed by process '&
+                &//trim(i2str(rank)),persistent=.true.)
+        end do X_jobs_1
         
-        !! 1. Calculate the equilibrium quantities
-        !ierr = calc_eq(alpha,n_r_eq,grid_eq,eq)
-        !CHCKERR('')
+        ! synchronize MPI
+        ierr = wait_MPI()
+        CHCKERR('')
         
-        !! 2. Calculate the metric quantities
-        !ierr = calc_met(grid_eq,eq,met)
-        !CHCKERR('')
+        ! divide perturbation jobs, tensor phase
+        ierr = divide_X_jobs(PB3D%grid_eq,&
+            &(max_m_X-min_m_X+1)*(max_n_X-min_n_X+1),2)
+        CHCKERR('')
         
-        !! 3. Calculate derived metric quantities
-        !call calc_derived_q(grid_eq,eq,met)
+        ! main loop over jobs or order 2
+        X_job_nr = 0
+        X_jobs_2: do
+            ! get next job
+            ierr = get_next_job(X_job_nr)
+            CHCKERR('')
+            if (X_job_nr.lt.0) exit
+            
+            ! user output
+            call writo('Job '//trim(i2str(X_job_nr))//' is started by process '&
+                &//trim(i2str(rank)),persistent=.true.)
+            call lvl_ud(1)
+            
+            ! prepare matrix elements
+            ierr = prepare_X(PB3D%grid_eq,PB3D%eq,PB3D%met,PB3D%X,.true.)
+            CHCKERR('')
+            
+            ! calculate vacuum response
+            ierr = calc_vac(PB3D%X)
+            CHCKERR('')
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Job '//trim(i2str(X_job_nr))//' completed by process '&
+                &//trim(i2str(rank)),persistent=.true.)
+        end do X_jobs_2
         
-        !! 4. set up field-aligned equilibrium grid
-        !ierr = setup_and_calc_grid_B(grid_eq,grid_eq_B,eq,alpha)
-        !CHCKERR('')
-        
-        !! 5. write equilibrium variables to output
-        !ierr = print_output_eq(grid_eq,grid_eq_B,eq,met,alpha)
-        !CHCKERR('')
-        
-        !! 6. deallocate variables
-        !call dealloc_eq(eq)
-        !call dealloc_grid(grid_eq)
-        !nullify(grid_eq_B)
-        !call dealloc_met(met)
-        
-        !! 6. Sync results
-        !call writo('syncing MPI')
-        !ierr = wait_MPI()
-        !CHCKERR('')
-        
-        ! wait on all the groups
+        ! synchronize MPI
         ierr = wait_MPI()
         CHCKERR('')
     end function run_driver_PERT
@@ -228,13 +261,13 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! prepare matrix elements
-        ierr = prepare_X(grid_eq,eq,met,X)
-        CHCKERR('')
+        !! prepare matrix elements
+        !ierr = prepare_X(grid_eq,eq,met,X)
+        !CHCKERR('')
         
-        ! calculate vacuum response
-        ierr = calc_vac(X)
-        CHCKERR('')
+        !! calculate vacuum response
+        !ierr = calc_vac(X)
+        !CHCKERR('')
         
         !! set up field-aligned equilibrium grid
         !ierr = setup_and_calc_grid_B(grid_eq,grid_eq_B,eq,alpha)

@@ -166,3 +166,14 @@ CHANGELOG
       - 'reconstuct_PB3D' is also called in the pertubation phase, but only equilibrium variables are reconstructed.
       - X variables now are all allocatable.
       - The X jobs can either be found in a straightforward way, requiring the use of the mpirun option '--mca osc pt2pt', or in an intelligent way, but this requires an up-to-date version of openmpi. The flag 'lold_MPI' can be used to switch between the two versions.
+
+0.92: - NON-USABLE VERSION: SWITCHING BETWEEN PARALLELIZATIONS. 
+      - Removed the whole system using MPI to transmit which process does which X job. Now, it works using an external file as well as an external lock file.
+      - Fixed a bug when the wrong grid variables were written out.
+      - Split of the transformation of derivatives in F.
+      - Moved the plotting of flux quantities as these require knowledge of the derivative in F.
+      - Removed plot rank, so now rank is used everywhere.
+      - Renamed 'check_modes' to 'check_X_modes'.
+      - 'check_X_modes' and 'resonance_plot' do not use an X_type anymore.
+      - 'divide_X_jobs' now contains 'calc_memory'. Also it can be used in vector or tensor mode and in theory higher orders as well, if information about the number of variables at these orders is provided.
+      - The perturbation phase is to be split in two: a vector phase and a tensor phase. This is not yet implemented.

@@ -482,7 +482,7 @@ contains
         integer function plot_harmonics(grid_X,X,X_id,res_surf) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ser_var
             use output_ops, only: merge_GP
-            use num_vars, only: plt_rank, use_pol_flux_F, GP_max_size
+            use num_vars, only: use_pol_flux_F, GP_max_size, rank
             use eq_vars, only: max_flux_p_F, max_flux_t_F
             
             character(*), parameter :: rout_name = 'plot_harmonics'
@@ -509,17 +509,17 @@ contains
             ierr = 0
             
             ! set up serial X_vec on master
-            if (plt_rank.eq.0) allocate(X_vec_ser(1:X%n_mod,1:grid_X%n(3)))
+            if (rank.eq.0) allocate(X_vec_ser(1:X%n_mod,1:grid_X%n(3)))
             do id = 1,X%n_mod
                 ierr = get_ser_var(X%vec(id,norm_id(1):norm_id(2),X_id),&
                     &X_vec_ser_loc,scatter=.true.)
                 CHCKERR('')
-                if (plt_rank.eq.0) X_vec_ser(id,:) = X_vec_ser_loc
+                if (rank.eq.0) X_vec_ser(id,:) = X_vec_ser_loc
                 deallocate(X_vec_ser_loc)
             end do
             
-            ! the rest is done only by plot master
-            if (plt_rank.eq.0) then
+            ! the rest is done only by master
+            if (rank.eq.0) then
                 ! set up x_plot
                 allocate(x_plot(grid_X%n(3),X%n_mod))
                 do kd = 1,X%n_mod

@@ -14,7 +14,7 @@ module eq_ops
     implicit none
     private
     public read_eq, calc_eq, calc_derived_q, calc_normalization_const, &
-        &normalize_input, print_output_eq, flux_q_plot, merge_eq_vars
+        &normalize_input, print_output_eq, flux_q_plot
 #if ldebug
     public debug_calc_derived_q
 #endif
@@ -73,7 +73,7 @@ contains
     ! determined by sharing the workload evenly over the processes.
     integer function calc_eq(alpha,grid_eq,eq) result(ierr)
         use eq_vars, only: create_eq
-        use num_vars, only: eq_style, max_deriv, plot_flux_q
+        use num_vars, only: eq_style, max_deriv
         use grid_ops, only: calc_norm_range, setup_grid_eq, calc_ang_grid_eq
         use utilities, only: derivs
         
@@ -123,14 +123,6 @@ contains
         ierr = calc_flux_q(grid_eq,eq)
         CHCKERR('')
         call lvl_ud(-1)
-        
-        ! plot flux quantities if requested
-        if (plot_flux_q) then
-            ierr = flux_q_plot(grid_eq,eq)
-            CHCKERR('')
-        else
-            call writo('Flux quantities plot not requested')
-        end if
         
         ! calculate angular grid points for equilibrium grid
         call writo('Calculate angular equilibrium grid')
@@ -702,67 +694,6 @@ contains
             CHCKERR('')
         end do
     end function calc_RZL_arr
-    
-    ! Merges the equilibrium quantities from different processes together.
-    integer function merge_eq_vars(grid_eq,eq) result(ierr)
-        use grid_ops, only: trim_grid
-        use grid_vars, only: dealloc_grid
-        use num_vars, only: max_deriv, rank
-        use MPI_utilities, only: get_ser_var
-        
-        character(*), parameter :: rout_name = 'merge_eq_vars'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! normal grid
-        type(eq_type), intent(inout) :: eq                                      ! equilibrium for this alpha
-        
-        ! local variables
-        integer :: ld                                                           ! counter
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        real(dp), allocatable :: temp_eq_var(:,:,:)                             ! temporal copy of equilibrium variable
-        real(dp), allocatable :: temp_merge_var(:)                              ! temporal holder for merged variable
-        type(grid_type) :: grid_eq_trim                                         ! trimmed equilibrium grid
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! user output
-        call writo('Merging equilibrium variables together')
-        
-        call lvl_ud(1)
-        
-        ! trim grid
-        ierr = trim_grid(grid_eq,grid_eq_trim,norm_id)
-        CHCKERR('')
-        
-        write(*,*) rank, 'before pres_E', eq%pres_E(:,1)
-        ! backup variable
-        allocate(temp_eq_var(grid_eq%loc_n_r,max_deriv+1,1))
-        temp_eq_var(:,:,1) = eq%pres_E(norm_id(1):norm_id(2),:)
-        deallocate(eq%pres_E)
-        allocate(eq%pres_E(grid_eq_trim%n(3),0:max_deriv))
-        
-        ! iterate over derivatives
-        do ld = 0,max_deriv
-            ! get serial version
-            ierr = get_ser_var(temp_eq_var(:,ld+1,1),temp_merge_var,&
-                &scatter=.true.)
-            CHCKERR('')
-            eq%pres_E(:,ld) = temp_merge_var
-            deallocate(temp_merge_var)
-        end do
-        
-        ! save variable
-        write(*,*) rank, 'pres_E(1)', eq%pres_E(:,1)
-        
-        ! clean up
-        call dealloc_grid(grid_eq_trim)
-        
-        ! user output
-        call lvl_ud(-1)
-        
-        call writo('Equilibrium variables merged')
-    end function merge_eq_vars
 
     ! plots the flux quantities in the perturbation grid
     !   safety factor q_saf
@@ -1206,7 +1137,7 @@ contains
         CHCKERR('')
         
         ! set i_min and i_max for variables tabulated on full grid, trimmed
-        norm_id_f = norm_id + grid_trim%i_min - 1
+        norm_id_f = norm_id + grid_eq%i_min - 1
         
         ! Set up the 1D equivalents  of the equilibrium variables, with size
         ! depending on equilibrium style
@@ -1238,8 +1169,8 @@ contains
         eq_1D_loc%tot_i_max = [grid_trim%n(3)]
         eq_1D_loc%loc_i_min = [grid_trim%i_min]
         eq_1D_loc%loc_i_max = [grid_trim%i_max]
-        allocate(eq_1D_loc%p(size(grid_trim%loc_r_F(norm_id(1):norm_id(2)))))
-        eq_1D_loc%p = grid_trim%loc_r_F(norm_id(1):norm_id(2))
+        allocate(eq_1D_loc%p(size(grid_eq%loc_r_F(norm_id(1):norm_id(2)))))
+        eq_1D_loc%p = grid_eq%loc_r_F(norm_id(1):norm_id(2))
         
         ! r_E
         eq_1D_loc => eq_1D(id); id = id+1
@@ -1250,8 +1181,8 @@ contains
         eq_1D_loc%tot_i_max = [grid_trim%n(3)]
         eq_1D_loc%loc_i_min = [grid_trim%i_min]
         eq_1D_loc%loc_i_max = [grid_trim%i_max]
-        allocate(eq_1D_loc%p(size(grid_trim%loc_r_E(norm_id(1):norm_id(2)))))
-        eq_1D_loc%p = grid_trim%loc_r_E(norm_id(1):norm_id(2))
+        allocate(eq_1D_loc%p(size(grid_eq%loc_r_E(norm_id(1):norm_id(2)))))
+        eq_1D_loc%p = grid_eq%loc_r_E(norm_id(1):norm_id(2))
         
         ! theta_F
         eq_1D_loc => eq_1D(id); id = id+1
@@ -1264,9 +1195,9 @@ contains
         eq_1D_loc%loc_i_max = &
             &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
         allocate(eq_1D_loc%p(&
-            &size(grid_trim%theta_F(:,:,norm_id(1):norm_id(2)))))
-        eq_1D_loc%p = reshape(grid_trim%theta_F(:,:,norm_id(1):norm_id(2)),&
-            &[size(grid_trim%theta_F(:,:,norm_id(1):norm_id(2)))])
+            &size(grid_eq%theta_F(:,:,norm_id(1):norm_id(2)))))
+        eq_1D_loc%p = reshape(grid_eq%theta_F(:,:,norm_id(1):norm_id(2)),&
+            &[size(grid_eq%theta_F(:,:,norm_id(1):norm_id(2)))])
         
         ! theta_E
         eq_1D_loc => eq_1D(id); id = id+1
@@ -1279,9 +1210,9 @@ contains
         eq_1D_loc%loc_i_max = &
             &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
         allocate(eq_1D_loc%p(&
-            &size(grid_trim%theta_E(:,:,norm_id(1):norm_id(2)))))
-        eq_1D_loc%p = reshape(grid_trim%theta_E(:,:,norm_id(1):norm_id(2)),&
-            &[size(grid_trim%theta_E(:,:,norm_id(1):norm_id(2)))])
+            &size(grid_eq%theta_E(:,:,norm_id(1):norm_id(2)))))
+        eq_1D_loc%p = reshape(grid_eq%theta_E(:,:,norm_id(1):norm_id(2)),&
+            &[size(grid_eq%theta_E(:,:,norm_id(1):norm_id(2)))])
         
         ! zeta_F
         eq_1D_loc => eq_1D(id); id = id+1
@@ -1294,9 +1225,9 @@ contains
         eq_1D_loc%loc_i_max = &
             &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
         allocate(eq_1D_loc%p(&
-            &size(grid_trim%zeta_F(:,:,norm_id(1):norm_id(2)))))
-        eq_1D_loc%p = reshape(grid_trim%zeta_F(:,:,norm_id(1):norm_id(2)),&
-            &[size(grid_trim%zeta_F(:,:,norm_id(1):norm_id(2)))])
+            &size(grid_eq%zeta_F(:,:,norm_id(1):norm_id(2)))))
+        eq_1D_loc%p = reshape(grid_eq%zeta_F(:,:,norm_id(1):norm_id(2)),&
+            &[size(grid_eq%zeta_F(:,:,norm_id(1):norm_id(2)))])
         
         ! zeta_E
         eq_1D_loc => eq_1D(id); id = id+1
@@ -1309,9 +1240,9 @@ contains
         eq_1D_loc%loc_i_max = &
             &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
         allocate(eq_1D_loc%p(&
-            &size(grid_trim%zeta_E(:,:,norm_id(1):norm_id(2)))))
-        eq_1D_loc%p = reshape(grid_trim%zeta_E(:,:,norm_id(1):norm_id(2)),&
-            &[size(grid_trim%zeta_E(:,:,norm_id(1):norm_id(2)))])
+            &size(grid_eq%zeta_E(:,:,norm_id(1):norm_id(2)))))
+        eq_1D_loc%p = reshape(grid_eq%zeta_E(:,:,norm_id(1):norm_id(2)),&
+            &[size(grid_eq%zeta_E(:,:,norm_id(1):norm_id(2)))])
         
         ! pres_FD
         eq_1D_loc => eq_1D(id); id = id+1
@@ -1817,9 +1748,9 @@ contains
             eq_1D_loc%tot_i_max = [grid_trim_B%n(3)]
             eq_1D_loc%loc_i_min = [grid_trim_B%i_min]
             eq_1D_loc%loc_i_max = [grid_trim_B%i_max]
-            allocate(eq_1D_loc%p(size(grid_trim_B%loc_r_F(norm_id(1):&
+            allocate(eq_1D_loc%p(size(grid_eq_B%loc_r_F(norm_id(1):&
                 &norm_id(2)))))
-            eq_1D_loc%p = grid_trim_B%loc_r_F(norm_id(1):norm_id(2))
+            eq_1D_loc%p = grid_eq_B%loc_r_F(norm_id(1):norm_id(2))
             
             ! r_E
             eq_1D_loc => eq_B_1D(id); id = id+1
@@ -1830,9 +1761,9 @@ contains
             eq_1D_loc%tot_i_max = [grid_trim_B%n(3)]
             eq_1D_loc%loc_i_min = [grid_trim_B%i_min]
             eq_1D_loc%loc_i_max = [grid_trim_B%i_max]
-            allocate(eq_1D_loc%p(size(grid_trim_B%loc_r_E(norm_id(1):&
+            allocate(eq_1D_loc%p(size(grid_eq_B%loc_r_E(norm_id(1):&
                 &norm_id(2)))))
-            eq_1D_loc%p = grid_trim_B%loc_r_E(norm_id(1):norm_id(2))
+            eq_1D_loc%p = grid_eq_B%loc_r_E(norm_id(1):norm_id(2))
             
             ! theta_F
             eq_1D_loc => eq_B_1D(id); id = id+1
@@ -1845,11 +1776,11 @@ contains
             eq_1D_loc%loc_i_max = &
                 &[grid_trim_B%n(1),grid_trim_B%n(2),grid_trim_B%i_max]
             allocate(eq_1D_loc%p(&
-                &size(grid_trim_B%theta_F(:,:,norm_id(1):&
+                &size(grid_eq_B%theta_F(:,:,norm_id(1):&
                 &norm_id(2)))))
-            eq_1D_loc%p = reshape(grid_trim_B%theta_F(:,:,norm_id(1):&
+            eq_1D_loc%p = reshape(grid_eq_B%theta_F(:,:,norm_id(1):&
                 &norm_id(2)),&
-                &[size(grid_trim_B%theta_F(:,:,norm_id(1):norm_id(2)))])
+                &[size(grid_eq_B%theta_F(:,:,norm_id(1):norm_id(2)))])
             
             ! theta_E
             eq_1D_loc => eq_B_1D(id); id = id+1
@@ -1862,10 +1793,10 @@ contains
             eq_1D_loc%loc_i_max = &
                 &[grid_trim_B%n(1),grid_trim_B%n(2),grid_trim_B%i_max]
             allocate(eq_1D_loc%p(&
-                &size(grid_trim_B%theta_E(:,:,norm_id(1):norm_id(2)))))
-            eq_1D_loc%p = reshape(grid_trim_B%theta_E(:,:,norm_id(1):&
+                &size(grid_eq_B%theta_E(:,:,norm_id(1):norm_id(2)))))
+            eq_1D_loc%p = reshape(grid_eq_B%theta_E(:,:,norm_id(1):&
                 &norm_id(2)),&
-                &[size(grid_trim_B%theta_E(:,:,norm_id(1):norm_id(2)))])
+                &[size(grid_eq_B%theta_E(:,:,norm_id(1):norm_id(2)))])
             
             ! zeta_F
             eq_1D_loc => eq_B_1D(id); id = id+1
@@ -1878,10 +1809,10 @@ contains
             eq_1D_loc%loc_i_max = &
                 &[grid_trim_B%n(1),grid_trim_B%n(2),grid_trim_B%i_max]
             allocate(eq_1D_loc%p(&
-                &size(grid_trim_B%zeta_F(:,:,norm_id(1):norm_id(2)))))
-            eq_1D_loc%p = reshape(grid_trim_B%zeta_F(:,:,norm_id(1):&
+                &size(grid_eq_B%zeta_F(:,:,norm_id(1):norm_id(2)))))
+            eq_1D_loc%p = reshape(grid_eq_B%zeta_F(:,:,norm_id(1):&
                 &norm_id(2)),&
-                &[size(grid_trim_B%zeta_F(:,:,norm_id(1):norm_id(2)))])
+                &[size(grid_eq_B%zeta_F(:,:,norm_id(1):norm_id(2)))])
             
             ! zeta_E
             eq_1D_loc => eq_B_1D(id); id = id+1
@@ -1894,10 +1825,10 @@ contains
             eq_1D_loc%loc_i_max = &
                 &[grid_trim_B%n(1),grid_trim_B%n(2),grid_trim_B%i_max]
             allocate(eq_1D_loc%p(&
-                &size(grid_trim_B%zeta_E(:,:,norm_id(1):norm_id(2)))))
-            eq_1D_loc%p = reshape(grid_trim_B%zeta_E(:,:,norm_id(1):&
+                &size(grid_eq_B%zeta_E(:,:,norm_id(1):norm_id(2)))))
+            eq_1D_loc%p = reshape(grid_eq_B%zeta_E(:,:,norm_id(1):&
                 &norm_id(2)),&
-                &[size(grid_trim_B%zeta_E(:,:,norm_id(1):norm_id(2)))])
+                &[size(grid_eq_B%zeta_E(:,:,norm_id(1):norm_id(2)))])
             
             ! write
             call writo('Writing field-aligned equilibrium variables using HDF5')

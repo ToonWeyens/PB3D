@@ -18,16 +18,16 @@ module driver_PREP
 contains
     ! Main driver of PB3D_PREP.
     integer function run_driver_PREP() result(ierr)
-        use num_vars, only: use_pol_flux_F, eq_style
+        use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q
         use MPI_utilities, only: wait_MPI
         use eq_vars, only: dealloc_eq
         use VMEC, only: dealloc_VMEC
         use HELENA, only: dealloc_HEL
         use grid_vars, only: dealloc_grid, &
             &alpha
-        use eq_ops, only: calc_eq, calc_derived_q, merge_eq_vars, &
-            &print_output_eq
-        use met_ops, only: calc_met
+        use eq_ops, only: calc_eq, calc_derived_q, print_output_eq, &
+            &flux_q_plot
+        use met_ops, only: calc_met, calc_F_derivs
         use met_vars, only: dealloc_met
         use grid_ops, only: setup_and_calc_grid_B
         !!use utilities, only: calc_aux_utilities
@@ -72,6 +72,18 @@ contains
         ! Calculate the metric quantities
         ierr = calc_met(grid_eq,eq,met)
         CHCKERR('')
+        
+        ! Transform E into F derivatives
+        ierr = calc_F_derivs(grid_eq,eq,met)
+        CHCKERR('')
+        
+        ! plot flux quantities if requested
+        if (plot_flux_q) then
+            ierr = flux_q_plot(grid_eq,eq)
+            CHCKERR('')
+        else
+            call writo('Flux quantities plot not requested')
+        end if
         
         ! Calculate derived metric quantities
         call calc_derived_q(grid_eq,eq,met)
