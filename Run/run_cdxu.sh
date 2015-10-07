@@ -78,11 +78,11 @@ echo ""
 # Copy inputs and the program
 cp input_cdxu $out
 cp wout_cdxu.txt $out
-cp ../PB3D_PREP $out
-chmod +x $out/PB3D_PREP
+cp ../PB3D $out
+chmod +x $out/PB3D
 cd $out
-echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D_PREP input_cdxu wout_cdxu.txt $slepc_opt ${@:2}" > command
-mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D_PREP input_cdxu wout_cdxu.txt $slepc_opt ${@:2}
+echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cdxu wout_cdxu.txt $slepc_opt ${@:2}" > command
+mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cdxu wout_cdxu.txt $slepc_opt ${@:2}
 cd ../
 echo ""
 echo "Leaving directory $out/"

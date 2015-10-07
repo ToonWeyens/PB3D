@@ -12,7 +12,7 @@ module MPI_ops
     implicit none
     private
     public start_MPI, stop_MPI, abort_MPI, broadcast_input_vars, &
-        &divide_X_jobs, sudden_stop, get_next_job
+        &divide_X_jobs, sudden_stop, get_next_job, print_jobs_info
     
 contains
     ! start MPI and gather information
@@ -78,7 +78,7 @@ contains
     ! tensorial phase it is 2.
     integer function divide_X_jobs(grid,n_mod,div_ord) result(ierr)
         use num_vars, only: max_mem_per_proc, n_procs, X_jobs_data, rank, &
-            &X_jobs_file_name, X_jobs_taken
+            &X_jobs_file_name, X_jobs_taken, lock_file_name
         use files_utilities, only: nextunit
         use MPI_utilities, only: wait_MPI
         
@@ -143,13 +143,14 @@ contains
             &trim(r2strt(mem_size))//'MB, whereas the maximum was '//&
             &trim(r2strt(max_mem_per_proc))//'MB')
         
-        ! set up jobs as illustrated below for 3 divisions, order 1:
+        ! set up jobs data as illustrated below for 3 divisions, order 1:
         !   [1,2,3]
         ! or order 2:
         !   [1,4,7]
         !   [2,5,8]
         !   [3,6,9]
         ! etc.
+        ! Also initialize the jobs taken to false.
         allocate(n_mod_loc(n_div))
         n_mod_loc = n_mod/n_div                                                 ! number of radial points on this processor
         n_mod_loc(1:mod(n_mod,n_div)) = n_mod_loc(1:mod(n_mod,n_div)) + 1       ! add a mode to if there is a remainder
@@ -164,7 +165,16 @@ contains
                 &iostat=ierr)
             CHCKERR('Cannot open perturbation jobs file')
             write(file_i,*) '# Process, X job'
-            close(file_i)
+            close(file_i,iostat=ierr)
+            CHCKERR('Failed to close file')
+        end if
+        
+        ! delete possible lock file
+        if (rank.eq.0) then
+            open(unit=nextunit(file_i),file=lock_file_name,iostat=ierr)
+            CHCKERR('Failed to open lock file')
+            close(file_i,status='DELETE',iostat=ierr)
+            CHCKERR('Failed to delete lock file')
         end if
         
         ! synchronize MPI
@@ -177,11 +187,11 @@ contains
     contains
         ! Calculate memory in MB necessary for X variables of a certain order
         !   - order 1: 4x n_par_X x n_geo x loc_n_r x n_mod
-        !   - order 2: 2x n_par_X x n_geo x loc_n_r x nn_mod_1
-        !              4x n_par_X x n_geo x loc_n_r x nn_mod_2
+        !   - order 2: 2x n_par_X x n_geo x loc_n_r x n_mod^2
+        !              4x n_par_X x n_geo x loc_n_r x n_mod^2
         !   - higher order: not used
         ! where n_par_X  x n_geo x  loc_n_r should  be passed as  'arr_size' and
-        ! n_mod as well; nn_mod_1 and nn_mod_2 are derived from n_mod.
+        ! n_mod as well
         integer function calc_memory(ord,arr_size,n_mod,mem_size) result(ierr)
             use ISO_C_BINDING
             use num_vars, only: eq_style
@@ -195,7 +205,6 @@ contains
             real(dp), intent(inout) :: mem_size                                 ! total size
             
             ! local variables
-            integer :: nn_mod_1, nn_mod_2                                       ! number of indices for a quantity that is symmetric or not
             integer(C_SIZE_T) :: dp_size                                        ! size of dp
             real(dp), parameter :: mem_scale_fac = 1.5                          ! scale factor of memory (because only estimation)
             character(len=max_str_ln) :: err_msg                                ! error message
@@ -212,14 +221,15 @@ contains
             select case(ord)
                 case (1)                                                        ! vectorial data: U, DU
                     ! set memory size
-                    mem_size = arr_size*(4*n_mod)*dp_size
+                    mem_size = 4*arr_size*n_mod**ord*dp_size
                 case (2)                                                        ! tensorial data: PV, KV
-                    ! set nn_mod_1 and nn_mod_2
-                    nn_mod_1 = n_mod**2
-                    nn_mod_2 = n_mod*(n_mod+1)/2
-                    
                     ! set memory size
-                    mem_size = arr_size*(2*nn_mod_1+4*nn_mod_2)*dp_size
+                    mem_size = 6*arr_size*n_mod**ord*dp_size
+                    
+                    ! use twice this for HELENA because of the need to calculate
+                    ! X_B from X
+                    if (eq_style.eq.2) mem_size = mem_size*2
+                    !!!! THIS SHOULD BE AVOIDED !!!!!!!!!
                 case default
                     ierr = 1
                     err_msg = 'Orders > 2 are not implemented'
@@ -228,11 +238,6 @@ contains
             
             ! convert B to MB
             mem_size = mem_size*1.E-6_dp
-            
-            ! use twice  this for HELENA  because of  the need to  calculate X_B
-            ! from X
-            if (eq_style.eq.2) mem_size = mem_size*2
-            !!!! THIS SHOULD BE AVOIDED !!!!!!!!!
             
             ! scale memory to account for rough estimation
             mem_size = mem_size*mem_scale_fac
@@ -275,7 +280,6 @@ contains
     
     ! Finds a  suitable next job. If  none are left, set X_job_nr  to a negative
     ! value
-    ! [MPI] Collective call
     integer function get_next_job(X_job_nr) result(ierr)
         use num_vars, only: X_jobs_taken, X_jobs_data, X_jobs_file_name, rank, &
             &lock_file_name
@@ -319,8 +323,8 @@ contains
                 open(STATUS='OLD',ACTION = 'READWRITE',unit=nextunit(X_file_i),&
                     &file=X_jobs_file_name,iostat=ierr)
                 CHCKERR('Failed to open X jobs file')
-            else
-                call sleep(1)
+            !else
+                !call sleep(1)
             end if
         end do
         
@@ -368,8 +372,56 @@ contains
         close(X_file_i,iostat=ierr)
         CHCKERR('Failed to close X jobs file')
         close(lock_file_i,status='DELETE',iostat=ierr)
-        CHCKERR('Failed to close lock file')
+        CHCKERR('Failed to delete lock file')
     end function get_next_job
+    
+    ! outputs job information from other processors.
+    integer function print_jobs_info() result(ierr)
+        use num_vars, only: X_jobs_file_name, rank
+        use files_utilities, only: nextunit
+        
+        character(*), parameter :: rout_name = 'print_jobs_info'
+        
+        ! local variables
+        integer :: read_stat                                                    ! read status
+        integer :: X_file_i                                                     ! X file number
+        integer :: proc                                                         ! process that did a job
+        integer :: X_job_done                                                   ! X_job done already
+        character :: dummy_char                                                 ! first char of text
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! only if master
+        if (rank.eq.0) then
+            ! open X_jobs file
+            open(STATUS='OLD',ACTION = 'READWRITE',unit=nextunit(X_file_i),&
+                &file=X_jobs_file_name,iostat=ierr)
+            CHCKERR('Failed to open X jobs file')
+            
+            ! read  X_jobs  file  and  output message  for  jobs  done by  other
+            ! processes
+            read(X_file_i,*,iostat=ierr) dummy_char
+            if (ierr.eq.0 .and. dummy_char.ne.'#') ierr = 1                     ! even if good read, first char must be #
+            CHCKERR('X_job file corrupt')
+            read_stat = 0
+            do while(read_stat.eq.0) 
+                read(X_file_i,*,iostat=read_stat) proc, X_job_done
+                if (read_stat.eq.0 .and. proc.ne.rank) then
+                    call writo('Job '//trim(i2str(X_job_done))//&
+                        &' was done by process '//trim(i2str(proc)))
+                    call lvl_ud(1)
+                    call writo('The output can be found in ¡¡¡OUTPUT SHOULD &
+                        &BE CAPTURED!!!')
+                    call lvl_ud(-1)
+                end if
+            end do
+            
+            ! close X_jobs file
+            close(X_file_i,status='DELETE',iostat=ierr)
+            CHCKERR('Failed to delete X jobs file')
+        end if
+    end function print_jobs_info
     
     ! Broadcasts all  the relevant variable that have been  determined so far in
     ! the master process using the inputs to the other processes
@@ -392,7 +444,6 @@ contains
             &min_r_X, max_r_X
         use grid_vars, only: alpha, n_r_eq, n_par_X, min_par_X, max_par_X
         use HDF5_ops, only: var_1D
-        use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B, vars_1D_X, vars_1D_sol
 #if ldebug
         use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
@@ -401,7 +452,6 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: id                                                           ! counter
         
         ! initialize ierr
         ierr = 0
@@ -448,7 +498,7 @@ contains
             
             ! select according to program style
             select case (prog_style)
-                case(1)                                                         ! PB3D pre-perturbation
+                case(1)                                                         ! PB3D
                     call MPI_Bcast(ltest,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(use_pol_flux_F,1,MPI_LOGICAL,0,&
@@ -465,12 +515,46 @@ contains
                     CHCKERR(err_msg)
                     call MPI_Bcast(n_r_eq,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(tol_norm_r,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
                     call MPI_Bcast(nyq_fac,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(norm_disc_prec_eq,1,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(norm_disc_prec_X,1,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(min_n_r_X,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_it_r,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_it_inv,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(BC_style,2,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(EV_style,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(n_sol_requested,1,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(retain_all_sol,1,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_it_slepc,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(min_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(tol_norm_r,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(alpha,1,MPI_DOUBLE_PRECISION,0,&
@@ -505,28 +589,10 @@ contains
                     call MPI_Bcast(T_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
-                case(2)                                                         ! PB3D perturbation
                     call MPI_Bcast(max_mem_per_proc,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(min_n_r_X,1,MPI_INTEGER,0,MPI_Comm_world,&
-                        &ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(max_it_r,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(max_it_inv,1,MPI_INTEGER,0,MPI_Comm_world,&
-                        &ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(BC_style,2,MPI_INTEGER,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
                     call MPI_Bcast(tol_r,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(EV_style,1,MPI_INTEGER,0,MPI_Comm_world,&
-                        &ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(n_sol_requested,1,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(EV_BC,1,MPI_DOUBLE_PRECISION,0,&
@@ -535,181 +601,13 @@ contains
                     call MPI_Bcast(tol_slepc,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(retain_all_sol,1,MPI_INTEGER,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(norm_disc_prec_X,1,MPI_INTEGER,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(norm_disc_prec_sol,1,MPI_INTEGER,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(max_it_slepc,1,MPI_INTEGER,0,MPI_Comm_world,&
-                        &ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(min_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(max_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call bcast_size_1_var_1D(vars_1D_eq)
-                    CHCKERR(err_msg)
-                    do id = 1,size(vars_1D_eq)
-                        call bcast_size_1_R(vars_1D_eq(id)%p)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq(id)%p,size(vars_1D_eq(id)%p),&
-                            &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_eq(id)%tot_i_min)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq(id)%tot_i_min,&
-                            &size(vars_1D_eq(id)%tot_i_min),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_eq(id)%tot_i_max)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq(id)%tot_i_max,&
-                            &size(vars_1D_eq(id)%tot_i_max),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq(id)%var_name,max_str_ln,&
-                            &MPI_CHARACTER,0,MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                    end do
-                    call bcast_size_1_var_1D(vars_1D_eq_B)
-                    CHCKERR(err_msg)
-                    do id = 1,size(vars_1D_eq_B)
-                        call bcast_size_1_R(vars_1D_eq_B(id)%p)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq_B(id)%p,&
-                            &size(vars_1D_eq_B(id)%p),MPI_DOUBLE_PRECISION,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_eq_B(id)%tot_i_min)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq_B(id)%tot_i_min,&
-                            &size(vars_1D_eq_B(id)%tot_i_min),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_eq_B(id)%tot_i_max)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq_B(id)%tot_i_max,&
-                            &size(vars_1D_eq_B(id)%tot_i_max),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq_B(id)%var_name,max_str_ln,&
-                            &MPI_CHARACTER,0,MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                    end do
-                case(3)                                                         ! PB3D_POST
+                case(2)                                                         ! POST
                     call MPI_Bcast(n_sol_plotted,4,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(norm_disc_prec_sol,1,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                    call bcast_size_1_var_1D(vars_1D_eq)
-                    CHCKERR(err_msg)
-                    do id = 1,size(vars_1D_eq)
-                        call bcast_size_1_R(vars_1D_eq(id)%p)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq(id)%p,size(vars_1D_eq(id)%p),&
-                            &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_eq(id)%tot_i_min)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq(id)%tot_i_min,&
-                            &size(vars_1D_eq(id)%tot_i_min),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_eq(id)%tot_i_max)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq(id)%tot_i_max,&
-                            &size(vars_1D_eq(id)%tot_i_max),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq(id)%var_name,max_str_ln,&
-                            &MPI_CHARACTER,0,MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                    end do
-                    call bcast_size_1_var_1D(vars_1D_eq_B)
-                    CHCKERR(err_msg)
-                    do id = 1,size(vars_1D_eq_B)
-                        call bcast_size_1_R(vars_1D_eq_B(id)%p)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq_B(id)%p,&
-                            &size(vars_1D_eq_B(id)%p),MPI_DOUBLE_PRECISION,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_eq_B(id)%tot_i_min)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq_B(id)%tot_i_min,&
-                            &size(vars_1D_eq_B(id)%tot_i_min),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_eq_B(id)%tot_i_max)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq_B(id)%tot_i_max,&
-                            &size(vars_1D_eq_B(id)%tot_i_max),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_eq_B(id)%var_name,max_str_ln,&
-                            &MPI_CHARACTER,0,MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                    end do
-                    call bcast_size_1_var_1D(vars_1D_X)
-                    CHCKERR(err_msg)
-                    do id = 1,size(vars_1D_X)
-                        call bcast_size_1_R(vars_1D_X(id)%p)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_X(id)%p,size(vars_1D_X(id)%p),&
-                            &MPI_DOUBLE_PRECISION,&
-                            &0,MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_X(id)%tot_i_min)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_X(id)%tot_i_min,&
-                            &size(vars_1D_X(id)%tot_i_min),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_X(id)%tot_i_max)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_X(id)%tot_i_max,&
-                            &size(vars_1D_X(id)%tot_i_max),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_X(id)%var_name,max_str_ln,&
-                            &MPI_CHARACTER,0,MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                    end do
-                    call bcast_size_1_var_1D(vars_1D_sol)
-                    CHCKERR(err_msg)
-                    do id = 1,size(vars_1D_sol)
-                        call bcast_size_1_R(vars_1D_sol(id)%p)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_sol(id)%p,&
-                            &size(vars_1D_sol(id)%p),MPI_DOUBLE_PRECISION,&
-                            &0,MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_sol(id)%tot_i_min)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_sol(id)%tot_i_min,&
-                            &size(vars_1D_sol(id)%tot_i_min),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call bcast_size_1_I(vars_1D_sol(id)%tot_i_max)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_sol(id)%tot_i_max,&
-                            &size(vars_1D_sol(id)%tot_i_max),MPI_INTEGER,0,&
-                            &MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                        call MPI_Bcast(vars_1D_sol(id)%var_name,max_str_ln,&
-                            &MPI_CHARACTER,0,MPI_Comm_world,ierr)
-                        CHCKERR(err_msg)
-                    end do
                 case default
                     err_msg = 'No program style associated with '//&
                         &trim(i2str(prog_style))
@@ -725,7 +623,7 @@ contains
                 case (1)                                                        ! VMEC
                     ! select according to program style
                     select case (prog_style)
-                        case(1)                                                 ! PB3D pre-perturbation
+                        case(1)                                                 ! PB3D
                             call bcast_size_1_R(flux_t_V)
                             CHCKERR(err_msg)
                             call MPI_Bcast(flux_t_V,size(flux_t_V),&
@@ -825,8 +723,7 @@ contains
                                 CHCKERR(err_msg)
                             end if
 #endif
-                        case(2)                                                 ! PB3D perturbation
-                        case(3)                                                 ! PB3D_POST
+                        case(2)                                                 ! POST
                             ! do nothing extra
                         case default
                             err_msg = 'No program style associated with '//&
@@ -894,7 +791,7 @@ contains
                             call MPI_Bcast(h_H_33,size(h_H_33),&
                                 &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                             CHCKERR(err_msg)
-                        case(2)                                                 ! PB3D_POST
+                        case(2)                                                 ! POST
                             ! do nothing extra
                         case default
                             err_msg = 'No program style associated with '//&

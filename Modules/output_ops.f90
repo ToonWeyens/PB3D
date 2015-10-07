@@ -12,7 +12,6 @@ module output_ops
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
     use met_vars, only: met_type
-    use X_vars, only: X_type
     
     
     implicit none

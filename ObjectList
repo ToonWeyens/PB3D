@@ -26,6 +26,7 @@ MPI_utilities.o \
 VMEC.o \
 X_ops.o \
 X_vars.o \
+sol_vars.o \
 test.o \
 PB3D_vars.o \
 PB3D_ops.o \

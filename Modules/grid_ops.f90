@@ -65,20 +65,14 @@ contains
         
         ! select depending on program style
         select case (prog_style)
-            case(1)                                                             ! PB3D preparation
+            case(1)                                                             ! PB3D
                 if (.not.present(eq_limits)) then
                     ierr = 1
                     CHCKERR('Incorrect variables provided.')
                 end if
-                ierr = calc_norm_range_PREP(eq_limits)
+                ierr = calc_norm_range_PB3D(eq_limits)
                 CHCKERR('')
-            case(2)                                                             ! PB3D perturbation
-                if (.not.present(eq_limits) .or. .not.present(r_F_eq)) then
-                    ierr = 1
-                    CHCKERR('Incorrect variables provided.')
-                end if
-                call calc_norm_range_PERT(eq_limits,r_F_eq)
-            case(3)                                                             ! PB3D post-processing
+            case(2)                                                             ! PB3D post-processing
                 if (.not.present(eq_limits) .or. .not.present(X_limits) .or. &
                     &.not.present(r_F_eq) .or. .not. present(r_F_X)) then
                     ierr = 1
@@ -93,7 +87,7 @@ contains
                 CHCKERR(err_msg)
         end select
     contains
-        integer function calc_norm_range_PREP(eq_limits) result(ierr)           ! PREP version
+        integer function calc_norm_range_PB3D(eq_limits) result(ierr)           ! PB3D version
             use num_vars, only: n_procs, rank, use_pol_flux_E, &
                 &use_pol_flux_F, eq_style, tol_norm_r, norm_disc_prec_eq
             use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
@@ -103,7 +97,7 @@ contains
             use X_vars, only: min_r_X, max_r_X
             use grid_vars, only: n_r_eq
             
-            character(*), parameter :: rout_name = 'calc_norm_range_PREP'
+            character(*), parameter :: rout_name = 'calc_norm_range_PB3D'
             
             ! input / output
             integer, intent(inout) :: eq_limits(2)                              ! min. and max. index of eq. grid for this process
@@ -222,16 +216,7 @@ contains
             
             ! clean up
             deallocate(flux_F,flux_E)
-        end function calc_norm_range_PREP
-        
-        subroutine calc_norm_range_PERT(eq_limits,r_F_eq)                       ! PERT version
-            ! input / output
-            integer, intent(inout) :: eq_limits(2)                              ! min. and max. index of eq grid for this process
-            real(dp), intent(in) :: r_F_eq(:)                                   ! equilibrium r_F
-            
-            ! set eq_limits
-            eq_limits = [1,size(r_F_eq)]
-        end subroutine calc_norm_range_PERT
+        end function calc_norm_range_PB3D
         
         integer function calc_norm_range_POST(eq_limits,X_limits,r_F_eq,r_F_X) &
             &result(ierr)                                                       ! POST version

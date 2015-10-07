@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.92                                                              !
+!   Version: 0.93                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -32,7 +32,6 @@ program POST
     use files_ops, only: init_files, parse_args, open_input, open_output, &
         &close_output
     use input_ops, only: read_input
-    use PB3D_ops, only: read_PB3D
     use driver_POST, only: run_driver_POST
     use test, only: generic_tests
     
@@ -47,7 +46,7 @@ program POST
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
     prog_name = 'POST'                                                          ! program name
-    prog_style = 3                                                              ! post-processing part
+    prog_style = 2                                                              ! post-processing part
     call print_hello                                                            ! print message with time, etc
     call init_messages                                                          ! initialize message operations
     ierr = init_files()                                                         ! initialize file operations
@@ -64,8 +63,6 @@ program POST
     ierr = parse_args()                                                         ! parse argument (options are used in open_input)
     CHCKERR
     ierr = open_input()                                                         ! open the input files
-    CHCKERR
-    ierr = read_PB3D(.true.,.true.)                                             ! read the PB3D_PREP and PB3D_PERT files
     CHCKERR
     ierr = read_input()                                                         ! read input file
     CHCKERR

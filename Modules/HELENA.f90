@@ -11,7 +11,7 @@ module HELENA
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
     use met_vars, only: met_type
-    use X_vars, only: X_type
+    use X_vars, only: X_1_type, X_2_type
     
     implicit none
     private
@@ -345,16 +345,18 @@ contains
     ! and optionally:
     !   - equilibrium variables of interest are flux variables
     !   - metric variables: jac_FD, g_FD, h_FD
-    integer function interp_HEL_on_grid(grid_eq,grid_eq_B,X,X_B,met,met_B,&
-        &eq,eq_B,grid_name) result(ierr)
+    integer function interp_HEL_on_grid(grid_eq,grid_eq_B,X_1,X_1_B,X_2,X_2_B,&
+        &met,met_B,eq,eq_B,grid_name) result(ierr)
         use num_vars, only: prog_style
         
         character(*), parameter :: rout_name = 'interp_HEL_on_grid'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq, grid_eq_B                       ! general and field-aligned equilibrium grid
-        type(X_type), intent(inout) :: X                                        ! general perturbation variables
-        type(X_type), intent(inout) :: X_B                                      ! field-aligned perturbation variables
+        type(X_1_type), intent(inout) :: X_1                                    ! general vectorial perturbation variables
+        type(X_2_type), intent(inout) :: X_2                                    ! general tensorial perturbation variables
+        type(X_1_type), intent(inout) :: X_1_B                                  ! field-aligned vectorial perturbation variables
+        type(X_2_type), intent(inout) :: X_2_B                                  ! field-aligned tensorial perturbation variables
         type(met_type), intent(in), optional :: met                             ! general metric variables
         type(met_type), intent(inout), optional :: met_B                        ! field-aligned metric variables
         type(eq_type), intent(in), optional :: eq                               ! general equilibrium variables
@@ -371,7 +373,7 @@ contains
         ierr = 0
         
         ! tests
-        if (prog_style.eq.3) then                                               ! PB3D_POST
+        if (prog_style.eq.2) then                                               ! POST
             if (.not.present(eq) .or. .not.present(eq_B)) then
                 ierr = 1
                 err_msg = 'For PB3D_POST, eq and eq_B are needed as well'
@@ -403,24 +405,27 @@ contains
         call writo('Adapting perturbation quantities')
         call lvl_ud(1)
         ! adapt common variables for all program styles
-        X_B%vac_res = X%vac_res
-        call interp_var_4D_complex(X%U_0,theta_i,X_B%U_0,sym_type=2)
-        call interp_var_4D_complex(X%U_1,theta_i,X_B%U_1,sym_type=2)
-        call interp_var_4D_complex(X%DU_0,theta_i,X_B%DU_0,sym_type=1)
-        call interp_var_4D_complex(X%DU_1,theta_i,X_B%DU_1,sym_type=1)
+        X_2_B%vac_res = X_2%vac_res
+        call interp_var_4D_complex(X_1%U_0,theta_i,X_1_B%U_0,sym_type=2)
+        call interp_var_4D_complex(X_1%U_1,theta_i,X_1_B%U_1,sym_type=2)
+        call interp_var_4D_complex(X_1%DU_0,theta_i,X_1_B%DU_0,sym_type=1)
+        call interp_var_4D_complex(X_1%DU_1,theta_i,X_1_B%DU_1,sym_type=1)
         ! adapt custom variables depending on program style
         select case (prog_style)
-            case(1)                                                             ! PB3D pre-perturbation
-                call interp_var_4D_complex(X%J_exp_ang_par_F,theta_i,&
-                    &X_B%J_exp_ang_par_F,sym_type=1)
-                call interp_var_4D_complex(X%PV_0,theta_i,X_B%PV_0,sym_type=1)
-                call interp_var_4D_complex(X%PV_1,theta_i,X_B%PV_1,sym_type=1)
-                call interp_var_4D_complex(X%PV_2,theta_i,X_B%PV_2,sym_type=1)
-                call interp_var_4D_complex(X%KV_0,theta_i,X_B%KV_0,sym_type=1)
-                call interp_var_4D_complex(X%KV_1,theta_i,X_B%KV_1,sym_type=1)
-                call interp_var_4D_complex(X%KV_2,theta_i,X_B%KV_2,sym_type=1)
-            case(2)                                                             ! PB3D perturbation
-            case(3)                                                             ! PB3D_POST
+            case(1)                                                             ! PB3D
+                call interp_var_4D_complex(X_2%PV_0,theta_i,X_2_B%PV_0,&
+                    &sym_type=1)
+                call interp_var_4D_complex(X_2%PV_1,theta_i,X_2_B%PV_1,&
+                    &sym_type=1)
+                call interp_var_4D_complex(X_2%PV_2,theta_i,X_2_B%PV_2,&
+                    &sym_type=1)
+                call interp_var_4D_complex(X_2%KV_0,theta_i,X_2_B%KV_0,&
+                    &sym_type=1)
+                call interp_var_4D_complex(X_2%KV_1,theta_i,X_2_B%KV_1,&
+                    &sym_type=1)
+                call interp_var_4D_complex(X_2%KV_2,theta_i,X_2_B%KV_2,&
+                    &sym_type=1)
+            case(2)                                                             ! POST
                 ! do nothing
             case default
                 err_msg = 'No program style associated with '//&

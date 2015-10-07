@@ -38,11 +38,7 @@ contains
         
         ! select according to program style
         select case (prog_style)
-            case(1)                                                             ! PB3D pre-perturbation
-                allocate(opt_args(4), inc_args(4))
-                opt_args = ''
-                inc_args = 0
-            case(2)                                                             ! PB3D perturbation
+            case(1)                                                             ! PB3D
                 allocate(opt_args(12), inc_args(12))
                 opt_args = ''
                 inc_args = 0
@@ -55,7 +51,7 @@ contains
                 opt_args(11) = '-eps_ncv'
                 opt_args(12) = '-eps_mpd'
                 inc_args(5:12) = [0,1,1,1,0,1,1,1]
-            case(3)                                                             ! PB3D_POST
+            case(2)                                                             ! POST
                 allocate(opt_args(4), inc_args(4))
                 opt_args = ''
                 inc_args = 0
@@ -99,7 +95,7 @@ contains
         ! Messages for the user
         ! select according to program style
         select case (prog_style)
-            case(1)                                                             ! PB3D pre-perturbation
+            case(1)                                                             ! PB3D
                 allocate(open_error(3))
                 allocate(open_help(6))
                 open_error(1) = ""                                              ! incorrect usage
@@ -117,9 +113,7 @@ contains
                     &command-line options"
                 open_help(6) = ""
                 min_args = 2
-            case(2)                                                             ! PB3D perturbation
-                ! no arguments parsed for perturbation part
-            case(3)                                                             ! PB3D_POST
+            case(2)                                                             ! POST
                 allocate(open_error(3))
                 allocate(open_help(6))
                 open_error(1) = ""                                              ! incorrect usage
@@ -181,8 +175,7 @@ contains
     ! open the input files
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, rank, prog_style, no_guess, &
-            &no_plots, eq_style, eq_name, no_messages, PB3D_i, PB3D_name, &
-            &prog_name, output_name
+            &no_plots, eq_style, eq_name, no_messages, PB3D_i, PB3D_name
         use files_utilities, only: search_file
 #if ldebug
         use num_vars, only: ltest
@@ -206,7 +199,7 @@ contains
             
             ! select depending on program style
             select case (prog_style)
-                case(1)                                                         ! PB3D pre-perturbation
+                case(1)                                                         ! PB3D
                     ! check for correct input file and use default if needed
                     input_name = command_arg(1)                                 ! first argument is the name of the input file
                     call search_file(input_i,input_name)
@@ -257,20 +250,7 @@ contains
                             &variable IAS')
                         CHCKERR('')
                     end if
-                case(2)                                                         ! PB3D perturbation
-                    ! check  for PB3D  file and  print  error if  not found  (no
-                    ! default!)
-                    PB3D_name = prog_name//'_'//output_name//'.h5'
-                    call search_file(PB3D_i,PB3D_name)
-                    if (PB3D_name.eq."") then
-                        ierr = 1
-                        err_msg = 'No PB3D file found and no default possible.'
-                        CHCKERR(err_msg)
-                    else
-                        call writo('PB3D file "' // trim(PB3D_name) &
-                            &// '" opened at number ' // trim(i2str(PB3D_i)))
-                    end if
-                case(3)                                                         ! PB3D_POST
+                case(2)                                                         ! POST
                     ! check for correct input file and use default if needed
                     input_name = command_arg(1)                                 ! first argument is the name of the input file
                     call search_file(input_i,input_name)
@@ -290,8 +270,7 @@ contains
                         err_msg = 'No PB3D file found and no default possible.'
                         CHCKERR(err_msg)
                     else
-                        call writo('PB3D file "' // trim(PB3D_name) &
-                            &// '" opened at number ' // trim(i2str(PB3D_i)))
+                        close(PB3D_i)
                     end if
                 case default
                     err_msg = 'No program style associated with '//&
@@ -356,12 +335,9 @@ contains
                                 ! specific options for each program style
                                 case default
                                     select case (prog_style)
-                                        case(1)                                 ! PB3D pre-perturbation
-                                            call writo('WARNING: Invalid &
-                                                &option number')
-                                        case(2)                                 ! PB3D perturbation
-                                            call apply_opt_PERT(jd,id)
-                                        case(3)                                 ! PB3D_POST
+                                        case(1)                                 ! PB3D
+                                            call apply_opt_PB3D(jd,id)
+                                        case(2)                                 ! POST
                                             call writo('WARNING: Invalid &
                                                 &option number')
                                         case default
@@ -389,7 +365,7 @@ contains
         end subroutine
         
         ! this subroutine applies chosen options
-        subroutine apply_opt_PERT(opt_nr,arg_nr)                                ! PB3D_PERT version
+        subroutine apply_opt_PB3D(opt_nr,arg_nr)                                ! PB3D version
             ! input / output
             integer :: opt_nr, arg_nr
             
@@ -412,7 +388,7 @@ contains
                 case default
                     call writo('WARNING: Invalid option number')
             end select
-        end subroutine apply_opt_PERT
+        end subroutine apply_opt_PB3D
     end function open_input
 
     ! open an output file

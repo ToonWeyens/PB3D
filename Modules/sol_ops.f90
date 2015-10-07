@@ -11,7 +11,7 @@ module sol_ops
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
     use met_vars, only: met_type
-    use X_vars, only: X_type
+    use sol_vars, only: sol_type
 
     implicit none
     private
@@ -48,8 +48,8 @@ contains
     ! Flux coordinates.
     ! Note: The angular part of the X grid is neglected as it is assumed to be a
     ! 1D grid.
-    integer function calc_XUQ_arr(grid_eq,eq,grid_X,X,X_id,XUQ_style,time,XUQ,&
-        &met,deriv) result(ierr)                                                ! (time) array version
+    integer function calc_XUQ_arr(grid_eq,eq,grid_X,sol,X_id,XUQ_style,time,&
+        &XUQ,met,deriv) result(ierr)                                            ! (time) array version
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol
         use utilities, only: con2dis, calc_deriv
 #if ldebug
@@ -62,7 +62,7 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_type), intent(in) :: X                                           ! perturbation variables
+        type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
         integer, intent(in) :: XUQ_style                                        ! whether to calculate X, U, Qn or Qg
         real(dp), intent(in) :: time(:)                                         ! time range
@@ -111,7 +111,7 @@ contains
         if (present(deriv)) deriv_loc = deriv
         
         ! set up normalized sqrt(X_val)
-        sqrt_X_val_norm = sqrt(X%val(X_id))
+        sqrt_X_val_norm = sqrt(sol%val(X_id))
         if (imagpart(sqrt_X_val_norm).gt.0) &
             &sqrt_X_val_norm = - sqrt_X_val_norm                                ! exploding solution, not the decaying one
         sqrt_X_val_norm = sqrt_X_val_norm / abs(sqrt_X_val_norm)                ! normalize
@@ -152,12 +152,12 @@ contains
         allocate(XUQ_loc(size(XUQ,1),size(XUQ,2)))
         
         ! iterate over all modes
-        do jd = 1,X%n_mod
+        do jd = 1,sol%n_mod
             ! set up parallel multiplicative factor par_fac in normal eq grid
             if (use_pol_flux_F) then
-                par_fac = iu*(X%n(jd)*eq%q_saf_FD(:,0)-X%m(jd))
+                par_fac = iu*(sol%n(jd)*eq%q_saf_FD(:,0)-sol%m(jd))
             else
-                par_fac = iu*(X%n(jd)-X%m(jd)*eq%rot_t_FD(:,0))
+                par_fac = iu*(sol%n(jd)-sol%m(jd)*eq%rot_t_FD(:,0))
             end if
             
             ! set up multiplicative factors in eq grid
@@ -173,11 +173,15 @@ contains
                     fac_1 = 0._dp
                 case (2)                                                        ! calculating U
                     if (deriv_loc) then                                         ! parallel derivative
-                        fac_0 = X%DU_0(:,:,:,jd)
-                        fac_1 = X%DU_1(:,:,:,jd)
+                        !!fac_0 = X%DU_0(:,:,:,jd)
+                        !!fac_1 = X%DU_1(:,:,:,jd)
+                        write(*,*) '!!!!!!! RETRIEVE DU_0 FROM FILE !!!!!!'
+                        write(*,*) '!!!!!!! RETRIEVE DU_1 FROM FILE !!!!!!'
                     else
-                        fac_0 = X%U_0(:,:,:,jd)
-                        fac_1 = X%U_1(:,:,:,jd)
+                        !!fac_0 = X%U_0(:,:,:,jd)
+                        !!fac_1 = X%U_1(:,:,:,jd)
+                        write(*,*) '!!!!!!! RETRIEVE U_0 FROM FILE !!!!!!'
+                        write(*,*) '!!!!!!! RETRIEVE U_1 FROM FILE !!!!!!'
                     end if
                 case (3)                                                        ! calculating Qn
                     if (deriv_loc) then                                         ! parallel derivative
@@ -199,10 +203,12 @@ contains
                         CHCKERR('')
                     else
                         do kd = 1,grid_eq%loc_n_r
-                            fac_0(:,:,kd) = -eq%S(:,:,kd) +&
-                                &X%DU_0(:,:,kd,jd)/met%jac_FD(:,:,kd,0,0,0)
-                            fac_1(:,:,kd) = X%DU_1(:,:,kd,jd)/&
-                                &met%jac_FD(:,:,kd,0,0,0)
+                            !!fac_0(:,:,kd) = -eq%S(:,:,kd) +&
+                                !!&X%DU_0(:,:,kd,jd)/met%jac_FD(:,:,kd,0,0,0)
+                            !!fac_1(:,:,kd) = X%DU_1(:,:,kd,jd)/&
+                                !!&met%jac_FD(:,:,kd,0,0,0)
+                            write(*,*) '!!!!!!! RETRIEVE DU_0 FROM FILE !!!!!!'
+                            write(*,*) '!!!!!!! RETRIEVE DU_1 FROM FILE !!!!!!'
                         end do
                     end if
                 case default
@@ -214,7 +220,7 @@ contains
             
             ! set up normal derivative of X vec
             if (XUQ_style.eq.2 .or. XUQ_style.eq.4) then
-                ierr = calc_deriv(X%vec(jd,:,X_id),DX_vec,&
+                ierr = calc_deriv(sol%vec(jd,:,X_id),DX_vec,&
                     &grid_X%loc_r_F(1:grid_X%loc_n_r),1,norm_disc_prec_sol)
                 CHCKERR('')
 #if ldebug
@@ -227,7 +233,7 @@ contains
                         &grid_X%loc_r_F(1:grid_X%loc_n_r),X_vec_ALT)
                     CHCKERR('')
                     call print_GP_2D('TEST_RE_DX_vec','',reshape(&
-                        &[realpart(X%vec(jd,:,X_id)),X_vec_ALT],&
+                        &[realpart(sol%vec(jd,:,X_id)),X_vec_ALT],&
                         &[grid_X%loc_n_r,2]),x=reshape(&
                         &[grid_X%loc_r_F(1:grid_X%loc_n_r),&
                         &grid_X%loc_r_F(1:grid_X%loc_n_r)],&
@@ -236,7 +242,7 @@ contains
                         &grid_X%loc_r_F(1:grid_X%loc_n_r),X_vec_ALT)
                     CHCKERR('')
                     call print_GP_2D('TEST_IM_DX_vec','',reshape(&
-                        &[imagpart(X%vec(jd,:,X_id)),X_vec_ALT],&
+                        &[imagpart(sol%vec(jd,:,X_id)),X_vec_ALT],&
                         &[grid_X%loc_n_r,2]),x=reshape(&
                         &[grid_X%loc_r_F(1:grid_X%loc_n_r),&
                         &grid_X%loc_r_F(1:grid_X%loc_n_r)],&
@@ -256,14 +262,14 @@ contains
                 
                 ! set up loc complex XUQ without time at this normal point
                 XUQ_loc(:,:) = exp(iu*(&
-                    &X%n(jd)*&
+                    &sol%n(jd)*&
                     &(grid_eq%zeta_F(:,:,i_lo)+(loc_r_eq(kd)-i_lo)*&
                     &(grid_eq%zeta_F(:,:,i_hi)-grid_eq%zeta_F(:,:,i_lo)))&
-                    &- X%m(jd)*&
+                    &- sol%m(jd)*&
                     &(grid_eq%theta_F(:,:,i_lo)+(loc_r_eq(kd)-i_lo)*&
                     &(grid_eq%theta_F(:,:,i_hi)-grid_eq%theta_F(:,:,i_lo)))&
                     &)) * ( &
-                    &X%vec(jd,kd,X_id) * &
+                    &sol%vec(jd,kd,X_id) * &
                     &(fac_0(:,:,i_lo)+(loc_r_eq(kd)-i_lo)*&
                     &(fac_0(:,:,i_hi)-fac_0(:,:,i_lo))) &
                     &+ DX_vec(kd) * &
@@ -280,15 +286,15 @@ contains
             end do
         end do
     end function calc_XUQ_arr
-    integer function calc_XUQ_ind(grid_eq,eq,grid_X,X,X_id,XUQ_style,time,XUQ,&
-        &met,deriv) result(ierr)                                                ! (time) individual version
+    integer function calc_XUQ_ind(grid_eq,eq,grid_X,sol,X_id,XUQ_style,time,&
+        &XUQ,met,deriv) result(ierr)                                            ! (time) individual version
         character(*), parameter :: rout_name = 'calc_XUQ_ind'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibirum grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_type), intent(in) :: X                                           ! perturbation variables
+        type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
         integer, intent(in) :: XUQ_style                                        ! whether to calculate X, U, Qn or Qg
         real(dp), intent(in) :: time                                            ! time
@@ -303,7 +309,7 @@ contains
         allocate(XUQ_arr(size(XUQ,1),size(XUQ,2),size(XUQ,3),1))
         
         ! call array version
-        ierr = calc_XUQ_arr(grid_eq,eq,grid_X,X,X_id,XUQ_style,[time],&
+        ierr = calc_XUQ_arr(grid_eq,eq,grid_X,sol,X_id,XUQ_style,[time],&
             &XUQ_arr,met,deriv)
         CHCKERR('')
         
@@ -317,7 +323,7 @@ contains
     ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
     ! equilibrium  grid and  the normal  part of  the provided  perturbation
     ! grid.
-    integer function plot_X_vec(grid_eq,eq,grid_X,X,XYZ,X_id,res_surf) &
+    integer function plot_X_vec(grid_eq,eq,grid_X,sol,XYZ,X_id,res_surf) &
         &result(ierr)
         use grid_vars, only: dealloc_grid
         use grid_ops, only: trim_grid
@@ -328,7 +334,7 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_type), intent(in) :: X                                           ! perturbation variables
+        type(sol_type), intent(in) :: sol                                       ! solution variables
         real(dp), intent(in) :: XYZ(:,:,:,:)                                    ! X, Y and Z of extended eq_grid
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue (for output name)
         real(dp), intent(in) :: res_surf(:,:)                                   ! resonant surfaces
@@ -378,7 +384,7 @@ contains
         call lvl_ud(1)
         
         ! plot information about harmonics
-        ierr = plot_harmonics(grid_X_trim,X,X_id,res_surf)
+        ierr = plot_harmonics(grid_X_trim,sol,X_id,res_surf)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -391,7 +397,7 @@ contains
         ! if the  Eigenvalue is negative,  the Eigenfunction explodes,  so limit
         ! n_t(2) to 1. If it is positive, the Eigenfunction oscilates, so choose
         ! n_t(2) = 8 for 2 whole periods
-        if (realpart(X%val(X_id)).lt.0) then                                    ! exploding, unstable
+        if (realpart(sol%val(X_id)).lt.0) then                                  ! exploding, unstable
             n_t(1) = 1                                                          ! 1 point per quarter period
             n_t(2) = 1                                                          ! 1 quarter period
         else                                                                    ! oscillating, stable
@@ -438,16 +444,16 @@ contains
         
         ! calculate omega  = sqrt(X_val)  and make sure  to select  the decaying
         ! solution
-        omega = sqrt(X%val(X_id))
+        omega = sqrt(sol%val(X_id))
         if (imagpart(omega).gt.0) omega = - omega                               ! exploding solution, not the decaying one
         
         ! calculate  the function  to  plot: normal  and  geodesic component  of
         ! perturbation X_F
         allocate(f_plot(grid_eq%n(1),grid_eq%n(2),grid_X%loc_n_r,&
             &product(n_t),2))
-        ierr = calc_XUQ(grid_eq,eq,grid_X,X,X_id,1,time,f_plot(:,:,:,:,1))
+        ierr = calc_XUQ(grid_eq,eq,grid_X,sol,X_id,1,time,f_plot(:,:,:,:,1))
         CHCKERR('')
-        ierr = calc_XUQ(grid_eq,eq,grid_X,X,X_id,2,time,f_plot(:,:,:,:,2))
+        ierr = calc_XUQ(grid_eq,eq,grid_X,sol,X_id,2,time,f_plot(:,:,:,:,2))
         CHCKERR('')
         
         ! set up var_name, file_name and description
@@ -478,8 +484,8 @@ contains
         call lvl_ud(-1)
     contains
         ! plots the harmonics and their maximum in 2D
-        ! Note: This routine needs a trimmed grid!
-        integer function plot_harmonics(grid_X,X,X_id,res_surf) result(ierr)
+        ! Note: This routine needs a trimmed grid! (DOES IT STILL?)
+        integer function plot_harmonics(grid_X,sol,X_id,res_surf) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ser_var
             use output_ops, only: merge_GP
             use num_vars, only: use_pol_flux_F, GP_max_size, rank
@@ -489,7 +495,7 @@ contains
             
             ! input / output
             type(grid_type), intent(in) :: grid_X                               ! perturbation grid
-            type(X_type), intent(in) :: X                                       ! perturbation variables
+            type(sol_type), intent(in) :: sol                                   ! solution variables
             integer, intent(in) :: X_id                                         ! nr. of Eigenvalue (for output name)
             real(dp), intent(in) :: res_surf(:,:)                               ! resonant surfaces
             
@@ -509,9 +515,9 @@ contains
             ierr = 0
             
             ! set up serial X_vec on master
-            if (rank.eq.0) allocate(X_vec_ser(1:X%n_mod,1:grid_X%n(3)))
-            do id = 1,X%n_mod
-                ierr = get_ser_var(X%vec(id,norm_id(1):norm_id(2),X_id),&
+            if (rank.eq.0) allocate(X_vec_ser(1:sol%n_mod,1:grid_X%n(3)))
+            do id = 1,sol%n_mod
+                ierr = get_ser_var(sol%vec(id,norm_id(1):norm_id(2),X_id),&
                     &X_vec_ser_loc,scatter=.true.)
                 CHCKERR('')
                 if (rank.eq.0) X_vec_ser(id,:) = X_vec_ser_loc
@@ -521,8 +527,8 @@ contains
             ! the rest is done only by master
             if (rank.eq.0) then
                 ! set up x_plot
-                allocate(x_plot(grid_X%n(3),X%n_mod))
-                do kd = 1,X%n_mod
+                allocate(x_plot(grid_X%n(3),sol%n_mod))
+                do kd = 1,sol%n_mod
                     x_plot(:,kd) = grid_X%r_F
                 end do
                 
@@ -531,9 +537,9 @@ contains
                 res_surf_loc = res_surf
                 
                 ! set up maximum of each mode at midplane
-                allocate(X_vec_max(X%n_mod))
+                allocate(X_vec_max(sol%n_mod))
                 X_vec_max = 0.0_dp
-                do kd = 1,X%n_mod
+                do kd = 1,sol%n_mod
                     X_vec_max(kd) = &
                         &grid_X%r_F(maxloc(abs(realpart(X_vec_ser(kd,:))),1))
                 end do
@@ -557,19 +563,19 @@ contains
                     &realpart(transpose(X_vec_ser)),x=x_plot,draw=.false.)
                 
                 ! plot in file
-                call draw_GP(plot_title,file_name,file_name,X%n_mod,1,.false.)
+                call draw_GP(plot_title,file_name,file_name,sol%n_mod,1,.false.)
                 
                 ! plot in file using decoupled 3D in GNUPlot if not too big
-                if (X%n_mod*grid_X%n(3).le.GP_max_size) then
+                if (sol%n_mod*grid_X%n(3).le.GP_max_size) then
                     call draw_GP(trim(plot_title)//' - 3D',file_name,&
-                        &trim(file_name)//'_3D',X%n_mod,3,.false.)
+                        &trim(file_name)//'_3D',sol%n_mod,3,.false.)
                 end if
                 
                 ! plot using HDF5
                 call plot_HDF5(trim(plot_title),trim(file_name),&
                     &reshape(realpart(transpose(X_vec_ser)),&
-                    &[1,grid_X%n(3),X%n_mod]),y=reshape(x_plot,&
-                    &[1,grid_X%n(3),X%n_mod]))
+                    &[1,grid_X%n(3),sol%n_mod]),y=reshape(x_plot,&
+                    &[1,grid_X%n(3),sol%n_mod]))
                 
                 ! deallocate variables
                 deallocate(x_plot)
@@ -579,15 +585,15 @@ contains
                 plot_title = trim(i2str(X_id))//' EV - maximum of modes'
                 
                 ! set up x_plot and y_plot
-                allocate(x_plot(X%n_mod,2))
-                allocate(y_plot(X%n_mod,2))
+                allocate(x_plot(sol%n_mod,2))
+                allocate(y_plot(sol%n_mod,2))
                 x_plot(:,1) = X_vec_max
-                y_plot(:,1) = [(kd*1._dp,kd=1,X%n_mod)]
+                y_plot(:,1) = [(kd*1._dp,kd=1,sol%n_mod)]
                 x_plot(1:size(res_surf_loc,1),2) = res_surf_loc(:,2)
-                x_plot(size(res_surf_loc,1)+1:X%n_mod,2) = &
+                x_plot(size(res_surf_loc,1)+1:sol%n_mod,2) = &
                     &res_surf_loc(size(res_surf_loc,1),2)
                 y_plot(1:size(res_surf_loc,1),2) = res_surf_loc(:,1)
-                y_plot(size(res_surf_loc,1)+1:X%n_mod,2) = &
+                y_plot(size(res_surf_loc,1)+1:sol%n_mod,2) = &
                     &res_surf_loc(size(res_surf_loc,1),1)
                 
                 ! plot the maximum at midplane
@@ -716,12 +722,12 @@ contains
         if (rank.eq.0) write(log_i,'(A)') '# Eigenvalue '//trim(i2str(X_id))
         
         if (rank.eq.0) write(log_i,format_val) &
-            &realpart(PB3D%X%val(X_id)),&
+            &realpart(PB3D%sol%val(X_id)),&
             &realpart(sum(E_pot_int)/sum(E_kin_int)),&
             &realpart(sum(E_pot_int)),&
             &realpart(sum(E_kin_int))
         if (rank.eq.0) write(log_i,format_val) &
-            &imagpart(PB3D%X%val(X_id)),&
+            &imagpart(PB3D%sol%val(X_id)),&
             &imagpart(sum(E_pot_int)/sum(E_kin_int)), &
             &imagpart(sum(E_pot_int)),&
             &imagpart(sum(E_kin_int))
@@ -996,7 +1002,7 @@ contains
             
             ! calculate X, U, Q_n and Q_g
             do kd = 1,4
-                ierr = calc_XUQ(PB3D%grid_eq,PB3D%eq,PB3D%grid_X,PB3D%X,&
+                ierr = calc_XUQ(PB3D%grid_eq,PB3D%eq,PB3D%grid_X,PB3D%sol,&
                     &X_id,kd,0._dp,XUQ(:,:,:,kd),met=PB3D%met)
                 CHCKERR('')
             end do
@@ -1022,7 +1028,7 @@ contains
                 call lvl_ud(1)
                 
                 ! calculate D_par U
-                ierr = calc_XUQ(PB3D%grid_eq,PB3D%eq,PB3D%grid_X,PB3D%X,&
+                ierr = calc_XUQ(PB3D%grid_eq,PB3D%eq,PB3D%grid_X,PB3D%sol,&
                     &X_id,2,0._dp,DU,met=PB3D%met,deriv=.true.)
                 CHCKERR('')
                 

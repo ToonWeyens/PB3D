@@ -18,7 +18,7 @@
     max_it_inv              = 1
     BC_style                = 1 1
     max_it_slepc            = 100000
-    max_mem_per_proc        = 50
+    max_mem_per_proc        = 40
     plot_grid               = .false.
     plot_flux_q             = .false.
     plot_resonance          = .false.

@@ -12,13 +12,14 @@ module PB3D_ops
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
     use met_vars, only: met_type
-    use X_vars, only: X_type
+    use X_vars, only: X_1_type, X_2_type
+    use sol_vars, only: sol_type
     use PB3D_vars, only: PB3D_type
     use HDF5_ops, only: var_1D
 
     implicit none
     private
-    public read_PB3D, reconstruct_PB3D
+    public read_PB3D, reconstruct_PB3D, retrieve_var_1D_id
     
     ! interfaces
     interface conv_1D2ND
@@ -30,18 +31,16 @@ module PB3D_ops
     
 contains
     ! reads PB3D output from user-provided input file
-    integer function read_PB3D(read_eq,read_X) result(ierr)
-        use num_vars, only: rank, eq_style, PB3D_name
+    integer function read_PB3D(read_eq,read_X_1,read_X_2,read_sol) result(ierr)
+        use num_vars, only: eq_style, PB3D_name
         use HDF5_ops, only: read_HDF5_arrs
-        use grid_vars, only: create_grid
-        use eq_vars, only: create_eq
-        use X_vars, only: create_X
-        use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B, vars_1D_X, vars_1D_sol
+        use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B, vars_1D_X_1, &
+            &vars_1D_X_2, vars_1D_sol
         
         character(*), parameter :: rout_name = 'read_PB3D'
         
         ! input / output
-        logical, intent(in) :: read_eq, read_X                                  ! which files to read
+        logical, intent(in) :: read_eq, read_X_1, read_X_2, read_sol            ! which files to read
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -49,49 +48,59 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! only master
-        if (rank.eq.0) then
-            ! set common error message
-            err_msg = 'Maybe you wanted to use Richardson extrapolation? Not &
-                &yet implemented.'
-            
-            if (read_eq) then
-                call writo('Reading pre-perturbation variables')
-                call lvl_ud(1)
-                ierr = read_HDF5_arrs(vars_1D_eq,PB3D_name,'eq')
+        ! set common error message
+        err_msg = 'Maybe you wanted to use Richardson extrapolation? Not &
+            &yet implemented.'
+        
+        if (read_eq) then
+            call writo('Reading equilibrium variables')
+            call lvl_ud(1)
+            ierr = read_HDF5_arrs(vars_1D_eq,PB3D_name,'eq')
+            CHCKERR('')
+            ierr = set_eq_style()
+            CHCKERR('')
+            if (eq_style.eq.2) then                                             ! only read eq_B for HELENA
+                ierr = read_HDF5_arrs(vars_1D_eq_B,PB3D_name,'eq_B')
                 CHCKERR('')
-                ierr = set_eq_style()
-                CHCKERR('')
-                if (eq_style.eq.2) then                                         ! only read eq_B for HELENA
-                    ierr = read_HDF5_arrs(vars_1D_eq_B,PB3D_name,'eq_B')
-                    CHCKERR('')
-                else
-                    allocate(vars_1D_eq_B(0))                                   ! not needed for other equilibrium styles
-                end if
-                call lvl_ud(-1)
-                call writo('Pre-perturbation variables read')
+            else
+                allocate(vars_1D_eq_B(0))                                       ! not needed for other equilibrium styles
             end if
-            
-            if (read_X) then
-                call writo('Reading perturbation variables')
-                call lvl_ud(1)
-                ierr = read_HDF5_arrs(vars_1D_X,PB3D_name,'X')
-                CHCKERR(err_msg)
-                call lvl_ud(-1)
-                call writo('Perturbation variables read')
-                
-                call writo('Reading solution variables')
-                call lvl_ud(1)
-                ierr = read_HDF5_arrs(vars_1D_sol,PB3D_name,'sol')
-                CHCKERR(err_msg)
-                call lvl_ud(-1)
-                call writo('Solution variables read')
-            end if
+            call lvl_ud(-1)
+            call writo('Equilbrium variables read')
+        end if
+        
+        if (read_X_1) then
+            call writo('Reading vectorial perturbation variables')
+            call lvl_ud(1)
+            ierr = read_HDF5_arrs(vars_1D_X_1,PB3D_name,'X_1')
+            CHCKERR(err_msg)
+            call lvl_ud(-1)
+            call writo('Vectorial perturbation variables read')
+        end if
+        
+        if (read_X_2) then
+            call writo('Reading tensorial perturbation variables')
+            call lvl_ud(1)
+            ierr = read_HDF5_arrs(vars_1D_X_2,PB3D_name,'X_2')
+            CHCKERR(err_msg)
+            call lvl_ud(-1)
+            call writo('Tensorial perturbation variables read')
+        end if
+        
+        if (read_sol) then
+            call writo('Reading solution variables')
+            call lvl_ud(1)
+            ierr = read_HDF5_arrs(vars_1D_sol,PB3D_name,'sol')
+            CHCKERR(err_msg)
+            call lvl_ud(-1)
+            call writo('Solution variables read')
         end if
     contains
         ! sets equilibrium style
         integer function set_eq_style() result(ierr)
             use num_vars, only: eq_style, rho_style
+            
+            character(*), parameter :: rout_name = 'set_eq_style'
             
             ! local variables
             integer :: misc_eq_id                                               ! index of misc_eq
@@ -120,45 +129,32 @@ contains
         end function set_eq_style
     end function read_PB3D
     
-    ! Reconstructs the PB3D variables
-    ! Note that the equilibrium grid  is different for the different equilibrium
-    ! styles:
-    !   - VMEC: Field-aligned grid on which  the PB3D coefficients KV_i and PV_i
-    !   are calculated.
-    !   - HELENA:  Grid  returned  by HELENA  which,  though   technically  also
-    !   field-aligned, has to be interpolated to yield the field-aligned grid on
-    !   which the PB3D coefficients KV_i and PV_i are calcualted.
-    ! This implies that for HELENA the field-aligned grid has to be interpolated
-    ! still,  but at  the  same time  every  other grid  can  equally easily  be
-    ! interpolated. For VMEC, for every grid one has to start from the basis and
-    ! run the routines from calc_eq.
-    integer function reconstruct_PB3D(rec_eq,rec_X,rec_sol,PB3D,grid_eq_B) &
-        &result(ierr)
-        use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B, vars_1D_X, vars_1D_sol, &
-            &min_PB3D_version
-        use grid_vars, only: create_grid
-        use grid_ops, only: calc_norm_range
-        use met_vars, only: create_met
-        use X_vars, only: create_X, &
-            &min_r_X, max_r_X, min_n_X, max_n_X, min_m_X, max_m_X
-        use eq_vars, only: create_eq, R_0, pres_0, B_0, psi_0, rho_0, T_0, &
-            &vac_perm, max_flux_p_E, max_flux_t_E, max_flux_p_F, max_flux_t_F
-        use num_vars, only: eq_style, max_deriv, use_pol_flux_E, &
-            &use_pol_flux_F, use_normalization, norm_disc_prec_eq, &
-            &norm_disc_prec_X, prog_style
-        use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor, &
-            &nfp, lfreeB, lasym
-        use HELENA, only: R_H, Z_H, chi_H, flux_p_H, ias, nchi
+    ! Reconstructs the PB3D variables: eq,  X and/or sol variables, as indicated
+    ! through rec_eq, rec_X_1, rec_X_2 and rec_sol.
+    ! Additionally,  if  the variables  'eq_limits'  and/or  'X_limits' are  not
+    ! provided, the full normal range is taken for every variable.
+    ! Note that despite the name, the eq limits are used for eq- and X-variables
+    ! and that the X limits for the sol-variables!
+    ! Note that  both the  X and the  sol variables need  the eq  variables, but
+    ! these necessary variables do not have to be calculated here: They can also
+    ! be provided.
+    integer function reconstruct_PB3D(rec_eq,rec_X_1,rec_X_2,rec_sol,PB3D,&
+        &grid_eq_B,eq_limits,X_limits) result(ierr)
+        use PB3D_vars, only: min_PB3D_version
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D'
         
         ! input  / output
-        logical, intent(in) :: rec_eq, rec_X, rec_sol                           ! which quantities to reconstruct
+        logical, intent(in) :: rec_eq, rec_X_1, rec_X_2, rec_sol                ! which quantities to reconstruct
         type(PB3D_type), intent(inout) :: PB3D                                  ! PB3D for which to do postprocessing
         type(grid_type), intent(inout), optional :: grid_eq_B                   ! optional field-aligned grid for HELENA
+        integer, intent(in), optional :: eq_limits(2)                           ! i_limit of eq and X variables
+        integer, intent(in), optional :: X_limits(2)                            ! i_limit of sol variables
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! local variables also used in child functions
         integer :: r_F_X_id, r_E_X_id                                           ! index of perturbation r_F and r_E
         integer :: r_F_eq_B_id, r_E_eq_B_id                                     ! index of field-aligned equilibrium r_F and r_E
         integer :: theta_F_B_id, zeta_F_B_id                                    ! index of field-aligned theta_F and zeta_F
@@ -182,14 +178,12 @@ contains
         integer :: RE_DU_0_id, IM_DU_0_id, RE_DU_1_id, IM_DU_1_id               ! index of RE_DU_0, IM_DU_0, RE_DU_1, IM_DU_1
         integer :: RE_X_val_id, IM_X_val_id                                     ! index of RE_X_val, IM_X_val
         integer :: RE_X_vec_id, IM_X_vec_id                                     ! index of RE_X_vec, IM_X_vec
-        integer :: eq_limits(2), X_limits(2)                                    ! i_lim of equilibrium and perturbation
-        integer :: n_X, n_eq(3), n_eq_B(3)                                      ! n of X, eq and eq_B grid
-        integer :: n_r_eq                                                       ! n_r of eq grid
         real(dp), allocatable :: dum_1D(:), dum_2D(:,:), dum_3D(:,:,:)          ! dummy variables
         real(dp), allocatable :: dum_4D(:,:,:,:)                                ! dummy variables
         !real(dp), allocatable :: dum_5D(:,:,:,:,:)                              ! dummy variables
         real(dp), allocatable :: dum_6D(:,:,:,:,:,:), dum_7D(:,:,:,:,:,:,:)     ! dummy variables
         real(dp), parameter :: tol_version = 1.E-8_dp                           ! tolerance for version control
+        integer :: eq_limits_loc(2), X_limits_loc(2)                            ! local versions of eq_limits, X_limits
         
         ! initialize ierr
         ierr = 0
@@ -198,8 +192,94 @@ contains
         call writo('Prepare variable indices')
         call lvl_ud(1)
         
-        ! get 1D eq indices
         if (rec_eq) then
+            ierr = prepare_vars_eq()
+            CHCKERR('')
+        end if
+        
+        if (rec_X_1) then
+            ierr = prepare_vars_X_1()
+            CHCKERR('')
+        end if
+        
+        if (rec_X_2) then
+            ierr = prepare_vars_X_2()
+            CHCKERR('')
+        end if
+        
+        if (rec_sol) then
+            ierr = prepare_vars_sol()
+            CHCKERR('')
+        end if
+        
+        call lvl_ud(-1)
+        call writo('Indices prepared')
+        
+        call writo('Reconstructing variables')
+        call lvl_ud(1)
+        
+        call writo('Setting grids')
+        call lvl_ud(1)
+        
+        if (rec_eq) then
+            ierr = reconstruct_grid_eq()
+            CHCKERR('')
+        end if
+        
+        if (rec_sol) then
+            ierr = reconstruct_grid_X()
+            CHCKERR('')
+        end if
+        
+        call lvl_ud(-1)
+        
+        if (rec_eq) then
+            ierr = reconstruct_vars_eq()
+            CHCKERR('')
+        end if
+        
+        if (rec_X_1) then
+            ierr = reconstruct_vars_X_1()
+            CHCKERR('')
+        end if
+        
+        if (rec_X_2) then
+            ierr = reconstruct_vars_X_2()
+            CHCKERR('')
+        end if
+        
+        if (rec_sol) then
+            call reconstruct_vars_sol()
+        end if
+        
+        call lvl_ud(-1)
+        call writo('Variables reconstructed')
+        
+        call writo('Running tests')
+        call lvl_ud(1)
+        
+        call writo('PB3D version '//trim(r2strt(PB3D%version)))
+        if (PB3D%version.lt.min_PB3D_version*(1-tol_version)) then
+            ierr = 1
+            err_msg = 'Need at least PB3D version '//&
+                &trim(r2strt(min_PB3D_version))
+            CHCKERR(err_msg)
+        end if
+        
+        call lvl_ud(-1)
+        call writo('Tests done')
+    contains
+        ! prepare eq vars
+        integer function prepare_vars_eq() result(ierr)
+            use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B
+            use num_vars, only: eq_style
+            
+            character(*), parameter :: rout_name = 'prepare_vars_eq'
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set up 1D indices common for all equilibrium styles
             ierr = retrieve_var_1D_id(vars_1D_eq,'r_F',r_F_eq_id)
             CHCKERR('')
             ierr = retrieve_var_1D_id(vars_1D_eq,'r_E',r_E_eq_id)
@@ -305,32 +385,61 @@ contains
                 ierr = retrieve_var_1D_id(vars_1D_eq_B,'zeta_E',zeta_E_B_id)
                 CHCKERR('')
             end if
-        end if
+        end function prepare_vars_eq
         
-        ! get 1D X indices
-        if (rec_X) then
-            ierr = retrieve_var_1D_id(vars_1D_X,'misc_X',misc_X_id)
+        ! prepare vectorial perturbation vars
+        integer function prepare_vars_X_1() result(ierr)
+            use PB3D_vars, only: vars_1D_X_1
+            
+            character(*), parameter :: rout_name = 'prepare_vars_X_1'
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! get 1D X_1 indices
+            ierr = retrieve_var_1D_id(vars_1D_X_1,'misc_X',misc_X_id)
             CHCKERR('')
-            ierr = retrieve_var_1D_id(vars_1D_X,'RE_U_0',RE_U_0_id)
+            ierr = retrieve_var_1D_id(vars_1D_X_1,'RE_U_0',RE_U_0_id)
             CHCKERR('')
-            ierr = retrieve_var_1D_id(vars_1D_X,'IM_U_0',IM_U_0_id)
+            ierr = retrieve_var_1D_id(vars_1D_X_1,'IM_U_0',IM_U_0_id)
             CHCKERR('')
-            ierr = retrieve_var_1D_id(vars_1D_X,'RE_U_1',RE_U_1_id)
+            ierr = retrieve_var_1D_id(vars_1D_X_1,'RE_U_1',RE_U_1_id)
             CHCKERR('')
-            ierr = retrieve_var_1D_id(vars_1D_X,'IM_U_1',IM_U_1_id)
+            ierr = retrieve_var_1D_id(vars_1D_X_1,'IM_U_1',IM_U_1_id)
             CHCKERR('')
-            ierr = retrieve_var_1D_id(vars_1D_X,'RE_DU_0',RE_DU_0_id)
+            ierr = retrieve_var_1D_id(vars_1D_X_1,'RE_DU_0',RE_DU_0_id)
             CHCKERR('')
-            ierr = retrieve_var_1D_id(vars_1D_X,'IM_DU_0',IM_DU_0_id)
+            ierr = retrieve_var_1D_id(vars_1D_X_1,'IM_DU_0',IM_DU_0_id)
             CHCKERR('')
-            ierr = retrieve_var_1D_id(vars_1D_X,'RE_DU_1',RE_DU_1_id)
+            ierr = retrieve_var_1D_id(vars_1D_X_1,'RE_DU_1',RE_DU_1_id)
             CHCKERR('')
-            ierr = retrieve_var_1D_id(vars_1D_X,'IM_DU_1',IM_DU_1_id)
+            ierr = retrieve_var_1D_id(vars_1D_X_1,'IM_DU_1',IM_DU_1_id)
             CHCKERR('')
-        end if
+        end function prepare_vars_X_1
         
-        ! get 1D sol indices
-        if (rec_sol) then
+        ! prepare tensorial perturbation vars
+        integer function prepare_vars_X_2() result(ierr)
+            use PB3D_vars, only: vars_1D_X_2
+            
+            character(*), parameter :: rout_name = 'prepare_vars_X_2'
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! get 1D X_2 indices
+            write(*,*) '¡¡¡ NOT YET IMPLEMENTED READING OF X_2 !!!!'
+        end function prepare_vars_X_2
+        
+        ! prepare solution vars
+        integer function prepare_vars_sol() result(ierr)
+            use PB3D_vars, only: vars_1D_sol
+            
+            character(*), parameter :: rout_name = 'prepare_vars_sol'
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! get 1D sol indices
             ierr = retrieve_var_1D_id(vars_1D_sol,'r_F',r_F_X_id)
             CHCKERR('')
             ierr = retrieve_var_1D_id(vars_1D_sol,'r_E',r_E_X_id)
@@ -343,68 +452,52 @@ contains
             CHCKERR('')
             ierr = retrieve_var_1D_id(vars_1D_sol,'IM_X_vec',IM_X_vec_id)
             CHCKERR('')
-        end if
+        end function prepare_vars_sol
         
-        call lvl_ud(-1)
-        call writo('Indices prepared')
-        
-        ! user output
-        call writo('Dividing normal range over processes')
-        call lvl_ud(1)
-        
-        ! split normal grids, depending on program style
-        select case (prog_style)
-            case(1)                                                             ! PB3D preparation
-                ! is not called for PB3D preparation
-            case(2)                                                             ! PB3D perturbation
-                ierr = calc_norm_range(eq_limits=eq_limits,&
-                    &r_F_eq=vars_1D_eq(r_F_eq_id)%p)
-                CHCKERR('')
-            case(3)                                                             ! PB3D post-processing
-                ierr = calc_norm_range(eq_limits=eq_limits,X_limits=X_limits,&
-                    &r_F_eq=vars_1D_eq(r_F_eq_id)%p,&
-                    &r_F_X=vars_1D_sol(r_F_X_id)%p)
-                CHCKERR('')
-            case default
-                err_msg = 'No program style associated with '//&
-                    &trim(i2str(prog_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-        
-        call lvl_ud(-1)
-        call writo('Normal range divided')
-        
-        call writo('Reconstructing variables')
-        call lvl_ud(1)
-        
-        call writo('Setting grids')
-        call lvl_ud(1)
-        
-        if (rec_eq) then
-            call writo('Creating equilibrium grid for output tables')
+        ! reconstruct equilibrium grid
+        integer function reconstruct_grid_eq() result(ierr)
+            use PB3D_vars, only: vars_1D_eq, vars_1D_eq_B
+            use grid_vars, only: create_grid
+            
+            character(*), parameter :: rout_name = 'reconstruct_grid_eq'
+            
+            ! local variables
+            integer :: n_eq(3), n_eq_B(3)                                       ! n of eq and eq_B grid
+            
+            ! initialize ierr
+            ierr = 0
+            
+            call writo('Creating equilibrium grid')
             call lvl_ud(1)
+            
+            ! set n_eq
             n_eq = vars_1D_eq(theta_F_id)%tot_i_max-&
                 &vars_1D_eq(theta_F_id)%tot_i_min+1
-            ierr = create_grid(PB3D%grid_eq,n_eq,eq_limits)
+            
+            ! set up local eq_limits
+            eq_limits_loc = [1,n_eq(3)]
+            if (present(eq_limits)) eq_limits_loc = eq_limits
+            
+            ! set grid
+            ierr = create_grid(PB3D%grid_eq,n_eq,eq_limits_loc)
             CHCKERR('')
             PB3D%grid_eq%r_F = vars_1D_eq(r_F_eq_id)%p
             PB3D%grid_eq%loc_r_F = &
-                &vars_1D_eq(r_F_eq_id)%p(eq_limits(1):eq_limits(2))
+                &vars_1D_eq(r_F_eq_id)%p(eq_limits_loc(1):eq_limits_loc(2))
             PB3D%grid_eq%r_E = vars_1D_eq(r_E_eq_id)%p
             PB3D%grid_eq%loc_r_E = &
-                &vars_1D_eq(r_E_eq_id)%p(eq_limits(1):eq_limits(2))
+                &vars_1D_eq(r_E_eq_id)%p(eq_limits_loc(1):eq_limits_loc(2))
             call conv_1D2ND(vars_1D_eq(theta_F_id),dum_3D)
-            PB3D%grid_eq%theta_F = dum_3D(:,:,eq_limits(1):eq_limits(2))
+            PB3D%grid_eq%theta_F = dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_3D)
             call conv_1D2ND(vars_1D_eq(zeta_F_id),dum_3D)
-            PB3D%grid_eq%zeta_F = dum_3D(:,:,eq_limits(1):eq_limits(2))
+            PB3D%grid_eq%zeta_F = dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_3D)
             call conv_1D2ND(vars_1D_eq(theta_E_id),dum_3D)
-            PB3D%grid_eq%theta_E = dum_3D(:,:,eq_limits(1):eq_limits(2))
+            PB3D%grid_eq%theta_E = dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_3D)
             call conv_1D2ND(vars_1D_eq(zeta_E_id),dum_3D)
-            PB3D%grid_eq%zeta_E = dum_3D(:,:,eq_limits(1):eq_limits(2))
+            PB3D%grid_eq%zeta_E = dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_3D)
             call writo('angular size: ('//trim(i2str(n_eq(1)))//','//&
                 &trim(i2str(n_eq(2)))//')')
@@ -416,86 +509,127 @@ contains
                 call lvl_ud(1)
                 n_eq_B = vars_1D_eq_B(theta_F_B_id)%tot_i_max-&
                     &vars_1D_eq_B(theta_F_B_id)%tot_i_min+1
-                ierr = create_grid(grid_eq_B,n_eq_B,eq_limits)
+                ierr = create_grid(grid_eq_B,n_eq_B,eq_limits_loc)
                 CHCKERR('')
                 grid_eq_B%r_F = vars_1D_eq_B(r_F_eq_B_id)%p
-                grid_eq_B%loc_r_F = &
-                    &vars_1D_eq_B(r_F_eq_B_id)%p(eq_limits(1):eq_limits(2))
+                grid_eq_B%loc_r_F = vars_1D_eq_B(r_F_eq_B_id)%&
+                    &p(eq_limits_loc(1):eq_limits_loc(2))
                 grid_eq_B%r_E = vars_1D_eq_B(r_E_eq_B_id)%p
-                grid_eq_B%loc_r_E = &
-                    &vars_1D_eq_B(r_E_eq_B_id)%p(eq_limits(1):eq_limits(2))
+                grid_eq_B%loc_r_E = vars_1D_eq_B(r_E_eq_B_id)%&
+                    &p(eq_limits_loc(1):eq_limits_loc(2))
                 call conv_1D2ND(vars_1D_eq_B(theta_F_B_id),dum_3D)
-                grid_eq_B%theta_F = dum_3D(:,:,eq_limits(1):eq_limits(2))
+                grid_eq_B%theta_F = &
+                    &dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
                 deallocate(dum_3D)
                 call conv_1D2ND(vars_1D_eq_B(zeta_F_B_id),dum_3D)
-                grid_eq_B%zeta_F = dum_3D(:,:,eq_limits(1):eq_limits(2))
+                grid_eq_B%zeta_F = &
+                    &dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
                 deallocate(dum_3D)
                 call conv_1D2ND(vars_1D_eq_B(theta_E_B_id),dum_3D)
-                grid_eq_B%theta_E = dum_3D(:,:,eq_limits(1):eq_limits(2))
+                grid_eq_B%theta_E = &
+                    &dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
                 deallocate(dum_3D)
                 call conv_1D2ND(vars_1D_eq_B(zeta_E_B_id),dum_3D)
-                grid_eq_B%zeta_E = dum_3D(:,:,eq_limits(1):eq_limits(2))
+                grid_eq_B%zeta_E = &
+                    &dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
                 deallocate(dum_3D)
                 call writo('angular size: ('//trim(i2str(n_eq_B(1)))//','//&
                     &trim(i2str(n_eq_B(2)))//')')
                 call writo('normal size: '//trim(i2str(n_eq_B(3))))
                 call lvl_ud(-1)
             end if
-        end if
+        end function reconstruct_grid_eq
         
-        if (rec_sol) then
+        ! reconstruct perturbation grid
+        integer function reconstruct_grid_X() result(ierr)
+            use PB3D_vars, only: vars_1D_sol
+            use grid_vars, only: create_grid
+            
+            character(*), parameter :: rout_name = 'reconstruct_grid_X'
+            
+            ! local variables
+            integer :: n_X                                                      ! n of X grid
+            
+            ! initialize ierr
+            ierr = 0
+            
             call writo('Creating perturbation grid')
             call lvl_ud(1)
+            
+            ! set n_X
             n_X = vars_1D_sol(r_F_X_id)%tot_i_max(1)-&
                 &vars_1D_sol(r_F_X_id)%tot_i_min(1)+1
-            ierr = create_grid(PB3D%grid_X,n_X,X_limits)
+            
+            ! set up local X_limits
+            X_limits_loc = [1,n_X]
+            if (present(X_limits)) X_limits_loc = X_limits
+            
+            ierr = create_grid(PB3D%grid_X,n_X,X_limits_loc)
             CHCKERR('')
             PB3D%grid_X%r_F = vars_1D_sol(r_F_X_id)%p
             PB3D%grid_X%loc_r_F = &
-                &vars_1D_sol(r_F_X_id)%p(X_limits(1):X_limits(2))
+                &vars_1D_sol(r_F_X_id)%p(X_limits_loc(1):X_limits_loc(2))
             PB3D%grid_X%r_E = vars_1D_sol(r_E_X_id)%p
             PB3D%grid_X%loc_r_E = &
-                &vars_1D_sol(r_E_X_id)%p(X_limits(1):X_limits(2))
+                &vars_1D_sol(r_E_X_id)%p(X_limits_loc(1):X_limits_loc(2))
             call writo('normal size: '//trim(i2str(n_X)))
             call lvl_ud(-1)
-        end if
+        end function reconstruct_grid_X
         
-        call lvl_ud(-1)
-        
-        if (rec_eq) then
+        ! reconstruct equilibrium vars
+        integer function reconstruct_vars_eq() result(ierr)
+            use num_vars, only: eq_style, max_deriv, use_pol_flux_E, &
+                &use_pol_flux_F, use_normalization, norm_disc_prec_eq
+            use met_vars, only: create_met
+            use PB3D_vars, only: vars_1D_eq
+            use eq_vars, only: create_eq, R_0, pres_0, B_0, psi_0, rho_0, &
+                &T_0, vac_perm, max_flux_p_E, max_flux_t_E, max_flux_p_F, &
+                &max_flux_t_F
+            use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, &
+                &ntor, nfp, lfreeB, lasym
+            use HELENA, only: R_H, Z_H, chi_H, flux_p_H, ias, nchi
+            
+            character(*), parameter :: rout_name = 'reconstruct_vars_eq'
+            
+            ! local variables
+            integer :: n_r_eq                                                   ! n_r of eq grid
+            
+            ! initialize ierr
+            ierr = 0
+            
             call writo('Setting equilibrium')
             ierr = create_eq(PB3D%grid_eq,PB3D%eq)
             CHCKERR('')
             
             call conv_1D2ND(vars_1D_eq(pres_FD_id),dum_2D)
-            PB3D%eq%pres_FD = dum_2D(eq_limits(1):eq_limits(2),:)
+            PB3D%eq%pres_FD = dum_2D(eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_2D)
             call conv_1D2ND(vars_1D_eq(q_saf_FD_id),dum_2D)
-            PB3D%eq%q_saf_FD = dum_2D(eq_limits(1):eq_limits(2),:)
+            PB3D%eq%q_saf_FD = dum_2D(eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_2D)
             call conv_1D2ND(vars_1D_eq(rot_t_FD_id),dum_2D)
-            PB3D%eq%rot_t_FD = dum_2D(eq_limits(1):eq_limits(2),:)
+            PB3D%eq%rot_t_FD = dum_2D(eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_2D)
             call conv_1D2ND(vars_1D_eq(flux_p_FD_id),dum_2D)
-            PB3D%eq%flux_p_FD = dum_2D(eq_limits(1):eq_limits(2),:)
+            PB3D%eq%flux_p_FD = dum_2D(eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_2D)
             call conv_1D2ND(vars_1D_eq(flux_t_FD_id),dum_2D)
-            PB3D%eq%flux_t_FD = dum_2D(eq_limits(1):eq_limits(2),:)
+            PB3D%eq%flux_t_FD = dum_2D(eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_2D)
             call conv_1D2ND(vars_1D_eq(rho_id),dum_1D)
-            PB3D%eq%rho = dum_1D(eq_limits(1):eq_limits(2))
+            PB3D%eq%rho = dum_1D(eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_1D)
             call conv_1D2ND(vars_1D_eq(S_id),dum_3D)
-            PB3D%eq%S = dum_3D(:,:,eq_limits(1):eq_limits(2))
+            PB3D%eq%S = dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_3D)
             call conv_1D2ND(vars_1D_eq(kappa_n_id),dum_3D)
-            PB3D%eq%kappa_n = dum_3D(:,:,eq_limits(1):eq_limits(2))
+            PB3D%eq%kappa_n = dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_3D)
             call conv_1D2ND(vars_1D_eq(kappa_g_id),dum_3D)
-            PB3D%eq%kappa_g = dum_3D(:,:,eq_limits(1):eq_limits(2))
+            PB3D%eq%kappa_g = dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_3D)
             call conv_1D2ND(vars_1D_eq(sigma_id),dum_3D)
-            PB3D%eq%sigma = dum_3D(:,:,eq_limits(1):eq_limits(2))
+            PB3D%eq%sigma = dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_3D)
             call conv_1D2ND(vars_1D_eq(g_FD_id),dum_7D)
             
@@ -541,19 +675,23 @@ contains
                     L_V_s = dum_4D
                     deallocate(dum_4D)
                     call conv_1D2ND(vars_1D_eq(pres_E_id),dum_2D)
-                    PB3D%eq%pres_E = dum_2D(eq_limits(1):eq_limits(2),:)
+                    PB3D%eq%pres_E = dum_2D(eq_limits_loc(1):eq_limits_loc(2),:)
                     deallocate(dum_2D)
                     call conv_1D2ND(vars_1D_eq(q_saf_E_id),dum_2D)
-                    PB3D%eq%q_saf_E = dum_2D(eq_limits(1):eq_limits(2),:)
+                    PB3D%eq%q_saf_E = &
+                        &dum_2D(eq_limits_loc(1):eq_limits_loc(2),:)
                     deallocate(dum_2D)
                     call conv_1D2ND(vars_1D_eq(rot_t_E_id),dum_2D)
-                    PB3D%eq%rot_t_E = dum_2D(eq_limits(1):eq_limits(2),:)
+                    PB3D%eq%rot_t_E = &
+                        &dum_2D(eq_limits_loc(1):eq_limits_loc(2),:)
                     deallocate(dum_2D)
                     call conv_1D2ND(vars_1D_eq(flux_p_E_id),dum_2D)
-                    PB3D%eq%flux_p_E = dum_2D(eq_limits(1):eq_limits(2),:)
+                    PB3D%eq%flux_p_E = &
+                        &dum_2D(eq_limits_loc(1):eq_limits_loc(2),:)
                     deallocate(dum_2D)
                     call conv_1D2ND(vars_1D_eq(flux_t_E_id),dum_2D)
-                    PB3D%eq%flux_t_E = dum_2D(eq_limits(1):eq_limits(2),:)
+                    PB3D%eq%flux_t_E = &
+                        &dum_2D(eq_limits_loc(1):eq_limits_loc(2),:)
                     deallocate(dum_2D)
                 case (2)                                                        ! HELENA
                     call conv_1D2ND(vars_1D_eq(misc_eq_H_id),dum_1D)
@@ -590,13 +728,16 @@ contains
             ierr = create_met(PB3D%grid_eq,PB3D%met)
             CHCKERR('')
             
-            PB3D%met%g_FD = dum_7D(:,:,eq_limits(1):eq_limits(2),:,:,:,:)
+            PB3D%met%g_FD = &
+                        &dum_7D(:,:,eq_limits_loc(1):eq_limits_loc(2),:,:,:,:)
             deallocate(dum_7D)
             call conv_1D2ND(vars_1D_eq(h_FD_id),dum_7D)
-            PB3D%met%h_FD = dum_7D(:,:,eq_limits(1):eq_limits(2),:,:,:,:)
+            PB3D%met%h_FD = &
+                        &dum_7D(:,:,eq_limits_loc(1):eq_limits_loc(2),:,:,:,:)
             deallocate(dum_7D)
             call conv_1D2ND(vars_1D_eq(jac_FD_id),dum_6D)
-            PB3D%met%jac_FD = dum_6D(:,:,eq_limits(1):eq_limits(2),:,:,:)
+            PB3D%met%jac_FD = &
+                        &dum_6D(:,:,eq_limits_loc(1):eq_limits_loc(2),:,:,:)
             deallocate(dum_6D)
             call conv_1D2ND(vars_1D_eq(misc_eq_id),dum_1D)
             PB3D%version = dum_1D(1)
@@ -620,13 +761,24 @@ contains
             if (dum_1D(18).gt.0) use_normalization = .true.
             norm_disc_prec_eq = nint(dum_1D(19))
             deallocate(dum_1D)
-        end if
+        end function reconstruct_vars_eq
         
-        if (rec_X) then
-            call writo('Setting perturbation')
+        ! reconstruct vectorial perturbation vars
+        integer function reconstruct_vars_X_1() result(ierr)
+            use num_vars, only: norm_disc_prec_X, use_pol_flux_F
+            use PB3D_vars, only: vars_1D_X_1
+            use X_vars, only: create_X, &
+                &min_r_X, max_r_X, min_n_X, max_n_X, min_m_X, max_m_X
+            
+            character(*), parameter :: rout_name = 'reconstruct_vars_X_1'
+            
+            ! initialize ierr
+            ierr = 0
+            
+            call writo('Setting vectorial perturbation')
             call lvl_ud(1)
             
-            call conv_1D2ND(vars_1D_X(misc_X_id),dum_1D)
+            call conv_1D2ND(vars_1D_X_1(misc_X_id),dum_1D)
             min_r_X = dum_1D(1)
             max_r_X = dum_1D(2)
             min_n_X = nint(dum_1D(3))
@@ -654,81 +806,95 @@ contains
             &trim(r2strt(min_r_X))//' and '//trim(r2strt(max_r_X)))
             call lvl_ud(-1)
             
-            call create_X(PB3D%grid_eq,PB3D%X)
+            ierr = create_X(PB3D%grid_eq,PB3D%X_1)
+            CHCKERR('')
             
-            call conv_1D2ND(vars_1D_X(RE_U_0_id),dum_4D)
-            PB3D%X%U_0 = dum_4D(:,:,eq_limits(1):eq_limits(2),:)
+            ! set up local eq_limits
+            eq_limits_loc = [1,PB3D%grid_eq%n(3)]
+            if (present(eq_limits)) eq_limits_loc = eq_limits
+            
+            call conv_1D2ND(vars_1D_X_1(RE_U_0_id),dum_4D)
+            PB3D%X_1%U_0 = dum_4D(:,:,eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_4D)
-            call conv_1D2ND(vars_1D_X(IM_U_0_id),dum_4D)
-            PB3D%X%U_0 = PB3D%X%U_0 + iu*dum_4D(:,:,eq_limits(1):eq_limits(2),:)
+            call conv_1D2ND(vars_1D_X_1(IM_U_0_id),dum_4D)
+            PB3D%X_1%U_0 = PB3D%X_1%U_0 + &
+                &iu*dum_4D(:,:,eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_4D)
-            call conv_1D2ND(vars_1D_X(RE_U_1_id),dum_4D)
-            PB3D%X%U_1 = dum_4D(:,:,eq_limits(1):eq_limits(2),:)
+            call conv_1D2ND(vars_1D_X_1(RE_U_1_id),dum_4D)
+            PB3D%X_1%U_1 = dum_4D(:,:,eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_4D)
-            call conv_1D2ND(vars_1D_X(IM_U_1_id),dum_4D)
-            PB3D%X%U_1 = PB3D%X%U_1 + iu*dum_4D(:,:,eq_limits(1):eq_limits(2),:)
+            call conv_1D2ND(vars_1D_X_1(IM_U_1_id),dum_4D)
+            PB3D%X_1%U_1 = PB3D%X_1%U_1 + &
+                &iu*dum_4D(:,:,eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_4D)
-            call conv_1D2ND(vars_1D_X(RE_DU_0_id),dum_4D)
-            PB3D%X%DU_0 = dum_4D(:,:,eq_limits(1):eq_limits(2),:)
+            call conv_1D2ND(vars_1D_X_1(RE_DU_0_id),dum_4D)
+            PB3D%X_1%DU_0 = dum_4D(:,:,eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_4D)
-            call conv_1D2ND(vars_1D_X(IM_DU_0_id),dum_4D)
-            PB3D%X%DU_0 = PB3D%X%DU_0 + &
-                &iu*dum_4D(:,:,eq_limits(1):eq_limits(2),:)
+            call conv_1D2ND(vars_1D_X_1(IM_DU_0_id),dum_4D)
+            PB3D%X_1%DU_0 = PB3D%X_1%DU_0 + &
+                &iu*dum_4D(:,:,eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_4D)
-            call conv_1D2ND(vars_1D_X(RE_DU_1_id),dum_4D)
-            PB3D%X%DU_1 = dum_4D(:,:,eq_limits(1):eq_limits(2),:)
+            call conv_1D2ND(vars_1D_X_1(RE_DU_1_id),dum_4D)
+            PB3D%X_1%DU_1 = dum_4D(:,:,eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_4D)
-            call conv_1D2ND(vars_1D_X(IM_DU_1_id),dum_4D)
-            PB3D%X%DU_1 = PB3D%X%DU_1 + &
-                &iu*dum_4D(:,:,eq_limits(1):eq_limits(2),:)
+            call conv_1D2ND(vars_1D_X_1(IM_DU_1_id),dum_4D)
+            PB3D%X_1%DU_1 = PB3D%X_1%DU_1 + &
+                &iu*dum_4D(:,:,eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_4D)
             
             call lvl_ud(-1)
-        end if
+        end function reconstruct_vars_X_1
         
-        if (rec_sol) then
+        ! reconstruct tensorial perturbation vars
+        integer function reconstruct_vars_X_2() result(ierr)
+            use PB3D_vars, only: vars_1D_X_2
+            
+            character(*), parameter :: rout_name = 'reconstruct_vars_X_2'
+            
+            ! initialize ierr
+            ierr = 0
+            
+            call writo('Setting tensorial perturbation')
+            call lvl_ud(1)
+            write(*,*) '¡¡¡ NOT YET IMPLEMENTED RECONSTRUCTING X_2 !!!!'
+            
+            call lvl_ud(-1)
+        end function reconstruct_vars_X_2
+        
+        ! reconstruct solution vars
+        subroutine reconstruct_vars_sol()
+            use PB3D_vars, only: vars_1D_sol
+            
             call writo('Setting solution')
             call lvl_ud(1)
             
-            allocate(PB3D%X%val(vars_1D_sol(RE_X_val_id)%tot_i_min(1):&
+            ! set up local sol_limits
+            X_limits_loc = [1,PB3D%grid_X%n(3)]
+            if (present(X_limits)) X_limits_loc = X_limits
+            
+            allocate(PB3D%sol%val(vars_1D_sol(RE_X_val_id)%tot_i_min(1):&
                 &vars_1D_sol(RE_X_val_id)%tot_i_max(1)))
             call conv_1D2ND(vars_1D_sol(RE_X_val_id),dum_1D)
-            PB3D%X%val = dum_1D
+            PB3D%sol%val = dum_1D
             deallocate(dum_1D)
             call conv_1D2ND(vars_1D_sol(IM_X_val_id),dum_1D)
-            PB3D%X%val = PB3D%X%val + iu*dum_1D
+            PB3D%sol%val = PB3D%sol%val + iu*dum_1D
             deallocate(dum_1D)
-            allocate(PB3D%X%vec(vars_1D_sol(RE_X_vec_id)%tot_i_min(1):&
+            allocate(PB3D%sol%vec(vars_1D_sol(RE_X_vec_id)%tot_i_min(1):&
                 &vars_1D_sol(RE_X_vec_id)%tot_i_max(1),&
-                &1:X_limits(2)-X_limits(1)+1,&
+                &1:X_limits_loc(2)-X_limits_loc(1)+1,&
                 &vars_1D_sol(RE_X_vec_id)%tot_i_min(3):&
                 &vars_1D_sol(RE_X_vec_id)%tot_i_max(3)))
             call conv_1D2ND(vars_1D_sol(RE_X_vec_id),dum_3D)
-            PB3D%X%vec = dum_3D(:,X_limits(1):X_limits(2),:)
+            PB3D%sol%vec = dum_3D(:,X_limits_loc(1):X_limits_loc(2),:)
             deallocate(dum_3D)
             call conv_1D2ND(vars_1D_sol(IM_X_vec_id),dum_3D)
-            PB3D%X%vec = PB3D%X%vec + iu*dum_3D(:,X_limits(1):X_limits(2),:)
+            PB3D%sol%vec = PB3D%sol%vec + &
+                &iu*dum_3D(:,X_limits_loc(1):X_limits_loc(2),:)
             deallocate(dum_3D)
             
             call lvl_ud(-1)
-        end if
-        
-        call lvl_ud(-1)
-        call writo('Variables reconstructed')
-        
-        call writo('Running tests')
-        call lvl_ud(1)
-        
-        call writo('PB3D version '//trim(r2strt(PB3D%version)))
-        if (PB3D%version.lt.min_PB3D_version*(1-tol_version)) then
-            ierr = 1
-            err_msg = 'Need at least PB3D version '//&
-                &trim(r2strt(min_PB3D_version))
-            CHCKERR(err_msg)
-        end if
-        
-        call lvl_ud(-1)
-        call writo('Tests done')
+        end subroutine reconstruct_vars_sol
     end function reconstruct_PB3D
     
     ! Retrieves variable index from array 1D equivalents

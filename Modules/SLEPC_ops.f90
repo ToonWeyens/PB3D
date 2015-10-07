@@ -17,7 +17,8 @@ module SLEPC_ops
     use slepceps
     use num_vars, only: iu, dp, max_str_ln
     use grid_vars, only: grid_type, dealloc_grid
-    use X_vars, only: X_type
+    use X_vars, only: X_1_type, X_2_type
+    use sol_vars, only: sol_type
 
     implicit none
     private
@@ -45,7 +46,7 @@ contains
     ! Optionally the  geodesic index of  the perturbation variables at  which to
     ! perform the calculations can be changed  from its default value of 1 using
     ! the variable i_geo.
-    integer function solve_EV_system_SLEPC(grid_eq,grid_X,X,use_guess,&
+    integer function solve_EV_system_SLEPC(grid_eq,grid_X,X,sol,use_guess,&
         &max_n_EV,i_geo) result(ierr)
         use num_vars, only: max_it_inv, norm_disc_prec_X
         use grid_ops, only: get_norm_interp_data, trim_grid
@@ -61,7 +62,8 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_type), intent(inout) :: X                                        ! perturbation variables
+        type(X_2_type), intent(in) :: X                                         ! perturbation variables
+        type(sol_type), intent(inout) :: sol                                    ! solution variables
         PetscBool, intent(in) :: use_guess                                      ! whether to use a guess or not
         PetscInt, intent(inout) :: max_n_EV                                     ! how many solutions saved
         integer, intent(in), optional :: i_geo                                  ! at which geodesic index to perform the calculations
@@ -134,7 +136,7 @@ contains
         ! set up guess
         call writo('set up guess...')
         
-        if (use_guess) call setup_guess(X,A,solver,guess_start_id,prev_n_EV)
+        if (use_guess) call setup_guess(sol,A,solver,guess_start_id,prev_n_EV)
         
         ! iterate over matrix inverse
         if (max_it_inv.gt.1) then
@@ -233,10 +235,10 @@ contains
             &stable Eigenvalues...')
         
 #if ldebug
-        ierr = store_results(grid_X_trim,X,solver,max_n_EV,A,B)
+        ierr = store_results(grid_X_trim,sol,solver,max_n_EV,A,B)
         CHCKERR('')
 #else
-        ierr = store_results(grid_X_trim,X,solver,max_n_EV)
+        ierr = store_results(grid_X_trim,sol,solver,max_n_EV)
         CHCKERR('')
 #endif
         
@@ -423,7 +425,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_type), intent(in) :: X                                           ! perturbation variables
+        type(X_2_type), intent(in) :: X                                         ! perturbation variables
         Mat, intent(inout) :: A, B                                              ! matrix A and B
         PetscReal, intent(in) :: loc_r_eq(:)                                    ! unrounded index in tables V_int
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
@@ -590,7 +592,6 @@ contains
             
             ! local variables (not to be used in child routines)
             character(len=max_str_ln) :: err_msg                                ! error message
-            PetscInt :: nn_mod_1, nn_mod_2                                      ! number of indices for a quantity that is symmetric or not
             PetscScalar, allocatable :: loc_block(:,:)                          ! (n_mod x n_mod) block matrix for 1 normal point
             PetscScalar, allocatable :: V_int_0(:)                              ! interpolated V_0 at different normal positions
             PetscScalar, allocatable :: V_int_1(:)                              ! interpolated V_1 at different normal positions
@@ -607,10 +608,6 @@ contains
             
             ! initialize ierr
             ierr = 0
-            
-            ! set nn_mod_1 and nn_mod_2
-            nn_mod_1 = X%n_mod**2
-            nn_mod_2 = X%n_mod*(X%n_mod+1)/2
             
             ! test whether the matrix range coincides with i_min and i_max
             call MatGetOwnershipRange(mat,r_X_start,r_X_end,ierr)               ! starting and ending row r_X_start and r_X_end
@@ -672,9 +669,9 @@ contains
             end select
             
             ! allocate interpolated V_int_i and local block
-            allocate(V_int_0(nn_mod_2))
-            allocate(V_int_1(nn_mod_1))
-            allocate(V_int_2(nn_mod_2))
+            allocate(V_int_0(X%n_mod**2))
+            allocate(V_int_1(X%n_mod**2))
+            allocate(V_int_2(X%n_mod**2))
             allocate(loc_block(X%n_mod,X%n_mod))
             
             ! iterate over all rows of this rank
@@ -813,7 +810,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_type), intent(in) :: X                                           ! perturbation variables
+        type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables
         Mat, intent(inout) :: A, B                                              ! Matrices A and B from A X = lambda B X
         PetscReal, intent(in) :: loc_r_eq(:)                                    ! unrounded index in tables V_int
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
@@ -1023,7 +1020,7 @@ contains
             
             ! input / output
             integer, intent(in) :: ind                                          ! position at which to set BC
-            type(X_type), intent(in) :: X                                       ! perturbation variables
+            type(X_2_type), intent(in) :: X                                     ! tensorial perturbation variables
             Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
             PetscReal, intent(in) :: loc_r_eq                                   ! unrounded index in tables V_int
             integer, intent(in) :: i_geo                                        ! at which geodesic index to perform the calculations
@@ -1033,7 +1030,6 @@ contains
             
             ! local variables
             PetscInt :: jd                                                      ! counter
-            PetscInt :: nn_mod_1, nn_mod_2                                      ! number of indices for a quantity that is symmetric or not
             PetscScalar, allocatable :: PV_int_0(:)                             ! PV_int_0 in equilibrium normal grid
             PetscScalar, allocatable :: PV_int_1(:)                             ! PV_int_1 in equilibrium normal grid
             PetscScalar, allocatable :: PV_int_2(:)                             ! PV_int_2 in equilibrium normal grid
@@ -1049,17 +1045,13 @@ contains
             call writo('Boundary style at row '//trim(i2str(ind+1))//&
                 &': Minimization of surface energy',persistent=.true.)
             
-            ! set nn_mod_1 and nn_mod_2
-            nn_mod_1 = X%n_mod**2
-            nn_mod_2 = X%n_mod*(X%n_mod+1)/2
-            
             ! initialize PV_i and KV_i
-            allocate(PV_int_0(nn_mod_2))
-            allocate(PV_int_1(nn_mod_1))
-            allocate(PV_int_2(nn_mod_2))
-            allocate(KV_int_0(nn_mod_2))
-            allocate(KV_int_1(nn_mod_1))
-            allocate(KV_int_2(nn_mod_2))
+            allocate(PV_int_0(X%n_mod**2))
+            allocate(PV_int_1(X%n_mod**2))
+            allocate(PV_int_2(X%n_mod**2))
+            allocate(KV_int_0(X%n_mod**2))
+            allocate(KV_int_1(X%n_mod**2))
+            allocate(KV_int_2(X%n_mod**2))
            
             ! get interpolated terms in V_int_i
             call interp_V(X%PV_int_0(:,i_geo,:),loc_r_eq,PV_int_0)
@@ -1110,7 +1102,7 @@ contains
             
             ! input / output
             integer, intent(in) :: ind                                          ! position at which to set BC
-            type(X_type), intent(in) :: X                                       ! perturbation variables
+            type(X_2_type), intent(in) :: X                                     ! tensorial perturbation variables
             Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
             
             ! initialize ierr
@@ -1290,7 +1282,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_type), intent(in) :: X                                           ! perturbation variables
+        type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables
         Mat, intent(inout) :: A, B                                              ! matrix A and B
         EPS, intent(inout) :: solver                                            ! EV solver
         
@@ -1344,9 +1336,9 @@ contains
     end function setup_solver
     
     ! sets up guess in solver
-    subroutine setup_guess(X,A,solver,start_id,prev_n_EV)
+    subroutine setup_guess(sol,A,solver,start_id,prev_n_EV)
         ! input / output
-        type(X_type), intent(in) :: X                                           ! perturbation variables
+        type(sol_type), intent(in) :: sol                                       ! solution variables
         Mat, intent(in) :: A                                                    ! matrix A (or B)
         EPS, intent(inout) :: solver                                            ! EV solver
         PetscInt, intent(in) :: start_id                                        ! start of index of previous vector, saved for next iteration
@@ -1362,8 +1354,8 @@ contains
         
         call lvl_ud(1)
         
-        ! set guess for EV if X vec is allocated and use_guess is true
-        if (allocated(X%vec)) then
+        ! set guess for EV if sol vec is allocated and use_guess is true
+        if (allocated(sol%vec)) then
             ! allocate guess vectors
             allocate(guess_vec(prev_n_EV))
             
@@ -1376,22 +1368,22 @@ contains
             end do
             
             ! set the indices and nr. of values to set in guess_vec
-            n_prev_guess = size(X%vec,2)
-            allocate(guess_id(n_prev_guess*X%n_mod))
+            n_prev_guess = size(sol%vec,2)
+            allocate(guess_id(n_prev_guess*sol%n_mod))
             do id = 0,n_prev_guess-1
-                do jd = 1,X%n_mod
-                    guess_id(id*X%n_mod+jd) = (start_id-1)*X%n_mod*2 + &
-                        &id*X%n_mod*2 + jd
+                do jd = 1,sol%n_mod
+                    guess_id(id*sol%n_mod+jd) = (start_id-1)*sol%n_mod*2 + &
+                        &id*sol%n_mod*2 + jd
                 end do
             end do
             
             do kd = 1,prev_n_EV
                 ! set even values of guess_vec
-                call VecSetValues(guess_vec(kd),n_prev_guess*X%n_mod,&
-                    &guess_id-1,X%vec(:,:,kd),INSERT_VALUES,istat)
+                call VecSetValues(guess_vec(kd),n_prev_guess*sol%n_mod,&
+                    &guess_id-1,sol%vec(:,:,kd),INSERT_VALUES,istat)
                 ! set odd values of guess_vec
-                call VecSetValues(guess_vec(kd),n_prev_guess*X%n_mod,&
-                    &guess_id-1-X%n_mod,X%vec(:,:,kd),INSERT_VALUES,istat)
+                call VecSetValues(guess_vec(kd),n_prev_guess*sol%n_mod,&
+                    &guess_id-1-sol%n_mod,sol%vec(:,:,kd),INSERT_VALUES,istat)
                     
                 ! assemble the guess vector
                 call VecAssemblyBegin(guess_vec(kd),istat)
@@ -1402,7 +1394,7 @@ contains
             call EPSSetInitialSpace(solver,prev_n_EV,guess_vec,istat)
             
             !! visualize guess
-            !if (allocated(X%vec) .and. id.le.prev_n_EV) then
+            !if (allocated(sol%vec) .and. id.le.prev_n_EV) then
                 !call PetscViewerDrawOpen(0,PETSC_NULL_CHARACTER,&
                     !&'guess vector '//trim(i2str(id))//' with '//&
                     !&trim(i2str(n_r_X))//' points',0,0,1000,1000,&
@@ -1509,9 +1501,9 @@ contains
     
     ! stores the results
 #if ldebug
-    integer function store_results(grid_X,X,solver,max_n_EV,A,B) result(ierr)
+    integer function store_results(grid_X,sol,solver,max_n_EV,A,B) result(ierr)
 #else
-    integer function store_results(grid_X,X,solver,max_n_EV) result(ierr)
+    integer function store_results(grid_X,sol,solver,max_n_EV) result(ierr)
 #endif
         use eq_vars, only: T_0
         use num_vars, only: use_normalization, EV_BC, prog_name, &
@@ -1523,7 +1515,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_type), intent(inout) :: X                                        ! perturbation variables
+        type(sol_type), intent(inout) :: sol                                    ! solution variables
         EPS, intent(inout) :: solver                                            ! EV solver
         PetscInt, intent(inout) :: max_n_EV                                     ! nr. of EV's saved, up to n_conv
 #if ldebug
@@ -1563,19 +1555,20 @@ contains
         
         ! create solution vector
         call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,&
-            &grid_X%loc_n_r*X%n_mod,grid_X%n(3)*X%n_mod,PETSC_NULL_SCALAR,&
+            &grid_X%loc_n_r*sol%n_mod,grid_X%n(3)*sol%n_mod,PETSC_NULL_SCALAR,&
             &sol_vec,ierr)
         CHCKERR('Failed to create MPI vector with arrays')
         
+        write(*,*) '!!!!!!!!!!!!!!!!!!! ALLOCATE VEC AND VAL USING THE CREATE_SOL ROUTINE !!!!!!!!!!'
         ! allocate vec
-        if (allocated(X%vec)) deallocate(X%vec)
-        allocate(X%vec(1:X%n_mod,1:grid_X%loc_n_r,1:max_n_EV))
-        X%vec = 0.0_dp
+        if (allocated(sol%vec)) deallocate(sol%vec)
+        allocate(sol%vec(1:sol%n_mod,1:grid_X%loc_n_r,1:max_n_EV))
+        sol%vec = 0.0_dp
         
         ! allocate val
-        if (allocated(X%val)) deallocate(X%val)
-        allocate(X%val(1:max_n_EV))
-        X%val = 0.0_dp
+        if (allocated(sol%val)) deallocate(sol%val)
+        allocate(sol%val(1:max_n_EV))
+        sol%val = 0.0_dp
         
         ! set up EV error string and format string:
         !   1: index of EV
@@ -1624,9 +1617,9 @@ contains
         ! store them
         do while (id.le.max_n_EV)
             ! get EV solution in vector X vec
-            call VecPlaceArray(sol_vec,X%vec(:,:,id),ierr)                      ! place array sol_vec in X vec
+            call VecPlaceArray(sol_vec,sol%vec(:,:,id),ierr)                    ! place array sol_vec in solution vec
             CHCKERR('Failed to place array')
-            call EPSGetEigenpair(solver,id_tot-1,X%val(id),PETSC_NULL_OBJECT,&
+            call EPSGetEigenpair(solver,id_tot-1,sol%val(id),PETSC_NULL_OBJECT,&
                 &sol_vec,PETSC_NULL_OBJECT,ierr)                                ! get solution EV vector and value (starts at index 0)
             CHCKERR('EPSGetEigenpair failed')
             call EPSComputeError(solver,id_tot-1,EPS_ERROR_RELATIVE,error,ierr) ! get error (starts at index 0) (petsc 3.6.1)
@@ -1639,21 +1632,21 @@ contains
             end if
 #endif
             
-            ! set up local X val
-            X_val_loc = X%val(id)
+            ! set up local solution val
+            X_val_loc = sol%val(id)
             
             ! tests
-            if (abs(imagpart(X%val(id))/realpart(X%val(id))).gt.tol_complex) &
-                &then                                                           ! test for unphysical complex solution
+            if (abs(imagpart(sol%val(id))/realpart(sol%val(id))).gt.&
+                &tol_complex) then                                              ! test for unphysical complex solution
                 EV_err_str = '# WARNING: Unphysical complex Eigenvalue!'
                 n_err(1) = n_err(1)+1
                 call remove_EV(id,max_n_EV)
-            else if (abs(realpart(X%val(id)-EV_BC)/EV_BC).lt.tol_EV_BC) then    ! test for artificial EV due to BC
+            else if (abs(realpart(sol%val(id)-EV_BC)/EV_BC).lt.tol_EV_BC) then  ! test for artificial EV due to BC
                 EV_err_str = '# WARNING: Eigenvalue probably due to BC''s &
                     &(artifically set to '//trim(r2strt(EV_BC))//')'
                 n_err(2) = n_err(2)+1
                 call remove_EV(id,max_n_EV)
-            else if (abs(X%val(id)).gt.infinity) then                           ! test for infinity
+            else if (abs(sol%val(id)).gt.infinity) then                         ! test for infinity
                 EV_err_str = '# WARNING: The next Eigenvalues are larger &
                     &than '//trim(r2strt(infinity))//' and are discarded'
                 n_err(3) = 1
@@ -1693,7 +1686,7 @@ contains
             if (debug_store_results) then
                 ! user message
                 call writo('Testing whether A x - omega^2 B x = 0 for EV '//&
-                    &trim(i2str(id))//': '//trim(c2strt(X%val(id))))
+                    &trim(i2str(id))//': '//trim(c2strt(sol%val(id))))
                 call lvl_ud(1)
                 
                 ! set up error matrix A - omega^2 B
@@ -1702,7 +1695,7 @@ contains
                 CHCKERR(err_msg)
                 call MatCopy(A,err_mat,MAT_SHARE_NONZERO_PATTERN,ierr)          ! err_mat has same structure as A
                 CHCKERR('Failed to copy mat into mat_loc')
-                call MatAXPY(err_mat,-X%val(id),B,SAME_NONZERO_PATTERN,ierr)
+                call MatAXPY(err_mat,-sol%val(id),B,SAME_NONZERO_PATTERN,ierr)
                 CHCKERR('Failed to perform AXPY')
                 
                 ! set up error vector
@@ -1718,7 +1711,7 @@ contains
                 CHCKERR('Failed to calculate norm')
                 
                 ! get relative norm
-                err_norm = err_norm/abs(X%val(id))
+                err_norm = err_norm/abs(sol%val(id))
                 
                 ! visualize solution
                 call writo('error: '//trim(r2str(err_norm))//', given :'//&
@@ -1755,15 +1748,15 @@ contains
         ! normalize Eigenvectors to make output more easily comparable
         allocate(X_vec_max(n_procs))
         allocate(X_vec_max_loc(2))
-        do id = 1,size(X%vec,3)
+        do id = 1,size(sol%vec,3)
             ! find local maximum
-            X_vec_max_loc = maxloc(abs(X%vec(:,:,id)))
-            ierr = get_ser_var([X%vec(X_vec_max_loc(1),X_vec_max_loc(2),id)],&
+            X_vec_max_loc = maxloc(abs(sol%vec(:,:,id)))
+            ierr = get_ser_var([sol%vec(X_vec_max_loc(1),X_vec_max_loc(2),id)],&
                 &X_vec_max,scatter=.true.)
             CHCKERR('')
             ! find global maximum
             X_vec_max_loc(1) = maxloc(abs(X_vec_max),1)
-            X%vec(:,:,id) = X%vec(:,:,id) / X_vec_max(X_vec_max_loc(1))
+            sol%vec(:,:,id) = sol%vec(:,:,id) / X_vec_max(X_vec_max_loc(1))
         end do
         deallocate(X_vec_max_loc)
         deallocate(X_vec_max)
@@ -1790,8 +1783,8 @@ contains
         call writo('basic statistics:')
         call lvl_ud(1)
         
-        call writo('min: '//trim(c2strt(X%val(1))))
-        call writo('max: '//trim(c2strt(X%val(max_n_EV))))
+        call writo('min: '//trim(c2strt(sol%val(1))))
+        call writo('max: '//trim(c2strt(sol%val(max_n_EV))))
         
         call lvl_ud(-1)
         
@@ -1826,26 +1819,26 @@ contains
                 
                 ! save old arrays
                 allocate(X_val_loc(max_id))
-                allocate(X_vec_loc(X%n_mod,grid_X%loc_n_r,max_id))
-                X_val_loc = X%val
-                X_vec_loc = X%vec
+                allocate(X_vec_loc(sol%n_mod,grid_X%loc_n_r,max_id))
+                X_val_loc = sol%val
+                X_vec_loc = sol%vec
                 
                 ! reallocate arrays
-                deallocate(X%val,X%vec)
+                deallocate(sol%val,sol%vec)
                 if (remove_next_loc) then
-                    allocate(X%val(id-1))
-                    allocate(X%vec(X%n_mod,grid_X%loc_n_r,id-1))
+                    allocate(sol%val(id-1))
+                    allocate(sol%vec(sol%n_mod,grid_X%loc_n_r,id-1))
                 else
-                    allocate(X%val(max_id-1))
-                    allocate(X%vec(X%n_mod,grid_X%loc_n_r,max_id-1))
+                    allocate(sol%val(max_id-1))
+                    allocate(sol%vec(sol%n_mod,grid_X%loc_n_r,max_id-1))
                 end if
                 
                 ! copy other values
-                X%val(1:id-1) = X_val_loc(1:id-1)
-                X%vec(:,:,1:id-1) = X_vec_loc(:,:,1:id-1)
+                sol%val(1:id-1) = X_val_loc(1:id-1)
+                sol%vec(:,:,1:id-1) = X_vec_loc(:,:,1:id-1)
                 if (.not.remove_next_loc) then
-                    X%val(id:max_id-1) = X_val_loc(id+1:max_id)
-                    X%vec(:,:,id:max_id-1) = X_vec_loc(:,:,id+1:max_id)
+                    sol%val(id:max_id-1) = X_val_loc(id+1:max_id)
+                    sol%vec(:,:,id:max_id-1) = X_vec_loc(:,:,id+1:max_id)
                 end if
                 
                 ! adapt max_id

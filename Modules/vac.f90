@@ -10,7 +10,7 @@ module vac
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
     use met_vars, only: met_type
-    use X_vars, only: X_type
+    use X_vars, only: X_2_type
 
     implicit none
     private
@@ -20,7 +20,7 @@ contains
     ! calculates the vacuum response according to [ADD REF].
     integer function calc_vac(X) result(ierr)
         ! input / output
-        type(X_type), intent(inout) :: X                                        ! perturbation variables
+        type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         
         ! initialize ierr
         ierr = 0

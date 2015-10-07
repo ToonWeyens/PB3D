@@ -114,7 +114,7 @@ contains
             end do
         end do
         
-        ! Fourier modes from 1 to n_mod only for PB3D_PERT and PB3D_POST
+        ! Fourier modes from 1 to n_mod
         if (present(n_mod)) then
             allocate(f(1:n_mod,1:n_mod))
             do jd = 1,n_mod

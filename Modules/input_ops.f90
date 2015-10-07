@@ -15,7 +15,7 @@ module input_ops
 contains
     ! Queries for a logical value yes or no, where the default answer is also to
     ! be provided.
-    ! [MPI] All ranks, but only global rank can give input
+    ! [MPI] All ranks, but only master can give input
     function get_log(yes,ind) result(val)
         use messages, only: start_time, stop_time
         use num_vars, only: rank
@@ -315,11 +315,9 @@ contains
             
             ! select depending on program style
             select case (prog_style)
-                case(1)                                                         ! PB3D preparation
+                case(1)                                                         ! PB3D
                     call default_input_PB3D
-                case(2)                                                         ! PB3D perturbation
-                    ! perturbation part is never called standalone
-                case(3)                                                         ! PB3D post-processing
+                case(2)                                                         ! POST
                     call default_input_POST
                 case default
                     err_msg = 'No program style associated with '//&
@@ -332,7 +330,7 @@ contains
             if (input_name.ne.'') then                                          ! otherwise, defaults are loaded
                 ! select depending on program style
                 select case (prog_style)
-                    case(1)                                                     ! PB3D pre-perturbation
+                    case(1)                                                     ! PB3D
                         read(input_i,nml=inputdata_PB3D,iostat=istat)           ! read input data
                         
                         ! check input if successful read
@@ -401,9 +399,7 @@ contains
                             min_n_X = min_sec_X
                             max_n_X = max_sec_X
                         end if
-                    case(2)                                                     ! PB3D perturbation
-                        ! perturbation part has no separate input file
-                    case(3)                                                     ! PB3D_POST
+                    case(2)                                                     ! POST
                         read(input_i,nml=inputdata_POST,iostat=istat)           ! read input data
                         
                         ! check input if successful read

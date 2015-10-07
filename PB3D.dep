@@ -31,6 +31,7 @@ PB3D_vars.o : \
     grid_vars.o \
     eq_vars.o \
     X_vars.o \
+    sol_vars.o \
     met_vars.o \
     
 PB3D_ops.o : \
@@ -40,6 +41,7 @@ PB3D_ops.o : \
     grid_vars.o \
     eq_vars.o \
     X_vars.o \
+    sol_vars.o \
     met_vars.o \
     PB3D_vars.o \
     output_ops.o \
@@ -69,6 +71,7 @@ sol_ops.o : \
     str_ops.o \
     messages.o \
     grid_vars.o \
+    sol_vars.o \
 
 grid_ops.o : \
     HDF5_ops.o \
@@ -122,6 +125,7 @@ driver_POST.o : \
     MPI_ops.o \
     eq_vars.o \
     X_vars.o \
+    sol_vars.o \
     met_vars.o \
     PB3D_ops.o \
     PB3D_vars.o \
@@ -135,6 +139,7 @@ SLEPC_ops.o : \
     str_ops.o \
     grid_ops.o \
     X_vars.o \
+    sol_vars.o \
     utilities.o \
     files_ops.o \
     MPI_utilities.o \
@@ -150,6 +155,7 @@ X_ops.o : \
     output_ops.o \
     messages.o \
     X_vars.o \
+    sol_vars.o \
     SLEPC_ops.o \
     str_ops.o \
     grid_ops.o \
@@ -157,6 +163,16 @@ X_ops.o : \
 
 X_vars.o : \
     num_vars.o \
+    str_ops.o \
+    messages.o \
+    grid_vars.o \
+
+sol_vars.o : \
+    num_vars.o \
+    str_ops.o \
+    messages.o \
+    grid_vars.o \
+    X_vars.o \
 
 eq_ops.o : \
     num_vars.o \

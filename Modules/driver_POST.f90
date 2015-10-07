@@ -10,7 +10,8 @@ module driver_POST
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
     use met_vars, only: met_type
-    use X_vars, only: X_type
+    use X_vars, only: X_1_type, X_2_type
+    use sol_vars, only: sol_type
     use PB3D_vars, only: dealloc_PB3D, &
         &PB3D_type
     
@@ -33,14 +34,16 @@ contains
     integer function run_driver_POST() result(ierr)
         use num_vars, only: no_messages, no_plots, eq_style, plot_resonance, &
             &plot_flux_q, plot_grid, prog_name, output_name, rank
-        use PB3D_ops, only: reconstruct_PB3D
+        use PB3D_ops, only: read_PB3D, reconstruct_PB3D, retrieve_var_1D_id
+        use PB3D_vars, only: vars_1D_eq, vars_1D_sol
         use grid_vars, only: create_grid
+        use grid_ops, only: calc_norm_range
         use eq_vars, only: create_eq
         use met_vars, only: create_met
         use X_vars, only: create_X
         use grid_ops, only: calc_XYZ_grid, extend_grid_E, plot_grid_real
         use eq_ops, only: calc_eq, flux_q_plot
-        use X_ops, only: prepare_X, resonance_plot, calc_res_surf
+        use X_ops, only: calc_X, resonance_plot, calc_res_surf
         use sol_ops, only: plot_X_vec, decompose_energy
         use HELENA, only: interp_HEL_on_grid
         use files_utilities, only: nextunit
@@ -56,6 +59,9 @@ contains
         integer :: min_id(3), max_id(3)                                         ! min. and max. index of range 1, 2 and 3
         integer :: last_unstable_id                                             ! index of last unstable EV
         integer :: output_EN_i                                                  ! file number
+        integer :: eq_limits(2)                                                 ! i_limit of eq and X variables
+        integer :: X_limits(2)                                                  ! i_limit of sol variables
+        integer :: r_F_eq_id, r_F_X_id                                          ! index of equilibrium and perturbation r_F
         logical :: no_plots_loc                                                 ! local copy of no_plots
         logical :: no_messages_loc                                              ! local copy of no_messages
         real(dp), allocatable :: X_plot(:,:,:), Y_plot(:,:,:), Z_plot(:,:,:)    ! X, Y and Z on plot grid
@@ -67,8 +73,22 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! calculate auxiliary quantities for utilities
-        call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
+        !!! calculate auxiliary quantities for utilities
+        !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
+        
+        ! read PB3D output file
+        ierr = read_PB3D(.true.,.true.,.true.,.true.)                           ! read the PB3D_eq, PB3D_X and PB3D_sol files
+        write(*,*) '!!!!!!!!!!!!!!!!!!!!!! THIS SHOULD ONLY BE DONE IF NOT TOO MUCH MEMORY NECESSARY !!!!'
+        CHCKERR('')
+        
+        ! set eq and X limits
+        ierr = retrieve_var_1D_id(vars_1D_eq,'r_F',r_F_eq_id)
+        CHCKERR('')
+        ierr = retrieve_var_1D_id(vars_1D_sol,'r_F',r_F_X_id)
+        CHCKERR('')
+        ierr = calc_norm_range(eq_limits=eq_limits,X_limits=X_limits,&
+            &r_F_eq=vars_1D_eq(r_F_eq_id)%p,r_F_X=vars_1D_sol(r_F_X_id)%p)
+        CHCKERR('')
         
         ! reconstructing grids depends on equilibrium style
         select case (eq_style)
@@ -79,8 +99,10 @@ contains
                 ! the field-aligned grid is identical to the output grid
                 PB3D_B => PB3D
                 ! normal call to reconstruct_PB3D
-                ierr = reconstruct_PB3D(.true.,.true.,.true.,PB3D)
+                ierr = reconstruct_PB3D(.true.,.true.,.true.,.true.,PB3D,&
+                    eq_limits=eq_limits,X_limits=X_limits)
                 CHCKERR('')
+        write(*,*) '!!!!!!!!!!!!!!!!!!!!!! THIS SHOULD ONLY BE DONE IF NOT TOO MUCH MEMORY NECESSARY !!!!'
                 call lvl_ud(-1)
                 
                 ! user output
@@ -92,9 +114,10 @@ contains
                 ! the field-aligned grid is different form the output grid
                 allocate(PB3D_B)
                 ! additionally need field-aligned equilibrium grid
-                ierr = reconstruct_PB3D(.true.,.true.,.true.,PB3D,&
-                    &PB3D_B%grid_eq)
+                ierr = reconstruct_PB3D(.true.,.true.,.true.,.true.,PB3D,&
+                    &PB3D_B%grid_eq,eq_limits=eq_limits,X_limits=X_limits)
                 CHCKERR('')
+        write(*,*) '!!!!!!!!!!!!!!!!!!!!!! THIS SHOULD ONLY BE DONE IF NOT TOO MUCH MEMORY NECESSARY !!!!'
                 call lvl_ud(-1)
                 
                 ! user output
@@ -115,20 +138,22 @@ contains
                 PB3D_B%grid_X%r_e = PB3D%grid_X%r_E
                 PB3D_B%grid_X%loc_r_F = PB3D%grid_X%loc_r_F
                 PB3D_B%grid_X%loc_r_e = PB3D%grid_X%loc_r_E
-                call create_X(PB3D_B%grid_eq,PB3D_B%X)
-                allocate(PB3D_B%X%val(size(PB3D%X%val)))
-                allocate(PB3D_B%X%vec(size(PB3D%X%vec,1),size(PB3D%X%vec,2),&
-                    &size(PB3D%X%vec,3)))
-                PB3D_B%X%val = PB3D%X%val
-                PB3D_B%X%vec = PB3D%X%vec
+                !!call create_X(PB3D_B%grid_eq,PB3D_B%X)
+                write(*,*) '!!!!!!!! NOT CREATING X !! !!'
+                allocate(PB3D_B%sol%val(size(PB3D%sol%val)))
+                allocate(PB3D_B%sol%vec(size(PB3D%sol%vec,1),size(PB3D%sol%vec,2),&
+                    &size(PB3D%sol%vec,3)))
+                PB3D_B%sol%val = PB3D%sol%val
+                PB3D_B%sol%vec = PB3D%sol%vec
                 call lvl_ud(-1)
                 call writo('Quantities prepared')
                 
                 ! call HELENA grid interpolation
-                ierr = interp_HEL_on_grid(PB3D%grid_eq,PB3D_B%grid_eq,PB3D%X,PB3D_B%X,&
-                    &met=PB3D%met,met_B=PB3D_B%met,eq=PB3D%eq,eq_B=PB3D_B%eq,&
-                    &grid_name='field-aligned grid')
+                !!ierr = interp_HEL_on_grid(PB3D%grid_eq,PB3D_B%grid_eq,PB3D%X,PB3D_B%X,&
+                    !!&met=PB3D%met,met_B=PB3D_B%met,eq=PB3D%eq,eq_B=PB3D_B%eq,&
+                    !!&grid_name='field-aligned grid')
                 CHCKERR('')
+                write(*,*) '!!!!!!!!! DON''T FORGET ABOUT INTERPOLATION !!!!'
                 
                 call lvl_ud(-1)
             case default
@@ -204,8 +229,8 @@ contains
                 !!ierr = calc_eq(PB3D_plot%grid_eq,PB3D_plot%eq,PB3D_plot%met)
                 !!CHCKERR('')
                 ! prepare matrix elements for plot grid
-                ierr = prepare_X(PB3D_plot%grid_eq,PB3D_plot%eq,PB3D_plot%met,&
-                    &PB3D_plot%X)
+                !!ierr = prepare_X(PB3D_plot%grid_eq,PB3D_plot%eq,PB3D_plot%met,&
+                    !!&PB3D_plot%X)
                 CHCKERR('')
                 ! reset no_plots and no_messages
                 no_plots = no_plots_loc
@@ -220,15 +245,17 @@ contains
                 CHCKERR('')
                 ierr = create_met(PB3D_plot%grid_eq,PB3D_plot%met)
                 CHCKERR('')
-                call create_X(PB3D_plot%grid_eq,PB3D_plot%X)
+                !!call create_X(PB3D_plot%grid_eq,PB3D_plot%X)
+                write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! NOT CREATING X !! !!'
                 call lvl_ud(-1)
                 call writo('Quantities prepared')
                 
                 ! call HELENA grid interpolation
-                ierr = interp_HEL_on_grid(PB3D%grid_eq,PB3D_plot%grid_eq,&
-                    &PB3D%X,PB3D_plot%X,met=PB3D%met,met_B=PB3D_plot%met,eq=PB3D%eq,&
-                    &eq_B=PB3D_plot%eq,grid_name='plot grid')
+                !!ierr = interp_HEL_on_grid(PB3D%grid_eq,PB3D_plot%grid_eq,&
+                    !!&PB3D%X,PB3D_plot%X,met=PB3D%met,met_B=PB3D_plot%met,eq=PB3D%eq,&
+                    !!&eq_B=PB3D_plot%eq,grid_name='plot grid')
                 CHCKERR('')
+                write(*,*) '!!!!!!!!! DON''T FORGET ABOUT INTERPOLATION !!!!'
             case default
                 ierr = 1
                 err_msg = 'No equilibrium style associated with '//&
@@ -237,11 +264,11 @@ contains
         end select
         
         ! copy the Eigenvectors and -values into the plot X
-        allocate(PB3D_plot%X%val(size(PB3D%X%val)))
-        allocate(PB3D_plot%X%vec(size(PB3D%X%vec,1),size(PB3D%X%vec,2),&
-            &size(PB3D%X%vec,3)))
-        PB3D_plot%X%val = PB3D%X%val
-        PB3D_plot%X%vec = PB3D%X%vec
+        allocate(PB3D_plot%sol%val(size(PB3D%sol%val)))
+        allocate(PB3D_plot%sol%vec(size(PB3D%sol%vec,1),size(PB3D%sol%vec,2),&
+            &size(PB3D%sol%vec,3)))
+        PB3D_plot%sol%val = PB3D%sol%val
+        PB3D_plot%sol%vec = PB3D%sol%vec
         
         call lvl_ud(-1)
         
@@ -249,7 +276,7 @@ contains
         call writo('Find stability ranges')
         call lvl_ud(1)
         
-        call find_stab_ranges(PB3D%X,min_id,max_id,last_unstable_id)
+        call find_stab_ranges(PB3D%sol,min_id,max_id,last_unstable_id)
         
         call lvl_ud(-1)
         
@@ -257,7 +284,7 @@ contains
         call writo('Plot the Eigenvalues')
         call lvl_ud(1)
         
-        call plot_X_vals(PB3D%X,last_unstable_id)
+        call plot_X_vals(PB3D%sol,last_unstable_id)
         
         call lvl_ud(-1)
         
@@ -330,14 +357,14 @@ contains
             do id = min_id(jd),max_id(jd)
                 ! user output
                 call writo('Mode '//trim(i2str(id))//'/'//&
-                    &trim(i2str(size(PB3D%X%val)))//', with eigenvalue '&
-                    &//trim(c2strt(PB3D%X%val(id))))
+                    &trim(i2str(size(PB3D%sol%val)))//', with eigenvalue '&
+                    &//trim(c2strt(PB3D%sol%val(id))))
                 call lvl_ud(1)
                 
                 call writo('Plot the Eigenvector')
                 call lvl_ud(1)
                 ierr = plot_X_vec(PB3D_plot%grid_eq,PB3D_plot%eq,&
-                    &PB3D_plot%grid_X,PB3D_plot%X,&
+                    &PB3D_plot%grid_X,PB3D_plot%sol,&
                     &reshape([X_plot,Y_plot,Z_plot],[PB3D_plot%grid_X%n(1),&
                     &PB3D_plot%grid_X%n(2),PB3D_plot%grid_X%loc_n_r,3]),id,&
                     &res_surf)
@@ -384,11 +411,11 @@ contains
     ! in range":
     !   1. or 2. full unstable range
     !   3. or 4. full stable range
-    subroutine find_stab_ranges(X,min_id,max_id,last_unstable_id)
+    subroutine find_stab_ranges(sol,min_id,max_id,last_unstable_id)
         use num_vars, only: n_sol_plotted
         
         ! input / output
-        type(X_type), intent(in) :: X                                           ! perturbation variables
+        type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(inout) :: min_id(3), max_id(3)                          ! min. and max. index of range 1, 2 and 3
         integer, intent(inout) :: last_unstable_id                              ! index of last unstable EV
         
@@ -397,12 +424,12 @@ contains
         integer :: n_sol_found                                                  ! how many solutions found and saved
         
         ! set local variables
-        n_sol_found = size(X%val)
+        n_sol_found = size(sol%val)
         
         ! find last unstable index (if ends with 0, no unstable EV)
         last_unstable_id = 0
         do id = 1,n_sol_found
-            if (realpart(X%val(id)).lt.0._dp) last_unstable_id = id
+            if (realpart(sol%val(id)).lt.0._dp) last_unstable_id = id
         end do
         ! set up min. and max. of range 1
         if (last_unstable_id.gt.0) then                                         ! there is an unstable range
@@ -459,11 +486,11 @@ contains
     end subroutine find_stab_ranges
     
     ! plots Eigenvalues
-    subroutine plot_X_vals(X,last_unstable_id)
+    subroutine plot_X_vals(sol,last_unstable_id)
         use num_vars, only: rank
         
         ! input / output
-        type(X_type), intent(in) :: X                                           ! perturbation variables
+        type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: last_unstable_id                                 ! index of last unstable EV
         
         ! local variables
@@ -473,7 +500,7 @@ contains
         integer :: id                                                           ! counter
         
         ! set local variables
-        n_sol_found = size(X%val)
+        n_sol_found = size(sol%val)
         
         ! only let master plot
         if (rank.eq.0) then
@@ -482,7 +509,7 @@ contains
             plot_title = 'final Eigenvalues omega^2 [log]'
             plot_name = 'Eigenvalues'
             call print_GP_2D(plot_title,plot_name,&
-                &log10(abs(realpart(X%val(1:n_sol_found)))),draw=.false.)
+                &log10(abs(realpart(sol%val(1:n_sol_found)))),draw=.false.)
             ! same output in file as well
             call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
             
@@ -492,7 +519,7 @@ contains
                 plot_title = 'final unstable Eigenvalues omega^2'
                 plot_name = 'Eigenvalues_unstable'
                 call print_GP_2D(plot_title,plot_name,&
-                    &realpart(X%val(1:last_unstable_id)),&
+                    &realpart(sol%val(1:last_unstable_id)),&
                     &x=[(id*1._dp,id=1,last_unstable_id)],draw=.false.)
                 ! same output in file as well
                 call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
@@ -504,7 +531,7 @@ contains
                 plot_title = 'final stable Eigenvalues omega^2'
                 plot_name = 'Eigenvalues_stable'
                 call print_GP_2D(plot_title,plot_name,&
-                    &realpart(X%val(last_unstable_id+1:n_sol_found)),&
+                    &realpart(sol%val(last_unstable_id+1:n_sol_found)),&
                     &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)],&
                     &draw=.false.)
                 ! same output in file as well

@@ -177,3 +177,12 @@ CHANGELOG
       - 'check_X_modes' and 'resonance_plot' do not use an X_type anymore.
       - 'divide_X_jobs' now contains 'calc_memory'. Also it can be used in vector or tensor mode and in theory higher orders as well, if information about the number of variables at these orders is provided.
       - The perturbation phase is to be split in two: a vector phase and a tensor phase. This is not yet implemented.
+
+0.93: - NON-USABLE VERSION: SWITCHING BETWEEN PARALLELIZATIONS. 
+      - 'prepare_X' has been replace by 'calc_X' which calculates the perturbation variables for a certain order.
+      - There are two orders of perturbation variables. These are calculated separately and the results of order 1 are read from disk when calculating those of order 2.
+      - 'print_HDF5_arrs' now detects whether it is an individual or collective call. Also, it checks whether a group already exists.
+      - PB3D files are not opened anymore like normal input nor are their 1D variables broadcasted: Every process opens the file on its own.
+      - Restored 'prog_style' to only 2 possibilities: 1 (PB3D) or 2 (POST)
+      - Split 'X_type' into 'X_1_type' (vectorial perturbation), 'X_2_type' (tensorial perturbation) and 'sol_type' (solution).
+      - Code working up to calcalation of tensorial perturbation quantities.

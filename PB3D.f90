@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.92                                                              !
+!   Version: 0.93                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -34,7 +34,6 @@ program PB3D
         &close_output
     use input_ops, only: read_input
     use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_vars, sudden_stop
-    use PB3D_ops, only: read_PB3D, reconstruct_PB3D
     use eq_ops, only: read_eq, calc_normalization_const, normalize_input
     use test, only: generic_tests
     
@@ -49,7 +48,7 @@ program PB3D
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
     prog_name = 'PB3D'                                                          ! program name
-    prog_style = 1                                                              ! pre-perturbation part
+    prog_style = 1                                                              ! main part
     call print_hello                                                            ! print message with time, etc
     call init_messages                                                          ! initialize message operations
     ierr = init_files()                                                         ! initialize file operations
@@ -108,24 +107,6 @@ program PB3D
     call writo('Pre-perturbation driver')
     call lvl_ud(1)
     ierr = run_driver_PREP()
-    CHCKERR
-    call writo('')
-    call passed_time
-    call writo('')
-    call lvl_ud(-1)
-    
-    !-------------------------------------------------------
-    !   Read the PB3D file and broadcast its variables
-    !-------------------------------------------------------
-    call start_time
-    call writo('Preparing perturbation driver')
-    call lvl_ud(1)
-    prog_style = 2                                                              ! perturbation part
-    ierr = open_input()                                                         ! open the input files
-    CHCKERR
-    ierr = read_PB3D(.true.,.false.)                                            ! read the pre-perturbation files
-    CHCKERR
-    ierr = broadcast_input_vars()                                               ! broadcast to other processors
     CHCKERR
     call writo('')
     call passed_time

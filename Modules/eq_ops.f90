@@ -1090,7 +1090,7 @@ contains
         &result(ierr)
         use num_vars, only: eq_style, rho_style, rank, prog_version, &
             &use_pol_flux_E, use_pol_flux_F, use_normalization, &
-            &norm_disc_prec_eq
+            &norm_disc_prec_eq, PB3D_name
         use HDF5_ops, only: print_HDF5_arrs, &
             &var_1D
         use HELENA, only: R_H, Z_H, nchi, chi_H, ias, flux_p_H
@@ -1726,9 +1726,9 @@ contains
         call lvl_ud(-1)
         
         ! write
-        call writo('Writing equilibrium variables using HDF5')
+        call writo('Writing using HDF5')
         call lvl_ud(1)
-        ierr = print_HDF5_arrs(eq_1D,'eq')
+        ierr = print_HDF5_arrs(eq_1D,PB3D_name,'eq')
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -1833,7 +1833,7 @@ contains
             ! write
             call writo('Writing field-aligned equilibrium variables using HDF5')
             call lvl_ud(1)
-            ierr = print_HDF5_arrs(eq_B_1D,'eq_B')
+            ierr = print_HDF5_arrs(eq_B_1D,PB3D_name,'eq_B')
             CHCKERR('')
             call lvl_ud(-1)
             

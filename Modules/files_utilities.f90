@@ -28,7 +28,6 @@ contains
         ! no matches, empty file_name and i_unit = 0 returned
         file_name = ""
         i_unit = 0
-        call lvl_ud(-1)
     end subroutine search_file
     
     ! Search for available  new unit where lun_min and lun_max  define the range

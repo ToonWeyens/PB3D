@@ -84,7 +84,6 @@ contains
     ! creates new equilibrium
     ! The normal and angular grid can be  in any coord. system, as only the grid
     ! sizes are used, not the coordinate values.
-    ! Note: intent(out) automatically deallocates the variable
     integer function create_eq(grid,eq) result(ierr)
         use num_vars, only: max_deriv, eq_style
         
@@ -92,7 +91,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
-        type(eq_type), intent(out) :: eq                                        ! equilibrium to be created
+        type(eq_type), intent(inout) :: eq                                      ! equilibrium to be created
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message

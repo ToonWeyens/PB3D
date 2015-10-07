@@ -54,14 +54,13 @@ module met_vars
     
 contains
     ! initialize metric variables
-    ! Note: intent(out) automatically deallocates the variable
     integer function create_met(grid,met) result(ierr)
         use num_vars, only: eq_style
         
         character(*), parameter :: rout_name = 'create_met'
         
         ! input / output
-        type(met_type), intent(out) :: met                                      ! metric to be created
+        type(met_type), intent(inout) :: met                                    ! metric to be created
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
         
         ! local variables

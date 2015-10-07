@@ -30,10 +30,10 @@ module num_vars
     integer, parameter :: qp = REAL128                                          ! quadruple precision
     integer, parameter :: max_str_ln = 120                                      ! maximum length of filenames
     integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
-    integer :: prog_style                                                       ! program style (1: PB3D pre-perturbation, 2: PB3D perturbation, 3: PB3D_POST)
+    integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 0.92_dp                               ! version number
+    real(dp), parameter :: prog_version = 0.93_dp                               ! version number
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
@@ -90,7 +90,7 @@ module num_vars
     integer :: eq_i                                                             ! file number of equilibrium file from VMEC or HELENA
     character(len=max_str_ln) :: eq_name                                        ! name of equilibrium file from VMEC or HELENA
     integer :: PB3D_i                                                           ! file number of PB3D output file
-    character(len=max_str_ln) :: PB3D_name                                      ! name of PB3D_PERT output file
+    character(len=max_str_ln) :: PB3D_name                                      ! name of PB3D output file
     integer :: output_i                                                         ! file number of output file
     logical :: no_plots = .false.                                               ! true if no plots should be made
     logical :: no_messages = .false.                                            ! true if no messages should be shown

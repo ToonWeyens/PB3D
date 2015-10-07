@@ -31,7 +31,7 @@ contains
         
         ! select according to program style
         select case (prog_style)
-            case(1)                                                             ! PB3D pre-perturbation
+            case(1)                                                             ! PB3D
                 call writo('Test calculation of derivatives?')
                 if (get_log(.false.)) then
                     ierr = test_calc_deriv()
@@ -45,9 +45,7 @@ contains
                     CHCKERR('')
                     call pause_prog
                 end if
-            case(2)                                                             ! PB3D perturbation
-                ! no tests
-            case(3)                                                             ! PB3D_POST
+            case(2)                                                             ! POST
                 call writo('Test calculation of volume integral?')
                 if (get_log(.false.)) then
                     ierr = test_calc_int_vol()
