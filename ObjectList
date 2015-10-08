@@ -1,5 +1,6 @@
 ObjectFiles = \
 HDF5_ops.o \
+HDF5_vars.o \
 grid_vars.o \
 grid_ops.o \
 driver_PREP.o \
@@ -9,7 +10,7 @@ eq_ops.o \
 eq_vars.o \
 files_ops.o \
 files_utilities.o \
-fourier_ops.o \
+fourier.o \
 HELENA.o \
 input_ops.o \
 messages.o \

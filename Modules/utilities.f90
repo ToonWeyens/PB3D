@@ -2557,41 +2557,79 @@ contains
 #endif
     end function calc_coeff_fin_diff
     
-    ! convert 2D  coordinates (i,j) to  the storage convention used  in (square)
-    ! metric matrices:
+    ! Convert 2D coordinates (i,j) to the storage convention used in matrices.
+    ! Their size is by default taken to be 3:
     !   (1 4 7)      (1    )
     !   (2 5 8)  or  (2 4  ) for symmetric matrices.
     !   (3 6 9)      (3 5 6)
-    ! Optionally,  the  size of  the  (square) matrix  can be  changed from  its
-    ! default value of 3x3 using n.
-    ! The value of c is given by
+    ! Optionally, this can be changed using 'n'.
+    ! The value of c is then given by
     !   c = (j-1)*n + i
     ! for non-symmetric matrices, and by
     !   c = (j-1)*n + i - (j-1)*j/2   if i.ge.j
     !   c = (i-1)*n + j - (i-1)*i/2   if j.ge.i
     ! since sum_k=1^j-1 = (j-1)*j/2
-    integer function c(ij,sym,n)
+    ! For submatrices, the limits in both dimensions have to be passed.
+    ! The  results   for  the  full   matrix  are  then  subtracted   by  amount
+    ! corresponding  to the  left, above  and below  parts with  respect to  the
+    ! submatrix:
+    !   - left: sum_i=1^(min(2)-1) (n-i+1)
+    !       = (min(2)-1) (n+1-min(2)/2)
+    !   - above: sum_i=1^j (min(1)-min(2)+1-i) if positive
+    !       = j* (min(1)-min(2)+1/2 - j*/2), with j* = min(0,j,min(1)-min(2)+1)
+    !   - below: sum_i=1^(j-1) (n-max(1))
+    !       = (n-max(1)) (j-1)
+    ! Note: the submatrix version is not fast, so results should be saved.
+    ! Note: No checks are done whether the indices make sense.
+    integer function c(ij,sym,n,lim_n)
         ! input / output
         integer, intent(in) :: ij(2)                                            ! 2D coords. (i,j)
         logical, intent(in) :: sym                                              ! .true. if symmetric
         integer, intent(in), optional :: n                                      ! max of 2D coords.
+        integer, intent(in), optional :: lim_n(2,2)                             ! min. and max. of 2D coords.
         
         ! local variables
-        integer :: n_loc
+        integer :: n_loc                                                        ! local n
+        integer :: js                                                           ! j* = min(0,j,min(1)-min(2)+1)
+        integer :: ij_loc(2)                                                    ! local ij
+        integer :: kd                                                           ! dummy integer
         
-        ! set n_loc
+        ! set local n
         n_loc = 3
         if (present(n)) n_loc = n
         
-        ! depending on symmetry
+        ! set c depending on symmetry
         if (sym) then                                                           ! symmetric
-            if (ij(1).ge.ij(2)) then
-                c = (ij(2)-1)*n_loc + ij(1) - (ij(2)-1)*ij(2)/2
-            else
-                c = (ij(1)-1)*n_loc + ij(2) - (ij(1)-1)*ij(1)/2
+            ! set local ij, refering to the total indices
+            ij_loc = ij
+            if (present(lim_n)) ij_loc = ij + lim_n(1,:) - 1                    ! displace with minimum indices
+            
+            ! swap indices if upper diagonal
+            if (ij_loc(2).gt.ij_loc(1)) then
+                kd = ij_loc(2)
+                ij_loc(2) = ij_loc(1)
+                ij_loc(1) = kd
+            end if
+            
+            ! get c for whole matrix
+            c = nint((ij_loc(2)-1)*n_loc + ij_loc(1) - &
+                &(ij_loc(2)-1)*ij_loc(2)*0.5)
+            
+            if (present(lim_n)) then
+                ! subtract if submatrix
+                js = max(0,min(ij_loc(2)-lim_n(1,2)+1,lim_n(1,1)-lim_n(1,2)+1))
+                c = c - nint((lim_n(1,2)-1)*(n_loc+1-lim_n(1,2)*0.5) &
+                    &+js*(lim_n(1,1)-lim_n(1,2)+0.5-js*0.5) &
+                    &+(n_loc-lim_n(2,1))*(ij_loc(2)-lim_n(1,2)))
             end if
         else                                                                    ! asymmetric
-            c = (ij(2)-1)*n_loc + ij(1)
+            if (present(lim_n)) then
+                ! set c with local size
+                c = (ij(2)-1)*(lim_n(2,1)-lim_n(1,1)+1) + ij(1)
+            else
+                ! set c with total size
+                c = (ij(2)-1)*n_loc + ij(1)
+            end if
         end if
     end function c
     

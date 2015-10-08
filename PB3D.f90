@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.93                                                              !
+!   Version: 0.94                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -27,7 +27,8 @@ program PB3D
     use str_ops, only: r2str, i2str
     use messages, only: init_messages, lvl_ud, writo, init_time, &
         &start_time, passed_time, print_hello, print_goodbye
-    use HDF5_ops, only: init_HDF5
+    use X_vars, only: init_X_vars
+    use HDF5_vars, only: init_HDF5
     use driver_PREP, only: run_driver_PREP
     use driver_PERT, only: run_driver_PERT
     use files_ops, only: open_input, open_output, parse_args, init_files, &
@@ -55,6 +56,7 @@ program PB3D
     CHCKERR
     call init_time                                                              ! initialize time
     call init_HDF5                                                              ! initialize HDF5
+    call init_X_vars                                                            ! initialize perturbation vars
  
     !-------------------------------------------------------
     !   Read the user-provided input file and the VMEC output
@@ -70,11 +72,11 @@ program PB3D
     CHCKERR
     ierr = read_input()                                                         ! read input file
     CHCKERR
-    ierr = open_output()                                                        ! open output file per alpha group
-    CHCKERR
     ierr = calc_normalization_const()                                           ! set up normalization constants
     CHCKERR
     ierr = normalize_input()                                                    ! normalize the input
+    CHCKERR
+    ierr = open_output()                                                        ! open output file
     CHCKERR
     ierr = broadcast_input_vars()                                               ! broadcast to other processors
     CHCKERR

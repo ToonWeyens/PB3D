@@ -15,7 +15,7 @@ module sol_ops
 
     implicit none
     private
-    public calc_XUQ, plot_X_vec, decompose_energy
+    public calc_XUQ, plot_X_vec, decompose_energy, print_output_sol
 #if ldebug
     public debug_calc_XUQ_arr, debug_calc_E, debug_DU
 #endif
@@ -1151,4 +1151,156 @@ contains
             call dealloc_grid(grid_X_trim)
         end function calc_E
     end function decompose_energy
+    
+    ! Print solution quantities to an output file:
+    !   - sol:    val, vec
+    integer function print_output_sol(grid_X,sol) result(ierr)
+        use num_vars, only: rich_lvl_nr, max_it_r, rank, PB3D_name
+        use HDF5_ops, only: print_HDF5_arrs
+        use HDF5_vars, only: var_1D_type
+        use grid_ops, only: trim_grid
+        use grid_vars, only: dealloc_grid
+        
+        character(*), parameter :: rout_name = 'print_output_sol'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
+        type(sol_type), intent(in) :: sol                                       ! solution variables
+        
+        ! local variables
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        type(var_1D_type), allocatable, target :: sol_1D(:)                     ! 1D equivalent of eq. variables
+        type(var_1D_type), pointer :: sol_1D_loc => null()                      ! local element in sol_1D
+        type(grid_type) :: grid_X_trim                                          ! trimmed X grid
+        integer :: id                                                           ! counter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Writing solution variables to output file')
+        call lvl_ud(1)
+        
+        ! user output
+        call writo('Preparing variables for writing')
+        call lvl_ud(1)
+        
+        ! trim grids
+        ierr = trim_grid(grid_X,grid_X_trim,norm_id)
+        CHCKERR('')
+        
+        ! Set up the 1D equivalents of the solution variables
+        allocate(sol_1D(6))
+        id = 1
+        
+        ! r_F
+        sol_1D_loc => sol_1D(id); id = id+1
+        sol_1D_loc%var_name = 'r_F'
+        allocate(sol_1D_loc%tot_i_min(1),sol_1D_loc%tot_i_max(1))
+        allocate(sol_1D_loc%loc_i_min(1),sol_1D_loc%loc_i_max(1))
+        sol_1D_loc%tot_i_min = [1]
+        sol_1D_loc%tot_i_max = [grid_X_trim%n(3)]
+        sol_1D_loc%loc_i_min = [grid_X_trim%i_min]
+        sol_1D_loc%loc_i_max = [grid_X_trim%i_max]
+        allocate(sol_1D_loc%p(size(grid_X%loc_r_F(norm_id(1):norm_id(2)))))
+        sol_1D_loc%p = grid_X%loc_r_F(norm_id(1):norm_id(2))
+        
+        ! r_E
+        sol_1D_loc => sol_1D(id); id = id+1
+        sol_1D_loc%var_name = 'r_E'
+        allocate(sol_1D_loc%tot_i_min(1),sol_1D_loc%tot_i_max(1))
+        allocate(sol_1D_loc%loc_i_min(1),sol_1D_loc%loc_i_max(1))
+        sol_1D_loc%tot_i_min = [1]
+        sol_1D_loc%tot_i_max = [grid_X_trim%n(3)]
+        sol_1D_loc%loc_i_min = [grid_X_trim%i_min]
+        sol_1D_loc%loc_i_max = [grid_X_trim%i_max]
+        allocate(sol_1D_loc%p(size(grid_X%loc_r_E(norm_id(1):norm_id(2)))))
+        sol_1D_loc%p = grid_X%loc_r_E(norm_id(1):norm_id(2))
+        
+        ! RE_X_val
+        sol_1D_loc => sol_1D(id); id = id+1
+        sol_1D_loc%var_name = 'RE_X_val'
+        allocate(sol_1D_loc%tot_i_min(1),sol_1D_loc%tot_i_max(1))
+        allocate(sol_1D_loc%loc_i_min(1),sol_1D_loc%loc_i_max(1))
+        sol_1D_loc%tot_i_min = [1]
+        sol_1D_loc%tot_i_max = [size(sol%val)]
+        sol_1D_loc%loc_i_min = [1]
+        if (rank.eq.0) then
+            sol_1D_loc%loc_i_max = [size(sol%val)]
+            allocate(sol_1D_loc%p(size(sol%val)))
+            sol_1D_loc%p = realpart(sol%val)
+        else
+            sol_1D_loc%loc_i_max = [0]
+            allocate(sol_1D_loc%p(0))
+        end if
+        
+        ! IM_X_val
+        sol_1D_loc => sol_1D(id); id = id+1
+        sol_1D_loc%var_name = 'IM_X_val'
+        allocate(sol_1D_loc%tot_i_min(1),sol_1D_loc%tot_i_max(1))
+        allocate(sol_1D_loc%loc_i_min(1),sol_1D_loc%loc_i_max(1))
+        sol_1D_loc%tot_i_min = [1]
+        sol_1D_loc%tot_i_max = [size(sol%val)]
+        sol_1D_loc%loc_i_min = [1]
+        if (rank.eq.0) then
+            sol_1D_loc%loc_i_max = [size(sol%val)]
+            allocate(sol_1D_loc%p(size(sol%val)))
+            sol_1D_loc%p = imagpart(sol%val)
+        else
+            sol_1D_loc%loc_i_max = [0]
+            allocate(sol_1D_loc%p(0))
+        end if
+        
+        ! RE_X_vec
+        sol_1D_loc => sol_1D(id); id = id+1
+        sol_1D_loc%var_name = 'RE_X_vec'
+        allocate(sol_1D_loc%tot_i_min(3),sol_1D_loc%tot_i_max(3))
+        allocate(sol_1D_loc%loc_i_min(3),sol_1D_loc%loc_i_max(3))
+        sol_1D_loc%loc_i_min = [1,grid_X_trim%i_min,1]
+        sol_1D_loc%loc_i_max = [sol%n_mod,grid_X_trim%i_max,size(sol%vec,3)]
+        sol_1D_loc%tot_i_min = [1,1,1]
+        sol_1D_loc%tot_i_max = [sol%n_mod,grid_X_trim%n(3),size(sol%vec,3)]
+        allocate(sol_1D_loc%p(size(sol%vec(:,norm_id(1):norm_id(2),:))))
+        sol_1D_loc%p = reshape(realpart(sol%vec(:,norm_id(1):norm_id(2),:)),&
+            &[size(sol%vec(:,norm_id(1):norm_id(2),:))])
+        
+        ! IM_X_vec
+        sol_1D_loc => sol_1D(id); id = id+1
+        sol_1D_loc%var_name = 'IM_X_vec'
+        allocate(sol_1D_loc%tot_i_min(3),sol_1D_loc%tot_i_max(3))
+        allocate(sol_1D_loc%loc_i_min(3),sol_1D_loc%loc_i_max(3))
+        sol_1D_loc%loc_i_min = [1,grid_X_trim%i_min,1]
+        sol_1D_loc%loc_i_max = [sol%n_mod,grid_X_trim%i_max,size(sol%vec,3)]
+        sol_1D_loc%tot_i_min = [1,1,1]
+        sol_1D_loc%tot_i_max = [sol%n_mod,grid_X_trim%n(3),size(sol%vec,3)]
+        allocate(sol_1D_loc%p(size(sol%vec(:,norm_id(1):norm_id(2),:))))
+        sol_1D_loc%p = reshape(imagpart(sol%vec(:,norm_id(1):norm_id(2),:)),&
+            &[size(sol%vec(:,norm_id(1):norm_id(2),:))])
+        
+        call lvl_ud(-1)
+        
+        ! user output
+        call writo('Writing using HDF5')
+        call lvl_ud(1)
+        
+        ! write
+        if (max_it_r.gt.1) then
+            ierr = print_HDF5_arrs(sol_1D,PB3D_name,&
+                &'sol_R'//trim(i2str(rich_lvl_nr)))
+        else
+            ierr = print_HDF5_arrs(sol_1D,PB3D_name,'sol')
+        end if
+        CHCKERR('')
+        
+        ! clean up
+        call dealloc_grid(grid_X_trim)
+        nullify(sol_1D_loc)
+        
+        ! user output
+        call lvl_ud(-1)
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Solution variables written to output')
+    end function print_output_sol
 end module sol_ops

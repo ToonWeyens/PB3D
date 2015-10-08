@@ -73,12 +73,13 @@ contains
     ! coordinate,  with  a  possible  interpolation  in  between.  Finally,  the
     ! integrated values are saved and the next jobs stats.
     ! This  function does  the  job of  dividing the  grids  setting the  global
-    ! variables 'X_jobs_data'  and 'X_jobs_taken' for  data of a  certain order,
+    ! variables 'X_jobs_lims'  and 'X_jobs_taken' for  data of a  certain order,
     ! given by div_ord.  E.g. for the vector  phase, the order is 1  and for the
     ! tensorial phase it is 2.
-    integer function divide_X_jobs(grid,n_mod,div_ord) result(ierr)
-        use num_vars, only: max_mem_per_proc, n_procs, X_jobs_data, rank, &
-            &X_jobs_file_name, X_jobs_taken, lock_file_name
+    integer function divide_X_jobs(grid,div_ord) result(ierr)
+        use num_vars, only: max_mem_per_proc, n_procs, X_jobs_lims, rank, &
+            &X_jobs_file_name, X_jobs_taken, lock_file_name, use_pol_flux_F
+        use X_vars, only: min_n_X, min_m_X, max_n_X, max_m_X
         use files_utilities, only: nextunit
         use MPI_utilities, only: wait_MPI
         
@@ -86,11 +87,11 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! grid on which X vars are tabulated
-        integer, intent(in) :: n_mod                                            ! number of Fourier modes
         integer, intent(in) :: div_ord                                          ! division order
         
         ! local variables
         integer :: arr_size                                                     ! array size
+        integer :: n_mod                                                        ! number of Fourier modes
         integer :: n_div                                                        ! factor by which to divide the total size
         real(dp) :: mem_size                                                    ! approximation of memory required for X variables
         integer :: n_mod_block                                                  ! nr. of modes in block
@@ -106,6 +107,9 @@ contains
         call writo('Dividing the perturbation jobs of order '//&
             &trim(i2str(div_ord)))
         call lvl_ud(1)
+        
+        ! set nr. of modes
+        n_mod = (max_n_X-min_n_X+1)*(max_m_X-min_m_X+1)
         
         ! set arr_size
         arr_size = product(grid%n(1:2))*grid%loc_n_r
@@ -154,7 +158,12 @@ contains
         allocate(n_mod_loc(n_div))
         n_mod_loc = n_mod/n_div                                                 ! number of radial points on this processor
         n_mod_loc(1:mod(n_mod,n_div)) = n_mod_loc(1:mod(n_mod,n_div)) + 1       ! add a mode to if there is a remainder
-        X_jobs_data = calc_X_jobs_data(n_mod_loc,div_ord)
+        X_jobs_lims = calc_X_jobs_lims(n_mod_loc,div_ord)
+        if (use_pol_flux_F) then
+            X_jobs_lims = X_jobs_lims + min_m_X - 1                              ! scale with minimum poloidal mode number
+        else
+            X_jobs_lims = X_jobs_lims + min_n_X - 1                              ! scale with minimum toroidal mode number
+        end if
         if (allocated(X_jobs_taken)) deallocate(X_jobs_taken)
         allocate(X_jobs_taken(n_div**div_ord))
         X_jobs_taken = .false.
@@ -245,8 +254,8 @@ contains
             call lvl_ud(-1)
         end function calc_memory
         
-        ! Calculate X_jobs_data.
-        recursive function calc_X_jobs_data(n_mod,ord) result(res)
+        ! Calculate X_jobs_lims.
+        recursive function calc_X_jobs_lims(n_mod,ord) result(res)
             ! input / output
             integer, intent(in) :: n_mod(:)                                     ! X jobs data
             integer, intent(in) :: ord                                          ! order of data
@@ -267,21 +276,21 @@ contains
             ! loop over divisions
             do id = 1,n_div
                 if (ord.gt.1) then                                              ! call lower order
-                    res_loc = calc_X_jobs_data(n_mod,ord-1)
+                    res_loc = calc_X_jobs_lims(n_mod,ord-1)
                     res(1:2*ord-2,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = res_loc
                 end if                                                          ! set for own order
                 res(2*ord-1,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = &
-                    &sum(n_mod_loc(1:id-1))+1
+                    &sum(n_mod(1:id-1))+1
                 res(2*ord,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = &
-                    &sum(n_mod_loc(1:id))
+                    &sum(n_mod(1:id))
             end do
-        end function calc_X_jobs_data
+        end function calc_X_jobs_lims
     end function divide_X_jobs
     
     ! Finds a  suitable next job. If  none are left, set X_job_nr  to a negative
     ! value
     integer function get_next_job(X_job_nr) result(ierr)
-        use num_vars, only: X_jobs_taken, X_jobs_data, X_jobs_file_name, rank, &
+        use num_vars, only: X_jobs_taken, X_jobs_lims, X_jobs_file_name, rank, &
             &lock_file_name
         use files_utilities, only: nextunit
         
@@ -342,10 +351,10 @@ contains
         ! match the previous one
         do id = 1,n_jobs
             if (.not.X_jobs_taken(id) .and. current_job.gt.0) then              ! only if there was a previous job (current job > 0)
-                if (X_jobs_data(1,id).eq.X_jobs_data(1,current_job) .and. &
-                    &X_jobs_data(2,id).eq.X_jobs_data(2,current_job) .or. &     ! columns match
-                    &X_jobs_data(3,id).eq.X_jobs_data(4,current_job) .and. &
-                    &X_jobs_data(4,id).eq.X_jobs_data(3,current_job)) then      ! rows match
+                if (X_jobs_lims(1,id).eq.X_jobs_lims(1,current_job) .and. &
+                    &X_jobs_lims(2,id).eq.X_jobs_lims(2,current_job) .or. &     ! columns match
+                    &X_jobs_lims(3,id).eq.X_jobs_lims(4,current_job) .and. &
+                    &X_jobs_lims(4,id).eq.X_jobs_lims(3,current_job)) then      ! rows match
                     X_job_nr = id
                     exit
                 end if
@@ -443,7 +452,7 @@ contains
         use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_n_r_X, &
             &min_r_X, max_r_X
         use grid_vars, only: alpha, n_r_eq, n_par_X, min_par_X, max_par_X
-        use HDF5_ops, only: var_1D
+        use HDF5_vars, only: var_1D_type
 #if ldebug
         use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
@@ -841,7 +850,7 @@ contains
         ! The index of this array is (1:)
         subroutine bcast_size_1_var_1D(arr)                                     ! version with 1D var argument (see HDF5_ops)
             ! input / output
-            type(var_1D), intent(inout), allocatable :: arr(:)
+            type(var_1D_type), intent(inout), allocatable :: arr(:)
             
             ! local variables
             integer :: arr_size                                                 ! sent ahead so arrays can be allocated

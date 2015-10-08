@@ -34,7 +34,7 @@ contains
     !       the other groups
     integer function run_driver_PERT() result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, max_it_r, rank, &
-            &plot_resonance, X_job_nr, X_jobs_data
+            &plot_resonance, X_job_nr, X_jobs_lims
         use MPI_utilities, only: wait_MPI
         use X_vars, only: dealloc_X, &
             &min_m_X, max_m_X, min_n_X, max_n_X, min_r_X, max_r_X, min_n_r_X
@@ -101,7 +101,7 @@ contains
         call lvl_ud(-1)
         
         ! read PB3D output file
-        ierr = read_PB3D(.true.,.false.,.false.,.false.)                        ! read the equilibrium files
+        ierr = read_PB3D(.false.,.true.,.false.,.false.,.false.)                ! read the equilibrium files
         CHCKERR('')
         
         ! reconstructing grids depends on equilibrium style
@@ -113,14 +113,15 @@ contains
                 ! the field-aligned grid is identical to the output grid
                 PB3D_B => PB3D
                 ! normal call to reconstruct_PB3D
-                ierr = reconstruct_PB3D(.true.,.false.,.false.,.false.,PB3D)
+                ierr = reconstruct_PB3D(.false.,.true.,.false.,.false.,.false.,&
+                    &PB3D)
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! the field-aligned grid is different form the output grid
                 allocate(PB3D_B)
                 ! additionally need field-aligned equilibrium grid
-                ierr = reconstruct_PB3D(.true.,.false.,.false.,.false.,PB3D,&
-                    &PB3D_B%grid_eq)
+                ierr = reconstruct_PB3D(.false.,.true.,.false.,.false.,.false.,&
+                    &PB3D,PB3D_B%grid_eq)
                 CHCKERR('')
             case default
                 ierr = 1
@@ -144,8 +145,7 @@ contains
         end if
         
         ! divide perturbation jobs
-        ierr = divide_X_jobs(PB3D%grid_eq,&
-            &(max_m_X-min_m_X+1)*(max_n_X-min_n_X+1),1)
+        ierr = divide_X_jobs(PB3D%grid_eq,1)
         CHCKERR('')
         
         ! main loop over jobs or order 1
@@ -163,11 +163,11 @@ contains
             
             ! calculate X variables, vector phase
             ierr = calc_X(PB3D%grid_eq,PB3D%eq,PB3D%met,X_a,&
-                &lim_sec_X=X_jobs_data(:,X_job_nr))
+                &lim_sec_X=X_jobs_lims(:,X_job_nr))
             CHCKERR('')
             
-            ! write X variables, vector phase, to output
-            ierr = print_output_X(PB3D%grid_eq,X_a,1)
+            ! write vectorial perturbation variables to output
+            ierr = print_output_X(PB3D%grid_eq,X_a)
             CHCKERR('')
             
             ! clean up
@@ -188,8 +188,7 @@ contains
         CHCKERR('')
         
         ! divide perturbation jobs, tensor phase
-        ierr = divide_X_jobs(PB3D%grid_eq,&
-            &(max_m_X-min_m_X+1)*(max_n_X-min_n_X+1),2)
+        ierr = divide_X_jobs(PB3D%grid_eq,2)
         CHCKERR('')
         
         ! main loop over jobs or order 2
@@ -205,51 +204,77 @@ contains
                 &//trim(i2str(rank)))
             call lvl_ud(1)
             
-            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            ! read PB3D output file
-            ierr = read_PB3D(.false.,.true.,.false.,.false.)                    ! read the vectorial perturbation files
+            write(*,*) 'TEMPORARILY SLOWING PROC NE 0 DOWDN !!!!!!!!!!!!!!!!!!!'
+            call sleep(rank*10)
+            
+            ! user output
+            call writo('Requesting vectorial perturbation variables for &
+                &dimension 1')
+            call lvl_ud(1)
+            
+            ! read PB3D output file for dimension 1
+            ierr = read_PB3D(.false.,.false.,.true.,.false.,.false.,&
+                &lim_sec_X_1=X_jobs_lims(1:2,X_job_nr))
             CHCKERR('')
             
-            ! reconstructing grids depends on equilibrium style
+            ! normal call to reconstruct_PB3D X_1 quantities for dimension 1
+            ierr = reconstruct_PB3D(.false.,.false.,.true.,.false.,.false.,&
+                &PB3D,X_1=X_a,lim_sec_X_1=X_jobs_lims(1:2,X_job_nr))
+            CHCKERR('')
+            
             ! user output
-            call writo('Reconstructing PB3D output on output grid')
-            call lvl_ud(1)
-            select case (eq_style)
-                case (1)                                                            ! VMEC
-                    ! the field-aligned grid is identical to the output grid
-                    PB3D_B => PB3D
-                    ! normal call to reconstruct_PB3D
-                    ierr = reconstruct_PB3D(.true.,.false.,.false.,.false.,PB3D)
-                    CHCKERR('')
-                case (2)                                                            ! HELENA
-                    ! the field-aligned grid is different form the output grid
-                    allocate(PB3D_B)
-                    ! additionally need field-aligned equilibrium grid
-                    ierr = reconstruct_PB3D(.true.,.false.,.false.,.false.,PB3D,&
-                        &PB3D_B%grid_eq)
-                    CHCKERR('')
-                case default
-                    ierr = 1
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    CHCKERR(err_msg)
-            end select
             call lvl_ud(-1)
-            call writo('PB3D output reconstructed')
-            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            call writo('Vectorial perturbation variables for dimension 1 &
+                &loaded')
+            
+            ! user output
+            call writo('Requesting vectorial perturbation variables for &
+                &dimension 2')
+            call lvl_ud(1)
+            
+            ! read PB3D output file for dimension 2
+            ierr = read_PB3D(.false.,.false.,.true.,.false.,.false.,&
+                &lim_sec_X_1=X_jobs_lims(3:4,X_job_nr))
+            CHCKERR('')
+            
+            ! normal call to reconstruct_PB3D X_1 quantities for dimension 2
+            ierr = reconstruct_PB3D(.false.,.false.,.true.,.false.,.false.,&
+                &PB3D,X_1=X_b,lim_sec_X_1=X_jobs_lims(3:4,X_job_nr))
+            CHCKERR('')
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Vectorial perturbation variables for dimension 2 &
+                &loaded')
             
             ! calculate X variables, tensor phase
-            !!ierr = calc_X(PB3D%grid_eq,PB3D%eq,PB3D%met,PB3D%X,2)
+            ierr = calc_X(PB3D%grid_eq,PB3D%eq,PB3D%met,X_a,X_b,X,&
+                &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
             CHCKERR('')
             
             ! calculate vacuum response
-            ierr = calc_vac(PB3D%X_2)
+            ierr = calc_vac(X)
             CHCKERR('')
+            
+            ! integrate tensorial perturbation variables over field-aligned grid
+            !!!!!!!!!!!!!!!!!
+            
+            ! write tensorial perturbation variables to output file
+            ierr = print_output_X(PB3D%grid_eq,X)
+            CHCKERR('')
+            
+            ! clean up
+            call dealloc_X(X_a)
+            call dealloc_X(X_b)
+            call dealloc_X(X)
             
             ! user output
             call lvl_ud(-1)
             call writo('Job '//trim(i2str(X_job_nr))//' completed by process '&
                 &//trim(i2str(rank)))
+            
+            write(*,*) 'waiting'
+            if (rank.eq.0) read(*,*) 
         end do X_jobs_2
         
         ! synchronize MPI

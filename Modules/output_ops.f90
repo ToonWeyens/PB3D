@@ -991,8 +991,8 @@ contains
         &X,Y,Z,col_id,col,description)                                          ! array version
         use HDF5_ops, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
             &print_HDF5_geom, print_HDF5_3D_data_item, print_HDF5_att, &
-            &print_HDF5_grid, close_HDF5_file, &
-            &XML_str_type, HDF5_file_type
+            &print_HDF5_grid, close_HDF5_file
+        use HDF5_vars, only: XML_str_type, HDF5_file_type
         use num_vars, only: n_procs
         use MPI_utilities, only: get_ser_var
         

@@ -354,7 +354,7 @@ contains
     ! grid.
     ! In contrast to setup_grid_eq,  the angular coordinates are also calculated
     ! here.
-    integer function setup_and_calc_grid_B(grid_eq,grid_eq_B,eq,alpha) &
+    integer function setup_and_calc_grid_B(grid_eq,grid_eq_B,eq) &
         &result(ierr)
         use num_vars, only: eq_style, plot_grid
         use grid_vars, only: create_grid, &
@@ -366,7 +366,6 @@ contains
         type(grid_type), intent(inout), target :: grid_eq                       ! general equilibrium grid
         type(grid_type), intent(inout), pointer :: grid_eq_B                    ! field-aligned equilibrium grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium containing the angular grid
-        real(dp), intent(in) :: alpha                                           ! field line coordinate
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -405,7 +404,7 @@ contains
                 grid_eq_B%r_F = grid_eq%r_F
                 
                 ! calculate the angular grid that follows the magnetic field
-                ierr = calc_ang_grid_B(grid_eq_B,eq,alpha)
+                ierr = calc_ang_grid_B(grid_eq_B,eq)
                 CHCKERR('')
             case default
                 err_msg = 'No equilibrium style associated with '//&
@@ -432,7 +431,7 @@ contains
     ! determined by the equilibrium style.
     ! The variable  use_pol_flux determines  whether theta (.true.)  or zeta
     ! (.false.) is used as the parallel variable.
-    integer function calc_ang_grid_eq(grid_eq,eq,alpha) result(ierr)
+    integer function calc_ang_grid_eq(grid_eq,eq) result(ierr)
         use num_vars, only: eq_style
         use HELENA, only: chi_H
         
@@ -441,7 +440,6 @@ contains
         ! input / output
         type(grid_type), intent(inout) :: grid_eq                               ! general equilibrium grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium containing the angular grid
-        real(dp), intent(in) :: alpha                                           ! field line coordinate
         
         ! local variables
         integer :: jd, kd                                                       ! counters
@@ -456,7 +454,7 @@ contains
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! calculate the angular grid that follows the magnetic field
-                ierr = calc_ang_grid_B(grid_eq,eq,alpha)
+                ierr = calc_ang_grid_B(grid_eq,eq)
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! calculate the angular grid from HELENA
@@ -479,10 +477,10 @@ contains
     end function calc_ang_grid_eq
     
     ! Calculate grid that follows magnetic field lines.
-    integer function calc_ang_grid_B(grid_eq,eq,alpha) result(ierr)
+    integer function calc_ang_grid_B(grid_eq,eq) result(ierr)
         use num_vars, only: use_pol_flux_F, use_pol_flux_E, &
             &eq_style, tol_NR
-        use grid_vars, only: min_par_X, max_par_X
+        use grid_vars, only: min_par_X, max_par_X, alpha
         use eq_vars, only: max_flux_p_E, max_flux_t_E
         
         character(*), parameter :: rout_name = 'calc_ang_grid_B'
@@ -490,7 +488,6 @@ contains
         ! input / output
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid of which to calculate angular part
         type(eq_type), intent(in) :: eq                                         ! equilibrium containing the angular grid
-        real(dp), intent(in) :: alpha                                           ! field line coordinate
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -605,7 +602,7 @@ contains
     integer function coord_F2E_rtz(eq,grid_eq,r_F,theta_F,zeta_F,r_E,&
         &theta_E,zeta_E,r_F_array,r_E_array) result(ierr)                       ! version with r, theta and zeta
         use num_vars, only: tol_NR, eq_style
-        use fourier_ops, only: fourier2real, calc_trigon_factors
+        use fourier, only: fourier2real, calc_trigon_factors
         use VMEC, only: L_V_c, L_V_s
         use utilities, only: interp_fun
         
@@ -968,7 +965,7 @@ contains
     contains
         integer function coord_E2F_VMEC() result(ierr)
             use VMEC, only: mpol, ntor, L_V_c, L_V_s
-            use fourier_ops, only: calc_trigon_factors, fourier2real
+            use fourier, only: calc_trigon_factors, fourier2real
             
             character(*), parameter :: rout_name = 'coord_E2F_VMEC'
             
@@ -1166,7 +1163,7 @@ contains
         ! VMEC version
         integer function calc_XYZ_grid_VMEC(grid,X,Y,Z,L) result(ierr)
             use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor
-            use fourier_ops, only: calc_trigon_factors, fourier2real
+            use fourier, only: calc_trigon_factors, fourier2real
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_VMEC'
             
@@ -1628,8 +1625,8 @@ contains
             &anim_name) result(ierr)
             use HDF5_ops, only: open_HDF5_file, add_HDF5_item, &
                 &print_HDF5_top, print_HDF5_geom, print_HDF5_3D_data_item, &
-                &print_HDF5_grid, close_HDF5_file, &
-                &XML_str_type, HDF5_file_type
+                &print_HDF5_grid, close_HDF5_file
+            use HDF5_vars, only: XML_str_type, HDF5_file_type
             
             character(*), parameter :: rout_name = 'plot_grid_real_HDF5'
             

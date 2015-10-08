@@ -71,7 +71,7 @@ contains
     ! the number of points taken along  the magnetic field lines and loc_n_r.le.
     ! n_r_eq  is  the normal  extent  in  the  equilibrium  grid of  this  rank,
     ! determined by sharing the workload evenly over the processes.
-    integer function calc_eq(alpha,grid_eq,eq) result(ierr)
+    integer function calc_eq(grid_eq,eq) result(ierr)
         use eq_vars, only: create_eq
         use num_vars, only: eq_style, max_deriv
         use grid_ops, only: calc_norm_range, setup_grid_eq, calc_ang_grid_eq
@@ -80,7 +80,6 @@ contains
         character(*), parameter :: rout_name = 'calc_eq'
         
         ! input / output
-        real(dp), intent(in) :: alpha                                           ! field line label alpha
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
         type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
         
@@ -127,7 +126,7 @@ contains
         ! calculate angular grid points for equilibrium grid
         call writo('Calculate angular equilibrium grid')
         call lvl_ud(1)
-        ierr = calc_ang_grid_eq(grid_eq,eq,alpha)
+        ierr = calc_ang_grid_eq(grid_eq,eq)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -586,7 +585,7 @@ contains
     ! transformation of R, Z and L and calculate the derivatives.
     integer function prepare_RZL(grid) result(ierr)
         use num_vars, only: max_deriv, norm_disc_prec_eq
-        use fourier_ops, only: calc_trigon_factors
+        use fourier, only: calc_trigon_factors
         use VMEC, only: mpol, ntor, R_V_c, Z_V_s, L_V_s, R_V_s, Z_V_c, L_V_c
         use utilities, only: calc_deriv
         
@@ -645,7 +644,7 @@ contains
     ! Z are not necessary for calculation of the metric coefficients, and L does
     ! not exist.
     integer function calc_RZL_ind(grid,eq,deriv) result(ierr)
-        use fourier_ops, only: fourier2real
+        use fourier, only: fourier2real
         use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s
         use utilities, only: check_deriv
         use num_vars, only: max_deriv
@@ -710,7 +709,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! normal grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium for this alpha
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -1086,19 +1085,13 @@ contains
     !   - VMEC:     R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s
     !   - HELENA:   R_H, Z_H
     ! Note: The equilibrium quantities are outputted in Flux coordinates.
-    integer function print_output_eq(grid_eq,grid_eq_B,eq,met,alpha) &
-        &result(ierr)
-        use num_vars, only: eq_style, rho_style, rank, prog_version, &
-            &use_pol_flux_E, use_pol_flux_F, use_normalization, &
-            &norm_disc_prec_eq, PB3D_name
-        use HDF5_ops, only: print_HDF5_arrs, &
-            &var_1D
-        use HELENA, only: R_H, Z_H, nchi, chi_H, ias, flux_p_H
-        use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor, &
-            &lfreeB, nfp, lasym
+    integer function print_output_eq(grid_eq,grid_eq_B,eq,met) result(ierr)
+        use num_vars, only: eq_style, PB3D_name, rank
+        use HDF5_ops, only: print_HDF5_arrs
+        use HDF5_vars, only: var_1D_type
         use grid_ops, only: trim_grid
-        use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
-            &max_flux_p_E, max_flux_t_E, max_flux_p_F, max_flux_t_F
+        use HELENA, only: chi_H, flux_p_H, R_H, Z_H, nchi
+        use VMEC, only:  R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor
         
         character(*), parameter :: rout_name = 'print_output_eq'
         
@@ -1107,15 +1100,14 @@ contains
         type(grid_type), intent(in) :: grid_eq_B                                ! equilibrium grid variables
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(met_type), intent(in) :: met                                       ! metric variables
-        real(dp), intent(in) :: alpha                                           ! field line label alpha
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: norm_id_f(2)                                                 ! untrimmed full normal indices for trimmed grids
         character(len=max_str_ln) :: err_msg                                    ! error message
-        type(var_1D), allocatable, target :: eq_1D(:)                           ! 1D equivalent of eq. variables
-        type(var_1D), allocatable, target :: eq_B_1D(:)                         ! 1D equivalent of field-aligned eq. variables
-        type(var_1D), pointer :: eq_1D_loc => null()                            ! local element in eq_1D
+        type(var_1D_type), allocatable, target :: eq_1D(:)                      ! 1D equivalent of eq. variables
+        type(var_1D_type), allocatable, target :: eq_B_1D(:)                    ! 1D equivalent of field-aligned eq. variables
+        type(var_1D_type), pointer :: eq_1D_loc => null()                       ! local element in eq_1D
         type(grid_type) :: grid_trim, grid_trim_B                               ! trimmed grids
         integer :: id                                                           ! counter
         
@@ -1145,11 +1137,11 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
+                allocate(eq_1D(30))
                 allocate(eq_B_1D(0))
-                allocate(eq_1D(32))
             case (2)                                                            ! HELENA
+                allocate(eq_1D(23))
                 allocate(eq_B_1D(6))
-                allocate(eq_1D(25))
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
@@ -1424,30 +1416,6 @@ contains
         eq_1D_loc%p = reshape(met%jac_FD(:,:,norm_id(1):norm_id(2),:,:,:),&
             &[size(met%jac_FD(:,:,norm_id(1):norm_id(2),:,:,:))])
         
-        ! misc_eq
-        eq_1D_loc => eq_1D(id); id = id+1
-        eq_1D_loc%var_name = 'misc_eq'
-        allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
-        allocate(eq_1D_loc%loc_i_min(1),eq_1D_loc%loc_i_max(1))
-        if (rank.eq.0) then
-            eq_1D_loc%loc_i_min = [1]
-            eq_1D_loc%loc_i_max = [19]
-            allocate(eq_1D_loc%p(19))
-            eq_1D_loc%p = [prog_version,eq_style*1._dp,rho_style*1._dp,&
-                &alpha,R_0,pres_0,B_0,psi_0,rho_0,T_0,vac_perm,&
-                &max_flux_p_E,max_flux_t_E,max_flux_p_F,max_flux_t_F,&
-                &-1._dp,-1._dp,-1._dp,norm_disc_prec_eq*1._dp]
-            if (use_pol_flux_E) eq_1D_loc%p(16) = 1._dp
-            if (use_pol_flux_F) eq_1D_loc%p(17) = 1._dp
-            if (use_normalization) eq_1D_loc%p(18) = 1._dp
-        else
-            eq_1D_loc%loc_i_min = [1]
-            eq_1D_loc%loc_i_max = [0]
-            allocate(eq_1D_loc%p(0))
-        end if
-        eq_1D_loc%tot_i_min = [1]
-        eq_1D_loc%tot_i_max = [19]
-        
         ! Set up particular variables, depending on equilibrium style
         !   1: VMEC needs the flux quantities in E coords. and VMEC variables in
         !   order to  calculate the  equilibrium quantities for  different grids
@@ -1619,27 +1587,6 @@ contains
                     &norm_id_f(2),:))))
                 eq_1D_loc%p = reshape(L_V_s(:,:,norm_id_f(1):norm_id_f(2),:),&
                     &[size(L_V_s(:,:,norm_id_f(1):norm_id_f(2),:))])
-                
-                ! misc_eq_V
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'misc_eq_V'
-                allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
-                allocate(eq_1D_loc%loc_i_min(1),eq_1D_loc%loc_i_max(1))
-                if (rank.eq.0) then
-                    eq_1D_loc%loc_i_min = [1]
-                    eq_1D_loc%loc_i_max = [5]
-                    allocate(eq_1D_loc%p(5))
-                    eq_1D_loc%p = [-1._dp,-1._dp,mpol*1._dp,ntor*1._dp,&
-                        &nfp*1._dp]
-                    if (lasym) eq_1D_loc%p(1) = 1._dp
-                    if (lfreeB) eq_1D_loc%p(2) = 1._dp
-                else
-                    eq_1D_loc%loc_i_min = [1]
-                    eq_1D_loc%loc_i_max = [0]
-                    allocate(eq_1D_loc%p(0))
-                end if
-                eq_1D_loc%tot_i_min = [1]
-                eq_1D_loc%tot_i_max = [5]
             case (2)                                                            ! HELENA
                 ! R_H
                 eq_1D_loc => eq_1D(id); id = id+1
@@ -1698,24 +1645,6 @@ contains
                 allocate(eq_1D_loc%p(size(flux_p_H(grid_trim%i_min:&
                     &grid_trim%i_max))))
                 eq_1D_loc%p = flux_p_H(norm_id_f(1):norm_id_f(2))
-                
-                ! misc_eq_H
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'misc_eq_H'
-                allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
-                allocate(eq_1D_loc%loc_i_min(1),eq_1D_loc%loc_i_max(1))
-                if (rank.eq.0) then
-                    eq_1D_loc%loc_i_min = [1]
-                    eq_1D_loc%loc_i_max = [2]
-                    allocate(eq_1D_loc%p(2))
-                    eq_1D_loc%p = [ias*1._dp,nchi*1._dp]
-                else
-                    eq_1D_loc%loc_i_min = [1]
-                    eq_1D_loc%loc_i_max = [0]
-                    allocate(eq_1D_loc%p(0))
-                end if
-                eq_1D_loc%tot_i_min = [1]
-                eq_1D_loc%tot_i_max = [2]
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
@@ -1735,7 +1664,7 @@ contains
         ! deallocate
         deallocate(eq_1D)
         
-        ! Set up common variables eq_B_1D and write if HELENA
+        ! Set up variables eq_B_1D and write if HELENA
         if (eq_style.eq.2) then
             id = 1
             

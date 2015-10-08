@@ -391,18 +391,32 @@ contains
         end subroutine apply_opt_PB3D
     end function open_input
 
-    ! open an output file
+    ! open an output file and write the common variables
     integer function open_output() result(ierr)
-        use num_vars, only: output_i, rank, output_name, prog_name
+        use num_vars, only: eq_style, rho_style, rank, prog_version, &
+            &use_pol_flux_E, use_pol_flux_F, use_normalization, &
+            &norm_disc_prec_eq, PB3D_name, output_i, output_name, prog_name, &
+            &norm_disc_prec_X
         use messages, only: temp_output, temp_output_active
         use files_utilities, only: nextunit
-        use HDF5_ops, only: create_output_HDF5
+        use HDF5_ops, only: create_output_HDF5, print_HDF5_arrs
+        use HDF5_vars, only: var_1D_type
+        use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
+            &max_flux_p_E, max_flux_t_E, max_flux_p_F, max_flux_t_F
+        use X_vars, only: min_r_X, max_r_X, min_m_X, max_m_X, min_n_X, max_n_X
+        use grid_vars, only: alpha
+        use HELENA, only: nchi, ias
+        use VMEC, only: mpol, ntor, &
+            &lfreeB, nfp, lasym
         
         character(*), parameter :: rout_name = 'open_output'
         
         ! local variables (also used in child functions)
         integer :: id                                                           ! counter
         character(len=max_str_ln) :: full_output_name                           ! full name
+        type(var_1D_type), allocatable, target :: misc_1D(:)                    ! 1D equivalent of miscelleanous variables
+        type(var_1D_type), pointer :: misc_1D_loc => null()                     ! local element in misc_1D
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -437,6 +451,127 @@ contains
         ! open HDF5 file for output
         ierr = create_output_HDF5()
         CHCKERR('')
+        
+        ! master writes miscellaneous variables
+        if (rank.eq.0) then
+            ! user output
+            call writo('Writing miscellaneous variables to output file')
+            call lvl_ud(1)
+            
+            ! user output
+            call writo('Preparing variables for writing')
+            call lvl_ud(1)
+            
+            ! set up 1D equivalents of miscellaneous variables
+            allocate(misc_1D(3))
+            
+            ! Set up common variables eq_misc_1D
+            id = 1
+            
+            ! eq
+            misc_1D_loc => misc_1D(id); id = id+1
+            misc_1D_loc%var_name = 'eq'
+            allocate(misc_1D_loc%tot_i_min(1),misc_1D_loc%tot_i_max(1))
+            allocate(misc_1D_loc%loc_i_min(1),misc_1D_loc%loc_i_max(1))
+            if (rank.eq.0) then
+                misc_1D_loc%loc_i_min = [1]
+                misc_1D_loc%loc_i_max = [19]
+                allocate(misc_1D_loc%p(19))
+                misc_1D_loc%p = [prog_version,eq_style*1._dp,rho_style*1._dp,&
+                    &alpha,R_0,pres_0,B_0,psi_0,rho_0,T_0,vac_perm,&
+                    &max_flux_p_E,max_flux_t_E,max_flux_p_F,max_flux_t_F,&
+                    &-1._dp,-1._dp,-1._dp,norm_disc_prec_eq*1._dp]
+                if (use_pol_flux_E) misc_1D_loc%p(16) = 1._dp
+                if (use_pol_flux_F) misc_1D_loc%p(17) = 1._dp
+                if (use_normalization) misc_1D_loc%p(18) = 1._dp
+            else
+                misc_1D_loc%loc_i_min = [1]
+                misc_1D_loc%loc_i_max = [0]
+                allocate(misc_1D_loc%p(0))
+            end if
+            misc_1D_loc%tot_i_min = [1]
+            misc_1D_loc%tot_i_max = [19]
+            
+            ! eq_V or eq_H, depending on equilibrium style
+            select case (eq_style)
+                case (1)                                                            ! VMEC
+                    ! eq_V
+                    misc_1D_loc => misc_1D(id); id = id+1
+                    misc_1D_loc%var_name = 'eq_V'
+                    allocate(misc_1D_loc%tot_i_min(1),misc_1D_loc%tot_i_max(1))
+                    allocate(misc_1D_loc%loc_i_min(1),misc_1D_loc%loc_i_max(1))
+                    if (rank.eq.0) then
+                        misc_1D_loc%loc_i_min = [1]
+                        misc_1D_loc%loc_i_max = [5]
+                        allocate(misc_1D_loc%p(5))
+                        misc_1D_loc%p = [-1._dp,-1._dp,mpol*1._dp,ntor*1._dp,&
+                            &nfp*1._dp]
+                        if (lasym) misc_1D_loc%p(1) = 1._dp
+                        if (lfreeB) misc_1D_loc%p(2) = 1._dp
+                    else
+                        misc_1D_loc%loc_i_min = [1]
+                        misc_1D_loc%loc_i_max = [0]
+                        allocate(misc_1D_loc%p(0))
+                    end if
+                    misc_1D_loc%tot_i_min = [1]
+                    misc_1D_loc%tot_i_max = [5]
+                case (2)                                                            ! HELENA
+                    ! eq_H
+                    misc_1D_loc => misc_1D(id); id = id+1
+                    misc_1D_loc%var_name = 'eq_H'
+                    allocate(misc_1D_loc%tot_i_min(1),misc_1D_loc%tot_i_max(1))
+                    allocate(misc_1D_loc%loc_i_min(1),misc_1D_loc%loc_i_max(1))
+                    if (rank.eq.0) then
+                        misc_1D_loc%loc_i_min = [1]
+                        misc_1D_loc%loc_i_max = [2]
+                        allocate(misc_1D_loc%p(2))
+                        misc_1D_loc%p = [ias*1._dp,nchi*1._dp]
+                    else
+                        misc_1D_loc%loc_i_min = [1]
+                        misc_1D_loc%loc_i_max = [0]
+                        allocate(misc_1D_loc%p(0))
+                    end if
+                    misc_1D_loc%tot_i_min = [1]
+                    misc_1D_loc%tot_i_max = [2]
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+            
+            ! X
+            misc_1D_loc => misc_1D(id); id = id+1
+            misc_1D_loc%var_name = 'X'
+            allocate(misc_1D_loc%tot_i_min(1),misc_1D_loc%tot_i_max(1))
+            allocate(misc_1D_loc%loc_i_min(1),misc_1D_loc%loc_i_max(1))
+            misc_1D_loc%tot_i_min = [1]
+            misc_1D_loc%tot_i_max = [7]
+            misc_1D_loc%loc_i_min = misc_1D_loc%tot_i_min
+            misc_1D_loc%loc_i_max = misc_1D_loc%tot_i_max
+            allocate(misc_1D_loc%p(7))
+            misc_1D_loc%p = [min_r_X,max_r_X,min_n_X*1._dp,max_n_X*1._dp,&
+                &min_m_X*1._dp,max_m_X*1._dp,norm_disc_prec_X*1._dp]
+            
+            call lvl_ud(-1)
+            
+            ! write
+            call writo('Writing using HDF5')
+            call lvl_ud(1)
+            ierr = print_HDF5_arrs(misc_1D,PB3D_name,'misc')
+            CHCKERR('')
+            call lvl_ud(-1)
+            
+            ! deallocate
+            deallocate(misc_1D)
+            
+            ! clean up
+            nullify(misc_1D_loc)
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Miscellaneous variables written to output')
+        end if
         
         ! no more temporary output
         temp_output_active = .false.

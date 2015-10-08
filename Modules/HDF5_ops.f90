@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Operations and variables pertaining to HDF5 and XDMF                       !
+!   Variables pertaining to HDF5 and XDMF                                      !
 !   Notes about XDMF:                                                          !
 !       - Collections can be spatial or temporal. If a variable is to be       !
 !         evolved in time or if its domain is decomposed (e.g. the same        !
@@ -16,89 +16,26 @@ module HDF5_ops
     use num_vars, only: max_str_ln, dp, plot_dir, data_dir, script_dir
     use messages, only: writo, lvl_ud
     use str_ops, only: i2str, r2str, r2strt
+    use HDF5_vars
     use HDF5
     
     implicit none
     private
-    public init_HDF5, print_HDF5_grid, print_HDF5_geom, print_HDF5_top, &
+    public print_HDF5_grid, print_HDF5_geom, print_HDF5_top, &
         &print_HDF5_att, print_HDF5_3D_data_item, open_HDF5_file, &
         &close_HDF5_file, reset_HDF5_item, add_HDF5_item, create_output_HDF5, &
         &print_HDF5_arrs, read_HDF5_arrs, &
-        &XML_str_type, HDF5_file_type, var_1D
+        &debug_HDF5_ops
     
     ! global variables
-    integer, parameter :: max_xml_ln = 300                                      ! max. length of xml string
-    character(len=6) :: xmf_fmt = '(999A)'                                      ! format to write the xmf file
     logical :: debug_HDF5_ops = .false.                                         ! set to true to debug information
     
-    ! XML strings used in XDMF
-    type :: XML_str_type
-        character(len=max_str_ln) :: name                                       ! name of this item
-        integer :: max_xml_ln = 300                                             ! max. length of xml string
-        character(len=max_xml_ln), allocatable :: xml_str(:)                    ! XML string
-    end type XML_str_type
-    
-    ! HDF5 data tipe
-    type :: HDF5_file_type                                                      ! type containing the information about HDF5 files
-        integer :: HDF5_i                                                       ! HDF5 file handle
-        integer :: XDMF_i                                                       ! XDMF file handle
-        character(len=max_str_ln) :: name                                       ! name of files (without extensions ".h5" and ".xmf")
-    end type HDF5_file_type
-    
-    ! 1D equivalent of multidimensional variables
-    type var_1D
-        real(dp), allocatable :: p(:)                                           ! 1D equivalent of data of variable
-        integer, allocatable :: tot_i_min(:), tot_i_max(:)                      ! total min. and max. of indices of variable
-        integer, allocatable :: loc_i_min(:), loc_i_max(:)                      ! group min. and max. of indices of variable
-        character(len=max_str_ln) :: var_name                                   ! name of variable
-    end type var_1D
-    
-    ! XDMF possibilities
-    character(len=max_str_ln) :: XDMF_num_types(2)                              ! possible XDMF number types
-    character(len=max_str_ln) :: XDMF_format_types(2)                           ! possible XDMF format types
-    character(len=max_str_ln) :: XDMF_geom_types(2)                             ! possible XDMF geometry types
-    character(len=max_str_ln) :: XDMF_top_types(2)                              ! possible XDMF topology types
-    character(len=max_str_ln) :: XDMF_att_types(1)                              ! possible XDMF attribute types
-    character(len=max_str_ln) :: XDMF_center_types(2)                           ! possible XDMF attribute center types
-    character(len=max_str_ln) :: XDMF_grid_types(3)                             ! possible XDMF grid types
-        
     ! interfaces
     interface reset_HDF5_item
         module procedure reset_HDF5_item_ind, reset_HDF5_item_arr
     end interface
     
 contains
-    ! Initializes the HDF5 types.
-    subroutine init_HDF5
-        ! XDMF_num_types
-        XDMF_num_types(1) = "Int"
-        XDMF_num_types(2) = "Float"
-        
-        ! XDMF_format_types
-        XDMF_format_types(1) = "XML"
-        XDMF_format_types(2) = "HD5"
-        
-        ! XDMF_geom_types
-        XDMF_geom_types(1) = "X_Y"
-        XDMF_geom_types(2) = "X_Y_Z"
-        
-        ! XDMF_top_types
-        XDMF_top_types(1) = "2DSMesh"
-        XDMF_top_types(2) = "3DSMesh"
-        
-        ! XDMF_att_types
-        XDMF_att_types(1) = "Scalar"
-        
-        ! XDMF_center_types
-        XDMF_center_types(1) = "Node"
-        XDMF_center_types(2) = "Cell"
-        
-        ! XDMF_grid_types
-        XDMF_grid_types(1) = "None"
-        XDMF_grid_types(2) = "Temporal"
-        XDMF_grid_types(3) = "Spatial"
-    end subroutine init_HDF5
-    
     ! Opens an HDF5 file and accompanying xmf file and returns the handles.
     ! Optionally, a description of the file  can be provided. Also, the plot can
     ! be done for only one process, setting the variable "ind_plot" to .true.
@@ -944,7 +881,7 @@ contains
         character(*), parameter :: rout_name = 'print_HDF5_arrs'
         
         ! input / output
-        type(var_1D), intent(in) :: vars(:)                                     ! variables to write
+        type(var_1D_type), intent(in) :: vars(:)                                ! variables to write
         character(len=*), intent(in) :: PB3D_name                               ! name of PB3D file
         character(len=*), intent(in) :: head_name                               ! head name of variables
         logical, intent(in), optional :: disp_info                              ! display additional information about variable being read
@@ -1231,16 +1168,19 @@ contains
     end function print_HDF5_arrs
     
     ! Reads a PB3D output file in HDF5 format.
+    ! By  default,  all  variables  are  read, but  an  array  of  strings  with
+    ! acceptable variable names can be passed.
     ! Optionally, output can be given about the variable being read.
-    integer function read_HDF5_arrs(vars,PB3D_name,head_name,disp_info) &
-        &result(ierr)
+    integer function read_HDF5_arrs(vars,PB3D_name,head_name,disp_info,&
+        &acc_var_names) result(ierr)
         character(*), parameter :: rout_name = 'read_HDF5_arrs'
         
         ! input / output
-        type(var_1D), intent(inout), allocatable :: vars(:)                     ! variables to write
+        type(var_1D_type), intent(inout), allocatable :: vars(:)                ! variables to write
         character(len=*), intent(in) :: PB3D_name                               ! name of PB3D file
         character(len=*), intent(in) :: head_name                               ! head name of variables
         logical, intent(in), optional :: disp_info                              ! display additional information about variable being read
+        character(len=*), intent(in), optional :: acc_var_names(:)              ! acceptable variables
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1251,6 +1191,7 @@ contains
         integer(HID_T) :: head_group_id                                         ! head group identifier
         integer(HID_T) :: filespace                                             ! dataspace identifier in file 
         integer(HSIZE_T) :: id                                                  ! counter
+        integer(HSIZE_T) :: id_loc                                              ! counter
         integer(HSIZE_T) :: data_size                                           ! size of data set
         integer(SIZE_T) :: name_len                                             ! length of name of group
         integer :: storage_type                                                 ! type of storage used in HDF5 file
@@ -1260,6 +1201,8 @@ contains
         character(len=max_str_ln) :: name_len_loc                               ! local copy of name_len
         character(len=max_str_ln) :: group_name                                 ! name of group
         logical :: disp_info_loc                                                ! local disp_info
+        logical, allocatable :: acc_vars(:)                                     ! list of accetable variables
+        integer(HSIZE_T) :: nr_acc_vars                                         ! counter
         
         ! initialize ierr
         ierr = 0
@@ -1292,10 +1235,12 @@ contains
         call H5Gget_info_f(head_group_id,storage_type,nr_lnks_head,max_corder,&
             &ierr)
         CHCKERR('Failed to get group info')
-        allocate(vars(nr_lnks_head))
+        allocate(acc_vars(nr_lnks_head))
         
-        ! iterate over all elements in group
+        ! iterate over all elements in group to get all acceptable variables
+        nr_acc_vars = 0
         do id = 1, nr_lnks_head
+            ! get variable name
             call H5Lget_name_by_idx_f(head_group_id,'.',H5_INDEX_NAME_F,&
                 &H5_ITER_NATIVE_F,id-1,group_name,ierr,size=name_len)
             CHCKERR('Failed to get name')
@@ -1308,79 +1253,104 @@ contains
                 CHCKERR(err_msg)
             end if
             
-            ! user output
-            if (disp_info_loc) then
-                call writo('Reading '//trim(group_name))
-            end if
-            
-            ! set name
-            vars(id)%var_name = trim(group_name)
-            
-            ! open group
-            call H5Gopen_f(head_group_id,trim(group_name),group_id,ierr)
-            CHCKERR('Failed to open group')
-            
-            ! 1. variable
-            
-            ! open variable dataset
-            call h5dopen_f(group_id,'var',dset_id,ierr)
-            CHCKERR('Failed to open dataset')
-            
-            ! get dataspace
-            call H5Dget_space_f(dset_id,filespace,ierr)
-            CHCKERR('Failed to get file space')
-            
-            ! get size to allocate the 1D variable
-            call H5Sget_simple_extent_npoints_f(filespace,data_size,ierr)
-            CHCKERR('Failed to get storage size')
-            allocate(vars(id)%p(data_size))
-            
-            ! read into 1D variable
-            call H5Dread_f(dset_id,HDF5_kind_64,vars(id)%p,[data_size],ierr)
-            CHCKERR('Failed to read dataset')
-            
-            ! close the dataset.
-            call H5Dclose_f(dset_id,ierr)
-            CHCKERR('Failed to close data set')
-            
-            ! 2. limit information
-            
-            ! open limit information dataset
-            call h5dopen_f(group_id,'lim',dset_id,ierr)
-            CHCKERR('Failed to open dataset')
-            
-            ! get dataspace
-            call H5Dget_space_f(dset_id,filespace,ierr)
-            CHCKERR('Failed to get file space')
-            
-            ! get size to allocate the 1D variable
-            call H5Sget_simple_extent_npoints_f(filespace,data_size,ierr)
-            CHCKERR('Failed to get storage size')
-            allocate(vars(id)%tot_i_min(data_size/2))
-            allocate(vars(id)%tot_i_max(data_size/2))
-            
-            ! allocate local variables
-            allocate(lim_loc(data_size))
-            
-            ! read into 1D variable
-            call H5Dread_f(dset_id,H5T_NATIVE_INTEGER,lim_loc,[data_size],ierr)
-            CHCKERR('Failed to read dataset')
-            
-            ! copy into tot_i_min and max
-            vars(id)%tot_i_min = lim_loc(1:data_size/2)
-            vars(id)%tot_i_max = lim_loc(data_size/2+1:data_size)
-            
-            ! close the dataset.
-            call H5Dclose_f(dset_id,ierr)
-            CHCKERR('Failed to close data set')
-            
-            ! close the group
-            call H5gclose_f(group_id,ierr)
-            CHCKERR('Failed to close group')
-            
-            ! deallocate local variables
-            deallocate(lim_loc)
+            acc_vars(id) = is_acc()
+            if (acc_vars(id)) nr_acc_vars = nr_acc_vars + 1
         end do
+        
+        ! allocate vars
+        allocate(vars(nr_acc_vars))
+        
+        ! iterate over all elements in group to save all acceptable variables
+        id_loc = 1
+        do id = 1, nr_lnks_head
+            if (acc_vars(id)) then
+                call H5Lget_name_by_idx_f(head_group_id,'.',H5_INDEX_NAME_F,&
+                    &H5_ITER_NATIVE_F,id-1,group_name,ierr,size=name_len)
+                CHCKERR('Failed to get name')
+                
+                ! user output
+                if (disp_info_loc) then
+                    call writo('Reading '//trim(group_name))
+                end if
+                
+                ! set name
+                vars(id_loc)%var_name = trim(group_name)
+                
+                ! open group
+                call H5Gopen_f(head_group_id,trim(group_name),group_id,ierr)
+                CHCKERR('Failed to open group')
+                
+                ! 1. variable
+                
+                ! open variable dataset
+                call h5dopen_f(group_id,'var',dset_id,ierr)
+                CHCKERR('Failed to open dataset')
+                
+                ! get dataspace
+                call H5Dget_space_f(dset_id,filespace,ierr)
+                CHCKERR('Failed to get file space')
+                
+                ! get size to allocate the 1D variable
+                call H5Sget_simple_extent_npoints_f(filespace,data_size,ierr)
+                CHCKERR('Failed to get storage size')
+                allocate(vars(id_loc)%p(data_size))
+                
+                ! read into 1D variable
+                call H5Dread_f(dset_id,HDF5_kind_64,vars(id_loc)%p,[data_size],&
+                    &ierr)
+                CHCKERR('Failed to read dataset')
+                
+                ! close the dataset.
+                call H5Dclose_f(dset_id,ierr)
+                CHCKERR('Failed to close data set')
+                
+                ! 2. limit information
+                
+                ! open limit information dataset
+                call h5dopen_f(group_id,'lim',dset_id,ierr)
+                CHCKERR('Failed to open dataset')
+                
+                ! get dataspace
+                call H5Dget_space_f(dset_id,filespace,ierr)
+                CHCKERR('Failed to get file space')
+                
+                ! get size to allocate the 1D variable
+                call H5Sget_simple_extent_npoints_f(filespace,data_size,ierr)
+                CHCKERR('Failed to get storage size')
+                allocate(vars(id_loc)%tot_i_min(data_size/2))
+                allocate(vars(id_loc)%tot_i_max(data_size/2))
+                
+                ! allocate local variables
+                allocate(lim_loc(data_size))
+                
+                ! read into 1D variable
+                call H5Dread_f(dset_id,H5T_NATIVE_INTEGER,lim_loc,[data_size],&
+                    &ierr)
+                CHCKERR('Failed to read dataset')
+                
+                ! copy into tot_i_min and max
+                vars(id_loc)%tot_i_min = lim_loc(1:data_size/2)
+                vars(id_loc)%tot_i_max = lim_loc(data_size/2+1:data_size)
+                
+                ! close the dataset.
+                call H5Dclose_f(dset_id,ierr)
+                CHCKERR('Failed to close data set')
+                
+                ! close the group
+                call H5gclose_f(group_id,ierr)
+                CHCKERR('Failed to close group')
+                
+                ! deallocate local variables
+                deallocate(lim_loc)
+                
+                ! increment local id
+                id_loc = id_loc + 1
+            end if
+        end do
+        
+        ! close the head group
+        call H5gclose_f(head_group_id,ierr)
+        CHCKERR('Failed to close head group')
         
         ! close the HDF5 file
         call H5Fclose_f(HDF5_i,ierr)
@@ -1393,5 +1363,24 @@ contains
         
         call lvl_ud(-1)
         call writo('Data read')
+    contains
+        ! decides whether a variable should be read or not
+        logical function is_acc() result(res)
+            ! local variables
+            integer :: id                                                       ! counter
+            
+            ! set result
+            res = .false.
+            if (present(acc_var_names)) then
+                do id = 1,size(acc_var_names)
+                    if (trim(group_name).eq.trim(acc_var_names(id))) then
+                        res = .true.
+                        exit
+                    end if
+                end do
+            else
+                res = .true.
+            end if
+        end function is_acc
     end function read_HDF5_arrs
 end module HDF5_ops

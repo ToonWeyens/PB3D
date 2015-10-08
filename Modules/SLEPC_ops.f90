@@ -432,6 +432,7 @@ contains
         PetscReal, intent(in) :: norm_disc_coeff(:)                             ! discretization coefficients for normal derivatives
         
         ! local variables
+        integer :: n_mod                                                        ! nr. of modes
         PetscInt :: kd                                                          ! counter
         PetscInt :: n_r                                                         ! n_r of trimmed X grid
         PetscInt :: loc_n_r                                                     ! loc_n_r of trimmed X grid
@@ -464,6 +465,13 @@ contains
         end if
 #endif
         
+        ! set nr. of modes
+        n_mod = X%n_mod(1)
+        if (n_mod.ne.X%n_mod(2)) then
+            ierr = 1
+            CHCKERR('Need square matrix')
+        end if
+        
         ! set up loc_n_r and n_r
         loc_n_r = grid_X%loc_n_r
         n_r = grid_X%n(3)
@@ -474,26 +482,26 @@ contains
         ! create a  matrix A and B  with the appropriate number  of preallocated
         ! entries (excluding ghost regions)
         ! initialize the numbers of non-zeros in diagonal and off-diagonal
-        allocate(tot_nz(loc_n_r*X%n_mod)); tot_nz = 0
-        allocate(d_nz(loc_n_r*X%n_mod)); d_nz = 0
-        allocate(o_nz(loc_n_r*X%n_mod)); o_nz = 0
+        allocate(tot_nz(loc_n_r*n_mod)); tot_nz = 0
+        allocate(d_nz(loc_n_r*n_mod)); d_nz = 0
+        allocate(o_nz(loc_n_r*n_mod)); o_nz = 0
         
         ! calculate number of total nonzero entries
         tot_nz = 1+2*st_size
         do kd = 1,st_size
             if (kd.ge.grid_X%i_min .and. kd.le.grid_X%i_max) &                  ! limit due to left BC
-                &tot_nz((kd-grid_X%i_min)*X%n_mod+1:&
-                &(kd-grid_X%i_min+1)*X%n_mod) = &
-                &tot_nz((kd-grid_X%i_min)*X%n_mod+1:&
-                &(kd-grid_X%i_min+1)*X%n_mod) - &
+                &tot_nz((kd-grid_X%i_min)*n_mod+1:&
+                &(kd-grid_X%i_min+1)*n_mod) = &
+                &tot_nz((kd-grid_X%i_min)*n_mod+1:&
+                &(kd-grid_X%i_min+1)*n_mod) - &
                 &(st_size+1-kd)
         end do
         do kd = n_r,n_r-st_size+1,-1
             if (kd.ge.grid_X%i_min .and. kd.le.grid_X%i_max) &                  ! limit due to right BC
-                &tot_nz((kd-grid_X%i_min)*X%n_mod+1:&
-                &(kd-grid_X%i_min+1)*X%n_mod) = &
-                &tot_nz((kd-grid_X%i_min)*X%n_mod+1:&
-                &(kd-grid_X%i_min+1)*X%n_mod) - &
+                &tot_nz((kd-grid_X%i_min)*n_mod+1:&
+                &(kd-grid_X%i_min+1)*n_mod) = &
+                &tot_nz((kd-grid_X%i_min)*n_mod+1:&
+                &(kd-grid_X%i_min+1)*n_mod) - &
                 &(kd-n_r+st_size)
         end do
         
@@ -502,25 +510,25 @@ contains
             d_nz = loc_n_r
         else                                                                    ! more than (st_size+1) normal points in this process
             do kd = 1,st_size
-                d_nz((kd-1)*X%n_mod+1:kd*X%n_mod) = &
+                d_nz((kd-1)*n_mod+1:kd*n_mod) = &
                     &st_size+kd
-                d_nz((loc_n_r-kd)*X%n_mod+1:(loc_n_r-kd+1)*X%n_mod) = &
+                d_nz((loc_n_r-kd)*n_mod+1:(loc_n_r-kd+1)*n_mod) = &
                     &st_size+kd
             end do
-            d_nz(st_size*X%n_mod+1:(loc_n_r-st_size)*X%n_mod) = &
+            d_nz(st_size*n_mod+1:(loc_n_r-st_size)*n_mod) = &
                 &2*st_size+1
         end if
         d_nz = min(d_nz,loc_n_r)                                                ! limit to loc_n_r
         
         ! calculate number of nonzero off-diagonal entries
-        do kd = 1,loc_n_r*X%n_mod
+        do kd = 1,loc_n_r*n_mod
             o_nz(kd) = tot_nz(kd)-d_nz(kd)
         end do
         
         ! create matrix A
-        call MatCreateAIJ(PETSC_COMM_WORLD,loc_n_r*X%n_mod,loc_n_r*X%n_mod,&
-            &grid_X%n(3)*X%n_mod,grid_X%n(3)*X%n_mod,PETSC_NULL_INTEGER,&
-            &d_nz*X%n_mod,PETSC_NULL_INTEGER,o_nz*X%n_mod,A,ierr)
+        call MatCreateAIJ(PETSC_COMM_WORLD,loc_n_r*n_mod,loc_n_r*n_mod,&
+            &grid_X%n(3)*n_mod,grid_X%n(3)*n_mod,PETSC_NULL_INTEGER,&
+            &d_nz*n_mod,PETSC_NULL_INTEGER,o_nz*n_mod,A,ierr)
         CHCKERR('MatCreateAIJ failed for matrix A')
         
         ! deallocate tot_nz, d_nz and o_nz
@@ -613,8 +621,8 @@ contains
             call MatGetOwnershipRange(mat,r_X_start,r_X_end,ierr)               ! starting and ending row r_X_start and r_X_end
             err_msg = 'Couldn''t get ownership range of matrix'
             CHCKERR(err_msg)
-            r_X_start = r_X_start/X%n_mod                                       ! count per block
-            r_X_end = r_X_end/X%n_mod                                           ! count per block
+            r_X_start = r_X_start/n_mod                                         ! count per block
+            r_X_end = r_X_end/n_mod                                             ! count per block
             if (grid_X%i_min.ne.r_X_start+1) then
                 ierr = 1
                 err_msg = 'start of matrix in this process does not coincide &
@@ -669,10 +677,10 @@ contains
             end select
             
             ! allocate interpolated V_int_i and local block
-            allocate(V_int_0(X%n_mod**2))
-            allocate(V_int_1(X%n_mod**2))
-            allocate(V_int_2(X%n_mod**2))
-            allocate(loc_block(X%n_mod,X%n_mod))
+            allocate(V_int_0(n_mod**2))
+            allocate(V_int_1(n_mod**2))
+            allocate(V_int_2(n_mod**2))
+            allocate(loc_block(n_mod,n_mod))
             
             ! iterate over all rows of this rank
             do kd = i_min-1,i_max-1                                             ! (indices start with 0 here)
@@ -687,9 +695,9 @@ contains
                 ! BLOCKS ~ V_0 !
                 ! -------------!
                 ! fill local block
-                do m = 1,X%n_mod
-                    do k = 1,X%n_mod
-                        loc_block(k,m) = con(V_int_0(c([k,m],.true.,X%n_mod)),&
+                do m = 1,n_mod
+                    do k = 1,n_mod
+                        loc_block(k,m) = con(V_int_0(c([k,m],.true.,n_mod)),&
                             &[k,m],.true.)                                      ! symmetric matrices need con()
                     end do
                 end do
@@ -697,7 +705,7 @@ contains
 # if ldebug
                 if (test_diff) then
                     ! back up the V_0 block
-                    allocate(loc_block_0_backup(X%n_mod,X%n_mod))
+                    allocate(loc_block_0_backup(n_mod,n_mod))
                     loc_block_0_backup = loc_block
                 end if
 #endif
@@ -710,9 +718,9 @@ contains
                 ! BLOCKS ~ V_1 !
                 ! -------------!
                 ! fill local block
-                do m = 1,X%n_mod
-                    do k = 1,X%n_mod
-                        loc_block(k,m) = V_int_1(c([k,m],.false.,X%n_mod))      ! asymetric matrices don't need con()
+                do m = 1,n_mod
+                    do k = 1,n_mod
+                        loc_block(k,m) = V_int_1(c([k,m],.false.,n_mod))        ! asymetric matrices don't need con()
                     end do
                 end do
                 
@@ -728,9 +736,9 @@ contains
                 ! BLOCKS ~ V_2 !
                 ! -------------!
                 ! fill local block
-                do m = 1,X%n_mod
-                    do k = 1,X%n_mod
-                        loc_block(k,m) = con(V_int_2(c([k,m],.true.,X%n_mod)),&
+                do m = 1,n_mod
+                    do k = 1,n_mod
+                        loc_block(k,m) = con(V_int_2(c([k,m],.true.,n_mod)),&
                             &[k,m],.true.)                                      ! symmetric matrices need con()
                     end do
                 end do
@@ -820,6 +828,7 @@ contains
         PetscInt :: n_min, n_max                                                ! absolute limits excluding the BC's
         
         ! local variables
+        integer :: n_mod                                                        ! nr. of modes
         type(grid_type) :: grid_X_trim                                          ! trimmed perturbation grid
         PetscInt :: kd                                                          ! counter
         
@@ -830,6 +839,13 @@ contains
         
         call writo('Preparing variables')
         call lvl_ud(1)
+        
+        ! set nr. of modes
+        n_mod = X%n_mod(1)
+        if (n_mod.ne.X%n_mod(2)) then
+            ierr = 1
+            CHCKERR('Need square matrix')
+        end if
         
         ! trim grid
         ierr = trim_grid(grid_X,grid_X_trim)
@@ -980,9 +996,9 @@ contains
                 &': Eigenvector set to zero',persistent=.true.)
             
             ! initialize local blocks
-            allocate(loc_block(X%n_mod,X%n_mod))
+            allocate(loc_block(n_mod,n_mod))
             loc_block = 0.0_dp
-            do kd = 1,X%n_mod
+            do kd = 1,n_mod
                 loc_block(kd,kd) = 1.0_dp
             end do
             
@@ -1046,12 +1062,12 @@ contains
                 &': Minimization of surface energy',persistent=.true.)
             
             ! initialize PV_i and KV_i
-            allocate(PV_int_0(X%n_mod**2))
-            allocate(PV_int_1(X%n_mod**2))
-            allocate(PV_int_2(X%n_mod**2))
-            allocate(KV_int_0(X%n_mod**2))
-            allocate(KV_int_1(X%n_mod**2))
-            allocate(KV_int_2(X%n_mod**2))
+            allocate(PV_int_0(n_mod**2))
+            allocate(PV_int_1(n_mod**2))
+            allocate(PV_int_2(n_mod**2))
+            allocate(KV_int_0(n_mod**2))
+            allocate(KV_int_1(n_mod**2))
+            allocate(KV_int_2(n_mod**2))
            
             ! get interpolated terms in V_int_i
             call interp_V(X%PV_int_0(:,i_geo,:),loc_r_eq,PV_int_0)
@@ -1065,7 +1081,7 @@ contains
             ! BLOCKS ~ V_0,mod !
             ! -----------------!
             ! calculate modified terms V_int_0_mod
-            allocate(V_int_0_mod(X%n_mod,X%n_mod,2))
+            allocate(V_int_0_mod(n_mod,n_mod,2))
             ierr = calc_V_0_mod(PV_int_0,KV_int_0,PV_int_1,KV_int_1,KV_int_2,&
                 &V_int_0_mod)
             CHCKERR('')
@@ -1143,16 +1159,16 @@ contains
             ierr = 0
             
             ! initialize variables
-            allocate(KV_2_inv(X%n_mod,X%n_mod))
-            allocate(V_triple(X%n_mod,X%n_mod))
-            allocate(KV_1_loc(X%n_mod,X%n_mod))
-            allocate(PV_1_loc(X%n_mod,X%n_mod))
+            allocate(KV_2_inv(n_mod,n_mod))
+            allocate(V_triple(n_mod,n_mod))
+            allocate(KV_1_loc(n_mod,n_mod))
+            allocate(PV_1_loc(n_mod,n_mod))
             
             ! make local copy of KV_2 into the inverse array
             KV_2_inv = 0._dp
-            do m = 1,X%n_mod
+            do m = 1,n_mod
                 do k = 1,m                                                      ! only save upper diagonal part
-                    KV_2_inv(k,m) = con(KV_2(c([k,m],.true.,X%n_mod)),&
+                    KV_2_inv(k,m) = con(KV_2(c([k,m],.true.,n_mod)),&
                         &[k,m],.true.)                                          ! symmetric matrices need con()
                 end do
             end do
@@ -1170,21 +1186,21 @@ contains
             
             ! invert matrix KV_2 using Lapack
             uplo = 'U'                                                          ! only lower diagonal matters, but is arbitrary
-            call zpotrf(uplo,X%n_mod,KV_2_inv,X%n_mod,ierr)
+            call zpotrf(uplo,n_mod,KV_2_inv,n_mod,ierr)
             CHCKERR('Failed to decompose KV_2')
-            call zpotri(uplo,X%n_mod,KV_2_inv,X%n_mod,ierr)
+            call zpotri(uplo,n_mod,KV_2_inv,n_mod,ierr)
             CHCKERR('Failed to invert KV_2')
-            do k = 1,X%n_mod
+            do k = 1,n_mod
                 do m = 1,k-1
                     KV_2_inv(k,m) = conjg(KV_2_inv(m,k))
                 end do
             end do
             
             ! save local copy of KV_1 and PV_1
-            do m = 1,X%n_mod
-                do k = 1,X%n_mod
-                    KV_1_loc(k,m) = KV_1(c([k,m],.false.,X%n_mod))              ! asymetric matrices don't need con()
-                    PV_1_loc(k,m) = PV_1(c([k,m],.false.,X%n_mod))              ! asymetric matrices don't need con()
+            do m = 1,n_mod
+                do k = 1,n_mod
+                    KV_1_loc(k,m) = KV_1(c([k,m],.false.,n_mod))                ! asymetric matrices don't need con()
+                    PV_1_loc(k,m) = PV_1(c([k,m],.false.,n_mod))                ! asymetric matrices don't need con()
                 end do
             end do
             
@@ -1199,10 +1215,10 @@ contains
             V_triple = matmul(V_triple,conjg(transpose(KV_1_loc)))
             
             ! fill local block
-            do m = 1,X%n_mod
-                do k = 1,X%n_mod
+            do m = 1,n_mod
+                do k = 1,n_mod
                     V_0_mod(k,m,1) = &
-                        &con(PV_0(c([k,m],.true.,X%n_mod)),[k,m],.true.)        ! symmetric matrices need con()
+                        &con(PV_0(c([k,m],.true.,n_mod)),[k,m],.true.)          ! symmetric matrices need con()
                 end do
             end do
             V_0_mod(:,:,1) = V_0_mod(:,:,1) + &
@@ -1219,10 +1235,10 @@ contains
             V_triple = matmul(V_triple,conjg(transpose(KV_1_loc)))
             
             ! fill V_0_mod(1)
-            do m = 1,X%n_mod
-                do k = 1,X%n_mod
+            do m = 1,n_mod
+                do k = 1,n_mod
                     V_0_mod(k,m,2) = &
-                        &con(KV_0(c([k,m],.true.,X%n_mod)),[k,m],.true.)        ! symmetric matrices need con()
+                        &con(KV_0(c([k,m],.true.,n_mod)),[k,m],.true.)          ! symmetric matrices need con()
                 end do
             end do
             V_0_mod(:,:,2) = V_0_mod(:,:,2) - V_triple
@@ -1287,12 +1303,20 @@ contains
         EPS, intent(inout) :: solver                                            ! EV solver
         
         ! local variables
+        integer :: n_mod                                                        ! nr. of modes
         PetscInt :: n_sol                                                       ! how many solutions can be requested (normally n_sol_requested)
         
         ! initialize ierr
         ierr = 0
         
         call lvl_ud(1)
+        
+        ! set nr. of modes
+        n_mod = X%n_mod(1)
+        if (n_mod.ne.X%n_mod(2)) then
+            ierr = 1
+            CHCKERR('Need square matrix')
+        end if
         
         !call PetscOptionsSetValue('-eps_view','-1',ierr)
         call EPSCreate(PETSC_COMM_WORLD,solver,ierr)
@@ -1313,12 +1337,12 @@ contains
         CHCKERR('Failed to set which eigenpairs')
         
         ! request n_sol_requested Eigenpairs
-        if (n_sol_requested.gt.grid_X%n(3)*X%n_mod) then
+        if (n_sol_requested.gt.grid_X%n(3)*n_mod) then
             call writo('WARNING: max. nr. of solutions requested capped to &
-                &problem dimension ('//trim(i2str(grid_X%n(3)*X%n_mod))//')')
+                &problem dimension ('//trim(i2str(grid_X%n(3)*n_mod))//')')
             call writo('Increase either min_n_r_X or number of pol. modes or &
                 &decrease n_sol_requested')
-            n_sol = grid_X%n(3)*X%n_mod
+            n_sol = grid_X%n(3)*n_mod
         else
             n_sol = n_sol_requested
         end if

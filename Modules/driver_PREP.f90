@@ -66,7 +66,7 @@ contains
         call lvl_ud(-1)
         
         ! Calculate the equilibrium quantities
-        ierr = calc_eq(alpha,grid_eq,eq)
+        ierr = calc_eq(grid_eq,eq)
         CHCKERR('')
         
         ! Calculate the metric quantities
@@ -89,11 +89,11 @@ contains
         call calc_derived_q(grid_eq,eq,met)
         
         ! set up field-aligned equilibrium grid
-        ierr = setup_and_calc_grid_B(grid_eq,grid_eq_B,eq,alpha)
+        ierr = setup_and_calc_grid_B(grid_eq,grid_eq_B,eq)
         CHCKERR('')
         
         ! write equilibrium variables to output
-        ierr = print_output_eq(grid_eq,grid_eq_B,eq,met,alpha)
+        ierr = print_output_eq(grid_eq,grid_eq_B,eq,met)
         CHCKERR('')
         
         ! deallocate variables

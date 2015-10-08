@@ -2,7 +2,7 @@
 !   Operations that  have to do with  the fourier representation used  and its !
 !   relations with the real space                                              !
 !------------------------------------------------------------------------------!
-module fourier_ops
+module fourier
 #include <PB3D_macros.h>
     use str_ops
     use output_ops
@@ -189,4 +189,4 @@ contains
             end do
         end do
     end function fourier2real
-end module fourier_ops
+end module fourier

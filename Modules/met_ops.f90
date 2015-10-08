@@ -2512,7 +2512,7 @@ contains
     ! Tests whether jac_V is calculated correctly
     integer function test_jac_V(grid_eq,met) result(ierr)
         use grid_ops, only: trim_grid
-        use fourier_ops, only: fourier2real
+        use fourier, only: fourier2real
         use VMEC, only: jac_V_c, jac_V_s
         
         character(*), parameter :: rout_name = 'test_jac_V'
@@ -2586,7 +2586,7 @@ contains
         use num_vars, only: eq_style
         use grid_ops, only: trim_grid
         use utilities, only: c
-        use fourier_ops, only: fourier2real
+        use fourier, only: fourier2real
         use VMEC, only: B_V_sub_s, B_V_sub_c, B_V_c, B_V_s
         
         character(*), parameter :: rout_name = 'test_B_F'

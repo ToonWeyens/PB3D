@@ -13,13 +13,13 @@ module PB3D_vars
     use met_vars, only: met_type
     use X_vars, only: X_1_type, X_2_type
     use sol_vars, only: sol_type
-    use HDF5_ops, only: var_1D
+    use HDF5_vars, only: var_1D_type
 
     implicit none
     private
     public dealloc_PB3D, &
-        &PB3D_type, vars_1D_eq, vars_1D_eq_B, vars_1D_X_1, vars_1D_X_2, &
-        &vars_1D_sol, min_PB3D_version
+        &PB3D_type, vars_1D_misc, vars_1D_eq, vars_1D_eq_B, vars_1D_X_1, &
+        &vars_1D_X_2, vars_1D_sol, min_PB3D_version
     
     ! PB3D type
     type :: PB3D_type
@@ -35,9 +35,13 @@ module PB3D_vars
     end type PB3D_type
     
     ! global variables
-    type(var_1D), allocatable :: vars_1D_eq(:), vars_1D_eq_B(:), &
-        &vars_1D_X_1(:), vars_1D_X_2(:), vars_1D_sol(:)                         ! 1D variables
-    real(dp), parameter :: min_PB3D_version = 0.93_dp                           ! minimum PB3D version
+    type(var_1D_type), allocatable :: vars_1D_misc(:)                           ! 1D miscellaneous variables
+    type(var_1D_type), allocatable :: vars_1D_eq(:)                             ! 1D equilibrium variables
+    type(var_1D_type), allocatable :: vars_1D_eq_B(:)                           ! 1D field-aligned equilbrium variables
+    type(var_1D_type), allocatable :: vars_1D_X_1(:)                            ! 1D vectorial perturbation variables
+    type(var_1D_type), allocatable :: vars_1D_X_2(:)                            ! 1D tensorial perturbation variables
+    type(var_1D_type), allocatable :: vars_1D_sol(:)                            ! 1D solution variables
+    real(dp), parameter :: min_PB3D_version = 0.94_dp                           ! minimum PB3D version
     
 contains
     ! deallocates PB3D quantities

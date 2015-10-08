@@ -77,7 +77,7 @@ contains
         !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
         
         ! read PB3D output file
-        ierr = read_PB3D(.true.,.true.,.true.,.true.)                           ! read the PB3D_eq, PB3D_X and PB3D_sol files
+        ierr = read_PB3D(.true.,.true.,.true.,.true.,.true.)                    ! read the PB3D_eq, PB3D_X and PB3D_sol files
         write(*,*) '!!!!!!!!!!!!!!!!!!!!!! THIS SHOULD ONLY BE DONE IF NOT TOO MUCH MEMORY NECESSARY !!!!'
         CHCKERR('')
         
@@ -99,8 +99,8 @@ contains
                 ! the field-aligned grid is identical to the output grid
                 PB3D_B => PB3D
                 ! normal call to reconstruct_PB3D
-                ierr = reconstruct_PB3D(.true.,.true.,.true.,.true.,PB3D,&
-                    eq_limits=eq_limits,X_limits=X_limits)
+                ierr = reconstruct_PB3D(.true.,.true.,.true.,.true.,.true.,&
+                    &PB3D,eq_limits=eq_limits,X_limits=X_limits)
                 CHCKERR('')
         write(*,*) '!!!!!!!!!!!!!!!!!!!!!! THIS SHOULD ONLY BE DONE IF NOT TOO MUCH MEMORY NECESSARY !!!!'
                 call lvl_ud(-1)
@@ -114,8 +114,8 @@ contains
                 ! the field-aligned grid is different form the output grid
                 allocate(PB3D_B)
                 ! additionally need field-aligned equilibrium grid
-                ierr = reconstruct_PB3D(.true.,.true.,.true.,.true.,PB3D,&
-                    &PB3D_B%grid_eq,eq_limits=eq_limits,X_limits=X_limits)
+                ierr = reconstruct_PB3D(.true.,.true.,.true.,.true.,.true.,&
+                    &PB3D,PB3D_B%grid_eq,eq_limits=eq_limits,X_limits=X_limits)
                 CHCKERR('')
         write(*,*) '!!!!!!!!!!!!!!!!!!!!!! THIS SHOULD ONLY BE DONE IF NOT TOO MUCH MEMORY NECESSARY !!!!'
                 call lvl_ud(-1)

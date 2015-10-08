@@ -186,3 +186,14 @@ CHANGELOG
       - Restored 'prog_style' to only 2 possibilities: 1 (PB3D) or 2 (POST)
       - Split 'X_type' into 'X_1_type' (vectorial perturbation), 'X_2_type' (tensorial perturbation) and 'sol_type' (solution).
       - Code working up to calcalation of tensorial perturbation quantities.
+
+0.94: - NON-USABLE VERSION: SWITCHING BETWEEN PARALLELIZATIONS. 
+      - HDF5 variables are now bundled in 'HDF5_vars'.
+      - 'print_output_sol' is now situated in 'sol_ops'.
+      - 'fourier_ops' is now called 'fourier'.
+      - 'read_PB3D' takes optional mode information which is passed to 'read_HDF5_arrs' which takes optional string arguments.
+      - there are now 5 types of variables--misc, eq, X_1, X_2 and sol--that can be printed and reconstructed independently.
+      - 'open_output' now also writes miscelleaneous variables to HDF5 file.
+      - Fixed bug in 'read_HDF5_arrs' where head group was not closed which causd problems for consequent reads.
+      - 'c' now does its job also for submatrices, when the limits are provided.
+      - Tensorial perturbation variables are now correctly calculated up to KV, PV.
