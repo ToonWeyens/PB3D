@@ -197,3 +197,10 @@ CHANGELOG
       - Fixed bug in 'read_HDF5_arrs' where head group was not closed which causd problems for consequent reads.
       - 'c' now does its job also for submatrices, when the limits are provided.
       - Tensorial perturbation variables are now correctly calculated up to KV, PV.
+
+0.95: - NON-USABLE VERSION: SWITCHING BETWEEN PARALLELIZATIONS. 
+      - Matching modes now lead to less reading of variables.
+      - File and variable names have changed to consistent 'eq', 'X', 'sol' and 'POST'.
+      - Solution driver template introduced.
+      - In the perturbation driver, the only thing missing is the integration along the magnetic field lines.
+      - In the solution driver evetything needs to be pieced together.

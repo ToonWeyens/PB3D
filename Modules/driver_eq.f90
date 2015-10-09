@@ -1,7 +1,7 @@
 !------------------------------------------------------------------------------!
-!   Main driver of PB3D_PREP.                                                  !
+!   Driver of the equilibrium part of PB3D.                                    !
 !------------------------------------------------------------------------------!
-module driver_PREP
+module driver_eq
 #include <PB3D_macros.h>
     use str_ops
     use output_ops
@@ -13,11 +13,11 @@ module driver_PREP
     
     implicit none
     private
-    public run_driver_PREP
+    public run_driver_eq
     
 contains
-    ! Main driver of PB3D_PREP.
-    integer function run_driver_PREP() result(ierr)
+    ! Main driver of PB3D_eq.
+    integer function run_driver_eq() result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q
         use MPI_utilities, only: wait_MPI
         use eq_vars, only: dealloc_eq
@@ -32,7 +32,7 @@ contains
         use grid_ops, only: setup_and_calc_grid_B
         !!use utilities, only: calc_aux_utilities
         
-        character(*), parameter :: rout_name = 'run_driver_PREP'
+        character(*), parameter :: rout_name = 'run_driver_eq'
         
         ! local variables
         character(len=8) :: flux_name                                           ! toroidal or poloidal
@@ -119,5 +119,5 @@ contains
         end select
         call lvl_ud(-1)
         call writo('Variables deallocated')
-    end function run_driver_PREP
-end module driver_PREP
+    end function run_driver_eq
+end module driver_eq

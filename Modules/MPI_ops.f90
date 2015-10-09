@@ -288,8 +288,10 @@ contains
     end function divide_X_jobs
     
     ! Finds a  suitable next job. If  none are left, set X_job_nr  to a negative
-    ! value
-    integer function get_next_job(X_job_nr) result(ierr)
+    ! value.
+    ! Optionally an array of logicals can be  passed to see whether the modes of
+    ! the next job are the same as the previous job.
+    integer function get_next_job(X_job_nr,same_modes) result(ierr)
         use num_vars, only: X_jobs_taken, X_jobs_lims, X_jobs_file_name, rank, &
             &lock_file_name
         use files_utilities, only: nextunit
@@ -298,6 +300,7 @@ contains
         
         ! input / output
         integer, intent(inout) :: X_job_nr                                      ! perturbation job nr.
+        logical, intent(inout), optional :: same_modes(:)                       ! whether the modes are the same
         
         ! local variables
         integer :: current_job                                                  ! current job when calling this routine
@@ -317,6 +320,9 @@ contains
         
         ! set n_jobs
         n_jobs = size(X_jobs_taken)
+        
+        ! initialize same modes
+        if (present(same_modes)) same_modes = .false.
         
         ! save current job and reset next job to some negative value
         current_job = X_job_nr
@@ -351,10 +357,7 @@ contains
         ! match the previous one
         do id = 1,n_jobs
             if (.not.X_jobs_taken(id) .and. current_job.gt.0) then              ! only if there was a previous job (current job > 0)
-                if (X_jobs_lims(1,id).eq.X_jobs_lims(1,current_job) .and. &
-                    &X_jobs_lims(2,id).eq.X_jobs_lims(2,current_job) .or. &     ! columns match
-                    &X_jobs_lims(3,id).eq.X_jobs_lims(4,current_job) .and. &
-                    &X_jobs_lims(4,id).eq.X_jobs_lims(3,current_job)) then      ! rows match
+                if (matching_job(X_jobs_lims,current_job,id,same_modes)) then
                     X_job_nr = id
                     exit
                 end if
@@ -382,6 +385,37 @@ contains
         CHCKERR('Failed to close X jobs file')
         close(lock_file_i,status='DELETE',iostat=ierr)
         CHCKERR('Failed to delete lock file')
+    contains
+        ! checks whether there is a  job with matching mode numbers. Optionally,
+        ! a logical is  returned indicating in which dimension  the matching job
+        ! was found.
+        logical function matching_job(X_jobs_lims,prev_id,next_id,match_dim) &
+            &result(res)
+            ! input / output
+            integer, intent(in) :: X_jobs_lims(:,:)                             ! limits of X jobs
+            integer, intent(in) :: prev_id, next_id                             ! id's of previous and possible next jobs
+            logical, intent(inout), optional :: match_dim(:)                    ! dimensions in which match was found
+            
+            ! local variables
+            integer :: id                                                       ! counter
+            
+            ! initialize result
+            res = .false.
+            
+            ! initialize same modes
+            if (present(match_dim)) match_dim = .false.
+            
+            ! loop over all orders
+            do id = 1,size(X_jobs_lims,1)/2
+                if (X_jobs_lims((id-1)*2+1,next_id).eq.&
+                    &X_jobs_lims((id-1)*2+1,prev_id) .and. &                    ! minimum matches
+                    &X_jobs_lims((id-1)*2+2,next_id).eq.&
+                    &X_jobs_lims((id-1)*2+2,prev_id)) then                      ! maximum matches
+                    res = .true.
+                    if (present(match_dim)) match_dim(id) = .true.
+                end if
+            end do
+        end function matching_job
     end function get_next_job
     
     ! outputs job information from other processors.

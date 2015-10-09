@@ -11,7 +11,7 @@
     use_normalization       = .true.
     prim_X                  = 10
     min_sec_X               = 13
-    max_sec_X               = 19
+    max_sec_X               = 50
     max_it_r                = 1
     tol_r                   = 5.0E-6
     n_sol_requested         = 5

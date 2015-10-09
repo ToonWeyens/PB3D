@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.94                                                              !
+!   Version: 0.95                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -29,8 +29,9 @@ program PB3D
         &start_time, passed_time, print_hello, print_goodbye
     use X_vars, only: init_X_vars
     use HDF5_vars, only: init_HDF5
-    use driver_PREP, only: run_driver_PREP
-    use driver_PERT, only: run_driver_PERT
+    use driver_eq, only: run_driver_eq
+    use driver_X, only: run_driver_X
+    use driver_sol, only: run_driver_sol
     use files_ops, only: open_input, open_output, parse_args, init_files, &
         &close_output
     use input_ops, only: read_input
@@ -108,7 +109,7 @@ program PB3D
     call start_time
     call writo('Pre-perturbation driver')
     call lvl_ud(1)
-    ierr = run_driver_PREP()
+    ierr = run_driver_eq()
     CHCKERR
     call writo('')
     call passed_time
@@ -121,7 +122,20 @@ program PB3D
     call start_time
     call writo('Perturbation driver')
     call lvl_ud(1)
-    ierr = run_driver_PERT()
+    ierr = run_driver_X()
+    CHCKERR
+    call writo('')
+    call passed_time
+    call writo('')
+    call lvl_ud(-1)
+    
+    !-------------------------------------------------------
+    !   Main driver: Solution part
+    !-------------------------------------------------------
+    call start_time
+    call writo('Solution driver')
+    call lvl_ud(1)
+    ierr = run_driver_sol()
     CHCKERR
     call writo('')
     call passed_time

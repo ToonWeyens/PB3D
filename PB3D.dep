@@ -3,8 +3,9 @@ PB3D.o : \
     str_ops.o \
     messages.o \
     HDF5_vars.o \
-    driver_PREP.o \
-    driver_PERT.o \
+    driver_eq.o \
+    driver_X.o \
+    driver_sol.o \
     files_ops.o \
     input_ops.o \
     utilities.o \
@@ -94,7 +95,7 @@ grid_ops.o : \
     output_ops.o \
     messages.o \
 
-driver_PREP.o : \
+driver_eq.o : \
     num_vars.o \
     str_ops.o \
     output_ops.o \
@@ -108,7 +109,7 @@ driver_PREP.o : \
     grid_ops.o \
     grid_vars.o \
 
-driver_PERT.o : \
+driver_X.o : \
     str_ops.o \
     output_ops.o \
     messages.o \
@@ -120,6 +121,19 @@ driver_PERT.o : \
     X_ops.o \
     MPI_ops.o \
     vac.o \
+    PB3D_vars.o \
+    PB3D_ops.o \
+
+driver_sol.o : \
+    str_ops.o \
+    output_ops.o \
+    messages.o \
+    num_vars.o \
+    grid_vars.o \
+    eq_vars.o \
+    met_vars.o \
+    X_vars.o \
+    X_ops.o \
     PB3D_vars.o \
     PB3D_ops.o \
 

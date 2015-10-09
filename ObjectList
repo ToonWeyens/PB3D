@@ -3,8 +3,9 @@ HDF5_ops.o \
 HDF5_vars.o \
 grid_vars.o \
 grid_ops.o \
-driver_PREP.o \
-driver_PERT.o \
+driver_eq.o \
+driver_X.o \
+driver_sol.o \
 driver_POST.o \
 eq_ops.o \
 eq_vars.o \
