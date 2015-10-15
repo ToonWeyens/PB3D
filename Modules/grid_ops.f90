@@ -16,8 +16,7 @@ module grid_ops
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_norm_range, &
         &calc_eqd_grid, calc_ang_grid_eq, calc_ang_grid_B, plot_grid_real, &
         &extend_grid_E, setup_grid_eq, setup_and_calc_grid_B, &
-        &get_norm_interp_data, calc_int_magn, calc_int_vol, trim_grid, &
-        &untrim_grid
+        &get_norm_interp_data, calc_int_vol, trim_grid, untrim_grid
 #if ldebug
     public debug_calc_ang_grid_B, debug_get_norm_interp_data, &
         &debug_calc_int_vol
@@ -1873,99 +1872,6 @@ contains
                 CHCKERR(err_msg)
         end select
     end function calc_loc_r
-    
-    ! Calculates magnetic integral of V, defined as the matrix
-    !   <V e^[i(k-m)theta_F]> = [ int J V(k,m) e^i(k-m)theta_F dtheta_F ],
-    ! or
-    !   <V e^[i(m-k)zeta_F]> = [ int J V(k,m) e^i(m-k)zeta_F dzeta_F ],
-    ! depending on whether pol. or tor. flux is used as normal coord.
-    integer function calc_int_magn(grid,J_exp_ang,n_mod,V,V_int) result(ierr)
-        use num_vars, only: use_pol_flux_F
-        use utilities, only: c, con, is_sym
-        
-        character(*), parameter :: rout_name = 'calc_int_magn'
-        
-        ! input / output
-        type(grid_type) :: grid                                                 ! grid
-        complex(dp), intent(in) :: J_exp_ang(:,:,:,:)                           ! J * exponential of Flux parallel angle
-        integer, intent(in) :: n_mod                                            ! number of 
-        complex(dp), intent(in) :: V(:,:,:,:)                                   ! input V(n_par,n_geo,n_r,size_X^2)
-        complex(dp), intent(inout) :: V_int(:,:,:)                              ! output <V e^i(k-m)ang_par_F> integrated in parallel Flux coord.
-        
-        ! local variables
-        integer :: k, m, id, jd, kd                                             ! counters
-        integer :: nn_mod                                                       ! number of indices for V and V_int
-        integer :: k_min                                                        ! minimum k
-        logical :: sym                                                          ! whether V and V_int are symmetric
-        complex(dp), allocatable :: V_J_e(:,:,:,:)                              ! V*J*exp_ang
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle
-        integer :: dims(3)                                                      ! real dimensions
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set nn_mod
-        nn_mod = size(V,4)
-        
-        ! tests
-        if (size(V_int,1).ne.nn_mod) then
-            ierr = 1
-            err_msg = 'V and V_int need to have the same storage convention'
-            CHCKERR(err_msg)
-        end if
-        
-        ! set up dims
-        dims = [grid%n(1),grid%n(2),grid%loc_n_r]
-        
-        ! set up V_J_e
-        allocate(V_J_e(dims(1),dims(2),dims(3),nn_mod))
-        
-        ! set up ang_par_F
-        if (use_pol_flux_F) then
-            ang_par_F => grid%theta_F
-        else
-            ang_par_F => grid%zeta_F
-        end if
-        
-        ! determine whether matrices are symmetric or not
-        ierr = is_sym(n_mod,nn_mod,sym)
-        CHCKERR('')
-        
-        ! set up k_min
-        k_min = 1
-        
-        ! multiply V by Jacobian and exponential
-        do m = 1,n_mod
-            if (sym) k_min = m
-            do k = k_min,n_mod
-                V_J_e(:,:,:,c([k,m],sym,n_mod)) = &
-                    &con(J_exp_ang(:,:,:,c([k,m],.true.,n_mod)),&
-                    &[k,m],.true.,dims) * &
-                    &con(V(:,:,:,c([k,m],sym,n_mod)),[k,m],sym,dims)
-            end do
-        end do
-        
-        ! integrate  term over  ang_par_F  for all  equilibrium grid  points
-        ! using the recursive formula int_1^n f(x) dx
-        !   = int_1^(n-1) f(x) dx + (f(n)+f(n-1))*(x(n)-x(n-1))/2
-        V_int = 0.0_dp
-        ! loop over all geodesic points on this process
-        do kd = 1,grid%loc_n_r
-            ! loop over all normal points on this process
-            do jd = 1,grid%n(2)
-                ! parallel integration loop
-                do id = 2,grid%n(1)
-                    V_int(:,jd,kd) = V_int(:,jd,kd) + &
-                        &(V_J_e(id,jd,kd,:)+V_J_e(id-1,jd,kd,:))/2 * &
-                        &(ang_par_F(id,jd,kd)-ang_par_F(id-1,jd,kd))
-                end do
-            end do
-        end do
-        
-        ! clean up
-        nullify(ang_par_F)
-    end function calc_int_magn
     
     ! Calculates volume integral on a 3D grid.
     ! Two angular and  one normal variable has  to be provided on a the grid. If

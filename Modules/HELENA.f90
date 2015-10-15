@@ -339,55 +339,44 @@ contains
         nullify(theta_in)
     end function get_ang_interp_data_HEL
     
-    ! Adapt  some variables  resulting from  HELENA equilibria  to field-aligned
-    ! grid (angularly):
-    !   - perturbation variables: U_i, DU_i, PV_i, KV_i
-    ! and optionally:
-    !   - equilibrium variables of interest are flux variables
+    ! Interpolate  variables resulting  from HELENA  equilibria to  another grid
+    ! (angularly).
+    !   - equilibrium variables: flux variables (no need to convert) and derived
+    !     quantities
     !   - metric variables: jac_FD, g_FD, h_FD
-    integer function interp_HEL_on_grid(grid_eq,grid_eq_B,X_1,X_1_B,X_2,X_2_B,&
-        &met,met_B,eq,eq_B,grid_name) result(ierr)
-        use num_vars, only: prog_style
+    !   - vectorial perturbation variables: U_i, DU_i
+    !   - tensorial perturbation variables: PV_i, KV_i
+    ! Note: By default the interpolated  quantities overwrite the original ones,
+    ! but alternative output variables can be provided.
+    ! Also, a message can be printed if a grid name is passed.
+    integer function interp_HEL_on_grid(grid_eq,grid_eq_out,eq,met,X_1,X_2,&
+        &eq_out,met_out,X_1_out,X_2_out,grid_name) result(ierr)
         
         character(*), parameter :: rout_name = 'interp_HEL_on_grid'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq, grid_eq_B                       ! general and field-aligned equilibrium grid
-        type(X_1_type), intent(inout) :: X_1                                    ! general vectorial perturbation variables
-        type(X_2_type), intent(inout) :: X_2                                    ! general tensorial perturbation variables
-        type(X_1_type), intent(inout) :: X_1_B                                  ! field-aligned vectorial perturbation variables
-        type(X_2_type), intent(inout) :: X_2_B                                  ! field-aligned tensorial perturbation variables
-        type(met_type), intent(in), optional :: met                             ! general metric variables
-        type(met_type), intent(inout), optional :: met_B                        ! field-aligned metric variables
-        type(eq_type), intent(in), optional :: eq                               ! general equilibrium variables
-        type(eq_type), intent(inout), optional :: eq_B                          ! field-aligned equilibrium variables
+        type(grid_type), intent(in) :: grid_eq, grid_eq_out                     ! general and field-aligned equilibrium grid
+        type(eq_type), intent(inout), optional :: eq                            ! general equilibrium variables
+        type(met_type), intent(inout), optional :: met                          ! general metric variables
+        type(X_1_type), intent(inout), optional  :: X_1                         ! general vectorial perturbation variables
+        type(X_2_type), intent(inout), optional  :: X_2                         ! general tensorial perturbation variables
+        type(eq_type), intent(inout), optional :: eq_out                        ! field-aligned equilibrium variables
+        type(met_type), intent(inout), optional :: met_out                      ! field-aligned metric variables
+        type(X_1_type), intent(inout), optional  :: X_1_out                     ! field-aligned vectorial perturbation variables
+        type(X_2_type), intent(inout), optional  :: X_2_out                     ! field-aligned tensorial perturbation variables
         character(len=*), intent(in), optional :: grid_name                     ! name of grid to which to adapt quantities
         
         ! local variables
         real(dp), allocatable :: theta_i(:,:,:)                                 ! interpolation index
         logical :: td_sym                                                       ! whether there is top-down symmetry (relevant only for HELENA)
-        character(len=max_str_ln) :: grid_name_loc                              ! local version of grid_name
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
-        
-        ! tests
-        if (prog_style.eq.2) then                                               ! POST
-            if (.not.present(eq) .or. .not.present(eq_B)) then
-                ierr = 1
-                err_msg = 'For PB3D_POST, eq and eq_B are needed as well'
-                CHCKERR(err_msg)
-            end if
-        end if
-        
-        ! set up local grid name
-        grid_name_loc = ''
-        if (present(grid_name)) grid_name_loc = ' to '//grid_name
-        
         ! user output
-        call writo('Adapting quantities'//trim(grid_name_loc))
-        call lvl_ud(1)
+        if (present(grid_name)) then
+            call writo('Adapting quantities to'//trim(grid_name))
+            call lvl_ud(1)
+        end if
         
         ! set up td_sym
         if (ias.eq.0) then
@@ -397,75 +386,142 @@ contains
         end if
         
         ! get angular interpolation factors
-        ierr = get_ang_interp_data_HEL(grid_eq,grid_eq_B,theta_i,td_sym=td_sym,&
-            &use_E=.false.)
+        ierr = get_ang_interp_data_HEL(grid_eq,grid_eq_out,theta_i,&
+            &td_sym=td_sym,use_E=.false.)
         CHCKERR('')
         
-        ! user output
-        call writo('Adapting perturbation quantities')
-        call lvl_ud(1)
-        ! adapt common variables for all program styles
-        X_2_B%vac_res = X_2%vac_res
-        call interp_var_4D_complex(X_1%U_0,theta_i,X_1_B%U_0,sym_type=2)
-        call interp_var_4D_complex(X_1%U_1,theta_i,X_1_B%U_1,sym_type=2)
-        call interp_var_4D_complex(X_1%DU_0,theta_i,X_1_B%DU_0,sym_type=1)
-        call interp_var_4D_complex(X_1%DU_1,theta_i,X_1_B%DU_1,sym_type=1)
-        ! adapt custom variables depending on program style
-        select case (prog_style)
-            case(1)                                                             ! PB3D
-                call interp_var_4D_complex(X_2%PV_0,theta_i,X_2_B%PV_0,&
-                    &sym_type=1)
-                call interp_var_4D_complex(X_2%PV_1,theta_i,X_2_B%PV_1,&
-                    &sym_type=1)
-                call interp_var_4D_complex(X_2%PV_2,theta_i,X_2_B%PV_2,&
-                    &sym_type=1)
-                call interp_var_4D_complex(X_2%KV_0,theta_i,X_2_B%KV_0,&
-                    &sym_type=1)
-                call interp_var_4D_complex(X_2%KV_1,theta_i,X_2_B%KV_1,&
-                    &sym_type=1)
-                call interp_var_4D_complex(X_2%KV_2,theta_i,X_2_B%KV_2,&
-                    &sym_type=1)
-            case(2)                                                             ! POST
+        ! adapt equilibrium quantities
+        if (present(eq)) then
+            if (present(eq_out)) then
+                eq_out%pres_FD = eq%pres_FD
+                eq_out%q_saf_FD = eq%q_saf_FD
+                eq_out%rot_t_FD = eq%rot_t_FD
+                eq_out%flux_p_FD = eq%flux_p_FD
+                eq_out%flux_t_FD = eq%flux_t_FD
+                eq_out%rho = eq%rho
+            else
                 ! do nothing
-            case default
-                err_msg = 'No program style associated with '//&
-                    &trim(i2str(prog_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-        call lvl_ud(-1)
-        
-        if (present(eq).and.present(eq_B)) then
-            ! user output
-            call writo('Adapting equilibrium quantities')
-            call lvl_ud(1)
-            eq_B%pres_FD = eq%pres_FD
-            eq_B%q_saf_FD = eq%q_saf_FD
-            eq_B%rot_t_FD = eq%rot_t_FD
-            eq_B%flux_p_FD = eq%flux_p_FD
-            eq_B%flux_t_FD = eq%flux_t_FD
-            eq_B%rho = eq%rho
-            call interp_var_3D_real(eq%S,theta_i,eq_B%S)
-            call interp_var_3D_real(eq%sigma,theta_i,eq_B%sigma)
-            call interp_var_3D_real(eq%kappa_n,theta_i,eq_B%kappa_n)
-            call interp_var_3D_real(eq%kappa_g,theta_i,eq_B%kappa_g,&
-                &sym_type=2)
-            call lvl_ud(-1)
+            end if
+            if (present(eq_out)) then
+                call interp_var_3D_real(eq%S,theta_i,eq_out%S)
+            else
+                call interp_var_3D_real_ow(eq%S,theta_i)
+            end if
+            if (present(eq_out)) then
+                call interp_var_3D_real(eq%sigma,theta_i,eq_out%sigma)
+            else
+                call interp_var_3D_real_ow(eq%sigma,theta_i)
+            end if
+            if (present(eq_out)) then
+                call interp_var_3D_real(eq%kappa_n,theta_i,eq_out%kappa_n)
+            else
+                call interp_var_3D_real_ow(eq%kappa_n,theta_i)
+            end if
+            if (present(eq_out)) then
+                call interp_var_3D_real(eq%kappa_g,theta_i,eq_out%kappa_g,&
+                    &sym_type=2)
+            else
+                call interp_var_3D_real_ow(eq%kappa_g,theta_i,sym_type=2)
+            end if
         end if
         
-        if (present(met).and.present(met_B)) then
-            ! user output
-            call writo('Adapting metric quantities')
-            call lvl_ud(1)
-            call interp_var_6D_real(met%jac_FD,theta_i,met_B%jac_FD)
-            call interp_var_7D_real(met%g_FD,theta_i,met_B%g_FD)
-            call interp_var_7D_real(met%h_FD,theta_i,met_B%h_FD)
-            call lvl_ud(-1)
+        ! metric quantities
+        if (present(met)) then
+            if (present(met_out)) then
+                call interp_var_6D_real(met%jac_FD,theta_i,met_out%jac_FD)
+            else
+                call interp_var_6D_real_ow(met%jac_FD,theta_i)
+            end if
+            if (present(met_out)) then
+                call interp_var_7D_real(met%g_FD,theta_i,met_out%g_FD)
+            else
+                call interp_var_7D_real_ow(met%g_FD,theta_i)
+            end if
+            if (present(met_out)) then
+                call interp_var_7D_real(met%h_FD,theta_i,met_out%h_FD)
+            else
+                call interp_var_7D_real_ow(met%h_FD,theta_i)
+            end if
+        end if
+        
+        ! adapt vectorial perturbation quantities
+        if (present(X_1)) then
+            if (present(X_1_out)) then
+                call interp_var_4D_complex(X_1%U_0,theta_i,X_1_out%U_0,&
+                    &sym_type=2)
+            else
+                call interp_var_4D_complex_ow(X_1%U_0,theta_i,sym_type=2)
+            end if
+            if (present(X_1_out)) then
+                call interp_var_4D_complex(X_1%U_1,theta_i,X_1_out%U_1,&
+                    &sym_type=2)
+            else
+                call interp_var_4D_complex_ow(X_1%U_1,theta_i,sym_type=2)
+            end if
+            if (present(X_1_out)) then
+                call interp_var_4D_complex(X_1%DU_0,theta_i,X_1_out%DU_0,&
+                    &sym_type=1)
+            else
+                call interp_var_4D_complex_ow(X_1%DU_0,theta_i,sym_type=1)
+            end if
+            if (present(X_1_out)) then
+                call interp_var_4D_complex(X_1%DU_1,theta_i,X_1_out%DU_1,&
+                    &sym_type=1)
+            else
+                call interp_var_4D_complex_ow(X_1%DU_1,theta_i,sym_type=1)
+            end if
+        end if
+        
+        ! adapt tensorial perturbation quantities
+        if (present(X_2)) then
+            if (present(X_2_out)) then
+                X_2_out%vac_res = X_2%vac_res
+            else
+                ! do nothing
+            end if
+            if (present(X_2_out)) then
+                call interp_var_4D_complex(X_2%PV_0,theta_i,X_2_out%PV_0,&
+                    &sym_type=1)
+            else
+                call interp_var_4D_complex_ow(X_2%PV_0,theta_i,sym_type=1)
+            end if
+            if (present(X_2_out)) then
+                call interp_var_4D_complex(X_2%PV_1,theta_i,X_2_out%PV_1,&
+                    &sym_type=1)
+            else
+                call interp_var_4D_complex_ow(X_2%PV_1,theta_i,sym_type=1)
+            end if
+            if (present(X_2_out)) then
+                call interp_var_4D_complex(X_2%PV_2,theta_i,X_2_out%PV_2,&
+                    &sym_type=1)
+            else
+                call interp_var_4D_complex_ow(X_2%PV_2,theta_i,sym_type=1)
+            end if
+            if (present(X_2_out)) then
+                call interp_var_4D_complex(X_2%KV_0,theta_i,X_2_out%KV_0,&
+                    &sym_type=1)
+            else
+                call interp_var_4D_complex_ow(X_2%KV_0,theta_i,sym_type=1)
+            end if
+            if (present(X_2_out)) then
+                call interp_var_4D_complex(X_2%KV_1,theta_i,X_2_out%KV_1,&
+                    &sym_type=1)
+            else
+                call interp_var_4D_complex_ow(X_2%KV_1,theta_i,sym_type=1)
+            end if
+            if (present(X_2_out)) then
+                call interp_var_4D_complex(X_2%KV_2,theta_i,X_2_out%KV_2,&
+                    &sym_type=1)
+            else
+                call interp_var_4D_complex_ow(X_2%KV_2,theta_i,sym_type=1)
+            end if
         end if
         
         ! user output
-        call lvl_ud(-1)
-        call writo('Quantities adapted'//trim(grid_name_loc))
+        if (present(grid_name)) then
+            call lvl_ud(-1)
+            call writo('Quantities adapted to '//trim(grid_name))
+        end if
     contains
         ! Interpolate a  variable defined  on an  axisymmetric grid  at poloidal
         ! angles indicated by the interpolation factors theta_i.
@@ -478,7 +534,7 @@ contains
         ! factors, this is indicated by a  negative factor instead of a positive
         ! one.
         ! (also  correct  if i_hi = i_lo)
-        subroutine interp_var_3D_real(var,theta_i,var_int,sym_type)             ! 3D_real version
+        subroutine interp_var_3D_real(var,theta_i,var_int,sym_type)             ! 3D_real version, separate output variable
             ! input / output
             real(dp), intent(in) :: var(:,:,:)                                  ! variable to be interpolated
             real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
@@ -515,7 +571,36 @@ contains
                 end do
             end do
         end subroutine interp_var_3D_real
-        subroutine interp_var_6D_real(var,theta_i,var_int,sym_type)             ! 6D_real version
+        subroutine interp_var_3D_real_ow(var,theta_i,sym_type)                  ! 3D_real version, overwriting variable
+            ! input / output
+            real(dp), intent(inout), allocatable :: var(:,:,:)                  ! variable to be interpolated
+            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
+            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
+            
+            ! local variables
+            real(dp), allocatable :: var_3D_loc(:,:,:)                          ! local 3D variable
+            integer :: var_dim(3,2)                                             ! dimensions of variable
+            
+            ! set up variable dimensions
+            var_dim(:,1) = [1,1,1]
+            var_dim(:,2) = [shape(theta_i)]
+            
+            ! set up local 3D variable
+            allocate(var_3D_loc(var_dim(1,1):var_dim(1,2),&
+                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2)))
+            
+            ! call normal routine
+            call interp_var_3D_real(var,theta_i,var_3D_loc,sym_type)
+            
+            ! reallocate variable
+            deallocate(var)
+            allocate(var(var_dim(1,1):var_dim(1,2),&
+                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2)))
+            
+            ! overwrite variable
+            var = var_3D_loc
+        end subroutine interp_var_3D_real_ow
+        subroutine interp_var_6D_real(var,theta_i,var_int,sym_type)             ! 6D_real version, separate output variable
             ! input / output
             real(dp), intent(in) :: var(:,:,:,:,:,:)                            ! variable to be interpolated
             real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
@@ -557,7 +642,41 @@ contains
                 var_int(:,:,:,:,:,ld) = (-1)**(ld-1)*var_int(:,:,:,:,:,ld)
             end do
         end subroutine interp_var_6D_real
-        subroutine interp_var_7D_real(var,theta_i,var_int,sym_type)             ! 7D_real version
+        subroutine interp_var_6D_real_ow(var,theta_i,sym_type)                  ! 6D_real version, overwriting variable
+            ! input / output
+            real(dp), intent(inout), pointer :: var(:,:,:,:,:,:)                ! variable to be interpolated
+            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
+            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
+            
+            ! local variables
+            real(dp), allocatable :: var_6D_loc(:,:,:,:,:,:)                    ! local 6D variable
+            integer :: var_dim(6,2)                                             ! dimensions of variable
+            
+            ! set up variable dimensions
+            var_dim(:,1) = [1,1,1,0,0,0]
+            var_dim(:,2) = [shape(theta_i),size(var,4)-1,size(var,5)-1,&
+                &size(var,6)-1]
+            
+            ! set up local 6D variable
+            allocate(var_6D_loc(var_dim(1,1):var_dim(1,2),&
+                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
+                &var_dim(4,1):var_dim(4,2),var_dim(5,1):var_dim(5,2),&
+                &var_dim(6,1):var_dim(6,2)))
+            
+            ! call normal routine
+            call interp_var_6D_real(var,theta_i,var_6D_loc,sym_type)
+            
+            ! reallocate variable
+            deallocate(var)
+            allocate(var(var_dim(1,1):var_dim(1,2),&
+                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
+                &var_dim(4,1):var_dim(4,2),var_dim(5,1):var_dim(5,2),&
+                &var_dim(6,1):var_dim(6,2)))
+            
+            ! overwrite variable
+            var = var_6D_loc
+        end subroutine interp_var_6D_real_ow
+        subroutine interp_var_7D_real(var,theta_i,var_int,sym_type)             ! 7D_real version, separate output variable
             ! input / output
             real(dp), intent(in) :: var(:,:,:,:,:,:,:)                          ! variable to be interpolated
             real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
@@ -599,7 +718,41 @@ contains
                 var_int(:,:,:,:,:,:,ld) = (-1)**(ld-1)*var_int(:,:,:,:,:,:,ld)
             end do
         end subroutine interp_var_7D_real
-        subroutine interp_var_4D_complex(var,theta_i,var_int,sym_type)          ! 4D_complex version
+        subroutine interp_var_7D_real_ow(var,theta_i,sym_type)                  ! 7D_real version, overwriting variable
+            ! input / output
+            real(dp), intent(inout), pointer :: var(:,:,:,:,:,:,:)              ! variable to be interpolated
+            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
+            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
+            
+            ! local variables
+            real(dp), allocatable :: var_7D_loc(:,:,:,:,:,:,:)                  ! local 7D variable
+            integer :: var_dim(7,2)                                             ! dimensions of variable
+            
+            ! set up variable dimensions
+            var_dim(:,1) = [1,1,1,1,0,0,0]
+            var_dim(:,2) = [shape(theta_i),size(var,4),size(var,5)-1,&
+                &size(var,6)-1,size(var,7)-1]
+            
+            ! set up local 7D variable
+            allocate(var_7D_loc(var_dim(1,1):var_dim(1,2),&
+                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
+                &var_dim(4,1):var_dim(4,2),var_dim(5,1):var_dim(5,2),&
+                &var_dim(6,1):var_dim(6,2),var_dim(7,1):var_dim(7,2)))
+            
+            ! call normal routine
+            call interp_var_7D_real(var,theta_i,var_7D_loc,sym_type)
+            
+            ! reallocate variable
+            deallocate(var)
+            allocate(var(var_dim(1,1):var_dim(1,2),&
+                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
+                &var_dim(4,1):var_dim(4,2),var_dim(5,1):var_dim(5,2),&
+                &var_dim(6,1):var_dim(6,2),var_dim(7,1):var_dim(7,2)))
+            
+            ! overwrite variable
+            var = var_7D_loc
+        end subroutine interp_var_7D_real_ow
+        subroutine interp_var_4D_complex(var,theta_i,var_int,sym_type)          ! 4D_complex version, separate output variable
             ! input / output
             complex(dp), intent(in) :: var(:,:,:,:)                             ! variable to be interpolated
             real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
@@ -638,6 +791,37 @@ contains
                 end do
             end do
         end subroutine interp_var_4D_complex
+        subroutine interp_var_4D_complex_ow(var,theta_i,sym_type)               ! 4D_complex version, overwriting variable
+            ! input / output
+            complex(dp), intent(inout), allocatable :: var(:,:,:,:)             ! variable to be interpolated
+            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
+            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
+            
+            ! local variables
+            complex(dp), allocatable :: var_4D_loc(:,:,:,:)                     ! local 4D variable
+            integer :: var_dim(4,2)                                             ! dimensions of variable
+            
+            ! set up variable dimensions
+            var_dim(:,1) = [1,1,1,1]
+            var_dim(:,2) = [shape(theta_i),size(var,4)]
+            
+            ! set up local 4D variable
+            allocate(var_4D_loc(var_dim(1,1):var_dim(1,2),&
+                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
+                &var_dim(4,1):var_dim(4,2)))
+            
+            ! call normal routine
+            call interp_var_4D_complex(var,theta_i,var_4D_loc,sym_type)
+            
+            ! reallocate variable
+            deallocate(var)
+            allocate(var(var_dim(1,1):var_dim(1,2),&
+                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
+                &var_dim(4,1):var_dim(4,2)))
+            
+            ! overwrite variable
+            var = var_4D_loc
+        end subroutine interp_var_4D_complex_ow
     end function interp_HEL_on_grid
     
 #if ldebug

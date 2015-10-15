@@ -12,8 +12,6 @@ module driver_POST
     use met_vars, only: met_type
     use X_vars, only: X_1_type, X_2_type
     use sol_vars, only: sol_type
-    use PB3D_vars, only: dealloc_PB3D, &
-        &PB3D_type
     
     implicit none
     private
@@ -36,11 +34,12 @@ contains
             &plot_flux_q, plot_grid, prog_name, output_name, rank
         use PB3D_ops, only: read_PB3D, reconstruct_PB3D, retrieve_var_1D_id
         use PB3D_vars, only: vars_1D_eq, vars_1D_sol
-        use grid_vars, only: create_grid
+        use grid_vars, only: create_grid, dealloc_grid
         use grid_ops, only: calc_norm_range
-        use eq_vars, only: create_eq
-        use met_vars, only: create_met
-        use X_vars, only: create_X
+        use eq_vars, only: create_eq, dealloc_eq
+        use met_vars, only: create_met, dealloc_met
+        use X_vars, only: create_X, dealloc_X
+        use sol_vars, only: dealloc_sol
         use grid_ops, only: calc_XYZ_grid, extend_grid_E, plot_grid_real
         use eq_ops, only: calc_eq, flux_q_plot
         use X_ops, only: calc_X, resonance_plot, calc_res_surf
@@ -52,9 +51,27 @@ contains
         character(*), parameter :: rout_name = 'run_driver_POST'
         
         ! local variables
-        type(PB3D_type), target :: PB3D                                         ! output PB3D for which to do postprocessing
-        type(PB3D_type), pointer :: PB3D_B => null()                            ! PB3D variables on a field-aligned grid
-        type(PB3D_type) :: PB3D_plot                                            ! PB3D variables on a plot grid
+        type(grid_type), target :: grid_eq                                      ! equilibrium grid
+        type(grid_type), pointer :: grid_eq_B                                   ! field-aligned equilibrium grid
+        type(grid_type) :: grid_eq_plot                                         ! plot equilibrium grid
+        type(grid_type), target :: grid_X                                       ! perturbation grid
+        type(grid_type), pointer :: grid_X_B                                    ! field-aligned perturbation grid
+        type(grid_type) :: grid_X_plot                                          ! plot perturbation grid
+        type(eq_type), target :: eq                                             ! equilbrium variables
+        type(eq_type), pointer :: eq_B                                          ! field-aligned equilibrium variables
+        type(eq_type) :: eq_plot                                                ! plot equilibrium variables
+        type(met_type), target :: met                                           ! metric variables
+        type(met_type), pointer :: met_B                                        ! field-aligned metric variables
+        type(met_type) :: met_plot                                              ! plot metric variables
+        type(X_1_type), target :: X_1                                           ! vectorial perturbation variables
+        type(X_1_type), pointer :: X_1_B                                        ! field-aligned vectorial perturbation variables
+        type(X_1_type) :: X_1_plot                                              ! plot vectorial perturbation variables
+        type(X_2_type), target :: X_2                                           ! tensorial perturbation variables
+        type(X_2_type), pointer :: X_2_B                                        ! field-aligned tensorial perturbation variables
+        type(X_2_type) :: X_2_plot                                              ! plot tensorial perturbation variables
+        type(sol_type), target :: sol                                           ! solution variables
+        type(sol_type), pointer :: sol_B                                        ! field-aligned solution variables
+        type(sol_type) :: sol_plot                                              ! plot solution variables
         integer :: id, jd                                                       ! counter
         integer :: min_id(3), max_id(3)                                         ! min. and max. index of range 1, 2 and 3
         integer :: last_unstable_id                                             ! index of last unstable EV
@@ -96,13 +113,21 @@ contains
                 ! user output
                 call writo('Reconstruct PB3D output on output grid')
                 call lvl_ud(1)
-                ! the field-aligned grid is identical to the output grid
-                PB3D_B => PB3D
+                ! the field-aligned quantities are already found
+                grid_eq_B => grid_eq
+                grid_X_B => grid_X
+                eq_B => eq
+                met_B => met
+                X_1_B => X_1
+                X_2_B => X_2
+                sol_B => sol
                 ! normal call to reconstruct_PB3D
                 ierr = reconstruct_PB3D(.true.,.true.,.true.,.true.,.true.,&
-                    &PB3D,eq_limits=eq_limits,X_limits=X_limits)
+                    &grid_eq=grid_eq,grid_X=grid_X,eq=eq,met=met,&
+                    &X_1=X_1,X_2=X_2,sol=sol,&
+                    &eq_limits=eq_limits,X_limits=X_limits)
                 CHCKERR('')
-        write(*,*) '!!!!!!!!!!!!!!!!!!!!!! THIS SHOULD ONLY BE DONE IF NOT TOO MUCH MEMORY NECESSARY !!!!'
+                write(*,*) '!!!!!!!!!!!!!!!!!!!!!! THIS SHOULD ONLY BE DONE IF NOT TOO MUCH MEMORY NECESSARY !!!!'
                 call lvl_ud(-1)
                 
                 ! user output
@@ -111,13 +136,21 @@ contains
                 ! user output
                 call writo('Reconstruct PB3D output on output grid')
                 call lvl_ud(1)
-                ! the field-aligned grid is different form the output grid
-                allocate(PB3D_B)
+                ! the field-aligned quantities are different
+                allocate(grid_eq_B)
+                allocate(grid_X_B)
+                allocate(eq_B)
+                allocate(met_B)
+                allocate(X_1_B)
+                allocate(X_2_B)
+                allocate(sol_B)
                 ! additionally need field-aligned equilibrium grid
                 ierr = reconstruct_PB3D(.true.,.true.,.true.,.true.,.true.,&
-                    &PB3D,PB3D_B%grid_eq,eq_limits=eq_limits,X_limits=X_limits)
+                    &grid_eq=grid_eq,grid_eq_B=grid_eq_B,grid_X=grid_X,eq=eq,&
+                    &met=met,X_1=X_1,X_2=X_2,sol=sol,&
+                    &eq_limits=eq_limits,X_limits=X_limits)
                 CHCKERR('')
-        write(*,*) '!!!!!!!!!!!!!!!!!!!!!! THIS SHOULD ONLY BE DONE IF NOT TOO MUCH MEMORY NECESSARY !!!!'
+                write(*,*) '!!!!!!!!!!!!!!!!!!!!!! THIS SHOULD ONLY BE DONE IF NOT TOO MUCH MEMORY NECESSARY !!!!'
                 call lvl_ud(-1)
                 
                 ! user output
@@ -127,24 +160,25 @@ contains
                 call writo('Preparing quantities')
                 call lvl_ud(1)
                 ! setup field-aligned quantities
-                ierr = create_eq(PB3D_B%grid_eq,PB3D_B%eq)
+                ierr = create_eq(grid_eq_B,eq_B)
                 CHCKERR('')
-                ierr = create_met(PB3D_B%grid_eq,PB3D_B%met)
+                ierr = create_met(grid_eq_B,met_B)
                 CHCKERR('')
-                ierr = create_grid(PB3D_B%grid_X,PB3D%grid_X%n,&
-                    &[PB3D%grid_X%i_min,PB3D%grid_X%i_max])
+                ierr = create_grid(grid_X_B,grid_X%n,&
+                    &[grid_X%i_min,grid_X%i_max])
                 CHCKERR('')
-                PB3D_B%grid_X%r_F = PB3D%grid_X%r_F
-                PB3D_B%grid_X%r_e = PB3D%grid_X%r_E
-                PB3D_B%grid_X%loc_r_F = PB3D%grid_X%loc_r_F
-                PB3D_B%grid_X%loc_r_e = PB3D%grid_X%loc_r_E
-                !!call create_X(PB3D_B%grid_eq,PB3D_B%X)
+                grid_X_B%r_F = grid_X%r_F
+                grid_X_B%r_e = grid_X%r_E
+                grid_X_B%loc_r_F = grid_X%loc_r_F
+                grid_X_B%loc_r_e = grid_X%loc_r_E
+                !!call create_X(grid_eq_B,X_B)
                 write(*,*) '!!!!!!!! NOT CREATING X !! !!'
-                allocate(PB3D_B%sol%val(size(PB3D%sol%val)))
-                allocate(PB3D_B%sol%vec(size(PB3D%sol%vec,1),size(PB3D%sol%vec,2),&
-                    &size(PB3D%sol%vec,3)))
-                PB3D_B%sol%val = PB3D%sol%val
-                PB3D_B%sol%vec = PB3D%sol%vec
+                allocate(sol_B%val(size(sol%val)))
+                allocate(sol_B%vec(size(sol%vec,1),size(sol%vec,2),&
+                    &size(sol%vec,3)))
+                sol_B%val = sol%val
+                sol_B%vec = sol%vec
+                write(*,*) '!!!!!!!!!!!!!!! SOL_B SHOULD BE => SOL'
                 call lvl_ud(-1)
                 call writo('Quantities prepared')
                 
@@ -168,19 +202,19 @@ contains
         call lvl_ud(1)
         
         if (plot_resonance) then
-            ierr = resonance_plot(PB3D%eq,PB3D%grid_eq)
+            ierr = resonance_plot(eq,grid_eq)
             CHCKERR('')
         else
             call writo('Resonance plot not requested')
         end if
         if (plot_flux_q) then
-            ierr = flux_q_plot(PB3D%grid_eq,PB3D%eq)
+            ierr = flux_q_plot(grid_eq,eq)
             CHCKERR('')
         else
             call writo('Flux quantities plot not requested')
         end if
         if (plot_grid) then
-            ierr = plot_grid_real(PB3D_B%grid_eq)
+            ierr = plot_grid_real(grid_eq_B)
             CHCKERR('')
         else
             call writo('Magnetic grid plot not requested')
@@ -194,11 +228,9 @@ contains
         
         call writo('Setting up the grid')
         call lvl_ud(1)
-        ierr = extend_grid_E(PB3D%grid_eq,PB3D_plot%grid_eq,&
-            &grid_eq=PB3D%grid_eq,eq=PB3D%eq)                                   ! extend eq grid and convert to F
+        ierr = extend_grid_E(grid_eq,grid_eq_plot,grid_eq=grid_eq,eq=eq)        ! extend eq grid and convert to F
         CHCKERR('')
-        ierr = extend_grid_E(PB3D%grid_X,PB3D_plot%grid_X,&
-            &grid_eq=PB3D%grid_eq,eq=PB3D%eq)                                   ! extend X grid and convert to F
+        ierr = extend_grid_E(grid_X,grid_X_plot,grid_eq=grid_eq,eq=eq)          ! extend X grid and convert to F
         CHCKERR('')
         call lvl_ud(-1)
         call writo('Grid set up')
@@ -209,14 +241,14 @@ contains
                 call writo('Preparing quantities')
                 call lvl_ud(1)
                 ! setup plot quantities
-                ierr = create_eq(PB3D_plot%grid_eq,PB3D_plot%eq)
+                ierr = create_eq(grid_eq_plot,eq_plot)
                 CHCKERR('')
-                PB3D_plot%eq%pres_E = PB3D%eq%pres_E
-                PB3D_plot%eq%q_saf_E = PB3D%eq%q_saf_E
-                PB3D_plot%eq%rot_t_E = PB3D%eq%rot_t_E
-                PB3D_plot%eq%flux_p_E = PB3D%eq%flux_p_E
-                PB3D_plot%eq%flux_t_E = PB3D%eq%flux_t_E
-                PB3D_plot%eq%rho = PB3D%eq%rho
+                eq_plot%pres_E = eq%pres_E
+                eq_plot%q_saf_E = eq%q_saf_E
+                eq_plot%rot_t_E = eq%rot_t_E
+                eq_plot%flux_p_E = eq%flux_p_E
+                eq_plot%flux_t_E = eq%flux_t_E
+                eq_plot%rho = eq%rho
                 call lvl_ud(-1)
                 call writo('Quantities prepared')
                 
@@ -226,11 +258,10 @@ contains
                 no_plots_loc = no_plots; no_plots = .true.
                 no_messages_loc = no_messages; no_messages = .true.
                 ! calculate the non-flux equilibrium quantities for plot grid
-                !!ierr = calc_eq(PB3D_plot%grid_eq,PB3D_plot%eq,PB3D_plot%met)
+                !!ierr = calc_eq(grid_eq_plot,eq_plot,met_plot)
                 !!CHCKERR('')
                 ! prepare matrix elements for plot grid
-                !!ierr = prepare_X(PB3D_plot%grid_eq,PB3D_plot%eq,PB3D_plot%met,&
-                    !!&PB3D_plot%X)
+                !!ierr = prepare_X(grid_eq_plot,eq_plot,met_plot,X_plot)
                 CHCKERR('')
                 ! reset no_plots and no_messages
                 no_plots = no_plots_loc
@@ -241,19 +272,19 @@ contains
                 call writo('Preparing quantities')
                 call lvl_ud(1)
                 ! setup plot quantities
-                ierr = create_eq(PB3D_plot%grid_eq,PB3D_plot%eq)
+                ierr = create_eq(grid_eq_plot,eq_plot)
                 CHCKERR('')
-                ierr = create_met(PB3D_plot%grid_eq,PB3D_plot%met)
+                ierr = create_met(grid_eq_plot,met_plot)
                 CHCKERR('')
-                !!call create_X(PB3D_plot%grid_eq,PB3D_plot%X)
+                !!call create_X(grid_eq_plot,X_plot)
                 write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! NOT CREATING X !! !!'
                 call lvl_ud(-1)
                 call writo('Quantities prepared')
                 
                 ! call HELENA grid interpolation
-                !!ierr = interp_HEL_on_grid(PB3D%grid_eq,PB3D_plot%grid_eq,&
-                    !!&PB3D%X,PB3D_plot%X,met=PB3D%met,met_B=PB3D_plot%met,eq=PB3D%eq,&
-                    !!&eq_B=PB3D_plot%eq,grid_name='plot grid')
+                !!ierr = interp_HEL_on_grid(grid_eq,grid_eq_plot,&
+                    !!&X,X_plot,met=met,met_out=met_plot,eq=eq,&
+                    !!&eq_out=eq_plot,grid_name='plot grid')
                 CHCKERR('')
                 write(*,*) '!!!!!!!!! DON''T FORGET ABOUT INTERPOLATION !!!!'
             case default
@@ -264,11 +295,11 @@ contains
         end select
         
         ! copy the Eigenvectors and -values into the plot X
-        allocate(PB3D_plot%sol%val(size(PB3D%sol%val)))
-        allocate(PB3D_plot%sol%vec(size(PB3D%sol%vec,1),size(PB3D%sol%vec,2),&
-            &size(PB3D%sol%vec,3)))
-        PB3D_plot%sol%val = PB3D%sol%val
-        PB3D_plot%sol%vec = PB3D%sol%vec
+        allocate(sol_plot%val(size(sol%val)))
+        allocate(sol_plot%vec(size(sol%vec,1),size(sol%vec,2),&
+            &size(sol%vec,3)))
+        sol_plot%val = sol%val
+        sol_plot%vec = sol%vec
         
         call lvl_ud(-1)
         
@@ -276,7 +307,7 @@ contains
         call writo('Find stability ranges')
         call lvl_ud(1)
         
-        call find_stab_ranges(PB3D%sol,min_id,max_id,last_unstable_id)
+        call find_stab_ranges(sol,min_id,max_id,last_unstable_id)
         
         call lvl_ud(-1)
         
@@ -284,7 +315,7 @@ contains
         call writo('Plot the Eigenvalues')
         call lvl_ud(1)
         
-        call plot_X_vals(PB3D%sol,last_unstable_id)
+        call plot_X_vals(sol,last_unstable_id)
         
         call lvl_ud(-1)
         
@@ -294,19 +325,16 @@ contains
         
         call writo('Calculate plot grid')
         call lvl_ud(1)
-        allocate(X_plot(PB3D_plot%grid_X%n(1),PB3D_plot%grid_X%n(2),&
-            &PB3D_plot%grid_X%loc_n_r))
-        allocate(Y_plot(PB3D_plot%grid_X%n(1),PB3D_plot%grid_X%n(2),&
-            &PB3D_plot%grid_X%loc_n_r))
-        allocate(Z_plot(PB3D_plot%grid_X%n(1),PB3D_plot%grid_X%n(2),&
-            &PB3D_plot%grid_X%loc_n_r))
-        ierr = calc_XYZ_grid(PB3D_plot%grid_X,X_plot,Y_plot,Z_plot)
+        allocate(X_plot(grid_X_plot%n(1),grid_X_plot%n(2),grid_X_plot%loc_n_r))
+        allocate(Y_plot(grid_X_plot%n(1),grid_X_plot%n(2),grid_X_plot%loc_n_r))
+        allocate(Z_plot(grid_X_plot%n(1),grid_X_plot%n(2),grid_X_plot%loc_n_r))
+        ierr = calc_XYZ_grid(grid_X_plot,X_plot,Y_plot,Z_plot)
         CHCKERR('')
         call lvl_ud(-1)
         
         call writo('Calculate resonant surfaces')
         call lvl_ud(1)
-        ierr = calc_res_surf(PB3D%grid_eq,PB3D%eq,res_surf,info=.false.,&
+        ierr = calc_res_surf(grid_eq,eq,res_surf,info=.false.,&
             &tol_NR=1.E-8_dp,max_it_NR=5000)
         call lvl_ud(-1)
         
@@ -357,16 +385,16 @@ contains
             do id = min_id(jd),max_id(jd)
                 ! user output
                 call writo('Mode '//trim(i2str(id))//'/'//&
-                    &trim(i2str(size(PB3D%sol%val)))//', with eigenvalue '&
-                    &//trim(c2strt(PB3D%sol%val(id))))
+                    &trim(i2str(size(sol%val)))//', with eigenvalue '&
+                    &//trim(c2strt(sol%val(id))))
                 call lvl_ud(1)
                 
                 call writo('Plot the Eigenvector')
                 call lvl_ud(1)
-                ierr = plot_X_vec(PB3D_plot%grid_eq,PB3D_plot%eq,&
-                    &PB3D_plot%grid_X,PB3D_plot%sol,&
-                    &reshape([X_plot,Y_plot,Z_plot],[PB3D_plot%grid_X%n(1),&
-                    &PB3D_plot%grid_X%n(2),PB3D_plot%grid_X%loc_n_r,3]),id,&
+                ierr = plot_X_vec(grid_eq_plot,eq_plot,&
+                    &grid_X_plot,sol_plot,&
+                    &reshape([X_plot,Y_plot,Z_plot],[grid_X_plot%n(1),&
+                    &grid_X_plot%n(2),grid_X_plot%loc_n_r,3]),id,&
                     &res_surf)
                 CHCKERR('')
                 call lvl_ud(-1)
@@ -374,9 +402,9 @@ contains
                 ! user output
                 call writo('Decompose the energy into its terms')
                 call lvl_ud(1)
-                ierr = decompose_energy(PB3D_B,id,output_EN_i,PB3D_plot,&
-                    &reshape([X_plot,Y_plot,Z_plot],[PB3D_plot%grid_X%n(1),&
-                    &PB3D_plot%grid_X%n(2),PB3D_plot%grid_X%loc_n_r,3]))
+                !ierr = decompose_energy(PB3D_B,id,output_EN_i,PB3D_plot,&
+                    !&reshape([X_plot,Y_plot,Z_plot],[PB3D_plot%grid_X%n(1),&
+                    !&PB3D_plot%grid_X%n(2),PB3D_plot%grid_X%loc_n_r,3]))
                 CHCKERR('')
                 call lvl_ud(-1)
                 
@@ -387,10 +415,43 @@ contains
         end do
         
         ! clean up 
-        call dealloc_PB3D(PB3D)
-        call dealloc_PB3D(PB3D_plot)
-        if (eq_style.eq.2) call dealloc_PB3D(PB3D_B)                            ! only for HELENA
-        nullify(PB3D_B)
+        call dealloc_grid(grid_eq)
+        call dealloc_grid(grid_X)
+        call dealloc_eq(eq)
+        call dealloc_met(met)
+        call dealloc_X(X_1)
+        call dealloc_X(X_2)
+        call dealloc_sol(sol)
+        if (eq_style.eq.2) then
+            call dealloc_grid(grid_eq_B)
+            call dealloc_grid(grid_X_B)
+            call dealloc_eq(eq_B)
+            call dealloc_met(met_B)
+            call dealloc_X(X_1_B)
+            call dealloc_X(X_2_B)
+            call dealloc_sol(sol_B)
+            deallocate(grid_eq_B)
+            deallocate(grid_X_B)
+            deallocate(eq_B)
+            deallocate(met_B)
+            deallocate(X_1_B)
+            deallocate(X_2_B)
+            deallocate(sol_B)
+        end if
+        nullify(grid_eq_B)
+        nullify(grid_X_B)
+        nullify(eq_B)
+        nullify(met_B)
+        nullify(X_1_B)
+        nullify(X_2_B)
+        nullify(sol_B)
+        call dealloc_grid(grid_eq_plot)
+        call dealloc_grid(grid_X_plot)
+        call dealloc_eq(eq_plot)
+        call dealloc_met(met_plot)
+        call dealloc_X(X_1_plot)
+        call dealloc_X(X_2_plot)
+        call dealloc_sol(sol_plot)
         
         ! close output
         if (rank.eq.0) close(output_EN_i)

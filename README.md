@@ -204,3 +204,10 @@ CHANGELOG
       - Solution driver template introduced.
       - In the perturbation driver, the only thing missing is the integration along the magnetic field lines.
       - In the solution driver evetything needs to be pieced together.
+
+0.96: - NON-USABLE VERSION: SWITCHING BETWEEN PARALLELIZATIONS. 
+      - 'interp_HEL_on_grid' now overwrites input quantities if no outputs are provided.
+      - This way the doubling of the memory requirement for HELENA is avoided.
+      - The calculation of magnetic integrals now happens completely in 'X_ops'.
+      - 'PB3D_type' is not used anymore; Instead, individual variables are used.
+      - Perturbation driver has been completed.

@@ -1285,16 +1285,22 @@ contains
                 c_loc(2) = c([k,m],.false.,n_mod_tot,lim_sec_X)
                 
                 ! calculate KV_0
-                X%KV_0(:,:,:,c_loc(1)) = com_fac * &
-                    &X_b%U_0(:,:,:,m) * conjg(X_a%U_0(:,:,:,k)) + 1._dp/h22
+                if (calc_this(1)) then
+                    X%KV_0(:,:,:,c_loc(1)) = com_fac * &
+                        &X_b%U_0(:,:,:,m) * conjg(X_a%U_0(:,:,:,k)) + 1._dp/h22
+                end if
                 
                 ! calculate KV_1
-                X%KV_1(:,:,:,c_loc(2)) = com_fac * &
-                    &X_b%U_1(:,:,:,m) * conjg(X_a%U_0(:,:,:,k))
+                if (calc_this(2)) then
+                    X%KV_1(:,:,:,c_loc(2)) = com_fac * &
+                        &X_b%U_1(:,:,:,m) * conjg(X_a%U_0(:,:,:,k))
+                end if
                 
                 ! calculate KV_2
-                X%KV_2(:,:,:,c_loc(1)) = com_fac * &
-                    &X_b%U_1(:,:,:,m) * conjg(X_a%U_1(:,:,:,k))
+                if (calc_this(1)) then
+                    X%KV_2(:,:,:,c_loc(1)) = com_fac * &
+                        &X_b%U_1(:,:,:,m) * conjg(X_a%U_1(:,:,:,k))
+                end if
             end do
         end do
         
@@ -1311,54 +1317,113 @@ contains
     
     ! Calculate the  magnetic integrals  from PV_i and  KV_i. All  the variables
     ! should thus be field-line oriented.
-    integer function calc_magn_ints(grid_eq,X) result(ierr)
-        use grid_ops, only: calc_int_magn
-        
-        character(*), parameter :: rout_name = 'calc_magn_ints'
+    subroutine calc_magn_ints(grid_eq,met,X,lim_sec_X)
+        use num_vars, only: use_pol_flux_F
+        use X_vars, only: is_necessary_X, &
+            &min_m_X, max_m_X, min_n_X, max_n_X
+        use utilities, only: c
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(met_type), intent(in) :: met                                       ! metric variables
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
+        integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
         
-        ! initialize ierr
-        ierr = 0
+        ! local variables
+        integer :: n_mod_tot                                                    ! total nr. of modes
+        integer :: k, m                                                         ! counters
+        integer :: id                                                           ! counter
+        logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
+        integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
+        complex(dp), allocatable :: J_exp_ang(:,:,:)                            ! J * exponential of Flux parallel angle
+        real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle in flux coordinates
         
         ! user output
         call writo('Calculating field-line averages')
         call lvl_ud(1)
         
-        !! Calculate PV_int = <PV e^(k-m)ang_par_F>
-        !call writo('Taking field average of PV')
-        !call lvl_ud(1)
-        !ierr = calc_int_magn(grid_eq,X%J_exp_ang_par_F,X%n_mod,&
-            !&X%PV_0,X%PV_int_0)
-        !CHCKERR('')
-        !ierr = calc_int_magn(grid_eq,X%J_exp_ang_par_F,X%n_mod,&
-            !&X%PV_1,X%PV_int_1)
-        !CHCKERR('')
-        !ierr = calc_int_magn(grid_eq,X%J_exp_ang_par_F,X%n_mod,&
-            !&X%PV_2,X%PV_int_2)
-        !CHCKERR('')
-        !call lvl_ud(-1)
+        ! set nr. of modes
+        n_mod_tot = (max_m_X-min_m_X+1)*(max_n_X-min_n_X+1)
         
-        !! Calculate KV_int = <KV e^(k-m)ang_par_F>
-        !call writo('Taking field average of KV')
-        !call lvl_ud(1)
-        !ierr = calc_int_magn(grid_eq,X%J_exp_ang_par_F,X%n_mod,&
-            !&X%KV_0,X%KV_int_0)
-        !CHCKERR('')
-        !ierr = calc_int_magn(grid_eq,X%J_exp_ang_par_F,X%n_mod,&
-            !&X%KV_1,X%KV_int_1)
-        !CHCKERR('')
-        !ierr = calc_int_magn(grid_eq,X%J_exp_ang_par_F,X%n_mod,&
-            !&X%KV_2,X%KV_int_2)
-        !CHCKERR('')
-        !call lvl_ud(-1)
+        ! allocate J_exp_ang
+        allocate(J_exp_ang(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        
+        ! set up parallel angle in flux coordinates
+        if (use_pol_flux_F) then
+            ang_par_F => grid_eq%theta_F
+        else
+            ang_par_F => grid_eq%zeta_F
+        end if
+        
+        ! initialize integrated quantities
+        X%PV_int_0 = 0
+        X%PV_int_1 = 0
+        X%PV_int_2 = 0
+        X%KV_int_0 = 0
+        X%KV_int_1 = 0
+        X%KV_int_2 = 0
+        
+        ! loop over all modes
+        do m = 1,X%n_mod(2)
+            do k = 1,X%n_mod(1)
+                ! check whether mode combination needs to be calculated
+                calc_this(1) = is_necessary_X(X,.true.,[k,m])
+                calc_this(2) = is_necessary_X(X,.false.,[k,m])
+                
+                ! set up c_loc
+                c_loc(1) = c([k,m],.true.,n_mod_tot,lim_sec_X)
+                c_loc(2) = c([k,m],.false.,n_mod_tot,lim_sec_X)
+                
+                ! calculate J_exp_ang
+                if (use_pol_flux_F) then
+                    J_exp_ang(:,:,:) = met%jac_FD(:,:,:,0,0,0)*&
+                        &exp(iu*(X%m_1(k)-X%m_2(m))*ang_par_F)
+                else
+                    J_exp_ang(:,:,:) = met%jac_FD(:,:,:,0,0,0)*&
+                        &exp(-iu*(X%n_1(k)-X%n_2(m))*ang_par_F)
+                end if
+                
+                ! parallel integration loop
+                do id = 2,grid_eq%n(1)
+                    if (calc_this(1)) then
+                        X%PV_int_0(c_loc(1),:,:) = X%PV_int_0(c_loc(1),:,:) + &
+                            &(J_exp_ang(id,:,:)*X%PV_0(id,:,:,c_loc(1))&
+                            &+J_exp_ang(id-1,:,:)*X%PV_0(id-1,:,:,c_loc(1)))/2 &
+                            &*(ang_par_F(id,:,:)-ang_par_F(id-1,:,:))
+                        X%PV_int_2(c_loc(1),:,:) = X%PV_int_2(c_loc(1),:,:) + &
+                            &(J_exp_ang(id,:,:)*X%PV_2(id,:,:,c_loc(1))&
+                            &+J_exp_ang(id-1,:,:)*X%PV_2(id-1,:,:,c_loc(1)))/2 &
+                            &*(ang_par_F(id,:,:)-ang_par_F(id-1,:,:))
+                        X%KV_int_0(c_loc(1),:,:) = X%KV_int_0(c_loc(1),:,:) + &
+                            &(J_exp_ang(id,:,:)*X%KV_0(id,:,:,c_loc(1))&
+                            &+J_exp_ang(id-1,:,:)*X%KV_0(id-1,:,:,c_loc(1)))/2 &
+                            &*(ang_par_F(id,:,:)-ang_par_F(id-1,:,:))
+                        X%KV_int_2(c_loc(1),:,:) = X%KV_int_2(c_loc(1),:,:) + &
+                            &(J_exp_ang(id,:,:)*X%KV_2(id,:,:,c_loc(1))&
+                            &+J_exp_ang(id-1,:,:)*X%KV_2(id-1,:,:,c_loc(1)))/2 &
+                            &*(ang_par_F(id,:,:)-ang_par_F(id-1,:,:))
+                    end if
+                    if (calc_this(2)) then
+                        X%PV_int_1(c_loc(2),:,:) = X%PV_int_1(c_loc(2),:,:) + &
+                            &(J_exp_ang(id,:,:)*X%PV_1(id,:,:,c_loc(2))&
+                            &+J_exp_ang(id-1,:,:)*X%PV_1(id-1,:,:,c_loc(2)))/2 &
+                            &*(ang_par_F(id,:,:)-ang_par_F(id-1,:,:))
+                        X%KV_int_1(c_loc(2),:,:) = X%KV_int_1(c_loc(2),:,:) + &
+                            &(J_exp_ang(id,:,:)*X%KV_1(id,:,:,c_loc(2))&
+                            &+J_exp_ang(id-1,:,:)*X%KV_1(id-1,:,:,c_loc(2)))/2 &
+                            &*(ang_par_F(id,:,:)-ang_par_F(id-1,:,:))
+                    end if
+                end do
+            end do
+        end do
+        
+        ! clean up
+        nullify(ang_par_F)
         
         ! user output
         call lvl_ud(-1)
         call writo('Field-line averages calculated')
-    end function calc_magn_ints
+    end subroutine calc_magn_ints
     
     ! set-up  and solve  the  EV system  by discretizing  the  equations in  the
     ! perturbation  grid,  making  use  of   PV  and  KV,  interpolated  in  the

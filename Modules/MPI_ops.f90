@@ -203,8 +203,6 @@ contains
         ! n_mod as well
         integer function calc_memory(ord,arr_size,n_mod,mem_size) result(ierr)
             use ISO_C_BINDING
-            use num_vars, only: eq_style
-            
             character(*), parameter :: rout_name = 'calc_memory'
             
             ! input / output
@@ -234,11 +232,6 @@ contains
                 case (2)                                                        ! tensorial data: PV, KV
                     ! set memory size
                     mem_size = 6*arr_size*n_mod**ord*dp_size
-                    
-                    ! use twice this for HELENA because of the need to calculate
-                    ! X_B from X
-                    if (eq_style.eq.2) mem_size = mem_size*2
-                    !!!! THIS SHOULD BE AVOIDED !!!!!!!!!
                 case default
                     ierr = 1
                     err_msg = 'Orders > 2 are not implemented'

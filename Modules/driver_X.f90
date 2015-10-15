@@ -31,22 +31,26 @@ contains
             &min_m_X, max_m_X, min_n_X, max_n_X, min_r_X, max_r_X, min_n_r_X
         use grid_vars, only: dealloc_grid, &
             &n_par_X, min_par_X, max_par_X
+        use eq_vars, only: dealloc_eq
+        use met_vars, only: dealloc_met
         use PB3D_ops, only: read_PB3D, reconstruct_PB3D
-        use PB3D_vars, only: dealloc_PB3D, &
-            &PB3D_type
         use utilities, only: test_max_memory
         use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
-        use X_ops, only: calc_X, check_X_modes, resonance_plot, print_output_X
+        use X_ops, only: calc_X, check_X_modes, resonance_plot, &
+            &print_output_X, calc_magn_ints
         use vac, only: calc_vac
+        use HELENA, only: interp_HEL_on_grid
         !!use utilities, only: calc_aux_utilities
         
         character(*), parameter :: rout_name = 'run_driver_X'
         
         ! local variables
-        type(PB3D_type), target :: PB3D                                         ! output PB3D for which to do postprocessing
-        type(PB3D_type), pointer :: PB3D_B => null()                            ! PB3D variables on a field-aligned grid
+        type(grid_type), target :: grid_eq                                      ! equilibrium grid
+        type(grid_type), pointer :: grid_eq_B                                   ! field-aligned equilibrium grid
+        type(eq_type) :: eq                                                     ! equilibrium variables
+        type(met_type) :: met                                                   ! metric variables
         type(X_1_type) :: X_1(2)                                                ! vectorial X variables
-        type(X_2_type) :: X                                                     ! tensorial X variables
+        type(X_2_type) :: X_2                                                   ! tensorial X variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: dim_reused(2)                                                ! wether dimension is reused
         integer :: id                                                           ! counter
@@ -54,8 +58,6 @@ contains
         
         ! initialize ierr
         ierr = 0
-        
-        call lvl_ud(1)
         
         ! some preliminary things
         
@@ -109,18 +111,18 @@ contains
         call lvl_ud(1)
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ! the field-aligned grid is identical to the output grid
-                PB3D_B => PB3D
                 ! normal call to reconstruct_PB3D
                 ierr = reconstruct_PB3D(.false.,.true.,.false.,.false.,.false.,&
-                    &PB3D)
+                    &grid_eq=grid_eq,eq=eq,met=met)
                 CHCKERR('')
+                ! the field-aligned grid is identical to the output grid
+                grid_eq_B => grid_eq
             case (2)                                                            ! HELENA
-                ! the field-aligned grid is different form the output grid
-                allocate(PB3D_B)
+                ! allocate grid_eq_B
+                allocate(grid_eq_B)
                 ! additionally need field-aligned equilibrium grid
                 ierr = reconstruct_PB3D(.false.,.true.,.false.,.false.,.false.,&
-                    &PB3D,PB3D_B%grid_eq)
+                    &grid_eq=grid_eq,grid_eq_B=grid_eq_B,eq=eq,met=met)
                 CHCKERR('')
             case default
                 ierr = 1
@@ -132,19 +134,19 @@ contains
         call writo('PB3D output reconstructed')
         
         ! tests
-        ierr = check_X_modes(PB3D%eq)
+        ierr = check_X_modes(eq)
         CHCKERR('')
         
         ! plot resonances if requested
         if (plot_resonance .and. rank.eq.0) then
-            ierr = resonance_plot(PB3D%eq,PB3D%grid_eq)
+            ierr = resonance_plot(eq,grid_eq)
             CHCKERR('')
         else
             call writo('Resonance plot not requested')
         end if
         
         ! divide perturbation jobs
-        ierr = divide_X_jobs(PB3D%grid_eq,1)
+        ierr = divide_X_jobs(grid_eq,1)
         CHCKERR('')
         
         ! main loop over vectorial jobs
@@ -165,12 +167,12 @@ contains
                 &trim(i2str(X_jobs_lims(2,X_job_nr)))//') is calculated')
             
             ! calculate X variables, vector phase
-            ierr = calc_X(PB3D%grid_eq,PB3D%eq,PB3D%met,X_1(1),&
+            ierr = calc_X(grid_eq,eq,met,X_1(1),&
                 &lim_sec_X=X_jobs_lims(:,X_job_nr))
             CHCKERR('')
             
             ! write vectorial perturbation variables to output
-            ierr = print_output_X(PB3D%grid_eq,X_1(1))
+            ierr = print_output_X(grid_eq,X_1(1))
             CHCKERR('')
             
             ! clean up
@@ -191,7 +193,7 @@ contains
         CHCKERR('')
         
         ! divide perturbation jobs, tensor phase
-        ierr = divide_X_jobs(PB3D%grid_eq,2)
+        ierr = divide_X_jobs(grid_eq,2)
         CHCKERR('')
         
         ! main loop over tensorial jobs
@@ -212,9 +214,6 @@ contains
                 &trim(i2str(X_jobs_lims(2,X_job_nr)))//')x('//&
                 &trim(i2str(X_jobs_lims(3,X_job_nr)))//'..'//&
                 &trim(i2str(X_jobs_lims(4,X_job_nr)))//') is calculated')
-            
-            write(*,*) 'TEMPORARILY SLOWING PROC NE 0 DOWDN !!!!!!!!!!!!!!!!!!!'
-            call sleep(rank*10)
             
             ! calculate vectorial perturbation if dimension not reused
             do id = 1,2
@@ -238,7 +237,7 @@ contains
                     
                     ! reconstruct PB3D X_1 quantities for this dimension
                     ierr = reconstruct_PB3D(.false.,.false.,.true.,.false.,&
-                        &.false.,PB3D,X_1=X_1(id),lim_sec_X_1=&
+                        &.false.,grid_eq=grid_eq,X_1=X_1(id),lim_sec_X_1=&
                         &X_jobs_lims((id-1)*2+1:(id-1)*2+2,X_job_nr))
                     CHCKERR('')
                     
@@ -250,29 +249,32 @@ contains
             end do
             
             ! calculate X variables, tensor phase
-            ierr = calc_X(PB3D%grid_eq,PB3D%eq,PB3D%met,X_1(1),X_1(2),X,&
+            ierr = calc_X(grid_eq,eq,met,X_1(1),X_1(2),X_2,&
                 &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
             CHCKERR('')
             
             ! calculate vacuum response
-            ierr = calc_vac(X)
+            ierr = calc_vac(X_2)
             CHCKERR('')
             
-            ! integrate  magnetic integrals of tensorial  perturbation variables
+            ! adapt tensorial perturbation to field-aligned coords. if HELENA
+            if (eq_style.eq.2) then
+                ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,met=met,&
+                    &X_2=X_2,grid_name='field-aligned grid')
+                CHCKERR('')
+            end if
+            
+            ! integrate magnetic  integrals of tensorial  perturbation variables
             ! over field-aligned grid
-            !ierr = calc_magn_ints(grid_eq_B,X_B)
-            !CHCKERR('')
-            !!!!!!!!!!!!!!!!!
-            write(*,*) '!!!! CONTINUE HERE !!!!!!!!!'
-            write(*,*) 'NEED TO BE ABLE TO INTEGRATE THE QUANTITIES IN FIELD-ALIGNED GRID WITHOUT COPYING TOO MUCH !!!!!'
-            write(*,*) 'BEST DIRECTLY !!!'
+            call calc_magn_ints(grid_eq_B,met,X_2,&
+                &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
             
             ! write tensorial perturbation variables to output file
-            ierr = print_output_X(PB3D%grid_eq,X)
+            ierr = print_output_X(grid_eq,X_2)
             CHCKERR('')
             
             ! clean up
-            call dealloc_X(X)
+            call dealloc_X(X_2)
             
             ! user output
             call lvl_ud(-1)
@@ -293,8 +295,15 @@ contains
         ierr = print_jobs_info()
         CHCKERR('')
         
-        ! deallocate PB3D variable
-        call dealloc_PB3D(PB3D)
+        ! cleaning up
+        call dealloc_grid(grid_eq)
+        if (eq_style.eq.2) then
+            call dealloc_grid(grid_eq_B)
+            deallocate(grid_eq_B)
+        end if
+        nullify(grid_eq_B)
+        call dealloc_eq(eq)
+        call dealloc_met(met)
         
         ! synchronize MPI
         ierr = wait_MPI()

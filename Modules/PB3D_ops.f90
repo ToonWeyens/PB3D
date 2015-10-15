@@ -14,7 +14,6 @@ module PB3D_ops
     use met_vars, only: met_type
     use X_vars, only: X_1_type, X_2_type
     use sol_vars, only: sol_type
-    use PB3D_vars, only: PB3D_type
     use HDF5_vars, only: var_1D_type
 
     implicit none
@@ -38,7 +37,7 @@ contains
     ! flux) or  n_X (tor.  flux) can be  passed, instead of  reading all  of the
     ! perturbation quantities.
     integer function read_PB3D(read_misc,read_eq,read_X_1,read_X_2,read_sol,&
-        &lim_sec_X_1, lim_sec_X_2) result(ierr)
+        &lim_sec_X_1,lim_sec_X_2) result(ierr)
         use num_vars, only: eq_style, PB3D_name
         use HDF5_ops, only: read_HDF5_arrs
         use X_vars, only: get_suffix, &
@@ -54,7 +53,6 @@ contains
         integer, intent(in), optional :: lim_sec_X_2(2,2)                       ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
         
         ! local variables
-        integer :: id                                                           ! counter
         character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln), allocatable :: req_var_names(:)              ! requested variable names
         
@@ -137,31 +135,30 @@ contains
     ! provided, the full normal range is taken for every variable.
     ! Note that despite the name, the eq limits are used for eq- and X-variables
     ! and that the X limits for the sol-variables!
-    ! Note that  both the  X and the  sol variables need  the eq  variables, but
-    ! these necessary variables do not have to be calculated here: They can also
-    ! be provided.
-    ! Optionally, X_1 and X_2 can be returned separately instead of as a part of
-    ! PB3D. This  is useful  when not  the full range  of perturbation  modes is
-    ! used.
-    ! Also, if perturbation  quantities are read, the limits of  m_X (pol. flux)
-    ! or  n_X  (tor.  flux)  can  be  passed, instead  of  reading  all  of  the
+    ! Note that both X variables need the equilibrium grid variables.
+    ! Optionally, if perturbation  quantities are read, the limits  of m_X (pol.
+    ! flux) or  n_X (tor.  flux) can be  passed, instead of  reading all  of the
     ! perturbation quantities.
     integer function reconstruct_PB3D(rec_misc,rec_eq,rec_X_1,rec_X_2,rec_sol,&
-        &PB3D,grid_eq_B,X_1,X_2,eq_limits,X_limits,lim_sec_X_1,lim_sec_X_2) &
-        &result(ierr)
+        &grid_eq,grid_eq_B,grid_X,eq,met,X_1,X_2,sol,eq_limits,X_limits,&
+        &lim_sec_X_1,lim_sec_X_2) result(ierr)
         use HDF5_vars, only: dealloc_var_1D
         use PB3D_vars, only: vars_1D_misc, vars_1D_eq, vars_1D_eq_B, &
-            &vars_1D_X_1, vars_1D_X_2, vars_1D_sol, min_PB3D_version
-        use X_vars, only: X_1_var_names, X_2_var_names
+            &vars_1D_X_1, vars_1D_X_2, vars_1D_sol, min_PB3D_version, &
+            &PB3D_version
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D'
         
         ! input  / output
         logical, intent(in) :: rec_misc, rec_eq, rec_X_1, rec_X_2, rec_sol      ! which quantities to reconstruct
-        type(PB3D_type), intent(inout) :: PB3D                                  ! PB3D for which to do postprocessing
+        type(grid_type), intent(inout), optional :: grid_eq                     ! equilibrium grid 
         type(grid_type), intent(inout), optional :: grid_eq_B                   ! optional field-aligned grid for HELENA
+        type(grid_type), intent(inout), optional :: grid_X                      ! perturbation grid 
+        type(eq_type), intent(inout), optional :: eq                            ! equilibrium variables
+        type(met_type), intent(inout), optional :: met                          ! metric variables
         type(X_1_type), intent(inout), optional :: X_1                          ! vectorial perturbation variables
         type(X_2_type), intent(inout), optional :: X_2                          ! tensorial perturbation variables
+        type(sol_type), intent(inout), optional :: sol                          ! solution variables
         integer, intent(in), optional :: eq_limits(2)                           ! i_limit of eq and X variables
         integer, intent(in), optional :: X_limits(2)                            ! i_limit of sol variables
         integer, intent(in), optional :: lim_sec_X_1(2)                         ! limits of m_X (pol. flux) or n_X (tor. flux)
@@ -201,10 +198,32 @@ contains
         real(dp), allocatable :: dum_6D(:,:,:,:,:,:), dum_7D(:,:,:,:,:,:,:)     ! dummy variables
         real(dp), parameter :: tol_version = 1.E-8_dp                           ! tolerance for version control
         integer :: eq_limits_loc(2), X_limits_loc(2)                            ! local versions of eq_limits, X_limits
-        character(len=max_str_ln), allocatable :: req_var_names(:)              ! requested variable names
         
         ! initialize ierr
         ierr = 0
+        
+        ! test whether appropriate variables provided
+        if (rec_eq .and. .not.&
+            &(present(grid_eq).and.present(eq).and.present(met))) then
+            ierr = 1
+            err_msg = 'To reconstruct equilibrium need grid_eq, eq and met'
+            CHCKERR(err_msg)
+        end if
+        if (rec_X_1 .and. .not.(present(grid_eq).and.present(X_1))) then
+            ierr = 1
+            err_msg = 'To reconstruct equilibrium need grid_eq and X_1'
+            CHCKERR(err_msg)
+        end if
+        if (rec_X_2 .and. .not.(present(grid_eq).and.present(X_2))) then
+            ierr = 1
+            err_msg = 'To reconstruct equilibrium need grid_eq and X_2'
+            CHCKERR(err_msg)
+        end if
+        if (rec_sol .and. .not.(present(grid_X).and.present(sol))) then
+            ierr = 1
+            err_msg = 'To reconstruct equilibrium need grid_X and sol'
+            CHCKERR(err_msg)
+        end if
         
         if (rec_misc) then
             ! user output
@@ -235,8 +254,8 @@ contains
             call writo('Running tests')
             call lvl_ud(1)
             
-            call writo('PB3D version '//trim(r2strt(PB3D%version)))
-            if (PB3D%version.lt.min_PB3D_version*(1-tol_version)) then
+            call writo('PB3D version '//trim(r2strt(PB3D_version)))
+            if (PB3D_version.lt.min_PB3D_version*(1-tol_version)) then
                 ierr = 1
                 err_msg = 'Need at least PB3D version '//&
                     &trim(r2strt(min_PB3D_version))
@@ -261,13 +280,13 @@ contains
             
             call writo('Setting grids')
             call lvl_ud(1)
-            ierr = reconstruct_grid_eq(PB3D%grid_eq)
+            ierr = reconstruct_grid_eq(grid_eq)
             CHCKERR('')
             call lvl_ud(-1)
             
             call writo('Setting variables')
             call lvl_ud(1)
-            ierr = reconstruct_vars_eq(PB3D%grid_eq,PB3D%eq,PB3D%met)
+            ierr = reconstruct_vars_eq(grid_eq,eq,met)
             CHCKERR('')
             call lvl_ud(-1)
             
@@ -285,10 +304,7 @@ contains
             call writo('Prepare vectorial perturbation variable indices')
             call lvl_ud(1)
             
-            ! get full variable names
-            req_var_names = get_full_var_names(X_1_var_names,lim_sec_X_1)
-            
-            ierr = prepare_vars_X_1(req_var_names,lim_sec_X_1)
+            ierr = prepare_vars_X_1(lim_sec_X_1)
             CHCKERR('')
             call lvl_ud(-1)
             call writo('Indices prepared')
@@ -298,14 +314,7 @@ contains
             
             call writo('Setting variables')
             call lvl_ud(1)
-            if (present(X_1)) then
-                ierr = reconstruct_vars_X_1(PB3D%grid_eq,X_1,req_var_names,&
-                    &lim_sec_X_1)
-            else
-                ierr = reconstruct_vars_X_1(PB3D%grid_eq,PB3D%X_1,&
-                    &req_var_names,lim_sec_X_1)
-            end if
-            CHCKERR('')
+            call reconstruct_vars_X_1(grid_eq,X_1,lim_sec_X_1)
             call lvl_ud(-1)
             
             call writo('Deallocating temporary variables')
@@ -331,14 +340,7 @@ contains
             
             call writo('Setting variables')
             call lvl_ud(1)
-            if (present(X_2)) then
-                ierr = reconstruct_vars_X_2(PB3D%grid_eq,X_2,req_var_names,&
-                    &lim_sec_X_2)
-            else
-                ierr = reconstruct_vars_X_2(PB3D%grid_eq,PB3D%X_2,&
-                    &req_var_names,lim_sec_X_2)
-            end if
-            CHCKERR('')
+            call reconstruct_vars_X_2(grid_eq,X_2,lim_sec_X_2)
             call lvl_ud(-1)
             
             call writo('Deallocating temporary variables')
@@ -364,13 +366,13 @@ contains
             
             call writo('Setting grids')
             call lvl_ud(1)
-            ierr = reconstruct_grid_X(PB3D%grid_X)
+            ierr = reconstruct_grid_X(grid_X)
             CHCKERR('')
             call lvl_ud(-1)
             
             call writo('Setting variables')
             call lvl_ud(1)
-            call reconstruct_vars_sol(PB3D%grid_X,PB3D%sol)
+            call reconstruct_vars_sol(grid_X,sol)
             call lvl_ud(-1)
             
             call writo('Deallocating temporary variables')
@@ -531,13 +533,12 @@ contains
         end function prepare_vars_eq
         
         ! prepare vectorial perturbation vars
-        integer function prepare_vars_X_1(acc_var_names,lim_sec_X) result(ierr)
+        integer function prepare_vars_X_1(lim_sec_X) result(ierr)
             use X_vars, only: X_1_var_names
             
             character(*), parameter :: rout_name = 'prepare_vars_X_1'
             
             ! input / output
-            character(len=*), intent(in) :: acc_var_names(:)                    ! acceptable variables
             integer, intent(in), optional :: lim_sec_X(2)                       ! limits of m_X (pol. flux) or n_X (tor. flux)
             integer :: id                                                       ! counter
             
@@ -782,11 +783,12 @@ contains
         ! reconstruct miscellaneous vars
         integer function reconstruct_vars_misc() result(ierr)
             use num_vars, only: norm_disc_prec_eq, norm_disc_prec_X, &
-                &use_pol_flux_F, eq_style, use_normalization, max_deriv, &
-                &use_pol_flux_E, use_pol_flux_F
+                &use_pol_flux_F, eq_style, use_normalization, use_pol_flux_E, &
+                &use_pol_flux_F
             use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, &
                 &T_0, vac_perm, max_flux_p_E, max_flux_t_E, max_flux_p_F, &
                 &max_flux_t_F
+            use grid_vars, only: alpha
             use X_vars, only: min_r_X, max_r_X, min_n_X, max_n_X, min_m_X, &
                 &max_m_X
             use VMEC, only: lasym, lfreeB, mpol, ntor, nfp
@@ -802,8 +804,8 @@ contains
             
             ! eq
             call conv_1D2ND(vars_1D_eq(eq_misc_id),dum_1D)
-            PB3D%version = dum_1D(1)
-            PB3D%alpha = dum_1D(4)
+            PB3D_version = dum_1D(1)
+            alpha = dum_1D(4)
             R_0 = dum_1D(5)
             pres_0 = dum_1D(6)
             B_0 = dum_1D(7)
@@ -870,7 +872,7 @@ contains
             use met_vars, only: create_met
             use eq_vars, only: create_eq
             use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, &
-                &ntor, nfp, lfreeB
+                &ntor, lfreeB
             use HELENA, only: R_H, Z_H, chi_H, flux_p_H, nchi
             
             character(*), parameter :: rout_name = 'reconstruct_vars_eq'
@@ -1037,22 +1039,14 @@ contains
         end function reconstruct_vars_eq
         
         ! reconstruct vectorial perturbation vars
-        integer function reconstruct_vars_X_1(grid_eq,X,acc_var_names,&
-            &lim_sec_X) result(ierr)
-            use num_vars, only: norm_disc_prec_X, use_pol_flux_F
+        subroutine reconstruct_vars_X_1(grid_eq,X,lim_sec_X)
             use X_vars, only: create_X
-            
-            character(*), parameter :: rout_name = 'reconstruct_vars_X_1'
             
             ! input / output
             integer :: id                                                       ! counter
             type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid
             type(X_1_type), intent(inout) :: X                                  ! vectorial perturbation variables
-            character(len=*), intent(in) :: acc_var_names(:)                    ! acceptable variables
             integer, intent(in), optional :: lim_sec_X(2)                       ! limits of m_X (pol. flux) or n_X (tor. flux)
-            
-            ! initialize ierr
-            ierr = 0
             
             call writo('Setting vectorial perturbation')
             call lvl_ud(1)
@@ -1124,28 +1118,21 @@ contains
             enddo
             
             call lvl_ud(-1)
-        end function reconstruct_vars_X_1
+        end subroutine reconstruct_vars_X_1
         
         ! reconstruct tensorial perturbation vars
-        integer function reconstruct_vars_X_2(grid_eq,X,acc_var_names,&
-            &lim_sec_X) result(ierr)
-            character(*), parameter :: rout_name = 'reconstruct_vars_X_2'
-            
+        subroutine reconstruct_vars_X_2(grid_eq,X,lim_sec_X)
             ! input / output
             type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid
             type(X_2_type), intent(inout) :: X                                  ! vectorial perturbation variables
-            character(len=*), intent(in) :: acc_var_names(:)                    ! acceptable variables
             integer, intent(in), optional :: lim_sec_X(2,2)                     ! limits of m_X (pol. flux) or n_X (tor. flux)
-            
-            ! initialize ierr
-            ierr = 0
             
             call writo('Setting tensorial perturbation')
             call lvl_ud(1)
             write(*,*) '¡¡¡ NOT YET IMPLEMENTED RECONSTRUCTING X_2 !!!!'
             
             call lvl_ud(-1)
-        end function reconstruct_vars_X_2
+        end subroutine reconstruct_vars_X_2
         
         ! reconstruct solution vars
         subroutine reconstruct_vars_sol(grid_X,sol)

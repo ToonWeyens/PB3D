@@ -42,7 +42,7 @@ module X_vars
     end type
     
     ! tensorial perturbation type with arrays of the form:
-    !   - (angle_1,angle_2,r,n_mod^2)       for PVi, KVi, J_exp_ang_par_F
+    !   - (angle_1,angle_2,r,n_mod^2)       for PVi, KVi
     !   - (n_mod^2,angle_2,r,3)             for KV_int, PV_int
     ! where it is refered to the discussion  of the grid type for an explanation
     ! of the angles angle_1 and angle_2.
