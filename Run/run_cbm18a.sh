@@ -81,6 +81,7 @@ cp cbm18a $out
 cp ../PB3D $out
 chmod +x $out/PB3D
 cd $out
+rm -f .lock_file*
 echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2}" > command
 mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2}
 cd ../

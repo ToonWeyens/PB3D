@@ -270,8 +270,8 @@ contains
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files_ops, only: input_name
-        use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X, min_n_r_X, &
-            &min_n_X, min_r_X, max_r_X
+        use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X, min_n_r_sol, &
+            &min_n_X, min_r_sol, max_r_sol
         use grid_vars, only: alpha, n_par_X, min_par_X, max_par_X
         
         character(*), parameter :: rout_name = 'read_input'
@@ -283,11 +283,11 @@ contains
         
         ! input options
         namelist /inputdata_PB3D/ n_par_X, min_par_X, max_par_X, alpha, &
-            &min_r_X, max_r_X, max_it_NR, tol_NR, use_pol_flux_F, &
+            &min_r_sol, max_r_sol, max_it_NR, tol_NR, use_pol_flux_F, &
             &rho_style, nyq_fac, rho_0, plot_grid, plot_flux_q, prim_X, &
             &min_sec_X, max_sec_X, use_normalization, n_theta_plot, &
             &n_zeta_plot, norm_disc_prec_eq, tol_norm_r, max_it_NR, tol_NR, &
-            &max_mem_per_proc, min_n_r_X, max_it_r, tol_r, EV_style, &
+            &max_mem_per_proc, min_n_r_sol, max_it_r, tol_r, EV_style, &
             &plot_resonance, n_sol_requested, EV_BC, tol_slepc, &
             &retain_all_sol, norm_disc_prec_X, BC_style, max_it_inv, &
             &tol_norm_r, max_it_slepc
@@ -354,8 +354,8 @@ contains
                             ! adapt tolerances if needed
                             call adapt_tol_r
                             
-                            ! adapt perturbation grid
-                            ierr = adapt_X_grid()
+                            ! adapt solution grid
+                            ierr = adapt_sol_grid()
                             CHCKERR('')
                             
                             ! adapt Newton-Rhapson variables if needed
@@ -471,21 +471,23 @@ contains
             
             ! variables concerning poloidal mode numbers m
             nyq_fac = 10                                                        ! need at least 10 points per period for perturbation quantitites
-            n_par_X = 100                                                       ! number of parallel grid points in pert. grid
-            use_pol_flux_F = use_pol_flux_E                                     ! use same normal flux coordinate as the equilibrium
+            n_par_X = 100                                                       ! number of parallel grid points in field-aligned grid
             prim_X = 20                                                         ! main mode number of perturbation
             min_sec_X = prim_X                                                  ! min. of. secondary mode number of perturbation
             max_sec_X = prim_X                                                  ! max. of. secondary mode number of perturbation
+            min_par_X = -4.0_dp                                                 ! minimum parallel angle [pi]
+            max_par_X = 4.0_dp                                                  ! maximum parallel angle [pi]
+            use_pol_flux_F = use_pol_flux_E                                     ! use same normal flux coordinate as the equilibrium
             
             ! variables concerning alpha
             alpha = 0._dp                                                       ! field line based in outboard
             
-            ! variables concerning perturbation
-            min_r_X = 0.1_dp                                                    ! minimum normal range
-            max_r_X = 1.0_dp                                                    ! maximum normal range
+            ! variables concerning solution
+            min_r_sol = 0.1_dp                                                  ! minimum normal range
+            max_r_sol = 1.0_dp                                                  ! maximum normal range
             tol_norm_r = 0.05                                                   ! tolerance for normal range
             EV_style = 1                                                        ! slepc solver for EV problem
-            min_n_r_X = 20                                                      ! at least 20 points in perturbation grid
+            min_n_r_sol = 20                                                    ! at least 20 points in solution grid
             
             ! variables concerning normalization
             rho_0 = 10E-6_dp                                                    ! for fusion, particle density of around 1E21, mp around 1E-27
@@ -496,16 +498,6 @@ contains
             
             ! concerning calculating the inverse
             max_it_inv = 1                                                      ! by default no iteration to calculate inverse
-            
-            ! variables concerning poloidal mode numbers m
-            min_par_X = -4.0_dp                                                 ! minimum parallel angle [pi]
-            max_par_X = 4.0_dp                                                  ! maximum parallel angle [pi]
-            nyq_fac = 10                                                        ! need at least 10 points per period for perturbation quantitites
-            prim_X = 20                                                         ! main mode number of perturbation
-            min_sec_X = prim_X                                                  ! min. of. secondary mode number of perturbation
-            max_sec_X = prim_X                                                  ! max. of. secondary mode number of perturbation
-            n_par_X = 20                                                        ! number of parallel grid points in pert. grid
-            use_pol_flux_F = use_pol_flux_E                                     ! use same normal flux coordinate as the equilibrium
         end subroutine default_input_PB3D
         
         subroutine default_input_POST
@@ -623,23 +615,17 @@ contains
                 err_msg = 'max_sec_X has to be larger or equal to min_sec_X'
                 CHCKERR(err_msg)
             end if
-            
-            ! check min_n_r_X
-            if (min_n_r_X.lt.6*norm_disc_prec_X+2) then
-                min_n_r_X = 6*norm_disc_prec_X+2
-                call writo('WARNING: min_n_r_X has been increased to '//&
-                    &trim(i2str(min_n_r_X)))
-            end if
         end function adapt_X_modes
         
-        ! Checks whether variables concerning the perturbation grid are correct:
-        ! min_r_X  should not  be  too  close to  zero  because the  equilibrium
-        ! calculations yield an infinity at the magnetic axis. max_r_X cannot be
-        ! larger than 1.0 and has to be larger than min_r_X.
-        integer function adapt_X_grid() result(ierr)
+        ! Checks  whether variables  concerning the  solution grid  are correct:
+        ! min_r_sol  should not  be too  close to  zero because  the equilibrium
+        ! calculations yield an infinity at  the magnetic axis. max_r_sol cannot
+        ! be larger  than 1.0  and has  to be larger  than min_r_sol.  Also, the
+        ! number of normal points has to be big enough.
+        integer function adapt_sol_grid() result(ierr)
             use grid_vars, only: n_r_eq
             
-            character(*), parameter :: rout_name = 'adapt_X_grid'
+            character(*), parameter :: rout_name = 'adapt_sol_grid'
             
             ! local variables
             character(len=max_str_ln) :: err_msg                                ! error message
@@ -648,29 +634,36 @@ contains
             ! initialize ierr
             ierr = 0
             
-            ! check min_r_X
-            if (min_r_X.lt.one/(n_r_eq-1)) then
-                min_r_X = one/(n_r_eq-1)
-                call writo('WARNING: min_r_X has been increased to '//&
-                    &trim(r2strt(min_r_X)))
+            ! check min_r_sol
+            if (min_r_sol.lt.one/(n_r_eq-1)) then
+                min_r_sol = one/(n_r_eq-1)
+                call writo('WARNING: min_r_sol has been increased to '//&
+                    &trim(r2strt(min_r_sol)))
             end if
             
-            ! check if max_r_X is not greater than 1
-            if (max_r_X.gt.1.0) then
-                max_r_X = 1.
-                call writo('WARNING: max_r_X has been decreased to '//&
-                    &trim(r2strt(max_r_X)))
+            ! check if max_r_sol is not greater than 1
+            if (max_r_sol.gt.1.0) then
+                max_r_sol = 1.
+                call writo('WARNING: max_r_sol has been decreased to '//&
+                    &trim(r2strt(max_r_sol)))
             end if
             
-            ! check  if min_r_X  < max_r_X  with at  least one  equilbrium point
+            ! check if min_r_sol < max_r_sol  with at least one equilbrium point
             ! between them
-            if (min_r_X+1./(n_r_eq-1).ge.max_r_X) then
+            if (min_r_sol+1./(n_r_eq-1).ge.max_r_sol) then
                 ierr = 1
-                err_msg = 'max_r_X - min_r_X has to be at least '//&
+                err_msg = 'max_r_sol - min_r_sol has to be at least '//&
                     &trim(r2strt(1._dp/(n_r_eq-1)))
                 CHCKERR(err_msg)
             end if
-        end function adapt_X_grid
+            
+            ! check min_n_r_sol
+            if (min_n_r_sol.lt.6*norm_disc_prec_X+2) then
+                min_n_r_sol = 6*norm_disc_prec_X+2
+                call writo('WARNING: min_n_r_sol has been increased to '//&
+                    &trim(i2str(min_n_r_sol)))
+            end if
+        end function adapt_sol_grid
         
         ! checks  whether the variables concerning  Richardson extrapolation are
         ! correct. max_it_r has to be at least 1

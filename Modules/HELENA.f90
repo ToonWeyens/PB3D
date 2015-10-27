@@ -210,16 +210,16 @@ contains
     
     ! deallocates HELENA quantities that are not used any more
     subroutine dealloc_HEL
-        deallocate(h_H_11)
-        deallocate(h_H_12)
-        deallocate(h_H_33)
-        deallocate(chi_H)
-        deallocate(flux_p_H)
-        deallocate(pres_H)
-        deallocate(qs)
-        deallocate(RBphi)
-        deallocate(R_H)
-        deallocate(Z_H)
+        if (allocated(h_H_11)) deallocate(h_H_11)
+        if (allocated(h_H_12)) deallocate(h_H_12)
+        if (allocated(h_H_33)) deallocate(h_H_33)
+        if (allocated(chi_H)) deallocate(chi_H)
+        if (allocated(flux_p_H)) deallocate(flux_p_H)
+        if (allocated(pres_H)) deallocate(pres_H)
+        if (allocated(qs)) deallocate(qs)
+        if (allocated(RBphi)) deallocate(RBphi)
+        if (allocated(R_H)) deallocate(R_H)
+        if (allocated(Z_H)) deallocate(Z_H)
     end subroutine dealloc_HEL
     
     ! calculate interpolation  factors for angular interpolation  in grid_out of
@@ -374,7 +374,7 @@ contains
         ierr = 0
         ! user output
         if (present(grid_name)) then
-            call writo('Adapting quantities to'//trim(grid_name))
+            call writo('Adapting quantities to '//trim(grid_name))
             call lvl_ud(1)
         end if
         

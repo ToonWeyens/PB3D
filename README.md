@@ -211,3 +211,13 @@ CHANGELOG
       - The calculation of magnetic integrals now happens completely in 'X_ops'.
       - 'PB3D_type' is not used anymore; Instead, individual variables are used.
       - Perturbation driver has been completed.
+
+0.97: - NON-USABLE VERSION: SWITCHING BETWEEN PARALLELIZATIONS. 
+      - Updated 'X_ops' to not use 'PB3D_type'.
+      - Implemented the X_2 versions of the routines that read and reconstruct PB3D variables.
+      - Changed 'perturbation grid' to 'solution grid'.
+      - 'setup_and_calc_grid_B' has been renamed to 'setup_and_calc_grid_eq_B' and 'setup_and_calc_grid_sol' has been implemented.
+      - Completed the solution driver routine.
+      - Updated SLEPC routines to handle the solution type.
+      - Fixed a bug in 'trim_grid' where the limits of the trimmed grid were not updated.
+      - Introduced 'wait_file' which makes use of a lock file and used this in the writing of HDF5 files.

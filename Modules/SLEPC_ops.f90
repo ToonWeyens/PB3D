@@ -41,13 +41,12 @@ module SLEPC_ops
 contains
     ! This subroutine sets up  the matrices A ad B of  the generalized EV system
     ! described in  [ADD REF] and  solves them using  the SLEPC suite.  The most
-    ! unstable solutions  are obtained, where the  variable "max_n_EV" indicates
-    ! how many.
+    ! unstable solutions  are obtained.
     ! Optionally the  geodesic index of  the perturbation variables at  which to
     ! perform the calculations can be changed  from its default value of 1 using
     ! the variable i_geo.
-    integer function solve_EV_system_SLEPC(grid_eq,grid_X,X,sol,use_guess,&
-        &max_n_EV,i_geo) result(ierr)
+    integer function solve_EV_system_SLEPC(grid_eq,grid_sol,X,sol,use_guess,&
+        &i_geo) result(ierr)
         use num_vars, only: max_it_inv, norm_disc_prec_X
         use grid_ops, only: get_norm_interp_data, trim_grid
         use grid_vars, only: dealloc_grid
@@ -61,18 +60,18 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(X_2_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(inout) :: sol                                    ! solution variables
         PetscBool, intent(in) :: use_guess                                      ! whether to use a guess or not
-        PetscInt, intent(inout) :: max_n_EV                                     ! how many solutions saved
         integer, intent(in), optional :: i_geo                                  ! at which geodesic index to perform the calculations
         
         ! local variables
-        type(grid_type) :: grid_X_trim                                          ! trimmed X grid
+        type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
         Mat, target :: A                                                        ! matrix A in EV problem A X = lambda B X
         Mat, target :: B                                                        ! matrix B in EV problem A X = lambda B X
         EPS :: solver                                                           ! EV solver
+        PetscInt :: max_n_EV                                                    ! how many solutions saved
         PetscInt, save :: guess_start_id = -10                                  ! start of index of previous vector, saved for next iteration
         PetscInt, save :: prev_n_EV                                             ! nr. of solutions of previous vector
         PetscInt :: inv_lvl_nr                                                  ! level of inverse calculation
@@ -86,25 +85,30 @@ contains
         ierr = 0
         
         ! initialization
-        call writo('initialization...')
+        call writo('Initialize generalized Eigenvalue problem')
         
-        ! trim X grid
-        ierr = trim_grid(grid_X,grid_X_trim)
+        ! trim solution grid
+        ierr = trim_grid(grid_sol,grid_sol_trim)
         CHCKERR('')
+        
         ! set up local i_geo
         i_geo_loc = 1
         if (present(i_geo)) i_geo_loc = i_geo
+        
         ! set up arrays loc_r_eq that determine how to fill the matrices
-        ierr = get_norm_interp_data(grid_eq,grid_X_trim,loc_r_eq)
+        ierr = get_norm_interp_data(grid_eq,grid_sol_trim,loc_r_eq)
         CHCKERR('')
+        
         ! start SLEPC
-        ierr = start_SLEPC(grid_X_trim%n(3))
+        ierr = start_SLEPC(grid_sol_trim%n(3))
         CHCKERR('')
+        
         ! set up step size
-        step_size = (grid_X%r_F(grid_X%n(3))-grid_X%r_F(1))/(grid_X%n(3)-1)
+        step_size = (grid_sol%r_F(grid_sol%n(3))-grid_sol%r_F(1))/&
+            &(grid_sol%n(3)-1)
         
         ! get discretization coefficients
-        call writo('get discretization coefficients...')
+        call writo('Get discretization coefficients')
         call lvl_ud(1)
         ierr = calc_coeff_fin_diff(1,norm_disc_prec_X,norm_disc_coeff)
         CHCKERR('')
@@ -112,9 +116,10 @@ contains
         call lvl_ud(-1)
         
         ! set up the matrix
-        call writo('set up matrices...')
+        call writo('Set up matrices')
         
-        ierr = setup_mats(grid_X_trim,X,A,B,loc_r_eq,i_geo_loc,norm_disc_coeff)
+        ierr = setup_mats(grid_sol_trim,X,A,B,loc_r_eq,i_geo_loc,&
+            &norm_disc_coeff)
         CHCKERR('')
         
 #if ldebug
@@ -134,7 +139,7 @@ contains
 #endif
         
         ! set up guess
-        call writo('set up guess...')
+        call writo('Set up guess')
         
         if (use_guess) call setup_guess(sol,A,solver,guess_start_id,prev_n_EV)
         
@@ -154,9 +159,9 @@ contains
             end if
             
             ! set boundary conditions
-            call writo('set up boundary conditions...')
+            call writo('Set up boundary conditions')
             
-            ierr = set_BC(grid_X_trim,X,A,B,loc_r_eq,i_geo_loc,grid_X%n(3),&
+            ierr = set_BC(grid_sol_trim,X,A,B,loc_r_eq,i_geo_loc,grid_sol%n(3),&
                 &norm_disc_coeff)
             CHCKERR('')
             
@@ -178,7 +183,7 @@ contains
 #endif
             
             ! set up solver
-            call writo('set up EV solver...')
+            call writo('Set up EV solver')
 #if ldebug
             if (ltest) then
                 call writo('Test spectrum of A or B instead of solving &
@@ -186,28 +191,28 @@ contains
                 if (get_log(.false.)) then
                     call writo('Spectrum of A (true) or B (false)?')
                     if (get_log(.true.)) then                                   ! A
-                        ierr = setup_solver(grid_X_trim,X,A,PETSC_NULL_OBJECT,&
-                            &solver)
+                        ierr = setup_solver(grid_sol_trim,X,A,&
+                            &PETSC_NULL_OBJECT,solver)
                         CHCKERR('')
                     else                                                        ! B
-                        ierr = setup_solver(grid_X_trim,X,B,PETSC_NULL_OBJECT,&
-                            &solver)
+                        ierr = setup_solver(grid_sol_trim,X,B,&
+                            &PETSC_NULL_OBJECT,solver)
                         CHCKERR('')
                     end if
                 else
-                    ierr = setup_solver(grid_X_trim,X,A,B,solver)
+                    ierr = setup_solver(grid_sol_trim,X,A,B,solver)
                     CHCKERR('')
                 end if
             else
 #endif
-                ierr = setup_solver(grid_X_trim,X,A,B,solver)
+                ierr = setup_solver(grid_sol_trim,X,A,B,solver)
                 CHCKERR('')
 #if ldebug
             end if
 #endif
             
             ! get solution
-            call writo('get solution...')
+            call writo('Get solution')
             
             ierr = get_solution(solver)
             CHCKERR('')
@@ -225,33 +230,33 @@ contains
         end if
         
         ! summarize solution
-        call writo('summarize solution...')
+        call writo('Summarize solution')
         
         ierr = summarize_solution(solver,max_n_EV)
         CHCKERR('')
         
         ! store results
-        call writo('storing results for '//trim(i2str(max_n_EV))//' least &
-            &stable Eigenvalues...')
+        call writo('Store results for '//trim(i2str(max_n_EV))//' least &
+            &stable Eigenvalues')
         
 #if ldebug
-        ierr = store_results(grid_X_trim,sol,solver,max_n_EV,A,B)
+        ierr = store_results(grid_sol_trim,X,sol,solver,max_n_EV,A,B)
         CHCKERR('')
 #else
-        ierr = store_results(grid_X_trim,sol,solver,max_n_EV)
+        ierr = store_results(grid_sol_trim,X,sol,solver,max_n_EV)
         CHCKERR('')
 #endif
         
         ! finalize
-        call writo('finalize SLEPC...')
+        call writo('Finalize SLEPC')
         
         ! stop SLEPC
-        ierr = stop_SLEPC(grid_X_trim,A,B,solver,guess_start_id,prev_n_EV,&
+        ierr = stop_SLEPC(grid_sol_trim,A,B,solver,guess_start_id,prev_n_EV,&
             &max_n_EV)
         CHCKERR('')
         
         ! clean up
-        call dealloc_grid(grid_X_trim)
+        call dealloc_grid(grid_sol_trim)
         deallocate(loc_r_eq)
 #if ldebug
     contains
@@ -349,14 +354,14 @@ contains
     
     !  This  subroutine starts  PETSC  and  SLEPC  with  the correct  number  of
     ! processors
-    integer function start_SLEPC(n_r_X) result(ierr)
+    integer function start_SLEPC(n_r_sol) result(ierr)
         use num_vars, only: n_procs
         use files_ops, only: opt_args
         
         character(*), parameter :: rout_name = 'start_SLEPC'
         
         ! input / output
-        integer, intent(in) :: n_r_X                                            ! nr. of normal points in perturbation grid
+        integer, intent(in) :: n_r_sol                                          ! nr. of normal points in solution grid
         
         ! local variables
         PetscBool :: flg                                                        ! flag to catch options
@@ -375,10 +380,10 @@ contains
         
         ! use MPI_Comm_world for PETSC_COMM_WORLD
         PETSC_COMM_WORLD = MPI_Comm_world
-        if (n_procs.gt.n_r_X) then                                              ! too many processors
+        if (n_procs.gt.n_r_sol) then                                            ! too many processors
             call writo('WARNING: using too many processors: '&
                 &//trim(i2str(n_procs))//', while beyond '//&
-                &trim(i2str(n_r_X))//' does not bring improvement')
+                &trim(i2str(n_r_sol))//' does not bring improvement')
         end if
         call SlepcInitialize(PETSC_NULL_CHARACTER,ierr)                         ! initialize SLEPC
         CHCKERR('SLEPC failed to initialize')
@@ -413,7 +418,7 @@ contains
     ! The  geodesical index  at  which to  perform the  calculations  has to  be
     ! provided as well.
     ! Note: For normal usage, i_geo should be 1, or not present.
-    integer function setup_mats(grid_X,X,A,B,loc_r_eq,i_geo,norm_disc_coeff) &
+    integer function setup_mats(grid_sol,X,A,B,loc_r_eq,i_geo,norm_disc_coeff) &
         &result(ierr)
         use num_vars, only: norm_disc_prec_X
 #if ldebug
@@ -424,7 +429,7 @@ contains
         character(*), parameter :: rout_name = 'setup_mats'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(X_2_type), intent(in) :: X                                         ! perturbation variables
         Mat, intent(inout) :: A, B                                              ! matrix A and B
         PetscReal, intent(in) :: loc_r_eq(:)                                    ! unrounded index in tables V_int
@@ -434,8 +439,8 @@ contains
         ! local variables
         integer :: n_mod                                                        ! nr. of modes
         PetscInt :: kd                                                          ! counter
-        PetscInt :: n_r                                                         ! n_r of trimmed X grid
-        PetscInt :: loc_n_r                                                     ! loc_n_r of trimmed X grid
+        PetscInt :: n_r                                                         ! n_r of trimmed sol grid
+        PetscInt :: loc_n_r                                                     ! loc_n_r of trimmed sol grid
         PetscInt :: st_size                                                     ! half stencil size
         PetscInt, allocatable :: tot_nz(:)                                      ! nr. of total non-zeros
         PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
@@ -444,7 +449,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        write(*,*) '!!!!!!! SETUP MATS HAS TO BE REWRITTEN !!!!!!!!!!!!!!!!!!!!'
         call lvl_ud(1)
         
         ! user output
@@ -473,8 +477,8 @@ contains
         end if
         
         ! set up loc_n_r and n_r
-        loc_n_r = grid_X%loc_n_r
-        n_r = grid_X%n(3)
+        loc_n_r = grid_sol%loc_n_r
+        n_r = grid_sol%n(3)
         
         ! set (half) stencil size
         st_size = 2*norm_disc_prec_X
@@ -489,19 +493,19 @@ contains
         ! calculate number of total nonzero entries
         tot_nz = 1+2*st_size
         do kd = 1,st_size
-            if (kd.ge.grid_X%i_min .and. kd.le.grid_X%i_max) &                  ! limit due to left BC
-                &tot_nz((kd-grid_X%i_min)*n_mod+1:&
-                &(kd-grid_X%i_min+1)*n_mod) = &
-                &tot_nz((kd-grid_X%i_min)*n_mod+1:&
-                &(kd-grid_X%i_min+1)*n_mod) - &
+            if (kd.ge.grid_sol%i_min .and. kd.le.grid_sol%i_max) &              ! limit due to left BC
+                &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
+                &(kd-grid_sol%i_min+1)*n_mod) = &
+                &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
+                &(kd-grid_sol%i_min+1)*n_mod) - &
                 &(st_size+1-kd)
         end do
         do kd = n_r,n_r-st_size+1,-1
-            if (kd.ge.grid_X%i_min .and. kd.le.grid_X%i_max) &                  ! limit due to right BC
-                &tot_nz((kd-grid_X%i_min)*n_mod+1:&
-                &(kd-grid_X%i_min+1)*n_mod) = &
-                &tot_nz((kd-grid_X%i_min)*n_mod+1:&
-                &(kd-grid_X%i_min+1)*n_mod) - &
+            if (kd.ge.grid_sol%i_min .and. kd.le.grid_sol%i_max) &              ! limit due to right BC
+                &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
+                &(kd-grid_sol%i_min+1)*n_mod) = &
+                &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
+                &(kd-grid_sol%i_min+1)*n_mod) - &
                 &(kd-n_r+st_size)
         end do
         
@@ -527,7 +531,7 @@ contains
         
         ! create matrix A
         call MatCreateAIJ(PETSC_COMM_WORLD,loc_n_r*n_mod,loc_n_r*n_mod,&
-            &grid_X%n(3)*n_mod,grid_X%n(3)*n_mod,PETSC_NULL_INTEGER,&
+            &grid_sol%n(3)*n_mod,grid_sol%n(3)*n_mod,PETSC_NULL_INTEGER,&
             &d_nz*n_mod,PETSC_NULL_INTEGER,o_nz*n_mod,A,ierr)
         CHCKERR('MatCreateAIJ failed for matrix A')
         
@@ -576,14 +580,14 @@ contains
         ! potential energy and the (perpendicular) kinetic energy
         ! The procedure is as follows:
         !   1. Tables  are set  up for  (k,m) pairs in the equilibrium grid.
-        !   2. At the first normal point  in the perturbation grid, belonging to
-        !   the current process, the tables are interpolated as a start.
-        !   3. At every normal point in  the perturbation grid, belonging to the
+        !   2. At the first normal point  in the solution grid, belonging to the
+        !   current process, the tables are interpolated as a start.
+        !   3. At  every normal  point in  the solution  grid, belonging  to the
         !   current process,  the tables are  interpolated at the next  point in
         !   the  corresponding  perturbation  grid. This  information,  as  well
         !   as  the interpolated  value  of  the previous  point  allow for  the
         !   calculation of every quantity.
-        integer function fill_mat(V_0,V_1,V_2,n_X,norm_disc_coeff,mat) &
+        integer function fill_mat(V_0,V_1,V_2,n_sol,norm_disc_coeff,mat) &
             &result(ierr)
             use num_vars, only: norm_disc_prec_X, BC_style
             use utilities, only: c, con
@@ -594,7 +598,7 @@ contains
             PetscScalar, intent(in) :: V_0(:,:)                                 ! either PV_int_0 or KV_int_0 in equilibrium normal grid
             PetscScalar, intent(in) :: V_1(:,:)                                 ! either PV_int_1 or KV_int_1 in equilibrium normal grid
             PetscScalar, intent(in) :: V_2(:,:)                                 ! either PV_int_2 or KV_int_2 in equilibrium normal grid
-            integer, intent(in) :: n_X                                          ! number of grid points of perturbation grid
+            integer, intent(in) :: n_sol                                        ! number of grid points of solution grid
             PetscReal, intent(in) :: norm_disc_coeff(:)                         ! discretization coefficients for normal derivatives
             Mat, intent(inout) :: mat                                           ! either A or B
             
@@ -612,24 +616,24 @@ contains
 #endif
             
             ! for tests
-            PetscInt :: r_X_start, r_X_end                                      ! start block and end block
+            PetscInt :: r_sol_start, r_sol_end                                  ! start block and end block
             
             ! initialize ierr
             ierr = 0
             
             ! test whether the matrix range coincides with i_min and i_max
-            call MatGetOwnershipRange(mat,r_X_start,r_X_end,ierr)               ! starting and ending row r_X_start and r_X_end
+            call MatGetOwnershipRange(mat,r_sol_start,r_sol_end,ierr)           ! starting and ending row r_sol_start and r_sol_end
             err_msg = 'Couldn''t get ownership range of matrix'
             CHCKERR(err_msg)
-            r_X_start = r_X_start/n_mod                                         ! count per block
-            r_X_end = r_X_end/n_mod                                             ! count per block
-            if (grid_X%i_min.ne.r_X_start+1) then
+            r_sol_start = r_sol_start/n_mod                                     ! count per block
+            r_sol_end = r_sol_end/n_mod                                         ! count per block
+            if (grid_sol%i_min.ne.r_sol_start+1) then
                 ierr = 1
                 err_msg = 'start of matrix in this process does not coincide &
                     &with tabulated value'
                 CHCKERR(err_msg)
             end if
-            if (grid_X%i_max.ne.r_X_end) then
+            if (grid_sol%i_max.ne.r_sol_end) then
                 ierr = 1
                 err_msg = 'end of matrix in this process does not coincide &
                     &with tabulated value'
@@ -647,9 +651,9 @@ contains
             ! set up i_min, depending on BC style
             select case (BC_style(1))
                 case (1)
-                    i_min = grid_X%i_min                                        ! will be overwritten
+                    i_min = grid_sol%i_min                                      ! will be overwritten
                 case (2)
-                    i_min = max(grid_X%i_min,1+norm_disc_prec_X)                ! first norm_disc_prec_X rows write left BC's
+                    i_min = max(grid_sol%i_min,1+norm_disc_prec_X)              ! first norm_disc_prec_X rows write left BC's
                 case (3)
                     err_msg = 'Left BC''s cannot have BC type 3'
                     ierr = 1
@@ -664,11 +668,11 @@ contains
             ! set up i_max, depending on BC style
             select case (BC_style(2))
                 case (1)
-                    i_max = grid_X%i_max                                        ! will be overwritten
+                    i_max = grid_sol%i_max                                      ! will be overwritten
                 case (2)
-                    i_max = min(grid_X%i_max,grid_X%n(3)-norm_disc_prec_X)      ! last norm_disc_prec_X rows write right BC's
+                    i_max = min(grid_sol%i_max,grid_sol%n(3)-norm_disc_prec_X)  ! last norm_disc_prec_X rows write right BC's
                 case (3)
-                    i_max = min(grid_X%i_max,grid_X%n(3)-1)                     ! last row writes right BC's
+                    i_max = min(grid_sol%i_max,grid_sol%n(3)-1)                 ! last row writes right BC's
                 case default
                     err_msg = 'No BC style associated with '//&
                         &trim(i2str(BC_style(1)))
@@ -685,9 +689,9 @@ contains
             ! iterate over all rows of this rank
             do kd = i_min-1,i_max-1                                             ! (indices start with 0 here)
                 ! get interpolated terms in V_int_i
-                call interp_V(V_0,loc_r_eq(kd+2-grid_X%i_min),V_int_0)
-                call interp_V(V_1,loc_r_eq(kd+2-grid_X%i_min),V_int_1)
-                call interp_V(V_2,loc_r_eq(kd+2-grid_X%i_min),V_int_2)
+                call interp_V(V_0,loc_r_eq(kd+2-grid_sol%i_min),V_int_0)
+                call interp_V(V_1,loc_r_eq(kd+2-grid_sol%i_min),V_int_1)
+                call interp_V(V_2,loc_r_eq(kd+2-grid_sol%i_min),V_int_2)
                 
                 ! fill the blocks
                 
@@ -711,7 +715,7 @@ contains
 #endif
 
                 ! add block to kd + (0,0)
-                ierr = insert_block_mat(loc_block,mat,[kd,kd],n_X)
+                ierr = insert_block_mat(loc_block,mat,[kd,kd],n_sol)
                 CHCKERR('')
                 
                 ! -------------!
@@ -728,7 +732,7 @@ contains
                 do jd = -norm_disc_prec_X,norm_disc_prec_X
                     ierr = insert_block_mat(loc_block*&
                         &norm_disc_coeff(jd+norm_disc_prec_X+1),mat,&
-                        &[kd,kd+jd],n_X,transp=.true.)
+                        &[kd,kd+jd],n_sol,transp=.true.)
                     CHCKERR('')
                 end do
                 
@@ -756,7 +760,7 @@ contains
                         ierr = insert_block_mat(loc_block*&
                             &norm_disc_coeff(id+norm_disc_prec_X+1)*&
                             &norm_disc_coeff(jd+norm_disc_prec_X+1),mat,&
-                            &[kd+id,kd+jd],n_X)
+                            &[kd+id,kd+jd],n_sol)
                         CHCKERR('')
                     end do
                 end do
@@ -807,8 +811,8 @@ contains
     ! setting the  diagonal components  of A  to EV_BC and  of B  to 1,  and the
     ! off-diagonal elements to zero.
     ! At the plasma surface, the surface energy is minimized as in [ADD REF].
-    integer function set_BC(grid_X,X,A,B,loc_r_eq,i_geo,n_X,norm_disc_coeff) &
-        &result(ierr)
+    integer function set_BC(grid_sol,X,A,B,loc_r_eq,i_geo,n_sol,&
+        &norm_disc_coeff) result(ierr)
         use num_vars, only: norm_disc_prec_X, BC_style
         use MPI_utilities, only: get_ser_var
         use utilities, only: con, c
@@ -817,19 +821,19 @@ contains
         character(*), parameter :: rout_name = 'set_BC'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables
         Mat, intent(inout) :: A, B                                              ! Matrices A and B from A X = lambda B X
         PetscReal, intent(in) :: loc_r_eq(:)                                    ! unrounded index in tables V_int
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
-        integer, intent(in) :: n_X                                              ! number of grid points of perturbation grid
+        integer, intent(in) :: n_sol                                            ! number of grid points of solution grid
         PetscReal, intent(in) :: norm_disc_coeff(:)                             ! discretization coefficients for normal derivatives
         character(len=max_str_ln) :: err_msg                                    ! error message
         PetscInt :: n_min, n_max                                                ! absolute limits excluding the BC's
         
         ! local variables
         integer :: n_mod                                                        ! nr. of modes
-        type(grid_type) :: grid_X_trim                                          ! trimmed perturbation grid
+        type(grid_type) :: grid_sol_trim                                        ! trimmed solution grid
         PetscInt :: kd                                                          ! counter
         
         ! initialize ierr
@@ -848,7 +852,7 @@ contains
         end if
         
         ! trim grid
-        ierr = trim_grid(grid_X,grid_X_trim)
+        ierr = trim_grid(grid_sol,grid_sol_trim)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -890,14 +894,15 @@ contains
         
         ! iterate over all positions where to set left BC
         do kd = 1,n_min
-            if (grid_X_trim%i_min.le.kd .and. grid_X_trim%i_max.ge.kd) then     ! decide which process does the setting
+            if (grid_sol_trim%i_min.le.kd .and. grid_sol_trim%i_max.ge.kd) then ! decide which process does the setting
                 select case (BC_style(1))
                     case (1)
                         ierr = set_BC_1(kd-1,A,B,.false.)                       ! indices start at 0
                         CHCKERR('')
                     case (2)
-                        ierr = set_BC_2(kd-1,X,A,B,loc_r_eq(kd-grid_X%i_min+1),&
-                            &i_geo,grid_X%n(3),norm_disc_coeff,.false.)         ! indices start at 0
+                        ierr = set_BC_2(kd-1,X,A,B,&
+                            &loc_r_eq(kd-grid_sol%i_min+1),i_geo,grid_sol%n(3),&
+                            &norm_disc_coeff,.false.)                           ! indices start at 0
                         CHCKERR('')
                     case (3)
                         err_msg = 'Left BC''s cannot have BC type 3'
@@ -928,18 +933,19 @@ contains
         call lvl_ud(1)
         
         ! iterate over all positions where to set right BC
-        do kd = grid_X%n(3),grid_X%n(3)-n_max+1,-1
-            if (grid_X_trim%i_min.le.kd .and. grid_X_trim%i_max.ge.kd) then     ! decide which process does the setting
+        do kd = grid_sol%n(3),grid_sol%n(3)-n_max+1,-1
+            if (grid_sol_trim%i_min.le.kd .and. grid_sol_trim%i_max.ge.kd) then ! decide which process does the setting
                 select case (BC_style(2))
                     case (1)
                         ierr = set_BC_1(kd-1,A,B,.true.)                        ! indices start at 0
                         CHCKERR('')
                     case (2)
-                        ierr = set_BC_2(kd-1,X,A,B,loc_r_eq(kd-grid_X%i_min+1),&
-                            &i_geo,grid_X%n(3),norm_disc_coeff,.true.)          ! indices start at 0
+                        ierr = set_BC_2(kd-1,X,A,B,&
+                            &loc_r_eq(kd-grid_sol%i_min+1),i_geo,grid_sol%n(3),&
+                            &norm_disc_coeff,.true.)                            ! indices start at 0
                         CHCKERR('')
                     case (3)
-                        if (kd.eq.grid_X%n(3)) then                             ! only for last point, irrespective of discretization order
+                        if (kd.eq.grid_sol%n(3)) then                           ! only for last point, irrespective of discretization order
                             ierr = set_BC_3(kd-1,X,A)                           ! indices start at 0
                             CHCKERR('')
                         end if
@@ -963,7 +969,7 @@ contains
         CHCKERR('Coulnd''t end assembly of matrix')
         
         ! clean up
-        call dealloc_grid(grid_X_trim)
+        call dealloc_grid(grid_sol_trim)
         
         call lvl_ud(-1)
         
@@ -1010,19 +1016,20 @@ contains
             end if
             
             ! set block (ind,ind) and Hermitian conjugate
-            ierr = insert_block_mat(EV_BC*loc_block,A,[ind,ind],n_X,&
+            ierr = insert_block_mat(EV_BC*loc_block,A,[ind,ind],n_sol,&
                 &overwrite=.true.)
             CHCKERR('')
-            ierr = insert_block_mat(loc_block,B,[ind,ind],n_X,overwrite=.true.)
+            ierr = insert_block_mat(loc_block,B,[ind,ind],n_sol,&
+                &overwrite=.true.)
             CHCKERR('')
             
             ! iterate over range 2
             do kd = 1,2*norm_disc_prec_X
                 ! set block (ind,ind+/-kd) and Hermitian conjugate
-                ierr = insert_block_mat(0*loc_block,A,[ind,ind-pmone*kd],n_X,&
+                ierr = insert_block_mat(0*loc_block,A,[ind,ind-pmone*kd],n_sol,&
                     &overwrite=.true.,transp=.true.)
                 CHCKERR('')
-                ierr = insert_block_mat(0*loc_block,B,[ind,ind-pmone*kd],n_X,&
+                ierr = insert_block_mat(0*loc_block,B,[ind,ind-pmone*kd],n_sol,&
                     &overwrite=.true.,transp=.true.)
                 CHCKERR('')
             end do
@@ -1030,8 +1037,8 @@ contains
         
         ! set BC style 2:
         !   minimization of surface energy term (see [ADD REF])
-        integer function set_BC_2(ind,X,A,B,loc_r_eq,i_geo,n_X,norm_disc_coeff,&
-            &BC_right) result(ierr)
+        integer function set_BC_2(ind,X,A,B,loc_r_eq,i_geo,n_sol,&
+            &norm_disc_coeff,BC_right) result(ierr)
             character(*), parameter :: rout_name = 'set_BC_2'
             
             ! input / output
@@ -1040,7 +1047,7 @@ contains
             Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
             PetscReal, intent(in) :: loc_r_eq                                   ! unrounded index in tables V_int
             integer, intent(in) :: i_geo                                        ! at which geodesic index to perform the calculations
-            integer, intent(in) :: n_X                                          ! number of grid points of perturbation grid
+            integer, intent(in) :: n_sol                                        ! number of grid points of solution grid
             PetscReal, intent(in) :: norm_disc_coeff(:)                         ! discretization coefficients for normal derivatives
             logical :: BC_right                                                 ! if BC is at right (so there are vacuum terms)
             
@@ -1087,9 +1094,9 @@ contains
             CHCKERR('')
             
             ! add block to ind + (0,0)
-            ierr = insert_block_mat(V_int_0_mod(:,:,1),A,[ind,ind],n_X)
+            ierr = insert_block_mat(V_int_0_mod(:,:,1),A,[ind,ind],n_sol)
             CHCKERR('')
-            ierr = insert_block_mat(V_int_0_mod(:,:,2),B,[ind,ind],n_X)
+            ierr = insert_block_mat(V_int_0_mod(:,:,2),B,[ind,ind],n_sol)
             CHCKERR('')
             
             ! deallocate modified V_0
@@ -1101,10 +1108,10 @@ contains
             ! add block to ind + (0,-p..p) + Hermitian conjugate
             if (BC_right) then
                 do jd = -norm_disc_prec_X,norm_disc_prec_X
-                    if (ind.lt.n_X .and. ind+jd.lt.n_X) then
+                    if (ind.lt.n_sol .and. ind+jd.lt.n_sol) then
                         ierr = insert_block_mat(-X%vac_res*&
                             &norm_disc_coeff(jd+norm_disc_prec_X+1),A,&
-                            &[ind,ind+jd],n_X,transp=.true.)
+                            &[ind,ind+jd],n_sol,transp=.true.)
                         CHCKERR('')
                     end if
                 end do
@@ -1132,7 +1139,7 @@ contains
             ! BLOCKS ~ vac !
             ! -------------!
             ! add block to ind + (0,0)
-            ierr = insert_block_mat(X%vac_res,A,[ind,ind],n_X)
+            ierr = insert_block_mat(X%vac_res,A,[ind,ind],n_sol)
             CHCKERR('')
         end function set_BC_3
         
@@ -1291,13 +1298,13 @@ contains
     end function set_BC
     
     ! sets up EV solver
-    integer function setup_solver(grid_X,X,A,B,solver) result(ierr)
+    integer function setup_solver(grid_sol,X,A,B,solver) result(ierr)
         use num_vars, only: n_sol_requested, tol_slepc, max_it_slepc
         
         character(*), parameter :: rout_name = 'setup_solver'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables
         Mat, intent(inout) :: A, B                                              ! matrix A and B
         EPS, intent(inout) :: solver                                            ! EV solver
@@ -1337,12 +1344,12 @@ contains
         CHCKERR('Failed to set which eigenpairs')
         
         ! request n_sol_requested Eigenpairs
-        if (n_sol_requested.gt.grid_X%n(3)*n_mod) then
+        if (n_sol_requested.gt.grid_sol%n(3)*n_mod) then
             call writo('WARNING: max. nr. of solutions requested capped to &
-                &problem dimension ('//trim(i2str(grid_X%n(3)*n_mod))//')')
-            call writo('Increase either min_n_r_X or number of pol. modes or &
+                &problem dimension ('//trim(i2str(grid_sol%n(3)*n_mod))//')')
+            call writo('Increase either min_n_r_sol or number of pol. modes or &
                 &decrease n_sol_requested')
-            n_sol = grid_X%n(3)*n_mod
+            n_sol = grid_sol%n(3)*n_mod
         else
             n_sol = n_sol_requested
         end if
@@ -1421,7 +1428,7 @@ contains
             !if (allocated(sol%vec) .and. id.le.prev_n_EV) then
                 !call PetscViewerDrawOpen(0,PETSC_NULL_CHARACTER,&
                     !&'guess vector '//trim(i2str(id))//' with '//&
-                    !&trim(i2str(n_r_X))//' points',0,0,1000,1000,&
+                    !&trim(i2str(n_r_sol))//' points',0,0,1000,1000,&
                     !&guess_viewer,istat)
                 !call VecView(guess_vec(id),guess_viewer,istat)
                 !call VecDestroy(guess_vec(id),istat)                            ! destroy guess vector
@@ -1525,20 +1532,23 @@ contains
     
     ! stores the results
 #if ldebug
-    integer function store_results(grid_X,sol,solver,max_n_EV,A,B) result(ierr)
+    integer function store_results(grid_sol,X,sol,solver,max_n_EV,A,B) &
+        &result(ierr)
 #else
-    integer function store_results(grid_X,sol,solver,max_n_EV) result(ierr)
+    integer function store_results(grid_sol,X,sol,solver,max_n_EV) result(ierr)
 #endif
         use eq_vars, only: T_0
         use num_vars, only: use_normalization, EV_BC, prog_name, &
             &output_name, rich_lvl_nr, max_it_r, n_procs, rank
         use files_utilities, only: nextunit
         use MPI_utilities, only: get_ser_var
+        use sol_vars, only: dealloc_sol, create_sol
         
         character(*), parameter :: rout_name = 'store_results'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
+        type(X_2_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(inout) :: sol                                    ! solution variables
         EPS, intent(inout) :: solver                                            ! EV solver
         PetscInt, intent(inout) :: max_n_EV                                     ! nr. of EV's saved, up to n_conv
@@ -1577,22 +1587,29 @@ contains
         
         call lvl_ud(1)
         
+        ! tests
+        if (X%n_mod(1).ne.X%n_mod(2)) then
+            ierr = 1
+            err_msg = 'Complete matrix with all the Fourier modes needed'
+            CHCKERR(err_msg)
+        end if
+        do id = 1,X%n_mod(1)
+            if (X%n_1(id).ne.X%n_2(id) .or. X%m_1(id).ne.X%m_2(id)) then
+                ierr = 1
+                err_msg = 'Fourier modes do not match in both dimensions'
+                CHCKERR(err_msg)
+            end if
+        end do
+        
+        ! create solution variables
+        if (allocated(sol%val)) call dealloc_sol(sol)
+        call create_sol(grid_sol,sol,max_n_EV)
+        
         ! create solution vector
         call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,&
-            &grid_X%loc_n_r*sol%n_mod,grid_X%n(3)*sol%n_mod,PETSC_NULL_SCALAR,&
-            &sol_vec,ierr)
+            &grid_sol%loc_n_r*sol%n_mod,grid_sol%n(3)*sol%n_mod,&
+            &PETSC_NULL_SCALAR,sol_vec,ierr)
         CHCKERR('Failed to create MPI vector with arrays')
-        
-        write(*,*) '!!!!!!!!!!!!!!!!!!! ALLOCATE VEC AND VAL USING THE CREATE_SOL ROUTINE !!!!!!!!!!'
-        ! allocate vec
-        if (allocated(sol%vec)) deallocate(sol%vec)
-        allocate(sol%vec(1:sol%n_mod,1:grid_X%loc_n_r,1:max_n_EV))
-        sol%vec = 0.0_dp
-        
-        ! allocate val
-        if (allocated(sol%val)) deallocate(sol%val)
-        allocate(sol%val(1:max_n_EV))
-        sol%val = 0.0_dp
         
         ! set up EV error string and format string:
         !   1: index of EV
@@ -1697,7 +1714,7 @@ contains
             !! visualize solution
             !call PetscViewerDrawOpen(PETSC_COMM_WORLD,PETSC_NULL_CHARACTER,&
                 !&'solution '//trim(i2str(id))//' vector with '//&
-                !&trim(i2str(grid_X%n(3)))//' points',0,&
+                !&trim(i2str(grid_sol%n(3)))//' points',0,&
                 !&0,1000,1000,guess_viewer,ierr)
             !call VecView(sol_vec,guess_viewer,ierr)
             !CHCKERR('Cannot view vector')
@@ -1843,7 +1860,7 @@ contains
                 
                 ! save old arrays
                 allocate(X_val_loc(max_id))
-                allocate(X_vec_loc(sol%n_mod,grid_X%loc_n_r,max_id))
+                allocate(X_vec_loc(sol%n_mod,grid_sol%loc_n_r,max_id))
                 X_val_loc = sol%val
                 X_vec_loc = sol%vec
                 
@@ -1851,10 +1868,10 @@ contains
                 deallocate(sol%val,sol%vec)
                 if (remove_next_loc) then
                     allocate(sol%val(id-1))
-                    allocate(sol%vec(sol%n_mod,grid_X%loc_n_r,id-1))
+                    allocate(sol%vec(sol%n_mod,grid_sol%loc_n_r,id-1))
                 else
                     allocate(sol%val(max_id-1))
-                    allocate(sol%vec(sol%n_mod,grid_X%loc_n_r,max_id-1))
+                    allocate(sol%vec(sol%n_mod,grid_sol%loc_n_r,max_id-1))
                 end if
                 
                 ! copy other values
@@ -1880,12 +1897,12 @@ contains
     
     ! stop PETSC and SLEPC
     ! [MPI] Collective call
-    integer function stop_SLEPC(grid_X,A,B,solver,guess_start_id,prev_n_EV,&
+    integer function stop_SLEPC(grid_sol,A,B,solver,guess_start_id,prev_n_EV,&
         &max_n_EV) result(ierr)
         character(*), parameter :: rout_name = 'stop_SLEPC'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         Mat, intent(in) :: A, B                                                 ! matrices A and B in EV problem A X = lambda B X
         EPS, intent(in) :: solver                                               ! EV solver
         PetscInt, intent(inout):: guess_start_id                                ! start of index of vector, saved for next iteration
@@ -1898,7 +1915,7 @@ contains
         call lvl_ud(1)
         
         ! set guess_start_id and prev_n_EV
-        guess_start_id = grid_X%i_min
+        guess_start_id = grid_sol%i_min
         prev_n_EV = max_n_EV
         
         ! destroy objects
@@ -1936,7 +1953,7 @@ contains
     
     ! Insert  a block pertaining  to 1 normal  point into a  matrix. Optionally,
     ! also set the Hermitian transpose and / or overwrite instead of add value.
-    integer function insert_block_mat(block,mat,ind,n_X,transp,overwrite) &
+    integer function insert_block_mat(block,mat,ind,n_sol,transp,overwrite) &
         &result(ierr)
         use MPI_utilities, only: wait_MPI
 #if ldebug
@@ -1949,7 +1966,7 @@ contains
         PetscScalar :: block(:,:)                                               ! (n_mod x n_mod) block matrix for 1 normal point
         Mat, intent(inout) :: mat                                               ! matrix in which to insert block
         PetscInt, intent(in) :: ind(2)                                          ! 2D index in matrix
-        PetscInt, intent(in) :: n_X                                             ! number of grid points of perturbation grid
+        PetscInt, intent(in) :: n_sol                                           ! number of grid points of solution grid
         PetscBool, intent(in), optional :: transp                               ! also set Hermitian transpose
         PetscBool, intent(in), optional :: overwrite                            ! overwrite
         
@@ -1993,7 +2010,7 @@ contains
 #endif
         
         ! only set values if within matrix range
-        if (minval(ind).ge.0 .and. maxval(ind).lt.n_X) then
+        if (minval(ind).ge.0 .and. maxval(ind).lt.n_sol) then
 #if ldebug
             if (debug_insert_block_mat) then
                 call writo('following local block is going to be added: ')

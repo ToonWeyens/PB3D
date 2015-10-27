@@ -28,18 +28,20 @@ contains
             &plot_resonance, X_job_nr, X_jobs_lims
         use MPI_utilities, only: wait_MPI
         use X_vars, only: dealloc_X, &
-            &min_m_X, max_m_X, min_n_X, max_n_X, min_r_X, max_r_X, min_n_r_X
+            &min_m_X, max_m_X, min_n_X, max_n_X, min_r_sol, max_r_sol, &
+            &min_n_r_sol
         use grid_vars, only: dealloc_grid, &
             &n_par_X, min_par_X, max_par_X
         use eq_vars, only: dealloc_eq
-        use met_vars, only: dealloc_met
+        use met_vars, only: dealloc_met, create_met
         use PB3D_ops, only: read_PB3D, reconstruct_PB3D
         use utilities, only: test_max_memory
         use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
             &print_output_X, calc_magn_ints
         use vac, only: calc_vac
-        use HELENA, only: interp_HEL_on_grid
+        use HELENA, only: interp_HEL_on_grid, dealloc_HEL
+        use VMEC, only: dealloc_VMEC
         !!use utilities, only: calc_aux_utilities
         
         character(*), parameter :: rout_name = 'run_driver_X'
@@ -49,6 +51,7 @@ contains
         type(grid_type), pointer :: grid_eq_B                                   ! field-aligned equilibrium grid
         type(eq_type) :: eq                                                     ! equilibrium variables
         type(met_type) :: met                                                   ! metric variables
+        type(met_type) :: met_B                                                 ! field-aligned metric variables
         type(X_1_type) :: X_1(2)                                                ! vectorial X variables
         type(X_2_type) :: X_2                                                   ! tensorial X variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -73,13 +76,13 @@ contains
         call lvl_ud(1)
         
         if (max_it_r.eq.1) then
-            call writo('for '//trim(i2str(min_n_r_X))//' values on &
-                &normal range '//trim(r2strt(min_r_X))//'..'//&
-                &trim(r2strt(max_r_X)))
+            call writo('for '//trim(i2str(min_n_r_sol))//' values on &
+                &normal range '//trim(r2strt(min_r_sol))//'..'//&
+                &trim(r2strt(max_r_sol)))
         else
-            call writo('for minimally '//trim(i2str(min_n_r_X))//' values on &
-                &normal range '//trim(r2strt(min_r_X))//'..'//&
-                &trim(r2strt(max_r_X)))
+            call writo('for minimally '//trim(i2str(min_n_r_sol))//' values on &
+                &normal range '//trim(r2strt(min_r_sol))//'..'//&
+                &trim(r2strt(max_r_sol)))
         end if
         call writo('for '//trim(i2str(n_par_X))//' values on parallel &
             &range '//trim(r2strt(min_par_X*pi))//'..'//&
@@ -259,14 +262,16 @@ contains
             
             ! adapt tensorial perturbation to field-aligned coords. if HELENA
             if (eq_style.eq.2) then
+                ierr = create_met(grid_eq_B,met_B)
+                CHCKERR('')
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,met=met,&
-                    &X_2=X_2,grid_name='field-aligned grid')
+                    &X_2=X_2,met_out=met_B,grid_name='field-aligned grid')
                 CHCKERR('')
             end if
             
             ! integrate magnetic  integrals of tensorial  perturbation variables
             ! over field-aligned grid
-            call calc_magn_ints(grid_eq_B,met,X_2,&
+            call calc_magn_ints(grid_eq_B,met_B,X_2,&
                 &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
             
             ! write tensorial perturbation variables to output file
@@ -274,6 +279,7 @@ contains
             CHCKERR('')
             
             ! clean up
+            call dealloc_met(met_B)
             call dealloc_X(X_2)
             
             ! user output
@@ -304,6 +310,20 @@ contains
         nullify(grid_eq_B)
         call dealloc_eq(eq)
         call dealloc_met(met)
+        ! deallocate variables depending on equilibrium style
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                call dealloc_VMEC
+            case (2)                                                            ! HELENA
+                call dealloc_HEL
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
         
         ! synchronize MPI
         ierr = wait_MPI()

@@ -35,7 +35,7 @@ module sol_ops
 contains
     ! calculates the  normal or geodesic  component, or optionally  the parallel
     ! derivative of the plasma perturbation  or the normal or geodesic component
-    ! of the magnetic field perturbation in the perturbation grid for a range in
+    ! of the  magnetic field perturbation  in the solution  grid for a  range in
     ! normalized  time (1  corresponds to  one period).  The variable  XUQ_style
     ! determines which one:
     !   - XUQ_style = 1: X (supports parallel derivative)
@@ -43,12 +43,12 @@ contains
     !   - XUQ_style = 3: Qn
     !   - XUQ_style = 4: Qg
     ! For Qn  and Qg,  the metric  variables have  to be  provided as  well. The
-    ! output is given in the X grid for the normal part. The angular part of the
-    ! output is given by  the equilibrium grid. These grids need  to be given in
-    ! Flux coordinates.
-    ! Note: The angular part of the X grid is neglected as it is assumed to be a
-    ! 1D grid.
-    integer function calc_XUQ_arr(grid_eq,eq,grid_X,sol,X_id,XUQ_style,time,&
+    ! output is given in  the sol grid for the normal part.  The angular part of
+    ! the output is given by the equilibrium  grid. These grids need to be given
+    ! in Flux coordinates.
+    ! Note: The angular part of the sol grid is neglected as it is assumed to be
+    ! a 1D grid.
+    integer function calc_XUQ_arr(grid_eq,eq,grid_sol,sol,X_id,XUQ_style,time,&
         &XUQ,met,deriv) result(ierr)                                            ! (time) array version
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol
         use utilities, only: con2dis, calc_deriv
@@ -61,7 +61,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
         integer, intent(in) :: XUQ_style                                        ! whether to calculate X, U, Qn or Qg
@@ -80,8 +80,8 @@ contains
         complex(dp), allocatable :: fac_0(:,:,:), fac_1(:,:,:)                  ! factor to be multiplied with X and DX
         complex(dp), allocatable :: par_fac(:)                                  ! multiplicative factor due to parallel derivative
         complex(dp), allocatable :: XUQ_loc(:,:)                                ! complex XUQ without time at a normal point
-        real(dp), allocatable :: loc_r_eq(:)                                    ! loc_r_F of X grid interpolated in eq grid
-        integer :: i_lo, i_hi                                                   ! upper and lower index for interpolation of eq grid to X grid
+        real(dp), allocatable :: loc_r_eq(:)                                    ! loc_r_F of sol grid interpolated in eq grid
+        integer :: i_lo, i_hi                                                   ! upper and lower index for interpolation of eq grid to sol grid
 #if ldebug
         real(dp), allocatable :: X_vec_ALT(:)                                   ! X_vec calculated from DX_vec
 #endif
@@ -94,7 +94,7 @@ contains
         
         ! tests
         if (grid_eq%n(1).ne.size(XUQ,1) .or. grid_eq%n(2).ne.size(XUQ,2) .or. &
-            &grid_X%loc_n_r.ne.size(XUQ,3) .or. n_t.ne.size(XUQ,4)) then
+            &grid_sol%loc_n_r.ne.size(XUQ,3) .or. n_t.ne.size(XUQ,4)) then
             ierr = 1
             err_msg = 'XUQ needs to have the correct dimensions'
             CHCKERR(err_msg)
@@ -118,9 +118,9 @@ contains
         
         ! calculate  normal  interpolation  tables for  equilibrium  grid  (this
         ! concerns eq variables and met variables)
-        allocate(loc_r_eq(grid_X%loc_n_r))
-        do kd = 1,grid_X%loc_n_r
-            ierr = con2dis(grid_X%loc_r_F(kd),loc_r_eq(kd),grid_eq%loc_r_F)
+        allocate(loc_r_eq(grid_sol%loc_n_r))
+        do kd = 1,grid_sol%loc_n_r
+            ierr = con2dis(grid_sol%loc_r_F(kd),loc_r_eq(kd),grid_eq%loc_r_F)
             CHCKERR('')
         end do
         
@@ -143,7 +143,7 @@ contains
         allocate(par_fac(grid_eq%loc_n_r))
         
         ! set up DX_vec
-        allocate(DX_vec(grid_X%loc_n_r))
+        allocate(DX_vec(grid_sol%loc_n_r))
         
         ! initialize XUQ
         XUQ = 0._dp
@@ -221,32 +221,32 @@ contains
             ! set up normal derivative of X vec
             if (XUQ_style.eq.2 .or. XUQ_style.eq.4) then
                 ierr = calc_deriv(sol%vec(jd,:,X_id),DX_vec,&
-                    &grid_X%loc_r_F(1:grid_X%loc_n_r),1,norm_disc_prec_sol)
+                    &grid_sol%loc_r_F(1:grid_sol%loc_n_r),1,norm_disc_prec_sol)
                 CHCKERR('')
 #if ldebug
                 if (debug_calc_XUQ_arr) then
                     call writo('For mode '//trim(i2str(jd))//', testing &
                         &whether DX_vec is correct by comparing its integral &
                         &with original X_vec')
-                    allocate(X_vec_ALT(1:grid_X%loc_n_r))
+                    allocate(X_vec_ALT(1:grid_sol%loc_n_r))
                     ierr = calc_int(realpart(DX_vec),&
-                        &grid_X%loc_r_F(1:grid_X%loc_n_r),X_vec_ALT)
+                        &grid_sol%loc_r_F(1:grid_sol%loc_n_r),X_vec_ALT)
                     CHCKERR('')
                     call print_GP_2D('TEST_RE_DX_vec','',reshape(&
                         &[realpart(sol%vec(jd,:,X_id)),X_vec_ALT],&
-                        &[grid_X%loc_n_r,2]),x=reshape(&
-                        &[grid_X%loc_r_F(1:grid_X%loc_n_r),&
-                        &grid_X%loc_r_F(1:grid_X%loc_n_r)],&
-                        &[grid_X%loc_n_r,2]))
+                        &[grid_sol%loc_n_r,2]),x=reshape(&
+                        &[grid_sol%loc_r_F(1:grid_sol%loc_n_r),&
+                        &grid_sol%loc_r_F(1:grid_sol%loc_n_r)],&
+                        &[grid_sol%loc_n_r,2]))
                     ierr = calc_int(imagpart(DX_vec),&
-                        &grid_X%loc_r_F(1:grid_X%loc_n_r),X_vec_ALT)
+                        &grid_sol%loc_r_F(1:grid_sol%loc_n_r),X_vec_ALT)
                     CHCKERR('')
                     call print_GP_2D('TEST_IM_DX_vec','',reshape(&
                         &[imagpart(sol%vec(jd,:,X_id)),X_vec_ALT],&
-                        &[grid_X%loc_n_r,2]),x=reshape(&
-                        &[grid_X%loc_r_F(1:grid_X%loc_n_r),&
-                        &grid_X%loc_r_F(1:grid_X%loc_n_r)],&
-                        &[grid_X%loc_n_r,2]))
+                        &[grid_sol%loc_n_r,2]),x=reshape(&
+                        &[grid_sol%loc_r_F(1:grid_sol%loc_n_r),&
+                        &grid_sol%loc_r_F(1:grid_sol%loc_n_r)],&
+                        &[grid_sol%loc_n_r,2]))
                     deallocate(X_vec_ALT)
                 end if
 #endif
@@ -254,8 +254,8 @@ contains
                 DX_vec = 0._dp
             end if
             
-            ! iterate over all normal points in X grid
-            do kd = 1,grid_X%loc_n_r
+            ! iterate over all normal points in sol grid
+            do kd = 1,grid_sol%loc_n_r
                 ! set lower and upper index for this normal point
                 i_lo = floor(loc_r_eq(kd))
                 i_hi = ceiling(loc_r_eq(kd))
@@ -286,14 +286,14 @@ contains
             end do
         end do
     end function calc_XUQ_arr
-    integer function calc_XUQ_ind(grid_eq,eq,grid_X,sol,X_id,XUQ_style,time,&
+    integer function calc_XUQ_ind(grid_eq,eq,grid_sol,sol,X_id,XUQ_style,time,&
         &XUQ,met,deriv) result(ierr)                                            ! (time) individual version
         character(*), parameter :: rout_name = 'calc_XUQ_ind'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibirum grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
         integer, intent(in) :: XUQ_style                                        ! whether to calculate X, U, Qn or Qg
@@ -309,7 +309,7 @@ contains
         allocate(XUQ_arr(size(XUQ,1),size(XUQ,2),size(XUQ,3),1))
         
         ! call array version
-        ierr = calc_XUQ_arr(grid_eq,eq,grid_X,sol,X_id,XUQ_style,[time],&
+        ierr = calc_XUQ_arr(grid_eq,eq,grid_sol,sol,X_id,XUQ_style,[time],&
             &XUQ_arr,met,deriv)
         CHCKERR('')
         
@@ -323,7 +323,7 @@ contains
     ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
     ! equilibrium  grid and  the normal  part of  the provided  perturbation
     ! grid.
-    integer function plot_X_vec(grid_eq,eq,grid_X,sol,XYZ,X_id,res_surf) &
+    integer function plot_X_vec(grid_eq,eq,grid_sol,sol,XYZ,X_id,res_surf) &
         &result(ierr)
         use grid_vars, only: dealloc_grid
         use grid_ops, only: trim_grid
@@ -333,7 +333,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(sol_type), intent(in) :: sol                                       ! solution variables
         real(dp), intent(in) :: XYZ(:,:,:,:)                                    ! X, Y and Z of extended eq_grid
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue (for output name)
@@ -343,7 +343,7 @@ contains
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: kd                                                           ! counter
         integer :: n_t(2)                                                       ! nr. of time steps in quarter period, nr. of quarter periods
-        type(grid_type) :: grid_X_trim                                          ! trimmed X grid
+        type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
         character(len=max_str_ln) :: err_msg                                    ! error message
         complex(dp), allocatable :: f_plot(:,:,:,:,:)                           ! the function to plot
         real(dp), allocatable :: time(:)                                        ! fraction of Alfvén time
@@ -369,14 +369,14 @@ contains
         end if
         if (grid_eq%n(1).ne.size(XYZ,1) .or. &
             &grid_eq%n(2).ne.size(XYZ,2) .or. &
-            &grid_X%loc_n_r.ne.size(XYZ,3)) then
+            &grid_sol%loc_n_r.ne.size(XYZ,3)) then
             ierr = 1
             err_msg = 'XYZ needs to have the correct dimensions'
             CHCKERR(err_msg)
         end if
         
-        ! trim X grid
-        ierr = trim_grid(grid_X,grid_X_trim,norm_id)
+        ! trim sol grid
+        ierr = trim_grid(grid_sol,grid_sol_trim,norm_id)
         CHCKERR('')
         
         ! user output
@@ -384,7 +384,7 @@ contains
         call lvl_ud(1)
         
         ! plot information about harmonics
-        ierr = plot_harmonics(grid_X_trim,sol,X_id,res_surf)
+        ierr = plot_harmonics(grid_sol_trim,sol,X_id,res_surf)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -414,17 +414,17 @@ contains
         
         ! set up plot dimensions and local dimensions
         ! Note: The  angular size is taken  from trimmed eq grid but  the normal
-        ! size from the trimmed X grid.
-        plot_dim = [grid_eq%n(1), grid_eq%n(2),grid_X_trim%n(3),product(n_t)]
-        plot_offset = [0,0,grid_X_trim%i_min-1,product(n_t)]
+        ! size from the trimmed sol grid.
+        plot_dim = [grid_eq%n(1), grid_eq%n(2),grid_sol_trim%n(3),product(n_t)]
+        plot_offset = [0,0,grid_sol_trim%i_min-1,product(n_t)]
         
         ! set up copies  of XYZ(1), XYZ(2) and XYZ(3) in  X, Y and Z
         ! for plot
-        allocate(X_plot(grid_eq%n(1),grid_eq%n(2),grid_X_trim%loc_n_r,&
+        allocate(X_plot(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
             &product(n_t)))
-        allocate(Y_plot(grid_eq%n(1),grid_eq%n(2),grid_X_trim%loc_n_r,&
+        allocate(Y_plot(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
             &product(n_t)))
-        allocate(Z_plot(grid_eq%n(1),grid_eq%n(2),grid_X_trim%loc_n_r,&
+        allocate(Z_plot(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
             &product(n_t)))
         
         ! For each time step, calculate the time (as fraction of Alfvén
@@ -449,11 +449,11 @@ contains
         
         ! calculate  the function  to  plot: normal  and  geodesic component  of
         ! perturbation X_F
-        allocate(f_plot(grid_eq%n(1),grid_eq%n(2),grid_X%loc_n_r,&
+        allocate(f_plot(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r,&
             &product(n_t),2))
-        ierr = calc_XUQ(grid_eq,eq,grid_X,sol,X_id,1,time,f_plot(:,:,:,:,1))
+        ierr = calc_XUQ(grid_eq,eq,grid_sol,sol,X_id,1,time,f_plot(:,:,:,:,1))
         CHCKERR('')
-        ierr = calc_XUQ(grid_eq,eq,grid_X,sol,X_id,2,time,f_plot(:,:,:,:,2))
+        ierr = calc_XUQ(grid_eq,eq,grid_sol,sol,X_id,2,time,f_plot(:,:,:,:,2))
         CHCKERR('')
         
         ! set up var_name, file_name and description
@@ -479,13 +479,13 @@ contains
         deallocate(time)
         deallocate(f_plot)
         deallocate(X_plot,Y_plot,Z_plot)
-        call dealloc_grid(grid_X_trim)
+        call dealloc_grid(grid_sol_trim)
         
         call lvl_ud(-1)
     contains
         ! plots the harmonics and their maximum in 2D
         ! Note: This routine needs a trimmed grid! (DOES IT STILL?)
-        integer function plot_harmonics(grid_X,sol,X_id,res_surf) result(ierr)
+        integer function plot_harmonics(grid_sol,sol,X_id,res_surf) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ser_var
             use output_ops, only: merge_GP
             use num_vars, only: use_pol_flux_F, GP_max_size, rank
@@ -494,7 +494,7 @@ contains
             character(*), parameter :: rout_name = 'plot_harmonics'
             
             ! input / output
-            type(grid_type), intent(in) :: grid_X                               ! perturbation grid
+            type(grid_type), intent(in) :: grid_sol                             ! solution grid
             type(sol_type), intent(in) :: sol                                   ! solution variables
             integer, intent(in) :: X_id                                         ! nr. of Eigenvalue (for output name)
             real(dp), intent(in) :: res_surf(:,:)                               ! resonant surfaces
@@ -515,7 +515,7 @@ contains
             ierr = 0
             
             ! set up serial X_vec on master
-            if (rank.eq.0) allocate(X_vec_ser(1:sol%n_mod,1:grid_X%n(3)))
+            if (rank.eq.0) allocate(X_vec_ser(1:sol%n_mod,1:grid_sol%n(3)))
             do id = 1,sol%n_mod
                 ierr = get_ser_var(sol%vec(id,norm_id(1):norm_id(2),X_id),&
                     &X_vec_ser_loc,scatter=.true.)
@@ -527,9 +527,9 @@ contains
             ! the rest is done only by master
             if (rank.eq.0) then
                 ! set up x_plot
-                allocate(x_plot(grid_X%n(3),sol%n_mod))
+                allocate(x_plot(grid_sol%n(3),sol%n_mod))
                 do kd = 1,sol%n_mod
-                    x_plot(:,kd) = grid_X%r_F
+                    x_plot(:,kd) = grid_sol%r_F
                 end do
                 
                 ! set up local res_surf
@@ -541,7 +541,7 @@ contains
                 X_vec_max = 0.0_dp
                 do kd = 1,sol%n_mod
                     X_vec_max(kd) = &
-                        &grid_X%r_F(maxloc(abs(realpart(X_vec_ser(kd,:))),1))
+                        &grid_sol%r_F(maxloc(abs(realpart(X_vec_ser(kd,:))),1))
                 end do
                 
                 ! scale x_plot, X_vec_max and res_surf_loc(2) by max_flux/2pi
@@ -566,7 +566,7 @@ contains
                 call draw_GP(plot_title,file_name,file_name,sol%n_mod,1,.false.)
                 
                 ! plot in file using decoupled 3D in GNUPlot if not too big
-                if (sol%n_mod*grid_X%n(3).le.GP_max_size) then
+                if (sol%n_mod*grid_sol%n(3).le.GP_max_size) then
                     call draw_GP(trim(plot_title)//' - 3D',file_name,&
                         &trim(file_name)//'_3D',sol%n_mod,3,.false.)
                 end if
@@ -574,8 +574,8 @@ contains
                 ! plot using HDF5
                 call plot_HDF5(trim(plot_title),trim(file_name),&
                     &reshape(realpart(transpose(X_vec_ser)),&
-                    &[1,grid_X%n(3),sol%n_mod]),y=reshape(x_plot,&
-                    &[1,grid_X%n(3),sol%n_mod]))
+                    &[1,grid_sol%n(3),sol%n_mod]),y=reshape(x_plot,&
+                    &[1,grid_sol%n(3),sol%n_mod]))
                 
                 ! deallocate variables
                 deallocate(x_plot)
@@ -603,8 +603,8 @@ contains
                 ! draw plot in file
                 call draw_GP(plot_title,file_name,file_name,2,1,.false.,&
                     &extra_ops='set xrange ['//&
-                    &trim(r2str(grid_X%r_F(1)/norm_factor))//':'//&
-                    &trim(r2str(grid_X%r_F(grid_X%n(3))/norm_factor))//']')
+                    &trim(r2str(grid_sol%r_F(1)/norm_factor))//':'//&
+                    &trim(r2str(grid_sol%r_F(grid_sol%n(3))/norm_factor))//']')
                 
                 ! deallocate
                 deallocate(x_plot,X_vec_ser)
@@ -626,13 +626,12 @@ contains
     !   - E_kin:
     !       + normal kinetic term: rho X^2/h22,
     !       + geodesic kinetic term: rho J^2 h22/g33 U^2.
-    ! The energy terms are calculated normally  on the X grid, interpolating the
-    ! quantities defined on the eq grid, and angularly in the eq grid.
-    ! Optionally, the results can be plotted  by providing PB3D_plot, where X, Y
-    ! and Z can be provided as well. If not plotting, they are ignored.
-    integer function decompose_energy(PB3D,X_id,log_i,PB3D_plot,XYZ) &
-        &result(ierr)
-        use PB3D_vars, only: PB3D_type
+    ! The energy  terms are calculated  normally on the sol  grid, interpolating
+    ! the quantities defined on the eq grid, and angularly in the eq grid.
+    ! Optionally,  the  results can  be  plotted by  providing  X, Y  and Z.  By
+    ! default, they are instead written to an output file.
+    integer function decompose_energy(grid_eq,grid_sol,eq,met,sol,X_id,log_i,&
+        &B_aligned,XYZ) result(ierr)
         use grid_vars, only: dealloc_grid
         use grid_ops, only: trim_grid
         use num_vars, only: norm_disc_prec_sol, rank
@@ -640,20 +639,22 @@ contains
         character(*), parameter :: rout_name = 'decompose_energy'
         
         ! input / output
-        type(PB3D_type), intent(in) :: PB3D                                     ! field-aligned PB3D variables
+        type(grid_type), intent(in) :: grid_eq, grid_sol                        ! equilibrium and solution grid
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(met_type), intent(in) :: met                                       ! metric variables
+        type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
         integer, intent(in) :: log_i                                            ! file number of log file
-        type(PB3D_type), intent(in), optional :: PB3D_plot                      ! optionally provide plot variables
+        logical, intent(in) :: B_aligned                                        ! whether grid is field-aligned
         real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z for plotting
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        logical :: plot_en                                                      ! whether plot variables are provided
         integer :: kd                                                           ! counter
         integer :: loc_dim(3)                                                   ! local dimension
         integer :: tot_dim(3)                                                   ! total dimensions
         integer :: loc_offset(3)                                                ! local offsets
-        type(grid_type) :: grid_X_trim                                          ! trimmed X grid
+        type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
         complex(dp), allocatable, target :: E_pot(:,:,:,:)                      ! potential energy
         complex(dp), allocatable, target :: E_kin(:,:,:,:)                      ! kinetic energy
         complex(dp), allocatable :: E_pot_int(:)                                ! integrated potential energy
@@ -675,99 +676,97 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! set plot_en
-        plot_en = .false.
-        if (present(PB3D_plot)) plot_en = .true.
-        
         ! user output
-        call writo('Prepare calculations')
-        call lvl_ud(1)
-        
-        ! set up format string:
-        !   row 1: EV, E_pot/E_kin
-        !   row 2: E_pot, E_kin
-        !   row 3: E_kin(1), E_kin(2)
-        !   row 4: E_pot(1), E_pot(2)
-        !   row 5: E_pot(3), E_pot(4)
-        !   row 6: E_pot(5), E_pot(6)
-        if (rank.eq.0) format_val = '("  ",ES23.16," ",ES23.16," ",&
-            &ES23.16," ",ES23.16," ",ES23.16," ",ES23.16," ",ES23.16)'
-        
-        ! set up potential energy variable names
-        allocate(var_names_pot(6))
-        var_names_pot(1) = '1. normal line bending term ~ Q_n^2'
-        var_names_pot(2) = '2. geodesic line bending term ~ Q_g^2'
-        var_names_pot(3) = '3. normal ballooning term ~ -p'' X^2 kappa_n'
-        var_names_pot(4) = '4. geodesic ballooning term ~ -p'' X U* kappa_g'
-        var_names_pot(5) = '5. normal kink term ~ -sigma X*Q_g'
-        var_names_pot(6) = '6. geodesic kink term ~ sigma U*Q_n'
-        
-        ! set up kinetic energy variable names
-        allocate(var_names_kin(2))
-        var_names_kin(1) = '1. normal kinetic term ~ rho X^2'
-        var_names_kin(2) = '2. geodesic kinetic term ~ rho U^2'
-        
-        call lvl_ud(-1)
-        
         call writo('Calculate energy terms')
         call lvl_ud(1)
         
-        ierr = calc_E(PB3D,.true.,X_id,E_pot,E_kin,E_pot_int,E_kin_int)
+        ierr = calc_E(grid_eq,grid_sol,eq,met,sol,B_aligned,X_id,&
+            &E_pot,E_kin,E_pot_int,E_kin_int)
         CHCKERR('')
         
         call lvl_ud(-1)
         
-        call writo('Write to log file')
-        call lvl_ud(1)
-        if (rank.eq.0) write(log_i,'(A)') '# Eigenvalue '//trim(i2str(X_id))
-        
-        if (rank.eq.0) write(log_i,format_val) &
-            &realpart(PB3D%sol%val(X_id)),&
-            &realpart(sum(E_pot_int)/sum(E_kin_int)),&
-            &realpart(sum(E_pot_int)),&
-            &realpart(sum(E_kin_int))
-        if (rank.eq.0) write(log_i,format_val) &
-            &imagpart(PB3D%sol%val(X_id)),&
-            &imagpart(sum(E_pot_int)/sum(E_kin_int)), &
-            &imagpart(sum(E_pot_int)),&
-            &imagpart(sum(E_kin_int))
-        if (rank.eq.0) write(log_i,format_val) &
-            &realpart(E_kin_int(1)),&
-            &realpart(E_kin_int(2))
-        if (rank.eq.0) write(log_i,format_val) &
-            &imagpart(E_kin_int(1)),&
-            &imagpart(E_kin_int(2))
-        if (rank.eq.0) write(log_i,format_val) &
-            &realpart(E_pot_int(1)),&
-            &realpart(E_pot_int(2)),&
-            &realpart(E_pot_int(3)),&
-            &realpart(E_pot_int(4)),&
-            &realpart(E_pot_int(5)),&
-            &realpart(E_pot_int(6))
-        if (rank.eq.0) write(log_i,format_val) &
-            &imagpart(E_pot_int(1)),&
-            &imagpart(E_pot_int(2)),&
-            &imagpart(E_pot_int(3)),&
-            &imagpart(E_pot_int(4)),&
-            &imagpart(E_pot_int(5)),&
-            &imagpart(E_pot_int(6))
-        
-        call lvl_ud(-1)
-        
-        ! deallocate variables
-        deallocate(E_pot,E_kin,E_pot_int,E_kin_int)
-        
-        if (plot_en) then
-            ! trim X grid
-            ierr = trim_grid(PB3D_plot%grid_X,grid_X_trim,norm_id)
+        if (.not.present(XYZ)) then                                             ! writing to log file
+            ! user output
+            call writo('Write to log file')
+            call lvl_ud(1)
+            
+            ! only master
+            if (rank.eq.0) then
+                ! set up format string:
+                !   row 1: EV, E_pot/E_kin
+                !   row 2: E_pot, E_kin
+                !   row 3: E_kin(1), E_kin(2)
+                !   row 4: E_pot(1), E_pot(2)
+                !   row 5: E_pot(3), E_pot(4)
+                !   row 6: E_pot(5), E_pot(6)
+                format_val = '("  ",ES23.16," ",ES23.16," ",&
+                    &ES23.16," ",ES23.16," ",ES23.16," ",ES23.16," ",ES23.16)'
+                
+                ! write header
+                write(log_i,'(A)') '# Eigenvalue '//trim(i2str(X_id))
+                
+                ! write values
+                write(log_i,format_val) &
+                    &realpart(sol%val(X_id)),&
+                    &realpart(sum(E_pot_int)/sum(E_kin_int)),&
+                    &realpart(sum(E_pot_int)),&
+                    &realpart(sum(E_kin_int))
+                write(log_i,format_val) &
+                    &imagpart(sol%val(X_id)),&
+                    &imagpart(sum(E_pot_int)/sum(E_kin_int)), &
+                    &imagpart(sum(E_pot_int)),&
+                    &imagpart(sum(E_kin_int))
+                write(log_i,format_val) &
+                    &realpart(E_kin_int(1)),&
+                    &realpart(E_kin_int(2))
+                write(log_i,format_val) &
+                    &imagpart(E_kin_int(1)),&
+                    &imagpart(E_kin_int(2))
+                write(log_i,format_val) &
+                    &realpart(E_pot_int(1)),&
+                    &realpart(E_pot_int(2)),&
+                    &realpart(E_pot_int(3)),&
+                    &realpart(E_pot_int(4)),&
+                    &realpart(E_pot_int(5)),&
+                    &realpart(E_pot_int(6))
+                write(log_i,format_val) &
+                    &imagpart(E_pot_int(1)),&
+                    &imagpart(E_pot_int(2)),&
+                    &imagpart(E_pot_int(3)),&
+                    &imagpart(E_pot_int(4)),&
+                    &imagpart(E_pot_int(5)),&
+                    &imagpart(E_pot_int(6))
+            end if
+            
+            call lvl_ud(-1)
+        else                                                                    ! plotting
+            ! user output
+            call writo('Preparing plots')
+            call lvl_ud(1)
+            
+            ! set up potential energy variable names
+            allocate(var_names_pot(6))
+            var_names_pot(1) = '1. normal line bending term ~ Q_n^2'
+            var_names_pot(2) = '2. geodesic line bending term ~ Q_g^2'
+            var_names_pot(3) = '3. normal ballooning term ~ -p'' X^2 kappa_n'
+            var_names_pot(4) = '4. geodesic ballooning term ~ -p'' X U* kappa_g'
+            var_names_pot(5) = '5. normal kink term ~ -sigma X*Q_g'
+            var_names_pot(6) = '6. geodesic kink term ~ sigma U*Q_n'
+            
+            ! set up kinetic energy variable names
+            allocate(var_names_kin(2))
+            var_names_kin(1) = '1. normal kinetic term ~ rho X^2'
+            var_names_kin(2) = '2. geodesic kinetic term ~ rho U^2'
+            
+            ! trim sol grid
+            ierr = trim_grid(grid_sol,grid_sol_trim,norm_id)
             CHCKERR('')
             
             ! set plot variables
-            loc_dim = [PB3D_plot%grid_eq%n(1),PB3D_plot%grid_eq%n(2),&
-                &grid_X_trim%loc_n_r]
-            tot_dim = [PB3D_plot%grid_eq%n(1),PB3D_plot%grid_eq%n(2),&
-                &grid_X_trim%n(3)]
-            loc_offset = [0,0,grid_X_trim%i_min-1]
+            loc_dim = [grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r]
+            tot_dim = [grid_eq%n(1),grid_eq%n(2),grid_sol_trim%n(3)]
+            loc_offset = [0,0,grid_sol_trim%i_min-1]
             allocate(X_tot(loc_dim(1),loc_dim(2),loc_dim(3),6))
             allocate(Y_tot(loc_dim(1),loc_dim(2),loc_dim(3),6))
             allocate(Z_tot(loc_dim(1),loc_dim(2),loc_dim(3),6))
@@ -778,18 +777,11 @@ contains
             end do
             allocate(var_names(2))
             
-            ! calculate energy terms
-            call lvl_ud(1)
-            
-            ierr = calc_E(PB3D_plot,.false.,X_id,E_pot,E_kin,E_pot_int,&
-                &E_kin_int)
-            CHCKERR('')
-            
-            call lvl_ud(-1)
-            
-            ! point to the trimmed versions
+            ! point to the trimmed versions of energy
             E_pot_trim => E_pot(:,:,norm_id(1):norm_id(2),:)
             E_kin_trim => E_kin(:,:,norm_id(1):norm_id(2),:)
+            
+            call lvl_ud(-1)
             
             ! user output
             call writo('Plot energy terms')
@@ -867,17 +859,17 @@ contains
             ! clean up
             nullify(E_kin_trim,E_pot_trim)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
-            call dealloc_grid(grid_X_trim)
+            call dealloc_grid(grid_sol_trim)
         end if
     contains
         ! calculate the energy terms
-        integer function calc_E(PB3D,B_aligned,X_id,E_pot,E_kin,E_pot_int,&
-            &E_kin_int) result(ierr)
+        integer function calc_E(grid_eq,grid_sol,eq,met,sol,B_aligned,X_id,&
+            &E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
             use num_vars, only: use_pol_flux_F, rank, n_procs
-            use PB3D_vars, only: PB3D_type
             use eq_vars, only: vac_perm
             use utilities, only: c, con2dis
             use grid_ops, only: calc_int_vol, trim_grid
+            use grid_vars, only: alpha
             use MPI_utilities, only: get_ser_var, wait_MPI
 #if ldebug
             use utilities, only: calc_deriv
@@ -886,7 +878,10 @@ contains
             character(*), parameter :: rout_name = 'calc_E'
             
             ! input / output
-            type(PB3D_type), intent(in) :: PB3D                                 ! PB3D variables
+            type(grid_type), intent(in) :: grid_eq, grid_sol                    ! equilibrium and solution grid
+            type(eq_type), intent(in) :: eq                                     ! equilibrium variables
+            type(met_type), intent(in) :: met                                   ! metric variables
+            type(sol_type), intent(in) :: sol                                   ! solution variables
             logical, intent(in) :: B_aligned                                    ! whether grid is field-aligned
             integer, intent(in) :: X_id                                         ! nr. of Eigenvalue
             complex(dp), intent(inout), allocatable :: E_pot(:,:,:,:)           ! potential energy
@@ -897,11 +892,11 @@ contains
             ! local variables
             integer :: norm_id(2)                                               ! untrimmed normal indices for trimmed grids
             integer :: jd, kd                                                   ! counter
-            integer :: i_lo, i_hi                                               ! upper and lower index for interpolation of eq grid to X grid
+            integer :: i_lo, i_hi                                               ! upper and lower index for interpolation of eq grid to sol grid
             integer :: loc_dim(3)                                               ! local dimension
             integer :: loc_dim_1(3)                                             ! local dimension with ghost region of width 1
-            type(grid_type) :: grid_X_trim                                      ! trimmed X grid
-            real(dp) :: loc_r_eq                                                ! loc_r_F of X grid interpolated in eq grid
+            type(grid_type) :: grid_sol_trim                                    ! trimmed sol grid
+            real(dp) :: loc_r_eq                                                ! loc_r_F of sol grid interpolated in eq grid
             real(dp), allocatable :: h22(:,:,:), g33(:,:,:), J(:,:,:)           ! interpolated h_FD(2,2), g_FD(3,3) and J_FD
             real(dp), allocatable :: kappa_n(:,:,:), kappa_g(:,:,:)             ! interpolated kappa_n and kappa_g
             real(dp), allocatable :: sigma(:,:,:)                               ! interpolated sigma
@@ -916,7 +911,7 @@ contains
 #endif
             
             ! set loc_dim
-            loc_dim = [PB3D%grid_eq%n(1:2),PB3D%grid_X%loc_n_r]                 ! includes ghost regions of width norm_disc_prec_sol
+            loc_dim = [grid_eq%n(1:2),grid_sol%loc_n_r]                         ! includes ghost regions of width norm_disc_prec_sol
             
             ! allocate local variables
             allocate(h22(loc_dim(1),loc_dim(2),loc_dim(3)))
@@ -942,68 +937,67 @@ contains
             end if
 #endif
             
-            ! iterate over all normal points in X grid and interpolate
+            ! iterate over all normal points in sol grid and interpolate
             do kd = 1,loc_dim(3)
-                ierr = con2dis(PB3D%grid_X%loc_r_F(kd),loc_r_eq,&
-                    &PB3D%grid_eq%loc_r_F)
+                ierr = con2dis(grid_sol%loc_r_F(kd),loc_r_eq,grid_eq%loc_r_F)
                 CHCKERR('')
                 i_lo = floor(loc_r_eq)
                 i_hi = ceiling(loc_r_eq)
                 
-                h22(:,:,kd) = PB3D%met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)+&
+                h22(:,:,kd) = met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)+&
                     &(loc_r_eq-i_lo)*&
-                    &(PB3D%met%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0)&
-                    &-PB3D%met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0))
-                g33(:,:,kd) = PB3D%met%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0)+&
+                    &(met%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0)&
+                    &-met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0))
+                g33(:,:,kd) = met%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0)+&
                     &(loc_r_eq-i_lo)*(&
-                    &PB3D%met%g_FD(:,:,i_hi,c([3,3],.true.),0,0,0)&
-                    &-PB3D%met%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0))
-                J(:,:,kd) = PB3D%met%jac_FD(:,:,i_lo,0,0,0)+(loc_r_eq-i_lo)*&
-                    &(PB3D%met%jac_FD(:,:,i_hi,0,0,0)&
-                    &-PB3D%met%jac_FD(:,:,i_lo,0,0,0))
-                kappa_n(:,:,kd) = PB3D%eq%kappa_n(:,:,i_lo)+(loc_r_eq-i_lo)*&
-                    &(PB3D%eq%kappa_n(:,:,i_hi)-PB3D%eq%kappa_n(:,:,i_lo))
-                kappa_g(:,:,kd) = PB3D%eq%kappa_g(:,:,i_lo)+(loc_r_eq-i_lo)*&
-                    &(PB3D%eq%kappa_g(:,:,i_hi)-PB3D%eq%kappa_g(:,:,i_lo))
-                sigma(:,:,kd) = PB3D%eq%sigma(:,:,i_lo)+(loc_r_eq-i_lo)*&
-                    &(PB3D%eq%sigma(:,:,i_hi)-PB3D%eq%sigma(:,:,i_lo))
-                D2p(:,:,kd) = PB3D%eq%pres_FD(i_lo,1)+(loc_r_eq-i_lo)*&
-                    &(PB3D%eq%pres_FD(i_hi,1)-PB3D%eq%pres_FD(i_lo,1))
-                rho(:,:,kd) = PB3D%eq%rho(i_lo)+(loc_r_eq-i_lo)*&
-                    &(PB3D%eq%rho(i_hi)-PB3D%eq%rho(i_lo))
+                    &met%g_FD(:,:,i_hi,c([3,3],.true.),0,0,0)&
+                    &-met%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0))
+                J(:,:,kd) = met%jac_FD(:,:,i_lo,0,0,0)+(loc_r_eq-i_lo)*&
+                    &(met%jac_FD(:,:,i_hi,0,0,0)&
+                    &-met%jac_FD(:,:,i_lo,0,0,0))
+                kappa_n(:,:,kd) = eq%kappa_n(:,:,i_lo)+(loc_r_eq-i_lo)*&
+                    &(eq%kappa_n(:,:,i_hi)-eq%kappa_n(:,:,i_lo))
+                kappa_g(:,:,kd) = eq%kappa_g(:,:,i_lo)+(loc_r_eq-i_lo)*&
+                    &(eq%kappa_g(:,:,i_hi)-eq%kappa_g(:,:,i_lo))
+                sigma(:,:,kd) = eq%sigma(:,:,i_lo)+(loc_r_eq-i_lo)*&
+                    &(eq%sigma(:,:,i_hi)-eq%sigma(:,:,i_lo))
+                D2p(:,:,kd) = eq%pres_FD(i_lo,1)+(loc_r_eq-i_lo)*&
+                    &(eq%pres_FD(i_hi,1)-eq%pres_FD(i_lo,1))
+                rho(:,:,kd) = eq%rho(i_lo)+(loc_r_eq-i_lo)*&
+                    &(eq%rho(i_hi)-eq%rho(i_lo))
                 if (B_aligned) then
                     if (use_pol_flux_F) then
-                        ang_1(:,:,kd) = PB3D%grid_eq%theta_F(:,:,i_lo)+&
-                            &(loc_r_eq-i_lo)*(PB3D%grid_eq%theta_F(:,:,i_hi)-&
-                            &PB3D%grid_eq%theta_F(:,:,i_lo))                    ! theta
+                        ang_1(:,:,kd) = grid_eq%theta_F(:,:,i_lo)+&
+                            &(loc_r_eq-i_lo)*(grid_eq%theta_F(:,:,i_hi)-&
+                            &grid_eq%theta_F(:,:,i_lo))                         ! theta
                     else
-                        ang_1(:,:,kd) = PB3D%grid_eq%zeta_F(:,:,i_lo)+&
-                            &(loc_r_eq-i_lo)*(PB3D%grid_eq%zeta_F(:,:,i_hi)-&
-                            &PB3D%grid_eq%zeta_F(:,:,i_lo))                     ! zeta
+                        ang_1(:,:,kd) = grid_eq%zeta_F(:,:,i_lo)+&
+                            &(loc_r_eq-i_lo)*(grid_eq%zeta_F(:,:,i_hi)-&
+                            &grid_eq%zeta_F(:,:,i_lo))                          ! zeta
                     end if
-                    ang_2(:,:,kd) = PB3D%alpha                                  ! alpha
+                    ang_2(:,:,kd) = alpha                                       ! alpha
                 else
-                    ang_1(:,:,kd) = PB3D%grid_eq%theta_F(:,:,i_lo)+&
-                        &(loc_r_eq-i_lo)*(PB3D%grid_eq%theta_F(:,:,i_hi)-&
-                        &PB3D%grid_eq%theta_F(:,:,i_lo))                        ! theta
-                    ang_2(:,:,kd) = PB3D%grid_eq%zeta_F(:,:,i_lo)+&
-                        &(loc_r_eq-i_lo)*(PB3D%grid_eq%zeta_F(:,:,i_hi)-&
-                        &PB3D%grid_eq%zeta_F(:,:,i_lo))                         ! zeta
+                    ang_1(:,:,kd) = grid_eq%theta_F(:,:,i_lo)+&
+                        &(loc_r_eq-i_lo)*(grid_eq%theta_F(:,:,i_hi)-&
+                        &grid_eq%theta_F(:,:,i_lo))                             ! theta
+                    ang_2(:,:,kd) = grid_eq%zeta_F(:,:,i_lo)+&
+                        &(loc_r_eq-i_lo)*(grid_eq%zeta_F(:,:,i_hi)-&
+                        &grid_eq%zeta_F(:,:,i_lo))                              ! zeta
                 end if
-                norm(kd) = PB3D%grid_eq%loc_r_F(i_lo)+(loc_r_eq-i_lo)*&
-                    &(PB3D%grid_eq%loc_r_F(i_hi)-PB3D%grid_eq%loc_r_F(i_lo))
+                norm(kd) = grid_eq%loc_r_F(i_lo)+(loc_r_eq-i_lo)*&
+                    &(grid_eq%loc_r_F(i_hi)-grid_eq%loc_r_F(i_lo))
 #if ldebug
                 if (debug_calc_E) then
-                    S(:,:,kd) = PB3D%eq%S(:,:,i_lo)+(loc_r_eq-i_lo)*&
-                        &(PB3D%eq%S(:,:,i_hi)-PB3D%eq%S(:,:,i_lo))
+                    S(:,:,kd) = eq%S(:,:,i_lo)+(loc_r_eq-i_lo)*&
+                        &(eq%S(:,:,i_hi)-eq%S(:,:,i_lo))
                 end if
 #endif
             end do
             
             ! calculate X, U, Q_n and Q_g
             do kd = 1,4
-                ierr = calc_XUQ(PB3D%grid_eq,PB3D%eq,PB3D%grid_X,PB3D%sol,&
-                    &X_id,kd,0._dp,XUQ(:,:,:,kd),met=PB3D%met)
+                ierr = calc_XUQ(grid_eq,eq,grid_sol,sol,X_id,kd,0._dp,&
+                    &XUQ(:,:,:,kd),met=met)
                 CHCKERR('')
             end do
             
@@ -1028,8 +1022,8 @@ contains
                 call lvl_ud(1)
                 
                 ! calculate D_par U
-                ierr = calc_XUQ(PB3D%grid_eq,PB3D%eq,PB3D%grid_X,PB3D%sol,&
-                    &X_id,2,0._dp,DU,met=PB3D%met,deriv=.true.)
+                ierr = calc_XUQ(grid_eq,eq,grid_sol,sol,X_id,2,0._dp,DU,&
+                    &met=met,deriv=.true.)
                 CHCKERR('')
                 
                 ! alternative formulation for E_pot, always real
@@ -1048,8 +1042,8 @@ contains
                 !! plot output
                 !call plot_HDF5(['RE_E_pot'],'TEST_RE_E_pot_'//&
                     !&trim(i2str(X_id)),realpart(E_pot),&
-                    !&[PB3D%grid_eq%n(1:2),PB3D%grid_X%n(3),6],&
-                    !&[0,0,PB3D%grid_X%i_min-1,0])
+                    !&[grid_eq%n(1:2),grid_sol%n(3),6],&
+                    !&[0,0,grid_sol%i_min-1,0])
                 
                 call lvl_ud(-1)
             end if
@@ -1072,14 +1066,12 @@ contains
                 end do
                 call plot_HDF5('RE U','TEST_RE_U_'//&
                     &trim(i2str(X_id)),realpart(XUQ(:,:,:,2)),&
-                    &[PB3D%grid_eq%n(1:2),PB3D%grid_X%n(3)],&
-                    &[0,0,PB3D%grid_X%i_min-1])
+                    &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1])
                 call plot_diff_HDF5(realpart(DU),DU_ALT,&
                     &'TEST_RE_DU_'//trim(i2str(X_id)),&
-                    &[PB3D%grid_eq%n(1:2),PB3D%grid_X%n(3)],&
-                    &[0,0,PB3D%grid_X%i_min-1],description=&
-                    &'To test whether DU is parallel derivative of U',&
-                    &output_message=.true.)
+                    &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1],&
+                    &description='To test whether DU is parallel derivative &
+                    &of U',output_message=.true.)
                 
                 ! imaginary part
                 do kd = 1,loc_dim(3)
@@ -1092,14 +1084,12 @@ contains
                 end do
                 call plot_HDF5('IM U','TEST_IM_U_'//&
                     &trim(i2str(X_id)),imagpart(XUQ(:,:,:,2)),&
-                    &[PB3D%grid_eq%n(1:2),PB3D%grid_X%n(3)],&
-                    &[0,0,PB3D%grid_X%i_min-1])
+                    &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1])
                 call plot_diff_HDF5(imagpart(DU),DU_ALT,&
                     &'TEST_IM_DU_'//trim(i2str(X_id)),&
-                    &[PB3D%grid_eq%n(1:2),PB3D%grid_X%n(3)],&
-                    &[0,0,PB3D%grid_X%i_min-1],description=&
-                    &'To test whether DU is parallel derivative of U',&
-                    &output_message=.true.)
+                    &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1],&
+                    &description='To test whether DU is parallel derivative &
+                    &of U',output_message=.true.)
                 
                 deallocate(DU_ALT)
                 
@@ -1107,12 +1097,12 @@ contains
             end if
 #endif
             
-            ! trim X grid
-            ierr = trim_grid(PB3D%grid_X,grid_X_trim,norm_id)
+            ! trim sol grid
+            ierr = trim_grid(grid_sol,grid_sol_trim,norm_id)
             CHCKERR('')
             
             ! set loc_dim ghosted with width 1
-            loc_dim_1 = [PB3D%grid_eq%n(1:2),grid_X_trim%loc_n_r]               ! trimmed
+            loc_dim_1 = [grid_eq%n(1:2),grid_sol_trim%loc_n_r]                  ! trimmed
             if (rank.lt.n_procs-1) loc_dim_1(3) = loc_dim_1(3)+1                ! ghost region of width 1 added (for integrals)
             
             ! integrate energy using ghosted variables
@@ -1148,13 +1138,13 @@ contains
             E_pot_int = E_pot_int
             
             ! deallocate variables
-            call dealloc_grid(grid_X_trim)
+            call dealloc_grid(grid_sol_trim)
         end function calc_E
     end function decompose_energy
     
     ! Print solution quantities to an output file:
     !   - sol:    val, vec
-    integer function print_output_sol(grid_X,sol) result(ierr)
+    integer function print_output_sol(grid,sol) result(ierr)
         use num_vars, only: rich_lvl_nr, max_it_r, rank, PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type
@@ -1164,14 +1154,14 @@ contains
         character(*), parameter :: rout_name = 'print_output_sol'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
+        type(grid_type), intent(in) :: grid                                     ! solution grid variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         type(var_1D_type), allocatable, target :: sol_1D(:)                     ! 1D equivalent of eq. variables
         type(var_1D_type), pointer :: sol_1D_loc => null()                      ! local element in sol_1D
-        type(grid_type) :: grid_X_trim                                          ! trimmed X grid
+        type(grid_type) :: grid_trim                                            ! trimmed solution grid
         integer :: id                                                           ! counter
         
         ! initialize ierr
@@ -1186,7 +1176,7 @@ contains
         call lvl_ud(1)
         
         ! trim grids
-        ierr = trim_grid(grid_X,grid_X_trim,norm_id)
+        ierr = trim_grid(grid,grid_trim,norm_id)
         CHCKERR('')
         
         ! Set up the 1D equivalents of the solution variables
@@ -1199,11 +1189,11 @@ contains
         allocate(sol_1D_loc%tot_i_min(1),sol_1D_loc%tot_i_max(1))
         allocate(sol_1D_loc%loc_i_min(1),sol_1D_loc%loc_i_max(1))
         sol_1D_loc%tot_i_min = [1]
-        sol_1D_loc%tot_i_max = [grid_X_trim%n(3)]
-        sol_1D_loc%loc_i_min = [grid_X_trim%i_min]
-        sol_1D_loc%loc_i_max = [grid_X_trim%i_max]
-        allocate(sol_1D_loc%p(size(grid_X%loc_r_F(norm_id(1):norm_id(2)))))
-        sol_1D_loc%p = grid_X%loc_r_F(norm_id(1):norm_id(2))
+        sol_1D_loc%tot_i_max = [grid_trim%n(3)]
+        sol_1D_loc%loc_i_min = [grid_trim%i_min]
+        sol_1D_loc%loc_i_max = [grid_trim%i_max]
+        allocate(sol_1D_loc%p(size(grid%loc_r_F(norm_id(1):norm_id(2)))))
+        sol_1D_loc%p = grid%loc_r_F(norm_id(1):norm_id(2))
         
         ! r_E
         sol_1D_loc => sol_1D(id); id = id+1
@@ -1211,11 +1201,11 @@ contains
         allocate(sol_1D_loc%tot_i_min(1),sol_1D_loc%tot_i_max(1))
         allocate(sol_1D_loc%loc_i_min(1),sol_1D_loc%loc_i_max(1))
         sol_1D_loc%tot_i_min = [1]
-        sol_1D_loc%tot_i_max = [grid_X_trim%n(3)]
-        sol_1D_loc%loc_i_min = [grid_X_trim%i_min]
-        sol_1D_loc%loc_i_max = [grid_X_trim%i_max]
-        allocate(sol_1D_loc%p(size(grid_X%loc_r_E(norm_id(1):norm_id(2)))))
-        sol_1D_loc%p = grid_X%loc_r_E(norm_id(1):norm_id(2))
+        sol_1D_loc%tot_i_max = [grid_trim%n(3)]
+        sol_1D_loc%loc_i_min = [grid_trim%i_min]
+        sol_1D_loc%loc_i_max = [grid_trim%i_max]
+        allocate(sol_1D_loc%p(size(grid%loc_r_E(norm_id(1):norm_id(2)))))
+        sol_1D_loc%p = grid%loc_r_E(norm_id(1):norm_id(2))
         
         ! RE_X_val
         sol_1D_loc => sol_1D(id); id = id+1
@@ -1256,10 +1246,10 @@ contains
         sol_1D_loc%var_name = 'RE_X_vec'
         allocate(sol_1D_loc%tot_i_min(3),sol_1D_loc%tot_i_max(3))
         allocate(sol_1D_loc%loc_i_min(3),sol_1D_loc%loc_i_max(3))
-        sol_1D_loc%loc_i_min = [1,grid_X_trim%i_min,1]
-        sol_1D_loc%loc_i_max = [sol%n_mod,grid_X_trim%i_max,size(sol%vec,3)]
+        sol_1D_loc%loc_i_min = [1,grid_trim%i_min,1]
+        sol_1D_loc%loc_i_max = [sol%n_mod,grid_trim%i_max,size(sol%vec,3)]
         sol_1D_loc%tot_i_min = [1,1,1]
-        sol_1D_loc%tot_i_max = [sol%n_mod,grid_X_trim%n(3),size(sol%vec,3)]
+        sol_1D_loc%tot_i_max = [sol%n_mod,grid_trim%n(3),size(sol%vec,3)]
         allocate(sol_1D_loc%p(size(sol%vec(:,norm_id(1):norm_id(2),:))))
         sol_1D_loc%p = reshape(realpart(sol%vec(:,norm_id(1):norm_id(2),:)),&
             &[size(sol%vec(:,norm_id(1):norm_id(2),:))])
@@ -1269,10 +1259,10 @@ contains
         sol_1D_loc%var_name = 'IM_X_vec'
         allocate(sol_1D_loc%tot_i_min(3),sol_1D_loc%tot_i_max(3))
         allocate(sol_1D_loc%loc_i_min(3),sol_1D_loc%loc_i_max(3))
-        sol_1D_loc%loc_i_min = [1,grid_X_trim%i_min,1]
-        sol_1D_loc%loc_i_max = [sol%n_mod,grid_X_trim%i_max,size(sol%vec,3)]
+        sol_1D_loc%loc_i_min = [1,grid_trim%i_min,1]
+        sol_1D_loc%loc_i_max = [sol%n_mod,grid_trim%i_max,size(sol%vec,3)]
         sol_1D_loc%tot_i_min = [1,1,1]
-        sol_1D_loc%tot_i_max = [sol%n_mod,grid_X_trim%n(3),size(sol%vec,3)]
+        sol_1D_loc%tot_i_max = [sol%n_mod,grid_trim%n(3),size(sol%vec,3)]
         allocate(sol_1D_loc%p(size(sol%vec(:,norm_id(1):norm_id(2),:))))
         sol_1D_loc%p = reshape(imagpart(sol%vec(:,norm_id(1):norm_id(2),:)),&
             &[size(sol%vec(:,norm_id(1):norm_id(2),:))])
@@ -1293,7 +1283,7 @@ contains
         CHCKERR('')
         
         ! clean up
-        call dealloc_grid(grid_X_trim)
+        call dealloc_grid(grid_trim)
         nullify(sol_1D_loc)
         
         ! user output

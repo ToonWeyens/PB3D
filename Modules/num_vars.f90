@@ -9,7 +9,7 @@ module num_vars
     public dp, qp, max_str_ln, max_deriv, prog_name, output_name, &
         &prog_version, prog_style, &
         &max_mem_per_proc, n_procs, rank, X_jobs_lims, X_jobs_taken, X_job_nr, &
-        &X_jobs_file_name, lock_file_name, &
+        &X_jobs_file_name, X_jobs_lock_file_name, HDF5_lock_file_name, &
         &pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, BC_style, plot_resonance, plot_grid, &
         &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
@@ -33,7 +33,7 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 0.96_dp                               ! version number
+    real(dp), parameter :: prog_version = 0.97_dp                               ! version number
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
@@ -43,7 +43,8 @@ module num_vars
     logical, allocatable :: X_jobs_taken(:)                                     ! X jobs taken
     integer :: X_job_nr                                                         ! nr. of X job
     character(len=10) :: X_jobs_file_name = 'X_jobs.txt'                        ! name of X jobs file
-    character(len=10) :: lock_file_name = '.lock_file'                          ! name of lock file
+    character(len=12) :: X_jobs_lock_file_name = '.lock_file_X'                 ! name of lock file for X jobs
+    character(len=15) :: HDF5_lock_file_name = '.lock_file_HDF5'                ! name of lock file for HDF5 operations
 
     ! physical and mathematical variables
     real(dp), parameter :: pi=4_dp*datan(1.0_dp)                                ! pi

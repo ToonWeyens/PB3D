@@ -32,11 +32,11 @@ contains
     ! Optionally, the secondary mode number can be specified (m if poloidal flux
     ! is used  and n  if toroidal  flux). By  default, they  are taken  from the
     ! global X_vars variables.
-    subroutine create_sol(grid_X,sol,n_EV,lim_sec_X)
+    subroutine create_sol(grid,sol,n_EV,lim_sec_X)
         use X_vars, only: set_nm_X
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
+        type(grid_type), intent(in) :: grid                                     ! solution grid
         type(sol_type), intent(inout) :: sol                                    ! solution variables
         integer, intent(in) :: n_EV                                             ! nr. of Eigenvalues
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
@@ -51,7 +51,7 @@ contains
         allocate(sol%val(1:n_EV))
         
         ! allocate vec
-        allocate(sol%vec(1:sol%n_mod,1:grid_X%loc_n_r,1:n_EV))
+        allocate(sol%vec(1:sol%n_mod,1:grid%loc_n_r,1:n_EV))
     end subroutine create_sol
     
     ! deallocates solution variables

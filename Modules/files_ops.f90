@@ -403,7 +403,8 @@ contains
         use HDF5_vars, only: var_1D_type
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_p_E, max_flux_t_E, max_flux_p_F, max_flux_t_F
-        use X_vars, only: min_r_X, max_r_X, min_m_X, max_m_X, min_n_X, max_n_X
+        use X_vars, only: min_r_sol, max_r_sol, min_m_X, max_m_X, min_n_X, &
+            &max_n_X
         use grid_vars, only: alpha
         use HELENA, only: nchi, ias
         use VMEC, only: mpol, ntor, &
@@ -550,7 +551,7 @@ contains
             misc_1D_loc%loc_i_min = misc_1D_loc%tot_i_min
             misc_1D_loc%loc_i_max = misc_1D_loc%tot_i_max
             allocate(misc_1D_loc%p(7))
-            misc_1D_loc%p = [min_r_X,max_r_X,min_n_X*1._dp,max_n_X*1._dp,&
+            misc_1D_loc%p = [min_r_sol,max_r_sol,min_n_X*1._dp,max_n_X*1._dp,&
                 &min_m_X*1._dp,max_m_X*1._dp,norm_disc_prec_X*1._dp]
             
             call lvl_ud(-1)

@@ -125,12 +125,15 @@ driver_sol.o : \
     messages.o \
     num_vars.o \
     grid_vars.o \
+    grid_ops.o \
     eq_vars.o \
     met_vars.o \
     X_vars.o \
     X_ops.o \
     PB3D_vars.o \
     PB3D_ops.o \
+    SLEPC_ops.o \
+    sol_ops.o \
 
 driver_POST.o : \
     num_vars.o \

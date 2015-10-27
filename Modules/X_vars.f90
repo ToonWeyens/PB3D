@@ -12,14 +12,14 @@ module X_vars
     
     private
     public init_X_vars, dealloc_X, create_X, get_suffix, set_nm_X, &
-        &is_necessary_X, &
+        &is_necessary_X, set_nn_mod, &
         &X_1_type, X_2_type, &
-        &min_n_r_X, min_n_X, max_n_X, min_m_X, max_m_X, min_r_X, max_r_X, &
-        &X_1_var_names, X_2_var_names
+        &min_n_X, max_n_X, min_m_X, max_m_X, min_n_r_sol, min_r_sol, &
+        &max_r_sol, X_1_var_names, X_2_var_names
     
     ! global variables
-    real(dp) :: min_r_X, max_r_X                                                ! min. and max. normal range for pert. (either pol. or tor., depending on use_pol_flux_F)
-    integer :: min_n_r_X                                                        ! min. of n_r_X (e.g. first value in Richardson loop)
+    real(dp) :: min_r_sol, max_r_sol                                            ! min. and max. normal range for pert. (either pol. or tor., depending on use_pol_flux_F)
+    integer :: min_n_r_sol                                                      ! min. of n_r_sol (e.g. first value in Richardson loop)
     integer :: min_n_X                                                          ! lowest poloidal mode number m_X
     integer :: max_n_X                                                          ! highest poloidal mode number m_X
     integer :: min_m_X                                                          ! lowest poloidal mode number m_X
@@ -80,6 +80,12 @@ module X_vars
     interface get_suffix
         module procedure get_suffix_1, get_suffix_2, get_suffix_1_lim, &
             &get_suffix_2_lim
+    end interface
+    interface set_nn_mod
+        module procedure set_nn_mod_X, set_nn_mod_lim
+    end interface
+    interface is_necessary_X
+        module procedure is_necessary_X_X, is_necessary_X_lim
     end interface
     
 contains
@@ -149,8 +155,6 @@ contains
         allocate(X%DU_1(n_par,n_geo,loc_n_r,X%n_mod))
     end subroutine create_X_1
     subroutine create_X_2(grid_eq,X,lim_sec_X)                                  ! tensorial version
-        use num_vars, only: use_pol_flux_F
-        
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
@@ -160,7 +164,6 @@ contains
         integer :: loc_n_r                                                      ! local nr. of normal points
         integer :: n_par, n_geo                                                 ! tot. nr. of angular points in parallel and geodesic direction
         integer :: nn_mod                                                       ! either n_mod^2, n_mod*(n_mod+1)/2 or 0
-        integer :: id, jd                                                       ! counters
         
         ! set local variables
         loc_n_r = grid_eq%loc_n_r
@@ -174,17 +177,8 @@ contains
         X%n_mod(1) = size(X%n_1)
         X%n_mod(2) = size(X%n_2)
         
-        ! set nnmod for symmetric quantities: discard indices above diagonal
-        nn_mod = 0
-        do jd = 1,X%n_mod(2)
-            do id = 1,X%n_mod(1)
-                if (use_pol_flux_F) then
-                    if (X%m_1(id).ge.X%m_2(jd)) nn_mod = nn_mod + 1
-                else
-                    if (X%n_1(id).ge.X%n_2(jd)) nn_mod = nn_mod + 1
-                end if
-            end do
-        end do
+        ! set nnmod for symmetric quantities
+        nn_mod = set_nn_mod(X)
         
         ! allocate PV_i
         allocate(X%PV_0(n_par,n_geo,loc_n_r,nn_mod))                            ! symmetric
@@ -209,6 +203,50 @@ contains
         ! allocate vacuum response
         allocate(X%vac_res(X%n_mod(1),X%n_mod(2)))
     end subroutine create_X_2
+    
+    ! Sets number of entries for symmetric tensorial perturbation variables.
+    integer function set_nn_mod_X(X) result(nn_mod)                             ! version using X
+        use num_vars, only: use_pol_flux_F
+        
+        ! input / output
+        type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
+        
+        ! local variables
+        integer :: id, jd                                                       ! counters
+        
+        ! set nnmod for symmetric quantities: discard indices above diagonal
+        nn_mod = 0
+        do jd = 1,X%n_mod(2)
+            do id = 1,X%n_mod(1)
+                if (use_pol_flux_F) then
+                    if (X%m_1(id).ge.X%m_2(jd)) nn_mod = nn_mod + 1
+                else
+                    if (X%n_1(id).ge.X%n_2(jd)) nn_mod = nn_mod + 1
+                end if
+            end do
+        end do
+    end function set_nn_mod_X
+    integer function set_nn_mod_lim(lim_sec_X) result(nn_mod)                   ! version using limits
+        use num_vars, only: use_pol_flux_F
+        
+        ! input / output
+        integer, intent(in) :: lim_sec_X(2,2)                                   ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
+        
+        ! local variables
+        integer :: id, jd                                                       ! counters
+        
+        ! set nnmod for symmetric quantities: discard indices above diagonal
+        nn_mod = 0
+        do jd = lim_sec_X(1,2),lim_sec_X(2,2)
+            do id = lim_sec_X(1,1),lim_sec_X(2,1)
+                if (use_pol_flux_F) then
+                    if (id.ge.jd) nn_mod = nn_mod + 1
+                else
+                    if (id.ge.jd) nn_mod = nn_mod + 1
+                end if
+            end do
+        end do
+    end function set_nn_mod_lim
     
     ! Sets  n_X  and  m_X  using  by default  global  variables  but  optionally
     ! different limits for the secundary mode  numbers (m_X for poloidal flux or
@@ -256,8 +294,13 @@ contains
         integer, intent(in), optional :: lim_sec_X(2,2)
         
         ! call vectorial version
-        call set_nm_X(n_X_1,m_X_1,lim_sec_X(:,1))
-        call set_nm_X(n_X_2,m_X_2,lim_sec_X(:,2))
+        if (present(lim_sec_X)) then
+            call set_nm_X(n_X_1,m_X_1,lim_sec_X(:,1))
+            call set_nm_X(n_X_2,m_X_2,lim_sec_X(:,2))
+        else
+            call set_nm_X(n_X_1,m_X_1)
+            call set_nm_X(n_X_2,m_X_2)
+        end if
     end subroutine set_nm_X_2
     
     ! Sets the suffix used to refer to a perturbation quantity.
@@ -329,7 +372,7 @@ contains
     
     ! Determines whether a variable needs to be  considered: Only if it is on or
     ! below the diagonal for symmetric quantities.
-    logical function is_necessary_X(X,sym,sec_X_id) result(res)
+    logical function is_necessary_X_X(X,sym,sec_X_id) result(res)               ! version using X
         use num_vars, only: use_pol_flux_F
         
         ! input / output
@@ -348,5 +391,20 @@ contains
                 if (X%n_1(sec_X_id(1)).lt.X%n_2(sec_X_id(2))) res = .false.
             end if
         end if
-    end function is_necessary_X
+    end function is_necessary_X_X
+    logical function is_necessary_X_lim(lim_sec_X,sym,sec_X_id) result(res)     ! version using limits
+        ! input / output
+        integer, intent(in) :: lim_sec_X(2,2)                                   ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
+        logical, intent(in) :: sym                                              ! whether the variable is symmetric
+        integer, intent(in) :: sec_X_id(2)                                      ! mode indices
+        
+        ! initialize res
+        res = .true.
+        
+        ! modify res depending on symmetry
+        if (sym) then
+            if (lim_sec_X(1,1)+sec_X_id(1).lt.lim_sec_X(1,2)+sec_X_id(2)) &
+                &res = .false.
+        end if
+    end function is_necessary_X_lim
 end module X_vars

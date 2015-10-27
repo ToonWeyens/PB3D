@@ -78,7 +78,8 @@ contains
     ! tensorial phase it is 2.
     integer function divide_X_jobs(grid,div_ord) result(ierr)
         use num_vars, only: max_mem_per_proc, n_procs, X_jobs_lims, rank, &
-            &X_jobs_file_name, X_jobs_taken, lock_file_name, use_pol_flux_F
+            &X_jobs_file_name, X_jobs_taken, X_jobs_lock_file_name, &
+            &use_pol_flux_F
         use X_vars, only: min_n_X, min_m_X, max_n_X, max_m_X
         use files_utilities, only: nextunit
         use MPI_utilities, only: wait_MPI
@@ -180,7 +181,7 @@ contains
         
         ! delete possible lock file
         if (rank.eq.0) then
-            open(unit=nextunit(file_i),file=lock_file_name,iostat=ierr)
+            open(unit=nextunit(file_i),file=X_jobs_lock_file_name,iostat=ierr)
             CHCKERR('Failed to open lock file')
             close(file_i,status='DELETE',iostat=ierr)
             CHCKERR('Failed to delete lock file')
@@ -286,8 +287,8 @@ contains
     ! the next job are the same as the previous job.
     integer function get_next_job(X_job_nr,same_modes) result(ierr)
         use num_vars, only: X_jobs_taken, X_jobs_lims, X_jobs_file_name, rank, &
-            &lock_file_name
-        use files_utilities, only: nextunit
+            &X_jobs_lock_file_name
+        use files_utilities, only: nextunit, wait_file
         
         character(*), parameter :: rout_name = 'get_next_job'
         
@@ -299,8 +300,6 @@ contains
         integer :: current_job                                                  ! current job when calling this routine
         integer :: n_jobs                                                       ! nr. of jobs
         integer :: id                                                           ! counter
-        integer :: open_stat                                                    ! file open status
-        logical :: file_exists                                                  ! file exists status
         integer :: read_stat                                                    ! read status
         integer :: X_file_i                                                     ! X file number
         integer :: lock_file_i                                                  ! lock file number
@@ -322,19 +321,10 @@ contains
         X_job_nr = -1
         
         ! open X_jobs file if no lock-file exists
-        file_exists = .true.
-        do while (file_exists)
-            open(STATUS='NEW',unit=nextunit(lock_file_i),file=lock_file_name,&
-                &iostat=open_stat)
-            if (open_stat.eq.0) then
-                file_exists = .false.
-                open(STATUS='OLD',ACTION = 'READWRITE',unit=nextunit(X_file_i),&
-                    &file=X_jobs_file_name,iostat=ierr)
-                CHCKERR('Failed to open X jobs file')
-            !else
-                !call sleep(1)
-            end if
-        end do
+        call wait_file(lock_file_i,X_jobs_lock_file_name)
+        open(STATUS='OLD',ACTION = 'READWRITE',unit=nextunit(X_file_i),&
+            &file=X_jobs_file_name,iostat=ierr)
+        CHCKERR('Failed to open X jobs file')
         
         ! read X_jobs file and update X_jobs_taken
         read(X_file_i,*,iostat=ierr) dummy_char
@@ -476,8 +466,8 @@ contains
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
             &h_H_12, h_H_33, RBphi, R_H, Z_H
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm
-        use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_n_r_X, &
-            &min_r_X, max_r_X
+        use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_n_r_sol, &
+            &min_r_sol, max_r_sol
         use grid_vars, only: alpha, n_r_eq, n_par_X, min_par_X, max_par_X
         use HDF5_vars, only: var_1D_type
 #if ldebug
@@ -512,9 +502,11 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(tol_NR,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(min_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+            call MPI_Bcast(min_r_sol,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
+                &ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(max_r_X,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+            call MPI_Bcast(max_r_sol,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
+                &ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(vac_perm,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
                 &ierr)
@@ -559,7 +551,7 @@ contains
                     call MPI_Bcast(norm_disc_prec_X,1,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(min_n_r_X,1,MPI_INTEGER,0,MPI_Comm_world,&
+                    call MPI_Bcast(min_n_r_sol,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(max_it_r,1,MPI_INTEGER,0,MPI_Comm_world,ierr)

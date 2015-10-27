@@ -8,9 +8,9 @@
 !       field:                                                                 !
 !           + In the normal coordinate,  they are tabulated in the equilibrium !
 !           grid.                                                              !
-!           +  In  the   angular  coordinates,  they  are   tabulated  in  the !
-!           perturbation grid (VMEC),  or in the equilibrium  grid followed by !
-!           an adaptation to the perturbation grid (HELENA).                   !
+!           + In the  angular coordinates, they are tabulated  in the solution !
+!           grid (VMEC), or in the  equilibrium grid followed by an adaptation !
+!           to the solution grid (HELENA).                                     !
 !       - However, this  is not necessarily always the case,  as it depends on !
 !       the grid angles being aligned with  the grid (e.g. Providing theta and !
 !       zeta in  the equilibrium  grid so  that the  magnetic field  lines are !

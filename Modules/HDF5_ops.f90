@@ -874,8 +874,9 @@ contains
     ! for an explanation of the selection of the dataspaces.
     integer function print_HDF5_arrs(vars,PB3D_name,head_name,disp_info) &
         &result(ierr)
-        use num_vars, only: n_procs, rank
+        use num_vars, only: n_procs, rank, HDF5_lock_file_name
         use messages, only: lvl_ud
+        use files_utilities, only: wait_file
         use MPI
         
         character(*), parameter :: rout_name = 'print_HDF5_arrs'
@@ -893,6 +894,7 @@ contains
         integer :: next_dims                                                    ! total dimensions next to divided dimension
         integer :: div_dim                                                      ! index of divided dimension
         integer :: istat                                                        ! status
+        integer :: lock_file_i                                                  ! lock file number
         character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: ind_print                                                    ! whether individual print
         logical :: disp_info_loc                                                ! local disp_info
@@ -926,7 +928,7 @@ contains
         call detect_ind_print
         
         ! set up MPI Communicator
-        if (n_procs.eq.1 .or. ind_print) then
+        if (ind_print) then
             MPI_Comm = MPI_Comm_self                                            ! individual plot
         else
             MPI_Comm = MPI_Comm_world                                           ! default world communicator
@@ -941,6 +943,11 @@ contains
         CHCKERR('Failed to create property list')
         call H5Pset_fapl_mpio_f(plist_id,MPI_Comm,MPI_INFO_NULL,ierr)
         CHCKERR('Failed to set file access property')
+        
+        ! wait for file access if individual print and multiple processes
+        if (n_procs.gt.1 .and. ind_print) then
+            call wait_file(lock_file_i,HDF5_lock_file_name)
+        end if
         
         ! open the file
         call H5Fopen_f(trim(PB3D_name),H5F_ACC_RDWR_F,HDF5_i,ierr,&
@@ -1049,7 +1056,7 @@ contains
                     &dset_id,ierr)
                 CHCKERR('Failed to create file data set')
                 
-                ! only leader writes if collective print
+                ! only leader writes
                 if (rank.eq.0 .or. ind_print) then
                     ! write the dataset
                     call H5Dwrite_f(dset_id,H5T_NATIVE_INTEGER,&
@@ -1075,9 +1082,13 @@ contains
         call H5gclose_f(head_group_id,ierr)
         CHCKERR('Failed to close group')
         
-        ! close the HDF5 file
+        ! close the HDF5 and possibly lock file
         call H5Fclose_f(HDF5_i,ierr)
         CHCKERR('failed to close HDF5 file')
+        if (n_procs.gt.1 .and. ind_print) then
+            close(lock_file_i,status='DELETE',iostat=ierr)
+            CHCKERR('Failed to delete lock file')
+        end if
         
         ! close FORTRAN interfaces and HDF5 library.
         call H5Close_f(ierr)
@@ -1154,6 +1165,10 @@ contains
         subroutine detect_ind_print
             ! initialie ind_print to true
             ind_print = .true.
+            
+            ! one process ensures individual print
+            if (n_procs.eq.1) return
+            
             ! loop over all elements in vars
             do id = 1,size(vars)
                 do jd = 1,size(vars(id)%tot_i_min)
@@ -1362,7 +1377,6 @@ contains
         CHCKERR(err_msg)
         
         call lvl_ud(-1)
-        call writo('Data read')
     contains
         ! decides whether a variable should be read or not
         logical function is_acc() result(res)

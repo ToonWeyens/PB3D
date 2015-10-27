@@ -15,8 +15,8 @@ module X_ops
 
     implicit none
     private
-    public calc_X, solve_EV_system, calc_magn_ints, print_output_X, &
-        &resonance_plot, calc_res_surf, check_X_modes
+    public calc_X, calc_magn_ints, print_output_X, resonance_plot, &
+        &calc_res_surf, check_X_modes
     
     ! interfaces
     interface calc_X
@@ -1424,45 +1424,6 @@ contains
         call lvl_ud(-1)
         call writo('Field-line averages calculated')
     end subroutine calc_magn_ints
-    
-    ! set-up  and solve  the  EV system  by discretizing  the  equations in  the
-    ! perturbation  grid,  making  use  of   PV  and  KV,  interpolated  in  the
-    ! equilibrium grid.
-    integer function solve_EV_system(grid_eq,grid_X,X,sol,use_guess,&
-        &n_sol_found) result(ierr)
-        use num_vars, only: EV_style
-        use str_ops, only: i2str
-        use SLEPC_ops, only: solve_EV_system_SLEPC
-        
-        character(*), parameter :: rout_name = 'solve_EV_system'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables
-        type(sol_type), intent(inout) :: sol                                    ! tensorial perturbation variables
-        logical, intent(in) :: use_guess                                        ! whether to use a guess or not
-        integer, intent(inout) :: n_sol_found                                   ! how many solutions saved
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        select case (EV_style)
-            case(1)                                                             ! SLEPC solver for EV problem
-                ! solve the system
-                ierr = solve_EV_system_SLEPC(grid_eq,grid_X,X,sol,use_guess,&
-                    &n_sol_found)
-                CHCKERR('')
-            case default
-                err_msg = 'No EV solver style associated with '//&
-                    &trim(i2str(EV_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-    end function solve_EV_system
     
     ! Print either  vectorial or tensorial perturbation quantities  of a certain
     ! order to an output file:

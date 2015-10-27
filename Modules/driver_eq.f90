@@ -29,7 +29,7 @@ contains
             &flux_q_plot
         use met_ops, only: calc_met, calc_F_derivs
         use met_vars, only: dealloc_met
-        use grid_ops, only: setup_and_calc_grid_B
+        use grid_ops, only: setup_and_calc_grid_eq_B
         !!use utilities, only: calc_aux_utilities
         
         character(*), parameter :: rout_name = 'run_driver_eq'
@@ -89,7 +89,7 @@ contains
         call calc_derived_q(grid_eq,eq,met)
         
         ! set up field-aligned equilibrium grid
-        ierr = setup_and_calc_grid_B(grid_eq,grid_eq_B,eq)
+        ierr = setup_and_calc_grid_eq_B(grid_eq,grid_eq_B,eq)
         CHCKERR('')
         
         ! write equilibrium variables to output

@@ -18,7 +18,7 @@ module grid_vars
     ! surface. For example, they  can refer to a grid of  theta and zeta values,
     ! but they  can also refer  to (Modified)  flux coordinates with  a parallel
     ! angle and a field line coordinate (alpha).
-    ! Normally, for perturbation grids, angle_1  is chosen equal to the parallel
+    ! Normally, for field-aligned grids, angle_1 is chosen equal to the parallel
     ! coordinate in the  Flux coordinate system, and angle_2 equal  to the field
     ! line label (so the  second dimension of the matrices is  then chosen to be
     ! of size 1 for the calculations on  a single field line). At the same time,
@@ -50,8 +50,8 @@ module grid_vars
     ! established. They are put here for lack of a better place.)
     real(dp) :: alpha                                                           ! field line label alpha
     integer :: n_r_eq                                                           ! nr. of normal points in equilibrium grid
-    integer :: n_par_X                                                          ! nr. of parallel points in perturbation grid
-    real(dp) :: min_par_X, max_par_X                                            ! min. and max. of parallel coordinate [pi] in pert. grid
+    integer :: n_par_X                                                          ! nr. of parallel points in field-aligned grid
+    real(dp) :: min_par_X, max_par_X                                            ! min. and max. of parallel coordinate [pi] in field-aligned grid
     
     ! interfaces
     interface create_grid

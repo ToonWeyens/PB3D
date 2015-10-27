@@ -1,7 +1,9 @@
 !------------------------------------------------------------------------------!
 !   Variables from PB3D output:                                                !
+!       - Miscellaneous variables                                              !
 !       - Equilibrium variables                                                !
 !       - Perturbation variables                                               !
+!       - Solution variables                                                   !
 !------------------------------------------------------------------------------!
 module PB3D_vars
 #include <PB3D_macros.h>

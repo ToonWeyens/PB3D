@@ -694,7 +694,7 @@ contains
         end do
     end function calc_RZL_arr
 
-    ! plots the flux quantities in the perturbation grid
+    ! plots the flux quantities in the solution grid
     !   safety factor q_saf
     !   rotational transform rot
     !   pressure pres
@@ -850,7 +850,7 @@ contains
         integer function flux_q_plot_HDF5() result(ierr)
             use output_ops, only: plot_HDF5
             use grid_ops, only: calc_XYZ_grid, extend_grid_E, trim_grid
-            use grid_vars, only: create_grid, dealloc_grid
+            use grid_vars, only: dealloc_grid
             
             character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
             
@@ -1097,7 +1097,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
-        type(grid_type), intent(in) :: grid_eq_B                                ! equilibrium grid variables
+        type(grid_type), intent(in) :: grid_eq_B                                ! field-aligned equilibrium grid variables
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(met_type), intent(in) :: met                                       ! metric variables
         

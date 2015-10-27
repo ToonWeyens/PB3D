@@ -81,6 +81,7 @@ cp cbm18a $out
 cp ../PB3D_PREP $out
 chmod +x $out/PB3D_PREP
 cd $out
+rm -f .lock_file*
 echo "creating pbs script"
 # Create pbs script
 rm -f PB3D_PREP.pbs
