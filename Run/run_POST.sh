@@ -90,14 +90,14 @@ echo "Working in directory $out/"
 echo ""
 # Copy inputs and the program
 cp $POST_in_name $out
-cp ../PB3D_POST $out
-chmod +x $out/PB3D_POST
+cp ../POST $out
+chmod +x $out/POST
 if [ "$use_out_loc" = true ]; then
     cp ${1%/}/$PB3D_out_name $out
 fi
 cd $out
-echo "mpirun -np $2 $debug_opt $extra_debug_opt ./PB3D_POST $POST_in_name PB3D_out.h5 ${@:3}" > command_POST
-mpirun -np $2 $debug_opt $extra_debug_opt ./PB3D_POST $POST_in_name $PB3D_out_name  ${@:3}
+echo "mpirun -np $2 $debug_opt $extra_debug_opt ./POST $POST_in_name PB3D_out.h5 ${@:3}" > command_POST
+mpirun -np $2 $debug_opt $extra_debug_opt ./POST $POST_in_name $PB3D_out_name  ${@:3}
 cd ../
 echo ""
 echo "Leaving directory $out/"

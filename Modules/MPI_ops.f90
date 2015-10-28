@@ -460,7 +460,7 @@ contains
             &n_theta_plot, n_zeta_plot, plot_resonance, EV_BC, tol_slepc, &
             &rho_style, prog_style, max_it_inv, norm_disc_prec_X, &
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, tol_norm_r, &
-            &max_it_slepc, max_mem_per_proc
+            &max_it_slepc, max_mem_per_proc, PB3D_name
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
@@ -470,6 +470,9 @@ contains
             &min_r_sol, max_r_sol
         use grid_vars, only: alpha, n_r_eq, n_par_X, min_par_X, max_par_X
         use HDF5_vars, only: var_1D_type
+        use PB3D_vars, only: PB3D_version
+        use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &
+            &max_flux_t_F
 #if ldebug
         use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
@@ -495,6 +498,8 @@ contains
             CHCKERR(err_msg)
             
             ! variables that are sent for every program style:
+            call MPI_Bcast(ltest,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
             call MPI_Bcast(use_normalization,1,MPI_LOGICAL,0,MPI_Comm_world,&
                 &ierr)
             CHCKERR(err_msg)
@@ -508,6 +513,20 @@ contains
             call MPI_Bcast(max_r_sol,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
                 &ierr)
             CHCKERR(err_msg)
+            call MPI_Bcast(alpha,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(R_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(pres_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(B_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(psi_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(rho_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(T_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
             call MPI_Bcast(vac_perm,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
                 &ierr)
             CHCKERR(err_msg)
@@ -519,22 +538,31 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(plot_resonance,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
+            call MPI_Bcast(use_pol_flux_F,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(use_pol_flux_E,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
             call MPI_Bcast(n_theta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(n_zeta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(norm_disc_prec_eq,1,MPI_INTEGER,0,MPI_Comm_world,&
+                &ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(norm_disc_prec_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(min_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(max_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             
             ! select according to program style
             select case (prog_style)
                 case(1)                                                         ! PB3D
-                    call MPI_Bcast(ltest,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(use_pol_flux_F,1,MPI_LOGICAL,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(use_pol_flux_E,1,MPI_LOGICAL,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
                     call MPI_Bcast(no_guess,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
@@ -544,12 +572,6 @@ contains
                     call MPI_Bcast(n_r_eq,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(nyq_fac,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(norm_disc_prec_eq,1,MPI_INTEGER,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(norm_disc_prec_X,1,MPI_INTEGER,0,&
-                        &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(min_n_r_sol,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
@@ -574,18 +596,7 @@ contains
                     call MPI_Bcast(max_it_slepc,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(min_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(max_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
                     call MPI_Bcast(tol_norm_r,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(alpha,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(min_par_X,1,MPI_DOUBLE_PRECISION,0,&
@@ -597,24 +608,6 @@ contains
                         &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(gam,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
-                        &ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(R_0,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(pres_0,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(B_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
-                        &ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(psi_0,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(rho_0,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(T_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(max_mem_per_proc,1,MPI_DOUBLE_PRECISION,0,&
@@ -636,6 +629,24 @@ contains
                     call MPI_Bcast(norm_disc_prec_sol,1,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
+                    call MPI_Bcast(PB3D_version,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_flux_p_E,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_flux_t_E,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_flux_p_F,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_flux_t_F,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(PB3D_name,len(PB3D_name),MPI_CHARACTER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
                 case default
                     err_msg = 'No program style associated with '//&
                         &trim(i2str(prog_style))
@@ -649,6 +660,18 @@ contains
             !   2:  HELENA
             select case (eq_style)
                 case (1)                                                        ! VMEC
+                    ! variables that are sent for every program style:
+                    call MPI_Bcast(lasym,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(lfreeb,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(mpol,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(ntor,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(nfp,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    
                     ! select according to program style
                     select case (prog_style)
                         case(1)                                                 ! PB3D
@@ -671,21 +694,6 @@ contains
                             CHCKERR(err_msg)
                             call MPI_Bcast(pres_V,size(pres_V),&
                                 &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                            CHCKERR(err_msg)
-                            call MPI_Bcast(lasym,1,MPI_LOGICAL,0,&
-                                &MPI_Comm_world,ierr)
-                            CHCKERR(err_msg)
-                            call MPI_Bcast(lfreeb,1,MPI_LOGICAL,0,&
-                                &MPI_Comm_world,ierr)
-                            CHCKERR(err_msg)
-                            call MPI_Bcast(mpol,1,MPI_INTEGER,0,&
-                                &MPI_Comm_world,ierr)
-                            CHCKERR(err_msg)
-                            call MPI_Bcast(ntor,1,MPI_INTEGER,0,MPI_Comm_world,&
-                                &ierr)
-                            CHCKERR(err_msg)
-                            call MPI_Bcast(nfp,1,MPI_INTEGER,0,MPI_Comm_world,&
-                                    &ierr)
                             CHCKERR(err_msg)
                             call bcast_size_4_R(R_V_c,0)
                             CHCKERR(err_msg)
@@ -760,6 +768,12 @@ contains
                             CHCKERR(err_msg)
                     end select
                 case (2)                                                        ! HELENA
+                    ! variables that are sent for every program style:
+                    call MPI_Bcast(ias,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(nchi,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    
                     ! select according to program style
                     select case (prog_style)
                         case(1)                                                 ! PB3D
@@ -782,12 +796,6 @@ contains
                             CHCKERR(err_msg)
                             call MPI_Bcast(flux_p_H,size(flux_p_H),&
                                 &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-                            CHCKERR(err_msg)
-                            call MPI_Bcast(nchi,1,MPI_INTEGER,0,MPI_Comm_world,&
-                                &ierr)
-                            CHCKERR(err_msg)
-                            call MPI_Bcast(ias,1,MPI_INTEGER,0,MPI_Comm_world,&
-                                &ierr)
                             CHCKERR(err_msg)
                             call bcast_size_1_R(qs)
                             CHCKERR(err_msg)

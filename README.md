@@ -221,3 +221,9 @@ CHANGELOG
       - Updated SLEPC routines to handle the solution type.
       - Fixed a bug in 'trim_grid' where the limits of the trimmed grid were not updated.
       - Introduced 'wait_file' which makes use of a lock file and used this in the writing of HDF5 files.
+
+0.98: - FIRST NEW USABLE VERSION: NEW PARALLELIZATION STRATEGY.
+      - The miscellaneous variables are now read in 'open_output' for POST, just as they are written there for PB3D.
+      - The PB3D operations have to be initialized before using them. This sets the equilibrium style.
+      - Modified 'broadcast_input_vars' to also broadcast miscellaneous variables in POST.
+      - The maximum fluxes are now written in the equilibrium variables.

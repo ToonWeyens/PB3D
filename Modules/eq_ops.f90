@@ -1092,6 +1092,8 @@ contains
         use grid_ops, only: trim_grid
         use HELENA, only: chi_H, flux_p_H, R_H, Z_H, nchi
         use VMEC, only:  R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor
+        use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &
+            &max_flux_t_F
         
         character(*), parameter :: rout_name = 'print_output_eq'
         
@@ -1137,10 +1139,10 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                allocate(eq_1D(30))
+                allocate(eq_1D(31))
                 allocate(eq_B_1D(0))
             case (2)                                                            ! HELENA
-                allocate(eq_1D(23))
+                allocate(eq_1D(24))
                 allocate(eq_B_1D(6))
             case default
                 err_msg = 'No equilibrium style associated with '//&
@@ -1151,6 +1153,24 @@ contains
         
         ! Set up common variables eq_1D
         id = 1
+        
+        ! max_flux
+        eq_1D_loc => eq_1D(id); id = id+1
+        eq_1D_loc%var_name = 'max_flux'
+        allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
+        allocate(eq_1D_loc%loc_i_min(1),eq_1D_loc%loc_i_max(1))
+        if (rank.eq.0) then
+            eq_1D_loc%loc_i_min = [1]
+            eq_1D_loc%loc_i_max = [4]
+            allocate(eq_1D_loc%p(4))
+            eq_1D_loc%p = [max_flux_p_E,max_flux_t_E,max_flux_p_F,max_flux_t_F]
+        else
+            eq_1D_loc%loc_i_min = [1]
+            eq_1D_loc%loc_i_max = [0]
+            allocate(eq_1D_loc%p(0))
+        end if
+        eq_1D_loc%tot_i_min = [1]
+        eq_1D_loc%tot_i_max = [4]
         
         ! r_F
         eq_1D_loc => eq_1D(id); id = id+1

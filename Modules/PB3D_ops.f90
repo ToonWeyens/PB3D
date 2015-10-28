@@ -16,7 +16,7 @@ module PB3D_ops
 
     implicit none
     private
-    public read_PB3D, reconstruct_PB3D, retrieve_var_1D_id
+    public init_PB3D_ops, read_PB3D, reconstruct_PB3D, retrieve_var_1D_id
     
     ! interfaces
     interface conv_1D2ND
@@ -30,6 +30,46 @@ module PB3D_ops
     end interface
     
 contains
+    ! Initialize the PB3D routines:
+    !   - set the equilibrium style
+    integer function init_PB3D_ops() result(ierr)
+        use num_vars, only: eq_style, PB3D_name, rank
+        use PB3D_vars, only: vars_1D_misc
+        use HDF5_ops, only: read_HDF5_arrs
+        
+        character(*), parameter :: rout_name = 'init_PB3D_ops'
+        
+        ! local variables
+        integer :: eq_misc_id                                                   ! indices of miscellaneous variables
+        real(dp), allocatable :: dum_1D(:)                                      ! dummy variable
+        
+        ! initialize ierr
+        ierr = 0
+        
+        if (rank.eq.0) then
+            ! user output
+            call writo('Initializing PB3D operations')
+            call lvl_ud(1)
+            
+            ! read miscellaneous variables
+            ierr = read_HDF5_arrs(vars_1D_misc,PB3D_name,'misc')
+            CHCKERR('')
+            
+            ! get equilibrium style
+            ierr = retrieve_var_1D_id(vars_1D_misc,'eq',eq_misc_id)
+            CHCKERR('')
+            call conv_1D2ND(vars_1D_misc(eq_misc_id),dum_1D)
+            eq_style = nint(dum_1D(2))
+            
+            ! clean up
+            deallocate(vars_1D_misc)
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('PB3D operations Initialized')
+        end if
+    end function init_PB3D_ops
+    
     ! Reads PB3D output from user-provided input file.
     ! Optionally, if perturbation  quantities are read, the limits  of m_X (pol.
     ! flux) or  n_X (tor.  flux) can be  passed, instead of  reading all  of the
@@ -180,6 +220,7 @@ contains
         integer :: r_F_eq_id, r_E_eq_id                                         ! index of equilibrium r_F and r_E
         integer :: theta_F_id, zeta_F_id                                        ! index of theta_F and zeta_F
         integer :: theta_E_id, zeta_E_id                                        ! index of theta_E and zeta_E
+        integer :: max_flux_id                                                  ! index of max_flux
         integer :: pres_FD_id, q_saf_FD_id, rot_t_FD_id                         ! index of pres_FD, q_saf_FD, rot_t_FD
         integer :: flux_p_FD_id, flux_t_FD_id                                   ! index of flux_p_FD, flux_t_FD
         integer :: pres_E_id, q_saf_E_id, rot_t_E_id                            ! index of pres_E, q_saf_E, rot_t_E
@@ -398,7 +439,6 @@ contains
         end if
     contains
         ! prepare miscellaneous vars
-        ! Note: also sets eq_style
         integer function prepare_vars_misc() result(ierr)
             use num_vars, only: eq_style
             
@@ -407,17 +447,11 @@ contains
             ! initialize ierr
             ierr = 0
             
-            ! get common 1D misc indices
+            ! set up 1D indices common for all equilibrium styles
             ierr = retrieve_var_1D_id(vars_1D_misc,'eq',eq_misc_id)
             CHCKERR('')
             ierr = retrieve_var_1D_id(vars_1D_misc,'X',X_misc_id)
             CHCKERR('')
-            
-            ! get equilibrium style
-            ierr = retrieve_var_1D_id(vars_1D_misc,'eq',eq_misc_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D_misc(eq_misc_id),dum_1D)
-            eq_style = nint(dum_1D(2))
             
             ! Set up particular 1D eq indices, depending on equilibrium style
             !   1:  VMEC
@@ -457,6 +491,8 @@ contains
             ierr = retrieve_var_1D_id(vars_1D_eq,'theta_E',theta_E_id)
             CHCKERR('')
             ierr = retrieve_var_1D_id(vars_1D_eq,'zeta_E',zeta_E_id)
+            CHCKERR('')
+            ierr = retrieve_var_1D_id(vars_1D_eq,'max_flux',max_flux_id)
             CHCKERR('')
             ierr = retrieve_var_1D_id(vars_1D_eq,'pres_FD',pres_FD_id)
             CHCKERR('')
@@ -924,10 +960,9 @@ contains
         integer function reconstruct_vars_misc() result(ierr)
             use num_vars, only: norm_disc_prec_eq, norm_disc_prec_X, &
                 &use_pol_flux_F, eq_style, use_normalization, use_pol_flux_E, &
-                &use_pol_flux_F
+                &use_pol_flux_F, rho_style
             use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, &
-                &T_0, vac_perm, max_flux_p_E, max_flux_t_E, max_flux_p_F, &
-                &max_flux_t_F
+                &T_0, vac_perm
             use grid_vars, only: alpha
             use X_vars, only: min_r_sol, max_r_sol, min_n_X, max_n_X, min_m_X, &
                 &max_m_X
@@ -943,8 +978,10 @@ contains
             call lvl_ud(1)
             
             ! eq
-            call conv_1D2ND(vars_1D_eq(eq_misc_id),dum_1D)
+            call conv_1D2ND(vars_1D_misc(eq_misc_id),dum_1D)
             PB3D_version = dum_1D(1)
+            ! eq_style has already been set
+            rho_style = nint(dum_1D(3))
             alpha = dum_1D(4)
             R_0 = dum_1D(5)
             pres_0 = dum_1D(6)
@@ -953,17 +990,13 @@ contains
             rho_0 = dum_1D(9)
             T_0 = dum_1D(10)
             vac_perm = dum_1D(11)
-            max_flux_p_E = dum_1D(12)
-            max_flux_t_E = dum_1D(13)
-            max_flux_p_F = dum_1D(14)
-            max_flux_t_F = dum_1D(15)
             use_pol_flux_E = .false.
             use_pol_flux_F = .false.
             use_normalization = .false.
-            if (dum_1D(16).gt.0) use_pol_flux_E = .true.
-            if (dum_1D(17).gt.0) use_pol_flux_F = .true.
-            if (dum_1D(18).gt.0) use_normalization = .true.
-            norm_disc_prec_eq = nint(dum_1D(19))
+            if (dum_1D(12).gt.0) use_pol_flux_E = .true.
+            if (dum_1D(13).gt.0) use_pol_flux_F = .true.
+            if (dum_1D(14).gt.0) use_normalization = .true.
+            norm_disc_prec_eq = nint(dum_1D(15))
             deallocate(dum_1D)
             
             ! eq_V or eq_H, depending on equilibrium style
@@ -971,7 +1004,7 @@ contains
             !   2:  HELENA
             select case (eq_style)
                 case (1)                                                        ! VMEC
-                    call conv_1D2ND(vars_1D_eq(eq_V_misc_id),dum_1D)
+                    call conv_1D2ND(vars_1D_misc(eq_V_misc_id),dum_1D)
                     lasym = .false.
                     lfreeB = .false.
                     if (dum_1D(1).gt.0) lasym = .true.
@@ -981,7 +1014,7 @@ contains
                     nfp = nint(dum_1D(5))
                     deallocate(dum_1D)
                 case (2)                                                        ! HELENA
-                    call conv_1D2ND(vars_1D_eq(eq_H_misc_id),dum_1D)
+                    call conv_1D2ND(vars_1D_misc(eq_H_misc_id),dum_1D)
                     ias = nint(dum_1D(1))
                     nchi = nint(dum_1D(2))
                     deallocate(dum_1D)
@@ -993,7 +1026,7 @@ contains
             end select
             
             ! X
-            call conv_1D2ND(vars_1D_X_1(X_misc_id),dum_1D)
+            call conv_1D2ND(vars_1D_misc(X_misc_id),dum_1D)
             min_r_sol = dum_1D(1)
             max_r_sol = dum_1D(2)
             min_n_X = nint(dum_1D(3))
@@ -1010,7 +1043,8 @@ contains
         integer function reconstruct_vars_eq(grid_eq,eq,met) result(ierr)
             use num_vars, only: eq_style, max_deriv
             use met_vars, only: create_met
-            use eq_vars, only: create_eq
+            use eq_vars, only: create_eq, max_flux_p_E, max_flux_t_E, &
+                &max_flux_p_F, max_flux_t_F
             use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, &
                 &ntor, lfreeB
             use HELENA, only: R_H, Z_H, chi_H, flux_p_H, nchi
@@ -1051,6 +1085,12 @@ contains
                     CHCKERR(err_msg)
             end select
             
+            call conv_1D2ND(vars_1D_eq(max_flux_id),dum_1D)
+            max_flux_p_E = dum_1D(1)
+            max_flux_t_E = dum_1D(2)
+            max_flux_p_F = dum_1D(3)
+            max_flux_t_F = dum_1D(4)
+            deallocate(dum_1D)
             call conv_1D2ND(vars_1D_eq(pres_FD_id),dum_2D)
             eq%pres_FD = dum_2D(eq_limits_loc(1):eq_limits_loc(2),:)
             deallocate(dum_2D)
@@ -1383,31 +1423,37 @@ contains
         end subroutine reconstruct_vars_X_2
         
         ! reconstruct solution vars
-        subroutine reconstruct_vars_sol(grid,sol)
+        subroutine reconstruct_vars_sol(grid,sol,lim_sec_X)
+            use sol_vars, only: create_sol
+            
             ! input / output
             type(grid_type), intent(in) :: grid                                 ! solution grid
             type(sol_type), intent(inout) :: sol                                ! solution variables
+            integer, intent(in), optional :: lim_sec_X(2)                       ! limits of m_X (pol. flux) or n_X (tor. flux)
+            
+            ! local variables
+            integer :: n_EV                                                     ! nr. of Eigenvalues
             
             call writo('Setting solution')
             call lvl_ud(1)
+            
+            ! set n_EV
+            n_EV = vars_1D_sol(RE_X_vec_id)%tot_i_max(3)-&
+                &vars_1D_sol(RE_X_vec_id)%tot_i_min(3)+1
+            
+            ! create solution
+            call create_sol(grid_sol,sol,n_EV,lim_sec_X)
             
             ! set up local sol_limits
             sol_limits_loc = [1,grid%n(3)]
             if (present(sol_limits)) sol_limits_loc = sol_limits
             
-            allocate(sol%val(vars_1D_sol(RE_X_val_id)%tot_i_min(1):&
-                &vars_1D_sol(RE_X_val_id)%tot_i_max(1)))
             call conv_1D2ND(vars_1D_sol(RE_X_val_id),dum_1D)
             sol%val = dum_1D
             deallocate(dum_1D)
             call conv_1D2ND(vars_1D_sol(IM_X_val_id),dum_1D)
             sol%val = sol%val + iu*dum_1D
             deallocate(dum_1D)
-            allocate(sol%vec(vars_1D_sol(RE_X_vec_id)%tot_i_min(1):&
-                &vars_1D_sol(RE_X_vec_id)%tot_i_max(1),&
-                &1:sol_limits_loc(2)-sol_limits_loc(1)+1,&
-                &vars_1D_sol(RE_X_vec_id)%tot_i_min(3):&
-                &vars_1D_sol(RE_X_vec_id)%tot_i_max(3)))
             call conv_1D2ND(vars_1D_sol(RE_X_vec_id),dum_3D)
             sol%vec = dum_3D(:,sol_limits_loc(1):sol_limits_loc(2),:)
             deallocate(dum_3D)

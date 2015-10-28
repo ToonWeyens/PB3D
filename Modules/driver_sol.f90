@@ -68,8 +68,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call lvl_ud(1)
-        
         ! some preliminary things
         
         ! test maximum memory
@@ -78,11 +76,6 @@ contains
         
         !!! calculate auxiliary quantities for utilities
         !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
-        
-        ! user output
-        call writo('The solution of the generalized Eigenvalue problem is &
-            &calculated')
-        call lvl_ud(1)
         
         ! read PB3D output file
         ierr = read_PB3D(.false.,.true.,.false.,.true.,.false.)                 ! read the equilibrium and tensorial perturbation variables

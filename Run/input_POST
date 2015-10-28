@@ -1,4 +1,4 @@
-&INPUTDATA_PB3D_POST
+&INPUTDATA_POST
     n_sol_plotted           = -1,-1,-1,-1
     n_zeta_plot             = 1
     plot_resonance          = .true.

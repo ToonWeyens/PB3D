@@ -26,6 +26,7 @@ POST.o : \
     driver_POST.o \
     utilities.o \
     X_vars.o \
+    PB3D_ops.o \
 
 PB3D_vars.o : \
     num_vars.o \

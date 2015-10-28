@@ -11,7 +11,6 @@ module X_ops
     use eq_vars, only: eq_type
     use met_vars, only: met_type
     use X_vars, only: X_1_type, X_2_type
-    use sol_vars, only: sol_type
 
     implicit none
     private

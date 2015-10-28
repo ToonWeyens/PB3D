@@ -24,6 +24,6 @@ module PB3D_vars
     type(var_1D_type), allocatable :: vars_1D_X_1(:)                            ! 1D vectorial perturbation variables
     type(var_1D_type), allocatable :: vars_1D_X_2(:)                            ! 1D tensorial perturbation variables
     type(var_1D_type), allocatable :: vars_1D_sol(:)                            ! 1D solution variables
-    real(dp), parameter :: min_PB3D_version = 0.96_dp                           ! minimum PB3D version
+    real(dp), parameter :: min_PB3D_version = 0.98_dp                           ! minimum PB3D version
     real(dp) :: PB3D_version                                                    ! version of PB3D variable read
 end module PB3D_vars

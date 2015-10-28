@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 0.97                                                              !
+!   Version: 0.98                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -34,6 +34,7 @@ program POST
         &close_output
     use input_ops, only: read_input
     use driver_POST, only: run_driver_POST
+    use PB3D_ops, only: init_PB3D_ops
     use test, only: generic_tests
     
     implicit none
@@ -65,6 +66,8 @@ program POST
     ierr = parse_args()                                                         ! parse argument (options are used in open_input)
     CHCKERR
     ierr = open_input()                                                         ! open the input files
+    CHCKERR
+    ierr = init_PB3D_ops()                                                      ! initialize PB3D operations
     CHCKERR
     ierr = read_input()                                                         ! read input file
     CHCKERR

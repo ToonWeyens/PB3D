@@ -821,7 +821,7 @@ contains
     
     ! creates an HDF5 output file
     integer function create_output_HDF5() result(ierr)
-        use num_vars, only: rank, prog_name, output_name, PB3D_name
+        use num_vars, only: rank, PB3D_name
         
         character(*), parameter :: rout_name = 'create_output_HDF5'
         
@@ -836,9 +836,6 @@ contains
         call writo('Creating HDF5 output file')
         
         call lvl_ud(1)
-        
-        ! set PB3D output name
-        PB3D_name = prog_name//'_'//output_name//'.h5'
         
         ! only for group master
         if (rank.eq.0) then

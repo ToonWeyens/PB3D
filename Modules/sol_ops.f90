@@ -11,6 +11,7 @@ module sol_ops
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
     use met_vars, only: met_type
+    use X_vars, only: X_1_type
     use sol_vars, only: sol_type
 
     implicit none
@@ -48,8 +49,8 @@ contains
     ! in Flux coordinates.
     ! Note: The angular part of the sol grid is neglected as it is assumed to be
     ! a 1D grid.
-    integer function calc_XUQ_arr(grid_eq,eq,grid_sol,sol,X_id,XUQ_style,time,&
-        &XUQ,met,deriv) result(ierr)                                            ! (time) array version
+    integer function calc_XUQ_arr(grid_eq,grid_sol,eq,X,sol,X_id,XUQ_style,&
+        &time,XUQ,met,deriv) result(ierr)                                       ! (time) array version
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol
         use utilities, only: con2dis, calc_deriv
 #if ldebug
@@ -60,8 +61,9 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(X_1_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
         integer, intent(in) :: XUQ_style                                        ! whether to calculate X, U, Qn or Qg
@@ -173,15 +175,11 @@ contains
                     fac_1 = 0._dp
                 case (2)                                                        ! calculating U
                     if (deriv_loc) then                                         ! parallel derivative
-                        !!fac_0 = X%DU_0(:,:,:,jd)
-                        !!fac_1 = X%DU_1(:,:,:,jd)
-                        write(*,*) '!!!!!!! RETRIEVE DU_0 FROM FILE !!!!!!'
-                        write(*,*) '!!!!!!! RETRIEVE DU_1 FROM FILE !!!!!!'
+                        fac_0 = X%DU_0(:,:,:,jd)
+                        fac_1 = X%DU_1(:,:,:,jd)
                     else
-                        !!fac_0 = X%U_0(:,:,:,jd)
-                        !!fac_1 = X%U_1(:,:,:,jd)
-                        write(*,*) '!!!!!!! RETRIEVE U_0 FROM FILE !!!!!!'
-                        write(*,*) '!!!!!!! RETRIEVE U_1 FROM FILE !!!!!!'
+                        fac_0 = X%U_0(:,:,:,jd)
+                        fac_1 = X%U_1(:,:,:,jd)
                     end if
                 case (3)                                                        ! calculating Qn
                     if (deriv_loc) then                                         ! parallel derivative
@@ -203,12 +201,10 @@ contains
                         CHCKERR('')
                     else
                         do kd = 1,grid_eq%loc_n_r
-                            !!fac_0(:,:,kd) = -eq%S(:,:,kd) +&
-                                !!&X%DU_0(:,:,kd,jd)/met%jac_FD(:,:,kd,0,0,0)
-                            !!fac_1(:,:,kd) = X%DU_1(:,:,kd,jd)/&
-                                !!&met%jac_FD(:,:,kd,0,0,0)
-                            write(*,*) '!!!!!!! RETRIEVE DU_0 FROM FILE !!!!!!'
-                            write(*,*) '!!!!!!! RETRIEVE DU_1 FROM FILE !!!!!!'
+                            fac_0(:,:,kd) = -eq%S(:,:,kd) +&
+                                &X%DU_0(:,:,kd,jd)/met%jac_FD(:,:,kd,0,0,0)
+                            fac_1(:,:,kd) = X%DU_1(:,:,kd,jd)/&
+                                &met%jac_FD(:,:,kd,0,0,0)
                         end do
                     end if
                 case default
@@ -286,14 +282,15 @@ contains
             end do
         end do
     end function calc_XUQ_arr
-    integer function calc_XUQ_ind(grid_eq,eq,grid_sol,sol,X_id,XUQ_style,time,&
-        &XUQ,met,deriv) result(ierr)                                            ! (time) individual version
+    integer function calc_XUQ_ind(grid_eq,grid_sol,eq,X,sol,X_id,XUQ_style,&
+        &time,XUQ,met,deriv) result(ierr)                                       ! (time) individual version
         character(*), parameter :: rout_name = 'calc_XUQ_ind'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibirum grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(X_1_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
         integer, intent(in) :: XUQ_style                                        ! whether to calculate X, U, Qn or Qg
@@ -309,7 +306,7 @@ contains
         allocate(XUQ_arr(size(XUQ,1),size(XUQ,2),size(XUQ,3),1))
         
         ! call array version
-        ierr = calc_XUQ_arr(grid_eq,eq,grid_sol,sol,X_id,XUQ_style,[time],&
+        ierr = calc_XUQ_arr(grid_eq,grid_sol,eq,X,sol,X_id,XUQ_style,[time],&
             &XUQ_arr,met,deriv)
         CHCKERR('')
         
@@ -323,7 +320,7 @@ contains
     ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
     ! equilibrium  grid and  the normal  part of  the provided  perturbation
     ! grid.
-    integer function plot_X_vec(grid_eq,eq,grid_sol,sol,XYZ,X_id,res_surf) &
+    integer function plot_X_vec(grid_eq,grid_sol,eq,X,sol,XYZ,X_id,res_surf) &
         &result(ierr)
         use grid_vars, only: dealloc_grid
         use grid_ops, only: trim_grid
@@ -332,8 +329,9 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(X_1_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         real(dp), intent(in) :: XYZ(:,:,:,:)                                    ! X, Y and Z of extended eq_grid
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue (for output name)
@@ -451,9 +449,9 @@ contains
         ! perturbation X_F
         allocate(f_plot(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r,&
             &product(n_t),2))
-        ierr = calc_XUQ(grid_eq,eq,grid_sol,sol,X_id,1,time,f_plot(:,:,:,:,1))
+        ierr = calc_XUQ(grid_eq,grid_sol,eq,X,sol,X_id,1,time,f_plot(:,:,:,:,1))
         CHCKERR('')
-        ierr = calc_XUQ(grid_eq,eq,grid_sol,sol,X_id,2,time,f_plot(:,:,:,:,2))
+        ierr = calc_XUQ(grid_eq,grid_sol,eq,X,sol,X_id,2,time,f_plot(:,:,:,:,2))
         CHCKERR('')
         
         ! set up var_name, file_name and description
@@ -484,7 +482,7 @@ contains
         call lvl_ud(-1)
     contains
         ! plots the harmonics and their maximum in 2D
-        ! Note: This routine needs a trimmed grid! (DOES IT STILL?)
+        ! Note: This routine needs a trimmed grid!
         integer function plot_harmonics(grid_sol,sol,X_id,res_surf) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ser_var
             use output_ops, only: merge_GP
@@ -630,7 +628,7 @@ contains
     ! the quantities defined on the eq grid, and angularly in the eq grid.
     ! Optionally,  the  results can  be  plotted by  providing  X, Y  and Z.  By
     ! default, they are instead written to an output file.
-    integer function decompose_energy(grid_eq,grid_sol,eq,met,sol,X_id,log_i,&
+    integer function decompose_energy(grid_eq,grid_sol,eq,met,X,sol,X_id,log_i,&
         &B_aligned,XYZ) result(ierr)
         use grid_vars, only: dealloc_grid
         use grid_ops, only: trim_grid
@@ -642,6 +640,7 @@ contains
         type(grid_type), intent(in) :: grid_eq, grid_sol                        ! equilibrium and solution grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(met_type), intent(in) :: met                                       ! metric variables
+        type(X_1_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
         integer, intent(in) :: log_i                                            ! file number of log file
@@ -680,7 +679,7 @@ contains
         call writo('Calculate energy terms')
         call lvl_ud(1)
         
-        ierr = calc_E(grid_eq,grid_sol,eq,met,sol,B_aligned,X_id,&
+        ierr = calc_E(grid_eq,grid_sol,eq,met,X,sol,B_aligned,X_id,&
             &E_pot,E_kin,E_pot_int,E_kin_int)
         CHCKERR('')
         
@@ -863,7 +862,7 @@ contains
         end if
     contains
         ! calculate the energy terms
-        integer function calc_E(grid_eq,grid_sol,eq,met,sol,B_aligned,X_id,&
+        integer function calc_E(grid_eq,grid_sol,eq,met,X,sol,B_aligned,X_id,&
             &E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
             use num_vars, only: use_pol_flux_F, rank, n_procs
             use eq_vars, only: vac_perm
@@ -881,6 +880,7 @@ contains
             type(grid_type), intent(in) :: grid_eq, grid_sol                    ! equilibrium and solution grid
             type(eq_type), intent(in) :: eq                                     ! equilibrium variables
             type(met_type), intent(in) :: met                                   ! metric variables
+            type(X_1_type), intent(in) :: X                                     ! perturbation variables
             type(sol_type), intent(in) :: sol                                   ! solution variables
             logical, intent(in) :: B_aligned                                    ! whether grid is field-aligned
             integer, intent(in) :: X_id                                         ! nr. of Eigenvalue
@@ -996,7 +996,7 @@ contains
             
             ! calculate X, U, Q_n and Q_g
             do kd = 1,4
-                ierr = calc_XUQ(grid_eq,eq,grid_sol,sol,X_id,kd,0._dp,&
+                ierr = calc_XUQ(grid_eq,grid_sol,eq,X,sol,X_id,kd,0._dp,&
                     &XUQ(:,:,:,kd),met=met)
                 CHCKERR('')
             end do
@@ -1022,7 +1022,7 @@ contains
                 call lvl_ud(1)
                 
                 ! calculate D_par U
-                ierr = calc_XUQ(grid_eq,eq,grid_sol,sol,X_id,2,0._dp,DU,&
+                ierr = calc_XUQ(grid_eq,grid_sol,eq,X,sol,X_id,2,0._dp,DU,&
                     &met=met,deriv=.true.)
                 CHCKERR('')
                 
