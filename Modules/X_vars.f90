@@ -5,7 +5,7 @@ module X_vars
 #include <PB3D_macros.h>
     use str_ops
     use messages
-    use num_vars, only: dp, max_str_ln, iu
+    use num_vars, only: dp, max_name_ln, iu
     use grid_vars, only: grid_type
     
     implicit none
@@ -24,8 +24,8 @@ module X_vars
     integer :: max_n_X                                                          ! highest poloidal mode number m_X
     integer :: min_m_X                                                          ! lowest poloidal mode number m_X
     integer :: max_m_X                                                          ! highest poloidal mode number m_X
-    character(len=max_str_ln), allocatable :: X_1_var_names(:)                  ! internal vectorial perturbation variables names
-    character(len=max_str_ln), allocatable :: X_2_var_names(:)                  ! internal tensorial perturbation variables names
+    character(len=max_name_ln), allocatable :: X_1_var_names(:)                 ! internal vectorial perturbation variables names
+    character(len=max_name_ln), allocatable :: X_2_var_names(:)                 ! internal tensorial perturbation variables names
     
     ! vectorial perturbation type with arrays of the form:
     !   - (angle_1,angle_2,r,n_mod)         for U_X_i, DU_X_i
@@ -306,7 +306,7 @@ contains
     ! Sets the suffix used to refer to a perturbation quantity.
     ! Note  that for  the limit  variants  the global  variables 'min_n_X',  and
     ! 'min_m_X' have to be correct.
-    character(len=max_str_ln) function get_suffix_1(X,id) result(res)           ! vectorial version
+    character(len=max_name_ln) function get_suffix_1(X,id) result(res)          ! vectorial version
         ! input / output
         type(X_1_type), intent(in) :: X                                         ! vectorial perturbation variables
         integer, intent(in) :: id                                               ! mode index
@@ -314,7 +314,7 @@ contains
         ! set suffix
         res = trim(i2str(X%n(id)))//'_'//trim(i2str(X%m(id)))
     end function get_suffix_1
-    character(len=max_str_ln) function get_suffix_2(X,id,jd) result(res)        ! tensorial version
+    character(len=max_name_ln) function get_suffix_2(X,id,jd) result(res)       ! tensorial version
         ! input / output
         type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables
         integer, intent(in) :: id, jd                                           ! mode indices
@@ -323,7 +323,7 @@ contains
         res = trim(i2str(X%n_1(id)))//'_'//trim(i2str(X%m_1(id)))//&
             &'_'//trim(i2str(X%n_2(jd)))//'_'//trim(i2str(X%m_2(jd)))
     end function get_suffix_2
-    character(len=max_str_ln) function get_suffix_1_lim(lim_sec_X,id) &
+    character(len=max_name_ln) function get_suffix_1_lim(lim_sec_X,id) &
         &result(res)                                                            ! vectorial version, using limits
         use num_vars, only: use_pol_flux_F
         
@@ -338,7 +338,7 @@ contains
             res = trim(i2str(lim_sec_X(1)-1+id))//'_'//trim(i2str(min_m_X))
         end if
     end function get_suffix_1_lim
-    character(len=max_str_ln) function get_suffix_2_lim(lim_sec_X,id,jd) &
+    character(len=max_name_ln) function get_suffix_2_lim(lim_sec_X,id,jd) &
         &result(res)                                                            ! tensorial version, using limits
         use num_vars, only: use_pol_flux_F
         

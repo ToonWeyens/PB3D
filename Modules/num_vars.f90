@@ -6,14 +6,14 @@ module num_vars
     
     implicit none
     private
-    public dp, qp, max_str_ln, max_deriv, prog_name, output_name, &
+    public dp, qp, max_str_ln, max_name_ln, max_deriv, prog_name, output_name, &
         &prog_version, prog_style, &
         &max_mem_per_proc, n_procs, rank, X_jobs_lims, X_jobs_taken, X_job_nr, &
         &X_jobs_file_name, X_jobs_lock_file_name, HDF5_lock_file_name, &
         &pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, BC_style, plot_resonance, plot_grid, &
         &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
-        &use_normalization, EV_BC, tol_slepc, max_it_slepc, rich_lvl_nr, &
+        &use_normalization, EV_BC, tol_SLEPC, max_it_slepc, rich_lvl_nr, &
         &norm_disc_prec_eq, norm_disc_prec_X, norm_disc_prec_sol, &
         &max_it_r, tol_r, no_guess, &
         &max_it_inv, &
@@ -28,12 +28,13 @@ module num_vars
     !integer, parameter :: qp = selected_real_kind (32)                          ! quadruple precision
     integer, parameter :: dp = REAL64                                           ! double precision
     integer, parameter :: qp = REAL128                                          ! quadruple precision
-    integer, parameter :: max_str_ln = 120                                      ! maximum length of filenames
-    integer, parameter :: max_deriv = 2                                         ! highest derivatives that are tabulated for metric factors in flux coord. system
+    integer, parameter :: max_str_ln = 120                                      ! maximum length of strings
+    integer, parameter :: max_name_ln = 30                                      ! maximum length of filenames
+    integer, parameter :: max_deriv = 2                                         ! highest derivatives calculated for metric factors
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 0.98_dp                               ! version number
+    real(dp), parameter :: prog_version = 0.99_dp                               ! version number
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
@@ -54,18 +55,18 @@ module num_vars
     ! concerning runtime
     integer :: EV_style                                                         ! determines the method used for solving an EV problem
     integer :: eq_style                                                         ! either 1 (VMEC) or 2 (HELENA)
-    integer :: rho_style                                                        ! style for equilibrium density profile, currently only 1 (constant)
+    integer :: rho_style                                                        ! style for equilibrium density profile
     integer :: BC_style(2)                                                      ! style for BC left and right
     integer :: max_it_slepc                                                     ! maximum nr. of iterations for SLEPC
-    logical :: plot_resonance                                                   ! whether to plot the q-profile with nq-m = 0 or iota-profile with n-iotam = 0 (only global master)
-    logical :: plot_grid                                                        ! whether to plot the grid in real coordinates (only group masters)
-    logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates (only global master)
+    logical :: plot_resonance                                                   ! whether to plot the q-profile or iota-profile with resonances
+    logical :: plot_grid                                                        ! whether to plot the grid in real coordinates
+    logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates
     logical :: ltest                                                            ! whether or not to call the testing routines
-    logical :: use_pol_flux_E                                                   ! .true. if Equilibrium coordinates use pol. flux and .false. if tor. flux
-    logical :: use_pol_flux_F                                                   ! .true. if Flux coordinates use pol. flux and .false. if tor. flux
+    logical :: use_pol_flux_E                                                   ! whether poloidal flux is used in E coords.
+    logical :: use_pol_flux_F                                                   ! whether poloidal flux is used in F coords.
     logical :: use_normalization                                                ! whether to use normalization or not
     real(dp) :: EV_BC
-    real(dp) :: tol_slepc                                                       ! tolerance for SLEPC
+    real(dp) :: tol_SLEPC                                                       ! tolerance for SLEPC
     integer :: rich_lvl_nr                                                      ! which Richardson's level is being calculated
     integer :: norm_disc_prec_eq                                                ! precision for normal discretization for equilibrium
     integer :: norm_disc_prec_X                                                 ! precision for normal discretization for perturbation

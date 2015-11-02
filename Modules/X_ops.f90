@@ -6,7 +6,7 @@ module X_ops
     use str_ops
     use output_ops
     use messages
-    use num_vars, only: dp, iu, max_str_ln, pi
+    use num_vars, only: dp, iu, max_str_ln, max_name_ln, pi
     use grid_vars, onlY: grid_type, dealloc_grid
     use eq_vars, only: eq_type
     use met_vars, only: met_type
@@ -312,7 +312,7 @@ contains
             
             do kd = 1,n_mod_loc
                 X_plot(1,kd,1,1) = x_vars(1,kd+1)
-                Y_plot(1,kd,1,1) = kd-1
+                Y_plot(1,kd,1,1) = res_surf(kd,1)-1
                 Z_plot(1,kd,1,1) = 1._dp
             end do
             

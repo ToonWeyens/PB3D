@@ -79,9 +79,12 @@ contains
         logical :: no_messages_loc                                              ! local copy of no_messages
         real(dp), allocatable :: X_plot(:,:,:), Y_plot(:,:,:), Z_plot(:,:,:)    ! X, Y and Z on plot grid
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
+        complex(dp), allocatable :: X_val_comp(:,:,:)                           ! fraction between total E_pot and E_kin, compared with EV
+        complex(dp), allocatable :: X_val_comp_loc(:,:,:)                       ! local X_val_comp
         character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln) :: full_output_name                           ! full name
         character(len=max_str_ln) :: format_head                                ! header
+        !real(dp), allocatable :: plot_var(:,:,:) 
         
         ! initialize ierr
         ierr = 0
@@ -164,6 +167,29 @@ contains
                     &X_1=X_1,X_1_out=X_1_B,&
                     &grid_name='field-aligned grid')
                 CHCKERR('')
+            
+                !! get X, Y and Z of plot
+                !allocate(X_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                !allocate(Y_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                !allocate(Z_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                !ierr = calc_XYZ_grid(grid_eq,X_plot,Y_plot,Z_plot)
+                !CHCKERR('')
+                !allocate(plot_var(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                !do id = 1,grid_eq%loc_n_r
+                    !plot_var(:,:,id) = -eq%pres_FD(id,1)*eq%kappa_n(:,:,id)
+                !end do
+                !call plot_HDF5('kappa_n_Dp','TEST_kappa_n_Dp',plot_var,&
+                    !&x=X_plot,y=Y_plot,z=Z_plot)
+                !do id = 1,grid_eq%loc_n_r
+                    !plot_var(:,:,id) = eq%pres_FD(id,1)
+                !end do
+                !call plot_HDF5('Dp','TEST_Dp',plot_var,x=X_plot,y=Y_plot,z=&
+                    !&Z_plot)
+                !call plot_HDF5('kappa_n','kappa_n',eq%kappa_n,&
+                    !&x=X_plot,y=Y_plot,z=Z_plot)
+                !call plot_HDF5('kappa_g','TEST_kappa_g',eq%kappa_g,&
+                    !&x=X_plot,y=Y_plot,z=Z_plot)
+                !deallocate(X_plot,Y_plot,Z_plot,plot_var)
                 
                 ! user output
                 call lvl_ud(-1)
@@ -375,6 +401,7 @@ contains
         call lvl_ud(1)
         
         ! loop over three ranges
+        allocate(X_val_comp(2,2,0))
         do jd = 1,3
             if (min_id(jd).le.max_id(jd)) call &
                 &writo('RANGE '//trim(i2str(jd))//': modes '//&
@@ -401,9 +428,16 @@ contains
                 ! user output
                 call writo('Decompose the energy into its terms')
                 call lvl_ud(1)
+                allocate(X_val_comp_loc(2,2,size(X_val_comp,3)+1))
+                X_val_comp_loc(:,:,1:size(X_val_comp,3)) = X_val_comp
                 ierr = decompose_energy(grid_eq_B,grid_sol,eq_B,met_B,&
-                    &X_1_B,sol,id,output_EN_i,.true.)
+                    &X_1_B,sol,id,output_EN_i,.true.,&
+                    &X_val_comp=X_val_comp_loc(:,:,size(X_val_comp_loc,3)))
                 CHCKERR('')
+                deallocate(X_val_comp)
+                allocate(X_val_comp(2,2,size(X_val_comp_loc,3)))
+                X_val_comp = X_val_comp_loc
+                deallocate(X_val_comp_loc)
                 ierr = decompose_energy(grid_eq_plot,grid_sol,eq_plot,met_plot,&
                     &X_1_plot,sol,id,output_EN_i,.false.,XYZ=&
                     &reshape([X_plot,Y_plot,Z_plot],[grid_sol_plot%n(1:2),&
@@ -421,6 +455,9 @@ contains
                 &writo('RANGE '//trim(i2str(jd))//' plotted')
             call lvl_ud(-1)
         end do
+        
+        ! print the difference between the Eigenvalue and the energy fraction
+        call plot_X_val_comp(X_val_comp)
         
         ! user output
         call lvl_ud(-1)
@@ -494,7 +531,7 @@ contains
         end do
         ! set up min. and max. of range 1
         if (last_unstable_id.gt.0) then                                         ! there is an unstable range
-            if (n_sol_plotted(1).gt.0) then
+            if (n_sol_plotted(1).ge.0) then
                 min_id(1) = 1                                                   ! start from most unstable EV
                 max_id(1) = min(n_sol_plotted(1),last_unstable_id)              ! end with n_sol_plotted(1) first unstable values if available
             else
@@ -507,26 +544,26 @@ contains
         end if
         ! set up min. and max. of range 2
         if (last_unstable_id.gt.0) then                                         ! there is an unstable range
-            if (n_sol_plotted(2).gt.0) then
+            if (n_sol_plotted(2).ge.0) then
                 min_id(2) = last_unstable_id - n_sol_plotted(2) + 1             ! start from n_sol_plotted(2) last unstable values
             else
                 min_id(2) = 1                                                   ! start from 1
             end if
-            if (n_sol_plotted(3).gt.0) then
+            if (n_sol_plotted(3).ge.0) then
                 max_id(2) = min(last_unstable_id + n_sol_plotted(3),n_sol_found)! end with n_sol_plotted(3) first stable values if available
             else
                 max_id(2) = n_sol_found                                         ! end with last EV
             end if
         else                                                                    ! no unstable range
             min_id(2) = 1                                                       ! start from first EV (stable)
-            if (n_sol_plotted(3).gt.0) then
+            if (n_sol_plotted(3).ge.0) then
                 max_id(2) = min(n_sol_plotted(3),n_sol_found)                   ! end with n_sol_plotted(3) first stable values if available
             else
                 max_id(2) = n_sol_found                                         ! end with last EV
             end if
         end if
         ! set up min. and max. of range 3
-        if (n_sol_plotted(4).gt.0) then
+        if (n_sol_plotted(4).ge.0) then
             min_id(3) = n_sol_found - n_sol_plotted(4) + 1                      ! start from n_sol_plotted(4) last stable values
         else
             min_id(3) = last_unstable_id + 1                                    ! start from n_sol_plotted(4) last stable values
@@ -566,38 +603,86 @@ contains
         ! only let master plot
         if (rank.eq.0) then
             ! Last Eigenvalues
-            ! output on screen
             plot_title = 'final Eigenvalues omega^2 [log]'
             plot_name = 'Eigenvalues'
             call print_GP_2D(plot_title,plot_name,&
                 &log10(abs(realpart(sol%val(1:n_sol_found)))),draw=.false.)
-            ! same output in file as well
             call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
             
             ! Last Eigenvalues: unstable range
             if (last_unstable_id.gt.0) then
-                ! output on screen
                 plot_title = 'final unstable Eigenvalues omega^2'
                 plot_name = 'Eigenvalues_unstable'
                 call print_GP_2D(plot_title,plot_name,&
                     &realpart(sol%val(1:last_unstable_id)),&
                     &x=[(id*1._dp,id=1,last_unstable_id)],draw=.false.)
-                ! same output in file as well
                 call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
             end if
             
             ! Last Eigenvalues: stable range
             if (last_unstable_id.lt.n_sol_found) then
-                ! output on screen
                 plot_title = 'final stable Eigenvalues omega^2'
                 plot_name = 'Eigenvalues_stable'
                 call print_GP_2D(plot_title,plot_name,&
                     &realpart(sol%val(last_unstable_id+1:n_sol_found)),&
                     &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)],&
                     &draw=.false.)
-                ! same output in file as well
                 call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
             end if
         end if
     end subroutine plot_X_vals
+    
+    ! plots difference between Eigenvalues and energy fraction
+    subroutine plot_X_val_comp(X_val_comp)
+        use num_vars, only: rank
+        
+        ! input /output
+        complex(dp) :: X_val_comp(:,:,:)                                        ! fraction between total E_pot and E_kin, compared with EV
+        
+        ! local variables
+        character(len=max_str_ln) :: plot_title                                 ! title for plots
+        character(len=max_str_ln) :: plot_name                                  ! file name for plots
+        
+        if (rank.eq.0) then
+            ! real part
+            plot_title = 'RE X_val and E_frac'
+            plot_name = 'X_val_comp_RE'
+            call print_GP_2D(plot_title,plot_name,realpart(X_val_comp(:,1,:)),&
+                &x=realpart(X_val_comp(:,2,:)),draw=.false.)
+            call draw_GP(plot_title,plot_name,plot_name,size(X_val_comp,3),1,&
+                &.false.)
+            plot_title = 'RE X_val and E_frac rel diff'
+            plot_name = 'X_val_comp_RE_rel_diff'
+            call print_GP_2D(plot_title,plot_name,realpart(&
+                &(X_val_comp(1,2,:)-X_val_comp(2,2,:))/X_val_comp(1,2,:)),&
+                &x=realpart(X_val_comp(1,1,:)),draw=.false.)
+            call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+            plot_title = 'RE X_val and E_frac log rel diff'
+            plot_name = 'X_val_comp_RE_rel_diff_log'
+            call print_GP_2D(plot_title,plot_name,log10(abs(realpart(&
+                &(X_val_comp(1,2,:)-X_val_comp(2,2,:))/X_val_comp(1,2,:)))),&
+                &x=realpart(X_val_comp(1,1,:)),draw=.false.)
+            call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+            
+            ! imaginary part
+            plot_title = 'IM X_val and E_frac'
+            plot_name = 'X_val_comp_IM'
+            call print_GP_2D(plot_title,plot_name,realpart(X_val_comp(:,1,:)),&
+                &x=imagpart(X_val_comp(:,2,:)),draw=.false.)
+            call draw_GP(plot_title,plot_name,plot_name,size(X_val_comp,3),1,&
+                &.false.)
+            plot_title = 'IM X_val and E_frac rel diff'
+            plot_name = 'X_val_comp_IM_rel_diff'
+            call print_GP_2D(plot_title,plot_name,imagpart(&
+                &(X_val_comp(1,2,:)-X_val_comp(2,2,:))/X_val_comp(1,2,:)),&
+                &x=realpart(X_val_comp(1,1,:)),draw=.false.)
+            call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+            plot_title = 'IM X_val and E_frac log rel diff'
+            plot_name = 'X_val_comp_IM_rel_diff_log'
+            call print_GP_2D(plot_title,plot_name,log10(abs(imagpart(&
+                &(X_val_comp(1,2,:)-X_val_comp(2,2,:))/X_val_comp(1,2,:)))),&
+                &x=realpart(X_val_comp(1,1,:)),draw=.false.)
+            call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+        end if
+    end subroutine plot_X_val_comp
 end module driver_POST

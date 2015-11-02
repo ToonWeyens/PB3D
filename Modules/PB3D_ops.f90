@@ -6,7 +6,7 @@ module PB3D_ops
     use str_ops
     use messages
     use output_ops
-    use num_vars, only: dp, pi, max_str_ln, iu
+    use num_vars, only: dp, pi, max_str_ln, max_name_ln, iu
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
     use met_vars, only: met_type
@@ -78,8 +78,7 @@ contains
         &lim_sec_X_1,lim_sec_X_2) result(ierr)
         use num_vars, only: eq_style, PB3D_name
         use HDF5_ops, only: read_HDF5_arrs
-        use X_vars, only: get_suffix, &
-            &X_1_var_names, X_2_var_names
+        use X_vars, only: X_1_var_names, X_2_var_names
         use PB3D_vars, only: vars_1D_misc, vars_1D_eq, vars_1D_eq_B, &
             &vars_1D_X_1, vars_1D_X_2, vars_1D_sol
         
@@ -92,7 +91,7 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        character(len=max_str_ln), allocatable :: req_var_names(:)              ! requested variable names
+        character(len=max_name_ln), allocatable :: req_var_names(:)             ! requested variable names
         
         ! initialize ierr
         ierr = 0
@@ -190,6 +189,7 @@ contains
         use PB3D_vars, only: vars_1D_misc, vars_1D_eq, vars_1D_eq_B, &
             &vars_1D_X_1, vars_1D_X_2, vars_1D_sol, min_PB3D_version, &
             &PB3D_version
+        use MPI_utilities, only: wait_MPI
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D'
         
@@ -385,6 +385,8 @@ contains
             call writo('Prepare tensorial perturbation variable indices')
             call lvl_ud(1)
             ierr = prepare_vars_X_2(lim_sec_X_2)
+            CHCKERR('')
+            ierr = wait_MPI()
             CHCKERR('')
             call lvl_ud(-1)
             call writo('Indices prepared')
@@ -591,7 +593,7 @@ contains
             integer, intent(in), optional :: lim_sec_X(2)                       ! limits of m_X (pol. flux) or n_X (tor. flux)
             
             ! local variables
-            character(len=max_str_ln), allocatable :: req_var_names(:)          ! requested variable names
+            character(len=max_name_ln), allocatable :: req_var_names(:)         ! requested variable names
             integer :: id                                                       ! counter
             
             ! initialize ierr
@@ -600,7 +602,7 @@ contains
             ! 1. RE_U_0
             req_var_names = get_full_var_names([X_1_var_names(1)],lim_sec_X)
             allocate(RE_U_0_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
                     &RE_U_0_id(id))
                 CHCKERR('')
@@ -609,7 +611,7 @@ contains
             ! 2. IM_U_0
             req_var_names = get_full_var_names([X_1_var_names(2)],lim_sec_X)
             allocate(IM_U_0_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
                     &IM_U_0_id(id))
                 CHCKERR('')
@@ -618,7 +620,7 @@ contains
             ! 3. RE_U_1
             req_var_names = get_full_var_names([X_1_var_names(3)],lim_sec_X)
             allocate(RE_U_1_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
                     &RE_U_1_id(id))
                 CHCKERR('')
@@ -627,7 +629,7 @@ contains
             ! 4. IM_U_1
             req_var_names = get_full_var_names([X_1_var_names(4)],lim_sec_X)
             allocate(IM_U_1_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
                     &IM_U_1_id(id))
                 CHCKERR('')
@@ -636,7 +638,7 @@ contains
             ! 5. RE_DU_0
             req_var_names = get_full_var_names([X_1_var_names(5)],lim_sec_X)
             allocate(RE_DU_0_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
                     &RE_DU_0_id(id))
                 CHCKERR('')
@@ -645,7 +647,7 @@ contains
             ! 6. IM_DU_0
             req_var_names = get_full_var_names([X_1_var_names(6)],lim_sec_X)
             allocate(IM_DU_0_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
                     &IM_DU_0_id(id))
                 CHCKERR('')
@@ -654,7 +656,7 @@ contains
             ! 7. RE_DU_1
             req_var_names = get_full_var_names([X_1_var_names(7)],lim_sec_X)
             allocate(RE_DU_1_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
                     &RE_DU_1_id(id))
                 CHCKERR('')
@@ -663,7 +665,7 @@ contains
             ! 8. IM_DU_1
             req_var_names = get_full_var_names([X_1_var_names(8)],lim_sec_X)
             allocate(IM_DU_1_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
                     &IM_DU_1_id(id))
                 CHCKERR('')
@@ -680,7 +682,7 @@ contains
             integer, intent(in), optional :: lim_sec_X(2,2)                     ! limits of m_X (pol. flux) or n_X (tor. flux)
             
             ! local variables
-            character(len=max_str_ln), allocatable :: req_var_names(:)          ! requested variable names
+            character(len=max_name_ln), allocatable :: req_var_names(:)         ! requested variable names
             integer :: id                                                       ! counter
             
             ! initialize ierr
@@ -690,7 +692,7 @@ contains
             req_var_names = get_full_var_names([X_2_var_names(1)],&
                 &[.true.],lim_sec_X)
             allocate(RE_PV_int_0_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
                     &RE_PV_int_0_id(id))
                 CHCKERR('')
@@ -700,7 +702,7 @@ contains
             req_var_names = get_full_var_names([X_2_var_names(2)],&
                 &[.true.],lim_sec_X)
             allocate(IM_PV_int_0_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
                     &IM_PV_int_0_id(id))
                 CHCKERR('')
@@ -710,7 +712,7 @@ contains
             req_var_names = get_full_var_names([X_2_var_names(3)],&
                 &[.false.],lim_sec_X)
             allocate(RE_PV_int_1_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
                     &RE_PV_int_1_id(id))
                 CHCKERR('')
@@ -720,7 +722,7 @@ contains
             req_var_names = get_full_var_names([X_2_var_names(4)],&
                 &[.false.],lim_sec_X)
             allocate(IM_PV_int_1_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
                     &IM_PV_int_1_id(id))
                 CHCKERR('')
@@ -730,7 +732,7 @@ contains
             req_var_names = get_full_var_names([X_2_var_names(5)],&
                 &[.true.],lim_sec_X)
             allocate(RE_PV_int_2_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
                     &RE_PV_int_2_id(id))
                 CHCKERR('')
@@ -740,7 +742,7 @@ contains
             req_var_names = get_full_var_names([X_2_var_names(6)],&
                 &[.true.],lim_sec_X)
             allocate(IM_PV_int_2_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
                     &IM_PV_int_2_id(id))
                 CHCKERR('')
@@ -750,7 +752,7 @@ contains
             req_var_names = get_full_var_names([X_2_var_names(7)],&
                 &[.true.],lim_sec_X)
             allocate(RE_KV_int_0_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
                     &RE_KV_int_0_id(id))
                 CHCKERR('')
@@ -760,7 +762,7 @@ contains
             req_var_names = get_full_var_names([X_2_var_names(8)],&
                 &[.true.],lim_sec_X)
             allocate(IM_KV_int_0_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
                     &IM_KV_int_0_id(id))
                 CHCKERR('')
@@ -770,7 +772,7 @@ contains
             req_var_names = get_full_var_names([X_2_var_names(9)],&
                 &[.false.],lim_sec_X)
             allocate(RE_KV_int_1_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
                     &RE_KV_int_1_id(id))
                 CHCKERR('')
@@ -780,7 +782,7 @@ contains
             req_var_names = get_full_var_names([X_2_var_names(10)],&
                 &[.false.],lim_sec_X)
             allocate(IM_KV_int_1_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
                     &IM_KV_int_1_id(id))
                 CHCKERR('')
@@ -790,7 +792,7 @@ contains
             req_var_names = get_full_var_names([X_2_var_names(11)],&
                 &[.true.],lim_sec_X)
             allocate(RE_KV_int_2_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
                     &RE_KV_int_2_id(id))
                 CHCKERR('')
@@ -800,7 +802,7 @@ contains
             req_var_names = get_full_var_names([X_2_var_names(12)],&
                 &[.true.],lim_sec_X)
             allocate(IM_KV_int_2_id(size(req_var_names)))
-            do id =1,size(req_var_names)
+            do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
                     &IM_KV_int_2_id(id))
                 CHCKERR('')
@@ -1478,7 +1480,7 @@ contains
         ! input / output
         character(len=*), intent(in) :: var_names(:)                            ! internal variable names
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits for m_X (pol flux) or n_X (tor flux)
-        character(len=max_str_ln), allocatable :: full_var_names(:)             ! full HDF5 variable names
+        character(len=max_name_ln), allocatable :: full_var_names(:)            ! full HDF5 variable names
         
         ! local variables
         integer :: n_vars                                                       ! nr. of input variables
@@ -1486,6 +1488,7 @@ contains
         integer :: id, jd                                                       ! counters
         integer :: id_loc                                                       ! counter
         integer :: lim_sec_X_loc(2)                                             ! local lim_sec_X
+        integer :: name_len                                                     ! length of a name
         
         ! set local lim_sec_X
         if (use_pol_flux_F) then
@@ -1500,6 +1503,7 @@ contains
         n_mod = lim_sec_X_loc(2) - lim_sec_X_loc(1) + 1
         
         ! allocate full HDF5 variable names
+        name_len = len(var_names(1))
         if (allocated(full_var_names)) deallocate(full_var_names)
         allocate(full_var_names(n_vars*n_mod))
         
@@ -1524,7 +1528,7 @@ contains
         character(len=*), intent(in) :: var_names(:)                            ! internal variable names
         logical, intent(in) :: sym(:)                                           ! if variable is symmetric
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits for m_X (pol flux) or n_X (tor flux) for both dimensions
-        character(len=max_str_ln), allocatable :: full_var_names(:)             ! full HDF5 variable names
+        character(len=max_name_ln), allocatable :: full_var_names(:)            ! full HDF5 variable names
         
         ! local variables
         integer :: n_vars                                                       ! nr. of input variables

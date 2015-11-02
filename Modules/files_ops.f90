@@ -387,6 +387,12 @@ contains
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
                 case (9)
                     call writo('option eps_monitor passed to SLEPC')
+                case (10)
+                    call writo('option eps_tol passed to SLEPC')
+                case (11)
+                    call writo('option eps_ncv passed to SLEPC')
+                case (12)
+                    call writo('option eps_mpd passed to SLEPC')
                 case default
                     call writo('WARNING: Invalid option number')
             end select

@@ -1,5 +1,6 @@
 !------------------------------------------------------------------------------!
 !   Operations that use SLEPC (and PETSC) routines                             !
+!   Note that the routines here require a TRIMMED solution grid!               !
 !------------------------------------------------------------------------------!
 ! References:                                                                  !
 ! [1]   http://slepc.upv.es/documentation/current/docs/manualpages/EPS/        !
@@ -16,7 +17,7 @@ module SLEPC_ops
     use messages
     use slepceps
     use num_vars, only: iu, dp, max_str_ln
-    use grid_vars, only: grid_type, dealloc_grid
+    use grid_vars, only: grid_type
     use X_vars, only: X_1_type, X_2_type
     use sol_vars, only: sol_type
 
@@ -47,9 +48,8 @@ contains
     ! the variable i_geo.
     integer function solve_EV_system_SLEPC(grid_eq,grid_sol,X,sol,use_guess,&
         &i_geo) result(ierr)
-        use num_vars, only: max_it_inv, norm_disc_prec_X
-        use grid_ops, only: get_norm_interp_data, trim_grid
-        use grid_vars, only: dealloc_grid
+        use num_vars, only: max_it_inv, norm_disc_prec_sol
+        use grid_ops, only: get_norm_interp_data
         use utilities, only: calc_coeff_fin_diff
 #if ldebug
         use num_vars, only: ltest
@@ -67,7 +67,6 @@ contains
         integer, intent(in), optional :: i_geo                                  ! at which geodesic index to perform the calculations
         
         ! local variables
-        type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
         Mat, target :: A                                                        ! matrix A in EV problem A X = lambda B X
         Mat, target :: B                                                        ! matrix B in EV problem A X = lambda B X
         EPS :: solver                                                           ! EV solver
@@ -87,20 +86,16 @@ contains
         ! initialization
         call writo('Initialize generalized Eigenvalue problem')
         
-        ! trim solution grid
-        ierr = trim_grid(grid_sol,grid_sol_trim)
-        CHCKERR('')
-        
         ! set up local i_geo
         i_geo_loc = 1
         if (present(i_geo)) i_geo_loc = i_geo
         
         ! set up arrays loc_r_eq that determine how to fill the matrices
-        ierr = get_norm_interp_data(grid_eq,grid_sol_trim,loc_r_eq)
+        ierr = get_norm_interp_data(grid_eq,grid_sol,loc_r_eq)
         CHCKERR('')
         
         ! start SLEPC
-        ierr = start_SLEPC(grid_sol_trim%n(3))
+        ierr = start_SLEPC(grid_sol%n(3))
         CHCKERR('')
         
         ! set up step size
@@ -110,7 +105,7 @@ contains
         ! get discretization coefficients
         call writo('Get discretization coefficients')
         call lvl_ud(1)
-        ierr = calc_coeff_fin_diff(1,norm_disc_prec_X,norm_disc_coeff)
+        ierr = calc_coeff_fin_diff(1,norm_disc_prec_sol,norm_disc_coeff)
         CHCKERR('')
         norm_disc_coeff = norm_disc_coeff/step_size                             ! scale by step size
         call lvl_ud(-1)
@@ -118,7 +113,7 @@ contains
         ! set up the matrix
         call writo('Set up matrices')
         
-        ierr = setup_mats(grid_sol_trim,X,A,B,loc_r_eq,i_geo_loc,&
+        ierr = setup_mats(grid_sol,X,A,B,loc_r_eq,i_geo_loc,&
             &norm_disc_coeff)
         CHCKERR('')
         
@@ -161,7 +156,7 @@ contains
             ! set boundary conditions
             call writo('Set up boundary conditions')
             
-            ierr = set_BC(grid_sol_trim,X,A,B,loc_r_eq,i_geo_loc,grid_sol%n(3),&
+            ierr = set_BC(grid_sol,X,A,B,loc_r_eq,i_geo_loc,grid_sol%n(3),&
                 &norm_disc_coeff)
             CHCKERR('')
             
@@ -191,21 +186,21 @@ contains
                 if (get_log(.false.)) then
                     call writo('Spectrum of A (true) or B (false)?')
                     if (get_log(.true.)) then                                   ! A
-                        ierr = setup_solver(grid_sol_trim,X,A,&
+                        ierr = setup_solver(grid_sol,X,A,&
                             &PETSC_NULL_OBJECT,solver)
                         CHCKERR('')
                     else                                                        ! B
-                        ierr = setup_solver(grid_sol_trim,X,B,&
+                        ierr = setup_solver(grid_sol,X,B,&
                             &PETSC_NULL_OBJECT,solver)
                         CHCKERR('')
                     end if
                 else
-                    ierr = setup_solver(grid_sol_trim,X,A,B,solver)
+                    ierr = setup_solver(grid_sol,X,A,B,solver)
                     CHCKERR('')
                 end if
             else
 #endif
-                ierr = setup_solver(grid_sol_trim,X,A,B,solver)
+                ierr = setup_solver(grid_sol,X,A,B,solver)
                 CHCKERR('')
 #if ldebug
             end if
@@ -240,10 +235,10 @@ contains
             &stable Eigenvalues')
         
 #if ldebug
-        ierr = store_results(grid_sol_trim,X,sol,solver,max_n_EV,A,B)
+        ierr = store_results(grid_sol,X,sol,solver,max_n_EV,A,B)
         CHCKERR('')
 #else
-        ierr = store_results(grid_sol_trim,X,sol,solver,max_n_EV)
+        ierr = store_results(grid_sol,X,sol,solver,max_n_EV)
         CHCKERR('')
 #endif
         
@@ -251,13 +246,10 @@ contains
         call writo('Finalize SLEPC')
         
         ! stop SLEPC
-        ierr = stop_SLEPC(grid_sol_trim,A,B,solver,guess_start_id,prev_n_EV,&
+        ierr = stop_SLEPC(grid_sol,A,B,solver,guess_start_id,prev_n_EV,&
             &max_n_EV)
         CHCKERR('')
         
-        ! clean up
-        call dealloc_grid(grid_sol_trim)
-        deallocate(loc_r_eq)
 #if ldebug
     contains
         integer function test_mat_hermiticity(mat,mat_name) result(ierr)
@@ -420,7 +412,7 @@ contains
     ! Note: For normal usage, i_geo should be 1, or not present.
     integer function setup_mats(grid_sol,X,A,B,loc_r_eq,i_geo,norm_disc_coeff) &
         &result(ierr)
-        use num_vars, only: norm_disc_prec_X
+        use num_vars, only: norm_disc_prec_sol
 #if ldebug
         use num_vars, only: ltest
         use input_ops, only: get_real, get_log
@@ -453,8 +445,8 @@ contains
         
         ! user output
         call writo('Normal discretization with central finite differences of &
-            &order '//trim(i2str(norm_disc_prec_X))//', stencil width '//&
-            &trim(i2str(4*norm_disc_prec_X+1)))
+            &order '//trim(i2str(norm_disc_prec_sol))//', stencil width '//&
+            &trim(i2str(4*norm_disc_prec_sol+1)))
         
 #if ldebug
         if (ltest) then
@@ -481,7 +473,7 @@ contains
         n_r = grid_sol%n(3)
         
         ! set (half) stencil size
-        st_size = 2*norm_disc_prec_X
+        st_size = 2*norm_disc_prec_sol
         
         ! create a  matrix A and B  with the appropriate number  of preallocated
         ! entries (excluding ghost regions)
@@ -573,7 +565,7 @@ contains
         
         call lvl_ud(-1)
     contains
-        ! fills a  matrix according to norm_disc_prec_X [ADD REF]:
+        ! fills a  matrix according to norm_disc_prec_sol [ADD REF]:
         !   1. first order accuracy for all terms
         !   2. higher order accuracy for internal first order derivatives
         ! it is used  for both the matrix  A and B, corresponding  to the plasma
@@ -589,7 +581,7 @@ contains
         !   calculation of every quantity.
         integer function fill_mat(V_0,V_1,V_2,n_sol,norm_disc_coeff,mat) &
             &result(ierr)
-            use num_vars, only: norm_disc_prec_X, BC_style
+            use num_vars, only: norm_disc_prec_sol, BC_style
             use utilities, only: c, con
             
             character(*), parameter :: rout_name = 'fill_mat'
@@ -641,10 +633,10 @@ contains
             end if
             
             ! test whether numerical coefficients matrix has right size
-            if (size(norm_disc_coeff).ne.2*norm_disc_prec_X+1) then
+            if (size(norm_disc_coeff).ne.2*norm_disc_prec_sol+1) then
                 ierr = 1
                 err_msg = 'Array of discretization coefficients needs to have &
-                    &the correct size 2*norm_disc_prec_X+1'
+                    &the correct size 2*norm_disc_prec_sol+1'
                 CHCKERR(err_msg)
             end if
             
@@ -653,7 +645,7 @@ contains
                 case (1)
                     i_min = grid_sol%i_min                                      ! will be overwritten
                 case (2)
-                    i_min = max(grid_sol%i_min,1+norm_disc_prec_X)              ! first norm_disc_prec_X rows write left BC's
+                    i_min = max(grid_sol%i_min,1+norm_disc_prec_sol)            ! first norm_disc_prec_sol rows write left BC's
                 case (3)
                     err_msg = 'Left BC''s cannot have BC type 3'
                     ierr = 1
@@ -670,7 +662,7 @@ contains
                 case (1)
                     i_max = grid_sol%i_max                                      ! will be overwritten
                 case (2)
-                    i_max = min(grid_sol%i_max,grid_sol%n(3)-norm_disc_prec_X)  ! last norm_disc_prec_X rows write right BC's
+                    i_max = min(grid_sol%i_max,grid_sol%n(3)-norm_disc_prec_sol)! last norm_disc_prec_sol rows write right BC's
                 case (3)
                     i_max = min(grid_sol%i_max,grid_sol%n(3)-1)                 ! last row writes right BC's
                 case default
@@ -729,9 +721,9 @@ contains
                 end do
                 
                 ! add block to kd + (0,-p..p) + Hermitian conjugate
-                do jd = -norm_disc_prec_X,norm_disc_prec_X
+                do jd = -norm_disc_prec_sol,norm_disc_prec_sol
                     ierr = insert_block_mat(loc_block*&
-                        &norm_disc_coeff(jd+norm_disc_prec_X+1),mat,&
+                        &norm_disc_coeff(jd+norm_disc_prec_sol+1),mat,&
                         &[kd,kd+jd],n_sol,transp=.true.)
                     CHCKERR('')
                 end do
@@ -755,11 +747,11 @@ contains
 #endif
             
                 ! add block to kd + (-p..p,-p..p)
-                do jd = -norm_disc_prec_X,norm_disc_prec_X
-                    do id = -norm_disc_prec_X,norm_disc_prec_X
+                do jd = -norm_disc_prec_sol,norm_disc_prec_sol
+                    do id = -norm_disc_prec_sol,norm_disc_prec_sol
                         ierr = insert_block_mat(loc_block*&
-                            &norm_disc_coeff(id+norm_disc_prec_X+1)*&
-                            &norm_disc_coeff(jd+norm_disc_prec_X+1),mat,&
+                            &norm_disc_coeff(id+norm_disc_prec_sol+1)*&
+                            &norm_disc_coeff(jd+norm_disc_prec_sol+1),mat,&
                             &[kd+id,kd+jd],n_sol)
                         CHCKERR('')
                     end do
@@ -796,12 +788,10 @@ contains
             call MatGetInfo(mat,MAT_GLOBAL_SUM,mat_info,ierr)
             CHCKERR('')
             call writo('memory usage: '//&
-                &trim(r2strt(mat_info(MAT_INFO_MEMORY)/1000))//' MB')
+                &trim(r2strt(mat_info(MAT_INFO_MEMORY)*1.E-6_dp))//' MB')
             call writo('nonzero''s allocated: '//&
                 &trim(r2strt(mat_info(MAT_INFO_NZ_ALLOCATED))))
-            call writo('nonzero''s used: '//&
-                &trim(r2strt(mat_info(MAT_INFO_NZ_USED))))
-            call writo('nonzero''s unused: '//&
+            call writo('of which unused: '//&
                 &trim(r2strt(mat_info(MAT_INFO_NZ_UNNEEDED))))
         end function disp_mat_inf
     end function setup_mats
@@ -813,10 +803,10 @@ contains
     ! At the plasma surface, the surface energy is minimized as in [ADD REF].
     integer function set_BC(grid_sol,X,A,B,loc_r_eq,i_geo,n_sol,&
         &norm_disc_coeff) result(ierr)
-        use num_vars, only: norm_disc_prec_X, BC_style
+        use num_vars, only: norm_disc_prec_sol, BC_style
         use MPI_utilities, only: get_ser_var
         use utilities, only: con, c
-        use grid_ops, only: trim_grid
+        use MPI_utilities, only: wait_MPI
         
         character(*), parameter :: rout_name = 'set_BC'
         
@@ -833,7 +823,6 @@ contains
         
         ! local variables
         integer :: n_mod                                                        ! nr. of modes
-        type(grid_type) :: grid_sol_trim                                        ! trimmed solution grid
         PetscInt :: kd                                                          ! counter
         
         ! initialize ierr
@@ -851,18 +840,14 @@ contains
             CHCKERR('Need square matrix')
         end if
         
-        ! trim grid
-        ierr = trim_grid(grid_sol,grid_sol_trim)
-        CHCKERR('')
-        
         call lvl_ud(-1)
         
         ! set up n_min, depending on BC style
         select case (BC_style(1))
             case (1)
-                n_min = 2*norm_disc_prec_X                                      ! dirichlet BC requieres half stencil
+                n_min = 2*norm_disc_prec_sol                                    ! dirichlet BC requieres half stencil
             case (2)
-                n_min = norm_disc_prec_X                                        ! mixed BC requires only one fourth of stencil
+                n_min = norm_disc_prec_sol                                      ! mixed BC requires only one fourth of stencil
             case (3)
                 err_msg = 'Left BC''s cannot have BC type 3'
                 ierr = 1
@@ -877,9 +862,9 @@ contains
         ! set up n_max, depending on BC style
         select case (BC_style(2))
             case (1)
-                n_max = 2*norm_disc_prec_X                                      ! dirichlet BC requieres half stencil
+                n_max = 2*norm_disc_prec_sol                                    ! dirichlet BC requieres half stencil
             case (2)
-                n_max = norm_disc_prec_X                                        ! mixed BC requires only one fourth of stencil
+                n_max = norm_disc_prec_sol                                      ! mixed BC requires only one fourth of stencil
             case (3)
                 n_max = 1                                                       ! only last element carries BC
             case default
@@ -894,7 +879,7 @@ contains
         
         ! iterate over all positions where to set left BC
         do kd = 1,n_min
-            if (grid_sol_trim%i_min.le.kd .and. grid_sol_trim%i_max.ge.kd) then ! decide which process does the setting
+            if (grid_sol%i_min.le.kd .and. grid_sol%i_max.ge.kd) then           ! decide which process does the setting
                 select case (BC_style(1))
                     case (1)
                         ierr = set_BC_1(kd-1,A,B,.false.)                       ! indices start at 0
@@ -929,12 +914,16 @@ contains
         
         call lvl_ud(-1)
         
+        ! wait to get messages consistent
+        ierr = wait_MPI()
+        CHCKERR('')
+        
         call writo('Setting BC at plasma edge')
         call lvl_ud(1)
         
         ! iterate over all positions where to set right BC
         do kd = grid_sol%n(3),grid_sol%n(3)-n_max+1,-1
-            if (grid_sol_trim%i_min.le.kd .and. grid_sol_trim%i_max.ge.kd) then ! decide which process does the setting
+            if (grid_sol%i_min.le.kd .and. grid_sol%i_max.ge.kd) then           ! decide which process does the setting
                 select case (BC_style(2))
                     case (1)
                         ierr = set_BC_1(kd-1,A,B,.true.)                        ! indices start at 0
@@ -968,9 +957,6 @@ contains
         call MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY,ierr)
         CHCKERR('Coulnd''t end assembly of matrix')
         
-        ! clean up
-        call dealloc_grid(grid_sol_trim)
-        
         call lvl_ud(-1)
         
         call lvl_ud(-1)
@@ -980,7 +966,7 @@ contains
         !   A(ind+1..ind+p,ind+1..ind+p) = 0, B(ind+1..ind+p,ind+1..ind+p) = 0,
         ! where ind indicates the row where the BC is centered.
         integer function set_BC_1(ind,A,B,BC_right) result(ierr)
-            use num_vars, only: EV_BC, norm_disc_prec_X
+            use num_vars, only: EV_BC, norm_disc_prec_sol
             
             character(*), parameter :: rout_name = 'set_BC_1'
             
@@ -1024,7 +1010,7 @@ contains
             CHCKERR('')
             
             ! iterate over range 2
-            do kd = 1,2*norm_disc_prec_X
+            do kd = 1,2*norm_disc_prec_sol
                 ! set block (ind,ind+/-kd) and Hermitian conjugate
                 ierr = insert_block_mat(0*loc_block,A,[ind,ind-pmone*kd],n_sol,&
                     &overwrite=.true.,transp=.true.)
@@ -1107,10 +1093,10 @@ contains
             ! -------------!
             ! add block to ind + (0,-p..p) + Hermitian conjugate
             if (BC_right) then
-                do jd = -norm_disc_prec_X,norm_disc_prec_X
+                do jd = -norm_disc_prec_sol,norm_disc_prec_sol
                     if (ind.lt.n_sol .and. ind+jd.lt.n_sol) then
                         ierr = insert_block_mat(-X%vac_res*&
-                            &norm_disc_coeff(jd+norm_disc_prec_X+1),A,&
+                            &norm_disc_coeff(jd+norm_disc_prec_sol+1),A,&
                             &[ind,ind+jd],n_sol,transp=.true.)
                         CHCKERR('')
                     end if
@@ -1299,7 +1285,7 @@ contains
     
     ! sets up EV solver
     integer function setup_solver(grid_sol,X,A,B,solver) result(ierr)
-        use num_vars, only: n_sol_requested, tol_slepc, max_it_slepc
+        use num_vars, only: n_sol_requested, tol_SLEPC, max_it_slepc
         
         character(*), parameter :: rout_name = 'setup_solver'
         
@@ -1356,11 +1342,11 @@ contains
         call EPSSetDimensions(solver,n_sol,PETSC_DECIDE,&
             &PETSC_DECIDE,ierr)
         CHCKERR('EPSSetDimensions failed')
-        call EPSSetTolerances(solver,tol_slepc,max_it_slepc,ierr)
+        call EPSSetTolerances(solver,tol_SLEPC,max_it_slepc,ierr)
         CHCKERR('EPSSetTolerances failed')
         
         ! user output
-        call writo('tolerance: '//trim(r2str(tol_slepc)))
+        call writo('tolerance: '//trim(r2str(tol_SLEPC)))
         call writo('maximum nr. of iterations: '//trim(i2str(max_it_slepc)))
         
         call lvl_ud(-1)
@@ -1539,7 +1525,7 @@ contains
 #endif
         use eq_vars, only: T_0
         use num_vars, only: use_normalization, EV_BC, prog_name, &
-            &output_name, rich_lvl_nr, max_it_r, n_procs, rank
+            &output_name, rich_lvl_nr, max_it_r, n_procs, rank, tol_SLEPC
         use files_utilities, only: nextunit
         use MPI_utilities, only: get_ser_var
         use sol_vars, only: dealloc_sol, create_sol
@@ -1562,7 +1548,7 @@ contains
         PetscInt :: one = 1                                                     ! one
         PetscInt, allocatable :: X_vec_max_loc(:)                               ! location of X_vec_max of this process
         PetscReal :: error                                                      ! error of EPS solver
-        PetscReal :: tol_complex = 1.E-5_dp                                     ! tolerance for an EV to be considered complex
+        PetscReal :: tol_complex                                                ! tolerance for an EV to be considered complex
         PetscReal :: tol_EV_BC = 1.E-3_dp                                       ! tolerance for an EV to be considered due to the BC
         PetscReal, parameter :: infinity = 1.E40_dp                             ! beyond this value, modes are not saved
         PetscScalar :: X_val_loc                                                ! local X val
@@ -1580,6 +1566,7 @@ contains
         Vec :: err_vec                                                          ! Ax - omega^2 BX
         PetscReal :: err_norm                                                   ! norm of error
         PetscReal :: error_est                                                  ! error estimate of EPS solver
+        PetscScalar :: err_val                                                  ! X*(A-omega^2B)X
 #endif
         
         ! initialize ierr
@@ -1677,6 +1664,7 @@ contains
             X_val_loc = sol%val(id)
             
             ! tests
+            tol_complex = tol_SLEPC
             if (abs(imagpart(sol%val(id))/realpart(sol%val(id))).gt.&
                 &tol_complex) then                                              ! test for unphysical complex solution
                 EV_err_str = '# WARNING: Unphysical complex Eigenvalue!'
@@ -1747,6 +1735,11 @@ contains
                 call MatMult(err_mat,sol_vec,err_vec,ierr)
                 CHCKERR('Failed to multiply')
                 
+                ! multiply with X* and give output
+                call VecDot(sol_vec,err_vec,err_val,ierr)
+                CHCKERR('Failed to do dot product')
+                call writo('X*(A-omega^2B)X = '//trim(c2strt(err_val)))
+                
                 ! calculate absolute norm
                 call VecNorm(err_vec,NORM_2,err_norm,ierr)
                 CHCKERR('Failed to calculate norm')
@@ -1755,10 +1748,10 @@ contains
                 err_norm = err_norm/abs(sol%val(id))
                 
                 ! visualize solution
-                call writo('error: '//trim(r2str(err_norm))//', given :'//&
+                call writo('error: '//trim(r2str(err_norm))//', given: '//&
                     &trim(r2str(error))//', estimate: '//trim(r2str(error_est)))
-                !call VecView(err_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
-                !CHCKERR('Cannot view vector')
+                call VecView(err_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
+                CHCKERR('Cannot view vector')
                 
                 call lvl_ud(-1)
                 

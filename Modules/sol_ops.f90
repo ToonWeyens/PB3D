@@ -153,8 +153,8 @@ contains
         ! initialize XUQ_loc
         allocate(XUQ_loc(size(XUQ,1),size(XUQ,2)))
         
-        ! iterate over all modes
-        do jd = 1,sol%n_mod
+        ! iterate over all Fourier modes
+        Fourier: do jd = 1,sol%n_mod
             ! set up parallel multiplicative factor par_fac in normal eq grid
             if (use_pol_flux_F) then
                 par_fac = iu*(sol%n(jd)*eq%q_saf_FD(:,0)-sol%m(jd))
@@ -251,7 +251,7 @@ contains
             end if
             
             ! iterate over all normal points in sol grid
-            do kd = 1,grid_sol%loc_n_r
+            normal: do kd = 1,grid_sol%loc_n_r
                 ! set lower and upper index for this normal point
                 i_lo = floor(loc_r_eq(kd))
                 i_hi = ceiling(loc_r_eq(kd))
@@ -279,8 +279,8 @@ contains
                     XUQ(:,:,kd,id) = XUQ(:,:,kd,id) + XUQ_loc * &
                         &exp(iu*sqrt_X_val_norm*time(id)*2*pi)
                 end do
-            end do
-        end do
+            end do normal
+        end do Fourier
     end function calc_XUQ_arr
     integer function calc_XUQ_ind(grid_eq,grid_sol,eq,X,sol,X_id,XUQ_style,&
         &time,XUQ,met,deriv) result(ierr)                                       ! (time) individual version
@@ -322,6 +322,7 @@ contains
     ! grid.
     integer function plot_X_vec(grid_eq,grid_sol,eq,X,sol,XYZ,X_id,res_surf) &
         &result(ierr)
+        use num_vars, only: no_plots
         use grid_vars, only: dealloc_grid
         use grid_ops, only: trim_grid
         
@@ -358,6 +359,9 @@ contains
         
         ! initialize ierr
         ierr = 0
+        
+        ! bypass plots if no_plots
+        if (no_plots) return
         
         ! tests
         if (size(XYZ,4).ne.3) then
@@ -486,7 +490,7 @@ contains
         integer function plot_harmonics(grid_sol,sol,X_id,res_surf) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ser_var
             use output_ops, only: merge_GP
-            use num_vars, only: use_pol_flux_F, GP_max_size, rank
+            use num_vars, only: use_pol_flux_F, GP_max_size, rank, no_plots
             use eq_vars, only: max_flux_p_F, max_flux_t_F
             
             character(*), parameter :: rout_name = 'plot_harmonics'
@@ -511,6 +515,9 @@ contains
             
             ! initialize ierr
             ierr = 0
+            
+            ! bypass plots if no_plots
+            if (no_plots) return
             
             ! set up serial X_vec on master
             if (rank.eq.0) allocate(X_vec_ser(1:sol%n_mod,1:grid_sol%n(3)))
@@ -628,11 +635,13 @@ contains
     ! the quantities defined on the eq grid, and angularly in the eq grid.
     ! Optionally,  the  results can  be  plotted by  providing  X, Y  and Z.  By
     ! default, they are instead written to an output file.
+    ! Also, the  fraction between potential and kinetic energy  can be returned,
+    ! compared with the Eigenvalue.
     integer function decompose_energy(grid_eq,grid_sol,eq,met,X,sol,X_id,log_i,&
-        &B_aligned,XYZ) result(ierr)
+        &B_aligned,XYZ,X_val_comp) result(ierr)
         use grid_vars, only: dealloc_grid
         use grid_ops, only: trim_grid
-        use num_vars, only: norm_disc_prec_sol, rank
+        use num_vars, only: norm_disc_prec_sol, rank, no_plots
         
         character(*), parameter :: rout_name = 'decompose_energy'
         
@@ -646,6 +655,7 @@ contains
         integer, intent(in) :: log_i                                            ! file number of log file
         logical, intent(in) :: B_aligned                                        ! whether grid is field-aligned
         real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z for plotting
+        complex(dp), intent(inout), optional :: X_val_comp(2,2)                 ! comparison of EV and energy fraction
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -684,6 +694,12 @@ contains
         CHCKERR('')
         
         call lvl_ud(-1)
+        
+        ! set X_val_comp if wanted
+        if (present(X_val_comp)) then
+            X_val_comp(:,1) = complex(X_id*1._dp,0)
+            X_val_comp(:,2) = [sol%val(X_id),sum(E_pot_int)/sum(E_kin_int)]
+        end if
         
         if (.not.present(XYZ)) then                                             ! writing to log file
             ! user output
@@ -740,6 +756,9 @@ contains
             
             call lvl_ud(-1)
         else                                                                    ! plotting
+            ! bypass plots if no_plots
+            if (no_plots) return
+            
             ! user output
             call writo('Preparing plots')
             call lvl_ud(1)
@@ -934,6 +953,11 @@ contains
             if (debug_calc_E .or. debug_DU) then
                 allocate(DU(loc_dim(1),loc_dim(2),loc_dim(3)))
                 allocate(S(loc_dim(1),loc_dim(2),loc_dim(3)))
+                
+                ! calculate D_par U
+                ierr = calc_XUQ(grid_eq,grid_sol,eq,X,sol,X_id,2,0._dp,DU,&
+                    &met=met,deriv=.true.)
+                CHCKERR('')
             end if
 #endif
             
@@ -1020,11 +1044,6 @@ contains
                 call writo('Testing whether the total potential energy is &
                     &equal to the alternative form given in [ADD REF]')
                 call lvl_ud(1)
-                
-                ! calculate D_par U
-                ierr = calc_XUQ(grid_eq,grid_sol,eq,X,sol,X_id,2,0._dp,DU,&
-                    &met=met,deriv=.true.)
-                CHCKERR('')
                 
                 ! alternative formulation for E_pot, always real
                 E_pot(:,:,:,3) = (-2*D2p*kappa_n+sigma*S)*&

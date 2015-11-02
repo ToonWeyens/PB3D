@@ -457,7 +457,7 @@ contains
             &tol_NR, rank, n_procs, no_guess, n_sol_requested, nyq_fac, tol_r, &
             &use_pol_flux_F, use_pol_flux_E, retain_all_sol, plot_flux_q, &
             &plot_grid, no_plots, eq_style, use_normalization, n_sol_plotted, &
-            &n_theta_plot, n_zeta_plot, plot_resonance, EV_BC, tol_slepc, &
+            &n_theta_plot, n_zeta_plot, plot_resonance, EV_BC, tol_SLEPC, &
             &rho_style, prog_style, max_it_inv, norm_disc_prec_X, &
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, tol_norm_r, &
             &max_it_slepc, max_mem_per_proc, PB3D_name
@@ -502,6 +502,8 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(use_normalization,1,MPI_LOGICAL,0,MPI_Comm_world,&
                 &ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
@@ -551,6 +553,9 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(norm_disc_prec_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
+            call MPI_Bcast(norm_disc_prec_sol,1,MPI_INTEGER,0,MPI_Comm_world,&
+                &ierr)
+            CHCKERR(err_msg)
             call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
@@ -564,8 +569,6 @@ contains
             select case (prog_style)
                 case(1)                                                         ! PB3D
                     call MPI_Bcast(no_guess,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(n_par_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
@@ -619,14 +622,11 @@ contains
                     call MPI_Bcast(EV_BC,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(tol_slepc,1,MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(tol_SLEPC,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                 case(2)                                                         ! POST
                     call MPI_Bcast(n_sol_plotted,4,MPI_INTEGER,0,&
-                        &MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(norm_disc_prec_sol,1,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(PB3D_version,1,MPI_DOUBLE_PRECISION,0,&

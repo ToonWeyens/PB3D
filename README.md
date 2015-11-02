@@ -227,3 +227,9 @@ CHANGELOG
       - The PB3D operations have to be initialized before using them. This sets the equilibrium style.
       - Modified 'broadcast_input_vars' to also broadcast miscellaneous variables in POST.
       - The maximum fluxes are now written in the equilibrium variables.
+
+0.99: - Implemented a plot of the comparison between the Eigenvalue and the energy fraction in 'plot_X_val_comp'.
+      - Bug fixes in calculation of ranges and 'no_plots' for POST.
+      - Bug fix in plotting of resonant surfaces.
+      - 'norm_disc_prec_sol' is now used in PB3D to indicate the discretization precision of the matrices A and B.
+      - SLEPC routines now need a trimmed solution grid, and an untrimmed solution grid is nowhere necessary in PB3D.

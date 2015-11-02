@@ -25,7 +25,7 @@ contains
     !       the other groups
     integer function run_driver_X() result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, max_it_r, rank, &
-            &plot_resonance, X_job_nr, X_jobs_lims
+            &plot_resonance, X_job_nr, X_jobs_lims, n_procs
         use MPI_utilities, only: wait_MPI
         use X_vars, only: dealloc_X, &
             &min_m_X, max_m_X, min_n_X, max_n_X, min_r_sol, max_r_sol, &
@@ -187,6 +187,9 @@ contains
                 &//trim(i2str(rank)))
         end do X_jobs_1
         
+        ! user output
+        if (n_procs.gt.1) call writo('Waiting for the other processes')
+        
         ! synchronize MPI
         ierr = wait_MPI()
         CHCKERR('')
@@ -292,6 +295,9 @@ contains
         do id = 1,2
             call dealloc_X(X_1(id))
         end do
+        
+        ! user output
+        if (n_procs.gt.1) call writo('Waiting for the other processes')
         
         ! synchronize MPI
         ierr = wait_MPI()

@@ -70,6 +70,7 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, kd                                                       ! counters
+        real(dp), allocatable :: s_H(:)                                         ! flux coordinate s
         real(dp), allocatable :: dqs(:)                                         ! derivative of q
         real(dp), allocatable :: curj(:)                                        ! toroidal current
         real(dp), allocatable :: vx(:), vy(:)                                   ! R and Z of surface
@@ -99,8 +100,8 @@ contains
         CHCKERR(err_msg)
         n_r_eq = n_r_eq + 1                                                     ! HELENA outputs nr. of normal points - 1
         
-        allocate(flux_p_H(n_r_eq))                                              ! flux, derived from normal coordinate
-        read(eq_i,*,IOSTAT=ierr) (flux_p_H(kd),kd=1,n_r_eq)                     ! it is squared below, after reading cpsurf
+        allocate(s_H(n_r_eq))                                                   ! flux coordinate
+        read(eq_i,*,IOSTAT=ierr) (s_H(kd),kd=1,n_r_eq)                          ! it is squared below, after reading cpsurf
         CHCKERR(err_msg)
         
         allocate(qs(n_r_eq))                                                    ! safety factor
@@ -144,7 +145,7 @@ contains
         
         read(eq_i,*,IOSTAT=ierr) cpsurf, radius                                 ! poloidal flux on surface, minor radius
         CHCKERR(err_msg)
-        flux_p_H = 2*pi*flux_p_H**2 * cpsurf                                    ! rescale poloidal flux (HELENA uses psi_pol/2pi as flux)
+        flux_p_H = 2*pi*s_H**2 * cpsurf                                         ! rescale flux coordinate (HELENA uses psi_pol/2pi as flux)
         
         allocate(h_H_33(nchi,n_r_eq))                                           ! upper metric factor 3,3
         read(eq_i,*,IOSTAT=ierr) &

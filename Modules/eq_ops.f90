@@ -166,7 +166,7 @@ contains
         use num_vars, only: use_pol_flux_F
         use utilities, only: calc_deriv
         use grid_vars, only: dealloc_grid
-        use grid_ops, only: trim_grid
+        use grid_ops, only: trim_grid, calc_XYZ_grid
 #endif
         
         ! input / output
@@ -205,6 +205,9 @@ contains
         real(dp), allocatable :: D3sigma(:,:,:)                                 ! D_theta sigma
         real(dp), allocatable :: D3sigma_ALT(:,:,:)                             ! alternative D_theta sigma
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle theta_F or zeta_F
+        real(dp), allocatable :: X_plot(:,:,:)                                  ! X of plot
+        real(dp), allocatable :: Y_plot(:,:,:)                                  ! Y of plot
+        real(dp), allocatable :: Z_plot(:,:,:)                                  ! Z of plot
         integer :: istat                                                        ! status
         integer :: jd                                                           ! counter
 #endif
@@ -267,7 +270,7 @@ contains
         end do 
         
 #if ldebug
-        ! test whether -2 p' J kappa_g = D3sigma
+        ! test whether -2 p' J kappa_g = D3sigma and plot kappa components
         if (debug_calc_derived_q) then
             call writo('Testing whether -2 p'' J kappa_g = D3sigma')
             call lvl_ud(1)
@@ -284,9 +287,9 @@ contains
             
             ! point parallel angle
             if (use_pol_flux_F) then
-                ang_par_F => grid_eq_trim%theta_F
+                ang_par_F => grid_eq%theta_F
             else
-                ang_par_F => grid_eq_trim%zeta_F
+                ang_par_F => grid_eq%zeta_F
             end if
             
             ! get derived sigma
@@ -306,13 +309,38 @@ contains
             end do
             
             ! plot output
-            call plot_HDF5('sigma','TEST_sigma',&
-                &eq%sigma(:,:,norm_id(1):norm_id(2)),tot_dim=grid_eq_trim%n,&
-                &loc_offset=[0,0,grid_eq_trim%i_min-1])
             call plot_diff_HDF5(D3sigma,D3sigma_ALT,'TEST_D3sigma',&
                 &grid_eq_trim%n,[0,0,grid_eq_trim%i_min-1],&
                 &description='To test whether -2 p'' J kappa_g = D3sigma',&
                 &output_message=.true.)
+            
+            ! get X, Y and Z of plot
+            allocate(X_plot(grid_eq_trim%n(1),grid_eq_trim%n(2),&
+                &grid_eq_trim%loc_n_r))
+            allocate(Y_plot(grid_eq_trim%n(1),grid_eq_trim%n(2),&
+                &grid_eq_trim%loc_n_r))
+            allocate(Z_plot(grid_eq_trim%n(1),grid_eq_trim%n(2),&
+                &grid_eq_trim%loc_n_r))
+            istat = calc_XYZ_grid(grid_eq_trim,X_plot,Y_plot,Z_plot)
+            CHCKSTT
+            
+            ! plot sigma
+            call plot_HDF5('sigma','TEST_sigma',&
+                &eq%sigma(:,:,norm_id(1):norm_id(2)),tot_dim=grid_eq_trim%n,&
+                &loc_offset=[0,0,grid_eq_trim%i_min-1],x=X_plot,y=Y_plot,&
+                &z=Z_plot)
+            
+            ! plot kappa_n
+            call plot_HDF5('kappa_n','TEST_kappa_n',&
+                &eq%kappa_n(:,:,norm_id(1):norm_id(2)),tot_dim=grid_eq_trim%n,&
+                &loc_offset=[0,0,grid_eq_trim%i_min-1],x=X_plot,y=Y_plot,&
+                &z=Z_plot)
+            
+            ! plot kappa_g
+            call plot_HDF5('kappa_g','TEST_kappa_g',&
+                &eq%kappa_g(:,:,norm_id(1):norm_id(2)),tot_dim=grid_eq_trim%n,&
+                &loc_offset=[0,0,grid_eq_trim%i_min-1],x=X_plot,y=Y_plot,&
+                &z=Z_plot)
             
             ! clean up
             nullify(ang_par_F)

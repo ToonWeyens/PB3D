@@ -231,12 +231,10 @@ contains
             deallocate(flux_F,flux_E)
         end function calc_norm_range_PB3D_eq
         
-        ! The normal range  is determined by simply dividing  the solution range
-        ! and including a ghost region.
+        ! The normal range is determined by simply dividing the solution range.
         integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol) &
             &result(ierr)                                                       ! PB3D version for solution grid
-            use num_vars, only: n_procs, rank, norm_disc_prec_sol, &
-                &use_pol_flux_F
+            use num_vars, only: n_procs, rank, use_pol_flux_F
             use eq_vars, only: max_flux_p_F, max_flux_t_F
             use X_vars, only: min_r_sol, max_r_sol
             use utilities, only: round_with_tol
@@ -265,10 +263,6 @@ contains
             
             ! set sol_limits
             sol_limits = [sum(loc_n_r_sol(1:rank))+1,sum(loc_n_r_sol(1:rank+1))]
-            if (rank.gt.0) sol_limits(1) = sol_limits(1)-norm_disc_prec_sol     ! ghost region for num. deriv.
-            if (rank.lt.n_procs-1) sol_limits(2) = &
-                &sol_limits(2)+norm_disc_prec_sol+1                             ! ghost region for num. deriv. and overlap for int_vol
-            
             
             ! set up max_flux
             if (use_pol_flux_F) then

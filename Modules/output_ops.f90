@@ -99,13 +99,6 @@ contains
         integer :: istat
         character(len=max_str_ln) :: file_name
         
-        ! return if no_plots
-        if (no_plots) then
-            call writo('WARNING: plot ignored because no_plots is on',&
-                &persistent=.true.)
-            return
-        end if
-        
         ! set nplt, npnt
         npnt = size(y,1)
         nplt = size(y,2)
@@ -147,6 +140,9 @@ contains
         
         ! close output file
         close(file_i)
+        
+        ! bypass plots if no_plots
+        if (no_plots) return
         
         ! if draw is present and equal to .false., cancel calling draw_GP
         if (present(draw)) then
@@ -228,13 +224,6 @@ contains
         integer :: istat
         character(len=max_str_ln) :: file_name
         
-        ! return if no_plots
-        if (no_plots) then
-            call writo('WARNING: plot ignored because no_plots is on',&
-                &persistent=.true.)
-            return
-        end if
-        
         ! set nplt, npnt
         npntx = size(z,1)
         npnty = size(z,2)
@@ -301,6 +290,9 @@ contains
         
         ! close output file
         close(file_i)
+        
+        ! bypass plots if no_plots
+        if (no_plots) return
         
         ! if draw is present and equal to .false., cancel calling draw_GP
         if (present(draw)) then
@@ -369,13 +361,6 @@ contains
         integer :: plt_count                                                    ! counts the number of plots
         integer :: cmdstat                                                      ! status of C system command
         character(len=5*max_str_ln) :: cmdmessage                               ! error message of C system command
-        
-        ! return if no_plots
-        if (no_plots) then
-            call writo('WARNING: plot ignored because no_plots is on',&
-                &persistent=.true.)
-            return
-        end if
         
         ! set up nfl
         nfl = size(file_names)
@@ -517,32 +502,37 @@ contains
         ! stop timer
         call stop_time
         
-        ! call GNUPlot
-        call execute_command_line('gnuplot "'//trim(script_name)//'"'//&
-            &err_output_str,EXITSTAT=istat,CMDSTAT=cmdstat,CMDMSG=cmdmessage)
-        
-        if (istat.ne.0) then
-            call writo('Failed to plot '//trim(draw_name)//'.pdf',&
-                &persistent=.true.)
-        else
-            if (cmdstat.ne.0) then
+        ! bypass plots if no_plots
+        if (.not.no_plots) then
+            ! call GNUPlot
+            call execute_command_line('gnuplot "'//trim(script_name)//'"'//&
+                &err_output_str,EXITSTAT=istat,CMDSTAT=cmdstat,&
+                &CMDMSG=cmdmessage)
+            
+            if (istat.ne.0) then
                 call writo('Failed to plot '//trim(draw_name)//'.pdf',&
                     &persistent=.true.)
-                call lvl_ud(1)
-                if (cmdstat.ne.0) call writo('System message: "'//&
-                    &trim(cmdmessage)//'"',persistent=.true.)
-                if (.not.plot_on_screen) call writo('Try running "gnuplot "'//&
-                    &trim(script_name)//'"'//'" manually',persistent=.true.)
-                call lvl_ud(-1)
             else
-                if (plot_on_screen) then
-                    call execute_command_line('rm '//trim(script_name),&
-                        &EXITSTAT=istat,CMDSTAT=CMDSTAT,CMDMSG=cmdmessage)
-                    ! ignore errors
-                else
-                    call writo('Created plot in output file '''//&
-                        &trim(plot_dir)//'/'//trim(draw_name)//'.pdf''',&
+                if (cmdstat.ne.0) then
+                    call writo('Failed to plot '//trim(draw_name)//'.pdf',&
                         &persistent=.true.)
+                    call lvl_ud(1)
+                    if (cmdstat.ne.0) call writo('System message: "'//&
+                        &trim(cmdmessage)//'"',persistent=.true.)
+                    if (.not.plot_on_screen) call writo(&
+                        &'Try running "gnuplot "'//trim(script_name)//'"'//&
+                        &'" manually',persistent=.true.)
+                    call lvl_ud(-1)
+                else
+                    if (plot_on_screen) then
+                        call execute_command_line('rm '//trim(script_name),&
+                            &EXITSTAT=istat,CMDSTAT=CMDSTAT,CMDMSG=cmdmessage)
+                        ! ignore errors
+                    else
+                        call writo('Created plot in output file '''//&
+                            &trim(plot_dir)//'/'//trim(draw_name)//'.pdf''',&
+                            &persistent=.true.)
+                    end if
                 end if
             end if
         end if
@@ -608,13 +598,6 @@ contains
         integer :: plt_count                                                    ! counts the number of plots
         integer :: cmdstat                                                      ! status of C system command
         character(len=5*max_str_ln) :: cmdmessage                               ! error message of C system command
-        
-        ! return if no_plots
-        if (no_plots) then
-            call writo('WARNING: plot ignored because no_plots is on',&
-                &persistent=.true.)
-            return
-        end if
         
         ! set up nfl
         nfl = size(file_names)
@@ -818,25 +801,29 @@ contains
         
         ! no need to stop the time
         
-        ! call GNUPlot
-        call execute_command_line('gnuplot "'//trim(script_name)//'"'//&
-            &err_output_str,EXITSTAT=istat,CMDSTAT=cmdstat,CMDMSG=cmdmessage)
-        
-        if (istat.ne.0) then
-            call writo('Failed to plot '//trim(draw_name)//'.pdf',&
-                &persistent=.true.)
-        else
-            if (cmdstat.ne.0) then
+        ! bypass plots if no_plots
+        if (.not.no_plots) then
+            ! call GNUPlot
+            call execute_command_line('gnuplot "'//trim(script_name)//'"'//&
+                &err_output_str,EXITSTAT=istat,CMDSTAT=cmdstat,&
+                &CMDMSG=cmdmessage)
+            
+            if (istat.ne.0) then
                 call writo('Failed to plot '//trim(draw_name)//'.pdf',&
-                &persistent=.true.)
-                call lvl_ud(1)
-                if (cmdstat.ne.0) call writo('System message: "'//&
-                    &trim(cmdmessage)//'"',persistent=.true.)
-                call lvl_ud(-1)
-            else
-                call writo('Created animated plot in output file '''//&
-                    &trim(plot_dir)//'/'//trim(draw_name)//'.pdf''',&
                     &persistent=.true.)
+            else
+                if (cmdstat.ne.0) then
+                    call writo('Failed to plot '//trim(draw_name)//'.pdf',&
+                    &persistent=.true.)
+                    call lvl_ud(1)
+                    if (cmdstat.ne.0) call writo('System message: "'//&
+                        &trim(cmdmessage)//'"',persistent=.true.)
+                    call lvl_ud(-1)
+                else
+                    call writo('Created animated plot in output file '''//&
+                        &trim(plot_dir)//'/'//trim(draw_name)//'.pdf''',&
+                        &persistent=.true.)
+                end if
             end if
         end if
     contains
