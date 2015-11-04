@@ -1193,13 +1193,29 @@ contains
                             &( vac_perm*J(:,:,kd)**2*h22(:,:,kd) ) - &
                             &2*eq%pres_FD(kd,1)*eq%kappa_n(:,:,kd)
                     end do
+                    
+                    !! "Intuitive" alternative
+                    !X%PV_0(:,:,:,c_loc(1)) = com_fac*&
+                        !&conjg(X_a%DU_0(:,:,:,k) - eq%S*J) * &
+                        !&(X_b%DU_0(:,:,:,m) - eq%S*J) - &
+                        !&eq%sigma/J * (X_b%DU_0(:,:,:,m) - eq%S*J)
+                    !do kd = 1,grid%loc_n_r
+                        !X%PV_0(:,:,kd,c_loc(1)) = X%PV_0(:,:,kd,c_loc(1)) + &
+                            !&(X_b%n(m)*fac_n(kd)-X_b%m(m)*fac_m(kd))*&
+                            !&(X_a%n(k)*fac_n(kd)-X_a%m(k)*fac_m(kd)) / &
+                            !&( vac_perm*J(:,:,kd)**2*h22(:,:,kd) ) - &
+                            !&2*eq%pres_FD(kd,1) * (eq%kappa_n(:,:,kd) + &
+                            !&eq%kappa_g(:,:,kd) * conjg(X_a%U_0(:,:,kd,k))) + &
+                            !&eq%sigma(:,:,kd)/J(:,:,kd) * &
+                            !&conjg(X_a%U_0(:,:,kd,k)) * iu * &
+                            !&(X_b%n(m)*fac_n(kd)-X_b%m(m)*fac_m(kd))
+                    !end do
                 end if
                 
                 ! calculate PV_1
                 if (calc_this(2)) then
                     X%PV_1(:,:,:,c_loc(2)) = com_fac * X_b%DU_1(:,:,:,m) * &
-                        &(conjg(X_a%DU_0(:,:,:,k)) - eq%S*J - &
-                        &eq%sigma/(com_fac*J))
+                        &conjg(X_a%DU_0(:,:,:,k)-eq%S*J-eq%sigma/(com_fac*J))
                 end if
                 
                 ! calculate PV_2

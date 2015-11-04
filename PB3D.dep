@@ -262,6 +262,7 @@ files_ops.o : \
     HDF5_vars.o \
     grid_vars.o \
     X_vars.o \
+    PB3D_ops.o \
 
 files_utilities.o : \
     str_ops.o \

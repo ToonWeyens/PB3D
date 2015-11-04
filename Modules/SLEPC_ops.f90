@@ -2011,6 +2011,7 @@ contains
                 call print_ar_2(realpart(block))
                 write(*,*) 'Im ='
                 call print_ar_2(imagpart(block))
+                if (transp_loc) call writo('as well as at the transposed place')
                 if (overwrite_loc) then
                     call writo('(with operation INSERT_VALUES)')
                 else
@@ -2023,13 +2024,13 @@ contains
             err_msg = 'Couldn''t add values to matrix'
             
             ! set values
-            call MatSetValues(mat,size(block,1),loc_k,size(block,2),loc_m,&
+            call MatSetValues(mat,size(block,2),loc_m,size(block,1),loc_k,&
                 &block,operation,ierr)
             CHCKERR(err_msg)
             
             ! set transpose if wanted
             if (transp_loc) then
-                call MatSetValues(mat,size(block,2),loc_m,size(block,1),loc_k,&
+                call MatSetValues(mat,size(block,1),loc_k,size(block,2),loc_m,&
                     &conjg(transpose(block)),operation,ierr)
                 CHCKERR(err_msg)
             end if

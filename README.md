@@ -233,3 +233,7 @@ CHANGELOG
       - Bug fix in plotting of resonant surfaces.
       - 'norm_disc_prec_sol' is now used in PB3D to indicate the discretization precision of the matrices A and B.
       - SLEPC routines now need a trimmed solution grid, and an untrimmed solution grid is nowhere necessary in PB3D.
+
+1.00: - FIRST WORKING VERSION
+      - Bug fixed where Hermitian conjugate was stored in stead of the real matrices in SLEPC.
+      - Checked consistency of results when "intuitive" version of plasma potential energy is used.
