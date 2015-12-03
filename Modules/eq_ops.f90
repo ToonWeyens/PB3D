@@ -324,6 +324,12 @@ contains
             istat = calc_XYZ_grid(grid_eq_trim,X_plot,Y_plot,Z_plot)
             CHCKSTT
             
+            ! plot shear
+            call plot_HDF5('shear','TEST_shear',&
+                &eq%S(:,:,norm_id(1):norm_id(2)),tot_dim=grid_eq_trim%n,&
+                &loc_offset=[0,0,grid_eq_trim%i_min-1],x=X_plot,y=Y_plot,&
+                &z=Z_plot)
+            
             ! plot sigma
             call plot_HDF5('sigma','TEST_sigma',&
                 &eq%sigma(:,:,norm_id(1):norm_id(2)),tot_dim=grid_eq_trim%n,&
@@ -613,8 +619,8 @@ contains
     ! transformation of R, Z and L and calculate the derivatives.
     integer function prepare_RZL(grid) result(ierr)
         use num_vars, only: max_deriv, norm_disc_prec_eq
-        use fourier, only: calc_trigon_factors
-        use VMEC, only: mpol, ntor, R_V_c, Z_V_s, L_V_s, R_V_s, Z_V_c, L_V_c
+        use VMEC, only: calc_trigon_factors, &
+            &mpol, ntor, R_V_c, Z_V_s, L_V_s, R_V_s, Z_V_c, L_V_c
         use utilities, only: calc_deriv
         
         character(*), parameter :: rout_name = 'prepare_RZL'
@@ -672,8 +678,8 @@ contains
     ! Z are not necessary for calculation of the metric coefficients, and L does
     ! not exist.
     integer function calc_RZL_ind(grid,eq,deriv) result(ierr)
-        use fourier, only: fourier2real
-        use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s
+        use VMEC, only: fourier2real, &
+            &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s
         use utilities, only: check_deriv
         use num_vars, only: max_deriv
         

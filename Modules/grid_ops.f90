@@ -570,6 +570,9 @@ contains
     end function calc_ang_grid_eq
     
     ! Calculate grid that follows magnetic field lines.
+    ! Note: The end-points are included for the grids in the parallel direction.
+    ! This is to  facilitate working with the trapezoidal  rule for integration.
+    ! This is NOT valid in general!!!
     integer function calc_ang_grid_eq_B(grid_eq,eq) result(ierr)
         use num_vars, only: use_pol_flux_F, use_pol_flux_E, &
             &eq_style, tol_NR
@@ -635,7 +638,7 @@ contains
         ! and use this to calculate the other angle as well
         if (use_pol_flux_F) then                                                ! parallel angle theta
             ierr = calc_eqd_grid(grid_eq%theta_F,min_par_X*pi,&
-                &max_par_X*pi,1,excl_last=.true.)                               ! first index corresponds to parallel angle
+                &max_par_X*pi,1,excl_last=.false.)                              ! first index corresponds to parallel angle
             CHCKERR('')
             do kd = 1,grid_eq%loc_n_r
                 grid_eq%zeta_F(:,:,kd) = pmone*eq%q_saf_E(kd,0)*&
@@ -644,7 +647,7 @@ contains
             grid_eq%zeta_F = grid_eq%zeta_F + alpha
         else                                                                    ! parallel angle zeta
             ierr = calc_eqd_grid(grid_eq%zeta_F,min_par_X*pi,&
-                &max_par_X*pi,1,excl_last=.true.)                               ! first index corresponds to parallel angle
+                &max_par_X*pi,1,excl_last=.false.)                              ! first index corresponds to parallel angle
             CHCKERR('')
             do kd = 1,grid_eq%loc_n_r
                 grid_eq%theta_F(:,:,kd) = pmone*eq%rot_t_E(kd,0)*&
@@ -695,8 +698,8 @@ contains
     integer function coord_F2E_rtz(eq,grid_eq,r_F,theta_F,zeta_F,r_E,&
         &theta_E,zeta_E,r_F_array,r_E_array) result(ierr)                       ! version with r, theta and zeta
         use num_vars, only: tol_NR, eq_style
-        use fourier, only: fourier2real, calc_trigon_factors
-        use VMEC, only: L_V_c, L_V_s
+        use VMEC, only: fourier2real, calc_trigon_factors, &
+            &L_V_c, L_V_s
         use utilities, only: interp_fun
         
         character(*), parameter :: rout_name = 'coord_F2E_rtz'
@@ -1057,8 +1060,8 @@ contains
         end select
     contains
         integer function coord_E2F_VMEC() result(ierr)
-            use VMEC, only: mpol, ntor, L_V_c, L_V_s
-            use fourier, only: calc_trigon_factors, fourier2real
+            use VMEC, only: calc_trigon_factors, fourier2real, &
+                &mpol, ntor, L_V_c, L_V_s
             
             character(*), parameter :: rout_name = 'coord_E2F_VMEC'
             
@@ -1255,8 +1258,8 @@ contains
     contains
         ! VMEC version
         integer function calc_XYZ_grid_VMEC(grid,X,Y,Z,L) result(ierr)
-            use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor
-            use fourier, only: calc_trigon_factors, fourier2real
+            use VMEC, only: calc_trigon_factors, fourier2real, &
+                &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_VMEC'
             

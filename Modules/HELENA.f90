@@ -57,7 +57,9 @@ contains
     ! flux/2pi  on  the normal  positions,  where  the normalization  factor  is
     ! contained in "cpsurf", which is the poloidal flux at the surface.
     ! Finally, some variables are not tabulated on the magnetic axis.
-    ! [MPI] only global master
+    ! Note that in the asymmetric case,  the number of poloidal points, nchi, is
+    ! aumented by one  and the information for 0 is  copied into the information
+    ! for 2pi, to facilitate interpolation.
     integer function read_HEL(n_r_eq,use_pol_flux_H) result(ierr)
         use num_vars, only: eq_name, eq_i
         
@@ -70,6 +72,7 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, kd                                                       ! counters
+        integer :: nchi_loc                                                     ! local nchi
         real(dp), allocatable :: s_H(:)                                         ! flux coordinate s
         real(dp), allocatable :: dqs(:)                                         ! derivative of q
         real(dp), allocatable :: curj(:)                                        ! toroidal current
@@ -124,24 +127,29 @@ contains
         
         read(eq_i,*,IOSTAT=ierr) nchi                                           ! nr. poloidal points
         CHCKERR(err_msg)
+        nchi_loc = nchi
+        if (ias.ne.0) nchi = nchi + 1                                           ! extend grid to 2pi
         
         allocate(chi_H(nchi))                                                   ! poloidal points
-        read(eq_i,*,IOSTAT=ierr) (chi_H(id),id=1,nchi)
+        read(eq_i,*,IOSTAT=ierr) (chi_H(id),id=1,nchi_loc)
         CHCKERR(err_msg)
+        if (ias.ne.0) chi_H(nchi) = 2*pi
         
         allocate(h_H_11(nchi,n_r_eq))                                           ! upper metric factor 1,1
         read(eq_i,*,IOSTAT=ierr) &
-            &(h_H_11(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,&
-            &n_r_eq*nchi)                                                       ! (gem11)
+            &(h_H_11(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
+            &id=nchi_loc+1,n_r_eq*nchi_loc)                                     ! (gem11)
         CHCKERR(err_msg)
         h_H_11(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
+        if (ias.ne.0) h_H_11(nchi,:) = h_H_11(1,:)
         
         allocate(h_H_12(nchi,n_r_eq))                                           ! upper metric factor 1,2
         read(eq_i,*,IOSTAT=ierr) &
-            &(h_H_12(mod(id-1,nchi)+1,(id-1)/nchi+1),&
-            &id=nchi+1,n_r_eq*nchi)                                             ! (gem12)
+            &(h_H_12(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
+            &id=nchi_loc+1,n_r_eq*nchi_loc)                                     ! (gem12)
         CHCKERR(err_msg)
         h_H_12(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
+        if (ias.ne.0) h_H_12(nchi,:) = h_H_12(1,:)
         
         read(eq_i,*,IOSTAT=ierr) cpsurf, radius                                 ! poloidal flux on surface, minor radius
         CHCKERR(err_msg)
@@ -149,10 +157,11 @@ contains
         
         allocate(h_H_33(nchi,n_r_eq))                                           ! upper metric factor 3,3
         read(eq_i,*,IOSTAT=ierr) &
-            &(h_H_33(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,&
-            &n_r_eq*nchi)                                                       ! (gem33)
+            &(h_H_33(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),id=&
+            &nchi_loc+1,n_r_eq*nchi_loc)                                        ! (gem33)
         h_H_33(:,:) = 1._dp/h_H_33(:,:)                                         ! HELENA gives R^2, but need 1/R^2
         h_H_33(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
+        if (ias.ne.0) h_H_33(nchi,:) = h_H_33(1,:)
         
         read(eq_i,*,IOSTAT=ierr) raxis                                          ! major radius
         CHCKERR(err_msg)
@@ -172,29 +181,33 @@ contains
         CHCKERR(err_msg)
         
         allocate(vx(nchi))                                                      ! R B_phi
-        read(eq_i,*,IOSTAT=ierr) (vx(id),id=1,nchi)                             ! R on surface
+        read(eq_i,*,IOSTAT=ierr) (vx(id),id=1,nchi_loc)                         ! R on surface
         CHCKERR(err_msg)
+        if (ias.ne.0) vx(nchi) = vx(1)
         
         allocate(vy(nchi))                                                      ! R B_phi
-        read(eq_i,*,IOSTAT=ierr) (vy(id),id=1,nchi)                             ! Z on surface
+        read(eq_i,*,IOSTAT=ierr) (vy(id),id=1,nchi_loc)                         ! Z on surface
         CHCKERR(err_msg)
+        if (ias.ne.0) vy(nchi) = vy(1)
         
         read(eq_i,*,IOSTAT=ierr) eps                                            ! inerse aspect ratio
         CHCKERR(err_msg)
         
         allocate(R_H(nchi,n_r_eq))                                              ! major radius R
         R_H(:,1) = 0._dp                                                        ! values on axis are not given by HELENA -> set to zero
-        read(eq_i,*,IOSTAT=ierr) &
-            &(R_H(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,n_r_eq*nchi)        ! (xout)
+        read(eq_i,*,IOSTAT=ierr) (R_H(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
+            &id=nchi_loc+1,n_r_eq*nchi_loc)                                     ! (xout)
         CHCKERR(err_msg)
         R_H = radius*(1._dp/eps + R_H)                                          ! from a to R
+        if (ias.ne.0) R_H(nchi,:) = R_H(1,:)
         
         allocate(Z_H(nchi,n_r_eq))                                              ! height Z
         Z_H(:,1) = 0._dp                                                        ! values on axis are not given by HELENA -> set to zero
-        read(eq_i,*,IOSTAT=ierr) &
-            &(Z_H(mod(id-1,nchi)+1,(id-1)/nchi+1),id=nchi+1,n_r_eq*nchi)        ! (yout)
+        read(eq_i,*,IOSTAT=ierr) (Z_H(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
+            &id=nchi_loc+1,n_r_eq*nchi_loc)                                     ! (yout)
         CHCKERR(err_msg)
         Z_H = radius*Z_H                                                        ! from a to R
+        if (ias.ne.0) Z_H(nchi,:) = Z_H(1,:)
        
         ! HELENA always uses the poloidal flux
         use_pol_flux_H = .true.
@@ -231,19 +244,30 @@ contains
     ! the  floored  integer of  each  value  indicates  the  base index  of  the
     ! interpolated value in the output grid  and the modulus is the the fraction
     ! towards the next integer.
-    ! The flag  td_sym indicates optionally  that there is top-down  symmetry as
+    ! The flag tb_sym indicates optionally  that there is top-bottom symmetry as
     ! well as axisymmetry. When there is top-down symmetry, the variables in the
-    ! lower half  (i.e. pi<theta<2pi) are  calculated from the variables  in the
-    ! upper  half  using  var(2pi-theta)  = var(theta).  However,  some  complex
-    ! variables also  need to  apply the complex  conjugate when  using top-down
-    ! symmetry.  Therefore, to  indicate  this, the  sign  of the  interpolation
-    ! factor is inverted so  it is negative. For variables that  do not need the
-    ! complex conjugate, this can safely be ignored by taking the absolute value
-    ! of the interpolation factor.
+    ! lower half  (i.e. -pi<theta<0)  are calculated from  the variables  in the
+    ! upper half  using the  symmetry properties of  the variables.  To indicate
+    ! this,  the sign  of the  interpolation factor  is inverted  to a  negative
+    ! value.
+    ! The displacement of the fundamental theta interval is also outputted. For
+    ! asymmetric variables this is for example:
+    !    1  for -2pi ..  0
+    !    0  for  0   ..  2pi
+    !   -1  for  2pi ..  4pi
+    ! etc.
+    ! For symmetric variables, this is for example:
+    !    1  for -3pi .. -2pi,   with symmetry property
+    !    1  for -2pi .. -pi
+    !    0  for -pi  ..  0,     with symmetry property
+    !    0  for  0   ..  pi
+    !   -1  for  pi  ..  2pi,   with symmetry property
+    !   -1  for  3pi ..  3pi
+    ! etc.
     ! By default, the variables in the Flux coord. system are used, but this can
     ! be changed optionally with the flag "use_E".
-    integer function get_ang_interp_data_HEL(grid_in,grid_out,theta_i,td_sym,&
-        &use_E) result(ierr)
+    integer function get_ang_interp_data_HEL(grid_in,grid_out,theta_i,&
+        &fund_theta_int_displ,tb_sym,use_E) result(ierr)
         use utilities, only: con2dis
         
         character(*), parameter :: rout_name = 'get_ang_interp_data_HEL'
@@ -251,16 +275,18 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_in, grid_out                        ! input and output grid
         real(dp), allocatable, intent(inout) :: theta_i(:,:,:)                  ! interpolation index
-        logical, intent(in), optional :: td_sym                                 ! top-down symmetry
+        integer, allocatable, intent(inout) :: fund_theta_int_displ(:,:,:)      ! displacement of fundamental theta interval
+        logical, intent(in), optional :: tb_sym                                 ! top-bottom symmetry
         logical, intent(in), optional :: use_E                                  ! whether E is used instead of F
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
-        logical :: td_sym_loc                                                   ! local version of td_sym
+        logical :: tb_sym_loc                                                   ! local version of tb_sym
         logical :: use_E_loc                                                    ! local version of use_E
         real(dp) :: theta_loc                                                   ! local theta of output grid
         real(dp), pointer :: theta_in(:) => null()                              ! input theta
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: fund_theta_int_lo, fund_theta_int_hi                         ! lower and upper limit of fundamental theta interval
         
         ! initialize ierr
         ierr = 0
@@ -278,14 +304,19 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! set up local use_E and td_sym
+        ! set up local use_E and tb_sym
         use_E_loc = .false.
         if (present(use_E)) use_E_loc = use_E
-        td_sym_loc = .false.
-        if (present(td_sym)) td_sym_loc = td_sym
+        tb_sym_loc = .false.
+        if (present(tb_sym)) tb_sym_loc = tb_sym
         
-        ! allocate theta_i
+        ! allocate theta_i and fundamental theta interval displacement
         allocate(theta_i(grid_out%n(1),grid_out%n(2),grid_out%loc_n_r))
+        allocate(fund_theta_int_displ(grid_out%n(1),grid_out%n(2),&
+            &grid_out%loc_n_r))
+        
+        ! initialize fundamental theta interval displacement
+        fund_theta_int_displ = 0
         
         ! For every point on output grid, check to which half poloidal circle on
         ! the  axisymmetric input  grid  it  belongs to.  If  there is  top-down
@@ -311,27 +342,31 @@ contains
                         theta_loc = grid_out%theta_F(id,jd,kd)
                     end if
                     
-                    ! add or subtract  2pi to the parallel angle until  it is at
-                    ! least 0 to get principal range 0..2pi
-                    if (theta_loc.lt.0._dp) then
-                        do while (theta_loc.lt.0._dp)
-                            theta_loc = theta_loc + 2*pi
-                        end do
-                    else if (theta_loc.gt.2*pi) then
-                        do while (theta_loc.gt.2._dp*pi)
-                            theta_loc = theta_loc - 2*pi
-                        end do
+                    ! set min
+                    if (tb_sym) then
+                        fund_theta_int_lo = -1
+                        fund_theta_int_hi = 1
+                    else
+                        fund_theta_int_lo = 0
+                        fund_theta_int_hi = 2
                     end if
                     
-                    ! get interpolation factors in theta_i
-                    if (td_sym .and. theta_loc.gt.pi) then                      ! bottom part and top-down symmetric
-                        ierr = con2dis(2*pi-theta_loc,theta_i(id,jd,kd),&
-                            &theta_in)
-                        theta_i(id,jd,kd) = - theta_i(id,jd,kd)                 ! top-down symmetry applied
-                    else
-                        ierr = con2dis(theta_loc,theta_i(id,jd,kd),theta_in)
+                    ! add or subtract  2pi to the poloidal angle until  it is in
+                    ! the fundamental  range indicated by  fund_theta_int_lo and
+                    ! hi
+                    if (theta_loc.lt.fund_theta_int_lo*pi) then
+                        do while (theta_loc.lt.fund_theta_int_lo*pi)
+                            theta_loc = theta_loc + 2*pi
+                            fund_theta_int_displ(id,jd,kd) = &
+                                &fund_theta_int_displ(id,jd,kd) + 1
+                        end do
+                    else if (theta_loc.gt.fund_theta_int_hi*pi) then
+                        do while (theta_loc.gt.fund_theta_int_hi*pi)
+                            theta_loc = theta_loc - 2*pi
+                            fund_theta_int_displ(id,jd,kd) = &
+                                &fund_theta_int_displ(id,jd,kd) - 1
+                        end do
                     end if
-                    CHCKERR('')
                 end do
             end do
         end do
@@ -347,11 +382,17 @@ contains
     !   - metric variables: jac_FD, g_FD, h_FD
     !   - vectorial perturbation variables: U_i, DU_i
     !   - tensorial perturbation variables: PV_i, KV_i
+    ! Also, a message can be printed if a grid name is passed.
     ! Note: By default the interpolated  quantities overwrite the original ones,
     ! but alternative output variables can be provided.
-    ! Also, a message can be printed if a grid name is passed.
+    ! Also  note   that  to  interpolate  the   metric  quantities,  equilibrium
+    ! quantities  are needed  as well,  to set  up the  transformation matrices,
+    ! through eq_met.
     integer function interp_HEL_on_grid(grid_eq,grid_eq_out,eq,met,X_1,X_2,&
-        &eq_out,met_out,X_1_out,X_2_out,grid_name) result(ierr)
+        &eq_out,met_out,X_1_out,X_2_out,eq_met,grid_name) result(ierr)
+        
+        use num_vars, only: use_pol_flux_F
+        use utilities, only: calc_mult, c
         
         character(*), parameter :: rout_name = 'interp_HEL_on_grid'
         
@@ -365,30 +406,43 @@ contains
         type(met_type), intent(inout), optional :: met_out                      ! field-aligned metric variables
         type(X_1_type), intent(inout), optional  :: X_1_out                     ! field-aligned vectorial perturbation variables
         type(X_2_type), intent(inout), optional  :: X_2_out                     ! field-aligned tensorial perturbation variables
+        type(eq_type), intent(in), optional :: eq_met                           ! general equilibrium variables for metric interpolation
         character(len=*), intent(in), optional :: grid_name                     ! name of grid to which to adapt quantities
         
         ! local variables
         real(dp), allocatable :: theta_i(:,:,:)                                 ! interpolation index
-        logical :: td_sym                                                       ! whether there is top-down symmetry (relevant only for HELENA)
+        integer, allocatable :: fund_theta_int_displ(:,:,:)                     ! displacement of fundamental theta interval
+        logical :: tb_sym                                                       ! whether there is top-bottom symmetry (relevant only for HELENA)
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), allocatable :: T_od(:)                                        ! nonzero off-diagonal part of T
         
         ! initialize ierr
         ierr = 0
+        
         ! user output
         if (present(grid_name)) then
             call writo('Adapting quantities to '//trim(grid_name))
             call lvl_ud(1)
         end if
         
-        ! set up td_sym
+        ! tests
+        if (present(met).and..not.present(eq_met)) then
+            ierr =1 
+            err_msg = 'To interpolate metric variables, equilibrium has to be &
+                &provided as well through eq_met'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set up tb_sym
         if (ias.eq.0) then
-            td_sym = .true.
+            tb_sym = .true.
         else
-            td_sym = .false.
+            tb_sym = .false.
         end if
         
         ! get angular interpolation factors
         ierr = get_ang_interp_data_HEL(grid_eq,grid_eq_out,theta_i,&
-            &td_sym=td_sym,use_E=.false.)
+            &fund_theta_int_displ,tb_sym=tb_sym,use_E=.false.)
         CHCKERR('')
         
         ! adapt equilibrium quantities
@@ -400,77 +454,102 @@ contains
                 eq_out%flux_p_FD = eq%flux_p_FD
                 eq_out%flux_t_FD = eq%flux_t_FD
                 eq_out%rho = eq%rho
-            else
+            !else
                 ! do nothing
             end if
             if (present(eq_out)) then
-                call interp_var_3D_real(eq%S,theta_i,eq_out%S)
+                ierr = interp_var_3D_real(eq%S,theta_i,eq_out%S)
             else
-                call interp_var_3D_real_ow(eq%S,theta_i)
+                ierr = interp_var_3D_real_ow(eq%S,theta_i)
             end if
+            CHCKERR('')
             if (present(eq_out)) then
-                call interp_var_3D_real(eq%sigma,theta_i,eq_out%sigma)
+                ierr = interp_var_3D_real(eq%sigma,theta_i,eq_out%sigma)
             else
-                call interp_var_3D_real_ow(eq%sigma,theta_i)
+                ierr = interp_var_3D_real_ow(eq%sigma,theta_i)
             end if
+            CHCKERR('')
             if (present(eq_out)) then
-                call interp_var_3D_real(eq%kappa_n,theta_i,eq_out%kappa_n)
+                ierr = interp_var_3D_real(eq%kappa_n,theta_i,eq_out%kappa_n)
             else
-                call interp_var_3D_real_ow(eq%kappa_n,theta_i)
+                ierr = interp_var_3D_real_ow(eq%kappa_n,theta_i)
             end if
+            CHCKERR('')
             if (present(eq_out)) then
-                call interp_var_3D_real(eq%kappa_g,theta_i,eq_out%kappa_g,&
+                ierr = interp_var_3D_real(eq%kappa_g,theta_i,eq_out%kappa_g,&
                     &sym_type=2)
             else
-                call interp_var_3D_real_ow(eq%kappa_g,theta_i,sym_type=2)
+                ierr = interp_var_3D_real_ow(eq%kappa_g,theta_i,sym_type=2)
             end if
+            CHCKERR('')
         end if
         
         ! metric quantities
         if (present(met)) then
-            if (present(met_out)) then
-                call interp_var_6D_real(met%jac_FD,theta_i,met_out%jac_FD)
+            ! setup T_od
+            allocate(T_od(grid_eq%loc_n_r))
+            if (use_pol_flux_F) then
+                T_od = 2*pi*eq_met%q_saf_FD(:,0)
             else
-                call interp_var_6D_real_ow(met%jac_FD,theta_i)
+                T_od = -2*pi*eq_met%rot_t_FD(:,0)
             end if
+            ! interpolate
             if (present(met_out)) then
-                call interp_var_7D_real(met%g_FD,theta_i,met_out%g_FD)
+                ierr = interp_var_6D_real(met%jac_FD,theta_i,met_out%jac_FD)
             else
-                call interp_var_7D_real_ow(met%g_FD,theta_i)
+                ierr = interp_var_6D_real_ow(met%jac_FD,theta_i)
             end if
+            CHCKERR('')
             if (present(met_out)) then
-                call interp_var_7D_real(met%h_FD,theta_i,met_out%h_FD)
+                ierr = interp_var_7D_real(met%g_FD,theta_i,met_out%g_FD,&
+                    &sym_type=3,T_od=T_od,&
+                    &fund_theta_int_displ=fund_theta_int_displ)
             else
-                call interp_var_7D_real_ow(met%h_FD,theta_i)
+                ierr = interp_var_7D_real_ow(met%g_FD,theta_i,sym_type=3,&
+                    &T_od=T_od,fund_theta_int_displ=fund_theta_int_displ)
             end if
+            CHCKERR('')
+            if (present(met_out)) then
+                ierr = interp_var_7D_real(met%h_FD,theta_i,met_out%h_FD,&
+                    &sym_type=3,T_od=T_od,&
+                    &fund_theta_int_displ=fund_theta_int_displ)
+            else
+                ierr = interp_var_7D_real_ow(met%h_FD,theta_i,sym_type=3,&
+                    &T_od=T_od,fund_theta_int_displ=fund_theta_int_displ)
+            end if
+            CHCKERR('')
         end if
         
         ! adapt vectorial perturbation quantities
         if (present(X_1)) then
             if (present(X_1_out)) then
-                call interp_var_4D_complex(X_1%U_0,theta_i,X_1_out%U_0,&
+                ierr = interp_var_4D_complex(X_1%U_0,theta_i,X_1_out%U_0,&
                     &sym_type=2)
             else
-                call interp_var_4D_complex_ow(X_1%U_0,theta_i,sym_type=2)
+                ierr = interp_var_4D_complex_ow(X_1%U_0,theta_i,sym_type=2)
             end if
+            CHCKERR('')
             if (present(X_1_out)) then
-                call interp_var_4D_complex(X_1%U_1,theta_i,X_1_out%U_1,&
+                ierr = interp_var_4D_complex(X_1%U_1,theta_i,X_1_out%U_1,&
                     &sym_type=2)
             else
-                call interp_var_4D_complex_ow(X_1%U_1,theta_i,sym_type=2)
+                ierr = interp_var_4D_complex_ow(X_1%U_1,theta_i,sym_type=2)
             end if
+            CHCKERR('')
             if (present(X_1_out)) then
-                call interp_var_4D_complex(X_1%DU_0,theta_i,X_1_out%DU_0,&
+                ierr = interp_var_4D_complex(X_1%DU_0,theta_i,X_1_out%DU_0,&
                     &sym_type=1)
             else
-                call interp_var_4D_complex_ow(X_1%DU_0,theta_i,sym_type=1)
+                ierr = interp_var_4D_complex_ow(X_1%DU_0,theta_i,sym_type=1)
             end if
+            CHCKERR('')
             if (present(X_1_out)) then
-                call interp_var_4D_complex(X_1%DU_1,theta_i,X_1_out%DU_1,&
+                ierr = interp_var_4D_complex(X_1%DU_1,theta_i,X_1_out%DU_1,&
                     &sym_type=1)
             else
-                call interp_var_4D_complex_ow(X_1%DU_1,theta_i,sym_type=1)
+                ierr = interp_var_4D_complex_ow(X_1%DU_1,theta_i,sym_type=1)
             end if
+            CHCKERR('')
         end if
         
         ! adapt tensorial perturbation quantities
@@ -481,41 +560,47 @@ contains
                 ! do nothing
             end if
             if (present(X_2_out)) then
-                call interp_var_4D_complex(X_2%PV_0,theta_i,X_2_out%PV_0,&
+                ierr = interp_var_4D_complex(X_2%PV_0,theta_i,X_2_out%PV_0,&
                     &sym_type=1)
             else
-                call interp_var_4D_complex_ow(X_2%PV_0,theta_i,sym_type=1)
+                ierr = interp_var_4D_complex_ow(X_2%PV_0,theta_i,sym_type=1)
             end if
+            CHCKERR('')
             if (present(X_2_out)) then
-                call interp_var_4D_complex(X_2%PV_1,theta_i,X_2_out%PV_1,&
+                ierr = interp_var_4D_complex(X_2%PV_1,theta_i,X_2_out%PV_1,&
                     &sym_type=1)
             else
-                call interp_var_4D_complex_ow(X_2%PV_1,theta_i,sym_type=1)
+                ierr = interp_var_4D_complex_ow(X_2%PV_1,theta_i,sym_type=1)
             end if
+            CHCKERR('')
             if (present(X_2_out)) then
-                call interp_var_4D_complex(X_2%PV_2,theta_i,X_2_out%PV_2,&
+                ierr = interp_var_4D_complex(X_2%PV_2,theta_i,X_2_out%PV_2,&
                     &sym_type=1)
             else
-                call interp_var_4D_complex_ow(X_2%PV_2,theta_i,sym_type=1)
+                ierr = interp_var_4D_complex_ow(X_2%PV_2,theta_i,sym_type=1)
             end if
+            CHCKERR('')
             if (present(X_2_out)) then
-                call interp_var_4D_complex(X_2%KV_0,theta_i,X_2_out%KV_0,&
+                ierr = interp_var_4D_complex(X_2%KV_0,theta_i,X_2_out%KV_0,&
                     &sym_type=1)
             else
-                call interp_var_4D_complex_ow(X_2%KV_0,theta_i,sym_type=1)
+                ierr = interp_var_4D_complex_ow(X_2%KV_0,theta_i,sym_type=1)
             end if
+            CHCKERR('')
             if (present(X_2_out)) then
-                call interp_var_4D_complex(X_2%KV_1,theta_i,X_2_out%KV_1,&
+                ierr = interp_var_4D_complex(X_2%KV_1,theta_i,X_2_out%KV_1,&
                     &sym_type=1)
             else
-                call interp_var_4D_complex_ow(X_2%KV_1,theta_i,sym_type=1)
+                ierr = interp_var_4D_complex_ow(X_2%KV_1,theta_i,sym_type=1)
             end if
+            CHCKERR('')
             if (present(X_2_out)) then
-                call interp_var_4D_complex(X_2%KV_2,theta_i,X_2_out%KV_2,&
+                ierr = interp_var_4D_complex(X_2%KV_2,theta_i,X_2_out%KV_2,&
                     &sym_type=1)
             else
-                call interp_var_4D_complex_ow(X_2%KV_2,theta_i,sym_type=1)
+                ierr = interp_var_4D_complex_ow(X_2%KV_2,theta_i,sym_type=1)
             end if
+            CHCKERR('')
         end if
         
         ! user output
@@ -528,14 +613,24 @@ contains
         ! angles indicated by the interpolation factors theta_i.
         ! There  is  an  optional  variable   sym_type  that  allows  for  extra
         ! operations to be done on the variable if top-down symmetry is applied:
-        !   - sym_type = 0: var(2pi-theta) = var(theta)
-        !   - sym_type = 1: var(2pi-theta) = var(theta)*    (only for complex)
-        !   - sym_type = 2: var(2pi-theta) = -var(theta)*
+        !   - sym_type = 0: var(-theta) = var(theta)
+        !   - sym_type = 1: var(-theta) = var(theta)*
+        !   - sym_type = 2: var(-theta) = -var(theta)*
+        !   - sym_type = 3: var(-theta) = T var(theta) (T)^T
+        ! where symmetry type 5 is only valid for tensorial quantities (7D). The
+        ! transformation matrix, a function of  only the flux coordinate, has to
+        ! be  passed as  well. This  is useful  for the  transformations of  the
+        ! metric quantities as seen in [ADD REF].
         ! When top-down  symmetry has been  used to calculate  the interpolation
         ! factors, this is indicated by a  negative factor instead of a positive
         ! one.
-        ! (also  correct  if i_hi = i_lo)
-        subroutine interp_var_3D_real(var,theta_i,var_int,sym_type)             ! 3D_real version, separate output variable
+        ! Note that this is also  correct  if i_hi = i_lo.
+        ! Note also that for the overwrite  versions ('ow'), the lower limits of
+        ! indices are 0  for the dimensions corresponding  to derivatives. These
+        ! allocations are done here and persist into the calling functions.
+        integer function interp_var_3D_real(var,theta_i,var_int,sym_type) &
+            &result(ierr)                                                       ! 3D_real version, separate output variable
+            
             ! input / output
             real(dp), intent(in) :: var(:,:,:)                                  ! variable to be interpolated
             real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
@@ -547,9 +642,20 @@ contains
             integer :: id, jd, kd                                               ! counters
             integer :: sym_type_loc                                             ! local version of symmetry type
             
+            ! initialize ierr
+            ierr = 0
+            
             ! set up local symmetry type
             sym_type_loc = 0
             if (present(sym_type)) sym_type_loc = sym_type
+            
+            ! test symmetry types
+            if (sym_type_loc.lt.0 .or. sym_type_loc.gt.2) then
+                ierr = 1
+                err_msg = 'Nonsensible symmetry type '//&
+                    &trim(i2str(sym_type_loc))
+                CHCKERR(err_msg)
+            end if
             
             ! iterate over all normal points
             do kd = 1,size(var_int,3)
@@ -571,8 +677,10 @@ contains
                     end do
                 end do
             end do
-        end subroutine interp_var_3D_real
-        subroutine interp_var_3D_real_ow(var,theta_i,sym_type)                  ! 3D_real version, overwriting variable
+        end function interp_var_3D_real
+        integer function interp_var_3D_real_ow(var,theta_i,sym_type) &
+            &result(ierr)                                                       ! 3D_real version, overwriting variable
+            
             ! input / output
             real(dp), intent(inout), allocatable :: var(:,:,:)                  ! variable to be interpolated
             real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
@@ -581,6 +689,9 @@ contains
             ! local variables
             real(dp), allocatable :: var_3D_loc(:,:,:)                          ! local 3D variable
             integer :: var_dim(3,2)                                             ! dimensions of variable
+            
+            ! initialize ierr
+            ierr = 0
             
             ! set up variable dimensions
             var_dim(:,1) = [1,1,1]
@@ -591,7 +702,8 @@ contains
                 &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2)))
             
             ! call normal routine
-            call interp_var_3D_real(var,theta_i,var_3D_loc,sym_type)
+            ierr = interp_var_3D_real(var,theta_i,var_3D_loc,sym_type)
+            CHCKERR('')
             
             ! reallocate variable
             deallocate(var)
@@ -600,160 +712,10 @@ contains
             
             ! overwrite variable
             var = var_3D_loc
-        end subroutine interp_var_3D_real_ow
-        subroutine interp_var_6D_real(var,theta_i,var_int,sym_type)             ! 6D_real version, separate output variable
-            ! input / output
-            real(dp), intent(in) :: var(:,:,:,:,:,:)                            ! variable to be interpolated
-            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
-            real(dp), intent(inout) :: var_int(:,:,:,:,:,:)                     ! interpolated var
-            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
+        end function interp_var_3D_real_ow
+        integer function interp_var_4D_complex(var,theta_i,var_int,sym_type) &
+            &result(ierr)                                                       ! 4D_complex version, separate output variable
             
-            ! local variables
-            integer :: i_lo, i_hi                                               ! upper and lower index
-            integer :: id, jd, kd, ld                                           ! counters
-            integer :: sym_type_loc                                             ! local version of symmetry type
-            
-            ! set up local symmetry type
-            sym_type_loc = 0
-            if (present(sym_type)) sym_type_loc = sym_type
-            
-            ! iterate over all normal points
-            do kd = 1,size(var_int,3)
-                ! iterate over all geodesical points
-                do jd = 1,size(var_int,2)
-                    ! iterate over all parallel points
-                    do id = 1,size(var_int,1)
-                        ! set up i_lo and i_hi
-                        i_lo = floor(abs(theta_i(id,jd,kd)))
-                        i_hi = ceiling(abs(theta_i(id,jd,kd)))
-                        
-                        var_int(id,jd,kd,:,:,:) = var(i_lo,1,kd,:,:,:) + &
-                            &(var(i_hi,1,kd,:,:,:)-var(i_lo,1,kd,:,:,:))*&
-                            &(abs(theta_i(id,jd,kd))-i_lo)                      ! because i_hi - i_lo = 1
-                        if (theta_i(id,jd,kd).lt.0) then
-                            if (sym_type_loc.eq.2) var_int(id,jd,kd,:,:,:) = &
-                                &- var_int(id,jd,kd,:,:,:)
-                        end if
-                    end do
-                end do
-            end do
-            
-            ! transform d/dtheta
-            do ld = 1,size(var_int,6)
-                var_int(:,:,:,:,:,ld) = (-1)**(ld-1)*var_int(:,:,:,:,:,ld)
-            end do
-        end subroutine interp_var_6D_real
-        subroutine interp_var_6D_real_ow(var,theta_i,sym_type)                  ! 6D_real version, overwriting variable
-            ! input / output
-            real(dp), intent(inout), pointer :: var(:,:,:,:,:,:)                ! variable to be interpolated
-            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
-            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
-            
-            ! local variables
-            real(dp), allocatable :: var_6D_loc(:,:,:,:,:,:)                    ! local 6D variable
-            integer :: var_dim(6,2)                                             ! dimensions of variable
-            
-            ! set up variable dimensions
-            var_dim(:,1) = [1,1,1,0,0,0]
-            var_dim(:,2) = [shape(theta_i),size(var,4)-1,size(var,5)-1,&
-                &size(var,6)-1]
-            
-            ! set up local 6D variable
-            allocate(var_6D_loc(var_dim(1,1):var_dim(1,2),&
-                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
-                &var_dim(4,1):var_dim(4,2),var_dim(5,1):var_dim(5,2),&
-                &var_dim(6,1):var_dim(6,2)))
-            
-            ! call normal routine
-            call interp_var_6D_real(var,theta_i,var_6D_loc,sym_type)
-            
-            ! reallocate variable
-            deallocate(var)
-            allocate(var(var_dim(1,1):var_dim(1,2),&
-                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
-                &var_dim(4,1):var_dim(4,2),var_dim(5,1):var_dim(5,2),&
-                &var_dim(6,1):var_dim(6,2)))
-            
-            ! overwrite variable
-            var = var_6D_loc
-        end subroutine interp_var_6D_real_ow
-        subroutine interp_var_7D_real(var,theta_i,var_int,sym_type)             ! 7D_real version, separate output variable
-            ! input / output
-            real(dp), intent(in) :: var(:,:,:,:,:,:,:)                          ! variable to be interpolated
-            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
-            real(dp), intent(inout) :: var_int(:,:,:,:,:,:,:)                   ! interpolated var
-            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
-            
-            ! local variables
-            integer :: i_lo, i_hi                                               ! upper and lower index
-            integer :: id, jd, kd, ld                                           ! counters
-            integer :: sym_type_loc                                             ! local version of symmetry type
-            
-            ! set up local symmetry type
-            sym_type_loc = 0
-            if (present(sym_type)) sym_type_loc = sym_type
-            
-            ! iterate over all normal points
-            do kd = 1,size(var_int,3)
-                ! iterate over all geodesical points
-                do jd = 1,size(var_int,2)
-                    ! iterate over all parallel points
-                    do id = 1,size(var_int,1)
-                        ! set up i_lo and i_hi
-                        i_lo = floor(abs(theta_i(id,jd,kd)))
-                        i_hi = ceiling(abs(theta_i(id,jd,kd)))
-                        
-                        var_int(id,jd,kd,:,:,:,:) = var(i_lo,1,kd,:,:,:,:) + &
-                            &(var(i_hi,1,kd,:,:,:,:)-var(i_lo,1,kd,:,:,:,:))*&
-                            &(abs(theta_i(id,jd,kd))-i_lo)                      ! because i_hi - i_lo = 1
-                        if (theta_i(id,jd,kd).lt.0) then
-                            if (sym_type_loc.eq.2) var_int(id,jd,kd,:,:,:,:) = &
-                                &- var_int(id,jd,kd,:,:,:,:)
-                        end if
-                    end do
-                end do
-            end do
-            
-            ! transform d/dtheta
-            do ld = 1,size(var_int,7)
-                var_int(:,:,:,:,:,:,ld) = (-1)**(ld-1)*var_int(:,:,:,:,:,:,ld)
-            end do
-        end subroutine interp_var_7D_real
-        subroutine interp_var_7D_real_ow(var,theta_i,sym_type)                  ! 7D_real version, overwriting variable
-            ! input / output
-            real(dp), intent(inout), pointer :: var(:,:,:,:,:,:,:)              ! variable to be interpolated
-            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
-            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
-            
-            ! local variables
-            real(dp), allocatable :: var_7D_loc(:,:,:,:,:,:,:)                  ! local 7D variable
-            integer :: var_dim(7,2)                                             ! dimensions of variable
-            
-            ! set up variable dimensions
-            var_dim(:,1) = [1,1,1,1,0,0,0]
-            var_dim(:,2) = [shape(theta_i),size(var,4),size(var,5)-1,&
-                &size(var,6)-1,size(var,7)-1]
-            
-            ! set up local 7D variable
-            allocate(var_7D_loc(var_dim(1,1):var_dim(1,2),&
-                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
-                &var_dim(4,1):var_dim(4,2),var_dim(5,1):var_dim(5,2),&
-                &var_dim(6,1):var_dim(6,2),var_dim(7,1):var_dim(7,2)))
-            
-            ! call normal routine
-            call interp_var_7D_real(var,theta_i,var_7D_loc,sym_type)
-            
-            ! reallocate variable
-            deallocate(var)
-            allocate(var(var_dim(1,1):var_dim(1,2),&
-                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
-                &var_dim(4,1):var_dim(4,2),var_dim(5,1):var_dim(5,2),&
-                &var_dim(6,1):var_dim(6,2),var_dim(7,1):var_dim(7,2)))
-            
-            ! overwrite variable
-            var = var_7D_loc
-        end subroutine interp_var_7D_real_ow
-        subroutine interp_var_4D_complex(var,theta_i,var_int,sym_type)          ! 4D_complex version, separate output variable
             ! input / output
             complex(dp), intent(in) :: var(:,:,:,:)                             ! variable to be interpolated
             real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
@@ -765,9 +727,20 @@ contains
             integer :: id, jd, kd                                               ! counters
             integer :: sym_type_loc                                             ! local version of symmetry type
             
+            ! initialize ierr
+            ierr = 0
+            
             ! set up local symmetry type
             sym_type_loc = 0
             if (present(sym_type)) sym_type_loc = sym_type
+            
+            ! test symmetry types
+            if (sym_type_loc.lt.0 .or. sym_type_loc.gt.2) then
+                ierr = 1
+                err_msg = 'Nonsensible symmetry type '//&
+                    &trim(i2str(sym_type_loc))
+                CHCKERR(err_msg)
+            end if
             
             ! iterate over all normal points
             do kd = 1,size(var_int,3)
@@ -791,8 +764,10 @@ contains
                     end do
                 end do
             end do
-        end subroutine interp_var_4D_complex
-        subroutine interp_var_4D_complex_ow(var,theta_i,sym_type)               ! 4D_complex version, overwriting variable
+        end function interp_var_4D_complex
+        integer function interp_var_4D_complex_ow(var,theta_i,sym_type) &
+            &result(ierr)                                                       ! 4D_complex version, overwriting variable
+            
             ! input / output
             complex(dp), intent(inout), allocatable :: var(:,:,:,:)             ! variable to be interpolated
             real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
@@ -801,6 +776,9 @@ contains
             ! local variables
             complex(dp), allocatable :: var_4D_loc(:,:,:,:)                     ! local 4D variable
             integer :: var_dim(4,2)                                             ! dimensions of variable
+            
+            ! initialize ierr
+            ierr = 0
             
             ! set up variable dimensions
             var_dim(:,1) = [1,1,1,1]
@@ -812,7 +790,8 @@ contains
                 &var_dim(4,1):var_dim(4,2)))
             
             ! call normal routine
-            call interp_var_4D_complex(var,theta_i,var_4D_loc,sym_type)
+            ierr = interp_var_4D_complex(var,theta_i,var_4D_loc,sym_type)
+            CHCKERR('')
             
             ! reallocate variable
             deallocate(var)
@@ -822,7 +801,282 @@ contains
             
             ! overwrite variable
             var = var_4D_loc
-        end subroutine interp_var_4D_complex_ow
+        end function interp_var_4D_complex_ow
+        integer function interp_var_6D_real(var,theta_i,var_int,sym_type) &
+            &result(ierr)                                                       ! 6D_real version, separate output variable
+            
+            ! input / output
+            real(dp), intent(in) :: var(:,:,:,:,:,:)                            ! variable to be interpolated
+            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
+            real(dp), intent(inout) :: var_int(:,:,:,:,:,:)                     ! interpolated var
+            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
+            
+            ! local variables
+            integer :: i_lo, i_hi                                               ! upper and lower index
+            integer :: id, jd, kd, ld                                           ! counters
+            integer :: sym_type_loc                                             ! local version of symmetry type
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set up local symmetry type
+            sym_type_loc = 0
+            if (present(sym_type)) sym_type_loc = sym_type
+            
+            ! test symmetry types
+            if (sym_type_loc.lt.0 .or. sym_type_loc.gt.2) then
+                ierr = 1
+                err_msg = 'Nonsensible symmetry type '//&
+                    &trim(i2str(sym_type_loc))
+                CHCKERR(err_msg)
+            end if
+            
+            ! iterate over all normal points
+            do kd = 1,size(var_int,3)
+                ! iterate over all geodesical points
+                do jd = 1,size(var_int,2)
+                    ! iterate over all parallel points
+                    do id = 1,size(var_int,1)
+                        ! set up i_lo and i_hi
+                        i_lo = floor(abs(theta_i(id,jd,kd)))
+                        i_hi = ceiling(abs(theta_i(id,jd,kd)))
+                        
+                        var_int(id,jd,kd,:,:,:) = var(i_lo,1,kd,:,:,:) + &
+                            &(var(i_hi,1,kd,:,:,:)-var(i_lo,1,kd,:,:,:))*&
+                            &(abs(theta_i(id,jd,kd))-i_lo)                      ! because i_hi - i_lo = 1
+                        if (theta_i(id,jd,kd).lt.0) then
+                            if (sym_type_loc.eq.2) var_int(id,jd,kd,:,:,:) = &
+                                &- var_int(id,jd,kd,:,:,:)
+                            ! adapt the derivatives
+                            if (use_pol_flux_F) then
+                                do ld = 1,size(var_int,6)
+                                    var_int(id,jd,kd,:,:,ld) = &
+                                        &(-1)**(ld+1)*var_int(id,jd,kd,:,:,ld)  ! index + 1 because not starting from 0 but from 1
+                                end do
+                            else
+                                ierr = 1
+                                err_msg = '!!! INTERP_VAR_6D_REAL NOT YET &
+                                    &IMPLEMENTED FOR TOROIDAL FLUX !!!'
+                                CHCKERR(err_msg)
+                            end if
+                        end if
+                    end do
+                end do
+            end do
+        end function interp_var_6D_real
+        integer function interp_var_6D_real_ow(var,theta_i,sym_type) &
+            &result(ierr)                                                       ! 6D_real version, overwriting variable
+            
+            ! input / output
+            real(dp), intent(inout), pointer :: var(:,:,:,:,:,:)                ! variable to be interpolated
+            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
+            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
+            
+            ! local variables
+            real(dp), allocatable :: var_6D_loc(:,:,:,:,:,:)                    ! local 6D variable
+            integer :: var_dim(6,2)                                             ! dimensions of variable
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set up variable dimensions
+            var_dim(:,1) = [1,1,1,0,0,0]
+            var_dim(:,2) = [shape(theta_i),size(var,4)-1,size(var,5)-1,&
+                &size(var,6)-1]
+            
+            ! set up local 6D variable
+            allocate(var_6D_loc(var_dim(1,1):var_dim(1,2),&
+                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
+                &var_dim(4,1):var_dim(4,2),var_dim(5,1):var_dim(5,2),&
+                &var_dim(6,1):var_dim(6,2)))
+            
+            ! call normal routine
+            ierr = interp_var_6D_real(var,theta_i,var_6D_loc,sym_type)
+            CHCKERR('')
+            
+            ! reallocate variable
+            deallocate(var)
+            allocate(var(var_dim(1,1):var_dim(1,2),&
+                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
+                &var_dim(4,1):var_dim(4,2),var_dim(5,1):var_dim(5,2),&
+                &var_dim(6,1):var_dim(6,2)))
+            
+            ! overwrite variable
+            var = var_6D_loc
+        end function interp_var_6D_real_ow
+        integer function interp_var_7D_real(var,theta_i,var_int,sym_type,T_od,&
+            &fund_theta_int_displ) result(ierr)                                 ! 7D_real version, separate output variable
+            
+            ! input / output
+            real(dp), intent(in) :: var(:,:,:,:,:,:,:)                          ! variable to be interpolated
+            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
+            real(dp), intent(inout) :: var_int(:,:,:,:,:,:,:)                   ! interpolated var
+            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
+            real(dp), intent(in), optional :: T_od(:)                           ! off-diagonal nonzero element of T in T var (T)^T
+            integer, allocatable :: fund_theta_int_displ(:,:,:)                 ! displacement of fundamental theta interval
+            
+            ! local variables
+            integer :: i_lo, i_hi                                               ! upper and lower index
+            integer :: id, jd, kd, ld                                           ! counters
+            integer :: sym_type_loc                                             ! local version of symmetry type
+            real(dp), allocatable :: var_loc(:)                                 ! local variable
+            integer :: n                                                        ! size of tensor matrix
+            real(dp), allocatable :: T(:,:)                                     ! transformation matrix for metric factors
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set up local symmetry type
+            sym_type_loc = 0
+            if (present(sym_type)) sym_type_loc = sym_type
+            
+            ! test symmetry types
+            if (sym_type_loc.lt.0 .or. sym_type_loc.gt.3) then
+                ierr = 1
+                err_msg = 'Nonsensible symmetry type '//&
+                    &trim(i2str(sym_type_loc))
+                CHCKERR(err_msg)
+            end if
+            if (sym_type_loc.eq.3 .and. .not.present(T_od)) then
+                ierr = 1
+                err_msg = 'Need to pass nonzero off-diagonal element of &
+                    &transformation matrix T for symmetry type 3'
+                CHCKERR(err_msg)
+            end if
+            
+            ! set up local variables for symmetry type 3
+            if (sym_type_loc.eq.3) then
+                allocate(T(size(T_od),9))                                       ! asymmetric matrix
+                T = 0
+                n = nint(sqrt(size(T,2)*1._dp))
+                if (n**2.ne.size(T,2)) then
+                    ierr = 1
+                    err_msg = 'T does not have a proper size'
+                    CHCKERR(err_msg)
+                end if
+                allocate(var_loc(n**2))
+            end if
+            
+            ! iterate over all normal points
+            do kd = 1,size(var_int,3)
+                ! iterate over all geodesical points
+                do jd = 1,size(var_int,2)
+                    ! iterate over all parallel points
+                    do id = 1,size(var_int,1)
+                        ! set up i_lo and i_hi
+                        i_lo = floor(abs(theta_i(id,jd,kd)))
+                        i_hi = ceiling(abs(theta_i(id,jd,kd)))
+                        
+                        var_int(id,jd,kd,:,:,:,:) = var(i_lo,1,kd,:,:,:,:) + &
+                            &(var(i_hi,1,kd,:,:,:,:)-var(i_lo,1,kd,:,:,:,:))*&
+                            &(abs(theta_i(id,jd,kd))-i_lo)                      ! because i_hi - i_lo = 1
+                        
+                        ! apply symmetries
+                        if (sym_type_loc.eq.2) then
+                            if (theta_i(id,jd,kd).lt.0) &
+                                &var_int(id,jd,kd,:,:,:,:) = &
+                                &- var_int(id,jd,kd,:,:,:,:)
+                        elseif (sym_type_loc.eq.3) then
+                            ! apply possible transformation with T
+                            if (fund_theta_int_displ(id,jd,kd).ne.0) then
+                                T(:,c([2,1],.false.)) = &
+                                    &T_od*fund_theta_int_displ(id,jd,kd)
+                                ierr = calc_mult(T(kd,:),&
+                                    &var_int(id,jd,kd,:,1,1,1),var_loc,n,&      ! index + 1 because not starting from 0 but 1
+                                    &transp=[.false.,.false.])
+                                CHCKERR('')
+                                ierr = calc_mult(var_loc,T(kd,:),&
+                                    &var_int(id,jd,kd,:,1,1,1),n,&
+                                    &transp=[.false.,.true.])
+                            end if
+                        end if
+                    end do
+                end do
+            end do
+            
+            if (use_pol_flux_F) then
+                ! iterate over all alpha derivatives
+                do ld = 2,size(var_int,5)                                       ! The indices start at 1, not at 0
+                    var_int(:,:,:,:,ld,:,:) = 0._dp
+                end do
+                ! iterate over all psi derivatives
+                write(*,*) '!!! NOT IMPLEMENTED !!!'
+                ! iterate over all theta derivatives
+                write(*,*) '!!! NOT IMPLEMENTED !!!'
+            else
+                ierr = 1
+                err_msg = '!!! INTERP_VAR_7D_REAL NOT YET IMPLEMENTED FOR &
+                    &TOROIDAL FLUX !!!'
+                CHCKERR(err_msg)
+            end if
+            
+            ! iterate over all normal points
+            do kd = 1,size(var_int,3)
+                ! iterate over all geodesical points
+                do jd = 1,size(var_int,2)
+                    ! iterate over all parallel points
+                    do id = 1,size(var_int,1)
+                        ! adapt the derivatives if TBS
+                        if (theta_i(id,jd,kd).lt.0) then
+                            if (use_pol_flux_F) then
+                                do ld = 1,size(var_int,6)
+                                    var_int(id,jd,kd,:,:,:,ld) = (-1)**(ld+1)*&
+                                        &var_int(id,jd,kd,:,:,:,ld)             ! index + 1 because not starting from 0 but from 1
+                                end do
+                            else
+                                ierr = 1
+                                err_msg = '!!! INTERP_VAR_7D_REAL NOT YET &
+                                    &IMPLEMENTED FOR TOROIDAL FLUX !!!'
+                                CHCKERR(err_msg)
+                            end if
+                        end if
+                    end do
+                end do
+            end do
+        end function interp_var_7D_real
+        integer function interp_var_7D_real_ow(var,theta_i,sym_type,T_od,&
+            &fund_theta_int_displ) result(ierr)                                 ! 7D_real version, overwriting variable
+            
+            ! input / output
+            real(dp), intent(inout), pointer :: var(:,:,:,:,:,:,:)              ! variable to be interpolated
+            real(dp), intent(in) :: theta_i(:,:,:)                              ! angular coordinate theta at which to interpolate
+            integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
+            real(dp), intent(in), optional :: T_od(:)                           ! off-diagonal nonzero element of T in T var (T)^T
+            integer, allocatable :: fund_theta_int_displ(:,:,:)                 ! displacement of fundamental theta interval
+            
+            ! local variables
+            real(dp), allocatable :: var_7D_loc(:,:,:,:,:,:,:)                  ! local 7D variable
+            integer :: var_dim(7,2)                                             ! dimensions of variable
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set up variable dimensions
+            var_dim(:,1) = [1,1,1,1,0,0,0]
+            var_dim(:,2) = [shape(theta_i),size(var,4),size(var,5)-1,&
+                &size(var,6)-1,size(var,7)-1]
+            
+            ! set up local 7D variable
+            allocate(var_7D_loc(var_dim(1,1):var_dim(1,2),&
+                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
+                &var_dim(4,1):var_dim(4,2),var_dim(5,1):var_dim(5,2),&
+                &var_dim(6,1):var_dim(6,2),var_dim(7,1):var_dim(7,2)))
+            
+            ! call normal routine
+            ierr = interp_var_7D_real(var,theta_i,var_7D_loc,sym_type,T_od,&
+                &fund_theta_int_displ)
+            CHCKERR('')
+            
+            ! reallocate variable
+            deallocate(var)
+            allocate(var(var_dim(1,1):var_dim(1,2),&
+                &var_dim(2,1):var_dim(2,2),var_dim(3,1):var_dim(3,2),&
+                &var_dim(4,1):var_dim(4,2),var_dim(5,1):var_dim(5,2),&
+                &var_dim(6,1):var_dim(6,2),var_dim(7,1):var_dim(7,2)))
+            
+            ! overwrite variable
+            var = var_7D_loc
+        end function interp_var_7D_real_ow
     end function interp_HEL_on_grid
     
 #if ldebug
@@ -849,6 +1103,7 @@ contains
         real(dp), allocatable :: Rchi(:,:), Rpsi(:,:)                           ! chi and psi derivatives of R
         real(dp), allocatable :: Zchi(:,:), Zpsi(:,:)                           ! chi and psi derivatives of Z
         real(dp), allocatable :: jac(:,:)                                       ! jac as defined above
+        real(dp), allocatable :: jac_alt(:,:)                                   ! alternative calculation for jac
         real(dp), allocatable :: h_H_11_alt(:,:,:)                              ! alternative calculation for upper metric factor 11
         real(dp), allocatable :: h_H_12_alt(:,:,:)                              ! alternative calculation for upper metric factor 12
         real(dp), allocatable :: h_H_33_alt(:,:,:)                              ! alternative calculation for upper metric factor 33
@@ -887,7 +1142,24 @@ contains
                     &norm_disc_prec_eq+1)
                 CHCKERR('')
             end do
-            jac = Zpsi*Rchi - Zchi*Rpsi
+            jac = Zchi*Rpsi - Zpsi*Rchi 
+            
+            ! calculate Jacobian differently
+            allocate(jac_alt(nchi,n_r))
+            do kd = 1,n_r
+                jac_alt(:,kd) = qs(kd)/(h_H_33(:,kd)*RBphi(kd))
+            end do
+            
+            ! output jacobian
+            ! set some variables
+            file_name = 'TEST_jac_H'
+            description = 'Testing whether the HELENA Jacobian is consistent.'
+            
+            ! plot difference
+            call plot_diff_HDF5(reshape(R_H(:,r_min:n_r)*jac(:,r_min:n_r),&
+                &[nchi,1,n_r-r_min+1]),reshape(jac_alt(:,r_min:n_r),&
+                &[nchi,1,n_r-r_min+1]),file_name,description=description,&
+                &output_message=.true.)
             
             ! calculate the metric factors directly
             allocate(h_H_11_alt(nchi,1,n_r))

@@ -11,7 +11,6 @@ eq_ops.o \
 eq_vars.o \
 files_ops.o \
 files_utilities.o \
-fourier.o \
 HELENA.o \
 input_ops.o \
 messages.o \

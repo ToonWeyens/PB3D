@@ -5,4 +5,5 @@
     plot_flux_q             = .true.
     plot_grid               = .false.
     norm_disc_prec_sol      = 2
+    n_theta_plot            = 2001
 /

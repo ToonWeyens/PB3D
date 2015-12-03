@@ -268,7 +268,8 @@ contains
                 ierr = create_met(grid_eq_B,met_B)
                 CHCKERR('')
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,met=met,&
-                    &met_out=met_B,X_2=X_2,grid_name='field-aligned grid')
+                    &met_out=met_B,X_2=X_2,eq_met=eq,&
+                    &grid_name='field-aligned grid')
                 CHCKERR('')
             end if
             

@@ -13,7 +13,7 @@ module utilities
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun, calc_mult, &
         &calc_aux_utilities, derivs, con2dis, dis2con, round_with_tol, &
-        &conv_sym, is_sym, calc_spline_3, con, calc_coeff_fin_diff, fac, &
+        &conv_mat, is_sym, calc_spline_3, con, calc_coeff_fin_diff, fac, &
         &test_max_memory, &
         &d, m, f
 #if ldebug
@@ -39,6 +39,9 @@ module utilities
     interface calc_mult
         module procedure calc_mult_0D_real, calc_mult_2D_real, &
             &calc_mult_2D_complex
+    end interface
+    interface conv_mat
+        module procedure conv_mat_0D, conv_mat_3D
     end interface
     interface calc_deriv
         module procedure calc_deriv_equidistant_real, &
@@ -1006,6 +1009,9 @@ contains
     ! this yields the following difference formula:
     !   int_1^n f(x) dx = int_1^(n-1) f(x) dx + (f(n)+f(n-1))*(x(n)-x(n-1))/2,
     ! which is used here
+    ! Note: For periodic  function, the trapezoidal rule works well  only if the
+    ! last point of the  grid is included, i.e. the point  where the function is
+    ! equal to the first point.
     integer function calc_int_regular(var,x,var_int) result(ierr)
         character(*), parameter :: rout_name = 'calc_int_regular'
         
@@ -1051,6 +1057,9 @@ contains
     !   int_1^n f(x) dx = sum_k=1^(n-1) {(f(k+1)+f(k))*delta_x/2},
     ! with n  the number of points,  which are assumed to be  equidistant with a
     ! given step size delta_x.
+    ! Note: For periodic  function, the trapezoidal rule works well  only if the
+    ! last point of the  grid is included, i.e. the point  where the function is
+    ! equal to the first point.
     integer function calc_int_equidistant(var,step_size,var_int) result(ierr)
         character(*), parameter :: rout_name = 'calc_int_equidistant'
         
@@ -1195,7 +1204,8 @@ contains
     end function calc_ext_var
     
     ! Add to an  array (3) the product  of arrays (1) and  (2), with derivatives
-    ! that are distributed between both acording to the binomial theorem
+    ! that are distributed  between both acording to the  binomial theorem. Both
+    ! arrays are given on a 3D or 1D grid.
     integer function add_arr_mult_3_3(arr_1,arr_2,arr_3,deriv) result(ierr)     ! Version with arr_1 and arr_2 in 3 coords.
         character(*), parameter :: rout_name = 'add_arr_mult_3_3'
         
@@ -1653,7 +1663,7 @@ contains
     
     ! Calculate matrix multiplication of two square matrices AB = A B which have
     ! elements  defined  on a  3D  grid.  The  storage convention  described  in
-    ! met_type is used.
+    ! met_type is used for the fourth dimension.
     ! Optionally, A and/or B can be transposed.
     integer function calc_mult_2D_real(A,B,AB,n,transp) result(ierr)            ! real version with matrix defined on 3D grid
         character(*), parameter :: rout_name = 'calc_mult_2D_real'
@@ -1820,7 +1830,7 @@ contains
             end do
         end do
     end function calc_mult_2D_complex
-    integer function calc_mult_0D_real(A,B,AB,n) result(ierr)                   ! real version with constant matrix
+    integer function calc_mult_0D_real(A,B,AB,n,transp) result(ierr)            ! real version with constant matrix
         character(*), parameter :: rout_name = 'calc_mult_0D_real'
         
         ! input / output
@@ -1828,27 +1838,20 @@ contains
         real(dp), intent(in) :: B(:)                                            ! input B
         real(dp), intent(inout) :: AB(:)                                        ! output A B
         integer, intent(in) :: n                                                ! size of matrix
+        logical, intent(in), optional :: transp(2)                              ! .true. if A and/or B transposed
         
         ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: loc_AB(:,:,:,:)                                ! local copy of C
         
         ! initialize ierr
         ierr = 0
-        
-        ! tests
-        if (size(A).ne.size(B) .or. size(A).ne.size(AB)) then
-            err_msg = 'The matrices A, B and AB need to have the same shape'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
         
         ! allocate local AB
         allocate(loc_AB(1,1,1,size(AB)))
         
         ! calculate using 2D version
         ierr = calc_mult_2D_real(reshape(A,[1,1,1,size(A)]),&
-            &reshape(B,[1,1,1,size(B)]),loc_AB,n)
+            &reshape(B,[1,1,1,size(B)]),loc_AB,n,transp)
         
         ! update AB with local value
         AB = loc_AB(1,1,1,:)
@@ -1862,21 +1865,28 @@ contains
     ! numbers, only  the lower diagonal elements  are kept in matrix  B. If only
     ! the  lower diagonal  elements are  stored, they  are copied  to the  upper
     ! diagonal ones of the matrix B as well.
+    ! Optionally, the transpose can be calculated.
     ! Note  that  the  routine  does  not check  whether  the  matrix is  indeed
     ! symmetric and that information may thus be lost after conversion.
-    integer function conv_sym(A,B,n) result(ierr)
-        character(*), parameter :: rout_name = 'conv_sym'
+    ! Note also that  this routine makes a copy  of A so that by  providing A as
+    ! input argument for both A and B overwrites A.
+    integer function conv_mat_3D(A,B,n,transp) result(ierr)                     ! version defined on 3D grid
+        character(*), parameter :: rout_name = 'conv_mat'
         
         ! input / output
         real(dp), intent(in) :: A(:,:,:,:)                                      ! matrix to be converted
         real(dp), intent(inout) :: B(:,:,:,:)                                   ! converted matrix
         integer, intent(in) :: n                                                ! size of matrix
+        logical, intent(in), optional :: transp                                 ! transpose
         
         ! local variables
         logical :: sym(2)                                                       ! .true. if matrices symmetric
+        logical :: transp_loc                                                   ! local transp
         integer :: nn(2)                                                        ! nr. of elements in matrices
         integer :: id, jd                                                       ! counters
         integer :: id_min                                                       ! minimum value of id
+        integer :: ind(2,2)                                                     ! indices
+        real(dp), allocatable :: A_loc(:,:,:,:)                                 ! local copy of A
         
         ! initialize ierr
         ierr = 0
@@ -1885,6 +1895,14 @@ contains
         nn(1) = size(A,4)
         nn(2) = size(B,4)
         
+        ! set local transp
+        transp_loc = .false.
+        if (present(transp)) transp_loc = transp
+        
+        ! set local A
+        allocate(A_loc(size(A,1),size(A,2),size(A,3),size(A,4)))
+        A_loc = A
+        
         ! set sym
         do id = 1,2
             ierr = is_sym(n,nn(id),sym(id))
@@ -1892,20 +1910,59 @@ contains
         end do
         
         ! copy A into B
-        if ((sym(1).neqv.sym(2))) then                                          ! matrices A and B have different storage type
-            ! set id_min
-            id_min = 1
-            ! convert according to sym of A
+        if (sym(1).and.sym(2) .or. &
+            &.not.sym(1).and..not.sym(2).and..not.transp_loc) then              ! both symmetric or both unsymmetric and no transpose needed
+            B = A                                                               ! symmetric matrix equal to transpose or no tranpose needed
+        else                                                                    ! at least one is not symmetric
+            ! loop over row
             do jd = 1,n
-                if (sym(2)) id_min = jd
+                ! set id_min
+                if (sym(2)) then
+                    id_min = jd
+                else
+                    id_min = 1
+                end if
+                ! loop over column
                 do id = id_min,n
-                    B(:,:,:,c([id,jd],sym(2),n)) = A(:,:,:,c([id,jd],sym(1),n))
+                    ! set ind
+                    if (transp_loc) then
+                        ind(:,1) = [jd,id]
+                    else
+                        ind(:,1) = [id,jd]
+                    end if
+                    ind(:,2) = [id,jd]
+                    ! copy elements of A into B
+                    B(:,:,:,c(ind(:,2),sym(2),n)) = &
+                        &A_loc(:,:,:,c(ind(:,1),sym(1),n))
                 end do
             end do
-        else
-            B = A
         end if
-    end function conv_sym
+    end function conv_mat_3D
+    integer function conv_mat_0D(A,B,n,transp) result(ierr)                     ! scalar version
+        character(*), parameter :: rout_name = 'conv_mat'
+        
+        ! input / output
+        real(dp), intent(in) :: A(:)                                            ! matrix to be converted
+        real(dp), intent(inout) :: B(:)                                         ! converted matrix
+        integer, intent(in) :: n                                                ! size of matrix
+        logical, intent(in), optional :: transp                                 ! transpose
+        
+        ! local variables
+        real(dp), allocatable :: B_loc(:,:,:,:)                                 ! local B
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local B
+        allocate(B_loc(1,1,1,size(B)))
+        
+        ! call 3D version
+        ierr = conv_mat_3D(reshape(A,[1,1,1,size(A)]),B_loc,n,transp)
+        CHCKERR('')
+        
+        ! copy to B
+        B = B_loc(1,1,1,:)
+    end function conv_mat_0D
     
     ! finds the zero of a function using Newton-Rhapson iteration
     integer function calc_zero_NR(zero_NR,fun,dfun,guess) result(ierr)

@@ -21,6 +21,7 @@ module num_vars
         &GP_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
         &no_plots, no_messages, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
+        &plot_size, &
         &spline_type
 
     ! technical variables
@@ -34,7 +35,7 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 1.00_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.01_dp                               ! version number
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
@@ -103,6 +104,7 @@ module num_vars
     integer :: n_zeta_plot                                                      ! nr. of toroidal points in plot
     integer :: n_sol_requested                                                  ! how many solutions requested
     integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
+    integer :: plot_size(2)                                                     ! size of plot in inches
     logical :: retain_all_sol                                                   ! retain also faulty solutions
     
     ! concerning  spline interpolation

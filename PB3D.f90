@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.00                                                              !
+!   Version: 1.01                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -59,6 +59,9 @@ program PB3D
     call init_HDF5                                                              ! initialize HDF5
     call init_X_vars                                                            ! initialize perturbation vars
     write(*,*) '!!!!!!! IMPLEMENT THE SMART VERSION OF CHOOSING THE FOURIER MODE NUMBERS !!!!!!!!!!!!!!!'
+    write(*,*) '!!!!!!! IMPLEMENT DIFFERENT HDF5 SYSTEM WHERE THERE IS ONE !!!!!!!!!!!!'
+    write(*,*) '!!!!!!! VARIABLE FOR X WHICH IS PARTIALLY READ AND WRITTEN !!!!!!!!!!!!'
+    write(*,*) '!!!!!!! (https://www.hdfgroup.org/HDF5/doc/UG/04_ProgModel.html#PartialWR) !!!!!!!!!!!!'
  
     !-------------------------------------------------------
     !   Read the user-provided input file and the VMEC output

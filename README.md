@@ -237,3 +237,14 @@ CHANGELOG
 1.00: - FIRST WORKING VERSION
       - Bug fixed where Hermitian conjugate was stored in stead of the real matrices in SLEPC.
       - Checked consistency of results when "intuitive" version of plasma potential energy is used.
+
+1.01: - UNUSABLE VERSION: See last comment.
+      - Plots can now have an optional different size.
+      - Corrected bug with wrong sign in calculation of jacobian in HELENA coordinates.
+      - Merged contents fourier with VMEC modules.
+      - Fixed bugs in the HELENA interpolation.
+      - Changed 'read_HEL' for asymmetric cases to duplicate information for theta equal to 0 into theta equal to 2pi.
+      - End-points are now included for the parallel angle, to simplify working with trapezoidal integration. This eliminates the discrepancies between results for different parallel intervals. N.B.: NOT VALID for some other integration rules!
+      - Added a test folder to be used for FORTRAN tests.
+      - Started implementing the transformation of the metric factors. This is NOT finished and will probably be abandoned
+

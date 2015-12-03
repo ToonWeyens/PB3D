@@ -175,14 +175,14 @@ contains
                 pmone = -1                                                      ! conversion VMEC LH -> RH coord. system
             case (2)                                                            ! HELENA
 #if ldebug
-            if (ltest) then
-                call writo('Test consistency of metric factors?')
-                if(get_log(.false.,ind=.true.)) then
-                    ierr = test_metrics_H(grid_eq%n(3))
-                    CHCKERR('')
-                    call pause_prog(ind=.true.)
+                if (ltest) then
+                    call writo('Test consistency of metric factors?')
+                    if(get_log(.false.,ind=.true.)) then
+                        ierr = test_metrics_H(grid_eq%n(3))
+                        CHCKERR('')
+                        call pause_prog(ind=.true.)
+                    end if
                 end if
-            end if
 #endif
                 
                 ! calculate the jacobian in the HELENA coordinate system        
@@ -681,7 +681,7 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect. This is not checked!
     integer function calc_g(g_A,T_BA,g_B,deriv,max_deriv) result(ierr)
-        use utilities, only: calc_mult, conv_sym
+        use utilities, only: calc_mult, conv_mat
         
         character(*), parameter :: rout_name = 'calc_g'
         
@@ -741,7 +741,7 @@ contains
                                     &dum1,dum2,3)
                                 CHCKERR('')
                                 ! convert result to lower-diagonal storage
-                                ierr = conv_sym(dum2,dum1(:,:,:,1:6),3)
+                                ierr = conv_mat(dum2,dum1(:,:,:,1:6),3)
                                 CHCKERR('')
                                 g_B(:,:,:,:,m1,m2,m3) = g_B(:,:,:,:,m1,m2,m3) &
                                     &+C1(i1)*C2(i2)*C3(i3)*dum1(:,:,:,1:6)
@@ -1461,7 +1461,7 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_inv_met_ind(X,Y,deriv) result(ierr)                   ! matrix version
-        use utilities, only: calc_inv, calc_mult, c, conv_sym
+        use utilities, only: calc_inv, calc_mult, c, conv_mat
 #if ldebug
         use num_vars, only: n_procs
 #endif
@@ -1581,7 +1581,7 @@ contains
             ierr = calc_mult(dum2,X(:,:,:,:,0,0,0),dum1,3)
             CHCKERR('')
             ! save result in X(m1,m2,m3), converting if necessary
-            ierr = conv_sym(dum1,X(:,:,:,:,m1,m2,m3),3)
+            ierr = conv_mat(dum1,X(:,:,:,:,m1,m2,m3),3)
             CHCKERR('')
             
             ! deallocate local variables
@@ -2512,8 +2512,8 @@ contains
     ! Tests whether jac_V is calculated correctly
     integer function test_jac_V(grid_eq,met) result(ierr)
         use grid_ops, only: trim_grid
-        use fourier, only: fourier2real
-        use VMEC, only: jac_V_c, jac_V_s
+        use VMEC, only: fourier2real, &
+            &jac_V_c, jac_V_s
         
         character(*), parameter :: rout_name = 'test_jac_V'
         
@@ -2556,7 +2556,6 @@ contains
             &grid_eq%trigon_factors(:,:,:,:,norm_id(1):norm_id(2),:),&
             &res,[0,0])
         CHCKERR('')
-        write(*,*) 'done calculating fourier'
         
         ! user output
         call writo('Testing jac_V')
@@ -2586,8 +2585,8 @@ contains
         use num_vars, only: eq_style
         use grid_ops, only: trim_grid
         use utilities, only: c
-        use fourier, only: fourier2real
-        use VMEC, only: B_V_sub_s, B_V_sub_c, B_V_c, B_V_s
+        use VMEC, only: fourier2real, &
+            &B_V_sub_s, B_V_sub_c, B_V_c, B_V_s
         
         character(*), parameter :: rout_name = 'test_B_F'
         

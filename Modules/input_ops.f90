@@ -266,7 +266,7 @@ contains
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
-            &tol_norm_r, tol_SLEPC, max_it_slepc, n_procs, pi
+            &tol_norm_r, tol_SLEPC, max_it_slepc, n_procs, pi, plot_size
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files_ops, only: input_name
@@ -290,9 +290,10 @@ contains
             &max_mem_per_proc, min_n_r_sol, max_it_r, tol_r, EV_style, &
             &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, &
             &retain_all_sol, norm_disc_prec_X, BC_style, max_it_inv, &
-            &tol_norm_r, max_it_slepc, norm_disc_prec_sol
+            &tol_norm_r, max_it_slepc, norm_disc_prec_sol, plot_size
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
-            &plot_resonance, plot_flux_q, plot_grid, norm_disc_prec_sol
+            &plot_resonance, plot_flux_q, plot_grid, norm_disc_prec_sol, &
+            &plot_size
         
         ! initialize ierr
         ierr = 0
@@ -312,6 +313,7 @@ contains
             
             ! common variables for all program styles
             max_mem_per_proc = 6000_dp/n_procs                                  ! count with 6GB
+            plot_size = [10,5]
             
             ! select depending on program style
             select case (prog_style)

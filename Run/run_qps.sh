@@ -78,12 +78,12 @@ echo ""
 # Copy inputs and the program
 cp input_qps $out
 cp wout_qps.txt $out
-cp ../PB3D_EQ $out
-chmod +x $out/PB3D_EQ
+cp ../PB3D $out
+chmod +x $out/PB3D
 cd $out
 rm -f .lock_file*
-echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D_EQ input_qps wout_qps.txt $slepc_opt ${@:2}" > command
-mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D_EQ input_qps wout_qps.txt $slepc_opt ${@:2}
+echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_qps wout_qps.txt $slepc_opt ${@:2}" > command
+mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_qps wout_qps.txt $slepc_opt ${@:2}
 cd ../
 echo ""
 echo "Leaving directory $out/"

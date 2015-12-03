@@ -164,10 +164,10 @@ contains
                 ! call HELENA grid interpolation
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,eq=eq,&
                     &eq_out=eq_B,met=met,met_out=met_B,&
-                    &X_1=X_1,X_1_out=X_1_B,&
+                    &X_1=X_1,X_1_out=X_1_B,eq_met=eq,&
                     &grid_name='field-aligned grid')
                 CHCKERR('')
-            
+                
                 !! get X, Y and Z of plot
                 !allocate(X_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
                 !allocate(Y_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
@@ -303,7 +303,7 @@ contains
                 ! call HELENA grid interpolation
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_plot,eq=eq,&
                     &eq_out=eq_plot,met=met,met_out=met_plot,&
-                    &X_1=X_1,X_1_out=X_1_plot,grid_name='plot grid')
+                    &X_1=X_1,X_1_out=X_1_plot,eq_met=eq,grid_name='plot grid')
                 CHCKERR('')
             case default
                 ierr = 1
@@ -418,10 +418,18 @@ contains
                 
                 call writo('Plot the Eigenvector')
                 call lvl_ud(1)
+#if ldebug
+                ierr = plot_X_vec(grid_eq_plot,grid_sol_plot,eq_plot,met_plot,&
+                    &X_1_plot,sol,&
+                    &reshape([X_plot,Y_plot,Z_plot],[grid_sol_plot%n(1:2),&
+                    &grid_sol_plot%loc_n_r,3]),id,&
+                    &res_surf)
+#else
                 ierr = plot_X_vec(grid_eq_plot,grid_sol_plot,eq_plot,X_1_plot,&
                     &sol,reshape([X_plot,Y_plot,Z_plot],[grid_sol_plot%n(1:2),&
                     &grid_sol_plot%loc_n_r,3]),id,&
                     &res_surf)
+#endif
                 CHCKERR('')
                 call lvl_ud(-1)
                 

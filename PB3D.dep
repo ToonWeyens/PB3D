@@ -81,7 +81,6 @@ grid_ops.o : \
     grid_vars.o \
     num_vars.o \
     str_ops.o \
-    fourier.o \
     VMEC.o \
     HELENA.o \
     utilities.o \
@@ -247,11 +246,6 @@ input_ops.o : \
     X_vars.o \
     grid_vars.o \
     MPI_utilities.o \
-
-fourier.o : \
-    messages.o \
-    num_vars.o \
-    VMEC.o \
 
 files_ops.o : \
     num_vars.o \

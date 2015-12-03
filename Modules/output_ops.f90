@@ -7,7 +7,7 @@ module output_ops
     use str_ops
     use messages
     use num_vars, only: dp, max_str_ln, no_plots, iu, plot_dir, data_dir, &
-        &script_dir
+        &script_dir, plot_size
     use files_utilities, only: nextunit
     use grid_vars, only: grid_type
     use eq_vars, only: eq_type
@@ -396,8 +396,10 @@ contains
                 &linewidth 1.000; set terminal wxt;'
         else                                                                    ! pdf terminal
             write(cmd_i,*) 'set grid; set border 4095 front linetype -1 &
-                &linewidth 1.000; set terminal pdf; set output '''//&
-                &trim(plot_dir)//'/'//trim(draw_name)//'.pdf'';'
+                &linewidth 1.000; set terminal pdf size '//&
+                &trim(i2str(plot_size(1)))//','//trim(i2str(plot_size(2)))//&
+                &'; set output '''//trim(plot_dir)//'/'//trim(draw_name)//&
+                &'.pdf'';'
         end if
         
         ! no legend if too many plots

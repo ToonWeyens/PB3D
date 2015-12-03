@@ -10,13 +10,13 @@
     max_it_NR               = 500
     use_pol_flux_F          = .true.
     use_normalization       = .true.
-    prim_X                  = 30
-    min_sec_X               = 32
-    max_sec_X               = 80
+    prim_X                  = 10
+    min_sec_X               = 11
+    max_sec_X               = 12
     max_it_r                = 1
     tol_r                   = 5.0E-6
     tol_SLEPC               = 5.0E-4
-    n_sol_requested         = 1
+    n_sol_requested         = 2
     max_it_inv              = 1
     BC_style                = 1 1
     max_it_slepc            = 100000

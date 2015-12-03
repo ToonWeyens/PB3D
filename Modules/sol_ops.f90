@@ -18,7 +18,7 @@ module sol_ops
     private
     public calc_XUQ, plot_X_vec, decompose_energy, print_output_sol
 #if ldebug
-    public debug_calc_XUQ_arr, debug_calc_E, debug_DU
+    public debug_calc_XUQ_arr, debug_plot_X_vec, debug_calc_E, debug_DU
 #endif
     
     ! interfaces
@@ -28,8 +28,9 @@ module sol_ops
     
     ! global variables
 #if ldebug
-    logical :: debug_calc_XUQ_arr = .false.                                     ! plot debug information for interp_fun_0D_real
-    logical :: debug_calc_E = .false.                                           ! plot debug information for interp_fun_0D_real
+    logical :: debug_calc_XUQ_arr = .false.                                     ! plot debug information for calc_XUQ_arr
+    logical :: debug_plot_X_vec = .true.                                        ! plot debug information for plot_X_vec
+    logical :: debug_calc_E = .false.                                           ! plot debug information for calc_E
     logical :: debug_DU = .false.                                               ! plot debug information for calculation of DU
 #endif
 
@@ -217,7 +218,7 @@ contains
             ! set up normal derivative of X vec
             if (XUQ_style.eq.2 .or. XUQ_style.eq.4) then
                 ierr = calc_deriv(sol%vec(jd,:,X_id),DX_vec,&
-                    &grid_sol%loc_r_F(1:grid_sol%loc_n_r),1,norm_disc_prec_sol)
+                    &grid_sol%loc_r_F,1,norm_disc_prec_sol)
                 CHCKERR('')
 #if ldebug
                 if (debug_calc_XUQ_arr) then
@@ -320,11 +321,20 @@ contains
     ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
     ! equilibrium  grid and  the normal  part of  the provided  perturbation
     ! grid.
+#if ldebug
+    integer function plot_X_vec(grid_eq,grid_sol,eq,met,X,sol,XYZ,X_id,&
+        &res_surf) result(ierr)
+#else
     integer function plot_X_vec(grid_eq,grid_sol,eq,X,sol,XYZ,X_id,res_surf) &
         &result(ierr)
+#endif
         use num_vars, only: no_plots
         use grid_vars, only: dealloc_grid
         use grid_ops, only: trim_grid
+#if ldebug
+        use num_vars, only: norm_disc_prec_sol, use_pol_flux_F
+        use utilities, only: calc_deriv, con2dis, c
+#endif
         
         character(*), parameter :: rout_name = 'plot_X_vec'
         
@@ -332,6 +342,9 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+#if ldebug
+        type(met_type), intent(in) :: met                                       ! metric variables
+#endif
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         real(dp), intent(in) :: XYZ(:,:,:,:)                                    ! X, Y and Z of extended eq_grid
@@ -356,6 +369,12 @@ contains
         real(dp), allocatable :: X_plot(:,:,:,:)                                ! copies of XYZ(1)
         real(dp), allocatable :: Y_plot(:,:,:,:)                                ! copies of XYZ(2)
         real(dp), allocatable :: Z_plot(:,:,:,:)                                ! copies of XYZ(3)
+#if ldebug
+        real(dp), allocatable :: loc_r_eq(:)                                    ! loc_r_F of sol grid interpolated in eq grid
+        integer :: i_lo, i_hi                                                   ! upper and lower index for interpolation of eq grid to sol grid
+        complex(dp), allocatable :: U_inf(:,:,:,:)                              ! ideal ballooning U
+        integer :: id, jd, ld                                                   ! counters
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -457,6 +476,116 @@ contains
         CHCKERR('')
         ierr = calc_XUQ(grid_eq,grid_sol,eq,X,sol,X_id,2,time,f_plot(:,:,:,:,2))
         CHCKERR('')
+        
+#if ldebug
+        if (debug_plot_X_vec) then
+            call writo('Checking how well U approximates the pure ballooning &
+                &result')
+            call lvl_ud(1)
+            
+            ! set up ideal U
+            allocate(U_inf(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r,&
+                &product(n_t)))
+            
+            ! get the normal interpolation factors
+            allocate(loc_r_eq(grid_sol%loc_n_r))
+            do kd = 1,grid_sol%loc_n_r
+                ierr = con2dis(grid_sol%loc_r_F(kd),loc_r_eq(kd),&
+                    &grid_eq%loc_r_F)
+                CHCKERR('')
+            end do
+            
+            ! derive the X vector
+            do ld = 1,product(n_t)
+                do jd = 1,grid_eq%n(2)
+                    do id = 1,grid_eq%n(1)
+                        ierr = calc_deriv(f_plot(id,jd,:,ld,1),&
+                            &U_inf(id,jd,:,ld),grid_sol%loc_r_F,1,&
+                            &norm_disc_prec_sol)
+                        CHCKERR('')
+                    end do
+                end do
+            end do
+            
+            ! multiply by i/n or i/m and add the proportional part
+            if (use_pol_flux_F) then
+                do ld = 1,product(n_t)
+                    do kd = 1,grid_sol%loc_n_r
+                        i_lo = floor(loc_r_eq(kd))
+                        i_hi = ceiling(loc_r_eq(kd))
+                        
+                        U_inf(:,:,kd,ld) = iu/X%n(1) * U_inf(:,:,kd,ld) - &
+                            !&0._dp
+                            &(met%h_FD(:,:,i_lo,c([1,2],.true.),0,0,0)+&
+                            &(loc_r_eq(kd)-i_lo)*&
+                            &(met%h_FD(:,:,i_hi,c([1,2],.true.),0,0,0))-&
+                            &met%h_FD(:,:,i_lo,c([1,2],.true.),0,0,0)) / &
+                            &(met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)+&
+                            &(loc_r_eq(kd)-i_lo)*&
+                            &(met%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0))-&
+                            &met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)) - &
+                            !&-1*&
+                            &(grid_eq%theta_F(:,:,i_lo)+&
+                            &(loc_r_eq(kd)-i_lo)*&
+                            &(grid_eq%theta_F(:,:,i_hi)-&
+                            &grid_eq%theta_F(:,:,i_lo))) * &
+                            &(eq%q_saf_FD(i_lo,1)+&
+                            &(loc_r_eq(kd)-i_lo)*&
+                            &(eq%q_saf_FD(i_hi,1)-&
+                            &eq%q_saf_FD(i_lo,1)))
+                    end do
+                end do
+            else
+                do ld = 1,product(n_t)
+                    do kd = 1,grid_sol%loc_n_r
+                        i_lo = floor(loc_r_eq(kd))
+                        i_hi = ceiling(loc_r_eq(kd))
+                        
+                        U_inf(:,:,kd,ld) = iu/X%m(1) * U_inf(:,:,kd,ld) - &
+                            &(met%h_FD(:,:,i_lo,c([1,2],.true.),0,0,0)+&
+                            &(loc_r_eq(kd)-i_lo)*&
+                            &(met%h_FD(:,:,i_hi,c([1,2],.true.),0,0,0))-&
+                            &met%h_FD(:,:,i_lo,c([1,2],.true.),0,0,0)) / &
+                            &(met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)+&
+                            &(loc_r_eq(kd)-i_lo)*&
+                            &(met%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0))-&
+                            &met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)) + &
+                            &(grid_eq%zeta_F(:,:,i_lo)+&
+                            &(loc_r_eq(kd)-i_lo)*&
+                            &(grid_eq%zeta_F(:,:,i_hi)-&
+                            &grid_eq%zeta_F(:,:,i_lo))) * &
+                            &(eq%rot_t_FD(i_lo,1)+&
+                            &(loc_r_eq(kd)-i_lo)*&
+                            &(eq%rot_t_FD(i_hi,1)-&
+                            &eq%rot_t_FD(i_lo,1)))
+                    end do
+                end do
+            end if
+            
+            ! plotting real part
+            call plot_HDF5('RE X','TEST_RE_X_'//&
+                &trim(i2str(X_id)),realpart(f_plot(:,:,:,1,1)),&
+                &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1])
+            call plot_diff_HDF5(realpart(f_plot(:,:,:,1,2)),&
+                &realpart(U_inf(:,:,:,1)),'TEST_RE_U_inf_'//trim(i2str(X_id)),&
+                &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1],&
+                &description='To test whether U approximates the ideal &
+                &ballooning result',output_message=.true.)
+            
+            ! plotting imaginary part
+            call plot_HDF5('IM X','TEST_IM_X_'//&
+                &trim(i2str(X_id)),imagpart(f_plot(:,:,:,1,1)),&
+                &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1])
+            call plot_diff_HDF5(imagpart(f_plot(:,:,:,1,2)),&
+                &imagpart(U_inf(:,:,:,1)),'TEST_IM_U_inf_'//trim(i2str(X_id)),&
+                &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1],&
+                &description='To test whether U approximates the ideal &
+                &ballooning result',output_message=.true.)
+            
+            call writo('Checking done')
+            call lvl_ud(-1)
+        end if
+#endif
         
         ! set up var_name, file_name and description
         var_name(1) = 'Normal comp. of EV'

@@ -20,6 +20,7 @@
     use_normalization       = .true.
     n_zeta_plot             = 1
     BC_style                = 1 1
+    plot_size               = 20,10
 /
     n_par_X                 = 50
     min_n_r_sol             = 20
