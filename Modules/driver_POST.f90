@@ -303,7 +303,8 @@ contains
                 ! call HELENA grid interpolation
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_plot,eq=eq,&
                     &eq_out=eq_plot,met=met,met_out=met_plot,&
-                    &X_1=X_1,X_1_out=X_1_plot,eq_met=eq,grid_name='plot grid')
+                    &X_1=X_1,X_1_out=X_1_plot,eq_met=eq,&
+                    &grid_name='plot grid')
                 CHCKERR('')
             case default
                 ierr = 1

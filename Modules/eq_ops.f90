@@ -480,7 +480,7 @@ contains
             ! integral)
             eq%flux_p_E(:,0) = flux_p_full(grid_eq%i_min:grid_eq%i_max)
             eq%flux_p_E(:,1) = Dflux_p_full(grid_eq%i_min:grid_eq%i_max)
-            do kd = 2,max_deriv+1
+            do kd = 2,max_deriv+2
                 ierr = calc_deriv(eq%flux_p_E(:,1),eq%flux_p_E(:,kd),&
                     &grid_eq%n(3)-1._dp,kd-1,norm_disc_prec_eq)
                 CHCKERR('')
@@ -489,7 +489,7 @@ contains
             ! toroidal flux: copy from VMEC and derive
             eq%flux_t_E(:,0) = flux_t_V(grid_eq%i_min:grid_eq%i_max)
             eq%flux_t_E(:,1) = Dflux_t_V(grid_eq%i_min:grid_eq%i_max)
-            do kd = 2,max_deriv+1
+            do kd = 2,max_deriv+2
                 ierr = calc_deriv(eq%flux_t_E(:,1),eq%flux_t_E(:,kd),&
                     &grid_eq%n(3)-1._dp,kd-1,norm_disc_prec_eq)
                 CHCKERR('')
@@ -532,8 +532,8 @@ contains
             
             ! local variables
             integer :: kd                                                       ! counter
-            real(dp), allocatable :: Dflux_t_full(:)                            ! version of dflux_t/dp on full normal equilibrium grid (1..n(3))
-            real(dp), allocatable :: flux_t_full(:)                             ! version of integrated flux_t on full normal equilibrium grid (1..n(3))
+            real(dp), allocatable :: Dflux_t_full(:)                            ! version of dflux_t/dp on full normal equilibrium grid
+            real(dp), allocatable :: flux_t_full(:)                             ! version of integrated flux_t on full normal equilibrium grid
             real(dp), allocatable :: Dflux_p_H(:)                               ! normal derivative of flux_p_H
             
             ! initialize ierr

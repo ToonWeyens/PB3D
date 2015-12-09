@@ -108,28 +108,22 @@ contains
         n = grid%n(3)
         
         ! pres_FD
-        allocate(eq%pres_FD(loc_n_r,0:max_deriv))
+        allocate(eq%pres_FD(loc_n_r,0:max_deriv+1))
         
         ! flux_p_FD
-        allocate(eq%flux_p_FD(loc_n_r,0:max_deriv))
+        allocate(eq%flux_p_FD(loc_n_r,0:max_deriv+1))
         
         ! flux_t_FD
-        allocate(eq%flux_t_FD(loc_n_r,0:max_deriv))
+        allocate(eq%flux_t_FD(loc_n_r,0:max_deriv+1))
         
         ! q_saf_FD
-        allocate(eq%q_saf_FD(loc_n_r,0:max_deriv))
+        allocate(eq%q_saf_FD(loc_n_r,0:max_deriv+1))
         
         ! rot_t_FD
-        allocate(eq%rot_t_FD(loc_n_r,0:max_deriv))
+        allocate(eq%rot_t_FD(loc_n_r,0:max_deriv+1))
         
         ! pres_E
         allocate(eq%pres_E(loc_n_r,0:max_deriv+1))
-        
-        ! flux_p_E
-        allocate(eq%flux_p_E(loc_n_r,0:max_deriv+1))
-        
-        ! flux_t_E
-        allocate(eq%flux_t_E(loc_n_r,0:max_deriv+1))
         
         ! q_saf_E
         allocate(eq%q_saf_E(loc_n_r,0:max_deriv+1))
@@ -169,8 +163,18 @@ contains
                 ! lambda
                 allocate(eq%L_E(n_par,n_geo,loc_n_r,&
                     &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+                
+                ! flux_p_E
+                allocate(eq%flux_p_E(loc_n_r,0:max_deriv+2))                    ! Need extra order because used in transformation of flux q.
+                
+                ! flux_t_E
+                allocate(eq%flux_t_E(loc_n_r,0:max_deriv+2))                    ! Need extra order because used in transformation of flux q.
             case (2)                                                            ! HELENA
-                ! nothing
+                ! flux_p_E
+                allocate(eq%flux_p_E(loc_n_r,0:max_deriv+1))
+                
+                ! flux_t_E
+                allocate(eq%flux_t_E(loc_n_r,0:max_deriv+1))
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))

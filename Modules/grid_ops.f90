@@ -1986,20 +1986,22 @@ contains
     ! Alternatively,  there is  the case  of a  grid-aligned set  of coordinates
     ! theta and  alpha, where the  first dimension corresponds to  the direction
     ! along the magnetic field line, the  second to the geodesical direction and
-    ! the thirs to the normal direction. If the calculations for different field
+    ! the third to the normal direction. If the calculations for different field
     ! lines are  decoupled, the variation in  the second dimension is  not taken
     ! into account and no integration happens along it.
     ! Internally, the angular  variables and the normal variable  are related to
     ! the coordinates (x,y,z) that correspond to the three dimensions. They thus
     ! form a computational orthogonal grid to which the original coordinates are
     ! related through the transformation of Jacobians:
-    !   Jxyz = J r_F_z (theta_x zeta_y - theta_y zeta_x) ,
+    !   Jxyz = J r_F_z (ang_1_x ang_2_y-ang_1_y ang_2_x) ,
     ! so that the integral becomes
-    !   sum_xyz f(x,y,z) J(x,y,z) r_F_z (theta_x zeta_y - theta_y zeta_x) dxdydz
+    !   sum_xyz f(x,y,z) J(x,y,z) r_F_z (ang_1_x ang_2_y-ang_1_y ang_2_x) dxdydz
     ! where dx, dy and dz are all trivially equal to 1.
     ! The integrand has to be evaluated at the intermediate positions inside the
     ! cells. This is  done by taking the  average of the 2^3=8 points  for fJ as
     ! well as the transformation of the Jacobian.
+    ! Note that if the coordinates are independent, this method is equivalent to
+    ! the repeated numerical integration using the trapezoidal method.
     integer function calc_int_vol(ang_1,ang_2,norm,J,f,f_int) result(ierr)
 #if ldebug
         use num_vars, only: rank
@@ -2026,6 +2028,9 @@ contains
         logical :: dim_1(2)                                                     ! whether the dimension is equal to one
 #if ldebug
         character(len=max_str_ln), allocatable :: var_names(:,:)                ! names of variables
+        complex(dp), allocatable :: f_int_ALT(:)                                ! alternative calculation for output
+        complex(dp), allocatable :: f_int_ALT_1D(:,:)                           ! intermediary step in f_int_ALT
+        complex(dp), allocatable :: f_int_ALT_2D(:,:,:)                         ! intermediary step in f_int_ALT
 #endif
         
         ! initialize ierr
@@ -2168,7 +2173,7 @@ contains
             &transf_J(:,:,:,3)*transf_J(:,:,:,4))*transf_J(:,:,:,5)
         
         ! integrate term  over ang_par_F for all equilibrium  grid points, using
-        ! dx = dy = dz =1
+        ! dx = dy = dz = 1
         do ld = 1,nn_mod
             f_int(ld) = sum(Jf(:,:,:,ld)*transf_J_tot)
         end do
@@ -2194,13 +2199,68 @@ contains
             call plot_HDF5('transformation of Jacobians',&
                 &'TEST_transf_J_'//trim(i2str(rank)),transf_J_tot)
             
+            ! do alternative calculation
+            ! assuming that coordinate i varies only in dimensions i!!!
+            allocate(f_int_ALT(nn_mod))
+            allocate(f_int_ALT_1D(size(f,3),nn_mod))
+            allocate(f_int_ALT_2D(size(f,2),size(f,3),nn_mod))
+            f_int_ALT = 0._dp
+            f_int_ALT_1D = 0._dp
+            f_int_ALT_2D = 0._dp
+            
+            ! integrate in first coordinate
+            do kd = 1,size(f,3)
+                do jd = 1,size(f,2)
+                    if (size(f,1).gt.1) then
+                        do id = 2,size(f,1)
+                            f_int_ALT_2D(jd,kd,:) = f_int_ALT_2D(jd,kd,:) + &
+                                &0.5*(J(id,jd,kd)*f(id,jd,kd,:)+&
+                                &J(id-1,jd,kd)*f(id-1,jd,kd,:))*&
+                                &(ang_1(id,jd,kd)-ang_1(id-1,jd,kd))
+                        end do
+                    else
+                        f_int_ALT_2D(jd,kd,:) = J(1,jd,kd)*f(1,jd,kd,:)
+                    end if
+                end do
+            end do
+            
+            ! integrate in second coordinate
+            do kd = 1,size(f,3)
+                if (size(f,2).gt.1) then
+                    do jd = 2,size(f,2)
+                        f_int_ALT_1D(kd,:) = f_int_ALT_1D(kd,:) + &
+                            &0.5*(f_int_ALT_2D(jd,kd,:)+&
+                            &f_int_ALT_2D(jd-1,kd,:))*&
+                            &(ang_2(1,jd,kd)-ang_2(1,jd-1,kd))                  ! assuming that ang_2 is not dependent on dimension 1
+                    end do
+                else
+                    f_int_ALT_1D(kd,:) = f_int_ALT_2D(1,kd,:)
+                end if
+            end do
+            
+            ! integrate in third coordinate
+            if (size(f,3).gt.1) then
+                do kd = 2,size(f,3)
+                    f_int_ALT(:) = f_int_ALT(:) + &
+                        &0.5*(f_int_ALT_1D(kd,:)+f_int_ALT_1D(kd-1,:))*&
+                        &(norm(kd)-norm(kd-1))
+                end do
+            else
+                f_int_ALT = f_int_ALT_1D(1,:)
+            end if
+            
             call writo('Resulting integral: ')
             call lvl_ud(1)
             do ld = 1,nn_mod
-                call writo('integral '//trim(i2str(ld))//': '//&
+                call writo('integral    '//trim(i2str(ld))//': '//&
                     &trim(c2str(f_int(ld))))
+                call writo('alternative '//trim(i2str(ld))//': '//&
+                    &trim(c2str(f_int_ALT(ld))))
             end do
             call lvl_ud(-1)
+            
+            call writo('(Note that alternative calculation is only valid if &
+                &independent coordinates!)')
             
             call lvl_ud(-1)
         end if

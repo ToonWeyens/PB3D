@@ -429,9 +429,9 @@ contains
     ! tests calculation of volume integral
     integer function test_calc_int_vol() result(ierr)
         use num_vars, only: rank
-        use input_ops, only: get_int
+        use input_ops, only: get_int, get_log
         use grid_vars, only: create_grid
-        use grid_ops, only: calc_eqd_grid, calc_int_vol
+        use grid_ops, only: calc_eqd_grid, calc_int_vol, debug_calc_int_vol
         
         character(*), parameter :: rout_name = 'test_calc_int_vol'
         
@@ -451,7 +451,6 @@ contains
         character(len=max_str_ln) :: var_name(3), file_name(3)                  ! name of variable and of file
         complex(dp), allocatable :: fun_int_plot(:,:)                           ! results for plotting
         
-        
         ! initialize ierr
         ierr = 0
         
@@ -461,6 +460,13 @@ contains
             call writo('f = 1 - r^2 + i cos(theta)')
             call lvl_ud(-1)
             call writo('on a torus')
+            
+            call writo('Debug mode?')
+            if (get_log(.false.)) then
+                debug_calc_int_vol = .true.
+            else
+                debug_calc_int_vol = .false.
+            end if
             
             call writo('How many different grid sizes?')
             n_steps = get_int(lim_lo=1)
@@ -486,6 +492,14 @@ contains
                 do kd = 1,size(dims)
                     call writo('Dimension '//trim(i2str(kd)))
                     dims(kd,1) = get_int(lim_lo=1)
+                    if (dims(kd,1).eq.1) then
+                        call lvl_ud(1)
+                        call writo('Make sure the integrand does not depend on &
+                            &dimension '//trim(i2str(kd)))
+                        call writo('A factor such as 2pi can be missing from &
+                            &resulting integral')
+                        call lvl_ud(-1)
+                    end if
                 end do
             end if
             

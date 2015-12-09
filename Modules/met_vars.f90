@@ -76,55 +76,55 @@ contains
         ! initialize variables that are used for all equilibrium styles
         ! g_E
         allocate(met%g_E(dims(1),dims(2),dims(3),6,&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! h_E
         allocate(met%h_E(dims(1),dims(2),dims(3),6,&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! g_F
         allocate(met%g_F(dims(1),dims(2),dims(3),6,&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! h_F
         allocate(met%h_F(dims(1),dims(2),dims(3),6,&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! g_FD
         allocate(met%g_FD(dims(1),dims(2),dims(3),6,&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! h_FD
         allocate(met%h_FD(dims(1),dims(2),dims(3),6,&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! jac_E
         allocate(met%jac_E(dims(1),dims(2),dims(3),&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! jac_F
         allocate(met%jac_F(dims(1),dims(2),dims(3),&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! jac_FD
         allocate(met%jac_FD(dims(1),dims(2),dims(3),&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! T_EF
         allocate(met%T_EF(dims(1),dims(2),dims(3),9,&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! T_FE
         allocate(met%T_FE(dims(1),dims(2),dims(3),9,&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! det_T_EF
         allocate(met%det_T_EF(dims(1),dims(2),dims(3),&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! det_T_FE
         allocate(met%det_T_FE(dims(1),dims(2),dims(3),&
-            &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+            &0:max_deriv,0:max_deriv,0:max_deriv))
         
         ! initialize variables that are  specifici to which equilibrium style is
         ! being used:
@@ -134,19 +134,19 @@ contains
             case (1)                                                            ! VMEC
                 ! g_C
                 allocate(met%g_C(dims(1),dims(2),dims(3),6,&
-                    &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+                    &0:max_deriv,0:max_deriv,0:max_deriv))
                 
                 ! T_VC
                 allocate(met%T_VC(dims(1),dims(2),dims(3),9,&
-                    &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+                    &0:max_deriv,0:max_deriv,0:max_deriv))
                 
                 ! det_T_VC
                 allocate(met%det_T_VC(dims(1),dims(2),dims(3),&
-                    &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+                    &0:max_deriv,0:max_deriv,0:max_deriv))
                 
                 ! jac_C
                 allocate(met%jac_C(dims(1),dims(2),dims(3),&
-                    &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+                    &0:max_deriv,0:max_deriv,0:max_deriv))
             case (2)                                                            ! HELENA
                 ! nothing
             case default

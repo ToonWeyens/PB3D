@@ -41,7 +41,8 @@ module utilities
             &calc_mult_2D_complex
     end interface
     interface conv_mat
-        module procedure conv_mat_0D, conv_mat_3D
+        module procedure conv_mat_3D, conv_mat_0D, conv_mat_3D_complex, &
+            &conv_mat_0D_complex
     end interface
     interface calc_deriv
         module procedure calc_deriv_equidistant_real, &
@@ -1241,11 +1242,10 @@ contains
         do kd = 1,3
             if (size(arr_1,3+kd).lt.deriv(kd)+1 .or. &
                 &size(arr_2,3+kd).lt.deriv(kd)+1) then
-                err_msg = 'Arrays 1 and 2 do not provide the necessary &
-                    &orders of derivatives to calculate a derivative of order &
-                    &['//trim(i2str(deriv(1)))//','//trim(i2str(deriv(2)))//&
-                    &','//trim(i2str(deriv(3)))//' in coordinate '&
-                    &//trim(i2str(kd))
+                err_msg = 'Arrays 1 and 2 do not provide deriv. orders for a &
+                    &derivative of order ['//trim(i2str(deriv(1)))//','//&
+                    &trim(i2str(deriv(2)))//','//trim(i2str(deriv(3)))//'&
+                    &] in coordinate '//trim(i2str(kd))
                 ierr = 1
                 CHCKERR(err_msg)
             end if
@@ -1871,7 +1871,7 @@ contains
     ! Note also that  this routine makes a copy  of A so that by  providing A as
     ! input argument for both A and B overwrites A.
     integer function conv_mat_3D(A,B,n,transp) result(ierr)                     ! version defined on 3D grid
-        character(*), parameter :: rout_name = 'conv_mat'
+        character(*), parameter :: rout_name = 'conv_mat_3D'
         
         ! input / output
         real(dp), intent(in) :: A(:,:,:,:)                                      ! matrix to be converted
@@ -1939,7 +1939,7 @@ contains
         end if
     end function conv_mat_3D
     integer function conv_mat_0D(A,B,n,transp) result(ierr)                     ! scalar version
-        character(*), parameter :: rout_name = 'conv_mat'
+        character(*), parameter :: rout_name = 'conv_mat_0D'
         
         ! input / output
         real(dp), intent(in) :: A(:)                                            ! matrix to be converted
@@ -1963,6 +1963,99 @@ contains
         ! copy to B
         B = B_loc(1,1,1,:)
     end function conv_mat_0D
+    integer function conv_mat_3D_complex(A,B,n,transp) result(ierr)             ! complex version defined on 3D grid
+        character(*), parameter :: rout_name = 'conv_mat_3D_complex'
+        
+        ! input / output
+        complex(dp), intent(in) :: A(:,:,:,:)                                   ! matrix to be converted
+        complex(dp), intent(inout) :: B(:,:,:,:)                                ! converted matrix
+        integer, intent(in) :: n                                                ! size of matrix
+        logical, intent(in), optional :: transp                                 ! transpose
+        
+        ! local variables
+        logical :: sym(2)                                                       ! .true. if matrices symmetric
+        logical :: transp_loc                                                   ! local transp
+        integer :: nn(2)                                                        ! nr. of elements in matrices
+        integer :: id, jd                                                       ! counters
+        integer :: id_min                                                       ! minimum value of id
+        integer :: ind(2,2)                                                     ! indices
+        complex(dp), allocatable :: A_loc(:,:,:,:)                              ! local copy of A
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set total number of elements in matrix
+        nn(1) = size(A,4)
+        nn(2) = size(B,4)
+        
+        ! set local transp
+        transp_loc = .false.
+        if (present(transp)) transp_loc = transp
+        
+        ! set local A
+        allocate(A_loc(size(A,1),size(A,2),size(A,3),size(A,4)))
+        A_loc = A
+        
+        ! set sym
+        do id = 1,2
+            ierr = is_sym(n,nn(id),sym(id))
+            CHCKERR('')
+        end do
+        
+        ! copy A into B
+        if (sym(1).and.sym(2) .or. &
+            &.not.sym(1).and..not.sym(2).and..not.transp_loc) then              ! both symmetric or both unsymmetric and no transpose needed
+            B = A                                                               ! symmetric matrix equal to transpose or no tranpose needed
+        else                                                                    ! at least one is not symmetric
+            ! loop over row
+            do jd = 1,n
+                ! set id_min
+                if (sym(2)) then
+                    id_min = jd
+                else
+                    id_min = 1
+                end if
+                ! loop over column
+                do id = id_min,n
+                    ! set ind
+                    if (transp_loc) then
+                        ind(:,1) = [jd,id]
+                    else
+                        ind(:,1) = [id,jd]
+                    end if
+                    ind(:,2) = [id,jd]
+                    ! copy elements of A into B
+                    B(:,:,:,c(ind(:,2),sym(2),n)) = &
+                        &A_loc(:,:,:,c(ind(:,1),sym(1),n))
+                end do
+            end do
+        end if
+    end function conv_mat_3D_complex
+    integer function conv_mat_0D_complex(A,B,n,transp) result(ierr)             ! complex scalar version
+        character(*), parameter :: rout_name = 'conv_mat_0D_complex'
+        
+        ! input / output
+        complex(dp), intent(in) :: A(:)                                         ! matrix to be converted
+        complex(dp), intent(inout) :: B(:)                                      ! converted matrix
+        integer, intent(in) :: n                                                ! size of matrix
+        logical, intent(in), optional :: transp                                 ! transpose
+        
+        ! local variables
+        complex(dp), allocatable :: B_loc(:,:,:,:)                              ! local B
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local B
+        allocate(B_loc(1,1,1,size(B)))
+        
+        ! call 3D version
+        ierr = conv_mat_3D_complex(reshape(A,[1,1,1,size(A)]),B_loc,n,transp)
+        CHCKERR('')
+        
+        ! copy to B
+        B = B_loc(1,1,1,:)
+    end function conv_mat_0D_complex
     
     ! finds the zero of a function using Newton-Rhapson iteration
     integer function calc_zero_NR(zero_NR,fun,dfun,guess) result(ierr)

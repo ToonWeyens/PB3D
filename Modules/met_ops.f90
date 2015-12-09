@@ -352,6 +352,40 @@ contains
         ! Transform the  derivatives in E coordinates  to derivatives in        
         ! the F coordinates.
         call writo('Calculate derivatives in Flux coordinates')
+        do id = 0,max_deriv+1
+            ! pres_FD
+            ierr = transf_deriv(eq%pres_E,&
+                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%pres_FD(:,id),&
+                &max_deriv+1,id)
+            CHCKERR('')
+            
+            ! flux_p_FD
+            ierr = transf_deriv(eq%flux_p_E,&
+                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%flux_p_FD(:,id),&
+                &max_deriv+1,id)
+            CHCKERR('')
+            
+            ! flux_t_FD
+            ierr = transf_deriv(eq%flux_t_E,&
+                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%flux_t_FD(:,id),&
+                &max_deriv+1,id)
+            CHCKERR('')
+            eq%flux_t_FD(:,id) = pmone * eq%flux_t_FD(:,id)                     ! multiply by plus minus one
+            
+            ! q_saf_FD
+            ierr = transf_deriv(eq%q_saf_E,&
+                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%q_saf_FD(:,id),&
+                &max_deriv+1,id)
+            CHCKERR('')
+            eq%q_saf_FD(:,id) = pmone * eq%q_saf_FD(:,id)                       ! multiply by plus minus one
+            
+            ! rot_t_FD
+            ierr = transf_deriv(eq%rot_t_E,&
+                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%rot_t_FD(:,id),&
+                &max_deriv+1,id)
+            CHCKERR('')
+            eq%rot_t_FD(:,id) = pmone * eq%rot_t_FD(:,id)                       ! multiply by plus minus one
+        end do
         do id = 0,max_deriv
             ! g_FD
             ierr = transf_deriv(met%g_F,met%T_FE,met%g_FD,max_deriv,derivs(id))
@@ -365,39 +399,6 @@ contains
             ierr = transf_deriv(met%jac_F,met%T_FE,met%jac_FD,max_deriv,&
                 &derivs(id))
             CHCKERR('')
-            
-            ! pres_FD
-            ierr = transf_deriv(eq%pres_E,&
-                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%pres_FD(:,id),&
-                &max_deriv,id)
-            CHCKERR('')
-            
-            ! flux_p_FD
-            ierr = transf_deriv(eq%flux_p_E,&
-                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%flux_p_FD(:,id),&
-                &max_deriv,id)
-            CHCKERR('')
-            
-            ! flux_t_FD
-            ierr = transf_deriv(eq%flux_t_E,&
-                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%flux_t_FD(:,id),&
-                &max_deriv,id)
-            CHCKERR('')
-            eq%flux_t_FD(:,id) = pmone * eq%flux_t_FD(:,id)                     ! multiply by plus minus one
-            
-            ! q_saf_FD
-            ierr = transf_deriv(eq%q_saf_E,&
-                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%q_saf_FD(:,id),&
-                &max_deriv,id)
-            CHCKERR('')
-            eq%q_saf_FD(:,id) = pmone * eq%q_saf_FD(:,id)                       ! multiply by plus minus one
-            
-            ! rot_t_FD
-            ierr = transf_deriv(eq%rot_t_E,&
-                &met%T_FE(1,1,:,c([2,1],.false.),:,0,0),eq%rot_t_FD(:,id),&
-                &max_deriv,id)
-            CHCKERR('')
-            eq%rot_t_FD(:,id) = pmone * eq%rot_t_FD(:,id)                       ! multiply by plus minus one
         end do
         
 #if ldebug

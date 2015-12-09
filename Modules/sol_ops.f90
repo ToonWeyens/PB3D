@@ -29,7 +29,7 @@ module sol_ops
     ! global variables
 #if ldebug
     logical :: debug_calc_XUQ_arr = .false.                                     ! plot debug information for calc_XUQ_arr
-    logical :: debug_plot_X_vec = .true.                                        ! plot debug information for plot_X_vec
+    logical :: debug_plot_X_vec = .false.                                       ! plot debug information for plot_X_vec
     logical :: debug_calc_E = .false.                                           ! plot debug information for calc_E
     logical :: debug_DU = .false.                                               ! plot debug information for calculation of DU
 #endif
@@ -372,8 +372,10 @@ contains
 #if ldebug
         real(dp), allocatable :: loc_r_eq(:)                                    ! loc_r_F of sol grid interpolated in eq grid
         integer :: i_lo, i_hi                                                   ! upper and lower index for interpolation of eq grid to sol grid
-        complex(dp), allocatable :: U_inf(:,:,:,:)                              ! ideal ballooning U
         integer :: id, jd, ld                                                   ! counters
+        complex(dp), allocatable :: U_inf(:,:,:,:)                              ! ideal ballooning U
+        complex(dp), allocatable :: U_inf_prop(:,:,:)                           ! proportional part of U_inf
+        integer :: nm                                                           ! n (pol. flux) or m (tor. flux)
 #endif
         
         ! initialize ierr
@@ -507,60 +509,39 @@ contains
                 end do
             end do
             
-            ! multiply by i/n or i/m and add the proportional part
+            ! set up dummy variable Theta^alpha + q' theta and nm
+            allocate(U_inf_prop(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
             if (use_pol_flux_F) then
-                do ld = 1,product(n_t)
-                    do kd = 1,grid_sol%loc_n_r
-                        i_lo = floor(loc_r_eq(kd))
-                        i_hi = ceiling(loc_r_eq(kd))
-                        
-                        U_inf(:,:,kd,ld) = iu/X%n(1) * U_inf(:,:,kd,ld) - &
-                            !&0._dp
-                            &(met%h_FD(:,:,i_lo,c([1,2],.true.),0,0,0)+&
-                            &(loc_r_eq(kd)-i_lo)*&
-                            &(met%h_FD(:,:,i_hi,c([1,2],.true.),0,0,0))-&
-                            &met%h_FD(:,:,i_lo,c([1,2],.true.),0,0,0)) / &
-                            &(met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)+&
-                            &(loc_r_eq(kd)-i_lo)*&
-                            &(met%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0))-&
-                            &met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)) - &
-                            !&-1*&
-                            &(grid_eq%theta_F(:,:,i_lo)+&
-                            &(loc_r_eq(kd)-i_lo)*&
-                            &(grid_eq%theta_F(:,:,i_hi)-&
-                            &grid_eq%theta_F(:,:,i_lo))) * &
-                            &(eq%q_saf_FD(i_lo,1)+&
-                            &(loc_r_eq(kd)-i_lo)*&
-                            &(eq%q_saf_FD(i_hi,1)-&
-                            &eq%q_saf_FD(i_lo,1)))
-                    end do
+                do kd = 1,grid_eq%loc_n_r
+                    U_inf_prop(:,:,kd) = &
+                        &met%h_FD(:,:,kd,c([1,2],.true.),0,0,0)/&
+                        &met%h_FD(:,:,kd,c([2,2],.true.),0,0,0) + &
+                        &eq%q_saf_FD(kd,1)*grid_eq%theta_F(:,:,kd)
                 end do
+                nm = X%n(1)
             else
-                do ld = 1,product(n_t)
-                    do kd = 1,grid_sol%loc_n_r
-                        i_lo = floor(loc_r_eq(kd))
-                        i_hi = ceiling(loc_r_eq(kd))
-                        
-                        U_inf(:,:,kd,ld) = iu/X%m(1) * U_inf(:,:,kd,ld) - &
-                            &(met%h_FD(:,:,i_lo,c([1,2],.true.),0,0,0)+&
-                            &(loc_r_eq(kd)-i_lo)*&
-                            &(met%h_FD(:,:,i_hi,c([1,2],.true.),0,0,0))-&
-                            &met%h_FD(:,:,i_lo,c([1,2],.true.),0,0,0)) / &
-                            &(met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)+&
-                            &(loc_r_eq(kd)-i_lo)*&
-                            &(met%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0))-&
-                            &met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)) + &
-                            &(grid_eq%zeta_F(:,:,i_lo)+&
-                            &(loc_r_eq(kd)-i_lo)*&
-                            &(grid_eq%zeta_F(:,:,i_hi)-&
-                            &grid_eq%zeta_F(:,:,i_lo))) * &
-                            &(eq%rot_t_FD(i_lo,1)+&
-                            &(loc_r_eq(kd)-i_lo)*&
-                            &(eq%rot_t_FD(i_hi,1)-&
-                            &eq%rot_t_FD(i_lo,1)))
-                    end do
+                do kd = 1,grid_eq%loc_n_r
+                    U_inf_prop(:,:,kd) = &
+                        &met%h_FD(:,:,kd,c([1,2],.true.),0,0,0)/&
+                        &met%h_FD(:,:,kd,c([2,2],.true.),0,0,0) - &
+                        &eq%rot_t_FD(kd,1)*grid_eq%zeta_F(:,:,kd)
                 end do
+                nm = X%m(1)
             end if
+            
+            ! multiply by i/n or i/m and add the proportional part
+            do ld = 1,product(n_t)
+                do kd = 1,grid_sol%loc_n_r
+                    i_lo = floor(loc_r_eq(kd))
+                    i_hi = ceiling(loc_r_eq(kd))
+                    
+                    U_inf(:,:,kd,ld) = iu/X%n(1) * U_inf(:,:,kd,ld) - &
+                        &f_plot(:,:,kd,ld,1) * (&
+                        &U_inf_prop(:,:,i_lo)+(loc_r_eq(kd)-i_lo)*&
+                        &(U_inf_prop(:,:,i_hi)-U_inf_prop(:,:,i_lo)))
+                end do
+            end do
+            deallocate(U_inf_prop)
             
             ! plotting real part
             call plot_HDF5('RE X','TEST_RE_X_'//&
@@ -1098,8 +1079,8 @@ contains
                 i_hi = ceiling(loc_r_eq)
                 
                 h22(:,:,kd) = met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)+&
-                    &(loc_r_eq-i_lo)*&
-                    &(met%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0)&
+                    &(loc_r_eq-i_lo)*(&
+                    &met%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0)&
                     &-met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0))
                 g33(:,:,kd) = met%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0)+&
                     &(loc_r_eq-i_lo)*(&
@@ -1259,6 +1240,10 @@ contains
                 &J(:,:,norm_id(1):norm_id(2)),&
                 &E_kin(:,:,norm_id(1):norm_id(2),:),E_kin_int)
             CHCKERR('')
+            do kd = 1,size(E_kin_int)
+            write(*,*) 'E_kin_int ('//trim(i2str(kd))//') = '//trim(c2str(E_kin_int(kd)))
+            end do
+            write(*,*) 'TRYING NORMAL INTEGRATION'
             ierr = calc_int_vol(ang_1(:,:,norm_id(1):norm_id(2)),&
                 &ang_2(:,:,norm_id(1):norm_id(2)),norm(norm_id(1):norm_id(2)),&
                 &J(:,:,norm_id(1):norm_id(2)),&

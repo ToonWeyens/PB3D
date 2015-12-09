@@ -34,7 +34,7 @@ module SLEPC_ops
     logical :: debug_set_BC = .false.                                           ! plot debug information for set_BC
     logical :: debug_insert_block_mat = .false.                                 ! plot debug information for insert_block_mat
     logical :: debug_calc_V_0_mod = .false.                                     ! plot debug information for calc_V_0_mod
-    logical :: debug_store_results = .false.                                    ! plot debug information for store_results
+    logical :: debug_store_results = .true.                                    ! plot debug information for store_results
     logical :: test_diff = .false.                                              ! test introduction of numerical diff
     real(dp) :: diff_coeff                                                      ! diff coefficient
 #endif
@@ -235,7 +235,7 @@ contains
             &stable Eigenvalues')
         
 #if ldebug
-        ierr = store_results(grid_sol,X,sol,solver,max_n_EV,A,B)
+        ierr = store_results(grid_sol,X,sol,solver,max_n_EV,A,B,step_size)
         CHCKERR('')
 #else
         ierr = store_results(grid_sol,X,sol,solver,max_n_EV)
@@ -673,9 +673,9 @@ contains
             end select
             
             ! allocate interpolated V_int_i and local block
-            allocate(V_int_0(n_mod**2))
-            allocate(V_int_1(n_mod**2))
-            allocate(V_int_2(n_mod**2))
+            allocate(V_int_0(size(V_0,1)))
+            allocate(V_int_1(size(V_1,1)))
+            allocate(V_int_2(size(V_2,1)))
             allocate(loc_block(n_mod,n_mod))
             
             ! iterate over all rows of this rank
@@ -1518,8 +1518,8 @@ contains
     
     ! stores the results
 #if ldebug
-    integer function store_results(grid_sol,X,sol,solver,max_n_EV,A,B) &
-        &result(ierr)
+    integer function store_results(grid_sol,X,sol,solver,max_n_EV,A,B,&
+        &step_size) result(ierr)
 #else
     integer function store_results(grid_sol,X,sol,solver,max_n_EV) result(ierr)
 #endif
@@ -1540,6 +1540,7 @@ contains
         PetscInt, intent(inout) :: max_n_EV                                     ! nr. of EV's saved, up to n_conv
 #if ldebug
         Mat, intent(inout) :: A, B                                              ! matrix A and B
+        PetscReal, intent(in) :: step_size                                      ! step size in flux coordinates
 #endif
         
         ! local variables
@@ -1563,10 +1564,12 @@ contains
 #if ldebug
         character(len=max_str_ln) :: err_msg                                    ! error message
         Mat :: err_mat                                                          ! A - omega^2 B
-        Vec :: err_vec                                                          ! Ax - omega^2 BX
+        Vec :: err_vec                                                          ! AX - omega^2 BX
+        Vec :: E_vec(2)                                                         ! AX and BX
         PetscReal :: err_norm                                                   ! norm of error
         PetscReal :: error_est                                                  ! error estimate of EPS solver
         PetscScalar :: err_val                                                  ! X*(A-omega^2B)X
+        PetscScalar :: E_val(2)                                                 ! X*AX and X*BX
 #endif
         
         ! initialize ierr
@@ -1752,6 +1755,30 @@ contains
                     &trim(r2str(error))//', estimate: '//trim(r2str(error_est)))
                 call VecView(err_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
                 CHCKERR('Cannot view vector')
+                
+                ! set up Energy vector
+                call VecDuplicate(sol_vec,E_vec(1),ierr)
+                CHCKERR('Failed to duplicate vector')
+                call VecDuplicate(sol_vec,E_vec(2),ierr)
+                CHCKERR('Failed to duplicate vector')
+                
+                ! calculate Ax and Bx
+                call MatMult(A,sol_vec,E_vec(1),ierr)
+                CHCKERR('Failed to multiply')
+                call MatMult(B,sol_vec,E_vec(2),ierr)
+                CHCKERR('Failed to multiply')
+                
+                ! multiply with X* and give output
+                call VecDot(sol_vec,E_vec(1),E_val(1),ierr)
+                CHCKERR('Failed to do dot product')
+                call writo('E_pot = X*AX*step_size = '//&
+                    &trim(c2strt(E_val(1)*step_size)))
+                call VecDot(sol_vec,E_vec(2),E_val(2),ierr)
+                CHCKERR('Failed to do dot product')
+                call writo('E_kin = X*BX*step_size = '//&
+                    &trim(c2strt(E_val(2)*step_size)))
+                call writo('X*AX/X*X = '//trim(c2strt(E_val(1)/E_val(2))))
+                call writo('omega^2  = '//trim(c2strt(X_val_loc)))
                 
                 call lvl_ud(-1)
                 

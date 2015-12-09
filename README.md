@@ -248,3 +248,8 @@ CHANGELOG
       - Added a test folder to be used for FORTRAN tests.
       - Started implementing the transformation of the metric factors. This is NOT finished and will probably be abandoned
 
+1.02: - Metric variables are interpolated still for HELENA, but in a different, more clever way. Not yet implemented for toroidal flux.
+      - Bounds are now checked.
+      - Fixed and finished implementing the comparison between U and U_inf.
+      - Extended 'debug_store_results' so that it displays X*AX and X*BX separately.
+      - Extended debugging of calculation of integral. An alternative calculation for orthogonal computational grids shows identical results.

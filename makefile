@@ -69,8 +69,8 @@ include $(OBJLIST)# Names of all the objects
 # 		lold_MPI: MPI versions older than 1.8
 ##############################################################################
 # compiler flags
-COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -cpp -Dldebug -Dlold_MPI# profiling
-#COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -cpp -Dldebug -Dlold_MPI# no profiling
+COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -fbounds-check -cpp -Dldebug -Dlold_MPI# profiling
+#COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -fbounds-check -cpp -Dldebug -Dlold_MPI# no profiling
 
 # compiler include
 COMP_INC = -I$(HDF5_inc) -I$(HOME_BIN)/libstell_dir -I$(PB3D_DIR)/include #-I/opt/openmpi/1.10.0/include

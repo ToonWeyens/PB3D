@@ -31,11 +31,11 @@ module num_vars
     integer, parameter :: qp = REAL128                                          ! quadruple precision
     integer, parameter :: max_str_ln = 120                                      ! maximum length of strings
     integer, parameter :: max_name_ln = 30                                      ! maximum length of filenames
-    integer, parameter :: max_deriv = 2                                         ! highest derivatives calculated for metric factors
+    integer, parameter :: max_deriv = 2                                         ! highest derivatives for metric factors in Flux coords.
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 1.01_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.02_dp                               ! version number
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
