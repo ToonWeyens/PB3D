@@ -229,10 +229,14 @@ contains
             select case(ord)
                 case (1)                                                        ! vectorial data: U, DU
                     ! set memory size
-                    mem_size = 4*arr_size*n_mod**ord*dp_size
+                    mem_size = 4*arr_size
+                    mem_size = mem_size*n_mod**ord
+                    mem_size = mem_size*dp_size
                 case (2)                                                        ! tensorial data: PV, KV
                     ! set memory size
-                    mem_size = 6*arr_size*n_mod**ord*dp_size
+                    mem_size = 6*arr_size
+                    mem_size = mem_size*n_mod**ord
+                    mem_size = mem_size*dp_size
                 case default
                     ierr = 1
                     err_msg = 'Orders > 2 are not implemented'
@@ -244,6 +248,12 @@ contains
             
             ! scale memory to account for rough estimation
             mem_size = mem_size*mem_scale_fac
+            
+            ! test overflow
+            if (mem_size.lt.0) then
+                ierr = 1
+                CHCKERR('Overflow occured')
+            end if
             
             call lvl_ud(-1)
         end function calc_memory
@@ -460,7 +470,7 @@ contains
             &n_theta_plot, n_zeta_plot, plot_resonance, EV_BC, tol_SLEPC, &
             &rho_style, prog_style, max_it_inv, norm_disc_prec_X, &
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, tol_norm_r, &
-            &max_it_slepc, max_mem_per_proc, PB3D_name
+            &max_it_slepc, max_mem_per_proc, PB3D_name, norm_style
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
@@ -533,6 +543,8 @@ contains
                 &ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(rho_style,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(norm_style,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(plot_flux_q,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)

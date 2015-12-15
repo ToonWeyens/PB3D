@@ -24,7 +24,7 @@ module X_ops
     interface print_output_X
         module procedure print_output_X_1, print_output_X_2
     end interface
-
+    
 contains
     ! Calculates either vectorial or tensorial perturbation variables.
     ! Optionally, the  secondary mode  numbers can be  specified (m  if poloidal
@@ -182,8 +182,8 @@ contains
         
         call lvl_ud(-1)
         
-        ! only master
-        if (rank.eq.0) then
+        ! only master and only if resonant surfaces
+        if (rank.eq.0 .and. size(res_surf,1).gt.0) then
             ! set local n_mod
             n_mod_loc = size(res_surf,1)
             
@@ -1215,7 +1215,7 @@ contains
                 ! calculate PV_1
                 if (calc_this(2)) then
                     X%PV_1(:,:,:,c_loc(2)) = com_fac * X_b%DU_1(:,:,:,m) * &
-                        &conjg(X_a%DU_0(:,:,:,k)-eq%S*J-eq%sigma/(com_fac*J))
+                        &(conjg(X_a%DU_0(:,:,:,k))-eq%S*J-eq%sigma/(com_fac*J))
                 end if
                 
                 ! calculate PV_2
@@ -1234,6 +1234,7 @@ contains
     ! eq loc_n_r values
     ! (see [ADD REF] for details)
     integer function calc_KV(eq,grid,met,X_a,X_b,X,lim_sec_X) result(ierr)
+        use num_vars, only: norm_style
         use utilities, only: c
         use X_vars, only: is_necessary_X, &
             &min_m_X, max_m_X, min_n_X, max_n_X
@@ -1254,6 +1255,7 @@ contains
         real(dp), allocatable :: com_fac(:,:,:)                                 ! common factor |nabla psi|^2/(J^2*B^2)
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! submatrices
         ! jacobian
@@ -1299,23 +1301,46 @@ contains
                 c_loc(1) = c([k,m],.true.,n_mod_tot,lim_sec_X)
                 c_loc(2) = c([k,m],.false.,n_mod_tot,lim_sec_X)
                 
-                ! calculate KV_0
-                if (calc_this(1)) then
-                    X%KV_0(:,:,:,c_loc(1)) = com_fac * &
-                        &X_b%U_0(:,:,:,m) * conjg(X_a%U_0(:,:,:,k)) + 1._dp/h22
-                end if
-                
-                ! calculate KV_1
-                if (calc_this(2)) then
-                    X%KV_1(:,:,:,c_loc(2)) = com_fac * &
-                        &X_b%U_1(:,:,:,m) * conjg(X_a%U_0(:,:,:,k))
-                end if
-                
-                ! calculate KV_2
-                if (calc_this(1)) then
-                    X%KV_2(:,:,:,c_loc(1)) = com_fac * &
-                        &X_b%U_1(:,:,:,m) * conjg(X_a%U_1(:,:,:,k))
-                end if
+                select case (norm_style)
+                    case (1)                                                    ! normalization of full perpendicular component
+                        ! calculate KV_0
+                        if (calc_this(1)) then
+                            X%KV_0(:,:,:,c_loc(1)) = 1._dp/h22 + com_fac * &
+                                &X_b%u_0(:,:,:,m) * conjg(X_a%u_0(:,:,:,k))
+                        end if
+                        
+                        ! calculate KV_1
+                        if (calc_thiS(2)) then
+                            X%KV_1(:,:,:,c_loc(2)) = com_fac * &
+                                &X_b%u_1(:,:,:,m) * conjg(X_a%u_0(:,:,:,k))
+                        end if
+                        
+                        ! calculate kv_2
+                        if (calc_this(1)) then
+                            X%kv_2(:,:,:,c_loc(1)) = com_fac * &
+                                &X_b%U_1(:,:,:,m) * conjg(X_a%U_1(:,:,:,k))
+                        end if
+                    case (2)                                                    ! normalization of only normal component
+                        ! calculate KV_0
+                        if (calc_this(1)) then
+                            X%KV_0(:,:,:,c_loc(1)) = 1._dp/h22
+                        end if
+                        
+                        ! calculate KV_1
+                        if (calc_this(2)) then
+                            X%KV_1(:,:,:,c_loc(2)) = 0._dp
+                        end if
+                        
+                        ! calculate KV_2
+                        if (calc_this(1)) then
+                            X%KV_2(:,:,:,c_loc(1)) = 0._dp
+                        end if
+                    case default
+                        err_msg = 'No normalization style associated with '//&
+                            &trim(i2str(norm_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
+                end select
             end do
         end do
         

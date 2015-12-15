@@ -447,11 +447,12 @@ contains
                 allocate(X_val_comp(2,2,size(X_val_comp_loc,3)))
                 X_val_comp = X_val_comp_loc
                 deallocate(X_val_comp_loc)
-                ierr = decompose_energy(grid_eq_plot,grid_sol,eq_plot,met_plot,&
-                    &X_1_plot,sol,id,output_EN_i,.false.,XYZ=&
-                    &reshape([X_plot,Y_plot,Z_plot],[grid_sol_plot%n(1:2),&
-                    &grid_sol_plot%loc_n_r,3]))
-                CHCKERR('')
+                write(*,*) '!!!! NOT PLOTTING !!!!!!!!!!'
+                !!ierr = decompose_energy(grid_eq_plot,grid_sol,eq_plot,met_plot,&
+                    !!&X_1_plot,sol,id,output_EN_i,.false.,XYZ=&
+                    !!&reshape([X_plot,Y_plot,Z_plot],[grid_sol_plot%n(1:2),&
+                    !!&grid_sol_plot%loc_n_r,3]))
+                !!CHCKERR('')
                 call lvl_ud(-1)
                 
                 ! user output

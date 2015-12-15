@@ -2000,11 +2000,13 @@ contains
     ! The integrand has to be evaluated at the intermediate positions inside the
     ! cells. This is  done by taking the  average of the 2^3=8 points  for fJ as
     ! well as the transformation of the Jacobian.
-    ! Note that if the coordinates are independent, this method is equivalent to
-    ! the repeated numerical integration using the trapezoidal method.
+    ! Note: if the coordinates are independent, this method is equivalent to the
+    ! repeated numerical integration using the trapezoidal method.
+    ! Note: by  setting debug_calc_int_vol, this  method can be compared  to the
+    ! trapezoidal and simple method for independent coordinates.
     integer function calc_int_vol(ang_1,ang_2,norm,J,f,f_int) result(ierr)
 #if ldebug
-        use num_vars, only: rank
+        use num_vars, only: rank, n_procs
 #endif
         
         character(*), parameter :: rout_name = 'calc_int_vol'
@@ -2031,6 +2033,8 @@ contains
         complex(dp), allocatable :: f_int_ALT(:)                                ! alternative calculation for output
         complex(dp), allocatable :: f_int_ALT_1D(:,:)                           ! intermediary step in f_int_ALT
         complex(dp), allocatable :: f_int_ALT_2D(:,:,:)                         ! intermediary step in f_int_ALT
+        complex(dp), allocatable :: f_int_ALT_ALT(:)                            ! another alternative calculation for output
+        integer :: loc_norm(2)                                                  ! local normal index
 #endif
         
         ! initialize ierr
@@ -2199,14 +2203,16 @@ contains
             call plot_HDF5('transformation of Jacobians',&
                 &'TEST_transf_J_'//trim(i2str(rank)),transf_J_tot)
             
-            ! do alternative calculation
+            ! do alternative calculations
             ! assuming that coordinate i varies only in dimensions i!!!
             allocate(f_int_ALT(nn_mod))
             allocate(f_int_ALT_1D(size(f,3),nn_mod))
             allocate(f_int_ALT_2D(size(f,2),size(f,3),nn_mod))
+            allocate(f_int_ALT_ALT(nn_mod))
             f_int_ALT = 0._dp
             f_int_ALT_1D = 0._dp
             f_int_ALT_2D = 0._dp
+            f_int_ALT_ALT = 0._dp
             
             ! integrate in first coordinate
             do kd = 1,size(f,3)
@@ -2249,17 +2255,36 @@ contains
                 f_int_ALT = f_int_ALT_1D(1,:)
             end if
             
-            call writo('Resulting integral: ')
+            ! second alternative, first order integration
+            loc_norm = [1,size(f,3)]
+            if (rank.lt.n_procs-1) loc_norm(2) = loc_norm(2)-1                  ! no ghost region needed for this method
+            do ld = 1,size(f,4)
+                f_int_ALT_ALT(ld) = sum(J(:,:,loc_norm(1):loc_norm(2))*&
+                    &f(:,:,loc_norm(1):loc_norm(2),ld))
+            end do
+            if (size(f,1).gt.1) f_int_ALT_ALT = f_int_ALT_ALT*&
+                &(ang_1(2,1,1)-ang_1(1,1,1))
+            if (size(f,2).gt.1) f_int_ALT_ALT = f_int_ALT_ALT*&
+                &(ang_2(1,2,1)-ang_2(1,1,1))
+            if (size(f,3).gt.1) f_int_ALT_ALT = f_int_ALT_ALT*&
+                &(norm(2)-norm(1))
+            
+            call writo('Resulting integral: ',persistent=.true.)
             call lvl_ud(1)
             do ld = 1,nn_mod
-                call writo('integral    '//trim(i2str(ld))//': '//&
-                    &trim(c2str(f_int(ld))))
-                call writo('alternative '//trim(i2str(ld))//': '//&
-                    &trim(c2str(f_int_ALT(ld))))
+                call writo('rank '//trim(i2str(rank))//' integral      '//&
+                    &trim(i2str(ld))//': '//trim(c2str(f_int(ld))),&
+                    &persistent=.true.)
+                call writo('rank '//trim(i2str(rank))//'   alternative '//&
+                    &trim(i2str(ld))//': '//trim(c2str(f_int_ALT(ld))),&
+                    &persistent=.true.)
+                call writo('rank '//trim(i2str(rank))//'   other alt.  '//&
+                    &trim(i2str(ld))//': '//trim(c2str(f_int_ALT_ALT(ld))),&
+                    &persistent=.true.)
             end do
             call lvl_ud(-1)
             
-            call writo('(Note that alternative calculation is only valid if &
+            call writo('(Note that alternative calculations are only valid if &
                 &independent coordinates!)')
             
             call lvl_ud(-1)

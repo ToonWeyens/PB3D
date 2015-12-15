@@ -47,7 +47,7 @@ contains
         character(len=max_str_ln) :: dum_str                                    ! dummy string
         
         write (c2str, '(ES23.16)') realpart(k)
-        write (dum_str, '(ES23.16)') imagpart(k)
+        write (dum_str, '(ES23.16)') abs(imagpart(k))
         if (imagpart(k).lt.0) then
             c2str = trim(c2str)//' -'
         else
@@ -64,7 +64,7 @@ contains
         character(len=max_str_ln) :: dum_str                                    ! dummy string
         
         write (c2strt, '(ES9.2)') realpart(k)
-        write (dum_str, '(ES9.2)') imagpart(k)
+        write (dum_str, '(ES9.2)') abs(imagpart(k))
         if (imagpart(k).lt.0) then
             c2strt = trim(c2strt)//' -'
         else

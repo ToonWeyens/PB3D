@@ -962,7 +962,7 @@ contains
         integer function reconstruct_vars_misc() result(ierr)
             use num_vars, only: norm_disc_prec_eq, norm_disc_prec_X, &
                 &use_pol_flux_F, eq_style, use_normalization, use_pol_flux_E, &
-                &use_pol_flux_F, rho_style
+                &use_pol_flux_F, rho_style, norm_style
             use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, &
                 &T_0, vac_perm
             use grid_vars, only: alpha
@@ -1036,6 +1036,7 @@ contains
             min_m_X = nint(dum_1D(5))
             max_m_X = nint(dum_1D(6))
             norm_disc_prec_X = nint(dum_1D(7))
+            norm_style = nint(dum_1D(8))
             deallocate(dum_1D)
             
             call lvl_ud(-1)

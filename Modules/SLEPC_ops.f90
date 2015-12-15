@@ -1641,6 +1641,10 @@ contains
                 &'relative precision      '
         end if
         
+        ! initialize helper variables
+        allocate(X_vec_max(n_procs))
+        allocate(X_vec_max_loc(2))
+        
         ! start id
         id = 1
         id_tot = 1
@@ -1702,6 +1706,19 @@ contains
                 if (EV_err_str.ne.'') write(output_EV_i,'(A)') trim(EV_err_str)
             end if
             
+            ! normalize Eigenvectors to make output more easily comparable
+            if (EV_err_str.eq.'') then
+                ! find local maximum
+                X_vec_max_loc = maxloc(abs(sol%vec(:,:,id)))
+                ierr = get_ser_var(&
+                    &[sol%vec(X_vec_max_loc(1),X_vec_max_loc(2),id)],&
+                    &X_vec_max,scatter=.true.)
+                CHCKERR('')
+                ! find global maximum
+                X_vec_max_loc(1) = maxloc(abs(X_vec_max),1)
+                sol%vec(:,:,id) = sol%vec(:,:,id) / X_vec_max(X_vec_max_loc(1))
+            end if
+            
             !! visualize solution
             !call PetscViewerDrawOpen(PETSC_COMM_WORLD,PETSC_NULL_CHARACTER,&
                 !&'solution '//trim(i2str(id))//' vector with '//&
@@ -1715,7 +1732,7 @@ contains
             !CHCKERR('Cannot view vector')
             
 #if ldebug
-            if (debug_store_results) then
+            if (debug_store_results .and. EV_err_str.eq.'') then
                 ! user message
                 call writo('Testing whether A x - omega^2 B x = 0 for EV '//&
                     &trim(i2str(id))//': '//trim(c2strt(sol%val(id))))
@@ -1739,7 +1756,7 @@ contains
                 CHCKERR('Failed to multiply')
                 
                 ! multiply with X* and give output
-                call VecDot(sol_vec,err_vec,err_val,ierr)
+                call VecDot(err_vec,sol_vec,err_val,ierr)
                 CHCKERR('Failed to do dot product')
                 call writo('X*(A-omega^2B)X = '//trim(c2strt(err_val)))
                 
@@ -1769,16 +1786,17 @@ contains
                 CHCKERR('Failed to multiply')
                 
                 ! multiply with X* and give output
-                call VecDot(sol_vec,E_vec(1),E_val(1),ierr)
+                call VecDot(E_vec(1),sol_vec,E_val(1),ierr)
                 CHCKERR('Failed to do dot product')
+                call writo('step_size = '//trim(r2str(step_size)))
                 call writo('E_pot = X*AX*step_size = '//&
-                    &trim(c2strt(E_val(1)*step_size)))
-                call VecDot(sol_vec,E_vec(2),E_val(2),ierr)
+                    &trim(c2str(E_val(1)*step_size)))
+                call VecDot(E_vec(2),sol_vec,E_val(2),ierr)
                 CHCKERR('Failed to do dot product')
                 call writo('E_kin = X*BX*step_size = '//&
-                    &trim(c2strt(E_val(2)*step_size)))
-                call writo('X*AX/X*X = '//trim(c2strt(E_val(1)/E_val(2))))
-                call writo('omega^2  = '//trim(c2strt(X_val_loc)))
+                    &trim(c2str(E_val(2)*step_size)))
+                call writo('X*AX/X*BX = '//trim(c2str(E_val(1)/E_val(2))))
+                call writo('omega^2   = '//trim(c2str(sol%val(id))))
                 
                 call lvl_ud(-1)
                 
@@ -1803,24 +1821,12 @@ contains
             id_tot = id_tot+1
         end do
         
-        ! close output file if master
-        if (rank.eq.0) close(output_EV_i)
-        
-        ! normalize Eigenvectors to make output more easily comparable
-        allocate(X_vec_max(n_procs))
-        allocate(X_vec_max_loc(2))
-        do id = 1,size(sol%vec,3)
-            ! find local maximum
-            X_vec_max_loc = maxloc(abs(sol%vec(:,:,id)))
-            ierr = get_ser_var([sol%vec(X_vec_max_loc(1),X_vec_max_loc(2),id)],&
-                &X_vec_max,scatter=.true.)
-            CHCKERR('')
-            ! find global maximum
-            X_vec_max_loc(1) = maxloc(abs(X_vec_max),1)
-            sol%vec(:,:,id) = sol%vec(:,:,id) / X_vec_max(X_vec_max_loc(1))
-        end do
+        ! deallocate helper variables
         deallocate(X_vec_max_loc)
         deallocate(X_vec_max)
+        
+        ! close output file if master
+        if (rank.eq.0) close(output_EV_i)
         
         ! user output
         if (rank.eq.0) call writo(trim(i2str(max_n_EV))//&
@@ -1841,13 +1847,15 @@ contains
             call writo('(Override this behavior using "retain_all_sol")')
         end if
         
-        call writo('basic statistics:')
-        call lvl_ud(1)
-        
-        call writo('min: '//trim(c2strt(sol%val(1))))
-        call writo('max: '//trim(c2strt(sol%val(max_n_EV))))
-        
-        call lvl_ud(-1)
+        if (max_n_EV.gt.0) then
+            call writo('basic statistics:')
+            call lvl_ud(1)
+            
+            call writo('min: '//trim(c2strt(sol%val(1))))
+            call writo('max: '//trim(c2strt(sol%val(max_n_EV))))
+            
+            call lvl_ud(-1)
+        end if
         
         !call EPSPrintSolution(solver,PETSC_NULL_OBJECT,ierr)
         

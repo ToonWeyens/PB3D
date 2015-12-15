@@ -266,7 +266,8 @@ contains
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
-            &tol_norm_r, tol_SLEPC, max_it_slepc, n_procs, pi, plot_size
+            &tol_norm_r, tol_SLEPC, max_it_slepc, n_procs, pi, plot_size, &
+            &norm_style
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files_ops, only: input_name
@@ -290,7 +291,7 @@ contains
             &max_mem_per_proc, min_n_r_sol, max_it_r, tol_r, EV_style, &
             &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, &
             &retain_all_sol, norm_disc_prec_X, BC_style, max_it_inv, &
-            &tol_norm_r, max_it_slepc, norm_disc_prec_sol, plot_size
+            &tol_norm_r, max_it_slepc, norm_disc_prec_sol, plot_size, norm_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_grid, norm_disc_prec_sol, &
             &plot_size
@@ -448,6 +449,7 @@ contains
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
             tol_SLEPC = 1.E-8_dp                                                ! tolerance of 1E-8
             rho_style = 1                                                       ! constant pressure profile, equal to rho_0
+            norm_style = 1                                                      ! perpendicular kinetic energy normalized
             BC_style = [1,2]                                                    ! left BC zeroed and right BC through minimization of energy
             plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
             plot_grid = .false.                                                 ! do not plot the grid

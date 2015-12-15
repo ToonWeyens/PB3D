@@ -11,8 +11,8 @@ module num_vars
         &max_mem_per_proc, n_procs, rank, X_jobs_lims, X_jobs_taken, X_job_nr, &
         &X_jobs_file_name, X_jobs_lock_file_name, HDF5_lock_file_name, &
         &pi, mu_0_original, iu, &
-        &EV_style, eq_style, rho_style, BC_style, plot_resonance, plot_grid, &
-        &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
+        &EV_style, eq_style, rho_style, norm_style, BC_style, plot_resonance, &
+        &plot_grid, plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
         &use_normalization, EV_BC, tol_SLEPC, max_it_slepc, rich_lvl_nr, &
         &norm_disc_prec_eq, norm_disc_prec_X, norm_disc_prec_sol, &
         &max_it_r, tol_r, no_guess, &
@@ -35,7 +35,7 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 1.02_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.03_dp                               ! version number
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
@@ -57,6 +57,7 @@ module num_vars
     integer :: EV_style                                                         ! determines the method used for solving an EV problem
     integer :: eq_style                                                         ! either 1 (VMEC) or 2 (HELENA)
     integer :: rho_style                                                        ! style for equilibrium density profile
+    integer :: norm_style                                                       ! style for normalization
     integer :: BC_style(2)                                                      ! style for BC left and right
     integer :: max_it_slepc                                                     ! maximum nr. of iterations for SLEPC
     logical :: plot_resonance                                                   ! whether to plot the q-profile or iota-profile with resonances

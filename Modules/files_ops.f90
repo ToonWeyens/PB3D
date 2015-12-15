@@ -404,7 +404,7 @@ contains
         use num_vars, only: eq_style, rho_style, rank, prog_version, &
             &use_pol_flux_E, use_pol_flux_F, use_normalization, &
             &norm_disc_prec_eq, PB3D_name, output_i, output_name, prog_name, &
-            &norm_disc_prec_X, prog_style
+            &norm_disc_prec_X, prog_style, norm_style
         use messages, only: temp_output, temp_output_active
         use files_utilities, only: nextunit
         use HDF5_ops, only: create_output_HDF5, print_HDF5_arrs
@@ -566,18 +566,18 @@ contains
                     allocate(misc_1D_loc%loc_i_min(1),misc_1D_loc%loc_i_max(1))
                     if (rank.eq.0) then
                         misc_1D_loc%loc_i_min = [1]
-                        misc_1D_loc%loc_i_max = [7]
-                        allocate(misc_1D_loc%p(7))
+                        misc_1D_loc%loc_i_max = [8]
+                        allocate(misc_1D_loc%p(8))
                         misc_1D_loc%p = [min_r_sol,max_r_sol,min_n_X*1._dp,&
                             &max_n_X*1._dp,min_m_X*1._dp,max_m_X*1._dp,&
-                            &norm_disc_prec_X*1._dp]
+                            &norm_disc_prec_X*1._dp,norm_style*1._dp]
                     else
                         misc_1D_loc%loc_i_min = [1]
                         misc_1D_loc%loc_i_max = [0]
                         allocate(misc_1D_loc%p(0))
                     end if
                     misc_1D_loc%tot_i_min = [1]
-                    misc_1D_loc%tot_i_max = [7]
+                    misc_1D_loc%tot_i_max = [8]
                     
                     call lvl_ud(-1)
                     

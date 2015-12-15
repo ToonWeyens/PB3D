@@ -253,3 +253,10 @@ CHANGELOG
       - Fixed and finished implementing the comparison between U and U_inf.
       - Extended 'debug_store_results' so that it displays X*AX and X*BX separately.
       - Extended debugging of calculation of integral. An alternative calculation for orthogonal computational grids shows identical results.
+
+1.03: - Fixed a bug in the calculation of the volume integrals: ghost region was needed.
+      - Consistency of volume integral with both repeated trapezoidal integration and repeated simple integration shown.
+      - Introduced normalization style 'norm_style' that now also allows for normalization of only the normal component of the perturbation.
+      - Various bugfixes when no resonant surfaces are found or when solutions are removed.
+      - Solution vectors are now normalized in store loop, to ensure consistency of X*VX step_size and the integrals of POST.
+      - Fixed a bug in 'calc_memory' where overflow occured.
