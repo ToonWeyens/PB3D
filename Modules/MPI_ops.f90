@@ -470,7 +470,7 @@ contains
             &n_theta_plot, n_zeta_plot, plot_resonance, EV_BC, tol_SLEPC, &
             &rho_style, prog_style, max_it_inv, norm_disc_prec_X, &
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, tol_norm_r, &
-            &max_it_slepc, max_mem_per_proc, PB3D_name, norm_style
+            &max_it_slepc, max_mem_per_proc, PB3D_name, norm_style, U_style
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
@@ -545,6 +545,8 @@ contains
             call MPI_Bcast(rho_style,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(norm_style,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(U_style,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(plot_flux_q,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)

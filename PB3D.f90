@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.03                                                              !
+!   Version: 1.04                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -23,7 +23,7 @@
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D
-    use num_vars, only: ltest, prog_name, prog_style
+    use num_vars, only: prog_name, prog_style
     use str_ops, only: r2str, i2str
     use messages, only: init_messages, lvl_ud, writo, init_time, &
         &start_time, passed_time, print_hello, print_goodbye
@@ -37,7 +37,10 @@ program PB3D
     use input_ops, only: read_input
     use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_vars, sudden_stop
     use eq_ops, only: read_eq, calc_normalization_const, normalize_input
+#if ldebug
+    use num_vars, only: ltest
     use test, only: generic_tests
+#endif
     
     implicit none
 
@@ -58,6 +61,7 @@ program PB3D
     call init_time                                                              ! initialize time
     call init_HDF5                                                              ! initialize HDF5
     call init_X_vars                                                            ! initialize perturbation vars
+    write(*,*) '!!!!!!! THE X VARIABLES HAVE TO BE TABULATED IN THE SOL GRID  !!!!!!!!!!!!!!!'
     write(*,*) '!!!!!!! IMPLEMENT THE SMART VERSION OF CHOOSING THE FOURIER MODE NUMBERS !!!!!!!!!!!!!!!'
     write(*,*) '!!!!!!! IMPLEMENT DIFFERENT HDF5 SYSTEM WHERE THERE IS ONE !!!!!!!!!!!!'
     write(*,*) '!!!!!!! VARIABLE FOR X WHICH IS PARTIALLY READ AND WRITTEN !!!!!!!!!!!!'

@@ -74,7 +74,11 @@ contains
         CHCKERR('')
         
         ! Transform E into F derivatives
+#if ldebug
         ierr = calc_F_derivs(grid_eq,eq,met)
+#else
+        ierr = calc_F_derivs(eq,met)
+#endif
         CHCKERR('')
         
         ! plot flux quantities if requested

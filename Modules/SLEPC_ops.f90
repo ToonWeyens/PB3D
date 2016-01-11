@@ -1561,8 +1561,8 @@ contains
         integer :: output_EV_i                                                  ! file number
         integer :: n_digits                                                     ! nr. of digits for the integer number
         integer :: n_err(3)                                                     ! how many errors there were
-#if ldebug
         character(len=max_str_ln) :: err_msg                                    ! error message
+#if ldebug
         Mat :: err_mat                                                          ! A - omega^2 B
         Vec :: err_vec                                                          ! AX - omega^2 BX
         Vec :: E_vec(2)                                                         ! AX and BX
@@ -1570,6 +1570,10 @@ contains
         PetscReal :: error_est                                                  ! error estimate of EPS solver
         PetscScalar :: err_val                                                  ! X*(A-omega^2B)X
         PetscScalar :: E_val(2)                                                 ! X*AX and X*BX
+        Vec :: sol_vec_loc                                                      ! solution EV parallel vector
+        complex(dp), allocatable :: sol_vec_copy(:,:)                           ! copy of solution vector
+        integer :: kd 
+        complex(dp), allocatable :: sol_vec_int(:)
 #endif
         
         ! initialize ierr
@@ -1767,11 +1771,11 @@ contains
                 ! get relative norm
                 err_norm = err_norm/abs(sol%val(id))
                 
-                ! visualize solution
+                ! visualize solution and error
                 call writo('error: '//trim(r2str(err_norm))//', given: '//&
                     &trim(r2str(error))//', estimate: '//trim(r2str(error_est)))
-                call VecView(err_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
-                CHCKERR('Cannot view vector')
+                !!call VecView(err_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
+                !!CHCKERR('Cannot view vector')
                 
                 ! set up Energy vector
                 call VecDuplicate(sol_vec,E_vec(1),ierr)
@@ -1799,6 +1803,41 @@ contains
                 call writo('omega^2   = '//trim(c2str(sol%val(id))))
                 
                 call lvl_ud(-1)
+                
+                allocate(sol_vec_copy(size(sol%vec,1),size(sol%vec,2)))
+                allocate(sol_vec_int(grid_sol%loc_n_r))
+                call VecDuplicate(sol_vec,sol_vec_loc,ierr)
+                CHCKERR('Failed to duplicate vector')
+                call VecPlaceArray(sol_vec_loc,sol_vec_copy,ierr)
+                CHCKERR('')
+                do kd = 1,grid_sol%loc_n_r
+                    sol_vec_copy = 0._dp
+                    sol_vec_copy(:,kd) = sol%vec(:,kd,id)
+                    call MatMult(A,sol_vec_loc,E_vec(1),ierr)
+                    CHCKERR('Failed to multiply')
+                    call VecDot(E_vec(1),sol_vec_loc,E_val(1),ierr)
+                    CHCKERR('Failed to do dot product')
+                    !write(*,*) 'kd = ', kd
+                    !!write(*,*) '        intermediate result: '
+                    !!call VecView(E_vec(1),PETSC_VIEWER_STDOUT_WORLD,ierr)
+                    !!CHCKERR('Cannot view vector')
+                    !write(*,*) '    X = ', sol%vec(:,kd,id)
+                    !write(*,*) '    E_pot = '//trim(c2str(E_val(1)))
+                    sol_vec_int(kd) = E_val(1)
+                end do
+                call print_GP_2D('E_pot_int_'//trim(i2str(id)),&
+                    &'TEST_E_pot_SLEPC_int_RE_'//trim(i2str(id)),&
+                    &realpart(sol_vec_int),draw=.false.)
+                call draw_GP('E_pot_int_'//trim(i2str(id)),&
+                    &'TEST_E_pot_SLEPC_int_RE_'//trim(i2str(id)),&
+                    &'TEST_E_pot_SLEPC_int_RE_'//trim(i2str(id)),1,1,.false.)
+                
+                call print_GP_2D('E_pot_int_'//trim(i2str(id)),&
+                    &'TEST_E_pot_SLEPC_int_IM_'//trim(i2str(id)),&
+                    &imagpart(sol_vec_int),draw=.false.)
+                call draw_GP('E_pot_int_'//trim(i2str(id)),&
+                    &'TEST_E_pot_SLEPC_int_IM_'//trim(i2str(id)),&
+                    &'TEST_E_pot_SLEPC_int_IM_'//trim(i2str(id)),1,1,.false.)
                 
                 ! clean up
                 call VecDestroy(err_vec,ierr)                                   ! destroy error vector
@@ -2059,14 +2098,14 @@ contains
             err_msg = 'Couldn''t add values to matrix'
             
             ! set values
-            call MatSetValues(mat,size(block,2),loc_m,size(block,1),loc_k,&
-                &block,operation,ierr)
+            call MatSetValues(mat,size(block,1),loc_k,size(block,2),loc_m,&
+                &transpose(block),operation,ierr)
             CHCKERR(err_msg)
             
             ! set transpose if wanted
             if (transp_loc) then
-                call MatSetValues(mat,size(block,1),loc_k,size(block,2),loc_m,&
-                    &conjg(transpose(block)),operation,ierr)
+                call MatSetValues(mat,size(block,2),loc_m,size(block,1),loc_k,&
+                    &conjg(block),operation,ierr)
                 CHCKERR(err_msg)
             end if
         else

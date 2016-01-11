@@ -305,7 +305,11 @@ contains
     
     ! Transforms  derivatives of  the  equilibrium and  metric  quantities in  E
     ! coordinates to derivatives in the F coordinates.
+#if ldebug
     integer function calc_F_derivs(grid_eq,eq,met) result(ierr)
+#else
+    integer function calc_F_derivs(eq,met) result(ierr)
+#endif
         use num_vars, only: eq_style
         use utilities, only: derivs, c
 #if ldebug
@@ -317,7 +321,9 @@ contains
         character(*), parameter :: rout_name = 'calc_F_derivs'
         
         ! input / output
+#if ldebug
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
+#endif
         type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
         type(met_type), intent(inout) :: met                                    ! metric variables
         

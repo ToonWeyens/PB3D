@@ -31,6 +31,7 @@ module sol_ops
     logical :: debug_calc_XUQ_arr = .false.                                     ! plot debug information for calc_XUQ_arr
     logical :: debug_plot_X_vec = .false.                                       ! plot debug information for plot_X_vec
     logical :: debug_calc_E = .false.                                           ! plot debug information for calc_E
+    logical :: debug_X_norm = .true.                                           ! plot debug information X_norm
     logical :: debug_DU = .false.                                               ! plot debug information for calculation of DU
 #endif
 
@@ -54,6 +55,7 @@ contains
         &time,XUQ,met,deriv) result(ierr)                                       ! (time) array version
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol
         use utilities, only: con2dis, calc_deriv
+        use grid_ops, only: get_norm_interp_data
 #if ldebug
         use utilities, only: calc_int
 #endif
@@ -83,6 +85,7 @@ contains
         complex(dp), allocatable :: fac_0(:,:,:), fac_1(:,:,:)                  ! factor to be multiplied with X and DX
         complex(dp), allocatable :: par_fac(:)                                  ! multiplicative factor due to parallel derivative
         complex(dp), allocatable :: XUQ_loc(:,:)                                ! complex XUQ without time at a normal point
+        real(dp), allocatable :: expon(:,:,:)                                   ! exponent
         real(dp), allocatable :: loc_r_eq(:)                                    ! loc_r_F of sol grid interpolated in eq grid
         integer :: i_lo, i_hi                                                   ! upper and lower index for interpolation of eq grid to sol grid
 #if ldebug
@@ -121,11 +124,8 @@ contains
         
         ! calculate  normal  interpolation  tables for  equilibrium  grid  (this
         ! concerns eq variables and met variables)
-        allocate(loc_r_eq(grid_sol%loc_n_r))
-        do kd = 1,grid_sol%loc_n_r
-            ierr = con2dis(grid_sol%loc_r_F(kd),loc_r_eq(kd),grid_eq%loc_r_F)
-            CHCKERR('')
-        end do
+        ierr = get_norm_interp_data(grid_eq,grid_sol,loc_r_eq)
+        CHCKERR('')
         
         ! Initialize  multiplicative factors fac_0  and fac_1 and  par_fac which
         ! are used in XUQ = fac_0*X + fac_1*DX with fac_0 and fac_1:
@@ -141,6 +141,7 @@ contains
         ! Note that if the resolution for X_vec is bad, the numerical derivative
         ! is very  inaccurate, therefore  only smooth (i.e.  physical) solutions
         ! should be looked at.
+        allocate(expon(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
         allocate(fac_0(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
         allocate(fac_1(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
         allocate(par_fac(grid_eq%loc_n_r))
@@ -162,6 +163,9 @@ contains
             else
                 par_fac = iu*(sol%n(jd)-sol%m(jd)*eq%rot_t_FD(:,0))
             end if
+            
+            ! set up exponent
+            expon = sol%n(jd)*grid_eq%zeta_F - sol%m(jd)*grid_eq%theta_F
             
             ! set up multiplicative factors in eq grid
             select case (XUQ_style)
@@ -209,7 +213,7 @@ contains
                         end do
                     end if
                 case default
-                    err_msg = 'No XUQ XUQ_style associated with '//&
+                    err_msg = 'No XUQ style associated with '//&
                         &trim(i2str(XUQ_style))
                     ierr = 1
                     CHCKERR(err_msg)
@@ -258,14 +262,9 @@ contains
                 i_hi = ceiling(loc_r_eq(kd))
                 
                 ! set up loc complex XUQ without time at this normal point
-                XUQ_loc = exp(iu*(&
-                    &sol%n(jd)*&
-                    &(grid_eq%zeta_F(:,:,i_lo)+(loc_r_eq(kd)-i_lo)*&
-                    &(grid_eq%zeta_F(:,:,i_hi)-grid_eq%zeta_F(:,:,i_lo)))&
-                    &- sol%m(jd)*&
-                    &(grid_eq%theta_F(:,:,i_lo)+(loc_r_eq(kd)-i_lo)*&
-                    &(grid_eq%theta_F(:,:,i_hi)-grid_eq%theta_F(:,:,i_lo)))&
-                    &)) * ( &
+                XUQ_loc = exp(iu*(expon(:,:,i_lo)+&
+                    &(expon(:,:,i_hi)-expon(:,:,i_lo))*&
+                    &(loc_r_eq(kd)-i_lo))) * ( &
                     &sol%vec(jd,kd,X_id) * &
                     &(fac_0(:,:,i_lo)+(loc_r_eq(kd)-i_lo)*&
                     &(fac_0(:,:,i_hi)-fac_0(:,:,i_lo))) &
@@ -665,10 +664,10 @@ contains
                 X_vec_max = X_vec_max/norm_factor
                 
                 ! set up file name of this rank and plot title
-                file_name = trim(i2str(X_id))//'_EV_midplane'
+                file_name = trim(i2str(X_id))//'_EV_midplane_RE'
                 plot_title = 'EV - midplane'
                 
-                ! print amplitude of harmonics of eigenvector at midplane
+                ! print real amplitude of harmonics of eigenvector at midplane
                 call print_GP_2D(plot_title,file_name,&
                     &realpart(transpose(X_vec_ser)),x=x_plot,draw=.false.)
                 
@@ -684,6 +683,29 @@ contains
                 ! plot using HDF5
                 call plot_HDF5(trim(plot_title),trim(file_name),&
                     &reshape(realpart(transpose(X_vec_ser)),&
+                    &[1,grid_sol%n(3),sol%n_mod]),y=reshape(x_plot,&
+                    &[1,grid_sol%n(3),sol%n_mod]))
+                
+                ! set up file name of this rank and plot title
+                file_name = trim(i2str(X_id))//'_EV_midplane_IM'
+                plot_title = 'EV - midplane'
+                
+                ! print imag amplitude of harmonics of eigenvector at midplane
+                call print_GP_2D(plot_title,file_name,&
+                    &imagpart(transpose(X_vec_ser)),x=x_plot,draw=.false.)
+                
+                ! plot in file
+                call draw_GP(plot_title,file_name,file_name,sol%n_mod,1,.false.)
+                
+                ! plot in file using decoupled 3D in GNUPlot if not too big
+                if (sol%n_mod*grid_sol%n(3).le.GP_max_size) then
+                    call draw_GP(trim(plot_title)//' - 3D',file_name,&
+                        &trim(file_name)//'_3D',sol%n_mod,3,.false.)
+                end if
+                
+                ! plot using HDF5
+                call plot_HDF5(trim(plot_title),trim(file_name),&
+                    &reshape(imagpart(transpose(X_vec_ser)),&
                     &[1,grid_sol%n(3),sol%n_mod]),y=reshape(x_plot,&
                     &[1,grid_sol%n(3),sol%n_mod]))
                 
@@ -1045,6 +1067,8 @@ contains
         complex(dp), allocatable :: DU(:,:,:)                                   ! D_par U
         real(dp), allocatable :: DU_ALT(:,:,:)                                  ! DU calculated from U
 #endif
+        complex(dp), allocatable :: E_pot_1_int(:,:)                            ! E_pot_3 integrated along B
+        complex(dp), allocatable :: E_pot_3_int(:,:)                            ! E_pot_3 integrated along B
         
         ! set loc_dim
         loc_dim = [grid_eq%n(1:2),grid_sol%loc_n_r]                             ! includes ghost regions of width norm_disc_prec_sol
@@ -1160,12 +1184,56 @@ contains
         ! calc potential energy
         E_pot(:,:,:,1) = 1._dp/vac_perm*1._dp/h22*XUQ(:,:,:,3)*&
             &conjg(XUQ(:,:,:,3))
-        E_pot(:,:,:,2) = 1._dp/vac_perm*h22*J**2/g33*XUQ(:,:,:,4)*&
-            &conjg(XUQ(:,:,:,4))
+        !E_pot(:,:,:,1) = 0._dp
+        !E_pot(:,:,:,2) = 1._dp/vac_perm*h22*J**2/g33*XUQ(:,:,:,4)*&
+            !&conjg(XUQ(:,:,:,4))
+        E_pot(:,:,:,2) = 0._dp
         E_pot(:,:,:,3) = -2*D2p*kappa_n*XUQ(:,:,:,1)*conjg(XUQ(:,:,:,1))
-        E_pot(:,:,:,4) = -2*D2p*kappa_g*XUQ(:,:,:,1)*conjg(XUQ(:,:,:,2))
-        E_pot(:,:,:,5) = -sigma*XUQ(:,:,:,4)*conjg(XUQ(:,:,:,1))
-        E_pot(:,:,:,6) = sigma*XUQ(:,:,:,3)*conjg(XUQ(:,:,:,2))
+        !E_pot(:,:,:,3) = 0._dp
+        !E_pot(:,:,:,4) = -2*D2p*kappa_g*XUQ(:,:,:,1)*conjg(XUQ(:,:,:,2))
+        E_pot(:,:,:,4) = 0._dp
+        !E_pot(:,:,:,5) = -sigma*XUQ(:,:,:,4)*conjg(XUQ(:,:,:,1))
+        E_pot(:,:,:,5) = 0._dp
+        !E_pot(:,:,:,6) = sigma*XUQ(:,:,:,3)*conjg(XUQ(:,:,:,2))
+        E_pot(:,:,:,6) = 0._dp
+        write(*,*) 'sum of E_pot_1', sum(J*E_pot(:,:,:,1))
+        write(*,*) 'sum of E_pot_3', sum(J*E_pot(:,:,:,3))
+        call plot_HDF5('E_pot_1_RE','E_pot_1_RE',realpart(J*E_pot(:,:,:,1)))
+        call plot_HDF5('E_pot_1_IM','E_pot_1_IM',imagpart(J*E_pot(:,:,:,1)))
+        call plot_HDF5('E_pot_3_RE','E_pot_3_RE',realpart(J*E_pot(:,:,:,3)))
+        call plot_HDF5('E_pot_3_IM','E_pot_3_IM',imagpart(J*E_pot(:,:,:,3)))
+        call plot_HDF5('E_kin_1_RE','E_kin_1_RE',realpart(J*E_kin(:,:,:,1)))
+        call plot_HDF5('E_kin_1_IM','E_kin_1_IM',imagpart(J*E_kin(:,:,:,1)))
+        call plot_HDF5('E_kin_2_RE','E_kin_2_RE',realpart(J*E_kin(:,:,:,2)))
+        call plot_HDF5('E_kin_2_IM','E_kin_2_IM',imagpart(J*E_kin(:,:,:,2)))
+        
+        !!!! TEMPORARILY
+        allocate(E_pot_1_int(loc_dim(2),loc_dim(3)))
+        allocate(E_pot_3_int(loc_dim(2),loc_dim(3)))
+        E_pot_1_int = 0._dp
+        E_pot_3_int = 0._dp
+        do jd = 2,loc_dim(1)
+            E_pot_1_int = E_pot_1_int + &
+                &(J(jd,:,:)*E_pot(jd,:,:,1)+J(jd-1,:,:)*E_pot(jd-1,:,:,1))/2 &
+                &*(ang_1(jd,:,:)-ang_1(jd-1,:,:))
+            E_pot_3_int = E_pot_3_int + &
+                &(J(jd,:,:)*E_pot(jd,:,:,3)+J(jd-1,:,:)*E_pot(jd-1,:,:,3))/2 &
+                &*(ang_1(jd,:,:)-ang_1(jd-1,:,:))
+        end do
+        call print_GP_2D('E_pot_int_'//trim(i2str(X_id)),&
+            &'TEST_E_pot_tot_POST_int_RE_'//trim(i2str(X_id)),&
+            &realpart(transpose(E_pot_3_int+E_pot_1_int)),draw=.false.)
+        call draw_GP('E_pot_int_'//trim(i2str(X_id)),&
+            &'TEST_E_pot_tot_POST_int_RE_'//trim(i2str(X_id)),&
+            &'TEST_E_pot_tot_POST_int_RE_'//trim(i2str(X_id)),&
+            &grid_eq%n(2),1,.false.)
+        call print_GP_2D('E_pot_int_'//trim(i2str(X_id)),&
+            &'TEST_E_pot_tot_POST_int_IM_'//trim(i2str(X_id)),&
+            &imagpart(transpose(E_pot_3_int+E_pot_1_int)),draw=.false.)
+        call draw_GP('E_pot_int_'//trim(i2str(X_id)),&
+            &'TEST_E_pot_tot_POST_int_IM_'//trim(i2str(X_id)),&
+            &'TEST_E_pot_tot_POST_int_IM_'//trim(i2str(X_id)),&
+            &grid_eq%n(2),1,.false.)
         
 #if ldebug
         if (debug_calc_E) then
@@ -1191,6 +1259,19 @@ contains
                 !&trim(i2str(X_id)),realpart(E_pot),&
                 !&[grid_eq%n(1:2),grid_sol%n(3),6],&
                 !&[0,0,grid_sol%i_min-1,0])
+            
+            call lvl_ud(-1)
+        end if
+        
+        if (debug_X_norm) then
+            call writo('Plotting the squared amplitude of the normal &
+                &component')
+            call lvl_ud(1)
+            
+            call plot_HDF5('X_norm', 'TEST_X_norm_POST_'//trim(i2str(X_id)),&
+                &realpart(XUQ(:,:,:,1)*conjg(XUQ(:,:,:,1))),&
+                &tot_dim=[grid_eq%n(1:2),grid_sol%n(3)],&
+                &loc_offset=[0,0,grid_sol%i_min-1])
             
             call lvl_ud(-1)
         end if

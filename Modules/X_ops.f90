@@ -695,10 +695,13 @@ contains
     ! the poloidal mode number,  or of the toroidal mode number,  as well as the
     ! poloidal derivatives
     integer function calc_U(eq,grid,met,X) result(ierr)
-        use num_vars, only: use_pol_flux_F, eq_style, ltest
+        use num_vars, only: use_pol_flux_F, eq_style, U_style
         use utilities, only: c
         use input_ops, only: get_log, pause_prog
         use eq_vars, only: vac_perm
+#if ldebug
+        use num_vars, only: ltest
+#endif
         
         character(*), parameter :: rout_name = 'calc_U'
         
@@ -714,8 +717,8 @@ contains
         real(dp), allocatable :: djq(:)                                         ! either q' (pol. flux) or -iota' (tor. flux)
         real(dp), allocatable :: fac_n(:), fac_m(:)                             ! multiplicative factors for n and m
         real(dp), allocatable :: mn(:)                                          ! either n*A_0 (pol. flux) or m (tor.flux)
-        complex(dp), allocatable :: U_corr(:,:,:,:)                             ! correction to U for a certain (n,m)
-        complex(dp), allocatable :: D3U_corr(:,:,:,:)                           ! D_theta U_corr
+        complex(dp), allocatable :: U_corr(:,:,:,:,:)                           ! correction to U_0 and U_1 for a certain (n,m)
+        complex(dp), allocatable :: D3U_corr(:,:,:,:,:)                         ! D_theta U_corr
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle in flux coordinates
         character(len=max_str_ln) :: err_msg                                    ! error message
         
@@ -746,6 +749,9 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! message
+        call writo('Calculating U up to order '//trim(i2str(U_style)))
+        
         ! set up parallel angle in flux coordinates
         if (use_pol_flux_F) then
             ang_par_F => grid%theta_F
@@ -769,8 +775,8 @@ contains
         end if
         
         ! allocate helper variables
-        allocate(U_corr(grid%n(1),grid%n(2),grid%loc_n_r,X%n_mod))
-        allocate(D3U_corr(grid%n(1),grid%n(2),grid%loc_n_r,X%n_mod))
+        allocate(U_corr(grid%n(1),grid%n(2),grid%loc_n_r,X%n_mod,2))
+        allocate(D3U_corr(grid%n(1),grid%n(2),grid%loc_n_r,X%n_mod,2))
         allocate(g_frac(grid%n(1),grid%n(2),grid%loc_n_r))
         allocate(Theta_3(grid%n(1),grid%n(2),grid%loc_n_r))
         allocate(D1Theta_3(grid%n(1),grid%n(2),grid%loc_n_r))
@@ -854,6 +860,7 @@ contains
             D33h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,2)
             D13h23 => met%h_FD(:,:,:,c([2,3],.true.),1,0,1)
             D33h23 => met%h_FD(:,:,:,c([2,3],.true.),0,0,2)
+            write(*,*) '!!!!! VMEC VERSION OF CALC_U UNTESTED !!!!!!!1'
             
             ! loop over the M elements of U_X and DU
             do jd = 1,X%n_mod
@@ -870,48 +877,75 @@ contains
                 
                 ! loop over all normal points
                 do kd = 1,grid%loc_n_r
-                    ! set up correction to U
+                    ! set up n fraction
                     n_frac = X%n(jd)*fac_n(kd)-X%m(jd)*fac_m(kd)
-                    ! set up U correction
-                    U_corr(:,:,kd,jd) = iu/mn(jd)*n_frac/mn(jd)*&
-                        &(g_frac(:,:,kd)*(D3Theta_3(:,:,kd)+&
-                        &iu*n_frac*Theta_3(:,:,kd))+D1Theta_3(:,:,kd))
-                    ! set up D_theta U correction
-                    D3U_corr(:,:,kd,jd) = iu/mn(jd)*n_frac/mn(jd)*&
-                        &(D3g_frac(:,:,kd)*&
-                        &(D3Theta_3(:,:,kd)+iu*n_frac*Theta_3(:,:,kd))+&
-                        &g_frac(:,:,kd)*&
-                        &(D33Theta_3(:,:,kd)+iu*n_frac*D3Theta_3(:,:,kd))+&
-                        &D13Theta_3(:,:,kd))
-                    ! calculate X%U_0 and X%DU_0
-                    X%U_0(:,:,kd,jd) = &
-                        &-(h12(:,:,kd)/h22(:,:,kd) + djq(kd)*ang_par_F(:,:,kd))&
-                        &+ iu/(mn(jd)*g33(:,:,kd)) * (g13(:,:,kd)*djq(kd) + &
-                        &J(:,:,kd)**2*eq%pres_FD(kd,1)*vac_perm + iu*n_frac * &
-                        &( g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) - &
-                        &g23(:,:,kd) )) + U_corr(:,:,kd,jd)
-                    X%DU_0(:,:,kd,jd) = -(D3h12(:,:,kd)/h22(:,:,kd) - &
-                        &D3h22(:,:,kd)*h12(:,:,kd)/h22(:,:,kd)**2 + djq(kd)) - &
-                        &iu*D3g33(:,:,kd)/(mn(jd)*g33(:,:,kd)**2) * &
-                        &(g13(:,:,kd)*djq(kd)+ &
-                        &J(:,:,kd)**2*eq%pres_FD(kd,1)*vac_perm + &
-                        &iu*n_frac * &
-                        &( g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) &
-                        &- g23(:,:,kd) )) + &
-                        &iu/(mn(jd)*g33(:,:,kd)) * (D3g13(:,:,kd)*djq(kd) + &
-                        &2*D3J(:,:,kd)*J(:,:,kd)*eq%pres_FD(kd,1)*vac_perm + &
-                        &iu*n_frac &
-                        &* ( D3g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) + &
-                        &g13(:,:,kd)*djq(kd) - D3g23(:,:,kd) )) + &
-                        &iu*n_frac*X%U_0(:,:,kd,jd) &
-                        &+ D3U_corr(:,:,kd,jd)
-                    ! calculate X%U_1 and X%DU_1
-                    X%U_1(:,:,kd,jd) = iu/mn(jd) * &
-                        &(1 + n_frac/mn(jd) * g13(:,:,kd)/g33(:,:,kd))
-                    X%DU_1(:,:,kd,jd) = iu/mn(jd) * n_frac/mn(jd) * &
-                        &( D3g13(:,:,kd)/g33(:,:,kd) - &
-                        &  g13(:,:,kd)*D3g33(:,:,kd)/g33(:,:,kd)**2 ) + &
-                        &iu*n_frac*X%U_1(:,:,kd,jd) 
+                    ! calculate order 1 of X%U_0 and X%U_1
+                    if (U_style.ge.1) then
+                        X%U_0(:,:,kd,jd) = -(h12(:,:,kd)/h22(:,:,kd) + &
+                            &djq(kd)*ang_par_F(:,:,kd))
+                        X%U_1(:,:,kd,jd) = iu/mn(jd)
+                        X%DU_0(:,:,kd,jd) = -(D3h12(:,:,kd)/h22(:,:,kd) - &
+                            &D3h22(:,:,kd)*h12(:,:,kd)/h22(:,:,kd)**2+djq(kd)) &
+                            &+iu*n_frac*X%U_0(:,:,kd,jd)
+                        X%DU_1(:,:,kd,jd) = iu*n_frac*X%U_1(:,:,kd,jd) 
+                    end if
+                    ! include order 2
+                    if (U_style.ge.2) then
+                        U_corr(:,:,kd,jd,1) = &
+                            &iu/(mn(jd)*g33(:,:,kd)) * &
+                            &(g13(:,:,kd)*djq(kd) + &
+                            &J(:,:,kd)**2*eq%pres_FD(kd,1)*vac_perm + &
+                            &iu*n_frac * ( g13(:,:,kd)*djq(kd)*&
+                            &ang_par_F(:,:,kd) - g23(:,:,kd) ))
+                        D3U_corr(:,:,kd,jd,1) = - &
+                            &iu*D3g33(:,:,kd)/(mn(jd)*g33(:,:,kd)**2) * &
+                            &(g13(:,:,kd)*djq(kd)+ &
+                            &J(:,:,kd)**2*eq%pres_FD(kd,1)*vac_perm + &
+                            &iu*n_frac * &
+                            &( g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) &
+                            &- g23(:,:,kd) )) + iu/(mn(jd)*g33(:,:,kd)) * &
+                            &(D3g13(:,:,kd)*djq(kd) + 2*D3J(:,:,kd)*&
+                            &J(:,:,kd)*eq%pres_FD(kd,1)*vac_perm + &
+                            &iu*n_frac &
+                            &* ( D3g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) + &
+                            &g13(:,:,kd)*djq(kd) - D3g23(:,:,kd) ))
+                        U_corr(:,:,kd,jd,2) = iu/mn(jd) * &
+                            &n_frac/mn(jd) * g13(:,:,kd)/g33(:,:,kd)
+                        D3U_corr(:,:,kd,jd,2) = iu/mn(jd) * &
+                            &n_frac/mn(jd) * (D3g13(:,:,kd)/g33(:,:,kd) - &
+                            &D3g33(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)**2)
+                        X%U_0(:,:,kd,jd) = X%U_0(:,:,kd,jd) + &
+                            &U_corr(:,:,kd,jd,1)
+                        X%DU_0(:,:,kd,jd) =  X%DU_0(:,:,kd,jd) + &
+                            &D3U_corr(:,:,kd,jd,1) + &
+                            &iu*n_frac*U_corr(:,:,kd,jd,1)
+                        X%U_1(:,:,kd,jd) = X%U_1(:,:,kd,jd) + &
+                            &U_corr(:,:,kd,jd,2)
+                        X%DU_1(:,:,kd,jd) =  X%DU_1(:,:,kd,jd) + &
+                            &D3U_corr(:,:,kd,jd,2) + &
+                            &iu*n_frac*U_corr(:,:,kd,jd,2)
+                    end if
+                    ! include order 3
+                    if (U_style.ge.3) then
+                        U_corr(:,:,kd,jd,1) = iu/mn(jd)*n_frac/mn(jd)*&
+                            &(g_frac(:,:,kd)*(D3Theta_3(:,:,kd)+&
+                            &iu*n_frac*Theta_3(:,:,kd))-D1Theta_3(:,:,kd))
+                        D3U_corr(:,:,kd,jd,1) = iu/mn(jd)*n_frac/mn(jd)*&
+                            &(D3g_frac(:,:,kd)*&
+                            &(D3Theta_3(:,:,kd)+iu*n_frac*Theta_3(:,:,kd))+&
+                            &g_frac(:,:,kd)*&
+                            &(D33Theta_3(:,:,kd)+iu*n_frac*D3Theta_3(:,:,kd))+&
+                            &D13Theta_3(:,:,kd))
+                        X%U_0(:,:,kd,jd) = X%U_0(:,:,kd,jd) + &
+                            &U_corr(:,:,kd,jd,1)
+                        X%DU_0(:,:,kd,jd) =  X%DU_0(:,:,kd,jd) + &
+                            &D3U_corr(:,:,kd,jd,1) + &
+                            &iu*n_frac*U_corr(:,:,kd,jd,1)
+                    end if
+                    if (U_style.ge.4) then
+                        call writo('WARNING: The geodesic perturbation U is &
+                            &implemented up to order 3')
+                    end if
                 end do
             end do
             
@@ -959,35 +993,54 @@ contains
                 
                 ! loop over all normal points
                 do kd = 1,grid%loc_n_r
-                    ! set up correction to U
+                    ! set up n fraction
                     n_frac = X%n(jd)*fac_n(kd)-X%m(jd)*fac_m(kd)
-                    ! set up U correction
-                    U_corr(:,:,kd,jd) = iu/mn(jd)*n_frac/mn(jd)*&
-                        &(g_frac(:,:,kd)*(D3Theta_3(:,:,kd)+iu*n_frac*&
-                        &Theta_3(:,:,kd)))
-                    ! calculate X%U_0 and X%DU_0
-                    X%U_0(:,:,kd,jd) = &
-                        &-(h12(:,:,kd)/h22(:,:,kd) + djq(kd)*ang_par_F(:,:,kd))&
-                        &+ iu/(mn(jd)*g33(:,:,kd)) * (g13(:,:,kd)*djq(kd) + &
-                        &J(:,:,kd)**2*eq%pres_FD(kd,1)*vac_perm + iu*n_frac * &
-                        &( g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) - &
-                        &g23(:,:,kd) )) + U_corr(:,:,kd,jd)
+                    ! calculate order 1 of X%U_0 and X%U_1
+                    if (U_style.ge.1) then
+                        X%U_0(:,:,kd,jd) = -(h12(:,:,kd)/h22(:,:,kd) + &
+                            &djq(kd)*ang_par_F(:,:,kd))
+                        X%U_1(:,:,kd,jd) = iu/mn(jd)
+                    end if
+                    ! include order 2
+                    if (U_style.ge.2) then
+                        U_corr(:,:,kd,jd,1) = &
+                            &iu/(mn(jd)*g33(:,:,kd)) * &
+                            &(g13(:,:,kd)*djq(kd) + &
+                            &J(:,:,kd)**2*eq%pres_FD(kd,1)*vac_perm + &
+                            &iu*n_frac * ( g13(:,:,kd)*djq(kd)*&
+                            &ang_par_F(:,:,kd) - g23(:,:,kd) ))
+                        U_corr(:,:,kd,jd,2) = iu/mn(jd) * &
+                            &n_frac/mn(jd) * g13(:,:,kd)/g33(:,:,kd)
+                        X%U_0(:,:,kd,jd) = X%U_0(:,:,kd,jd) + &
+                            &U_corr(:,:,kd,jd,1)
+                        X%U_1(:,:,kd,jd) = X%U_1(:,:,kd,jd) + &
+                            &U_corr(:,:,kd,jd,2)
+                    end if
+                    ! include order 3
+                    if (U_style.ge.3) then
+                        U_corr(:,:,kd,jd,1) = iu/mn(jd)*n_frac/mn(jd)*&
+                            &(g_frac(:,:,kd)*(D3Theta_3(:,:,kd)+&
+                            &iu*n_frac*Theta_3(:,:,kd))-D1Theta_3(:,:,kd))
+                        X%U_0(:,:,kd,jd) = X%U_0(:,:,kd,jd) + &
+                            &U_corr(:,:,kd,jd,1)
+                    end if
+                    if (U_style.ge.4) then
+                        call writo('WARNING: The geodesic perturbation U is &
+                            &implemented up to order 3')
+                    end if
+                    ! calculate DX%U_0
                     do id = 1,grid%n(2)
                         ierr = calc_deriv(X%U_0(:,id,kd,jd),D3var(:,id),&
-                            &grid%theta_F(:,id,kd),1,norm_disc_prec_X+1)        ! higher precision because previous derivative
+                            &ang_par_F(:,id,kd),1,norm_disc_prec_X+1)        ! higher precision because previous derivative
                         CHCKERR('')
                     end do
-                    if (.not.use_pol_flux_F) D3var = D3var*eq%rot_t_FD(kd,0)    ! parallel deriv. equal to iota * poloidal deriv.
                     X%DU_0(:,:,kd,jd) = D3var + iu*n_frac*X%U_0(:,:,kd,jd)
-                    ! calculate X%U_1 and X%DU_1
-                    X%U_1(:,:,kd,jd) = iu/mn(jd) * &
-                        &(1 + n_frac/mn(jd) * g13(:,:,kd)/g33(:,:,kd))
+                    ! calculate DX%U_1
                     do id = 1,grid%n(2)
                         ierr = calc_deriv(X%U_1(:,id,kd,jd),D3var(:,id),&
-                            &grid%theta_F(:,id,kd),1,norm_disc_prec_X+1)
+                            &ang_par_F(:,id,kd),1,norm_disc_prec_X+1)
                         CHCKERR('')
                     end do
-                    if (.not.use_pol_flux_F) D3var = D3var*eq%rot_t_FD(kd,0)    ! parallel deriv. equal to iota * poloidal deriv.
                     X%DU_1(:,:,kd,jd) = D3var + iu*n_frac*X%U_1(:,:,kd,jd)
                 end do
             end do
@@ -1178,16 +1231,22 @@ contains
                 
                 ! calculate PV_0
                 if (calc_this(1)) then
-                    X%PV_0(:,:,:,c_loc(1)) = &
-                        &com_fac*(X_b%DU_0(:,:,:,m) - eq%S*J - &
-                        &eq%sigma/(com_fac*J)) * (conjg(&
-                        &X_a%DU_0(:,:,:,k)) - eq%S*J - eq%sigma/(com_fac*J)) - &
-                        &eq%sigma/J * (eq%S*J + eq%sigma/(com_fac*J))
+                    !X%PV_0(:,:,:,c_loc(1)) = &
+                        !&com_fac*(X_b%DU_0(:,:,:,m) - eq%S*J - &
+                        !&eq%sigma/(com_fac*J)) * (conjg(&
+                        !&X_a%DU_0(:,:,:,k)) - eq%S*J - eq%sigma/(com_fac*J)) - &
+                        !&eq%sigma/J * (eq%S*J + eq%sigma/(com_fac*J))
+                    X%PV_0(:,:,:,c_loc(1)) = 0._dp
                     
                     ! add (nq-k)*(nq-m)/(mu_0J^2 |nabla  psi|^2) - 2p'kappa_n to
                     ! PV_0
                     do kd = 1,grid%loc_n_r
-                        X%PV_0(:,:,kd,c_loc(1)) = X%PV_0(:,:,kd,c_loc(1)) + &
+                        !X%PV_0(:,:,kd,c_loc(1)) = X%PV_0(:,:,kd,c_loc(1)) + &
+                            !&(X_b%n(m)*fac_n(kd)-X_b%m(m)*fac_m(kd))*&
+                            !&(X_a%n(k)*fac_n(kd)-X_a%m(k)*fac_m(kd)) / &
+                            !&( vac_perm*J(:,:,kd)**2*h22(:,:,kd) ) - &
+                            !&2*eq%pres_FD(kd,1)*eq%kappa_n(:,:,kd)
+                        X%PV_0(:,:,kd,c_loc(1)) = &
                             &(X_b%n(m)*fac_n(kd)-X_b%m(m)*fac_m(kd))*&
                             &(X_a%n(k)*fac_n(kd)-X_a%m(k)*fac_m(kd)) / &
                             &( vac_perm*J(:,:,kd)**2*h22(:,:,kd) ) - &
@@ -1214,14 +1273,16 @@ contains
                 
                 ! calculate PV_1
                 if (calc_this(2)) then
-                    X%PV_1(:,:,:,c_loc(2)) = com_fac * X_b%DU_1(:,:,:,m) * &
-                        &(conjg(X_a%DU_0(:,:,:,k))-eq%S*J-eq%sigma/(com_fac*J))
+                    !X%PV_1(:,:,:,c_loc(2)) = com_fac * X_b%DU_1(:,:,:,m) * &
+                        !&(conjg(X_a%DU_0(:,:,:,k))-eq%S*J-eq%sigma/(com_fac*J))
+                    X%PV_1(:,:,:,c_loc(2)) = 0._dp
                 end if
                 
                 ! calculate PV_2
                 if (calc_this(1)) then
-                    X%PV_2(:,:,:,c_loc(1)) = &
-                        &com_fac*X_b%DU_1(:,:,:,m)*conjg(X_a%DU_1(:,:,:,k))
+                    !X%PV_2(:,:,:,c_loc(1)) = &
+                        !&com_fac*X_b%DU_1(:,:,:,m)*conjg(X_a%DU_1(:,:,:,k))
+                    X%PV_2(:,:,:,c_loc(1)) = 0._dp
                 end if
             end do
         end do

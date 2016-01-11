@@ -2729,7 +2729,8 @@ contains
     !       = j* (min(1)-min(2)+1/2 - j*/2), with j* = min(0,j,min(1)-min(2)+1)
     !   - below: sum_i=1^(j-1) (n-max(1))
     !       = (n-max(1)) (j-1)
-    ! Note: the submatrix version is not fast, so results should be saved.
+    ! Note: the  submatrix version is not  fast, so results should  be saved and
+    ! reused.
     ! Note: No checks are done whether the indices make sense.
     integer function c(ij,sym,n,lim_n)
         ! input / output

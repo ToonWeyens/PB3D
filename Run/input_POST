@@ -1,8 +1,8 @@
 &INPUTDATA_POST
     n_sol_plotted           = -1,-1,-1,0
     n_zeta_plot             = 1
-    plot_resonance          = .true.
-    plot_flux_q             = .true.
+    plot_resonance          = .false.
+    plot_flux_q             = .false.
     plot_grid               = .false.
     norm_disc_prec_sol      = 2
     n_theta_plot            = 2001

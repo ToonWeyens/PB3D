@@ -231,7 +231,8 @@ contains
             deallocate(flux_F,flux_E)
         end function calc_norm_range_PB3D_eq
         
-        ! The normal range is determined by simply dividing the solution range.
+        ! The normal range is determined  by simply dividing the solution range,
+        ! no ghost range.
         integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol) &
             &result(ierr)                                                       ! PB3D version for solution grid
             use num_vars, only: n_procs, rank, use_pol_flux_F

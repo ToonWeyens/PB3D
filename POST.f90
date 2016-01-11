@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.03                                                              !
+!   Version: 1.04                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -24,7 +24,7 @@
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program POST
     use str_ops, only: i2str
-    use num_vars, only: prog_name, prog_style, ltest
+    use num_vars, only: prog_name, prog_style
     use messages, only: writo, print_goodbye, lvl_ud, print_hello, &
         &init_messages, init_time, start_time, stop_time, passed_time
     use HDF5_vars, only: init_HDF5
@@ -35,7 +35,10 @@ program POST
     use input_ops, only: read_input
     use driver_POST, only: run_driver_POST
     use PB3D_ops, only: init_PB3D_ops
+#if ldebug
+    use num_vars, only: ltest
     use test, only: generic_tests
+#endif
     
     implicit none
 

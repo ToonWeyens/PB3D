@@ -56,13 +56,16 @@ contains
         logical, intent(inout) :: use_pol_flux_V                                ! .true. if VMEC equilibrium is based on poloidal flux
         
         ! local variables
-        integer :: id, jd, kd                                                   ! counters
+        integer :: id, jd                                                       ! counters
         real(dp), allocatable :: L_c_H(:,:,:,:)                                 ! temporary HM variable
         real(dp), allocatable :: L_s_H(:,:,:,:)                                 ! temporary HM variable
         character(len=max_str_ln) :: err_msg                                    ! error message
+#if ldebug
+        integer :: kd                                                           ! counter
         real(dp), allocatable :: B_V_sub_c_M(:,:,:,:), B_V_sub_s_M(:,:,:,:)     ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM, HM, HM)
         real(dp), allocatable :: B_V_c_H(:,:,:), B_V_s_H(:,:,:)                 ! Coeff. of magnitude of B (HM)
         real(dp), allocatable :: jac_V_c_H(:,:,:), jac_V_s_H(:,:,:)             ! Jacobian in VMEC coordinates (HM)
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -485,8 +488,11 @@ contains
     ! Note  that  the normal  VMEC coordinate  runs from  0 to  1, whatever  the
     ! normalization.
     subroutine normalize_VMEC
+        use eq_vars, only: pres_0, psi_0, R_0
+#if ldebug
         use num_vars, only: ltest
-        use eq_vars, only: pres_0, psi_0, R_0, B_0
+        use  eq_vars, only: B_0
+#endif
         
         ! scale the VMEC quantities
         pres_V = pres_V/pres_0

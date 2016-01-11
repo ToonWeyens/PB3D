@@ -260,3 +260,11 @@ CHANGELOG
       - Various bugfixes when no resonant surfaces are found or when solutions are removed.
       - Solution vectors are now normalized in store loop, to ensure consistency of X*VX step_size and the integrals of POST.
       - Fixed a bug in 'calc_memory' where overflow occured.
+
+1.04: - UNUSABLE VERSION: CHECKING INDIVIDUAL TERMS WITH ENERGY DECOMPOSITION.
+      - A more detailed grid for X quantities is needed.
+      - Cleaned up the code when 'ldebug' is not used.
+      - Implemented debugging of the perturbation driver so that the vectorial instead of the tensorial perturbation variables are interpolated.
+      - Implemented the option to choose order of geodesic perturbation.
+      - Implemented a test to plot |X|^2 after solving the Eigenvalue problem and compare this with the energy reconstruction.
+      - Fixed a bug where the transpose of a matrix should be used when feeding into SLEPC.

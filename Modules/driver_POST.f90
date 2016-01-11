@@ -276,7 +276,11 @@ contains
                 ierr = calc_met(grid_eq_plot,eq_plot,met_plot)
                 CHCKERR('')
                 ! Transform E into F derivatives
+#if ldebug
                 ierr = calc_F_derivs(grid_eq_plot,eq_plot,met_plot)
+#else
+                ierr = calc_F_derivs(eq_plot,met_plot)
+#endif
                 CHCKERR('')
                 ! Calculate derived metric quantities
                 call calc_derived_q(grid_eq_plot,eq_plot,met_plot)
