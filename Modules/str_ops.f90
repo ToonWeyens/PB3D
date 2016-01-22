@@ -5,7 +5,7 @@ module str_ops
     use num_vars, only: dp, max_str_ln
     implicit none
     private
-    public i2str, r2str, r2strt, c2str, c2strt, strh2l
+    public i2str, r2str, r2strt, c2str, c2strt, strh2l, strl2h
 
 contains
     ! Convert an integer to string 
@@ -74,7 +74,7 @@ contains
         c2strt = adjustl(c2strt)
     end function c2strt
 
-    ! Convert a string to lowercase 
+    ! Convert a string to lowercase and vice versa
     ! (from Figure 3.5B, pg 80, "Upgrading to Fortran 90", by Cooper Redwine,
     ! 1995 Springer-Verlag, New York. ) 
     function strh2l(input_string) result(output_string)
@@ -96,4 +96,23 @@ contains
           if ( n /= 0 ) output_string(i:i) = lower_case(n:n)
         end do
     end function strh2l
+    function strl2h(input_string) result(output_string)
+        ! input / output
+        character(*), intent(in)     :: input_string
+        character(len(input_string)) :: output_string
+        
+        ! local variables
+        integer :: i, n
+        character(*), parameter :: lower_case = 'abcdefghijklmnopqrstuvwxyz'
+        character(*), parameter :: upper_case = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        
+        ! copy input string
+        output_string = input_string
+        
+        ! convert case character by character
+        do i = 1, len(output_string)
+          n = index(lower_case, output_string(i:i))
+          if ( n /= 0 ) output_string(i:i) = upper_case(n:n)
+        end do
+    end function strl2h
 end module str_ops

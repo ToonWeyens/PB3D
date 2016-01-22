@@ -44,7 +44,7 @@ contains
         use sol_vars, only: dealloc_sol
         use grid_ops, only: calc_XYZ_grid, extend_grid_E, plot_grid_real
         use X_ops, only: calc_X, resonance_plot, calc_res_surf
-        use sol_ops, only: plot_X_vec, decompose_energy
+        use sol_ops, only: plot_X_vals, plot_X_vec, decompose_energy
         use HELENA, only: interp_HEL_on_grid
         use files_utilities, only: nextunit
         use utilities, only: calc_aux_utilities
@@ -74,10 +74,10 @@ contains
         integer :: output_EN_i                                                  ! file number
         integer :: eq_limits(2)                                                 ! i_limit of eq and X variables
         integer :: sol_limits(2)                                                ! i_limit of sol variables
-        integer :: r_F_eq_id, r_F_sol_id                                        ! index of equilibrium and solution r_F
+        integer :: r_F_eq_id, r_F_X_id, r_F_sol_id                              ! index of equilibrium, perturbation and solution r_F
         logical :: no_plots_loc                                                 ! local copy of no_plots
         logical :: no_messages_loc                                              ! local copy of no_messages
-        real(dp), allocatable :: X_plot(:,:,:), Y_plot(:,:,:), Z_plot(:,:,:)    ! X, Y and Z on plot grid
+        real(dp), allocatable :: XYZ_plot(:,:,:,:)                              ! X, Y and Z on plot grid
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
         complex(dp), allocatable :: X_val_comp(:,:,:)                           ! fraction between total E_pot and E_kin, compared with EV
         complex(dp), allocatable :: X_val_comp_loc(:,:,:)                       ! local X_val_comp
@@ -96,13 +96,17 @@ contains
         call writo('Reconstruct PB3D output')
         call lvl_ud(1)
         
-        ! read PB3D output file other variables
-        ierr = read_PB3D(.false.,.true.,.true.,.false.,.true.)
+        ! read from PB3D  output file equilibrium grid  and variables, vectorial
+        ! perturbation grid and variables and solution grid and variables
+        ierr = read_PB3D(.false.,.true.,.true.,.true.,.true.,.true.,.false.,&
+            &.true.)
         CHCKERR('')
         
         ! set eq and X limits
         ierr = retrieve_var_1D_id(vars_1D_eq,'r_F',r_F_eq_id)
         CHCKERR('')
+        !!ierr = retrieve_var_1D_id(vars_1D_X,'r_F',r_F_X_id)
+        !!CHCKERR('')
         ierr = retrieve_var_1D_id(vars_1D_sol,'r_F',r_F_sol_id)
         CHCKERR('')
         ierr = calc_norm_range(eq_limits=eq_limits,sol_limits=sol_limits,&
@@ -120,10 +124,11 @@ contains
                 eq_B => eq
                 met_B => met
                 X_1_B => X_1
-                ! normal call to reconstruct_PB3D
-                ierr = reconstruct_PB3D(.false.,.true.,.true.,.false.,.true.,&
-                    &grid_eq=grid_eq,grid_sol=grid_sol,eq=eq,met=met,&
-                    &X_1=X_1,sol=sol,eq_limits=eq_limits,sol_limits=sol_limits)
+                ! normal call to reconstruct PB3D
+                ierr = reconstruct_PB3D(.false.,.true.,.true.,.true.,.true.,&
+                    &.true.,.false.,.true.,grid_eq=grid_eq,grid_sol=grid_sol,&
+                    &eq=eq,met=met,X_1=X_1,sol=sol,eq_limits=eq_limits,&
+                    &sol_limits=sol_limits)
                 CHCKERR('')
                 call lvl_ud(-1)
                 
@@ -139,10 +144,10 @@ contains
                 allocate(met_B)
                 allocate(X_1_B)
                 ! additionally need field-aligned equilibrium grid
-                ierr = reconstruct_PB3D(.false.,.true.,.true.,.false.,.true.,&
-                    &grid_eq=grid_eq,grid_eq_B=grid_eq_B,grid_sol=grid_sol,&
-                    &eq=eq,met=met,X_1=X_1,sol=sol,eq_limits=eq_limits,&
-                    &sol_limits=sol_limits)
+                ierr = reconstruct_PB3D(.false.,.true.,.true.,.true.,.true.,&
+                    &.true.,.false.,.true.,grid_eq=grid_eq,grid_eq_B=grid_eq_B,&
+                    &grid_sol=grid_sol,eq=eq,met=met,X_1=X_1,sol=sol,&
+                    &eq_limits=eq_limits,sol_limits=sol_limits)
                 CHCKERR('')
                 call lvl_ud(-1)
                 
@@ -169,27 +174,29 @@ contains
                 CHCKERR('')
                 
                 !! get X, Y and Z of plot
-                !allocate(X_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-                !allocate(Y_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-                !allocate(Z_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-                !ierr = calc_XYZ_grid(grid_eq,X_plot,Y_plot,Z_plot)
+                !allocate(XYZ_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
+                !ierr = calc_XYZ_grid(grid_eq,XYZ_plot(:,:,:,1),&
+                    !&XYZ_plot(:,:,:,2),XYZ_plot(:,:,:,3))
                 !CHCKERR('')
                 !allocate(plot_var(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
                 !do id = 1,grid_eq%loc_n_r
                     !plot_var(:,:,id) = -eq%pres_FD(id,1)*eq%kappa_n(:,:,id)
                 !end do
                 !call plot_HDF5('kappa_n_Dp','TEST_kappa_n_Dp',plot_var,&
-                    !&x=X_plot,y=Y_plot,z=Z_plot)
+                    !&x=XYZ_plot(:,:,:,1),y=XYZ_plot(:,:,:,2),&
+                    !&z=XYZ_plot(:,:,:,3))
                 !do id = 1,grid_eq%loc_n_r
                     !plot_var(:,:,id) = eq%pres_FD(id,1)
                 !end do
-                !call plot_HDF5('Dp','TEST_Dp',plot_var,x=X_plot,y=Y_plot,z=&
-                    !&Z_plot)
+                !call plot_HDF5('Dp','TEST_Dp',plot_var,x=XYZ_plot(:,:,:,1),&
+                    !&y=XYZ_plot(:,:,:,2),z=XYZ_plot(:,:,:,3))
                 !call plot_HDF5('kappa_n','kappa_n',eq%kappa_n,&
-                    !&x=X_plot,y=Y_plot,z=Z_plot)
+                    !&x=XYZ_plot(:,:,:,1),y=XYZ_plot(:,:,:,2),&
+                    !&z=XYZ_plot(:,:,:,3))
                 !call plot_HDF5('kappa_g','TEST_kappa_g',eq%kappa_g,&
-                    !&x=X_plot,y=Y_plot,z=Z_plot)
-                !deallocate(X_plot,Y_plot,Z_plot,plot_var)
+                    !&x=XYZ_plot(:,:,:,1),y=XYZ_plot(:,:,:,2),&
+                    !&z=XYZ_plot(:,:,:,3))
+                !deallocate(XYZ_plot)
                 
                 ! user output
                 call lvl_ud(-1)
@@ -209,6 +216,7 @@ contains
         call writo('Various PB3D outputs')
         call lvl_ud(1)
         
+        !!!!!!!!! OKAY !!!!!!!!!!!!!!!!!
         if (plot_resonance) then
             ierr = resonance_plot(eq,grid_eq)
             CHCKERR('')
@@ -235,6 +243,17 @@ contains
         call writo('PB3D outputs done')
         
         ! user output
+        call writo('Plot the Eigenvalues')
+        call lvl_ud(1)
+        
+        call plot_X_vals(sol,last_unstable_id)
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Eigenvalues plotted')
+        !!!!!!!!! END OKAY !!!!!!!!!!!!!
+        
+        ! user output
         call writo('Extend PB3D output to plot grid')
         call lvl_ud(1)
         
@@ -247,6 +266,7 @@ contains
         call lvl_ud(-1)
         call writo('Grid set up')
         
+        write(*,*) '!!!!!!!!!!!!! NEED GRID_X TO BE ABLE TO CALCULATE CALC_X !!!!'
         ! calculating variables on plot grid depends on equilibrium style
         select case (eq_style)
             case (1)                                                            ! VMEC
@@ -285,7 +305,7 @@ contains
                 ! Calculate derived metric quantities
                 call calc_derived_q(grid_eq_plot,eq_plot,met_plot)
                 ! calculate X variables, vector phase
-                ierr = calc_X(grid_eq_plot,eq_plot,met_plot,X_1_plot)
+                !!ierr = calc_X(grid_eq_plot,eq_plot,met_plot,X_1_plot)
                 CHCKERR('')
                 ! reset no_plots and no_messages
                 no_plots = no_plots_loc
@@ -332,28 +352,15 @@ contains
         call writo('Stability ranges found')
         
         ! user output
-        call writo('Plot the Eigenvalues')
-        call lvl_ud(1)
-        
-        call plot_X_vals(sol,last_unstable_id)
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Eigenvalues plotted')
-        
-        ! user output
         call writo('Prepare plots')
         call lvl_ud(1)
         
         call writo('Calculate plot grid')
         call lvl_ud(1)
-        allocate(X_plot(grid_sol_plot%n(1),grid_sol_plot%n(2),&
-            &grid_sol_plot%loc_n_r))
-        allocate(Y_plot(grid_sol_plot%n(1),grid_sol_plot%n(2),&
-            &grid_sol_plot%loc_n_r))
-        allocate(Z_plot(grid_sol_plot%n(1),grid_sol_plot%n(2),&
-            &grid_sol_plot%loc_n_r))
-        ierr = calc_XYZ_grid(grid_sol_plot,X_plot,Y_plot,Z_plot)
+        allocate(XYZ_plot(grid_sol_plot%n(1),grid_sol_plot%n(2),&
+            &grid_sol_plot%loc_n_r,3))
+        ierr = calc_XYZ_grid(grid_sol_plot,XYZ_plot(:,:,:,1),&
+            &XYZ_plot(:,:,:,2),XYZ_plot(:,:,:,3))
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -425,15 +432,10 @@ contains
                 call lvl_ud(1)
 #if ldebug
                 ierr = plot_X_vec(grid_eq_plot,grid_sol_plot,eq_plot,met_plot,&
-                    &X_1_plot,sol,&
-                    &reshape([X_plot,Y_plot,Z_plot],[grid_sol_plot%n(1:2),&
-                    &grid_sol_plot%loc_n_r,3]),id,&
-                    &res_surf)
+                    &X_1_plot,sol,XYZ_plot,id,res_surf)
 #else
                 ierr = plot_X_vec(grid_eq_plot,grid_sol_plot,eq_plot,X_1_plot,&
-                    &sol,reshape([X_plot,Y_plot,Z_plot],[grid_sol_plot%n(1:2),&
-                    &grid_sol_plot%loc_n_r,3]),id,&
-                    &res_surf)
+                    &sol,XYZ_plot,id,res_surf)
 #endif
                 CHCKERR('')
                 call lvl_ud(-1)
@@ -453,9 +455,7 @@ contains
                 deallocate(X_val_comp_loc)
                 write(*,*) '!!!! NOT PLOTTING !!!!!!!!!!'
                 !!ierr = decompose_energy(grid_eq_plot,grid_sol,eq_plot,met_plot,&
-                    !!&X_1_plot,sol,id,output_EN_i,.false.,XYZ=&
-                    !!&reshape([X_plot,Y_plot,Z_plot],[grid_sol_plot%n(1:2),&
-                    !!&grid_sol_plot%loc_n_r,3]))
+                    !!&X_1_plot,sol,id,output_EN_i,.false.,XYZ=XYZ_plot)
                 !!CHCKERR('')
                 call lvl_ud(-1)
                 
@@ -596,55 +596,6 @@ contains
             max_id(2) = 0                                                       ! range 2 not used any more
         end if
     end subroutine find_stab_ranges
-    
-    ! plots Eigenvalues
-    subroutine plot_X_vals(sol,last_unstable_id)
-        use num_vars, only: rank
-        
-        ! input / output
-        type(sol_type), intent(in) :: sol                                       ! solution variables
-        integer, intent(in) :: last_unstable_id                                 ! index of last unstable EV
-        
-        ! local variables
-        character(len=max_str_ln) :: plot_title                                 ! title for plots
-        character(len=max_str_ln) :: plot_name                                  ! file name for plots
-        integer :: n_sol_found                                                  ! how many solutions found and saved
-        integer :: id                                                           ! counter
-        
-        ! set local variables
-        n_sol_found = size(sol%val)
-        
-        ! only let master plot
-        if (rank.eq.0) then
-            ! Last Eigenvalues
-            plot_title = 'final Eigenvalues omega^2 [log]'
-            plot_name = 'Eigenvalues'
-            call print_GP_2D(plot_title,plot_name,&
-                &log10(abs(realpart(sol%val(1:n_sol_found)))),draw=.false.)
-            call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
-            
-            ! Last Eigenvalues: unstable range
-            if (last_unstable_id.gt.0) then
-                plot_title = 'final unstable Eigenvalues omega^2'
-                plot_name = 'Eigenvalues_unstable'
-                call print_GP_2D(plot_title,plot_name,&
-                    &realpart(sol%val(1:last_unstable_id)),&
-                    &x=[(id*1._dp,id=1,last_unstable_id)],draw=.false.)
-                call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
-            end if
-            
-            ! Last Eigenvalues: stable range
-            if (last_unstable_id.lt.n_sol_found) then
-                plot_title = 'final stable Eigenvalues omega^2'
-                plot_name = 'Eigenvalues_stable'
-                call print_GP_2D(plot_title,plot_name,&
-                    &realpart(sol%val(last_unstable_id+1:n_sol_found)),&
-                    &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)],&
-                    &draw=.false.)
-                call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
-            end if
-        end if
-    end subroutine plot_X_vals
     
     ! plots difference between Eigenvalues and energy fraction
     subroutine plot_X_val_comp(X_val_comp)

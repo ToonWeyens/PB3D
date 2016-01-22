@@ -30,13 +30,14 @@ contains
     ! Optionally, the  secondary mode  numbers can be  specified (m  if poloidal
     ! flux is used and n if toroidal  flux). By default, they are taken from the
     ! global X_vars variables.
-    integer function calc_X_1(grid_eq,eq,met,X,lim_sec_X) result(ierr)          ! vectorial version
+    integer function calc_X_1(grid_eq,grid_X,eq,met,X,lim_sec_X) result(ierr)   ! vectorial version
         use X_vars, only: create_X
         
         character(*), parameter :: rout_name = 'calc_X_1'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(met_type), intent(in) :: met                                       ! metric variables
         type(X_1_type), intent(inout) :: X                                      ! vectorial perturbation variables
@@ -50,12 +51,12 @@ contains
         call lvl_ud(1)
         
         ! create perturbation with modes of current X job
-        call create_X(grid_eq,X,lim_sec_X)
+        call create_X(grid_X,X,lim_sec_X)
         
         ! calculate U and DU
         call writo('Calculating U and DU...')
         call lvl_ud(1)
-        ierr = calc_U(eq,grid_eq,met,X)
+        ierr = calc_U(grid_eq,grid_X,eq,met,X)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -63,13 +64,15 @@ contains
         call lvl_ud(-1)
         call writo('Vectorial perturbation variables calculated')
     end function calc_X_1
-    integer function calc_X_2(grid_eq,eq,met,X_a,X_b,X,lim_sec_X) result(ierr)  ! tensorial version
+    integer function calc_X_2(grid_eq,grid_X,eq,met,X_a,X_b,X,lim_sec_X) &
+        &result(ierr)                                                           ! tensorial version
         use X_vars, only: create_X
         
         character(*), parameter :: rout_name = 'calc_X_2'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(met_type), intent(in) :: met                                       ! metric variables
         type(X_1_type), intent(inout) :: X_a, X_b                               ! vectorial perturbation variables
@@ -84,13 +87,13 @@ contains
         call lvl_ud(1)
         
         ! create perturbation with modes of current X job
-        call create_X(grid_eq,X,lim_sec_X)
+        call create_X(grid_X,X,lim_sec_X)
         
         ! Calculate  PV_i  for  all (k,m)  pairs  and n_r  (equilibrium)
         ! values of the normal coordinate
         call writo('Calculating PV...')
         call lvl_ud(1)
-        ierr = calc_PV(eq,grid_eq,met,X_a,X_b,X,lim_sec_X)
+        ierr = calc_PV(grid_eq,grid_X,eq,met,X_a,X_b,X,lim_sec_X)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -98,7 +101,7 @@ contains
         ! values of the normal coordinate
         call writo('Calculating KV...')
         call lvl_ud(1)
-        ierr = calc_KV(eq,grid_eq,met,X_a,X_b,X,lim_sec_X)
+        ierr = calc_KV(grid_eq,grid_X,eq,met,X_a,X_b,X,lim_sec_X)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -575,7 +578,7 @@ contains
     integer function check_X_modes(eq) result(ierr)
         use MPI_utilities, only: get_ser_var
         use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X
-        use num_vars, only: use_pol_flux_F, tol_norm_r
+        use num_vars, only: use_pol_flux_F, tol_norm
         
         character(*), parameter :: rout_name = 'check_X_modes'
         
@@ -603,7 +606,7 @@ contains
         n_mod = (max_n_X-min_n_X+1)*(max_m_X-min_m_X+1)
         
         ! user output
-        call writo('The tolerance used is '//trim(r2strt(tol_norm_r))//&
+        call writo('The tolerance used is '//trim(r2strt(tol_norm))//&
             &'...')
         
         ! set min_jq and max_jq in Flux coordinate system
@@ -636,8 +639,8 @@ contains
         end if
         
         ! calculate upper and lower limits
-        lim_lo = max(min_jq-tol_norm_r,min_jq/(1+pmone*tol_norm_r))
-        lim_hi = min(max_jq+tol_norm_r,max_jq/(1-pmone*tol_norm_r))
+        lim_lo = max(min_jq-tol_norm,min_jq/(1+pmone*tol_norm))
+        lim_hi = min(max_jq+tol_norm,max_jq/(1-pmone*tol_norm))
         
         ! initialize min_sec_X and max_sec_X
         min_sec_X = huge(1._dp)
@@ -694,11 +697,32 @@ contains
     ! coordinate, n_par values  of the parallel coordinate and  size_X values of
     ! the poloidal mode number,  or of the toroidal mode number,  as well as the
     ! poloidal derivatives
-    integer function calc_U(eq,grid,met,X) result(ierr)
-        use num_vars, only: use_pol_flux_F, eq_style, U_style
-        use utilities, only: c
+    ! Use is made  of variables Ti that  are set up in the  equilibrium grid and
+    ! are afterwards converted to Ti_X in  the perturbation grid, which needs to
+    ! have the same angular coordinates as the equilibrium grid:
+    !   - T1 = B_alpha/B_theta
+    !   - T2 = Theta^alpha + q' theta
+    !   - T3 = B_alpha/B_theta q' + J^2/B_theta mu_0 p'
+    !   - T4 = B_alpha/B_theta q' theta - B_psi/B_theta
+    !   - T5 = B_alpha/B_theta D3Theta^theta - D1Theta^theta
+    !   - T6 = B_alpha/B_theta Theta^theta
+    ! which  is valid  for poloidal  Flux  coordinates and  where q'  has to  be
+    ! replaced by -iota' and theta by zeta for toroidal Flux coordinates.
+    ! The interpolated Ti_X are then used to calculate U:
+    !   - U_0 = -T2                                         (order 1)
+    !       + (i/n) (T3 + i(nq-m) T4)                       (order 2)
+    !       + (i/n)^2 i(nq-m)(-T5 - (nq-m) T6)              (order 3)
+    !   - U_1 = i/n                                         (order 1)
+    !       + (i/n)^2 i(nq-m) (-T1)                         (order 2)
+    ! which is valid for poloidal Flux coordinates and where n is to be replaced
+    ! by m and (nq-m) by (n-iota m) for toroidal Flux coordinates.
+    ! For VMEC, these factors are also derived in the parallel coordinate.
+    integer function calc_U(grid_eq,grid_X,eq,met,X) result(ierr)
+        use num_vars, only: use_pol_flux_F, eq_style, U_style, norm_disc_prec_X
+        use utilities, only: c, calc_deriv
         use input_ops, only: get_log, pause_prog
         use eq_vars, only: vac_perm
+        use grid_ops, only: get_norm_interp_data
 #if ldebug
         use num_vars, only: ltest
 #endif
@@ -706,45 +730,67 @@ contains
         character(*), parameter :: rout_name = 'calc_U'
         
         ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(grid_type), intent(in) :: grid                                     ! equilibrium grid
         type(met_type), intent(in) :: met                                       ! metric variables
         type(X_1_type), intent(inout) :: X                                      ! vectorial perturbation variables
         
         ! local variables
-        integer :: id, jd, kd                                                   ! counters
-        real(dp) :: n_frac                                                      ! nq-m (pol. flux) or n-iotam (tor. flux)
-        real(dp), allocatable :: djq(:)                                         ! either q' (pol. flux) or -iota' (tor. flux)
-        real(dp), allocatable :: fac_n(:), fac_m(:)                             ! multiplicative factors for n and m
-        real(dp), allocatable :: mn(:)                                          ! either n*A_0 (pol. flux) or m (tor.flux)
-        complex(dp), allocatable :: U_corr(:,:,:,:,:)                           ! correction to U_0 and U_1 for a certain (n,m)
-        complex(dp), allocatable :: D3U_corr(:,:,:,:,:)                         ! D_theta U_corr
-        real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle in flux coordinates
+        integer :: id, jd, kd, ld                                               ! counters
         character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), allocatable :: loc_r_eq(:)                                    ! unrounded index of eq variables in X grid
+        integer :: i_lo, i_hi                                                   ! upper and lower index
+        integer :: T_size                                                       ! 2 for VMEC and 1 for HELENA
         
-        ! helper variables for the correction to U
-        real(dp), allocatable :: g_frac(:,:,:)                                  ! g_alpha,theta / g_theta,theta
+        ! Jacobian
+        real(dp), pointer :: J(:,:,:)                                           ! Jacobian
+        real(dp), pointer :: D3J(:,:,:)                                         ! D_theta Jacobian
+        ! lower metric factors
+        real(dp), pointer :: g13(:,:,:)                                         ! g_alpha,theta
+        real(dp), pointer :: D3g13(:,:,:)                                       ! D_theta g_alpha,theta
+        real(dp), pointer :: g23(:,:,:)                                         ! g_psi,theta
+        real(dp), pointer :: D3g23(:,:,:)                                       ! D_theta g_psi,theta
+        real(dp), pointer :: g33(:,:,:)                                         ! g_theta,theta
+        real(dp), pointer :: D3g33(:,:,:)                                       ! D_theta g_theta,theta
+        ! upper metric factors
+        real(dp), pointer :: h12(:,:,:)                                         ! h^alpha,psi
+        real(dp), pointer :: D3h12(:,:,:)                                       ! D_theta h^alpha,psi
+        real(dp), pointer :: h22(:,:,:)                                         ! h^psi,psi
+        real(dp), pointer :: D1h22(:,:,:)                                       ! D_alpha h^psi,psi
+        real(dp), pointer :: D3h22(:,:,:)                                       ! D_theta h^psi,psi
+        real(dp), pointer :: D13h22(:,:,:)                                      ! D_alpha,theta h^psi,psi
+        real(dp), pointer :: D33h22(:,:,:)                                      ! D_theta,theta h^psi,psi
+        real(dp), pointer :: h23(:,:,:)                                         ! h^psi,theta
+        real(dp), pointer :: D1h23(:,:,:)                                       ! D_alpha h^psi,theta
+        real(dp), pointer :: D3h23(:,:,:)                                       ! D_theta h^psi,theta
+        real(dp), pointer :: D13h23(:,:,:)                                      ! D_alpha,theta h^psi,theta
+        real(dp), pointer :: D33h23(:,:,:)                                      ! D_theta,theta h^psi,theta
+        ! helper variables
+        real(dp), pointer :: ang_par_F(:,:,:)                                   ! parallel angle in flux coordinates
+        real(dp), pointer :: ang_geo_F(:,:,:)                                   ! geodesical angle in flux coordinates
+        real(dp), allocatable :: djq(:)                                         ! either q' (pol. flux) or -iota' (tor. flux)
         real(dp), allocatable :: Theta_3(:,:,:), D1Theta_3(:,:,:), &
             &D3Theta_3(:,:,:)                                                   ! Theta^theta and derivatives
-        ! jacobian
-        real(dp), pointer :: J(:,:,:) => null()                                 ! jac
-        real(dp), pointer :: D3J(:,:,:) => null()                               ! D_theta jac
-        ! lower metric factors
-        real(dp), pointer :: g13(:,:,:) => null()                               ! g_alpha,theta
-        real(dp), pointer :: D3g13(:,:,:) => null()                             ! D_theta g_alpha,theta
-        real(dp), pointer :: g23(:,:,:) => null()                               ! g_psi,theta
-        real(dp), pointer :: D3g23(:,:,:) => null()                             ! D_theta g_psi,theta
-        real(dp), pointer :: g33(:,:,:) => null()                               ! g_theta,theta
-        real(dp), pointer :: D3g33(:,:,:) => null()                             ! D_theta g_theta,theta
-        ! upper metric factors
-        real(dp), pointer :: h12(:,:,:) => null()                               ! h^alpha,psi
-        real(dp), pointer :: D3h12(:,:,:) => null()                             ! D_theta h^alpha,psi
-        real(dp), pointer :: h22(:,:,:) => null()                               ! h^psi,psi
-        real(dp), pointer :: D1h22(:,:,:) => null()                             ! D_alpha h^psi,psi
-        real(dp), pointer :: D3h22(:,:,:) => null()                             ! D_theta h^psi,psi
-        real(dp), pointer :: h23(:,:,:) => null()                               ! h^psi,theta
-        real(dp), pointer :: D1h23(:,:,:) => null()                             ! D_alpha h^psi,theta
-        real(dp), pointer :: D3h23(:,:,:)=> null()                              ! D_theta h^psi,theta
+        real(dp), allocatable :: D13Theta_3(:,:,:), D33Theta_3(:,:,:)           ! Theta^theta and derivatives
+        real(dp), allocatable :: n_frac(:,:)                                    ! nq-m (pol. flux) or n-iotam (tor. flux) for all modes
+        real(dp), allocatable :: mn(:)                                          ! either n*A_0 (pol. flux) or m (tor.flux)
+        complex(dp), allocatable :: U_corr(:,:,:,:)                             ! correction to U_0 and U_1 for a certain (n,m)
+        complex(dp), allocatable :: D3U_corr(:,:,:,:)                           ! D_theta U_corr
+        complex(dp), allocatable :: D3var(:)                                    ! derivative of variable
+        ! U factors
+        real(dp), allocatable :: T1(:,:,:,:)                                    ! B_alpha/B_theta and par. deriv.
+        real(dp), allocatable :: T2(:,:,:,:)                                    ! Theta^alpha + q' theta and par. deriv.
+        real(dp), allocatable :: T3(:,:,:,:)                                    ! B_alpha/B_theta q' + J^2/B_theta mu_0 p' and par. deriv.
+        real(dp), allocatable :: T4(:,:,:,:)                                    ! B_alpha/B_theta q' theta - B_psi/B_theta and par. deriv.
+        real(dp), allocatable :: T5(:,:,:,:)                                    ! B_alpha/B_theta D3Theta^theta - D1Theta^theta and par. deriv.
+        real(dp), allocatable :: T6(:,:,:,:)                                    ! B_alpha/B_theta Theta^theta and par. deriv.
+        real(dp), allocatable :: T1_X(:,:,:,:)                                  ! T1 in X grid and par. deriv.
+        real(dp), allocatable :: T2_X(:,:,:,:)                                  ! T2 in X grid and par. deriv.
+        real(dp), allocatable :: T3_X(:,:,:,:)                                  ! T3 in X grid and par. deriv.
+        real(dp), allocatable :: T4_X(:,:,:,:)                                  ! T4 in X grid and par. deriv.
+        real(dp), allocatable :: T5_X(:,:,:,:)                                  ! T5 in X grid and par. deriv.
+        real(dp), allocatable :: T6_X(:,:,:,:)                                  ! T6 in X grid and par. deriv.
         
         ! initialize ierr
         ierr = 0
@@ -752,65 +798,250 @@ contains
         ! message
         call writo('Calculating U up to order '//trim(i2str(U_style)))
         
-        ! set up parallel angle in flux coordinates
+        ! allocate variables
+        ! helper variables
+        allocate(mn(X%n_mod))
+        allocate(djq(grid_eq%loc_n_r))
+        allocate(Theta_3(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(D1Theta_3(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(D3Theta_3(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(D13Theta_3(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(D33Theta_3(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(n_frac(grid_X%loc_n_r,X%n_mod))
+        allocate(U_corr(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,2))
+        allocate(D3U_corr(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,2))
+        ! U factors
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                write(*,*) '!!!!!!!!! CALC_U  NOT TESTED FOR VMEC !!!!!!!!!!!!!'
+                T_size = 2
+            case (2)                                                            ! HELENA
+                T_size = 1
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        allocate(T1(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
+        allocate(T2(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
+        allocate(T3(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
+        allocate(T4(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
+        allocate(T5(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
+        allocate(T6(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
+        allocate(T1_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+        allocate(T2_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+        allocate(T3_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+        allocate(T4_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+        allocate(T5_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+        allocate(T6_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+        
+        ! set pointers
         if (use_pol_flux_F) then
-            ang_par_F => grid%theta_F
+            ang_par_F => grid_eq%theta_F
+            ang_geo_F => grid_eq%zeta_F
         else
-            ang_par_F => grid%zeta_F
+            ang_par_F => grid_eq%zeta_F
+            ang_geo_F => grid_eq%theta_F
         end if
-        
-        ! set up djq, fac_n, fac_m and mn
-        allocate(djq(grid%loc_n_r),mn(X%n_mod))
-        allocate(fac_n(grid%loc_n_r),fac_m(grid%loc_n_r))
-        if (use_pol_flux_F) then
-            djq = eq%q_saf_FD(:,1)
-            fac_n = eq%q_saf_FD(:,0)
-            fac_m = 1.0_dp
-            mn = X%n(:)
-        else
-            djq = -eq%rot_t_FD(:,1)
-            fac_n = 1.0_dp
-            fac_m = eq%rot_t_FD(:,0)
-            mn = X%m(:)
-        end if
-        
-        ! allocate helper variables
-        allocate(U_corr(grid%n(1),grid%n(2),grid%loc_n_r,X%n_mod,2))
-        allocate(D3U_corr(grid%n(1),grid%n(2),grid%loc_n_r,X%n_mod,2))
-        allocate(g_frac(grid%n(1),grid%n(2),grid%loc_n_r))
-        allocate(Theta_3(grid%n(1),grid%n(2),grid%loc_n_r))
-        allocate(D1Theta_3(grid%n(1),grid%n(2),grid%loc_n_r))
-        allocate(D3Theta_3(grid%n(1),grid%n(2),grid%loc_n_r))
-        
-        ! set up submatrices
-        ! jacobian
         J => met%jac_FD(:,:,:,0,0,0)
         D3J => met%jac_FD(:,:,:,0,0,1)
-        ! lower metric factors
         g13 => met%g_FD(:,:,:,c([1,3],.true.),0,0,0)
         D3g13 => met%g_FD(:,:,:,c([1,3],.true.),0,0,1)
         g23 => met%g_FD(:,:,:,c([2,3],.true.),0,0,0)
         D3g23 => met%g_FD(:,:,:,c([2,3],.true.),0,0,1)
         g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,0)
         D3g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,1)
-        ! upper metric factors
         h12 => met%h_FD(:,:,:,c([1,2],.true.),0,0,0)
-        D3h12 => met%h_FD(:,:,:,c([1,2],.true.),0,0,1)
+        D3h12 => met%h_FD(:,:,:,c([1,2],.true.),0,0,0)
         h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
         D1h22 => met%h_FD(:,:,:,c([2,2],.true.),1,0,0)
         D3h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,1)
+        D13h22 => met%h_FD(:,:,:,c([2,2],.true.),1,0,1)
+        D33h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,2)
         h23 => met%h_FD(:,:,:,c([2,3],.true.),0,0,0)
         D1h23 => met%h_FD(:,:,:,c([2,3],.true.),1,0,0)
         D3h23 => met%h_FD(:,:,:,c([2,3],.true.),0,0,1)
+        D13h23 => met%h_FD(:,:,:,c([2,3],.true.),1,0,1)
+        D33h23 => met%h_FD(:,:,:,c([2,3],.true.),0,0,2)
         
-        ! calculate X%U_0, X%U_1, X%DU_0 and X%DU_1
-        ! choose which equilibrium style is being used:
-        !   1:  VMEC
-        !   2:  HELENA
+        ! set up helper variables in eq grid
+        if (use_pol_flux_F) then
+            mn = X%n(:)
+            djq = eq%q_saf_FD(:,1)
+        else
+            djq = -eq%rot_t_FD(:,1)
+            mn = X%m(:)
+        end if
+        Theta_3 = h23/h22
         select case (eq_style)
             case (1)                                                            ! VMEC
-                call calc_U_VMEC
+                D1Theta_3 = D1h23/h22 - h23*D1h22/(h22**2)
+                D3Theta_3 = D3h23/h22 - h23*D3h22/(h22**2)
+                D13Theta_3 = D13h23/h22 - (D3h23*D1h22+D1h23*D3h22)/(h22**2) &
+                    &- h23*D13h22/(h22**2) + 2*h23*D3h22*D1h22/(h22**3)
+                D33Theta_3 = D33h23/h22 - 2*D3h23*D3h22/(h22**2) &
+                    &- h23*D33h22/(h22**2) + 2*h23*D3h22**2/(h22**3)
+            case (2)                                                            ! HELENA
+                if (grid_eq%n(2).gt.norm_disc_prec_X+3) then                    ! need enough terms
+                    do kd = 1,grid_eq%loc_n_r
+                        do id = 1,grid_eq%n(1)
+                            ierr = calc_deriv(Theta_3(id,:,kd),&
+                                &D1Theta_3(id,:,kd),ang_geo_F(id,:,kd),1,&
+                                &norm_disc_prec_X+1)                            ! higher precision because other derivative will be taken later
+                            CHCKERR('')
+                        end do
+                    end do
+                else
+                    D1Theta_3 = 0._dp
+                end if
+                if (grid_eq%n(1).gt.norm_disc_prec_X+3) then                    ! need enough terms
+                    do kd = 1,grid_eq%loc_n_r
+                        do jd = 1,grid_eq%n(2)
+                            ierr = calc_deriv(Theta_3(:,jd,kd),&
+                                &D3Theta_3(:,jd,kd),ang_par_F(:,jd,kd),1,&
+                                &norm_disc_prec_X+1)                            ! higher precision because other derivative will be taken later
+                            CHCKERR('')
+                        end do
+                    end do
+                else
+                    D3Theta_3 = 0._dp
+                end if
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
         
+        ! set up U factors in eq grid
+        T1(:,:,:,1) = g13/g33
+        do kd = 1,grid_eq%loc_n_r
+            T2(:,:,kd,1) = h12(:,:,kd)/h22(:,:,kd) + djq(kd)*ang_par_F(:,:,kd)
+            T3(:,:,kd,1) = T1(:,:,kd,1)*djq(kd) + &
+                &J(:,:,kd)**2*vac_perm*eq%pres_FD(kd,1)/g33(:,:,kd)
+            T4(:,:,kd,1) = T1(:,:,kd,1)*djq(kd)*ang_par_F(:,:,kd) - &
+                &g23(:,:,kd)/g33(:,:,kd)
+        end do
+        T5(:,:,:,1) = T1(:,:,:,1)*D3Theta_3 - D1Theta_3
+        T6(:,:,:,1) = T1(:,:,:,1)*Theta_3
+        
+        ! set up parallel derivatives of U in eq grid if VMEC is used
+        if (eq_style.eq.1) then
+            T1(:,:,:,2) = D3g13/g33 - g13*D3g33/g33**2
+            do kd = 1,grid_eq%loc_n_r
+                T2(:,:,kd,2) = D3h12(:,:,kd)/h22(:,:,kd) - &
+                    &h12(:,:,kd)*D3h22(:,:,kd)/h22(:,:,kd)**2 + djq(kd)
+                T3(:,:,kd,2) = T1(:,:,kd,2)*djq(kd) + &
+                    &J(:,:,kd)*vac_perm*eq%pres_FD(kd,1)/g33(:,:,kd) * &
+                    &(2*D3J(:,:,kd)-D3g33(:,:,kd)*J(:,:,kd)/g33(:,:,kd))
+                T4(:,:,kd,1) = (T1(:,:,kd,2)*ang_par_F(:,:,kd)+T1(:,:,kd,1))*&
+                    &djq(kd) - D3g23(:,:,kd)/g33(:,:,kd) + &
+                    &g23(:,:,kd)*D3g33(:,:,kd)/g33(:,:,kd)**2
+            end do
+            T5(:,:,:,2) = T1(:,:,:,2)*D3Theta_3 + T1(:,:,:,1)*D33Theta_3 - &
+                &D13Theta_3
+            T6(:,:,:,2) = T1(:,:,:,2)*Theta_3 + T1(:,:,:,1)*D3Theta_3
+        end if
+        
+        ! get normal interpolation factors
+        ierr = get_norm_interp_data(grid_eq,grid_X,loc_r_eq)
+        CHCKERR('')
+        
+        ! interpolate helper variables and U factors
+        do kd = 1,grid_X%loc_n_r
+            ! set lower and upper index
+            i_lo = floor(loc_r_eq(kd))
+            i_hi = ceiling(loc_r_eq(kd))
+            
+            if (use_pol_flux_F) then
+                n_frac(kd,:) = X%n*(eq%q_saf_FD(i_lo,0) + (loc_r_eq(kd)-i_lo)*&
+                    &(eq%q_saf_FD(i_hi,0)-eq%q_saf_FD(i_lo,0))) - X%m
+            else
+                n_frac(kd,:) = -X%m*(eq%rot_t_FD(i_lo,0) + (loc_r_eq(kd)-i_lo)*&
+                    &(eq%rot_t_FD(i_hi,0)-eq%rot_t_FD(i_lo,0))) + X%n
+            end if
+            T1_X(:,:,kd,:) = T1(:,:,i_lo,:) + (loc_r_eq(kd)-i_lo)*&
+                &(T1(:,:,i_hi,:)-T1(:,:,i_lo,:))
+            T2_X(:,:,kd,:) = T2(:,:,i_lo,:) + (loc_r_eq(kd)-i_lo)*&
+                &(T2(:,:,i_hi,:)-T2(:,:,i_lo,:))
+            T3_X(:,:,kd,:) = T3(:,:,i_lo,:) + (loc_r_eq(kd)-i_lo)*&
+                &(T3(:,:,i_hi,:)-T3(:,:,i_lo,:))
+            T4_X(:,:,kd,:) = T4(:,:,i_lo,:) + (loc_r_eq(kd)-i_lo)*&
+                &(T4(:,:,i_hi,:)-T4(:,:,i_lo,:))
+            T5_X(:,:,kd,:) = T5(:,:,i_lo,:) + (loc_r_eq(kd)-i_lo)*&
+                &(T5(:,:,i_hi,:)-T5(:,:,i_lo,:))
+            T6_X(:,:,kd,:) = T6(:,:,i_lo,:) + (loc_r_eq(kd)-i_lo)*&
+                &(T6(:,:,i_hi,:)-T6(:,:,i_lo,:))
+        end do
+        
+        ! calculate U_0 and U_1 for all modes
+        do ld = 1,X%n_mod
+            ! calculate order 1 of U_0 and U_1
+            if (U_style.ge.1) then
+                X%U_0(:,:,:,ld) = -T2_X(:,:,:,1)
+                X%U_1(:,:,:,ld) = iu/mn(ld)
+            end if
+            ! include order 2
+            if (U_style.ge.2) then
+                do kd = 1,grid_X%loc_n_r
+                    U_corr(:,:,kd,1) = T3_X(:,:,kd,1) + &
+                        &iu*n_frac(kd,ld)*T4_X(:,:,kd,1)
+                    U_corr(:,:,kd,2) = n_frac(kd,ld)/mn(ld)*T1_X(:,:,kd,1)
+                end do
+                X%U_0(:,:,:,ld) = X%U_0(:,:,:,ld) + iu/mn(ld)*&
+                    &U_corr(:,:,:,1)
+                X%U_1(:,:,:,ld) = X%U_1(:,:,:,ld) + iu/mn(ld)*&
+                    &U_corr(:,:,:,2)
+            end if
+            ! include order 3
+            if (U_style.ge.3) then
+                do kd = 1,grid_X%loc_n_r
+                    U_corr(:,:,kd,1) = iu*n_frac(kd,ld)*&
+                        &(-T5_X(:,:,kd,1)-iu*n_frac(kd,ld)*T6_X(:,:,kd,1))
+                end do
+                X%U_0(:,:,:,ld) = X%U_0(:,:,:,ld) + (iu/mn(ld))**2*&
+                    &U_corr(:,:,:,1)
+            end if
+            if (U_style.ge.4) then
+                call writo('WARNING: The geodesic perturbation U is &
+                    &implemented up to order 3')
+            end if
+        end do
+        
+        ! calculate DU_0 and DU_1
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! calculate order 1 of DU_0 and DU_1
+                if (U_style.ge.1) then
+                    X%DU_0(:,:,:,ld) = -T2_X(:,:,:,2)
+                    X%DU_1(:,:,:,ld) = 0._dp
+                end if
+                ! include order 2
+                if (U_style.ge.2) then
+                    do kd = 1,grid_X%loc_n_r
+                        U_corr(:,:,kd,1) = T3_X(:,:,kd,2) + &
+                            &iu*n_frac(kd,ld)*T4_X(:,:,kd,2)
+                        U_corr(:,:,kd,2) = n_frac(kd,ld)/mn(ld)*T1_X(:,:,kd,2)
+                    end do
+                    X%DU_0(:,:,:,ld) = X%DU_0(:,:,:,ld) + iu/mn(ld)*&
+                        &U_corr(:,:,:,1)
+                    X%DU_1(:,:,:,ld) = X%DU_1(:,:,:,ld) + iu/mn(ld)*&
+                        &U_corr(:,:,:,2)
+                end if
+                ! include order 3
+                if (U_style.ge.3) then
+                    do kd = 1,grid_X%loc_n_r
+                        U_corr(:,:,kd,2) = iu*n_frac(kd,ld)*&
+                            &(-T5_X(:,:,kd,2)-iu*n_frac(kd,ld)*T6_X(:,:,kd,2))
+                    end do
+                    X%DU_0(:,:,:,ld) = X%DU_0(:,:,:,ld) + (iu/mn(ld))**2*&
+                        &U_corr(:,:,:,1)
+                end if
+                if (U_style.ge.4) then
+                    call writo('WARNING: The geodesic perturbation U is &
+                        &implemented up to order 3')
+                end if
 #if ldebug
                 if (ltest) then
                     call writo('Test calculation of DU')
@@ -822,8 +1053,35 @@ contains
                 end if
 #endif
             case (2)                                                            ! HELENA
-                ierr = calc_U_HEL()
-                CHCKERR('')
+                ! reset pointers
+                if (use_pol_flux_F) then
+                    ang_par_F => grid_X%theta_F
+                else
+                    ang_par_F => grid_X%zeta_F
+                end if
+                ! set up helper variable for derivative
+                allocate(D3var(grid_X%n(1)))
+                ! numerically derive U_0 and U_1
+                do ld = 1,X%n_mod
+                    do kd = 1,grid_X%loc_n_r
+                        ! calculate DX%U_0
+                        do jd = 1,grid_X%n(2)
+                            ierr = calc_deriv(X%U_0(:,jd,kd,ld),D3var,&
+                                &ang_par_F(:,jd,kd),1,norm_disc_prec_X+1)       ! higher precision because previous derivative
+                            CHCKERR('')
+                            X%DU_0(:,jd,kd,ld) = D3var + &
+                                &iu*n_frac(kd,ld)*X%U_0(:,jd,kd,ld)
+                        end do
+                        ! calculate DX%U_1
+                        do jd = 1,grid_X%n(2)
+                            ierr = calc_deriv(X%U_1(:,jd,kd,ld),D3var,&
+                                &ang_par_F(:,jd,kd),1,norm_disc_prec_X+1)
+                            CHCKERR('')
+                            X%DU_1(:,jd,kd,ld) = D3var + &
+                                &iu*n_frac(kd,ld)*X%U_1(:,jd,kd,ld)
+                        end do
+                    end do
+                end do
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
@@ -832,224 +1090,16 @@ contains
         end select
         
         ! clean up
-        nullify(ang_par_F)
+        nullify(ang_par_F,ang_geo_F)
         nullify(J,D3J)
-        nullify(g13,D3g13,g23,D3g23,g33,D3g33)
-        nullify(h12,D3h12,h22,D1h22,D3h22,h23,D1h23,D3h23)
-    contains
-        ! VMEC version
-        subroutine calc_U_VMEC
-            ! local variables
-            ! extra helper variables for the correction to U
-            real(dp), allocatable :: D3g_frac(:,:,:)                            ! D_theta g_frac
-            real(dp), allocatable :: D13Theta_3(:,:,:), D33Theta_3(:,:,:)       ! Theta^theta derivatives
-            ! extra upper metric factors
-            real(dp), pointer :: D13h22(:,:,:) => null()                        ! D^2_alpha,theta h^psi,psi
-            real(dp), pointer :: D33h22(:,:,:) => null()                        ! D^2_theta,theta h^psi,psi
-            real(dp), pointer :: D13h23(:,:,:) => null()                        ! D^2_alpha,theta h^psi,theta
-            real(dp), pointer :: D33h23(:,:,:) => null()                        ! D^2_theta,theta h^psi,theta
-            
-            ! allocate extra helper variables
-            allocate(D3g_frac(grid%n(1),grid%n(2),grid%loc_n_r))
-            allocate(D13Theta_3(grid%n(1),grid%n(2),grid%loc_n_r))
-            allocate(D33Theta_3(grid%n(1),grid%n(2),grid%loc_n_r))
-            
-            ! set up extra submatrices
-            ! upper metric factors
-            D13h22 => met%h_FD(:,:,:,c([2,2],.true.),1,0,1)
-            D33h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,2)
-            D13h23 => met%h_FD(:,:,:,c([2,3],.true.),1,0,1)
-            D33h23 => met%h_FD(:,:,:,c([2,3],.true.),0,0,2)
-            write(*,*) '!!!!! VMEC VERSION OF CALC_U UNTESTED !!!!!!!1'
-            
-            ! loop over the M elements of U_X and DU
-            do jd = 1,X%n_mod
-                ! set up helper variables
-                g_frac = g13/g33
-                D3g_frac = D3g13/g33 - g13*D3g33/(g33**2)
-                Theta_3 = h23/h22
-                D1Theta_3 = D1h23/h22 - h23*D1h22/(h22**2)
-                D3Theta_3 = D3h23/h22 - h23*D3h22/(h22**2)
-                D13Theta_3 = D13h23/h22 - (D3h23*D1h22+D1h23*D3h22)/(h22**2) &
-                    &- h23*D13h22/(h22**2) + 2*h23*D3h22*D1h22/(h22**3)
-                D33Theta_3 = D33h23/h22 - 2*D3h23*D3h22/(h22**2) &
-                    &- h23*D33h22/(h22**2) + 2*h23*D3h22**2/(h22**3)
-                
-                ! loop over all normal points
-                do kd = 1,grid%loc_n_r
-                    ! set up n fraction
-                    n_frac = X%n(jd)*fac_n(kd)-X%m(jd)*fac_m(kd)
-                    ! calculate order 1 of X%U_0 and X%U_1
-                    if (U_style.ge.1) then
-                        X%U_0(:,:,kd,jd) = -(h12(:,:,kd)/h22(:,:,kd) + &
-                            &djq(kd)*ang_par_F(:,:,kd))
-                        X%U_1(:,:,kd,jd) = iu/mn(jd)
-                        X%DU_0(:,:,kd,jd) = -(D3h12(:,:,kd)/h22(:,:,kd) - &
-                            &D3h22(:,:,kd)*h12(:,:,kd)/h22(:,:,kd)**2+djq(kd)) &
-                            &+iu*n_frac*X%U_0(:,:,kd,jd)
-                        X%DU_1(:,:,kd,jd) = iu*n_frac*X%U_1(:,:,kd,jd) 
-                    end if
-                    ! include order 2
-                    if (U_style.ge.2) then
-                        U_corr(:,:,kd,jd,1) = &
-                            &iu/(mn(jd)*g33(:,:,kd)) * &
-                            &(g13(:,:,kd)*djq(kd) + &
-                            &J(:,:,kd)**2*eq%pres_FD(kd,1)*vac_perm + &
-                            &iu*n_frac * ( g13(:,:,kd)*djq(kd)*&
-                            &ang_par_F(:,:,kd) - g23(:,:,kd) ))
-                        D3U_corr(:,:,kd,jd,1) = - &
-                            &iu*D3g33(:,:,kd)/(mn(jd)*g33(:,:,kd)**2) * &
-                            &(g13(:,:,kd)*djq(kd)+ &
-                            &J(:,:,kd)**2*eq%pres_FD(kd,1)*vac_perm + &
-                            &iu*n_frac * &
-                            &( g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) &
-                            &- g23(:,:,kd) )) + iu/(mn(jd)*g33(:,:,kd)) * &
-                            &(D3g13(:,:,kd)*djq(kd) + 2*D3J(:,:,kd)*&
-                            &J(:,:,kd)*eq%pres_FD(kd,1)*vac_perm + &
-                            &iu*n_frac &
-                            &* ( D3g13(:,:,kd)*djq(kd)*ang_par_F(:,:,kd) + &
-                            &g13(:,:,kd)*djq(kd) - D3g23(:,:,kd) ))
-                        U_corr(:,:,kd,jd,2) = iu/mn(jd) * &
-                            &n_frac/mn(jd) * g13(:,:,kd)/g33(:,:,kd)
-                        D3U_corr(:,:,kd,jd,2) = iu/mn(jd) * &
-                            &n_frac/mn(jd) * (D3g13(:,:,kd)/g33(:,:,kd) - &
-                            &D3g33(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)**2)
-                        X%U_0(:,:,kd,jd) = X%U_0(:,:,kd,jd) + &
-                            &U_corr(:,:,kd,jd,1)
-                        X%DU_0(:,:,kd,jd) =  X%DU_0(:,:,kd,jd) + &
-                            &D3U_corr(:,:,kd,jd,1) + &
-                            &iu*n_frac*U_corr(:,:,kd,jd,1)
-                        X%U_1(:,:,kd,jd) = X%U_1(:,:,kd,jd) + &
-                            &U_corr(:,:,kd,jd,2)
-                        X%DU_1(:,:,kd,jd) =  X%DU_1(:,:,kd,jd) + &
-                            &D3U_corr(:,:,kd,jd,2) + &
-                            &iu*n_frac*U_corr(:,:,kd,jd,2)
-                    end if
-                    ! include order 3
-                    if (U_style.ge.3) then
-                        U_corr(:,:,kd,jd,1) = iu/mn(jd)*n_frac/mn(jd)*&
-                            &(g_frac(:,:,kd)*(D3Theta_3(:,:,kd)+&
-                            &iu*n_frac*Theta_3(:,:,kd))-D1Theta_3(:,:,kd))
-                        D3U_corr(:,:,kd,jd,1) = iu/mn(jd)*n_frac/mn(jd)*&
-                            &(D3g_frac(:,:,kd)*&
-                            &(D3Theta_3(:,:,kd)+iu*n_frac*Theta_3(:,:,kd))+&
-                            &g_frac(:,:,kd)*&
-                            &(D33Theta_3(:,:,kd)+iu*n_frac*D3Theta_3(:,:,kd))+&
-                            &D13Theta_3(:,:,kd))
-                        X%U_0(:,:,kd,jd) = X%U_0(:,:,kd,jd) + &
-                            &U_corr(:,:,kd,jd,1)
-                        X%DU_0(:,:,kd,jd) =  X%DU_0(:,:,kd,jd) + &
-                            &D3U_corr(:,:,kd,jd,1) + &
-                            &iu*n_frac*U_corr(:,:,kd,jd,1)
-                    end if
-                    if (U_style.ge.4) then
-                        call writo('WARNING: The geodesic perturbation U is &
-                            &implemented up to order 3')
-                    end if
-                end do
-            end do
-            
-            ! clean up
-            nullify(D13h22,D33h22,D13h23,D33h23)
-        end subroutine calc_U_VMEC
-        
-        ! HELENA version
-        ! Note:  The parallel  derivatives are  done here  numerically. However,
-        ! these  must be  translated to  numerical derivatives  in the  poloidal
-        ! coordinate. This depends on the flux on which the normal coordinate is
-        ! based:
-        ! - poloidal flux: parallel deriv. equal to poloidal deriv,
-        ! - toroidal flux: parallel deriv. equal to iota * poloidal deriv.
-        integer function calc_U_HEL() result(ierr)
-            use utilities, only: calc_deriv
-            use num_vars, only: norm_disc_prec_X
-            
-            character(*), parameter :: rout_name = 'calc_U_HEL'
-            
-            ! local variablas
-            complex(dp), allocatable :: D3var(:,:)                              ! derivative of variable
-            
-            ! allocate extra helper variables
-            allocate(D3var(grid%n(1),grid%n(2)))
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! loop over the M elements of U_X and DU
-            do jd = 1,X%n_mod
-                ! set up helper variables
-                g_frac = g13/g33
-                Theta_3 = h23/h22
-                ! loop over all normal points
-                do kd = 1,grid%loc_n_r
-                    do id = 1,grid%n(2)
-                        ierr = calc_deriv(Theta_3(:,id,kd),D3Theta_3(:,id,kd),&
-                            &grid%theta_F(:,id,kd),1,norm_disc_prec_X+1)        ! higher precision because other derivative will be taken later
-                        CHCKERR('')
-                    end do
-                    if (.not.use_pol_flux_F) D3Theta_3(:,:,kd) = &
-                        &D3Theta_3(:,:,kd)*eq%rot_t_FD(kd,0)                    ! parallel deriv. equal to iota * poloidal deriv.
-                end do
-                
-                ! loop over all normal points
-                do kd = 1,grid%loc_n_r
-                    ! set up n fraction
-                    n_frac = X%n(jd)*fac_n(kd)-X%m(jd)*fac_m(kd)
-                    ! calculate order 1 of X%U_0 and X%U_1
-                    if (U_style.ge.1) then
-                        X%U_0(:,:,kd,jd) = -(h12(:,:,kd)/h22(:,:,kd) + &
-                            &djq(kd)*ang_par_F(:,:,kd))
-                        X%U_1(:,:,kd,jd) = iu/mn(jd)
-                    end if
-                    ! include order 2
-                    if (U_style.ge.2) then
-                        U_corr(:,:,kd,jd,1) = &
-                            &iu/(mn(jd)*g33(:,:,kd)) * &
-                            &(g13(:,:,kd)*djq(kd) + &
-                            &J(:,:,kd)**2*eq%pres_FD(kd,1)*vac_perm + &
-                            &iu*n_frac * ( g13(:,:,kd)*djq(kd)*&
-                            &ang_par_F(:,:,kd) - g23(:,:,kd) ))
-                        U_corr(:,:,kd,jd,2) = iu/mn(jd) * &
-                            &n_frac/mn(jd) * g13(:,:,kd)/g33(:,:,kd)
-                        X%U_0(:,:,kd,jd) = X%U_0(:,:,kd,jd) + &
-                            &U_corr(:,:,kd,jd,1)
-                        X%U_1(:,:,kd,jd) = X%U_1(:,:,kd,jd) + &
-                            &U_corr(:,:,kd,jd,2)
-                    end if
-                    ! include order 3
-                    if (U_style.ge.3) then
-                        U_corr(:,:,kd,jd,1) = iu/mn(jd)*n_frac/mn(jd)*&
-                            &(g_frac(:,:,kd)*(D3Theta_3(:,:,kd)+&
-                            &iu*n_frac*Theta_3(:,:,kd))-D1Theta_3(:,:,kd))
-                        X%U_0(:,:,kd,jd) = X%U_0(:,:,kd,jd) + &
-                            &U_corr(:,:,kd,jd,1)
-                    end if
-                    if (U_style.ge.4) then
-                        call writo('WARNING: The geodesic perturbation U is &
-                            &implemented up to order 3')
-                    end if
-                    ! calculate DX%U_0
-                    do id = 1,grid%n(2)
-                        ierr = calc_deriv(X%U_0(:,id,kd,jd),D3var(:,id),&
-                            &ang_par_F(:,id,kd),1,norm_disc_prec_X+1)        ! higher precision because previous derivative
-                        CHCKERR('')
-                    end do
-                    X%DU_0(:,:,kd,jd) = D3var + iu*n_frac*X%U_0(:,:,kd,jd)
-                    ! calculate DX%U_1
-                    do id = 1,grid%n(2)
-                        ierr = calc_deriv(X%U_1(:,id,kd,jd),D3var(:,id),&
-                            &ang_par_F(:,id,kd),1,norm_disc_prec_X+1)
-                        CHCKERR('')
-                    end do
-                    X%DU_1(:,:,kd,jd) = D3var + iu*n_frac*X%U_1(:,:,kd,jd)
-                end do
-            end do
-            
-            ! deallocate
-            deallocate(D3var)
-        end function calc_U_HEL
-        
+        nullify(g13,D3g13)
+        nullify(g23,D3g23)
+        nullify(g33,D3g33)
+        nullify(h12,D3h12)
+        nullify(h22,D1h22,D3h22,D13h22,D33h22)
+        nullify(h23,D1h23,D3h23,D13h23,D33h23)
 #if ldebug
+    contains
         ! test calculation of DU by deriving U numerically
         integer function test_DU() result(ierr)
             use utilities, only: calc_deriv
@@ -1076,15 +1126,15 @@ contains
             call lvl_ud(1)
             
             ! set up DU_0 and DU_1
-            allocate(DU_0(grid%n(1),grid%n(2),grid%n(3)))
-            allocate(DU_1(grid%n(1),grid%n(2),grid%n(3)))
+            allocate(DU_0(grid_X%n(1),grid_X%n(2),grid_X%n(3)))
+            allocate(DU_1(grid_X%n(1),grid_X%n(2),grid_X%n(3)))
             
             ! loop over all modes
             do jd = 1,X%n_mod
                 ! loop over all normal points
-                do kd = 1,grid%n(3)
+                do kd = 1,grid_X%n(3)
                     ! derive numerically
-                    do id = 1,grid%n(2)
+                    do id = 1,grid_X%n(2)
                         ierr = calc_deriv(X%U_0(:,id,kd,jd),DU_0(:,id,kd),&
                             &ang_par_F(:,id,kd),1,norm_disc_prec_X+1)
                         CHCKERR('')
@@ -1094,9 +1144,10 @@ contains
                     end do
                     
                     ! add the second part
-                    n_frac = X%n(jd)*fac_n(kd)-X%m(jd)*fac_m(kd)
-                    DU_0(:,:,kd) = DU_0(:,:,kd) + iu*n_frac*X%U_0(:,:,kd,jd)
-                    DU_1(:,:,kd) = DU_1(:,:,kd) + iu*n_frac*X%U_1(:,:,kd,jd)
+                    DU_0(:,:,kd) = DU_0(:,:,kd) + &
+                        &iu*n_frac(kd,jd)*X%U_0(:,:,kd,jd)
+                    DU_1(:,:,kd) = DU_1(:,:,kd) + &
+                        &iu*n_frac(kd,jd)*X%U_1(:,:,kd,jd)
                 end do
                 
                 ! set some variables
@@ -1148,20 +1199,38 @@ contains
     end function calc_U
     
     ! calculate  ~PV_(k,m)^i  (pol.  flux)  or ~PV_(l,n)^i  (tor.  flux) at  all
-    ! eq loc_n_r values
+    ! eq loc_n_r values.
+    ! Like  in calc_U,  use is  made of  variables  Ti that  are set  up in  the
+    ! equilibrium grid and are afterwards  converted to Ti_X in the perturbation
+    ! grid, which needs to have the  same angular coordinates as the equilibrium
+    ! grid:
+    !   - T1 = h22/mu_0 g33
+    !   - T2 = JS + mu_0 sigma g33/J h22
+    !   - T3 = sigma/J T2
+    !   - T4 = 1/mu_0 J^2 h22
+    !   - T5 = 2 p' kappa_n
+    ! The interpolated Ti_X are then used to calculate PV:
+    !   - PV_0 = T1(DU_k^0* - T2)(DU_m^0 - T2) + (nq-m)(nq-k)T4 - T5
+    !   - PV_1 = T1(DU_k^0* - T2) DU_m^1
+    !   - PV_2 = T1 DU_k^1* DU_m^1
+    ! which  is valid for  poloidal Flux coordinates and  where (nq-m) is  to be
+    ! replaced by (n-iota m) for toroidal Flux coordinates.
     ! (see [ADD REF] for details)
-    integer function calc_PV(eq,grid,met,X_a,X_b,X,lim_sec_X) result(ierr)
+    integer function calc_PV(grid_eq,grid_X,eq,met,X_a,X_b,X,lim_sec_X) &
+        &result(ierr)
         use num_vars, only: use_pol_flux_F
         use eq_vars, only: vac_perm
         use utilities, only: c
         use X_vars, only: is_necessary_X, &
             &min_m_X, max_m_X, min_n_X, max_n_X
+        use grid_ops, only: get_norm_interp_data
         
         character(*), parameter :: rout_name = 'calc_PV'
         
         ! use input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(grid_type), intent(in) :: grid                                     ! grid
         type(met_type), intent(in) :: met                                       ! metric variables
         type(X_1_type), intent(in) :: X_a, X_b                                  ! vectorial perturbation variables
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
@@ -1170,43 +1239,93 @@ contains
         ! local variables
         integer :: n_mod_tot                                                    ! total nr. of modes
         integer :: m, k, kd                                                     ! counters
-        real(dp), allocatable :: com_fac(:,:,:)                                 ! common factor |nabla psi|^2/(J^2*B^2)
-        real(dp), allocatable :: fac_n(:), fac_m(:)                             ! multiplicative factors for n and m
+        real(dp), allocatable :: loc_r_eq(:)                                    ! unrounded index of eq variables in X grid
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
+        integer :: i_lo, i_hi                                                   ! upper and lower index
         
-        ! submatrices
         ! jacobian
-        real(dp), pointer :: J(:,:,:) => null()                                 ! jac
+        real(dp), pointer :: J(:,:,:)                                           ! jac
         ! lower metric factors
-        real(dp), pointer :: g33(:,:,:) => null()                               ! h_theta,theta or h_zeta,zeta
+        real(dp), pointer :: g33(:,:,:)                                         ! h_theta,theta or h_zeta,zeta
         ! upper metric factors
-        real(dp), pointer :: h22(:,:,:) => null()                               ! h^psi,psi
+        real(dp), pointer :: h22(:,:,:)                                         ! h^psi,psi
+        ! helper variables
+        real(dp), allocatable :: fac_n(:), fac_m(:)                             ! multiplicative factors for n and m
+        ! PV factors
+        real(dp), allocatable :: T1(:,:,:)                                      ! h22/mu_0 g33
+        real(dp), allocatable :: T2(:,:,:)                                      ! JS + mu_0 sigma g33/J h22
+        real(dp), allocatable :: T3(:,:,:)                                      ! sigma/J T2
+        real(dp), allocatable :: T4(:,:,:)                                      ! 1/mu_0 J^2 h22
+        real(dp), allocatable :: T5(:,:,:)                                      ! 2 p' kappa_n
+        real(dp), allocatable :: T1_X(:,:,:)                                    ! T1 in X grid and par. deriv.
+        real(dp), allocatable :: T2_X(:,:,:)                                    ! T2 in X grid and par. deriv.
+        real(dp), allocatable :: T3_X(:,:,:)                                    ! T3 in X grid and par. deriv.
+        real(dp), allocatable :: T4_X(:,:,:)                                    ! T4 in X grid and par. deriv.
+        real(dp), allocatable :: T5_X(:,:,:)                                    ! T5 in X grid and par. deriv.
         
         ! initialize ierr
         ierr = 0
         
-        ! set up submatrices
-        ! jacobian
+        ! allocate variables
+        ! helper variables
+        allocate(fac_n(grid_X%loc_n_r),fac_m(grid_X%loc_n_r))
+        ! PV factors
+        allocate(T1(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(T2(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(T3(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(T4(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(T5(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(T1_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        allocate(T2_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        allocate(T3_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        allocate(T4_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        allocate(T5_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        
+        ! set pointers
         J => met%jac_FD(:,:,:,0,0,0)
-        ! lower metric factors
         g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,0)
-        ! upper metric factors
         h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
         
-        ! set up common factor for PV_i
-        allocate(com_fac(grid%n(1),grid%n(2),grid%loc_n_r))
-        com_fac = h22/(g33*vac_perm)
+        ! set up PV factors in eq grid
+        T1 = h22/(vac_perm*g33)
+        T2 = J*eq%S + vac_perm*eq%sigma*g33/(J*h22)
+        T3 = eq%sigma/J*T2
+        T4 = 1._dp/(vac_perm*J**2*h22)
+        do kd = 1,grid_eq%loc_n_r
+            T5(:,:,kd) = 2*eq%pres_FD(kd,1)*eq%kappa_n(:,:,kd)
+        end do
         
-        ! set up fac_n and fac_m
-        allocate(fac_n(grid%loc_n_r),fac_m(grid%loc_n_r))
-        if (use_pol_flux_F) then
-            fac_n = eq%q_saf_FD(:,0)
-            fac_m = 1.0_dp
-        else
-            fac_n = 1.0_dp
-            fac_m = eq%rot_t_FD(:,0)
-        end if
+        ! get normal interpolation factors
+        ierr = get_norm_interp_data(grid_eq,grid_X,loc_r_eq)
+        CHCKERR('')
+        
+        ! interpolate helper variables and PV factors
+        do kd = 1,grid_X%loc_n_r
+            ! set lower and upper index
+            i_lo = floor(loc_r_eq(kd))
+            i_hi = ceiling(loc_r_eq(kd))
+            
+            if (use_pol_flux_F) then
+                fac_n(kd) = eq%q_saf_FD(i_lo,0) + (loc_r_eq(kd)-i_lo)*&
+                    &(eq%q_saf_FD(i_hi,0)-eq%q_saf_FD(i_lo,0))
+                fac_m(kd) = 1.0_dp
+            else
+                fac_n(kd) = 1.0_dp
+                fac_m(kd) = eq%rot_t_FD(i_lo,0) + (loc_r_eq(kd)-i_lo)*&
+                    &(eq%rot_t_FD(i_hi,0)-eq%rot_t_FD(i_lo,0))
+            end if
+            T1_X(:,:,kd) = T1(:,:,i_lo) + (loc_r_eq(kd)-i_lo)*&
+                &(T1(:,:,i_hi)-T1(:,:,i_lo))
+            T2_X(:,:,kd) = T2(:,:,i_lo) + (loc_r_eq(kd)-i_lo)*&
+                &(T2(:,:,i_hi)-T2(:,:,i_lo))
+            T3_X(:,:,kd) = T3(:,:,i_lo) + (loc_r_eq(kd)-i_lo)*&
+                &(T3(:,:,i_hi)-T3(:,:,i_lo))
+            T4_X(:,:,kd) = T4(:,:,i_lo) + (loc_r_eq(kd)-i_lo)*&
+                &(T4(:,:,i_hi)-T4(:,:,i_lo))
+            T5_X(:,:,kd) = T5(:,:,i_lo) + (loc_r_eq(kd)-i_lo)*&
+                &(T5(:,:,i_hi)-T5(:,:,i_lo))
+        end do
         
         ! set nr. of modes
         n_mod_tot = (max_m_X-min_m_X+1)*(max_n_X-min_n_X+1)
@@ -1231,120 +1350,132 @@ contains
                 
                 ! calculate PV_0
                 if (calc_this(1)) then
-                    !X%PV_0(:,:,:,c_loc(1)) = &
-                        !&com_fac*(X_b%DU_0(:,:,:,m) - eq%S*J - &
-                        !&eq%sigma/(com_fac*J)) * (conjg(&
-                        !&X_a%DU_0(:,:,:,k)) - eq%S*J - eq%sigma/(com_fac*J)) - &
-                        !&eq%sigma/J * (eq%S*J + eq%sigma/(com_fac*J))
-                    X%PV_0(:,:,:,c_loc(1)) = 0._dp
-                    
-                    ! add (nq-k)*(nq-m)/(mu_0J^2 |nabla  psi|^2) - 2p'kappa_n to
-                    ! PV_0
-                    do kd = 1,grid%loc_n_r
-                        !X%PV_0(:,:,kd,c_loc(1)) = X%PV_0(:,:,kd,c_loc(1)) + &
-                            !&(X_b%n(m)*fac_n(kd)-X_b%m(m)*fac_m(kd))*&
-                            !&(X_a%n(k)*fac_n(kd)-X_a%m(k)*fac_m(kd)) / &
-                            !&( vac_perm*J(:,:,kd)**2*h22(:,:,kd) ) - &
-                            !&2*eq%pres_FD(kd,1)*eq%kappa_n(:,:,kd)
-                        X%PV_0(:,:,kd,c_loc(1)) = &
+                    do kd = 1,grid_X%loc_n_r
+                        X%PV_0(:,:,kd,c_loc(1)) = T1_X(:,:,kd)*&
+                            &(X_b%DU_0(:,:,kd,m) - T2_X(:,:,kd)) * &
+                            &(conjg(X_a%DU_0(:,:,kd,k)) - T2_X(:,:,kd)) - &
+                            &T3_X(:,:,kd) - T5_X(:,:,kd) + T4_X(:,:,kd)*&
                             &(X_b%n(m)*fac_n(kd)-X_b%m(m)*fac_m(kd))*&
-                            &(X_a%n(k)*fac_n(kd)-X_a%m(k)*fac_m(kd)) / &
-                            &( vac_perm*J(:,:,kd)**2*h22(:,:,kd) ) - &
-                            &2*eq%pres_FD(kd,1)*eq%kappa_n(:,:,kd)
+                            &(X_a%n(k)*fac_n(kd)-X_a%m(k)*fac_m(kd))
                     end do
-                    
-                    !! "Intuitive" alternative
-                    !X%PV_0(:,:,:,c_loc(1)) = com_fac*&
-                        !&conjg(X_a%DU_0(:,:,:,k) - eq%S*J) * &
-                        !&(X_b%DU_0(:,:,:,m) - eq%S*J) - &
-                        !&eq%sigma/J * (X_b%DU_0(:,:,:,m) - eq%S*J)
-                    !do kd = 1,grid%loc_n_r
-                        !X%PV_0(:,:,kd,c_loc(1)) = X%PV_0(:,:,kd,c_loc(1)) + &
-                            !&(X_b%n(m)*fac_n(kd)-X_b%m(m)*fac_m(kd))*&
-                            !&(X_a%n(k)*fac_n(kd)-X_a%m(k)*fac_m(kd)) / &
-                            !&( vac_perm*J(:,:,kd)**2*h22(:,:,kd) ) - &
-                            !&2*eq%pres_FD(kd,1) * (eq%kappa_n(:,:,kd) + &
-                            !&eq%kappa_g(:,:,kd) * conjg(X_a%U_0(:,:,kd,k))) + &
-                            !&eq%sigma(:,:,kd)/J(:,:,kd) * &
-                            !&conjg(X_a%U_0(:,:,kd,k)) * iu * &
-                            !&(X_b%n(m)*fac_n(kd)-X_b%m(m)*fac_m(kd))
-                    !end do
                 end if
                 
                 ! calculate PV_1
                 if (calc_this(2)) then
-                    !X%PV_1(:,:,:,c_loc(2)) = com_fac * X_b%DU_1(:,:,:,m) * &
-                        !&(conjg(X_a%DU_0(:,:,:,k))-eq%S*J-eq%sigma/(com_fac*J))
-                    X%PV_1(:,:,:,c_loc(2)) = 0._dp
+                    X%PV_1(:,:,:,c_loc(2)) = T1_X * X_b%DU_1(:,:,:,m) * &
+                        &(conjg(X_a%DU_0(:,:,:,k))-T2_X)
                 end if
                 
                 ! calculate PV_2
                 if (calc_this(1)) then
-                    !X%PV_2(:,:,:,c_loc(1)) = &
-                        !&com_fac*X_b%DU_1(:,:,:,m)*conjg(X_a%DU_1(:,:,:,k))
-                    X%PV_2(:,:,:,c_loc(1)) = 0._dp
+                    X%PV_2(:,:,:,c_loc(1)) = T1_X * X_b%DU_1(:,:,:,m) * &
+                        &conjg(X_a%DU_1(:,:,:,k))
                 end if
             end do
         end do
         
-        ! deallocate variables
-        nullify(J,g33,h22)
+        ! clean up
+        nullify(J)
+        nullify(g33)
+        nullify(h22)
     end function calc_PV
     
     ! calculate  ~KV_(k,m)^i  (pol.  flux)  or ~KV_(l,n)^i  (tor.  flux) at  all
-    ! eq loc_n_r values
+    ! eq loc_n_r values.
+    ! Like  in calc_U,  use is  made of  variables  Ti that  are set  up in  the
+    ! equilibrium grid and are afterwards  converted to Ti_X in the perturbation
+    ! grid, which needs to have the  same angular coordinates as the equilibrium
+    ! grid:
+    !   - T1 = rho J^2 h22/g33
+    !   - T2 = rho/h22
+    ! The interpolated Ti_X are then used to calculate KV:
+    !   - KV_0 = T1 U_k^0* U_m^0 + T2
+    !   - KV_1 = T1 U_k^0* U_m^1
+    !   - KV_2 = T1 U_k^1* U_m^1
+    ! which  is valid for  poloidal Flux coordinates and  where (nq-m) is  to be
+    ! replaced by (n-iota m) for toroidal Flux coordinates.
     ! (see [ADD REF] for details)
-    integer function calc_KV(eq,grid,met,X_a,X_b,X,lim_sec_X) result(ierr)
+    integer function calc_KV(grid_eq,grid_X,eq,met,X_a,X_b,X,lim_sec_X) &
+        &result(ierr)
         use num_vars, only: norm_style
         use utilities, only: c
         use X_vars, only: is_necessary_X, &
             &min_m_X, max_m_X, min_n_X, max_n_X
+        use grid_ops, only: get_norm_interp_data
         
         character(*), parameter :: rout_name = 'calc_KV'
         
         ! use input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(grid_type), intent(in) :: grid                                     ! grid
         type(met_type), intent(in) :: met                                       ! metric variables
         type(X_1_type), intent(in) :: X_a, X_b                                  ! vectorial perturbation variables
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_mod_tot                                                    ! total nr. of modes
         integer :: m, k, kd                                                     ! counters
-        real(dp), allocatable :: com_fac(:,:,:)                                 ! common factor |nabla psi|^2/(J^2*B^2)
+        real(dp), allocatable :: loc_r_eq(:)                                    ! unrounded index of eq variables in X grid
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
-        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: i_lo, i_hi                                                   ! upper and lower index
         
-        ! submatrices
         ! jacobian
-        real(dp), pointer :: J(:,:,:) => null()                                 ! jac
+        real(dp), pointer :: J(:,:,:)                                           ! jac
         ! lower metric factors
-        real(dp), pointer :: g33(:,:,:) => null()                               ! h_theta,theta or h_zeta,zeta
+        real(dp), pointer :: g33(:,:,:)                                         ! h_theta,theta or h_zeta,zeta
         ! upper metric factors
-        real(dp), pointer :: h22(:,:,:) => null()                               ! h^psi,psi
+        real(dp), pointer :: h22(:,:,:)                                         ! h^psi,psi
+        ! KV factors
+        real(dp), allocatable :: T1(:,:,:)                                      ! h22/mu_0 J g33
+        real(dp), allocatable :: T2(:,:,:)                                      ! JS + mu_0 sigma g33/h22
+        real(dp), allocatable :: T1_X(:,:,:)                                    ! T1 in X grid and par. deriv.
+        real(dp), allocatable :: T2_X(:,:,:)                                    ! T2 in X grid and par. deriv.
         
         ! initialize ierr
         ierr = 0
         
-        ! set up submatrices
-        ! jacobian
+        ! allocate variables
+        ! KV factors
+        allocate(T1(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(T2(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(T1_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        allocate(T2_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        
+        ! set pointers
         J => met%jac_FD(:,:,:,0,0,0)
-        ! lower metric factors
         g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,0)
-        ! upper metric factors
         h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
         
-        ! set up common factor
-        allocate(com_fac(grid%n(1),grid%n(2),grid%loc_n_r))
-        com_fac = J**2*h22/g33
+        ! set up KV factors in eq grid
+        do kd = 1,grid_eq%loc_n_r
+            T1(:,:,kd) = eq%rho(kd)*J(:,:,kd)**2*h22(:,:,kd)/g33(:,:,kd)
+            T2(:,:,kd) = eq%rho(kd)/h22(:,:,kd)
+        end do
+        
+        ! get normal interpolation factors
+        ierr = get_norm_interp_data(grid_eq,grid_X,loc_r_eq)
+        CHCKERR('')
+        
+        ! interpolate KV factors
+        do kd = 1,grid_X%loc_n_r
+            ! set lower and upper index
+            i_lo = floor(loc_r_eq(kd))
+            i_hi = ceiling(loc_r_eq(kd))
+            
+            T1_X(:,:,kd) = T1(:,:,i_lo) + (loc_r_eq(kd)-i_lo)*&
+                &(T1(:,:,i_hi)-T1(:,:,i_lo))
+            T2_X(:,:,kd) = T2(:,:,i_lo) + (loc_r_eq(kd)-i_lo)*&
+                &(T2(:,:,i_hi)-T2(:,:,i_lo))
+        end do
         
         ! set nr. of modes
         n_mod_tot = (max_m_X-min_m_X+1)*(max_n_X-min_n_X+1)
         
-        ! loop over the modes
+        ! loop over all modes
         do m = 1,X_b%n_mod
             do k = 1,X_a%n_mod
                 ! check whether modes are correct
@@ -1366,25 +1497,25 @@ contains
                     case (1)                                                    ! normalization of full perpendicular component
                         ! calculate KV_0
                         if (calc_this(1)) then
-                            X%KV_0(:,:,:,c_loc(1)) = 1._dp/h22 + com_fac * &
+                            X%KV_0(:,:,:,c_loc(1)) = T2_X + T1_X * &
                                 &X_b%u_0(:,:,:,m) * conjg(X_a%u_0(:,:,:,k))
                         end if
                         
                         ! calculate KV_1
                         if (calc_thiS(2)) then
-                            X%KV_1(:,:,:,c_loc(2)) = com_fac * &
+                            X%KV_1(:,:,:,c_loc(2)) = T1_X * &
                                 &X_b%u_1(:,:,:,m) * conjg(X_a%u_0(:,:,:,k))
                         end if
                         
                         ! calculate kv_2
                         if (calc_this(1)) then
-                            X%kv_2(:,:,:,c_loc(1)) = com_fac * &
+                            X%kv_2(:,:,:,c_loc(1)) = T1_X * &
                                 &X_b%U_1(:,:,:,m) * conjg(X_a%U_1(:,:,:,k))
                         end if
                     case (2)                                                    ! normalization of only normal component
                         ! calculate KV_0
                         if (calc_this(1)) then
-                            X%KV_0(:,:,:,c_loc(1)) = 1._dp/h22
+                            X%KV_0(:,:,:,c_loc(1)) = T2_X
                         end if
                         
                         ! calculate KV_1
@@ -1405,27 +1536,26 @@ contains
             end do
         end do
         
-        ! multiply by rho
-        do kd = 1,grid%loc_n_r
-            X%KV_0(:,:,kd,:) = X%KV_0(:,:,kd,:)*eq%rho(kd)
-            X%KV_1(:,:,kd,:) = X%KV_1(:,:,kd,:)*eq%rho(kd)
-            X%KV_2(:,:,kd,:) = X%KV_2(:,:,kd,:)*eq%rho(kd)
-        end do
-        
-        ! deallocate variables
-        nullify(J,g33,h22)
+        ! clean up
+        nullify(J)
+        nullify(g33)
+        nullify(h22)
     end function calc_KV
     
     ! Calculate the  magnetic integrals  from PV_i and  KV_i. All  the variables
     ! should thus be field-line oriented.
-    subroutine calc_magn_ints(grid_eq,met,X,lim_sec_X)
+    integer function calc_magn_ints(grid_eq,grid_X,met,X,lim_sec_X) result(ierr)
         use num_vars, only: use_pol_flux_F
         use X_vars, only: is_necessary_X, &
             &min_m_X, max_m_X, min_n_X, max_n_X
         use utilities, only: c
+        use grid_ops, only: get_norm_interp_data
+        
+        character(*), parameter :: rout_name = 'calc_magn_ints'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(met_type), intent(in) :: met                                       ! metric variables
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
@@ -1433,27 +1563,52 @@ contains
         ! local variables
         integer :: n_mod_tot                                                    ! total nr. of modes
         integer :: k, m                                                         ! counters
-        integer :: id                                                           ! counter
+        integer :: id, kd                                                       ! counters
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         complex(dp), allocatable :: J_exp_ang(:,:,:)                            ! J * exponential of Flux parallel angle
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle in flux coordinates
+        real(dp), allocatable :: loc_r_eq(:)                                    ! unrounded index of eq variables in X grid
+        integer :: i_lo, i_hi                                                   ! upper and lower index
+        
+        ! jacobian
+        real(dp), allocatable :: J(:,:,:)                                       ! jac
+        
+        ! initialize ierr
+        ierr = 0
         
         ! user output
         call writo('Calculating field-line averages')
         call lvl_ud(1)
         
+        ! allocate variables
+        allocate(J(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        allocate(J_exp_ang(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        
+        ! get normal interpolation factors
+        ierr = get_norm_interp_data(grid_eq,grid_X,loc_r_eq)
+        CHCKERR('')
+        
+        ! interpolate equilibrium variables
+        do kd = 1,grid_X%loc_n_r
+            ! set lower and upper index
+            i_lo = floor(loc_r_eq(kd))
+            i_hi = ceiling(loc_r_eq(kd))
+            
+            
+            ! jacobian
+            J(:,:,kd) = met%jac_FD(:,:,i_lo,0,0,0) + (loc_r_eq(kd)-i_lo)*&
+                &(met%jac_FD(:,:,i_hi,0,0,0)-met%jac_FD(:,:,i_lo,0,0,0))
+        end do
+        
         ! set nr. of modes
         n_mod_tot = (max_m_X-min_m_X+1)*(max_n_X-min_n_X+1)
         
-        ! allocate J_exp_ang
-        allocate(J_exp_ang(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-        
         ! set up parallel angle in flux coordinates
         if (use_pol_flux_F) then
-            ang_par_F => grid_eq%theta_F
+            ang_par_F => grid_X%theta_F
         else
-            ang_par_F => grid_eq%zeta_F
+            ang_par_F => grid_X%zeta_F
         end if
         
         ! initialize integrated quantities
@@ -1477,15 +1632,13 @@ contains
                 
                 ! calculate J_exp_ang
                 if (use_pol_flux_F) then
-                    J_exp_ang(:,:,:) = met%jac_FD(:,:,:,0,0,0)*&
-                        &exp(iu*(X%m_1(k)-X%m_2(m))*ang_par_F)
+                    J_exp_ang = J*exp(iu*(X%m_1(k)-X%m_2(m))*ang_par_F)
                 else
-                    J_exp_ang(:,:,:) = met%jac_FD(:,:,:,0,0,0)*&
-                        &exp(-iu*(X%n_1(k)-X%n_2(m))*ang_par_F)
+                    J_exp_ang = J*exp(-iu*(X%n_1(k)-X%n_2(m))*ang_par_F)
                 end if
                 
                 ! parallel integration loop
-                do id = 2,grid_eq%n(1)
+                do id = 2,grid_X%n(1)
                     if (calc_this(1)) then
                         X%PV_int_0(c_loc(1),:,:) = X%PV_int_0(c_loc(1),:,:) + &
                             &(J_exp_ang(id,:,:)*X%PV_0(id,:,:,c_loc(1))&
@@ -1524,7 +1677,7 @@ contains
         ! user output
         call lvl_ud(-1)
         call writo('Field-line averages calculated')
-    end subroutine calc_magn_ints
+    end function calc_magn_ints
     
     ! Print either  vectorial or tensorial perturbation quantities  of a certain
     ! order to an output file:
@@ -1532,8 +1685,9 @@ contains
     !   - tensorial:    PV_int, KV_int
     !     (the non-integrated variables are heavy and not requested)
     ! Note: Flux coordinates used as normal coordinates
-    integer function print_output_X_1(grid_eq,X) result(ierr)                   ! vectorial version
-        use num_vars, only: PB3D_name, max_it_r, rich_lvl_nr
+    integer function print_output_X_1(grid,X) result(ierr)                      ! vectorial version
+        use num_vars, only: PB3D_name
+        use rich, only: rich_info_short
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type
         use X_vars, only: get_suffix
@@ -1541,11 +1695,11 @@ contains
         character(*), parameter :: rout_name = 'print_output_X_1'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
+        type(grid_type), intent(in) :: grid                                     ! perturbation grid variables
         type(X_1_type), intent(in) :: X                                         ! vectorial perturbation variables 
         
         ! local variables
-        type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of eq. variables
+        type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
         type(var_1D_type), pointer :: X_1D_loc => null()                        ! local element in X_1D
         integer :: id, jd                                                       ! counters
         
@@ -1566,119 +1720,105 @@ contains
         ! set up variables X_1D
         id = 1
         
-        ! RE_U_0
         do jd = 1,X%n_mod
+            ! RE_U_0
             X_1D_loc => X_1D(id); id = id+1
             X_1D_loc%var_name = 'RE_U_0_'//trim(get_suffix(X,jd))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = grid_eq%n
+            X_1D_loc%tot_i_max = grid%n
             X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
             X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
             allocate(X_1D_loc%p(size(X%U_0(:,:,:,jd))))
             X_1D_loc%p = reshape(realpart(X%U_0(:,:,:,jd)),&
                 &[size(X%U_0(:,:,:,jd))])
-        end do
-        
-        ! IM_U_0
-        do jd = 1,X%n_mod
+            
+            ! IM_U_0
             X_1D_loc => X_1D(id); id = id+1
             X_1D_loc%var_name = 'IM_U_0_'//trim(get_suffix(X,jd))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = grid_eq%n
+            X_1D_loc%tot_i_max = grid%n
             X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
             X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
             allocate(X_1D_loc%p(size(X%U_0(:,:,:,jd))))
             X_1D_loc%p = reshape(imagpart(X%U_0(:,:,:,jd)),&
                 &[size(X%U_0(:,:,:,jd))])
-        end do
-        
-        ! RE_U_1
-        do jd = 1,X%n_mod
+            
+            ! RE_U_1
             X_1D_loc => X_1D(id); id = id+1
             X_1D_loc%var_name = 'RE_U_1_'//trim(get_suffix(X,jd))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = grid_eq%n
+            X_1D_loc%tot_i_max = grid%n
             X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
             X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
             allocate(X_1D_loc%p(size(X%U_1(:,:,:,jd))))
             X_1D_loc%p = reshape(realpart(X%U_1(:,:,:,jd)),&
                 &[size(X%U_1(:,:,:,jd))])
-        end do
-        
-        ! IM_U_1
-        do jd = 1,X%n_mod
+            
+            ! IM_U_1
             X_1D_loc => X_1D(id); id = id+1
             X_1D_loc%var_name = 'IM_U_1_'//trim(get_suffix(X,jd))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = grid_eq%n
+            X_1D_loc%tot_i_max = grid%n
             X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
             X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
             allocate(X_1D_loc%p(size(X%U_1(:,:,:,jd))))
             X_1D_loc%p = reshape(imagpart(X%U_1(:,:,:,jd)),&
                 &[size(X%U_1(:,:,:,jd))])
-        end do
-        
-        ! RE_DU_0
-        do jd = 1,X%n_mod
+            
+            ! RE_DU_0
             X_1D_loc => X_1D(id); id = id+1
             X_1D_loc%var_name = 'RE_DU_0_'//trim(get_suffix(X,jd))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = grid_eq%n
+            X_1D_loc%tot_i_max = grid%n
             X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
             X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
             allocate(X_1D_loc%p(size(X%DU_0(:,:,:,jd))))
             X_1D_loc%p = reshape(realpart(X%DU_0(:,:,:,jd)),&
                 &[size(X%DU_0(:,:,:,jd))])
-        end do
-        
-        ! IM_DU_0
-        do jd = 1,X%n_mod
+            
+            ! IM_DU_0
             X_1D_loc => X_1D(id); id = id+1
             X_1D_loc%var_name = 'IM_DU_0_'//trim(get_suffix(X,jd))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = grid_eq%n
+            X_1D_loc%tot_i_max = grid%n
             X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
             X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
             allocate(X_1D_loc%p(size(X%DU_0(:,:,:,jd))))
             X_1D_loc%p = reshape(imagpart(X%DU_0(:,:,:,jd)),&
                 &[size(X%DU_0(:,:,:,jd))])
-        end do
-        
-        ! RE_DU_1
-        do jd = 1,X%n_mod
+            
+            ! RE_DU_1
             X_1D_loc => X_1D(id); id = id+1
             X_1D_loc%var_name = 'RE_DU_1_'//trim(get_suffix(X,jd))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = grid_eq%n
+            X_1D_loc%tot_i_max = grid%n
             X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
             X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
             allocate(X_1D_loc%p(size(X%DU_1(:,:,:,jd))))
             X_1D_loc%p = reshape(realpart(X%DU_1(:,:,:,jd)),&
                 &[size(X%DU_1(:,:,:,jd))])
-        end do
-        
-        ! IM_DU_1
-        do jd = 1,X%n_mod
+            
+            ! IM_DU_1
             X_1D_loc => X_1D(id); id = id+1
             X_1D_loc%var_name = 'IM_DU_1_'//trim(get_suffix(X,jd))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = grid_eq%n
+            X_1D_loc%tot_i_max = grid%n
             X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
             X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
             allocate(X_1D_loc%p(size(X%DU_1(:,:,:,jd))))
@@ -1693,12 +1833,7 @@ contains
         call lvl_ud(1)
         
         ! write
-        if (max_it_r.gt.1) then
-            ierr = print_HDF5_arrs(X_1D,PB3D_name,&
-                &'X_1_R_'//trim(i2str(rich_lvl_nr)))
-        else
-            ierr = print_HDF5_arrs(X_1D,PB3D_name,'X_1')
-        end if
+        ierr = print_HDF5_arrs(X_1D,PB3D_name,'X_1'//trim(rich_info_short()))
         CHCKERR('')
         
         ! user output
@@ -1711,8 +1846,9 @@ contains
         call lvl_ud(-1)
         call writo('Vectorial perturbation variables written to output')
     end function print_output_X_1
-    integer function print_output_X_2(grid_eq,X) result(ierr)                   ! tensorial version
-        use num_vars, only: rich_lvl_nr, max_it_r, PB3D_name, use_pol_flux_F
+    integer function print_output_X_2(grid,X) result(ierr)                      ! tensorial version
+        use num_vars, only: PB3D_name, use_pol_flux_F
+        use rich, only: rich_info_short
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type
         use X_vars, only: get_suffix, is_necessary_X, &
@@ -1722,12 +1858,12 @@ contains
         character(*), parameter :: rout_name = 'print_output_X_2'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
+        type(grid_type), intent(in) :: grid                                     ! perturbation grid variables
         type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables 
         
         ! local variables
         integer :: n_mod_tot                                                    ! total nr. of modes
-        type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of eq. variables
+        type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
         type(var_1D_type), pointer :: X_1D_loc => null()                        ! local element in X_1D
         integer :: id, jd, kd                                                   ! counters
         integer :: lim_submat(2,2)                                              ! limits of submatrix
@@ -1780,7 +1916,7 @@ contains
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
-                    X_1D_loc%tot_i_max = grid_eq%n(2:3)
+                    X_1D_loc%tot_i_max = grid%n(2:3)
                     X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
                     X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
                     allocate(X_1D_loc%p(size(X%PV_int_0(1,:,:))))
@@ -1796,7 +1932,7 @@ contains
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
-                    X_1D_loc%tot_i_max = grid_eq%n(2:3)
+                    X_1D_loc%tot_i_max = grid%n(2:3)
                     X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
                     X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
                     allocate(X_1D_loc%p(size(X%PV_int_0(1,:,:))))
@@ -1812,7 +1948,7 @@ contains
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
-                    X_1D_loc%tot_i_max = grid_eq%n(2:3)
+                    X_1D_loc%tot_i_max = grid%n(2:3)
                     X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
                     X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
                     allocate(X_1D_loc%p(size(X%PV_int_1(1,:,:))))
@@ -1828,7 +1964,7 @@ contains
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
-                    X_1D_loc%tot_i_max = grid_eq%n(2:3)
+                    X_1D_loc%tot_i_max = grid%n(2:3)
                     X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
                     X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
                     allocate(X_1D_loc%p(size(X%PV_int_1(1,:,:))))
@@ -1844,7 +1980,7 @@ contains
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
-                    X_1D_loc%tot_i_max = grid_eq%n(2:3)
+                    X_1D_loc%tot_i_max = grid%n(2:3)
                     X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
                     X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
                     allocate(X_1D_loc%p(size(X%PV_int_2(1,:,:))))
@@ -1860,7 +1996,7 @@ contains
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
-                    X_1D_loc%tot_i_max = grid_eq%n(2:3)
+                    X_1D_loc%tot_i_max = grid%n(2:3)
                     X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
                     X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
                     allocate(X_1D_loc%p(size(X%PV_int_2(1,:,:))))
@@ -1876,7 +2012,7 @@ contains
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
-                    X_1D_loc%tot_i_max = grid_eq%n(2:3)
+                    X_1D_loc%tot_i_max = grid%n(2:3)
                     X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
                     X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
                     allocate(X_1D_loc%p(size(X%KV_int_0(1,:,:))))
@@ -1892,7 +2028,7 @@ contains
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
-                    X_1D_loc%tot_i_max = grid_eq%n(2:3)
+                    X_1D_loc%tot_i_max = grid%n(2:3)
                     X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
                     X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
                     allocate(X_1D_loc%p(size(X%KV_int_0(1,:,:))))
@@ -1908,7 +2044,7 @@ contains
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
-                    X_1D_loc%tot_i_max = grid_eq%n(2:3)
+                    X_1D_loc%tot_i_max = grid%n(2:3)
                     X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
                     X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
                     allocate(X_1D_loc%p(size(X%KV_int_1(1,:,:))))
@@ -1924,7 +2060,7 @@ contains
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
-                    X_1D_loc%tot_i_max = grid_eq%n(2:3)
+                    X_1D_loc%tot_i_max = grid%n(2:3)
                     X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
                     X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
                     allocate(X_1D_loc%p(size(X%KV_int_1(1,:,:))))
@@ -1940,7 +2076,7 @@ contains
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
-                    X_1D_loc%tot_i_max = grid_eq%n(2:3)
+                    X_1D_loc%tot_i_max = grid%n(2:3)
                     X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
                     X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
                     allocate(X_1D_loc%p(size(X%KV_int_2(1,:,:))))
@@ -1956,7 +2092,7 @@ contains
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
-                    X_1D_loc%tot_i_max = grid_eq%n(2:3)
+                    X_1D_loc%tot_i_max = grid%n(2:3)
                     X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
                     X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
                     allocate(X_1D_loc%p(size(X%KV_int_2(1,:,:))))
@@ -1973,12 +2109,7 @@ contains
         call lvl_ud(1)
         
         ! write
-        if (max_it_r.gt.1) then
-            ierr = print_HDF5_arrs(X_1D,PB3D_name,&
-                &'X_2_R_'//trim(i2str(rich_lvl_nr)))
-        else
-            ierr = print_HDF5_arrs(X_1D,PB3D_name,'X_2')
-        end if
+        ierr = print_HDF5_arrs(X_1D,PB3D_name,'X_2'//trim(rich_info_short()))
         CHCKERR('')
         
         ! user output

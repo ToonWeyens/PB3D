@@ -952,6 +952,7 @@ contains
         CHCKERR('Failed to open file')
         call H5Pclose_f(plist_id,ierr)
         CHCKERR('Failed to close property list')
+        
         ! set HDF5 type corresponding to dp
         HDF5_kind_64 = H5kind_to_type(dp,H5_REAL_KIND)
         

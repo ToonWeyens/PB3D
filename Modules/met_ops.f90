@@ -1756,7 +1756,7 @@ contains
         ! calculate the  derivative in coord.  deriv_id_B of coord. system  B of
         ! one order lower than requested here
         ! check if we have reached the zeroth derivative in coord. B
-        if (deriv_id_B.eq.0) then                                               ! return the function with its requierd A derivs.
+        if (deriv_id_B.eq.0) then                                               ! return the function with its required A derivs.
             X_B = X_A(:,:,:,deriv_A(1),deriv_A(2),deriv_A(3))
         else                                                                    ! apply the formula to obtain X_B using exchanged derivs.
             ! allocate  the  exchanged  X_B_x  and  the  derivs.  in  A  and  B,
@@ -1903,7 +1903,7 @@ contains
         ! calculate the  derivative in coord.  deriv_id_B of coord. system  B of
         ! one order lower than requested here
         ! check if we have reached the zeroth derivative in coord. B
-        if (deriv_B.eq.0) then                                                  ! return the function with its requierd A derivs.
+        if (deriv_B.eq.0) then                                                  ! return the function with its required A derivs.
             X_B = X_A(:,deriv_A)
         else                                                                    ! apply the formula to obtain X_B using exchanged derivs.
             ! allocate  the  exchanged  X_B_x  and  the  derivs.  in  A  and  B,

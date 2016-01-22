@@ -260,25 +260,25 @@ contains
     ! [MPI] only global master
     integer function read_input() result(ierr)
         use num_vars, only: &
-            &max_it_NR, tol_NR, max_it_r, input_i, use_pol_flux_F, EV_style, &
-            &max_mem_per_proc, plot_resonance, tol_r, n_sol_requested, &
-            &nyq_fac, rank, nyq_fac, plot_grid, plot_flux_q, &
+            &max_it_NR, tol_NR, max_it_rich, input_i, use_pol_flux_F, &
+            &EV_style, max_mem_per_proc, plot_resonance, tol_rich, &
+            &n_sol_requested, nyq_fac, rank, nyq_fac, plot_grid, plot_flux_q, &
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
-            &tol_norm_r, tol_SLEPC, max_it_slepc, n_procs, pi, plot_size, &
-            &U_style, norm_style
+            &tol_norm, tol_SLEPC, max_it_slepc, n_procs, pi, plot_size, &
+            &U_style, norm_style, test_max_mem
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
         use files_ops, only: input_name
-        use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X, min_n_r_sol, &
-            &min_n_X, min_r_sol, max_r_sol
+        use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X, min_n_X, &
+            &min_r_sol, max_r_sol
+        use rich, only: min_n_r_sol
         use grid_vars, only: alpha, n_par_X, min_par_X, max_par_X
         
         character(*), parameter :: rout_name = 'read_input'
         
         ! local variables
-        integer :: istat                                                        ! error
         integer :: prim_X, min_sec_X, max_sec_X                                 ! n_X and m_X (pol. flux) or m_X and n_X (tor. flux)
         character(len=max_str_ln) :: err_msg                                    ! error message
         
@@ -287,15 +287,15 @@ contains
             &min_r_sol, max_r_sol, max_it_NR, tol_NR, use_pol_flux_F, &
             &rho_style, nyq_fac, rho_0, plot_grid, plot_flux_q, prim_X, &
             &min_sec_X, max_sec_X, use_normalization, n_theta_plot, &
-            &n_zeta_plot, norm_disc_prec_eq, tol_norm_r, max_it_NR, tol_NR, &
-            &max_mem_per_proc, min_n_r_sol, max_it_r, tol_r, EV_style, &
+            &n_zeta_plot, norm_disc_prec_eq, tol_norm, max_it_NR, tol_NR, &
+            &max_mem_per_proc, min_n_r_sol, max_it_rich, tol_rich, EV_style, &
             &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, &
             &retain_all_sol, norm_disc_prec_X, BC_style, max_it_inv, &
-            &tol_norm_r, max_it_slepc, norm_disc_prec_sol, plot_size, &
-            &U_style, norm_style
+            &max_it_slepc, norm_disc_prec_sol, plot_size, U_style, norm_style, &
+            &test_max_mem
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_grid, norm_disc_prec_sol, &
-            &plot_size
+            &plot_size, test_max_mem
         
         ! initialize ierr
         ierr = 0
@@ -316,6 +316,7 @@ contains
             ! common variables for all program styles
             max_mem_per_proc = 6000_dp/n_procs                                  ! count with 6GB
             plot_size = [10,5]
+            test_max_mem = .false.                                              ! do not test maximum memory
             
             ! select depending on program style
             select case (prog_style)
@@ -335,10 +336,10 @@ contains
                 ! select depending on program style
                 select case (prog_style)
                     case(1)                                                     ! PB3D
-                        read(input_i,nml=inputdata_PB3D,iostat=istat)           ! read input data
+                        read(input_i,nml=inputdata_PB3D,iostat=ierr)            ! read input data
                         
                         ! check input if successful read
-                        if (istat.eq.0) then                                    ! input file succesfully read
+                        if (ierr.eq.0) then                                     ! input file succesfully read
                             call writo('Overwriting with user-provided file "'&
                                 &//trim(input_name) // '"')
                             
@@ -356,7 +357,7 @@ contains
                             call adapt_n_par_X
                             
                             ! adapt tolerances if needed
-                            call adapt_tol_r
+                            call adapt_tol_rich
                             
                             ! adapt solution grid
                             ierr = adapt_sol_grid()
@@ -387,8 +388,10 @@ contains
                             
                             call lvl_ud(-1)
                         else                                                    ! cannot read input data
-                            call writo('WARNING: Cannot open user-provided &
-                                &file "'//trim(input_name)//'". Using defaults')
+                            ierr = 1
+                            err_msg = 'Cannot open user-provided file "'&
+                                &//trim(input_name)//'"'
+                            CHCKERR('')
                         end if
                         
                         ! set up min_n_X, max_n_X, min_m_X, max_m_X
@@ -404,15 +407,17 @@ contains
                             max_n_X = max_sec_X
                         end if
                     case(2)                                                     ! POST
-                        read(input_i,nml=inputdata_POST,iostat=istat)           ! read input data
+                        read(input_i,nml=inputdata_POST,iostat=ierr)            ! read input data
                         
                         ! check input if successful read
-                        if (istat.eq.0) then                                    ! input file succesfully read
+                        if (ierr.eq.0) then                                    ! input file succesfully read
                             call writo('Overwriting with user-provided file "'&
                                 &//trim(input_name) // '"')
                         else                                                    ! cannot read input data
-                            call writo('WARNING: Cannot open user-provided &
-                                &file "'//trim(input_name)//'". Using defaults')
+                            ierr = 1
+                            err_msg = 'Cannot open user-provided file "'&
+                                &//trim(input_name)//'"'
+                            CHCKERR('')
                         end if
                     case default
                         err_msg = 'No program style associated with '//&
@@ -494,7 +499,7 @@ contains
             ! variables concerning solution
             min_r_sol = 0.1_dp                                                  ! minimum normal range
             max_r_sol = 1.0_dp                                                  ! maximum normal range
-            tol_norm_r = 0.05                                                   ! tolerance for normal range
+            tol_norm = 0.05                                                     ! tolerance for normal range
             EV_style = 1                                                        ! slepc solver for EV problem
             min_n_r_sol = 20                                                    ! at least 20 points in solution grid
             
@@ -502,8 +507,8 @@ contains
             rho_0 = 10E-6_dp                                                    ! for fusion, particle density of around 1E21, mp around 1E-27
             
             ! concerning Richardson extrapolation
-            max_it_r = 1                                                        ! by default no Richardson extrapolation
-            tol_r = 1E-5                                                        ! wanted relative error in Richardson extrapolation
+            max_it_rich = 1                                                     ! by default no Richardson extrapolation
+            tol_rich = 1E-5                                                     ! wanted relative error in Richardson extrapolation
             
             ! concerning calculating the inverse
             max_it_inv = 1                                                      ! by default no iteration to calculate inverse
@@ -680,11 +685,11 @@ contains
         end function adapt_sol_grid
         
         ! checks  whether the variables concerning  Richardson extrapolation are
-        ! correct. max_it_r has to be at least 1
+        ! correct. max_it_rich has to be at least 1
         subroutine adapt_r
-            if (max_it_r.lt.1) then
-                max_it_r = 1
-                call writo('WARNING: max_it_r has been increased to 1')
+            if (max_it_rich.lt.1) then
+                max_it_rich = 1
+                call writo('WARNING: max_it_rich has been increased to 1')
             end if
         end subroutine adapt_r
         
@@ -707,16 +712,16 @@ contains
         end subroutine adapt_NR
         
         ! checks whether Richardson tolerances are correct
-        subroutine adapt_tol_r
-            if (tol_norm_r.lt.0) then
-                call writo('WARNING: tol_norm_r has been increased to 0')
-                tol_norm_r = 0._dp
+        subroutine adapt_tol_rich
+            if (tol_norm.lt.0) then
+                call writo('WARNING: tol_norm has been increased to 0')
+                tol_norm = 0._dp
             end if
-            if (tol_norm_r.gt.1) then
-                call writo('WARNING: tol_norm_r has been decreased to 1')
-                tol_norm_r = 1._dp
+            if (tol_norm.gt.1) then
+                call writo('WARNING: tol_norm has been decreased to 1')
+                tol_norm = 1._dp
             end if
-        end subroutine adapt_tol_r
+        end subroutine adapt_tol_rich
         
         ! checks whether normalization variables are chosen correctly. rho_0 has
         ! to be positive

@@ -2890,7 +2890,7 @@ contains
     ! test whether maximum memory feasible
     integer function test_max_memory() result(ierr)
         use ISO_C_BINDING
-        use num_vars, only: max_mem_per_proc, n_procs
+        use num_vars, only: max_mem_per_proc, n_procs, test_max_mem
         
         character(*), parameter :: rout_name = 'test_max_memory'
         
@@ -2903,30 +2903,30 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('Testing whether maximum memory per process of '//&
-            &trim(r2strt(max_mem_per_proc))//'MB is possible')
-        
-        call lvl_ud(1)
-        
-        write(*,*) 'TEMPORARILY NOT TESTING MAX MEMORY !!!'
-        
-        ! (lazy) allocation
-        dp_size = sizeof(1._dp)
-        n_max = ceiling(sqrt(max_mem_per_proc/(dp_size*1.E-6)))                 ! dp_size in B, max_mem_per_proc in MB
-        call writo('Allocating doubles array of size ('//trim(i2str(n_max))&
-            &//'x'//trim(i2str(n_max))//') on '//trim(i2str(n_procs))//&
-            &' MPI process(es)')
-        !!allocate(max_mem_arr(n_max,n_max),STAT=ierr)
-        err_msg = 'cannot allocate this much memory. Try setting &
-            &"max_mem_per_proc" lower'
-        CHCKERR(err_msg)
-        
-        ! explicitely set elements
-        !!max_mem_arr = 0._dp                                                     ! this can fail while lazy allocation does not
-        
-        !!deallocate(max_mem_arr)
-        
-        call lvl_ud(-1)
-        call writo('Maximum memory allocatable')
+        if (test_max_mem) then
+            call writo('Testing whether maximum memory per process of '//&
+                &trim(r2strt(max_mem_per_proc))//'MB is possible')
+            
+            call lvl_ud(1)
+            
+            ! (lazy) allocation
+            dp_size = sizeof(1._dp)
+            n_max = ceiling(sqrt(max_mem_per_proc/(dp_size*1.E-6)))             ! dp_size in B, max_mem_per_proc in MB
+            call writo('Allocating doubles array of size ('//trim(i2str(n_max))&
+                &//'x'//trim(i2str(n_max))//') on '//trim(i2str(n_procs))//&
+                &' MPI process(es)')
+            allocate(max_mem_arr(n_max,n_max),STAT=ierr)
+            err_msg = 'cannot allocate this much memory. Try setting &
+                &"max_mem_per_proc" lower'
+            CHCKERR(err_msg)
+            
+            ! explicitely set elements
+            max_mem_arr = 0._dp                                                 ! this can fail while lazy allocation does not
+            
+            deallocate(max_mem_arr)
+            
+            call lvl_ud(-1)
+            call writo('Maximum memory allocatable')
+        end if
     end function test_max_memory
 end module utilities

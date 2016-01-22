@@ -16,8 +16,8 @@ module grid_ops
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_norm_range, &
         &calc_eqd_grid, calc_ang_grid_eq, calc_ang_grid_eq_B, plot_grid_real, &
         &extend_grid_E, setup_grid_eq, setup_and_calc_grid_eq_B, &
-        &setup_and_calc_grid_sol, get_norm_interp_data, calc_int_vol, &
-        &trim_grid, untrim_grid
+        &setup_and_calc_grid_X, setup_and_calc_grid_sol, get_norm_interp_data, &
+        &calc_int_vol, trim_grid, untrim_grid, print_output_grid
 #if ldebug
     public debug_calc_ang_grid_eq_B, debug_get_norm_interp_data, &
         &debug_calc_int_vol
@@ -53,17 +53,19 @@ contains
     !   -  The  solution  range  is calculated  and  the  tightest  encompassing
     !   equilibrium range is found. Also 'r_F_eq' and 'r_F_sol' are provided and
     !   necessary.
-    integer function calc_norm_range(eq_limits,sol_limits,r_F_eq,r_F_sol) &
-        &result(ierr)
+    integer function calc_norm_range(eq_limits,X_limits,sol_limits,r_F_eq,&
+        &r_F_X,r_F_sol) result(ierr)
         use num_vars, only: prog_style
         
         character(*), parameter :: rout_name = 'calc_norm_range'
         
         ! input / output
-        real(dp), intent(inout), optional :: r_F_eq(:)                          ! equilibrium r_F
-        real(dp), intent(inout), optional :: r_F_sol(:)                         ! solution r_F
         integer, intent(inout), optional :: eq_limits(2)                        ! min. and max. index of eq grid for this process
+        integer, intent(inout), optional :: X_limits(2)                         ! min. and max. index of X grid for this process
         integer, intent(inout), optional :: sol_limits(2)                       ! min. and max. index of sol grid for this process
+        real(dp), intent(inout), optional :: r_F_eq(:)                          ! equilibrium r_F
+        real(dp), intent(inout), optional :: r_F_X(:)                           ! perturbation r_F
+        real(dp), intent(inout), optional :: r_F_sol(:)                         ! solution r_F
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -78,18 +80,24 @@ contains
                     ierr = calc_norm_range_PB3D_eq(eq_limits)
                     CHCKERR('')
                 end if
+                if (present(X_limits).and.present(r_F_X)) then
+                    ierr = calc_norm_range_PB3D_X(X_limits,r_F_X)
+                    CHCKERR('')
+                end if
                 if (present(sol_limits).and.present(r_F_sol)) then
                     ierr = calc_norm_range_PB3D_sol(sol_limits,r_F_sol)
                     CHCKERR('')
                 end if
             case(2)                                                             ! PB3D post-processing
-                if (.not.present(eq_limits) .or. .not.present(sol_limits) .or. &
-                    &.not.present(r_F_eq) .or. .not. present(r_F_sol)) then
+                if (.not.present(eq_limits) .or. .not.present(X_limits) .or. &
+                    &.not.present(sol_limits) .or. .not.present(r_F_eq) .or. &
+                    &.not.present(r_F_X) .or. .not. present(r_F_sol)) then
                     ierr = 1
                     CHCKERR('Incorrect variables provided.')
                 end if
-                ierr = calc_norm_range_POST(eq_limits,sol_limits,r_F_eq,r_F_sol)
-                CHCKERR('')
+                !ierr = calc_norm_range_POST(eq_limits,X_limits,sol_limits,&
+                    !&r_F_eq,r_F_X,r_F_sol)
+                !CHCKERR('')
             case default
                 err_msg = 'No program style associated with '//&
                     &trim(i2str(prog_style))
@@ -102,7 +110,7 @@ contains
         ! including a ghost region.
         integer function calc_norm_range_PB3D_eq(eq_limits) result(ierr)         ! PB3D version for equilibrium grid
             use num_vars, only: n_procs, rank, use_pol_flux_E, &
-                &use_pol_flux_F, eq_style, tol_norm_r, norm_disc_prec_eq
+                &use_pol_flux_F, eq_style, tol_norm, norm_disc_prec_eq
             use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
                 &calc_deriv, round_with_tol
             use VMEC, only: flux_t_V, Dflux_t_V, rot_t_V
@@ -189,8 +197,8 @@ contains
             
             ! get lower and upper bound of total solution range
             ! 1. include tolerance
-            tot_min_r_eq_F_con = max(min_r_sol-tol_norm_r,0._dp)
-            tot_max_r_eq_F_con = min(max_r_sol+tol_norm_r,1._dp)
+            tot_min_r_eq_F_con = max(min_r_sol-tol_norm,0._dp)
+            tot_max_r_eq_F_con = min(max_r_sol+tol_norm,1._dp)
             ! 2. round with tolerance
             ierr = round_with_tol(tot_min_r_eq_F_con,0._dp,1._dp)
             CHCKERR('')
@@ -231,8 +239,30 @@ contains
             deallocate(flux_F,flux_E)
         end function calc_norm_range_PB3D_eq
         
+        ! The normal range is determined by duplicating the normal range for the
+        ! solution.  A divided  grid is  not necessary  as the  division in  the
+        ! perturbation phase  is in the mode  numbers rather than in  the normal
+        ! range.
+        integer function calc_norm_range_PB3D_X(X_limits,r_F_X) &
+            &result(ierr)                                                       ! PB3D version for perturbation grid
+            use num_vars, only: norm_disc_prec_X
+            
+            character(*), parameter :: rout_name = 'calc_norm_range_PB3D_X'
+            
+            ! input / output
+            integer, intent(inout) :: X_limits(2)                               ! min. and max. index of perturbation grid for this process
+            real(dp), intent(inout) :: r_F_X(:)                                 ! perturbation r_F
+            
+            ! call the version for solution range
+            ierr = calc_norm_range_PB3D_sol(X_limits,r_F_X)
+            CHCKERR('')
+            
+            ! undivided grid
+            X_limits = [1,size(r_F_X)]
+        end function calc_norm_range_PB3D_X
+        
         ! The normal range is determined  by simply dividing the solution range,
-        ! no ghost range.
+        ! no ghost range required.
         integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol) &
             &result(ierr)                                                       ! PB3D version for solution grid
             use num_vars, only: n_procs, rank, use_pol_flux_F
@@ -415,7 +445,7 @@ contains
     ! here.
     integer function setup_and_calc_grid_eq_B(grid_eq,grid_eq_B,eq) &
         &result(ierr)
-        use num_vars, only: eq_style, plot_grid
+        use num_vars, only: eq_style
         use grid_vars, only: create_grid, &
             &n_par_X
         
@@ -472,18 +502,76 @@ contains
                 CHCKERR(err_msg)
         end select
         
-        ! plot grid if requested
-        if (plot_grid) then
-            ierr = plot_grid_real(grid_eq_B)
-            CHCKERR('')
-        else
-            call writo('Magnetic grid plot not requested')
-        end if
-        
         ! user output
         call lvl_ud(-1)
         call writo('Field-aligned equilibrium grid set up')
     end function setup_and_calc_grid_eq_B
+    
+    ! Sets up the general perturbation grid, in which the perturbation variables
+    ! are calculated. This  grid has the same angular extent  as the equilibrium
+    ! grid but with a higher number  of normal points, indicated by the variable
+    ! 'r_F_X'.
+    ! Note that no ghost  range is needed as the full normal  range is used: The
+    ! division is in the mode numbers
+    integer function setup_and_calc_grid_X(grid_eq,grid_X,eq,r_F_X,X_limits) &
+        &result(ierr)
+        use grid_vars, only: create_grid
+        
+        character(*), parameter :: rout_name = 'setup_and_calc_grid_X'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(grid_type), intent(inout) :: grid_X                                ! perturbation grid
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        real(dp), intent(in) :: r_F_X(:)                                        ! points of perturbation grid
+        integer, intent(in) :: X_limits(2)                                      ! min. and max. index of perturbation grid of this process
+        
+        ! local variables
+        real(dp), allocatable :: loc_r_eq(:)                                    ! unrounded index of eq variables in X grid
+        integer :: i_lo, i_hi                                                   ! upper and lower index
+        integer :: kd                                                           ! counter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! create grid
+        ierr = create_grid(grid_X,[grid_eq%n(1:2),size(r_F_X)],X_limits)
+        CHCKERR('')
+        
+        ! set Flux variables
+        grid_X%r_F = r_F_X
+        grid_X%loc_r_F = r_F_X(X_limits(1):X_limits(2))
+        
+        ! convert to Equilibrium variables
+        ierr = coord_F2E(grid_eq,eq,grid_X%r_F,grid_X%r_E,&
+            &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
+        CHCKERR('')
+        ierr = coord_F2E(grid_eq,eq,grid_X%loc_r_F,grid_X%loc_r_E,&
+            &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
+        CHCKERR('')
+        
+        ! get normal interpolation factors
+        ierr = get_norm_interp_data(grid_eq,grid_X,loc_r_eq)
+        CHCKERR('')
+        
+        ! interpolate angular variables
+        do kd = 1,grid_X%loc_n_r
+            i_lo = floor(loc_r_eq(kd))
+            i_hi = ceiling(loc_r_eq(kd))
+            grid_X%theta_E(:,:,kd) = grid_eq%theta_E(:,:,i_lo) + &
+                &(grid_eq%theta_E(:,:,i_hi)-grid_eq%theta_E(:,:,i_lo))*&
+                &(loc_r_eq(kd)-i_lo)
+            grid_X%zeta_E(:,:,kd) = grid_eq%zeta_E(:,:,i_lo) + &
+                &(grid_eq%zeta_E(:,:,i_hi)-grid_eq%zeta_E(:,:,i_lo))*&
+                &(loc_r_eq(kd)-i_lo)
+            grid_X%theta_F(:,:,kd) = grid_eq%theta_F(:,:,i_lo) + &
+                &(grid_eq%theta_F(:,:,i_hi)-grid_eq%theta_F(:,:,i_lo))*&
+                &(loc_r_eq(kd)-i_lo)
+            grid_X%zeta_F(:,:,kd) = grid_eq%zeta_F(:,:,i_lo) + &
+                &(grid_eq%zeta_F(:,:,i_hi)-grid_eq%zeta_F(:,:,i_lo))*&
+                &(loc_r_eq(kd)-i_lo)
+        end do
+    end function setup_and_calc_grid_X
     
     ! Sets  up the general  solution grid, in  which the solution  variables are
     ! calculated.
@@ -536,7 +624,7 @@ contains
         type(eq_type), intent(in) :: eq                                         ! equilibrium containing the angular grid
         
         ! local variables
-        integer :: jd, kd                                                       ! counters
+        integer :: id                                                           ! counters
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -552,10 +640,8 @@ contains
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! calculate the angular grid from HELENA
-                do kd = 1,grid_eq%loc_n_r
-                    do jd = 1,grid_eq%n(2)
-                        grid_eq%theta_E(:,jd,kd) = chi_H
-                    end do
+                do id = 1,grid_eq%n(1)
+                    grid_eq%theta_E(id,:,:) = chi_H(id)
                 end do
                 grid_eq%zeta_E = 0._dp
                 
@@ -1184,9 +1270,6 @@ contains
     ! If VMEC is the equilibrium  model, this routine also optionally calculates
     ! lambda on the grid, as this is  also needed some times. If HELENA is used,
     ! this variable is not used.
-    ! X, Y, Z and  optionally L need to have the correct  dimensions if they are
-    ! allocated.  They  can  also  be  passed unallocated,  in  which  case  the
-    ! allocation happens automatically.
     integer function calc_XYZ_grid(grid,X,Y,Z,L) result(ierr)
         use num_vars, only: eq_style, use_normalization
         use utilities, only: interp_fun, round_with_tol
@@ -2572,4 +2655,155 @@ contains
         grid_out%r_E = grid_in%r_E
         grid_out%r_F = grid_in%r_F
     end function untrim_grid
+    
+    ! Print grid variables to an output file.
+    integer function print_output_grid(grid,grid_name,output_name) result(ierr)
+        use num_vars, only: PB3D_name
+        use HDF5_ops, only: print_HDF5_arrs
+        use HDF5_vars, only: var_1D_type
+        use grid_vars, only: dealloc_grid
+        
+        character(*), parameter :: rout_name = 'print_output_grid'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid                                     ! grid variables
+        character(len=*), intent(in) :: grid_name                               ! name to display
+        character(len=*), intent(in) :: output_name                             ! name under which to store
+        
+        ! local variables
+        type(grid_type) :: grid_trim                                            ! trimmed grid
+        type(var_1D_type), allocatable, target :: grid_1D(:)                    ! 1D equivalent of grid variables
+        type(var_1D_type), pointer :: grid_1D_loc => null()                     ! local element in grid_1D
+        integer :: id                                                           ! counter
+        character :: first_char                                                 ! first character of string
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Writing '//trim(grid_name)//' grid variables to output &
+            &file')
+        call lvl_ud(1)
+        
+        ! user output
+        call writo('Preparing variables for writing')
+        call lvl_ud(1)
+        
+        ! trim grid
+        ierr = trim_grid(grid,grid_trim)
+        CHCKERR('')
+        
+        ! Set up the 1D equivalents of the perturbation variables
+        if (product(grid%n(1:2)).ne.0) then                                     ! 3D grid
+            allocate(grid_1D(6))
+        else                                                                    ! 1D grid
+            allocate(grid_1D(2))
+        end if
+        
+        ! set up variables grid_1D
+        id = 1
+        
+        ! r_F
+        grid_1D_loc => grid_1D(id); id = id+1
+        grid_1D_loc%var_name = 'r_F'
+        allocate(grid_1D_loc%tot_i_min(1),grid_1D_loc%tot_i_max(1))
+        allocate(grid_1D_loc%loc_i_min(1),grid_1D_loc%loc_i_max(1))
+        grid_1D_loc%tot_i_min = [1]
+        grid_1D_loc%tot_i_max = [grid_trim%n(3)]
+        grid_1D_loc%loc_i_min = [grid_trim%i_min]
+        grid_1D_loc%loc_i_max = [grid_trim%i_max]
+        allocate(grid_1D_loc%p(size(grid_trim%loc_r_F)))
+        grid_1D_loc%p = grid_trim%loc_r_F
+        
+        ! r_E
+        grid_1D_loc => grid_1D(id); id = id+1
+        grid_1D_loc%var_name = 'r_E'
+        allocate(grid_1D_loc%tot_i_min(1),grid_1D_loc%tot_i_max(1))
+        allocate(grid_1D_loc%loc_i_min(1),grid_1D_loc%loc_i_max(1))
+        grid_1D_loc%tot_i_min = [1]
+        grid_1D_loc%tot_i_max = [grid_trim%n(3)]
+        grid_1D_loc%loc_i_min = [grid_trim%i_min]
+        grid_1D_loc%loc_i_max = [grid_trim%i_max]
+        allocate(grid_1D_loc%p(size(grid_trim%loc_r_E)))
+        grid_1D_loc%p = grid_trim%loc_r_E
+        
+        ! only for 3D grids
+        if (product(grid%n(1:2)).ne.0) then
+            ! theta_F
+            grid_1D_loc => grid_1D(id); id = id+1
+            grid_1D_loc%var_name = 'theta_F'
+            allocate(grid_1D_loc%tot_i_min(3),grid_1D_loc%tot_i_max(3))
+            allocate(grid_1D_loc%loc_i_min(3),grid_1D_loc%loc_i_max(3))
+            grid_1D_loc%tot_i_min = [1,1,1]
+            grid_1D_loc%tot_i_max = grid_trim%n
+            grid_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
+            grid_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
+            allocate(grid_1D_loc%p(size(grid_trim%theta_F)))
+            grid_1D_loc%p = reshape(grid_trim%theta_F,[size(grid_trim%theta_F)])
+            
+            ! theta_E
+            grid_1D_loc => grid_1D(id); id = id+1
+            grid_1D_loc%var_name = 'theta_E'
+            allocate(grid_1D_loc%tot_i_min(3),grid_1D_loc%tot_i_max(3))
+            allocate(grid_1D_loc%loc_i_min(3),grid_1D_loc%loc_i_max(3))
+            grid_1D_loc%tot_i_min = [1,1,1]
+            grid_1D_loc%tot_i_max = grid_trim%n
+            grid_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
+            grid_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),&
+                &grid_trim%i_max]
+            allocate(grid_1D_loc%p(size(grid_trim%theta_E)))
+            grid_1D_loc%p = reshape(grid_trim%theta_E,[size(grid_trim%theta_E)])
+            
+            ! zeta_F
+            grid_1D_loc => grid_1D(id); id = id+1
+            grid_1D_loc%var_name = 'zeta_F'
+            allocate(grid_1D_loc%tot_i_min(3),grid_1D_loc%tot_i_max(3))
+            allocate(grid_1D_loc%loc_i_min(3),grid_1D_loc%loc_i_max(3))
+            grid_1D_loc%tot_i_min = [1,1,1]
+            grid_1D_loc%tot_i_max = grid_trim%n
+            grid_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
+            grid_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),&
+                &grid_trim%i_max]
+            allocate(grid_1D_loc%p(size(grid_trim%zeta_F)))
+            grid_1D_loc%p = reshape(grid_trim%zeta_F,[size(grid_trim%zeta_F)])
+            
+            ! zeta_E
+            grid_1D_loc => grid_1D(id); id = id+1
+            grid_1D_loc%var_name = 'zeta_E'
+            allocate(grid_1D_loc%tot_i_min(3),grid_1D_loc%tot_i_max(3))
+            allocate(grid_1D_loc%loc_i_min(3),grid_1D_loc%loc_i_max(3))
+            grid_1D_loc%tot_i_min = [1,1,1]
+            grid_1D_loc%tot_i_max = grid_trim%n
+            grid_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
+            grid_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),&
+                &grid_trim%i_max]
+            allocate(grid_1D_loc%p(size(grid_trim%zeta_E)))
+            grid_1D_loc%p = reshape(grid_trim%zeta_E,[size(grid_trim%zeta_E)])
+        end if
+        
+        call lvl_ud(-1)
+        
+        ! user output
+        call writo('Writing using HDF5')
+        call lvl_ud(1)
+        
+        ! write
+        ierr = print_HDF5_arrs(grid_1D,PB3D_name,'grid_'//trim(output_name))
+        CHCKERR('')
+        
+        ! clean up
+        call dealloc_grid(grid_trim)
+        
+        ! user output
+        call lvl_ud(-1)
+        
+        ! clean up
+        nullify(grid_1D_loc)
+        
+        ! user output
+        call lvl_ud(-1)
+        first_char = strl2h(grid_name(1:1))                                     ! convert first character to uppercase
+        call writo(first_char//trim(grid_name(2:len(grid_name)))//&
+            &' grid variables written to output file')
+    end function print_output_grid
 end module grid_ops

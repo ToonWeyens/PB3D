@@ -13,6 +13,7 @@ PB3D.o : \
     eq_ops.o \
     test.o \
     X_vars.o \
+    rich.o \
 
 POST.o : \
     num_vars.o \
@@ -26,7 +27,6 @@ POST.o : \
     driver_POST.o \
     utilities.o \
     X_vars.o \
-    PB3D_ops.o \
 
 PB3D_vars.o : \
     num_vars.o \
@@ -47,6 +47,7 @@ PB3D_ops.o : \
     output_ops.o \
     HDF5_vars.o \
     HDF5_ops.o \
+    rich.o \
 
 test.o : \
     str_ops.o \
@@ -74,6 +75,7 @@ sol_ops.o : \
     messages.o \
     grid_vars.o \
     sol_vars.o \
+    rich.o \
 
 grid_ops.o : \
     HDF5_ops.o \
@@ -89,6 +91,12 @@ grid_ops.o : \
     eq_vars.o \
     output_ops.o \
     messages.o \
+
+rich.o : \
+    str_ops.o \
+    output_ops.o \
+    messages.o \
+    num_vars.o \
 
 driver_eq.o : \
     num_vars.o \
@@ -118,6 +126,7 @@ driver_X.o : \
     vac.o \
     PB3D_vars.o \
     PB3D_ops.o \
+    rich.o \
 
 driver_sol.o : \
     str_ops.o \
@@ -134,6 +143,9 @@ driver_sol.o : \
     PB3D_ops.o \
     SLEPC_ops.o \
     sol_ops.o \
+    rich.o \
+    HELENA.o \
+    VMEC.o \
 
 driver_POST.o : \
     num_vars.o \
@@ -161,6 +173,7 @@ SLEPC_ops.o : \
     utilities.o \
     files_ops.o \
     MPI_utilities.o \
+    rich.o \
 
 X_ops.o : \
     num_vars.o \
@@ -179,6 +192,7 @@ X_ops.o : \
     grid_ops.o \
     input_ops.o \
     HDF5_ops.o \
+    rich.o \
 
 X_vars.o : \
     num_vars.o \
@@ -257,6 +271,7 @@ files_ops.o : \
     grid_vars.o \
     X_vars.o \
     PB3D_ops.o \
+    rich.o \
 
 files_utilities.o : \
     str_ops.o \
@@ -337,6 +352,7 @@ MPI_ops.o : \
     grid_vars.o \
     PB3D_vars.o \
     HDF5_vars.o \
+    rich.o \
 
 MPI_utilities.o : \
     str_ops.o \

@@ -13,11 +13,12 @@ module num_vars
         &pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
         &plot_resonance, plot_grid, plot_flux_q, ltest, use_pol_flux_E, &
-        &use_pol_flux_F, use_normalization, EV_BC, tol_SLEPC, max_it_slepc, &
-        &rich_lvl_nr, norm_disc_prec_eq, norm_disc_prec_X, norm_disc_prec_sol, &
-        &max_it_r, tol_r, no_guess, &
+        &use_pol_flux_F, use_normalization, EV_BC, test_max_mem, tol_SLEPC, &
+        &max_it_slepc, norm_disc_prec_eq, norm_disc_prec_X, &
+        &norm_disc_prec_sol, &
+        &max_it_rich, tol_rich, &
         &max_it_inv, &
-        &max_it_NR, tol_NR, nyq_fac, tol_norm_r, &
+        &max_it_NR, tol_NR, nyq_fac, tol_norm, &
         &GP_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
         &no_plots, no_messages, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
@@ -35,7 +36,7 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 1.04_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.05_dp                               ! version number
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
@@ -68,17 +69,16 @@ module num_vars
     logical :: use_pol_flux_E                                                   ! whether poloidal flux is used in E coords.
     logical :: use_pol_flux_F                                                   ! whether poloidal flux is used in F coords.
     logical :: use_normalization                                                ! whether to use normalization or not
-    real(dp) :: EV_BC
+    logical :: test_max_mem                                                     ! whether to test maximum memory
+    real(dp) :: EV_BC                                                           ! value of artificial Eigenvalue for boundary condition
     real(dp) :: tol_SLEPC                                                       ! tolerance for SLEPC
-    integer :: rich_lvl_nr                                                      ! which Richardson's level is being calculated
     integer :: norm_disc_prec_eq                                                ! precision for normal discretization for equilibrium
     integer :: norm_disc_prec_X                                                 ! precision for normal discretization for perturbation
     integer :: norm_disc_prec_sol                                               ! precision for normal discretization for solution
     
     ! concerning Richardson extrapolation
-    integer :: max_it_r                                                         ! number of levels for Richardson extrapolation
-    real(dp) :: tol_r                                                           ! tolerance for Richardson extrapolation
-    logical :: no_guess = .false.                                               ! disable guessing Eigenfunction from previous level of Richardson
+    integer :: max_it_rich                                                      ! number of levels for Richardson extrapolation
+    real(dp) :: tol_rich                                                        ! tolerance for Richardson extrapolation
     
     ! concerning finding the inverse
     integer :: max_it_inv                                                       ! maximum number of iterations to find the inverse
@@ -87,7 +87,7 @@ module num_vars
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
     real(dp) :: tol_NR                                                          ! tolerance for Newton-Rhapson
     integer :: nyq_fac                                                          ! Nyquist factor to avoid aliasing in perturbation integrals
-    real(dp) :: tol_norm_r                                                      ! tolerance for normal range (normalized to 0..1)
+    real(dp) :: tol_norm                                                        ! tolerance for normal range (normalized to 0..1)
 
     ! concerning input / output
     integer, parameter :: GP_max_size = 300                                     ! maximum size of matrices for GNUPlot

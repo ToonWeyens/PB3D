@@ -16,7 +16,7 @@ module sol_ops
 
     implicit none
     private
-    public calc_XUQ, plot_X_vec, decompose_energy, print_output_sol
+    public calc_XUQ, plot_X_vec, decompose_energy, print_output_sol, plot_X_vals
 #if ldebug
     public debug_calc_XUQ_arr, debug_plot_X_vec, debug_calc_E, debug_DU
 #endif
@@ -317,6 +317,55 @@ contains
         deallocate(XUQ_arr)
     end function calc_XUQ_ind
     
+    ! plots Eigenvalues
+    subroutine plot_X_vals(sol,last_unstable_id)
+        use num_vars, only: rank
+        
+        ! input / output
+        type(sol_type), intent(in) :: sol                                       ! solution variables
+        integer, intent(in) :: last_unstable_id                                 ! index of last unstable EV
+        
+        ! local variables
+        character(len=max_str_ln) :: plot_title                                 ! title for plots
+        character(len=max_str_ln) :: plot_name                                  ! file name for plots
+        integer :: n_sol_found                                                  ! how many solutions found and saved
+        integer :: id                                                           ! counter
+        
+        ! set local variables
+        n_sol_found = size(sol%val)
+        
+        ! only let master plot
+        if (rank.eq.0) then
+            ! Last Eigenvalues
+            plot_title = 'final Eigenvalues omega^2 [log]'
+            plot_name = 'Eigenvalues'
+            call print_GP_2D(plot_title,plot_name,&
+                &log10(abs(realpart(sol%val(1:n_sol_found)))),draw=.false.)
+            call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+            
+            ! Last Eigenvalues: unstable range
+            if (last_unstable_id.gt.0) then
+                plot_title = 'final unstable Eigenvalues omega^2'
+                plot_name = 'Eigenvalues_unstable'
+                call print_GP_2D(plot_title,plot_name,&
+                    &realpart(sol%val(1:last_unstable_id)),&
+                    &x=[(id*1._dp,id=1,last_unstable_id)],draw=.false.)
+                call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+            end if
+            
+            ! Last Eigenvalues: stable range
+            if (last_unstable_id.lt.n_sol_found) then
+                plot_title = 'final stable Eigenvalues omega^2'
+                plot_name = 'Eigenvalues_stable'
+                call print_GP_2D(plot_title,plot_name,&
+                    &realpart(sol%val(last_unstable_id+1:n_sol_found)),&
+                    &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)],&
+                    &draw=.false.)
+                call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+            end if
+        end if
+    end subroutine plot_X_vals
+    
     ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
     ! equilibrium  grid and  the normal  part of  the provided  perturbation
     ! grid.
@@ -351,30 +400,28 @@ contains
         real(dp), intent(in) :: res_surf(:,:)                                   ! resonant surfaces
         
         ! local variables
+        type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: kd                                                           ! counter
         integer :: n_t(2)                                                       ! nr. of time steps in quarter period, nr. of quarter periods
-        type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        complex(dp), allocatable :: f_plot(:,:,:,:,:)                           ! the function to plot
-        real(dp), allocatable :: time(:)                                        ! fraction of Alfvén time
-        character(len=max_str_ln) :: var_name(2)                                ! name of variable that is plot
-        character(len=max_str_ln) :: file_name(2)                               ! name of file
-        character(len=max_str_ln) :: description(2)                             ! description
-        complex(dp) :: omega                                                    ! sqrt of Eigenvalue
         integer :: plot_dim(4)                                                  ! dimensions of plot
         integer :: plot_offset(4)                                               ! local offset of plot
         integer :: col                                                          ! collection type for HDF5 plot
-        real(dp), allocatable :: X_plot(:,:,:,:)                                ! copies of XYZ(1)
-        real(dp), allocatable :: Y_plot(:,:,:,:)                                ! copies of XYZ(2)
-        real(dp), allocatable :: Z_plot(:,:,:,:)                                ! copies of XYZ(3)
+        real(dp), allocatable :: time(:)                                        ! fraction of Alfvén time
+        real(dp), allocatable :: XYZ_plot(:,:,:,:,:)                            ! copies of XYZ
+        complex(dp) :: omega                                                    ! sqrt of Eigenvalue
+        complex(dp), allocatable :: f_plot(:,:,:,:,:)                           ! the function to plot
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=max_str_ln) :: var_name(2)                                ! name of variable that is plot
+        character(len=max_str_ln) :: file_name(2)                               ! name of file
+        character(len=max_str_ln) :: description(2)                             ! description
 #if ldebug
         real(dp), allocatable :: loc_r_eq(:)                                    ! loc_r_F of sol grid interpolated in eq grid
+        integer :: nm                                                           ! n (pol. flux) or m (tor. flux)
         integer :: i_lo, i_hi                                                   ! upper and lower index for interpolation of eq grid to sol grid
         integer :: id, jd, ld                                                   ! counters
         complex(dp), allocatable :: U_inf(:,:,:,:)                              ! ideal ballooning U
         complex(dp), allocatable :: U_inf_prop(:,:,:)                           ! proportional part of U_inf
-        integer :: nm                                                           ! n (pol. flux) or m (tor. flux)
 #endif
         
         ! initialize ierr
@@ -438,16 +485,12 @@ contains
         ! Note: The  angular size is taken  from trimmed eq grid but  the normal
         ! size from the trimmed sol grid.
         plot_dim = [grid_eq%n(1), grid_eq%n(2),grid_sol_trim%n(3),product(n_t)]
-        plot_offset = [0,0,grid_sol_trim%i_min-1,product(n_t)]
+        plot_offset = [0,0,grid_sol_trim%i_min-1,0]
+        !plot_offset = [0,0,grid_sol_trim%i_min-1,product(n_t)]                  !!! THIS WAS WRITTEN FIRST: IS IT CORRECT?!
         
-        ! set up copies  of XYZ(1), XYZ(2) and XYZ(3) in  X, Y and Z
-        ! for plot
-        allocate(X_plot(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
-            &product(n_t)))
-        allocate(Y_plot(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
-            &product(n_t)))
-        allocate(Z_plot(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
-            &product(n_t)))
+        ! set up copies of XYZ for plot
+        allocate(XYZ_plot(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
+            &product(n_t),3))
         
         ! For each time step, calculate the time (as fraction of Alfvén
         ! time) and make a copy of XYZ for X, Y and Z
@@ -459,9 +502,7 @@ contains
                 time(kd) = (mod(kd-1,n_t(1))*1._dp/n_t(1) + &
                     &(kd-1)/n_t(1)) * 0.25
             end if
-            X_plot(:,:,:,kd) = XYZ(:,:,norm_id(1):norm_id(2),1)
-            Y_plot(:,:,:,kd) = XYZ(:,:,norm_id(1):norm_id(2),2)
-            Z_plot(:,:,:,kd) = XYZ(:,:,norm_id(1):norm_id(2),3)
+            XYZ_plot(:,:,:,kd,:) = XYZ(:,:,norm_id(1):norm_id(2),:)
         end do
         
         ! calculate omega  = sqrt(X_val)  and make sure  to select  the decaying
@@ -582,14 +623,12 @@ contains
         do kd = 1,2
             call plot_HDF5([var_name(kd)],file_name(kd),&
                 &realpart(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
-                &tot_dim=plot_dim,loc_offset=plot_offset,X=X_plot,Y=Y_plot,&
-                &Z=Z_plot,col=col,description=description(kd))
+                &tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
+                &Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
+                &description=description(kd))
         end do
         
-        ! deallocate local variables
-        deallocate(time)
-        deallocate(f_plot)
-        deallocate(X_plot,Y_plot,Z_plot)
+        ! clean up
         call dealloc_grid(grid_sol_trim)
         
         call lvl_ud(-1)
@@ -1184,18 +1223,12 @@ contains
         ! calc potential energy
         E_pot(:,:,:,1) = 1._dp/vac_perm*1._dp/h22*XUQ(:,:,:,3)*&
             &conjg(XUQ(:,:,:,3))
-        !E_pot(:,:,:,1) = 0._dp
-        !E_pot(:,:,:,2) = 1._dp/vac_perm*h22*J**2/g33*XUQ(:,:,:,4)*&
-            !&conjg(XUQ(:,:,:,4))
-        E_pot(:,:,:,2) = 0._dp
+        E_pot(:,:,:,2) = 1._dp/vac_perm*h22*J**2/g33*XUQ(:,:,:,4)*&
+            &conjg(XUQ(:,:,:,4))
         E_pot(:,:,:,3) = -2*D2p*kappa_n*XUQ(:,:,:,1)*conjg(XUQ(:,:,:,1))
-        !E_pot(:,:,:,3) = 0._dp
-        !E_pot(:,:,:,4) = -2*D2p*kappa_g*XUQ(:,:,:,1)*conjg(XUQ(:,:,:,2))
-        E_pot(:,:,:,4) = 0._dp
-        !E_pot(:,:,:,5) = -sigma*XUQ(:,:,:,4)*conjg(XUQ(:,:,:,1))
-        E_pot(:,:,:,5) = 0._dp
-        !E_pot(:,:,:,6) = sigma*XUQ(:,:,:,3)*conjg(XUQ(:,:,:,2))
-        E_pot(:,:,:,6) = 0._dp
+        E_pot(:,:,:,4) = -2*D2p*kappa_g*XUQ(:,:,:,1)*conjg(XUQ(:,:,:,2))
+        E_pot(:,:,:,5) = -sigma*XUQ(:,:,:,4)*conjg(XUQ(:,:,:,1))
+        E_pot(:,:,:,6) = sigma*XUQ(:,:,:,3)*conjg(XUQ(:,:,:,2))
         write(*,*) 'sum of E_pot_1', sum(J*E_pot(:,:,:,1))
         write(*,*) 'sum of E_pot_3', sum(J*E_pot(:,:,:,3))
         call plot_HDF5('E_pot_1_RE','E_pot_1_RE',realpart(J*E_pot(:,:,:,1)))
@@ -1374,7 +1407,8 @@ contains
     ! Print solution quantities to an output file:
     !   - sol:    val, vec
     integer function print_output_sol(grid,sol) result(ierr)
-        use num_vars, only: rich_lvl_nr, max_it_r, rank, PB3D_name
+        use num_vars, only: max_it_rich, rank, PB3D_name
+        use rich, only: rich_lvl
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type
         use grid_ops, only: trim_grid
@@ -1396,51 +1430,25 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! user output
-        call writo('Writing solution variables to output file')
-        call lvl_ud(1)
-        
-        ! user output
-        call writo('Preparing variables for writing')
-        call lvl_ud(1)
-        
-        ! trim grids
-        ierr = trim_grid(grid,grid_trim,norm_id)
-        CHCKERR('')
-        
-        ! Set up the 1D equivalents of the solution variables
+        ! only write to output file if at least one solution
         if (size(sol%val).gt.0) then
-            allocate(sol_1D(6))
-        else
-            allocate(sol_1D(2))
-        end if
-        id = 1
-        
-        ! r_F
-        sol_1D_loc => sol_1D(id); id = id+1
-        sol_1D_loc%var_name = 'r_F'
-        allocate(sol_1D_loc%tot_i_min(1),sol_1D_loc%tot_i_max(1))
-        allocate(sol_1D_loc%loc_i_min(1),sol_1D_loc%loc_i_max(1))
-        sol_1D_loc%tot_i_min = [1]
-        sol_1D_loc%tot_i_max = [grid_trim%n(3)]
-        sol_1D_loc%loc_i_min = [grid_trim%i_min]
-        sol_1D_loc%loc_i_max = [grid_trim%i_max]
-        allocate(sol_1D_loc%p(size(grid%loc_r_F(norm_id(1):norm_id(2)))))
-        sol_1D_loc%p = grid%loc_r_F(norm_id(1):norm_id(2))
-        
-        ! r_E
-        sol_1D_loc => sol_1D(id); id = id+1
-        sol_1D_loc%var_name = 'r_E'
-        allocate(sol_1D_loc%tot_i_min(1),sol_1D_loc%tot_i_max(1))
-        allocate(sol_1D_loc%loc_i_min(1),sol_1D_loc%loc_i_max(1))
-        sol_1D_loc%tot_i_min = [1]
-        sol_1D_loc%tot_i_max = [grid_trim%n(3)]
-        sol_1D_loc%loc_i_min = [grid_trim%i_min]
-        sol_1D_loc%loc_i_max = [grid_trim%i_max]
-        allocate(sol_1D_loc%p(size(grid%loc_r_E(norm_id(1):norm_id(2)))))
-        sol_1D_loc%p = grid%loc_r_E(norm_id(1):norm_id(2))
-        
-        if (size(sol%val).gt.0) then
+            ! user output
+            call writo('Writing solution variables to output file')
+            call lvl_ud(1)
+            
+            ! user output
+            call writo('Preparing variables for writing')
+            call lvl_ud(1)
+            
+            ! trim grids
+            ierr = trim_grid(grid,grid_trim,norm_id)
+            CHCKERR('')
+            
+            ! Set up the 1D equivalents of the solution variables
+            allocate(sol_1D(4))
+            
+            id = 1
+            
             ! RE_X_val
             sol_1D_loc => sol_1D(id); id = id+1
             sol_1D_loc%var_name = 'RE_X_val'
@@ -1502,32 +1510,35 @@ contains
             sol_1D_loc%p = &
                 &reshape(imagpart(sol%vec(:,norm_id(1):norm_id(2),:)),&
                 &[size(sol%vec(:,norm_id(1):norm_id(2),:))])
-        end if
-        
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('Writing using HDF5')
-        call lvl_ud(1)
-        
-        ! write
-        if (max_it_r.gt.1) then
-            ierr = print_HDF5_arrs(sol_1D,PB3D_name,&
-                &'sol_R'//trim(i2str(rich_lvl_nr)))
+            
+            call lvl_ud(-1)
+            
+            ! user output
+            call writo('Writing using HDF5')
+            call lvl_ud(1)
+            
+            ! write
+            if (max_it_rich.gt.1) then
+                ierr = print_HDF5_arrs(sol_1D,PB3D_name,&
+                    &'sol_R'//trim(i2str(rich_lvl)))
+            else
+                ierr = print_HDF5_arrs(sol_1D,PB3D_name,'sol')
+            end if
+            CHCKERR('')
+            
+            ! clean up
+            call dealloc_grid(grid_trim)
+            nullify(sol_1D_loc)
+            
+            ! user output
+            call lvl_ud(-1)
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Solution variables written to output')
         else
-            ierr = print_HDF5_arrs(sol_1D,PB3D_name,'sol')
+            ! user output
+            call writo('No solutions to write')
         end if
-        CHCKERR('')
-        
-        ! clean up
-        call dealloc_grid(grid_trim)
-        nullify(sol_1D_loc)
-        
-        ! user output
-        call lvl_ud(-1)
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Solution variables written to output')
     end function print_output_sol
 end module sol_ops

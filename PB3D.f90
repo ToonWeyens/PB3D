@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.04                                                              !
+!   Version: 1.05                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -26,7 +26,7 @@ program PB3D
     use num_vars, only: prog_name, prog_style
     use str_ops, only: r2str, i2str
     use messages, only: init_messages, lvl_ud, writo, init_time, &
-        &start_time, passed_time, print_hello, print_goodbye
+        &start_time, passed_time, stop_time, print_hello, print_goodbye
     use X_vars, only: init_X_vars
     use HDF5_vars, only: init_HDF5
     use driver_eq, only: run_driver_eq
@@ -37,6 +37,8 @@ program PB3D
     use input_ops, only: read_input
     use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_vars, sudden_stop
     use eq_ops, only: read_eq, calc_normalization_const, normalize_input
+    use rich, only: init_rich, term_rich, do_rich, start_rich_lvl, &
+        &stop_rich_lvl, rich_info
 #if ldebug
     use num_vars, only: ltest
     use test, only: generic_tests
@@ -46,6 +48,11 @@ program PB3D
 
     ! local variables
     integer :: ierr                                                             ! error
+    
+    write(*,*) '!!!!!!! IMPLEMENT THE SMART VERSION OF CHOOSING THE FOURIER MODE NUMBERS !!!!!!!!!!!!!!!'
+    write(*,*) '!!!!!!! IMPLEMENT DIFFERENT HDF5 SYSTEM WHERE THERE IS ONE !!!!!!!!!!!!'
+    write(*,*) '!!!!!!! VARIABLE FOR X WHICH IS PARTIALLY READ AND WRITTEN !!!!!!!!!!!!'
+    write(*,*) '!!!!!!! (https://www.hdfgroup.org/HDF5/doc/H5.intro.html#Intro-PMRdWrPortion) !!!!!!!!!!!!'
     
     !-------------------------------------------------------
     !   Initialize some routines
@@ -61,11 +68,6 @@ program PB3D
     call init_time                                                              ! initialize time
     call init_HDF5                                                              ! initialize HDF5
     call init_X_vars                                                            ! initialize perturbation vars
-    write(*,*) '!!!!!!! THE X VARIABLES HAVE TO BE TABULATED IN THE SOL GRID  !!!!!!!!!!!!!!!'
-    write(*,*) '!!!!!!! IMPLEMENT THE SMART VERSION OF CHOOSING THE FOURIER MODE NUMBERS !!!!!!!!!!!!!!!'
-    write(*,*) '!!!!!!! IMPLEMENT DIFFERENT HDF5 SYSTEM WHERE THERE IS ONE !!!!!!!!!!!!'
-    write(*,*) '!!!!!!! VARIABLE FOR X WHICH IS PARTIALLY READ AND WRITTEN !!!!!!!!!!!!'
-    write(*,*) '!!!!!!! (https://www.hdfgroup.org/HDF5/doc/UG/04_ProgModel.html#PartialWR) !!!!!!!!!!!!'
  
     !-------------------------------------------------------
     !   Read the user-provided input file and the VMEC output
@@ -125,30 +127,54 @@ program PB3D
     call lvl_ud(-1)
     
     !-------------------------------------------------------
-    !   Main driver: Perturbation part
+    !   Start Richardson Extrapolation Loop
     !-------------------------------------------------------
     call start_time
-    call writo('Perturbation driver')
-    call lvl_ud(1)
-    ierr = run_driver_X()
-    CHCKERR
-    call writo('')
-    call passed_time
-    call writo('')
-    call lvl_ud(-1)
+    call init_rich()
+    call stop_time
+    
+    RICH: do while(do_rich())
+        call start_time
+        call start_rich_lvl()
+        call stop_time
+        
+        !---------------------------------------------------
+        !   Main driver: Perturbation part
+        !---------------------------------------------------
+        call start_time
+        call writo('Perturbation driver'//trim(rich_info()))
+        call lvl_ud(1)
+        ierr = run_driver_X()
+        CHCKERR
+        call writo('')
+        call passed_time
+        call writo('')
+        call lvl_ud(-1)
+        
+        !---------------------------------------------------
+        !   Main driver: Solution part
+        !---------------------------------------------------
+        call start_time
+        call writo('Solution driver'//trim(rich_info()))
+        call lvl_ud(1)
+        ierr = run_driver_sol()
+        CHCKERR
+        call writo('')
+        call passed_time
+        call writo('')
+        call lvl_ud(-1)
+        
+        call start_time
+        call stop_rich_lvl()
+        call stop_time
+    end do RICH
     
     !-------------------------------------------------------
-    !   Main driver: Solution part
+    !   Stop Richarson Extrapolation Loop
     !-------------------------------------------------------
     call start_time
-    call writo('Solution driver')
-    call lvl_ud(1)
-    ierr = run_driver_sol()
-    CHCKERR
-    call writo('')
-    call passed_time
-    call writo('')
-    call lvl_ud(-1)
+    call term_rich()
+    call stop_time
     
     !-------------------------------------------------------
     !   Cleaning up

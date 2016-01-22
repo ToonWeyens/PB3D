@@ -46,11 +46,14 @@ contains
     ! Optionally the  geodesic index of  the perturbation variables at  which to
     ! perform the calculations can be changed  from its default value of 1 using
     ! the variable i_geo.
-    integer function solve_EV_system_SLEPC(grid_eq,grid_sol,X,sol,use_guess,&
-        &i_geo) result(ierr)
+    ! Note that the perturbation grid needs to be the same as the solution grid,
+    ! if  not,  this  module  has  to be  adapted  to  interpolate  them,  using
+    ! "get_norm_interp_data" and "interp_V". This can be seen in builds previous
+    ! to 1.06.
+    integer function solve_EV_system_SLEPC(grid_sol,X,sol,i_geo) result(ierr)
         use num_vars, only: max_it_inv, norm_disc_prec_sol
-        use grid_ops, only: get_norm_interp_data
         use utilities, only: calc_coeff_fin_diff
+        use rich, only: use_guess
 #if ldebug
         use num_vars, only: ltest
         use input_ops, only: get_real, get_log
@@ -59,11 +62,9 @@ contains
         character(*), parameter :: rout_name = 'solve_EV_system_SLEPC'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(X_2_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(inout) :: sol                                    ! solution variables
-        PetscBool, intent(in) :: use_guess                                      ! whether to use a guess or not
         integer, intent(in), optional :: i_geo                                  ! at which geodesic index to perform the calculations
         
         ! local variables
@@ -75,7 +76,6 @@ contains
         PetscInt, save :: prev_n_EV                                             ! nr. of solutions of previous vector
         PetscInt :: inv_lvl_nr                                                  ! level of inverse calculation
         PetscInt :: i_geo_loc                                                   ! local copy of i_geo
-        PetscReal, allocatable :: loc_r_eq(:)                                   ! unrounded index in tables V_int
         PetscReal, allocatable :: norm_disc_coeff(:)                            ! discretization coefficients
         PetscReal :: step_size                                                  ! step size in flux coordinates
         PetscBool :: done_inverse                                               ! is it converged?
@@ -89,10 +89,6 @@ contains
         ! set up local i_geo
         i_geo_loc = 1
         if (present(i_geo)) i_geo_loc = i_geo
-        
-        ! set up arrays loc_r_eq that determine how to fill the matrices
-        ierr = get_norm_interp_data(grid_eq,grid_sol,loc_r_eq)
-        CHCKERR('')
         
         ! start SLEPC
         ierr = start_SLEPC(grid_sol%n(3))
@@ -113,8 +109,7 @@ contains
         ! set up the matrix
         call writo('Set up matrices')
         
-        ierr = setup_mats(grid_sol,X,A,B,loc_r_eq,i_geo_loc,&
-            &norm_disc_coeff)
+        ierr = setup_mats(grid_sol,X,A,B,i_geo_loc,norm_disc_coeff)
         CHCKERR('')
         
 #if ldebug
@@ -156,7 +151,7 @@ contains
             ! set boundary conditions
             call writo('Set up boundary conditions')
             
-            ierr = set_BC(grid_sol,X,A,B,loc_r_eq,i_geo_loc,grid_sol%n(3),&
+            ierr = set_BC(grid_sol,X,A,B,i_geo_loc,grid_sol%n(3),&
                 &norm_disc_coeff)
             CHCKERR('')
             
@@ -410,7 +405,7 @@ contains
     ! The  geodesical index  at  which to  perform the  calculations  has to  be
     ! provided as well.
     ! Note: For normal usage, i_geo should be 1, or not present.
-    integer function setup_mats(grid_sol,X,A,B,loc_r_eq,i_geo,norm_disc_coeff) &
+    integer function setup_mats(grid_sol,X,A,B,i_geo,norm_disc_coeff) &
         &result(ierr)
         use num_vars, only: norm_disc_prec_sol
 #if ldebug
@@ -424,7 +419,6 @@ contains
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(X_2_type), intent(in) :: X                                         ! perturbation variables
         Mat, intent(inout) :: A, B                                              ! matrix A and B
-        PetscReal, intent(in) :: loc_r_eq(:)                                    ! unrounded index in tables V_int
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
         PetscReal, intent(in) :: norm_disc_coeff(:)                             ! discretization coefficients for normal derivatives
         
@@ -597,10 +591,8 @@ contains
             ! local variables (not to be used in child routines)
             character(len=max_str_ln) :: err_msg                                ! error message
             PetscScalar, allocatable :: loc_block(:,:)                          ! (n_mod x n_mod) block matrix for 1 normal point
-            PetscScalar, allocatable :: V_int_0(:)                              ! interpolated V_0 at different normal positions
-            PetscScalar, allocatable :: V_int_1(:)                              ! interpolated V_1 at different normal positions
-            PetscScalar, allocatable :: V_int_2(:)                              ! interpolated V_2 at different normal positions
             PetscInt :: id, jd, kd                                              ! counters
+            PetscInt :: kd_loc                                                  ! kd in local variables
             PetscInt :: k, m                                                    ! counters
             PetscInt :: i_min, i_max                                            ! absolute limits excluding the BC's
 #if ldebug
@@ -672,18 +664,13 @@ contains
                     CHCKERR(err_msg)
             end select
             
-            ! allocate interpolated V_int_i and local block
-            allocate(V_int_0(size(V_0,1)))
-            allocate(V_int_1(size(V_1,1)))
-            allocate(V_int_2(size(V_2,1)))
+            ! allocate local block
             allocate(loc_block(n_mod,n_mod))
             
             ! iterate over all rows of this rank
             do kd = i_min-1,i_max-1                                             ! (indices start with 0 here)
-                ! get interpolated terms in V_int_i
-                call interp_V(V_0,loc_r_eq(kd+2-grid_sol%i_min),V_int_0)
-                call interp_V(V_1,loc_r_eq(kd+2-grid_sol%i_min),V_int_1)
-                call interp_V(V_2,loc_r_eq(kd+2-grid_sol%i_min),V_int_2)
+                ! set up local kd
+                kd_loc = kd+2-grid_sol%i_min
                 
                 ! fill the blocks
                 
@@ -693,7 +680,7 @@ contains
                 ! fill local block
                 do m = 1,n_mod
                     do k = 1,n_mod
-                        loc_block(k,m) = con(V_int_0(c([k,m],.true.,n_mod)),&
+                        loc_block(k,m) = con(V_0(c([k,m],.true.,n_mod),kd_loc),&
                             &[k,m],.true.)                                      ! symmetric matrices need con()
                     end do
                 end do
@@ -716,7 +703,7 @@ contains
                 ! fill local block
                 do m = 1,n_mod
                     do k = 1,n_mod
-                        loc_block(k,m) = V_int_1(c([k,m],.false.,n_mod))        ! asymetric matrices don't need con()
+                        loc_block(k,m) = V_1(c([k,m],.false.,n_mod),kd_loc)     ! asymetric matrices don't need con()
                     end do
                 end do
                 
@@ -734,7 +721,7 @@ contains
                 ! fill local block
                 do m = 1,n_mod
                     do k = 1,n_mod
-                        loc_block(k,m) = con(V_int_2(c([k,m],.true.,n_mod)),&
+                        loc_block(k,m) = con(V_2(c([k,m],.true.,n_mod),kd_loc),&
                             &[k,m],.true.)                                      ! symmetric matrices need con()
                     end do
                 end do
@@ -768,7 +755,6 @@ contains
             !CHCKERR('Coulnd''t set option Hermitian')
             
             ! deallocate variables
-            deallocate(V_int_0,V_int_1,V_int_2)
             deallocate(loc_block)
         end function fill_mat
         
@@ -801,8 +787,8 @@ contains
     ! setting the  diagonal components  of A  to EV_BC and  of B  to 1,  and the
     ! off-diagonal elements to zero.
     ! At the plasma surface, the surface energy is minimized as in [ADD REF].
-    integer function set_BC(grid_sol,X,A,B,loc_r_eq,i_geo,n_sol,&
-        &norm_disc_coeff) result(ierr)
+    integer function set_BC(grid_sol,X,A,B,i_geo,n_sol,norm_disc_coeff) &
+        &result(ierr)
         use num_vars, only: norm_disc_prec_sol, BC_style
         use MPI_utilities, only: get_ser_var
         use utilities, only: con, c
@@ -814,7 +800,6 @@ contains
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables
         Mat, intent(inout) :: A, B                                              ! Matrices A and B from A X = lambda B X
-        PetscReal, intent(in) :: loc_r_eq(:)                                    ! unrounded index in tables V_int
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
         integer, intent(in) :: n_sol                                            ! number of grid points of solution grid
         PetscReal, intent(in) :: norm_disc_coeff(:)                             ! discretization coefficients for normal derivatives
@@ -845,7 +830,7 @@ contains
         ! set up n_min, depending on BC style
         select case (BC_style(1))
             case (1)
-                n_min = 2*norm_disc_prec_sol                                    ! dirichlet BC requieres half stencil
+                n_min = 2*norm_disc_prec_sol                                    ! dirichlet BC requires half stencil
             case (2)
                 n_min = norm_disc_prec_sol                                      ! mixed BC requires only one fourth of stencil
             case (3)
@@ -862,7 +847,7 @@ contains
         ! set up n_max, depending on BC style
         select case (BC_style(2))
             case (1)
-                n_max = 2*norm_disc_prec_sol                                    ! dirichlet BC requieres half stencil
+                n_max = 2*norm_disc_prec_sol                                    ! dirichlet BC requires half stencil
             case (2)
                 n_max = norm_disc_prec_sol                                      ! mixed BC requires only one fourth of stencil
             case (3)
@@ -885,9 +870,8 @@ contains
                         ierr = set_BC_1(kd-1,A,B,.false.)                       ! indices start at 0
                         CHCKERR('')
                     case (2)
-                        ierr = set_BC_2(kd-1,X,A,B,&
-                            &loc_r_eq(kd-grid_sol%i_min+1),i_geo,grid_sol%n(3),&
-                            &norm_disc_coeff,.false.)                           ! indices start at 0
+                        ierr = set_BC_2(kd-1,X,A,B,kd-grid_sol%i_min+1,&
+                            &i_geo,grid_sol%n(3),norm_disc_coeff,.false.)       ! indices start at 0
                         CHCKERR('')
                     case (3)
                         err_msg = 'Left BC''s cannot have BC type 3'
@@ -929,9 +913,8 @@ contains
                         ierr = set_BC_1(kd-1,A,B,.true.)                        ! indices start at 0
                         CHCKERR('')
                     case (2)
-                        ierr = set_BC_2(kd-1,X,A,B,&
-                            &loc_r_eq(kd-grid_sol%i_min+1),i_geo,grid_sol%n(3),&
-                            &norm_disc_coeff,.true.)                            ! indices start at 0
+                        ierr = set_BC_2(kd-1,X,A,B,kd-grid_sol%i_min+1,i_geo,&
+                            &grid_sol%n(3),norm_disc_coeff,.true.)              ! indices start at 0
                         CHCKERR('')
                     case (3)
                         if (kd.eq.grid_sol%n(3)) then                           ! only for last point, irrespective of discretization order
@@ -1023,15 +1006,15 @@ contains
         
         ! set BC style 2:
         !   minimization of surface energy term (see [ADD REF])
-        integer function set_BC_2(ind,X,A,B,loc_r_eq,i_geo,n_sol,&
-            &norm_disc_coeff,BC_right) result(ierr)
+        integer function set_BC_2(ind,X,A,B,ind_X,i_geo,n_sol,norm_disc_coeff,&
+            &BC_right)                                                          result(ierr)
             character(*), parameter :: rout_name = 'set_BC_2'
             
             ! input / output
             integer, intent(in) :: ind                                          ! position at which to set BC
             type(X_2_type), intent(in) :: X                                     ! tensorial perturbation variables
             Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
-            PetscReal, intent(in) :: loc_r_eq                                   ! unrounded index in tables V_int
+            PetscInt, intent(in) :: ind_X                                       ! index in perturbation tables
             integer, intent(in) :: i_geo                                        ! at which geodesic index to perform the calculations
             integer, intent(in) :: n_sol                                        ! number of grid points of solution grid
             PetscReal, intent(in) :: norm_disc_coeff(:)                         ! discretization coefficients for normal derivatives
@@ -1039,12 +1022,6 @@ contains
             
             ! local variables
             PetscInt :: jd                                                      ! counter
-            PetscScalar, allocatable :: PV_int_0(:)                             ! PV_int_0 in equilibrium normal grid
-            PetscScalar, allocatable :: PV_int_1(:)                             ! PV_int_1 in equilibrium normal grid
-            PetscScalar, allocatable :: PV_int_2(:)                             ! PV_int_2 in equilibrium normal grid
-            PetscScalar, allocatable :: KV_int_0(:)                             ! KV_int_0 in equilibrium normal grid
-            PetscScalar, allocatable :: KV_int_1(:)                             ! KV_int_1 in equilibrium normal grid
-            PetscScalar, allocatable :: KV_int_2(:)                             ! KV_int_2 in equilibrium normal grid
             PetscScalar, allocatable :: V_int_0_mod(:,:,:)                      ! V_0 + (V_1+delta) V_2 (V_1+delta)^*T
             
             ! initialize ierr
@@ -1054,28 +1031,14 @@ contains
             call writo('Boundary style at row '//trim(i2str(ind+1))//&
                 &': Minimization of surface energy',persistent=.true.)
             
-            ! initialize PV_i and KV_i
-            allocate(PV_int_0(n_mod**2))
-            allocate(PV_int_1(n_mod**2))
-            allocate(PV_int_2(n_mod**2))
-            allocate(KV_int_0(n_mod**2))
-            allocate(KV_int_1(n_mod**2))
-            allocate(KV_int_2(n_mod**2))
-           
-            ! get interpolated terms in V_int_i
-            call interp_V(X%PV_int_0(:,i_geo,:),loc_r_eq,PV_int_0)
-            call interp_V(X%PV_int_1(:,i_geo,:),loc_r_eq,PV_int_1)
-            call interp_V(X%PV_int_2(:,i_geo,:),loc_r_eq,PV_int_2)
-            call interp_V(X%KV_int_0(:,i_geo,:),loc_r_eq,KV_int_0)
-            call interp_V(X%KV_int_1(:,i_geo,:),loc_r_eq,KV_int_1)
-            call interp_V(X%KV_int_2(:,i_geo,:),loc_r_eq,KV_int_2)
-            
             ! -----------------!
             ! BLOCKS ~ V_0,mod !
             ! -----------------!
             ! calculate modified terms V_int_0_mod
             allocate(V_int_0_mod(n_mod,n_mod,2))
-            ierr = calc_V_0_mod(PV_int_0,KV_int_0,PV_int_1,KV_int_1,KV_int_2,&
+            ierr = calc_V_0_mod(X%PV_int_0(:,i_geo,ind_X),&
+                &X%KV_int_0(:,i_geo,ind_X),X%PV_int_1(:,i_geo,ind_X),&
+                &X%KV_int_1(:,i_geo,ind_X),X%KV_int_2(:,i_geo,ind_X),&
                 &V_int_0_mod)
             CHCKERR('')
             
@@ -1525,10 +1488,11 @@ contains
 #endif
         use eq_vars, only: T_0
         use num_vars, only: use_normalization, EV_BC, prog_name, &
-            &output_name, rich_lvl_nr, max_it_r, n_procs, rank, tol_SLEPC
+            &output_name, max_it_rich, n_procs, rank, tol_SLEPC
         use files_utilities, only: nextunit
         use MPI_utilities, only: get_ser_var
         use sol_vars, only: dealloc_sol, create_sol
+        use rich, only: rich_lvl
         
         character(*), parameter :: rout_name = 'store_results'
         
@@ -1623,8 +1587,8 @@ contains
         ! open output file for the log
         if (rank.eq.0) then
             full_output_name = prog_name//'_'//output_name//'_EV'
-            if (max_it_r.gt.1) full_output_name = &
-                &trim(full_output_name)//'_R'//trim(i2str(rich_lvl_nr))         ! append Richardson level
+            if (max_it_rich.gt.1) full_output_name = &
+                &trim(full_output_name)//'_R'//trim(i2str(rich_lvl))            ! append Richardson level
             full_output_name = trim(full_output_name)//'.txt'
             open(unit=nextunit(output_EV_i),file=full_output_name,iostat=ierr)
             CHCKERR('Cannot open EV output file')
@@ -1999,24 +1963,6 @@ contains
         
         call lvl_ud(-1)
     end function stop_SLEPC
-    
-    ! Interpolates an array V at position x.
-    ! (also  correct  if i_hi = i_lo)
-    subroutine interp_V(V,x,V_int)
-        ! input / output
-        PetscScalar, intent(in) :: V(:,:)                                       ! V
-        PetscReal, intent(in) :: x                                              ! coordinate at which to interpolate
-        PetscScalar, intent(inout) :: V_int(:)                                  ! interpolated V
-        
-        ! local variables
-        PetscInt :: i_lo, i_hi                                                  ! upper and lower index
-        
-        ! set up i_lo and i_hi
-        i_lo = floor(x)
-        i_hi = ceiling(x)
-        
-        V_int = V(:,i_lo) + (V(:,i_hi)-V(:,i_lo))*(x-i_lo)                      ! because i_hi - i_lo = 1
-    end subroutine interp_V
     
     ! Insert  a block pertaining  to 1 normal  point into a  matrix. Optionally,
     ! also set the Hermitian transpose and / or overwrite instead of add value.

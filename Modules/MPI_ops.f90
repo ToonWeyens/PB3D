@@ -161,9 +161,9 @@ contains
         n_mod_loc(1:mod(n_mod,n_div)) = n_mod_loc(1:mod(n_mod,n_div)) + 1       ! add a mode to if there is a remainder
         X_jobs_lims = calc_X_jobs_lims(n_mod_loc,div_ord)
         if (use_pol_flux_F) then
-            X_jobs_lims = X_jobs_lims + min_m_X - 1                              ! scale with minimum poloidal mode number
+            X_jobs_lims = X_jobs_lims + min_m_X - 1                             ! scale with minimum poloidal mode number
         else
-            X_jobs_lims = X_jobs_lims + min_n_X - 1                              ! scale with minimum toroidal mode number
+            X_jobs_lims = X_jobs_lims + min_n_X - 1                             ! scale with minimum toroidal mode number
         end if
         if (allocated(X_jobs_taken)) deallocate(X_jobs_taken)
         allocate(X_jobs_taken(n_div**div_ord))
@@ -463,26 +463,28 @@ contains
     ! the master process using the inputs to the other processes
     ! [MPI] Collective call
     integer function broadcast_input_vars() result(ierr)
-        use num_vars, only: max_str_ln, ltest, EV_style, max_it_NR, max_it_r, &
-            &tol_NR, rank, n_procs, no_guess, n_sol_requested, nyq_fac, tol_r, &
-            &use_pol_flux_F, use_pol_flux_E, retain_all_sol, plot_flux_q, &
-            &plot_grid, no_plots, eq_style, use_normalization, n_sol_plotted, &
-            &n_theta_plot, n_zeta_plot, plot_resonance, EV_BC, tol_SLEPC, &
-            &rho_style, prog_style, max_it_inv, norm_disc_prec_X, &
-            &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, tol_norm_r, &
-            &max_it_slepc, max_mem_per_proc, PB3D_name, norm_style, U_style
+        use num_vars, only: max_str_ln, ltest, EV_style, max_it_NR, &
+            &max_it_rich, tol_NR, rank, n_procs, n_sol_requested, &
+            &nyq_fac, tol_rich, use_pol_flux_F, use_pol_flux_E, retain_all_sol, &
+            &plot_flux_q, plot_grid, no_plots, eq_style, use_normalization, &
+            &n_sol_plotted, n_theta_plot, n_zeta_plot, plot_resonance, EV_BC, &
+            &tol_SLEPC, rho_style, prog_style, max_it_inv, norm_disc_prec_X, &
+            &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, tol_norm, &
+            &max_it_slepc, max_mem_per_proc, PB3D_name, norm_style, U_style, &
+            &plot_size, test_max_mem
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
             &h_H_12, h_H_33, RBphi, R_H, Z_H
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm
-        use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_n_r_sol, &
-            &min_r_sol, max_r_sol
+        use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_r_sol, &
+            &max_r_sol
         use grid_vars, only: alpha, n_r_eq, n_par_X, min_par_X, max_par_X
         use HDF5_vars, only: var_1D_type
         use PB3D_vars, only: PB3D_version
         use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &
             &max_flux_t_F
+        use rich, only: min_n_r_sol, no_guess
 #if ldebug
         use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
@@ -514,6 +516,8 @@ contains
                 &ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(test_max_mem,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
@@ -562,6 +566,8 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(n_zeta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
+            call MPI_Bcast(plot_size,2,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
             call MPI_Bcast(norm_disc_prec_eq,1,MPI_INTEGER,0,MPI_Comm_world,&
                 &ierr)
             CHCKERR(err_msg)
@@ -593,7 +599,8 @@ contains
                     call MPI_Bcast(min_n_r_sol,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(max_it_r,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    call MPI_Bcast(max_it_rich,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(max_it_inv,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
@@ -613,7 +620,7 @@ contains
                     call MPI_Bcast(max_it_slepc,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(tol_norm_r,1,MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(tol_norm,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(min_par_X,1,MPI_DOUBLE_PRECISION,0,&
@@ -630,7 +637,7 @@ contains
                     call MPI_Bcast(max_mem_per_proc,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(tol_r,1,MPI_DOUBLE_PRECISION,0,&
+                    call MPI_Bcast(tol_rich,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(EV_BC,1,MPI_DOUBLE_PRECISION,0,&

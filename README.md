@@ -5,6 +5,8 @@ Peeling Ballooning in 3D
 
 Doctoral work by Toon Weyens
 Universidad Carlos III de Madrid
+ITER Organization
+Technische Universiteit Eindhoven
 2012-2016
 
 To set up:
@@ -262,9 +264,18 @@ CHANGELOG
       - Fixed a bug in 'calc_memory' where overflow occured.
 
 1.04: - UNUSABLE VERSION: CHECKING INDIVIDUAL TERMS WITH ENERGY DECOMPOSITION.
-      - A more detailed grid for X quantities is needed.
+      - A more detailed grid for X quantities is needed!
       - Cleaned up the code when 'ldebug' is not used.
       - Implemented debugging of the perturbation driver so that the vectorial instead of the tensorial perturbation variables are interpolated.
       - Implemented the option to choose order of geodesic perturbation.
       - Implemented a test to plot |X|^2 after solving the Eigenvalue problem and compare this with the energy reconstruction.
       - Fixed a bug where the transpose of a matrix should be used when feeding into SLEPC.
+
+1.05: - ONLY PB3D USUABLE.
+      - Reintroduced all terms in the energy equations.
+      - New module for Richardson extrapolation.
+      - Extrapolation is now done in main program, as X variables have to recalculated on a different grid for each Richardson level.
+      - Involved routines "calc_U", "calc_KV" and "calc_PV" have been rewritten. "calc_U" is still not tested for VMEC.
+      - Updated the user output considering Richardson extrapolation in general.
+      - Failure to read input file now results in error.
+      - 'test_max_mem' now indicates whether memory is to be tested or not.

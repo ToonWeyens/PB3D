@@ -174,9 +174,10 @@ contains
 
     ! open the input files
     integer function open_input() result(ierr)
-        use num_vars, only: eq_i, input_i, rank, prog_style, no_guess, &
-            &no_plots, eq_style, eq_name, no_messages, PB3D_i, PB3D_name
+        use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
+            &eq_style, eq_name, no_messages, PB3D_i, PB3D_name
         use files_utilities, only: search_file
+        use rich, only: no_guess
 #if ldebug
         use num_vars, only: ltest
 #endif
@@ -399,7 +400,7 @@ contains
         end subroutine apply_opt_PB3D
     end function open_input
 
-    ! open an output file and write the common variables
+    ! Open an output file and write (PB3D) or read (POST) the common variables.
     integer function open_output() result(ierr)
         use num_vars, only: eq_style, rho_style, rank, prog_version, &
             &use_pol_flux_E, use_pol_flux_F, use_normalization, &
@@ -608,12 +609,13 @@ contains
                     call lvl_ud(1)
                     
                     ! read PB3D output file miscellaneous variables
-                    ierr = read_PB3D(.true.,.false.,.false.,.false.,.false.)
+                    ierr = read_PB3D(.true.,.false.,.false.,.false.,.false.,&
+                        &.false.,.false.,.false.)
                     CHCKERR('')
                     
                     ! reconstruct miscellaneous variables
                     ierr = reconstruct_PB3D(.true.,.false.,.false.,.false.,&
-                        &.false.)
+                        &.false.,.false.,.false.,.false.)
                     CHCKERR('')
                     
                     ! user output

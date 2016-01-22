@@ -14,12 +14,11 @@ module X_vars
     public init_X_vars, dealloc_X, create_X, get_suffix, set_nm_X, &
         &is_necessary_X, set_nn_mod, &
         &X_1_type, X_2_type, &
-        &min_n_X, max_n_X, min_m_X, max_m_X, min_n_r_sol, min_r_sol, &
+        &min_n_X, max_n_X, min_m_X, max_m_X, min_r_sol, &
         &max_r_sol, X_1_var_names, X_2_var_names
     
     ! global variables
     real(dp) :: min_r_sol, max_r_sol                                            ! min. and max. normal range for pert. (either pol. or tor., depending on use_pol_flux_F)
-    integer :: min_n_r_sol                                                      ! min. of n_r_sol (e.g. first value in Richardson loop)
     integer :: min_n_X                                                          ! lowest poloidal mode number m_X
     integer :: max_n_X                                                          ! highest poloidal mode number m_X
     integer :: min_m_X                                                          ! lowest poloidal mode number m_X
