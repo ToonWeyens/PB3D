@@ -484,7 +484,7 @@ contains
         use PB3D_vars, only: PB3D_version
         use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &
             &max_flux_t_F
-        use rich, only: min_n_r_sol, no_guess
+        use rich, only: min_n_r_sol, no_guess, rich_lvl
 #if ldebug
         use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
@@ -519,8 +519,6 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(test_max_mem,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
             call MPI_Bcast(tol_NR,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(min_r_sol,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
@@ -530,6 +528,9 @@ contains
                 &ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(alpha,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(vac_perm,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
+                &ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(R_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
@@ -542,9 +543,6 @@ contains
             call MPI_Bcast(rho_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(T_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
-            call MPI_Bcast(vac_perm,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
-                &ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(rho_style,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
@@ -584,6 +582,10 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(max_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
+            call MPI_Bcast(max_it_rich,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
             
             ! select according to program style
             select case (prog_style)
@@ -597,9 +599,6 @@ contains
                     call MPI_Bcast(nyq_fac,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(min_n_r_sol,1,MPI_INTEGER,0,MPI_Comm_world,&
-                        &ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(max_it_rich,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(max_it_inv,1,MPI_INTEGER,0,MPI_Comm_world,&
@@ -649,6 +648,8 @@ contains
                 case(2)                                                         ! POST
                     call MPI_Bcast(n_sol_plotted,4,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(rich_lvl,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(PB3D_version,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)

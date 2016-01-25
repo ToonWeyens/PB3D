@@ -24,7 +24,7 @@ module HDF5_ops
     public print_HDF5_grid, print_HDF5_geom, print_HDF5_top, &
         &print_HDF5_att, print_HDF5_3D_data_item, open_HDF5_file, &
         &close_HDF5_file, reset_HDF5_item, add_HDF5_item, create_output_HDF5, &
-        &print_HDF5_arrs, read_HDF5_arrs, &
+        &print_HDF5_arrs, read_HDF5_arrs, probe_HDF5_group, &
         &debug_HDF5_ops
     
     ! global variables
@@ -1395,4 +1395,51 @@ contains
             end if
         end function is_acc
     end function read_HDF5_arrs
+    
+    ! Probe HDF5 file for group existence.
+    integer function probe_HDF5_group(HDF5_name,group_name,group_exists) &
+        &result(ierr)
+        character(*), parameter :: rout_name = 'probe_HDF5_group'
+        
+        ! input / output
+        character(len=*), intent(in) :: HDF5_name                               ! name of HDF5 file
+        character(len=*), intent(in) :: group_name                              ! name of group to probe for
+        logical, intent(inout) :: group_exists                                  ! whether group exists
+        
+        ! local variables
+        integer :: istat                                                        ! status
+        integer(HID_T) :: HDF5_i                                                ! file identifier 
+        integer(HID_T) :: group_id                                              ! group identifier
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! initialize FORTRAN predefined datatypes
+        call H5open_f(ierr) 
+        CHCKERR('Failed to initialize HDF5')
+        
+        ! open the file
+        call H5Fopen_f(HDF5_name,H5F_ACC_RDONLY_F,HDF5_i,ierr)
+        CHCKERR('Failed to open file')
+        
+        ! disable error messages
+        call h5eset_auto_f(0,ierr)
+        CHCKERR('Failed to disable error printing')
+        
+        ! try to open group
+        call H5Gopen_f(HDF5_i,group_name,group_id,istat)
+        group_exists = istat.eq.0
+        
+        ! reenable error messages
+        call h5eset_auto_f(1,ierr)
+        CHCKERR('Failed to enable error printing')
+        
+        ! close the HDF5 file
+        call H5Fclose_f(HDF5_i,ierr)
+        CHCKERR('failed to close HDF5 file')
+        
+        ! close FORTRAN interfaces and HDF5 library.
+        call H5Close_f(ierr)
+        CHCKERR('Failed to close FORTRAN HDF5 interface')
+    end function probe_HDF5_group
 end module HDF5_ops

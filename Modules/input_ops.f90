@@ -273,13 +273,15 @@ contains
         use files_ops, only: input_name
         use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X, min_n_X, &
             &min_r_sol, max_r_sol
-        use rich, only: min_n_r_sol
+        use rich, only: min_n_r_sol, find_max_lvl_rich, &
+            &rich_lvl
         use grid_vars, only: alpha, n_par_X, min_par_X, max_par_X
         
         character(*), parameter :: rout_name = 'read_input'
         
         ! local variables
         integer :: prim_X, min_sec_X, max_sec_X                                 ! n_X and m_X (pol. flux) or m_X and n_X (tor. flux)
+        integer :: PB3D_lvl_rich                                                ! Richardson level to post-process (for POST)
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! input options
@@ -287,15 +289,14 @@ contains
             &min_r_sol, max_r_sol, max_it_NR, tol_NR, use_pol_flux_F, &
             &rho_style, nyq_fac, rho_0, plot_grid, plot_flux_q, prim_X, &
             &min_sec_X, max_sec_X, use_normalization, n_theta_plot, &
-            &n_zeta_plot, norm_disc_prec_eq, tol_norm, max_it_NR, tol_NR, &
-            &max_mem_per_proc, min_n_r_sol, max_it_rich, tol_rich, EV_style, &
-            &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, &
-            &retain_all_sol, norm_disc_prec_X, BC_style, max_it_inv, &
-            &max_it_slepc, norm_disc_prec_sol, plot_size, U_style, norm_style, &
-            &test_max_mem
+            &n_zeta_plot, norm_disc_prec_eq, tol_norm, max_mem_per_proc, &
+            &min_n_r_sol, max_it_rich, tol_rich, EV_style, plot_resonance, &
+            &n_sol_requested, EV_BC, tol_SLEPC, retain_all_sol, &
+            &norm_disc_prec_X, BC_style, max_it_inv, max_it_slepc, &
+            &norm_disc_prec_sol, plot_size, U_style, norm_style, test_max_mem
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_grid, norm_disc_prec_sol, &
-            &plot_size, test_max_mem
+            &plot_size, test_max_mem, PB3D_lvl_rich, max_it_NR, tol_NR
         
         ! initialize ierr
         ierr = 0
@@ -323,7 +324,8 @@ contains
                 case(1)                                                         ! PB3D
                     call default_input_PB3D
                 case(2)                                                         ! POST
-                    call default_input_POST
+                    ierr = default_input_POST()
+                    CHCKERR('')
                 case default
                     err_msg = 'No program style associated with '//&
                         &trim(i2str(prog_style))
@@ -406,6 +408,9 @@ contains
                             min_n_X = min_sec_X
                             max_n_X = max_sec_X
                         end if
+                        
+                        ! multiply alpha by pi
+                        alpha = alpha*pi
                     case(2)                                                     ! POST
                         read(input_i,nml=inputdata_POST,iostat=ierr)            ! read input data
                         
@@ -419,15 +424,16 @@ contains
                                 &//trim(input_name)//'"'
                             CHCKERR('')
                         end if
+                        
+                        ! set up max_it_rich and rich_lvl
+                        max_it_rich = PB3D_lvl_rich
+                        rich_lvl = PB3D_lvl_rich
                     case default
                         err_msg = 'No program style associated with '//&
                             &trim(i2str(prog_style))
                         ierr = 1
                         CHCKERR(err_msg)
                 end select
-                
-                ! multiply alpha by pi
-                alpha = alpha*pi
                 
                 ! user output
                 call writo('Close input file')
@@ -460,7 +466,6 @@ contains
             plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
             plot_grid = .false.                                                 ! do not plot the grid
             plot_flux_q = .false.                                               ! do not plot the flux quantities
-            
             
             ! variables concerning output
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
@@ -514,14 +519,27 @@ contains
             max_it_inv = 1                                                      ! by default no iteration to calculate inverse
         end subroutine default_input_PB3D
         
-        subroutine default_input_POST
+        integer function default_input_POST() result(ierr)
             use num_vars, only: eq_style
+            
+            character(*), parameter :: rout_name = 'default_input_POST'
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! concerning Newton-Rhapson
+            max_it_NR = 5000                                                    ! more iterations than PB3D
+            tol_NR = 1.0E-8_dp                                                  ! less relative error than PB3D
             
             ! runtime variables
             plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
             plot_flux_q = .false.                                               ! do not plot the flux quantities
             plot_grid = .false.                                                 ! do not plot the grid
             norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
+            
+            ! Richardson variables
+            ierr = find_max_lvl_rich(PB3D_lvl_rich)                             ! highest Richardson level found
+            CHCKERR('')
             
             ! variables concerning output
             n_sol_plotted = n_sol_requested                                     ! plot all solutions
@@ -542,14 +560,20 @@ contains
                     ierr = 1
                     CHCKERR(err_msg)
             end select
-        end subroutine default_input_POST
+        end function default_input_POST
         
         ! checks whether the variables concerning run-time are chosen correctly.
         ! rho_style has to be 1 (constant rho = rho_0)
         subroutine adapt_run
+            use num_vars, only: eq_style
+            
             if (rho_style.ne.1) then
                 rho_style = 1
                 call writo('WARNING: rho_style set to default (1: constant)')
+            end if
+            if (eq_style.eq.2 .and. .not.use_normalization) then
+                use_normalization = .true.
+                call writo('WARNING: normalization is always used for HELENA')
             end if
         end subroutine adapt_run
         

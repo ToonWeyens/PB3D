@@ -11,7 +11,7 @@ module rich
     implicit none
     private
     public init_rich, term_rich, start_rich_lvl, stop_rich_lvl, do_rich, &
-        &rich_info, rich_info_short, calc_rich_ex, &
+        &rich_info, rich_info_short, calc_rich_ex, find_max_lvl_rich, &
         &rich_lvl, no_guess, use_guess, n_r_sol, min_n_r_sol
     
     ! global variables
@@ -142,11 +142,7 @@ contains
     
     ! if this Richardson level should be done
     logical function do_rich()
-        if (rich_lvl.eq.1) then                                                 ! first level is always done
-            do_rich = .true.
-        else if (rich_lvl.gt.max_it_rich) then                                  ! maximum level reached
-            do_rich = .false.
-        else if (rich_conv) then                                                ! not yet converged
+        if (rich_lvl.gt.max_it_rich .or. rich_conv) then
             do_rich = .false.
         else
             do_rich = .true.
@@ -168,9 +164,6 @@ contains
     subroutine stop_rich_lvl
         ! Richardson extrapolation
         if (max_it_rich.gt.1) then                                              ! only do this if more than 1 Richardson level
-            write(*,*) '!!! FOR RICHARDSON EXTRAPOLATION YOU HAVE TO FIND &
-                &CONSTANT EIGENVALUES !!!'
-            
             ! user output
             if (rich_lvl.gt.1) call writo('Richardson level '//&
                 &trim(i2str(rich_lvl))//' summary')
@@ -185,14 +178,14 @@ contains
             ! setup possible guess for next Richardson level
             call set_guess()
             
-            ! increase level
-            rich_lvl = rich_lvl + 1
-            
             call writo('')
             call lvl_ud(-1)
         else                                                                    ! if not, Richardson is done
             rich_conv = .true.
         end if
+        
+        ! increase level
+        rich_lvl = rich_lvl + 1
     contains
         ! Decides  whether  the  difference  between the  approximation  of  the
         ! Eigenvalues  in  this Richardson  level  and  the previous  Richardson
@@ -270,23 +263,25 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! tests
-        if (size(X_val_rich,1).ne.size(X_val_rich,2) .or. &
-            &rich_lvl.gt.size(X_val_rich,1)) then
-            ierr = 1
-            err_msg = 'X_val_rich has to have correct dimensions'
-            CHCKERR(err_msg)
+        if (max_it_rich.gt.1) then                                              ! only when more than one level
+            ! tests
+            if (size(X_val_rich,1).ne.size(X_val_rich,2) .or. &
+                &rich_lvl.gt.size(X_val_rich,1)) then
+                ierr = 1
+                err_msg = 'X_val_rich has to have correct dimensions'
+                CHCKERR(err_msg)
+            end if
+            
+            ! do calculations if rich_lvl > 1
+            X_val_rich(rich_lvl,1,1:size(X_val)) = X_val                        ! size(X_val) can be less than n_sol_requested
+            do ir = 2,rich_lvl
+                X_val_rich(rich_lvl,ir,1:size(X_val)) = &
+                    &X_val_rich(rich_lvl,ir-1,1:size(X_val)) + &
+                    &1._dp/(2**(2*(ir-1)*norm_disc_prec_sol)-1._dp) * &
+                    &(X_val_rich(rich_lvl,ir-1,1:size(X_val)) - &
+                    &X_val_rich(rich_lvl-1,ir-1,1:size(X_val)))
+            end do
         end if
-        
-        ! do calculations if rich_lvl > 1
-        X_val_rich(rich_lvl,1,1:size(X_val)) = X_val                            ! size(X_val) can be less than n_sol_requested
-        do ir = 2,rich_lvl
-            X_val_rich(rich_lvl,ir,1:size(X_val)) = &
-                &X_val_rich(rich_lvl,ir-1,1:size(X_val)) + &
-                &1._dp/(2**(2*(ir-1)*norm_disc_prec_sol)-1._dp) * &
-                &(X_val_rich(rich_lvl,ir-1,1:size(X_val)) - &
-                &X_val_rich(rich_lvl-1,ir-1,1:size(X_val)))
-        end do
     end function calc_rich_ex
     
     ! possible extension with Richardson level or nothing if only one level
@@ -304,4 +299,42 @@ contains
             rich_info_short = ''
         end if
     end function rich_info_short
+    
+    ! Probe to find out which Richardson levels are available.
+    integer function find_max_lvl_rich(max_lvl_rich_file) result(ierr)
+        use num_vars, only: PB3D_name
+        use HDF5_ops, only: probe_HDF5_group
+        
+        character(*), parameter :: rout_name = 'find_max_lvl_rich'
+        
+        ! input / output
+        integer, intent(inout) :: max_lvl_rich_file                             ! max. Richardson level found in file
+        
+        ! local variables
+        integer :: ir                                                           ! counter
+        character(len=max_str_ln) :: group_name                                 ! name of group to probe for
+        logical :: group_exists                                                 ! whether probed group exists
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! try openining solution without Richardson extrapolation
+        group_name = 'sol'
+        ierr = probe_HDF5_group(PB3D_name,group_name,group_exists)
+        CHCKERR('')
+        if (group_exists) then                                                  ! No Richardson extrapolation
+            max_lvl_rich_file = 1
+        else
+            ! try opening solutions for different Richardson level
+            ir = 2                                                              ! initialize counter
+            group_exists = .true.                                               ! group_exists becomes stopping criterion
+            do while (group_exists)
+                group_name = 'sol_R_'//trim(i2str(ir))
+                ierr = probe_HDF5_group(PB3D_name,group_name,group_exists)
+                CHCKERR('')
+                ir = ir + 1                                                     ! increment counter
+            end do
+            max_lvl_rich_file = ir-2
+        end if
+    end function find_max_lvl_rich
 end module rich

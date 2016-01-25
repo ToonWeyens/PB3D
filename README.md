@@ -272,6 +272,7 @@ CHANGELOG
       - Fixed a bug where the transpose of a matrix should be used when feeding into SLEPC.
 
 1.05: - ONLY PB3D USUABLE.
+      - POST has to be adapted still.
       - Reintroduced all terms in the energy equations.
       - New module for Richardson extrapolation.
       - Extrapolation is now done in main program, as X variables have to recalculated on a different grid for each Richardson level.
@@ -279,3 +280,11 @@ CHANGELOG
       - Updated the user output considering Richardson extrapolation in general.
       - Failure to read input file now results in error.
       - 'test_max_mem' now indicates whether memory is to be tested or not.
+
+1.06: - FIRST USUABLE VERSION WITH CORRECT ENERGY DECOMPOSITION: PERTURBATION VARIABLES NOW CORRECTLY TABULATED IN OWN GRID.
+      - Adapted POST to new X storage convention as well.
+      - Fixed some bugs considering Richardson extrapolation.
+      - POST now by default loads the highest found Richardson level, but this can be overriden using "PB3D_rich_lvl".
+      - Bugfixes considering the new tabulation of perturbation variables.
+      - "debug_store_results" is now part of the standard programme.
+      - HELENA always uses normalization, so "use_normalization" is always set to true.

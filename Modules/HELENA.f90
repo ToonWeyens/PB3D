@@ -17,7 +17,7 @@ module HELENA
     private
     public read_HEL, dealloc_HEL, interp_HEL_on_grid, &
         &pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, h_H_12, h_H_33, &
-        &RBphi, R_H, Z_H, R_0_H, B_0_H
+        &RBphi, R_H, Z_H
 #if ldebug
     public test_metrics_H
 #endif
@@ -33,8 +33,6 @@ module HELENA
     real(dp), allocatable :: h_H_33(:,:)                                        ! adapted upper metric factor 33 (1/gem33)
     real(dp), allocatable :: R_H(:,:)                                           ! major radius R (xout)
     real(dp), allocatable :: Z_H(:,:)                                           ! height Z (yout)
-    real(dp), parameter :: R_0_H = 2.0_dp                                       ! normalization radius
-    real(dp), parameter :: B_0_H = 2.0_dp                                       ! normalization magnetic field
     integer :: nchi                                                             ! nr. of poloidal points (nchi)
     integer :: ias                                                              ! 0 if top-bottom symmetric, 1 if not
 
@@ -190,7 +188,7 @@ contains
         CHCKERR(err_msg)
         if (ias.ne.0) vy(nchi) = vy(1)
         
-        read(eq_i,*,IOSTAT=ierr) eps                                            ! inerse aspect ratio
+        read(eq_i,*,IOSTAT=ierr) eps                                            ! inverse aspect ratio
         CHCKERR(err_msg)
         
         allocate(R_H(nchi,n_r_eq))                                              ! major radius R
@@ -379,18 +377,22 @@ contains
     end function get_ang_interp_data_HEL
     
     ! Interpolate  variables resulting  from HELENA  equilibria to  another grid
-    ! (angularly).
+    ! (angularly).  The input  and  output grid  to be  provided  depend on  the
+    ! quantities to be interpolated:
     !   - equilibrium variables: flux variables (no need to convert) and derived
-    !     quantities
-    !   - metric variables: jac_FD
-    !   - vectorial perturbation variables: U_i, DU_i
-    !   - tensorial perturbation variables: PV_i, KV_i
+    !     quantities (need equilibrium grid)
+    !   - metric variables: jac_FD (need equilibrium grid)
+    !   - vectorial perturbation variables: U_i, DU_i (need perturbation grid)
+    !   - tensorial perturbation variables: PV_i, KV_i (need perturbation grid)
     ! Also, a message can be printed if a grid name is passed.
     ! Note: the  metric coefficients are  interpolated and then  compensated for
     ! the straight-field-line coordinates as in [ADD REFERENCE].
     ! Note: By default the interpolated  quantities overwrite the original ones,
     ! but alternative output variables can be provided.
-    integer function interp_HEL_on_grid(grid_eq,grid_eq_out,eq,met,X_1,X_2,&
+    ! Note:  as  the  equilibrium  and   perturbation  grid  are  not  generally
+    ! identical,  this routine  has to  be called  separately for  the variables
+    ! tabulated in either grid.
+    integer function interp_HEL_on_grid(grid_in,grid_out,eq,met,X_1,X_2,&
         &eq_out,met_out,X_1_out,X_2_out,eq_met,grid_name) result(ierr)
         
         use num_vars, only: use_pol_flux_F
@@ -398,7 +400,7 @@ contains
         character(*), parameter :: rout_name = 'interp_HEL_on_grid'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq, grid_eq_out                     ! general and field-aligned equilibrium grid
+        type(grid_type), intent(in) :: grid_in, grid_out                        ! input and output grid
         type(eq_type), intent(inout), optional :: eq                            ! general equilibrium variables
         type(met_type), intent(inout), optional :: met                          ! general metric variables
         type(X_1_type), intent(inout), optional  :: X_1                         ! general vectorial perturbation variables
@@ -432,6 +434,13 @@ contains
                 &provided as well through eq_met'
             CHCKERR(err_msg)
         end if
+        if ((present(eq).or.present(met)) .and. &
+            &(present(X_1).or.present(X_2))) then
+            ierr = 1
+            err_msg = 'Only the quantities on one type of grid can be &
+                &interpolated in a single call'
+            CHCKERR(err_msg)
+        end if
         
         ! set up tb_sym
         if (ias.eq.0) then
@@ -441,7 +450,7 @@ contains
         end if
         
         ! get angular interpolation factors
-        ierr = get_ang_interp_data_HEL(grid_eq,grid_eq_out,theta_i,&
+        ierr = get_ang_interp_data_HEL(grid_in,grid_out,theta_i,&
             &fund_theta_int_displ,tb_sym=tb_sym,use_E=.false.)
         CHCKERR('')
         

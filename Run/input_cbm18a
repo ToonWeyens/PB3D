@@ -1,19 +1,19 @@
 &inputdata_PB3D
     n_par_X                 = 301
-    min_par_X               = 0.4
-    max_par_X               = 0.7
+    min_par_X               = 0.5
+    max_par_X               = 2.5
     alpha                   = 0.3
     min_r_sol               = 0.2
     max_r_sol               = 1.0
-    min_n_r_sol             = 100
-    norm_disc_prec_sol      = 1
+    min_n_r_sol             = 500
+    norm_disc_prec_sol      = 3
     max_it_NR               = 500
     use_pol_flux_F          = .true.
     use_normalization       = .true.
     prim_X                  = 10
-    min_sec_X               = 20
-    max_sec_X               = 21
-    max_it_rich             = 2
+    min_sec_X               = 11
+    max_sec_X               = 40
+    max_it_rich             = 1
     tol_rich                = 5.0E-6
     tol_SLEPC               = 5.0E-8
     n_sol_requested         = 1

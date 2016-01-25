@@ -91,13 +91,13 @@ contains
             case(2)                                                             ! PB3D post-processing
                 if (.not.present(eq_limits) .or. .not.present(X_limits) .or. &
                     &.not.present(sol_limits) .or. .not.present(r_F_eq) .or. &
-                    &.not.present(r_F_X) .or. .not. present(r_F_sol)) then
+                    &.not. present(r_F_sol)) then
                     ierr = 1
                     CHCKERR('Incorrect variables provided.')
                 end if
-                !ierr = calc_norm_range_POST(eq_limits,X_limits,sol_limits,&
-                    !&r_F_eq,r_F_X,r_F_sol)
-                !CHCKERR('')
+                ierr = calc_norm_range_POST(eq_limits,X_limits,sol_limits,&
+                    &r_F_eq,r_F_sol)
+                CHCKERR('')
             case default
                 err_msg = 'No program style associated with '//&
                     &trim(i2str(prog_style))
@@ -245,8 +245,6 @@ contains
         ! range.
         integer function calc_norm_range_PB3D_X(X_limits,r_F_X) &
             &result(ierr)                                                       ! PB3D version for perturbation grid
-            use num_vars, only: norm_disc_prec_X
-            
             character(*), parameter :: rout_name = 'calc_norm_range_PB3D_X'
             
             ! input / output
@@ -316,8 +314,8 @@ contains
         
         ! The normal range is determined  by simply dividing the solution range,
         ! including a ghost range and getting a bounding equilibrium range.
-        integer function calc_norm_range_POST(eq_limits,sol_limits,r_F_eq,&
-            &r_F_sol) result(ierr)                                              ! POST version
+        integer function calc_norm_range_POST(eq_limits,X_limits,sol_limits,&
+            &r_F_eq,r_F_sol) result(ierr)                                       ! POST version
             use num_vars, only: n_procs, rank, norm_disc_prec_sol
             use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
                 &calc_deriv, round_with_tol
@@ -325,12 +323,12 @@ contains
             character(*), parameter :: rout_name = 'calc_norm_range_POST'
             
             ! input / output
-            integer, intent(inout) :: eq_limits(2), sol_limits(2)               ! min. and max. index of eq and sol grid for this process
-            real(dp), intent(in) :: r_F_eq(:), r_F_sol(:)                       ! equilibrium and solution r_F
+            integer, intent(inout) :: eq_limits(2), X_limits(2), sol_limits(2)  ! min. and max. index of eq, X and sol grid for this process
+            real(dp), intent(in) :: r_F_eq(:), r_F_sol(:)                       ! eq and sol r_F
             
             ! local variables
             integer :: n_r_eq, n_r_sol                                          ! total nr. of normal points in eq and solution grid
-            integer, allocatable :: loc_n_r_eq(:), loc_n_r_sol(:)               ! local nr. of normal points in eq and solution grid
+            integer, allocatable :: loc_n_r_sol(:)                              ! local nr. of normal points in solution grid
             integer :: id                                                       ! counter
             real(dp) :: min_sol, max_sol                                        ! min. and max. of r_F_sol in range of this process
             real(dp), parameter :: tol = 1.E-6                                  ! tolerance for grids
@@ -342,7 +340,7 @@ contains
             ! initialize n_r_eq and n_r_sol
             n_r_eq = size(r_F_eq)
             n_r_sol = size(r_F_sol)
-            allocate(loc_n_r_eq(n_procs),loc_n_r_sol(n_procs))
+            allocate(loc_n_r_sol(n_procs))
             
             ! divide the solution grid equally over all the processes
             loc_n_r_sol = n_r_sol/n_procs                                       ! number of radial points on this processor
@@ -358,27 +356,31 @@ contains
             max_sol = maxval(r_F_sol(sol_limits(1):sol_limits(2)))
             
             ! determine eq_limits: smallest eq range comprising sol range
-            eq_limits = [0,size(r_F_eq)+1]
-            if (r_F_eq(1).lt.r_F_eq(size(r_F_eq))) then                         ! ascending r_F_eq
-                do id = 1,size(r_F_eq)
+            eq_limits = [0,n_r_eq+1]                                            ! initialize out of range
+            if (r_F_eq(1).lt.r_F_eq(n_r_eq)) then                               ! ascending r_F_eq
+                do id = 1,n_r_eq
                     if (r_F_eq(id).le.min_sol+tol) eq_limits(1) = id            ! move lower limit up
-                    if (r_F_eq(size(r_F_eq)-id+1).ge.max_sol-tol) &
-                        &eq_limits(2) = size(r_F_eq)-id+1                       ! move upper limit down
+                    if (r_F_eq(n_r_eq-id+1).ge.max_sol-tol) &
+                        &eq_limits(2) = n_r_eq-id+1                             ! move upper limit down
                 end do
             else                                                                ! descending r_F_eq
-                do id = 1,size(r_F_eq)
-                    if (r_F_eq(size(r_F_eq)-id+1).le.min_sol+tol) &
-                        &eq_limits(1) = size(r_F_eq)-id+1                       ! move lower limit up
+                do id = 1,n_r_eq
+                    if (r_F_eq(n_r_eq-id+1).le.min_sol+tol) &
+                        &eq_limits(1) = n_r_eq-id+1                             ! move lower limit up
                     if (r_F_eq(id).ge.max_sol-tol) eq_limits(2) = id            ! move upper limit down
                 end do
             end if
             
             ! check if valid limits found
-            if (eq_limits(1).lt.1 .or. eq_limits(2).gt.size(r_F_eq)) then
+            if (eq_limits(1).lt.1 .or. eq_limits(2).gt.n_r_eq) then
                 ierr = 1
                 err_msg = 'Solution range not contained in equilibrium range'
                 CHCKERR(err_msg)
             end if
+                
+            
+            ! copy solution range to perturbation range
+            X_limits = sol_limits
         end function calc_norm_range_POST
     end function calc_norm_range
 
@@ -1271,7 +1273,7 @@ contains
     ! lambda on the grid, as this is  also needed some times. If HELENA is used,
     ! this variable is not used.
     integer function calc_XYZ_grid(grid,X,Y,Z,L) result(ierr)
-        use num_vars, only: eq_style, use_normalization
+        use num_vars, only: eq_style, use_normalization, rank
         use utilities, only: interp_fun, round_with_tol
         use eq_vars, only: R_0
         

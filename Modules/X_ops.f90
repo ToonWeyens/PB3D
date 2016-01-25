@@ -1210,7 +1210,7 @@ contains
     !   - T4 = 1/mu_0 J^2 h22
     !   - T5 = 2 p' kappa_n
     ! The interpolated Ti_X are then used to calculate PV:
-    !   - PV_0 = T1(DU_k^0* - T2)(DU_m^0 - T2) + (nq-m)(nq-k)T4 - T5
+    !   - PV_0 = T1(DU_k^0* - T2)(DU_m^0 - T2) -T3 + (nq-m)(nq-k)T4 - T5
     !   - PV_1 = T1(DU_k^0* - T2) DU_m^1
     !   - PV_2 = T1 DU_k^1* DU_m^1
     ! which  is valid for  poloidal Flux coordinates and  where (nq-m) is  to be

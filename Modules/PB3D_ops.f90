@@ -32,6 +32,8 @@ module PB3D_ops
 contains
     ! Initialize the PB3D routines:
     !   - set the equilibrium style
+    !   - for POST, sets the variables "max_it_rich" and "rich_lvl"
+    ! Note: This routine must be called after "open_input" and "read_input"
     integer function init_PB3D_ops() result(ierr)
         use num_vars, only: eq_style, PB3D_name, rank
         use PB3D_vars, only: vars_1D_misc

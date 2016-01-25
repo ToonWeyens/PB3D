@@ -1004,20 +1004,6 @@ contains
                 end select
             end if
             
-            ! Alfven velocity
-            T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0 
-            
-            call writo('Major radius    R_0    = '//trim(r2strt(R_0))//' m')
-            call writo('Pressure        pres_0 = '//trim(r2strt(pres_0))//' Pa')
-            call writo('Mass density    rho_0  = '//trim(r2strt(rho_0))&
-                &//' kg/m^3')
-            call writo('Magnetic field  B_0    = '//trim(r2strt(B_0))//' T')
-            call writo('Magnetic flux   psi_0  = '//trim(r2strt(psi_0))//&
-                &' Tm^2')
-            call writo('Alfven time     T_0    = '//trim(r2strt(T_0))//' s')
-            call writo('Vacuum perm.    mu_0   = '//trim(r2strt(mu_0_original))&
-                &//' Tm/A')
-            
             ! user output
             call lvl_ud(-1)
             call writo('Normalization constants calculated')
@@ -1045,26 +1031,34 @@ contains
             
             ! set reference flux
             psi_0 = R_0**2 * B_0
+            
+            ! set Alfven time
+            T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0 
+            
+            ! user output
+            call writo('Major radius    R_0    = '//trim(r2strt(R_0))//' m')
+            call writo('Pressure        pres_0 = '//trim(r2strt(pres_0))//' Pa')
+            call writo('Mass density    rho_0  = '//trim(r2strt(rho_0))&
+                &//' kg/m^3')
+            call writo('Magnetic field  B_0    = '//trim(r2strt(B_0))//' T')
+            call writo('Magnetic flux   psi_0  = '//trim(r2strt(psi_0))//&
+                &' Tm^2')
+            call writo('Alfven time     T_0    = '//trim(r2strt(T_0))//' s')
+            call writo('Vacuum perm.    mu_0   = '//trim(r2strt(mu_0_original))&
+                &//' Tm/A')
         end subroutine calc_normalization_const_VMEC
         
         ! HELENA version
         subroutine calc_normalization_const_HEL
-            use HELENA, only: R_0_H, B_0_H
+            ! user output
+            call writo('HELENA output is already normalized')
             
-            ! set the major radius as the HELENA normalization parameter
-            R_0 = R_0_H
-            
-            ! rho_0 is set up through an input variable with the same name
-            
-            !  set the  reference  value  for B_0  as  the HELENA  normalization
-            ! parameter
-            B_0 = B_0_H
-            
-            ! set pres_0 as B_0^2/mu_0_original
-            pres_0 = B_0**2/mu_0_original
-            
-            ! set reference flux
-            psi_0 = R_0**2 * B_0
+            ! set everything to 1 to ensure consistency with various routines
+            R_0 = 1._dp
+            pres_0 = 1._dp
+            B_0 = 1._dp
+            psi_0 = 1._dp
+            T_0 = 1._dp
         end subroutine calc_normalization_const_HEL
     end function calc_normalization_const
     
@@ -1098,7 +1092,7 @@ contains
                 case (1)                                                        ! VMEC
                     call normalize_VMEC
                 case (2)                                                        ! HELENA
-                    ! HELENA input already normalized
+                    ! other HELENA input already normalized
                 case default
                     err_msg = 'No equilibrium style associated with '//&
                         &trim(i2str(eq_style))

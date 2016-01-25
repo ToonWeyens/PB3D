@@ -34,7 +34,6 @@ module SLEPC_ops
     logical :: debug_set_BC = .false.                                           ! plot debug information for set_BC
     logical :: debug_insert_block_mat = .false.                                 ! plot debug information for insert_block_mat
     logical :: debug_calc_V_0_mod = .false.                                     ! plot debug information for calc_V_0_mod
-    logical :: debug_store_results = .true.                                    ! plot debug information for store_results
     logical :: test_diff = .false.                                              ! test introduction of numerical diff
     real(dp) :: diff_coeff                                                      ! diff coefficient
 #endif
@@ -46,7 +45,7 @@ contains
     ! Optionally the  geodesic index of  the perturbation variables at  which to
     ! perform the calculations can be changed  from its default value of 1 using
     ! the variable i_geo.
-    ! Note that the perturbation grid needs to be the same as the solution grid,
+    ! Note: the  perturbation grid needs  to be the  same as the  solution grid,
     ! if  not,  this  module  has  to be  adapted  to  interpolate  them,  using
     ! "get_norm_interp_data" and "interp_V". This can be seen in builds previous
     ! to 1.06.
@@ -1487,12 +1486,12 @@ contains
     integer function store_results(grid_sol,X,sol,solver,max_n_EV) result(ierr)
 #endif
         use eq_vars, only: T_0
-        use num_vars, only: use_normalization, EV_BC, prog_name, &
-            &output_name, max_it_rich, n_procs, rank, tol_SLEPC
+        use num_vars, only: use_normalization, EV_BC, prog_name, output_name, &
+            &n_procs, rank, tol_SLEPC, eq_style
         use files_utilities, only: nextunit
         use MPI_utilities, only: get_ser_var
         use sol_vars, only: dealloc_sol, create_sol
-        use rich, only: rich_lvl
+        use rich, only: rich_info_short
         
         character(*), parameter :: rout_name = 'store_results'
         
@@ -1534,10 +1533,6 @@ contains
         PetscReal :: error_est                                                  ! error estimate of EPS solver
         PetscScalar :: err_val                                                  ! X*(A-omega^2B)X
         PetscScalar :: E_val(2)                                                 ! X*AX and X*BX
-        Vec :: sol_vec_loc                                                      ! solution EV parallel vector
-        complex(dp), allocatable :: sol_vec_copy(:,:)                           ! copy of solution vector
-        integer :: kd 
-        complex(dp), allocatable :: sol_vec_int(:)
 #endif
         
         ! initialize ierr
@@ -1586,10 +1581,8 @@ contains
         
         ! open output file for the log
         if (rank.eq.0) then
-            full_output_name = prog_name//'_'//output_name//'_EV'
-            if (max_it_rich.gt.1) full_output_name = &
-                &trim(full_output_name)//'_R'//trim(i2str(rich_lvl))            ! append Richardson level
-            full_output_name = trim(full_output_name)//'.txt'
+            full_output_name = prog_name//'_'//output_name//'_EV'//&
+                &trim(rich_info_short())//'.txt'
             open(unit=nextunit(output_EV_i),file=full_output_name,iostat=ierr)
             CHCKERR('Cannot open EV output file')
         end if
@@ -1599,8 +1592,19 @@ contains
             if (use_normalization) then
                 write(output_EV_i,'(A)') '# Eigenvalues normalized to the &
                     &squared  Alfven frequency omega_A^2 = '
-                write(output_EV_i,'(A)') '#     ('//trim(r2str(1._dp/T_0))//&
-                    &' Hz)^2 = '//trim(r2str(1._dp/T_0**2))//' Hz^2'
+                select case (eq_style)
+                    case (1)                                                        ! VMEC
+                        write(output_EV_i,'(A)') '#     ('//&
+                            &trim(r2str(1._dp/T_0))//' Hz)^2 = '//&
+                            &trim(r2str(1._dp/T_0**2))//' Hz^2'
+                    case (2)                                                    ! HELENA
+                        write(output_EV_i,'(A)') '#     (HELENA normalization)'
+                    case default
+                        err_msg = 'No equilibrium style associated with '//&
+                            &trim(i2str(eq_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
+                end select
             else
                 write(output_EV_i,'(A)') '# Eigenvalues'
             end if
@@ -1628,12 +1632,8 @@ contains
             call EPSComputeError(solver,id_tot-1,EPS_ERROR_RELATIVE,error,ierr) ! get error (starts at index 0) (petsc 3.6.1)
             !call EPSComputeRelativeError(solver,id_tot-1,error,ierr)            ! get error (starts at index 0) (petsc 3.5.3)
             CHCKERR('EPSComputeError failed')
-#if ldebug
-            if (debug_store_results) then
-                call EPSGetErrorEstimate(solver,id_tot-1,error_est)             ! get error estimate
-                CHCKERR('EPSGetErrorEstimate failed')
-            end if
-#endif
+            call EPSGetErrorEstimate(solver,id_tot-1,error_est)                 ! get error estimate
+            CHCKERR('EPSGetErrorEstimate failed')
             
             ! set up local solution val
             X_val_loc = sol%val(id)
@@ -1699,10 +1699,9 @@ contains
             !call VecView(sol_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
             !CHCKERR('Cannot view vector')
             
-#if ldebug
-            if (debug_store_results .and. EV_err_str.eq.'') then
+            if (EV_err_str.eq.'') then
                 ! user message
-                call writo('Testing whether A x - omega^2 B x = 0 for EV '//&
+                call writo('Checking whether A x - omega^2 B x = 0 for EV '//&
                     &trim(i2str(id))//': '//trim(c2strt(sol%val(id))))
                 call lvl_ud(1)
                 
@@ -1768,46 +1767,10 @@ contains
                 
                 call lvl_ud(-1)
                 
-                allocate(sol_vec_copy(size(sol%vec,1),size(sol%vec,2)))
-                allocate(sol_vec_int(grid_sol%loc_n_r))
-                call VecDuplicate(sol_vec,sol_vec_loc,ierr)
-                CHCKERR('Failed to duplicate vector')
-                call VecPlaceArray(sol_vec_loc,sol_vec_copy,ierr)
-                CHCKERR('')
-                do kd = 1,grid_sol%loc_n_r
-                    sol_vec_copy = 0._dp
-                    sol_vec_copy(:,kd) = sol%vec(:,kd,id)
-                    call MatMult(A,sol_vec_loc,E_vec(1),ierr)
-                    CHCKERR('Failed to multiply')
-                    call VecDot(E_vec(1),sol_vec_loc,E_val(1),ierr)
-                    CHCKERR('Failed to do dot product')
-                    !write(*,*) 'kd = ', kd
-                    !!write(*,*) '        intermediate result: '
-                    !!call VecView(E_vec(1),PETSC_VIEWER_STDOUT_WORLD,ierr)
-                    !!CHCKERR('Cannot view vector')
-                    !write(*,*) '    X = ', sol%vec(:,kd,id)
-                    !write(*,*) '    E_pot = '//trim(c2str(E_val(1)))
-                    sol_vec_int(kd) = E_val(1)
-                end do
-                call print_GP_2D('E_pot_int_'//trim(i2str(id)),&
-                    &'TEST_E_pot_SLEPC_int_RE_'//trim(i2str(id)),&
-                    &realpart(sol_vec_int),draw=.false.)
-                call draw_GP('E_pot_int_'//trim(i2str(id)),&
-                    &'TEST_E_pot_SLEPC_int_RE_'//trim(i2str(id)),&
-                    &'TEST_E_pot_SLEPC_int_RE_'//trim(i2str(id)),1,1,.false.)
-                
-                call print_GP_2D('E_pot_int_'//trim(i2str(id)),&
-                    &'TEST_E_pot_SLEPC_int_IM_'//trim(i2str(id)),&
-                    &imagpart(sol_vec_int),draw=.false.)
-                call draw_GP('E_pot_int_'//trim(i2str(id)),&
-                    &'TEST_E_pot_SLEPC_int_IM_'//trim(i2str(id)),&
-                    &'TEST_E_pot_SLEPC_int_IM_'//trim(i2str(id)),1,1,.false.)
-                
                 ! clean up
                 call VecDestroy(err_vec,ierr)                                   ! destroy error vector
                 CHCKERR('Failed to destroy err_vec')
             end if
-#endif
             
             ! reinitialize error string if error and increment counter if not
             if (EV_err_str.ne.'') then

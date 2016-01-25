@@ -31,28 +31,33 @@ module sol_ops
     logical :: debug_calc_XUQ_arr = .false.                                     ! plot debug information for calc_XUQ_arr
     logical :: debug_plot_X_vec = .false.                                       ! plot debug information for plot_X_vec
     logical :: debug_calc_E = .false.                                           ! plot debug information for calc_E
-    logical :: debug_X_norm = .true.                                           ! plot debug information X_norm
+    logical :: debug_X_norm = .false.                                           ! plot debug information X_norm
     logical :: debug_DU = .false.                                               ! plot debug information for calculation of DU
 #endif
 
 contains
-    ! calculates the  normal or geodesic  component, or optionally  the parallel
-    ! derivative of the plasma perturbation  or the normal or geodesic component
-    ! of the  magnetic field perturbation  in the solution  grid for a  range in
-    ! normalized  time (1  corresponds to  one period).  The variable  XUQ_style
-    ! determines which one:
+    ! Calculates the normal or geodesic components of the plasma perturbation or
+    ! the magnetic perturbation, indicated by the variable "XUQ_style":
     !   - XUQ_style = 1: X (supports parallel derivative)
     !   - XUQ_style = 2: U (supports parallel derivative)
     !   - XUQ_style = 3: Qn
     !   - XUQ_style = 4: Qg
-    ! For Qn  and Qg,  the metric  variables have  to be  provided as  well. The
-    ! output is given in  the sol grid for the normal part.  The angular part of
-    ! the output is given by the equilibrium  grid. These grids need to be given
-    ! in Flux coordinates.
-    ! Note: The angular part of the sol grid is neglected as it is assumed to be
-    ! a 1D grid.
-    integer function calc_XUQ_arr(grid_eq,grid_sol,eq,X,sol,X_id,XUQ_style,&
-        &time,XUQ,met,deriv) result(ierr)                                       ! (time) array version
+    ! X and U support the calculation  of the parallel derivative and for Qn and
+    ! Qg, the metric variables have to be provided as well.
+    ! As  this   operation  requires   the  equilibrium,   metric,  perturbation
+    ! and  solution  variables,  the  grid  in which  this  happens  is  not  so
+    ! straightforward:
+    ! The equilibrium and metric variables are tabulated in an equilibrium grid,
+    ! which needs to  have the same angular extent as  the perturbation grid, in
+    ! which the perturbation variables are tabulated. The normal extent of these
+    ! two grids can  be different, though, as  well as the normal  extent of the
+    ! solution grid, in which the solution variables are tabulated. 
+    ! Currently,  the  perturbation variables  are  supposed  to have  the  same
+    ! angular  extent as  the equilibrium  and  metric variables,  and the  same
+    ! normal  extent as  the solution  variables.  The output  then follows  the
+    ! perturbation grid.
+    integer function calc_XUQ_arr(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,&
+        &XUQ_style,time,XUQ,met,deriv) result(ierr)                             ! (time) array version
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol
         use utilities, only: con2dis, calc_deriv
         use grid_ops, only: get_norm_interp_data
@@ -64,6 +69,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
@@ -83,10 +89,12 @@ contains
         logical :: deriv_loc                                                    ! local copy of deriv
         complex(dp), allocatable :: DX_vec(:)                                   ! normal derivative of X_vec for a specific mode
         complex(dp), allocatable :: fac_0(:,:,:), fac_1(:,:,:)                  ! factor to be multiplied with X and DX
-        complex(dp), allocatable :: par_fac(:)                                  ! multiplicative factor due to parallel derivative
         complex(dp), allocatable :: XUQ_loc(:,:)                                ! complex XUQ without time at a normal point
+        real(dp), allocatable :: par_fac(:)                                     ! multiplicative factor due to parallel derivative, without iu
         real(dp), allocatable :: expon(:,:,:)                                   ! exponent
         real(dp), allocatable :: loc_r_eq(:)                                    ! loc_r_F of sol grid interpolated in eq grid
+        real(dp), allocatable :: jq(:)                                          ! iota or q, interpolated at solution grid
+        real(dp), allocatable :: S(:,:,:), inv_J(:,:,:)                         ! S and 1/J, interpolated at solution grid
         integer :: i_lo, i_hi                                                   ! upper and lower index for interpolation of eq grid to sol grid
 #if ldebug
         real(dp), allocatable :: X_vec_ALT(:)                                   ! X_vec calculated from DX_vec
@@ -99,8 +107,14 @@ contains
         n_t = size(time)
         
         ! tests
+        if (grid_eq%n(1).ne.grid_X%n(1) .or. grid_eq%n(2).ne.grid_X%n(2) .or. &
+            &grid_sol%loc_n_r.ne.grid_X%loc_n_r) then
+            ierr = 1
+            err_msg = 'Grids need to be compatible'
+            CHCKERR(err_msg)
+        end if
         if (grid_eq%n(1).ne.size(XUQ,1) .or. grid_eq%n(2).ne.size(XUQ,2) .or. &
-            &grid_sol%loc_n_r.ne.size(XUQ,3) .or. n_t.ne.size(XUQ,4)) then
+            &grid_X%loc_n_r.ne.size(XUQ,3) .or. n_t.ne.size(XUQ,4)) then
             ierr = 1
             err_msg = 'XUQ needs to have the correct dimensions'
             CHCKERR(err_msg)
@@ -122,57 +136,79 @@ contains
             &sqrt_X_val_norm = - sqrt_X_val_norm                                ! exploding solution, not the decaying one
         sqrt_X_val_norm = sqrt_X_val_norm / abs(sqrt_X_val_norm)                ! normalize
         
-        ! calculate  normal  interpolation  tables for  equilibrium  grid  (this
-        ! concerns eq variables and met variables)
-        ierr = get_norm_interp_data(grid_eq,grid_sol,loc_r_eq)
-        CHCKERR('')
-        
-        ! Initialize  multiplicative factors fac_0  and fac_1 and  par_fac which
-        ! are used in XUQ = fac_0*X + fac_1*DX with fac_0 and fac_1:
-        !   1. fac_0 = 1 (nq-m or n-iota m for deriv)
+        ! allocate helper variables
+        ! Multiplicative factors fac_0 and fac_1 and par_fac are used in
+        ! XUQ = fac_0*X + fac_1*DX with fac_0 and fac_1:
+        !   1. fac_0 = 1 (i(nq-m) or i(n-iota m) for deriv)
         !      fac_1 = 0
         !   2. fac_0 = U_0 (DU_0 for deriv)
         !      fac_1 = U_1 (DU_1 for deriv)
-        !   3. fac_0 = (nq-m)/J or (n-iotam)/J (no deriv)
+        !   3. fac_0 = i(nq-m)/J or i(n-iota m)/J (no deriv)
         !      fac_1 = 0
         !   4. fac_0 = DU_0/J - S (no deriv)
         !      fac_1 = DU_1/J
-        ! and par_fac is a helper variable.
+        ! where par_fac = nq-m or n-iota m is used.
         ! Note that if the resolution for X_vec is bad, the numerical derivative
         ! is very  inaccurate, therefore  only smooth (i.e.  physical) solutions
         ! should be looked at.
-        allocate(expon(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-        allocate(fac_0(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-        allocate(fac_1(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-        allocate(par_fac(grid_eq%loc_n_r))
+        allocate(DX_vec(grid_X%loc_n_r))
+        allocate(XUQ_loc(size(XUQ,1),size(XUQ,2)))
+        allocate(fac_0(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        allocate(fac_1(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        allocate(par_fac(grid_X%loc_n_r))
+        allocate(jq(grid_X%loc_n_r))
+        allocate(S(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        if (present(met)) allocate(inv_J(grid_X%n(1),grid_X%n(2),&
+            &grid_X%loc_n_r))
+        allocate(expon(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
         
-        ! set up DX_vec
-        allocate(DX_vec(grid_sol%loc_n_r))
+        ! calculate  normal  interpolation  tables for  equilibrium  grid  (this
+        ! concerns eq variables and met variables)
+        ierr = get_norm_interp_data(grid_eq,grid_X,loc_r_eq)
+        CHCKERR('')
+        
+        ! interpolate iota or q, S and, if present, 1/J
+        do kd = 1,grid_X%loc_n_r
+            ! set lower and upper index for this normal point
+            i_lo = floor(loc_r_eq(kd))
+            i_hi = ceiling(loc_r_eq(kd))
+            
+            if (use_pol_flux_F) then
+                jq(kd) = eq%q_saf_FD(i_lo,0) + (loc_r_eq(kd)-i_lo) * &
+                    &(eq%q_saf_FD(i_hi,0)-eq%q_saf_FD(i_lo,0))
+            else
+                jq(kd) = eq%rot_t_FD(i_lo,0) + (loc_r_eq(kd)-i_lo) * &
+                    &(eq%rot_t_FD(i_hi,0)-eq%rot_t_FD(i_lo,0))
+            end if
+            S(:,:,kd) = eq%S(:,:,i_lo) + (loc_r_eq(kd)-i_lo) * &
+                &(eq%S(:,:,i_hi)-eq%S(:,:,i_lo))
+            if (present(met)) inv_J(:,:,kd) = &
+                &1._dp/met%jac_FD(:,:,i_lo,0,0,0) + (loc_r_eq(kd)-i_lo) * &
+                &(1._dp/met%jac_FD(:,:,i_hi,0,0,0)-&
+                &1._dp/met%jac_FD(:,:,i_lo,0,0,0))
+        end do
         
         ! initialize XUQ
         XUQ = 0._dp
-        
-        ! initialize XUQ_loc
-        allocate(XUQ_loc(size(XUQ,1),size(XUQ,2)))
         
         ! iterate over all Fourier modes
         Fourier: do jd = 1,sol%n_mod
             ! set up parallel multiplicative factor par_fac in normal eq grid
             if (use_pol_flux_F) then
-                par_fac = iu*(sol%n(jd)*eq%q_saf_FD(:,0)-sol%m(jd))
+                par_fac = sol%n(jd)*jq-sol%m(jd)
             else
-                par_fac = iu*(sol%n(jd)-sol%m(jd)*eq%rot_t_FD(:,0))
+                par_fac = sol%n(jd)-sol%m(jd)*jq
             end if
             
             ! set up exponent
-            expon = sol%n(jd)*grid_eq%zeta_F - sol%m(jd)*grid_eq%theta_F
+            expon = sol%n(jd)*grid_X%zeta_F - sol%m(jd)*grid_X%theta_F
             
             ! set up multiplicative factors in eq grid
             select case (XUQ_style)
                 case (1)                                                        ! calculating X
                     if (deriv_loc) then                                         ! parallel derivative
-                        do kd = 1,grid_eq%loc_n_r
-                            fac_0(:,:,kd) = par_fac(kd)
+                        do kd = 1,grid_X%loc_n_r
+                            fac_0(:,:,kd) = iu*par_fac(kd)
                         end do
                     else
                         fac_0 = 1._dp
@@ -193,8 +229,8 @@ contains
                             &' calculation of parallel derivative not supported'
                         CHCKERR('')
                     else
-                        do kd = 1,grid_eq%loc_n_r
-                            fac_0(:,:,kd) = par_fac(kd)/met%jac_FD(:,:,kd,0,0,0)
+                        do kd = 1,grid_X%loc_n_r
+                            fac_0(:,:,kd) = iu*par_fac(kd)*inv_J(:,:,kd)
                         end do
                     end if
                     fac_1 = 0._dp
@@ -205,11 +241,10 @@ contains
                             &' calculation of parallel derivative not supported'
                         CHCKERR('')
                     else
-                        do kd = 1,grid_eq%loc_n_r
-                            fac_0(:,:,kd) = -eq%S(:,:,kd) +&
-                                &X%DU_0(:,:,kd,jd)/met%jac_FD(:,:,kd,0,0,0)
-                            fac_1(:,:,kd) = X%DU_1(:,:,kd,jd)/&
-                                &met%jac_FD(:,:,kd,0,0,0)
+                        do kd = 1,grid_X%loc_n_r
+                            fac_0(:,:,kd) = X%DU_0(:,:,kd,jd)*inv_J(:,:,kd) &
+                                &- S(:,:,kd)
+                            fac_1(:,:,kd) = X%DU_1(:,:,kd,jd)*inv_J(:,:,kd)
                         end do
                     end if
                 case default
@@ -221,33 +256,33 @@ contains
             
             ! set up normal derivative of X vec
             if (XUQ_style.eq.2 .or. XUQ_style.eq.4) then
-                ierr = calc_deriv(sol%vec(jd,:,X_id),DX_vec,&
-                    &grid_sol%loc_r_F,1,norm_disc_prec_sol)
+                ierr = calc_deriv(sol%vec(jd,:,X_id),DX_vec,grid_X%loc_r_F,1,&
+                    &norm_disc_prec_sol)
                 CHCKERR('')
 #if ldebug
                 if (debug_calc_XUQ_arr) then
                     call writo('For mode '//trim(i2str(jd))//', testing &
                         &whether DX_vec is correct by comparing its integral &
                         &with original X_vec')
-                    allocate(X_vec_ALT(1:grid_sol%loc_n_r))
+                    allocate(X_vec_ALT(1:grid_X%loc_n_r))
                     ierr = calc_int(realpart(DX_vec),&
-                        &grid_sol%loc_r_F(1:grid_sol%loc_n_r),X_vec_ALT)
+                        &grid_X%loc_r_F(1:grid_X%loc_n_r),X_vec_ALT)
                     CHCKERR('')
                     call print_GP_2D('TEST_RE_DX_vec','',reshape(&
                         &[realpart(sol%vec(jd,:,X_id)),X_vec_ALT],&
-                        &[grid_sol%loc_n_r,2]),x=reshape(&
-                        &[grid_sol%loc_r_F(1:grid_sol%loc_n_r),&
-                        &grid_sol%loc_r_F(1:grid_sol%loc_n_r)],&
-                        &[grid_sol%loc_n_r,2]))
+                        &[grid_X%loc_n_r,2]),x=reshape(&
+                        &[grid_X%loc_r_F(1:grid_X%loc_n_r),&
+                        &grid_X%loc_r_F(1:grid_X%loc_n_r)],&
+                        &[grid_X%loc_n_r,2]))
                     ierr = calc_int(imagpart(DX_vec),&
-                        &grid_sol%loc_r_F(1:grid_sol%loc_n_r),X_vec_ALT)
+                        &grid_X%loc_r_F(1:grid_X%loc_n_r),X_vec_ALT)
                     CHCKERR('')
                     call print_GP_2D('TEST_IM_DX_vec','',reshape(&
                         &[imagpart(sol%vec(jd,:,X_id)),X_vec_ALT],&
-                        &[grid_sol%loc_n_r,2]),x=reshape(&
-                        &[grid_sol%loc_r_F(1:grid_sol%loc_n_r),&
-                        &grid_sol%loc_r_F(1:grid_sol%loc_n_r)],&
-                        &[grid_sol%loc_n_r,2]))
+                        &[grid_X%loc_n_r,2]),x=reshape(&
+                        &[grid_X%loc_r_F(1:grid_X%loc_n_r),&
+                        &grid_X%loc_r_F(1:grid_X%loc_n_r)],&
+                        &[grid_X%loc_n_r,2]))
                     deallocate(X_vec_ALT)
                 end if
 #endif
@@ -256,22 +291,15 @@ contains
             end if
             
             ! iterate over all normal points in sol grid
-            normal: do kd = 1,grid_sol%loc_n_r
+            normal: do kd = 1,grid_X%loc_n_r
                 ! set lower and upper index for this normal point
                 i_lo = floor(loc_r_eq(kd))
                 i_hi = ceiling(loc_r_eq(kd))
                 
                 ! set up loc complex XUQ without time at this normal point
-                XUQ_loc = exp(iu*(expon(:,:,i_lo)+&
-                    &(expon(:,:,i_hi)-expon(:,:,i_lo))*&
-                    &(loc_r_eq(kd)-i_lo))) * ( &
-                    &sol%vec(jd,kd,X_id) * &
-                    &(fac_0(:,:,i_lo)+(loc_r_eq(kd)-i_lo)*&
-                    &(fac_0(:,:,i_hi)-fac_0(:,:,i_lo))) &
-                    &+ DX_vec(kd) * &
-                    &(fac_1(:,:,i_lo)+(loc_r_eq(kd)-i_lo)*&
-                    &(fac_1(:,:,i_hi)-fac_1(:,:,i_lo))) &
-                    &)
+                XUQ_loc = exp(iu*expon(:,:,kd)) * &
+                    &(sol%vec(jd,kd,X_id)*fac_0(:,:,kd) + &
+                    &DX_vec(kd)*fac_1(:,:,kd))
                 
                 ! iterate over time steps
                 do id = 1,n_t
@@ -282,12 +310,13 @@ contains
             end do normal
         end do Fourier
     end function calc_XUQ_arr
-    integer function calc_XUQ_ind(grid_eq,grid_sol,eq,X,sol,X_id,XUQ_style,&
-        &time,XUQ,met,deriv) result(ierr)                                       ! (time) individual version
+    integer function calc_XUQ_ind(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,&
+        &XUQ_style,time,XUQ,met,deriv) result(ierr)                             ! (time) individual version
         character(*), parameter :: rout_name = 'calc_XUQ_ind'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibirum grid
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
@@ -306,8 +335,8 @@ contains
         allocate(XUQ_arr(size(XUQ,1),size(XUQ,2),size(XUQ,3),1))
         
         ! call array version
-        ierr = calc_XUQ_arr(grid_eq,grid_sol,eq,X,sol,X_id,XUQ_style,[time],&
-            &XUQ_arr,met,deriv)
+        ierr = calc_XUQ_arr(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,XUQ_style,&
+            &[time],XUQ_arr,met,deriv)
         CHCKERR('')
         
         ! copy array to individual XUQ
@@ -318,8 +347,11 @@ contains
     end function calc_XUQ_ind
     
     ! plots Eigenvalues
-    subroutine plot_X_vals(sol,last_unstable_id)
+    integer function plot_X_vals(sol,last_unstable_id) result(ierr)
         use num_vars, only: rank
+        use MPI_utilities, only: wait_MPI
+        
+        character(*), parameter :: rout_name = 'plot_X_vals'
         
         ! input / output
         type(sol_type), intent(in) :: sol                                       ! solution variables
@@ -330,6 +362,9 @@ contains
         character(len=max_str_ln) :: plot_name                                  ! file name for plots
         integer :: n_sol_found                                                  ! how many solutions found and saved
         integer :: id                                                           ! counter
+        
+        ! initialize ierr
+        ierr = 0
         
         ! set local variables
         n_sol_found = size(sol%val)
@@ -364,17 +399,21 @@ contains
                 call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
             end if
         end if
-    end subroutine plot_X_vals
+        
+        ! synchronize processes
+        ierr = wait_MPI()
+        CHCKERR('')
+    end function plot_X_vals
     
     ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
     ! equilibrium  grid and  the normal  part of  the provided  perturbation
     ! grid.
 #if ldebug
-    integer function plot_X_vec(grid_eq,grid_sol,eq,met,X,sol,XYZ,X_id,&
+    integer function plot_X_vec(grid_eq,grid_X,grid_sol,eq,met,X,sol,XYZ,X_id,&
         &res_surf) result(ierr)
 #else
-    integer function plot_X_vec(grid_eq,grid_sol,eq,X,sol,XYZ,X_id,res_surf) &
-        &result(ierr)
+    integer function plot_X_vec(grid_eq,grid_X,grid_sol,eq,X,sol,XYZ,X_id,&
+        &res_surf) result(ierr)
 #endif
         use num_vars, only: no_plots
         use grid_vars, only: dealloc_grid
@@ -388,6 +427,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
 #if ldebug
@@ -514,9 +554,11 @@ contains
         ! perturbation X_F
         allocate(f_plot(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r,&
             &product(n_t),2))
-        ierr = calc_XUQ(grid_eq,grid_sol,eq,X,sol,X_id,1,time,f_plot(:,:,:,:,1))
+        ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,1,time,&
+            &f_plot(:,:,:,:,1))
         CHCKERR('')
-        ierr = calc_XUQ(grid_eq,grid_sol,eq,X,sol,X_id,2,time,f_plot(:,:,:,:,2))
+        ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,2,time,&
+            &f_plot(:,:,:,:,2))
         CHCKERR('')
         
 #if ldebug
@@ -788,6 +830,10 @@ contains
                         &']')
                 end if
             end if
+            
+            ! synchronize processes
+            ierr = wait_MPI()
+            CHCKERR('')
         end function plot_harmonics
     end function plot_X_vec
     
@@ -811,8 +857,8 @@ contains
     ! default, they are instead written to an output file.
     ! Also, the  fraction between potential and kinetic energy  can be returned,
     ! compared with the Eigenvalue.
-    integer function decompose_energy(grid_eq,grid_sol,eq,met,X,sol,X_id,log_i,&
-        &B_aligned,XYZ,X_val_comp) result(ierr)
+    integer function decompose_energy(grid_eq,grid_X,grid_sol,eq,met,X,sol,&
+        &X_id,log_i,B_aligned,XYZ,X_val_comp) result(ierr)
         use grid_vars, only: dealloc_grid
         use grid_ops, only: trim_grid
         use num_vars, only: rank, no_plots
@@ -820,7 +866,9 @@ contains
         character(*), parameter :: rout_name = 'decompose_energy'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq, grid_sol                        ! equilibrium and solution grid
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(met_type), intent(in) :: met                                       ! metric variables
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
@@ -863,7 +911,7 @@ contains
         call writo('Calculate energy terms')
         call lvl_ud(1)
         
-        ierr = calc_E(grid_eq,grid_sol,eq,met,X,sol,B_aligned,X_id,&
+        ierr = calc_E(grid_eq,grid_X,grid_sol,eq,met,X,sol,B_aligned,X_id,&
             &E_pot,E_kin,E_pot_int,E_kin_int)
         CHCKERR('')
         
@@ -1056,9 +1104,9 @@ contains
     end function decompose_energy
     
     ! Calculate the energy terms in the energy decomposition.
-    ! Note: see explanation of routine in 'decompose_energy'
-    integer function calc_E(grid_eq,grid_sol,eq,met,X,sol,B_aligned,X_id,&
-        &E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
+    ! Note: see explanation of routine in "decompose_energy"
+    integer function calc_E(grid_eq,grid_X,grid_sol,eq,met,X,sol,B_aligned,&
+        &X_id,E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
         use num_vars, only: use_pol_flux_F, n_procs, norm_style, &
             &norm_disc_prec_sol, rank
         use eq_vars, only: vac_perm
@@ -1073,7 +1121,9 @@ contains
         character(*), parameter :: rout_name = 'calc_E'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq, grid_sol                        ! equilibrium and solution grid
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 ! and solution grid
         type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         type(met_type), intent(in) :: met                                       ! metric variables
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
@@ -1106,11 +1156,9 @@ contains
         complex(dp), allocatable :: DU(:,:,:)                                   ! D_par U
         real(dp), allocatable :: DU_ALT(:,:,:)                                  ! DU calculated from U
 #endif
-        complex(dp), allocatable :: E_pot_1_int(:,:)                            ! E_pot_3 integrated along B
-        complex(dp), allocatable :: E_pot_3_int(:,:)                            ! E_pot_3 integrated along B
         
         ! set loc_dim
-        loc_dim = [grid_eq%n(1:2),grid_sol%loc_n_r]                             ! includes ghost regions of width norm_disc_prec_sol
+        loc_dim = [grid_X%n(1:2),grid_X%loc_n_r]                                ! includes ghost regions of width norm_disc_prec_sol
         
         ! allocate local variables
         allocate(h22(loc_dim(1),loc_dim(2),loc_dim(3)))
@@ -1135,7 +1183,7 @@ contains
             allocate(S(loc_dim(1),loc_dim(2),loc_dim(3)))
             
             ! calculate D_par U
-            ierr = calc_XUQ(grid_eq,grid_sol,eq,X,sol,X_id,2,0._dp,DU,&
+            ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,2,0._dp,DU,&
                 &met=met,deriv=.true.)
             CHCKERR('')
         end if
@@ -1143,7 +1191,7 @@ contains
         
         ! iterate over all normal points in sol grid and interpolate
         do kd = 1,loc_dim(3)
-            ierr = con2dis(grid_sol%loc_r_F(kd),loc_r_eq,grid_eq%loc_r_F)
+            ierr = con2dis(grid_X%loc_r_F(kd),loc_r_eq,grid_eq%loc_r_F)
             CHCKERR('')
             i_lo = floor(loc_r_eq)
             i_hi = ceiling(loc_r_eq)
@@ -1169,27 +1217,6 @@ contains
                 &(eq%pres_FD(i_hi,1)-eq%pres_FD(i_lo,1))
             rho(:,:,kd) = eq%rho(i_lo)+(loc_r_eq-i_lo)*&
                 &(eq%rho(i_hi)-eq%rho(i_lo))
-            if (B_aligned) then
-                if (use_pol_flux_F) then
-                    ang_1(:,:,kd) = grid_eq%theta_F(:,:,i_lo)+&
-                        &(loc_r_eq-i_lo)*(grid_eq%theta_F(:,:,i_hi)-&
-                        &grid_eq%theta_F(:,:,i_lo))                             ! theta
-                else
-                    ang_1(:,:,kd) = grid_eq%zeta_F(:,:,i_lo)+&
-                        &(loc_r_eq-i_lo)*(grid_eq%zeta_F(:,:,i_hi)-&
-                        &grid_eq%zeta_F(:,:,i_lo))                              ! zeta
-                end if
-                ang_2(:,:,kd) = alpha                                           ! alpha
-            else
-                ang_1(:,:,kd) = grid_eq%theta_F(:,:,i_lo)+&
-                    &(loc_r_eq-i_lo)*(grid_eq%theta_F(:,:,i_hi)-&
-                    &grid_eq%theta_F(:,:,i_lo))                                 ! theta
-                ang_2(:,:,kd) = grid_eq%zeta_F(:,:,i_lo)+&
-                    &(loc_r_eq-i_lo)*(grid_eq%zeta_F(:,:,i_hi)-&
-                    &grid_eq%zeta_F(:,:,i_lo))                                  ! zeta
-            end if
-            norm(kd) = grid_eq%loc_r_F(i_lo)+(loc_r_eq-i_lo)*&
-                &(grid_eq%loc_r_F(i_hi)-grid_eq%loc_r_F(i_lo))
 #if ldebug
             if (debug_calc_E) then
                 S(:,:,kd) = eq%S(:,:,i_lo)+(loc_r_eq-i_lo)*&
@@ -1198,9 +1225,23 @@ contains
 #endif
         end do
         
+        ! set angles and norm
+        if (B_aligned) then
+            if (use_pol_flux_F) then
+                ang_1 = grid_X%theta_F
+            else
+                ang_1 = grid_X%zeta_F
+            end if
+            ang_2 = alpha
+        else
+            ang_1 = grid_X%theta_F
+            ang_2 = grid_X%zeta_F
+        end if
+        norm = grid_X%loc_r_F
+        
         ! calculate X, U, Q_n and Q_g
         do kd = 1,4
-            ierr = calc_XUQ(grid_eq,grid_sol,eq,X,sol,X_id,kd,0._dp,&
+            ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,kd,0._dp,&
                 &XUQ(:,:,:,kd),met=met)
             CHCKERR('')
         end do
@@ -1229,44 +1270,6 @@ contains
         E_pot(:,:,:,4) = -2*D2p*kappa_g*XUQ(:,:,:,1)*conjg(XUQ(:,:,:,2))
         E_pot(:,:,:,5) = -sigma*XUQ(:,:,:,4)*conjg(XUQ(:,:,:,1))
         E_pot(:,:,:,6) = sigma*XUQ(:,:,:,3)*conjg(XUQ(:,:,:,2))
-        write(*,*) 'sum of E_pot_1', sum(J*E_pot(:,:,:,1))
-        write(*,*) 'sum of E_pot_3', sum(J*E_pot(:,:,:,3))
-        call plot_HDF5('E_pot_1_RE','E_pot_1_RE',realpart(J*E_pot(:,:,:,1)))
-        call plot_HDF5('E_pot_1_IM','E_pot_1_IM',imagpart(J*E_pot(:,:,:,1)))
-        call plot_HDF5('E_pot_3_RE','E_pot_3_RE',realpart(J*E_pot(:,:,:,3)))
-        call plot_HDF5('E_pot_3_IM','E_pot_3_IM',imagpart(J*E_pot(:,:,:,3)))
-        call plot_HDF5('E_kin_1_RE','E_kin_1_RE',realpart(J*E_kin(:,:,:,1)))
-        call plot_HDF5('E_kin_1_IM','E_kin_1_IM',imagpart(J*E_kin(:,:,:,1)))
-        call plot_HDF5('E_kin_2_RE','E_kin_2_RE',realpart(J*E_kin(:,:,:,2)))
-        call plot_HDF5('E_kin_2_IM','E_kin_2_IM',imagpart(J*E_kin(:,:,:,2)))
-        
-        !!!! TEMPORARILY
-        allocate(E_pot_1_int(loc_dim(2),loc_dim(3)))
-        allocate(E_pot_3_int(loc_dim(2),loc_dim(3)))
-        E_pot_1_int = 0._dp
-        E_pot_3_int = 0._dp
-        do jd = 2,loc_dim(1)
-            E_pot_1_int = E_pot_1_int + &
-                &(J(jd,:,:)*E_pot(jd,:,:,1)+J(jd-1,:,:)*E_pot(jd-1,:,:,1))/2 &
-                &*(ang_1(jd,:,:)-ang_1(jd-1,:,:))
-            E_pot_3_int = E_pot_3_int + &
-                &(J(jd,:,:)*E_pot(jd,:,:,3)+J(jd-1,:,:)*E_pot(jd-1,:,:,3))/2 &
-                &*(ang_1(jd,:,:)-ang_1(jd-1,:,:))
-        end do
-        call print_GP_2D('E_pot_int_'//trim(i2str(X_id)),&
-            &'TEST_E_pot_tot_POST_int_RE_'//trim(i2str(X_id)),&
-            &realpart(transpose(E_pot_3_int+E_pot_1_int)),draw=.false.)
-        call draw_GP('E_pot_int_'//trim(i2str(X_id)),&
-            &'TEST_E_pot_tot_POST_int_RE_'//trim(i2str(X_id)),&
-            &'TEST_E_pot_tot_POST_int_RE_'//trim(i2str(X_id)),&
-            &grid_eq%n(2),1,.false.)
-        call print_GP_2D('E_pot_int_'//trim(i2str(X_id)),&
-            &'TEST_E_pot_tot_POST_int_IM_'//trim(i2str(X_id)),&
-            &imagpart(transpose(E_pot_3_int+E_pot_1_int)),draw=.false.)
-        call draw_GP('E_pot_int_'//trim(i2str(X_id)),&
-            &'TEST_E_pot_tot_POST_int_IM_'//trim(i2str(X_id)),&
-            &'TEST_E_pot_tot_POST_int_IM_'//trim(i2str(X_id)),&
-            &grid_eq%n(2),1,.false.)
         
 #if ldebug
         if (debug_calc_E) then
@@ -1280,19 +1283,6 @@ contains
             E_pot(:,:,:,4) = -sigma/J*2*realpart(XUQ(:,:,:,1)*conjg(DU))
             E_pot(:,:,:,5:6) = 0._dp
             
-            !! possible second alternative:
-            !E_pot(:,:,:,4) = -2*D2p*kappa_g*2*&
-                !&realpart(XUQ(:,:,:,1)*conjg(XUQ(:,:,:,2)))
-            !E_pot(:,:,:,5) = sigma*2*&
-                !&realpart(XUQ(:,:,:,2)*conjg(XUQ(:,:,:,3)))
-            !E_pot(:,:,:,6) = 0._dp
-            
-            !! plot output
-            !call plot_HDF5(['RE_E_pot'],'TEST_RE_E_pot_'//&
-                !&trim(i2str(X_id)),realpart(E_pot),&
-                !&[grid_eq%n(1:2),grid_sol%n(3),6],&
-                !&[0,0,grid_sol%i_min-1,0])
-            
             call lvl_ud(-1)
         end if
         
@@ -1303,8 +1293,7 @@ contains
             
             call plot_HDF5('X_norm', 'TEST_X_norm_POST_'//trim(i2str(X_id)),&
                 &realpart(XUQ(:,:,:,1)*conjg(XUQ(:,:,:,1))),&
-                &tot_dim=[grid_eq%n(1:2),grid_sol%n(3)],&
-                &loc_offset=[0,0,grid_sol%i_min-1])
+                &tot_dim=grid_X%n,loc_offset=[0,0,grid_X%i_min-1])
             
             call lvl_ud(-1)
         end if
@@ -1326,13 +1315,12 @@ contains
                 end do
             end do
             call plot_HDF5('RE U','TEST_RE_U_'//&
-                &trim(i2str(X_id)),realpart(XUQ(:,:,:,2)),&
-                &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1])
+                &trim(i2str(X_id)),realpart(XUQ(:,:,:,2)),grid_X%n,&
+                &[0,0,grid_sol%i_min-1])
             call plot_diff_HDF5(realpart(DU),DU_ALT,&
-                &'TEST_RE_DU_'//trim(i2str(X_id)),&
-                &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1],&
-                &description='To test whether DU is parallel derivative &
-                &of U',output_message=.true.)
+                &'TEST_RE_DU_'//trim(i2str(X_id)),grid_X%n,&
+                &[0,0,grid_sol%i_min-1],description='To test whether DU is &
+                &parallel derivative of U',output_message=.true.)
             
             ! imaginary part
             do kd = 1,loc_dim(3)
@@ -1344,11 +1332,10 @@ contains
                 end do
             end do
             call plot_HDF5('IM U','TEST_IM_U_'//&
-                &trim(i2str(X_id)),imagpart(XUQ(:,:,:,2)),&
-                &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1])
-            call plot_diff_HDF5(imagpart(DU),DU_ALT,&
-                &'TEST_IM_DU_'//trim(i2str(X_id)),&
-                &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1],&
+                &trim(i2str(X_id)),imagpart(XUQ(:,:,:,2)),grid_X%n,&
+                &[0,0,grid_sol%i_min-1])
+            call plot_diff_HDF5(imagpart(DU),DU_ALT,'TEST_IM_DU_'//&
+                &trim(i2str(X_id)),grid_X%n,[0,0,grid_sol%i_min-1],&
                 &description='To test whether DU is parallel derivative &
                 &of U',output_message=.true.)
             
@@ -1407,8 +1394,8 @@ contains
     ! Print solution quantities to an output file:
     !   - sol:    val, vec
     integer function print_output_sol(grid,sol) result(ierr)
-        use num_vars, only: max_it_rich, rank, PB3D_name
-        use rich, only: rich_lvl
+        use num_vars, only: rank, PB3D_name
+        use rich, only: rich_info_short
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type
         use grid_ops, only: trim_grid
@@ -1518,12 +1505,8 @@ contains
             call lvl_ud(1)
             
             ! write
-            if (max_it_rich.gt.1) then
-                ierr = print_HDF5_arrs(sol_1D,PB3D_name,&
-                    &'sol_R'//trim(i2str(rich_lvl)))
-            else
-                ierr = print_HDF5_arrs(sol_1D,PB3D_name,'sol')
-            end if
+            ierr = print_HDF5_arrs(sol_1D,PB3D_name,'sol'//&
+                &trim(rich_info_short()))
             CHCKERR('')
             
             ! clean up
