@@ -10,269 +10,25 @@ module input_ops
     
     implicit none
     private
-    public read_input, pause_prog, get_real, get_int, get_log
+    public read_input
     
 contains
-    ! Queries for a logical value yes or no, where the default answer is also to
-    ! be provided.
-    ! [MPI] All ranks, but only master can give input
-    function get_log(yes,ind) result(val)
-        use messages, only: start_time, stop_time
-        use num_vars, only: rank
-        use MPI_utilities, only: wait_MPI, broadcast_var
-        
-        ! input / output
-        logical :: val                                                          ! output value
-        logical :: yes
-        logical, intent(in), optional :: ind                                    ! individual pause or not
-        
-        ! local variables
-        character(len=11) :: empty_str = ''                                     ! empty string
-        character(len=max_str_ln) :: answer_str                                 ! string with answer
-        integer :: istat                                                        ! status
-        logical :: ind_loc                                                      ! local version of ind
-        
-        ! set local ind
-        ind_loc = .false.
-        if (present(ind)) ind_loc = ind
-        
-        ! only master can receive input
-        if (rank.eq.0) then
-            write(*,'(A)',advance='no') empty_str                               ! first print empty string so that output is visible
-            if (yes) then
-                write(*,'(A)',advance='no') 'y(es)/n(o) [yes]: '
-                val = .true.
-            else
-                write(*,'(A)',advance='no') 'y(es)/n(o) [no]: '
-                val = .false.
-            end if
-            call stop_time
-            read (*, '(A)') answer_str
-            call start_time
-            
-            select case (strh2l(trim(answer_str)))
-                !case ('y','yes')
-                case ('y','Y','yes','Yes','YEs','YES','yEs','yES','yeS','YeS')
-                    val = .true.
-                case ('n','N','no','No','NO','nO') 
-                    val = .false.
-                case default 
-            end select
-        end if
-        
-        ! if not individual, broadcast result
-        if (.not.ind_loc) then
-            istat = broadcast_var(val)
-            if (istat.ne.0) call writo('WARNING: In get_log, something went &
-                &wrong. Default used.')
-        end if
-    end function get_log
-    
-    ! Queries  for user  input for a  real value, where  allowable range  can be
-    ! provided as well.
-    ! [MPI] All ranks, but only global rank can give input
-    function get_real(lim_lo,lim_hi,ind) result(val)
-        use messages, only: start_time, stop_time
-        use num_vars, only: rank
-        use MPI_utilities, only: wait_MPI, broadcast_var
-        
-        ! input / output
-        real(dp) :: val                                                         ! output value
-        real(dp), intent(in), optional :: lim_lo                                ! upper and lower limit
-        real(dp), intent(in), optional :: lim_hi                                ! upper and lower limit
-        logical, intent(in), optional :: ind                                    ! individual pause or not
-        
-        ! local variables
-        character(len=11) :: empty_str = ''                                     ! empty string
-        integer :: istat                                                        ! status
-        logical :: ind_loc                                                      ! local version of ind
-        real(dp) :: lims_loc(2)                                                 ! local version of limits
-        
-        ! set local ind
-        ind_loc = .false.
-        if (present(ind)) ind_loc = ind
-        
-        ! initialize val
-        val = 0._dp
-        
-        ! only master can receive input
-        if (rank.eq.0) then
-            ! set up local limits
-            lims_loc = [-huge(1._dp),huge(1._dp)]
-            if (present(lim_lo)) lims_loc(1) = lim_lo
-            if (present(lim_hi)) lims_loc(2) = lim_hi
-            
-            ! get input
-            do
-                write(*,'(A)',advance='no') empty_str                               ! first print empty string so that output is visible
-                write(*,'(A)',advance='no') 'Input a value'
-                if (present(lim_lo).or.present(lim_hi)) then
-                    write(*,'(A)',advance='no') ' ['
-                    if (present(lim_lo)) write(*,'(A)',advance='no') &
-                        &trim(r2strt(lim_lo))
-                    write(*,'(A)',advance='no') '..'
-                    if (present(lim_hi)) write(*,'(A)',advance='no') &
-                        &trim(r2strt(lim_hi))
-                    write(*,'(A)',advance='no') ']'
-                end if
-                write(*,'(A)',advance='no') ': '
-                call stop_time
-                read (*,*,iostat=istat) val
-                call start_time
-                
-                if (istat.ne.0 .or. val.lt.lims_loc(1) .or. val.gt. &
-                    &lims_loc(2)) then
-                    write(*,'(A)',advance='no') empty_str                       ! first print empty string so that output is visible
-                    write(*,'(A)',advance='no') 'Choose a value between '//&
-                        &trim(r2strt(lims_loc(1)))//' and '//&
-                        &trim(r2strt(lims_loc(2)))
-                    write(*,*) ''
-                    cycle
-                else
-                    exit
-                end if
-            end do
-        end if
-        
-        ! if not individual, broadcast result
-        if (.not.ind_loc) then
-            istat = broadcast_var(val)
-            if (istat.ne.0) call writo('WARNING: In get_real, something went &
-                &wrong. Default of zero used.')
-        end if
-    end function get_real
-    
-    ! Queries for user input for an  integer value, where allowable range can be
-    ! provided as well.
-    ! [MPI] All ranks, but only global rank can give input
-    function get_int(lim_lo,lim_hi,ind) result(val)
-        use messages, only: start_time, stop_time
-        use num_vars, only: rank
-        use MPI_utilities, only: wait_MPI, broadcast_var
-        
-        ! input / output
-        integer :: val                                                          ! output value
-        integer, intent(in), optional :: lim_lo                                 ! upper and lower limit
-        integer, intent(in), optional :: lim_hi                                 ! upper and lower limit
-        logical, intent(in), optional :: ind                                    ! individual pause or not
-        
-        ! local variables
-        character(len=11) :: empty_str = ''                                     ! empty string
-        integer :: istat                                                        ! status
-        logical :: ind_loc                                                      ! local version of ind
-        integer :: lims_loc(2)                                                ! local version of limits
-        
-        ! set local ind
-        ind_loc = .false.
-        if (present(ind)) ind_loc = ind
-        
-        ! initialize val
-        val = 0
-        
-        ! only master can receive input
-        if (rank.eq.0) then
-            ! set up local limits
-            lims_loc = [-huge(1),huge(1)]
-            if (present(lim_lo)) lims_loc(1) = lim_lo
-            if (present(lim_hi)) lims_loc(2) = lim_hi
-            
-            ! get input
-            do
-                write(*,'(A)',advance='no') empty_str                               ! first print empty string so that output is visible
-                write(*,'(A)',advance='no') 'Input a value'
-                if (present(lim_lo).or.present(lim_hi)) then
-                    write(*,'(A)',advance='no') ' ['
-                    if (present(lim_lo)) write(*,'(A)',advance='no') &
-                        &trim(i2str(lim_lo))
-                    write(*,'(A)',advance='no') '..'
-                    if (present(lim_hi)) write(*,'(A)',advance='no') &
-                        &trim(i2str(lim_hi))
-                    write(*,'(A)',advance='no') ']'
-                end if
-                write(*,'(A)',advance='no') ': '
-                call stop_time
-                read (*,*,iostat=istat) val
-                call start_time
-                
-                if (istat.ne.0 .or. val.lt.lims_loc(1) .or. val.gt. &
-                    &lims_loc(2)) then
-                    write(*,'(A)',advance='no') empty_str                       ! first print empty string so that output is visible
-                    write(*,'(A)',advance='no') 'Choose a value between '//&
-                        &trim(i2str(lims_loc(1)))//' and '//&
-                        &trim(i2str(lims_loc(2)))
-                    write(*,*) ''
-                    cycle
-                else
-                    exit
-                end if
-            end do
-        end if
-        
-        ! if not individual, broadcast result
-        if (.not.ind_loc) then
-            istat = broadcast_var(val)
-            if (istat.ne.0) call writo('WARNING: In get_int, something went &
-                &wrong. Default of zero used.')
-        end if
-    end function get_int
-    
-    ! pauses the running of the program
-    ! [MPI] All ranks or, optinally, only current rank
-    subroutine pause_prog(ind)
-        use messages, only: start_time, stop_time
-        use MPI_utilities, only: wait_MPI
-        use num_vars, only: rank, rank
-        
-        ! input / output
-        logical, intent(in), optional :: ind                                    ! individual pause or not
-        
-        ! local variables
-        character(len=11) :: empty_str = ''                                     ! empty string
-        integer :: istat                                                        ! status
-        logical :: ind_loc                                                      ! local version of ind
-        
-        ! output message
-        if (rank.eq.0) then
-            write(*,'(A)',advance='no') empty_str                               ! first print empty string so that output is visible
-            write(*,'(A)',advance='no') 'Paused. Press enter...'
-        end if
-        
-        ! set local ind
-        ind_loc = .false.
-        if (present(ind)) ind_loc = ind
-        
-        ! only master can receive input
-        if (rank.eq.0) then
-            call stop_time
-            read (*, *)
-            call start_time
-        end if
-        
-        ! wait for MPI
-        if (.not.ind_loc) then
-            istat = wait_MPI()
-            if (istat.ne.0) call writo('WARNING: In pause_prog, something went &
-                &wrong. Continuing.')
-        end if
-    end subroutine pause_prog
-    
     ! reads input from user-provided input file
     ! [MPI] only global master
     integer function read_input() result(ierr)
         use num_vars, only: &
             &max_it_NR, tol_NR, max_it_rich, input_i, use_pol_flux_F, &
             &EV_style, max_mem_per_proc, plot_resonance, tol_rich, &
-            &n_sol_requested, nyq_fac, rank, nyq_fac, plot_grid, plot_flux_q, &
+            &n_sol_requested, rank, nyq_fac, plot_grid, plot_flux_q, &
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
             &tol_norm, tol_SLEPC, max_it_slepc, n_procs, pi, plot_size, &
-            &U_style, norm_style, test_max_mem
+            &U_style, norm_style, test_max_mem, X_style, input_name
         use eq_vars, only: rho_0
         use messages, only: writo, lvl_ud
-        use files_ops, only: input_name
-        use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X, min_n_X, &
-            &min_r_sol, max_r_sol
+        use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
+            &max_sec_X
         use rich, only: min_n_r_sol, find_max_lvl_rich, &
             &rich_lvl
         use grid_vars, only: alpha, n_par_X, min_par_X, max_par_X
@@ -280,7 +36,6 @@ contains
         character(*), parameter :: rout_name = 'read_input'
         
         ! local variables
-        integer :: prim_X, min_sec_X, max_sec_X                                 ! n_X and m_X (pol. flux) or m_X and n_X (tor. flux)
         integer :: PB3D_lvl_rich                                                ! Richardson level to post-process (for POST)
         character(len=max_str_ln) :: err_msg                                    ! error message
         
@@ -288,7 +43,7 @@ contains
         namelist /inputdata_PB3D/ n_par_X, min_par_X, max_par_X, alpha, &
             &min_r_sol, max_r_sol, max_it_NR, tol_NR, use_pol_flux_F, &
             &rho_style, nyq_fac, rho_0, plot_grid, plot_flux_q, prim_X, &
-            &min_sec_X, max_sec_X, use_normalization, n_theta_plot, &
+            &min_sec_X, max_sec_X, n_mod_X, use_normalization, n_theta_plot, &
             &n_zeta_plot, norm_disc_prec_eq, tol_norm, max_mem_per_proc, &
             &min_n_r_sol, max_it_rich, tol_rich, EV_style, plot_resonance, &
             &n_sol_requested, EV_BC, tol_SLEPC, retain_all_sol, &
@@ -355,6 +110,10 @@ contains
                             ! adapt plotting variables if needed
                             call adapt_plot
                             
+                            ! adapt perturbation modes
+                            ierr = adapt_X_modes()
+                            CHCKERR('')
+                            
                             ! adapt n_par_X if needed
                             call adapt_n_par_X
                             
@@ -375,10 +134,6 @@ contains
                             ! adapt output variables if needed
                             call adapt_output
                             
-                            ! adapt perturbation modes
-                            ierr = adapt_X_modes()
-                            CHCKERR('')
-                            
                             ! adapt Richardson variables if needed
                             call adapt_r
                             
@@ -394,19 +149,6 @@ contains
                             err_msg = 'Cannot open user-provided file "'&
                                 &//trim(input_name)//'"'
                             CHCKERR('')
-                        end if
-                        
-                        ! set up min_n_X, max_n_X, min_m_X, max_m_X
-                        if (use_pol_flux_F) then
-                            min_n_X = prim_X
-                            max_n_X = prim_X
-                            min_m_X = min_sec_X
-                            max_m_X = max_sec_X
-                        else
-                            min_m_X = prim_X
-                            max_m_X = prim_X
-                            min_n_X = min_sec_X
-                            max_n_X = max_sec_X
                         end if
                         
                         ! multiply alpha by pi
@@ -463,6 +205,7 @@ contains
             U_style = 3                                                         ! full expression for U, up to order 3
             norm_style = 1                                                      ! perpendicular kinetic energy normalized
             BC_style = [1,2]                                                    ! left BC zeroed and right BC through minimization of energy
+            X_style = 2                                                         ! fast style: mode numbers optimized in normal coordinate
             plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
             plot_grid = .false.                                                 ! do not plot the grid
             plot_flux_q = .false.                                               ! do not plot the flux quantities
@@ -492,8 +235,9 @@ contains
             nyq_fac = 10                                                        ! need at least 10 points per period for perturbation quantitites
             n_par_X = 100                                                       ! number of parallel grid points in field-aligned grid
             prim_X = 20                                                         ! main mode number of perturbation
-            min_sec_X = prim_X                                                  ! min. of. secondary mode number of perturbation
-            max_sec_X = prim_X                                                  ! max. of. secondary mode number of perturbation
+            min_sec_X = huge(1)                                                 ! nonsensible value to check for user overwriting
+            max_sec_X = huge(1)                                                 ! nonsensible value to check for user overwriting
+            n_mod_X = huge(1)                                                   ! nonsensible value to check for user overwriting
             min_par_X = -4.0_dp                                                 ! minimum parallel angle [pi]
             max_par_X = 4.0_dp                                                  ! maximum parallel angle [pi]
             use_pol_flux_F = use_pol_flux_E                                     ! use same normal flux coordinate as the equilibrium
@@ -602,63 +346,108 @@ contains
             end if
         end subroutine adapt_plot
         
+        ! checks whether  variables concerning  perturbation modes  are correct:
+        ! the absolute value of prim_X has to be at least min_nm_X.
+        ! Also  deduces the X  style; min_sec_X  and max_sec_X, pertaining  to X
+        ! style 1 and n_sec_X, pertaining to X style 2 cannot be both given.
+        ! Furthermore, if  X style 1  (prescribed), max_sec_X has to  be greater
+        ! than min_sec_X in absolute value. If  X style 2 (fast), n_mod_X has to
+        ! be a number greater than 0.
+        ! Lastly,  for every X  style, some checks  are made and  some variables
+        ! set.
+        integer function adapt_X_modes() result(ierr)
+            use X_vars, only: min_nm_X
+            
+            character(*), parameter :: rout_name = 'adapt_X_modes'
+            
+            ! local variables
+            character(len=max_str_ln) :: err_msg                                ! error message
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! check prim_X: common for all X styles
+            if (abs(prim_X).lt.min_nm_X) then
+                ierr = 1
+                err_msg = 'prim_X should be at least '//trim(i2str(min_nm_X))//&
+                    &', and probably a bit higher still'
+                CHCKERR(err_msg)
+            end if
+            
+            ! set X_style
+            if (min_sec_X.ne.huge(1) .and. min_sec_X.ne.huge(1)) then           ! min_sec_X and max_sec_X prescribed
+                if (n_mod_X.eq.huge(1)) then                                    ! n_mod_X not prescribed
+                    X_style = 1                                                 ! prescribed style
+                else                                                            ! n_mod_X also prescribed
+                    ierr = 1
+                    err_msg = 'Cannot prescribe both min and max of secondary &
+                        &X and nr. of modes.'
+                    CHCKERR(err_msg)
+                end if
+            else                                                                ! min_sec_X and max_sec_X not prescribed
+                if (n_mod_X.eq.huge(1)) then                                    ! n_mod_X not prescribed either: default
+                    X_style = 2                                                 ! X style 2: fast
+                    n_mod_X = 10                                                ! 10 resonating modes at every place
+                else                                                            ! but n_mod_X prescribed
+                    X_style = 2
+                end if
+            end if
+            
+            ! checks for each X style
+            select case (X_style)
+                case (1)                                                        ! prescribed
+                    ! check min_sec_X, max_sec_X
+                    if (abs(max_sec_X).lt.abs(min_sec_X)) then
+                        ierr = 1
+                        err_msg = 'max_sec_X has to be larger or equal to &
+                            &min_sec_X in absolute value'
+                        CHCKERR(err_msg)
+                    end if
+                    
+                    ! set n_mod_X
+                    n_mod_X = abs(max_sec_X)-(min_sec_X)+1
+                case (2)                                                        ! fast
+                    if (n_mod_X.lt.1) then
+                        ierr = 1
+                        err_msg = 'the number of resonating modes has to be at &
+                            &least one'
+                        CHCKERR(err_msg)
+                    end if
+                case default
+                    err_msg = 'No X style associated with '//&
+                        &trim(i2str(X_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+        end function adapt_X_modes
+        
         ! Checks  whether n_par_X  is  chosen  high enough  so  aliasing can  be
         ! avoided.  aliasing occurs  when there  are  not enough  points on  the
         ! parallel grid so the fast-moving functions e^(i(k-m)) V don't give the
         ! wrong integrals in the perturbation  part. Also checks whether nyq_fac
         ! is at least one.
         subroutine adapt_n_par_X
+            ! local variables
+            real(dp) :: min_n_par_X                                             ! minimal n_par_X
+            
             ! adapt nyq_fac
             if (nyq_fac.lt.1) then
-                call writo('WARNING: nyq_fac has been increased to 1')
                 nyq_fac = 1
+                call writo('WARNING: nyq_fac has been increased to '//&
+                    &trim(i2str(nyq_fac)))
             end if
             
-            if (n_par_X.lt.nyq_fac*max(max_sec_X-min_sec_X,1)*&
-                &(max_par_X-min_par_X)/2) then
-                n_par_X = int(nyq_fac*max(max_sec_X-min_sec_X,1)*&
-                    &(max_par_X-min_par_X)/2)
+            ! set helper variables
+            min_n_par_X = nyq_fac*n_mod_X*(max_par_X-min_par_X)/2
+            
+            ! check n_par_X
+            if (n_par_X.lt.min_n_par_X) then
+                n_par_X = int(min_n_par_X)
                 if (mod(n_par_X,2).eq.0) n_par_X = n_par_X+1                    ! odd numbers are usually better
                 call writo('WARNING: To avoid aliasing of the perturbation &
                     &integrals, n_par_X is increased to '//trim(i2str(n_par_X)))
             end if
         end subroutine adapt_n_par_X
-        
-        ! checks whether  variables concerning  perturbation modes  are correct:
-        ! the absolute  value of prim_X  has to be  at least 5  (arbitrary), but
-        ! preferibly at least 10 (arbitrary).  Also, max_sec_X has to be greater
-        ! than min_sec_X and nyq_fac has to be at least 1.
-        integer function adapt_X_modes() result(ierr)
-            character(*), parameter :: rout_name = 'adapt_X_modes'
-            
-            ! local variables
-            character(len=max_str_ln) :: err_msg                                ! error message
-            integer :: abs_min_prim_X = 5                                       ! absolute minimum for the high-n theory
-            integer :: rec_min_prim_X = 10                                      ! recomended minimum for the high-n theory
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! check prim_X
-            if (abs(prim_X).lt.abs_min_prim_X) then
-                prim_X = sign(abs_min_prim_X,prim_X)
-                call writo('WARNING: prim_X has been changed to '//&
-                    &trim(i2str(abs_min_prim_X))//' but its absolute value &
-                    &should be at least '//trim(i2str(rec_min_prim_X))//&
-                    &' for correct results')
-            else if (abs(prim_X).lt.rec_min_prim_X) then
-                call writo('WARNING: The absolute value of prim_X should be at &
-                    &least '//trim(i2str(rec_min_prim_X))//' for correct &
-                    &results')
-            end if
-            
-            ! check min_sec_X, max_sec_X
-            if (max_sec_X.lt.min_sec_X) then
-                ierr = 1
-                err_msg = 'max_sec_X has to be larger or equal to min_sec_X'
-                CHCKERR(err_msg)
-            end if
-        end function adapt_X_modes
         
         ! Checks  whether variables  concerning the  solution grid  are correct:
         ! min_r_sol  should not  be too  close to  zero because  the equilibrium

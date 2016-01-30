@@ -288,3 +288,23 @@ CHANGELOG
       - Bugfixes considering the new tabulation of perturbation variables.
       - "debug_store_results" is now part of the standard programme.
       - HELENA always uses normalization, so "use_normalization" is always set to true.
+
+1.07: - FIRST VERSION WITH FAST OPTION. It seems to work for cbm18a if "max_r_sol" is not larger than 0.9.
+      - Introduced variable "X_style", which allows the user to choose between prescribed modes (earlier default) and a fast version.
+      - "check_X_modes" now has alternative actions for X style 2.
+      - The original versions of "get_suffix", "set_nn_mod" and "is_necessary_X" do not exist any more: Everything works with X limits now.
+      - Split some routines of PB3D_vars into new module PB3D_utilities.
+      - Split some routines of X_vars into new module X_utilities.
+      - Split some routines of SLEPC_ops into new module SLEPC_utilities.
+      - Split some routines of input_ops into new module input_utilities.
+      - Split some routines of grid_ops into new module grid_utilities.
+      - Split some routines of sol_ops into new module sol_utilities, which can also translate between local and total solution vectors.
+      - Derivatives of the solution vectors have to be done on total variables.
+      - Suffixes to names are now integer variables, not characters.
+      - The limits of the modes and their values now have to be calculated from the equilibrium and have to be recalculated using "setup_nm_X".
+      - Fixed a bug in "interp_fun".
+      - Improved debugging of "calc_zero_NR".
+      - Fixed a bug in "calc_res_surf" for dfun.
+      - Introduced local versus total mode numbers, which may differ for X style 2.
+      - "plot_X_vec" has been modified as well as "resonance_plot" to correctly implement the difference between local and total mode numbers.
+      - Fixed inconsistency with naming "X_vec" and "X_val", etc. "sol" Is now used.

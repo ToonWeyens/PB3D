@@ -33,11 +33,11 @@ contains
     !       the other groups
     integer function run_driver_X() result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, rank, plot_resonance, &
-            &X_job_nr, X_jobs_lims, n_procs
+            &X_job_nr, X_jobs_lims, n_procs, X_style
         use rich, only: n_r_sol
         use MPI_utilities, only: wait_MPI
         use X_vars, only: dealloc_X, &
-            &min_m_X, max_m_X, min_n_X, max_n_X, min_r_sol, max_r_sol
+            &min_sec_X, max_sec_X, prim_X, min_r_sol, max_r_sol, n_mod_X
         use grid_vars, only: dealloc_grid, &
             &n_par_X, min_par_X, max_par_X
         use eq_vars, only: dealloc_eq
@@ -48,7 +48,7 @@ contains
         use utilities, only: test_max_memory
         use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
-            &print_output_X, calc_magn_ints
+            &setup_nm_X, print_output_X, calc_magn_ints
         use vac, only: calc_vac
         use HELENA, only: interp_HEL_on_grid, dealloc_HEL
         use VMEC, only: dealloc_VMEC
@@ -104,13 +104,35 @@ contains
             &range '//trim(r2strt(min_par_X*pi))//'..'//&
             &trim(r2strt(max_par_X*pi)))
         if (use_pol_flux_F) then
-            call writo('with toroidal mode number n = '//trim(i2str(min_n_X)))
-            call writo('and poloidal mode number m = '//trim(i2str(min_m_X))//&
-                &'..'//trim(i2str(max_m_X)))
+            call writo('with toroidal mode number n = '//trim(i2str(prim_X)))
+            select case(X_style)
+                case (1)                                                        ! prescribed
+                    call writo('and poloidal mode number m = '//&
+                        &trim(i2str(min_sec_X))//'..'//trim(i2str(max_sec_X)))
+                case (2)                                                        ! fast
+                    call writo('and the '//trim(i2str(n_mod_X))//&
+                        &' poloidal modes m that resonate most')
+                case default
+                    err_msg = 'No X style associated with '//&
+                        &trim(i2str(X_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
         else
-            call writo('with poloidal mode number m = '//trim(i2str(min_m_X)))
-            call writo('and toroidal mode number n = '//trim(i2str(min_n_X))//&
-                &'..'//trim(i2str(max_n_X)))
+            call writo('with poloidal mode number m = '//trim(i2str(prim_X)))
+            select case(X_style)
+                case (1)                                                        ! prescribed
+                    call writo('and toroidal mode number n = '//&
+                        &trim(i2str(min_sec_X))//'..'//trim(i2str(max_sec_X)))
+                case (2)                                                        ! fast
+                    call writo('and the '//trim(i2str(n_mod_X))//&
+                        &' toroidal modes n that resonate most')
+                case default
+                    err_msg = 'No X style associated with '//&
+                        &trim(i2str(X_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
         end if
         if (use_pol_flux_F) then
             flux_name = 'poloidal'
@@ -180,8 +202,25 @@ contains
         call lvl_ud(-1)
         call writo('PB3D output reconstructed')
         
+        ! Divide perturbation grid under group processes, calculating the limits
+        ! and the normal coordinate.
+        allocate(r_F_X(n_r_sol))
+        ierr = calc_norm_range(X_limits=X_limits,r_F_X=r_F_X)
+        CHCKERR('')
+        
+        ! create and setup perturbation grid with division limits
+        call writo('Setting up perturbation grid')
+        call lvl_ud(1)
+        ierr = setup_and_calc_grid_X(grid_eq,grid_X,eq,r_F_X,X_limits)
+        CHCKERR('')
+        call lvl_ud(-1)
+        
+        ! setup limits of modes
+        ierr = setup_nm_X(grid_eq,grid_X,eq)
+        CHCKERR('')
+        
         ! tests
-        ierr = check_X_modes(eq)
+        ierr = check_X_modes(grid_eq,eq)
         CHCKERR('')
         
         ! plot resonances if requested
@@ -192,19 +231,7 @@ contains
             call writo('Resonance plot not requested')
         end if
         
-        ! Divide perturbation grid under group processes, calculating the limits
-        ! and the normal coordinate.
-        allocate(r_F_X(n_r_sol))
-        ierr = calc_norm_range(X_limits=X_limits,r_F_X=r_F_X)
-        CHCKERR('')
-        
-        ! create and  setup perturbation grid  with division limits, as  well as
-        ! field-aligned version
-        call writo('Setting up perturbation grid')
-        call lvl_ud(1)
-        ierr = setup_and_calc_grid_X(grid_eq,grid_X,eq,r_F_X,X_limits)
-        CHCKERR('')
-        call lvl_ud(-1)
+        ! setup field-aligned perturbation grid
         select case (eq_style)
             case (1)                                                            ! VMEC
                 grid_X_B => grid_X
@@ -264,7 +291,8 @@ contains
             if (debug_run_driver_X) then
                 call writo('To debug, the vectorial perturbation quantities &
                     &are interpolated angularly here already')
-                call writo('Normally, this is done later, in the tensorial step')
+                call writo('Normally, this is done later, in the tensorial &
+                    &step')
                 call lvl_ud(1)
                 
                 ! create perturbation
@@ -278,7 +306,8 @@ contains
                 call lvl_ud(-1)
                 
                 ! write vectorial perturbation variables to output
-                ierr = print_output_X(grid_X_B,X_1_B)
+                ierr = print_output_X(grid_X_B,X_1_B,lim_sec_X=&
+                    &X_jobs_lims(:,X_job_nr))
                 CHCKERR('')
                 
                 ! clean up
@@ -286,7 +315,8 @@ contains
             else
 #endif
                 ! write vectorial perturbation variables to output
-                ierr = print_output_X(grid_X,X_1(1))
+                ierr = print_output_X(grid_X,X_1(1),lim_sec_X=&
+                    &X_jobs_lims(:,X_job_nr))
                 CHCKERR('')
 #if ldebug
             end if
@@ -380,7 +410,7 @@ contains
                         &dimension '//trim(i2str(id))//' loaded')
                 end if
             end do
-            
+        
 #if ldebug
             if (debug_run_driver_X) then
                 ! calculate X variables, tensor phase
@@ -393,6 +423,7 @@ contains
                 ierr = calc_X(grid_eq,grid_X,eq,met,X_1(1),X_1(2),X_2,&
                     &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
                 CHCKERR('')
+                
                 ! adapt tensorial perturbation variables to field-aligned coords
                 ! if HELENA
                 if (eq_style.eq.2) then
@@ -415,7 +446,8 @@ contains
             CHCKERR('')
             
             ! write tensorial perturbation variables to output file
-            ierr = print_output_X(grid_X,X_2)
+            ierr = print_output_X(grid_X,X_2,lim_sec_X=&
+                    &reshape(X_jobs_lims(:,X_job_nr),[2,2]))
             CHCKERR('')
             
             ! clean up

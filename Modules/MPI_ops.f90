@@ -78,9 +78,8 @@ contains
     ! tensorial phase it is 2.
     integer function divide_X_jobs(grid,div_ord) result(ierr)
         use num_vars, only: max_mem_per_proc, n_procs, X_jobs_lims, rank, &
-            &X_jobs_file_name, X_jobs_taken, X_jobs_lock_file_name, &
-            &use_pol_flux_F
-        use X_vars, only: min_n_X, min_m_X, max_n_X, max_m_X
+            &X_jobs_file_name, X_jobs_taken, X_jobs_lock_file_name
+        use X_vars, only: n_mod_X
         use files_utilities, only: nextunit
         use MPI_utilities, only: wait_MPI
         
@@ -92,7 +91,6 @@ contains
         
         ! local variables
         integer :: arr_size                                                     ! array size
-        integer :: n_mod                                                        ! number of Fourier modes
         integer :: n_div                                                        ! factor by which to divide the total size
         real(dp) :: mem_size                                                    ! approximation of memory required for X variables
         integer :: n_mod_block                                                  ! nr. of modes in block
@@ -109,9 +107,6 @@ contains
             &trim(i2str(div_ord)))
         call lvl_ud(1)
         
-        ! set nr. of modes
-        n_mod = (max_n_X-min_n_X+1)*(max_m_X-min_m_X+1)
-        
         ! set arr_size
         arr_size = product(grid%n(1:2))*grid%loc_n_r
         
@@ -120,16 +115,16 @@ contains
         mem_size = huge(1._dp)
         do while (mem_size.gt.max_mem_per_proc)
             n_div = n_div + 1
-            n_mod_block = ceiling(n_mod*1._dp/n_div)
+            n_mod_block = ceiling(n_mod_X*1._dp/n_div)
             ierr = calc_memory(div_ord,arr_size,n_mod_block,mem_size)
-            if (n_div.gt.n_mod) then
+            if (n_div.gt.n_mod_X) then
                 ierr = 1
                 err_msg = 'The memory limit is too low'
                 CHCKERR(err_msg)
             end if
         end do
         if (n_div.gt.1) then
-            block_message = 'The '//trim(i2str(n_mod))//&
+            block_message = 'The '//trim(i2str(n_mod_X))//&
                 &' Fourier modes are split into '//trim(i2str(n_div))//&
                 &' and '//trim(i2str(n_div**div_ord))//&
                 &' jobs are done separately'
@@ -140,7 +135,7 @@ contains
                 block_message = trim(block_message)//', but simultaneously'
             end if
         else
-            block_message = 'The '//trim(i2str(n_mod))//' Fourier modes &
+            block_message = 'The '//trim(i2str(n_mod_X))//' Fourier modes &
                 &can be done without splitting them'
         end if
         call writo(block_message)
@@ -157,14 +152,9 @@ contains
         ! etc.
         ! Also initialize the jobs taken to false.
         allocate(n_mod_loc(n_div))
-        n_mod_loc = n_mod/n_div                                                 ! number of radial points on this processor
-        n_mod_loc(1:mod(n_mod,n_div)) = n_mod_loc(1:mod(n_mod,n_div)) + 1       ! add a mode to if there is a remainder
+        n_mod_loc = n_mod_X/n_div                                               ! number of radial points on this processor
+        n_mod_loc(1:mod(n_mod_X,n_div)) = n_mod_loc(1:mod(n_mod_X,n_div)) + 1   ! add a mode to if there is a remainder
         X_jobs_lims = calc_X_jobs_lims(n_mod_loc,div_ord)
-        if (use_pol_flux_F) then
-            X_jobs_lims = X_jobs_lims + min_m_X - 1                             ! scale with minimum poloidal mode number
-        else
-            X_jobs_lims = X_jobs_lims + min_n_X - 1                             ! scale with minimum toroidal mode number
-        end if
         if (allocated(X_jobs_taken)) deallocate(X_jobs_taken)
         allocate(X_jobs_taken(n_div**div_ord))
         X_jobs_taken = .false.
@@ -281,7 +271,8 @@ contains
             do id = 1,n_div
                 if (ord.gt.1) then                                              ! call lower order
                     res_loc = calc_X_jobs_lims(n_mod,ord-1)
-                    res(1:2*ord-2,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = res_loc
+                    res(1:2*ord-2,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = &
+                        &res_loc
                 end if                                                          ! set for own order
                 res(2*ord-1,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = &
                     &sum(n_mod(1:id-1))+1
@@ -465,20 +456,21 @@ contains
     integer function broadcast_input_vars() result(ierr)
         use num_vars, only: max_str_ln, ltest, EV_style, max_it_NR, &
             &max_it_rich, tol_NR, rank, n_procs, n_sol_requested, &
-            &nyq_fac, tol_rich, use_pol_flux_F, use_pol_flux_E, retain_all_sol, &
-            &plot_flux_q, plot_grid, no_plots, eq_style, use_normalization, &
-            &n_sol_plotted, n_theta_plot, n_zeta_plot, plot_resonance, EV_BC, &
-            &tol_SLEPC, rho_style, prog_style, max_it_inv, norm_disc_prec_X, &
-            &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, tol_norm, &
-            &max_it_slepc, max_mem_per_proc, PB3D_name, norm_style, U_style, &
-            &plot_size, test_max_mem
+            &nyq_fac, tol_rich, use_pol_flux_F, use_pol_flux_E, &
+            &retain_all_sol, plot_flux_q, plot_grid, no_plots, eq_style, &
+            &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
+            &plot_resonance, EV_BC, tol_SLEPC, rho_style, prog_style, &
+            &max_it_inv, norm_disc_prec_X, norm_disc_prec_eq, &
+            &norm_disc_prec_sol, BC_style, tol_norm, max_it_slepc, &
+            &max_mem_per_proc, PB3D_name, norm_style, U_style, plot_size, &
+            &test_max_mem, X_style
         use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
             &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
         use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
             &h_H_12, h_H_33, RBphi, R_H, Z_H
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm
-        use X_vars, only: min_m_X, max_m_X, min_n_X, max_n_X, min_r_sol, &
-            &max_r_sol
+        use X_vars, only: prim_X, n_mod_X, min_sec_X, max_sec_X, &
+            &min_r_sol, max_r_sol
         use grid_vars, only: alpha, n_r_eq, n_par_X, min_par_X, max_par_X
         use HDF5_vars, only: var_1D_type
         use PB3D_vars, only: PB3D_version
@@ -544,12 +536,6 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(T_0,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(rho_style,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
-            call MPI_Bcast(norm_style,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
-            call MPI_Bcast(U_style,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
             call MPI_Bcast(plot_flux_q,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(plot_grid,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
@@ -574,17 +560,25 @@ contains
             call MPI_Bcast(norm_disc_prec_sol,1,MPI_INTEGER,0,MPI_Comm_world,&
                 &ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(min_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            call MPI_Bcast(prim_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(max_m_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            call MPI_Bcast(min_sec_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(min_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            call MPI_Bcast(max_sec_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(max_n_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            call MPI_Bcast(n_mod_X,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(max_it_rich,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(rho_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(norm_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(U_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(X_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             
             ! select according to program style

@@ -12,16 +12,17 @@ module num_vars
         &X_jobs_file_name, X_jobs_lock_file_name, HDF5_lock_file_name, &
         &pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
-        &plot_resonance, plot_grid, plot_flux_q, ltest, use_pol_flux_E, &
-        &use_pol_flux_F, use_normalization, EV_BC, test_max_mem, tol_SLEPC, &
-        &max_it_slepc, norm_disc_prec_eq, norm_disc_prec_X, &
-        &norm_disc_prec_sol, &
+        &X_style, plot_resonance, plot_grid, plot_flux_q, ltest, &
+        &use_pol_flux_E, use_pol_flux_F, use_normalization, EV_BC, &
+        &test_max_mem, tol_SLEPC, max_it_slepc, norm_disc_prec_eq, &
+        &norm_disc_prec_X, norm_disc_prec_sol, &
         &max_it_rich, tol_rich, &
         &max_it_inv, &
         &max_it_NR, tol_NR, nyq_fac, tol_norm, &
         &GP_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
-        &no_plots, no_messages, plot_dir, script_dir, data_dir, n_theta_plot, &
+        &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
+        &input_name, &
         &plot_size, &
         &spline_type
 
@@ -36,7 +37,7 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 1.06_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.07_dp                               ! version number
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
@@ -61,6 +62,7 @@ module num_vars
     integer :: U_style                                                          ! style for calculation of U (1: ord.2, 2: ord.1, 1: ord.0)
     integer :: norm_style                                                       ! style for normalization
     integer :: BC_style(2)                                                      ! style for BC left and right
+    integer :: X_style                                                          ! style for secondary mode numbers (1: prescribed, 2: fast)
     integer :: max_it_slepc                                                     ! maximum nr. of iterations for SLEPC
     logical :: plot_resonance                                                   ! whether to plot the q-profile or iota-profile with resonances
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates
@@ -98,7 +100,7 @@ module num_vars
     character(len=max_str_ln) :: PB3D_name                                      ! name of PB3D output file
     integer :: output_i                                                         ! file number of output file
     logical :: no_plots = .false.                                               ! true if no plots should be made
-    logical :: no_messages = .false.                                            ! true if no messages should be shown
+    logical :: no_output = .false.                                              ! true if no output should be shown
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots
     character(len=4) :: data_dir = 'Data'                                       ! directory where to save data for plots
@@ -108,6 +110,7 @@ module num_vars
     integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
     integer :: plot_size(2)                                                     ! size of plot in inches
     logical :: retain_all_sol                                                   ! retain also faulty solutions
+    character(len=max_str_ln) :: input_name                                     ! will hold the full name of the input file
     
     ! concerning  spline interpolation
     ! The type of the spline is determined by "spline_type":

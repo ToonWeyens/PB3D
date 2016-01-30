@@ -2,6 +2,7 @@ ObjectFiles = \
 HDF5_ops.o \
 HDF5_vars.o \
 grid_vars.o \
+grid_utilities.o \
 grid_ops.o \
 rich.o \
 driver_eq.o \
@@ -14,6 +15,7 @@ files_ops.o \
 files_utilities.o \
 HELENA.o \
 input_ops.o \
+input_utilities.o \
 messages.o \
 met_ops.o \
 met_vars.o \
@@ -21,15 +23,19 @@ MPI_ops.o \
 num_vars.o \
 output_ops.o \
 SLEPC_ops.o \
+SLEPC_utilities.o \
 sol_ops.o \
+sol_utilities.o \
 str_ops.o \
 utilities.o \
 MPI_utilities.o \
 VMEC.o \
 X_ops.o \
 X_vars.o \
+X_utilities.o \
 sol_vars.o \
 test.o \
 PB3D_vars.o \
+PB3D_utilities.o \
 PB3D_ops.o \
 vac.o \

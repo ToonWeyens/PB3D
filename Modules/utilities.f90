@@ -2057,11 +2057,10 @@ contains
         B = B_loc(1,1,1,:)
     end function conv_mat_0D_complex
     
-    ! finds the zero of a function using Newton-Rhapson iteration
-    integer function calc_zero_NR(zero_NR,fun,dfun,guess) result(ierr)
+    ! Finds the zero of a  function using Newton-Rhapson iteration. If something
+    ! goes wrong, an error message is returned, that is empty otherwise.
+    function calc_zero_NR(zero_NR,fun,dfun,guess) result(err_msg)
         use num_vars, only: max_it_NR, tol_NR
-        
-        character(*), parameter :: rout_name = 'calc_zero_NR'
         
         ! input / output
         real(dp), intent(inout) :: zero_NR                                      ! output
@@ -2078,18 +2077,19 @@ contains
             end function dfun
         end interface
         real(dp), intent(in) :: guess                                           ! first guess
+        character(len=max_str_ln) :: err_msg                                    ! possible error message
         
         ! local variables
         integer :: jd
         real(dp) :: corr
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), parameter :: relax_fac = 0.5_dp                               ! factor for relaxation
+        real(dp), parameter :: relax_fac = 0.2_dp                               ! factor for relaxation
 #if ldebug
         real(dp), allocatable :: corrs(:)                                       ! corrections for all steps
+        real(dp), allocatable :: values(:)                                      ! values for all steps
 #endif
         
-        ! initialize ierr
-        ierr = 0
+        ! initialize error message
+        err_msg = ''
         
         ! set up zero_NR
         zero_NR = guess
@@ -2098,6 +2098,7 @@ contains
         if (debug_calc_zero_NR) then
             ! set up corrs
             allocate(corrs(max_it_NR))
+            allocate(values(max_it_NR))
         end if
 #endif
         
@@ -2105,45 +2106,45 @@ contains
             ! correction to theta_NR
             corr = -fun(zero_NR)/dfun(zero_NR)
 #if ldebug
-            if (debug_calc_zero_NR) corrs(jd) = corr
+            if (debug_calc_zero_NR) then
+                corrs(jd) = corr
+                values(jd) = zero_NR
+            end if
 #endif
             zero_NR = zero_NR + relax_fac*corr
             
             ! check for convergence
             if (abs(corr).lt.tol_NR) then
 #if ldebug
-                if (debug_calc_zero_NR) call plot_corrs(corrs(1:jd))
+                if (debug_calc_zero_NR) &
+                    &call plot_evolution(corrs(1:jd),values(1:jd))
 #endif
                 return
             else if (jd .eq. max_it_NR) then
                 err_msg = 'Not converged after '//trim(i2str(jd))//&
-                    &' iterations, with residual '//trim(r2str(corr))//&
-                    &' and final value '//trim(r2str(zero_NR))
+                    &' iterations, with residual '//trim(r2strt(corr))//&
+                    &' and final value '//trim(r2strt(zero_NR))
                 zero_NR = 0.0_dp
 #if ldebug
-                if (debug_calc_zero_NR) call plot_corrs(corrs)
+                if (debug_calc_zero_NR) call plot_evolution(corrs,values)
 #endif
-                ierr = 1
-                CHCKERR(err_msg)
             end if
         end do NR
 #if ldebug
     contains
         ! plots corrections
-        subroutine plot_corrs(corrs)
+        subroutine plot_evolution(corrs,values)
             ! input / output
             real(dp), intent(in) :: corrs(:)                                    ! corrections
+            real(dp), intent(in) :: values(:)                                   ! values
             
             ! local variables
             real(dp) :: min_x, max_x                                            ! min. and max. x for which to plot the function
             real(dp) :: extra_x = 1._dp                                         ! how much bigger to take the plot interval than just min and max
             real(dp) :: delta_x                                                 ! interval between zero_NR and guess
             integer :: n_x = 200                                                ! how many x values to plot
-            
-            ! plot corrections
-            call writo('Last correction '//trim(r2strt(corrs(size(corrs))))&
-                &//' with tolerance '//trim(r2strt(tol_NR)))
-            call print_GP_2D('corrs','',corrs)
+            real(dp), allocatable :: x_out(:,:)                                 ! output x of plot
+            real(dp), allocatable :: y_out(:,:)                                 ! output y of plot
             
             ! set up min and max x
             min_x = min(zero_NR,guess)
@@ -2152,13 +2153,29 @@ contains
             min_x = min_x - delta_x*extra_x
             max_x = max_x + delta_x*extra_x
             
+            ! set up output of plot
+            allocate(x_out(n_x,2))
+            allocate(y_out(n_x,2))
+            x_out(:,1) = [(min_x+(max_x-min_x)*(jd-1._dp)/(n_x-1),jd=1,n_x)]
+            x_out(:,2) = [(min_x+(max_x-min_x)*(jd-1._dp)/(n_x-1),jd=1,n_x)]
+            y_out(:,1) = [(fun(min_x+(max_x-min_x)*(jd-1._dp)/(n_x-1)),&
+                &jd=1,n_x)]
+            y_out(:,2) = [(dfun(min_x+(max_x-min_x)*(jd-1._dp)/(n_x-1)),&
+                &jd=1,n_x)]
+            
             ! plot function
             call writo('Initial guess: '//trim(r2str(guess)))
             call writo('Resulting zero: '//trim(r2str(zero_NR)))
-            call print_GP_2D('function','',&
-                &[(fun(min_x+(max_x-min_x)*(jd-1._dp)/(n_x-1)),jd=1,n_x)],&
-                &x=[(min_x+(max_x-min_x)*(jd-1._dp)/(n_x-1),jd=1,n_x)])
-        end subroutine plot_corrs
+            call print_GP_2D('function and derivative','',y_out,x=x_out)
+            
+            ! user output
+            call writo('Last correction '//trim(r2strt(corrs(size(corrs))))&
+                &//' with tolerance '//trim(r2strt(tol_NR)))
+            
+            ! plot corrections and values
+            call print_GP_2D('corrs','',corrs)
+            call print_GP_2D('values','',values)
+        end subroutine plot_evolution
 #endif
     end function calc_zero_NR
 
@@ -2404,9 +2421,10 @@ contains
         val = vals(1)
     end function round_with_tol_ind
     
-    ! Interpolate a  1D function  y(x) by  providing the array  y and  x_in. The
-    ! result is stored in  y_out. The array x can be  optionally passed. If not,
-    ! it is assumed to be the (equidistant) linear space between 0 and 1.
+    ! Interpolate a 1D function y(:,:,x), y(:,x)  or y(x) by providing the array
+    ! y and x_in. The  result is stored in y_out. The array  x can be optionally
+    ! passed. If not, it is assumed to be the (equidistant) linear space between
+    ! 0 and 1.
     ! Note: This function is assumed to be monotomous. If not, an error results.
     integer function interp_fun_2D_real(y_out,y,x_in,x) result(ierr)            ! 2D real version
         character(*), parameter :: rout_name = 'interp_fun_2D_real'
@@ -2470,12 +2488,12 @@ contains
         allocate(y_out_loc(1,size(y_out)))
         
         ! call 2D version
-        ierr = interp_fun_2D_real(y_out_loc,reshape(y,[1,size(y_out),size(y)]),&
-            &x_in,x)
+        ierr = interp_fun_2D_real(y_out_loc,&
+            &reshape(y,[1,size(y,1),size(y,2)]),x_in,x)
         CHCKERR('')
         
         ! copy to y_out
-        y_out = y_out_loc(1,1)
+        y_out = y_out_loc(1,:)
         
         ! clean up
         deallocate(y_out_loc)
@@ -2588,7 +2606,7 @@ contains
         CHCKERR('')
         
         ! copy to y_out
-        y_out = y_out_loc(1,1)
+        y_out = y_out_loc(1,:)
         
         ! clean up
         deallocate(y_out_loc)

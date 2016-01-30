@@ -18,7 +18,7 @@ module test
 contains
     ! performs generic tests
     integer function generic_tests() result(ierr)
-        use input_ops, only: pause_prog, get_log
+        use input_utilities, only: pause_prog, get_log
         use num_vars, only: prog_style
         
         character(*), parameter :: rout_name = 'generic_tests'
@@ -63,7 +63,7 @@ contains
     ! tests the calculation of derivatives
     integer function test_calc_deriv() result(ierr)
         use num_vars, only: rank
-        use input_ops, only: get_log, get_int, get_real
+        use input_utilities, only: get_log, get_int, get_real
         use utilities, only: calc_deriv
         
         character(*), parameter :: rout_name = 'test_calc_deriv'
@@ -317,7 +317,7 @@ contains
     integer function test_conv_FHM() result(ierr)
         use num_vars, only: rank
         use utilities, only: conv_FHM
-        use input_ops, only: get_log, get_int
+        use input_utilities, only: get_log, get_int
         
         character(*), parameter :: rout_name = 'test_conv_FHM'
         
@@ -429,9 +429,10 @@ contains
     ! tests calculation of volume integral
     integer function test_calc_int_vol() result(ierr)
         use num_vars, only: rank
-        use input_ops, only: get_int, get_log
+        use input_utilities, only: get_int, get_log
         use grid_vars, only: create_grid
-        use grid_ops, only: calc_eqd_grid, calc_int_vol, debug_calc_int_vol
+        use grid_utilities, only: calc_eqd_grid, calc_int_vol, &
+            &debug_calc_int_vol
         
         character(*), parameter :: rout_name = 'test_calc_int_vol'
         

@@ -166,7 +166,7 @@ contains
         use num_vars, only: use_pol_flux_F
         use utilities, only: calc_deriv
         use grid_vars, only: dealloc_grid
-        use grid_ops, only: trim_grid, calc_XYZ_grid
+        use grid_utilities, only: trim_grid, calc_XYZ_grid
 #endif
         
         ! input / output
@@ -737,7 +737,7 @@ contains
     !   toroidal flux flux_t
     integer function flux_q_plot(grid_eq,eq) result(ierr)
         use num_vars, only: rank, no_plots
-        use grid_ops, only: trim_grid
+        use grid_utilities, only: trim_grid
         use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'flux_q_plot'
@@ -884,7 +884,7 @@ contains
         ! plots the flux quantities in HDF5
         integer function flux_q_plot_HDF5() result(ierr)
             use output_ops, only: plot_HDF5
-            use grid_ops, only: calc_XYZ_grid, extend_grid_E, trim_grid
+            use grid_utilities, only: calc_XYZ_grid, extend_grid_E, trim_grid
             use grid_vars, only: dealloc_grid
             
             character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
@@ -1118,7 +1118,7 @@ contains
         use num_vars, only: eq_style, PB3D_name, rank
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type
-        use grid_ops, only: trim_grid
+        use grid_utilities, only: trim_grid
         use HELENA, only: chi_H, flux_p_H, R_H, Z_H, nchi
         use VMEC, only:  R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor
         use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &

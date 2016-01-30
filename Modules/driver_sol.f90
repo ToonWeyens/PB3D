@@ -50,7 +50,7 @@ contains
         !!use utilities, only: calc_aux_utilities
 #if ldebug
         use num_vars, only: iu, use_pol_flux_F
-        use grid_ops, only: get_norm_interp_data
+        use grid_utilities, only: get_norm_interp_data
         use utilities, only: c, con
         use MPI_utilities, only: get_ser_var
 #endif
@@ -105,12 +105,12 @@ contains
 #if ldebug
         ierr = reconstruct_PB3D(.false.,.true.,.true.,.false.,.true.,.false.,&
             &.true.,.false.,grid_eq=grid_eq,grid_X=grid_X,grid_X_B=grid_X_B,&
-            &eq=eq,met=met,X_2=X,X_limits=sol_limits)
+            &eq=eq,met=met,X_2=X,X_limits=sol_limits,use_setup_nm_X=.false.)
         CHCKERR('')
 #else
         ierr = reconstruct_PB3D(.false.,.true.,.true.,.false.,.true.,.false.,&
             &.true.,.false.,grid_eq=grid_eq,grid_X=grid_X,eq=eq,met=met,X_2=X,&
-            &X_limits=sol_limits)
+            &X_limits=sol_limits,use_setup_nm_X=.false.)
         CHCKERR('')
 #endif
         
@@ -166,7 +166,7 @@ contains
                     do k = 1,sol%n_mod
                         X_norm(:,:,kd) = X_norm(:,:,kd) + &
                             &conjg(sol%vec(k,kd,1))*sol%vec(m,kd,1)* &
-                            &exp(iu*(X%m_1(k)-X%m_2(m))*ang_par_F(:,:,kd))
+                            &exp(iu*(X%m_1(kd,k)-X%m_2(kd,m))*ang_par_F(:,:,kd))
                     end do
                 end do
             end do

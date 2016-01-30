@@ -22,7 +22,7 @@ module rich
     logical :: no_guess                                                         ! disable guessing Eigenfunction from previous level of Richardson
     logical :: rich_conv                                                        ! if Richarson extrapolation has converged
     real(dp), allocatable :: x_axis(:,:)                                        ! x axis for plot of Eigenvalues with Richardson level
-    complex(dp), allocatable :: X_val_rich(:,:,:)                               ! Richardson array of eigenvalues
+    complex(dp), allocatable :: sol_val_rich(:,:,:)                             ! Richardson array of eigenvalues
     real(dp), allocatable :: max_rel_error(:)                                   ! maximum relative error for all Richardson levels
     integer, allocatable :: loc_max_rel_err(:,:)                                ! location of maximum of relative error
     
@@ -37,11 +37,11 @@ contains
         
         if (max_it_rich.gt.1) then                                              ! only when more than one level
             ! allocate variables
-            allocate(X_val_rich(1:max_it_rich,1:max_it_rich,1:n_sol_requested))
-            X_val_rich = 0.0_dp
-            allocate(x_axis(1:max_it_rich,1:n_sol_requested))
-            allocate(max_rel_error(1:max_it_rich-1))
-            allocate(loc_max_rel_err(1:max_it_rich-1,1))
+            allocate(sol_val_rich(max_it_rich,max_it_rich,n_sol_requested))
+            sol_val_rich = 0.0_dp
+            allocate(x_axis(max_it_rich,n_sol_requested))
+            allocate(max_rel_error(max_it_rich-1))
+            allocate(loc_max_rel_err(max_it_rich-1,1))
             
             ! user output
             call writo('Starting Richardson extrapolation loop')
@@ -83,9 +83,9 @@ contains
             call writo('Tolerance requested: '//trim(r2str(tol_rich)))
             call writo('Resulting best guesses for Eigenvalues:')
             call lvl_ud(1)
-            do id = 1,size(X_val_rich,3)
+            do id = 1,size(sol_val_rich,3)
                 call writo('For Eigenvalue '//trim(i2str(id))//': '//&
-                    &trim(c2str(X_val_rich(rich_lvl-1,rich_lvl-1,id)))//',')
+                    &trim(c2str(sol_val_rich(rich_lvl-1,rich_lvl-1,id)))//',')
             end do
             call lvl_ud(-1)
             call writo('with, theoretically, an error of the order O(Δ^'//&
@@ -102,7 +102,7 @@ contains
             call lvl_ud(-1)
             
             ! draw X values
-            if (rank.eq.0) call draw_X_val_rich()
+            if (rank.eq.0) call draw_sol_val_rich()
             
             call writo('')
             call lvl_ud(-1)
@@ -110,7 +110,7 @@ contains
     contains
         ! Draws  the   Eigenvalues  for  the  different   levels  of  Richardson
         ! extrapolation as a function of the number of normal points.
-        subroutine draw_X_val_rich()
+        subroutine draw_sol_val_rich()
             use num_vars, only: n_sol_requested
             
             ! local variables
@@ -126,7 +126,7 @@ contains
             plot_title = 'Eigenvalues as function of nr. of normal points'
             plot_name = 'Eigenvalues_richardson'
             call print_GP_2D(plot_title,plot_name,&
-                &realpart(X_val_rich(1:rich_lvl-1,1,:)),&
+                &realpart(sol_val_rich(1:rich_lvl-1,1,:)),&
                 &x=x_axis(1:rich_lvl-1,:),&
                 &draw=.false.)
             
@@ -137,7 +137,7 @@ contains
             ! user output
             call lvl_ud(-1)
             call writo('Done plotting Eigenvalues')
-        end subroutine draw_X_val_rich
+        end subroutine draw_sol_val_rich
     end subroutine term_rich
     
     ! if this Richardson level should be done
@@ -198,11 +198,11 @@ contains
             
             if (rich_lvl.gt.1) then                                             ! only do this if in Richardson level higher than 1
                 ! set relative correction
-                allocate(corr(size(X_val_rich,3)))
-                corr = abs(2*(X_val_rich(rich_lvl,rich_lvl-1,:)-&
-                    &X_val_rich(rich_lvl-1,rich_lvl-1,:))/&
-                    &(X_val_rich(rich_lvl,rich_lvl-1,:)+&
-                    &X_val_rich(rich_lvl-1,rich_lvl-1,:)))
+                allocate(corr(size(sol_val_rich,3)))
+                corr = abs(2*(sol_val_rich(rich_lvl,rich_lvl-1,:)-&
+                    &sol_val_rich(rich_lvl-1,rich_lvl-1,:))/&
+                    &(sol_val_rich(rich_lvl,rich_lvl-1,:)+&
+                    &sol_val_rich(rich_lvl-1,rich_lvl-1,:)))
                 
                 ! get maximum and location of maximum for relative correction
                 max_rel_error(rich_lvl-1) = maxval(corr)
@@ -244,17 +244,17 @@ contains
     
     ! Calculates  the   coefficients  of  the  Eigenvalues   in  the  Richardson
     ! extrapolation. This is done using the recursive formula:
-    !   X_val_rich(lvl,ir,:) = X_val_rich(lvl,ir-1,:) +  1/(2^(2 p ir) - 1) * 
-    !       (X_val_rich(lvl,ir-1,:) - X_val_rich(lvl-1,ir-1,:)),
+    !   sol_val_rich(lvl,ir,:) = sol_val_rich(lvl,ir-1,:) +  1/(2^(2 p ir) - 1)*
+    !       (sol_val_rich(lvl,ir-1,:) - sol_val_rich(lvl-1,ir-1,:)),
     ! where p is norm_disc_prec_sol, the order of the numerical discretization.
     ! as described in [ADD REF]
-    integer function calc_rich_ex(X_val) result(ierr)
+    integer function calc_rich_ex(sol_val) result(ierr)
         use num_vars, only: norm_disc_prec_sol
         
         character(*), parameter :: rout_name = 'calc_rich_ex'
         
         ! input / output
-        complex(dp), intent(in) :: X_val(:)                                     ! EV for this Richardson level
+        complex(dp), intent(in) :: sol_val(:)                                   ! EV for this Richardson level
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -265,21 +265,21 @@ contains
         
         if (max_it_rich.gt.1) then                                              ! only when more than one level
             ! tests
-            if (size(X_val_rich,1).ne.size(X_val_rich,2) .or. &
-                &rich_lvl.gt.size(X_val_rich,1)) then
+            if (size(sol_val_rich,1).ne.size(sol_val_rich,2) .or. &
+                &rich_lvl.gt.size(sol_val_rich,1)) then
                 ierr = 1
-                err_msg = 'X_val_rich has to have correct dimensions'
+                err_msg = 'sol_val_rich has to have correct dimensions'
                 CHCKERR(err_msg)
             end if
             
             ! do calculations if rich_lvl > 1
-            X_val_rich(rich_lvl,1,1:size(X_val)) = X_val                        ! size(X_val) can be less than n_sol_requested
+            sol_val_rich(rich_lvl,1,1:size(sol_val)) = sol_val                  ! size(sol_val) can be less than n_sol_requested
             do ir = 2,rich_lvl
-                X_val_rich(rich_lvl,ir,1:size(X_val)) = &
-                    &X_val_rich(rich_lvl,ir-1,1:size(X_val)) + &
+                sol_val_rich(rich_lvl,ir,1:size(sol_val)) = &
+                    &sol_val_rich(rich_lvl,ir-1,1:size(sol_val)) + &
                     &1._dp/(2**(2*(ir-1)*norm_disc_prec_sol)-1._dp) * &
-                    &(X_val_rich(rich_lvl,ir-1,1:size(X_val)) - &
-                    &X_val_rich(rich_lvl-1,ir-1,1:size(X_val)))
+                    &(sol_val_rich(rich_lvl,ir-1,1:size(sol_val)) - &
+                    &sol_val_rich(rich_lvl-1,ir-1,1:size(sol_val)))
             end do
         end if
     end function calc_rich_ex

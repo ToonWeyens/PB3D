@@ -9,14 +9,11 @@ module files_ops
     implicit none
     private
     public open_input, open_output, parse_args, init_files, &
-        &input_name, opt_args, close_output
+        &opt_args, close_output
 
     ! user-specified arguments
     integer :: numargs                                                          ! control the user-specified arguments
     character(len=max_str_ln), allocatable :: command_arg(:)                    ! passeed command-line arguments
-
-    ! concerning input file
-    character(len=max_str_ln) :: input_name                                     ! will hold the full name of the input file
 
     ! options provided with command line
     character(len=max_str_ln), allocatable :: opt_args(:)
@@ -68,7 +65,7 @@ contains
         opt_args(1) = '-t'
         opt_args(2) = '--test'
         opt_args(3) = '--no_plots'
-        opt_args(4) = '--no_messages'
+        opt_args(4) = '--no_output'
         inc_args(1:4) = [0,0,0,0]
     end function init_files
 
@@ -175,7 +172,7 @@ contains
     ! open the input files
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
-            &eq_style, eq_name, no_messages, PB3D_i, PB3D_name
+            &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name
         use files_utilities, only: search_file
         use rich, only: no_guess
 #if ldebug
@@ -332,9 +329,9 @@ contains
                                         &plotting disabled')
                                     no_plots = .true.
                                 case (4)                                        ! disable messages
-                                    call writo('option no_messages chosen: &
+                                    call writo('option no_output chosen: &
                                         &messages disabled')
-                                    no_messages = .true.
+                                    no_output = .true.
                                 ! specific options for each program style
                                 case default
                                     select case (prog_style)
@@ -405,14 +402,14 @@ contains
         use num_vars, only: eq_style, rho_style, rank, prog_version, &
             &use_pol_flux_E, use_pol_flux_F, use_normalization, &
             &norm_disc_prec_eq, PB3D_name, output_i, output_name, prog_name, &
-            &norm_disc_prec_X, prog_style, norm_style, U_style
+            &norm_disc_prec_X, prog_style, norm_style, U_style, X_style
         use messages, only: temp_output, temp_output_active
         use files_utilities, only: nextunit
         use HDF5_ops, only: create_output_HDF5, print_HDF5_arrs
         use HDF5_vars, only: var_1D_type
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm
-        use X_vars, only: min_r_sol, max_r_sol, min_m_X, max_m_X, min_n_X, &
-            &max_n_X
+        use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
+            &n_mod_X
         use PB3D_ops, only: read_PB3D, reconstruct_PB3D
         use grid_vars, only: alpha
         use HELENA, only: nchi, ias
@@ -567,19 +564,19 @@ contains
                     allocate(misc_1D_loc%loc_i_min(1),misc_1D_loc%loc_i_max(1))
                     if (rank.eq.0) then
                         misc_1D_loc%loc_i_min = [1]
-                        misc_1D_loc%loc_i_max = [9]
-                        allocate(misc_1D_loc%p(9))
-                        misc_1D_loc%p = [min_r_sol,max_r_sol,min_n_X*1._dp,&
-                            &max_n_X*1._dp,min_m_X*1._dp,max_m_X*1._dp,&
+                        misc_1D_loc%loc_i_max = [10]
+                        allocate(misc_1D_loc%p(10))
+                        misc_1D_loc%p = [min_r_sol,max_r_sol,prim_X*1._dp,&
+                            &n_mod_X*1._dp,min_sec_X*1._dp,max_sec_X*1._dp,&
                             &norm_disc_prec_X*1._dp,norm_style*1._dp,&
-                            &U_style*1._dp]
+                            &U_style*1._dp,X_style*1._dp]
                     else
                         misc_1D_loc%loc_i_min = [1]
                         misc_1D_loc%loc_i_max = [0]
                         allocate(misc_1D_loc%p(0))
                     end if
                     misc_1D_loc%tot_i_min = [1]
-                    misc_1D_loc%tot_i_max = [9]
+                    misc_1D_loc%tot_i_max = [10]
                     
                     call lvl_ud(-1)
                     

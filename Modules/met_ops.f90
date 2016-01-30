@@ -78,7 +78,7 @@ contains
         use utilities, only: derivs, c
 #if ldebug
         use num_vars, only: ltest
-        use input_ops, only: get_log, pause_prog
+        use input_utilities, only: get_log, pause_prog
         use HELENA, only: test_metrics_H
 #endif
         
@@ -314,7 +314,7 @@ contains
         use utilities, only: derivs, c
 #if ldebug
         use num_vars, only: ltest
-        use input_ops, only: get_log, pause_prog
+        use input_utilities, only: get_log, pause_prog
         use HELENA, only: test_metrics_H
 #endif
         
@@ -1941,7 +1941,7 @@ contains
     integer function test_T_EF(grid_eq,eq,met) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style
         use grid_vars, only: dealloc_grid
-        use grid_ops, only: trim_grid
+        use grid_utilities, only: trim_grid
         use utilities, only: c
         use output_ops, only: plot_diff_HDF5
         
@@ -2118,7 +2118,7 @@ contains
     ! (working in the (modified) Flux coordinates (alpha,psi,theta)_F)
     integer function test_p(grid_eq,eq,met) result(ierr)
         use utilities, only: c, calc_deriv
-        use grid_ops, only: trim_grid
+        use grid_utilities, only: trim_grid
         use eq_vars, only: vac_perm
         use num_vars, only: eq_style, norm_disc_prec_eq
         use HELENA, only: RBphi, h_H_11, h_H_12
@@ -2304,7 +2304,7 @@ contains
     !   - comparing it with the direct formula
     integer function test_jac_F(grid_eq,eq,met) result(ierr)
         use num_vars, only: eq_style, use_pol_flux_F
-        use grid_ops, only: trim_grid
+        use grid_utilities, only: trim_grid
         use utilities, only: calc_det
         use HELENA, only: h_H_33, RBphi
         
@@ -2422,7 +2422,7 @@ contains
     
     ! Tests whether g_V is calculated correctly
     integer function test_g_V(grid_eq,eq,met) result(ierr)
-        use grid_ops, only: trim_grid
+        use grid_utilities, only: trim_grid
         use utilities, only: c
         
         character(*), parameter :: rout_name = 'test_g_V'
@@ -2518,7 +2518,7 @@ contains
     
     ! Tests whether jac_V is calculated correctly
     integer function test_jac_V(grid_eq,met) result(ierr)
-        use grid_ops, only: trim_grid
+        use grid_utilities, only: trim_grid
         use VMEC, only: fourier2real, &
             &jac_V_c, jac_V_s
         
@@ -2590,7 +2590,7 @@ contains
     ! Tests whether B_F is calculated correctly
     integer function test_B_F(grid_eq,eq,met) result(ierr)
         use num_vars, only: eq_style
-        use grid_ops, only: trim_grid
+        use grid_utilities, only: trim_grid
         use utilities, only: c
         use VMEC, only: fourier2real, &
             &B_V_sub_s, B_V_sub_c, B_V_c, B_V_s
@@ -2738,7 +2738,7 @@ contains
     
     ! Tests whether D1 D2 h_H is calculated correctly
     integer function test_D12h_H(grid_eq,met) result(ierr)
-        use grid_ops, only: trim_grid
+        use grid_utilities, only: trim_grid
         use utilities, only: c, calc_deriv
         use num_vars, only: norm_disc_prec_eq
         
@@ -2823,7 +2823,7 @@ contains
     ! Tests whether the derivatives of g_E are calculated correctly
     integer function test_Dg_E(grid_eq,met) result(ierr)
         use num_vars, only: norm_disc_prec_eq
-        use grid_ops, only: trim_grid
+        use grid_utilities, only: trim_grid
         use utilities, only: c, calc_deriv
         
         character(*), parameter :: rout_name = 'test_Dg_E'

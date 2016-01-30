@@ -16,18 +16,7 @@ module PB3D_ops
 
     implicit none
     private
-    public init_PB3D_ops, read_PB3D, reconstruct_PB3D, retrieve_var_1D_id
-    
-    ! interfaces
-    interface conv_1D2ND
-        module procedure conv_1D2ND_1D, conv_1D2ND_2D, conv_1D2ND_3D, &
-            &conv_1D2ND_4D, &
-            !&conv_1D2ND_5D, &
-            &conv_1D2ND_6D, conv_1D2ND_7D
-    end interface
-    interface get_full_var_names
-        module procedure get_full_var_names_1, get_full_var_names_2
-    end interface
+    public init_PB3D_ops, read_PB3D, reconstruct_PB3D
     
 contains
     ! Initialize the PB3D routines:
@@ -37,6 +26,7 @@ contains
     integer function init_PB3D_ops() result(ierr)
         use num_vars, only: eq_style, PB3D_name, rank
         use PB3D_vars, only: vars_1D_misc
+        use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         use HDF5_ops, only: read_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D
         
@@ -83,6 +73,7 @@ contains
         use num_vars, only: eq_style, PB3D_name
         use HDF5_ops, only: read_HDF5_arrs
         use X_vars, only: X_1_var_names, X_2_var_names
+        use PB3D_utilities, only: get_full_var_names
         use PB3D_vars, only: vars_1D_misc, vars_1D_grid_eq, vars_1D_grid_eq_B, &
             &vars_1D_grid_X, vars_1D_grid_X_B, vars_1D_grid_sol, vars_1D_eq, &
             &vars_1D_X_1, vars_1D_X_2, vars_1D_sol
@@ -172,7 +163,7 @@ contains
             call lvl_ud(1)
             if (present(lim_sec_X_1)) then
                 ! get requested full variable names
-                req_var_names = get_full_var_names(X_1_var_names,lim_sec_X_1)
+                call get_full_var_names(X_1_var_names,req_var_names,lim_sec_X_1)
                 
                 ! read from HDF5 file
                 ierr = read_HDF5_arrs(vars_1D_X_1,PB3D_name,&
@@ -192,10 +183,10 @@ contains
             call lvl_ud(1)
             if (present(lim_sec_X_2)) then
                 ! get requested full variable names
-                req_var_names = get_full_var_names(X_2_var_names,&
+                call get_full_var_names(X_2_var_names,&
                     &[.true.,.true.,.false.,.false.,.true.,.true.,&
                     &.true.,.true.,.false.,.false.,.true.,.true.],&
-                    &lim_sec_X_2)
+                    &req_var_names,lim_sec_X_2)
                 
                 ! read from HDF5 file
                 ierr = read_HDF5_arrs(vars_1D_X_2,PB3D_name,&
@@ -228,18 +219,28 @@ contains
     ! Optionally, if perturbation  quantities are read, the limits  of m_X (pol.
     ! flux) or  n_X (tor.  flux) can be  passed, instead of  reading all  of the
     ! perturbation quantities.
+    ! Note: To reconstruct perturbation variables, mode numbers n_X and m_X have
+    ! to be  correctly set up, using  the equilibrium and perturbation  grids as
+    ! well as the equilibrium variables. Therefore, if this routine detects that
+    ! the  equilibrium  and perturbation  grid  are  reconstructed, as  well  as
+    ! equilibrium and perturbation or  solution variables, it automatically also
+    ! sets  up  n_X  and  m_X,  a  behavior  that  can  be  switched  off  using
+    ! "use_setup_nm_X".
     integer function reconstruct_PB3D(rec_misc,rec_grid_eq,rec_grid_X,&
         &rec_grid_sol,rec_eq,rec_X_1,rec_X_2,rec_sol,grid_eq,grid_eq_B,grid_X,&
         &grid_X_B,grid_sol,eq,met,X_1,X_2,sol,eq_limits,X_limits,sol_limits,&
-        &lim_sec_X_1,lim_sec_X_2) result(ierr)
+        &lim_sec_X_1,lim_sec_X_2,use_setup_nm_X) result(ierr)
         
         use num_vars, only: eq_style
         use HDF5_vars, only: dealloc_var_1D
+        use PB3D_utilities, only: get_full_var_names, retrieve_var_1D_id, &
+            &conv_1D2ND
         use PB3D_vars, only: vars_1D_misc, vars_1D_grid_eq, vars_1D_grid_eq_B, &
             &vars_1D_grid_X, vars_1D_grid_X_B, vars_1D_grid_sol, vars_1D_eq, &
             &vars_1D_X_1, vars_1D_X_2, vars_1D_sol, min_PB3D_version, &
             &PB3D_version
         use MPI_utilities, only: wait_MPI
+        use X_ops, only: setup_nm_X
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D'
         
@@ -261,9 +262,11 @@ contains
         integer, intent(in), optional :: sol_limits(2)                          ! i_limit of sol variables
         integer, intent(in), optional :: lim_sec_X_1(2)                         ! limits of m_X (pol. flux) or n_X (tor. flux)
         integer, intent(in), optional :: lim_sec_X_2(2,2)                       ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
+        logical, intent(in), optional :: use_setup_nm_X                         ! setup n_X and m_X if possible [.true.]
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
+        logical :: use_setup_nm_X_loc                                           ! local version of use_setup_nm_X
         
         ! local variables also used in child functions
         ! miscellaneous
@@ -309,8 +312,8 @@ contains
         integer, allocatable :: RE_KV_int_1_id(:), IM_KV_int_1_id(:)            ! index of RE_KV_int_1, IM_KV_int_1
         integer, allocatable :: RE_KV_int_2_id(:), IM_KV_int_2_id(:)            ! index of RE_KV_int_2, IM_KV_int_2
         ! solution
-        integer :: RE_X_val_id, IM_X_val_id                                     ! index of RE_X_val, IM_X_val
-        integer :: RE_X_vec_id, IM_X_vec_id                                     ! index of RE_X_vec, IM_X_vec
+        integer :: RE_sol_val_id, IM_sol_val_id                                 ! index of RE_sol_val, IM_sol_val
+        integer :: RE_sol_vec_id, IM_sol_vec_id                                 ! index of RE_sol_vec, IM_sol_vec
         ! helper variables
         real(dp), allocatable :: dum_1D(:), dum_2D(:,:), dum_3D(:,:,:)          ! dummy variables
         real(dp), allocatable :: dum_4D(:,:,:,:)                                ! dummy variables
@@ -345,6 +348,15 @@ contains
             ierr = 1
             err_msg = 'To reconstruct equilibrium need grid_sol and sol'
             CHCKERR(err_msg)
+        end if
+        
+        ! set up local use_setup_nm_X
+        if (rec_grid_eq .and. rec_grid_X .and. rec_eq .and. &
+            &(rec_X_1.or.rec_X_2.or.rec_sol)) then                              ! use setup_nm_X if not overriden
+            use_setup_nm_X_loc = .true.
+            if (present(use_setup_nm_X)) use_setup_nm_X_loc = use_setup_nm_X    ! override
+        else                                                                    ! not possible to use setup_nm_X
+            use_setup_nm_X_loc = .false.
         end if
         
         if (rec_misc) then
@@ -492,6 +504,14 @@ contains
             ierr = reconstruct_vars_eq(grid_eq,eq,met)
             CHCKERR('')
             call lvl_ud(-1)
+            
+            if (use_setup_nm_X_loc) then
+                call writo('Setup mode information')
+                call lvl_ud(1)
+                ierr = setup_nm_X(grid_eq,grid_X,eq)
+                CHCKERR('')
+                call lvl_ud(-1)
+            end if
             
             call writo('Deallocating temporary variables')
             call lvl_ud(1)
@@ -798,7 +818,7 @@ contains
         
         ! prepare vectorial perturbation vars
         integer function prepare_vars_X_1(lim_sec_X) result(ierr)
-            use X_vars, only: X_1_var_names
+            use X_vars, only: X_1_var_names, n_mod_X
             
             character(*), parameter :: rout_name = 'prepare_vars_X_1'
             
@@ -808,12 +828,18 @@ contains
             ! local variables
             character(len=max_name_ln), allocatable :: req_var_names(:)         ! requested variable names
             integer :: id                                                       ! counter
+            integer :: lim_sec_X_loc(2)                                         ! local version of lim_sec_X
             
             ! initialize ierr
             ierr = 0
             
+            ! set up local lim_sec_X
+            lim_sec_X_loc = [1,n_mod_X]
+            if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
+            
             ! 1. RE_U_0
-            req_var_names = get_full_var_names([X_1_var_names(1)],lim_sec_X)
+            call get_full_var_names([X_1_var_names(1)],req_var_names,&
+                &lim_sec_X_loc)
             allocate(RE_U_0_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
@@ -822,7 +848,8 @@ contains
             end do
             
             ! 2. IM_U_0
-            req_var_names = get_full_var_names([X_1_var_names(2)],lim_sec_X)
+            call get_full_var_names([X_1_var_names(2)],req_var_names,&
+                &lim_sec_X_loc)
             allocate(IM_U_0_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
@@ -831,7 +858,8 @@ contains
             end do
             
             ! 3. RE_U_1
-            req_var_names = get_full_var_names([X_1_var_names(3)],lim_sec_X)
+            call get_full_var_names([X_1_var_names(3)],req_var_names,&
+                &lim_sec_X_loc)
             allocate(RE_U_1_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
@@ -840,7 +868,8 @@ contains
             end do
             
             ! 4. IM_U_1
-            req_var_names = get_full_var_names([X_1_var_names(4)],lim_sec_X)
+            call get_full_var_names([X_1_var_names(4)],req_var_names,&
+                &lim_sec_X_loc)
             allocate(IM_U_1_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
@@ -849,7 +878,8 @@ contains
             end do
             
             ! 5. RE_DU_0
-            req_var_names = get_full_var_names([X_1_var_names(5)],lim_sec_X)
+            call get_full_var_names([X_1_var_names(5)],req_var_names,&
+                &lim_sec_X_loc)
             allocate(RE_DU_0_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
@@ -858,7 +888,8 @@ contains
             end do
             
             ! 6. IM_DU_0
-            req_var_names = get_full_var_names([X_1_var_names(6)],lim_sec_X)
+            call get_full_var_names([X_1_var_names(6)],req_var_names,&
+                &lim_sec_X_loc)
             allocate(IM_DU_0_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
@@ -867,7 +898,8 @@ contains
             end do
             
             ! 7. RE_DU_1
-            req_var_names = get_full_var_names([X_1_var_names(7)],lim_sec_X)
+            call get_full_var_names([X_1_var_names(7)],req_var_names,&
+                &lim_sec_X_loc)
             allocate(RE_DU_1_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
@@ -876,7 +908,8 @@ contains
             end do
             
             ! 8. IM_DU_1
-            req_var_names = get_full_var_names([X_1_var_names(8)],lim_sec_X)
+            call get_full_var_names([X_1_var_names(8)],req_var_names,&
+                &lim_sec_X_loc)
             allocate(IM_DU_1_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_1,req_var_names(id),&
@@ -887,7 +920,7 @@ contains
         
         ! prepare tensorial perturbation vars
         integer function prepare_vars_X_2(lim_sec_X) result(ierr)
-            use X_vars, only: X_2_var_names
+            use X_vars, only: X_2_var_names, n_mod_X
             
             character(*), parameter :: rout_name = 'prepare_vars_X_2'
             
@@ -897,13 +930,19 @@ contains
             ! local variables
             character(len=max_name_ln), allocatable :: req_var_names(:)         ! requested variable names
             integer :: id                                                       ! counter
+            integer :: lim_sec_X_loc(2,2)                                       ! local version of lim_sec_X
             
             ! initialize ierr
             ierr = 0
             
+            ! set up local lim_sec_X
+            lim_sec_X_loc(:,1) = [1,n_mod_X]
+            lim_sec_X_loc(:,2) = [1,n_mod_X]
+            if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
+            
             ! 1. RE_PV_int_0
-            req_var_names = get_full_var_names([X_2_var_names(1)],&
-                &[.true.],lim_sec_X)
+            call get_full_var_names([X_2_var_names(1)],[.true.],&
+                &req_var_names,lim_sec_X_loc)
             allocate(RE_PV_int_0_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
@@ -912,8 +951,8 @@ contains
             end do
             
             ! 2. IM_PV_int_0
-            req_var_names = get_full_var_names([X_2_var_names(2)],&
-                &[.true.],lim_sec_X)
+            call get_full_var_names([X_2_var_names(2)],[.true.],&
+                &req_var_names,lim_sec_X_loc)
             allocate(IM_PV_int_0_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
@@ -922,8 +961,8 @@ contains
             end do
             
             ! 3. RE_PV_int_1
-            req_var_names = get_full_var_names([X_2_var_names(3)],&
-                &[.false.],lim_sec_X)
+            call get_full_var_names([X_2_var_names(3)],[.false.],&
+                &req_var_names,lim_sec_X_loc)
             allocate(RE_PV_int_1_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
@@ -932,8 +971,8 @@ contains
             end do
             
             ! 4. IM_PV_int_1
-            req_var_names = get_full_var_names([X_2_var_names(4)],&
-                &[.false.],lim_sec_X)
+            call get_full_var_names([X_2_var_names(4)],[.false.],&
+                &req_var_names,lim_sec_X_loc)
             allocate(IM_PV_int_1_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
@@ -942,8 +981,8 @@ contains
             end do
             
             ! 5. RE_PV_int_2
-            req_var_names = get_full_var_names([X_2_var_names(5)],&
-                &[.true.],lim_sec_X)
+            call get_full_var_names([X_2_var_names(5)],[.true.],&
+                &req_var_names,lim_sec_X_loc)
             allocate(RE_PV_int_2_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
@@ -952,8 +991,8 @@ contains
             end do
             
             ! 6. IM_PV_int_2
-            req_var_names = get_full_var_names([X_2_var_names(6)],&
-                &[.true.],lim_sec_X)
+            call get_full_var_names([X_2_var_names(6)],[.true.],&
+                &req_var_names,lim_sec_X_loc)
             allocate(IM_PV_int_2_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
@@ -962,8 +1001,8 @@ contains
             end do
             
             ! 7. RE_KV_int_0
-            req_var_names = get_full_var_names([X_2_var_names(7)],&
-                &[.true.],lim_sec_X)
+            call get_full_var_names([X_2_var_names(7)],[.true.],&
+                &req_var_names,lim_sec_X_loc)
             allocate(RE_KV_int_0_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
@@ -972,8 +1011,8 @@ contains
             end do
             
             ! 8. IM_KV_int_0
-            req_var_names = get_full_var_names([X_2_var_names(8)],&
-                &[.true.],lim_sec_X)
+            call get_full_var_names([X_2_var_names(8)],[.true.],&
+                &req_var_names,lim_sec_X_loc)
             allocate(IM_KV_int_0_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
@@ -982,8 +1021,8 @@ contains
             end do
             
             ! 9. RE_KV_int_1
-            req_var_names = get_full_var_names([X_2_var_names(9)],&
-                &[.false.],lim_sec_X)
+            call get_full_var_names([X_2_var_names(9)],[.false.],&
+                &req_var_names,lim_sec_X_loc)
             allocate(RE_KV_int_1_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
@@ -992,8 +1031,8 @@ contains
             end do
             
             ! 10. IM_KV_int_1
-            req_var_names = get_full_var_names([X_2_var_names(10)],&
-                &[.false.],lim_sec_X)
+            call get_full_var_names([X_2_var_names(10)],[.false.],&
+                &req_var_names,lim_sec_X_loc)
             allocate(IM_KV_int_1_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
@@ -1002,8 +1041,8 @@ contains
             end do
             
             ! 11. RE_KV_int_2
-            req_var_names = get_full_var_names([X_2_var_names(11)],&
-                &[.true.],lim_sec_X)
+            call get_full_var_names([X_2_var_names(11)],[.true.],&
+                &req_var_names,lim_sec_X_loc)
             allocate(RE_KV_int_2_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
@@ -1012,8 +1051,8 @@ contains
             end do
             
             ! 12. IM_KV_int_2
-            req_var_names = get_full_var_names([X_2_var_names(12)],&
-                &[.true.],lim_sec_X)
+            call get_full_var_names([X_2_var_names(12)],[.true.],&
+                &req_var_names,lim_sec_X_loc)
             allocate(IM_KV_int_2_id(size(req_var_names)))
             do id = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D_X_2,req_var_names(id),&
@@ -1030,13 +1069,13 @@ contains
             ierr = 0
             
             ! get 1D sol indices
-            ierr = retrieve_var_1D_id(vars_1D_sol,'RE_X_val',RE_X_val_id)
+            ierr = retrieve_var_1D_id(vars_1D_sol,'RE_sol_val',RE_sol_val_id)
             CHCKERR('')
-            ierr = retrieve_var_1D_id(vars_1D_sol,'IM_X_val',IM_X_val_id)
+            ierr = retrieve_var_1D_id(vars_1D_sol,'IM_sol_val',IM_sol_val_id)
             CHCKERR('')
-            ierr = retrieve_var_1D_id(vars_1D_sol,'RE_X_vec',RE_X_vec_id)
+            ierr = retrieve_var_1D_id(vars_1D_sol,'RE_sol_vec',RE_sol_vec_id)
             CHCKERR('')
-            ierr = retrieve_var_1D_id(vars_1D_sol,'IM_X_vec',IM_X_vec_id)
+            ierr = retrieve_var_1D_id(vars_1D_sol,'IM_sol_vec',IM_sol_vec_id)
             CHCKERR('')
         end function prepare_vars_sol
         
@@ -1044,12 +1083,12 @@ contains
         integer function reconstruct_vars_misc() result(ierr)
             use num_vars, only: norm_disc_prec_eq, norm_disc_prec_X, &
                 &use_pol_flux_F, eq_style, use_normalization, use_pol_flux_E, &
-                &use_pol_flux_F, rho_style, norm_style, U_style
+                &use_pol_flux_F, rho_style, norm_style, U_style, X_style
             use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, &
                 &T_0, vac_perm
             use grid_vars, only: alpha
-            use X_vars, only: min_r_sol, max_r_sol, min_n_X, max_n_X, min_m_X, &
-                &max_m_X
+            use X_vars, only: min_r_sol, max_r_sol, prim_X, min_sec_X, &
+                &max_sec_X, n_mod_X
             use VMEC, only: lasym, lfreeB, mpol, ntor, nfp
             use HELENA, only: ias, nchi
             
@@ -1113,13 +1152,14 @@ contains
             call conv_1D2ND(vars_1D_misc(X_misc_id),dum_1D)
             min_r_sol = dum_1D(1)
             max_r_sol = dum_1D(2)
-            min_n_X = nint(dum_1D(3))
-            max_n_X = nint(dum_1D(4))
-            min_m_X = nint(dum_1D(5))
-            max_m_X = nint(dum_1D(6))
+            prim_X = nint(dum_1D(3))
+            n_mod_X = nint(dum_1D(4))
+            min_sec_X = nint(dum_1D(5))
+            max_sec_X = nint(dum_1D(6))
             norm_disc_prec_X = nint(dum_1D(7))
             norm_style = nint(dum_1D(8))
             U_style = nint(dum_1D(9))
+            X_style = nint(dum_1D(10))
             deallocate(dum_1D)
             
             call lvl_ud(-1)
@@ -1269,7 +1309,7 @@ contains
             call lvl_ud(-1)
             
             if (present(grid_X_B)) then
-                call writo('Creating field-aligned Xuilibrium grid')
+                call writo('Creating field-aligned perturbation grid')
                 call lvl_ud(1)
                 n_X_B = vars_1D_grid_X_B(theta_F_X_B_id)%tot_i_max-&
                     &vars_1D_grid_X_B(theta_F_X_B_id)%tot_i_min+1
@@ -1723,11 +1763,11 @@ contains
         end subroutine reconstruct_vars_X_2
         
         ! reconstruct solution vars
-        subroutine reconstruct_vars_sol(grid,sol,lim_sec_X)
+        subroutine reconstruct_vars_sol(grid_sol,sol,lim_sec_X)
             use sol_vars, only: create_sol
             
             ! input / output
-            type(grid_type), intent(in) :: grid                                 ! solution grid
+            type(grid_type), intent(in) :: grid_sol                             ! solution grid
             type(sol_type), intent(inout) :: sol                                ! solution variables
             integer, intent(in), optional :: lim_sec_X(2)                       ! limits of m_X (pol. flux) or n_X (tor. flux)
             
@@ -1738,26 +1778,26 @@ contains
             call lvl_ud(1)
             
             ! set n_EV
-            n_EV = vars_1D_sol(RE_X_vec_id)%tot_i_max(3)-&
-                &vars_1D_sol(RE_X_vec_id)%tot_i_min(3)+1
+            n_EV = vars_1D_sol(RE_sol_vec_id)%tot_i_max(3)-&
+                &vars_1D_sol(RE_sol_vec_id)%tot_i_min(3)+1
             
             ! create solution
             call create_sol(grid_sol,sol,n_EV,lim_sec_X)
             
             ! set up local sol_limits
-            sol_limits_loc = [1,grid%n(3)]
+            sol_limits_loc = [1,grid_sol%n(3)]
             if (present(sol_limits)) sol_limits_loc = sol_limits
             
-            call conv_1D2ND(vars_1D_sol(RE_X_val_id),dum_1D)
+            call conv_1D2ND(vars_1D_sol(RE_sol_val_id),dum_1D)
             sol%val = dum_1D
             deallocate(dum_1D)
-            call conv_1D2ND(vars_1D_sol(IM_X_val_id),dum_1D)
+            call conv_1D2ND(vars_1D_sol(IM_sol_val_id),dum_1D)
             sol%val = sol%val + iu*dum_1D
             deallocate(dum_1D)
-            call conv_1D2ND(vars_1D_sol(RE_X_vec_id),dum_3D)
+            call conv_1D2ND(vars_1D_sol(RE_sol_vec_id),dum_3D)
             sol%vec = dum_3D(:,sol_limits_loc(1):sol_limits_loc(2),:)
             deallocate(dum_3D)
-            call conv_1D2ND(vars_1D_sol(IM_X_vec_id),dum_3D)
+            call conv_1D2ND(vars_1D_sol(IM_sol_vec_id),dum_3D)
             sol%vec = sol%vec + &
                 &iu*dum_3D(:,sol_limits_loc(1):sol_limits_loc(2),:)
             deallocate(dum_3D)
@@ -1765,276 +1805,4 @@ contains
             call lvl_ud(-1)
         end subroutine reconstruct_vars_sol
     end function reconstruct_PB3D
-    
-    ! Set  all possible  full  variable names  for given  input  names and  mode
-    ! numbers. If no  limits for m_X (pol.  flux) or n_X (tor.  flux) are given,
-    ! the  whole range  is taken  from  the global  variables min_n_X,  max_n_X,
-    ! min_m_X and max_m_X.
-    function get_full_var_names_1(var_names,lim_sec_X) result(full_var_names)   ! vectorial version
-        use X_vars, only: get_suffix, &
-            &min_n_X, max_n_X, min_m_X, max_m_X
-        use num_vars, only: use_pol_flux_F
-        
-        ! input / output
-        character(len=*), intent(in) :: var_names(:)                            ! internal variable names
-        integer, intent(in), optional :: lim_sec_X(2)                           ! limits for m_X (pol flux) or n_X (tor flux)
-        character(len=max_name_ln), allocatable :: full_var_names(:)            ! full HDF5 variable names
-        
-        ! local variables
-        integer :: n_vars                                                       ! nr. of input variables
-        integer :: n_mod                                                        ! nr. of secondary modes
-        integer :: id, jd                                                       ! counters
-        integer :: id_loc                                                       ! counter
-        integer :: lim_sec_X_loc(2)                                             ! local lim_sec_X
-        integer :: name_len                                                     ! length of a name
-        
-        ! set local lim_sec_X
-        if (use_pol_flux_F) then
-            lim_sec_X_loc = [min_m_X,max_m_X]
-        else
-            lim_sec_X_loc = [min_n_X,max_n_X]
-        end if
-        if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
-        
-        ! set n_vars and n_mod
-        n_vars = size(var_names)
-        n_mod = lim_sec_X_loc(2) - lim_sec_X_loc(1) + 1
-        
-        ! allocate full HDF5 variable names
-        name_len = len(var_names(1))
-        if (allocated(full_var_names)) deallocate(full_var_names)
-        allocate(full_var_names(n_vars*n_mod))
-        
-        ! loop over all modes
-        id_loc = 1
-        ! loop over all variables
-        do id = 1,n_vars
-            do jd = 1,n_mod
-                full_var_names(id_loc) = trim(var_names(id))//'_'//&
-                    &trim(get_suffix(lim_sec_X_loc,jd))
-                id_loc = id_loc+1
-            end do
-        end do
-    end function get_full_var_names_1
-    function get_full_var_names_2(var_names,sym,lim_sec_X) &
-        &result(full_var_names)                                                 ! tensorial version
-        use X_vars, only: set_nn_mod, get_suffix, is_necessary_X, &
-            &min_n_X, max_n_X, min_m_X, max_m_X
-        use num_vars, only: use_pol_flux_F
-        
-        ! input / output
-        character(len=*), intent(in) :: var_names(:)                            ! internal variable names
-        logical, intent(in) :: sym(:)                                           ! if variable is symmetric
-        integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits for m_X (pol flux) or n_X (tor flux) for both dimensions
-        character(len=max_name_ln), allocatable :: full_var_names(:)            ! full HDF5 variable names
-        
-        ! local variables
-        integer :: n_vars                                                       ! nr. of input variables
-        integer :: n_mod(2)                                                     ! nr. of secondary modes
-        integer :: id, jd, kd                                                   ! counters
-        integer :: id_loc                                                       ! counter
-        integer :: lim_sec_X_loc(2,2)                                           ! local lim_sec_X
-        integer :: nn_mod_tot                                                   ! total nn_mod
-        
-        ! tests
-        if (size(var_names).ne.size(sym)) then
-            call writo('WARNING: size of sym has to be equal to size of &
-                &var_names')
-            return
-        end if
-        
-        ! set local lim_sec_X
-        if (use_pol_flux_F) then
-            lim_sec_X_loc(:,1) = [min_m_X,max_m_X]
-            lim_sec_X_loc(:,2) = [min_m_X,max_m_X]
-        else
-            lim_sec_X_loc(:,1) = [min_n_X,max_n_X]
-            lim_sec_X_loc(:,2) = [min_n_X,max_n_X]
-        end if
-        if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
-        
-        ! set n_vars and n_mod
-        n_vars = size(var_names)
-        n_mod = lim_sec_X_loc(2,:) - lim_sec_X_loc(1,:) + 1
-        
-        ! allocate full HDF5 variable names
-        if (allocated(full_var_names)) deallocate(full_var_names)
-        nn_mod_tot = 0
-        do id = 1,n_vars
-            if (sym(id)) then
-                nn_mod_tot = nn_mod_tot + set_nn_mod(lim_sec_X_loc)
-            else
-                nn_mod_tot = nn_mod_tot + product(n_mod)
-            end if
-        end do
-        allocate(full_var_names(nn_mod_tot))
-        
-        ! loop over all modes
-        id_loc = 1
-        ! loop over all variables
-        do id = 1,n_vars
-            do kd = 1,n_mod(2)
-                do jd = 1,n_mod(1)
-                    if (is_necessary_X(lim_sec_X_loc,sym(id),[jd,kd])) then
-                        full_var_names(id_loc) = trim(var_names(id))//'_'//&
-                            &trim(get_suffix(lim_sec_X_loc,jd,kd))
-                        id_loc = id_loc+1
-                    end if
-                end do
-            end do
-        end do
-    end function get_full_var_names_2
-    
-    ! Retrieves variable index from array 1D equivalents
-    integer function retrieve_var_1D_id(vars,var_name,var_id) &
-        &result(ierr)
-        character(*), parameter :: rout_name = 'retrieve_var_1D'
-        
-        ! input / output
-        type(var_1D_type), intent(in) :: vars(:)                                ! array of 1D variables
-        character(len=*), intent(in) :: var_name                                ! name of variable to retrieve
-        integer, intent(inout) :: var_id                                        ! index of variable
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: id                                                           ! counter
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! look up the variable
-        do id = 1,size(vars)
-            if (trim(vars(id)%var_name).eq.trim(var_name)) then                 ! found
-                var_id = id
-                return
-            end if
-        end do
-        
-        ! if still here, nothing found
-        ierr = 1
-        err_msg = 'Variable '//trim(var_name)//' not found'
-        CHCKERR(err_msg)
-    end function retrieve_var_1D_id
-    
-    ! Converts 1D to nD variables. The output variable has to be allocatable and
-    ! unallocated
-    subroutine conv_1D2ND_1D(var_in,var_out)                                    ! 1D version
-        ! input / output
-        type(var_1D_type), intent(in) :: var_in                                 ! 1D variable
-        real(dp), intent(inout), allocatable :: var_out(:)                      ! output variable
-        
-        ! allocate and copy variable
-        allocate(var_out(&
-            &var_in%tot_i_min(1):var_in%tot_i_max(1)))
-        var_out = reshape(var_in%p,[&
-            &var_in%tot_i_max(1)-var_in%tot_i_min(1)+1])
-    end subroutine conv_1D2ND_1D
-    subroutine conv_1D2ND_2D(var_in,var_out)                                    ! 2D version
-        ! input / output
-        type(var_1D_type), intent(in) :: var_in                                 ! 1D variable
-        real(dp), intent(inout), allocatable :: var_out(:,:)                    ! output variable
-        
-        ! allocate and copy variable
-        allocate(var_out(&
-            &var_in%tot_i_min(1):var_in%tot_i_max(1),&
-            &var_in%tot_i_min(2):var_in%tot_i_max(2)))
-        var_out = reshape(var_in%p,[&
-            &var_in%tot_i_max(1)-var_in%tot_i_min(1)+1,&
-            &var_in%tot_i_max(2)-var_in%tot_i_min(2)+1])
-    end subroutine conv_1D2ND_2D
-    subroutine conv_1D2ND_3D(var_in,var_out)                                    ! 3D version
-        ! input / output
-        type(var_1D_type), intent(in) :: var_in                                 ! 1D variable
-        real(dp), intent(inout), allocatable :: var_out(:,:,:)                  ! output variable
-        
-        ! allocate and copy variable
-        allocate(var_out(&
-            &var_in%tot_i_min(1):var_in%tot_i_max(1),&
-            &var_in%tot_i_min(2):var_in%tot_i_max(2),&
-            &var_in%tot_i_min(3):var_in%tot_i_max(3)))
-        var_out = reshape(var_in%p,[&
-            &var_in%tot_i_max(1)-var_in%tot_i_min(1)+1,&
-            &var_in%tot_i_max(2)-var_in%tot_i_min(2)+1,&
-            &var_in%tot_i_max(3)-var_in%tot_i_min(3)+1])
-    end subroutine conv_1D2ND_3D
-    subroutine conv_1D2ND_4D(var_in,var_out)                                    ! 4D version
-        ! input / output
-        type(var_1D_type), intent(in) :: var_in                                 ! 1D variable
-        real(dp), intent(inout), allocatable :: var_out(:,:,:,:)                ! output variable
-        
-        ! allocate and copy variable
-        allocate(var_out(&
-            &var_in%tot_i_min(1):var_in%tot_i_max(1),&
-            &var_in%tot_i_min(2):var_in%tot_i_max(2),&
-            &var_in%tot_i_min(3):var_in%tot_i_max(3),&
-            &var_in%tot_i_min(4):var_in%tot_i_max(4)))
-        var_out = reshape(var_in%p,[&
-            &var_in%tot_i_max(1)-var_in%tot_i_min(1)+1,&
-            &var_in%tot_i_max(2)-var_in%tot_i_min(2)+1,&
-            &var_in%tot_i_max(3)-var_in%tot_i_min(3)+1,&
-            &var_in%tot_i_max(4)-var_in%tot_i_min(4)+1])
-    end subroutine conv_1D2ND_4D
-    !subroutine conv_1D2ND_5D(var_in,var_out)                                    ! 5D version
-        !! input / output
-        !type(var_1D_type), intent(in) :: var_in                                 ! 1D variable
-        !real(dp), intent(inout), allocatable :: var_out(:,:,:,:,:)              ! output variable
-        
-        !! allocate and copy variable
-        !allocate(var_out(&
-            !&var_in%tot_i_min(1):var_in%tot_i_max(1),&
-            !&var_in%tot_i_min(2):var_in%tot_i_max(2),&
-            !&var_in%tot_i_min(3):var_in%tot_i_max(3),&
-            !&var_in%tot_i_min(4):var_in%tot_i_max(4),&
-            !&var_in%tot_i_min(5):var_in%tot_i_max(5)))
-        !var_out = reshape(var_in%p,[&
-            !&var_in%tot_i_max(1)-var_in%tot_i_min(1)+1,&
-            !&var_in%tot_i_max(2)-var_in%tot_i_min(2)+1,&
-            !&var_in%tot_i_max(3)-var_in%tot_i_min(3)+1,&
-            !&var_in%tot_i_max(4)-var_in%tot_i_min(4)+1,&
-            !&var_in%tot_i_max(5)-var_in%tot_i_min(5)+1])
-    !end subroutine conv_1D2ND_5D
-    subroutine conv_1D2ND_6D(var_in,var_out)                                    ! 6D version
-        ! input / output
-        type(var_1D_type), intent(in) :: var_in                                 ! 1D variable
-        real(dp), intent(inout), allocatable :: var_out(:,:,:,:,:,:)            ! output variable
-        
-        ! allocate and copy variable
-        allocate(var_out(&
-            &var_in%tot_i_min(1):var_in%tot_i_max(1),&
-            &var_in%tot_i_min(2):var_in%tot_i_max(2),&
-            &var_in%tot_i_min(3):var_in%tot_i_max(3),&
-            &var_in%tot_i_min(4):var_in%tot_i_max(4),&
-            &var_in%tot_i_min(5):var_in%tot_i_max(5),&
-            &var_in%tot_i_min(6):var_in%tot_i_max(6)))
-        var_out = reshape(var_in%p,[&
-            &var_in%tot_i_max(1)-var_in%tot_i_min(1)+1,&
-            &var_in%tot_i_max(2)-var_in%tot_i_min(2)+1,&
-            &var_in%tot_i_max(3)-var_in%tot_i_min(3)+1,&
-            &var_in%tot_i_max(4)-var_in%tot_i_min(4)+1,&
-            &var_in%tot_i_max(5)-var_in%tot_i_min(5)+1,&
-            &var_in%tot_i_max(6)-var_in%tot_i_min(6)+1])
-    end subroutine conv_1D2ND_6D
-    subroutine conv_1D2ND_7D(var_in,var_out)                                    ! 7D version
-        ! input / output
-        type(var_1D_type), intent(in) :: var_in                                 ! 1D variable
-        real(dp), intent(inout), allocatable :: var_out(:,:,:,:,:,:,:)          ! output variable
-        
-        ! allocate and copy variable
-        allocate(var_out(&
-            &var_in%tot_i_min(1):var_in%tot_i_max(1),&
-            &var_in%tot_i_min(2):var_in%tot_i_max(2),&
-            &var_in%tot_i_min(3):var_in%tot_i_max(3),&
-            &var_in%tot_i_min(4):var_in%tot_i_max(4),&
-            &var_in%tot_i_min(5):var_in%tot_i_max(5),&
-            &var_in%tot_i_min(6):var_in%tot_i_max(6),&
-            &var_in%tot_i_min(7):var_in%tot_i_max(7)))
-        var_out = reshape(var_in%p,[&
-            &var_in%tot_i_max(1)-var_in%tot_i_min(1)+1,&
-            &var_in%tot_i_max(2)-var_in%tot_i_min(2)+1,&
-            &var_in%tot_i_max(3)-var_in%tot_i_min(3)+1,&
-            &var_in%tot_i_max(4)-var_in%tot_i_min(4)+1,&
-            &var_in%tot_i_max(5)-var_in%tot_i_min(5)+1,&
-            &var_in%tot_i_max(6)-var_in%tot_i_min(6)+1,&
-            &var_in%tot_i_max(7)-var_in%tot_i_min(7)+1])
-    end subroutine conv_1D2ND_7D
 end module PB3D_ops

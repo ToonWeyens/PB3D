@@ -1,6 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Operations and variables  concerning giving output, on the  screen as well !
-!   as in output files                                                         !
+!   Numerical utilities related to giving output                               !
 !------------------------------------------------------------------------------!
 module messages
     use str_ops
@@ -213,7 +212,7 @@ contains
     !       files, which  are then read  by the  global master when  the group's
     !       work is done
     subroutine writo(input_str,persistent)
-        use num_vars, only: rank, output_i, no_messages
+        use num_vars, only: rank, output_i, no_output
         
         ! input / output
         character(len=*), intent(in) :: input_str                               ! the name that is searched for
@@ -232,8 +231,8 @@ contains
         !! (USE http://beige.ucs.indiana.edu/I590/node89.html)                !!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         
-        ! bypass messages if no_messages
-        if (no_messages) return
+        ! bypass output if no_output
+        if (no_output) return
         
         ! setup ignore
         ignore = .true.                                                         ! ignore by default

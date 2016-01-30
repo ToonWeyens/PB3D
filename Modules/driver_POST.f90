@@ -29,22 +29,25 @@ contains
     ! already given, but the  output on the plot grid has  to be calculated from
     ! scratch, while  for HELENA both outputs  have to be interpolated  from the
     ! output tables.
+    ! Note:  Miscellaneous  variables  are reconstructed  in  "open_output"  in
+    ! "files_opes", before the driver is called.
     integer function run_driver_POST() result(ierr)
-        use num_vars, only: no_messages, no_plots, eq_style, plot_resonance, &
+        use num_vars, only: no_output, no_plots, eq_style, plot_resonance, &
             &plot_flux_q, plot_grid, prog_name, output_name, rank
-        use PB3D_ops, only: read_PB3D, reconstruct_PB3D, retrieve_var_1D_id
+        use PB3D_ops, only: read_PB3D, reconstruct_PB3D
+        use PB3D_utilities, only: retrieve_var_1D_id
         use PB3D_vars, only: vars_1D_grid_eq, vars_1D_grid_X, vars_1D_grid_sol
         use grid_vars, only: create_grid, dealloc_grid
-        use grid_ops, only: calc_norm_range
+        use grid_ops, only: calc_norm_range, plot_grid_real
         use eq_vars, only: create_eq, dealloc_eq
         use eq_ops, only: calc_eq, flux_q_plot, calc_derived_q
         use met_vars, only: create_met, dealloc_met
         use met_ops, only: calc_met, calc_F_derivs
         use X_vars, only: create_X, dealloc_X
         use sol_vars, only: dealloc_sol
-        use grid_ops, only: calc_XYZ_grid, extend_grid_E, plot_grid_real
+        use grid_utilities, only: calc_XYZ_grid, extend_grid_E
         use X_ops, only: calc_X, resonance_plot, calc_res_surf
-        use sol_ops, only: plot_X_vals, plot_X_vec, decompose_energy
+        use sol_ops, only: plot_sol_vals, plot_sol_vec, decompose_energy
         use HELENA, only: interp_HEL_on_grid
         use files_utilities, only: nextunit
         use utilities, only: calc_aux_utilities
@@ -80,11 +83,11 @@ contains
         integer :: sol_limits(2)                                                ! i_limit of sol variables
         integer :: r_F_eq_id, r_F_X_id, r_F_sol_id                              ! index of equilibrium, perturbation and solution r_F
         logical :: no_plots_loc                                                 ! local copy of no_plots
-        logical :: no_messages_loc                                              ! local copy of no_messages
+        logical :: no_output_loc                                                ! local copy of no_output
         real(dp), allocatable :: XYZ_plot(:,:,:,:)                              ! X, Y and Z on plot grid
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
-        complex(dp), allocatable :: X_val_comp(:,:,:)                           ! fraction between total E_pot and E_kin, compared with EV
-        complex(dp), allocatable :: X_val_comp_loc(:,:,:)                       ! local X_val_comp
+        complex(dp), allocatable :: sol_val_comp(:,:,:)                         ! fraction between total E_pot and E_kin, compared with EV
+        complex(dp), allocatable :: sol_val_comp_loc(:,:,:)                     ! local sol_val_comp
         character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln) :: full_output_name                           ! full name
         character(len=max_str_ln) :: format_head                                ! header
@@ -289,9 +292,9 @@ contains
                 
                 call writo('Calculating quantities on plot grid')
                 call lvl_ud(1)
-                ! back up no_plots and no_messages and set to .true.
+                ! back up no_plots and no_output and set to .true.
                 no_plots_loc = no_plots; no_plots = .true.
-                no_messages_loc = no_messages; no_messages = .true.
+                no_output_loc = no_output; no_output = .true.
                 ! Calculate the equilibrium quantities
                 ierr = calc_eq(grid_eq_plot,eq_plot)
                 CHCKERR('')
@@ -311,9 +314,9 @@ contains
                 ierr = calc_X(grid_eq_plot,grid_X_plot,eq_plot,met_plot,&
                     &X_1_plot)
                 CHCKERR('')
-                ! reset no_plots and no_messages
+                ! reset no_plots and no_output
                 no_plots = no_plots_loc
-                no_messages = no_messages_loc
+                no_output = no_output_loc
                 call lvl_ud(-1)
                 call writo('Quantities calculated')
             case (2)                                                            ! HELENA
@@ -361,7 +364,7 @@ contains
         call writo('Plot the Eigenvalues')
         call lvl_ud(1)
         
-        ierr = plot_X_vals(sol,last_unstable_id)
+        ierr = plot_sol_vals(sol,last_unstable_id)
         CHCKERR('')
         
         ! user output
@@ -376,7 +379,7 @@ contains
         call writo('Prepare Eigenvector plots')
         call lvl_ud(1)
         
-        call writo('Calculate plot information')
+        call writo('Calculate helper variables')
         call lvl_ud(1)
         allocate(XYZ_plot(grid_sol_plot%n(1),grid_sol_plot%n(2),&
             &grid_sol_plot%loc_n_r,3))
@@ -437,7 +440,7 @@ contains
         call lvl_ud(1)
         
         ! loop over three ranges
-        allocate(X_val_comp(2,2,0))
+        allocate(sol_val_comp(2,2,0))
         do jd = 1,3
             if (min_id(jd).le.max_id(jd)) call &
                 &writo('RANGE '//trim(i2str(jd))//': modes '//&
@@ -455,10 +458,10 @@ contains
                 call writo('Plot the Eigenvector')
                 call lvl_ud(1)
 #if ldebug
-                ierr = plot_X_vec(grid_eq_plot,grid_X_plot,grid_sol_plot,&
+                ierr = plot_sol_vec(grid_eq_plot,grid_X_plot,grid_sol_plot,&
                     &eq_plot,met_plot,X_1_plot,sol,XYZ_plot,id,res_surf)
 #else
-                ierr = plot_X_vec(grid_eq_plot,grid_X_plot,grid_sol_plot,&
+                ierr = plot_sol_vec(grid_eq_plot,grid_X_plot,grid_sol_plot,&
                     &eq_plot,X_1_plot,sol,XYZ_plot,id,res_surf)
 #endif
                 CHCKERR('')
@@ -471,16 +474,16 @@ contains
                 ! user output
                 call writo('Decompose the energy into its terms')
                 call lvl_ud(1)
-                allocate(X_val_comp_loc(2,2,size(X_val_comp,3)+1))
-                X_val_comp_loc(:,:,1:size(X_val_comp,3)) = X_val_comp
+                allocate(sol_val_comp_loc(2,2,size(sol_val_comp,3)+1))
+                sol_val_comp_loc(:,:,1:size(sol_val_comp,3)) = sol_val_comp
                 ierr = decompose_energy(grid_eq_B,grid_X_B,grid_sol,eq_B,met_B,&
-                    &X_1_B,sol,id,output_EN_i,.true.,&
-                    &X_val_comp=X_val_comp_loc(:,:,size(X_val_comp_loc,3)))
+                    &X_1_B,sol,id,output_EN_i,.true.,sol_val_comp=&
+                    &sol_val_comp_loc(:,:,size(sol_val_comp_loc,3)))
                 CHCKERR('')
-                deallocate(X_val_comp)
-                allocate(X_val_comp(2,2,size(X_val_comp_loc,3)))
-                X_val_comp = X_val_comp_loc
-                deallocate(X_val_comp_loc)
+                deallocate(sol_val_comp)
+                allocate(sol_val_comp(2,2,size(sol_val_comp_loc,3)))
+                sol_val_comp = sol_val_comp_loc
+                deallocate(sol_val_comp_loc)
                 ierr = decompose_energy(grid_eq_plot,grid_X_plot,grid_sol,&
                     &eq_plot,met_plot,X_1_plot,sol,id,output_EN_i,.false.,&
                     &XYZ=XYZ_plot)
@@ -507,7 +510,7 @@ contains
         CHCKERR('')
         
         ! print the difference between the Eigenvalue and the energy fraction
-        call plot_X_val_comp(X_val_comp)
+        call plot_sol_val_comp(sol_val_comp)
         
         ! user output
         call lvl_ud(-1)
@@ -638,11 +641,11 @@ contains
     end subroutine find_stab_ranges
     
     ! plots difference between Eigenvalues and energy fraction
-    subroutine plot_X_val_comp(X_val_comp)
+    subroutine plot_sol_val_comp(sol_val_comp)
         use num_vars, only: rank
         
         ! input /output
-        complex(dp) :: X_val_comp(:,:,:)                                        ! fraction between total E_pot and E_kin, compared with EV
+        complex(dp) :: sol_val_comp(:,:,:)                                      ! fraction between total E_pot and E_kin, compared with EV
         
         ! local variables
         character(len=max_str_ln) :: plot_title                                 ! title for plots
@@ -650,44 +653,50 @@ contains
         
         if (rank.eq.0) then
             ! real part
-            plot_title = 'RE X_val and E_frac'
-            plot_name = 'X_val_comp_RE'
-            call print_GP_2D(plot_title,plot_name,realpart(X_val_comp(:,1,:)),&
-                &x=realpart(X_val_comp(:,2,:)),draw=.false.)
-            call draw_GP(plot_title,plot_name,plot_name,size(X_val_comp,3),1,&
+            plot_title = 'RE sol_val and E_frac'
+            plot_name = 'sol_val_comp_RE'
+            call print_GP_2D(plot_title,plot_name,&
+                &realpart(sol_val_comp(:,1,:)),&
+                &x=realpart(sol_val_comp(:,2,:)),draw=.false.)
+            call draw_GP(plot_title,plot_name,plot_name,size(sol_val_comp,3),1,&
                 &.false.)
-            plot_title = 'RE X_val and E_frac rel diff'
-            plot_name = 'X_val_comp_RE_rel_diff'
+            plot_title = 'RE sol_val and E_frac rel diff'
+            plot_name = 'sol_val_comp_RE_rel_diff'
             call print_GP_2D(plot_title,plot_name,realpart(&
-                &(X_val_comp(1,2,:)-X_val_comp(2,2,:))/X_val_comp(1,2,:)),&
-                &x=realpart(X_val_comp(1,1,:)),draw=.false.)
+                &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
+                &sol_val_comp(1,2,:)),x=realpart(sol_val_comp(1,1,:)),&
+                &draw=.false.)
             call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
-            plot_title = 'RE X_val and E_frac log rel diff'
-            plot_name = 'X_val_comp_RE_rel_diff_log'
+            plot_title = 'RE sol_val and E_frac log rel diff'
+            plot_name = 'sol_val_comp_RE_rel_diff_log'
             call print_GP_2D(plot_title,plot_name,log10(abs(realpart(&
-                &(X_val_comp(1,2,:)-X_val_comp(2,2,:))/X_val_comp(1,2,:)))),&
-                &x=realpart(X_val_comp(1,1,:)),draw=.false.)
+                &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
+                &sol_val_comp(1,2,:)))),x=realpart(sol_val_comp(1,1,:)),&
+                &draw=.false.)
             call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
             
             ! imaginary part
-            plot_title = 'IM X_val and E_frac'
-            plot_name = 'X_val_comp_IM'
-            call print_GP_2D(plot_title,plot_name,realpart(X_val_comp(:,1,:)),&
-                &x=imagpart(X_val_comp(:,2,:)),draw=.false.)
-            call draw_GP(plot_title,plot_name,plot_name,size(X_val_comp,3),1,&
+            plot_title = 'IM sol_val and E_frac'
+            plot_name = 'sol_val_comp_IM'
+            call print_GP_2D(plot_title,plot_name,&
+                &realpart(sol_val_comp(:,1,:)),x=imagpart(sol_val_comp(:,2,:)),&
+                &draw=.false.)
+            call draw_GP(plot_title,plot_name,plot_name,size(sol_val_comp,3),1,&
                 &.false.)
-            plot_title = 'IM X_val and E_frac rel diff'
-            plot_name = 'X_val_comp_IM_rel_diff'
+            plot_title = 'IM sol_val and E_frac rel diff'
+            plot_name = 'sol_val_comp_IM_rel_diff'
             call print_GP_2D(plot_title,plot_name,imagpart(&
-                &(X_val_comp(1,2,:)-X_val_comp(2,2,:))/X_val_comp(1,2,:)),&
-                &x=realpart(X_val_comp(1,1,:)),draw=.false.)
+                &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
+                &sol_val_comp(1,2,:)),x=realpart(sol_val_comp(1,1,:)),&
+                &draw=.false.)
             call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
-            plot_title = 'IM X_val and E_frac log rel diff'
-            plot_name = 'X_val_comp_IM_rel_diff_log'
+            plot_title = 'IM sol_val and E_frac log rel diff'
+            plot_name = 'sol_val_comp_IM_rel_diff_log'
             call print_GP_2D(plot_title,plot_name,log10(abs(imagpart(&
-                &(X_val_comp(1,2,:)-X_val_comp(2,2,:))/X_val_comp(1,2,:)))),&
-                &x=realpart(X_val_comp(1,1,:)),draw=.false.)
+                &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
+                &sol_val_comp(1,2,:)))),x=realpart(sol_val_comp(1,1,:)),&
+                &draw=.false.)
             call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
         end if
-    end subroutine plot_X_val_comp
+    end subroutine plot_sol_val_comp
 end module driver_POST

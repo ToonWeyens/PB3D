@@ -15,7 +15,10 @@ module X_ops
     implicit none
     private
     public calc_X, calc_magn_ints, print_output_X, resonance_plot, &
-        &calc_res_surf, check_X_modes
+        &calc_res_surf, check_X_modes, setup_nm_X
+#if ldebug
+    public debug_check_X_modes_2
+#endif
     
     ! interfaces
     interface calc_X
@@ -24,6 +27,11 @@ module X_ops
     interface print_output_X
         module procedure print_output_X_1, print_output_X_2
     end interface
+    
+    ! global variables
+#if ldebug
+    logical :: debug_check_X_modes_2 = .false.                                  ! plot debug information for calc_XUQ_arr
+#endif
     
 contains
     ! Calculates either vectorial or tensorial perturbation variables.
@@ -110,6 +118,699 @@ contains
         call writo('Tensorial perturbation variables calculated')
     end function calc_X_2
     
+    ! Setup  minimum and  maximum  of  mode numbers  at  every  flux surface  in
+    ! equilibrium coordinates
+    !   - min_n_X, max_n_X
+    !   - min_m_X, max_m_X,
+    ! as well as the actual mode numbers
+    !   - n_X, m_X,
+    ! in perturbation coordinates and the indices of the secondary modes
+    !   - sec_X_ind,
+    ! in perturbation coordinates as well.
+    !  It functions depending  on the X style used: 1  (prescribed) or 2 (fast).
+    ! For the  fast style, at  every flux surface the  range of modes  is sought
+    ! that resonates most:
+    !   - m = nq +/- n_mod_X/2      for poloidal flux
+    !   - n = iota m +/- n_mod_X/2  for poloidal flux
+    ! but at the same  time, both m and n have to be  larger, in absolute value,
+    ! than  min_sec_X. Therefore,  the range  of  width n_mod_X  can be  shifted
+    ! upwards.
+    ! Note: the limits are setup in the  equilibrium grid but the values are set
+    ! up in the perturbation grid.
+    ! Note: The perturbation grid has to be setup for this routine to work.
+    integer function setup_nm_X(grid_eq,grid_X,eq) result(ierr)
+        use num_vars, only: use_pol_flux_F, X_style, rank
+        use X_vars, only: prim_X, min_sec_X, max_sec_X, n_mod_X, min_n_X, &
+            &max_n_X, min_m_X, max_m_X, min_nm_X, n_X, m_X, sec_X_ind
+        use utilities, only: interp_fun
+        use MPI_utilities, only: get_ser_var
+        use grid_vars, only: dealloc_grid
+        use grid_utilities, only: trim_grid
+        use eq_vars, only: max_flux_p_F, max_flux_t_F
+        
+        character(*), parameter :: rout_name = 'setup_nm_X'
+        
+        ! input / output
+        type(grid_type) :: grid_eq                                              ! equilibrium grid
+        type(grid_type) :: grid_X                                               ! perturbation grid
+        type(eq_type) :: eq                                                     ! equilibrium variables
+        
+        ! local variables
+        type(grid_type) :: grid_eq_trim                                         ! trimmed version of equilibrium
+        type(grid_type) :: grid_X_trim                                          ! trimmed version of perturbation grid
+        real(dp), allocatable :: lim_nm_X(:,:)                                  ! bundled mode number limits
+        real(dp), allocatable :: lim_nm_X_interp(:,:)                           ! interpolated lim_nm_X
+        real(dp), allocatable :: jq_tot(:)                                      ! saf. fac. or rot. transf. and derivs. in Flux coords.
+        real(dp), allocatable :: x_plot(:,:)                                ! x values of plot
+        integer :: norm_eq_id(2)                                                ! untrimmed normal indices for trimmed grids
+        integer :: id, ld, kd                                                   ! counters
+        integer :: n_mod_tot                                                    ! total number of modes, not equal to n_mod_X for X_style 2
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=max_str_ln) :: plot_title                                 ! title for plots
+        character(len=max_str_ln) :: plot_name                                  ! file name for plots
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Setting up perturbation modes')
+        call lvl_ud(1)
+        
+        ! get trimmed grids
+        ierr = trim_grid(grid_eq,grid_eq_trim,norm_eq_id)
+        CHCKERR('')
+        ierr = trim_grid(grid_X,grid_X_trim)
+        CHCKERR('')
+        
+        ! (re)allocate variables
+        if (allocated(min_n_X)) deallocate(min_n_X)
+        if (allocated(max_n_X)) deallocate(max_n_X)
+        if (allocated(min_m_X)) deallocate(min_m_X)
+        if (allocated(max_m_X)) deallocate(max_m_X)
+        allocate(min_n_X(grid_eq_trim%n(3)),max_n_X(grid_eq_trim%n(3)))
+        allocate(min_m_X(grid_eq_trim%n(3)),max_m_X(grid_eq_trim%n(3)))
+        
+        ! get serial version of safety factor or rot. transform
+        allocate(jq_tot(grid_eq_trim%n(3)))
+        if (use_pol_flux_F) then
+            if (grid_eq%divided) then
+                ierr = get_ser_var(eq%q_saf_FD(norm_eq_id(1):norm_eq_id(2),0),&
+                    &jq_tot,scatter=.true.)
+                CHCKERR('')
+            else
+                jq_tot = eq%q_saf_FD(:,0)
+            end if
+        else
+            if (grid_eq%divided) then
+                ierr = get_ser_var(eq%rot_t_FD(norm_eq_id(1):norm_eq_id(2),0),&
+                    &jq_tot,scatter=.true.)
+                CHCKERR('')
+            else
+                jq_tot = eq%q_saf_FD(:,0)
+            end if
+        end if
+        
+        ! set the limits depending on the X style
+        select case (X_style)
+            case (1)                                                            ! prescribed
+                if (use_pol_flux_F) then
+                    min_n_X = prim_X
+                    max_n_X = prim_X
+                    min_m_X = min_sec_X
+                    max_m_X = max_sec_X
+                else
+                    min_n_X = min_sec_X
+                    max_n_X = max_sec_X
+                    min_m_X = prim_X
+                    max_m_X = prim_X
+                end if
+            case (2)                                                            ! fast
+                if (use_pol_flux_F) then
+                    min_n_X = prim_X
+                    max_n_X = prim_X
+                    if (prim_X*jq_tot(1).gt.0) then                             ! nq > 0: m > 0
+                        min_m_X = nint(prim_X*jq_tot-n_mod_X*0.5)
+                        min_m_X = max(min_nm_X,min_m_X)
+                        max_m_X = min_m_X + n_mod_X - 1
+                    else                                                        ! nq < 0: m < 0
+                        max_m_X = nint(prim_X*jq_tot+n_mod_X*0.5)
+                        max_m_X = min(-min_nm_X,max_m_X)
+                        min_m_X = max_m_X - n_mod_X + 1
+                    end if
+                else
+                    if (prim_X*jq_tot(1).gt.0) then                             ! nq > 0: m > 0
+                        min_n_X = nint(prim_X*jq_tot-n_mod_X*0.5)
+                        min_n_X = max(min_nm_X,min_n_X)
+                        max_n_X = min_n_X + n_mod_X - 1
+                    else                                                        ! nq < 0: m < 0
+                        max_n_X = nint(prim_X*jq_tot+n_mod_X*0.5)
+                        max_n_X = min(-min_nm_X,max_n_X)
+                        min_n_X = max_n_X - n_mod_X + 1
+                    end if
+                    min_m_X = prim_X
+                    max_m_X = prim_X
+                end if
+            case default
+                err_msg = 'No X style associated with '//trim(i2str(X_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        
+        ! bundle the mode limits in one variable and convert to real
+        allocate(lim_nm_X(4,grid_eq_trim%n(3)))
+        lim_nm_X(1,:) = min_n_X*1._dp
+        lim_nm_X(2,:) = max_n_X*1._dp
+        lim_nm_X(3,:) = min_m_X*1._dp
+        lim_nm_X(4,:) = max_m_X*1._dp
+        
+        ! interpolate the limits at every normal point of perturbation grid
+        allocate(lim_nm_X_interp(4,grid_X_trim%n(3)))
+        do kd = 1,grid_X_trim%n(3)
+            ierr = interp_fun(lim_nm_X_interp(:,kd),lim_nm_X,&
+                &grid_X_trim%r_F(kd),grid_eq_trim%r_F)
+            CHCKERR('')
+        end do
+        
+        ! set n and m
+        if (allocated(n_X)) deallocate(n_X)
+        if (allocated(m_X)) deallocate(m_X)
+        allocate(n_X(grid_X_trim%n(3),n_mod_X))
+        allocate(m_X(grid_X_trim%n(3),n_mod_X))
+        if (use_pol_flux_F) then
+            do kd = 1,grid_X_trim%n(3)
+                n_X(kd,:) = nint(lim_nm_X_interp(1,kd))
+                m_X(kd,:) = [(ld, ld = nint(lim_nm_X_interp(3,kd)),&
+                    &nint(lim_nm_X_interp(4,kd)))]
+            end do
+        else
+            do kd = 1,grid_X_trim%n(3)
+                n_X(kd,:) = [(ld, ld = nint(lim_nm_X_interp(1,kd)),&
+                    &nint(lim_nm_X_interp(3,kd)))]
+                m_X(kd,:) = nint(lim_nm_X_interp(3,kd))
+            end do
+        end if
+        
+        ! master plots output
+        if (rank.eq.0) then
+            ! set up x values
+            allocate(x_plot(grid_X_trim%n(3),n_mod_X))
+            do ld = 1,n_mod_X
+                x_plot(:,ld) = grid_X_trim%r_F
+            end do
+            if (use_pol_flux_F) then
+                x_plot = x_plot*2*pi/max_flux_p_F
+            else
+                x_plot = x_plot*2*pi/max_flux_t_F
+            end if
+            ! plot poloidal modes
+            plot_title = 'poloidal mode numbers'
+            plot_name = 'modes_m_X'
+            call print_GP_2D(plot_title,plot_name,m_X*1._dp,x=x_plot,&
+                &draw=.false.)
+            call draw_GP(plot_title,plot_name,plot_name,n_mod_X,1,.false.)
+            ! plot toroidal modes
+            plot_title = 'toroidal mode numbers'
+            plot_name = 'modes_n_X'
+            call print_GP_2D(plot_title,plot_name,n_X*1._dp,x=x_plot,&
+                &draw=.false.)
+            call draw_GP(plot_title,plot_name,plot_name,n_mod_X,1,.false.)
+        end if
+        
+        ! total number of modes that might occur
+        if (use_pol_flux_F) then
+            n_mod_tot = maxval(max_m_X)-minval(min_m_X)+1
+        else
+            n_mod_tot = maxval(max_n_X)-minval(min_n_X)+1
+        end if
+        
+        ! set up indices of n and m
+        if (allocated(sec_X_ind)) deallocate(sec_X_ind)
+        allocate(sec_X_ind(grid_X_trim%n(3),n_mod_tot))
+        
+        ! loop over all possible modes to find possible indices
+        sec_X_ind = 0
+        do kd = 1,grid_X_trim%n(3)
+            do ld = 1,n_mod_tot
+                do id = 1,n_mod_X
+                    if (use_pol_flux_F) then
+                        if (m_X(kd,id).eq.minval(min_m_X)+ld-1) &
+                            &sec_X_ind(kd,ld) = id
+                    else
+                        if (n_X(kd,id).eq.minval(min_n_X)+ld-1) &
+                            &sec_X_ind(kd,ld) = id
+                    end if
+                end do
+            end do
+        end do
+        
+        ! clean up
+        call dealloc_grid(grid_eq_trim)
+        call dealloc_grid(grid_X_trim)
+        
+        call lvl_ud(-1)
+        call writo('Perturbation modes set up')
+    end function setup_nm_X
+    
+    ! Checks whether the high-n approximation is valid:
+    ! For X style 1 (prescribed): every  mode should resonate at least somewhere
+    ! in the whole normal range:
+    !   |nq-m|/|n| < tol and |nq-m|/|m| < tol for poloidal flux
+    !   |q-iotam|/|m| < tol and |n-iotam|/|n| < tol for toroidal flux
+    ! where tol << 1.
+    ! This condition is determined by the sign of q (or iota) and given by:
+    !   max(min_q-tol,min_q/(1+tol)) < m/n < min(max_q+tol,max_q/(1-tol)), q>0
+    !   max(min_q-tol,min_q/(1-tol)) < m/n < min(max_q+tol,max_q/(1+tol)), q<0
+    ! for poloidal flux. For toroidal flux, q should be replaced by iota and m/n
+    ! by n/m.
+    ! For X style 2 (fast): the resonance has been taken care of, but it remains
+    ! to be checked whether the number of modes is efficient.
+    ! Note: these routines need the variables on  a full grid and should only be
+    ! called by one process, as is the case for the perturbation driver.
+    integer function check_X_modes(grid_eq,eq) result(ierr)
+        use num_vars, only: X_style, rank, use_pol_flux_F
+        
+        character(*), parameter :: rout_name = 'check_X_modes'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        call writo('Checking mode numbers')
+        call lvl_ud(1)
+        
+        ! check the modes depending on the X style, only master
+        if (rank.eq.0) then
+            select case (X_style)
+                case (1)                                                        ! prescribed
+                    ierr = check_X_modes_1(eq)
+                    CHCKERR('')
+                case (2)                                                        ! fast
+                    call check_X_modes_2(grid_eq,eq)
+                case default
+                    err_msg = 'No X style associated with '//&
+                        &trim(i2str(X_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+        end if
+        
+        call lvl_ud(-1)
+        call writo('Mode numbers checked')
+    contains
+        ! version for  X style 1: Checks  whether there exists a  range in which
+        ! each of the modes resonates, with a certain tolerance tol_norm.
+        integer function check_X_modes_1(eq) result(ierr)
+            use X_vars, only: prim_X, min_sec_X, n_mod_X
+            use num_vars, only: tol_norm
+            
+            character(*), parameter :: rout_name = 'check_X_modes_1'
+            
+            ! input / output
+            type(eq_type), intent(in) :: eq                                     ! equilibrium variables
+            
+            ! local variables
+            integer :: id                                                       ! counter
+            integer :: pmone                                                    ! plus or minus one
+            real(dp) :: min_jq, max_jq                                          ! min. and max. values of q or iota
+            real(dp) :: lim_lo, lim_hi                                          ! lower and upper limit on n/m (or m/n)
+            character(len=max_str_ln) :: jq_name                                ! either safety factor or rotational transform
+            character(len=1) :: mode_name                                       ! either n or m
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! user output
+            call writo('The tolerance used is '//trim(r2strt(tol_norm))//'...')
+            
+            ! set min_jq and max_jq in Flux coordinate system
+            if (use_pol_flux_F) then 
+                min_jq = minval(eq%q_saf_FD(:,0))
+                max_jq = maxval(eq%q_saf_FD(:,0))
+            else
+                min_jq = minval(eq%rot_t_FD(:,0))
+                max_jq = maxval(eq%rot_t_FD(:,0))
+            end if
+            
+            ! set up jq name
+            if (use_pol_flux_F) then
+                jq_name = 'safety factor'
+                mode_name = 'm'
+            else
+                jq_name = 'rotational transform'
+                mode_name = 'n'
+            end if
+            
+            ! set up plus minus one, according to the sign of jq
+            if (min_jq.lt.0 .and. max_jq.lt.0) then
+                pmone = -1
+            else if (min_jq.gt.0 .and. max_jq.gt.0) then
+                pmone = 1
+            else
+                err_msg = trim(jq_name)//' cannot change sign'
+                ierr = 1
+                CHCKERR(err_msg)
+            end if
+            
+            ! calculate upper and lower limits
+            lim_lo = max(min_jq-tol_norm,min_jq/(1+pmone*tol_norm))
+            lim_hi = min(max_jq+tol_norm,max_jq/(1-pmone*tol_norm))
+            
+            ! for every mode (n,m) check whether m/n is inside the range of q values
+            ! or n/m inside the range of iota values
+            do id = 1,n_mod_X
+                ! check if limits are met
+                if (use_pol_flux_F) then
+                    if ((min_sec_X+id-1._dp)/prim_X.lt.lim_lo .or. &
+                        &(min_sec_X+id-1._dp)/prim_X.gt.lim_hi) then
+                        call writo('for (n,m) = ('//trim(i2str(prim_X))//&
+                            &','//trim(i2str(min_sec_X+id-1))//&
+                            &'), there is no range in the plasma where the &
+                            &ratio |n q - m| << |n|,|m| is met')
+                        ierr = 1
+                        err_msg = 'Choose n and m so that |n q - m| << &
+                            &|n|,|m|'
+                        CHCKERR(err_msg)
+                    end if
+                else
+                    if ((min_sec_X+id-1._dp)/prim_X.lt.lim_lo .or. &
+                        &(min_sec_X+id-1._dp)/prim_X.gt.lim_hi) then
+                        call writo('for (n,m) = ('//&
+                            &trim(i2str(min_sec_X+id-1))//','//&
+                            &trim(i2str(prim_X))//'), there is no range in &
+                            &the plasma where the ratio |n - iota m| << &
+                            &|m|,|n| is met')
+                        ierr = 1
+                        err_msg = 'Choose n and m so that |n - iota m| << &
+                            &|n|,|m|'
+                        CHCKERR(err_msg)
+                    end if
+                end if
+            end do
+            
+            ! output message
+            call writo('The modes are all within the allowed range of '//&
+                &trim(i2str(ceiling(prim_X*lim_lo)))//' < '//mode_name//&
+                &' < '//trim(i2str(floor(prim_X*lim_hi)))//'...')
+        end function check_X_modes_1
+        
+        ! version for X style 2: Check  how efficient the chosen number of modes
+        ! is.
+        subroutine check_X_modes_2(grid_eq,eq)
+            use X_vars, only: min_n_X, min_m_X, n_mod_X
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid
+            type(eq_type), intent(in) :: eq                                     ! equilibrium variables
+            
+            ! local variables
+            integer :: jd, kd, ld                                               ! counters
+            real(dp), allocatable :: max_frac(:,:)                              ! maximum fraction
+            real(dp), allocatable :: tot_max_frac(:,:)                          ! total maximum fraction
+            real(dp), allocatable :: loc_max_frac(:)                            ! local maximum fraction
+            real(dp), allocatable :: n(:,:), m(:,:)                             ! n and m
+            real(dp), allocatable :: fac_n(:), fac_m(:)                         ! factors to be multiplied with n m m
+            character(len=max_str_ln) :: frac_name                              ! name of fraction
+#if ldebug
+            real(dp), allocatable :: x_vars(:,:)                                ! for plotting
+            character(len=max_str_ln) :: plot_title                             ! title for plots
+            character(len=max_str_ln) :: plot_name                              ! file name for plots
+#endif
+            
+            ! set up helper variables
+            allocate(max_frac(grid_eq%loc_n_r,n_mod_X))
+            allocate(tot_max_frac(grid_eq%n(3),n_mod_X))
+            allocate(loc_max_frac(grid_eq%n(3)))
+            allocate(fac_n(grid_eq%loc_n_r))
+            allocate(fac_m(grid_eq%loc_n_r))
+            allocate(n(grid_eq%loc_n_r,n_mod_X))
+            allocate(m(grid_eq%loc_n_r,n_mod_X))
+            if (use_pol_flux_F) then
+                do jd = 1,n_mod_X
+                    n(:,jd) = min_n_X
+                    m(:,jd) = min_m_X+jd-1
+                end do
+                fac_n = eq%q_saf_FD(:,0)
+                fac_m = 1._dp
+            else
+                do jd = 1,n_mod_X
+                    n(:,jd) = min_n_X+jd-1
+                    m(:,jd) = min_m_X
+                end do
+                fac_n = 1._dp
+                fac_m = eq%rot_t_FD(:,0)
+            end if
+            
+            ! loop over all modes
+            do ld = 1,n_mod_X
+                do kd = 1,grid_eq%loc_n_r
+                    max_frac(kd,ld) = &
+                        &abs(n(kd,ld)*fac_n(kd)-m(kd,ld)*fac_m(kd))/&
+                        &min(abs(n(kd,ld)),abs(m(kd,ld)))
+                end do
+            end do
+            
+            if (use_pol_flux_F) then
+                frac_name = '|nq-m|/|n| or |nq-m|/|m|'
+            else
+                frac_name = '|n-iota m|/|n| or |n-iota m|/|m|'
+            end if
+            call writo('The fraction '//trim(frac_name)//' is')
+            call lvl_ud(1)
+            do ld = 1,n_mod_X
+                call writo('for mode '//trim(i2str(ld))//' maximally '//&
+                    &trim(r2strt(maxval(max_frac(:,ld))))//&
+                    &', average '//&
+                    &trim(r2strt(sum(max_frac(:,ld))/grid_eq%n(3))))
+            end do
+            if (n_mod_X.gt.1) call writo('so for all modes maximally '//&
+                &trim(r2strt(maxval(max_frac)))//', average '//&
+                &trim(r2strt(sum(max_frac)/(grid_eq%n(3)*n_mod_X))))
+            call lvl_ud(-1)
+#if ldebug
+            if (debug_check_X_modes_2) then
+                call writo('Plotting the fraction for all modes')
+                allocate(x_vars(grid_eq%n(3),n_mod_X))
+                do ld = 1,n_mod_X
+                    x_vars(:,ld) = grid_eq%r_F
+                end do
+                plot_name = 'TEST_max_frac'
+                plot_title = 'maximum fraction'
+                call print_GP_2D(plot_title,plot_name,max_frac,&
+                    &x=x_vars,draw=.false.)
+                call draw_GP(plot_title,plot_name,plot_name,n_mod_X,1,&
+                    &.false.)
+            end if
+#endif
+        end subroutine check_X_modes_2
+    end function check_X_modes
+    
+    ! Calculates resonating flux surfaces for the perturbation modes. The output
+    ! consists of mode  number, resonating normal position and  the fraction n/m
+    ! or m/n for  those modes for which  a solution is found that  is within the
+    ! plasma range.
+    ! Optionally,  the  total  safety  factor or  rotational  transform  can  be
+    ! returned to the master.
+    integer function calc_res_surf(grid_eq,eq,res_surf,info,jq) result(ierr)
+        use X_vars, only: min_n_X, min_m_X, sec_X_ind, prim_X
+        use num_vars, only: use_pol_flux_F
+        use eq_vars, only: max_flux_p_F, max_flux_t_F
+        use utilities, only: calc_zero_NR, interp_fun
+        use grid_vars, only: dealloc_grid
+        use grid_utilities, only: trim_grid
+        use MPI_utilities, only: get_ser_var
+        
+        character(*), parameter :: rout_name = 'calc_res_surf'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid_eq
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        real(dp), intent(inout), allocatable :: res_surf(:,:)                   ! resonant surface
+        logical, intent(in), optional :: info                                   ! if info is displayed
+        real(dp), intent(inout), optional, allocatable :: jq(:)                 ! either safety factor or rotational transform
+        
+        ! local variables (also used in child functions)
+        real(dp) :: nmfrac_fun                                                  ! fraction m/n or n/m to determine resonant flux surface
+        
+        ! local variables (not to be used in child functions)
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grid
+        integer :: kd, ld                                                       ! counters
+        integer :: ld_loc                                                       ! local ld
+        logical :: info_loc                                                     ! local version of info
+        real(dp), allocatable :: res_surf_loc(:,:)                              ! local copy of res_surf
+        real(dp), allocatable :: jq_tot(:,:)                                    ! saf. fac. or rot. transf. and derivs. in Flux coords.
+        real(dp), allocatable :: jq_loc(:)                                      ! local version of jq
+        real(dp) :: norm_factor                                                 ! normalization factor to make normal coordinate 0..1
+        type(grid_type) :: grid_eq_trim                                         ! trimmed version of equilibrium grid
+        integer :: n_loc, m_loc                                                 ! local n and m
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local info
+        info_loc = .false.
+        if (present(info)) info_loc = info
+        
+        ! get trimmed grid
+        ierr = trim_grid(grid_eq,grid_eq_trim,norm_id)
+        CHCKERR('')
+        
+        ! get serial version of safety factor or rot. transform
+        allocate(jq_tot(grid_eq_trim%n(3),0:2))
+        if (use_pol_flux_F) then
+            if (grid_eq%divided) then
+                do kd = 0,2
+                    ierr = get_ser_var(eq%q_saf_FD(norm_id(1):norm_id(2),kd),&
+                        &jq_loc,scatter=.true.)
+                    CHCKERR('')
+                    jq_tot(:,kd) = jq_loc
+                end do
+            else
+                jq_tot = eq%q_saf_FD
+            end if
+        else
+            if (grid_eq%divided) then
+                do kd = 0,2
+                    ierr = get_ser_var(eq%rot_t_FD(norm_id(1):norm_id(2),kd),&
+                        &jq_loc,scatter=.true.)
+                    CHCKERR('')
+                    jq_tot(:,kd) = jq_loc
+                end do
+            else
+                jq_tot = eq%q_saf_FD
+            end if
+        end if
+        if (present(jq)) then
+            allocate(jq(grid_eq_trim%n(3)))
+            jq = jq_tot(:,0)
+        end if
+        
+        ! initialize local res_surf
+        allocate(res_surf_loc(1:size(sec_X_ind,2),3))
+        
+        ! calculate normalization factor max_flux / 2pi
+        if (use_pol_flux_F) then
+            norm_factor = max_flux_p_F/(2*pi)
+        else
+            norm_factor = max_flux_t_F/(2*pi)
+        end if
+        
+        ! loop over all modes (and shift the index in x and y_vars by 1)
+        ld_loc = 1
+        do ld = 1,size(sec_X_ind,2)
+            ! Find place  where q  = m/n or  iota = n/m  in Flux  coordinates by
+            ! solving q-m/n  = 0 or  iota-n/m=0, using the functin  jq_fun. Only
+            ! consider modes  that appear  somewhere in  the plasma  (e.g. where
+            ! sec_X_ind is nonzero somewhere)
+            
+            ! set up local m, n and nmfrac for function if mode appears
+            if (maxval(sec_X_ind(:,ld)).gt.0) then
+                if (use_pol_flux_F) then
+                    n_loc = prim_X
+                    m_loc = minval(min_m_X)+ld-1
+                    nmfrac_fun = 1.0_dp*m_loc/n_loc
+                else
+                    n_loc = minval(min_n_X)+ld-1
+                    m_loc = prim_X
+                    nmfrac_fun = 1.0_dp*n_loc/m_loc
+                end if
+            else
+                cycle
+            end if
+            
+            ! calculate zero using Newton-Rhapson
+            res_surf_loc(ld_loc,1) = ld
+            res_surf_loc(ld_loc,3) = nmfrac_fun
+            err_msg = calc_zero_NR(res_surf_loc(ld_loc,2),jq_fun,jq_dfun,&
+                &(maxval(grid_eq_trim%r_F)+minval(grid_eq_trim%r_F))/2)         ! guess halfway between minimum and maximum normal range
+            
+            ! intercept error
+            if (err_msg.ne.'') then
+                if (info_loc) then
+                    call writo('Mode (n,m) = ('//trim(i2str(n_loc))//','//&
+                        &trim(i2str(m_loc))//') is not found')
+                    call lvl_ud(1)
+                    call writo(trim(err_msg))
+                    call lvl_ud(-1)
+                end if
+            else if (res_surf_loc(ld_loc,2).lt.minval(grid_eq_trim%r_F) .or. &
+                &res_surf_loc(ld_loc,2).gt.maxval(grid_eq_trim%r_F)) then
+                if (info_loc) call writo('Mode (n,m) = ('//&
+                    &trim(i2str(n_loc))//','//trim(i2str(m_loc))//&
+                    &') does not resonate in plasma')
+            else
+                if (info_loc) call writo('Mode (n,m) = ('//&
+                    &trim(i2str(n_loc))//','//trim(i2str(m_loc))//&
+                    &') resonates in plasma at normalized flux surface '//&
+                    &trim(r2str(res_surf_loc(ld_loc,2)/norm_factor)))
+                ld_loc = ld_loc + 1                                             ! advance ld_loc
+            end if
+        end do
+        
+        ! set res_surf from local copy
+        allocate(res_surf(ld_loc-1,3))
+        res_surf = res_surf_loc(1:ld_loc-1,:)
+        
+        ! clean up
+        call dealloc_grid(grid_eq_trim)
+    contains
+        ! Returns q-m/n or  iota-n/m in Flux coordinates, used to  solve for q =
+        ! m/n or iota = n/m.
+        ! WARNING: This routine requires that jq_tot's derivatives be calculated
+        ! up to order 1. This is NOT checked!
+        real(dp) function jq_fun(pt) result(res)
+            ! input / output
+            real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
+            
+            ! local variables
+            integer :: i_min, i_max                                             ! index of minimum and maximum value of x
+            real(dp) :: x_min, x_max                                            ! minimum and maximum value of x
+            
+            ! initialize res
+            res = 0
+            
+            ! set up min. and max index and value
+            x_min = minval(grid_eq_trim%r_F)
+            x_max = maxval(grid_eq_trim%r_F)
+            i_min = minloc(grid_eq_trim%r_F,1)
+            i_max = maxloc(grid_eq_trim%r_F,1)
+            
+            ! check whether to interpolate or extrapolate
+            if (pt.lt.x_min) then                                               ! point requested lower than minimum x
+                ! extrapolate variable from minimum value
+                res = jq_tot(i_min,0) - nmfrac_fun + jq_tot(i_min,1)*(pt-x_min)
+            else if (pt.gt.x_max) then                                          ! point requested higher than maximum x
+                ! extrapolate variable from maximum value
+                res = jq_tot(i_max,0) - nmfrac_fun + jq_tot(i_max,1)*(pt-x_max)
+            else                                                                ! point requested between 0 and 1
+                ! interpolate using interp_fun
+                ierr = interp_fun(res,jq_tot(:,0)-nmfrac_fun,pt,&
+                    &grid_eq_trim%r_F)
+                CHCKERR('')
+            end if
+        end function jq_fun
+        
+        ! returns d(q-m/n)/dr  in Flux coordinates,  used to  solve for q  = m/n
+        ! WARNING: This routine requires that jq_tot's derivatives be calculated
+        ! up to order 2. This is NOT checked!
+        real(dp) function jq_dfun(pt) result(res)
+            ! input / output
+            real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
+            
+            ! local variables
+            integer :: i_min, i_max                                             ! index of minimum and maximum value of x
+            real(dp) :: x_min, x_max                                            ! minimum and maximum value of x
+            
+            ! initialize res
+            res = 0
+            
+            ! set up min. and max index and value
+            x_min = minval(grid_eq_trim%r_F)
+            x_max = maxval(grid_eq_trim%r_F)
+            i_min = minloc(grid_eq_trim%r_F,1)
+            i_max = maxloc(grid_eq_trim%r_F,1)
+            
+            ! check whether to interpolate or extrapolate
+            if (pt.lt.x_min) then                                               ! point requested lower than minimum x
+                ! extrapolate variable from minimum value
+                res = jq_tot(i_min,1) + jq_tot(i_min,2)*(pt-x_min)
+            else if (pt.gt.x_max) then                                          ! point requested higher than maximum x
+                ! extrapolate variable from maximum value
+                res = jq_tot(i_max,1) + jq_tot(i_max,2)*(pt-x_max)
+            else                                                                ! point requested between 0 and 1
+                ! interpolate using interp_fun
+                ierr = interp_fun(res,jq_tot(:,1),pt,x=grid_eq_trim%r_F)
+                CHCKERR('')
+            end if
+        end function jq_dfun
+    end function calc_res_surf
+    
     ! plot  q-profile  or iota-profile  in  flux coordinates  with nq-m  = 0  or
     ! n-iotam = 0 indicate if requested
     integer function resonance_plot(eq,grid) result(ierr)
@@ -118,9 +819,9 @@ contains
         use utilities, only: calc_zero_NR, interp_fun
         use grid_vars, only: create_grid, dealloc_grid
         use eq_vars, only: max_flux_p_F, max_flux_t_F
-        use grid_ops, only: calc_XYZ_grid, calc_eqd_grid, coord_F2E, trim_grid
-        use MPI_utilities, only: get_ser_var
-        use X_vars, only: min_n_X, min_m_X
+        use grid_utilities, only: calc_XYZ_grid, calc_eqd_grid, coord_F2E, &
+            &trim_grid
+        use X_vars, only: prim_X
         
         character(*), parameter :: rout_name = 'resonance_plot'
         
@@ -129,7 +830,7 @@ contains
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
         
         ! local variables (not to be used in child functions)
-        integer :: kd                                                           ! counter
+        integer :: ld                                                           ! counter
         integer :: n_mod_loc                                                    ! local n_mod
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
         real(dp), allocatable :: x_vars(:,:)                                    ! for plotting
@@ -179,8 +880,7 @@ contains
         call lvl_ud(1)
         
         ! find resonating surfaces
-        ierr = calc_res_surf(grid,eq,res_surf,info=.true.,jq=jq,&
-            &tol_NR=1.E-8_dp,max_it_NR=5000)
+        ierr = calc_res_surf(grid,eq,res_surf,info=.true.,jq=jq)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -199,9 +899,9 @@ contains
             y_vars(:,1) = jq(:)
             
             ! set x_vars and y_vars for other columns
-            do kd = 1,n_mod_loc
-                x_vars(:,kd+1) = res_surf(kd,2)
-                y_vars(n_r,kd+1) = res_surf(kd,3)
+            do ld = 1,n_mod_loc
+                x_vars(:,ld+1) = res_surf(ld,2)
+                y_vars(n_r,ld+1) = res_surf(ld,3)
             end do
             
             ! user message
@@ -219,23 +919,23 @@ contains
             
             ! set up vars
             allocate(vars(n_theta_plot,n_zeta_plot,1,n_mod_loc))
-            do kd = 1,n_mod_loc
-                vars(:,:,:,kd) = y_vars(n_r,kd+1)
+            do ld = 1,n_mod_loc
+                vars(:,:,:,ld) = y_vars(n_r,ld+1)
             end do
             
             ! set up plot titles
             allocate(plot_titles(n_mod_loc))
             if (use_pol_flux_F) then                                            ! n is fixed and m = m/n n
-                do kd = 1,n_mod_loc
-                    plot_titles(kd) = trim(plot_title)//' for m,n = '//&
-                        &trim(i2str(nint(res_surf(kd,3)*min_n_X)))//','//&
-                        &trim(i2str(min_n_X))
+                do ld = 1,n_mod_loc
+                    plot_titles(ld) = trim(plot_title)//' for m,n = '//&
+                        &trim(i2str(nint(res_surf(ld,3)*prim_X)))//','//&
+                        &trim(i2str(prim_X))
                 end do
             else                                                                ! m is fixed and n = n/m m
-                do kd = 1,n_mod_loc
-                    plot_titles(kd) = trim(plot_title)//' for m,n = '//&
-                        &trim(i2str(min_m_X))//','//&
-                        &trim(i2str(nint(res_surf(kd,3)*min_m_X)))
+                do ld = 1,n_mod_loc
+                    plot_titles(ld) = trim(plot_title)//' for m,n = '//&
+                        &trim(i2str(prim_X))//','//&
+                        &trim(i2str(nint(res_surf(ld,3)*prim_X)))
                 end do
             end if
             
@@ -260,13 +960,13 @@ contains
             allocate(Z_plot(n_theta_plot,n_zeta_plot,1,n_mod_loc))
             
             ! loop over all resonant surfaces to calculate X, Y and Z values
-            do kd = 1,n_mod_loc
+            do ld = 1,n_mod_loc
                 ! set loc_r_E of plot grid
-                grid_plot%loc_r_E = r_plot_E(kd)
+                grid_plot%loc_r_E = r_plot_E(ld)
                 
                 ! calculate X, Y and Z
-                ierr = calc_XYZ_grid(grid_plot,X_plot(:,:,:,kd),&
-                    &Y_plot(:,:,:,kd),Z_plot(:,:,:,kd))
+                ierr = calc_XYZ_grid(grid_plot,X_plot(:,:,:,ld),&
+                    &Y_plot(:,:,:,ld),Z_plot(:,:,:,ld))
                 CHCKERR('')
             end do
             
@@ -313,10 +1013,10 @@ contains
             allocate(Y_plot(plot_dim(1),plot_dim(2),plot_dim(3),1))
             allocate(Z_plot(plot_dim(1),plot_dim(2),plot_dim(3),1))
             
-            do kd = 1,n_mod_loc
-                X_plot(1,kd,1,1) = x_vars(1,kd+1)
-                Y_plot(1,kd,1,1) = res_surf(kd,1)-1
-                Z_plot(1,kd,1,1) = 1._dp
+            do ld = 1,n_mod_loc
+                X_plot(1,ld,1,1) = x_vars(1,ld+1)
+                Y_plot(1,ld,1,1) = res_surf(ld,1)-1
+                Z_plot(1,ld,1,1) = 1._dp
             end do
             
             ! plot 2D (to be used with plots of harmonics in sol_ops)
@@ -328,370 +1028,12 @@ contains
             ! clean up
             call dealloc_grid(grid_plot)
         end if
-            
+        
         ! clean up
         call dealloc_grid(grid_trim)
         
         call lvl_ud(-1)
     end function resonance_plot
-    
-    ! Calculates resonating flux surfaces for the perturbation modes. The output
-    ! consists of mode  number, resonating normal position and  the fraction n/m
-    ! or m/n for  those modes for which  a solution is found that  is within the
-    ! plasma range.
-    ! Optionally, user  messages can be  displayed with info  and Newton-Rhapson
-    ! tolerance and  max. nr. of  iterations. Also,  the total safety  factor or
-    ! rotational transform can be returned to the master.
-    ! Note: Has to be called by all processes
-    integer function calc_res_surf(grid,eq,res_surf,info,jq,tol_NR,max_it_NR) &
-        &result(ierr)
-        use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X
-        use num_vars, only: use_pol_flux_F, tol_NR_loc => tol_NR, &
-            &max_it_NR_loc => max_it_NR
-        use eq_vars, only: max_flux_p_F, max_flux_t_F
-        use utilities, only: calc_zero_NR, interp_fun
-        use grid_vars, only: dealloc_grid
-        use grid_ops, only: trim_grid
-        use MPI_utilities, only: get_ser_var
-        
-        character(*), parameter :: rout_name = 'resonance_plot'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! equilibrium grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        real(dp), intent(inout), allocatable :: res_surf(:,:)                   ! resonant surface
-        logical, intent(in), optional :: info                                   ! if info is displayed
-        real(dp), intent(inout), optional, allocatable :: jq(:)                 ! either safety factor or rotational transform
-        real(dp), intent(in), optional :: tol_NR                                ! optional tolerance for Newton-Rhapson iteration
-        integer, intent(in), optional :: max_it_NR                              ! optional max. nr. of iterations for Newton-Rhapson iteration
-        
-        ! local variables (also used in child functions)
-        real(dp) :: mnfrac_fun                                                  ! fraction m/n or n/m to determine resonant flux surface
-        
-        ! local variables (not to be used in child functions)
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: kd                                                           ! counter
-        integer :: kd_loc                                                       ! local kd
-        integer :: n_mod                                                        ! nr. of modes
-        logical :: info_loc                                                     ! local version of info
-        integer :: istat                                                        ! status
-        real(dp), allocatable :: res_surf_loc(:,:)                              ! local copy of res_surf
-        real(dp), allocatable :: jq_tot(:,:)                                    ! saf. fac. or rot. transf. and derivs. in Flux coords.
-        real(dp), allocatable :: jq_loc(:)                                      ! local version of jq
-        real(dp) :: norm_factor                                                 ! normalization factor to make normal coordinate 0..1
-        type(grid_type) :: grid_trim                                            ! trimmed version of grid
-        real(dp) :: tol_NR_old                                                  ! old value of tol_NR
-        integer :: max_it_NR_old                                                ! old value of max_it_NR
-        integer :: n_X_loc, m_X_loc                                             ! local n_X and m_X
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local info
-        info_loc = .false.
-        if (present(info)) info_loc = info
-        
-        ! get trimmed grid
-        ierr = trim_grid(grid,grid_trim,norm_id)
-        CHCKERR('')
-        
-        ! set n_mod
-        n_mod = (max_n_X-min_n_X+1)*(max_m_X-min_m_X+1)
-        
-        ! get serial version of safety factor or rot. transform
-        allocate(jq_tot(grid_trim%n(3),0:2))
-        if (use_pol_flux_F) then
-            if (grid%divided) then
-                do kd = 0,2
-                    ierr = get_ser_var(eq%q_saf_FD(norm_id(1):norm_id(2),kd),&
-                        &jq_loc,scatter=.true.)
-                    CHCKERR('')
-                    jq_tot(:,kd) = jq_loc
-                end do
-            else
-                jq_tot = eq%q_saf_FD
-            end if
-        else
-            if (grid%divided) then
-                do kd = 0,2
-                    ierr = get_ser_var(eq%rot_t_FD(norm_id(1):norm_id(2),kd),&
-                        &jq_loc,scatter=.true.)
-                    CHCKERR('')
-                    jq_tot(:,kd) = jq_loc
-                end do
-            else
-                jq_tot = eq%q_saf_FD
-            end if
-        end if
-        if (present(jq)) then
-            allocate(jq(grid_trim%n(3)))
-            jq = jq_tot(:,0)
-        end if
-        
-        ! initialize local res_surf
-        allocate(res_surf_loc(1:n_mod,3))
-        
-        ! save old tol_NR and max_it_NR and modify them if needed
-        tol_NR_old = tol_NR_loc
-        max_it_NR_old = max_it_NR_loc
-        if (present(tol_NR)) tol_NR_loc = tol_NR
-        if (present(max_it_NR)) max_it_NR_loc = max_it_NR
-        
-        ! calculate normalization factor max_flux / 2pi
-        if (use_pol_flux_F) then
-            norm_factor = max_flux_p_F/(2*pi)
-        else
-            norm_factor = max_flux_t_F/(2*pi)
-        end if
-        
-        ! loop over all modes (and shift the index in x and y_vars by 1)
-        kd_loc = 1
-        do kd = 1,n_mod
-            ! find place  where q  = m/n or  iota = n/m  in Flux  coordinates by
-            ! solving q-m/n = 0 or iota-n/m=0, using the functin jq_fun
-            
-            ! set up n_X_loc and m_X_loc mnfrac for function
-            if (use_pol_flux_F) then
-                n_X_loc = min_n_X
-                m_X_loc = min_m_X+kd-1
-                mnfrac_fun = 1.0_dp*m_X_loc/n_X_loc
-            else                             
-                m_X_loc = min_m_X
-                n_X_loc = min_n_X+kd-1
-                mnfrac_fun = 1.0_dp*n_X_loc/m_X_loc
-            end if
-            
-            ! calculate zero using Newton-Rhapson
-            res_surf_loc(kd_loc,1) = kd
-            res_surf_loc(kd_loc,3) = mnfrac_fun
-            istat = calc_zero_NR(res_surf_loc(kd_loc,2),jq_fun,jq_dfun,&
-                &(maxval(grid_trim%r_F)+minval(grid_trim%r_F))/2)               ! guess halfway between minimum and maximum normal range
-            
-            ! intercept error
-            if (istat.ne.0) then
-                call lvl_ud(1)
-                if (info_loc) call writo('Error intercepted: Couldn''t &
-                    &find resonating surface for (n,m) = ('//&
-                    &trim(i2str(n_X_loc))//','//trim(i2str(m_X_loc))//')')
-                call lvl_ud(-1)
-            else if (res_surf_loc(kd_loc,2).lt.minval(grid_trim%r_F) .or. &
-                &res_surf_loc(kd_loc,2).gt.maxval(grid_trim%r_F)) then
-                if (info_loc) call writo('Mode (n,m) = ('//&
-                    &trim(i2str(n_X_loc))//','//trim(i2str(m_X_loc))//&
-                    &') does not resonate in plasma')
-            else
-                if (info_loc) call writo('Mode (n,m) = ('//&
-                    &trim(i2str(n_X_loc))//','//trim(i2str(m_X_loc))//&
-                    &') resonates in plasma at normalized flux surface '//&
-                    &trim(r2str(res_surf_loc(kd_loc,2)/norm_factor)))
-                kd_loc = kd_loc + 1                                             ! advance kd_loc
-            end if
-        end do
-        
-        ! set res_surf from local copy
-        allocate(res_surf(kd_loc-1,3))
-        res_surf = res_surf_loc(1:kd_loc-1,:)
-        
-        ! recover old tol_NR and max_it_NR
-        tol_NR_loc = tol_NR_old
-        max_it_NR_loc = max_it_NR_old
-        
-        ! deallocate local variables
-        deallocate(jq_tot)
-        call dealloc_grid(grid_trim)
-    contains
-        ! Returns q-m/n or  iota-n/m in Flux coordinates, used to  solve for q =
-        ! m/n or iota = n/m.
-        ! WARNING: This routine requires that jq_tot's derivatives be calculated
-        ! up to order 1. This is NOT checked!
-        real(dp) function jq_fun(pt) result(res)
-            ! input / output
-            real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
-            
-            ! local variables
-            integer :: i_min, i_max                                             ! index of minimum and maximum value of x
-            real(dp) :: x_min, x_max                                            ! minimum and maximum value of x
-            
-            ! initialize res
-            res = 0
-            
-            ! set up min. and max index and value
-            x_min = minval(grid_trim%r_F)
-            x_max = maxval(grid_trim%r_F)
-            i_min = minloc(grid_trim%r_F,1)
-            i_max = maxloc(grid_trim%r_F,1)
-            
-            ! check whether to interpolate or extrapolate
-            if (pt.lt.x_min) then                                               ! point requested lower than minimum x
-                ! extrapolate variable from minimum value
-                res = jq_tot(i_min,0) - mnfrac_fun + jq_tot(i_min,1)*(pt-x_min)
-            else if (pt.gt.x_max) then                                          ! point requested higher than maximum x
-                ! extrapolate variable from maximum value
-                res = jq_tot(i_max,0) - mnfrac_fun + jq_tot(i_max,1)*(pt-x_max)
-            else                                                                ! point requested between 0 and 1
-                ! interpolate using interp_fun
-                istat = interp_fun(res,jq_tot(:,0)-mnfrac_fun,pt,grid_trim%r_F)
-            end if
-        end function jq_fun
-        
-        ! returns d(q-m/n)/dr  in Flux coordinates,  used to  solve for q  = m/n
-        ! WARNING: This routine requires that jq_tot's derivatives be calculated
-        ! up to order 2. This is NOT checked!
-        real(dp) function jq_dfun(pt) result(res)
-            ! input / output
-            real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
-            
-            ! local variables
-            integer :: i_min, i_max                                             ! index of minimum and maximum value of x
-            real(dp) :: x_min, x_max                                            ! minimum and maximum value of x
-            
-            ! initialize res
-            res = 0
-            
-            ! set up min. and max index and value
-            x_min = minval(grid_trim%r_F)
-            x_max = maxval(grid_trim%r_F)
-            i_min = minloc(grid_trim%r_F,1)
-            i_max = maxloc(grid_trim%r_F,1)
-            
-            ! check whether to interpolate or extrapolate
-            if (pt.lt.x_min) then                                               ! point requested lower than minimum x
-                ! extrapolate variable from minimum value
-                res = jq_tot(i_min,1) + jq_tot(i_min,2)*(pt-x_min)
-            else if (pt.gt.x_max) then                                          ! point requested higher than maximum x
-                ! extrapolate variable from maximum value
-                res = jq_tot(i_max,0) + jq_tot(i_max,2)*(pt-x_max)
-            else                                                                ! point requested between 0 and 1
-                ! interpolate using interp_fun
-                istat = interp_fun(res,jq_tot(:,1),pt,x=grid_trim%r_F)
-            end if
-        end function jq_dfun
-    end function calc_res_surf
-    
-    ! Checks whether |nq-m|/|n|  < tol and |nq-m|/|m| < tol  (or |q-iotam|/|m| <
-    ! tol and |n-iotam|/|n| < tol) is satisfied in some part of the plasma, with
-    ! tol << 1.
-    ! The condition is determined by the sign of q (or iota) and given by:
-    !   max(min_q-tol,min_q/(1+tol)) < m/n < min(max_q+tol,max_q/(1-tol)), q>0
-    !   max(min_q-tol,min_q/(1-tol)) < m/n < min(max_q+tol,max_q/(1+tol)), q<0
-    ! (or replacing q by iota and m/n by n/m).
-    integer function check_X_modes(eq) result(ierr)
-        use MPI_utilities, only: get_ser_var
-        use X_vars, only: min_n_X, max_n_X, min_m_X, max_m_X
-        use num_vars, only: use_pol_flux_F, tol_norm
-        
-        character(*), parameter :: rout_name = 'check_X_modes'
-        
-        ! input / output
-        type(eq_type) :: eq                                                     ! equilibrium variables
-        
-        ! local variables
-        integer :: id                                                           ! counter
-        integer :: n_mod                                                        ! nr. of modes
-        real(dp) :: min_jq, max_jq                                              ! min. and max. values of q or iota
-        integer :: pmone                                                        ! plus or minus one
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        character(len=max_str_ln) :: jq_name                                    ! either safety factor or rotational transform
-        character(len=1) :: mode_name                                           ! either n or m
-        real(dp) :: lim_lo, lim_hi                                              ! lower and upper limit on n/m (or m/n)
-        real(dp) :: min_sec_X, max_sec_X                                        ! min. and max. of m_X (if pol. flux) or n_X (if tor. flux)
-        
-        ! initialize ierr
-        ierr = 0
-        
-        call writo('Checking mode numbers')
-        call lvl_ud(1)
-        
-        ! setup n_mod
-        n_mod = (max_n_X-min_n_X+1)*(max_m_X-min_m_X+1)
-        
-        ! user output
-        call writo('The tolerance used is '//trim(r2strt(tol_norm))//&
-            &'...')
-        
-        ! set min_jq and max_jq in Flux coordinate system
-        if (use_pol_flux_F) then 
-            min_jq = minval(eq%q_saf_FD(:,0))
-            max_jq = maxval(eq%q_saf_FD(:,0))
-        else
-            min_jq = minval(eq%rot_t_FD(:,0))
-            max_jq = maxval(eq%rot_t_FD(:,0))
-        end if
-        
-        ! set up jq name
-        if (use_pol_flux_F) then
-            jq_name = 'safety factor'
-            mode_name = 'm'
-        else
-            jq_name = 'rotational transform'
-            mode_name = 'n'
-        end if
-        
-        ! set up plus minus one, according to the sign of the safety factor
-        if (min_jq.lt.0 .and. max_jq.lt.0) then
-            pmone = -1
-        else if (min_jq.gt.0 .and. max_jq.gt.0) then
-            pmone = 1
-        else
-            err_msg = trim(jq_name)//' cannot change sign'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        
-        ! calculate upper and lower limits
-        lim_lo = max(min_jq-tol_norm,min_jq/(1+pmone*tol_norm))
-        lim_hi = min(max_jq+tol_norm,max_jq/(1-pmone*tol_norm))
-        
-        ! initialize min_sec_X and max_sec_X
-        min_sec_X = huge(1._dp)
-        max_sec_X = -huge(1._dp)
-        
-        ! for every mode (n,m) check whether m/n is inside the range of q values
-        ! or n/m inside the range of iota values
-        do id = 1, n_mod
-            ! check if limits are met
-            if (use_pol_flux_F) then
-                if ((min_m_X+id-1._dp)/min_n_X.lt.lim_lo .or. &
-                    &(min_m_X+id-1._dp)/min_n_X.gt.lim_hi) then
-                    call writo('for (n,m) = ('//trim(i2str(min_n_X))//&
-                        &','//trim(i2str(min_m_X+id-1))//'), there is no range &
-                        &in the plasma where the ratio |n q - m| << |n|,|m| &
-                        &is met')
-                    ierr = 1
-                    err_msg = 'Choose n and m so that |n q - m| << |n|,|m|'
-                    CHCKERR(err_msg)
-                end if
-            else
-                if ((min_n_X+id-1._dp)/min_m_X.lt.lim_lo .or. &
-                    &(min_n_X+id-1._dp)/min_m_X.gt.lim_hi) then
-                    call writo('for (n,m) = ('//trim(i2str(min_n_X+id-1))//&
-                        &','//trim(i2str(min_m_X))//'), there is no range &
-                        &in the plasma where the ratio |n - iota m| << |m|,|n| &
-                        &is met')
-                    ierr = 1
-                    err_msg = 'Choose n and m so that |n - iota m| << |n|,|m|'
-                    CHCKERR(err_msg)
-                end if
-            end if
-        end do
-        
-        ! set minimum and max secondary mode
-        if (use_pol_flux_F) then
-            min_sec_X = min_n_X*lim_lo
-            max_sec_X = min_n_X*lim_hi
-        else
-            min_sec_X = min_m_X*lim_lo
-            max_sec_X = min_m_X*lim_hi
-        end if
-        
-        ! output message
-        call writo('The modes are all within the allowed range of '//&
-            &trim(i2str(ceiling(min_sec_X)))//' < '//mode_name//' < '//&
-            &trim(i2str(floor(max_sec_X)))//'...')
-        
-        call lvl_ud(-1)
-        call writo('Mode numbers checked')
-    end function check_X_modes
     
     ! calculate U_m^0, U_m^1 or U_n^0, U_n^1  at eq loc_n_r values of the normal
     ! coordinate, n_par values  of the parallel coordinate and  size_X values of
@@ -720,9 +1062,9 @@ contains
     integer function calc_U(grid_eq,grid_X,eq,met,X) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, U_style, norm_disc_prec_X
         use utilities, only: c, calc_deriv
-        use input_ops, only: get_log, pause_prog
+        use input_utilities, only: get_log, pause_prog
         use eq_vars, only: vac_perm
-        use grid_ops, only: get_norm_interp_data
+        use grid_utilities, only: get_norm_interp_data
 #if ldebug
         use num_vars, only: ltest
 #endif
@@ -774,7 +1116,7 @@ contains
             &D3Theta_3(:,:,:)                                                   ! Theta^theta and derivatives
         real(dp), allocatable :: D13Theta_3(:,:,:), D33Theta_3(:,:,:)           ! Theta^theta and derivatives
         real(dp), allocatable :: n_frac(:,:)                                    ! nq-m (pol. flux) or n-iotam (tor. flux) for all modes
-        real(dp), allocatable :: mn(:)                                          ! either n*A_0 (pol. flux) or m (tor.flux)
+        real(dp), allocatable :: nm(:,:)                                        ! either n*A_0 (pol. flux) or m (tor.flux)
         complex(dp), allocatable :: U_corr(:,:,:,:)                             ! correction to U_0 and U_1 for a certain (n,m)
         complex(dp), allocatable :: D3U_corr(:,:,:,:)                           ! D_theta U_corr
         complex(dp), allocatable :: D3var(:)                                    ! derivative of variable
@@ -800,7 +1142,7 @@ contains
         
         ! allocate variables
         ! helper variables
-        allocate(mn(X%n_mod))
+        allocate(nm(grid_X%loc_n_r,X%n_mod))
         allocate(djq(grid_eq%loc_n_r))
         allocate(Theta_3(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
         allocate(D1Theta_3(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
@@ -867,11 +1209,11 @@ contains
         
         ! set up helper variables in eq grid
         if (use_pol_flux_F) then
-            mn = X%n(:)
+            nm = X%n
             djq = eq%q_saf_FD(:,1)
         else
             djq = -eq%rot_t_FD(:,1)
-            mn = X%m(:)
+            nm = X%m
         end if
         Theta_3 = h23/h22
         select case (eq_style)
@@ -955,11 +1297,13 @@ contains
             i_hi = ceiling(loc_r_eq(kd))
             
             if (use_pol_flux_F) then
-                n_frac(kd,:) = X%n*(eq%q_saf_FD(i_lo,0) + (loc_r_eq(kd)-i_lo)*&
-                    &(eq%q_saf_FD(i_hi,0)-eq%q_saf_FD(i_lo,0))) - X%m
+                n_frac(kd,:) = X%n(kd,:)*(eq%q_saf_FD(i_lo,0) + &
+                    &(loc_r_eq(kd)-i_lo)*&
+                    &(eq%q_saf_FD(i_hi,0)-eq%q_saf_FD(i_lo,0))) - X%m(kd,:)
             else
-                n_frac(kd,:) = -X%m*(eq%rot_t_FD(i_lo,0) + (loc_r_eq(kd)-i_lo)*&
-                    &(eq%rot_t_FD(i_hi,0)-eq%rot_t_FD(i_lo,0))) + X%n
+                n_frac(kd,:) = -X%m(kd,:)*(eq%rot_t_FD(i_lo,0) + &
+                    &(loc_r_eq(kd)-i_lo)*&
+                    &(eq%rot_t_FD(i_hi,0)-eq%rot_t_FD(i_lo,0))) + X%n(kd,:)
             end if
             T1_X(:,:,kd,:) = T1(:,:,i_lo,:) + (loc_r_eq(kd)-i_lo)*&
                 &(T1(:,:,i_hi,:)-T1(:,:,i_lo,:))
@@ -980,28 +1324,30 @@ contains
             ! calculate order 1 of U_0 and U_1
             if (U_style.ge.1) then
                 X%U_0(:,:,:,ld) = -T2_X(:,:,:,1)
-                X%U_1(:,:,:,ld) = iu/mn(ld)
+                do kd = 1,grid_X%loc_n_r
+                    X%U_1(:,:,kd,ld) = iu/nm(kd,ld)
+                end do
             end if
             ! include order 2
             if (U_style.ge.2) then
                 do kd = 1,grid_X%loc_n_r
                     U_corr(:,:,kd,1) = T3_X(:,:,kd,1) + &
                         &iu*n_frac(kd,ld)*T4_X(:,:,kd,1)
-                    U_corr(:,:,kd,2) = n_frac(kd,ld)/mn(ld)*T1_X(:,:,kd,1)
+                    U_corr(:,:,kd,2) = n_frac(kd,ld)/nm(kd,ld)*T1_X(:,:,kd,1)
+                    X%U_0(:,:,kd,ld) = X%U_0(:,:,kd,ld) + iu/nm(kd,ld)*&
+                        &U_corr(:,:,kd,1)
+                    X%U_1(:,:,kd,ld) = X%U_1(:,:,kd,ld) + iu/nm(kd,ld)*&
+                        &U_corr(:,:,kd,2)
                 end do
-                X%U_0(:,:,:,ld) = X%U_0(:,:,:,ld) + iu/mn(ld)*&
-                    &U_corr(:,:,:,1)
-                X%U_1(:,:,:,ld) = X%U_1(:,:,:,ld) + iu/mn(ld)*&
-                    &U_corr(:,:,:,2)
             end if
             ! include order 3
             if (U_style.ge.3) then
                 do kd = 1,grid_X%loc_n_r
                     U_corr(:,:,kd,1) = iu*n_frac(kd,ld)*&
                         &(-T5_X(:,:,kd,1)-iu*n_frac(kd,ld)*T6_X(:,:,kd,1))
+                    X%U_0(:,:,kd,ld) = X%U_0(:,:,kd,ld) + (iu/nm(kd,ld))**2*&
+                        &U_corr(:,:,kd,1)
                 end do
-                X%U_0(:,:,:,ld) = X%U_0(:,:,:,ld) + (iu/mn(ld))**2*&
-                    &U_corr(:,:,:,1)
             end if
             if (U_style.ge.4) then
                 call writo('WARNING: The geodesic perturbation U is &
@@ -1022,21 +1368,22 @@ contains
                     do kd = 1,grid_X%loc_n_r
                         U_corr(:,:,kd,1) = T3_X(:,:,kd,2) + &
                             &iu*n_frac(kd,ld)*T4_X(:,:,kd,2)
-                        U_corr(:,:,kd,2) = n_frac(kd,ld)/mn(ld)*T1_X(:,:,kd,2)
+                        U_corr(:,:,kd,2) = n_frac(kd,ld)/nm(kd,ld)*&
+                            &T1_X(:,:,kd,2)
+                        X%DU_0(:,:,kd,ld) = X%DU_0(:,:,kd,ld) + iu/nm(kd,ld)*&
+                            &U_corr(:,:,kd,1)
+                        X%DU_1(:,:,kd,ld) = X%DU_1(:,:,kd,ld) + iu/nm(kd,ld)*&
+                            &U_corr(:,:,kd,2)
                     end do
-                    X%DU_0(:,:,:,ld) = X%DU_0(:,:,:,ld) + iu/mn(ld)*&
-                        &U_corr(:,:,:,1)
-                    X%DU_1(:,:,:,ld) = X%DU_1(:,:,:,ld) + iu/mn(ld)*&
-                        &U_corr(:,:,:,2)
                 end if
                 ! include order 3
                 if (U_style.ge.3) then
                     do kd = 1,grid_X%loc_n_r
                         U_corr(:,:,kd,2) = iu*n_frac(kd,ld)*&
                             &(-T5_X(:,:,kd,2)-iu*n_frac(kd,ld)*T6_X(:,:,kd,2))
+                        X%DU_0(:,:,kd,ld) = X%DU_0(:,:,kd,ld) + &
+                            &(iu/nm(kd,ld))**2*U_corr(:,:,kd,1)
                     end do
-                    X%DU_0(:,:,:,ld) = X%DU_0(:,:,:,ld) + (iu/mn(ld))**2*&
-                        &U_corr(:,:,:,1)
                 end if
                 if (U_style.ge.4) then
                     call writo('WARNING: The geodesic perturbation U is &
@@ -1151,8 +1498,7 @@ contains
                 end do
                 
                 ! set some variables
-                file_name = 'TEST_RE_DU_0_'//trim(i2str(X%n(jd)))//&
-                        &'_'//trim(i2str(X%m(jd)))
+                file_name = 'TEST_RE_DU_0_'//trim(i2str(jd))
                 description = 'Verifying DU_0 by deriving U_0 numerically for &
                     &mode '//trim(i2str(jd)//', real part')
                 
@@ -1161,8 +1507,7 @@ contains
                     &file_name,description=description,output_message=.true.)
                 
                 ! set some variables
-                file_name = 'TEST_IM_DU_0_'//trim(i2str(X%n(jd)))//&
-                        &'_'//trim(i2str(X%m(jd)))
+                file_name = 'TEST_IM_DU_0_'//trim(i2str(jd))
                 description = 'Verifying DU_0 by deriving U_0 numerically for &
                     &mode '//trim(i2str(jd)//', imaginary part')
                 
@@ -1171,8 +1516,7 @@ contains
                     &file_name,description=description,output_message=.true.)
                 
                 ! set some variables
-                file_name = 'TEST_RE_DU_1_'//trim(i2str(X%n(jd)))//&
-                        &'_'//trim(i2str(X%m(jd)))
+                file_name = 'TEST_RE_DU_1_'//trim(i2str(jd))
                 description = 'Verifying DU_1 by deriving U_1 numerically for &
                     &mode '//trim(i2str(jd)//', real part')
                 
@@ -1181,8 +1525,7 @@ contains
                     &file_name,description=description,output_message=.true.)
                 
                 ! set some variables
-                file_name = 'TEST_IM_DU_1_'//trim(i2str(X%n(jd)))//&
-                        &'_'//trim(i2str(X%m(jd)))
+                file_name = 'TEST_IM_DU_1_'//trim(i2str(jd))
                 description = 'Verifying DU_1 by deriving U_1 numerically for &
                     &mode '//trim(i2str(jd)//', imaginary part')
                 
@@ -1221,9 +1564,9 @@ contains
         use num_vars, only: use_pol_flux_F
         use eq_vars, only: vac_perm
         use utilities, only: c
-        use X_vars, only: is_necessary_X, &
-            &min_m_X, max_m_X, min_n_X, max_n_X
-        use grid_ops, only: get_norm_interp_data
+        use X_utilities, only: is_necessary_X
+        use X_vars, only: n_mod_X
+        use grid_utilities, only: get_norm_interp_data
         
         character(*), parameter :: rout_name = 'calc_PV'
         
@@ -1237,7 +1580,6 @@ contains
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
         
         ! local variables
-        integer :: n_mod_tot                                                    ! total nr. of modes
         integer :: m, k, kd                                                     ! counters
         real(dp), allocatable :: loc_r_eq(:)                                    ! unrounded index of eq variables in X grid
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
@@ -1327,26 +1669,27 @@ contains
                 &(T5(:,:,i_hi)-T5(:,:,i_lo))
         end do
         
-        ! set nr. of modes
-        n_mod_tot = (max_m_X-min_m_X+1)*(max_n_X-min_n_X+1)
-        
         ! loop over all modes
         do m = 1,X_b%n_mod
             do k = 1,X_a%n_mod
                 ! check whether modes are correct
-                if (X%n_1(k).ne.X_a%n(k) .or. X%n_2(m).ne.X_b%n(m) .or. &
-                    &X%m_1(k).ne.X_a%m(k) .or. X%m_2(m).ne.X_b%m(m)) then
-                    ierr = 1
-                    CHCKERR('Modes do not match')
-                end if
+                do kd = 1,grid_X%loc_n_r
+                    if (X%n_1(kd,k).ne.X_a%n(kd,k) .or. &
+                        &X%n_2(kd,m).ne.X_b%n(kd,m) .or. &
+                        &X%m_1(kd,k).ne.X_a%m(kd,k) .or. &
+                        &X%m_2(kd,m).ne.X_b%m(kd,m)) then
+                        ierr = 1
+                        CHCKERR('Modes do not match')
+                    end if
+                end do
                 
                 ! check whether mode combination needs to be calculated
-                calc_this(1) = is_necessary_X(X,.true.,[k,m])
-                calc_this(2) = is_necessary_X(X,.false.,[k,m])
+                calc_this(1) = is_necessary_X(.true.,[k,m],lim_sec_X)
+                calc_this(2) = is_necessary_X(.false.,[k,m],lim_sec_X)
                 
                 ! set up c_loc
-                c_loc(1) = c([k,m],.true.,n_mod_tot,lim_sec_X)
-                c_loc(2) = c([k,m],.false.,n_mod_tot,lim_sec_X)
+                c_loc(1) = c([k,m],.true.,n_mod_X,lim_sec_X)
+                c_loc(2) = c([k,m],.false.,n_mod_X,lim_sec_X)
                 
                 ! calculate PV_0
                 if (calc_this(1)) then
@@ -1355,8 +1698,8 @@ contains
                             &(X_b%DU_0(:,:,kd,m) - T2_X(:,:,kd)) * &
                             &(conjg(X_a%DU_0(:,:,kd,k)) - T2_X(:,:,kd)) - &
                             &T3_X(:,:,kd) - T5_X(:,:,kd) + T4_X(:,:,kd)*&
-                            &(X_b%n(m)*fac_n(kd)-X_b%m(m)*fac_m(kd))*&
-                            &(X_a%n(k)*fac_n(kd)-X_a%m(k)*fac_m(kd))
+                            &(X_b%n(kd,m)*fac_n(kd)-X_b%m(kd,m)*fac_m(kd))*&
+                            &(X_a%n(kd,k)*fac_n(kd)-X_a%m(kd,k)*fac_m(kd))
                     end do
                 end if
                 
@@ -1399,9 +1742,9 @@ contains
         &result(ierr)
         use num_vars, only: norm_style
         use utilities, only: c
-        use X_vars, only: is_necessary_X, &
-            &min_m_X, max_m_X, min_n_X, max_n_X
-        use grid_ops, only: get_norm_interp_data
+        use X_utilities, only: is_necessary_X
+        use X_vars, only: n_mod_X
+        use grid_utilities, only: get_norm_interp_data
         
         character(*), parameter :: rout_name = 'calc_KV'
         
@@ -1416,7 +1759,6 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: n_mod_tot                                                    ! total nr. of modes
         integer :: m, k, kd                                                     ! counters
         real(dp), allocatable :: loc_r_eq(:)                                    ! unrounded index of eq variables in X grid
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
@@ -1472,26 +1814,27 @@ contains
                 &(T2(:,:,i_hi)-T2(:,:,i_lo))
         end do
         
-        ! set nr. of modes
-        n_mod_tot = (max_m_X-min_m_X+1)*(max_n_X-min_n_X+1)
-        
         ! loop over all modes
         do m = 1,X_b%n_mod
             do k = 1,X_a%n_mod
                 ! check whether modes are correct
-                if (X%n_1(k).ne.X_a%n(k) .or. X%n_2(m).ne.X_b%n(m) .or. &
-                    &X%m_1(k).ne.X_a%m(k) .or. X%m_2(m).ne.X_b%m(m)) then
-                    ierr = 1
-                    CHCKERR('Modes do not match')
-                end if
+                do kd = 1,grid_X%loc_n_r
+                    if (X%n_1(kd,k).ne.X_a%n(kd,k) .or. &
+                        &X%n_2(kd,m).ne.X_b%n(kd,m) .or. &
+                        &X%m_1(kd,k).ne.X_a%m(kd,k) .or. &
+                        &X%m_2(kd,m).ne.X_b%m(kd,m)) then
+                        ierr = 1
+                        CHCKERR('Modes do not match')
+                    end if
+                end do
                 
                 ! check whether mode combination needs to be calculated
-                calc_this(1) = is_necessary_X(X,.true.,[k,m])
-                calc_this(2) = is_necessary_X(X,.false.,[k,m])
+                calc_this(1) = is_necessary_X(.true.,[k,m],lim_sec_X)
+                calc_this(2) = is_necessary_X(.false.,[k,m],lim_sec_X)
                 
                 ! set up c_loc
-                c_loc(1) = c([k,m],.true.,n_mod_tot,lim_sec_X)
-                c_loc(2) = c([k,m],.false.,n_mod_tot,lim_sec_X)
+                c_loc(1) = c([k,m],.true.,n_mod_X,lim_sec_X)
+                c_loc(2) = c([k,m],.false.,n_mod_X,lim_sec_X)
                 
                 select case (norm_style)
                     case (1)                                                    ! normalization of full perpendicular component
@@ -1546,10 +1889,10 @@ contains
     ! should thus be field-line oriented.
     integer function calc_magn_ints(grid_eq,grid_X,met,X,lim_sec_X) result(ierr)
         use num_vars, only: use_pol_flux_F
-        use X_vars, only: is_necessary_X, &
-            &min_m_X, max_m_X, min_n_X, max_n_X
+        use X_utilities, only: is_necessary_X
+        use X_vars, only: n_mod_X
         use utilities, only: c
-        use grid_ops, only: get_norm_interp_data
+        use grid_utilities, only: get_norm_interp_data
         
         character(*), parameter :: rout_name = 'calc_magn_ints'
         
@@ -1561,7 +1904,6 @@ contains
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
         
         ! local variables
-        integer :: n_mod_tot                                                    ! total nr. of modes
         integer :: k, m                                                         ! counters
         integer :: id, kd                                                       ! counters
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
@@ -1595,14 +1937,10 @@ contains
             i_lo = floor(loc_r_eq(kd))
             i_hi = ceiling(loc_r_eq(kd))
             
-            
             ! jacobian
             J(:,:,kd) = met%jac_FD(:,:,i_lo,0,0,0) + (loc_r_eq(kd)-i_lo)*&
                 &(met%jac_FD(:,:,i_hi,0,0,0)-met%jac_FD(:,:,i_lo,0,0,0))
         end do
-        
-        ! set nr. of modes
-        n_mod_tot = (max_m_X-min_m_X+1)*(max_n_X-min_n_X+1)
         
         ! set up parallel angle in flux coordinates
         if (use_pol_flux_F) then
@@ -1623,19 +1961,25 @@ contains
         do m = 1,X%n_mod(2)
             do k = 1,X%n_mod(1)
                 ! check whether mode combination needs to be calculated
-                calc_this(1) = is_necessary_X(X,.true.,[k,m])
-                calc_this(2) = is_necessary_X(X,.false.,[k,m])
+                calc_this(1) = is_necessary_X(.true.,[k,m],lim_sec_X)
+                calc_this(2) = is_necessary_X(.false.,[k,m],lim_sec_X)
                 
                 ! set up c_loc
-                c_loc(1) = c([k,m],.true.,n_mod_tot,lim_sec_X)
-                c_loc(2) = c([k,m],.false.,n_mod_tot,lim_sec_X)
+                c_loc(1) = c([k,m],.true.,n_mod_X,lim_sec_X)
+                c_loc(2) = c([k,m],.false.,n_mod_X,lim_sec_X)
                 
                 ! calculate J_exp_ang
-                if (use_pol_flux_F) then
-                    J_exp_ang = J*exp(iu*(X%m_1(k)-X%m_2(m))*ang_par_F)
-                else
-                    J_exp_ang = J*exp(-iu*(X%n_1(k)-X%n_2(m))*ang_par_F)
-                end if
+                do kd = 1,grid_X%loc_n_r
+                    if (use_pol_flux_F) then
+                        J_exp_ang(:,:,kd) = J(:,:,kd)*&
+                            &exp(iu*(X%m_1(kd,k)-X%m_2(kd,m))*&
+                            &ang_par_F(:,:,kd))
+                    else
+                        J_exp_ang(:,:,kd) = J(:,:,kd)*&
+                            &exp(-iu*(X%n_1(kd,k)-X%n_2(kd,m))*&
+                            &ang_par_F(:,:,kd))
+                    end if
+                end do
                 
                 ! parallel integration loop
                 do id = 2,grid_X%n(1)
@@ -1685,23 +2029,25 @@ contains
     !   - tensorial:    PV_int, KV_int
     !     (the non-integrated variables are heavy and not requested)
     ! Note: Flux coordinates used as normal coordinates
-    integer function print_output_X_1(grid,X) result(ierr)                      ! vectorial version
+    integer function print_output_X_1(grid,X,lim_sec_X) result(ierr)            ! vectorial version
         use num_vars, only: PB3D_name
         use rich, only: rich_info_short
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type
-        use X_vars, only: get_suffix
+        use X_utilities, only: get_suffix
         
         character(*), parameter :: rout_name = 'print_output_X_1'
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! perturbation grid variables
         type(X_1_type), intent(in) :: X                                         ! vectorial perturbation variables 
+        integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
         
         ! local variables
         type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
         type(var_1D_type), pointer :: X_1D_loc => null()                        ! local element in X_1D
         integer :: id, jd                                                       ! counters
+        integer :: suffix                                                       ! suffix
         
         ! initialize ierr
         ierr = 0
@@ -1723,7 +2069,8 @@ contains
         do jd = 1,X%n_mod
             ! RE_U_0
             X_1D_loc => X_1D(id); id = id+1
-            X_1D_loc%var_name = 'RE_U_0_'//trim(get_suffix(X,jd))
+            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
+            X_1D_loc%var_name = 'RE_U_0_'//trim(i2str(suffix))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
@@ -1736,7 +2083,8 @@ contains
             
             ! IM_U_0
             X_1D_loc => X_1D(id); id = id+1
-            X_1D_loc%var_name = 'IM_U_0_'//trim(get_suffix(X,jd))
+            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
+            X_1D_loc%var_name = 'IM_U_0_'//trim(i2str(suffix))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
@@ -1749,7 +2097,8 @@ contains
             
             ! RE_U_1
             X_1D_loc => X_1D(id); id = id+1
-            X_1D_loc%var_name = 'RE_U_1_'//trim(get_suffix(X,jd))
+            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
+            X_1D_loc%var_name = 'RE_U_1_'//trim(i2str(suffix))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
@@ -1762,7 +2111,8 @@ contains
             
             ! IM_U_1
             X_1D_loc => X_1D(id); id = id+1
-            X_1D_loc%var_name = 'IM_U_1_'//trim(get_suffix(X,jd))
+            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
+            X_1D_loc%var_name = 'IM_U_1_'//trim(i2str(suffix))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
@@ -1775,7 +2125,8 @@ contains
             
             ! RE_DU_0
             X_1D_loc => X_1D(id); id = id+1
-            X_1D_loc%var_name = 'RE_DU_0_'//trim(get_suffix(X,jd))
+            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
+            X_1D_loc%var_name = 'RE_DU_0_'//trim(i2str(suffix))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
@@ -1788,7 +2139,8 @@ contains
             
             ! IM_DU_0
             X_1D_loc => X_1D(id); id = id+1
-            X_1D_loc%var_name = 'IM_DU_0_'//trim(get_suffix(X,jd))
+            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
+            X_1D_loc%var_name = 'IM_DU_0_'//trim(i2str(suffix))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
@@ -1801,7 +2153,8 @@ contains
             
             ! RE_DU_1
             X_1D_loc => X_1D(id); id = id+1
-            X_1D_loc%var_name = 'RE_DU_1_'//trim(get_suffix(X,jd))
+            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
+            X_1D_loc%var_name = 'RE_DU_1_'//trim(i2str(suffix))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
@@ -1814,7 +2167,8 @@ contains
             
             ! IM_DU_1
             X_1D_loc => X_1D(id); id = id+1
-            X_1D_loc%var_name = 'IM_DU_1_'//trim(get_suffix(X,jd))
+            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
+            X_1D_loc%var_name = 'IM_DU_1_'//trim(i2str(suffix))
             allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
             allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
             X_1D_loc%tot_i_min = [1,1,1]
@@ -1846,13 +2200,13 @@ contains
         call lvl_ud(-1)
         call writo('Vectorial perturbation variables written to output')
     end function print_output_X_1
-    integer function print_output_X_2(grid,X) result(ierr)                      ! tensorial version
-        use num_vars, only: PB3D_name, use_pol_flux_F
+    integer function print_output_X_2(grid,X,lim_sec_X) result(ierr)            ! tensorial version
+        use num_vars, only: PB3D_name
         use rich, only: rich_info_short
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type
-        use X_vars, only: get_suffix, is_necessary_X, &
-            &min_m_X, max_m_X, min_n_X, max_n_X
+        use X_utilities, only: is_necessary_X, get_suffix
+        use X_vars, only: n_mod_X
         use utilities, only: c
         
         character(*), parameter :: rout_name = 'print_output_X_2'
@@ -1860,15 +2214,15 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! perturbation grid variables
         type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables 
+        integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol. flux) or n_X (tor. flux)
         
         ! local variables
-        integer :: n_mod_tot                                                    ! total nr. of modes
         type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
         type(var_1D_type), pointer :: X_1D_loc => null()                        ! local element in X_1D
         integer :: id, jd, kd                                                   ! counters
-        integer :: lim_submat(2,2)                                              ! limits of submatrix
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         logical :: print_this(2)                                                ! whether symmetric and asymmetric variables need to be printed
+        integer :: suffix(2)                                                    ! suffix
         
         ! initialize ierr
         ierr = 0
@@ -1881,38 +2235,28 @@ contains
         call writo('Preparing variables for writing')
         call lvl_ud(1)
         
-        ! set nr. of modes
-        n_mod_tot = (max_m_X-min_m_X+1)*(max_n_X-min_n_X+1)
-        
         ! Set up the 1D equivalents of the perturbation variables
         allocate(X_1D(&
             &4*(size(X%PV_int_0,1)+size(X%PV_int_1,1)+size(X%PV_int_2,1))))
         
-        ! set limits of submatrix in whole matrix
-        if (use_pol_flux_F) then
-            lim_submat(:,1) = [minval(X%m_1),maxval(X%m_1)]-min_m_X+1
-            lim_submat(:,2) = [minval(X%m_2),maxval(X%m_2)]-min_m_X+1
-        else
-            lim_submat(:,1) = [minval(X%n_1),maxval(X%n_1)]-min_n_X+1
-            lim_submat(:,2) = [minval(X%n_2),maxval(X%n_2)]-min_n_X+1
-        end if
         id = 1
         
         do kd = 1,X%n_mod(2)
             do jd = 1,X%n_mod(1)
                 ! set local c's
-                c_loc(1) = c([jd,kd],.true.,n_mod_tot,lim_submat)
-                c_loc(2) = c([jd,kd],.false.,n_mod_tot,lim_submat)
+                c_loc(1) = c([jd,kd],.true.,n_mod_X,lim_sec_X)
+                c_loc(2) = c([jd,kd],.false.,n_mod_X,lim_sec_X)
                 
                 ! determine whether variables need to be printed
-                print_this(1) = is_necessary_X(X,.true.,[jd,kd])
-                print_this(2) = is_necessary_X(X,.false.,[jd,kd])
+                print_this(1) = is_necessary_X(.true.,[jd,kd],lim_sec_X)
+                print_this(2) = is_necessary_X(.false.,[jd,kd],lim_sec_X)
                 
                 ! RE_PV_int_0
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
+                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
                     X_1D_loc%var_name = 'RE_PV_int_0_'//&
-                        &trim(get_suffix(X,jd,kd))
+                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
@@ -1927,8 +2271,9 @@ contains
                 ! IM_PV_int_0
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
+                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
                     X_1D_loc%var_name = 'IM_PV_int_0_'//&
-                        &trim(get_suffix(X,jd,kd))
+                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
@@ -1943,8 +2288,9 @@ contains
                 ! RE_PV_int_1
                 if (print_this(2)) then
                     X_1D_loc => X_1D(id); id = id+1
+                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
                     X_1D_loc%var_name = 'RE_PV_int_1_'//&
-                        &trim(get_suffix(X,jd,kd))
+                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
@@ -1959,8 +2305,9 @@ contains
                 ! IM_PV_int_1
                 if (print_this(2)) then
                     X_1D_loc => X_1D(id); id = id+1
+                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
                     X_1D_loc%var_name = 'IM_PV_int_1_'//&
-                        &trim(get_suffix(X,jd,kd))
+                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
@@ -1975,8 +2322,9 @@ contains
                 ! RE_PV_int_2
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
+                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
                     X_1D_loc%var_name = 'RE_PV_int_2_'//&
-                        &trim(get_suffix(X,jd,kd))
+                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
@@ -1991,8 +2339,9 @@ contains
                 ! IM_PV_int_2
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
+                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
                     X_1D_loc%var_name = 'IM_PV_int_2_'//&
-                        &trim(get_suffix(X,jd,kd))
+                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
@@ -2007,8 +2356,9 @@ contains
                 ! RE_KV_int_0
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
+                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
                     X_1D_loc%var_name = 'RE_KV_int_0_'//&
-                        &trim(get_suffix(X,jd,kd))
+                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
@@ -2023,8 +2373,9 @@ contains
                 ! IM_KV_int_0
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
+                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
                     X_1D_loc%var_name = 'IM_KV_int_0_'//&
-                        &trim(get_suffix(X,jd,kd))
+                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
@@ -2039,8 +2390,9 @@ contains
                 ! RE_KV_int_1
                 if (print_this(2)) then
                     X_1D_loc => X_1D(id); id = id+1
+                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
                     X_1D_loc%var_name = 'RE_KV_int_1_'//&
-                        &trim(get_suffix(X,jd,kd))
+                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
@@ -2055,8 +2407,9 @@ contains
                 ! IM_KV_int_1
                 if (print_this(2)) then
                     X_1D_loc => X_1D(id); id = id+1
+                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
                     X_1D_loc%var_name = 'IM_KV_int_1_'//&
-                        &trim(get_suffix(X,jd,kd))
+                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
@@ -2071,8 +2424,9 @@ contains
                 ! RE_KV_int_2
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
+                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
                     X_1D_loc%var_name = 'RE_KV_int_2_'//&
-                        &trim(get_suffix(X,jd,kd))
+                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
@@ -2087,8 +2441,9 @@ contains
                 ! IM_KV_int_2
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
+                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
                     X_1D_loc%var_name = 'IM_KV_int_2_'//&
-                        &trim(get_suffix(X,jd,kd))
+                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
                     allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
                     X_1D_loc%tot_i_min = [1,1]
