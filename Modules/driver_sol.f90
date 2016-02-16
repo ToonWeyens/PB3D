@@ -35,7 +35,7 @@ contains
         use grid_vars, only: dealloc_grid
         use eq_vars, only: dealloc_eq
         use VMEC, only: dealloc_VMEC
-        use HELENA, only: dealloc_HEL
+        use HELENA_vars, only: dealloc_HEL
         use met_vars, only: dealloc_met
         use X_vars, only: dealloc_X
         use sol_vars, only: dealloc_sol
@@ -50,7 +50,6 @@ contains
         !!use utilities, only: calc_aux_utilities
 #if ldebug
         use num_vars, only: iu, use_pol_flux_F
-        use grid_utilities, only: get_norm_interp_data
         use utilities, only: c, con
         use MPI_utilities, only: get_ser_var
 #endif
@@ -69,7 +68,7 @@ contains
         integer :: sol_limits(2)                                                ! min. and max. index of sol grid for this process
         real(dp), allocatable :: r_F_sol(:)                                     ! normal points in solution grid
 #if ldebug
-        type(grid_type) :: grid_X_B                                             ! field-aligned perturbation grid
+        type(grid_type), pointer :: grid_X_B                                    ! field-aligned perturbation grid
         real(dp), pointer :: ang_par_F(:,:,:)                                   ! parallel angle theta_F or zeta_F
         complex(dp), allocatable :: X_norm(:,:,:)                               ! |X|^2 or other results to be plotted
         integer :: m, k                                                         ! counters
@@ -102,6 +101,9 @@ contains
         CHCKERR('')
         
         ! reconstruct PB3D variables, using sol limits for X grid
+        ! user output
+        call writo('Reconstructing PB3D output on output grid')
+        call lvl_ud(1)
 #if ldebug
         ierr = reconstruct_PB3D(.false.,.true.,.true.,.false.,.true.,.false.,&
             &.true.,.false.,grid_eq=grid_eq,grid_X=grid_X,grid_X_B=grid_X_B,&
@@ -113,6 +115,8 @@ contains
             &X_limits=sol_limits,use_setup_nm_X=.false.)
         CHCKERR('')
 #endif
+        call lvl_ud(-1)
+        call writo('PB3D output reconstructed')
         
         ! create solution grid with division limits and setup normal
         ! coordinate

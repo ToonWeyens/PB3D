@@ -429,6 +429,7 @@ contains
         subroutine adapt_n_par_X
             ! local variables
             real(dp) :: min_n_par_X                                             ! minimal n_par_X
+            integer :: rec_n_par_X_fac = 5                                      ! factor for recommended n_par_X
             
             ! adapt nyq_fac
             if (nyq_fac.lt.1) then
@@ -446,6 +447,11 @@ contains
                 if (mod(n_par_X,2).eq.0) n_par_X = n_par_X+1                    ! odd numbers are usually better
                 call writo('WARNING: To avoid aliasing of the perturbation &
                     &integrals, n_par_X is increased to '//trim(i2str(n_par_X)))
+            end if
+            if (n_par_X.gt.rec_n_par_X_fac*min_n_par_X) then
+                call writo('Instead of '//trim(i2str(n_par_X))//' parallel &
+                    &points, '//trim(i2str(int(rec_n_par_X_fac*min_n_par_X)))//&
+                    &' would probably be enough')
             end if
         end subroutine adapt_n_par_X
         

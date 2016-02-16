@@ -50,7 +50,8 @@ contains
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
             &setup_nm_X, print_output_X, calc_magn_ints
         use vac, only: calc_vac
-        use HELENA, only: interp_HEL_on_grid, dealloc_HEL
+        use HELENA_vars, only: dealloc_HEL
+        use HELENA_ops, only: interp_HEL_on_grid
         use VMEC, only: dealloc_VMEC
         use rich, only: rich_info_short
         !!use utilities, only: calc_aux_utilities
@@ -151,26 +152,18 @@ contains
         ! user output
         call writo('Reconstructing PB3D output on output grid')
         call lvl_ud(1)
+        ierr = reconstruct_PB3D(.false.,.true.,.false.,.false.,.true.,.false.,&
+            &.false.,.false.,grid_eq=grid_eq,grid_eq_B=grid_eq_B,eq=eq,met=met)
+        CHCKERR('')
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ! normal call to reconstruct_PB3D
-                ierr = reconstruct_PB3D(.false.,.true.,.false.,.false.,.true.,&
-                    &.false.,.false.,.false.,grid_eq=grid_eq,eq=eq,met=met)
-                CHCKERR('')
-                ! the field-aligned  grid,  metric   variables  and  equilibrium
-                ! the variables are identical to output
-                grid_eq_B => grid_eq
+                ! the  field-aligned metric variables and  equilibrium variables
+                ! are identical to output
                 met_B => met
 #if ldebug
                 if (debug_run_driver_X) eq_B => eq
 #endif
             case (2)                                                            ! HELENA
-                ! additionally need field-aligned equilibrium grid
-                allocate(grid_eq_B)
-                ierr = reconstruct_PB3D(.false.,.true.,.false.,.false.,.true.,&
-                    &.false.,.false.,.false.,grid_eq=grid_eq,&
-                    &grid_eq_B=grid_eq_B,eq=eq,met=met)
-                CHCKERR('')
                 ! also need field-aligined metrics
                 allocate(met_B)
                 ierr = create_met(grid_eq_B,met_B)
@@ -444,6 +437,13 @@ contains
             ierr = calc_magn_ints(grid_eq_B,grid_X_B,met_B,X_2,&
                 &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
             CHCKERR('')
+            !write(*,*) '!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!'
+            !do id = 1,size(X_2%PV_int_0,3)
+                !call print_GP_2D('RE_PV_0_'//trim(i2str(id)),'',&
+                    !&realpart(transpose(X_2%PV_int_0(:,:,id))))
+                !call print_GP_2D('IM_PV_0_'//trim(i2str(id)),'',&
+                    !&imagpart(transpose(X_2%PV_int_0(:,:,id))))
+            !end do
             
             ! write tensorial perturbation variables to output file
             ierr = print_output_X(grid_X,X_2,lim_sec_X=&

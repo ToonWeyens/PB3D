@@ -13,7 +13,8 @@ eq_ops.o \
 eq_vars.o \
 files_ops.o \
 files_utilities.o \
-HELENA.o \
+HELENA_vars.o \
+HELENA_ops.o \
 input_ops.o \
 input_utilities.o \
 messages.o \

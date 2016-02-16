@@ -22,7 +22,7 @@ contains
         use MPI_utilities, only: wait_MPI
         use eq_vars, only: dealloc_eq
         use VMEC, only: dealloc_VMEC
-        use HELENA, only: dealloc_HEL
+        use HELENA_vars, only: dealloc_HEL
         use grid_vars, only: dealloc_grid, &
             &alpha
         use eq_ops, only: calc_eq, calc_derived_q, print_output_eq, &
@@ -42,6 +42,7 @@ contains
         type(grid_type), pointer :: grid_eq_B => null()                         ! field-aligned equilibrium grid
         type(eq_type) :: eq                                                     ! equilibrium for
         type(met_type) :: met                                                   ! metric variables
+        integer :: id
         
         ! initialize ierr
         ierr = 0
@@ -81,6 +82,15 @@ contains
         ierr = calc_F_derivs(eq,met)
 #endif
         CHCKERR('')
+        
+        !!! TEMPORARILY !!!!!!!!
+        !!do id = 0,size(eq%pres_FD,2)-1
+            !!write(*,*) 'id = ', id
+            !!call print_GP_2D('pres_FD','',eq%pres_FD(:,id),x=grid_eq%loc_r_F)
+            !!call print_GP_2D('q_saf_FD','',eq%q_saf_FD(:,id),x=grid_eq%loc_r_F)
+            !!call print_GP_2D('flux_p_FD','',eq%flux_p_FD(:,id),x=grid_eq%loc_r_F)
+            !!call print_GP_2D('flux_t_FD','',eq%flux_t_FD(:,id),x=grid_eq%loc_r_F)
+        !!end do
         
         ! plot flux quantities if requested
         if (plot_flux_q) then

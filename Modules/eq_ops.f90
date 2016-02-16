@@ -7,7 +7,7 @@ module eq_ops
     use output_ops
     use messages
     use num_vars, only: pi, dp, max_str_ln
-    use grid_vars, only: grid_type, dealloc_grid
+    use grid_vars, only: grid_type, disc_type, dealloc_grid, dealloc_disc
     use eq_vars, only: eq_type
     use met_vars, only: met_type
     
@@ -33,7 +33,7 @@ contains
     integer function read_eq() result(ierr)
         use num_vars, only: eq_style, rank, use_pol_flux_E
         use VMEC, only: read_VMEC
-        use HELENA, only: read_HEL
+        use HELENA_vars, only: read_HEL
         use grid_vars, only: n_r_eq
         
         character(*), parameter :: rout_name = 'read_eq'
@@ -164,9 +164,9 @@ contains
         use num_vars, only: norm_disc_prec_eq
 #if ldebug
         use num_vars, only: use_pol_flux_F
-        use utilities, only: calc_deriv
         use grid_vars, only: dealloc_grid
-        use grid_utilities, only: trim_grid, calc_XYZ_grid
+        use grid_utilities, only: trim_grid, calc_XYZ_grid, setup_deriv_data, &
+            &apply_disc
 #endif
         
         ! input / output
@@ -208,6 +208,7 @@ contains
         real(dp), allocatable :: X_plot(:,:,:)                                  ! X of plot
         real(dp), allocatable :: Y_plot(:,:,:)                                  ! Y of plot
         real(dp), allocatable :: Z_plot(:,:,:)                                  ! Z of plot
+        type(disc_type) :: ang_deriv_data                                      ! data for angular derivatives
         integer :: istat                                                        ! status
         integer :: jd                                                           ! counter
 #endif
@@ -296,12 +297,15 @@ contains
             ! get derived sigma
             do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_eq_trim%n(2)
-                    istat = calc_deriv(eq%sigma(:,jd,kd),&
-                        &D3sigma(:,jd,kd-norm_id(1)+1),ang_par_F(:,jd,kd),1,&
-                        &norm_disc_prec_eq)
+                    istat = setup_deriv_data(ang_par_F(:,jd,kd),ang_deriv_data,&
+                        &1,norm_disc_prec_eq)
+                    CHCKSTT
+                    istat = apply_disc(eq%sigma(:,jd,kd),ang_deriv_data,&
+                        &D3sigma(:,jd,kd-norm_id(1)+1))
                     CHCKSTT
                 end do
             end do
+            call dealloc_disc(ang_deriv_data)
             
             ! calculate alternatively derived sigma
             do kd = norm_id(1),norm_id(2)
@@ -378,9 +382,10 @@ contains
     integer function calc_flux_q(grid_eq,eq) result(ierr)
         use num_vars, only: eq_style, max_deriv, use_pol_flux_E, &
             &use_pol_flux_F, rho_style, use_normalization, norm_disc_prec_eq
-        use utilities, only: calc_deriv, calc_int
+        use utilities, only: calc_int
         use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &
             &max_flux_t_F, rho_0
+        use grid_utilities, only: setup_deriv_data, apply_disc
         
         character(*), parameter :: rout_name = 'calc_flux_q'
         
@@ -389,7 +394,16 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         
         ! local variables
+        integer :: id                                                           ! counter
         character(len=max_str_ln) :: err_msg                                    ! error message
+        type(disc_type), allocatable :: norm_deriv_data(:)                      ! data for normal derivatives
+        
+        ! variables in full equilibrium grid
+        real(dp), allocatable :: flux_p_E_full(:,:)                             ! poloidal flux in full equilibrium coordinates
+        real(dp), allocatable :: flux_t_E_full(:,:)                             ! toroidal flux in full equilibrium coordinates
+        real(dp), allocatable :: pres_E_full(:,:)                               ! pressure full equilibrium coordinates
+        real(dp), allocatable :: q_saf_E_full(:,:)                              ! safety factor in full equilibrium coordinates
+        real(dp), allocatable :: rot_t_E_full(:,:)                              ! rotational transform in full equilibrium coordinates
         
         ! initialize ierr
         ierr = 0
@@ -410,6 +424,21 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
+        
+        ! clean up
+        do id = 1,size(norm_deriv_data)
+            call dealloc_disc(norm_deriv_data(id))
+        end do
+        deallocate(norm_deriv_data)
+        
+        ! take local variables
+        eq%flux_p_E = flux_p_E_full(grid_eq%i_min:grid_eq%i_max,:)
+        eq%flux_t_E = flux_t_E_full(grid_eq%i_min:grid_eq%i_max,:)
+        eq%pres_E = pres_E_full(grid_eq%i_min:grid_eq%i_max,:)
+        eq%q_saf_E = q_saf_E_full(grid_eq%i_min:grid_eq%i_max,:)
+        eq%rot_t_E = rot_t_E_full(grid_eq%i_min:grid_eq%i_max,:)
+        grid_eq%loc_r_E = grid_eq%r_E(grid_eq%i_min:grid_eq%i_max)
+        grid_eq%loc_r_F = grid_eq%r_F(grid_eq%i_min:grid_eq%i_max)
         
         ! Calculate particle density rho
         ! choose which density style is being used:
@@ -437,182 +466,191 @@ contains
             
             ! local variables
             integer :: kd                                                       ! counter
-            real(dp), allocatable :: Dflux_p_full(:)                            ! version of dflux_p/dp on full normal equilibrium grid (1..n(3))
-            real(dp), allocatable :: flux_p_full(:)                             ! version of integrated flux_p on full normal grid (1..n(3))
             
             ! initialize ierr
             ierr = 0
             
-            ! set up helper variables to calculate poloidal flux
-            allocate(Dflux_p_full(grid_eq%n(3)),flux_p_full(grid_eq%n(3)))
-            Dflux_p_full = rot_t_V*Dflux_t_V
-            ierr = calc_int(Dflux_p_full,1.0_dp/(grid_eq%n(3)-1.0_dp),&
-                &flux_p_full)                                                   ! equidistant grid (0..1) with n(3) points
-            CHCKERR('')
+            ! allocate full variables
+            allocate(flux_p_E_full(grid_eq%n(3),0:max_deriv+2))
+            allocate(flux_t_E_full(grid_eq%n(3),0:max_deriv+2))
+            allocate(pres_E_full(grid_eq%n(3),0:max_deriv+1))
+            allocate(q_saf_E_full(grid_eq%n(3),0:max_deriv+1))
+            allocate(rot_t_E_full(grid_eq%n(3),0:max_deriv+1))
             
-            ! max flux and normal coord. of eq grid in Equilibrium coordinates
-            max_flux_p_E = flux_p_full(grid_eq%n(3))
-            max_flux_t_E = flux_t_V(grid_eq%n(3))
-            if (use_pol_flux_E) then
-                grid_eq%r_E = flux_p_full/flux_p_full(grid_eq%n(3))
-                grid_eq%loc_r_E = flux_p_full(grid_eq%i_min:grid_eq%i_max)/&
-                    &flux_p_full(grid_eq%n(3))
-            else
-                grid_eq%r_E = flux_t_V/flux_t_V(grid_eq%n(3))
-                grid_eq%loc_r_E = flux_t_V(grid_eq%i_min:grid_eq%i_max)/&
-                    &flux_t_V(grid_eq%n(3))
-            end if
-            
-            ! max flux and normal coord. of eq grid in Flux coordinates
-            max_flux_p_F = flux_p_full(grid_eq%n(3))
-            max_flux_t_F = - flux_t_V(grid_eq%n(3))                             ! conversion VMEC LH -> RH coord. system
-            if (use_pol_flux_F) then
-                grid_eq%r_F = flux_p_full/(2*pi)                                ! psi_F = flux_p/2pi
-                grid_eq%loc_r_F = flux_p_full(grid_eq%i_min:grid_eq%i_max)/&
-                    &(2*pi)                                                     ! psi_F = flux_p/2pi
-            else
-                grid_eq%r_F = - flux_t_V/(2*pi)                                 ! conversion VMEC LH -> RH coord. system, psi_F = flux_t/2pi
-                grid_eq%loc_r_F = - flux_t_V(grid_eq%i_min:grid_eq%i_max)/&
-                    &(2*pi)                                                     ! conversion VMEC LH -> RH coord. system, psi_F = flux_t/2pi
-            end if
-            
-            ! poloidal  flux: calculate  using rot_t_V  and flux_t_V,  Dflux_t_V
-            ! (easier to use full normal  equilibrium grid flux_p because of the
-            ! integral)
-            eq%flux_p_E(:,0) = flux_p_full(grid_eq%i_min:grid_eq%i_max)
-            eq%flux_p_E(:,1) = Dflux_p_full(grid_eq%i_min:grid_eq%i_max)
-            do kd = 2,max_deriv+2
-                ierr = calc_deriv(eq%flux_p_E(:,1),eq%flux_p_E(:,kd),&
-                    &grid_eq%n(3)-1._dp,kd-1,norm_disc_prec_eq)
+            ! calculate data for normal derivatives with equidistant grid
+            allocate(norm_deriv_data(max_deriv+2))
+            do kd = 1,max_deriv+2
+                ierr = setup_deriv_data(1._dp/(grid_eq%n(3)-1),grid_eq%n(3),&
+                    &norm_deriv_data(kd),kd,norm_disc_prec_eq)
                 CHCKERR('')
             end do
             
-            ! toroidal flux: copy from VMEC and derive
-            eq%flux_t_E(:,0) = flux_t_V(grid_eq%i_min:grid_eq%i_max)
-            eq%flux_t_E(:,1) = Dflux_t_V(grid_eq%i_min:grid_eq%i_max)
+            ! calculate derivatives of toroidal flux
+            flux_t_E_full(:,0) = flux_t_V
+            flux_t_E_full(:,1) = Dflux_t_V
             do kd = 2,max_deriv+2
-                ierr = calc_deriv(eq%flux_t_E(:,1),eq%flux_t_E(:,kd),&
-                    &grid_eq%n(3)-1._dp,kd-1,norm_disc_prec_eq)
+                ierr = apply_disc(flux_t_E_full(:,1),&
+                    &norm_deriv_data(kd-1),flux_t_E_full(:,kd))
+                CHCKERR('')
+            end do
+            
+            ! calculate poloidal flux and derivatives
+            flux_p_E_full(:,1) = rot_t_V*flux_t_E_full(:,1)
+            ierr = calc_int(flux_p_E_full(:,1),1.0_dp/(grid_eq%n(3)-1.0_dp),&
+                &flux_p_E_full(:,0))                                            ! equidistant grid (0..1) with n(3) points
+            CHCKERR('')
+            do kd = 2,max_deriv+2
+                ierr = apply_disc(flux_p_E_full(:,1),norm_deriv_data(kd-1),&
+                    &flux_p_E_full(:,kd))
                 CHCKERR('')
             end do
             
             ! pressure: copy from VMEC and derive
-            eq%pres_E(:,0) = pres_V(grid_eq%i_min:grid_eq%i_max)
+            pres_E_full(:,0) = pres_V
             do kd = 1, max_deriv+1
-                ierr = calc_deriv(eq%pres_E(:,0),eq%pres_E(:,kd),&
-                    &grid_eq%n(3)-1._dp,kd,norm_disc_prec_eq)
+                ierr = apply_disc(pres_E_full(:,0),norm_deriv_data(kd),&
+                    &pres_E_full(:,kd))
                 CHCKERR('')
             end do
             
             ! safety factor
-            eq%q_saf_E(:,0) = 1.0_dp/rot_t_V(grid_eq%i_min:grid_eq%i_max)
-            do kd = 1,max_deriv+1
-                ierr = calc_deriv(eq%q_saf_E(:,0),eq%q_saf_E(:,kd),&
-                    &grid_eq%n(3)-1._dp,kd,norm_disc_prec_eq)
+            q_saf_E_full(:,0) = 1._dp/rot_t_V
+            do kd = 1, max_deriv+1
+                ierr = apply_disc(q_saf_E_full(:,0),norm_deriv_data(kd),&
+                    &q_saf_E_full(:,kd))
                 CHCKERR('')
             end do
             
             ! rot. transform
-            eq%rot_t_E(:,0) = rot_t_V(grid_eq%i_min:grid_eq%i_max)
-            do kd = 1,max_deriv+1
-                ierr = calc_deriv(eq%rot_t_E(:,0),eq%rot_t_E(:,kd),&
-                    &grid_eq%n(3)-1._dp,kd,norm_disc_prec_eq)
+            rot_t_E_full(:,0) = rot_t_V
+            do kd = 1, max_deriv+1
+                ierr = apply_disc(rot_t_E_full(:,0),norm_deriv_data(kd),&
+                    &rot_t_E_full(:,kd))
                 CHCKERR('')
             end do
             
-            ! deallocate helper variables
-            deallocate(Dflux_p_full,flux_p_full)
+            ! max flux and  normal coord. of eq grid  in Equilibrium coordinates
+            ! (uses poloidal flux by default)
+            max_flux_p_E = flux_p_E_full(grid_eq%n(3),0)
+            max_flux_t_E = flux_t_E_full(grid_eq%n(3),0)
+            if (use_pol_flux_E) then
+                grid_eq%r_E = flux_p_E_full(:,0)/max_flux_p_E
+            else
+                grid_eq%r_E = flux_t_E_full(:,0)/max_flux_t_E
+            end if
+            
+            ! max flux and normal coord. of eq grid in Flux coordinates
+            max_flux_p_F = flux_p_E_full(grid_eq%n(3),0)
+            max_flux_t_F = - flux_t_E_full(grid_eq%n(3),0)                      ! conversion VMEC LH -> PB3D RH coord. system
+            if (use_pol_flux_F) then
+                grid_eq%r_F = flux_p_E_full(:,0)/(2*pi)                         ! psi_F = flux_p/2pi
+            else
+                grid_eq%r_F = - flux_t_E_full(:,0)/(2*pi)                       ! psi_F = flux_t/2pi, conversion VMEC LH -> PB3D RH
+            end if
         end function calc_flux_q_VMEC
         
         ! HELENA version
         ! The HELENA normal coord. is the poloidal flux divided by 2pi
         integer function calc_flux_q_HEL() result(ierr)
-            use HELENA, only: qs, flux_p_H, pres_H
+            use HELENA_vars, only: qs, flux_p_H, pres_H
             
             character(*), parameter :: rout_name = 'calc_flux_q_HEL'
             
             ! local variables
             integer :: kd                                                       ! counter
-            real(dp), allocatable :: Dflux_t_full(:)                            ! version of dflux_t/dp on full normal equilibrium grid
-            real(dp), allocatable :: flux_t_full(:)                             ! version of integrated flux_t on full normal equilibrium grid
-            real(dp), allocatable :: Dflux_p_H(:)                               ! normal derivative of flux_p_H
             
             ! initialize ierr
             ierr = 0
             
-            ! set up helper variables to calculate toroidal flux
-            ! calculate normal derivative of flux_p_H
-            allocate(Dflux_p_H(grid_eq%n(3)))
-            ierr = calc_deriv(flux_p_H,Dflux_p_H,flux_p_H,1,norm_disc_prec_eq)
-            allocate(Dflux_t_full(grid_eq%n(3)),flux_t_full(grid_eq%n(3)))
-            Dflux_t_full = qs*Dflux_p_H
-            ierr = calc_int(Dflux_t_full,flux_p_H,flux_t_full)
-            CHCKERR('')
+            ! allocate full variables
+            allocate(flux_p_E_full(grid_eq%n(3),0:max_deriv+1))
+            allocate(flux_t_E_full(grid_eq%n(3),0:max_deriv+1))
+            allocate(pres_E_full(grid_eq%n(3),0:max_deriv+1))
+            allocate(q_saf_E_full(grid_eq%n(3),0:max_deriv+1))
+            allocate(rot_t_E_full(grid_eq%n(3),0:max_deriv+1))
             
-            ! max flux and  normal coord. of eq grid  in Equilibrium coordinates
-            ! (uses poloidal flux by default)
-            max_flux_p_E = flux_p_H(grid_eq%n(3))
-            max_flux_t_E = flux_t_full(grid_eq%n(3))
-            grid_eq%r_E = flux_p_H/(2*pi)
-            grid_eq%loc_r_E = flux_p_H(grid_eq%i_min:grid_eq%i_max)/(2*pi)
-            
-            ! max flux and normal coord. of eq grid in Flux coordinates
-            max_flux_p_F = flux_p_H(grid_eq%n(3))
-            max_flux_t_F = flux_t_full(grid_eq%n(3))
-            if (use_pol_flux_F) then
-                grid_eq%r_F = flux_p_H/(2*pi)                                   ! psi_F = flux_p/2pi
-                grid_eq%loc_r_F = flux_p_H(grid_eq%i_min:grid_eq%i_max)/(2*pi)  ! psi_F = flux_p/2pi
-            else
-                grid_eq%r_F = flux_t_full/(2*pi)                                ! psi_F = flux_t/2pi
-                grid_eq%loc_r_F = flux_t_full(grid_eq%i_min:grid_eq%i_max)/&
-                    &(2*pi)                                                     ! psi_F = flux_t/2pi
-            end if
-            
-            ! poloidal flux: copy from HELENA and derive
-            eq%flux_p_E(:,0) = flux_p_H(grid_eq%i_min:grid_eq%i_max)
+            ! calculate data for normal derivatives with flux_p_H/2pi
+            allocate(norm_deriv_data(max_deriv+1))
             do kd = 1,max_deriv+1
-                ierr = calc_deriv(eq%flux_p_E(:,0),eq%flux_p_E(:,kd),&
-                    &grid_eq%loc_r_E,kd,norm_disc_prec_eq)
+                ierr = setup_deriv_data(flux_p_H/(2*pi),norm_deriv_data(kd),&
+                    &kd,norm_disc_prec_eq)
                 CHCKERR('')
             end do
             
-            ! toroidal flux: calculate using  qs and flux_p_H, Dflux_p_H (easier
-            ! to  use  full  normal  equilibrium  grid  flux_t  because  of  the
-            ! integral)
-            eq%flux_t_E(:,0) = flux_t_full(grid_eq%i_min:grid_eq%i_max)
-            eq%flux_t_E(:,1) = Dflux_t_full(grid_eq%i_min:grid_eq%i_max)
+            ! calculate derivatives of poloidal flux
+            flux_p_E_full(:,0) = flux_p_H
+            do kd = 1,max_deriv+1
+                ierr = apply_disc(flux_p_E_full(:,0),norm_deriv_data(kd),&
+                    &flux_p_E_full(:,kd))
+                CHCKERR('')
+            end do
+            
+            ! calculate toroidal flux and derivatives
+            flux_t_E_full(:,1) = qs*flux_p_E_full(:,1)
+            ierr = calc_int(flux_t_E_full(:,1),flux_p_H/(2*pi),&
+                &flux_t_E_full(:,0))
+            CHCKERR('')
             do kd = 2,max_deriv+1
-                ierr = calc_deriv(eq%flux_t_E(:,1),eq%flux_t_E(:,kd),&
-                    &grid_eq%loc_r_E,kd-1,norm_disc_prec_eq)
+                ierr = apply_disc(flux_t_E_full(:,1),norm_deriv_data(kd-1),&
+                    &flux_t_E_full(:,kd))
                 CHCKERR('')
             end do
             
             ! pressure: copy from HELENA and derive
-            eq%pres_E(:,0) = pres_H(grid_eq%i_min:grid_eq%i_max)
+            pres_E_full(:,0) = pres_H
             do kd = 1, max_deriv+1
-                ierr = calc_deriv(eq%pres_E(:,0),eq%pres_E(:,kd),&
-                    &grid_eq%loc_r_E,kd,norm_disc_prec_eq)
+                ierr = apply_disc(pres_E_full(:,0),norm_deriv_data(kd),&
+                    &pres_E_full(:,kd))
                 CHCKERR('')
             end do
             
             ! safety factor
-            eq%q_saf_E(:,0) = qs(grid_eq%i_min:grid_eq%i_max)
-            do kd = 1,max_deriv+1
-                ierr = calc_deriv(eq%q_saf_E(:,0),eq%q_saf_E(:,kd),&
-                    &grid_eq%loc_r_E,kd,norm_disc_prec_eq)
+            q_saf_E_full(:,0) = qs
+            do kd = 1, max_deriv+1
+                ierr = apply_disc(q_saf_E_full(:,0),norm_deriv_data(kd),&
+                    &q_saf_E_full(:,kd))
                 CHCKERR('')
             end do
             
             ! rot. transform
-            eq%rot_t_E(:,0) = 1.0_dp/qs(grid_eq%i_min:grid_eq%i_max)
-            do kd = 1,max_deriv+1
-                ierr = calc_deriv(eq%rot_t_E(:,0),eq%rot_t_E(:,kd),&
-                    &grid_eq%loc_r_E,kd,norm_disc_prec_eq)
+            rot_t_E_full(:,0) = 1._dp/qs
+            do kd = 1, max_deriv+1
+                ierr = apply_disc(rot_t_E_full(:,0),norm_deriv_data(kd),&
+                    &rot_t_E_full(:,kd))
                 CHCKERR('')
             end do
             
-            ! deallocate helper variables
-            deallocate(Dflux_t_full,flux_t_full)
+            ! max flux and  normal coord. of eq grid  in Equilibrium coordinates
+            ! (uses poloidal flux by default)
+            max_flux_p_E = flux_p_E_full(grid_eq%n(3),0)
+            max_flux_t_E = flux_t_E_full(grid_eq%n(3),0)
+            grid_eq%r_E = flux_p_E_full(:,0)/(2*pi)
+            
+            ! max flux and normal coord. of eq grid in Flux coordinates
+            max_flux_p_F = flux_p_E_full(grid_eq%n(3),0)
+            max_flux_t_F = flux_t_E_full(grid_eq%n(3),0)
+            if (use_pol_flux_F) then
+                grid_eq%r_F = flux_p_E_full(:,0)/(2*pi)                         ! psi_F = flux_p/2pi
+            else
+                grid_eq%r_F = flux_t_E_full(:,0)/(2*pi)                         ! psi_F = flux_t/2pi
+            end if
+            
+            !!! plot output for export to VMEC
+            !!write(*,*) 'for export to VMEC'
+            !!write(*,*) 'total enclosed toroidal flux: ', &
+                !!&flux_t_E_full(grid_eq%n(3),0)
+            !!write(*,*) 'pressure and rotational transform'
+            !!do kd = 1,grid_eq%n(3)
+                !!write(*,'(ES23.16,A,ES23.16,A,ES23.16)') &
+                    !!&flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0), ' ', &
+                    !!&pres_E_full(kd,0), ' ', rot_t_E_full(kd,0)
+            !!end do
+            !!write(*,*) 'pressure and rotational transform once every 4 values'
+            !!do kd = 0,(grid_eq%n(3)-1)/4
+                !!write(*,'(ES23.16,A,ES23.16,A,ES23.16)') &
+                    !!&flux_t_E_full(1+kd*4,0)/flux_t_E_full(grid_eq%n(3),0), &
+                    !!&' ', pres_E_full(1+kd*4,0), ' ', rot_t_E_full(1+kd*4,0)
+            !!end do
         end function calc_flux_q_HEL
     end function calc_flux_q
     
@@ -621,8 +659,8 @@ contains
     integer function prepare_RZL(grid) result(ierr)
         use num_vars, only: max_deriv, norm_disc_prec_eq
         use VMEC, only: calc_trigon_factors, &
-            &mpol, ntor, R_V_c, Z_V_s, L_V_s, R_V_s, Z_V_c, L_V_c
-        use utilities, only: calc_deriv
+            &R_V_c, Z_V_s, L_V_s, R_V_s, Z_V_c, L_V_c
+        use grid_utilities, only: setup_deriv_data, apply_disc
         
         character(*), parameter :: rout_name = 'prepare_RZL'
         
@@ -630,7 +668,8 @@ contains
         type(grid_type), intent(inout) :: grid                                  ! grid for which to prepare the trigoniometric factors
         
         ! local variables
-        integer :: id, jd, kd                                                   ! counters
+        integer :: kd                                                           ! counter
+        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
         
         ! initialize ierr
         ierr = 0
@@ -640,31 +679,28 @@ contains
         ! wrt.  to  the  maximum  flux,  equidistantly,  so  the  step  size  is
         ! 1/(grid_eq%n(3)-1).
         do kd = 1,max_deriv+1
-            do jd = -ntor,ntor
-                do id = 0,mpol-1
-                    ierr = calc_deriv(R_V_c(id,jd,:,0),R_V_c(id,jd,:,kd),&
-                        &grid%n(3)-1._dp,kd,norm_disc_prec_eq)
-                    CHCKERR('')
-                    ierr = calc_deriv(Z_V_s(id,jd,:,0),Z_V_s(id,jd,:,kd),&
-                        &grid%n(3)-1._dp,kd,norm_disc_prec_eq)
-                    CHCKERR('')
-                    ierr = calc_deriv(L_V_s(id,jd,:,0),&
-                        &L_V_s(id,jd,:,kd),grid%n(3)-1._dp,kd,norm_disc_prec_eq)
-                    CHCKERR('')
-                    !if (lasym) then                                            ! following only needed in assymetric situations
-                        ierr = calc_deriv(R_V_s(id,jd,:,0),R_V_s(id,jd,:,kd),&
-                            &grid%n(3)-1._dp,kd,norm_disc_prec_eq)
-                        CHCKERR('')
-                        ierr = calc_deriv(Z_V_c(id,jd,:,0),Z_V_c(id,jd,:,kd),&
-                            &grid%n(3)-1._dp,kd,norm_disc_prec_eq)
-                        CHCKERR('')
-                        ierr = calc_deriv(L_V_c(id,jd,:,0),L_V_c(id,jd,:,kd),&
-                            &grid%n(3)-1._dp,kd,norm_disc_prec_eq)
-                        CHCKERR('')
-                    !end if
-                end do
-            end do
+            ierr = setup_deriv_data(1._dp/(grid%n(3)-1),grid%n(3),&
+                &norm_deriv_data,kd,norm_disc_prec_eq)
+            CHCKERR('')
+            ierr = apply_disc(R_V_c(:,:,:,0),norm_deriv_data,R_V_c(:,:,:,kd),3)
+            CHCKERR('')
+            ierr = apply_disc(Z_V_s(:,:,:,0),norm_deriv_data,Z_V_s(:,:,:,kd),3)
+            CHCKERR('')
+            ierr = apply_disc(L_V_s(:,:,:,0),norm_deriv_data,L_V_s(:,:,:,kd),3)
+            CHCKERR('')
+            !if (lasym) then                                                    ! following only needed in assymetric situations
+                ierr = apply_disc(R_V_s(:,:,:,0),norm_deriv_data,&
+                    &R_V_s(:,:,:,kd),3)
+                CHCKERR('')
+                ierr = apply_disc(Z_V_c(:,:,:,0),norm_deriv_data,&
+                    &Z_V_c(:,:,:,kd),3)
+                CHCKERR('')
+                ierr = apply_disc(L_V_c(:,:,:,0),norm_deriv_data,&
+                    &L_V_c(:,:,:,kd),3)
+                CHCKERR('')
+            !end if
         end do
+        call dealloc_disc(norm_deriv_data)
         
         ! calculate trigoniometric factors using theta_E and zeta_E
         ierr = calc_trigon_factors(grid%theta_E,grid%zeta_E,grid%trigon_factors)
@@ -1119,7 +1155,7 @@ contains
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type
         use grid_utilities, only: trim_grid
-        use HELENA, only: chi_H, flux_p_H, R_H, Z_H, nchi
+        use HELENA_vars, only: chi_H, flux_p_H, R_H, Z_H, nchi
         use VMEC, only:  R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor
         use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &
             &max_flux_t_F

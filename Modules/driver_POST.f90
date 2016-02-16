@@ -48,7 +48,7 @@ contains
         use grid_utilities, only: calc_XYZ_grid, extend_grid_E
         use X_ops, only: calc_X, resonance_plot, calc_res_surf
         use sol_ops, only: plot_sol_vals, plot_sol_vec, decompose_energy
-        use HELENA, only: interp_HEL_on_grid
+        use HELENA_ops, only: interp_HEL_on_grid
         use files_utilities, only: nextunit
         use utilities, only: calc_aux_utilities
         use MPI_utilities, only: wait_MPI
@@ -122,64 +122,32 @@ contains
             &r_F_sol=vars_1D_grid_sol(r_F_sol_id)%p)
         CHCKERR('')
         
+        ! user output
+        call writo('Reconstructing PB3D output on output grid')
+        call lvl_ud(1)
+        ierr = reconstruct_PB3D(.false.,.true.,.true.,.true.,.true.,&
+            &.true.,.false.,.true.,grid_eq=grid_eq,grid_eq_B=grid_eq_B,&
+            &grid_X=grid_X,grid_X_B=grid_X_B,grid_sol=grid_sol,&
+            &eq=eq,met=met,X_1=X_1,sol=sol,eq_limits=eq_limits,&
+            &X_limits=X_limits,sol_limits=sol_limits)
+        CHCKERR('')
         ! reconstructing grids depends on equilibrium style
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ! user output
-                call writo('Reconstruct PB3D output on output grid')
-                call lvl_ud(1)
                 ! the field-aligned quantities are already found
-                grid_eq_B => grid_eq
-                grid_X_B => grid_X
                 eq_B => eq
                 met_B => met
                 X_1_B => X_1
-                ! normal call to reconstruct PB3D
-                ierr = reconstruct_PB3D(.false.,.true.,.true.,.true.,.true.,&
-                    &.true.,.false.,.true.,grid_eq=grid_eq,grid_X=grid_X,&
-                    &grid_sol=grid_sol,eq=eq,met=met,X_1=X_1,sol=sol,&
-                    &eq_limits=eq_limits,X_limits=X_limits,&
-                    &sol_limits=sol_limits)
-                CHCKERR('')
-                call lvl_ud(-1)
-                
-                ! user output
-                call writo('The output grid is field-aligned')
             case (2)                                                            ! HELENA
-                ! user output
-                call writo('Reconstruct PB3D output on output grid')
-                call lvl_ud(1)
-                ! the field-aligned quantities are different
-                allocate(grid_eq_B)
-                allocate(grid_X_B)
+                ! also need field-aligned quantities
                 allocate(eq_B)
                 allocate(met_B)
                 allocate(X_1_B)
-                ! additionally need field-aligned grids
-                ierr = reconstruct_PB3D(.false.,.true.,.true.,.true.,.true.,&
-                    &.true.,.false.,.true.,grid_eq=grid_eq,grid_eq_B=grid_eq_B,&
-                    &grid_X=grid_X,grid_X_B=grid_X_B,grid_sol=grid_sol,&
-                    &eq=eq,met=met,X_1=X_1,sol=sol,eq_limits=eq_limits,&
-                    &X_limits=X_limits,sol_limits=sol_limits)
-                CHCKERR('')
-                call lvl_ud(-1)
-                
-                ! user output
-                call writo('Interpolate all PB3D output on field-aligned grid')
-                call lvl_ud(1)
-                
-                call writo('Preparing quantities')
-                call lvl_ud(1)
-                ! setup field-aligned quantities
                 ierr = create_eq(grid_eq_B,eq_B)
                 CHCKERR('')
                 ierr = create_met(grid_eq_B,met_B)
                 CHCKERR('')
                 call create_X(grid_X_B,X_1_B)
-                call lvl_ud(-1)
-                call writo('Quantities prepared')
-                
-                ! call HELENA grid interpolation
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,eq=eq,eq_out=eq_B,&
                     &met=met,met_out=met_B,eq_met=eq,&
                     &grid_name='field-aligned equilibrium grid')
@@ -187,43 +155,12 @@ contains
                 ierr = interp_HEL_on_grid(grid_X,grid_X_B,X_1=X_1,&
                     &X_1_out=X_1_B,grid_name='field-aligned perturbation grid')
                 CHCKERR('')
-                
-                !! get X, Y and Z of plot
-                !allocate(XYZ_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
-                !ierr = calc_XYZ_grid(grid_eq,XYZ_plot(:,:,:,1),&
-                    !&XYZ_plot(:,:,:,2),XYZ_plot(:,:,:,3))
-                !CHCKERR('')
-                !allocate(plot_var(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-                !do id = 1,grid_eq%loc_n_r
-                    !plot_var(:,:,id) = -eq%pres_FD(id,1)*eq%kappa_n(:,:,id)
-                !end do
-                !call plot_HDF5('kappa_n_Dp','TEST_kappa_n_Dp',plot_var,&
-                    !&x=XYZ_plot(:,:,:,1),y=XYZ_plot(:,:,:,2),&
-                    !&z=XYZ_plot(:,:,:,3))
-                !do id = 1,grid_eq%loc_n_r
-                    !plot_var(:,:,id) = eq%pres_FD(id,1)
-                !end do
-                !call plot_HDF5('Dp','TEST_Dp',plot_var,x=XYZ_plot(:,:,:,1),&
-                    !&y=XYZ_plot(:,:,:,2),z=XYZ_plot(:,:,:,3))
-                !call plot_HDF5('kappa_n','kappa_n',eq%kappa_n,&
-                    !&x=XYZ_plot(:,:,:,1),y=XYZ_plot(:,:,:,2),&
-                    !&z=XYZ_plot(:,:,:,3))
-                !call plot_HDF5('kappa_g','TEST_kappa_g',eq%kappa_g,&
-                    !&x=XYZ_plot(:,:,:,1),y=XYZ_plot(:,:,:,2),&
-                    !&z=XYZ_plot(:,:,:,3))
-                !deallocate(XYZ_plot)
-                
-                ! user output
-                call lvl_ud(-1)
-                call writo('PB3D output interpolated on field-aligned grid')
             case default
                 ierr = 1
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
                 CHCKERR(err_msg)
         end select
-        
-        ! user output
         call lvl_ud(-1)
         call writo('PB3D output reconstructed')
         

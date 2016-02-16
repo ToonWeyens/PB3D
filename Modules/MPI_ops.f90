@@ -463,10 +463,10 @@ contains
             &max_it_inv, norm_disc_prec_X, norm_disc_prec_eq, &
             &norm_disc_prec_sol, BC_style, tol_norm, max_it_slepc, &
             &max_mem_per_proc, PB3D_name, norm_style, U_style, plot_size, &
-            &test_max_mem, X_style
-        use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, R_V_c, &
-            &R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V, pres_V
-        use HELENA, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
+            &test_max_mem, X_style, no_execute_command_line
+        use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, pres_V, &
+            &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V
+        use HELENA_vars, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
             &h_H_12, h_H_33, RBphi, R_H, Z_H
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm
         use X_vars, only: prim_X, n_mod_X, min_sec_X, max_sec_X, &
@@ -508,6 +508,9 @@ contains
                 &ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(no_execute_command_line,1,MPI_LOGICAL,0,&
+                &MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(test_max_mem,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)

@@ -11,14 +11,14 @@ module utilities
     implicit none
     private
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
-        &calc_deriv, conv_FHM, check_deriv, calc_inv, interp_fun, calc_mult, &
+        &conv_FHM, check_deriv, calc_inv, interp_fun, calc_mult, &
         &calc_aux_utilities, derivs, con2dis, dis2con, round_with_tol, &
         &conv_mat, is_sym, calc_spline_3, con, calc_coeff_fin_diff, fac, &
         &test_max_memory, &
         &d, m, f
 #if ldebug
     public debug_interp_fun_0D_real, debug_calc_zero_NR, &
-        &debug_con2dis_regular, debug_calc_coeff_fin_diff
+        &debug_con2dis_reg, debug_calc_coeff_fin_diff
 #endif
     
     ! global variables
@@ -37,34 +37,31 @@ module utilities
         module procedure calc_inv_0D, calc_inv_2D
     end interface
     interface calc_mult
-        module procedure calc_mult_0D_real, calc_mult_2D_real, &
-            &calc_mult_2D_complex
+        module procedure &
+            &calc_mult_0D_real, calc_mult_2D_real, calc_mult_2D_complex
     end interface
     interface conv_mat
-        module procedure conv_mat_3D, conv_mat_0D, conv_mat_3D_complex, &
-            &conv_mat_0D_complex
-    end interface
-    interface calc_deriv
-        module procedure calc_deriv_equidistant_real, &
-            &calc_deriv_equidistant_complex, calc_deriv_regular_real, &
-            &calc_deriv_regular_complex
+        module procedure &
+            &conv_mat_3D, conv_mat_3D_complex, &
+            &conv_mat_0D, conv_mat_0D_complex
     end interface
     interface calc_int
-        module procedure calc_int_equidistant, calc_int_regular
+        module procedure calc_int_eqd, calc_int_reg
     end interface
     interface round_with_tol
         module procedure round_with_tol_arr, round_with_tol_ind
     end interface
     interface con2dis
-        module procedure con2dis_equidistant, con2dis_regular
+        module procedure con2dis_eqd, con2dis_reg
     end interface
     interface dis2con
-        module procedure dis2con_equidistant, dis2con_regular
+        module procedure dis2con_eqd, dis2con_reg
     end interface
     interface interp_fun
-        module procedure interp_fun_0D_real, interp_fun_1D_real, &
-            &interp_fun_2D_real, interp_fun_0D_complex, interp_fun_1D_complex, &
-            &interp_fun_2D_complex
+        module procedure &
+            &interp_fun_0D_real, interp_fun_0D_complex, &
+            &interp_fun_1D_real, interp_fun_1D_complex, &
+            &interp_fun_2D_real, interp_fun_2D_complex
     end interface
     interface con
         module procedure con_3D, con_2D, con_1D, con_0D
@@ -74,7 +71,7 @@ module utilities
 #if ldebug
     logical :: debug_interp_fun_0D_real = .false.                               ! plot debug information for interp_fun_0D_real
     logical :: debug_calc_zero_NR = .false.                                     ! plot debug information for calc_zero_NR
-    logical :: debug_con2dis_regular = .false.                                  ! plot debug information for con2dis_regular
+    logical :: debug_con2dis_reg = .false.                                      ! plot debug information for con2dis_reg
     logical :: debug_calc_coeff_fin_diff = .false.                              ! plot debug information for calc_coeff_fin_diff
 #endif
     
@@ -246,631 +243,6 @@ contains
         end if
     end function derivs
     
-    ! numerically derives  a function  whose values are  given on  a equidistant
-    ! grid, specified by the inverse step size  to an order specified by ord and
-    ! a precision  specified by  prec (which is  the power of  the step  size to
-    ! which the result  is still correct. E.g.: for forward  differences, prec =
-    ! 0, and for central differences prec=1).
-    integer function calc_deriv_equidistant_real(var,dvar,inv_step,ord,prec) &
-        &result(ierr)                                                           ! equidistant version
-        
-        character(*), parameter :: rout_name = 'calc_deriv_equidistant_real'
-        
-        ! input / output
-        real(dp), intent(in) :: var(:)                                          ! variable to derive
-        real(dp), intent(in) :: inv_step                                        ! inverse step size
-        real(dp), intent(inout) :: dvar(:)                                      ! derived variable
-        integer, intent(in) :: ord                                              ! order of derivative
-        integer, intent(in) :: prec                                             ! precision
-        
-        ! local variables
-        integer :: max_n
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: max_order(2) = [5,1]                                         ! maximum orders for precicions
-        integer :: max_prec = 2                                                 ! maximum precision
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set max_n
-        max_n = size(var)
-        
-        ! tests
-        if (size(dvar).ne.max_n) then
-            err_msg = 'Derived vector has to be of the same length as input &
-                &vector'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        if (prec.lt.1 .or. prec.gt.max_prec) then
-            err_msg = 'Precision '//trim(i2str(prec))//' not implemented'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        if (ord.lt.1 .or. ord.gt.max_order(prec)) then
-            err_msg = 'For precision '//trim(i2str(prec))//&
-                &', can only derive from order 1 up to order '//&
-                &trim(i2str(max_order(prec)))//', not '//trim(i2str(ord))
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        
-        ! choose correct precision
-        select case (prec)
-            case (1)
-                call prec1
-            case (2)
-                call prec2
-            case default
-            write(*,*) '!!!!!!!!! IMPLEMENT GENERAL ORDER DERIVATIVES!!!!'
-                err_msg = 'Precision of order '//trim(i2str(prec))//&
-                    &' not implemented'
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-    contains
-        subroutine prec1
-            ! test whether enough points are given
-            if (max_n-2.lt.ord) then
-                err_msg = 'For a derivative of order '//&
-                    &trim(i2str(ord))//', with precision '//trim(i2str(prec))&
-                    &//', at least '//trim(i2str(ord+2))//&
-                    &' input values have to be passed'
-                ierr = 1
-                CHCKERR(err_msg)
-            end if
-            
-            ! apply derivation rules precise up to order 1
-            select case (ord)
-                case(1)                                                         ! first derivative
-                    ! first point
-                    dvar(1) = (-3*var(1)+4*var(2)-var(3))*inv_step*0.5
-                    ! middle points
-                    dvar(2:max_n-1) = (-var(1:max_n-2)+var(3:max_n))*inv_step*0.5
-                    ! last point
-                    dvar(max_n) = (var(max_n-2) - 4*var(max_n-1) &
-                        &+ 3*var(max_n))* inv_step*0.5
-                case(2)                                                         ! second derivative
-                    ! first point
-                    dvar(1) = (2*var(1)-5*var(2)+4*var(3)-var(4))*inv_step**2
-                    ! middle points
-                    dvar(2:max_n-1) = (var(1:max_n-2)-2*var(2:max_n-1)&
-                        &+var(3:max_n))*inv_step**2
-                    ! last point
-                    dvar(max_n) = (-var(max_n-3)+4*var(max_n-2)-5*var(max_n-1)&
-                        &+2*var(max_n))*inv_step**2
-                case(3)                                                         ! third derivative
-                    ! first point
-                    dvar(1) = (-5*var(1)+18*var(2)-24*var(3)+14*var(4)&
-                        &-3*var(5))* inv_step**3*0.5
-                    ! second point
-                    dvar(2) = (-3*var(1)+10*var(2)-12*var(3)+6*var(4)-var(5))* &
-                        &inv_step**3*0.5
-                    ! middle points
-                    dvar(3:max_n-2) = (-var(1:max_n-4)+2*var(2:max_n-3)-&
-                        &2*var(4:max_n-1)+var(5:max_n))*inv_step**3*0.5
-                    ! next-to-last point
-                    dvar(max_n-1) = (var(max_n-4)-6*var(max_n-3)&
-                        &+12*var(max_n-2)-10*var(max_n-1)+3*var(max_n))&
-                        &*inv_step**3*0.5
-                    ! last point
-                    dvar(max_n) = (3*var(max_n-4)-14*var(max_n-3)&
-                        &+24*var(max_n-2)-18*var(max_n-1)+5*var(max_n))&
-                        &*inv_step**3/2
-                case(4)                                                         ! fourth derivative
-                    ! first point
-                    dvar(1) = (3*var(1)-14*var(2)+26*var(3)-24*var(4)+11*var(5)&
-                        &-2*var(6))*inv_step**4
-                    ! second point
-                    dvar(2) = (2*var(1)-9*var(2)+16*var(3)-14*var(4)+6*var(5)&
-                        &-var(6))*inv_step**4
-                    ! middle points
-                    dvar(3:max_n-2) = (var(1:max_n-4)-4*var(2:max_n-3)&
-                        &+6*var(3:max_n-2)-4*var(4:max_n-1)+var(5:max_n))&
-                        &*inv_step**4
-                    ! next-to-last point
-                    dvar(max_n-1) = (-var(max_n-5)+6*var(max_n-4)&
-                        &-14*var(max_n-3)+16*var(max_n-2)-9*var(max_n-1)&
-                        &+2*var(max_n))*inv_step**4
-                    ! last point
-                    dvar(max_n) = (-2*var(max_n-5)+11*var(max_n-4)-&
-                        &24*var(max_n-3)+26*var(max_n-2)-14*var(max_n-1)&
-                        &+3*var(max_n))*inv_step**4
-                case(5)                                                         ! fifth derivative
-                    ! first point
-                    dvar(1) = (-7*var(1)+40*var(2)-95*var(3)+120*var(4)&
-                        &-85*var(5)+32*var(6)-5*var(7))*inv_step**5*0.5
-                    ! second point
-                    dvar(2) = (-5*var(1)+28*var(2)-65*var(3)+80*var(4)&
-                        &-55*var(5)+20*var(6)-3*var(7))*inv_step**5*0.5
-                    ! third point
-                    dvar(3) = (-3*var(1)+16*var(2)-35*var(3)+40*var(4)&
-                        &-25*var(5)+8*var(6)-var(7))*inv_step**5*0.5
-                    ! middle points
-                    dvar(4:max_n-3) = (-var(1:max_n-6)+4*var(2:max_n-5)&
-                        &-5*var(3:max_n-4)+5*var(5:max_n-2)-4*var(6:max_n-1)&
-                        &+var(7:max_n))*inv_step**5*0.5
-                    ! next-to-next-to-last point
-                    dvar(max_n-2) = (var(max_n-6)-8*var(max_n-5)&
-                        &+25*var(max_n-4)-40*var(max_n-3)+35*var(max_n-2)&
-                        &-16*var(max_n-1)+3*var(max_n))*inv_step**5*0.5
-                    ! next-to-last point
-                    dvar(max_n-1) = (3*var(max_n-6)-20*var(max_n-5)&
-                        &+55*var(max_n-4)-80*var(max_n-3)+65*var(max_n-2)&
-                        &-28*var(max_n-1)+5*var(max_n))*inv_step**5*0.5
-                    ! last point
-                    dvar(max_n) = (5*var(max_n-6)-32*var(max_n-5)&
-                        &+85*var(max_n-4)-120*var(max_n-3)+95*var(max_n-2)&
-                        &-40*var(max_n-1)+7*var(max_n))*inv_step**5*0.5
-                case default
-                    ! This you should never reach!
-                    err_msg = 'Derivation of order '//trim(i2str(ord))//&
-                        &' not possible in calc_deriv_equidistant'
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
-        end subroutine
-        
-        subroutine prec2
-            ! test whether enough points are given
-            if (max_n-3.lt.ord) then
-                err_msg = 'For a derivative of order '//&
-                    &trim(i2str(ord))//', with precision '//trim(i2str(prec))&
-                    &//', at least '//trim(i2str(ord+3))//&
-                    &' input values have to be passed'
-                ierr = 1
-                CHCKERR(err_msg)
-            end if
-            
-            ! apply derivation rules precise up to order 1
-            select case (ord)
-                case(1)                                                         ! first derivative
-                    ! first point
-                    dvar(1:1) = inv_step*&
-                        &(-11*var(1)+18*var(2)-9*var(3)+2*var(4))/6
-                    ! second point
-                    dvar(2:2) = inv_step*&
-                        &(-2*var(1)-3*var(2)+6*var(3)-var(4))/6
-                    ! middle points
-                    ! (take 5 points instead of 4 because of symmetry)
-                    dvar(3:max_n-2) = inv_step*&
-                        &(var(1:max_n-4)-8*var(2:max_n-3)+&
-                        &8*var(4:max_n-1)-var(5:max_n))/12
-                    ! next-to-last point
-                    dvar(max_n-1:max_n-1) = -inv_step*&                         ! - because odd number (1) of sign changes
-                        &(-2*var(max_n)-3*var(max_n-1)+6*var(max_n-2)-&
-                        &var(max_n-3))/6
-                    ! last point
-                    dvar(max_n:max_n) = -inv_step*&                             ! - because odd number (1) of sign changes
-                        &(-11*var(max_n)+18*var(max_n-1)-9*var(max_n-2)+&
-                        &2*var(max_n-3))/6
-                case default
-                    ! This you should never reach!
-                    err_msg = 'Derivation of order '//trim(i2str(ord))//&
-                        &' not possible in calc_deriv_equidistant'
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
-        end subroutine
-    end function calc_deriv_equidistant_real
-    integer function calc_deriv_equidistant_complex(var,dvar,inv_step,ord,prec) &
-        &result(ierr)                                                           ! equidistant complex version
-        
-        character(*), parameter :: rout_name = 'calc_deriv_equidistant_complex'
-        
-        ! input / output
-        complex(dp), intent(in) :: var(:)                                       ! variable to derive
-        real(dp), intent(in) :: inv_step                                        ! inverse step size
-        complex(dp), intent(inout) :: dvar(:)                                   ! derived variable
-        integer, intent(in) :: ord                                              ! order of derivative
-        integer, intent(in) :: prec                                             ! precision
-        
-        ! local variables
-        real(dp), allocatable :: dvar_loc(:)
-        
-        ! set up local copy of component of dvar
-        allocate(dvar_loc(size(var)))
-        
-        ! call real version for real part
-        ierr = calc_deriv_equidistant_real(realpart(var),dvar_loc,&
-            &inv_step,ord,prec)
-        CHCKERR('')
-        
-        ! update dvar with local copy
-        dvar = dvar_loc
-        
-        ! call real version for imaginary part
-        ierr = calc_deriv_equidistant_real(imagpart(var),dvar_loc,&
-            &inv_step,ord,prec)
-        CHCKERR('')
-        
-        ! update dvar with local copy
-        dvar = dvar + iu*dvar_loc
-        
-        ! deallocate local variables
-        deallocate(dvar_loc)
-    end function calc_deriv_equidistant_complex
-    
-    ! numerically derives  a function whose values  are given on a  regular, but
-    ! not  equidistant, grid,  to  an order  specified by  ord  and a  precision
-    ! specified by prec (which is the power of the step size to which the result
-    ! is still correct. E.g.: for forward differences, prec = 0, and for central
-    ! differences prec=1).
-    integer function calc_deriv_regular_real(var,dvar,x,ord,prec) result(ierr)  ! regular, non-equidistant version
-        character(*), parameter :: rout_name = 'calc_deriv_regular'
-        
-        ! input / output
-        real(dp), intent(in) :: var(:)                                          ! variable to derive
-        real(dp), intent(in) :: x(:)                                            ! independent variable
-        real(dp), intent(inout) :: dvar(:)                                      ! derived variable
-        integer, intent(in) :: ord                                              ! order of derivative
-        integer, intent(in) :: prec                                             ! precision
-        
-        ! local variables
-        integer :: max_n
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: max_order(2) = [3,1]                                         ! maximum orders for precisions
-        integer :: max_prec = 2                                                 ! maximum precision
-        real(dp), allocatable, target :: delta(:)                               ! delta(i) = x(i+1)-x(i) (called delta_(i+1/2) in text)
-        real(dp), pointer :: a(:) => null()                                     ! pointers to parts of delta
-        real(dp), pointer :: b(:) => null()                                     ! pointers to parts of delta
-        real(dp), pointer :: c(:) => null()                                     ! pointers to parts of delta
-        real(dp), pointer :: d(:) => null()                                     ! pointers to parts of delta
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set max_n
-        max_n = size(var)
-        
-        ! tests
-        if (size(dvar).ne.max_n) then
-            err_msg = 'Derived vector has to be of the same length as input &
-                &vector'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        if (size(x).ne.max_n) then
-            err_msg = 'Abscissa vector has to be of the same length as &
-                &ordinate vector'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        if (prec.lt.1 .or. prec.gt.max_prec) then
-            err_msg = 'Precision '//trim(i2str(prec))//' not implemented'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        if (ord.lt.1 .or. ord.gt.max_order(prec)) then
-            err_msg = 'For precision '//trim(i2str(prec))//&
-                &', can only derive from order 1 up to order '//&
-                &trim(i2str(max_order(prec)))//', not '//trim(i2str(ord))
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        
-        ! set up delta
-        allocate(delta(max_n-1))
-        delta(1:max_n-1) = x(2:max_n) - x(1:max_n-1)
-        
-        ! choose correct precision
-        select case (prec)
-            case (1)
-                call prec1
-            case (2)
-                call prec2
-            case default
-            write(*,*) '!!!!!!!!! IMPLEMENT GENERAL ORDER DERIVATIVES!!!!'
-                err_msg = 'Precision of order '//trim(i2str(prec))//&
-                    &' not implemented'
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-        
-        ! clean up
-        nullify(a,b,c,d)
-    contains
-        subroutine prec1
-            ! test whether enough points are given
-            if (max_n-2.lt.ord) then
-                err_msg = 'For a derivative of order '//&
-                    &trim(i2str(ord))//', with precision '//trim(i2str(prec))&
-                    &//', at least '//trim(i2str(ord+2))//&
-                    &' input values have to be passed'
-                ierr = 1
-                CHCKERR(err_msg)
-            end if
-            
-            ! apply derivation rules precise up to order 1
-            select case (ord)
-                case(1)                                                         ! first derivative
-                    ! first point
-                    a => delta(1:1)
-                    b => delta(2:2)
-                    dvar(1:1) = (-(2*a+b)*b*var(1)+(a+b)**2*var(2)-&
-                        &a**2*var(3)) / (a*(a+b)*b)
-                    nullify(a,b)
-                    ! middle points
-                    a => delta(1:max_n-2)
-                    b => delta(2:max_n-1)
-                    dvar(2:max_n-1) = (-b**2*var(1:max_n-2)+&
-                        &(b**2-a**2)*var(2:max_n-1)+ a**2*var(3:max_n)) / &
-                        &(a*(a+b)*b)
-                    nullify(a,b)
-                    ! last point
-                    a => delta(max_n-1:max_n-1)
-                    b => delta(max_n-2:max_n-2)
-                    dvar(max_n:max_n) = -(-(2*a+b)*b*var(max_n)+(a+b)**2&       ! - because odd number (1) of sign changes
-                        &*var(max_n-1)-a**2*var(max_n-2)) / (a*(a+b)*b)
-                    nullify(a,b)
-                case(2)                                                         ! second derivative
-                    ! first point
-                    a => delta(1:1)
-                    b => delta(2:2)
-                    c => delta(3:3)
-                    dvar(1:1) = 2*(b*(b+c)*c*(3*a+2*b+c)*var(1)-&
-                        &(a+b)*(a+b+c)*c*(2*a+2*b+c)*var(2)+&
-                        &(b+c)*(a+b+c)*a*(2*a+b+c)*var(3)-&
-                        &a*(a+b)*b*(2*a+b)*var(4)) / &
-                        &(a*b*c*(a+b)*(b+c)*(a+b+c))
-                    nullify(a,b,c)
-                    ! middle points
-                    a => delta(1:max_n-2)
-                    b => delta(2:max_n-1)
-                    dvar(2:max_n-1) = 2*(b*var(1:max_n-2)-&
-                        &(a+b)*var(2:max_n-1)+ a*var(3:max_n)) / &
-                        &(a*(a+b)*b)
-                    nullify(a,b)
-                    ! last point
-                    a => delta(max_n-1:max_n-1)
-                    b => delta(max_n-2:max_n-2)
-                    c => delta(max_n-3:max_n-3)
-                    dvar(max_n:max_n) = 2*(b*(b+c)*c*(3*a+2*b+c)*var(max_n)-&
-                        &(a+b)*(a+b+c)*c*(2*a+2*b+c)*var(max_n-1)+&
-                        &(b+c)*(a+b+c)*a*(2*a+b+c)*var(max_n-2)-&
-                        &a*(a+b)*b*(2*a+b)*var(max_n-3)) / &
-                        &(a*b*c*(a+b)*(b+c)*(a+b+c))
-                    nullify(a,b,c)
-                case(3)                                                         ! third derivative
-                    ! first point
-                    a => delta(1:1)
-                    b => delta(2:2)
-                    c => delta(3:3)
-                    d => delta(4:4)
-                    dvar(1:1) = 6*(&
-                        &-b*c*d*(b+c)*(c+d)*(b+c+d)*(4*a+3*b+2*c+d)*var(1:1)&
-                        &+c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*(3*a+3*b+2*c+d)*&
-                        &var(2:2)&
-                        &-a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*(3*a+2*b+2*c+d)*&
-                        &var(3:3)&
-                        &+a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*(3*a+2*b+c+d)*&
-                        &var(4:4)&
-                        &-a*b*c*(b+c)*(a+b)*(a+b+c)*(3*a+2*b+c)*&
-                        &var(5:5)) / &
-                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
-                    nullify(a,b,c,d)
-                    ! second point
-                    a => delta(1:1)
-                    b => delta(2:2)
-                    c => delta(3:3)
-                    d => delta(4:4)
-                    dvar(2:2) = 6*(&
-                        &-b*c*d*(b+c)*(c+d)*(b+c+d)*(3*b+2*c+d)*var(1:1)&
-                        &-c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*(a-3*b-2*c-d)*&
-                        &var(2:2)&
-                        &+a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*(a-2*b-2*c-d)*&
-                        &var(3:3)&
-                        &-a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*(a-2*b-c-d)*&
-                        &var(4:4)&
-                        &+a*b*c*(b+c)*(a+b)*(a+b+c)*(a-2*b-c)*&
-                        &var(5:5)) / &
-                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
-                    nullify(a,b,c,d)
-                    ! middle points
-                    a => delta(1:max_n-4)
-                    b => delta(2:max_n-3)
-                    c => delta(3:max_n-2)
-                    d => delta(4:max_n-1)
-                    dvar(3:max_n-2) = 6*(&
-                        &b*c*d*(b+c)*(c+d)*(b+c+d)*(b-2*c-d)*&
-                        &var(1:max_n-4)&
-                        &-c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*(a+b-2*c-d)*&
-                        &var(2:max_n-3)&
-                        &+a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*(a+2*b-2*c-d)*&
-                        &var(3:max_n-2)&
-                        &-a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*(a+2*b-c-d)*&
-                        &var(4:max_n-1)&
-                        &+a*b*c*(b+c)*(a+b)*(a+b+c)*(a+2*b-c)*&
-                        &var(5:max_n)) / &
-                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
-                    nullify(a,b,c,d)
-                    ! next-to-last point
-                    a => delta(max_n-1:max_n-1)
-                    b => delta(max_n-2:max_n-2)
-                    c => delta(max_n-3:max_n-3)
-                    d => delta(max_n-4:max_n-4)
-                    dvar(max_n-1:max_n-1) = -6*(&                               ! - because odd number (3) of sign changes
-                        &-b*c*d*(b+c)*(c+d)*(b+c+d)*(3*b+2*c+d)*&
-                        &var(max_n:max_n)&
-                        &-c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*(a-3*b-2*c-d)*&
-                        &var(max_n-1:max_n-1)&
-                        &+a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*(a-2*b-2*c-d)*&
-                        &var(max_n-2:max_n-2)&
-                        &-a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*(a-2*b-c-d)*&
-                        &var(max_n-3:max_n-3)&
-                        &+a*b*c*(b+c)*(a+b)*(a+b+c)*(a-2*b-c)*&
-                        &var(max_n-4:max_n-4)) / &
-                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
-                    nullify(a,b,c,d)
-                    ! next-to-last point
-                    a => delta(max_n-1:max_n-1)
-                    b => delta(max_n-2:max_n-2)
-                    c => delta(max_n-3:max_n-3)
-                    d => delta(max_n-4:max_n-4)
-                    dvar(max_n-1:max_n-1) = -6*(&                               ! - because odd number (3) of sign changes
-                        &-b*c*d*(b+c)*(c+d)*(b+c+d)*(3*b+2*c+d)*&
-                        &var(max_n:max_n)&
-                        &-c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*(a-3*b-2*c-d)*&
-                        &var(max_n-1:max_n-1)&
-                        &+a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*(a-2*b-2*c-d)*&
-                        &var(max_n-2:max_n-2)&
-                        &-a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*(a-2*b-c-d)*&
-                        &var(max_n-3:max_n-3)&
-                        &+a*b*c*(b+c)*(a+b)*(a+b+c)*(a-2*b-c)*&
-                        &var(max_n-4:max_n-4)) / &
-                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
-                    nullify(a,b,c,d)
-                    ! last point
-                    a => delta(max_n-1:max_n-1)
-                    b => delta(max_n-2:max_n-2)
-                    c => delta(max_n-3:max_n-3)
-                    d => delta(max_n-4:max_n-4)
-                    dvar(max_n:max_n) = -6*(&                                   ! -1 because odd number (3) of sign changes
-                        &-b*c*d*(b+c)*(c+d)*(b+c+d)*(4*a+3*b+2*c+d)*&
-                        &var(max_n:max_n)&
-                        &+c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*(3*a+3*b+2*c+d)*&
-                        &var(max_n-1:max_n-1)&
-                        &-a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*(3*a+2*b+2*c+d)*&
-                        &var(max_n-2:max_n-2)&
-                        &+a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*(3*a+2*b+c+d)*&
-                        &var(max_n-3:max_n-3)&
-                        &-a*b*c*(b+c)*(a+b)*(a+b+c)*(3*a+2*b+c)*&
-                        &var(max_n-4:max_n-4)) / &
-                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
-                    nullify(a,b,c,d)
-                case default
-                    ! This you should never reach!
-                    err_msg = 'Derivation of order '//trim(i2str(ord))//&
-                        &' not possible in calc_deriv_regular'
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
-        end subroutine
-        
-        subroutine prec2
-            ! test whether enough points are given
-            if (max_n-3.lt.ord) then
-                err_msg = 'For a derivative of order '//&
-                    &trim(i2str(ord))//', with precision '//trim(i2str(prec))&
-                    &//', at least '//trim(i2str(ord+3))//&
-                    &' input values have to be passed'
-                ierr = 1
-                CHCKERR(err_msg)
-            end if
-            
-            ! apply derivation rules precise up to order 1
-            select case (ord)
-                case(1)                                                         ! first derivative
-                    ! first point
-                    a => delta(1:1)
-                    b => delta(2:2)
-                    c => delta(3:3)
-                    dvar(1:1) = (&
-                        &-b*(b+c)*c*(a*(3*a+2*b+c)+b*(2*a+b)+c*(a+b))*var(1)&
-                        &+(a+b)*(a+b+c)*c*(a+b)*(a+b+c)*var(2)&
-                        &-(b+c)*(a+b+c)*a*a*(a+b+c)*var(3)&
-                        &+a*(a+b)*b*a*(a+b)*var(4)) / &
-                        &(a*b*c*(a+b)*(b+c)*(a+b+c))
-                    nullify(a,b,c)
-                    ! second point
-                    a => delta(1:1)
-                    b => delta(2:2)
-                    c => delta(3:3)
-                    dvar(2:2) = (&
-                        &-b*(b+c)*c*b*(b+c)*var(1)&
-                        &+(a+b)*(a+b+c)*c*(b*c-a*c+b**2-2*a*b)*var(2)&
-                        &+(b+c)*(a+b+c)*a*a*(b+c)*var(3)&
-                        &-a*(a+b)*b*a*b*var(4)) / &
-                        &(a*b*c*(a+b)*(b+c)*(a+b+c))
-                    nullify(a,b,c)
-                    ! middle points
-                    ! (take 5 points instead of 4 because of symmetry)
-                    a => delta(1:max_n-4)
-                    b => delta(2:max_n-3)
-                    c => delta(3:max_n-2)
-                    d => delta(4:max_n-1)
-                    dvar(3:max_n-2) = (&
-                        &b*c*d*(b+c)*(c+d)*(b+c+d)*b*c*(c+d)*&
-                        &var(1:max_n-4)&
-                        &-c*d*(a+b)*(c+d)*(a+b+c)*(a+b+c+d)*c*(a+b)*(c+d)*&
-                        &var(2:max_n-3)&
-                        &+a*d*(b+c)*(a+b+c)*(b+c+d)*(a+b+c+d)*&
-                        &(a*d*(c-b)+a*c**2-d*b**2-2*b*c*(a+b-c-d))*&
-                        &var(3:max_n-2)&
-                        &+a*b*(a+b)*(c+d)*(b+c+d)*(a+b+c+d)*b*(a+b)*(c+d)*&
-                        &var(4:max_n-1)&
-                        &-a*b*c*(b+c)*(a+b)*(a+b+c)*b*c*(a+b)*&
-                        &var(5:max_n)) / &
-                        &(a*b*c*d*(a+b)*(b+c)*(c+d)*(a+b+c)*(b+c+d)*(a+b+c+d))
-                    nullify(a,b,c,d)
-                    ! next-to-last point
-                    a => delta(max_n-1:max_n-1)
-                    b => delta(max_n-2:max_n-2)
-                    c => delta(max_n-3:max_n-3)
-                    dvar(max_n-1:max_n-1) = -(&                                 ! - because odd number (1) of sign changes
-                        &-b*(b+c)*c*b*(b+c)*var(max_n)&
-                        &+(a+b)*(a+b+c)*c*(b*c-a*c+b**2-2*a*b)*var(max_n-1)&
-                        &+(b+c)*(a+b+c)*a*a*(b+c)*var(max_n-2)&
-                        &-a*(a+b)*b*a*b*var(max_n-3)) / &
-                        &(a*b*c*(a+b)*(b+c)*(a+b+c))
-                    nullify(a,b,c)
-                    ! last point
-                    a => delta(max_n-1:max_n-1)
-                    b => delta(max_n-2:max_n-2)
-                    c => delta(max_n-3:max_n-3)
-                    dvar(max_n:max_n) = -(&                                     ! - because odd number (1) of sign changes
-                        &-b*(b+c)*c*(a*(3*a+2*b+c)+b*(2*a+b)+c*(a+b))*&
-                        &var(max_n)&
-                        &+(a+b)*(a+b+c)*c*(a+b)*(a+b+c)*var(max_n-1)&
-                        &-(b+c)*(a+b+c)*a*a*(a+b+c)*var(max_n-2)&
-                        &+a*(a+b)*b*a*(a+b)*var(max_n-3)) / &
-                        &(a*b*c*(a+b)*(b+c)*(a+b+c))
-                    nullify(a,b,c)
-                case default
-                    ! This you should never reach!
-                    err_msg = 'Derivation of order '//trim(i2str(ord))//&
-                        &' not possible in calc_deriv_regular'
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
-        end subroutine
-    end function calc_deriv_regular_real
-    integer function calc_deriv_regular_complex(var,dvar,x,ord,prec) &
-        &result(ierr)                                                           ! regular, non-equidistant, complex version
-        
-        character(*), parameter :: rout_name = 'calc_deriv_regular_complex'
-        
-        ! input / output
-        complex(dp), intent(in) :: var(:)                                       ! variable to derive
-        real(dp), intent(in) :: x(:)                                            ! independent variable
-        complex(dp), intent(inout) :: dvar(:)                                   ! derived variable
-        integer, intent(in) :: ord                                              ! order of derivative
-        integer, intent(in) :: prec                                             ! precision
-        
-        ! local variables
-        real(dp), allocatable :: dvar_loc(:)
-        
-        ! set up local copy of component of dvar
-        allocate(dvar_loc(size(var)))
-        
-        ! call real version for real part
-        ierr = calc_deriv_regular_real(realpart(var),dvar_loc,x,ord,prec)
-        CHCKERR('')
-        
-        ! update dvar with local copy
-        dvar = dvar_loc
-        
-        ! call real version for imaginary part
-        ierr = calc_deriv_regular_real(imagpart(var),dvar_loc,x,ord,prec)
-        CHCKERR('')
-        
-        ! update dvar with local copy
-        dvar = dvar + iu*dvar_loc
-        
-        ! deallocate local variables
-        deallocate(dvar_loc)
-    end function calc_deriv_regular_complex
-    
     ! Calculates the coefficients of a cubic  spline through a number of points,
     ! which  can  later  be  used  to  calculate  the  interpolating  values  or
     ! derivatives thereof.
@@ -1013,8 +385,8 @@ contains
     ! Note: For periodic  function, the trapezoidal rule works well  only if the
     ! last point of the  grid is included, i.e. the point  where the function is
     ! equal to the first point.
-    integer function calc_int_regular(var,x,var_int) result(ierr)
-        character(*), parameter :: rout_name = 'calc_int_regular'
+    integer function calc_int_reg(var,x,var_int) result(ierr)
+        character(*), parameter :: rout_name = 'calc_int_reg'
         
         ! input / output
         real(dp), intent(inout) :: var_int(:)                                   ! integrated variable
@@ -1052,7 +424,7 @@ contains
             var_int(kd) = var_int(kd-1) + &
                 &(var(kd)+var(kd-1))/2 * (x(kd)-x(kd-1))
         end do
-    end function calc_int_regular
+    end function calc_int_reg
     
     ! Integrates a function using the trapezoidal rule:
     !   int_1^n f(x) dx = sum_k=1^(n-1) {(f(k+1)+f(k))*delta_x/2},
@@ -1061,8 +433,8 @@ contains
     ! Note: For periodic  function, the trapezoidal rule works well  only if the
     ! last point of the  grid is included, i.e. the point  where the function is
     ! equal to the first point.
-    integer function calc_int_equidistant(var,step_size,var_int) result(ierr)
-        character(*), parameter :: rout_name = 'calc_int_equidistant'
+    integer function calc_int_eqd(var,step_size,var_int) result(ierr)
+        character(*), parameter :: rout_name = 'calc_int_eqd'
         
         ! input / output
         real(dp), intent(inout) :: var_int(:)                                   ! integrated variable
@@ -1094,7 +466,7 @@ contains
         do kd = 2, n_max
             var_int(kd) = var_int(kd-1) + (var(kd)+var(kd-1))/2 * step_size
         end do
-    end function calc_int_equidistant
+    end function calc_int_eqd
     
     ! extrapolates  a   function,  using  linear  or   quadratic  interpolation,
     ! depending on  the number of  points and values  given. The data  should be
@@ -1502,11 +874,11 @@ contains
         allocate(A_loc(n,n))
         A_loc = A
         
-        call dgetrf(n, n, A_loc, n, ipiv, info)
+        call dgetrf(n,n,A_loc,n,ipiv,info)
         
         det_0D = 1.0_dp
         do id = 1, n
-            det_0D = det_0D*A_loc(id, id)
+            det_0D = det_0D*A_loc(id,id)
         end do
         
         sgn = 1.0_dp
@@ -1653,11 +1025,11 @@ contains
         
         inv_0D = A
         
-        call dgetrf(n, n, inv_0D, n, ipiv, ierr)                                ! LU factorization
+        call dgetrf(n,n,inv_0D,n,ipiv,ierr)                                     ! LU factorization
         err_msg = 'Lapack couldn''t find the LU factorization'
         CHCKERR(err_msg)
         
-        call dgetri(n, inv_0D, n, ipiv, w, n, ierr)                             ! inverse of LU
+        call dgetri(n,inv_0D,n,ipiv,w,n,ierr)                                   ! inverse of LU
         CHCKERR('Lapack couldn''t compute the inverse')
     end function calc_inv_0D
     
@@ -2187,8 +1559,8 @@ contains
     ! discrete grid  and the remainder  corresponds to the fraction  towards the
     ! next index.  If no solution  is found, a  negative value is  outputted, as
     ! well as a message.
-    integer function con2dis_equidistant(pt_c,pt_d,lim_c,lim_d) result(ierr)    ! equidistant version
-        !character(*), parameter :: rout_name = 'con2dis_equidistant'
+    integer function con2dis_eqd(pt_c,pt_d,lim_c,lim_d) result(ierr)            ! equidistant version
+        !character(*), parameter :: rout_name = 'con2dis_eqd'
         
         ! input / output
         real(dp), intent(in) :: pt_c                                            ! point on continous grid
@@ -2205,9 +1577,9 @@ contains
         !   max_c - min_c    max_d - min_d
         pt_d = lim_d(1) + (lim_d(2)-lim_d(1)) * (pt_c-lim_c(1)) / &
             &(lim_c(2)-lim_c(1))
-    end function con2dis_equidistant
-    integer function con2dis_regular(pt_c,pt_d,var_c) result(ierr)              ! regular grid version
-        character(*), parameter :: rout_name = 'con2dis_regular'
+    end function con2dis_eqd
+    integer function con2dis_reg(pt_c,pt_d,var_c) result(ierr)                  ! regular grid version
+        character(*), parameter :: rout_name = 'con2dis_reg'
         
         ! input / output
         real(dp), intent(in) :: pt_c                                            ! point on continous grid
@@ -2231,7 +1603,7 @@ contains
         size_c = size(var_c)
         
 #if ldebug
-        if (debug_con2dis_regular) &
+        if (debug_con2dis_reg) &
             &call writo('finding the discrete index of '//trim(r2str(pt_c)))
 #endif
         
@@ -2242,7 +1614,7 @@ contains
             pt_c_loc = pt_c
         else
 #if ldebug
-            if (debug_con2dis_regular) &
+            if (debug_con2dis_reg) &
                 &call writo('setting var_c_loc = - var_c and pt_c_loc = -pt_c')
 #endif
             var_c_loc = - var_c                                                 ! local var should be rising
@@ -2260,7 +1632,7 @@ contains
             if (var_c_loc(id).le.pt_c_loc*(1+tol)) then
                 ind_lo = id
 #if ldebug 
-                if (debug_con2dis_regular) call writo('for iteration '//&
+                if (debug_con2dis_reg) call writo('for iteration '//&
                     &trim(i2str(id))//'/'//trim(i2str(size_c))//', ind_lo = '//&
                     &trim(i2str(ind_lo)))
 #endif
@@ -2268,14 +1640,14 @@ contains
             if (var_c_inv(id).ge.pt_c_loc*(1-tol)) then
                 ind_hi = size_c+1-id
 #if ldebug 
-                if (debug_con2dis_regular) call writo('for iteration '//&
+                if (debug_con2dis_reg) call writo('for iteration '//&
                     &trim(i2str(id))//'/'//trim(i2str(size_c))//', ind_hi = '//&
                     &trim(i2str(ind_hi)))
 #endif
             end if
         end do
 #if ldebug
-        if (debug_con2dis_regular) then
+        if (debug_con2dis_reg) then
             call writo('final ind_lo = '//trim(i2str(ind_lo))//', ind_hi = '//&
                 &trim(i2str(ind_hi)))
             call print_GP_2D('var_c_loc, var_c_inv','',&
@@ -2307,7 +1679,7 @@ contains
         
         ! deallocate
         deallocate(var_c_loc,var_c_inv)
-    end function con2dis_regular
+    end function con2dis_reg
     
     ! Convert  between  points  from  a  discrete grid  to  a  continuous  grid,
     ! providing either  the the limits on  the grid (lim_c and  lim_d), in which
@@ -2316,8 +1688,8 @@ contains
     ! The output is a real value. If  the discrete value lies outside the range,
     ! in the case of a regular grid, a negative value is outputted, as well as a
     ! message.
-    integer function dis2con_equidistant(pt_d,pt_c,lim_d,lim_c) result(ierr)    ! equidistant version
-        !character(*), parameter :: rout_name = 'dis2con_equidistant'
+    integer function dis2con_eqd(pt_d,pt_c,lim_d,lim_c) result(ierr)            ! equidistant version
+        !character(*), parameter :: rout_name = 'dis2con_eqd'
         
         ! input / output
         integer, intent(in) :: pt_d                                             ! point on discrete grid
@@ -2334,9 +1706,9 @@ contains
         !   max_c - min_c    max_d - min_d
         pt_c = lim_c(1) + (lim_c(2)-lim_c(1)) * (pt_d-lim_d(1)) / &
             &(lim_d(2)-lim_d(1))
-    end function dis2con_equidistant
-    integer function dis2con_regular(pt_d,pt_c,var_c) result(ierr)              ! regular grid version 
-        character(*), parameter :: rout_name = 'dis2con_regular'
+    end function dis2con_eqd
+    integer function dis2con_reg(pt_d,pt_c,var_c) result(ierr)                  ! regular grid version 
+        character(*), parameter :: rout_name = 'dis2con_reg'
         
         ! input / output
         integer, intent(in) :: pt_d                                             ! point on discrete grid
@@ -2359,7 +1731,7 @@ contains
         
         ! Return the continuous variable
         pt_c = var_c(pt_d)
-    end function dis2con_regular
+    end function dis2con_reg
     
     ! rounds  an  arry of  values  to limits,  with  a tolerance  1E-5 that  can
     ! optionally be modified
@@ -2421,11 +1793,14 @@ contains
         val = vals(1)
     end function round_with_tol_ind
     
-    ! Interpolate a 1D function y(:,:,x), y(:,x)  or y(x) by providing the array
-    ! y and x_in. The  result is stored in y_out. The array  x can be optionally
-    ! passed. If not, it is assumed to be the (equidistant) linear space between
-    ! 0 and 1.
+    ! Linearly interpolate a  1D function y(:,:,x), y(:,x) or  y(x) by providing
+    ! the array y  and x_in. The result is  stored in y_out. The array  x can be
+    ! optionally passed.  If not, it is  assumed to be the  (equidistant) linear
+    ! space between 0 and 1.
     ! Note: This function is assumed to be monotomous. If not, an error results.
+    ! Note:  The  combination  of   "setup_interp_data"  and  "apply_disc"  from
+    ! "grid_utilities"  is  more  powerful,  though  for  non-repetitive  linear
+    ! calculations a bit slower than this function.
     integer function interp_fun_2D_real(y_out,y,x_in,x) result(ierr)            ! 2D real version
         character(*), parameter :: rout_name = 'interp_fun_2D_real'
         

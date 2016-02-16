@@ -56,6 +56,7 @@ PB3D_ops.o : \
     output_ops.o \
     HDF5_vars.o \
     HDF5_ops.o \
+    HELENA_vars.o \
     rich.o \
 
 test.o : \
@@ -109,7 +110,7 @@ grid_utilities.o : \
     grid_vars.o \
     eq_vars.o \
     VMEC.o \
-    HELENA.o \
+    HELENA_vars.o \
     utilities.o \
     MPI_utilities.o \
 
@@ -122,7 +123,7 @@ grid_ops.o : \
     eq_vars.o \
     utilities.o \
     VMEC.o \
-    HELENA.o \
+    HELENA_vars.o \
     X_vars.o \
     HDF5_ops.o \
     HDF5_vars.o \
@@ -144,7 +145,7 @@ driver_eq.o : \
     met_ops.o \
     eq_ops.o \
     VMEC.o \
-    HELENA.o \
+    HELENA_vars.o \
     MPI_utilities.o \
     grid_ops.o \
     grid_vars.o \
@@ -163,6 +164,8 @@ driver_X.o : \
     vac.o \
     PB3D_vars.o \
     PB3D_ops.o \
+    HELENA_vars.o \
+    HELENA_ops.o \
     rich.o \
 
 driver_sol.o : \
@@ -182,7 +185,7 @@ driver_sol.o : \
     SLEPC_ops.o \
     sol_ops.o \
     rich.o \
-    HELENA.o \
+    HELENA_vars.o \
     VMEC.o \
 
 driver_POST.o : \
@@ -199,7 +202,7 @@ driver_POST.o : \
     PB3D_utilities.o \
     PB3D_vars.o \
     sol_ops.o \
-    HELENA.o \
+    HELENA_ops.o \
     grid_utilities.o \
     grid_ops.o \
 
@@ -237,6 +240,7 @@ X_ops.o : \
     X_vars.o \
     sol_vars.o \
     str_ops.o \
+    grid_vars.o \
     grid_utilities.o \
     input_utilities.o \
     HDF5_ops.o \
@@ -275,7 +279,8 @@ eq_ops.o : \
     MPI_utilities.o \
     grid_utilities.o \
     VMEC.o \
-    HELENA.o \
+    HELENA_vars.o \
+    HELENA_ops.o \
     grid_ops.o \
     HDF5_ops.o \
     
@@ -334,6 +339,7 @@ files_ops.o : \
     grid_vars.o \
     X_vars.o \
     PB3D_ops.o \
+    HELENA_vars.o \
     rich.o \
 
 files_utilities.o : \
@@ -360,7 +366,17 @@ vac.o : \
     met_vars.o \
     X_vars.o \
 
-HELENA.o : \
+HELENA_vars.o : \
+    num_vars.o \
+    str_ops.o \
+    messages.o \
+    output_ops.o \
+    eq_vars.o \
+    met_vars.o \
+    X_vars.o \
+    eq_vars.o \
+
+HELENA_ops.o : \
     num_vars.o \
     str_ops.o \
     messages.o \
@@ -371,6 +387,8 @@ HELENA.o : \
     X_vars.o \
     eq_vars.o \
     MPI_utilities.o \
+    grid_utilities.o \
+    HELENA_vars.o \
 
 utilities.o : \
     num_vars.o \
@@ -391,7 +409,8 @@ met_ops.o : \
     eq_vars.o \
     X_vars.o \
     utilities.o \
-    HELENA.o \
+    HELENA_vars.o \
+    HELENA_ops.o \
     met_vars.o \
     input_utilities.o \
     grid_utilities.o \
@@ -411,7 +430,7 @@ MPI_ops.o : \
     eq_vars.o \
     files_utilities.o \
     utilities.o \
-    HELENA.o \
+    HELENA_vars.o \
     grid_vars.o \
     PB3D_vars.o \
     HDF5_vars.o \

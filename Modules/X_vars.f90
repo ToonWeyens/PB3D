@@ -189,14 +189,14 @@ contains
         allocate(X%KV_2(n_par,n_geo,loc_n_r,nn_mod))                            ! symmetric
         
         ! allocate PV_int_i
-        allocate(X%PV_int_0(nn_mod,n_geo,loc_n_r))                              ! symmetric
-        allocate(X%PV_int_1(product(X%n_mod),n_geo,loc_n_r))                    ! not symmetric
-        allocate(X%PV_int_2(nn_mod,n_geo,loc_n_r))                              ! symmetric
+        allocate(X%PV_int_0(n_geo,loc_n_r,nn_mod))                              ! symmetric
+        allocate(X%PV_int_1(n_geo,loc_n_r,product(X%n_mod)))                    ! not symmetric
+        allocate(X%PV_int_2(n_geo,loc_n_r,nn_mod))                              ! symmetric
         
         ! allocate KV_int_i
-        allocate(X%KV_int_0(nn_mod,n_geo,loc_n_r))                              ! symmetric
-        allocate(X%KV_int_1(product(X%n_mod),n_geo,loc_n_r))                    ! not symmetric
-        allocate(X%KV_int_2(nn_mod,n_geo,loc_n_r))                              ! symmetric
+        allocate(X%KV_int_0(n_geo,loc_n_r,nn_mod))                              ! symmetric
+        allocate(X%KV_int_1(n_geo,loc_n_r,product(X%n_mod)))                    ! not symmetric
+        allocate(X%KV_int_2(n_geo,loc_n_r,nn_mod))                              ! symmetric
         
         ! allocate vacuum response
         allocate(X%vac_res(X%n_mod(1),X%n_mod(2)))

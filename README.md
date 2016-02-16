@@ -308,3 +308,17 @@ CHANGELOG
       - Introduced local versus total mode numbers, which may differ for X style 2.
       - "plot_X_vec" has been modified as well as "resonance_plot" to correctly implement the difference between local and total mode numbers.
       - Fixed inconsistency with naming "X_vec" and "X_val", etc. "sol" Is now used.
+
+1.08: - NOT USABLE FOR VMEC: ERRORS PRESENT!
+      - Implemented routine to get info about file, though unused for now.
+      - New flag "no_execute_command_line" that disables the execution of command line, as this sometimes causes a freeze, for unknown reasons.
+      - Identified bug when reading VMEC with "lrfp" flag. Now, netcdf output is used instead, as it does not have this problem.
+      - Fixed some bugs in "reconstruct_PB3D" considering the presence of field-aligned grids. These are now automatically set for both equilibrium styles.
+      - Fixed a bug in the first derivative of "flux_p_E" for HELENA: factor 2pi is now taken into account.
+      - Changed the storage convention for "PV_int" and "KV_int".
+      - Generalized and automatized the "calc_deriv" routines and put them in "grid_utilities"; They can take any order and precision now.
+      - Cleaned up "calc_flux_q".
+      - Split HELENA in HELENA_ops and HELENA_vars.
+      - Added interpolation capability similar to the derivation capability.
+      - Both interpolation and derivation use "apply_disc" to apply the discretization operator.
+      - "interp_fun" is still available to be used only when the interpolations are not repetitive and linear interpolation suffices.

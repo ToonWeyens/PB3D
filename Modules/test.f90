@@ -64,7 +64,8 @@ contains
     integer function test_calc_deriv() result(ierr)
         use num_vars, only: rank
         use input_utilities, only: get_log, get_int, get_real
-        use utilities, only: calc_deriv
+        use grid_vars, only: disc_type, dealloc_disc
+        use grid_utilities, only: setup_deriv_data, apply_disc
         
         character(*), parameter :: rout_name = 'test_calc_deriv'
         
@@ -80,10 +81,11 @@ contains
         real(dp), allocatable :: mean_error(:,:)
         real(dp), allocatable :: plot_y(:,:)
         real(dp), allocatable :: plot_x(:,:)
+        type(disc_type) :: deriv_data
         integer :: input_type
         integer :: prec
         real(dp), allocatable :: x(:)                                           ! abscissa
-        integer :: max_deriv
+        integer :: max_deriv = 4
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -94,18 +96,14 @@ contains
         call lvl_ud(1)
         
         ! read user inputs
+        call writo('precision?')
+        prec = get_int(lim_lo=1)
+        
         call writo('how many steps?')
         n_steps = get_int(lim_lo=10)
         
-        call writo('precision?')
-        call lvl_ud(1)
-        call writo('1: truncation error ~ Delta^2')
-        call writo('2: truncation error ~ Delta^3')
-        call lvl_ud(-1)
-        prec = get_int(lim_lo=1,lim_hi=2)
-        
         call writo('starting (max) step size?')
-        start_step = get_real(lim_hi=0.1_dp)
+        start_step = get_real(lim_hi=0.05_dp)
         
         call writo('equidistant plot?')
         eqd_plots = get_log(.true.)
@@ -135,26 +133,6 @@ contains
         
         ! only do the tests by the master
         if (rank.eq.0) then
-            ! set up max_deriv
-            select case (prec)
-                case(1)
-                    if (eqd_plots) then
-                        max_deriv = 5
-                    else
-                        max_deriv = 3
-                    end if
-                case(2)
-                    if (eqd_plots) then
-                        max_deriv = 1
-                    else
-                        max_deriv = 1
-                    end if
-                case default
-                    ierr = 1
-                    err_msg = 'precision has to be 1 or 2'
-                    CHCKERR(err_msg)
-            end select
-            
             ! initialize variables
             allocate(step_size(n_steps)); step_size = 0.0_dp
             allocate(max_error(n_steps,max_deriv)); max_error = 0.0_dp
@@ -256,16 +234,21 @@ contains
                 ! numerical derivatives
                 if (eqd_plots) then
                     do kd = 1,max_deriv
-                        ierr = calc_deriv(varin,var_nm(:,kd),&
-                            &1.0_dp/step_size(id),kd,prec)
+                        ierr = setup_deriv_data(step_size(id),loc_max,&
+                            &deriv_data,kd,prec)
+                        CHCKERR('')
+                        ierr = apply_disc(varin,deriv_data,var_nm(:,kd))
                         CHCKERR('')
                     end do
                 else
                     do kd = 1,max_deriv
-                        ierr = calc_deriv(varin,var_nm(:,kd),x,kd,prec)
+                        ierr = setup_deriv_data(x,deriv_data,kd,prec)
+                        CHCKERR('')
+                        ierr = apply_disc(varin,deriv_data,var_nm(:,kd))
                         CHCKERR('')
                     end do
                 end if
+                call dealloc_disc(deriv_data)
                 
                 ! max and mean errors
                 do kd = 1,max_deriv

@@ -36,20 +36,20 @@ contains
         ! select according to program style
         select case (prog_style)
             case(1)                                                             ! PB3D
-                allocate(opt_args(12), inc_args(12))
+                allocate(opt_args(13), inc_args(13))
                 opt_args = ''
                 inc_args = 0
-                opt_args(5) = '--no_guess'
-                opt_args(6) = '-st_pc_factor_shift_type'
-                opt_args(7) = '-st_pc_type'
-                opt_args(8) = '-st_pc_factor_mat_solver_package'
-                opt_args(9) = '-eps_monitor'
-                opt_args(10) = '-eps_tol'
-                opt_args(11) = '-eps_ncv'
-                opt_args(12) = '-eps_mpd'
-                inc_args(5:12) = [0,1,1,1,0,1,1,1]
+                opt_args(6) = '--no_guess'
+                opt_args(7) = '-st_pc_factor_shift_type'
+                opt_args(8) = '-st_pc_type'
+                opt_args(9) = '-st_pc_factor_mat_solver_package'
+                opt_args(10) = '-eps_monitor'
+                opt_args(11) = '-eps_tol'
+                opt_args(12) = '-eps_ncv'
+                opt_args(13) = '-eps_mpd'
+                inc_args(6:13) = [0,1,1,1,0,1,1,1]
             case(2)                                                             ! POST
-                allocate(opt_args(4), inc_args(4))
+                allocate(opt_args(5), inc_args(5))
                 opt_args = ''
                 inc_args = 0
             case default
@@ -66,7 +66,8 @@ contains
         opt_args(2) = '--test'
         opt_args(3) = '--no_plots'
         opt_args(4) = '--no_output'
-        inc_args(1:4) = [0,0,0,0]
+        opt_args(5) = '--no_execute_command_line'
+        inc_args(1:5) = [0,0,0,0,0]
     end function init_files
 
     ! parses the command line arguments
@@ -172,7 +173,8 @@ contains
     ! open the input files
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
-            &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name
+            &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
+            &no_execute_command_line
         use files_utilities, only: search_file
         use rich, only: no_guess
 #if ldebug
@@ -184,9 +186,9 @@ contains
         ! local variables
         integer :: id                                                           ! counter
         character(len=max_str_ln) :: err_msg                                    ! error message
-        character(len=4) :: first_word                                          ! first word of equilibrium file (VMEC)
         integer :: first_ints(2)                                                ! first two input integers of input file (HELENA)
         integer :: istat                                                        ! status
+        character(len=max_str_ln) :: file_ext                                   ! file extension
         
         ! initialize ierr
         ierr = 0
@@ -226,12 +228,15 @@ contains
                     ! set eq_style to a nonsensical value
                     eq_style = -1
                     ! Check for VMEC
-                    read(eq_i,*,IOSTAT=ierr) first_word                         ! read first word of equilibrium file
-                    backspace(UNIT=eq_i)                                        ! go back one line in the equilibrium file
-                    err_msg = 'Unable to read first word of equilibrium file'
-                    CHCKERR(err_msg)
-                    if (first_word.eq.'VMEC') then                              ! It is a VMEC file
+                    do id = len(eq_name)-1,1,-1
+                        if (eq_name(id:id).eq.'.') then
+                            file_ext = eq_name(id+1:len(eq_name))
+                            exit
+                        end if
+                    end do
+                    if (trim(file_ext).eq.'nc') then
                         eq_style = 1
+                        close(eq_i)
                     end if
                     ! Check for HELENA
                     read(eq_i,*,IOSTAT=istat) first_ints
@@ -314,7 +319,7 @@ contains
                                 &ignoring...')
                         else                                                    ! option not yet taken
                             select case(jd)
-                                ! common options 1..4
+                                ! common options 1..5
                                 case (1,2)                                      ! option test
 #if ldebug
                                     call writo('option test chosen')
@@ -332,6 +337,10 @@ contains
                                     call writo('option no_output chosen: &
                                         &messages disabled')
                                     no_output = .true.
+                                case (5)                                        ! disable execute_command_line
+                                    call writo('option no_execute_command_line &
+                                        &chosen: execute_command_line disabled')
+                                    no_execute_command_line = .true.
                                 ! specific options for each program style
                                 case default
                                     select case (prog_style)
@@ -370,26 +379,26 @@ contains
             integer :: opt_nr, arg_nr
             
             select case(opt_nr)
-                case (5)                                                        ! disable guessing Eigenfunction from previous Richardson level
+                case (6)                                                        ! disable guessing Eigenfunction from previous Richardson level
                     call writo('option no_guess chosen: Eigenfunction not &
                         &guessed from previous Richardson level')
                     no_guess = .true.
-                case (6)
+                case (7)
                     call writo('option st_pc_factor_shift_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (7)
+                case (8)
                     call writo('option st_pc_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (8)
+                case (9)
                     call writo('option st_pc_factor_mat_solver_package '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (9)
-                    call writo('option eps_monitor passed to SLEPC')
                 case (10)
-                    call writo('option eps_tol passed to SLEPC')
+                    call writo('option eps_monitor passed to SLEPC')
                 case (11)
-                    call writo('option eps_ncv passed to SLEPC')
+                    call writo('option eps_tol passed to SLEPC')
                 case (12)
+                    call writo('option eps_ncv passed to SLEPC')
+                case (13)
                     call writo('option eps_mpd passed to SLEPC')
                 case default
                     call writo('WARNING: Invalid option number')
@@ -412,7 +421,7 @@ contains
             &n_mod_X
         use PB3D_ops, only: read_PB3D, reconstruct_PB3D
         use grid_vars, only: alpha
-        use HELENA, only: nchi, ias
+        use HELENA_vars, only: nchi, ias
         use VMEC, only: mpol, ntor, &
             &lfreeB, nfp, lasym
         

@@ -8,7 +8,7 @@ module files_utilities
     use num_vars, only: dp, max_str_ln
     implicit none
     private
-    public search_file, nextunit, wait_file
+    public search_file, nextunit, wait_file, get_file_info
 
 contains
     ! looks for the full name of a file and tests for its existence
@@ -81,4 +81,34 @@ contains
             end if
         end do
     end subroutine wait_file
+    
+    ! Gets file information
+    ! The  time informations  can be  converted to  strings using  the intrinsic
+    ! function "ctime".
+    subroutine get_file_info(file_name,file_size,acc_time,mod_time)
+        ! input / output
+        character(len=*), intent(in) :: file_name                               ! name of file
+        integer, intent(inout), optional :: file_size                           ! file size
+        integer, intent(inout), optional :: acc_time                            ! file access time
+        integer, intent(inout), optional :: mod_time                            ! file modification time
+        
+        ! local variables
+        integer :: vals(13)                                                     ! values
+        integer :: istat                                                        ! status
+        
+        ! call stat
+        call stat(trim(file_name),vals,istat)
+        
+        ! check status
+        if (istat.ne.0) then
+            call writo('WARNING: call to stat failed')
+            if (present(file_size)) file_size = 0
+            if (present(acc_time)) acc_time = 0
+            if (present(mod_time)) mod_time = 0
+        else
+            if (present(file_size)) file_size = vals(8)
+            if (present(acc_time)) acc_time = vals(9)
+            if (present(mod_time)) mod_time = vals(10)
+        end if
+    end subroutine get_file_info
 end module files_utilities

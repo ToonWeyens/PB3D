@@ -12,11 +12,11 @@ module VMEC
     use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
         &lasym, VMEC_version => version_, lfreeb, &                             ! stellerator symmetry, version number, free boundary or not
         &n_r_VMEC => ns, mpol, ntor, xn, xm, mnmax, nfp, &                      ! mpol, ntor = # modes
-        &flux_t_V => phi, Dflux_t_V => phipf, &                                 ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
-        &rot_t_V => iotaf, &                                                    ! rotational transform = 1/q (FM)
-        &pres_V => presf, &                                                     ! pressure (FM)
+        &phi, phipf, &                                                          ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
+        &iotaf, &                                                               ! rot. transf. (tor. flux) or saf. fac. (pol. flux) (FM)
+        &presf, &                                                               ! pressure (FM)
         &lrfp, &                                                                ! whether or not the poloidal flux is used as radial variable
-        &gam => gamma, &                                                        ! gamma in adiabatic law (NOT important here because of incompressibility)
+        &gam => gamma, &                                                        ! gamma in adiabatic law (not important here, incompressibility)
         &bsubumns, bsubumnc, bsubvmns, bsubvmnc, bsubsmns, bsubsmnc, &          ! B_theta (HM), B_zeta (HM), B_r (FM)
         &bmns, bmnc, &                                                          ! magnitude of B (HM)
         &lmns, lmnc, rmns, rmnc, zmns, zmnc, &                                  ! lambda (HM), R (FM), Z(FM)
@@ -33,6 +33,10 @@ module VMEC
     public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
 
+    ! local variables
+    real(dp), allocatable :: flux_t_V(:), Dflux_t_V(:)                          ! toroidal flux and derivative
+    real(dp), allocatable :: pres_V(:)                                          ! pressure
+    real(dp), allocatable :: rot_t_V(:)                                         ! rotational transform
     real(dp), allocatable :: R_V_c(:,:,:,:), R_V_s(:,:,:,:)                     ! Coeff. of R in (co)sine series (FM) and norm. deriv.
     real(dp), allocatable :: Z_V_c(:,:,:,:), Z_V_s(:,:,:,:)                     ! Coeff. of Z in (co)sine series (FM) and norm. deriv.
     real(dp), allocatable :: L_V_c(:,:,:,:), L_V_s(:,:,:,:)                     ! Coeff. of lambda in (co)sine series (HM) and norm. deriv.
@@ -45,7 +49,7 @@ contains
     ! [MPI] only global master
     integer function read_VMEC(n_r_eq,use_pol_flux_V) result(ierr)
         use utilities, only: conv_FHM
-        use num_vars, only: max_deriv, eq_i, eq_name
+        use num_vars, only: max_deriv, eq_name
 #if ldebug
         use num_vars, only: ltest
 #endif
@@ -60,6 +64,7 @@ contains
         real(dp), allocatable :: L_c_H(:,:,:,:)                                 ! temporary HM variable
         real(dp), allocatable :: L_s_H(:,:,:,:)                                 ! temporary HM variable
         character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=8) :: flux_name                                           ! either poloidal or toroidal
 #if ldebug
         integer :: kd                                                           ! counter
         real(dp), allocatable :: B_V_sub_c_M(:,:,:,:), B_V_sub_s_M(:,:,:,:)     ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM, HM, HM)
@@ -75,15 +80,25 @@ contains
         call lvl_ud(1)
         
         ! read VMEC output using LIBSTELL
-        call read_wout_file(eq_i,ierr)                                          ! read the VMEC file number
+        call read_wout_file(eq_name,ierr)                                       ! read the VMEC file
         CHCKERR('Failed to read the VMEC file')
         
-        ! close the VMEC output file
-        close(eq_i)
-        
         ! set some variables
+        allocate(flux_t_V(n_r_eq))
+        allocate(Dflux_t_V(n_r_eq))
+        allocate(rot_t_V(n_r_eq))
+        allocate(pres_V(n_r_eq))
         n_r_eq = n_r_VMEC
         use_pol_flux_V = lrfp
+        flux_t_V = phi
+        Dflux_t_V = phipf
+        pres_V = presf
+        rot_t_V = iotaf
+        if (use_pol_flux_V) then
+            flux_name = 'poloidal'
+        else
+            flux_name = 'toroidal'
+        end if
         
         call writo('VMEC version is ' // trim(r2str(VMEC_version)))
         if (lfreeb) then
@@ -102,7 +117,7 @@ contains
         end if
         call writo('VMEC has '//trim(i2str(mpol))//' poloidal and '&
             &//trim(i2str(ntor))//' toroidal modes, defined on '&
-            &//trim(i2str(n_r_eq))//' flux surfaces')
+            &//trim(i2str(n_r_eq))//' '//flux_name//' flux surfaces')
         
         call writo('Running tests')
         call lvl_ud(1)
@@ -219,22 +234,7 @@ contains
 #endif
         
         ! deallocate repacked variables
-        if (allocated(gmns)) deallocate(gmns)
-        if (allocated(gmnc)) deallocate(gmnc)
-        if (allocated(bsubumns)) deallocate(bsubumns)
-        if (allocated(bsubumnc)) deallocate(bsubumnc)
-        if (allocated(bsubvmns)) deallocate(bsubvmns)
-        if (allocated(bsubvmnc)) deallocate(bsubvmnc)
-        if (allocated(bsubsmns)) deallocate(bsubsmns)
-        if (allocated(bsubsmnc)) deallocate(bsubsmnc)
-        if (allocated(bmns)) deallocate(bmns)
-        if (allocated(bmnc)) deallocate(bmnc)
-        if (allocated(lmns)) deallocate(lmns)
-        if (allocated(lmnc)) deallocate(lmnc)
-        if (allocated(rmns)) deallocate(rmns)
-        if (allocated(rmnc)) deallocate(rmnc)
-        if (allocated(zmns)) deallocate(zmns)
-        if (allocated(zmnc)) deallocate(zmnc)
+        call read_wout_deallocate()
         
         call lvl_ud(-1)
         call writo('Conversion complete')
@@ -242,9 +242,6 @@ contains
     
     ! deallocates VMEC quantities that are not used anymore
     subroutine dealloc_VMEC
-        deallocate(flux_t_V,Dflux_t_V)
-        deallocate(rot_t_V)
-        deallocate(pres_V)
         if (allocated(R_V_c)) deallocate(R_V_c)
         if (allocated(R_V_s)) deallocate(R_V_s)
         if (allocated(Z_V_c)) deallocate(Z_V_c)

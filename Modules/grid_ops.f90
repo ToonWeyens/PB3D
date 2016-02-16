@@ -7,7 +7,7 @@ module grid_ops
     use output_ops
     use messages
     use num_vars, only: dp, pi, max_str_ln
-    use grid_vars, only: grid_type
+    use grid_vars, only: grid_type, disc_type, dealloc_disc
     use eq_vars, only: eq_type
 
     implicit none
@@ -96,9 +96,10 @@ contains
             use num_vars, only: n_procs, rank, use_pol_flux_E, &
                 &use_pol_flux_F, eq_style, tol_norm, norm_disc_prec_eq
             use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
-                &calc_deriv, round_with_tol
+                &round_with_tol
+            use grid_utilities, only: setup_deriv_data, apply_disc
             use VMEC, only: flux_t_V, Dflux_t_V, rot_t_V
-            use HELENA, only: flux_p_H, qs
+            use HELENA_vars, only: flux_p_H, qs
             use X_vars, only: min_r_sol, max_r_sol
             use grid_vars, only: n_r_eq
             
@@ -110,6 +111,7 @@ contains
             ! local variables
             real(dp), allocatable :: flux_F(:), flux_E(:)                       ! either pol. or tor. flux in F and E
             real(dp), allocatable :: Dflux_p_H(:)                               ! normal derivative of flux_p_H
+            type(disc_type) :: norm_deriv_data                                  ! data for normal derivatives
             real(dp) :: tot_min_r_eq_F_con                                      ! tot_min_r_eq in continuous F coords.
             real(dp) :: tot_max_r_eq_F_con                                      ! tot_max_r_eq in continuous F coords.
             real(dp) :: tot_min_r_eq_E_con                                      ! tot_min_r_eq in continuous E coords.
@@ -131,7 +133,7 @@ contains
                 case (1)                                                        ! VMEC
                     ! set up F flux
                     if (use_pol_flux_F) then
-                        ierr = calc_int(-rot_t_V*Dflux_t_V,&
+                        ierr = calc_int(-Dflux_t_V*rot_t_V,&
                             &1.0_dp/(n_r_eq-1.0_dp),flux_F)                     ! conversion VMEC LH -> RH coord. system
                         CHCKERR('')
                     else
@@ -140,7 +142,7 @@ contains
                     ! set up E flux
                     if (use_pol_flux_E) then
                     write(*,*) '!!! CHANGED rot_t_V to -rot_t_V BUT NOT SURE !!'
-                        ierr = calc_int(-rot_t_V*Dflux_t_V,&
+                        ierr = calc_int(-Dflux_t_V*rot_t_V,&
                             &1.0_dp/(n_r_eq-1.0_dp),flux_E)                     ! conversion VMEC LH -> RH coord. system
                         CHCKERR('')
                     else
@@ -149,21 +151,24 @@ contains
                 case (2)                                                        ! HELENA
                     ! calculate normal derivative of flux_p_H
                     allocate(Dflux_p_H(n_r_eq))
-                    ierr = calc_deriv(flux_p_H,Dflux_p_H,flux_p_H,1,&
-                        &norm_disc_prec_eq)
+                    ierr = setup_deriv_data(flux_p_H/(2*pi),norm_deriv_data,&
+                        &1,norm_disc_prec_eq)
                     CHCKERR('')
+                    ierr = apply_disc(flux_p_H,norm_deriv_data,Dflux_p_H)
+                    CHCKERR('')
+                    call dealloc_disc(norm_deriv_data)
                     ! set up F flux
                     if (use_pol_flux_F) then
                         flux_F = flux_p_H
                     else
-                        ierr = calc_int(qs*Dflux_p_H,flux_p_H,flux_F)
+                        ierr = calc_int(qs*Dflux_p_H,flux_p_H/(2*pi),flux_F)
                         CHCKERR('')
                     end if
                     ! set up E flux
                     if (use_pol_flux_E) then
                         flux_E = flux_p_H
                     else
-                        ierr = calc_int(qs*Dflux_p_H,flux_p_H,flux_E)
+                        ierr = calc_int(qs*Dflux_p_H,flux_p_H/(2*pi),flux_E)
                         CHCKERR('')
                     end if
                 case default
@@ -301,8 +306,7 @@ contains
         integer function calc_norm_range_POST(eq_limits,X_limits,sol_limits,&
             &r_F_eq,r_F_sol) result(ierr)                                       ! POST version
             use num_vars, only: n_procs, rank, norm_disc_prec_sol
-            use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
-                &calc_deriv, round_with_tol
+            use utilities, only: con2dis, dis2con, calc_int, round_with_tol
             
             character(*), parameter :: rout_name = 'calc_norm_range_POST'
             
@@ -390,7 +394,7 @@ contains
         use num_vars, only: eq_style
         use grid_vars, only: create_grid, &
             &n_par_X, n_r_eq
-        use HELENA, only: nchi
+        use HELENA_vars, only: nchi
         
         character(*), parameter :: rout_name = 'setup_grid_eq'
         
@@ -501,8 +505,9 @@ contains
     ! division is in the mode numbers
     integer function setup_and_calc_grid_X(grid_eq,grid_X,eq,r_F_X,X_limits) &
         &result(ierr)
-        use grid_vars, only: create_grid
-        use grid_utilities, only: get_norm_interp_data, coord_F2E
+        use num_vars, only: norm_disc_prec_X
+        use grid_vars, only: create_grid, dealloc_disc, disc_type
+        use grid_utilities, only: coord_F2E, setup_interp_data, apply_disc
         
         character(*), parameter :: rout_name = 'setup_and_calc_grid_X'
         
@@ -514,9 +519,7 @@ contains
         integer, intent(in) :: X_limits(2)                                      ! min. and max. index of perturbation grid of this process
         
         ! local variables
-        real(dp), allocatable :: loc_r_eq(:)                                    ! unrounded index of eq variables in X grid
-        integer :: i_lo, i_hi                                                   ! upper and lower index
-        integer :: kd                                                           ! counter
+        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! initialize ierr
         ierr = 0
@@ -537,27 +540,23 @@ contains
             &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
         CHCKERR('')
         
-        ! get normal interpolation factors
-        ierr = get_norm_interp_data(grid_eq,grid_X,loc_r_eq)
+        ! setup normal interpolation data
+        ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
+            &norm_interp_data,norm_disc_prec_X)
         CHCKERR('')
         
-        ! interpolate angular variables
-        do kd = 1,grid_X%loc_n_r
-            i_lo = floor(loc_r_eq(kd))
-            i_hi = ceiling(loc_r_eq(kd))
-            grid_X%theta_E(:,:,kd) = grid_eq%theta_E(:,:,i_lo) + &
-                &(grid_eq%theta_E(:,:,i_hi)-grid_eq%theta_E(:,:,i_lo))*&
-                &(loc_r_eq(kd)-i_lo)
-            grid_X%zeta_E(:,:,kd) = grid_eq%zeta_E(:,:,i_lo) + &
-                &(grid_eq%zeta_E(:,:,i_hi)-grid_eq%zeta_E(:,:,i_lo))*&
-                &(loc_r_eq(kd)-i_lo)
-            grid_X%theta_F(:,:,kd) = grid_eq%theta_F(:,:,i_lo) + &
-                &(grid_eq%theta_F(:,:,i_hi)-grid_eq%theta_F(:,:,i_lo))*&
-                &(loc_r_eq(kd)-i_lo)
-            grid_X%zeta_F(:,:,kd) = grid_eq%zeta_F(:,:,i_lo) + &
-                &(grid_eq%zeta_F(:,:,i_hi)-grid_eq%zeta_F(:,:,i_lo))*&
-                &(loc_r_eq(kd)-i_lo)
-        end do
+        ! interpolate
+        ierr = apply_disc(grid_eq%theta_E,norm_interp_data,grid_X%theta_E,3)
+        CHCKERR('')
+        ierr = apply_disc(grid_eq%zeta_E,norm_interp_data,grid_X%zeta_E,3)
+        CHCKERR('')
+        ierr = apply_disc(grid_eq%theta_F,norm_interp_data,grid_X%theta_F,3)
+        CHCKERR('')
+        ierr = apply_disc(grid_eq%zeta_F,norm_interp_data,grid_X%zeta_F,3)
+        CHCKERR('')
+        
+        ! clean up
+        call dealloc_disc(norm_interp_data)
     end function setup_and_calc_grid_X
     
     ! Sets  up the general  solution grid, in  which the solution  variables are
@@ -603,7 +602,7 @@ contains
     ! (.false.) is used as the parallel variable.
     integer function calc_ang_grid_eq(grid_eq,eq) result(ierr)
         use num_vars, only: eq_style
-        use HELENA, only: chi_H
+        use HELENA_vars, only: chi_H
         
         character(*), parameter :: rout_name = 'calc_ang_grid_eq'
         

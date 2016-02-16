@@ -22,6 +22,7 @@ module num_vars
         &GP_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
+        &no_execute_command_line, &
         &input_name, &
         &plot_size, &
         &spline_type
@@ -37,7 +38,7 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 1.07_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.08_dp                               ! version number
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
@@ -101,6 +102,7 @@ module num_vars
     integer :: output_i                                                         ! file number of output file
     logical :: no_plots = .false.                                               ! true if no plots should be made
     logical :: no_output = .false.                                              ! true if no output should be shown
+    logical :: no_execute_command_line = .false.                                ! true if "execute_command_line" should not be called
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots
     character(len=4) :: data_dir = 'Data'                                       ! directory where to save data for plots

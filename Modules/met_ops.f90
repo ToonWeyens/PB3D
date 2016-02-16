@@ -9,7 +9,7 @@ module met_ops
     use messages
     use num_vars, only: dp, max_deriv, max_str_ln, pi
     use utilities, only: check_deriv
-    use grid_vars, only: grid_type, dealloc_grid
+    use grid_vars, only: grid_type, disc_type, dealloc_grid, dealloc_disc
     use eq_vars, only: eq_type
     use met_vars, only: met_type
     
@@ -79,7 +79,7 @@ contains
 #if ldebug
         use num_vars, only: ltest
         use input_utilities, only: get_log, pause_prog
-        use HELENA, only: test_metrics_H
+        use HELENA_ops, only: test_metrics_H
 #endif
         
         character(*), parameter :: rout_name = 'calc_met'
@@ -315,7 +315,6 @@ contains
 #if ldebug
         use num_vars, only: ltest
         use input_utilities, only: get_log, pause_prog
-        use HELENA, only: test_metrics_H
 #endif
         
         character(*), parameter :: rout_name = 'calc_F_derivs'
@@ -515,8 +514,9 @@ contains
     ! system using the HELENA output
     integer function calc_h_H_ind(grid,met,deriv) result(ierr)
         use num_vars, only: max_deriv, norm_disc_prec_eq
-        use HELENA, only: h_H_11, h_H_12, h_H_33
-        use utilities, only: calc_deriv, c
+        use HELENA_vars, only: h_H_11, h_H_12, h_H_33
+        use utilities, only: c
+        use grid_utilities, only: setup_deriv_data, apply_disc
         
         character(*), parameter :: rout_name = 'calc_h_H_ind'
         
@@ -527,7 +527,9 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: id, jd, kd, ld                                               ! counters
+        integer :: jd, kd                                                       ! counters
+        type(disc_type) :: norm_deriv_data                                      ! data for normal derivatives
+        type(disc_type) :: ang_deriv_data                                       ! data for angular derivatives
         
         ! initialize ierr
         ierr = 0
@@ -556,61 +558,53 @@ contains
                     &h_H_12(:,grid%i_min:grid%i_max)**2)
             end do
         else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
-            do ld = 1,6
-                do jd = 1,grid%n(2)
-                    do id = 1,grid%n(1)
-                        ierr = calc_deriv(met%h_E(id,jd,:,ld,0,0,0),&
-                            &met%h_E(id,jd,:,ld,1,0,0),grid%loc_r_E,1,&
-                            &norm_disc_prec_eq+1)                               ! use extra precision to later calculate mixed derivatives
-                        CHCKERR('')
-                    end do
-                end do
-            end do
+            ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
+                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
+            CHCKERR('')
+            ierr = apply_disc(met%h_E(:,:,:,:,0,0,0),norm_deriv_data,&
+                &met%h_E(:,:,:,:,1,0,0),3)
+            CHCKERR('')
+            call dealloc_disc(norm_deriv_data)
         else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
-            do ld = 1,6
-                do jd = 1,grid%n(2)
-                    do id = 1,grid%n(1)
-                        ierr = calc_deriv(met%h_E(id,jd,:,ld,0,0,0),&
-                            &met%h_E(id,jd,:,ld,2,0,0),grid%loc_r_E,2,&
-                            &norm_disc_prec_eq)
-                        CHCKERR('')
-                    end do
-                end do
-            end do
+            ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,2,&
+                &norm_disc_prec_eq)
+            CHCKERR('')
+            ierr = apply_disc(met%h_E(:,:,:,:,0,0,0),norm_deriv_data,&
+                &met%h_E(:,:,:,:,2,0,0),3)
+            CHCKERR('')
+            call dealloc_disc(norm_deriv_data)
         else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
-            do ld = 1,6
-                do kd = 1,grid%loc_n_r
-                    do jd = 1,grid%n(2)
-                        ierr = calc_deriv(met%h_E(:,jd,kd,ld,0,0,0),&
-                            &met%h_E(:,jd,kd,ld,0,1,0),&
-                            &grid%theta_E(:,jd,kd),1,&
-                            &norm_disc_prec_eq+1)                               ! use extra precision to later calculate mixed derivatives
-                        CHCKERR('')
-                    end do
-                end do
-            end do
-        else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
-            do ld = 1,6
-                do kd = 1,grid%loc_n_r
-                    do jd = 1,grid%n(2)
-                        ierr = calc_deriv(met%h_E(:,jd,kd,ld,0,0,0),&
-                            &met%h_E(:,jd,kd,ld,0,2,0),&
-                            &grid%theta_E(:,jd,kd),2,norm_disc_prec_eq)
-                        CHCKERR('')
-                    end do
-                end do
-            end do
-        else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
-            do ld = 1,6
+            do kd = 1,grid%loc_n_r
                 do jd = 1,grid%n(2)
-                    do id = 1,grid%n(1)
-                        ierr = calc_deriv(met%h_E(id,jd,:,ld,0,1,0),&
-                            &met%h_E(id,jd,:,ld,1,1,0),grid%loc_r_E,1,&
-                            &norm_disc_prec_eq)
-                        CHCKERR('')
-                    end do
+                    ierr = setup_deriv_data(grid%theta_E(:,jd,kd),&
+                        &ang_deriv_data,1,norm_disc_prec_eq+1)                  ! use extra precision to later calculate mixed derivatives
+                    CHCKERR('')
+                    ierr = apply_disc(met%h_E(:,jd,kd,:,0,0,0),&
+                        &ang_deriv_data,met%h_E(:,jd,kd,:,0,1,0),1)
+                    CHCKERR('')
                 end do
             end do
+            call dealloc_disc(ang_deriv_data)
+        else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
+            do kd = 1,grid%loc_n_r
+                do jd = 1,grid%n(2)
+                    ierr = setup_deriv_data(grid%theta_E(:,jd,kd),&
+                        &ang_deriv_data,2,norm_disc_prec_eq)
+                    CHCKERR('')
+                    ierr = apply_disc(met%h_E(:,jd,kd,:,0,0,0),&
+                        &ang_deriv_data,met%h_E(:,jd,kd,:,0,2,0),1)
+                    CHCKERR('')
+                end do
+            end do
+            call dealloc_disc(ang_deriv_data)
+        else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
+            ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
+                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
+            CHCKERR('')
+            ierr = apply_disc(met%h_E(:,:,:,:,0,1,0),norm_deriv_data,&
+                &met%h_E(:,:,:,:,1,1,0),3) 
+            CHCKERR('')
+            call dealloc_disc(norm_deriv_data)
         else
             ierr = 1
             err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
@@ -888,8 +882,8 @@ contains
     !       already. If not, the results will be incorrect!
     integer function calc_jac_H_ind(grid,eq,met,deriv) result(ierr)
         use num_vars, only: norm_disc_prec_eq
-        use HELENA, only:  h_H_33, RBphi
-        use utilities, only: calc_deriv
+        use HELENA_vars, only:  h_H_33, RBphi
+        use grid_utilities, only: setup_deriv_data, apply_disc
         
         character(*), parameter :: rout_name = 'calc_jac_H_ind'
         
@@ -900,8 +894,10 @@ contains
         integer, intent(in) :: deriv(:)
         
         ! local variables
-        integer :: id, jd, kd                                                   ! counters
+        integer :: jd, kd                                                       ! counters
         character(len=max_str_ln) :: err_msg                                    ! error message
+        type(disc_type) :: norm_deriv_data                                      ! data for normal derivatives
+        type(disc_type) :: ang_deriv_data                                       ! data for angular derivatives
         
         ! initialize ierr
         ierr = 0
@@ -921,50 +917,53 @@ contains
                 end do
             end do
         else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
-            do jd = 1,grid%n(2)
-                do id = 1,grid%n(1)
-                    ierr = calc_deriv(met%jac_E(id,jd,:,0,0,0),&
-                        &met%jac_E(id,jd,:,1,0,0),grid%loc_r_E,1,&
-                        &norm_disc_prec_eq+1)                                   ! use extra precision to later calculate mixed derivatives
-                    CHCKERR('')
-                end do
-            end do
+            ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
+                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
+            CHCKERR('')
+            ierr = apply_disc(met%jac_E(:,:,:,0,0,0),norm_deriv_data,&
+                &met%jac_E(:,:,:,1,0,0),3)
+            CHCKERR('')
+            call dealloc_disc(norm_deriv_data)
         else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
-            do jd = 1,grid%n(2)
-                do id = 1,grid%n(1)
-                    ierr = calc_deriv(met%jac_E(id,jd,:,0,0,0),&
-                        &met%jac_E(id,jd,:,2,0,0),grid%loc_r_E,2,&
-                        &norm_disc_prec_eq)
-                    CHCKERR('')
-                end do
-            end do
+            ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,2,&
+                &norm_disc_prec_eq)
+            CHCKERR('')
+            ierr = apply_disc(met%jac_E(:,:,:,0,0,0),norm_deriv_data,&
+                &met%jac_E(:,:,:,2,0,0),3)
+            CHCKERR('')
+            call dealloc_disc(norm_deriv_data)
         else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
             do kd = 1,grid%loc_n_r
                 do jd = 1,grid%n(2)
-                    ierr = calc_deriv(met%jac_E(:,jd,kd,0,0,0),&
-                        &met%jac_E(:,jd,kd,0,1,0),grid%theta_E(:,jd,kd),1,&
-                        &norm_disc_prec_eq+1)                                   ! use extra precision to later calculate mixed derivatives
+                    ierr = setup_deriv_data(grid%theta_E(:,jd,kd),&
+                        &ang_deriv_data,1,norm_disc_prec_eq+1)                  ! use extra precision to later calculate mixed derivatives
+                    CHCKERR('')
+                    ierr = apply_disc(met%jac_E(:,jd,kd,0,0,0),&
+                        &ang_deriv_data,met%jac_E(:,jd,kd,0,1,0))
                     CHCKERR('')
                 end do
             end do
+            call dealloc_disc(ang_deriv_data)
         else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
             do kd = 1,grid%loc_n_r
                 do jd = 1,grid%n(2)
-                    ierr = calc_deriv(met%jac_E(:,jd,kd,0,0,0),&
-                        &met%jac_E(:,jd,kd,0,2,0),grid%theta_E(:,jd,kd),2,&
-                        &norm_disc_prec_eq)
+                    ierr = setup_deriv_data(grid%theta_E(:,jd,kd),&
+                        &ang_deriv_data,2,norm_disc_prec_eq)
+                    CHCKERR('')
+                    ierr = apply_disc(met%jac_E(:,jd,kd,0,0,0),&
+                        &ang_deriv_data,met%jac_E(:,jd,kd,0,2,0))
                     CHCKERR('')
                 end do
             end do
+            call dealloc_disc(ang_deriv_data)
         else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
-            do kd = 1,grid%loc_n_r
-                do jd = 1,grid%n(2)
-                    ierr = calc_deriv(met%jac_E(:,jd,kd,1,0,0),&
-                        &met%jac_E(:,jd,kd,1,1,0),grid%theta_E(:,jd,kd),1,&
-                        &norm_disc_prec_eq)
-                    CHCKERR('')
-                end do
-            end do
+            ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
+                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
+            CHCKERR('')
+            ierr = apply_disc(met%jac_E(:,:,:,0,1,0),norm_deriv_data,&
+                &met%jac_E(:,:,:,1,1,0),3) 
+            CHCKERR('')
+            call dealloc_disc(norm_deriv_data)
         else
             ierr = 1
             err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
@@ -2117,11 +2116,11 @@ contains
     !   - mu_0 J D3p = 0 => D3 B_1 = D1 B_3
     ! (working in the (modified) Flux coordinates (alpha,psi,theta)_F)
     integer function test_p(grid_eq,eq,met) result(ierr)
-        use utilities, only: c, calc_deriv
-        use grid_utilities, only: trim_grid
+        use utilities, only: c
+        use grid_utilities, only: trim_grid, setup_deriv_data, apply_disc
         use eq_vars, only: vac_perm
         use num_vars, only: eq_style, norm_disc_prec_eq
-        use HELENA, only: RBphi, h_H_11, h_H_12
+        use HELENA_vars, only: RBphi, h_H_11, h_H_12
         
         character(*), parameter :: rout_name = 'test_p'
         
@@ -2133,6 +2132,8 @@ contains
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
+        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
+        type(disc_type) :: ang_deriv_data                                       ! data for angular derivative
         integer :: id, jd, kd                                                   ! counters
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
@@ -2234,17 +2235,20 @@ contains
                 &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0)*&
                 &met%jac_FD(:,:,norm_id(1):norm_id(2),0,1,0)/ &
                 &(met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2))
+            ierr = setup_deriv_data(grid_trim%loc_r_E,norm_deriv_data,1,&
+                &norm_disc_prec_eq)
+            CHCKERR('')
             do jd = 1,grid_trim%n(2)
                 do id = 1,grid_trim%n(1)
-                    ierr = calc_deriv(eq%q_saf_E(norm_id(1):norm_id(2),0)*&
+                    ierr = apply_disc(eq%q_saf_E(norm_id(1):norm_id(2),0)*&
                         &RBphi(n_H(1):n_H(2))+&
                         &eq%q_saf_E(norm_id(1):norm_id(2),0)*&
                         &h_H_11(id,n_H(1):n_H(2))/&
-                        &RBphi(n_H(1):n_H(2)),res(id,jd,:,2),&
-                        &grid_trim%loc_r_E,1,norm_disc_prec_eq)
+                        &RBphi(n_H(1):n_H(2)),norm_deriv_data,res(id,jd,:,2))
                     CHCKERR('')
                 end do
             end do
+            call dealloc_disc(norm_deriv_data)
             
             ! set some variables
             file_name = 'TEST_D2B_3'
@@ -2269,16 +2273,18 @@ contains
                 &(met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2)
             do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_trim%n(2)
-                    ierr = calc_deriv(h_H_12(:,kd+grid_eq%i_min-1),&
-                        &res(:,jd,kd-norm_id(1)+1,2),&
-                        &grid_eq%theta_E(:,jd,kd),1,norm_disc_prec_eq)
+                    ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
+                        &ang_deriv_data,1,norm_disc_prec_eq)
                     CHCKERR('')
+                    ierr = apply_disc(h_H_12(:,kd+grid_eq%i_min-1),&
+                        &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,2))
                 end do
                 res(:,:,kd-norm_id(1)+1,2) = &
                     &-eq%q_saf_E(kd,0)/RBphi(kd+grid_eq%i_min-1) * &
                     &res(:,:,kd-norm_id(1)+1,2) + RBphi(kd+grid_eq%i_min-1) * &
                     &eq%q_saf_E(kd,1)
             end do
+            call dealloc_disc(ang_deriv_data)
             
             ! set some variables
             file_name = 'TEST_D3B_2'
@@ -2306,7 +2312,7 @@ contains
         use num_vars, only: eq_style, use_pol_flux_F
         use grid_utilities, only: trim_grid
         use utilities, only: calc_det
-        use HELENA, only: h_H_33, RBphi
+        use HELENA_vars, only: h_H_33, RBphi
         
         character(*), parameter :: rout_name = 'test_jac_F'
         
@@ -2738,8 +2744,8 @@ contains
     
     ! Tests whether D1 D2 h_H is calculated correctly
     integer function test_D12h_H(grid_eq,met) result(ierr)
-        use grid_utilities, only: trim_grid
-        use utilities, only: c, calc_deriv
+        use grid_utilities, only: trim_grid, setup_deriv_data, apply_disc
+        use utilities, only: c
         use num_vars, only: norm_disc_prec_eq
         
         character(*), parameter :: rout_name = 'test_D12h_H'
@@ -2750,8 +2756,9 @@ contains
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: id, jd, kd, ld                                               ! counters
+        integer :: id, jd, kd                                                   ! counters
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
+        type(disc_type) :: ang_deriv_data                                       ! data for angular derivative
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
         integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
@@ -2776,17 +2783,16 @@ contains
         loc_offset = [0,0,grid_trim%i_min-1]
         
         ! calculate D1 D2 h_H alternatively
-        do ld = 1,6
-            do kd = norm_id(1),norm_id(2)
-                do jd = 1,grid_trim%n(2)
-                    ierr = calc_deriv(met%h_E(:,jd,kd,ld,1,0,0),&
-                        &res(:,jd,kd-norm_id(1)+1,ld),&
-                        &grid_eq%theta_E(:,jd,kd),1,&
-                        &norm_disc_prec_eq)
-                    CHCKERR('')
-                end do
+        do kd = norm_id(1),norm_id(2)
+            do jd = 1,grid_trim%n(2)
+                ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
+                    &ang_deriv_data,1,norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = apply_disc(met%h_E(:,jd,kd,:,1,0,0),&
+                    &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,:),1)
             end do
         end do
+        call dealloc_disc(ang_deriv_data)
         
         ! set up plot variables for calculated values
         do id = 1,3
@@ -2824,7 +2830,8 @@ contains
     integer function test_Dg_E(grid_eq,met) result(ierr)
         use num_vars, only: norm_disc_prec_eq
         use grid_utilities, only: trim_grid
-        use utilities, only: c, calc_deriv
+        use utilities, only: c
+        use grid_utilities, only: setup_deriv_data, apply_disc
         
         character(*), parameter :: rout_name = 'test_Dg_E'
         
@@ -2836,6 +2843,8 @@ contains
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: id, jd, kd, ld                                               ! counters
         real(dp), allocatable :: res(:,:,:,:,:)                                 ! result variable
+        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
+        type(disc_type) :: ang_deriv_data                                       ! data for angular derivative
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
         integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
@@ -2866,114 +2875,95 @@ contains
         loc_offset = [0,0,grid_trim%i_min-1]
         
         ! calculate first derivatives of g_E individually
-        ! D1 (psi)
+        ! D1 (r)
         call writo('calculating derivatives in r')
-        do ld = 1,6
-            do jd = 1,grid_trim%n(2)
-                do id = 1,grid_trim%n(1)
-                    ierr = calc_deriv(met%g_E(id,jd,norm_id(1):norm_id(2),ld,&
-                        &0,0,0),res(id,jd,:,ld,1),grid_trim%loc_r_E,1,&
-                        &norm_disc_prec_eq+1)
-                    CHCKERR('')
-                end do
-            end do
-        end do
+        ierr = setup_deriv_data(grid_trim%loc_r_E,norm_deriv_data,1,&
+            &norm_disc_prec_eq+1)
+        CHCKERR('')
+        ierr = apply_disc(met%g_E(:,:,norm_id(1):norm_id(2),:,0,0,0),&
+            &norm_deriv_data,res(:,:,:,:,1),3)
+        CHCKERR('')
+        call dealloc_disc(norm_deriv_data)
+        
         ! D2 (theta)
         call writo('calculating derivatives in theta')
-        do ld = 1,6
-            do kd = norm_id(1),norm_id(2)
-                do jd = 1,grid_trim%n(2)
-                    ierr = calc_deriv(met%g_E(:,jd,kd,ld,0,0,0),&
-                        &res(:,jd,kd-norm_id(1)+1,ld,2),&
-                        &grid_eq%theta_E(:,jd,kd),1,&
-                        &norm_disc_prec_eq+1)
-                    CHCKERR('')
-                end do
+        do kd = norm_id(1),norm_id(2)
+            do jd = 1,grid_trim%n(2)
+                ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
+                    &ang_deriv_data,1,norm_disc_prec_eq+1)
+                CHCKERR('')
+                ierr = apply_disc(met%g_E(:,jd,kd,:,0,0,0),&
+                    &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,:,2),1)
+                CHCKERR('')
             end do
         end do
+        call dealloc_disc(ang_deriv_data)
+        
         ! D3 (zeta)
         call writo('calculating derivatives in zeta')
         res(:,:,:,:,3) = 0._dp
         
         ! calculate second derivatives of g_E individually
-        ! D11 (psi,psi)
+        ! D11 (r,r)
         call writo('calculating derivatives in r,r')
-        do ld = 1,6
-            do jd = 1,grid_trim%n(2)
-                do id = 1,grid_trim%n(1)
-                    ierr = calc_deriv(met%g_E(id,jd,norm_id(1):norm_id(2),ld,&
-                        &1,0,0),res(id,jd,:,ld,4),grid_trim%loc_r_E,1,&
-                        &norm_disc_prec_eq)
-                    CHCKERR('')
-                end do
-            end do
-        end do
-        ! D21 (theta,psi)
+        ierr = setup_deriv_data(grid_trim%loc_r_E,norm_deriv_data,1,&
+            &norm_disc_prec_eq)
+        CHCKERR('')
+        ierr = apply_disc(met%g_E(:,:,norm_id(1):norm_id(2),:,1,0,0),&
+            &norm_deriv_data,res(:,:,:,:,4),3)
+        CHCKERR('')
+        
+        ! D21 (theta,r)
         call writo('calculating derivatives in theta,r')
-        do ld = 1,6
-            do jd = 1,grid_trim%n(2)
-                do id = 1,grid_trim%n(1)
-                    ierr = calc_deriv(met%g_E(id,jd,norm_id(1):norm_id(2),ld,&
-                        &0,1,0),res(id,jd,:,ld,5),grid_trim%loc_r_E,1,&
-                        &norm_disc_prec_eq)
-                    CHCKERR('')
-                end do
-            end do
-        end do
-        ! D31 (zeta,psi)
+        ierr = apply_disc(met%g_E(:,:,norm_id(1):norm_id(2),:,0,1,0),&
+            &norm_deriv_data,res(:,:,:,:,5),3)
+        CHCKERR('')
+        call dealloc_disc(norm_deriv_data)
+        
+        ! D31 (zeta,r)
         call writo('calculating derivatives in zeta,r')
-        do ld = 1,6
-            do jd = 1,grid_trim%n(2)
-                do id = 1,grid_trim%n(1)
-                    ierr = calc_deriv(met%g_E(id,jd,norm_id(1):norm_id(2),ld,&
-                        &0,0,1),res(id,jd,:,ld,6),grid_trim%loc_r_E,1,&
-                        &norm_disc_prec_eq)
-                    CHCKERR('')
-                end do
-            end do
-        end do
+        res(:,:,:,:,6) = 0._dp
+        
         ! D12 (r,theta)
         call writo('calculating derivatives in r,theta')
-        do ld = 1,6
-            do kd = norm_id(1),norm_id(2)
-                do jd = 1,grid_trim%n(2)
-                    ierr = calc_deriv(met%g_E(:,jd,kd,ld,1,0,0),&
-                        &res(:,jd,kd-norm_id(1)+1,ld,7),&
-                        &grid_eq%theta_E(:,jd,kd),1,norm_disc_prec_eq)
-                    CHCKERR('')
-                end do
+        do kd = norm_id(1),norm_id(2)
+            do jd = 1,grid_trim%n(2)
+                ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),ang_deriv_data,&
+                    &1,norm_disc_prec_eq+1)
+                CHCKERR('')
+                ierr = apply_disc(met%g_E(:,jd,kd,:,1,0,0),&
+                    &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,:,7),1)
+                CHCKERR('')
             end do
         end do
+        call dealloc_disc(ang_deriv_data)
+        
         ! D22 (theta,theta)
         call writo('calculating derivatives in theta,theta')
-        do ld = 1,6
-            do kd = norm_id(1),norm_id(2)
-                do jd = 1,grid_trim%n(2)
-                    ierr = calc_deriv(met%g_E(:,jd,kd,ld,0,1,0),&
-                        &res(:,jd,kd-norm_id(1)+1,ld,8),&
-                        &grid_eq%theta_E(:,jd,kd),1,norm_disc_prec_eq)
-                    CHCKERR('')
-                end do
+        do kd = norm_id(1),norm_id(2)
+            do jd = 1,grid_trim%n(2)
+                ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),ang_deriv_data,&
+                    &1,norm_disc_prec_eq+1)
+                CHCKERR('')
+                ierr = apply_disc(met%g_E(:,jd,kd,:,0,1,0),&
+                    &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,:,8),1)
+                CHCKERR('')
             end do
         end do
+        call dealloc_disc(ang_deriv_data)
+        
         ! D32 (zeta,theta)
         call writo('calculating derivatives in zeta,theta')
-        do ld = 1,6
-            do kd = norm_id(1),norm_id(2)
-                do jd = 1,grid_trim%n(2)
-                    ierr = calc_deriv(met%g_E(:,jd,kd,ld,0,0,1),&
-                        &res(:,jd,kd-norm_id(1)+1,ld,9),&
-                        &grid_eq%theta_E(:,jd,kd),1,norm_disc_prec_eq)
-                    CHCKERR('')
-                end do
-            end do
-        end do
+        res(:,:,:,:,9) = 0._dp
+        
         ! D13 (r,zeta)
         call writo('calculating derivatives in r,zeta')
         res(:,:,:,:,10) = 0._dp
+        
         ! D23 (r,zeta)
         call writo('calculating derivatives in theta,zeta')
         res(:,:,:,:,11) = 0._dp
+        
         ! D33 (r,zeta)
         call writo('calculating derivatives in zeta,zeta')
         res(:,:,:,:,12) = 0._dp

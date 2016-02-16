@@ -51,6 +51,10 @@ HDF5_inc = /usr/include/#laptop repository
 #HDF5_lib = $(HOME)/lib# quadrivium 1.8.15 patched
 #HDF5_inc = $(HOME)/include# quadrivium 1.8.15 patched
 
+# NETCDF
+NETCDF_lib = /usr/lib/# laptop repository
+NETCDF_inc = /usr/include/#laptop repository
+
 # Add "Modules" to the search path for the prerequisites
 VPATH = Modules
 
@@ -73,7 +77,7 @@ COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno
 #COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -fbounds-check -cpp -Dldebug -Dlold_MPI# no profiling
 
 # compiler include
-COMP_INC = -I$(HDF5_inc) -I$(HOME_BIN)/libstell_dir -I$(PB3D_DIR)/include #-I/opt/openmpi/1.10.0/include
+COMP_INC = -I$(HDF5_inc) -I$(NETCDF_inc) -I$(HOME_BIN)/libstell_dir -I$(PB3D_DIR)/include #-I/opt/openmpi/1.10.0/include
 
 # compiler command
 COMPILE = $(COMP_DIR) $(COMP_INC) $(PETSC_FC_INCLUDES) $(SLEPC_INCLUDE) $(COMP_FLAGS)
@@ -86,7 +90,7 @@ LINK_FLAGS = -fPIC -pg
 
 # libraries
 LINK_LIB = $(HOME_BIN)/libstell.a -lgfortran -llapack -lblas \
-	$(HDF5_lib)/libhdf5_fortran.a $(HDF5_lib)/libhdf5.a \
+	$(HDF5_lib)/libhdf5_fortran.a $(HDF5_lib)/libhdf5.a -L$(NETCDF_lib) -lnetcdf -lnetcdff  \
 	-lz -lpthread -ldl -lm
 	#L/opt/openmpi/1.10.0/lib -lmpi_usempi -lmpi_mpifh -lmpi
 

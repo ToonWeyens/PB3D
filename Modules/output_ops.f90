@@ -151,8 +151,8 @@ contains
         call draw_GP(var_name,file_name,file_name,nplt,1,.true.)
         
         if (trim(file_name_i).eq.'') then
-            call execute_command_line('rm '//data_dir//'/'//trim(file_name)//&
-                &'.dat')
+            call use_execute_command_line('rm '//data_dir//'/'//&
+                &trim(file_name)//'.dat')
         end if
     end subroutine print_GP_2D_arr
     
@@ -301,8 +301,8 @@ contains
         call draw_GP(var_name,file_name,file_name,nplt,2,.true.)
         
         if (trim(file_name_i).eq.'') then
-            call execute_command_line('rm '//data_dir//'/'//trim(file_name)//&
-                &'.dat')
+            call use_execute_command_line('rm '//data_dir//'/'//&
+                &trim(file_name)//'.dat')
         end if
     end subroutine print_GP_3D_arr
     
@@ -360,7 +360,7 @@ contains
         integer :: cmd_i                                                        ! file number for script file
         integer :: plt_count                                                    ! counts the number of plots
         integer :: cmdstat                                                      ! status of C system command
-        character(len=5*max_str_ln) :: cmdmessage                               ! error message of C system command
+        character(len=5*max_str_ln) :: cmdmsg                                   ! error message of C system command
         
         ! set up nfl
         nfl = size(file_names)
@@ -507,9 +507,8 @@ contains
         ! bypass plots if no_plots
         if (.not.no_plots) then
             ! call GNUPlot
-            call execute_command_line('gnuplot "'//trim(script_name)//'"'//&
-                &err_output_str,EXITSTAT=istat,CMDSTAT=cmdstat,&
-                &CMDMSG=cmdmessage)
+            call use_execute_command_line('gnuplot "'//trim(script_name)//'"'//&
+                &err_output_str,exitstat=istat,cmdstat=cmdstat,cmdmsg=cmdmsg)
             
             if (istat.ne.0) then
                 call writo('Failed to plot '//trim(draw_name)//'.pdf',&
@@ -520,15 +519,15 @@ contains
                         &persistent=.true.)
                     call lvl_ud(1)
                     if (cmdstat.ne.0) call writo('System message: "'//&
-                        &trim(cmdmessage)//'"',persistent=.true.)
+                        &trim(cmdmsg)//'"',persistent=.true.)
                     if (.not.plot_on_screen) call writo(&
                         &'Try running "gnuplot "'//trim(script_name)//'"'//&
                         &'" manually',persistent=.true.)
                     call lvl_ud(-1)
                 else
                     if (plot_on_screen) then
-                        call execute_command_line('rm '//trim(script_name),&
-                            &EXITSTAT=istat,CMDSTAT=CMDSTAT,CMDMSG=cmdmessage)
+                        call use_execute_command_line('rm '//trim(script_name),&
+                            &exitstat=istat,cmdstat=cmdstat,cmdmsg=cmdmsg)
                         ! ignore errors
                     else
                         call writo('Created plot in output file '''//&
@@ -599,7 +598,7 @@ contains
         real(dp), allocatable :: ranges_loc(:,:)                                ! local copy of ranges
         integer :: plt_count                                                    ! counts the number of plots
         integer :: cmdstat                                                      ! status of C system command
-        character(len=5*max_str_ln) :: cmdmessage                               ! error message of C system command
+        character(len=5*max_str_ln) :: cmdmsg                                   ! error message of C system command
         
         ! set up nfl
         nfl = size(file_names)
@@ -806,9 +805,9 @@ contains
         ! bypass plots if no_plots
         if (.not.no_plots) then
             ! call GNUPlot
-            call execute_command_line('gnuplot "'//trim(script_name)//'"'//&
-                &err_output_str,EXITSTAT=istat,CMDSTAT=cmdstat,&
-                &CMDMSG=cmdmessage)
+            call use_execute_command_line('gnuplot "'//trim(script_name)//'"'//&
+                &err_output_str,exitstat=istat,cmdstat=cmdstat,&
+                &cmdmsg=cmdmsg)
             
             if (istat.ne.0) then
                 call writo('Failed to plot '//trim(draw_name)//'.pdf',&
@@ -819,7 +818,7 @@ contains
                     &persistent=.true.)
                     call lvl_ud(1)
                     if (cmdstat.ne.0) call writo('System message: "'//&
-                        &trim(cmdmessage)//'"',persistent=.true.)
+                        &trim(cmdmsg)//'"',persistent=.true.)
                     call lvl_ud(-1)
                 else
                     call writo('Created animated plot in output file '''//&
@@ -917,7 +916,7 @@ contains
             &trim(file_name_out)
         
         ! concatenate using shell
-        call execute_command_line(trim(shell_cmd),EXITSTAT=istat)
+        call use_execute_command_line(trim(shell_cmd),exitstat=istat)
         if (istat.ne.0) then
             call writo('WARNING: merge_GP failed to merge',persistent=.true.)
             return
@@ -939,7 +938,7 @@ contains
             end do
             
             ! delete using shell
-            call execute_command_line(trim(shell_cmd),EXITSTAT=istat)
+            call use_execute_command_line(trim(shell_cmd),exitstat=istat)
             if (istat.ne.0) then
                 call writo('WARNING: merge_GP failed to delete',&
                 &persistent=.true.)
@@ -1613,4 +1612,29 @@ contains
             err_av = sum_err/product(tot_dims)
         end subroutine
     end subroutine plot_diff_HDF5
+    
+    ! Executes command line, or displays a message if disabled.
+    subroutine use_execute_command_line(command,exitstat,cmdstat,cmdmsg)
+        use num_vars, only: no_execute_command_line
+        
+        ! input / output
+        character(len=*), intent(in) :: command                                 ! command to execute
+        integer, intent(inout), optional :: exitstat                            ! exit status
+        integer, intent(inout), optional :: cmdstat                             ! command status
+        character(len=*), intent(inout), optional :: cmdmsg                     ! command message
+        
+        if (no_execute_command_line) then
+            call writo('WARNING: Not executing command')
+            call lvl_ud(1)
+            call writo(command)
+            call lvl_ud(-1)
+            call writo('This can be run manually')
+            if (present(exitstat)) exitstat = 1
+            if (present(cmdstat)) cmdstat = 0
+            if (present(cmdmsg)) cmdmsg = ''
+        else
+            call execute_command_line(command,EXITSTAT=exitstat,CMDSTAT=cmdstat,&
+                &CMDMSG=cmdmsg)
+        end if
+    end subroutine
 end module output_ops

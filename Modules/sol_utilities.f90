@@ -7,7 +7,7 @@ module sol_utilities
     use output_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, pi
-    use grid_vars, only: grid_type
+    use grid_vars, only: grid_type, disc_type, dealloc_disc
     use eq_vars, only: eq_type
     use met_vars, only: met_type
     use X_vars, only: X_1_type
@@ -53,9 +53,11 @@ contains
     ! perturbation grid.
     integer function calc_XUQ_arr(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,&
         &XUQ_style,time,XUQ,met,deriv) result(ierr)                             ! (time) array version
-        use num_vars, only: use_pol_flux_F, norm_disc_prec_sol
-        use utilities, only: con2dis, calc_deriv
-        use grid_utilities, only: get_norm_interp_data
+        use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, &
+            &norm_disc_prec_X
+        use utilities, only: con2dis
+        use grid_utilities, only: setup_deriv_data, setup_interp_data, &
+            &apply_disc
         use X_vars, only: sec_X_ind
 #if ldebug
         use utilities, only: calc_int
@@ -82,7 +84,6 @@ contains
         integer :: n_mod_loc                                                    ! local number of modes that are used in the calculations
         integer :: n_mod_tot                                                    ! total number of modes
         integer :: id, kd, ld                                                   ! counter
-        integer :: i_lo, i_hi                                                   ! upper and lower index for interpolation of eq grid to sol grid
         character(len=max_str_ln) :: err_msg                                    ! error message
         complex(dp) :: sqrt_sol_val_norm                                        ! normalized sqrt(sol_val)
         logical :: deriv_loc                                                    ! local copy of deriv
@@ -93,9 +94,10 @@ contains
         complex(dp), allocatable :: Dsol_vec_tot(:,:)                           ! total normal derivative of sol_vec 
         real(dp), allocatable :: par_fac(:)                                     ! multiplicative factor due to parallel derivative, without iu
         real(dp), allocatable :: expon(:,:,:)                                   ! exponent
-        real(dp), allocatable :: loc_r_eq(:)                                    ! loc_r_F of sol grid interpolated in eq grid
         real(dp), allocatable :: jq(:)                                          ! iota or q, interpolated at solution grid
         real(dp), allocatable :: S(:,:,:), inv_J(:,:,:)                         ! S and 1/J, interpolated at solution grid
+        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
+        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
 #if ldebug
         real(dp), allocatable :: sol_vec_ALT(:)                                 ! sol_vec calculated from Dsol_vec
 #endif
@@ -167,31 +169,29 @@ contains
             &grid_X%loc_n_r))
         allocate(expon(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
         
-        ! calculate  normal  interpolation  tables for  equilibrium  grid  (this
-        ! concerns eq variables and met variables)
-        ierr = get_norm_interp_data(grid_eq,grid_X,loc_r_eq)
+        ! setup normal interpolation data for equilibrium grid
+        ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
+            &norm_interp_data,norm_disc_prec_X)
         CHCKERR('')
         
-        ! interpolate iota or q, S and, if present, 1/J
-        do kd = 1,grid_X%loc_n_r
-            ! set lower and upper index for this normal point
-            i_lo = floor(loc_r_eq(kd))
-            i_hi = ceiling(loc_r_eq(kd))
-            
-            if (use_pol_flux_F) then
-                jq(kd) = eq%q_saf_FD(i_lo,0) + (loc_r_eq(kd)-i_lo) * &
-                    &(eq%q_saf_FD(i_hi,0)-eq%q_saf_FD(i_lo,0))
-            else
-                jq(kd) = eq%rot_t_FD(i_lo,0) + (loc_r_eq(kd)-i_lo) * &
-                    &(eq%rot_t_FD(i_hi,0)-eq%rot_t_FD(i_lo,0))
-            end if
-            S(:,:,kd) = eq%S(:,:,i_lo) + (loc_r_eq(kd)-i_lo) * &
-                &(eq%S(:,:,i_hi)-eq%S(:,:,i_lo))
-            if (present(met)) inv_J(:,:,kd) = &
-                &1._dp/met%jac_FD(:,:,i_lo,0,0,0) + (loc_r_eq(kd)-i_lo) * &
-                &(1._dp/met%jac_FD(:,:,i_hi,0,0,0)-&
-                &1._dp/met%jac_FD(:,:,i_lo,0,0,0))
-        end do
+        ! interpolate
+        if (use_pol_flux_F) then
+            ierr = apply_disc(eq%q_saf_FD(:,0),norm_interp_data,jq)
+            CHCKERR('')
+        else
+            ierr = apply_disc(eq%rot_T_FD(:,0),norm_interp_data,jq)
+            CHCKERR('')
+        end if
+        ierr = apply_disc(eq%S,norm_interp_data,S,3)
+        CHCKERR('')
+        if (present(met)) then
+            ierr = apply_disc(1._dp/met%jac_FD(:,:,:,0,0,0),norm_interp_data,&
+                &inv_J,3)
+            CHCKERR('')
+        end if
+        
+        ! clean up normal interpolation data
+        call dealloc_disc(norm_interp_data)
         
         ! initialize XUQ
         XUQ = 0._dp
@@ -216,13 +216,16 @@ contains
             CHCKERR('')
             
             ! derive
-            do ld = 1,n_mod_tot
-                ierr = calc_deriv(sol_vec_tot(ld,:),Dsol_vec_tot(ld,:),&
-                    &grid_X%loc_r_F,1,norm_disc_prec_sol)
-                CHCKERR('')
+            ierr = setup_deriv_data(grid_X%loc_r_F,norm_deriv_data,1,&
+                &norm_disc_prec_sol)
+            CHCKERR('')
+            ierr = apply_disc(sol_vec_tot,norm_deriv_data,Dsol_vec_tot,2)
+            CHCKERR('')
+            call dealloc_disc(norm_deriv_data)
             
 #if ldebug
-                if (debug_calc_XUQ_arr) then
+            if (debug_calc_XUQ_arr) then
+                do ld = 1,n_mod_tot
                     call writo('For mode '//trim(i2str(ld))//', testing &
                         &whether Dsol_vec is correct by comparing its integral &
                         &with original sol_vec')
@@ -246,9 +249,9 @@ contains
                         &grid_X%loc_r_F(1:grid_X%loc_n_r)],&
                         &[grid_X%loc_n_r,2]))
                     deallocate(sol_vec_ALT)
-                end if
+                end do
+            end if
 #endif
-            end do
             
             ! convert back to local solution vector
             ierr = calc_loc_sol_vec(grid_X%i_min,Dsol_vec_tot,Dsol_vec)
@@ -328,10 +331,6 @@ contains
             
             ! iterate over all normal points in sol grid
             normal: do kd = 1,grid_X%loc_n_r
-                ! set lower and upper index for this normal point
-                i_lo = floor(loc_r_eq(kd))
-                i_hi = ceiling(loc_r_eq(kd))
-                
                 ! set up loc complex XUQ without time at this normal point
                 XUQ_loc = exp(iu*expon(:,:,kd)) * &
                     &(sol%vec(ld,kd,X_id)*fac_0(:,:,kd) + &
@@ -403,7 +402,7 @@ contains
         
         character(*), parameter :: rout_name = 'calc_tot_sol_vec'
         
-        ! input/output
+        ! input / output
         integer, intent(in) :: i_min                                            ! i_min of grid in which variables are tabulated
         complex(dp), intent(in) :: sol_vec_loc(:,:)                             ! solution vector for local resonating modes
         complex(dp), intent(inout), allocatable :: sol_vec_tot(:,:)             ! solution vector for all possible resonating modes
@@ -479,7 +478,7 @@ contains
         
         character(*), parameter :: rout_name = 'calc_loc_sol_vec'
         
-        ! input/output
+        ! input / output
         integer, intent(in) :: i_min                                            ! i_min of grid in which variables are tabulated
         complex(dp), intent(in) :: sol_vec_tot(:,:)                             ! solution vector for all possible resonating modes
         complex(dp), intent(inout), allocatable :: sol_vec_loc(:,:)             ! solution vector for local resonating modes

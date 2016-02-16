@@ -45,9 +45,10 @@ contains
     ! perform the calculations can be changed  from its default value of 1 using
     ! the variable i_geo.
     ! Note: the  perturbation grid needs  to be the  same as the  solution grid,
-    ! if  not,  this  module  has  to be  adapted  to  interpolate  them,  using
-    ! "get_norm_interp_data" and "interp_V". This can be seen in builds previous
-    ! to 1.06.
+    ! if not,  this module has to  be adapted to interpolate  them. A deprecated
+    ! technique,  using "get_norm_interp_data"  and  "interp_V" can  be seen  in
+    ! builds previous to 1.06. These have been superseded by "setup_interp_data"
+    ! followed by "apply_disc".
     integer function solve_EV_system_SLEPC(grid_sol,X,sol,i_geo) result(ierr)
         use num_vars, only: max_it_inv, norm_disc_prec_sol
         use utilities, only: calc_coeff_fin_diff
@@ -524,8 +525,8 @@ contains
         deallocate(tot_nz,d_nz,o_nz)
         
         ! fill the matrix A
-        ierr = fill_mat(X%PV_int_0(:,i_geo,:),X%PV_int_1(:,i_geo,:),&
-            &X%PV_int_2(:,i_geo,:),n_r,norm_disc_coeff,A)
+        ierr = fill_mat(X%PV_int_0(i_geo,:,:),X%PV_int_1(i_geo,:,:),&
+            &X%PV_int_2(i_geo,:,:),n_r,norm_disc_coeff,A)
         CHCKERR('')
         call writo('matrix A set up:')
         
@@ -544,8 +545,8 @@ contains
         CHCKERR('failed to duplicate A into B')
         
         ! fill the matrix B
-        ierr = fill_mat(X%KV_int_0(:,i_geo,:),X%KV_int_1(:,i_geo,:),&
-            &X%KV_int_2(:,i_geo,:),n_r,norm_disc_coeff,B)
+        ierr = fill_mat(X%KV_int_0(i_geo,:,:),X%KV_int_1(i_geo,:,:),&
+            &X%KV_int_2(i_geo,:,:),n_r,norm_disc_coeff,B)
         CHCKERR('')
         call writo('matrix B set up:')
         
@@ -679,7 +680,7 @@ contains
                 ! fill local block
                 do m = 1,n_mod
                     do k = 1,n_mod
-                        loc_block(k,m) = con(V_0(c([k,m],.true.,n_mod),kd_loc),&
+                        loc_block(k,m) = con(V_0(kd_loc,c([k,m],.true.,n_mod)),&
                             &[k,m],.true.)                                      ! symmetric matrices need con()
                     end do
                 end do
@@ -702,7 +703,7 @@ contains
                 ! fill local block
                 do m = 1,n_mod
                     do k = 1,n_mod
-                        loc_block(k,m) = V_1(c([k,m],.false.,n_mod),kd_loc)     ! asymetric matrices don't need con()
+                        loc_block(k,m) = V_1(kd_loc,c([k,m],.false.,n_mod))     ! asymetric matrices don't need con()
                     end do
                 end do
                 
@@ -720,7 +721,7 @@ contains
                 ! fill local block
                 do m = 1,n_mod
                     do k = 1,n_mod
-                        loc_block(k,m) = con(V_2(c([k,m],.true.,n_mod),kd_loc),&
+                        loc_block(k,m) = con(V_2(kd_loc,c([k,m],.true.,n_mod)),&
                             &[k,m],.true.)                                      ! symmetric matrices need con()
                     end do
                 end do
@@ -1035,11 +1036,11 @@ contains
             ! -----------------!
             ! calculate modified terms V_int_0_mod
             allocate(V_int_0_mod(n_mod,n_mod,2))
-            ierr = calc_V_0_mod(X%PV_int_0(:,i_geo,norm_id_loc),&
-                &X%KV_int_0(:,i_geo,norm_id_loc),&
-                &X%PV_int_1(:,i_geo,norm_id_loc),&
-                &X%KV_int_1(:,i_geo,norm_id_loc),&
-                &X%KV_int_2(:,i_geo,norm_id_loc),V_int_0_mod)
+            ierr = calc_V_0_mod(X%PV_int_0(i_geo,norm_id_loc,:),&
+                &X%KV_int_0(i_geo,norm_id_loc,:),&
+                &X%PV_int_1(i_geo,norm_id_loc,:),&
+                &X%KV_int_1(i_geo,norm_id_loc,:),&
+                &X%KV_int_2(i_geo,norm_id_loc,:),V_int_0_mod)
             CHCKERR('')
             
             ! add block to norm_id + (0,0)

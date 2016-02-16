@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.07                                                              !
+!   Version: 1.08                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -49,7 +49,6 @@ program PB3D
     ! local variables
     integer :: ierr                                                             ! error
     
-    write(*,*) '!!!!!!! IMPLEMENT THE SMART VERSION OF CHOOSING THE FOURIER MODE NUMBERS !!!!!!!!!!!!!!!'
     write(*,*) '!!!!!!! IMPLEMENT DIFFERENT HDF5 SYSTEM WHERE THERE IS ONE !!!!!!!!!!!!'
     write(*,*) '!!!!!!! VARIABLE FOR X WHICH IS PARTIALLY READ AND WRITTEN !!!!!!!!!!!!'
     write(*,*) '!!!!!!! (https://www.hdfgroup.org/HDF5/doc/H5.intro.html#Intro-PMRdWrPortion) !!!!!!!!!!!!'

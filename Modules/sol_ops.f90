@@ -8,7 +8,7 @@ module sol_ops
     use output_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, pi
-    use grid_vars, only: grid_type
+    use grid_vars, only: grid_type, disc_type, dealloc_disc
     use eq_vars, only: eq_type
     use met_vars, only: met_type
     use X_vars, only: X_1_type
@@ -105,7 +105,8 @@ contains
         use sol_utilities, only: calc_XUQ
 #if ldebug
         use num_vars, only: norm_disc_prec_sol, use_pol_flux_F
-        use utilities, only: calc_deriv, con2dis, c
+        use utilities, only: con2dis, c
+        use grid_utilities, only: setup_deriv_data, apply_disc
 #endif
         
         character(*), parameter :: rout_name = 'plot_sol_vec'
@@ -142,9 +143,10 @@ contains
         character(len=max_str_ln) :: description(2)                             ! description
 #if ldebug
         real(dp), allocatable :: loc_r_eq(:)                                    ! loc_r_F of sol grid interpolated in eq grid
+        type(disc_type) :: norm_deriv_data                                      ! normal derivative data
         integer :: nm                                                           ! n (pol. flux) or m (tor. flux)
         integer :: i_lo, i_hi                                                   ! upper and lower index for interpolation of eq grid to sol grid
-        integer :: id, jd, ld                                                   ! counters
+        integer :: ld                                                           ! counter
         complex(dp), allocatable :: U_inf(:,:,:,:)                              ! ideal ballooning U
         complex(dp), allocatable :: U_inf_prop(:,:,:)                           ! proportional part of U_inf
 #endif
@@ -265,16 +267,12 @@ contains
             end do
             
             ! derive the X vector
-            do ld = 1,product(n_t)
-                do jd = 1,grid_eq%n(2)
-                    do id = 1,grid_eq%n(1)
-                        ierr = calc_deriv(f_plot(id,jd,:,ld,1),&
-                            &U_inf(id,jd,:,ld),grid_sol%loc_r_F,1,&
-                            &norm_disc_prec_sol)
-                        CHCKERR('')
-                    end do
-                end do
-            end do
+            ierr = setup_deriv_data(grid_sol%loc_r_F,norm_deriv_data,1,&
+                &norm_disc_prec_sol)
+            CHCKERR('')
+            ierr = apply_disc(f_plot(:,:,:,:,1),norm_deriv_data,U_inf,3)
+            CHCKERR('')
+            call dealloc_disc(norm_deriv_data)
             
             ! set up dummy variable Theta^alpha + q' theta and nm
             allocate(U_inf_prop(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
@@ -832,7 +830,7 @@ contains
         use MPI_utilities, only: get_ser_var, wait_MPI
         use sol_utilities, only: calc_XUQ
 #if ldebug
-        use utilities, only: calc_deriv
+        use grid_utilities, only: setup_deriv_data, apply_disc
 #endif
         
         character(*), parameter :: rout_name = 'calc_E'
@@ -871,7 +869,8 @@ contains
 #if ldebug
         real(dp), allocatable :: S(:,:,:)                                       ! interpolated S
         complex(dp), allocatable :: DU(:,:,:)                                   ! D_par U
-        real(dp), allocatable :: DU_ALT(:,:,:)                                  ! DU calculated from U
+        complex(dp), allocatable :: DU_ALT(:,:,:)                               ! DU calculated from U
+        type(disc_type) :: ang_1_deriv_data                                     ! deriv data for ang_1
 #endif
         
         ! set loc_dim
@@ -1022,39 +1021,36 @@ contains
             
             allocate(DU_ALT(loc_dim(1),loc_dim(2),loc_dim(3)))
             
-            ! real part
+            ! derive
             do kd = 1,loc_dim(3)
                 do jd = 1,loc_dim(2)
-                    ierr = calc_deriv(realpart(XUQ(:,jd,kd,2)),&
-                        &DU_ALT(:,jd,kd),ang_1(:,jd,kd),1,&
+                    ierr = setup_deriv_data(ang_1(:,jd,kd),ang_1_deriv_data,1,&
                         &norm_disc_prec_sol)
+                    CHCKERR('')
+                    ierr = apply_disc(XUQ(:,jd,kd,2),ang_1_deriv_data,&
+                        &DU_ALT(:,jd,kd))
                     CHCKERR('')
                 end do
             end do
+            call dealloc_disc(ang_1_deriv_data)
+            
+            ! plot real part
             call plot_HDF5('RE U','TEST_RE_U_'//&
                 &trim(i2str(X_id)),realpart(XUQ(:,:,:,2)),grid_X%n,&
                 &[0,0,grid_sol%i_min-1])
-            call plot_diff_HDF5(realpart(DU),DU_ALT,&
+            call plot_diff_HDF5(realpart(DU),realpart(DU_ALT),&
                 &'TEST_RE_DU_'//trim(i2str(X_id)),grid_X%n,&
                 &[0,0,grid_sol%i_min-1],description='To test whether DU is &
                 &parallel derivative of U',output_message=.true.)
             
-            ! imaginary part
-            do kd = 1,loc_dim(3)
-                do jd = 1,loc_dim(2)
-                    ierr = calc_deriv(imagpart(XUQ(:,jd,kd,2)),&
-                        &DU_ALT(:,jd,kd),ang_1(:,jd,kd),1,&
-                        &norm_disc_prec_sol)
-                    CHCKERR('')
-                end do
-            end do
+            ! plot imaginary part
             call plot_HDF5('IM U','TEST_IM_U_'//&
                 &trim(i2str(X_id)),imagpart(XUQ(:,:,:,2)),grid_X%n,&
                 &[0,0,grid_sol%i_min-1])
-            call plot_diff_HDF5(imagpart(DU),DU_ALT,'TEST_IM_DU_'//&
-                &trim(i2str(X_id)),grid_X%n,[0,0,grid_sol%i_min-1],&
-                &description='To test whether DU is parallel derivative &
-                &of U',output_message=.true.)
+            call plot_diff_HDF5(imagpart(DU),imagpart(DU_ALT),&
+                &'TEST_IM_DU_'//trim(i2str(X_id)),grid_X%n,&
+                &[0,0,grid_sol%i_min-1],description='To test whether DU is &
+                &parallel derivative of U',output_message=.true.)
             
             deallocate(DU_ALT)
             

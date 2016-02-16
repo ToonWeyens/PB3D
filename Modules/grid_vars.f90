@@ -9,7 +9,8 @@ module grid_vars
 
     implicit none
     private
-    public create_grid, dealloc_grid, grid_type, &
+    public create_grid, dealloc_grid, grid_type, create_disc, dealloc_disc, &
+        &disc_type, &
         &alpha, n_r_eq, n_par_X, min_par_X, max_par_X
 
     ! type for grids
@@ -43,6 +44,17 @@ module grid_vars
         real(dp), pointer :: zeta_E(:,:,:) => null()                            ! E(quilibrium) coord. values of second angle at n points in 3D
         real(dp), pointer :: zeta_F(:,:,:) => null()                            ! F(lux) coord. values of second angle at n points in 3D
         real(dp), allocatable :: trigon_factors(:,:,:,:,:,:)                    ! trigonometric factor cosine for the inverse fourier transf.
+    end type
+    
+    ! type for data of discretization operations:
+    !   - derivatives
+    !   - interpolation
+    ! See routines setup_deriv_data and setup_interp_data in grid_utilities where
+    ! discretization data is setup and apply_disc where it is used.
+    type :: disc_type
+        integer :: n, n_loc                                                     ! total and local size of discretization variables
+        real(dp), allocatable :: dat(:,:)                                       ! nonzero elements of matrix corresponding to discretization
+        integer, allocatable :: id_start(:)                                     ! start index of data in dat
     end type
     
     ! global variables
@@ -195,4 +207,44 @@ contains
             type(grid_type), intent(out) :: grid                                ! grid to be deallocated
         end subroutine dealloc_grid_final
     end subroutine dealloc_grid
+    
+    ! Create discretization variable, overwriting.
+    integer function create_disc(deriv,n,n_loc) result(ierr)
+        character(*), parameter :: rout_name = 'create_disc'
+        
+        ! input / output
+        type(disc_type), intent(inout) :: deriv                                 ! discretization variable
+        integer, intent(in) :: n, n_loc                                         ! total and local size of discretization
+        
+        ! local Variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (n.lt.1 .or. n_loc.lt.1) then
+            ierr = 1
+            err_msg = 'n and n_loc need to be > 1'
+            CHCKERR(err_msg)
+        end if
+        
+        ! (re)allocate
+        if (allocated(deriv%dat)) deallocate(deriv%dat)
+        if (allocated(deriv%id_start)) deallocate(deriv%id_start)
+        allocate(deriv%dat(n,n_loc))
+        allocate(deriv%id_start(n))
+        deriv%dat = 0._dp
+        deriv%id_start = 0
+        
+        ! set n, n_loc
+        deriv%n = n
+        deriv%n_loc = n_loc
+    end function create_disc
+    
+    ! Deallocate discretization variable type
+    subroutine dealloc_disc(disc_data)
+        ! input / output
+        type(disc_type), intent(out) :: disc_data                               ! discretization variable to be deallocated
+    end subroutine dealloc_disc
 end module grid_vars
