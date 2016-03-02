@@ -10,8 +10,9 @@ module VMEC
     use num_vars, only: &
         &dp, max_str_ln, pi
     use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
-        &lasym, VMEC_version => version_, lfreeb, &                             ! stellerator symmetry, version number, free boundary or not
-        &n_r_VMEC => ns, mpol, ntor, xn, xm, mnmax, nfp, &                      ! mpol, ntor = # modes
+        &is_asym_V => lasym, VMEC_version => version_, is_freeb_V => lfreeb, &  ! stellerator symmetry, version number, free boundary or not
+        &n_r_VMEC => ns, mpol_V => mpol, ntor_V => ntor, xn, xm, &              ! n_r, mpol, ntor, xn, xm
+        &mnmax_V => mnmax, nfp, &                                               ! mnmax, nfp
         &phi, phipf, &                                                          ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
         &iotaf, &                                                               ! rot. transf. (tor. flux) or saf. fac. (pol. flux) (FM)
         &presf, &                                                               ! pressure (FM)
@@ -25,24 +26,26 @@ module VMEC
     
     implicit none
     private
-    public read_VMEC, dealloc_VMEC, repack, normalize_VMEC, &
+    public read_VMEC, dealloc_VMEC, normalize_VMEC, &
         &calc_trigon_factors, fourier2real, &
-        &mpol, ntor, nfp, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, &
-        &pres_V, rot_t_V, lasym, flux_t_V, Dflux_t_V, VMEC_version, gam, lfreeB
+        &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mpol_V, ntor_V, &
+        &mn_V, pres_V, rot_t_V, is_asym_V, flux_t_V, Dflux_t_V, VMEC_version, &
+        &gam, is_freeb_V
 #if ldebug
     public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
 
     ! local variables
+    integer, allocatable :: mn_V(:,:)                                           ! m and n of modes
     real(dp), allocatable :: flux_t_V(:), Dflux_t_V(:)                          ! toroidal flux and derivative
     real(dp), allocatable :: pres_V(:)                                          ! pressure
     real(dp), allocatable :: rot_t_V(:)                                         ! rotational transform
-    real(dp), allocatable :: R_V_c(:,:,:,:), R_V_s(:,:,:,:)                     ! Coeff. of R in (co)sine series (FM) and norm. deriv.
-    real(dp), allocatable :: Z_V_c(:,:,:,:), Z_V_s(:,:,:,:)                     ! Coeff. of Z in (co)sine series (FM) and norm. deriv.
-    real(dp), allocatable :: L_V_c(:,:,:,:), L_V_s(:,:,:,:)                     ! Coeff. of lambda in (co)sine series (HM) and norm. deriv.
-    real(dp), allocatable :: B_V_sub_c(:,:,:,:), B_V_sub_s(:,:,:,:)             ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM)
-    real(dp), allocatable :: B_V_c(:,:,:), B_V_s(:,:,:)                         ! Coeff. of magnitude of B (HM and FM)
-    real(dp), allocatable :: jac_V_c(:,:,:), jac_V_s(:,:,:)                     ! Jacobian in VMEC coordinates (HM and FM)
+    real(dp), allocatable :: R_V_c(:,:,:), R_V_s(:,:,:)                         ! Coeff. of R in (co)sine series (FM) and norm. deriv.
+    real(dp), allocatable :: Z_V_c(:,:,:), Z_V_s(:,:,:)                         ! Coeff. of Z in (co)sine series (FM) and norm. deriv.
+    real(dp), allocatable :: L_V_c(:,:,:), L_V_s(:,:,:)                         ! Coeff. of lambda in (co)sine series (HM) and norm. deriv.
+    real(dp), allocatable :: B_V_sub_c(:,:,:), B_V_sub_s(:,:,:)                 ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM)
+    real(dp), allocatable :: B_V_c(:,:), B_V_s(:,:)                             ! Coeff. of magnitude of B (HM and FM)
+    real(dp), allocatable :: jac_V_c(:,:), jac_V_s(:,:)                         ! Jacobian in VMEC coordinates (HM and FM)
 
 contains
     ! Reads the VMEC equilibrium data
@@ -60,16 +63,16 @@ contains
         logical, intent(inout) :: use_pol_flux_V                                ! .true. if VMEC equilibrium is based on poloidal flux
         
         ! local variables
-        integer :: id, jd                                                       ! counters
-        real(dp), allocatable :: L_c_H(:,:,:,:)                                 ! temporary HM variable
-        real(dp), allocatable :: L_s_H(:,:,:,:)                                 ! temporary HM variable
+        integer :: id                                                           ! counters
+        real(dp), allocatable :: L_c_H(:,:,:)                                   ! temporary HM variable
+        real(dp), allocatable :: L_s_H(:,:,:)                                   ! temporary HM variable
         character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=8) :: flux_name                                           ! either poloidal or toroidal
 #if ldebug
         integer :: kd                                                           ! counter
-        real(dp), allocatable :: B_V_sub_c_M(:,:,:,:), B_V_sub_s_M(:,:,:,:)     ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM, HM, HM)
-        real(dp), allocatable :: B_V_c_H(:,:,:), B_V_s_H(:,:,:)                 ! Coeff. of magnitude of B (HM)
-        real(dp), allocatable :: jac_V_c_H(:,:,:), jac_V_s_H(:,:,:)             ! Jacobian in VMEC coordinates (HM)
+        real(dp), allocatable :: B_V_sub_c_M(:,:,:), B_V_sub_s_M(:,:,:)         ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM, HM, HM)
+        real(dp), allocatable :: B_V_c_H(:,:), B_V_s_H(:,:)                     ! Coeff. of magnitude of B (HM)
+        real(dp), allocatable :: jac_V_c_H(:,:), jac_V_s_H(:,:)                 ! Jacobian in VMEC coordinates (HM)
 #endif
         
         ! initialize ierr
@@ -101,7 +104,7 @@ contains
         end if
         
         call writo('VMEC version is ' // trim(r2str(VMEC_version)))
-        if (lfreeb) then
+        if (is_freeb_V) then
             call writo('Free boundary VMEC')
             err_msg = 'Free boundary VMEC is not yet supported by PB3D...'
             ierr = 1
@@ -109,121 +112,124 @@ contains
         else
             call writo('Fixed boundary VMEC')
         end if
-        if (lasym) then
+        if (is_asym_V) then
             call writo('No stellerator symmetry')
         else
-            call writo('Stellerator symmetry applicable')
-            call writo('¡¡¡ ITS USAGE COULD BE IMPLEMENTED !!!')
+            call writo('Stellerator symmetry')
         end if
-        call writo('VMEC has '//trim(i2str(mpol))//' poloidal and '&
-            &//trim(i2str(ntor))//' toroidal modes, defined on '&
+        call writo('VMEC has '//trim(i2str(mpol_V))//' poloidal and '&
+            &//trim(i2str(ntor_V))//' toroidal modes, defined on '&
             &//trim(i2str(n_r_eq))//' '//flux_name//' flux surfaces')
         
         call writo('Running tests')
         call lvl_ud(1)
-        if (mnmax.ne.((ntor+1)+(2*ntor+1)*(mpol-1))) then                       ! are ntor, mpol and mnmax what is expected?
-            err_msg = 'Inconsistency in ntor, mpol and mnmax'
+        if (mnmax_V.ne.((ntor_V+1)+(2*ntor_V+1)*(mpol_V-1))) then               ! for mpol_V = 0, only ntor_V+1 values needed
+            err_msg = 'Inconsistency in ntor_V, mpol_V and mnmax_V'
             ierr = 1
             CHCKERR(err_msg)
         end if
         call lvl_ud(-1)
         
         call writo('Updating variables')
-        xn = xn/nfp                                                             ! so we have xn excluding nfp
+        allocate(mn_V(mnmax_V,2))
+        mn_V(:,1) = nint(xm)
+        mn_V(:,2) = nint(xn)
         
         call lvl_ud(-1)
         call writo('Data from VMEC output successfully read')
         
-        call writo('Converting VMEC output to PB3D format')
+        call writo('Saving VMEC output to PB3D')
         call lvl_ud(1)
         
-        ! Allocate and repack the Fourier coefficients to translate them for use
-        ! in this code
-        allocate(R_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-        allocate(Z_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-        allocate(L_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-        allocate(L_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-        !if (lasym) then                                                         ! following only needed in asymmetric situations
-            allocate(R_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-            allocate(Z_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-            allocate(L_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-            allocate(L_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-        !end if
+        ! Allocate the Fourier coefficients and store the underived ones
+        allocate(R_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
+        allocate(R_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
+        allocate(Z_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
+        allocate(Z_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
+        allocate(L_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
+        allocate(L_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
+        allocate(L_c_H(mnmax_V,n_r_eq,0:max_deriv+1))
+        allocate(L_s_H(mnmax_V,n_r_eq,0:max_deriv+1))
         
         ! factors R_V_c,s; Z_V_c,s and L_C,s and HM varieties
-        R_V_c(:,:,:,0) = repack(rmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-        Z_V_s(:,:,:,0) = repack(zmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-        L_s_H(:,:,:,0) = repack(lmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-        !if (lasym) then                                                         ! following only needed in asymmetric situations
-            R_V_s(:,:,:,0) = repack(rmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            Z_V_c(:,:,:,0) = repack(zmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            L_c_H(:,:,:,0) = repack(lmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-        !end if
+        R_V_c(:,:,0) = rmnc
+        Z_V_s(:,:,0) = zmns
+        L_s_H(:,:,0) = lmns
+        if (is_asym_V) then                                                     ! following only needed in asymmetric situations
+            R_V_s(:,:,0) = rmns
+            Z_V_c(:,:,0) = zmnc
+            L_c_H(:,:,0) = lmnc
+        else
+            R_V_s(:,:,0) = 0._dp
+            Z_V_c(:,:,0) = 0._dp
+            L_c_H(:,:,0) = 0._dp
+        end if
         
         ! conversion HM -> FM (L)
-        do jd = -ntor,ntor
-            do id = 0,mpol-1
-                ierr = conv_FHM(L_s_H(id,jd,:,0),L_V_s(id,jd,:,0),.false.)
-                CHCKERR('')
-                !if (lasym) then                                                ! following only needed in asymmetric situations
-                    ierr = conv_FHM(L_c_H(id,jd,:,0),L_V_c(id,jd,:,0),&
-                        &.false.)
-                    CHCKERR('')
-                !end if
-            end do
+        do id = 1,mnmax_V
+            ierr = conv_FHM(L_s_H(id,:,0),L_V_s(id,:,0),.false.)
+            CHCKERR('')
+            ierr = conv_FHM(L_c_H(id,:,0),L_V_c(id,:,0),.false.)
+            CHCKERR('')
         end do
         
 #if ldebug
         ! for tests
         if (ltest) then
             ! allocate helper variables
-            allocate(B_V_sub_c_M(0:mpol-1,-ntor:ntor,1:n_r_eq,3))
-            allocate(B_V_sub_s_M(0:mpol-1,-ntor:ntor,1:n_r_eq,3))
-            allocate(B_V_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
-            allocate(B_V_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
-            allocate(jac_V_c_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
-            allocate(jac_V_s_H(0:mpol-1,-ntor:ntor,1:n_r_eq))
+            allocate(B_V_sub_c_M(mnmax_V,n_r_eq,3)); B_V_sub_c_M = 0._dp
+            allocate(B_V_sub_s_M(mnmax_V,n_r_eq,3)); B_V_sub_s_M = 0._dp
+            allocate(B_V_c_H(mnmax_V,n_r_eq)); B_V_c_H = 0._dp
+            allocate(jac_V_c_H(mnmax_V,n_r_eq)); jac_V_c_H = 0._dp
+            allocate(B_V_s_H(mnmax_V,n_r_eq)); B_V_s_H = 0._dp
+            allocate(jac_V_s_H(mnmax_V,n_r_eq))
             
             ! store in helper variables
-            B_V_sub_c_M(:,:,:,1) = repack(bsubsmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            B_V_sub_s_M(:,:,:,1) = repack(bsubsmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            B_V_sub_c_M(:,:,:,2) = repack(bsubumnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            B_V_sub_s_M(:,:,:,2) = repack(bsubumns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            B_V_sub_c_M(:,:,:,3) = repack(bsubvmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            B_V_sub_s_M(:,:,:,3) = repack(bsubvmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            B_V_c_H(:,:,:) = repack(bmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            B_V_s_H(:,:,:) = repack(bmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            jac_V_c_H(:,:,:) = repack(gmnc,mnmax,n_r_eq,mpol,ntor,xm,xn)
-            jac_V_s_H(:,:,:) = repack(gmns,mnmax,n_r_eq,mpol,ntor,xm,xn)
+            B_V_sub_s_M(:,:,1) = bsubsmns
+            B_V_sub_c_M(:,:,2) = bsubumnc
+            B_V_sub_c_M(:,:,3) = bsubvmnc
+            B_V_c_H(:,:) = bmnc
+            jac_V_c_H(:,:) = gmnc
+            if (is_asym_V) then                                                 ! following only needed in asymmetric situations
+                B_V_sub_c_M(:,:,1) = bsubsmnc
+                B_V_sub_s_M(:,:,2) = bsubumns
+                B_V_sub_s_M(:,:,3) = bsubvmns
+                B_V_s_H(:,:) = bmns
+                jac_V_s_H(:,:) = gmns
+            else
+                B_V_sub_c_M(:,:,1) = 0._dp
+                B_V_sub_s_M(:,:,2) = 0._dp
+                B_V_sub_s_M(:,:,3) = 0._dp
+                B_V_s_H(:,:) = 0._dp
+                jac_V_s_H(:,:) = 0._dp
+            end if
             
             ! allocate FM variables
-            allocate(B_V_sub_c(0:mpol-1,-ntor:ntor,1:n_r_eq,3))
-            allocate(B_V_sub_s(0:mpol-1,-ntor:ntor,1:n_r_eq,3))
-            allocate(B_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq))
-            allocate(B_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq))
-            allocate(jac_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq))
-            allocate(jac_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq))
+            allocate(B_V_sub_c(mnmax_V,n_r_eq,3))
+            allocate(B_V_sub_s(mnmax_V,n_r_eq,3))
+            allocate(B_V_c(mnmax_V,n_r_eq))
+            allocate(B_V_s(mnmax_V,n_r_eq))
+            allocate(jac_V_c(mnmax_V,n_r_eq))
+            allocate(jac_V_s(mnmax_V,n_r_eq))
             
             ! conversion HM -> FM (B_V_sub, B_V, jac_V)
-            do jd = -ntor,ntor
-                do id = 0,mpol-1
-                    do kd = 1,3
-                        ierr = conv_FHM(B_V_sub_c_M(id,jd,:,kd),&
-                            &B_V_sub_c(id,jd,:,kd),.false.)
-                        CHCKERR('')
-                        ierr = conv_FHM(B_V_sub_s_M(id,jd,:,kd),&
-                            &B_V_sub_s(id,jd,:,kd),.false.)
-                        CHCKERR('')
-                    end do
-                    ierr = conv_FHM(B_V_c_H(id,jd,:),B_V_c(id,jd,:),.false.)
+            do id = 1,mnmax_V
+                do kd = 1,3
+                    ierr = conv_FHM(B_V_sub_c_M(id,:,kd),B_V_sub_c(id,:,kd),&
+                        &.false.)
                     CHCKERR('')
-                    ierr = conv_FHM(B_V_s_H(id,jd,:),B_V_s(id,jd,:),.false.)
-                    CHCKERR('')
-                    ierr = conv_FHM(jac_V_c_H(id,jd,:),jac_V_c(id,jd,:),.false.)
-                    CHCKERR('')
-                    ierr = conv_FHM(jac_V_s_H(id,jd,:),jac_V_s(id,jd,:),.false.)
+                    ierr = conv_FHM(B_V_sub_s_M(id,:,kd),B_V_sub_s(id,:,kd),&
+                        &.false.)
                     CHCKERR('')
                 end do
+                ierr = conv_FHM(B_V_c_H(id,:),B_V_c(id,:),.false.)
+                CHCKERR('')
+                ierr = conv_FHM(B_V_s_H(id,:),B_V_s(id,:),.false.)
+                CHCKERR('')
+                ierr = conv_FHM(jac_V_c_H(id,:),jac_V_c(id,:),.false.)
+                CHCKERR('')
+                ierr = conv_FHM(jac_V_s_H(id,:),jac_V_s(id,:),.false.)
+                CHCKERR('')
             end do
             
             ! deallocate helper variables
@@ -242,6 +248,11 @@ contains
     
     ! deallocates VMEC quantities that are not used anymore
     subroutine dealloc_VMEC
+        if (allocated(rot_t_V)) deallocate(rot_t_V)
+        if (allocated(pres_V)) deallocate(pres_V)
+        if (allocated(flux_t_V)) deallocate(flux_t_V)
+        if (allocated(Dflux_t_V)) deallocate(Dflux_t_V)
+        if (allocated(mn_V)) deallocate(mn_V)
         if (allocated(R_V_c)) deallocate(R_V_c)
         if (allocated(R_V_s)) deallocate(R_V_s)
         if (allocated(Z_V_c)) deallocate(Z_V_c)
@@ -257,59 +268,9 @@ contains
         if (allocated(jac_V_s)) deallocate(jac_V_s)
 #endif
     end subroutine dealloc_VMEC
-
-    ! Repack  variables  representing the  Fourier  composition  such as  R,  Z,
-    ! lambda, ...  In VMEC these  are stored as  (1:mnmax, 1:ns) with  mnmax the
-    ! total  number of  all modes.  Here  they are  to be  stored as  (0:mpol-1,
-    ! -ntor:ntor, 1:ns), which  is valid due to the symmetry  of the modes (only
-    ! one of either theta_V  or zeta_V has to be able to  change sign because of
-    ! the (anti)-symmetry of the (co)sine.
-    ! It is  possible that the  input variable is  not allocated. In  this case,
-    ! output zeros
-    ! [MPI] only global master
-    !       (this is a precaution: only the global master should use it)
-    function repack(var_VMEC,mnmax,n_r,mpol,ntor,xm,xn)
-        use num_vars, only: rank
-        
-        ! input / output
-        integer, intent(in) :: mnmax, n_r, mpol, ntor
-        real(dp), intent(in) :: xm(mnmax), xn(mnmax)
-        real(dp), allocatable :: var_VMEC(:,:)
-        real(dp) :: repack(0:mpol-1,-ntor:ntor,1:n_r)
-            
-        ! local variables
-        integer :: mode, m, n
-        
-        if (allocated(var_VMEC) .and. rank.eq.0) then                           ! only global rank
-            ! check if the  values in xm and xn don't  exceed the maximum number
-            ! of poloidal and toroidal modes (xm  and xn are of length mnmax and
-            ! contain the pol/tor mode number)
-            if (maxval(xm).gt.mpol .or. maxval(abs(xn)).gt.ntor) then
-                call writo('WARNING: In repack, less modes are used than in the&
-                    & VMEC format')
-            end if
-                
-            repack = 0.0_dp
-            ! copy the VMEC modes using the PB3D format
-            do mode = 1,mnmax
-                m = nint(xm(mode))
-                n = nint(xn(mode))
-                ! if the modes don't fit, cycle
-                if (m.gt.mpol .or. abs(n).gt.ntor) then
-                    call writo('WARNING: In repack, m > mpol or n > ntor!')
-                    cycle
-                end if
-                
-                repack(m,n,:) = var_VMEC(mode,:)
-            end do
-        else
-            repack = 0.0_dp
-        end if
-    end function repack
     
-    ! Calculate the trigoniometric cosine and  sine factors on a grid (0:mpol-1,
-    ! -ntor:ntor) at given 3D arrays for the (VMEC) E(quilibrium) angles theta_E
-    ! and zeta_E.
+    ! Calculate the trigoniometric cosine and sine factors on a grid (1:mnmax_V)
+    ! at given 3D arrays for the (VMEC) E(quilibrium) angles theta_E and zeta_E.
     integer function calc_trigon_factors(theta,zeta,trigon_factors) &
         &result(ierr)
         
@@ -318,16 +279,16 @@ contains
         ! input / output
         real(dp), intent(in) :: theta(:,:,:)                                    ! poloidal angles in equilibrium coords.
         real(dp), intent(in) :: zeta(:,:,:)                                     ! toroidal angles in equilibrium coords.
-        real(dp), intent(inout), allocatable :: trigon_factors(:,:,:,:,:,:)     ! trigonometric factor cosine and sine at these angles
+        real(dp), intent(inout), allocatable :: trigon_factors(:,:,:,:,:)       ! trigonometric factor cosine and sine at these angles
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_ang_1, n_ang_2, n_r                                        ! sizes of 3D real output array
         real(dp), allocatable :: cos_theta(:,:,:,:)                             ! cos(m theta) for all m
         real(dp), allocatable :: sin_theta(:,:,:,:)                             ! sin(m theta) for all m
-        real(dp), allocatable :: cos_zeta(:,:,:,:)                              ! cos(n nfp theta) for all n
-        real(dp), allocatable :: sin_zeta(:,:,:,:)                              ! sin(n nfp theta) for all n
-        integer :: n, m                                                         ! counters
+        real(dp), allocatable :: cos_zeta(:,:,:,:)                              ! cos(n theta) for all n
+        real(dp), allocatable :: sin_zeta(:,:,:,:)                              ! sin(n theta) for all n
+        integer :: id, m, n                                                     ! counters
         
         ! initialize ierr
         ierr = 0
@@ -346,40 +307,38 @@ contains
         end if
         
         ! setup cos_theta, sin_theta, cos_zeta and sin_zeta
-        allocate(cos_theta(mpol,n_ang_1,n_ang_2,n_r))
-        allocate(sin_theta(mpol,n_ang_1,n_ang_2,n_r))
-        allocate(cos_zeta(2*ntor+1,n_ang_1,n_ang_2,n_r))
-        allocate(sin_zeta(2*ntor+1,n_ang_1,n_ang_2,n_r))
+        allocate(cos_theta(0:mpol_V-1,n_ang_1,n_ang_2,n_r))
+        allocate(sin_theta(0:mpol_V-1,n_ang_1,n_ang_2,n_r))
+        allocate(cos_zeta(-ntor_V:ntor_V,n_ang_1,n_ang_2,n_r))
+        allocate(sin_zeta(-ntor_V:ntor_V,n_ang_1,n_ang_2,n_r))
         
-        do m = 0,mpol-1
-            cos_theta(m+1,:,:,:) = cos(m*theta)
-            sin_theta(m+1,:,:,:) = sin(m*theta)
+        do m = 0,mpol_V-1
+            cos_theta(m,:,:,:) = cos(m*theta)
+            sin_theta(m,:,:,:) = sin(m*theta)
         end do
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !! MAYBE IN CALC_TRIGON_FACTORS, MAYBE YOU HAVE TO USE - ZETA???????  !!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        do n = -ntor,ntor
-            cos_zeta(n+ntor+1,:,:,:) = cos(n*nfp*zeta)
-            sin_zeta(n+ntor+1,:,:,:) = sin(n*nfp*zeta)
+        do n = -ntor_V,ntor_V
+            cos_zeta(n,:,:,:) = cos(n*zeta)
+            sin_zeta(n,:,:,:) = sin(n*zeta)
         end do
         
         ! initialize trigon_factors
-        allocate(trigon_factors(mpol,2*ntor+1,n_ang_1,n_ang_2,n_r,2))
+        allocate(trigon_factors(mnmax_V,n_ang_1,n_ang_2,n_r,2))
         trigon_factors = 0.0_dp
         
-        ! calculate cos(m theta - n nfp zeta) = cos(m theta) cos(n nfp zeta) + 
-        !   sin(m theta) sin(n nfp zeta) and
-        ! sin(m theta - n nfp zeta) = sin(m theta) cos(n nfp zeta) -
-        !   cos(m theta) sin(n nfp zeta)
-        do n = -ntor,ntor
-            do m = 0,mpol-1
-                trigon_factors(m+1,n+ntor+1,:,:,:,1) = &
-                    &cos_theta(m+1,:,:,:)*cos_zeta(n+ntor+1,:,:,:) + &
-                    &sin_theta(m+1,:,:,:)*sin_zeta(n+ntor+1,:,:,:)
-                trigon_factors(m+1,n+ntor+1,:,:,:,2) = &
-                    &sin_theta(m+1,:,:,:)*cos_zeta(n+ntor+1,:,:,:) - &
-                    &cos_theta(m+1,:,:,:)*sin_zeta(n+ntor+1,:,:,:)
-            end do
+        ! calculate cos(m theta - n zeta) = cos(m theta) cos(n zeta) + 
+        !   sin(m theta) sin(n zeta) and
+        ! sin(m theta - n zeta) = sin(m theta) cos(n zeta) -
+        !   cos(m theta) sin(n zeta)
+        do id = 1,mnmax_V
+            trigon_factors(id,:,:,:,1) = &
+                &cos_theta(mn_V(id,1),:,:,:)*cos_zeta(mn_V(id,2),:,:,:) + &
+                &sin_theta(mn_V(id,1),:,:,:)*sin_zeta(mn_V(id,2),:,:,:)
+            trigon_factors(id,:,:,:,2) = &
+                &sin_theta(mn_V(id,1),:,:,:)*cos_zeta(mn_V(id,2),:,:,:) - &
+                &cos_theta(mn_V(id,1),:,:,:)*sin_zeta(mn_V(id,2),:,:,:)
         end do
         
         ! deallocate variables
@@ -398,16 +357,15 @@ contains
         character(*), parameter :: rout_name = 'fourier2real'
         
         ! input / output
-        real(dp), intent(in) :: var_fourier_c(:,:,:)                            ! cos factor of variable in Fourier space
-        real(dp), intent(in) :: var_fourier_s(:,:,:)                            ! sin factor of variable in Fourier space
-        real(dp), intent(in) :: trigon_factors(:,:,:,:,:,:)                     ! trigonometric factor cosine and sine at these angles
+        real(dp), intent(in) :: var_fourier_c(:,:)                              ! cos factor of variable in Fourier space
+        real(dp), intent(in) :: var_fourier_s(:,:)                              ! sin factor of variable in Fourier space
+        real(dp), intent(in) :: trigon_factors(:,:,:,:,:)                       ! trigonometric factor cosine and sine at these angles
         real(dp), intent(inout) :: var_real(:,:,:)                              ! variable in real space
         integer, intent(in), optional :: deriv(2)                               ! optional derivatives in angular coordinates
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_ang_1, n_r, n_ang_2                                        ! sizes of 3D real output array
-        integer :: m,n                                                          ! counters for mode numbers
         integer :: id, kd                                                       ! counters
         real(dp), allocatable :: fac_cos(:), fac_sin(:)                         ! factor in front of cos and sin, after taking derivatives
         real(dp), allocatable :: fac_trigon_temp(:)                             ! temporary variable that holds fac_cos or fac_sin
@@ -416,25 +374,24 @@ contains
         ierr = 0
         
         ! set n_ang_1 and n_r
-        n_ang_1 = size(trigon_factors,3)
-        n_ang_2 = size(trigon_factors,4)
-        n_r = size(trigon_factors,5)
+        n_ang_1 = size(trigon_factors,2)
+        n_ang_2 = size(trigon_factors,3)
+        n_r = size(trigon_factors,4)
         
         ! tests
-        if (size(trigon_factors,6).ne.2) then
+        if (size(trigon_factors,5).ne.2) then
             ierr = 1
             err_msg = 'trigon_factors needs to contain sines and cosines'
             CHCKERR(err_msg)
         end if
-        if (size(trigon_factors,1).ne.mpol .or. &
-            &size(trigon_factors,2).ne.(2*ntor+1)) then
+        if (size(trigon_factors,1).ne.mnmax_V) then
             ierr = 1
             err_msg = 'trigon_factors needs to be defined for the right number &
                 &of modes'
             CHCKERR(err_msg)
         end if
-        if (size(var_fourier_c,3).ne.n_r .or. &
-            &size(var_fourier_s,3).ne.n_r) then
+        if (size(var_fourier_c,2).ne.n_r .or. &
+            &size(var_fourier_s,2).ne.n_r) then
             ierr = 1
             err_msg = 'var_fourier_c and _s need to have the right number of &
                 &normal points'
@@ -449,34 +406,32 @@ contains
         var_real = 0.0_dp
         
         ! sum over modes
-        do m = 0,mpol-1
-            do n = -ntor,ntor
-                ! initialize factors in front of cos and sin
-                fac_cos = var_fourier_c(m+1,n+ntor+1,:)
-                fac_sin = var_fourier_s(m+1,n+ntor+1,:)
-                
-                ! angular derivatives
-                if (present(deriv)) then 
-                    ! apply possible poloidal derivatives
-                    do id = 1,deriv(1)
-                        fac_trigon_temp = - m * fac_cos
-                        fac_cos = m * fac_sin
-                        fac_sin = fac_trigon_temp
-                    end do
-                    ! apply possible toroidal derivatives
-                    do id = 1,deriv(2)
-                        fac_trigon_temp = n * nfp * fac_cos
-                        fac_cos = - n * nfp * fac_sin
-                        fac_sin = fac_trigon_temp
-                    end do
-                end if
-                
-                ! sum
-                do kd = 1,n_r
-                    var_real(:,:,kd) = var_real(:,:,kd) + &
-                        &fac_cos(kd)*trigon_factors(m+1,n+ntor+1,:,:,kd,1) + &
-                        &fac_sin(kd)*trigon_factors(m+1,n+ntor+1,:,:,kd,2)
+        do id = 1,mnmax_V
+            ! initialize factors in front of cos and sin
+            fac_cos = var_fourier_c(id,:)
+            fac_sin = var_fourier_s(id,:)
+            
+            ! angular derivatives
+            if (present(deriv)) then 
+                ! apply possible poloidal derivatives
+                do kd = 1,deriv(1)
+                    fac_trigon_temp = - mn_V(id,1) * fac_cos
+                    fac_cos = mn_V(id,1) * fac_sin
+                    fac_sin = fac_trigon_temp
                 end do
+                ! apply possible toroidal derivatives
+                do kd = 1,deriv(2)
+                    fac_trigon_temp = mn_V(id,2) * fac_cos
+                    fac_cos = - mn_V(id,2) * fac_sin
+                    fac_sin = fac_trigon_temp
+                end do
+            end if
+            
+            ! sum
+            do kd = 1,n_r
+                var_real(:,:,kd) = var_real(:,:,kd) + &
+                    &fac_cos(kd)*trigon_factors(id,:,:,kd,1) + &
+                    &fac_sin(kd)*trigon_factors(id,:,:,kd,2)
             end do
         end do
     end function fourier2real

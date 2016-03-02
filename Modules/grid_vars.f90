@@ -43,7 +43,7 @@ module grid_vars
         real(dp), pointer :: theta_F(:,:,:) => null()                           ! F(lux) coord. values of first angle at n points in 3D
         real(dp), pointer :: zeta_E(:,:,:) => null()                            ! E(quilibrium) coord. values of second angle at n points in 3D
         real(dp), pointer :: zeta_F(:,:,:) => null()                            ! F(lux) coord. values of second angle at n points in 3D
-        real(dp), allocatable :: trigon_factors(:,:,:,:,:,:)                    ! trigonometric factor cosine for the inverse fourier transf.
+        real(dp), allocatable :: trigon_factors(:,:,:,:,:)                      ! trigonometric factor cosine for the inverse fourier transf.
     end type
     
     ! type for data of discretization operations:

@@ -69,8 +69,8 @@ contains
         ! local variables (also used in child functions)
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_r, n_par, n_geo                                            ! dimensions of the grid
-        real(dp), allocatable :: L_V_c_loc(:,:,:)                               ! local version of L_V_c
-        real(dp), allocatable :: L_V_s_loc(:,:,:)                               ! local version of L_V_s
+        real(dp), allocatable :: L_V_c_loc(:,:)                                 ! local version of L_V_c
+        real(dp), allocatable :: L_V_s_loc(:,:)                                 ! local version of L_V_s
         real(dp) :: theta_V_loc(1,1,1), zeta_V_loc(1,1,1)                       ! local version of theta_V, zeta_V (needs to be 3D matrix)
         real(dp) :: lam(1,1,1)                                                  ! lambda (needs to be 3D matrix)
         real(dp) :: dlam(1,1,1)                                                 ! angular derivative of lambda (needs to be 3D matrix)
@@ -131,12 +131,11 @@ contains
     contains
         integer function coord_F2E_VMEC() result(ierr)
             use utilities, only: calc_zero_NR
-            use VMEC, only: mpol, ntor
+            use VMEC, only: mnmax_V
             
             character(*), parameter :: rout_name = 'coord_F2E_VMEC'
             
             ! local variables
-            real(dp), allocatable :: L_V_c_loc_ind(:,:), L_V_s_loc_ind(:,:)     ! individual versions of L_V_c_loc and L_V_s_loc
             real(dp), allocatable :: loc_r_F(:)                                 ! loc_r in F coords.
             
             ! initialize ierr
@@ -155,24 +154,18 @@ contains
             zeta_E = - zeta_F                                                   ! conversion VMEC LH -> RH coord. system
             
             ! allocate local copies of L_V_c and L_V_s
-            allocate(L_V_c_loc(0:mpol-1,-ntor:ntor,1:1))
-            allocate(L_V_s_loc(0:mpol-1,-ntor:ntor,1:1))
-            allocate(L_V_c_loc_ind(0:mpol-1,-ntor:ntor))
-            allocate(L_V_s_loc_ind(0:mpol-1,-ntor:ntor))
+            allocate(L_V_c_loc(mnmax_V,1:1))
+            allocate(L_V_s_loc(mnmax_V,1:1))
             
             ! loop over all normal points
             do kd = 1,n_r
                 ! interpolate L_V_c and L_V_s at requested normal point r_F
-                ierr = interp_fun(L_V_c_loc_ind,&
-                    &L_V_c(:,:,grid_eq%i_min:grid_eq%i_max,0),r_F(kd),loc_r_F)
+                ierr = interp_fun(L_V_c_loc(:,1),&
+                    &L_V_c(:,grid_eq%i_min:grid_eq%i_max,0),r_F(kd),loc_r_F)
                 CHCKERR('')
-                ierr = interp_fun(L_V_s_loc_ind,&
-                    &L_V_s(:,:,grid_eq%i_min:grid_eq%i_max,0),r_F(kd),loc_r_F)
+                ierr = interp_fun(L_V_s_loc(:,1),&
+                    &L_V_s(:,grid_eq%i_min:grid_eq%i_max,0),r_F(kd),loc_r_F)
                 CHCKERR('')
-                
-                ! copy individual to array version
-                L_V_c_loc(:,:,1) = L_V_c_loc_ind
-                L_V_s_loc(:,:,1) = L_V_s_loc_ind
                 
                 ! the poloidal angle has to be found as the zero of
                 !   f = theta_F - theta_E - lambda
@@ -203,7 +196,6 @@ contains
             
             ! deallocate variables
             deallocate(L_V_c_loc,L_V_s_loc)
-            deallocate(L_V_c_loc_ind,L_V_s_loc_ind)
         end function coord_F2E_VMEC
         
         ! function that returns f = theta_F  - theta_V - lambda. It uses theta_F
@@ -218,7 +210,7 @@ contains
             real(dp), intent(in) :: theta_E_in
             
             ! local variables
-            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:,:)            ! trigonometric factor cosine for the inverse fourier transf.
+            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:)              ! trigonometric factor cosine for the inverse fourier transf.
             
             ! initialize fun_pol
             fun_pol = 0.0_dp
@@ -256,7 +248,7 @@ contains
             real(dp), intent(in) :: theta_E_in
             
             ! local variables
-            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:,:)            ! trigonometric factor cosine for the inverse fourier transf.
+            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:)              ! trigonometric factor cosine for the inverse fourier transf.
             
             ! initialize dfun_pol
             dfun_pol = 0.0_dp
@@ -272,7 +264,8 @@ contains
             CHCKERR('')
             
             ! calculate lambda
-            ierr = fourier2real(L_V_c_loc,L_V_s_loc,trigon_factors_loc,dlam,[1,0])
+            ierr = fourier2real(L_V_c_loc,L_V_s_loc,trigon_factors_loc,dlam,&
+                &[1,0])
             CHCKERR('')
             
             ! calculate the output function
@@ -419,13 +412,13 @@ contains
     contains
         integer function coord_E2F_VMEC() result(ierr)
             use VMEC, only: calc_trigon_factors, fourier2real, &
-                &mpol, ntor, L_V_c, L_V_s
+                &mnmax_V, L_V_c, L_V_s
             
             character(*), parameter :: rout_name = 'coord_E2F_VMEC'
             
             ! local variables
-            real(dp), allocatable :: L_V_c_loc(:,:,:), L_V_s_loc(:,:,:)         ! local version of L_V_c and L_V_s
-            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:,:)            ! trigonometric factor cosine for the inverse fourier transf.
+            real(dp), allocatable :: L_V_c_loc(:,:), L_V_s_loc(:,:)             ! local version of L_V_c and L_V_s
+            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:)              ! trigonometric factor cosine for the inverse fourier transf.
             real(dp), allocatable :: lam(:,:,:)                                 ! lambda
             real(dp), allocatable :: loc_r_E(:)                                 ! loc_r in E coords.
             
@@ -445,18 +438,18 @@ contains
             zeta_F = - zeta_E                                                   ! conversion VMEC LH -> RH coord. system
             
             ! allocate local copies of L_V_c and L_V_s and lambda
-            allocate(L_V_c_loc(0:mpol-1,-ntor:ntor,1:n_r))
-            allocate(L_V_s_loc(0:mpol-1,-ntor:ntor,1:n_r))
+            allocate(L_V_c_loc(mnmax_V,n_r))
+            allocate(L_V_s_loc(mnmax_V,n_r))
             allocate(lam(n_par,n_geo,n_r))
             
             ! interpolate L_V_c and L_V_s at requested normal point r_E
             ! loop over all normal points
             do kd = 1,n_r
-                ierr = interp_fun(L_V_c_loc(:,:,kd),&
-                    &L_V_c(:,:,grid_eq%i_min:grid_eq%i_max,0),r_E(kd),loc_r_E)
+                ierr = interp_fun(L_V_c_loc(:,kd),&
+                    &L_V_c(:,grid_eq%i_min:grid_eq%i_max,0),r_E(kd),loc_r_E)
                 CHCKERR('')
-                ierr = interp_fun(L_V_s_loc(:,:,kd),&
-                    &L_V_s(:,:,grid_eq%i_min:grid_eq%i_max,0),r_E(kd),loc_r_E)
+                ierr = interp_fun(L_V_s_loc(:,kd),&
+                    &L_V_s(:,grid_eq%i_min:grid_eq%i_max,0),r_E(kd),loc_r_E)
                 CHCKERR('')
             end do
             
@@ -474,7 +467,8 @@ contains
             
             ! deallocate variables
             deallocate(trigon_factors_loc)
-            deallocate(L_V_c_loc,L_V_s_loc)
+            deallocate(L_V_c_loc)
+            deallocate(L_V_s_loc)
             deallocate(lam)
         end function coord_E2F_VMEC
     end function coord_E2F_rtz
@@ -615,7 +609,7 @@ contains
         integer function calc_XYZ_grid_VMEC(grid,X,Y,Z,L) result(ierr)
             use num_vars, only: norm_disc_prec_eq
             use VMEC, only: calc_trigon_factors, fourier2real, &
-                &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor
+                &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V
             use grid_vars, only: dealloc_disc
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_VMEC'
@@ -627,10 +621,10 @@ contains
             
             ! local variables
             integer :: kd                                                       ! counters
-            real(dp), allocatable :: R_V_c_int(:,:,:), R_V_s_int(:,:,:)         ! interpolated version of R_V_c and R_V_s
-            real(dp), allocatable :: Z_V_c_int(:,:,:), Z_V_s_int(:,:,:)         ! interpolated version of Z_V_c and Z_V_s
-            real(dp), allocatable :: L_V_c_int(:,:,:), L_V_s_int(:,:,:)         ! interpolated version of L_V_c and L_V_s
-            real(dp), allocatable :: trigon_factors(:,:,:,:,:,:)                ! trigonometric factor cosine for the inverse fourier transf.
+            real(dp), allocatable :: R_V_c_int(:,:), R_V_s_int(:,:)             ! interpolated version of R_V_c and R_V_s
+            real(dp), allocatable :: Z_V_c_int(:,:), Z_V_s_int(:,:)             ! interpolated version of Z_V_c and Z_V_s
+            real(dp), allocatable :: L_V_c_int(:,:), L_V_s_int(:,:)             ! interpolated version of L_V_c and L_V_s
+            real(dp), allocatable :: trigon_factors(:,:,:,:,:)                  ! trigonometric factor cosine for the inverse fourier transf.
             real(dp), allocatable :: R(:,:,:)                                   ! R in Cylindrical coordinates
             real(dp), allocatable :: r_E_VMEC(:)                                ! VMEC uses equidistant grid from 0 to 1
             type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
@@ -639,17 +633,17 @@ contains
             ierr = 0
             
             ! set up interpolated R_V_c_int, ..
-            allocate(R_V_c_int(0:mpol-1,-ntor:ntor,1:grid%loc_n_r))
-            allocate(R_V_s_int(0:mpol-1,-ntor:ntor,1:grid%loc_n_r))
-            allocate(Z_V_c_int(0:mpol-1,-ntor:ntor,1:grid%loc_n_r))
-            allocate(Z_V_s_int(0:mpol-1,-ntor:ntor,1:grid%loc_n_r))
+            allocate(R_V_c_int(mnmax_V,grid%loc_n_r))
+            allocate(R_V_s_int(mnmax_V,grid%loc_n_r))
+            allocate(Z_V_c_int(mnmax_V,grid%loc_n_r))
+            allocate(Z_V_s_int(mnmax_V,grid%loc_n_r))
             if (present(L)) then
-                allocate(L_V_c_int(0:mpol-1,-ntor:ntor,1:grid%loc_n_r))
-                allocate(L_V_s_int(0:mpol-1,-ntor:ntor,1:grid%loc_n_r))
+                allocate(L_V_c_int(mnmax_V,grid%loc_n_r))
+                allocate(L_V_s_int(mnmax_V,grid%loc_n_r))
             end if
             
             ! setup normal interpolation data
-            allocate(r_E_VMEC(size(R_V_c,3)))
+            allocate(r_E_VMEC(size(R_V_c,2)))
             r_E_VMEC = [((kd-1._dp)/(size(r_E_VMEC)-1),kd=1,size(r_E_VMEC))]
             ierr = setup_interp_data(r_E_VMEC,grid%loc_r_E,norm_interp_data,&
                 &norm_disc_prec_eq)
@@ -657,18 +651,18 @@ contains
             deallocate(r_E_VMEC)
             
             ! interpolate VMEC tables
-            ierr = apply_disc(R_V_c(:,:,:,0),norm_interp_data,R_V_c_int,3)
+            ierr = apply_disc(R_V_c(:,:,0),norm_interp_data,R_V_c_int,2)
             CHCKERR('')
-            ierr = apply_disc(R_V_s(:,:,:,0),norm_interp_data,R_V_s_int,3)
+            ierr = apply_disc(R_V_s(:,:,0),norm_interp_data,R_V_s_int,2)
             CHCKERR('')
-            ierr = apply_disc(Z_V_c(:,:,:,0),norm_interp_data,Z_V_c_int,3)
+            ierr = apply_disc(Z_V_c(:,:,0),norm_interp_data,Z_V_c_int,2)
             CHCKERR('')
-            ierr = apply_disc(Z_V_s(:,:,:,0),norm_interp_data,Z_V_s_int,3)
+            ierr = apply_disc(Z_V_s(:,:,0),norm_interp_data,Z_V_s_int,2)
             CHCKERR('')
             if (present(L)) then
-                ierr = apply_disc(L_V_c(:,:,:,0),norm_interp_data,L_V_c_int,3)
+                ierr = apply_disc(L_V_c(:,:,0),norm_interp_data,L_V_c_int,2)
                 CHCKERR('')
-                ierr = apply_disc(L_V_s(:,:,:,0),norm_interp_data,L_V_s_int,3)
+                ierr = apply_disc(L_V_s(:,:,0),norm_interp_data,L_V_s_int,2)
                 CHCKERR('')
             end if
             
@@ -1634,7 +1628,8 @@ contains
             ! find the base of the interpolation value
             ierr = con2dis(x_interp(id),x_interp_disc,x)
             CHCKERR('')
-            A%id_start(id) = ceiling(x_interp_disc-n_loc*1._dp/2)               ! get minimum of bounding indices
+            A%id_start(id) = ceiling(x_interp_disc-n_loc*0.5_dp)                ! get minimum of bounding indices
+            A%id_start(id) = max(1,min(A%id_start(id),size(x)-n_loc+1))         ! limit to lie within x
             
             ! calculate elements of local matrix (transposed) and rhs
             mat_loc(1,:) = 1._dp

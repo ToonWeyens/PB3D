@@ -463,9 +463,10 @@ contains
             &max_it_inv, norm_disc_prec_X, norm_disc_prec_eq, &
             &norm_disc_prec_sol, BC_style, tol_norm, max_it_slepc, &
             &max_mem_per_proc, PB3D_name, norm_style, U_style, plot_size, &
-            &test_max_mem, X_style, no_execute_command_line
-        use VMEC, only: mpol, ntor, lasym, lfreeb, nfp, rot_t_V, gam, pres_V, &
-            &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, flux_t_V, Dflux_t_V
+            &test_max_mem, X_style, no_execute_command_line, matrix_SLEPC_style
+        use VMEC, only: is_asym_V, is_freeb_V, mnmax_V, mpol_V, ntor_V, &
+            &rot_t_V, gam, pres_V, mn_V, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, &
+            &L_V_s, flux_t_V, Dflux_t_V
         use HELENA_vars, only: pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, &
             &h_H_12, h_H_33, RBphi, R_H, Z_H
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm
@@ -613,6 +614,9 @@ contains
                     call MPI_Bcast(retain_all_sol,1,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
+                    call MPI_Bcast(matrix_SLEPC_style,1,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
                     call MPI_Bcast(max_it_slepc,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
@@ -680,15 +684,17 @@ contains
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     ! variables that are sent for every program style:
-                    call MPI_Bcast(lasym,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+                    call MPI_Bcast(is_asym_V,1,MPI_LOGICAL,0,MPI_Comm_world,&
+                        &ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(lfreeb,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+                    call MPI_Bcast(is_freeb_V,1,MPI_LOGICAL,0,MPI_Comm_world,&
+                        &ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(mpol,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    call MPI_Bcast(mnmax_V,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(ntor,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    call MPI_Bcast(mpol_V,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(nfp,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    call MPI_Bcast(ntor_V,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     
                     ! select according to program style
@@ -714,64 +720,69 @@ contains
                             call MPI_Bcast(pres_V,size(pres_V),&
                                 &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                             CHCKERR(err_msg)
-                            call bcast_size_4_R(R_V_c,0)
+                            call bcast_size_3_R(R_V_c,0)
                             CHCKERR(err_msg)
                             call MPI_Bcast(R_V_c,size(R_V_c),&
                                 &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                             CHCKERR(err_msg)
-                            call bcast_size_4_R(R_V_s,0)
+                            call bcast_size_3_R(R_V_s,0)
                             CHCKERR(err_msg)
                             call MPI_Bcast(R_V_s,size(R_V_s),&
                                 &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                             CHCKERR(err_msg)
-                            call bcast_size_4_R(Z_V_c,0)
+                            call bcast_size_3_R(Z_V_c,0)
                             CHCKERR(err_msg)
                             call MPI_Bcast(Z_V_c,size(Z_V_c),&
                                 &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                             CHCKERR(err_msg)
-                            call bcast_size_4_R(Z_V_s,0)
+                            call bcast_size_3_R(Z_V_s,0)
                             CHCKERR(err_msg)
                             call MPI_Bcast(Z_V_s,size(Z_V_s),&
                                 &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                             CHCKERR(err_msg)
-                            call bcast_size_4_R(L_V_c,0)
+                            call bcast_size_3_R(L_V_c,0)
                             CHCKERR(err_msg)
                             call MPI_Bcast(L_V_c,size(L_V_c),&
                                 &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                             CHCKERR(err_msg)
-                            call bcast_size_4_R(L_V_s,0)
+                            call bcast_size_3_R(L_V_s,0)
                             CHCKERR(err_msg)
                             call MPI_Bcast(L_V_s,size(L_V_s),&
                                 &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                             CHCKERR(err_msg)
+                            call bcast_size_2_I(mn_V)
+                            CHCKERR(err_msg)
+                            call MPI_Bcast(mn_V,size(mn_V),MPI_INTEGER,0,&
+                                &MPI_Comm_world,ierr)
+                            CHCKERR(err_msg)
 #if ldebug
                             if (ltest) then                                     ! ltest has already been broadcast
-                                call bcast_size_4_R(B_V_sub_c,1)
+                                call bcast_size_3_R(B_V_sub_c,1)
                                 CHCKERR(err_msg)
                                 call MPI_Bcast(B_V_sub_c,size(B_V_sub_c),&
                                     &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                                 CHCKERR(err_msg)
-                                call bcast_size_4_R(B_V_sub_s,1)
+                                call bcast_size_3_R(B_V_sub_s,1)
                                 CHCKERR(err_msg)
                                 call MPI_Bcast(B_V_sub_s,size(B_V_sub_s),&
                                     &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                                 CHCKERR(err_msg)
-                                call bcast_size_3_R(B_V_c)
+                                call bcast_size_2_R(B_V_c)
                                 CHCKERR(err_msg)
                                 call MPI_Bcast(B_V_c,size(B_V_c),&
                                     &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                                 CHCKERR(err_msg)
-                                call bcast_size_3_R(B_V_s)
+                                call bcast_size_2_R(B_V_s)
                                 CHCKERR(err_msg)
                                 call MPI_Bcast(B_V_s,size(B_V_s),&
                                     &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                                 CHCKERR(err_msg)
-                                call bcast_size_3_R(jac_V_c)
+                                call bcast_size_2_R(jac_V_c)
                                 CHCKERR(err_msg)
                                 call MPI_Bcast(jac_V_c,size(jac_V_c),&
                                     &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                                 CHCKERR(err_msg)
-                                call bcast_size_3_R(jac_V_s)
+                                call bcast_size_2_R(jac_V_s)
                                 CHCKERR(err_msg)
                                 call MPI_Bcast(jac_V_s,size(jac_V_s),&
                                     &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
@@ -919,27 +930,24 @@ contains
             call MPI_Bcast(arr_size,2,MPI_INTEGER,0,MPI_Comm_world,ierr)
             if (rank.ne.0) allocate(arr(1:arr_size(1),1:arr_size(2)))
         end subroutine bcast_size_2_R
-        ! The array index is (0:mpol-1,-ntor:ntor,1:,start_id)
-        subroutine bcast_size_4_R(arr,start_id)                                 ! version with 4 real arguments
+        ! The array index is (1:,1:)
+        subroutine bcast_size_2_I(arr)                                          ! version with 2 integer arguments
             ! input / output
-            real(dp), intent(inout), allocatable :: arr(:,:,:,:)
-            integer, intent(in) :: start_id
+            integer, intent(inout), allocatable :: arr(:,:)
             
             ! local variables
-            integer :: arr_size(4)                                              ! sent ahead so arrays can be allocated
+            integer :: arr_size(2)                                              ! sent ahead so arrays can be allocated
             
-            if (rank.eq.0) arr_size = [size(arr,1),size(arr,2),&
-                &size(arr,3),size(arr,4)]
+            if (rank.eq.0) arr_size = [size(arr,1),size(arr,2)]
             
-            call MPI_Bcast(arr_size,4,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            if (rank.ne.0) allocate(arr(0:arr_size(1)-1,&
-                &-(arr_size(2)-1)/2:(arr_size(2)-1)/2,1:arr_size(3),&
-                &start_id:arr_size(4)+start_id-1))
-        end subroutine bcast_size_4_R
-        ! The array index is (0:mpol-1,-ntor:ntor,1:)
-        subroutine bcast_size_3_R(arr)                                          ! version with 3 real arguments
+            call MPI_Bcast(arr_size,2,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            if (rank.ne.0) allocate(arr(1:arr_size(1),1:arr_size(2)))
+        end subroutine bcast_size_2_I
+        ! The array index is (1:,start_id:)
+        subroutine bcast_size_3_R(arr,start_id)                                 ! version with 3 real arguments
             ! input / output
             real(dp), intent(inout), allocatable :: arr(:,:,:)
+            integer, intent(in) :: start_id
             
             ! local variables
             integer :: arr_size(3)                                              ! sent ahead so arrays can be allocated
@@ -947,8 +955,8 @@ contains
             if (rank.eq.0) arr_size = [size(arr,1),size(arr,2),size(arr,3)]
             
             call MPI_Bcast(arr_size,3,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            if (rank.ne.0) allocate(arr(0:arr_size(1)-1,&
-                &-(arr_size(2)-1)/2:(arr_size(2)-1)/2,1:arr_size(3)))
+            if (rank.ne.0) allocate(arr(arr_size(1),1:arr_size(2),&
+                &start_id:arr_size(3)+start_id-1))
         end subroutine bcast_size_3_R
     end function broadcast_input_vars
     

@@ -161,7 +161,7 @@ contains
         real(dp), allocatable :: lim_nm_X(:,:)                                  ! bundled mode number limits
         real(dp), allocatable :: lim_nm_X_interp(:,:)                           ! interpolated lim_nm_X
         real(dp), allocatable :: jq_tot(:)                                      ! saf. fac. or rot. transf. and derivs. in Flux coords.
-        real(dp), allocatable :: x_plot(:,:)                                ! x values of plot
+        real(dp), allocatable :: x_plot(:,:)                                    ! x values of plot
         integer :: norm_eq_id(2)                                                ! untrimmed normal indices for trimmed grids
         integer :: id, ld, kd                                                   ! counters
         integer :: n_mod_tot                                                    ! total number of modes, not equal to n_mod_X for X_style 2
@@ -264,7 +264,7 @@ contains
         lim_nm_X(4,:) = max_m_X*1._dp
         
         ! setup normal interpolation data
-        ierr = setup_interp_data(grid_eq_trim%loc_r_F,grid_X_trim%loc_r_F,&
+        ierr = setup_interp_data(grid_eq_trim%r_F,grid_X_trim%r_F,&
             &norm_interp_data,norm_disc_prec_X)
         CHCKERR('')
         
@@ -435,11 +435,9 @@ contains
             
             ! set min_jq and max_jq in Flux coordinate system
             if (use_pol_flux_F) then 
-            write(*,*) 'use_pol_flux_F'
                 min_jq = minval(eq%q_saf_FD(:,0))
                 max_jq = maxval(eq%q_saf_FD(:,0))
             else
-            write(*,*) 'not'
                 min_jq = minval(eq%rot_t_FD(:,0))
                 max_jq = maxval(eq%rot_t_FD(:,0))
             end if
@@ -1129,7 +1127,6 @@ contains
         real(dp), allocatable :: nm(:,:)                                        ! either n*A_0 (pol. flux) or m (tor.flux)
         complex(dp), allocatable :: U_corr(:,:,:,:)                             ! correction to U_0 and U_1 for a certain (n,m)
         complex(dp), allocatable :: D3U_corr(:,:,:,:)                           ! D_theta U_corr
-        complex(dp), allocatable :: D3var(:,:)                                  ! derivative of variable
         ! U factors
         real(dp), allocatable :: T1(:,:,:,:)                                    ! B_alpha/B_theta and par. deriv.
         real(dp), allocatable :: T2(:,:,:,:)                                    ! Theta^alpha + q' theta and par. deriv.
@@ -1167,7 +1164,6 @@ contains
         ! U factors
         select case (eq_style)
             case (1)                                                            ! VMEC
-                write(*,*) '!!!!!!!!! CALC_U  NOT TESTED FOR VMEC !!!!!!!!!!!!!'
                 T_size = 2
             case (2)                                                            ! HELENA
                 T_size = 1
@@ -1207,7 +1203,7 @@ contains
         g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,0)
         D3g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,1)
         h12 => met%h_FD(:,:,:,c([1,2],.true.),0,0,0)
-        D3h12 => met%h_FD(:,:,:,c([1,2],.true.),0,0,0)
+        D3h12 => met%h_FD(:,:,:,c([1,2],.true.),0,0,1)
         h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
         D1h22 => met%h_FD(:,:,:,c([2,2],.true.),1,0,0)
         D3h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,1)
@@ -1297,7 +1293,7 @@ contains
                 T3(:,:,kd,2) = T1(:,:,kd,2)*djq(kd) + &
                     &J(:,:,kd)*vac_perm*eq%pres_FD(kd,1)/g33(:,:,kd) * &
                     &(2*D3J(:,:,kd)-D3g33(:,:,kd)*J(:,:,kd)/g33(:,:,kd))
-                T4(:,:,kd,1) = (T1(:,:,kd,2)*ang_par_F(:,:,kd)+T1(:,:,kd,1))*&
+                T4(:,:,kd,2) = (T1(:,:,kd,2)*ang_par_F(:,:,kd)+T1(:,:,kd,1))*&
                     &djq(kd) - D3g23(:,:,kd)/g33(:,:,kd) + &
                     &g23(:,:,kd)*D3g33(:,:,kd)/g33(:,:,kd)**2
             end do
@@ -1377,7 +1373,7 @@ contains
             end if
         end do
         
-        ! calculate DU_0 and DU_1
+        ! calculate DU_0 and DU_1, starting with first part
         select case (eq_style)
             case (1)                                                            ! VMEC
                 do ld = 1,X%n_mod
@@ -1402,7 +1398,7 @@ contains
                     ! include order 3
                     if (U_style.ge.3) then
                         do kd = 1,grid_X%loc_n_r
-                            U_corr(:,:,kd,2) = iu*n_frac(kd,ld)*&
+                            U_corr(:,:,kd,1) = iu*n_frac(kd,ld)*&
                                 &(-T5_X(:,:,kd,2)-iu*n_frac(kd,ld)*&
                                 &T6_X(:,:,kd,2))
                             X%DU_0(:,:,kd,ld) = X%DU_0(:,:,kd,ld) + &
@@ -1432,7 +1428,6 @@ contains
                     ang_par_F => grid_X%zeta_F
                 end if
                 ! set up helper variable for derivative
-                allocate(D3var(grid_X%n(1),X%n_mod))
                 ! numerically derive U_0 and U_1
                 do kd = 1,grid_X%loc_n_r
                     do jd = 1,grid_X%n(2)
@@ -1443,21 +1438,13 @@ contains
                         
                         ! calculate DX%U_0
                         ierr = apply_disc(X%U_0(:,jd,kd,:),par_deriv_data,&
-                            &D3var,1)
+                            &X%DU_0(:,jd,kd,:),1)
                         CHCKERR('')
-                        do ld = 1,X%n_mod
-                            X%DU_0(:,jd,kd,ld) = D3var(:,ld) + &
-                                &iu*n_frac(kd,ld)*X%U_0(:,jd,kd,ld)
-                        end do
                         
                         ! calculate DX%U_1
                         ierr = apply_disc(X%U_1(:,jd,kd,:),par_deriv_data,&
-                            &D3var,1)
+                            &X%DU_1(:,jd,kd,:),1)
                         CHCKERR('')
-                        do ld = 1,X%n_mod
-                            X%DU_1(:,jd,kd,ld) = D3var(:,ld) + &
-                                &iu*n_frac(kd,ld)*X%U_1(:,jd,kd,ld)
-                        end do
                     end do
                 end do
                 call dealloc_disc(par_deriv_data)
@@ -1467,6 +1454,16 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
+        
+        ! add second part of derivatives ~ n_frac
+        do kd = 1,grid_X%loc_n_r
+            do ld = 1,X%n_mod
+                X%DU_0(:,:,kd,ld) = X%DU_0(:,:,kd,ld) + &
+                    &iu*n_frac(kd,ld)*X%U_0(:,:,kd,ld)
+                X%DU_1(:,:,kd,ld) = X%DU_1(:,:,kd,ld) + &
+                    &iu*n_frac(kd,ld)*X%U_1(:,:,kd,ld)
+            end do
+        end do
         
         ! clean up
         nullify(ang_par_F,ang_geo_F)

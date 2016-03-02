@@ -24,8 +24,9 @@ contains
             &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
             &tol_norm, tol_SLEPC, max_it_slepc, n_procs, pi, plot_size, &
-            &U_style, norm_style, test_max_mem, X_style, input_name
-        use eq_vars, only: rho_0
+            &U_style, norm_style, test_max_mem, X_style, matrix_SLEPC_style,  &
+            &input_name
+        use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0
         use messages, only: writo, lvl_ud
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -46,9 +47,10 @@ contains
             &min_sec_X, max_sec_X, n_mod_X, use_normalization, n_theta_plot, &
             &n_zeta_plot, norm_disc_prec_eq, tol_norm, max_mem_per_proc, &
             &min_n_r_sol, max_it_rich, tol_rich, EV_style, plot_resonance, &
-            &n_sol_requested, EV_BC, tol_SLEPC, retain_all_sol, &
-            &norm_disc_prec_X, BC_style, max_it_inv, max_it_slepc, &
-            &norm_disc_prec_sol, plot_size, U_style, norm_style, test_max_mem
+            &n_sol_requested, EV_BC, tol_SLEPC, retain_all_sol, pres_0, R_0, &
+            &psi_0, B_0, norm_disc_prec_X, BC_style, max_it_inv, max_it_slepc, &
+            &norm_disc_prec_sol, plot_size, U_style, norm_style, test_max_mem, &
+            &matrix_SLEPC_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_grid, norm_disc_prec_sol, &
             &plot_size, test_max_mem, PB3D_lvl_rich, max_it_NR, tol_NR
@@ -57,17 +59,12 @@ contains
         ierr = 0
         
         if (rank.eq.0) then                                                     ! only master
-            if (input_name.ne.'') then                                          ! if open_input opened a file
-                call writo('Setting up user-provided input "' &       
-                    &// trim(input_name) // '"')
-            else 
-                call writo('Setting default values for input')
-            end if
+            call writo('Setting up user-provided input "'//trim(input_name)//&
+                &'"')
             call lvl_ud(1)
             
             ! initialize input variables (optionally overwritten by user later)
-            if (input_name.ne.'') call writo('Initialize all the inputs with &
-                &default values')
+            call writo('Initialize all the inputs with default values')
             
             ! common variables for all program styles
             max_mem_per_proc = 6000_dp/n_procs                                  ! count with 6GB
@@ -89,98 +86,96 @@ contains
             end select
             
             ! read user input
-            if (input_name.ne.'') then                                          ! otherwise, defaults are loaded
-                ! select depending on program style
-                select case (prog_style)
-                    case(1)                                                     ! PB3D
-                        read(input_i,nml=inputdata_PB3D,iostat=ierr)            ! read input data
+            ! select depending on program style
+            select case (prog_style)
+                case(1)                                                         ! PB3D
+                    read(input_i,nml=inputdata_PB3D,iostat=ierr)                ! read input data
+                    
+                    ! check input if successful read
+                    if (ierr.eq.0) then                                         ! input file succesfully read
+                        call writo('Overwriting with user-provided file "'&
+                            &//trim(input_name) // '"')
                         
-                        ! check input if successful read
-                        if (ierr.eq.0) then                                     ! input file succesfully read
-                            call writo('Overwriting with user-provided file "'&
-                                &//trim(input_name) // '"')
-                            
-                            call writo('Checking user-provided file')
-                            
-                            call lvl_ud(1)
-                            
-                            ! adapt run-time variables if needed
-                            call adapt_run
-                            
-                            ! adapt plotting variables if needed
-                            call adapt_plot
-                            
-                            ! adapt perturbation modes
-                            ierr = adapt_X_modes()
-                            CHCKERR('')
-                            
-                            ! adapt n_par_X if needed
-                            call adapt_n_par_X
-                            
-                            ! adapt tolerances if needed
-                            call adapt_tol_rich
-                            
-                            ! adapt solution grid
-                            ierr = adapt_sol_grid()
-                            CHCKERR('')
-                            
-                            ! adapt Newton-Rhapson variables if needed
-                            call adapt_NR
-                            
-                            ! adapt normalization variables if needed
-                            ierr = adapt_normalization()
-                            CHCKERR('')
-                            
-                            ! adapt output variables if needed
-                            call adapt_output
-                            
-                            ! adapt Richardson variables if needed
-                            call adapt_r
-                            
-                            ! adapt variables for inverse if needed
-                            call adapt_inv
-                            
-                            ! adapt Newton-Rhapson variables if needed
-                            call adapt_NR
-                            
-                            call lvl_ud(-1)
-                        else                                                    ! cannot read input data
-                            ierr = 1
-                            err_msg = 'Cannot open user-provided file "'&
-                                &//trim(input_name)//'"'
-                            CHCKERR('')
-                        end if
+                        call writo('Checking user-provided file')
                         
-                        ! multiply alpha by pi
-                        alpha = alpha*pi
-                    case(2)                                                     ! POST
-                        read(input_i,nml=inputdata_POST,iostat=ierr)            ! read input data
+                        call lvl_ud(1)
                         
-                        ! check input if successful read
-                        if (ierr.eq.0) then                                    ! input file succesfully read
-                            call writo('Overwriting with user-provided file "'&
-                                &//trim(input_name) // '"')
-                        else                                                    ! cannot read input data
-                            ierr = 1
-                            err_msg = 'Cannot open user-provided file "'&
-                                &//trim(input_name)//'"'
-                            CHCKERR('')
-                        end if
+                        ! adapt run-time variables if needed
+                        call adapt_run
                         
-                        ! set up max_it_rich and rich_lvl
-                        max_it_rich = PB3D_lvl_rich
-                        rich_lvl = PB3D_lvl_rich
-                    case default
-                        err_msg = 'No program style associated with '//&
-                            &trim(i2str(prog_style))
+                        ! adapt plotting variables if needed
+                        call adapt_plot
+                        
+                        ! adapt perturbation modes
+                        ierr = adapt_X_modes()
+                        CHCKERR('')
+                        
+                        ! adapt n_par_X if needed
+                        call adapt_n_par_X
+                        
+                        ! adapt tolerances if needed
+                        call adapt_tol_rich
+                        
+                        ! adapt solution grid
+                        ierr = adapt_sol_grid()
+                        CHCKERR('')
+                        
+                        ! adapt Newton-Rhapson variables if needed
+                        call adapt_NR
+                        
+                        ! adapt normalization variables if needed
+                        ierr = adapt_normalization()
+                        CHCKERR('')
+                        
+                        ! adapt output variables if needed
+                        call adapt_output
+                        
+                        ! adapt Richardson variables if needed
+                        call adapt_r
+                        
+                        ! adapt variables for inverse if needed
+                        call adapt_inv
+                        
+                        ! adapt Newton-Rhapson variables if needed
+                        call adapt_NR
+                        
+                        call lvl_ud(-1)
+                    else                                                        ! cannot read input data
                         ierr = 1
+                        err_msg = 'Cannot read user-provided file "'&
+                            &//trim(input_name)//'"'
                         CHCKERR(err_msg)
-                end select
-                
-                ! user output
-                call writo('Close input file')
-                close(input_i)
-            end if
+                    end if
+                    
+                    ! multiply alpha by pi
+                    alpha = alpha*pi
+                case(2)                                                         ! POST
+                    read(input_i,nml=inputdata_POST,iostat=ierr)                ! read input data
+                    
+                    ! check input if successful read
+                    if (ierr.eq.0) then                                         ! input file succesfully read
+                        call writo('Overwriting with user-provided file "'&
+                            &//trim(input_name) // '"')
+                    else                                                        ! cannot read input data
+                        ierr = 1
+                        err_msg = 'Cannot read user-provided file "'&
+                            &//trim(input_name)//'"'
+                        CHCKERR(err_msg)
+                    end if
+                    
+                    ! set up max_it_rich and rich_lvl
+                    max_it_rich = PB3D_lvl_rich
+                    rich_lvl = PB3D_lvl_rich
+                case default
+                    err_msg = 'No program style associated with '//&
+                        &trim(i2str(prog_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+            
+            ! user output
+            call writo('Close input file')
+            close(input_i)
             
             call lvl_ud(-1)
             call writo('Input values set')
@@ -206,6 +201,7 @@ contains
             norm_style = 1                                                      ! perpendicular kinetic energy normalized
             BC_style = [1,2]                                                    ! left BC zeroed and right BC through minimization of energy
             X_style = 2                                                         ! fast style: mode numbers optimized in normal coordinate
+            matrix_SLEPC_style = 1                                              ! sparse matrix storage
             plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
             plot_grid = .false.                                                 ! do not plot the grid
             plot_flux_q = .false.                                               ! do not plot the flux quantities
@@ -254,6 +250,10 @@ contains
             
             ! variables concerning normalization
             rho_0 = 10E-6_dp                                                    ! for fusion, particle density of around 1E21, mp around 1E-27
+            R_0 = huge(1._dp)                                                   ! nonsensible value to check for user overwriting
+            pres_0 = huge(1._dp)                                                ! nonsensible value to check for user overwriting
+            psi_0 = huge(1._dp)                                                 ! nonsensible value to check for user overwriting
+            B_0 = huge(1._dp)                                                   ! nonsensible value to check for user overwriting
             
             ! concerning Richardson extrapolation
             max_it_rich = 1                                                     ! by default no Richardson extrapolation
@@ -307,17 +307,24 @@ contains
         end function default_input_POST
         
         ! checks whether the variables concerning run-time are chosen correctly.
-        ! rho_style has to be 1 (constant rho = rho_0)
+        ! rho_style has  to be 1  (constant rho = rho_0)  and matrix_SLEPC_style
+        ! has to be 0..1.
         subroutine adapt_run
             use num_vars, only: eq_style
             
             if (rho_style.ne.1) then
-                rho_style = 1
-                call writo('WARNING: rho_style set to default (1: constant)')
+                ierr = 1
+                err_msg = 'rho_style has to be 1 (constant)'
+                CHCKERR(err_msg)
             end if
             if (eq_style.eq.2 .and. .not.use_normalization) then
                 use_normalization = .true.
                 call writo('WARNING: normalization is always used for HELENA')
+            end if
+            if (matrix_SLEPC_style.lt.1 .or. matrix_SLEPC_style.gt.2) then
+                ierr = 1
+                err_msg = 'matrix_SLEPC_style has to be 1 (sparse) or 2 (shell)'
+                CHCKERR(err_msg)
             end if
         end subroutine adapt_run
         

@@ -14,7 +14,7 @@ module eq_ops
     implicit none
     private
     public read_eq, calc_eq, calc_derived_q, calc_normalization_const, &
-        &normalize_input, print_output_eq, flux_q_plot
+        &normalize_input, print_output_eq, flux_q_plot, prepare_RZL, calc_RZL
 #if ldebug
     public debug_calc_derived_q
 #endif
@@ -73,7 +73,6 @@ contains
     ! determined by sharing the workload evenly over the processes.
     integer function calc_eq(grid_eq,eq) result(ierr)
         use eq_vars, only: create_eq
-        use num_vars, only: eq_style, max_deriv
         use grid_ops, only: calc_norm_range, setup_grid_eq, calc_ang_grid_eq
         use utilities, only: derivs
         
@@ -84,7 +83,6 @@ contains
         type(eq_type), intent(inout) :: eq                                      ! equilibrium variables
         
         ! local variables
-        integer :: id
         integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid of this process
         
         ! initialize ierr
@@ -132,24 +130,6 @@ contains
         
         call lvl_ud(-1)
         call writo('Done setting up equilibrium quantities')
-        
-        ! Calcalations depending on equilibrium style being used:
-        !   1:  VMEC
-        !   2:  HELENA
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ! calculate  the  cylindrical  variables  R, Z  and  lambda  and
-                ! derivatives
-                call writo('Calculate R,Z,L...')
-                ierr = prepare_RZL(grid_eq)
-                CHCKERR('')
-                do id = 0,max_deriv+1
-                    ierr = calc_RZL(grid_eq,eq,derivs(id))
-                    CHCKERR('')
-                end do
-            case (2)                                                            ! HELENA
-                ! do nothing
-        end select
     end function calc_eq
     
     ! Calculates derived  equilibrium quantities  in the  Equilibrium coordinate
@@ -263,7 +243,6 @@ contains
             &g13/g33*(0.5*D3g33/g33 - D3J/J)
         
         ! Calculate the parallel current sigma
-        write(*,*) 'WHY IS THERE A SPIKE OF SIGMA AT LAST NORMAL POINT ?!?!'
         eq%sigma = 1._dp/vac_perm*&
             &(D1g23/J - g23*D1J/J**2 - D2g13/J + g13*D2J/J**2)
         do kd = 1,grid_eq%loc_n_r
@@ -635,23 +614,85 @@ contains
                 grid_eq%r_F = flux_t_E_full(:,0)/(2*pi)                         ! psi_F = flux_t/2pi
             end if
             
-            !!! plot output for export to VMEC
-            !!write(*,*) 'for export to VMEC'
-            !!write(*,*) 'total enclosed toroidal flux: ', &
-                !!&flux_t_E_full(grid_eq%n(3),0)
-            !!write(*,*) 'pressure and rotational transform'
-            !!do kd = 1,grid_eq%n(3)
-                !!write(*,'(ES23.16,A,ES23.16,A,ES23.16)') &
-                    !!&flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0), ' ', &
-                    !!&pres_E_full(kd,0), ' ', rot_t_E_full(kd,0)
-            !!end do
-            !!write(*,*) 'pressure and rotational transform once every 4 values'
-            !!do kd = 0,(grid_eq%n(3)-1)/4
-                !!write(*,'(ES23.16,A,ES23.16,A,ES23.16)') &
-                    !!&flux_t_E_full(1+kd*4,0)/flux_t_E_full(grid_eq%n(3),0), &
-                    !!&' ', pres_E_full(1+kd*4,0), ' ', rot_t_E_full(1+kd*4,0)
-            !!end do
+            ! export for VMEC port
+            call plot_flux_q_in_file_for_VMEC()
         end function calc_flux_q_HEL
+        
+        ! plots flux quantities in file for VMEC port
+        !!!!! THERE IS STILL CONFUSION ABOUT THE ELITE NORMALIZATION !!!!
+        !!!!! HOWEVER, IT  IS CLEAR  THAT PRES_VMEC NEEDS  TO BE  MULTIPLIED BY 
+        !!!!! PRES_0 = B_0^2/mu_0 = 1/mu_0                                      
+        !!!!! THIS SHOULD BE SOLVED !!!!!!!
+        subroutine plot_flux_q_in_file_for_VMEC()
+            use num_vars, only: mu_0_original
+            use files_utilities, only: nextunit
+            
+            ! local variables
+            integer :: kd                                                       ! counter
+            integer :: file_i                                                   ! file to output flux quantities for VMEC export
+            character(len=max_str_ln) :: file_name                              ! name of file
+            
+            file_name = 'flux_quantities.dat'
+            
+            call writo('Plotting output to file '//trim(file_name))
+            call writo('This can be used for VMEC porting')
+            
+            open(unit=nextunit(file_i),file=trim(file_name))
+            write(file_i,*) '# for export to VMEC'
+            write(file_i,*) '# ------------------'
+            write(file_i,*) '# total enclosed toroidal flux: ', &
+                &flux_t_E_full(grid_eq%n(3),0)
+            write(file_i,*) '#'
+            write(file_i,*) '# pressure and rotational transform for 2D plot'
+            do kd = 1,grid_eq%n(3)
+                write(file_i,'(ES23.16,A,ES23.16,A,ES23.16)') &
+                    &flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0), ' ', &
+                    &pres_E_full(kd,0), ' ', rot_t_E_full(kd,0)
+            end do
+            write(file_i,*) ''
+            write(file_i,*) ''
+            
+            write(file_i,*) '# toroidal flux'
+            do kd = 1,grid_eq%n(3)
+                write(file_i,'(ES23.16)') &
+                    &flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0)
+            end do
+            write(file_i,*) ''
+            write(file_i,*) ''
+            write(file_i,*) '# pressure'
+            do kd = 1,grid_eq%n(3)
+                write(file_i,'(ES23.16)') pres_E_full(kd,0)/mu_0_original
+            end do
+            write(file_i,*) ''
+            write(file_i,*) ''
+            write(file_i,*) '# rotational transform'
+            do kd = 1,grid_eq%n(3)
+                write(file_i,'(ES23.16)') rot_t_E_full(kd,0)
+            end do
+            write(file_i,*) ''
+            write(file_i,*) ''
+            
+            write(file_i,*) '# toroidal flux once every 4 values'
+            do kd = 0,(grid_eq%n(3)-1)/4
+                write(file_i,'(ES23.16)') &
+                    &flux_t_E_full(1+kd*4,0)/flux_t_E_full(grid_eq%n(3),0)
+            end do
+            write(file_i,*) ''
+            write(file_i,*) ''
+            write(file_i,*) '# pressure once every 4 values'
+            do kd = 0,(grid_eq%n(3)-1)/4
+                write(file_i,'(ES23.16)') pres_E_full(1+kd*4,0)/mu_0_original
+            end do
+            write(file_i,*) ''
+            write(file_i,*) ''
+            write(file_i,*) '# rotational transform once every 4 values'
+            do kd = 0,(grid_eq%n(3)-1)/4
+                write(file_i,'(ES23.16)') rot_t_E_full(1+kd*4,0)
+            end do
+            
+            ! close file
+            close(file_i)
+        end subroutine plot_flux_q_in_file_for_VMEC
     end function calc_flux_q
     
     ! prepare the cosine  and sine factors that are used  in the inverse Fourier
@@ -682,23 +723,18 @@ contains
             ierr = setup_deriv_data(1._dp/(grid%n(3)-1),grid%n(3),&
                 &norm_deriv_data,kd,norm_disc_prec_eq)
             CHCKERR('')
-            ierr = apply_disc(R_V_c(:,:,:,0),norm_deriv_data,R_V_c(:,:,:,kd),3)
+            ierr = apply_disc(R_V_c(:,:,0),norm_deriv_data,R_V_c(:,:,kd),2)
             CHCKERR('')
-            ierr = apply_disc(Z_V_s(:,:,:,0),norm_deriv_data,Z_V_s(:,:,:,kd),3)
+            ierr = apply_disc(R_V_s(:,:,0),norm_deriv_data,R_V_s(:,:,kd),2)
             CHCKERR('')
-            ierr = apply_disc(L_V_s(:,:,:,0),norm_deriv_data,L_V_s(:,:,:,kd),3)
+            ierr = apply_disc(Z_V_c(:,:,0),norm_deriv_data,Z_V_c(:,:,kd),2)
             CHCKERR('')
-            !if (lasym) then                                                    ! following only needed in assymetric situations
-                ierr = apply_disc(R_V_s(:,:,:,0),norm_deriv_data,&
-                    &R_V_s(:,:,:,kd),3)
-                CHCKERR('')
-                ierr = apply_disc(Z_V_c(:,:,:,0),norm_deriv_data,&
-                    &Z_V_c(:,:,:,kd),3)
-                CHCKERR('')
-                ierr = apply_disc(L_V_c(:,:,:,0),norm_deriv_data,&
-                    &L_V_c(:,:,:,kd),3)
-                CHCKERR('')
-            !end if
+            ierr = apply_disc(Z_V_s(:,:,0),norm_deriv_data,Z_V_s(:,:,kd),2)
+            CHCKERR('')
+            ierr = apply_disc(L_V_c(:,:,0),norm_deriv_data,L_V_c(:,:,kd),2)
+            CHCKERR('')
+            ierr = apply_disc(L_V_s(:,:,0),norm_deriv_data,L_V_s(:,:,kd),2)
+            CHCKERR('')
         end do
         call dealloc_disc(norm_deriv_data)
         
@@ -735,16 +771,16 @@ contains
         CHCKERR('')
         
         ! calculate the variables R,Z and their angular derivative
-        ierr = fourier2real(R_V_c(:,:,grid%i_min:grid%i_max,deriv(1)),&
-            &R_V_s(:,:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
+        ierr = fourier2real(R_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
+            &R_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
             &eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3)),[deriv(2),deriv(3)])
         CHCKERR('')
-        ierr = fourier2real(Z_V_c(:,:,grid%i_min:grid%i_max,deriv(1)),&
-            &Z_V_s(:,:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
+        ierr = fourier2real(Z_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
+            &Z_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
             &eq%Z_E(:,:,:,deriv(1),deriv(2),deriv(3)),[deriv(2),deriv(3)])
         CHCKERR('')
-        ierr = fourier2real(L_V_c(:,:,grid%i_min:grid%i_max,deriv(1)),&
-            &L_V_s(:,:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
+        ierr = fourier2real(L_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
+            &L_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
             &eq%L_E(:,:,:,deriv(1),deriv(2),deriv(3)),[deriv(2),deriv(3)])
         CHCKERR('')
     end function calc_RZL_ind
@@ -827,6 +863,86 @@ contains
         
         call lvl_ud(-1)
     contains
+        ! plots the flux quantities in HDF5
+        integer function flux_q_plot_HDF5() result(ierr)
+            use output_ops, only: plot_HDF5
+            use grid_utilities, only: calc_XYZ_grid, extend_grid_E, trim_grid
+            use grid_vars, only: dealloc_grid
+            
+            character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
+            
+            ! local variables
+            integer :: kd                                                       ! counter
+            real(dp), allocatable :: X_plot(:,:,:,:)                            ! x values of total plot
+            real(dp), allocatable :: Y_plot(:,:,:,:)                            ! y values of total plot
+            real(dp), allocatable :: Z_plot(:,:,:,:)                            ! z values of total plot
+            real(dp), allocatable :: f_plot(:,:,:,:)                            ! values of variable of total plot
+            integer :: plot_dim(4)                                              ! total plot dimensions
+            integer :: plot_offset(4)                                           ! plot offset
+            type(grid_type) :: grid_plot                                        ! grid for plotting
+            character(len=max_str_ln) :: file_name                              ! file name
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set up file name
+            file_name = 'flux_quantities'
+            
+            ! fill the 2D version of the plot
+            allocate(Y_plot_2D(grid_trim%loc_n_r,n_vars))
+            
+            Y_plot_2D(:,1) = eq%q_saf_FD(norm_id(1):norm_id(2),0)
+            Y_plot_2D(:,2) = eq%rot_t_FD(norm_id(1):norm_id(2),0)
+            Y_plot_2D(:,3) = eq%pres_FD(norm_id(1):norm_id(2),0)
+            Y_plot_2D(:,4) = eq%flux_p_FD(norm_id(1):norm_id(2),0)
+            Y_plot_2D(:,5) = eq%flux_t_FD(norm_id(1):norm_id(2),0)
+            
+            ! extend trimmed equilibrium grid
+            ierr = extend_grid_E(grid_trim,grid_plot)
+            CHCKERR('')
+            
+            ! set up plot_dim and plot_offset
+            plot_dim = [grid_plot%n(1),grid_plot%n(2),grid_plot%n(3),n_vars]
+            plot_offset = [0,0,grid_plot%i_min-1,n_vars]
+            
+            ! set up total plot variables
+            allocate(X_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
+                &n_vars))
+            allocate(Y_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
+                &n_vars))
+            allocate(Z_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
+                &n_vars))
+            allocate(f_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
+                &n_vars))
+            
+            ! calculate 3D X,Y and Z
+            ierr = calc_XYZ_grid(grid_plot,X_plot(:,:,:,1),Y_plot(:,:,:,1),&
+                &Z_plot(:,:,:,1))
+            CHCKERR('')
+            do id = 2,n_vars
+                X_plot(:,:,:,id) = X_plot(:,:,:,1)
+                Y_plot(:,:,:,id) = Y_plot(:,:,:,1)
+                Z_plot(:,:,:,id) = Z_plot(:,:,:,1)
+            end do
+            
+            do kd = 1,grid_plot%loc_n_r
+                f_plot(:,:,kd,1) = Y_plot_2D(kd,1)                              ! safey factor
+                f_plot(:,:,kd,2) = Y_plot_2D(kd,2)                              ! rotational transform
+                f_plot(:,:,kd,3) = Y_plot_2D(kd,3)                              ! pressure
+                f_plot(:,:,kd,4) = Y_plot_2D(kd,4)                              ! poloidal flux
+                f_plot(:,:,kd,5) = Y_plot_2D(kd,5)                              ! toroidal flux
+            end do
+            
+            ! print the output using HDF5
+            call plot_HDF5(plot_titles,file_name,f_plot,plot_dim,plot_offset,&
+                &X_plot,Y_plot,Z_plot,col=1,description='Flux quantities')
+            
+            ! deallocate and destroy grid
+            deallocate(Y_plot_2D)
+            deallocate(X_plot,Y_plot,Z_plot,f_plot)
+            call dealloc_grid(grid_plot)
+        end function flux_q_plot_HDF5
+        
         ! plots the pressure and fluxes in GNUplot
         integer function flux_q_plot_GP() result(ierr)
             use eq_vars, only: max_flux_p_F, max_flux_t_F, pres_0, psi_0
@@ -916,86 +1032,6 @@ contains
                 deallocate(X_plot_2D,Y_plot_2D)
             end if
         end function flux_q_plot_GP
-        
-        ! plots the flux quantities in HDF5
-        integer function flux_q_plot_HDF5() result(ierr)
-            use output_ops, only: plot_HDF5
-            use grid_utilities, only: calc_XYZ_grid, extend_grid_E, trim_grid
-            use grid_vars, only: dealloc_grid
-            
-            character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
-            
-            ! local variables
-            integer :: kd                                                       ! counter
-            real(dp), allocatable :: X_plot(:,:,:,:)                            ! x values of total plot
-            real(dp), allocatable :: Y_plot(:,:,:,:)                            ! y values of total plot
-            real(dp), allocatable :: Z_plot(:,:,:,:)                            ! z values of total plot
-            real(dp), allocatable :: f_plot(:,:,:,:)                            ! values of variable of total plot
-            integer :: plot_dim(4)                                              ! total plot dimensions
-            integer :: plot_offset(4)                                           ! plot offset
-            type(grid_type) :: grid_plot                                        ! grid for plotting
-            character(len=max_str_ln) :: file_name                              ! file name
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! set up file name
-            file_name = 'flux_quantities'
-            
-            ! fill the 2D version of the plot
-            allocate(Y_plot_2D(grid_trim%loc_n_r,n_vars))
-            
-            Y_plot_2D(:,1) = eq%q_saf_FD(norm_id(1):norm_id(2),0)
-            Y_plot_2D(:,2) = eq%rot_t_FD(norm_id(1):norm_id(2),0)
-            Y_plot_2D(:,3) = eq%pres_FD(norm_id(1):norm_id(2),0)
-            Y_plot_2D(:,4) = eq%flux_p_FD(norm_id(1):norm_id(2),0)
-            Y_plot_2D(:,5) = eq%flux_t_FD(norm_id(1):norm_id(2),0)
-            
-            ! extend trimmed equilibrium grid
-            ierr = extend_grid_E(grid_trim,grid_plot)
-            CHCKERR('')
-            
-            ! set up plot_dim and plot_offset
-            plot_dim = [grid_plot%n(1),grid_plot%n(2),grid_plot%n(3),n_vars]
-            plot_offset = [0,0,grid_plot%i_min-1,n_vars]
-            
-            ! set up total plot variables
-            allocate(X_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
-                &n_vars))
-            allocate(Y_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
-                &n_vars))
-            allocate(Z_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
-                &n_vars))
-            allocate(f_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
-                &n_vars))
-            
-            ! calculate 3D X,Y and Z
-            ierr = calc_XYZ_grid(grid_plot,X_plot(:,:,:,1),Y_plot(:,:,:,1),&
-                &Z_plot(:,:,:,1))
-            CHCKERR('')
-            do id = 2,n_vars
-                X_plot(:,:,:,id) = X_plot(:,:,:,1)
-                Y_plot(:,:,:,id) = Y_plot(:,:,:,1)
-                Z_plot(:,:,:,id) = Z_plot(:,:,:,1)
-            end do
-            
-            do kd = 1,grid_plot%loc_n_r
-                f_plot(:,:,kd,1) = Y_plot_2D(kd,1)                              ! safey factor
-                f_plot(:,:,kd,2) = Y_plot_2D(kd,2)                              ! rotational transform
-                f_plot(:,:,kd,3) = Y_plot_2D(kd,3)                              ! pressure
-                f_plot(:,:,kd,4) = Y_plot_2D(kd,4)                              ! poloidal flux
-                f_plot(:,:,kd,5) = Y_plot_2D(kd,5)                              ! toroidal flux
-            end do
-            
-            ! print the output using HDF5
-            call plot_HDF5(plot_titles,file_name,f_plot,plot_dim,plot_offset,&
-                &X_plot,Y_plot,Z_plot,col=1,description='Flux quantities')
-            
-            ! deallocate and destroy grid
-            deallocate(Y_plot_2D)
-            deallocate(X_plot,Y_plot,Z_plot,f_plot)
-            call dealloc_grid(grid_plot)
-        end function flux_q_plot_HDF5
     end function flux_q_plot
     
     ! sets up normalization constants:
@@ -1054,19 +1090,19 @@ contains
             
             ! set the major  radius as the average value of  R_E on the magnetic
             ! axis
-            R_0 = R_V_c(0,0,1,0)
+            if (R_0.ge.huge(1._dp)) R_0 = R_V_c(1,1,0)                          ! only if user did not provide a value
             
             ! rho_0 is set up through an input variable with the same name
             
             ! set pres_0 as pressure on axis
-            pres_0 = pres_V(1)
+            if (pres_0.ge.huge(1._dp)) pres_0 = pres_V(1)                       ! only if user did not provide a value
             
             ! set  the  reference value  for B_0  from B_0  = sqrt(mu_0_original
             ! pres_0)
-            B_0 = sqrt(pres_0 * mu_0_original)
+            if (B_0.ge.huge(1._dp)) B_0 = sqrt(pres_0 * mu_0_original)          ! only if user did not provide a value
             
             ! set reference flux
-            psi_0 = R_0**2 * B_0
+            if (psi_0.ge.huge(1._dp)) psi_0 = R_0**2 * B_0                      ! only if user did not provide a value
             
             ! set Alfven time
             T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0 
@@ -1156,7 +1192,7 @@ contains
         use HDF5_vars, only: var_1D_type
         use grid_utilities, only: trim_grid
         use HELENA_vars, only: chi_H, flux_p_H, R_H, Z_H, nchi
-        use VMEC, only:  R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, ntor
+        use VMEC, only:  R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V
         use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &
             &max_flux_t_F
         
@@ -1200,7 +1236,7 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                allocate(eq_1D(25))
+                allocate(eq_1D(26))
             case (2)                                                            ! HELENA
                 allocate(eq_1D(18))
             case default
@@ -1489,99 +1525,107 @@ contains
                 eq_1D_loc%p = reshape(eq%flux_t_E(norm_id(1):norm_id(2),:),&
                     &[size(eq%flux_t_E(norm_id(1):norm_id(2),:))])
                 
+                ! mn_V
+                eq_1D_loc => eq_1D(id); id = id+1
+                eq_1D_loc%var_name = 'mn_V'
+                allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
+                allocate(eq_1D_loc%loc_i_min(2),eq_1D_loc%loc_i_max(2))
+                eq_1D_loc%tot_i_min = [1,1]
+                eq_1D_loc%tot_i_max = [mnmax_V,2]
+                eq_1D_loc%loc_i_min = [1,1]
+                if (rank.eq.0) then
+                    eq_1D_loc%loc_i_max = [mnmax_V,2]
+                    allocate(eq_1D_loc%p(size(mn_V)))
+                    eq_1D_loc%p = reshape(mn_V,[size(mn_V)])
+                else
+                    eq_1D_loc%loc_i_max = [mnmax_V,0]
+                    allocate(eq_1D_loc%p(0))
+                end if
+                
                 ! R_V_c
                 eq_1D_loc => eq_1D(id); id = id+1
                 eq_1D_loc%var_name = 'R_V_c'
-                allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
-                allocate(eq_1D_loc%loc_i_min(4),eq_1D_loc%loc_i_max(4))
-                eq_1D_loc%tot_i_min = [0,-ntor,1,0]
-                eq_1D_loc%tot_i_max = [mpol-1,ntor,grid_trim%n(3),&
-                    &size(R_V_c,4)-1]
-                eq_1D_loc%loc_i_min = [0,-ntor,grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = &
-                    &[mpol-1,ntor,grid_trim%i_max,size(R_V_c,4)-1]
-                allocate(eq_1D_loc%p(size(R_V_c(:,:,norm_id_f(1):&
+                allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+                allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
+                eq_1D_loc%tot_i_min = [1,1,0]
+                eq_1D_loc%tot_i_max = [mnmax_V,grid_trim%n(3),size(R_V_c,3)-1]
+                eq_1D_loc%loc_i_min = [1,grid_trim%i_min,0]
+                eq_1D_loc%loc_i_max = [mnmax_V,grid_trim%i_max,size(R_V_c,3)-1]
+                allocate(eq_1D_loc%p(size(R_V_c(:,norm_id_f(1):&
                     &norm_id_f(2),:))))
-                eq_1D_loc%p = reshape(R_V_c(:,:,norm_id_f(1):norm_id_f(2),:),&
-                    &[size(R_V_c(:,:,norm_id_f(1):norm_id_f(2),:))])
+                eq_1D_loc%p = reshape(R_V_c(:,norm_id_f(1):norm_id_f(2),:),&
+                    &[size(R_V_c(:,norm_id_f(1):norm_id_f(2),:))])
                 
                 ! R_V_s
                 eq_1D_loc => eq_1D(id); id = id+1
                 eq_1D_loc%var_name = 'R_V_s'
-                allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
-                allocate(eq_1D_loc%loc_i_min(4),eq_1D_loc%loc_i_max(4))
-                eq_1D_loc%tot_i_min = [0,-ntor,1,0]
-                eq_1D_loc%tot_i_max = [mpol-1,ntor,grid_trim%n(3),&
-                    &size(R_V_s,4)-1]
-                eq_1D_loc%loc_i_min = [0,-ntor,grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = &
-                    &[mpol-1,ntor,grid_trim%i_max,size(R_V_s,4)-1]
-                allocate(eq_1D_loc%p(size(R_V_s(:,:,norm_id_f(1):norm_id_f(2),:))))
-                eq_1D_loc%p = reshape(R_V_s(:,:,norm_id_f(1):norm_id_f(2),:),&
-                    &[size(R_V_s(:,:,norm_id_f(1):norm_id_f(2),:))])
+                allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+                allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
+                eq_1D_loc%tot_i_min = [1,1,0]
+                eq_1D_loc%tot_i_max = [mnmax_V,grid_trim%n(3),size(R_V_s,3)-1]
+                eq_1D_loc%loc_i_min = [1,grid_trim%i_min,0]
+                eq_1D_loc%loc_i_max = [mnmax_V,grid_trim%i_max,size(R_V_s,3)-1]
+                allocate(eq_1D_loc%p(size(R_V_s(:,norm_id_f(1):&
+                    &norm_id_f(2),:))))
+                eq_1D_loc%p = reshape(R_V_s(:,norm_id_f(1):norm_id_f(2),:),&
+                    &[size(R_V_s(:,norm_id_f(1):norm_id_f(2),:))])
                 
                 ! Z_V_c
                 eq_1D_loc => eq_1D(id); id = id+1
                 eq_1D_loc%var_name = 'Z_V_c'
-                allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
-                allocate(eq_1D_loc%loc_i_min(4),eq_1D_loc%loc_i_max(4))
-                eq_1D_loc%tot_i_min = [0,-ntor,1,0]
-                eq_1D_loc%tot_i_max = [mpol-1,ntor,grid_trim%n(3),&
-                    &size(Z_V_c,4)-1]
-                eq_1D_loc%loc_i_min = [0,-ntor,grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = &
-                    &[mpol-1,ntor,grid_trim%i_max,size(Z_V_c,4)-1]
-                allocate(eq_1D_loc%p(size(Z_V_c(:,:,norm_id_f(1):norm_id_f(2),:))))
-                eq_1D_loc%p = reshape(Z_V_c(:,:,norm_id_f(1):norm_id_f(2),:),&
-                    &[size(Z_V_c(:,:,norm_id_f(1):norm_id_f(2),:))])
+                allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+                allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
+                eq_1D_loc%tot_i_min = [1,1,0]
+                eq_1D_loc%tot_i_max = [mnmax_V,grid_trim%n(3),size(Z_V_c,3)-1]
+                eq_1D_loc%loc_i_min = [1,grid_trim%i_min,0]
+                eq_1D_loc%loc_i_max = [mnmax_V,grid_trim%i_max,size(Z_V_c,3)-1]
+                allocate(eq_1D_loc%p(size(Z_V_c(:,norm_id_f(1):&
+                    &norm_id_f(2),:))))
+                eq_1D_loc%p = reshape(Z_V_c(:,norm_id_f(1):&
+                    &norm_id_f(2),:),&
+                    &[size(Z_V_c(:,norm_id_f(1):norm_id_f(2),:))])
                 
                 ! Z_V_s
                 eq_1D_loc => eq_1D(id); id = id+1
                 eq_1D_loc%var_name = 'Z_V_s'
-                allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
-                allocate(eq_1D_loc%loc_i_min(4),eq_1D_loc%loc_i_max(4))
-                eq_1D_loc%tot_i_min = [0,-ntor,1,0]
-                eq_1D_loc%tot_i_max = [mpol-1,ntor,grid_trim%n(3),&
-                    &size(Z_V_s,4)-1]
-                eq_1D_loc%loc_i_min = [0,-ntor,grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = &
-                    &[mpol-1,ntor,grid_trim%i_max,size(Z_V_s,4)-1]
-                allocate(eq_1D_loc%p(size(Z_V_s(:,:,norm_id_f(1):&
+                allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+                allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
+                eq_1D_loc%tot_i_min = [1,1,0]
+                eq_1D_loc%tot_i_max = [mnmax_V,grid_trim%n(3),size(Z_V_s,3)-1]
+                eq_1D_loc%loc_i_min = [1,grid_trim%i_min,0]
+                eq_1D_loc%loc_i_max = [mnmax_V,grid_trim%i_max,size(Z_V_s,3)-1]
+                allocate(eq_1D_loc%p(size(Z_V_s(:,norm_id_f(1):&
                     &norm_id_f(2),:))))
-                eq_1D_loc%p = reshape(Z_V_s(:,:,norm_id_f(1):norm_id_f(2),:),&
-                    &[size(Z_V_s(:,:,norm_id_f(1):norm_id_f(2),:))])
+                eq_1D_loc%p = reshape(Z_V_s(:,norm_id_f(1):norm_id_f(2),:),&
+                    &[size(Z_V_s(:,norm_id_f(1):norm_id_f(2),:))])
                 
                 ! L_V_c
                 eq_1D_loc => eq_1D(id); id = id+1
                 eq_1D_loc%var_name = 'L_V_c'
-                allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
-                allocate(eq_1D_loc%loc_i_min(4),eq_1D_loc%loc_i_max(4))
-                eq_1D_loc%tot_i_min = [0,-ntor,1,0]
-                eq_1D_loc%tot_i_max = [mpol-1,ntor,grid_trim%n(3),&
-                    &size(L_V_c,4)-1]
-                eq_1D_loc%loc_i_min = [0,-ntor,grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = &
-                    &[mpol-1,ntor,grid_trim%i_max,size(L_V_c,4)-1]
-                allocate(eq_1D_loc%p(size(L_V_c(:,:,norm_id_f(1):&
+                allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+                allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
+                eq_1D_loc%tot_i_min = [1,1,0]
+                eq_1D_loc%tot_i_max = [mnmax_V,grid_trim%n(3),size(L_V_c,3)-1]
+                eq_1D_loc%loc_i_min = [1,grid_trim%i_min,0]
+                eq_1D_loc%loc_i_max = [mnmax_V,grid_trim%i_max,size(L_V_c,3)-1]
+                allocate(eq_1D_loc%p(size(L_V_c(:,norm_id_f(1):&
                     &norm_id_f(2),:))))
-                eq_1D_loc%p = reshape(L_V_c(:,:,norm_id_f(1):norm_id_f(2),:),&
-                    &[size(L_V_c(:,:,norm_id_f(1):norm_id_f(2),:))])
+                eq_1D_loc%p = reshape(L_V_c(:,norm_id_f(1):norm_id_f(2),:),&
+                    &[size(L_V_c(:,norm_id_f(1):norm_id_f(2),:))])
                 
                 ! L_V_s
                 eq_1D_loc => eq_1D(id); id = id+1
                 eq_1D_loc%var_name = 'L_V_s'
-                allocate(eq_1D_loc%tot_i_min(4),eq_1D_loc%tot_i_max(4))
-                allocate(eq_1D_loc%loc_i_min(4),eq_1D_loc%loc_i_max(4))
-                eq_1D_loc%tot_i_min = [0,-ntor,1,0]
-                eq_1D_loc%tot_i_max = [mpol-1,ntor,grid_trim%n(3),&
-                    &size(L_V_s,4)-1]
-                eq_1D_loc%loc_i_min = [0,-ntor,grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = &
-                    &[mpol-1,ntor,grid_trim%i_max,size(L_V_s,4)-1]
-                allocate(eq_1D_loc%p(size(L_V_s(:,:,norm_id_f(1):&
+                allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
+                allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
+                eq_1D_loc%tot_i_min = [1,1,0]
+                eq_1D_loc%tot_i_max = [mnmax_V,grid_trim%n(3),size(L_V_s,3)-1]
+                eq_1D_loc%loc_i_min = [1,grid_trim%i_min,0]
+                eq_1D_loc%loc_i_max = [mnmax_V,grid_trim%i_max,size(L_V_s,3)-1]
+                allocate(eq_1D_loc%p(size(L_V_s(:,norm_id_f(1):&
                     &norm_id_f(2),:))))
-                eq_1D_loc%p = reshape(L_V_s(:,:,norm_id_f(1):norm_id_f(2),:),&
-                    &[size(L_V_s(:,:,norm_id_f(1):norm_id_f(2),:))])
+                eq_1D_loc%p = reshape(L_V_s(:,norm_id_f(1):norm_id_f(2),:),&
+                    &[size(L_V_s(:,norm_id_f(1):norm_id_f(2),:))])
             case (2)                                                            ! HELENA
                 ! R_H
                 eq_1D_loc => eq_1D(id); id = id+1

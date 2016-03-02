@@ -415,6 +415,7 @@ met_ops.o : \
     input_utilities.o \
     grid_utilities.o \
     grid_vars.o \
+    eq_ops.o \
 
 met_vars.o : \
     num_vars.o \

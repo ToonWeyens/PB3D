@@ -12,8 +12,8 @@ module num_vars
         &X_jobs_file_name, X_jobs_lock_file_name, HDF5_lock_file_name, &
         &pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
-        &X_style, plot_resonance, plot_grid, plot_flux_q, ltest, &
-        &use_pol_flux_E, use_pol_flux_F, use_normalization, EV_BC, &
+        &X_style, matrix_SLEPC_style, plot_resonance, plot_grid, plot_flux_q, &
+        &ltest, use_pol_flux_E, use_pol_flux_F, use_normalization, EV_BC, &
         &test_max_mem, tol_SLEPC, max_it_slepc, norm_disc_prec_eq, &
         &norm_disc_prec_X, norm_disc_prec_sol, &
         &max_it_rich, tol_rich, &
@@ -38,7 +38,7 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 1.08_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.09_dp                               ! version number
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
@@ -64,6 +64,7 @@ module num_vars
     integer :: norm_style                                                       ! style for normalization
     integer :: BC_style(2)                                                      ! style for BC left and right
     integer :: X_style                                                          ! style for secondary mode numbers (1: prescribed, 2: fast)
+    integer :: matrix_SLEPC_style                                               ! style for matrix storage (1: sparse, 2: shell)
     integer :: max_it_slepc                                                     ! maximum nr. of iterations for SLEPC
     logical :: plot_resonance                                                   ! whether to plot the q-profile or iota-profile with resonances
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates

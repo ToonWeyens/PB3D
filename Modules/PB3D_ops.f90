@@ -307,6 +307,7 @@ contains
         integer :: flux_p_E_id, flux_t_E_id                                     ! index of flux_p_FD, flux_t_FD
         integer :: rho_id, S_id, kappa_n_id, kappa_g_id, sigma_id               ! index of rho, S, kappa_n, kappa_g, sigma
         integer :: g_FD_id, h_FD_id, jac_FD_id                                  ! index of g_FD, h_FD, jac_FD
+        integer :: mn_V_id                                                      ! index of mn_V
         integer :: R_V_c_id, R_V_s_id                                           ! index of R_V_c and R_V_s
         integer :: Z_V_c_id, Z_V_s_id                                           ! index of Z_V_c and Z_V_s
         integer :: L_V_c_id, L_V_s_id                                           ! index of L_V_c and L_V_s
@@ -328,7 +329,7 @@ contains
         integer :: RE_sol_vec_id, IM_sol_vec_id                                 ! index of RE_sol_vec, IM_sol_vec
         ! helper variables
         real(dp), allocatable :: dum_1D(:), dum_2D(:,:), dum_3D(:,:,:)          ! dummy variables
-        real(dp), allocatable :: dum_4D(:,:,:,:)                                ! dummy variables
+        !real(dp), allocatable :: dum_4D(:,:,:,:)                                ! dummy variables
         !real(dp), allocatable :: dum_5D(:,:,:,:,:)                              ! dummy variables
         real(dp), allocatable :: dum_6D(:,:,:,:,:,:), dum_7D(:,:,:,:,:,:,:)     ! dummy variables
         real(dp), parameter :: tol_version = 1.E-8_dp                           ! tolerance for version control
@@ -813,6 +814,8 @@ contains
             !   2:  HELENA
             select case (eq_style)
                 case (1)                                                        ! VMEC
+                    ierr = retrieve_var_1D_id(vars_1D_eq,'mn_V',mn_V_id)
+                    CHCKERR('')
                     ierr = retrieve_var_1D_id(vars_1D_eq,'R_V_c',R_V_c_id)
                     CHCKERR('')
                     ierr = retrieve_var_1D_id(vars_1D_eq,'R_V_s',R_V_s_id)
@@ -1119,13 +1122,14 @@ contains
         integer function reconstruct_vars_misc() result(ierr)
             use num_vars, only: norm_disc_prec_eq, norm_disc_prec_X, &
                 &use_pol_flux_F, eq_style, use_normalization, use_pol_flux_E, &
-                &use_pol_flux_F, rho_style, norm_style, U_style, X_style
+                &use_pol_flux_F, rho_style, norm_style, U_style, X_style, &
+                &matrix_SLEPC_style
             use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, &
                 &T_0, vac_perm
             use grid_vars, only: alpha
             use X_vars, only: min_r_sol, max_r_sol, prim_X, min_sec_X, &
                 &max_sec_X, n_mod_X
-            use VMEC, only: lasym, lfreeB, mpol, ntor, nfp
+            use VMEC, only: is_asym_V, is_freeb_V, mnmax_V, mpol_V, ntor_V
             use HELENA_vars, only: ias, nchi
             
             character(*), parameter :: rout_name = 'reconstruct_vars_misc'
@@ -1164,13 +1168,13 @@ contains
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     call conv_1D2ND(vars_1D_misc(eq_V_misc_id),dum_1D)
-                    lasym = .false.
-                    lfreeB = .false.
-                    if (dum_1D(1).gt.0) lasym = .true.
-                    if (dum_1D(2).gt.0) lfreeB = .true.
-                    mpol = nint(dum_1D(3))
-                    ntor = nint(dum_1D(4))
-                    nfp = nint(dum_1D(5))
+                    is_asym_V = .false.
+                    is_freeb_V = .false.
+                    if (dum_1D(1).gt.0) is_asym_V = .true.
+                    if (dum_1D(2).gt.0) is_freeb_V = .true.
+                    mnmax_V = nint(dum_1D(3))
+                    mpol_V = nint(dum_1D(4))
+                    ntor_V = nint(dum_1D(5))
                     deallocate(dum_1D)
                 case (2)                                                        ! HELENA
                     call conv_1D2ND(vars_1D_misc(eq_H_misc_id),dum_1D)
@@ -1196,6 +1200,7 @@ contains
             norm_style = nint(dum_1D(8))
             U_style = nint(dum_1D(9))
             X_style = nint(dum_1D(10))
+            matrix_SLEPC_style = nint(dum_1D(11))
             deallocate(dum_1D)
             
             call lvl_ud(-1)
@@ -1452,8 +1457,8 @@ contains
             use met_vars, only: create_met
             use eq_vars, only: create_eq, max_flux_p_E, max_flux_t_E, &
                 &max_flux_p_F, max_flux_t_F
-            use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mpol, &
-                &ntor, lfreeB
+            use VMEC, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, &
+                &mnmax_V, mn_V, is_freeb_V
             use HELENA_vars, only: R_H, Z_H, chi_H, flux_p_H, nchi
             
             character(*), parameter :: rout_name = 'reconstruct_vars_eq'
@@ -1535,30 +1540,34 @@ contains
             !   2:  HELENA
             select case (eq_style)
                 case (1)                                                        ! VMEC
-                    allocate(R_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-                    call conv_1D2ND(vars_1D_eq(R_V_c_id),dum_4D)
-                    R_V_c = dum_4D
-                    deallocate(dum_4D)
-                    allocate(R_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-                    call conv_1D2ND(vars_1D_eq(R_V_s_id),dum_4D)
-                    R_V_s = dum_4D
-                    deallocate(dum_4D)
-                    allocate(Z_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-                    call conv_1D2ND(vars_1D_eq(Z_V_c_id),dum_4D)
-                    Z_V_c = dum_4D
-                    deallocate(dum_4D)
-                    allocate(Z_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-                    call conv_1D2ND(vars_1D_eq(Z_V_s_id),dum_4D)
-                    Z_V_s = dum_4D
-                    deallocate(dum_4D)
-                    allocate(L_V_c(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-                    call conv_1D2ND(vars_1D_eq(L_V_c_id),dum_4D)
-                    L_V_c = dum_4D
-                    deallocate(dum_4D)
-                    allocate(L_V_s(0:mpol-1,-ntor:ntor,1:n_r_eq,0:max_deriv+1))
-                    call conv_1D2ND(vars_1D_eq(L_V_s_id),dum_4D)
-                    L_V_s = dum_4D
-                    deallocate(dum_4D)
+                    allocate(mn_V(1:mnmax_V,2))
+                    call conv_1D2ND(vars_1D_eq(mn_V_id),dum_2D)
+                    mn_V = nint(dum_2D)
+                    deallocate(dum_2D)
+                    allocate(R_V_c(1:mnmax_V,1:n_r_eq,0:max_deriv+1))
+                    call conv_1D2ND(vars_1D_eq(R_V_c_id),dum_3D)
+                    R_V_c = dum_3D
+                    deallocate(dum_3D)
+                    allocate(R_V_s(1:mnmax_V,1:n_r_eq,0:max_deriv+1))
+                    call conv_1D2ND(vars_1D_eq(R_V_s_id),dum_3D)
+                    R_V_s = dum_3D
+                    deallocate(dum_3D)
+                    allocate(Z_V_c(1:mnmax_V,1:n_r_eq,0:max_deriv+1))
+                    call conv_1D2ND(vars_1D_eq(Z_V_c_id),dum_3D)
+                    Z_V_c = dum_3D
+                    deallocate(dum_3D)
+                    allocate(Z_V_s(1:mnmax_V,1:n_r_eq,0:max_deriv+1))
+                    call conv_1D2ND(vars_1D_eq(Z_V_s_id),dum_3D)
+                    Z_V_s = dum_3D
+                    deallocate(dum_3D)
+                    allocate(L_V_c(1:mnmax_V,1:n_r_eq,0:max_deriv+1))
+                    call conv_1D2ND(vars_1D_eq(L_V_c_id),dum_3D)
+                    L_V_c = dum_3D
+                    deallocate(dum_3D)
+                    allocate(L_V_s(1:mnmax_V,1:n_r_eq,0:max_deriv+1))
+                    call conv_1D2ND(vars_1D_eq(L_V_s_id),dum_3D)
+                    L_V_s = dum_3D
+                    deallocate(dum_3D)
                     call conv_1D2ND(vars_1D_eq(pres_E_id),dum_2D)
                     eq%pres_E = dum_2D(eq_limits_loc(1):eq_limits_loc(2),:)
                     deallocate(dum_2D)

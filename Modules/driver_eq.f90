@@ -25,12 +25,13 @@ contains
         use HELENA_vars, only: dealloc_HEL
         use grid_vars, only: dealloc_grid, &
             &alpha
-        use eq_ops, only: calc_eq, calc_derived_q, print_output_eq, &
-            &flux_q_plot
+        use eq_ops, only: calc_eq, calc_derived_q, print_output_eq, flux_q_plot
         use met_ops, only: calc_met, calc_F_derivs
         use met_vars, only: dealloc_met
         use grid_ops, only: setup_and_calc_grid_eq_B, print_output_grid, &
             &plot_grid_real
+        use grid_ops, only: calc_norm_range, setup_grid_eq, calc_ang_grid_eq
+        use utilities, only: derivs
         !!use utilities, only: calc_aux_utilities
         
         character(*), parameter :: rout_name = 'run_driver_eq'
@@ -42,7 +43,6 @@ contains
         type(grid_type), pointer :: grid_eq_B => null()                         ! field-aligned equilibrium grid
         type(eq_type) :: eq                                                     ! equilibrium for
         type(met_type) :: met                                                   ! metric variables
-        integer :: id
         
         ! initialize ierr
         ierr = 0
@@ -83,15 +83,6 @@ contains
 #endif
         CHCKERR('')
         
-        !!! TEMPORARILY !!!!!!!!
-        !!do id = 0,size(eq%pres_FD,2)-1
-            !!write(*,*) 'id = ', id
-            !!call print_GP_2D('pres_FD','',eq%pres_FD(:,id),x=grid_eq%loc_r_F)
-            !!call print_GP_2D('q_saf_FD','',eq%q_saf_FD(:,id),x=grid_eq%loc_r_F)
-            !!call print_GP_2D('flux_p_FD','',eq%flux_p_FD(:,id),x=grid_eq%loc_r_F)
-            !!call print_GP_2D('flux_t_FD','',eq%flux_t_FD(:,id),x=grid_eq%loc_r_F)
-        !!end do
-        
         ! plot flux quantities if requested
         if (plot_flux_q) then
             ierr = flux_q_plot(grid_eq,eq)
@@ -128,6 +119,9 @@ contains
         ierr = print_output_eq(grid_eq,eq,met)
         CHCKERR('')
         
+        !!! plot information for comparison between VMEC and HELENA
+        !!call plot_info_for_VMEC_HEL_comparision()
+        
         ! cleaning up
         call writo('Cleaning up')
         call lvl_ud(1)
@@ -159,5 +153,102 @@ contains
         ! synchronize MPI
         ierr = wait_MPI()
         CHCKERR('')
+#if ldebug
+    contains
+        subroutine plot_info_for_VMEC_HEL_comparision()
+            use HELENA_vars, only: R_H, Z_H
+            use input_utilities, only: pause_prog, get_int, get_log
+            
+            ! local variables
+            real(dp), allocatable :: x_plot(:,:,:), y_plot(:,:,:), z_plot(:,:,:)
+            integer :: id
+            integer :: d(3)
+            logical :: not_ready = .true.
+            
+            write(*,*) '!!!! PLOTTING INFORMATION FOR COMPARISON BETWEEN &
+                &VMEC AND HELENA !!!!'
+            do while (not_ready)
+                call writo('derivative in dim 1?')
+                d(1) =  get_int(lim_lo=0)
+                call writo('derivative in dim 2?')
+                d(2) =  get_int(lim_lo=0)
+                call writo('derivative in dim 3?')
+                d(3) =  get_int(lim_lo=0)
+                
+                ! x, y, z
+                allocate(x_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                allocate(y_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                allocate(z_plot(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                x_plot = grid_eq%theta_F
+                y_plot = 0._dp
+                do id = 1,grid_eq%loc_n_r
+                    z_plot(:,:,id) = grid_eq%loc_r_F(id)/maxval(grid_eq%r_F)
+                end do
+                call plot_HDF5('x_plot','x_plot',x_plot)
+                call plot_HDF5('y_plot','y_plot',y_plot)
+                call plot_HDF5('z_plot','z_plot',z_plot)
+                
+                ! flux quantities
+                call print_GP_2D('pres_FD','pres_FD',eq%pres_FD(:,d(2)),&
+                    &x=grid_eq%loc_r_F,draw=.false.)
+                call draw_GP('pres_FD','pres_FD','pres_FD',1,1,.false.)
+                call print_GP_2D('q_saf_FD','q_saf_FD',eq%q_saf_FD(:,d(2)),&
+                    &x=grid_eq%loc_r_F,draw=.false.)
+                call draw_GP('q_saf_FD','q_saf_FD','q_saf_FD',1,1,.false.)
+                call print_GP_2D('flux_p_FD','flux_p_FD',eq%flux_p_FD(:,d(2)),&
+                    &x=grid_eq%loc_r_F,draw=.false.)
+                call draw_GP('flux_p_FD','flux_p_FD','flux_p_FD',1,1,.false.)
+                call print_GP_2D('flux_t_FD','flux_t_FD',eq%flux_t_FD(:,d(2)),&
+                    &x=grid_eq%loc_r_F,draw=.false.)
+                call draw_GP('flux_t_FD','flux_t_FD','flux_t_FD',1,1,.false.)
+                
+                ! R and Z
+                if (sum(d).eq.0) then
+                    select case (eq_style)
+                        case(1)
+                            call plot_HDF5('R_V','R_V',eq%R_E(:,:,:,0,0,0),&
+                                &x=x_plot,y=y_plot,z=z_plot)
+                            call plot_HDF5('Z_V','Z_V',eq%Z_E(:,:,:,0,0,0),&
+                                &x=x_plot,y=y_plot,z=z_plot)
+                        case(2)
+                            call plot_HDF5('R_H','R_H',&
+                                &reshape(R_H(:,grid_eq%i_min:grid_eq%i_max),&
+                                &[grid_eq%n(1:2),grid_eq%loc_n_r]),&
+                                &x=x_plot,y=y_plot,z=z_plot)
+                            call plot_HDF5('Z_H','Z_H',&
+                                &reshape(Z_H(:,grid_eq%i_min:grid_eq%i_max),&
+                                &[grid_eq%n(1:2),grid_eq%loc_n_r]),&
+                                &x=x_plot,y=y_plot,z=z_plot)
+                    end select
+                else
+                    call writo('R and Z can only be plot for d = 0')
+                end if
+                
+                ! metric fators
+                call plot_HDF5('jac_FD','jac_FD',&
+                    &met%jac_FD(:,:,:,d(1),d(2),d(3)),&
+                    &x=x_plot,y=y_plot,z=z_plot)
+                do id = 1,6
+                    call plot_HDF5('g_FD_'//trim(i2str(id)),&
+                        &'g_FD_'//trim(i2str(id)),&
+                        &met%g_FD(:,:,:,id,d(1),d(2),d(3)),&
+                        &x=x_plot,y=y_plot,z=z_plot)
+                    call plot_HDF5('h_FD_'//trim(i2str(id)),&
+                        &'h_FD_'//trim(i2str(id)),&
+                        &met%h_FD(:,:,:,id,d(1),d(2),d(3)),&
+                        &x=x_plot,y=y_plot,z=z_plot)
+                end do
+                
+                ! clean up
+                deallocate(x_plot,y_plot,z_plot)
+                
+                call writo('Want to redo the plotting?')
+                not_ready = get_log(.true.)
+            end do
+            
+            write(*,*) '!!!! DONE, PAUSED !!!!'
+            call pause_prog()
+        end subroutine plot_info_for_VMEC_HEL_comparision
+#endif
     end function run_driver_eq
 end module driver_eq

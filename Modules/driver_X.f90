@@ -303,6 +303,9 @@ contains
                     &X_jobs_lims(:,X_job_nr))
                 CHCKERR('')
                 
+                !!! plot information for comparison between VMEC and HELENA
+                !!call plot_info_for_VMEC_HEL_comparision(grid_X_B,X_1_B)
+                
                 ! clean up
                 call dealloc_X(X_1_B)
             else
@@ -311,6 +314,9 @@ contains
                 ierr = print_output_X(grid_X,X_1(1),lim_sec_X=&
                     &X_jobs_lims(:,X_job_nr))
                 CHCKERR('')
+                
+                !!! plot information for comparison between VMEC and HELENA
+                !!call plot_info_for_VMEC_HEL_comparision(grid_X,X_1(1))
 #if ldebug
             end if
 #endif
@@ -358,7 +364,7 @@ contains
                 &trim(i2str(X_jobs_lims(3,X_job_nr)))//'..'//&
                 &trim(i2str(X_jobs_lims(4,X_job_nr)))//') is calculated')
             
-            ! calculate vectorial perturbation if dimension not reused
+            ! retrieve vectorial perturbation if dimension not reused
             do id = 1,2
                 if (dim_reused(id)) then
                     call writo('Vectorial perturbation variables for &
@@ -437,13 +443,6 @@ contains
             ierr = calc_magn_ints(grid_eq_B,grid_X_B,met_B,X_2,&
                 &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
             CHCKERR('')
-            !write(*,*) '!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!'
-            !do id = 1,size(X_2%PV_int_0,3)
-                !call print_GP_2D('RE_PV_0_'//trim(i2str(id)),'',&
-                    !&realpart(transpose(X_2%PV_int_0(:,:,id))))
-                !call print_GP_2D('IM_PV_0_'//trim(i2str(id)),'',&
-                    !&imagpart(transpose(X_2%PV_int_0(:,:,id))))
-            !end do
             
             ! write tensorial perturbation variables to output file
             ierr = print_output_X(grid_X,X_2,lim_sec_X=&
@@ -518,5 +517,74 @@ contains
         ! print jobs information from other processes
         ierr = print_jobs_info()
         CHCKERR('')
+#if ldebug
+    contains
+        subroutine plot_info_for_VMEC_HEL_comparision(grid_X,X)
+            use input_utilities, only: pause_prog, get_int, get_log
+            use num_vars, only: use_pol_flux_F
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_X
+            type(X_1_type), intent(in) :: X
+            
+            ! local variables
+            real(dp), allocatable :: x_plot(:,:,:), y_plot(:,:,:), z_plot(:,:,:)
+            integer :: id, ld
+            logical :: not_ready = .true.
+            
+            write(*,*) '!!!! PLOTTING INFORMATION FOR COMPARISON BETWEEN &
+                &VMEC AND HELENA !!!!'
+            do while (not_ready)
+                call writo('Plots for which mode number?')
+                ld =  get_int(lim_lo=1,lim_hi=X%n_mod)
+                
+                ! x, y, z
+                allocate(x_plot(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+                allocate(y_plot(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+                allocate(z_plot(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+                if (use_pol_flux_F) then
+                    x_plot = grid_X%theta_F
+                else
+                    x_plot = grid_X%zeta_F
+                end if
+                y_plot = 0._dp
+                do id = 1,grid_X%loc_n_r
+                    z_plot(:,:,id) = grid_X%loc_r_F(id)/maxval(grid_X%r_F)
+                end do
+                call plot_HDF5('x_plot','x_plot',x_plot)
+                call plot_HDF5('y_plot','y_plot',y_plot)
+                call plot_HDF5('z_plot','z_plot',z_plot)
+                
+                ! U_0 and U_1
+                call plot_HDF5('RE_U_0','RE_U_0',realpart(X%U_0(:,:,:,ld)),&
+                    &x=x_plot,y=y_plot,z=z_plot)
+                call plot_HDF5('IM_U_0','IM_U_0',imagpart(X%U_0(:,:,:,ld)),&
+                    &x=x_plot,y=y_plot,z=z_plot)
+                call plot_HDF5('RE_U_1','RE_U_1',realpart(X%U_1(:,:,:,ld)),&
+                    &x=x_plot,y=y_plot,z=z_plot)
+                call plot_HDF5('IM_U_1','IM_U_1',imagpart(X%U_1(:,:,:,ld)),&
+                    &x=x_plot,y=y_plot,z=z_plot)
+                
+                ! DU_0 and DU_1
+                call plot_HDF5('RE_DU_0','RE_DU_0',realpart(X%DU_0(:,:,:,ld)),&
+                    &x=x_plot,y=y_plot,z=z_plot)
+                call plot_HDF5('IM_DU_0','IM_DU_0',imagpart(X%DU_0(:,:,:,ld)),&
+                    &x=x_plot,y=y_plot,z=z_plot)
+                call plot_HDF5('RE_DU_1','RE_DU_1',realpart(X%DU_1(:,:,:,ld)),&
+                    &x=x_plot,y=y_plot,z=z_plot)
+                call plot_HDF5('IM_DU_1','IM_DU_1',imagpart(X%DU_1(:,:,:,ld)),&
+                    &x=x_plot,y=y_plot,z=z_plot)
+                
+                ! clean up
+                deallocate(x_plot,y_plot,z_plot)
+                
+                call writo('Want to redo the plotting?')
+                not_ready = get_log(.true.)
+            end do
+            
+            write(*,*) '!!!! DONE, PAUSED !!!!'
+            call pause_prog()
+        end subroutine plot_info_for_VMEC_HEL_comparision
+#endif
     end function run_driver_X
 end module driver_X

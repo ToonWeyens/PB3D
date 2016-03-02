@@ -216,8 +216,7 @@ contains
                     call search_file(eq_i,eq_name)
                     if (eq_name.eq."") then
                         ierr = 1
-                        err_msg = 'No equilibrium file found and no default &
-                            &possible.'
+                        err_msg = 'No equilibrium file found.'
                         CHCKERR(err_msg)
                     else
                         call writo('equilibrium file "' // trim(eq_name) &
@@ -270,7 +269,7 @@ contains
                     call search_file(PB3D_i,PB3D_name)
                     if (PB3D_name.eq."") then
                         ierr = 1
-                        err_msg = 'No PB3D file found and no default possible.'
+                        err_msg = 'No PB3D file found.'
                         CHCKERR(err_msg)
                     else
                         call writo('PB3D output file "' // trim(PB3D_name) &
@@ -411,7 +410,8 @@ contains
         use num_vars, only: eq_style, rho_style, rank, prog_version, &
             &use_pol_flux_E, use_pol_flux_F, use_normalization, &
             &norm_disc_prec_eq, PB3D_name, output_i, output_name, prog_name, &
-            &norm_disc_prec_X, prog_style, norm_style, U_style, X_style
+            &norm_disc_prec_X, prog_style, norm_style, U_style, X_style, &
+            &matrix_SLEPC_style
         use messages, only: temp_output, temp_output_active
         use files_utilities, only: nextunit
         use HDF5_ops, only: create_output_HDF5, print_HDF5_arrs
@@ -422,8 +422,7 @@ contains
         use PB3D_ops, only: read_PB3D, reconstruct_PB3D
         use grid_vars, only: alpha
         use HELENA_vars, only: nchi, ias
-        use VMEC, only: mpol, ntor, &
-            &lfreeB, nfp, lasym
+        use VMEC, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V
         
         character(*), parameter :: rout_name = 'open_output'
         
@@ -528,10 +527,10 @@ contains
                                 misc_1D_loc%loc_i_min = [1]
                                 misc_1D_loc%loc_i_max = [5]
                                 allocate(misc_1D_loc%p(5))
-                                misc_1D_loc%p = [-1._dp,-1._dp,mpol*1._dp,&
-                                    &ntor*1._dp,nfp*1._dp]
-                                if (lasym) misc_1D_loc%p(1) = 1._dp
-                                if (lfreeB) misc_1D_loc%p(2) = 1._dp
+                                misc_1D_loc%p = [-1._dp,-1._dp,mnmax_V*1._dp,&
+                                    &mpol_V*1._dp,ntor_V*1._dp]
+                                if (is_asym_V) misc_1D_loc%p(1) = 1._dp
+                                if (is_freeb_V) misc_1D_loc%p(2) = 1._dp
                             else
                                 misc_1D_loc%loc_i_min = [1]
                                 misc_1D_loc%loc_i_max = [0]
@@ -573,19 +572,20 @@ contains
                     allocate(misc_1D_loc%loc_i_min(1),misc_1D_loc%loc_i_max(1))
                     if (rank.eq.0) then
                         misc_1D_loc%loc_i_min = [1]
-                        misc_1D_loc%loc_i_max = [10]
-                        allocate(misc_1D_loc%p(10))
+                        misc_1D_loc%loc_i_max = [11]
+                        allocate(misc_1D_loc%p(11))
                         misc_1D_loc%p = [min_r_sol,max_r_sol,prim_X*1._dp,&
                             &n_mod_X*1._dp,min_sec_X*1._dp,max_sec_X*1._dp,&
                             &norm_disc_prec_X*1._dp,norm_style*1._dp,&
-                            &U_style*1._dp,X_style*1._dp]
+                            &U_style*1._dp,X_style*1._dp,&
+                            &matrix_SLEPC_style*1._dp]
                     else
                         misc_1D_loc%loc_i_min = [1]
                         misc_1D_loc%loc_i_max = [0]
                         allocate(misc_1D_loc%p(0))
                     end if
                     misc_1D_loc%tot_i_min = [1]
-                    misc_1D_loc%tot_i_max = [10]
+                    misc_1D_loc%tot_i_max = [11]
                     
                     call lvl_ud(-1)
                     

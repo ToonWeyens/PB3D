@@ -322,3 +322,14 @@ CHANGELOG
       - Added interpolation capability similar to the derivation capability.
       - Both interpolation and derivation use "apply_disc" to apply the discretization operator.
       - "interp_fun" is still available to be used only when the interpolations are not repetitive and linear interpolation suffices.
+
+1.09: - FIRST VERSION THAT WORKS FOR AXISYMMETRIC VMEC. However, post-processing is not working well, and comparision with HELENA not yet perfect.
+      - Normalization factors "R_0", "B_0", "pres_0", "psi_0" can now be user-provided, just like "rho_0", but NO checking for consistency!
+      - Fixed a bug in "calc_interp_data" where the bounds of "x" were not respected.
+      - Fixed bug in Post-processing for VMEC input where the plot output is calculated.
+      - Removed "test_Dg_E" as it does not make sense: In general the equilibrium grid is not straight.
+      - Removed the "repack" routine and started using the natural VMEC structure.
+      - Fixed an error in the testing of B where only components in equilibrium coordinates were not properly translated to flux coordinates.
+      - The structure of "SLEPC_ops" has been slightly rewritten for the future accomodation of shell matrices.
+      - Fixed bug in "calc_U" where the part ~ n_frac was not used in the calculation of DU_1 and DU_2, as well as some erroneous indices.
+      - Moved some of the routines from "calc_eq" to "calc_met". In fact, these routine structures should be rethought, possibly merged.

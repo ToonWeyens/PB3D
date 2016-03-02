@@ -76,6 +76,7 @@ contains
         use num_vars, only: eq_style
         use met_vars, only: create_met
         use utilities, only: derivs, c
+        use eq_ops, only: prepare_RZL, calc_RZL
 #if ldebug
         use num_vars, only: ltest
         use input_utilities, only: get_log, pause_prog
@@ -99,6 +100,24 @@ contains
             &coordinates')
         
         call lvl_ud(1)
+        
+        ! do some preparations depending on equilibrium style used
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! calculate  the  cylindrical  variables  R, Z  and  lambda  and
+                ! derivatives
+                call writo('Calculate R,Z,L...')
+                ierr = prepare_RZL(grid_eq)
+                CHCKERR('')
+                do id = 0,max_deriv+1
+                    ierr = calc_RZL(grid_eq,eq,derivs(id))
+                    CHCKERR('')
+                end do
+            case (2)                                                            ! HELENA
+                ! do nothing
+        end select
         
         ! create metric variables
         call writo('Create metric variables')
@@ -235,12 +254,6 @@ contains
         
 #if ldebug
         if (ltest) then
-            call writo('Test calculation of the derivatives of g_E?')
-            if(get_log(.false.)) then
-                ierr = test_Dg_E(grid_eq,met)
-                CHCKERR('')
-                call pause_prog
-            end if
             call writo('Test calculation of T_EF?')
             if(get_log(.false.)) then
                 ierr = test_T_EF(grid_eq,eq,met)
@@ -2562,11 +2575,11 @@ contains
         allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
         
         ! get jac_V from VMEC
-        ierr = fourier2real(jac_V_c(:,:,norm_id(1)+grid_eq%i_min-1:&
+        ierr = fourier2real(jac_V_c(:,norm_id(1)+grid_eq%i_min-1:&
             &norm_id(2)+grid_eq%i_min-1),&
-            &jac_V_s(:,:,norm_id(1)+grid_eq%i_min-1:&
+            &jac_V_s(:,norm_id(1)+grid_eq%i_min-1:&
             &norm_id(2)+grid_eq%i_min-1),&
-            &grid_eq%trigon_factors(:,:,:,:,norm_id(1):norm_id(2),:),&
+            &grid_eq%trigon_factors(:,:,:,norm_id(1):norm_id(2),:),&
             &res,[0,0])
         CHCKERR('')
         
@@ -2647,19 +2660,19 @@ contains
             case (1)                                                            ! VMEC
                 do id = 1,3
                     ierr = fourier2real(&
-                        &B_V_sub_c(:,:,norm_id(1)+grid_eq%i_min-1:&
+                        &B_V_sub_c(:,norm_id(1)+grid_eq%i_min-1:&
                         &norm_id(2)+grid_eq%i_min-1,id),&
-                        &B_V_sub_s(:,:,norm_id(1)+grid_eq%i_min-1:&
+                        &B_V_sub_s(:,norm_id(1)+grid_eq%i_min-1:&
                         &norm_id(2)+grid_eq%i_min-1,id),&
-                        &grid_eq%trigon_factors(:,:,:,:,norm_id(1):&
+                        &grid_eq%trigon_factors(:,:,:,norm_id(1):&
                         &norm_id(2),:),res(:,:,:,id),[0,0])
                     CHCKERR('')
                 end do
-                ierr = fourier2real(B_V_c(:,:,norm_id(1)+grid_eq%i_min-1:&
-                        &norm_id(2)+grid_eq%i_min-1),&
-                    &B_V_s(:,:,norm_id(1)+grid_eq%i_min-1:&
-                        &norm_id(2)+grid_eq%i_min-1),&
-                    &grid_eq%trigon_factors(:,:,:,:,norm_id(1):norm_id(2),:),&
+                ierr = fourier2real(B_V_c(:,norm_id(1)+grid_eq%i_min-1:&
+                    &norm_id(2)+grid_eq%i_min-1),&
+                    &B_V_s(:,norm_id(1)+grid_eq%i_min-1:&
+                    &norm_id(2)+grid_eq%i_min-1),&
+                    &grid_eq%trigon_factors(:,:,:,norm_id(1):norm_id(2),:),&
                     &res(:,:,:,4),[0,0])
                 CHCKERR('')
             case (2)                                                            ! HELENA
@@ -2692,8 +2705,9 @@ contains
         res2 = 0._dp
         do id = 1,3
             do kd = 1,3
-                res2(:,:,:,id) = res(:,:,:,kd) * &
-                    &met%T_FE(:,:,norm_id(1):norm_id(2),c([id,kd],.false.),0,0,0)
+                res2(:,:,:,id) = res2(:,:,:,id) + &
+                    &res(:,:,:,kd) * met%T_FE(:,:,norm_id(1):&
+                    &norm_id(2),c([id,kd],.false.),0,0,0)
             end do
         end do
         res2(:,:,:,4) = res(:,:,:,4)
@@ -2825,227 +2839,5 @@ contains
         call lvl_ud(-1)
         call writo('Test complete')
     end function test_D12h_H
-    
-    ! Tests whether the derivatives of g_E are calculated correctly
-    integer function test_Dg_E(grid_eq,met) result(ierr)
-        use num_vars, only: norm_disc_prec_eq
-        use grid_utilities, only: trim_grid
-        use utilities, only: c
-        use grid_utilities, only: setup_deriv_data, apply_disc
-        
-        character(*), parameter :: rout_name = 'test_Dg_E'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(met_type), intent(in) :: met                                       ! metric variables
-        
-        ! local variables
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: id, jd, kd, ld                                               ! counters
-        real(dp), allocatable :: res(:,:,:,:,:)                                 ! result variable
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
-        type(disc_type) :: ang_deriv_data                                       ! data for angular derivative
-        character(len=max_str_ln) :: file_name                                  ! name of plot file
-        character(len=max_str_ln) :: description                                ! description of plot
-        integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
-        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
-        integer :: deriv(3)                                                     ! derivatives
-        integer :: deriv2(3)                                                    ! derivatives
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! output
-        call writo('Going to test whether the derivatives of g_E are &
-            &calculated correctly')
-        call lvl_ud(1)
-        
-        ! trim extended grid into plot grid
-        ierr = trim_grid(grid_eq,grid_trim,norm_id)
-        CHCKERR('')
-        
-        ! set up res
-        ! Note: last index:
-        !   1..3: Di,   i=1..3
-        !   4..12: Dij, i=1..3, j=1..3
-        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,6,12))
-        
-        ! set total and local dimensions and local offset
-        tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
-        loc_offset = [0,0,grid_trim%i_min-1]
-        
-        ! calculate first derivatives of g_E individually
-        ! D1 (r)
-        call writo('calculating derivatives in r')
-        ierr = setup_deriv_data(grid_trim%loc_r_E,norm_deriv_data,1,&
-            &norm_disc_prec_eq+1)
-        CHCKERR('')
-        ierr = apply_disc(met%g_E(:,:,norm_id(1):norm_id(2),:,0,0,0),&
-            &norm_deriv_data,res(:,:,:,:,1),3)
-        CHCKERR('')
-        call dealloc_disc(norm_deriv_data)
-        
-        ! D2 (theta)
-        call writo('calculating derivatives in theta')
-        do kd = norm_id(1),norm_id(2)
-            do jd = 1,grid_trim%n(2)
-                ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                    &ang_deriv_data,1,norm_disc_prec_eq+1)
-                CHCKERR('')
-                ierr = apply_disc(met%g_E(:,jd,kd,:,0,0,0),&
-                    &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,:,2),1)
-                CHCKERR('')
-            end do
-        end do
-        call dealloc_disc(ang_deriv_data)
-        
-        ! D3 (zeta)
-        call writo('calculating derivatives in zeta')
-        res(:,:,:,:,3) = 0._dp
-        
-        ! calculate second derivatives of g_E individually
-        ! D11 (r,r)
-        call writo('calculating derivatives in r,r')
-        ierr = setup_deriv_data(grid_trim%loc_r_E,norm_deriv_data,1,&
-            &norm_disc_prec_eq)
-        CHCKERR('')
-        ierr = apply_disc(met%g_E(:,:,norm_id(1):norm_id(2),:,1,0,0),&
-            &norm_deriv_data,res(:,:,:,:,4),3)
-        CHCKERR('')
-        
-        ! D21 (theta,r)
-        call writo('calculating derivatives in theta,r')
-        ierr = apply_disc(met%g_E(:,:,norm_id(1):norm_id(2),:,0,1,0),&
-            &norm_deriv_data,res(:,:,:,:,5),3)
-        CHCKERR('')
-        call dealloc_disc(norm_deriv_data)
-        
-        ! D31 (zeta,r)
-        call writo('calculating derivatives in zeta,r')
-        res(:,:,:,:,6) = 0._dp
-        
-        ! D12 (r,theta)
-        call writo('calculating derivatives in r,theta')
-        do kd = norm_id(1),norm_id(2)
-            do jd = 1,grid_trim%n(2)
-                ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),ang_deriv_data,&
-                    &1,norm_disc_prec_eq+1)
-                CHCKERR('')
-                ierr = apply_disc(met%g_E(:,jd,kd,:,1,0,0),&
-                    &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,:,7),1)
-                CHCKERR('')
-            end do
-        end do
-        call dealloc_disc(ang_deriv_data)
-        
-        ! D22 (theta,theta)
-        call writo('calculating derivatives in theta,theta')
-        do kd = norm_id(1),norm_id(2)
-            do jd = 1,grid_trim%n(2)
-                ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),ang_deriv_data,&
-                    &1,norm_disc_prec_eq+1)
-                CHCKERR('')
-                ierr = apply_disc(met%g_E(:,jd,kd,:,0,1,0),&
-                    &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,:,8),1)
-                CHCKERR('')
-            end do
-        end do
-        call dealloc_disc(ang_deriv_data)
-        
-        ! D32 (zeta,theta)
-        call writo('calculating derivatives in zeta,theta')
-        res(:,:,:,:,9) = 0._dp
-        
-        ! D13 (r,zeta)
-        call writo('calculating derivatives in r,zeta')
-        res(:,:,:,:,10) = 0._dp
-        
-        ! D23 (r,zeta)
-        call writo('calculating derivatives in theta,zeta')
-        res(:,:,:,:,11) = 0._dp
-        
-        ! D33 (r,zeta)
-        call writo('calculating derivatives in zeta,zeta')
-        res(:,:,:,:,12) = 0._dp
-        
-        ! set up plot variables for calculated values
-        do id = 1,3
-            do kd = 1,3
-                ! set some variables
-                file_name = 'TEST_g_E_'//trim(i2str(kd))//'_'//trim(i2str(id))
-                description = 'Testing calculated with given value for g_E('//&
-                    &trim(i2str(kd))//','//trim(i2str(id))//')'
-                
-                ! plot underived quantity
-                call plot_HDF5(file_name,file_name,&
-                    &met%g_E(:,:,norm_id(1):norm_id(2),&
-                    &c([kd,id],.true.),0,0,0),tot_dim=tot_dim,&
-                    &loc_offset=loc_offset,description=description)
-                do ld = 1,3
-                    ! user output
-                    call writo('Testing D'//trim(i2str(ld))//'g_E('//&
-                        &trim(i2str(kd))//','//trim(i2str(id))//')')
-                    call lvl_ud(1)
-                    
-                    ! set some variables
-                    file_name = 'TEST_D'//trim(i2str(ld))//'g_E_'//&
-                        &trim(i2str(kd))//'_'//trim(i2str(id))
-                    description = 'Testing calculated with given value for D'//&
-                        &trim(i2str(ld))//'g_E('//trim(i2str(kd))//','//&
-                        &trim(i2str(id))//')'
-                    
-                    ! set derivative
-                    deriv = 0
-                    deriv(ld) = 1
-                    
-                    ! plot difference
-                    call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.),ld),&
-                        &met%g_E(:,:,norm_id(1):norm_id(2),&
-                        &c([kd,id],.true.),deriv(1),deriv(2),deriv(3)),&
-                        &file_name,tot_dim,loc_offset,description,&
-                        &output_message=.true.)
-                    
-                    call lvl_ud(-1)
-                    
-                    do jd = 1,3
-                        ! user output
-                        call writo('Testing D'//trim(i2str(ld))//&
-                            &trim(i2str(jd))//'g_E('//trim(i2str(kd))//','//&
-                            &trim(i2str(id))//')')
-                        call lvl_ud(1)
-                        
-                        ! set some variables
-                        file_name = 'TEST_D'//trim(i2str(ld))//&
-                            &trim(i2str(jd))//'g_E_'//trim(i2str(kd))//'_'//&
-                            &trim(i2str(id))
-                        description = 'Testing calculated with given value for &
-                            &D'//trim(i2str(ld))//trim(i2str(jd))//'g_E('//&
-                            &trim(i2str(kd))//','//trim(i2str(id))//')'
-                        
-                        ! set derivative 2
-                        deriv2 = 0
-                        deriv2(jd) = 1
-                        
-                        ! plot difference
-                        call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.),&
-                            &3+ld+(jd-1)*3),met%g_E(:,:,&
-                            &norm_id(1):norm_id(2),c([kd,id],.true.),&
-                            &deriv(1)+deriv2(1),deriv(2)+deriv2(2),&
-                            &deriv(3)+deriv2(3)),file_name,tot_dim,loc_offset,&
-                            &description,output_message=.true.)
-                        
-                        call lvl_ud(-1)
-                    end do
-                end do
-            end do
-        end do
-        
-        ! clean up
-        call dealloc_grid(grid_trim)
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Test complete')
-    end function test_Dg_E
 #endif
 end module met_ops

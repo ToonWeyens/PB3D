@@ -232,9 +232,6 @@ contains
                 ! back up no_plots and no_output and set to .true.
                 no_plots_loc = no_plots; no_plots = .true.
                 no_output_loc = no_output; no_output = .true.
-                ! Calculate the equilibrium quantities
-                ierr = calc_eq(grid_eq_plot,eq_plot)
-                CHCKERR('')
                 ! Calculate the metric quantities
                 ierr = calc_met(grid_eq_plot,eq_plot,met_plot)
                 CHCKERR('')

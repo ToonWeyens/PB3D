@@ -2098,6 +2098,14 @@ contains
             call print_ar_1(coeff)
         end if
 #endif
+        
+        ! test whether numerical coefficients matrix has right size
+        if (size(coeff).ne.2*ord+1) then
+            ierr = 1
+            err_msg = 'Array of discretization coefficients needs to have &
+                &the correct size 2*ord+1'
+            CHCKERR(err_msg)
+        end if
     end function calc_coeff_fin_diff
     
     ! Convert 2D coordinates (i,j) to the storage convention used in matrices.

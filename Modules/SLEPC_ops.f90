@@ -50,7 +50,7 @@ contains
     ! builds previous to 1.06. These have been superseded by "setup_interp_data"
     ! followed by "apply_disc".
     integer function solve_EV_system_SLEPC(grid_sol,X,sol,i_geo) result(ierr)
-        use num_vars, only: max_it_inv, norm_disc_prec_sol
+        use num_vars, only: max_it_inv, norm_disc_prec_sol, matrix_SLEPC_style
         use utilities, only: calc_coeff_fin_diff
         use rich, only: use_guess
 #if ldebug
@@ -78,6 +78,7 @@ contains
         PetscReal, allocatable :: norm_disc_coeff(:)                            ! discretization coefficients
         PetscReal :: step_size                                                  ! step size in flux coordinates
         PetscBool :: done_inverse                                               ! is it converged?
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -107,9 +108,10 @@ contains
         
         ! set up the matrix
         call writo('Set up matrices')
-        
+        call lvl_ud(1)
         ierr = setup_mats(grid_sol,X,A,B,i_geo_loc,norm_disc_coeff)
         CHCKERR('')
+        call lvl_ud(-1)
         
 #if ldebug
         if (debug_setup_mats) then
@@ -150,26 +152,39 @@ contains
             ! set boundary conditions
             call writo('Set up boundary conditions')
             
-            ierr = set_BC(grid_sol,X,A,B,i_geo_loc,grid_sol%n(3),&
-                &norm_disc_coeff)
-            CHCKERR('')
+            select case (matrix_SLEPC_style)
+                case (1)                                                        ! sparse
+                    ierr = set_BC(grid_sol,X,A,B,i_geo_loc,grid_sol%n(3),&
+                        &norm_disc_coeff)
+                    CHCKERR('')
             
 #if ldebug
-            if (debug_set_BC) then
-                call writo('Testing if AFTER INSERTING BC''s, A and B are &
-                    &Hermitian by multiplying with their Hermitian Transpose &
-                    &and subtracting 1')
-                call lvl_ud(1)
-                
-                ierr = test_mat_hermiticity(A,'A_BC')
-                CHCKERR('')
-                
-                ierr = test_mat_hermiticity(B,'B_BC')
-                CHCKERR('')
-                
-                call lvl_ud(-1)
-            end if
+                    if (debug_set_BC) then
+                        call writo('Testing if AFTER INSERTING BC''s, A and B &
+                            &are Hermitian by multiplying with their &
+                            &Hermitian Transpose and subtracting 1')
+                        call lvl_ud(1)
+                        
+                        ierr = test_mat_hermiticity(A,'A_BC')
+                        CHCKERR('')
+                        
+                        ierr = test_mat_hermiticity(B,'B_BC')
+                        CHCKERR('')
+                        
+                        call lvl_ud(-1)
+                    end if
 #endif
+                case (2)                                                        ! shell
+                    write(*,*) '!!!! DISABLED !!!!'
+                    !!ierr = 1
+                    !!err_msg = 'NOT YET IMPLEMENTED FOR SHELL MATRICES'
+                    !!CHCKERR(err_msg)
+                case default
+                    ierr = 1
+                    err_msg = 'No SLEPC matrix type associated to '//&
+                        &trim(i2str(matrix_SLEPC_style))
+                    CHCKERR(err_msg)
+            end select
             
             ! set up solver
             call writo('Set up EV solver')
@@ -406,7 +421,7 @@ contains
     ! Note: For normal usage, i_geo should be 1, or not present.
     integer function setup_mats(grid_sol,X,A,B,i_geo,norm_disc_coeff) &
         &result(ierr)
-        use num_vars, only: norm_disc_prec_sol
+        use num_vars, only: norm_disc_prec_sol, matrix_SLEPC_style
         use SLEPC_utilities, only: insert_block_mat
 #if ldebug
         use num_vars, only: ltest
@@ -428,14 +443,15 @@ contains
         PetscInt :: n_r                                                         ! n_r of trimmed sol grid
         PetscInt :: loc_n_r                                                     ! loc_n_r of trimmed sol grid
         PetscInt :: st_size                                                     ! half stencil size
-        PetscInt, allocatable :: tot_nz(:)                                      ! nr. of total non-zeros
         PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
         PetscInt, allocatable :: o_nz(:)                                        ! nr. of off-diagonal non-zeros
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! local variables also used in child routines
+        PetscInt :: bulk_i_lim(2)                                               ! absolute limits of bulk matrix (excluding the BC's)
         
         ! initialize ierr
         ierr = 0
-        
-        call lvl_ud(1)
         
         ! user output
         call writo('Normal discretization with central finite differences of &
@@ -469,97 +485,87 @@ contains
         ! set (half) stencil size
         st_size = 2*norm_disc_prec_sol
         
-        ! create a  matrix A and B  with the appropriate number  of preallocated
-        ! entries (excluding ghost regions)
-        ! initialize the numbers of non-zeros in diagonal and off-diagonal
-        allocate(tot_nz(loc_n_r*n_mod)); tot_nz = 0
-        allocate(d_nz(loc_n_r*n_mod)); d_nz = 0
-        allocate(o_nz(loc_n_r*n_mod)); o_nz = 0
-        
-        ! calculate number of total nonzero entries
-        tot_nz = 1+2*st_size
-        do kd = 1,st_size
-            if (kd.ge.grid_sol%i_min .and. kd.le.grid_sol%i_max) &              ! limit due to left BC
-                &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
-                &(kd-grid_sol%i_min+1)*n_mod) = &
-                &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
-                &(kd-grid_sol%i_min+1)*n_mod) - &
-                &(st_size+1-kd)
-        end do
-        do kd = n_r,n_r-st_size+1,-1
-            if (kd.ge.grid_sol%i_min .and. kd.le.grid_sol%i_max) &              ! limit due to right BC
-                &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
-                &(kd-grid_sol%i_min+1)*n_mod) = &
-                &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
-                &(kd-grid_sol%i_min+1)*n_mod) - &
-                &(kd-n_r+st_size)
-        end do
-        
-        ! calculate number of nonzero diagonal entries
-        if (loc_n_r.le.(st_size+1)) then                                        ! up to (st_size+1) normal points in this process
-            d_nz = loc_n_r
-        else                                                                    ! more than (st_size+1) normal points in this process
-            do kd = 1,st_size
-                d_nz((kd-1)*n_mod+1:kd*n_mod) = &
-                    &st_size+kd
-                d_nz((loc_n_r-kd)*n_mod+1:(loc_n_r-kd+1)*n_mod) = &
-                    &st_size+kd
-            end do
-            d_nz(st_size*n_mod+1:(loc_n_r-st_size)*n_mod) = &
-                &2*st_size+1
-        end if
-        d_nz = min(d_nz,loc_n_r)                                                ! limit to loc_n_r
-        
-        ! calculate number of nonzero off-diagonal entries
-        do kd = 1,loc_n_r*n_mod
-            o_nz(kd) = tot_nz(kd)-d_nz(kd)
-        end do
-        
-        ! create matrix A
-        call MatCreateAIJ(PETSC_COMM_WORLD,loc_n_r*n_mod,loc_n_r*n_mod,&
-            &grid_sol%n(3)*n_mod,grid_sol%n(3)*n_mod,PETSC_NULL_INTEGER,&
-            &d_nz*n_mod,PETSC_NULL_INTEGER,o_nz*n_mod,A,ierr)
-        CHCKERR('MatCreateAIJ failed for matrix A')
-        
-        ! deallocate tot_nz, d_nz and o_nz
-        deallocate(tot_nz,d_nz,o_nz)
-        
-        ! fill the matrix A
-        ierr = fill_mat(X%PV_int_0(i_geo,:,:),X%PV_int_1(i_geo,:,:),&
-            &X%PV_int_2(i_geo,:,:),n_r,norm_disc_coeff,A)
-        CHCKERR('')
-        call writo('matrix A set up:')
-        
-        call lvl_ud(1)
-        
-        ierr = disp_mat_inf(A)
+        ! set up bulk matrix absolute limits
+        ierr = set_bulk_lims(grid_sol,bulk_i_lim)
         CHCKERR('')
         
-        call lvl_ud(-1)
-        
-        ! duplicate A into B
-        ! (the  advantage of  letting communication  and calculation  overlap by
-        ! calculating matrix B while assembling A is offset by the extra cost of
-        ! not being able to use MatDuplicate. This is also easier)
-        call MatDuplicate(A,MAT_SHARE_NONZERO_PATTERN,B,ierr)                   ! B has same structure as A
-        CHCKERR('failed to duplicate A into B')
-        
-        ! fill the matrix B
-        ierr = fill_mat(X%KV_int_0(i_geo,:,:),X%KV_int_1(i_geo,:,:),&
-            &X%KV_int_2(i_geo,:,:),n_r,norm_disc_coeff,B)
-        CHCKERR('')
-        call writo('matrix B set up:')
-        
-        call lvl_ud(1)
-        
-        ierr = disp_mat_inf(B)
-        CHCKERR('')
-        
-        call lvl_ud(-1)
-        
-        call lvl_ud(-1)
+        ! setup matrix A and B
+        select case (matrix_SLEPC_style)
+            case (1)                                                            ! sparse
+                ! calculate nonzeros
+                call set_nonzeros()
+                
+                ! create matrix A
+                call MatCreateAIJ(PETSC_COMM_WORLD,loc_n_r*n_mod,loc_n_r*n_mod,&
+                    &n_r*n_mod,n_r*n_mod,PETSC_NULL_INTEGER,d_nz*n_mod,&
+                    &PETSC_NULL_INTEGER,o_nz*n_mod,A,ierr)
+                err_msg = 'MatCreateAIJ failed for matrix A'
+                CHCKERR(err_msg)
+                
+                ! deallocate tot_nz, d_nz and o_nz
+                deallocate(d_nz,o_nz)
+                
+                ! fill the matrix A
+                ierr = fill_mat(X%PV_int_0(i_geo,:,:),X%PV_int_1(i_geo,:,:),&
+                    &X%PV_int_2(i_geo,:,:),n_r,norm_disc_coeff,bulk_i_lim,A)
+                CHCKERR('')
+                
+                call writo('matrix A set up:')
+                ierr = disp_mat_info(A)
+                CHCKERR('')
+                
+                ! duplicate A into B
+                ! (the  advantage  of   letting  communication  and  calculation
+                ! overlap by calculating  matrix B while assembling  A is offset
+                ! by the extra cost of not  being able to use MatDuplicate. This
+                ! is also easier)
+                call MatDuplicate(A,MAT_SHARE_NONZERO_PATTERN,B,ierr)           ! B has same structure as A
+                CHCKERR('failed to duplicate A into B')
+                
+                ! fill the matrix B
+                ierr = fill_mat(X%KV_int_0(i_geo,:,:),X%KV_int_1(i_geo,:,:),&
+                    &X%KV_int_2(i_geo,:,:),n_r,norm_disc_coeff,bulk_i_lim,B)
+                CHCKERR('')
+                
+                call writo('matrix B set up:')
+                ierr = disp_mat_info(B)
+                CHCKERR('')
+            case (2)                                                            ! shell
+                ! create matrix A
+                call MatCreateShell(PETSC_COMM_WORLD,loc_n_r*n_mod,&
+                    &loc_n_r*n_mod,n_r*n_mod,n_r*n_mod,PETSC_NULL_OBJECT,A,ierr)
+                err_msg = 'MatCreateShell failed for matrix A'
+                CHCKERR(err_msg)
+                
+                ! set operations for A
+                err_msg = 'MatShellSetOperation failed for matrix A'
+                call MatShellSetOperation(A,MATOP_MULT,shell_A_product,ierr)
+                CHCKERR(err_msg)
+                call MatShellSetOperation(A,MATOP_GET_DIAGONAL,&
+                    &shell_A_diagonal,ierr)
+                CHCKERR(err_msg)
+                
+                ! create matrix B
+                call MatCreateShell(PETSC_COMM_WORLD,loc_n_r*n_mod,&
+                    &loc_n_r*n_mod,n_r*n_mod,n_r*n_mod,PETSC_NULL_OBJECT,B,ierr)
+                err_msg = 'MatCreateShell failed for matrix B'
+                CHCKERR(err_msg)
+                
+                ! set operations for B
+                err_msg = 'MatShellSetOperation failed for matrix B'
+                call MatShellSetOperation(B,MATOP_MULT,shell_B_product,ierr)
+                CHCKERR(err_msg)
+                call MatShellSetOperation(B,MATOP_GET_DIAGONAL,&
+                    &shell_B_diagonal,ierr)
+                CHCKERR(err_msg)
+            case default
+                ierr = 1
+                err_msg = 'No SLEPC matrix type associated to '//&
+                    &trim(i2str(matrix_SLEPC_style))
+                CHCKERR(err_msg)
+        end select
     contains
-        ! fills a  matrix according to norm_disc_prec_sol [ADD REF]:
+        ! Fills a  matrix according to norm_disc_prec_sol [ADD REF]:
         !   1. first order accuracy for all terms
         !   2. higher order accuracy for internal first order derivatives
         ! it is used  for both the matrix  A and B, corresponding  to the plasma
@@ -573,9 +579,8 @@ contains
         !   the  corresponding  perturbation  grid. This  information,  as  well
         !   as  the interpolated  value  of  the previous  point  allow for  the
         !   calculation of every quantity.
-        integer function fill_mat(V_0,V_1,V_2,n_sol,norm_disc_coeff,mat) &
-            &result(ierr)
-            use num_vars, only: norm_disc_prec_sol, BC_style
+        integer function fill_mat(V_0,V_1,V_2,n_sol,norm_disc_coeff,bulk_i_lim,&
+            &mat) result(ierr)
             use utilities, only: c, con
             
             character(*), parameter :: rout_name = 'fill_mat'
@@ -586,6 +591,7 @@ contains
             PetscScalar, intent(in) :: V_2(:,:)                                 ! either PV_int_2 or KV_int_2 in equilibrium normal grid
             integer, intent(in) :: n_sol                                        ! number of grid points of solution grid
             PetscReal, intent(in) :: norm_disc_coeff(:)                         ! discretization coefficients for normal derivatives
+            PetscInt, intent(in) :: bulk_i_lim(2)                               ! absolute limits of bulk matrix (excluding the BC's)
             Mat, intent(inout) :: mat                                           ! either A or B
             
             ! local variables (not to be used in child routines)
@@ -594,7 +600,6 @@ contains
             PetscInt :: id, jd, kd                                              ! counters
             PetscInt :: kd_loc                                                  ! kd in local variables
             PetscInt :: k, m                                                    ! counters
-            PetscInt :: i_min, i_max                                            ! absolute limits excluding the BC's
 #if ldebug
             PetscScalar, allocatable :: loc_block_0_backup(:,:)                 ! backed up V_0 local block
 #endif
@@ -624,51 +629,11 @@ contains
                 CHCKERR(err_msg)
             end if
             
-            ! test whether numerical coefficients matrix has right size
-            if (size(norm_disc_coeff).ne.2*norm_disc_prec_sol+1) then
-                ierr = 1
-                err_msg = 'Array of discretization coefficients needs to have &
-                    &the correct size 2*norm_disc_prec_sol+1'
-                CHCKERR(err_msg)
-            end if
-            
-            ! set up i_min, depending on BC style
-            select case (BC_style(1))
-                case (1)
-                    i_min = grid_sol%i_min                                      ! will be overwritten
-                case (2)
-                    i_min = max(grid_sol%i_min,1+norm_disc_prec_sol)            ! first norm_disc_prec_sol rows write left BC's
-                case (3)
-                    err_msg = 'Left BC''s cannot have BC type 3'
-                    ierr = 1
-                    CHCKERR(err_msg)
-                case default
-                    err_msg = 'No BC style associated with '//&
-                        &trim(i2str(BC_style(1)))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
-            
-            ! set up i_max, depending on BC style
-            select case (BC_style(2))
-                case (1)
-                    i_max = grid_sol%i_max                                      ! will be overwritten
-                case (2)
-                    i_max = min(grid_sol%i_max,grid_sol%n(3)-norm_disc_prec_sol)! last norm_disc_prec_sol rows write right BC's
-                case (3)
-                    i_max = min(grid_sol%i_max,grid_sol%n(3)-1)                 ! last row writes right BC's
-                case default
-                    err_msg = 'No BC style associated with '//&
-                        &trim(i2str(BC_style(1)))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
-            
             ! allocate local block
             allocate(loc_block(n_mod,n_mod))
             
             ! iterate over all rows of this rank
-            do kd = i_min-1,i_max-1                                             ! (indices start with 0 here)
+            do kd = bulk_i_lim(1)-1,bulk_i_lim(2)-1                             ! (indices start with 0 here)
                 ! set up local kd
                 kd_loc = kd+2-grid_sol%i_min
                 
@@ -758,9 +723,56 @@ contains
             deallocate(loc_block)
         end function fill_mat
         
-        ! display information about matrix
-        integer function disp_mat_inf(mat) result(ierr)
-            character(*), parameter :: rout_name = 'disp_mat_inf'
+        ! Sets the limits of the indices of the bulk matrix, depending on the BC
+        ! style.
+        integer function set_bulk_lims(grid_sol,i_lim) result(ierr)
+            use num_vars, only: BC_style
+            
+            character(*), parameter :: rout_name = 'set_bulk_lims'
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_sol                             ! solution grid
+            integer, intent(inout) :: i_lim(2)                                  ! min and max of bulk limits
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set up i_min
+            select case (BC_style(1))
+                case (1)
+                    i_lim(1) = grid_sol%i_min                                   ! will be overwritten
+                case (2)
+                    i_lim(1) = max(grid_sol%i_min,1+norm_disc_prec_sol)         ! first norm_disc_prec_sol rows write left BC's
+                case (3)
+                    err_msg = 'Left BC''s cannot have BC type 3'
+                    ierr = 1
+                    CHCKERR(err_msg)
+                case default
+                    err_msg = 'No BC style associated with '//&
+                        &trim(i2str(BC_style(1)))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+            
+            ! set up i_max
+            select case (BC_style(2))
+                case (1)
+                    i_lim(2) = grid_sol%i_max                                   ! will be overwritten
+                case (2)
+                    i_lim(2) = min(grid_sol%i_max,n_r-norm_disc_prec_sol)       ! last norm_disc_prec_sol rows write right BC's
+                case (3)
+                    i_lim(2) = min(grid_sol%i_max,n_r-1)                        ! last row writes right BC's
+                case default
+                    err_msg = 'No BC style associated with '//&
+                        &trim(i2str(BC_style(1)))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+        end function set_bulk_lims
+        
+        ! Display information about matrix.
+        integer function disp_mat_info(mat) result(ierr)
+            character(*), parameter :: rout_name = 'disp_mat_info'
             
             ! input / output
             Mat, intent(inout) :: mat                                           ! either A or B
@@ -771,6 +783,8 @@ contains
             ! initialize ierr
             ierr = 0
             
+            call lvl_ud(1)
+            
             call MatGetInfo(mat,MAT_GLOBAL_SUM,mat_info,ierr)
             CHCKERR('')
             call writo('memory usage: '//&
@@ -779,7 +793,204 @@ contains
                 &trim(r2strt(mat_info(MAT_INFO_NZ_ALLOCATED))))
             call writo('of which unused: '//&
                 &trim(r2strt(mat_info(MAT_INFO_NZ_UNNEEDED))))
-        end function disp_mat_inf
+            
+            call lvl_ud(-1)
+        end function disp_mat_info
+        
+        ! Sets nonzero elements d_nz and o_nz.
+        subroutine set_nonzeros()
+            ! local variables
+            PetscInt, allocatable :: tot_nz(:)                                  ! nr. of total non-zeros
+            
+            ! initialize the numbers of non-zeros in diagonal and off-diagonal
+            allocate(tot_nz(loc_n_r*n_mod)); tot_nz = 0
+            allocate(d_nz(loc_n_r*n_mod)); d_nz = 0
+            allocate(o_nz(loc_n_r*n_mod)); o_nz = 0
+            
+            ! calculate number of total nonzero entries
+            tot_nz = 1+2*st_size
+            do kd = 1,st_size
+                if (kd.ge.grid_sol%i_min .and. kd.le.grid_sol%i_max) &          ! limit due to left BC
+                    &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
+                    &(kd-grid_sol%i_min+1)*n_mod) = &
+                    &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
+                    &(kd-grid_sol%i_min+1)*n_mod) - &
+                    &(st_size+1-kd)
+            end do
+            do kd = n_r,n_r-st_size+1,-1
+                if (kd.ge.grid_sol%i_min .and. kd.le.grid_sol%i_max) &          ! limit due to right BC
+                    &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
+                    &(kd-grid_sol%i_min+1)*n_mod) = &
+                    &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
+                    &(kd-grid_sol%i_min+1)*n_mod) - &
+                    &(kd-n_r+st_size)
+            end do
+            
+            ! calculate number of nonzero diagonal entries
+            if (loc_n_r.le.(st_size+1)) then                                    ! up to (st_size+1) normal points in this process
+                d_nz = loc_n_r
+            else                                                                ! more than (st_size+1) normal points in this process
+                do kd = 1,st_size
+                    d_nz((kd-1)*n_mod+1:kd*n_mod) = &
+                        &st_size+kd
+                    d_nz((loc_n_r-kd)*n_mod+1:(loc_n_r-kd+1)*n_mod) = &
+                        &st_size+kd
+                end do
+                d_nz(st_size*n_mod+1:(loc_n_r-st_size)*n_mod) = &
+                    &2*st_size+1
+            end if
+            d_nz = min(d_nz,loc_n_r)                                            ! limit to loc_n_r
+            
+            ! calculate number of nonzero off-diagonal entries
+            do kd = 1,loc_n_r*n_mod
+                o_nz(kd) = tot_nz(kd)-d_nz(kd)
+            end do
+        end subroutine set_nonzeros
+        
+        ! Defines matrix product for shell matrices: Y = A*X and Y = B*X
+        ! Uses the variables A, B, bulk_i_lim, grid_sol from parent routine.
+        subroutine shell_A_product(mat,vec_in,vec_out,ierr)
+            character(*), parameter :: rout_name = 'shell_A_product'
+            
+            ! input / output
+            Mat :: mat                                                          ! matrix (unused)
+            Vec :: vec_in, vec_out                                              ! input and output vector
+            PetscInt :: ierr                                                    ! error variable
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! call with PV
+            ierr = shell_mat_product(X%PV_int_0(i_geo,:,:),&
+                &X%PV_int_1(i_geo,:,:),X%PV_int_2(i_geo,:,:),vec_in,vec_out)
+            CHCKERR('')
+        end subroutine shell_A_product
+        subroutine shell_B_product(mat,vec_in,vec_out,ierr)
+            character(*), parameter :: rout_name = 'shell_B_product'
+            
+            ! input / output
+            Mat :: mat                                                          ! matrix (unused)
+            Vec :: vec_in, vec_out                                              ! input and output vector
+            PetscInt :: ierr                                                    ! error variable
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! call with KV
+            ierr = shell_mat_product(X%KV_int_0(i_geo,:,:),&
+                &X%KV_int_1(i_geo,:,:),X%KV_int_2(i_geo,:,:),vec_in,vec_out)
+            CHCKERR('')
+        end subroutine shell_B_product
+        integer function shell_mat_product(V_0,V_1,V_2,vec_in,vec_out) &
+            &result(ierr)
+            character(*), parameter :: rout_name = 'shell_mat_product'
+            
+            ! input / output
+            PetscScalar, intent(in) :: V_0(:,:)                                 ! either PV_int_0 or KV_int_0 in equilibrium normal grid
+            PetscScalar, intent(in) :: V_1(:,:)                                 ! either PV_int_1 or KV_int_1 in equilibrium normal grid
+            PetscScalar, intent(in) :: V_2(:,:)                                 ! either PV_int_2 or KV_int_2 in equilibrium normal grid
+            Vec, intent(in) :: vec_in                                           ! input vector
+            Vec, intent(inout) :: vec_out                                       ! output vector
+            
+            ! local variables
+            PetscScalar, pointer :: vec_in_loc(:)                               ! local pointer to vec_in
+            PetscScalar, pointer :: vec_out_loc(:)                              ! local pointer to vec_out
+            PetscInt :: kd                                                      ! counter
+            PetscInt :: kd_loc                                                  ! kd in local variables
+            
+            write(*,*) '!!! GOT INTO USER DEFINED SHELL MATRIX PRODUCT !!!!!!!!'
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! get vectors
+            err_msg = 'Failed to get array'
+            call VecGetArrayReadF90(vec_in,vec_in_loc,ierr)
+            CHCKERR(err_msg)
+            call VecGetArrayF90(vec_out,vec_out_loc,ierr)
+            CHCKERR(err_msg)
+            
+            ! loop over all the diagonal elements of the matrix
+            do kd = bulk_i_lim(1)-1,bulk_i_lim(2)-1                             ! (indices start with 0 here)
+                ! set up local kd
+                kd_loc = kd+2-grid_sol%i_min
+                
+                ! set diagonal
+                !diag_loc(kd) = V_0(
+            end do
+            
+            ! restore vectors
+            err_msg = 'Failed to restore array'
+            call VecRestoreArrayReadF90(vec_in,vec_in_loc,ierr)
+            CHCKERR(err_msg)
+            call VecRestoreArrayF90(vec_out,vec_out_loc,ierr)
+            CHCKERR(err_msg)
+        end function shell_mat_product
+        
+        ! Gets diagonal of shell matrix A or B.
+        subroutine shell_A_diagonal(mat,diag,ierr)
+            character(*), parameter :: rout_name = 'shell_A_diagonal'
+            
+            ! input / output
+            Mat :: mat                                                          ! matrix (unused)
+            Vec :: diag                                                         ! diagonal
+            PetscInt :: ierr                                                    ! error variable
+            
+            ! call with PV
+            ierr = shell_mat_diagonal(X%PV_int_0(i_geo,:,:),diag)
+            CHCKERR('')
+        end subroutine shell_A_diagonal
+        subroutine shell_B_diagonal(mat,diag,ierr)
+            character(*), parameter :: rout_name = 'shell_B_diagonal'
+            
+            ! input / output
+            Mat :: mat                                                          ! matrix (unused)
+            Vec :: diag                                                         ! diagonal
+            PetscInt :: ierr                                                    ! error variable
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! call with KV
+            ierr = shell_mat_diagonal(X%KV_int_0(i_geo,:,:),diag)
+            CHCKERR('')
+        end subroutine shell_B_diagonal
+        integer function shell_mat_diagonal(V_0,diag) result(ierr)
+            character(*), parameter :: rout_name = 'shell_mat_diagonal'
+            
+            ! input / output
+            PetscScalar, intent(in) :: V_0(:,:)                                 ! either PV_int_0 or KV_int_0 in equilibrium normal grid
+            Vec, intent(inout) :: diag                                          ! diagonal
+            
+            ! local variables
+            PetscInt :: kd                                                      ! counter
+            PetscInt :: kd_loc                                                  ! kd in local variables
+            PetscScalar, pointer :: diag_loc(:)                                 ! local pointer to diag
+            
+            ! initialize ierr
+            ierr = 0
+            
+            write(*,*) '!!! GOT INTO USER DEFINED SHELL MATRIX PRODUCT !!!!!!!!'
+            
+            ! get vectors
+            err_msg = 'Failed to get array'
+            call VecGetArrayF90(diag,diag_loc,ierr)
+            CHCKERR(err_msg)
+            
+            ! loop over all the diagonal elements of the matrix
+            do kd = bulk_i_lim(1)-1,bulk_i_lim(2)-1                             ! (indices start with 0 here)
+                ! set up local kd
+                kd_loc = kd+2-grid_sol%i_min
+                
+                ! set diagonal
+                !diag_loc(kd) = V_0(
+            end do
+            
+            ! restore vectors
+            err_msg = 'Failed to restore array'
+            call VecRestoreArrayF90(diag,diag_loc,ierr)
+            CHCKERR(err_msg)
+        end function shell_mat_diagonal
     end function setup_mats
     
     ! Sets the  boundary conditions:

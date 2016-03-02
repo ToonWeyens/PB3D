@@ -988,7 +988,8 @@ contains
                 ! 1. Data itself
                 
                 ! calculate memory variables block, offset, count and stride
-                call calc_bocs
+                ierr = calc_bocs()
+                CHCKERR('')
                 
                 ! create file and memory data space for the variable dataset
                 dimsf = file_block                                              ! file space has total dimensions
@@ -1103,9 +1104,14 @@ contains
         !   the total sizes of the previous dimensions
         !   - count is one
         !   - stride is one
-        subroutine calc_bocs
+        integer function calc_bocs() result(ierr)
+            character(*), parameter :: rout_name = 'calc_bocs'
+            
             ! local variables
             integer :: kd                                                       ! counter
+            
+            ! initialize ierr
+            ierr = 0
             
             ! intialize local variables
             prev_dims = 1
@@ -1157,7 +1163,7 @@ contains
             ! set file variables
             file_block = prev_dims*&
                 &(vars(id)%tot_i_max(div_dim)-vars(id)%tot_i_min(div_dim)+1)
-        end subroutine calc_bocs
+        end function calc_bocs
         
         ! detects whether individual print
         subroutine detect_ind_print

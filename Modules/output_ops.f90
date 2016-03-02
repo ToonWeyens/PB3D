@@ -975,6 +975,9 @@ contains
     ! col_id. (This could  be implemented by changing how n_plot  is defined and
     ! selectively  letting  each  processer  write  in  the  main  loop  at  its
     ! corresponding indices.)
+    ! Note:  This  routine is  written  with  toroidal configurations  in  mind.
+    ! Therefore, if X or Y is negative,  and there is poloidal symmetry, this is
+    ! ignored and X and Y are combined into R = sqrt(X^2+Y^2).
     subroutine plot_HDF5_arr(var_names,file_name,vars,tot_dim,loc_offset,&
         &X,Y,Z,col_id,col,description)                                          ! array version
         use HDF5_ops, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
