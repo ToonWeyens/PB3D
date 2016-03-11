@@ -52,7 +52,7 @@ contains
     integer function solve_EV_system_SLEPC(grid_sol,X,sol,i_geo) result(ierr)
         use num_vars, only: max_it_inv, norm_disc_prec_sol, matrix_SLEPC_style
         use utilities, only: calc_coeff_fin_diff
-        use rich, only: use_guess
+        use rich_vars, only: use_guess
 #if ldebug
         use num_vars, only: ltest
         use input_utilities, only: get_real, get_log
@@ -1704,7 +1704,7 @@ contains
         use files_utilities, only: nextunit
         use MPI_utilities, only: get_ser_var
         use sol_vars, only: dealloc_sol, create_sol
-        use rich, only: rich_info_short
+        use rich_vars, only: rich_info_short
         
         character(*), parameter :: rout_name = 'store_results'
         
@@ -1798,7 +1798,7 @@ contains
         
         ! open output file for the log
         if (rank.eq.0) then
-            full_output_name = prog_name//'_'//output_name//'_EV'//&
+            full_output_name = prog_name//'_'//trim(output_name)//'_EV'//&
                 &trim(rich_info_short())//'.txt'
             open(unit=nextunit(output_EV_i),file=full_output_name,iostat=ierr)
             CHCKERR('Cannot open EV output file')
@@ -1810,7 +1810,7 @@ contains
                 write(output_EV_i,'(A)') '# Eigenvalues normalized to the &
                     &squared  Alfven frequency omega_A^2 = '
                 select case (eq_style)
-                    case (1)                                                        ! VMEC
+                    case (1)                                                    ! VMEC
                         write(output_EV_i,'(A)') '#     ('//&
                             &trim(r2str(1._dp/T_0))//' Hz)^2 = '//&
                             &trim(r2str(1._dp/T_0**2))//' Hz^2'

@@ -333,3 +333,13 @@ CHANGELOG
       - The structure of "SLEPC_ops" has been slightly rewritten for the future accomodation of shell matrices.
       - Fixed bug in "calc_U" where the part ~ n_frac was not used in the calculation of DU_1 and DU_2, as well as some erroneous indices.
       - Moved some of the routines from "calc_eq" to "calc_met". In fact, these routine structures should be rethought, possibly merged.
+
+1.10: - VMEC IS NOT WORKING WELL YET.
+      - Added restart functionality within PB3D using "rich_restart_lvl" to enable for Richardson extrapolation to continue (2...max_it_rich) or to skip the pre-perturbation phase (1). If it is 0, no restart is done.
+      - The broadcast routines now only pass user options. All the rest is handled by HDF5 output and input.
+      - Fixed confusion about the normalization: Now HELENA uses MISHKA normalization by default.
+      - The miscellaneous output variables are merged with the input output variables, i.e. output variables due to the input of equilibrium code.
+      - The system of reading and then reconstructing variables has been replaced by a direct one. "PB3D_vars" ceased to exist.
+      - Split "rich" module in two parts: "rich_vars" and "rich_ops".
+      - The deallocation of equilibrium input (VMEC or HELENA) now happens through "dealloc_in".
+      - Standardized the outline of driver routines, by making them start by reconstructing the necessary PB3D output and finish by deallocating.

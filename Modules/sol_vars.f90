@@ -12,8 +12,8 @@ module sol_vars
     implicit none
     
     private
-    public dealloc_sol, create_sol, &
-        &sol_type
+    public dealloc_sol, create_sol, sol_type, &
+        &alpha
     
     ! solution type
     ! The arrays here are of the form:
@@ -26,6 +26,9 @@ module sol_vars
         complex(dp), allocatable :: vec(:,:,:)                                  ! Eigenvector solution
         complex(dp), allocatable :: val(:)                                      ! Eigenvalue solution
     end type
+    
+    ! global variables
+    real(dp) :: alpha                                                       ! field line label alpha
     
 contains
     ! Create a solution type and allocate  the variables. The number of modes as

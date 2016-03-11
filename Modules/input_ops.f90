@@ -14,7 +14,7 @@ module input_ops
     
 contains
     ! reads input from user-provided input file
-    ! [MPI] only global master
+    ! [MPI] only master
     integer function read_input() result(ierr)
         use num_vars, only: &
             &max_it_NR, tol_NR, max_it_rich, input_i, use_pol_flux_F, &
@@ -25,14 +25,15 @@ contains
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
             &tol_norm, tol_SLEPC, max_it_slepc, n_procs, pi, plot_size, &
             &U_style, norm_style, test_max_mem, X_style, matrix_SLEPC_style,  &
-            &input_name
-        use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0
+            &input_name, rich_restart_lvl
+        use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use messages, only: writo, lvl_ud
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
-        use rich, only: min_n_r_sol, find_max_lvl_rich, &
-            &rich_lvl
-        use grid_vars, only: alpha, n_par_X, min_par_X, max_par_X
+        use rich_vars, only: min_n_r_sol, rich_lvl
+        use rich_ops, only: find_max_lvl_rich
+        use grid_vars, only: n_par_X, min_par_X, max_par_X
+        use sol_vars, only: alpha
         
         character(*), parameter :: rout_name = 'read_input'
         
@@ -48,9 +49,9 @@ contains
             &n_zeta_plot, norm_disc_prec_eq, tol_norm, max_mem_per_proc, &
             &min_n_r_sol, max_it_rich, tol_rich, EV_style, plot_resonance, &
             &n_sol_requested, EV_BC, tol_SLEPC, retain_all_sol, pres_0, R_0, &
-            &psi_0, B_0, norm_disc_prec_X, BC_style, max_it_inv, max_it_slepc, &
-            &norm_disc_prec_sol, plot_size, U_style, norm_style, test_max_mem, &
-            &matrix_SLEPC_style
+            &psi_0, B_0, T_0, norm_disc_prec_X, BC_style, max_it_inv, &
+            &max_it_slepc, norm_disc_prec_sol, plot_size, U_style, norm_style, &
+            &test_max_mem, matrix_SLEPC_style, rich_restart_lvl
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_grid, norm_disc_prec_sol, &
             &plot_size, test_max_mem, PB3D_lvl_rich, max_it_NR, tol_NR
@@ -127,8 +128,9 @@ contains
                         ierr = adapt_normalization()
                         CHCKERR('')
                         
-                        ! adapt output variables if needed
-                        call adapt_output
+                        ! adapt input / output variables if needed
+                        ierr = adapt_inoutput()
+                        CHCKERR('')
                         
                         ! adapt Richardson variables if needed
                         call adapt_r
@@ -206,9 +208,10 @@ contains
             plot_grid = .false.                                                 ! do not plot the grid
             plot_flux_q = .false.                                               ! do not plot the flux quantities
             
-            ! variables concerning output
+            ! variables concerning input / output
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
             retain_all_sol = .false.                                            ! don't retain faulty ones
+            rich_restart_lvl = 0                                                ! don't restart
             ! default   values   of  n_theta_plot  and   n_zeta_plot  depend  on
             ! equilibrium style being used:
             !   1:  VMEC
@@ -254,6 +257,7 @@ contains
             pres_0 = huge(1._dp)                                                ! nonsensible value to check for user overwriting
             psi_0 = huge(1._dp)                                                 ! nonsensible value to check for user overwriting
             B_0 = huge(1._dp)                                                   ! nonsensible value to check for user overwriting
+            T_0 = huge(1._dp)                                                   ! nonsensible value to check for user overwriting
             
             ! concerning Richardson extrapolation
             max_it_rich = 1                                                     ! by default no Richardson extrapolation
@@ -330,13 +334,31 @@ contains
         
         ! checks whether the variables concerning output are chosen correctly.
         ! n_sol_requested has to be at least one
-        subroutine adapt_output
+        ! rich_restart_lvl has to be 0 [def] or not more than max_it_rich
+        integer function adapt_inoutput() result(ierr)
+            character(*), parameter :: rout_name = 'adapt_inoutput'
+            
+            ! initialize ierr
+            ierr = 0
+            
             if (n_sol_requested.lt.1) then
                 n_sol_requested = 1
                 call writo('WARNING: n_sol_requested has been increased to '&
                     &//trim(i2str(n_sol_requested)))
             end if
-        end subroutine adapt_output
+            if (rich_restart_lvl.lt.0) then
+                call writo('WARNING: rich_restart_lvl was '//&
+                    &trim(i2str(rich_restart_lvl))//&
+                    &' but cannot be negative, so it was reset to 0')
+                rich_restart_lvl = 0
+            end if
+            if (rich_restart_lvl.lt.0 .or. rich_restart_lvl.gt.max_it_rich) then
+                ierr = 1
+                err_msg = 'rich_restart_lvl not within 0..max_it_rich = 0..'//&
+                    &trim(i2str(max_it_rich))
+                CHCKERR(err_msg)
+            end if
+        end function adapt_inoutput
         
         ! checks whether the variables concerning plotting are chosen correctly.
         ! n_theta and n_zeta_plot have to be positive

@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.09                                                              !
+!   Version: 1.10                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -24,17 +24,18 @@
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program POST
     use str_ops, only: i2str
-    use num_vars, only: prog_name, prog_style
+    use num_vars, only: prog_name, prog_style, rank
     use messages, only: writo, print_goodbye, lvl_ud, print_hello, &
         &init_messages, init_time, start_time, stop_time, passed_time
     use HDF5_vars, only: init_HDF5
     use X_vars, only: init_X_vars
-    use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_vars
+    use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_opts
     use files_ops, only: init_files, parse_args, open_input, open_output, &
         &close_output
     use input_ops, only: read_input
     use driver_POST, only: run_driver_POST
-    use PB3D_ops, only: init_PB3D_ops
+    use PB3D_ops, only: reconstruct_PB3D_in
+    use files_ops, only: dealloc_in
 #if ldebug
     use num_vars, only: ltest
     use test, only: generic_tests
@@ -66,17 +67,21 @@ program POST
     call start_time
     call writo('Initialization')
     call lvl_ud(1)
-    ierr = parse_args()                                                         ! parse argument (options are used in open_input)
-    CHCKERR
-    ierr = open_input()                                                         ! open the input files
-    CHCKERR
-    ierr = init_PB3D_ops()                                                      ! initialize PB3D operations
-    CHCKERR
-    ierr = read_input()                                                         ! read input file
-    CHCKERR
-    ierr = open_output()                                                        ! open output file per alpha group
-    CHCKERR
-    ierr = broadcast_input_vars()                                               ! broadcast to other processors
+    if (rank.eq.0) then
+        ierr = parse_args()                                                     ! parse argument (options are used in open_input)
+        CHCKERR
+        ierr = open_input()                                                     ! open the input files
+        CHCKERR
+        ierr = reconstruct_PB3D_in()                                            ! reconstruct miscellaneous PB3D output variables
+        CHCKERR
+        ierr = read_input()                                                     ! read input file
+        CHCKERR
+        ierr = open_output()                                                    ! open output file per alpha group
+        CHCKERR
+        ierr = dealloc_in()                                                     ! clean up input from equilibrium codes
+        CHCKERR
+    end if
+    ierr = broadcast_input_opts()                                               ! broadcast input options to other processors
     CHCKERR
     call writo('')
     call passed_time

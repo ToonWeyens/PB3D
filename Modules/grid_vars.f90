@@ -11,7 +11,7 @@ module grid_vars
     private
     public create_grid, dealloc_grid, grid_type, create_disc, dealloc_disc, &
         &disc_type, &
-        &alpha, n_r_eq, n_par_X, min_par_X, max_par_X
+        &n_r_eq, n_par_X, min_par_X, max_par_X
 
     ! type for grids
     ! The grids  are saved in  the following format:  (angle_1,angle_2,r), where
@@ -60,7 +60,6 @@ module grid_vars
     ! global variables
     ! (These  variables  should  be   used   only  until  the  grids  have  been
     ! established. They are put here for lack of a better place.)
-    real(dp) :: alpha                                                           ! field line label alpha
     integer :: n_r_eq                                                           ! nr. of normal points in equilibrium grid
     integer :: n_par_X                                                          ! nr. of parallel points in field-aligned grid
     real(dp) :: min_par_X, max_par_X                                            ! min. and max. of parallel coordinate [pi] in field-aligned grid

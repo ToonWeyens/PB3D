@@ -2067,9 +2067,10 @@ contains
     ! Note: Flux coordinates used as normal coordinates
     integer function print_output_X_1(grid,X,lim_sec_X) result(ierr)            ! vectorial version
         use num_vars, only: PB3D_name
-        use rich, only: rich_info_short
+        use rich_vars, only: rich_info_short
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type
+        use HDF5_vars, only: var_1D_type, &
+            &max_dim_var_1D
         use X_utilities, only: get_suffix
         
         character(*), parameter :: rout_name = 'print_output_X_1'
@@ -2097,7 +2098,7 @@ contains
         call lvl_ud(1)
         
         ! Set up the 1D equivalents of the perturbation variables
-        allocate(X_1D(8*X%n_mod))
+        allocate(X_1D(max_dim_var_1D))
         
         ! set up variables X_1D
         id = 1
@@ -2223,7 +2224,8 @@ contains
         call lvl_ud(1)
         
         ! write
-        ierr = print_HDF5_arrs(X_1D,PB3D_name,'X_1'//trim(rich_info_short()))
+        ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,&
+            &'X_1'//trim(rich_info_short()))
         CHCKERR('')
         
         ! user output
@@ -2238,9 +2240,10 @@ contains
     end function print_output_X_1
     integer function print_output_X_2(grid,X,lim_sec_X) result(ierr)            ! tensorial version
         use num_vars, only: PB3D_name
-        use rich, only: rich_info_short
+        use rich_vars, only: rich_info_short
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type
+        use HDF5_vars, only: var_1D_type, &
+            &max_dim_var_1D
         use X_utilities, only: is_necessary_X, get_suffix
         use X_vars, only: n_mod_X
         use utilities, only: c
@@ -2272,8 +2275,7 @@ contains
         call lvl_ud(1)
         
         ! Set up the 1D equivalents of the perturbation variables
-        allocate(X_1D(&
-            &4*(size(X%PV_int_0,3)+size(X%PV_int_1,3)+size(X%PV_int_2,3))))
+        allocate(X_1D(max_dim_var_1D))
         
         id = 1
         
@@ -2500,7 +2502,8 @@ contains
         call lvl_ud(1)
         
         ! write
-        ierr = print_HDF5_arrs(X_1D,PB3D_name,'X_2'//trim(rich_info_short()))
+        ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,&
+            &'X_2'//trim(rich_info_short()))
         CHCKERR('')
         
         ! user output

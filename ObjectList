@@ -4,7 +4,8 @@ HDF5_vars.o \
 grid_vars.o \
 grid_utilities.o \
 grid_ops.o \
-rich.o \
+rich_vars.o \
+rich_ops.o \
 driver_eq.o \
 driver_X.o \
 driver_sol.o \
@@ -36,7 +37,6 @@ X_vars.o \
 X_utilities.o \
 sol_vars.o \
 test.o \
-PB3D_vars.o \
 PB3D_utilities.o \
 PB3D_ops.o \
 vac.o \

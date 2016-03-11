@@ -737,8 +737,6 @@ contains
                     ierr = interp_fun(R_H_int(id),R_H(id,:),grid%loc_r_E(kd),&
                         &x=flux_p_H/(2*pi))
                     CHCKERR('')
-                end do
-                do id = 1,size(Z_H,1)
                     ierr = interp_fun(Z_H_int(id),Z_H(id,:),grid%loc_r_E(kd),&
                         &x=flux_p_H/(2*pi))
                     CHCKERR('')

@@ -27,14 +27,11 @@ module driver_X
 contains
     ! Implementation   of  the  driver,  using  Richardson's  extrapolation  and
     ! discretization in the normal direction
-    ! [MPI] All ranks, parts are done  by global master only, other parts by the
-    !       other ranks only
-    !       Here, the tasks are split and allocated dynamically by the master to 
-    !       the other groups
     integer function run_driver_X() result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, rank, plot_resonance, &
             &X_job_nr, X_jobs_lims, n_procs, X_style
-        use rich, only: n_r_sol
+        use rich_vars, only: rich_info_short, &
+            &n_r_sol
         use MPI_utilities, only: wait_MPI
         use X_vars, only: dealloc_X, &
             &min_sec_X, max_sec_X, prim_X, min_r_sol, max_r_sol, n_mod_X
@@ -44,16 +41,15 @@ contains
         use met_vars, only: dealloc_met, create_met
         use grid_ops, only: calc_norm_range, setup_and_calc_grid_X, &
             &print_output_grid
-        use PB3D_ops, only: read_PB3D, reconstruct_PB3D
+        use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
+            &reconstruct_PB3D_eq, reconstruct_PB3D_X_1
         use utilities, only: test_max_memory
         use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
             &setup_nm_X, print_output_X, calc_magn_ints
         use vac, only: calc_vac
-        use HELENA_vars, only: dealloc_HEL
         use HELENA_ops, only: interp_HEL_on_grid
-        use VMEC, only: dealloc_VMEC
-        use rich, only: rich_info_short
+        use files_ops, only: dealloc_in
         !!use utilities, only: calc_aux_utilities
 #if ldebug
         use X_vars, only: create_X
@@ -87,6 +83,10 @@ contains
         ierr = 0
         
         ! some preliminary things
+        ierr = wait_MPI()
+        CHCKERR('')
+        ierr = reconstruct_PB3D_in()                                            ! reconstruct miscellaneous PB3D output variables
+        CHCKERR('')
         
         ! test maximum memory
         ierr = test_max_memory()
@@ -143,27 +143,31 @@ contains
         
         call lvl_ud(-1)
         
-        ! read PB3D output file
-        ierr = read_PB3D(.false.,.true.,.false.,.false.,.true.,.false.,.false.,&
-            &.false.)                                                           ! read the equilibrium grid and variables
-        CHCKERR('')
-        
-        ! reconstructing grids depends on equilibrium style
+        ! reconstruct equilibrium grid and equilibrium output variables
         ! user output
         call writo('Reconstructing PB3D output on output grid')
         call lvl_ud(1)
-        ierr = reconstruct_PB3D(.false.,.true.,.false.,.false.,.true.,.false.,&
-            &.false.,.false.,grid_eq=grid_eq,grid_eq_B=grid_eq_B,eq=eq,met=met)
+        
+        ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq')
         CHCKERR('')
+        ierr = reconstruct_PB3D_eq(grid_eq,eq,met)
+        CHCKERR('')
+        
+        ! operations depending on equilibrium style
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ! the  field-aligned metric variables and  equilibrium variables
-                ! are identical to output
+                ! the  field-aligned  equilibrium  grid,  metric  variables  and
+                ! equilibrium variables are identical to output
+                grid_eq_B => grid_eq
                 met_B => met
 #if ldebug
                 if (debug_run_driver_X) eq_B => eq
 #endif
             case (2)                                                            ! HELENA
+                ! also need field-aligned equilibrium grid
+                allocate(grid_eq_B)
+                ierr = reconstruct_PB3D_grid(grid_eq_B,'grid_eq_B')
+                CHCKERR('')
                 ! also need field-aligined metrics
                 allocate(met_B)
                 ierr = create_met(grid_eq_B,met_B)
@@ -192,6 +196,7 @@ contains
                     &trim(i2str(eq_style))
                 CHCKERR(err_msg)
         end select
+        
         call lvl_ud(-1)
         call writo('PB3D output reconstructed')
         
@@ -244,14 +249,16 @@ contains
         end select
         deallocate(r_F_X)
         
-        ! write perturbation grid variables to output
-        ierr = print_output_grid(grid_X,'perturbation',&
-            &'X'//trim(rich_info_short()))
-        CHCKERR('')
-        if (eq_style.eq.2) then                                                 ! for HELENA also print field-aligned grid
-            ierr = print_output_grid(grid_X_B,'field-aligned perturbation',&
-                &'X_B'//trim(rich_info_short()))
+        ! write perturbation grid variables to output if master
+        if (rank.eq.0) then
+            ierr = print_output_grid(grid_X,'perturbation',&
+                &'X'//trim(rich_info_short()))
             CHCKERR('')
+            if (eq_style.eq.2) then                                             ! for HELENA also print field-aligned grid
+                ierr = print_output_grid(grid_X_B,'field-aligned perturbation',&
+                    &'X_B'//trim(rich_info_short()))
+                CHCKERR('')
+            end if
         end if
         
         ! divide perturbation jobs
@@ -378,25 +385,15 @@ contains
                         &for dimension '//trim(i2str(id)))
                     call lvl_ud(1)
                     
-                    ! read PB3D output file for this dimension
-                    ierr = read_PB3D(.false.,.false.,.false.,.false.,.false.,&
-                        &.true.,.false.,.false.,lim_sec_X_1=&
-                        &X_jobs_lims((id-1)*2+1:(id-1)*2+2,X_job_nr))
-                    CHCKERR('')
-                    
                     ! reconstruct PB3D X_1 quantities for this dimension
 #if ldebug
                     if (debug_run_driver_X) then
-                        ierr = reconstruct_PB3D(.false.,.false.,.false.,&
-                            &.false.,.false.,.true.,.false.,.false.,&
-                            &grid_X=grid_X_B,X_1=X_1(id),lim_sec_X_1=&
+                        ierr = reconstruct_PB3D_X_1(grid_X_B,X_1(id),lim_sec_X=&
                             &X_jobs_lims((id-1)*2+1:(id-1)*2+2,X_job_nr))
                         CHCKERR('')
                     else
 #endif
-                        ierr = reconstruct_PB3D(.false.,.false.,.false.,&
-                            &.false.,.false.,.true.,.false.,.false.,&
-                            &grid_X=grid_X,X_1=X_1(id),lim_sec_X_1=&
+                        ierr = reconstruct_PB3D_X_1(grid_X,X_1(id),lim_sec_X=&
                             &X_jobs_lims((id-1)*2+1:(id-1)*2+2,X_job_nr))
                         CHCKERR('')
 #if ldebug
@@ -466,8 +463,12 @@ contains
         ! cleaning up
         call writo('Cleaning up')
         call lvl_ud(1)
+        ierr = dealloc_in()
+        CHCKERR('')
         call dealloc_grid(grid_eq)
         call dealloc_grid(grid_X)
+        call dealloc_eq(eq)
+        call dealloc_met(met)
         if (eq_style.eq.2) then
             call dealloc_grid(grid_eq_B)
             deallocate(grid_eq_B)
@@ -488,22 +489,6 @@ contains
 #if ldebug
             if (debug_run_driver_X) nullify(eq_B)
 #endif
-        call dealloc_eq(eq)
-        call dealloc_met(met)
-        ! deallocate variables depending on equilibrium style
-        !   1:  VMEC
-        !   2:  HELENA
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                call dealloc_VMEC
-            case (2)                                                            ! HELENA
-                call dealloc_HEL
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
         call lvl_ud(-1)
         call writo('Clean')
         

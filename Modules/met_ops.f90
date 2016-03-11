@@ -895,7 +895,7 @@ contains
     !       already. If not, the results will be incorrect!
     integer function calc_jac_H_ind(grid,eq,met,deriv) result(ierr)
         use num_vars, only: norm_disc_prec_eq
-        use HELENA_vars, only:  h_H_33, RBphi
+        use HELENA_vars, only:  h_H_33, RBphi_H
         use grid_utilities, only: setup_deriv_data, apply_disc
         
         character(*), parameter :: rout_name = 'calc_jac_H_ind'
@@ -926,7 +926,7 @@ contains
             do kd = 1,grid%loc_n_r
                 do jd = 1,grid%n(2)
                     met%jac_E(:,jd,kd,0,0,0) = eq%q_saf_E(kd,0)/&
-                        &(h_H_33(:,grid%i_min-1+kd)*RBphi(grid%i_min-1+kd))
+                        &(h_H_33(:,grid%i_min-1+kd)*RBphi_H(grid%i_min-1+kd))
                 end do
             end do
         else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
@@ -2133,7 +2133,7 @@ contains
         use grid_utilities, only: trim_grid, setup_deriv_data, apply_disc
         use eq_vars, only: vac_perm
         use num_vars, only: eq_style, norm_disc_prec_eq
-        use HELENA_vars, only: RBphi, h_H_11, h_H_12
+        use HELENA_vars, only: RBphi_H, h_H_11, h_H_12
         
         character(*), parameter :: rout_name = 'test_p'
         
@@ -2254,10 +2254,10 @@ contains
             do jd = 1,grid_trim%n(2)
                 do id = 1,grid_trim%n(1)
                     ierr = apply_disc(eq%q_saf_E(norm_id(1):norm_id(2),0)*&
-                        &RBphi(n_H(1):n_H(2))+&
+                        &RBphi_H(n_H(1):n_H(2))+&
                         &eq%q_saf_E(norm_id(1):norm_id(2),0)*&
                         &h_H_11(id,n_H(1):n_H(2))/&
-                        &RBphi(n_H(1):n_H(2)),norm_deriv_data,res(id,jd,:,2))
+                        &RBphi_H(n_H(1):n_H(2)),norm_deriv_data,res(id,jd,:,2))
                     CHCKERR('')
                 end do
             end do
@@ -2293,8 +2293,9 @@ contains
                         &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,2))
                 end do
                 res(:,:,kd-norm_id(1)+1,2) = &
-                    &-eq%q_saf_E(kd,0)/RBphi(kd+grid_eq%i_min-1) * &
-                    &res(:,:,kd-norm_id(1)+1,2) + RBphi(kd+grid_eq%i_min-1) * &
+                    &-eq%q_saf_E(kd,0)/RBphi_H(kd+grid_eq%i_min-1) * &
+                    &res(:,:,kd-norm_id(1)+1,2) + &
+                    &RBphi_H(kd+grid_eq%i_min-1) * &
                     &eq%q_saf_E(kd,1)
             end do
             call dealloc_disc(ang_deriv_data)
@@ -2325,7 +2326,7 @@ contains
         use num_vars, only: eq_style, use_pol_flux_F
         use grid_utilities, only: trim_grid
         use utilities, only: calc_det
-        use HELENA_vars, only: h_H_33, RBphi
+        use HELENA_vars, only: h_H_33, RBphi_H
         
         character(*), parameter :: rout_name = 'test_jac_F'
         
@@ -2410,7 +2411,7 @@ contains
                     do jd = 1,grid_trim%n(2)
                         res(:,jd,kd-norm_id(1)+1) = eq%q_saf_E(kd,0)/&
                             &(h_H_33(:,kd+grid_eq%i_min-1)*&
-                            &RBphi(kd+grid_eq%i_min-1))                         ! h_H_33 = 1/R^2 and RBphi = F are tabulated in eq. grid
+                            &RBphi_H(kd+grid_eq%i_min-1))                       ! h_H_33 = 1/R^2 and RBphi_H = F are tabulated in eq. grid
                     end do
                 end do
             case default

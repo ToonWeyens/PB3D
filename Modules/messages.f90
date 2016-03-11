@@ -25,6 +25,8 @@ contains
     ! initialize the variables for the module
     ! [MPI] All ranks
     subroutine init_messages
+        use num_vars, only: rank
+        
         ! output level
         lvl = 1
         
@@ -34,9 +36,13 @@ contains
         t2 = 0
         running = .false. 
         
-        ! temporary output
-        temp_output_active = .true.
-        allocate(temp_output(0))
+        ! temporary output for master
+        if (rank.eq.0) then
+            temp_output_active = .true.
+            allocate(temp_output(0))
+        else
+            temp_output_active = .false.
+        end if
     end subroutine init_messages
     
     ! prints first message
@@ -226,11 +232,6 @@ contains
         logical :: ignore                                                       ! normally, everybody but group master is ignored
         character(len=max_str_ln), allocatable :: temp_output_loc(:)            ! local temporary output
         
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !! THIS SHOULD BE REWRITTEN MAKING USE OF MPI I/O                     !!
-        !! (USE http://beige.ucs.indiana.edu/I590/node89.html)                !!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        
         ! bypass output if no_output
         if (no_output) return
         
@@ -281,6 +282,9 @@ contains
                         temp_output(1:size(temp_output_loc)) = temp_output_loc
                         temp_output(size(temp_output_loc)+1) = output_str
                     end if
+                    
+                    ! deallocate local variable
+                    deallocate(temp_output_loc)
                 else                                                            ! normal output to file output_i
                     if (output_i.ne.0) then
                         if (lvl.eq.1) write(output_i,*) header_str              ! first level gets extra lines

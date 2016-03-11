@@ -23,10 +23,10 @@ module sol_ops
     
     ! global variables
 #if ldebug
-    logical :: debug_plot_sol_vec = .false.                                     ! plot debug information for plot_sol_vec
+    logical :: debug_plot_sol_vec = .true.                                     ! plot debug information for plot_sol_vec
     logical :: debug_calc_E = .false.                                           ! plot debug information for calc_E
     logical :: debug_X_norm = .false.                                           ! plot debug information X_norm
-    logical :: debug_DU = .false.                                               ! plot debug information for calculation of DU
+    logical :: debug_DU = .true.                                               ! plot debug information for calculation of DU
 #endif
 
 contains
@@ -826,7 +826,8 @@ contains
         use eq_vars, only: vac_perm
         use utilities, only: c, con2dis
         use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid
-        use grid_vars, only: alpha, dealloc_grid
+        use grid_vars, only: dealloc_grid
+        use sol_vars, only: alpha
         use MPI_utilities, only: get_ser_var, wait_MPI
         use sol_utilities, only: calc_XUQ
 #if ldebug
@@ -1108,9 +1109,10 @@ contains
     !   - sol:    val, vec
     integer function print_output_sol(grid,sol) result(ierr)
         use num_vars, only: rank, PB3D_name
-        use rich, only: rich_info_short
+        use rich_vars, only: rich_info_short
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type
+        use HDF5_vars, only: var_1D_type, &
+            &max_dim_var_1D
         use grid_utilities, only: trim_grid
         use grid_vars, only: dealloc_grid
         
@@ -1145,7 +1147,7 @@ contains
             CHCKERR('')
             
             ! Set up the 1D equivalents of the solution variables
-            allocate(sol_1D(4))
+            allocate(sol_1D(max_dim_var_1D))
             
             id = 1
             
@@ -1218,7 +1220,7 @@ contains
             call lvl_ud(1)
             
             ! write
-            ierr = print_HDF5_arrs(sol_1D,PB3D_name,'sol'//&
+            ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,'sol'//&
                 &trim(rich_info_short()))
             CHCKERR('')
             

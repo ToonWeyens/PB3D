@@ -17,7 +17,7 @@ module VMEC
         &iotaf, &                                                               ! rot. transf. (tor. flux) or saf. fac. (pol. flux) (FM)
         &presf, &                                                               ! pressure (FM)
         &lrfp, &                                                                ! whether or not the poloidal flux is used as radial variable
-        &gam => gamma, &                                                        ! gamma in adiabatic law (not important here, incompressibility)
+        &gam_V => gamma, &                                                      ! gamma in adiabatic law (not important here, incompressibility)
         &bsubumns, bsubumnc, bsubvmns, bsubvmnc, bsubsmns, bsubsmnc, &          ! B_theta (HM), B_zeta (HM), B_r (FM)
         &bmns, bmnc, &                                                          ! magnitude of B (HM)
         &lmns, lmnc, rmns, rmnc, zmns, zmnc, &                                  ! lambda (HM), R (FM), Z(FM)
@@ -30,7 +30,7 @@ module VMEC
         &calc_trigon_factors, fourier2real, &
         &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mpol_V, ntor_V, &
         &mn_V, pres_V, rot_t_V, is_asym_V, flux_t_V, Dflux_t_V, VMEC_version, &
-        &gam, is_freeb_V
+        &gam_V, is_freeb_V
 #if ldebug
     public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
@@ -49,13 +49,11 @@ module VMEC
 
 contains
     ! Reads the VMEC equilibrium data
-    ! [MPI] only global master
+    ! [MPI] only master
     integer function read_VMEC(n_r_eq,use_pol_flux_V) result(ierr)
         use utilities, only: conv_FHM
-        use num_vars, only: max_deriv, eq_name
-#if ldebug
-        use num_vars, only: ltest
-#endif
+        use num_vars, only: eq_name
+        
         character(*), parameter :: rout_name = 'read_VMEC'
         
         ! input / output
@@ -142,14 +140,15 @@ contains
         call lvl_ud(1)
         
         ! Allocate the Fourier coefficients and store the underived ones
-        allocate(R_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
-        allocate(R_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
-        allocate(Z_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
-        allocate(Z_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
-        allocate(L_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
-        allocate(L_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
-        allocate(L_c_H(mnmax_V,n_r_eq,0:max_deriv+1))
-        allocate(L_s_H(mnmax_V,n_r_eq,0:max_deriv+1))
+        ! (only allocate for the underived indices 0)
+        allocate(R_V_c(mnmax_V,n_r_eq,0:0))
+        allocate(R_V_s(mnmax_V,n_r_eq,0:0))
+        allocate(Z_V_c(mnmax_V,n_r_eq,0:0))
+        allocate(Z_V_s(mnmax_V,n_r_eq,0:0))
+        allocate(L_V_c(mnmax_V,n_r_eq,0:0))
+        allocate(L_V_s(mnmax_V,n_r_eq,0:0))
+        allocate(L_c_H(mnmax_V,n_r_eq,0:0))
+        allocate(L_s_H(mnmax_V,n_r_eq,0:0))
         
         ! factors R_V_c,s; Z_V_c,s and L_C,s and HM varieties
         R_V_c(:,:,0) = rmnc
@@ -174,69 +173,66 @@ contains
         end do
         
 #if ldebug
-        ! for tests
-        if (ltest) then
-            ! allocate helper variables
-            allocate(B_V_sub_c_M(mnmax_V,n_r_eq,3)); B_V_sub_c_M = 0._dp
-            allocate(B_V_sub_s_M(mnmax_V,n_r_eq,3)); B_V_sub_s_M = 0._dp
-            allocate(B_V_c_H(mnmax_V,n_r_eq)); B_V_c_H = 0._dp
-            allocate(jac_V_c_H(mnmax_V,n_r_eq)); jac_V_c_H = 0._dp
-            allocate(B_V_s_H(mnmax_V,n_r_eq)); B_V_s_H = 0._dp
-            allocate(jac_V_s_H(mnmax_V,n_r_eq))
-            
-            ! store in helper variables
-            B_V_sub_s_M(:,:,1) = bsubsmns
-            B_V_sub_c_M(:,:,2) = bsubumnc
-            B_V_sub_c_M(:,:,3) = bsubvmnc
-            B_V_c_H(:,:) = bmnc
-            jac_V_c_H(:,:) = gmnc
-            if (is_asym_V) then                                                 ! following only needed in asymmetric situations
-                B_V_sub_c_M(:,:,1) = bsubsmnc
-                B_V_sub_s_M(:,:,2) = bsubumns
-                B_V_sub_s_M(:,:,3) = bsubvmns
-                B_V_s_H(:,:) = bmns
-                jac_V_s_H(:,:) = gmns
-            else
-                B_V_sub_c_M(:,:,1) = 0._dp
-                B_V_sub_s_M(:,:,2) = 0._dp
-                B_V_sub_s_M(:,:,3) = 0._dp
-                B_V_s_H(:,:) = 0._dp
-                jac_V_s_H(:,:) = 0._dp
-            end if
-            
-            ! allocate FM variables
-            allocate(B_V_sub_c(mnmax_V,n_r_eq,3))
-            allocate(B_V_sub_s(mnmax_V,n_r_eq,3))
-            allocate(B_V_c(mnmax_V,n_r_eq))
-            allocate(B_V_s(mnmax_V,n_r_eq))
-            allocate(jac_V_c(mnmax_V,n_r_eq))
-            allocate(jac_V_s(mnmax_V,n_r_eq))
-            
-            ! conversion HM -> FM (B_V_sub, B_V, jac_V)
-            do id = 1,mnmax_V
-                do kd = 1,3
-                    ierr = conv_FHM(B_V_sub_c_M(id,:,kd),B_V_sub_c(id,:,kd),&
-                        &.false.)
-                    CHCKERR('')
-                    ierr = conv_FHM(B_V_sub_s_M(id,:,kd),B_V_sub_s(id,:,kd),&
-                        &.false.)
-                    CHCKERR('')
-                end do
-                ierr = conv_FHM(B_V_c_H(id,:),B_V_c(id,:),.false.)
+        ! allocate helper variables
+        allocate(B_V_sub_c_M(mnmax_V,n_r_eq,3)); B_V_sub_c_M = 0._dp
+        allocate(B_V_sub_s_M(mnmax_V,n_r_eq,3)); B_V_sub_s_M = 0._dp
+        allocate(B_V_c_H(mnmax_V,n_r_eq)); B_V_c_H = 0._dp
+        allocate(B_V_s_H(mnmax_V,n_r_eq)); B_V_s_H = 0._dp
+        allocate(jac_V_c_H(mnmax_V,n_r_eq)); jac_V_c_H = 0._dp
+        allocate(jac_V_s_H(mnmax_V,n_r_eq))
+        
+        ! store in helper variables
+        B_V_sub_s_M(:,:,1) = bsubsmns
+        B_V_sub_c_M(:,:,2) = bsubumnc
+        B_V_sub_c_M(:,:,3) = bsubvmnc
+        B_V_c_H(:,:) = bmnc
+        jac_V_c_H(:,:) = gmnc
+        if (is_asym_V) then                                                 ! following only needed in asymmetric situations
+            B_V_sub_c_M(:,:,1) = bsubsmnc
+            B_V_sub_s_M(:,:,2) = bsubumns
+            B_V_sub_s_M(:,:,3) = bsubvmns
+            B_V_s_H(:,:) = bmns
+            jac_V_s_H(:,:) = gmns
+        else
+            B_V_sub_c_M(:,:,1) = 0._dp
+            B_V_sub_s_M(:,:,2) = 0._dp
+            B_V_sub_s_M(:,:,3) = 0._dp
+            B_V_s_H(:,:) = 0._dp
+            jac_V_s_H(:,:) = 0._dp
+        end if
+        
+        ! allocate FM variables
+        allocate(B_V_sub_c(mnmax_V,n_r_eq,3))
+        allocate(B_V_sub_s(mnmax_V,n_r_eq,3))
+        allocate(B_V_c(mnmax_V,n_r_eq))
+        allocate(B_V_s(mnmax_V,n_r_eq))
+        allocate(jac_V_c(mnmax_V,n_r_eq))
+        allocate(jac_V_s(mnmax_V,n_r_eq))
+        
+        ! conversion HM -> FM (B_V_sub, B_V, jac_V)
+        do id = 1,mnmax_V
+            do kd = 1,3
+                ierr = conv_FHM(B_V_sub_c_M(id,:,kd),B_V_sub_c(id,:,kd),&
+                    &.false.)
                 CHCKERR('')
-                ierr = conv_FHM(B_V_s_H(id,:),B_V_s(id,:),.false.)
-                CHCKERR('')
-                ierr = conv_FHM(jac_V_c_H(id,:),jac_V_c(id,:),.false.)
-                CHCKERR('')
-                ierr = conv_FHM(jac_V_s_H(id,:),jac_V_s(id,:),.false.)
+                ierr = conv_FHM(B_V_sub_s_M(id,:,kd),B_V_sub_s(id,:,kd),&
+                    &.false.)
                 CHCKERR('')
             end do
-            
-            ! deallocate helper variables
-            deallocate(B_V_sub_c_M,B_V_sub_s_M)
-            deallocate(B_V_c_H,B_V_s_H)
-            deallocate(jac_V_c_H,jac_V_s_H)
-        end if
+            ierr = conv_FHM(B_V_c_H(id,:),B_V_c(id,:),.false.)
+            CHCKERR('')
+            ierr = conv_FHM(B_V_s_H(id,:),B_V_s(id,:),.false.)
+            CHCKERR('')
+            ierr = conv_FHM(jac_V_c_H(id,:),jac_V_c(id,:),.false.)
+            CHCKERR('')
+            ierr = conv_FHM(jac_V_s_H(id,:),jac_V_s(id,:),.false.)
+            CHCKERR('')
+        end do
+        
+        ! deallocate helper variables
+        deallocate(B_V_sub_c_M,B_V_sub_s_M)
+        deallocate(B_V_c_H,B_V_s_H)
+        deallocate(jac_V_c_H,jac_V_s_H)
 #endif
         
         ! deallocate repacked variables
@@ -248,24 +244,24 @@ contains
     
     ! deallocates VMEC quantities that are not used anymore
     subroutine dealloc_VMEC
-        if (allocated(rot_t_V)) deallocate(rot_t_V)
-        if (allocated(pres_V)) deallocate(pres_V)
-        if (allocated(flux_t_V)) deallocate(flux_t_V)
-        if (allocated(Dflux_t_V)) deallocate(Dflux_t_V)
-        if (allocated(mn_V)) deallocate(mn_V)
-        if (allocated(R_V_c)) deallocate(R_V_c)
-        if (allocated(R_V_s)) deallocate(R_V_s)
-        if (allocated(Z_V_c)) deallocate(Z_V_c)
-        if (allocated(Z_V_s)) deallocate(Z_V_s)
-        if (allocated(L_V_c)) deallocate(L_V_c)
-        if (allocated(L_V_s)) deallocate(L_V_s)
+        deallocate(rot_t_V)
+        deallocate(pres_V)
+        deallocate(flux_t_V)
+        deallocate(Dflux_t_V)
+        deallocate(mn_V)
+        deallocate(R_V_c)
+        deallocate(R_V_s)
+        deallocate(Z_V_c)
+        deallocate(Z_V_s)
+        deallocate(L_V_c)
+        deallocate(L_V_s)
 #if ldebug
-        if (allocated(B_V_sub_c)) deallocate(B_V_sub_c)
-        if (allocated(B_V_sub_s)) deallocate(B_V_sub_s)
-        if (allocated(B_V_c)) deallocate(B_V_c)
-        if (allocated(B_V_s)) deallocate(B_V_s)
-        if (allocated(jac_V_c)) deallocate(jac_V_c)
-        if (allocated(jac_V_s)) deallocate(jac_V_s)
+        deallocate(B_V_sub_c)
+        deallocate(B_V_sub_s)
+        deallocate(B_V_c)
+        deallocate(B_V_s)
+        deallocate(jac_V_c)
+        deallocate(jac_V_s)
 #endif
     end subroutine dealloc_VMEC
     
@@ -442,7 +438,6 @@ contains
     subroutine normalize_VMEC
         use eq_vars, only: pres_0, psi_0, R_0
 #if ldebug
-        use num_vars, only: ltest
         use  eq_vars, only: B_0
 #endif
         
@@ -457,14 +452,12 @@ contains
         L_V_c = L_V_c
         L_V_s = L_V_s
 #if ldebug
-        if (ltest) then
-            B_V_sub_s = B_V_sub_s/(R_0*B_0)
-            B_V_sub_c = B_V_sub_c/(R_0*B_0)
-            B_V_c = B_V_c/B_0
-            B_V_s = B_V_s/B_0
-            jac_V_c = jac_V_c/(R_0**3)
-            jac_V_s = jac_V_s/(R_0**3)
-        end if
+        B_V_sub_s = B_V_sub_s/(R_0*B_0)
+        B_V_sub_c = B_V_sub_c/(R_0*B_0)
+        B_V_c = B_V_c/B_0
+        B_V_s = B_V_s/B_0
+        jac_V_c = jac_V_c/(R_0**3)
+        jac_V_s = jac_V_s/(R_0**3)
 #endif
     end subroutine normalize_VMEC
 end module VMEC

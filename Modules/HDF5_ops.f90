@@ -821,7 +821,7 @@ contains
     
     ! creates an HDF5 output file
     integer function create_output_HDF5() result(ierr)
-        use num_vars, only: rank, PB3D_name
+        use num_vars, only: PB3D_name
         
         character(*), parameter :: rout_name = 'create_output_HDF5'
         
@@ -837,26 +837,23 @@ contains
         
         call lvl_ud(1)
         
-        ! only for group master
-        if (rank.eq.0) then
-            ! initialize FORTRAN predefined datatypes
-            call H5open_f(ierr) 
-            CHCKERR('Failed to initialize HDF5')
-            
-            ! create the file by group master
-            call H5Fcreate_f(PB3D_name,H5F_ACC_TRUNC_F,HDF5_i,&
-                &ierr)
-            CHCKERR('Failed to create file')
-            
-            ! close the HDF5 file
-            call H5Fclose_f(HDF5_i,ierr)
-            CHCKERR('failed to close HDF5 file')
-            
-            ! close FORTRAN interfaces and HDF5 library.
-            call H5Close_f(ierr)
-            err_msg = 'Failed to close FORTRAN HDF5 interface'
-            CHCKERR(err_msg)
-        end if
+        ! initialize FORTRAN predefined datatypes
+        call H5open_f(ierr) 
+        CHCKERR('Failed to initialize HDF5')
+        
+        ! create the file by group master
+        call H5Fcreate_f(PB3D_name,H5F_ACC_TRUNC_F,HDF5_i,&
+            &ierr)
+        CHCKERR('Failed to create file')
+        
+        ! close the HDF5 file
+        call H5Fclose_f(HDF5_i,ierr)
+        CHCKERR('failed to close HDF5 file')
+        
+        ! close FORTRAN interfaces and HDF5 library.
+        call H5Close_f(ierr)
+        err_msg = 'Failed to close FORTRAN HDF5 interface'
+        CHCKERR(err_msg)
         
         ! user output
         call lvl_ud(-1)

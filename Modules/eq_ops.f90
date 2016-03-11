@@ -14,7 +14,8 @@ module eq_ops
     implicit none
     private
     public read_eq, calc_eq, calc_derived_q, calc_normalization_const, &
-        &normalize_input, print_output_eq, flux_q_plot, prepare_RZL, calc_RZL
+        &normalize_input, print_output_eq, flux_q_plot, prepare_RZL, &
+        &calc_RZL, calc_flux_q
 #if ldebug
     public debug_calc_derived_q
 #endif
@@ -29,9 +30,9 @@ module eq_ops
     end interface
 
 contains
-    ! reads the equilibrium input file
+    ! Reads the equilibrium input file if no Richardson restart.
     integer function read_eq() result(ierr)
-        use num_vars, only: eq_style, rank, use_pol_flux_E
+        use num_vars, only: eq_style, use_pol_flux_E
         use VMEC, only: read_VMEC
         use HELENA_vars, only: read_HEL
         use grid_vars, only: n_r_eq
@@ -44,26 +45,22 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! only do this for the master
-        ! (The other ranks don't yet know what eq_style is!)
-        if (rank.eq.0) then
-            ! choose which equilibrium style is being used:
-            !   1:  VMEC
-            !   2:  HELENA
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    ierr = read_VMEC(n_r_eq,use_pol_flux_E)
-                    CHCKERR('')
-                case (2)                                                        ! HELENA
-                    ierr = read_HEL(n_r_eq,use_pol_flux_E)
-                    CHCKERR('')
-                case default
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
-        end if
+        ! choose which equilibrium style is being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ierr = read_VMEC(n_r_eq,use_pol_flux_E)
+                CHCKERR('')
+            case (2)                                                            ! HELENA
+                ierr = read_HEL(n_r_eq,use_pol_flux_E)
+                CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
     end function read_eq
     
     ! calculate  the equilibrium  quantities on  a grid  determined by  straight
@@ -531,7 +528,7 @@ contains
         ! HELENA version
         ! The HELENA normal coord. is the poloidal flux divided by 2pi
         integer function calc_flux_q_HEL() result(ierr)
-            use HELENA_vars, only: qs, flux_p_H, pres_H
+            use HELENA_vars, only: qs_H, flux_p_H, pres_H
             
             character(*), parameter :: rout_name = 'calc_flux_q_HEL'
             
@@ -565,7 +562,7 @@ contains
             end do
             
             ! calculate toroidal flux and derivatives
-            flux_t_E_full(:,1) = qs*flux_p_E_full(:,1)
+            flux_t_E_full(:,1) = qs_H*flux_p_E_full(:,1)
             ierr = calc_int(flux_t_E_full(:,1),flux_p_H/(2*pi),&
                 &flux_t_E_full(:,0))
             CHCKERR('')
@@ -584,7 +581,7 @@ contains
             end do
             
             ! safety factor
-            q_saf_E_full(:,0) = qs
+            q_saf_E_full(:,0) = qs_H
             do kd = 1, max_deriv+1
                 ierr = apply_disc(q_saf_E_full(:,0),norm_deriv_data(kd),&
                     &q_saf_E_full(:,kd))
@@ -592,7 +589,7 @@ contains
             end do
             
             ! rot. transform
-            rot_t_E_full(:,0) = 1._dp/qs
+            rot_t_E_full(:,0) = 1._dp/qs_H
             do kd = 1, max_deriv+1
                 ierr = apply_disc(rot_t_E_full(:,0),norm_deriv_data(kd),&
                     &rot_t_E_full(:,kd))
@@ -619,12 +616,8 @@ contains
         end function calc_flux_q_HEL
         
         ! plots flux quantities in file for VMEC port
-        !!!!! THERE IS STILL CONFUSION ABOUT THE ELITE NORMALIZATION !!!!
-        !!!!! HOWEVER, IT  IS CLEAR  THAT PRES_VMEC NEEDS  TO BE  MULTIPLIED BY 
-        !!!!! PRES_0 = B_0^2/mu_0 = 1/mu_0                                      
-        !!!!! THIS SHOULD BE SOLVED !!!!!!!
         subroutine plot_flux_q_in_file_for_VMEC()
-            use num_vars, only: mu_0_original
+            use eq_vars, only: pres_0
             use files_utilities, only: nextunit
             
             ! local variables
@@ -647,7 +640,7 @@ contains
             do kd = 1,grid_eq%n(3)
                 write(file_i,'(ES23.16,A,ES23.16,A,ES23.16)') &
                     &flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0), ' ', &
-                    &pres_E_full(kd,0), ' ', rot_t_E_full(kd,0)
+                    &pres_E_full(kd,0)*pres_0, ' ', rot_t_E_full(kd,0)
             end do
             write(file_i,*) ''
             write(file_i,*) ''
@@ -661,7 +654,7 @@ contains
             write(file_i,*) ''
             write(file_i,*) '# pressure'
             do kd = 1,grid_eq%n(3)
-                write(file_i,'(ES23.16)') pres_E_full(kd,0)/mu_0_original
+                write(file_i,'(ES23.16)') pres_E_full(kd,0)*pres_0
             end do
             write(file_i,*) ''
             write(file_i,*) ''
@@ -681,7 +674,7 @@ contains
             write(file_i,*) ''
             write(file_i,*) '# pressure once every 4 values'
             do kd = 0,(grid_eq%n(3)-1)/4
-                write(file_i,'(ES23.16)') pres_E_full(1+kd*4,0)/mu_0_original
+                write(file_i,'(ES23.16)') pres_E_full(1+kd*4,0)*pres_0
             end do
             write(file_i,*) ''
             write(file_i,*) ''
@@ -989,7 +982,7 @@ contains
                 Y_plot_2D(:,5) = Y_plot_2D(:,5)*psi_0                           ! flux_t
             end if
             
-            ! continue the plot if global master
+            ! continue the plot if master
             if (rank.eq.0) then
                 ! deallocate local serial variables
                 deallocate(ser_var_loc)
@@ -1034,21 +1027,17 @@ contains
         end function flux_q_plot_GP
     end function flux_q_plot
     
-    ! sets up normalization constants:
-    !   R_0:    major radius (= average R on axis)
-    !   rho_0:  mass density on axis (set up through input variable)
-    !   pres_0: pressure on axis
-    !   B_0:    average magnetic field (= sqrt(mu_0 pres_0))
-    !   psi_0:  reference flux (= R_0^2 B_0)
-    ! [MPI] only global master
+    ! Sets up normalization constants.
     integer function calc_normalization_const() result(ierr)
-        use num_vars, only: rank, eq_style, mu_0_original, use_normalization
+        use num_vars, only: rank, eq_style, mu_0_original, use_normalization, &
+            &rich_restart_lvl
         use eq_vars, only: T_0, B_0, pres_0, psi_0, R_0, rho_0
         
         character(*), parameter :: rout_name = 'calc_normalization_const'
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: nr_overriden_const                                           ! nr. of user-overriden constants, to print warning if > 0
         
         ! initialize ierr
         ierr = 0
@@ -1057,6 +1046,9 @@ contains
             ! user output
             call writo('Calculating the normalization constants')
             call lvl_ud(1)
+            
+            ! initialize nr_overriden_const
+            nr_overriden_const = 0
             
             ! calculation
             if (rank.eq.0) then
@@ -1076,67 +1068,112 @@ contains
                 end select
             end if
             
+            ! print warning if user-overriden
+            if (nr_overriden_const.gt.0) call writo('WARNING: '&
+                &//trim(i2str(nr_overriden_const))//' constants were overriden &
+                &by user. Consistency is NOT checked!')
+            
+            ! user output
+            call writo('R_0    = '//trim(r2str(R_0))//' m')
+            call writo('rho_0  = '//trim(r2str(rho_0))//' kg/m^3')
+            call writo('B_0    = '//trim(r2str(B_0))//' T')
+            call writo('pres_0 = '//trim(r2str(pres_0))//' Pa')
+            call writo('psi_0  = '//trim(r2str(psi_0))//' Tm^2')
+            call writo('mu_0   = '//trim(r2str(mu_0_original))//' Tm/A')
+            call writo('T_0    = '//trim(r2str(T_0))//' s')
+            
             ! user output
             call lvl_ud(-1)
             call writo('Normalization constants calculated')
-        else
+        else if (rich_restart_lvl.eq.0) then
             ! user output
             call writo('Normalization not used')
         end if
     contains 
         ! VMEC version
+        !   R_0:    major radius (= average R on axis)
+        !   pres_0: pressure on axis
+        !   B_0:    average magnetic field (= sqrt(mu_0 pres_0))
+        !   psi_0:  reference flux (= R_0^2 B_0)
+        !   rho_0:  reference mass density
+        ! Note: The  orthodox way of doing  this is by setting  B_0 the toroidal
+        ! field on the magnetic axis, and calculating pres_0 from this, which is
+        ! not done here.
+        ! Note that  rho_0 is  not given  through by  the equilibrium  codes and
+        ! should be user-supplied
         subroutine calc_normalization_const_VMEC
             use VMEC, only: R_V_c, pres_V
             
-            ! set the major  radius as the average value of  R_E on the magnetic
+            ! set the major  radius as the average value of  R_V on the magnetic
             ! axis
-            if (R_0.ge.huge(1._dp)) R_0 = R_V_c(1,1,0)                          ! only if user did not provide a value
+            if (R_0.ge.huge(1._dp)) then                                        ! user did not provide a value
+                R_0 = R_V_c(1,1,0)
+            else
+                nr_overriden_const = nr_overriden_const + 1
+            end if
+            
+            ! set pres_0 as pressure on axis
+            if (pres_0.ge.huge(1._dp)) then                                     ! user did not provide a value
+                pres_0 = pres_V(1)
+            else
+                nr_overriden_const = nr_overriden_const + 1
+            end if
+            
+            ! set the reference value for B_0 = sqrt(mu_0_original pres_0)
+            if (B_0.ge.huge(1._dp)) then                                        ! user did not provide a value
+                B_0 = sqrt(pres_0 * mu_0_original)
+            else
+                nr_overriden_const = nr_overriden_const + 1
+            end if
+            
+            ! set reference flux
+            if (psi_0.ge.huge(1._dp)) then                                      ! user did not provide a value
+                psi_0 = R_0**2 * B_0
+            else
+                nr_overriden_const = nr_overriden_const + 1
+            end if
             
             ! rho_0 is set up through an input variable with the same name
             
-            ! set pres_0 as pressure on axis
-            if (pres_0.ge.huge(1._dp)) pres_0 = pres_V(1)                       ! only if user did not provide a value
-            
-            ! set  the  reference value  for B_0  from B_0  = sqrt(mu_0_original
-            ! pres_0)
-            if (B_0.ge.huge(1._dp)) B_0 = sqrt(pres_0 * mu_0_original)          ! only if user did not provide a value
-            
-            ! set reference flux
-            if (psi_0.ge.huge(1._dp)) psi_0 = R_0**2 * B_0                      ! only if user did not provide a value
-            
             ! set Alfven time
-            T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0 
-            
-            ! user output
-            call writo('Major radius    R_0    = '//trim(r2strt(R_0))//' m')
-            call writo('Pressure        pres_0 = '//trim(r2strt(pres_0))//' Pa')
-            call writo('Mass density    rho_0  = '//trim(r2strt(rho_0))&
-                &//' kg/m^3')
-            call writo('Magnetic field  B_0    = '//trim(r2strt(B_0))//' T')
-            call writo('Magnetic flux   psi_0  = '//trim(r2strt(psi_0))//&
-                &' Tm^2')
-            call writo('Alfven time     T_0    = '//trim(r2strt(T_0))//' s')
-            call writo('Vacuum perm.    mu_0   = '//trim(r2strt(mu_0_original))&
-                &//' Tm/A')
+            if (T_0.ge.huge(1._dp)) then                                        ! user did not provide a value
+                T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0
+            else
+                nr_overriden_const = nr_overriden_const + 1
+            end if
         end subroutine calc_normalization_const_VMEC
         
         ! HELENA version
+        ! The  MISHKA normalization  with R_m  = 1  m,  B_m =  1 T  is taken  by
+        ! default, see "read_VMEC" for more information.
         subroutine calc_normalization_const_HEL
-            ! user output
-            call writo('HELENA output is already normalized')
-            
-            ! set everything to 1 to ensure consistency with various routines
-            R_0 = 1._dp
-            pres_0 = 1._dp
-            B_0 = 1._dp
-            psi_0 = 1._dp
-            T_0 = 1._dp
+            if (R_0.ge.huge(1._dp)) then                                        ! user did not provide a value
+                R_0 = 1._dp
+            else
+                nr_overriden_const = nr_overriden_const + 1
+            end if
+            if (B_0.ge.huge(1._dp)) then                                        ! user did not provide a value
+                B_0 = 1._dp
+            else
+                nr_overriden_const = nr_overriden_const + 1
+            end if
+            if (pres_0.ge.huge(1._dp)) then                                     ! user did not provide a value
+                pres_0 = B_0**2/mu_0_original
+            else
+                nr_overriden_const = nr_overriden_const + 1
+            end if
+            if (psi_0.ge.huge(1._dp)) then                                      ! user did not provide a value
+                psi_0 = 1._dp
+            else
+                nr_overriden_const = nr_overriden_const + 1
+            end if
+            if (T_0.ge.huge(1._dp)) T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0     ! only if user did not provide a value
         end subroutine calc_normalization_const_HEL
     end function calc_normalization_const
     
-    ! normalize input quantities
+    ! Normalize input quantities.
     integer function normalize_input() result(ierr)
-        use num_vars, only: use_normalization, eq_style, mu_0_original, rank
+        use num_vars, only: use_normalization, eq_style, mu_0_original
         use VMEC, only: normalize_VMEC
         use eq_vars, only: vac_perm
         
@@ -1149,7 +1186,7 @@ contains
         ierr = 0
         
         ! only normalize if needed
-        if (use_normalization .and. rank.eq.0) then
+        if (use_normalization) then
             ! user output
             call writo('Start normalizing the input variables')
             call lvl_ud(1)
@@ -1165,6 +1202,8 @@ contains
                     call normalize_VMEC
                 case (2)                                                        ! HELENA
                     ! other HELENA input already normalized
+                    call writo('HELENA input is already normalized with MISHKA &
+                        &normalization')
                 case default
                     err_msg = 'No equilibrium style associated with '//&
                         &trim(i2str(eq_style))
@@ -1187,12 +1226,11 @@ contains
     !   - HELENA:   R_H, Z_H
     ! Note: The equilibrium quantities are outputted in Flux coordinates.
     integer function print_output_eq(grid_eq,eq,met) result(ierr)
-        use num_vars, only: eq_style, PB3D_name, rank
+        use num_vars, only: PB3D_name, rank
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type
+        use HDF5_vars, only: var_1D_type, &
+            &max_dim_var_1D
         use grid_utilities, only: trim_grid
-        use HELENA_vars, only: chi_H, flux_p_H, R_H, Z_H, nchi
-        use VMEC, only:  R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V
         use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &
             &max_flux_t_F
         
@@ -1206,7 +1244,6 @@ contains
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: norm_id_f(2)                                                 ! untrimmed full normal indices for trimmed grids
-        character(len=max_str_ln) :: err_msg                                    ! error message
         type(var_1D_type), allocatable, target :: eq_1D(:)                      ! 1D equivalent of eq. variables
         type(var_1D_type), pointer :: eq_1D_loc => null()                       ! local element in eq_1D
         type(grid_type) :: grid_trim                                            ! trimmed grid
@@ -1230,21 +1267,8 @@ contains
         ! set i_min and i_max for variables tabulated on full grid, trimmed
         norm_id_f = norm_id + grid_eq%i_min - 1
         
-        ! Set up the 1D equivalents  of the equilibrium variables, with size
-        ! depending on equilibrium style
-        !   1:  VMEC
-        !   2:  HELENA
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                allocate(eq_1D(26))
-            case (2)                                                            ! HELENA
-                allocate(eq_1D(18))
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
+        ! set up the 1D equivalents of the equilibrium variables
+        allocate(eq_1D(max_dim_var_1D))
         
         ! Set up common variables eq_1D
         id = 1
@@ -1447,256 +1471,12 @@ contains
         eq_1D_loc%p = reshape(met%jac_FD(:,:,norm_id(1):norm_id(2),:,:,:),&
             &[size(met%jac_FD(:,:,norm_id(1):norm_id(2),:,:,:))])
         
-        ! Set up particular variables, depending on equilibrium style
-        !   1: VMEC needs the flux quantities in E coords. and VMEC variables in
-        !   order to  calculate the  equilibrium quantities for  different grids
-        !   and in order to plot.
-        !   2: HELENA  needs HELENA variables  to interpolate the  output tables
-        !   and in order to plot.
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ! No  need  for  grid variables  as they  are  identical to  the
-                ! field-aligned grid variables written above
-                
-                ! pres_E
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'pres_E'
-                allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
-                allocate(eq_1D_loc%loc_i_min(2),eq_1D_loc%loc_i_max(2))
-                eq_1D_loc%tot_i_min = [1,0]
-                eq_1D_loc%tot_i_max = [grid_trim%n(3),size(eq%pres_E,2)-1]
-                eq_1D_loc%loc_i_min = [grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = [grid_trim%i_max,size(eq%pres_E,2)-1]
-                allocate(eq_1D_loc%p(size(eq%pres_E(norm_id(1):norm_id(2),:))))
-                eq_1D_loc%p = reshape(eq%pres_E(norm_id(1):norm_id(2),:),&
-                    &[size(eq%pres_E(norm_id(1):norm_id(2),:))])
-                
-                ! q_saf_E
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'q_saf_E'
-                allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
-                allocate(eq_1D_loc%loc_i_min(2),eq_1D_loc%loc_i_max(2))
-                eq_1D_loc%tot_i_min = [1,0]
-                eq_1D_loc%tot_i_max = [grid_trim%n(3),size(eq%q_saf_E,2)-1]
-                eq_1D_loc%loc_i_min = [grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = [grid_trim%i_max,size(eq%q_saf_E,2)-1]
-                allocate(eq_1D_loc%p(size(eq%q_saf_E(norm_id(1):norm_id(2),:))))
-                eq_1D_loc%p = reshape(eq%q_saf_E(norm_id(1):norm_id(2),:),&
-                    &[size(eq%q_saf_E(norm_id(1):norm_id(2),:))])
-                
-                ! rot_t_E
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'rot_t_E'
-                allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
-                allocate(eq_1D_loc%loc_i_min(2),eq_1D_loc%loc_i_max(2))
-                eq_1D_loc%tot_i_min = [1,0]
-                eq_1D_loc%tot_i_max = [grid_trim%n(3),size(eq%rot_t_E,2)-1]
-                eq_1D_loc%loc_i_min = [grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = [grid_trim%i_max,size(eq%rot_t_E,2)-1]
-                allocate(eq_1D_loc%p(size(eq%rot_t_E(norm_id(1):norm_id(2),:))))
-                eq_1D_loc%p = reshape(eq%rot_t_E(norm_id(1):norm_id(2),:),&
-                    &[size(eq%rot_t_E(norm_id(1):norm_id(2),:))])
-                
-                ! flux_p_E
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'flux_p_E'
-                allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
-                allocate(eq_1D_loc%loc_i_min(2),eq_1D_loc%loc_i_max(2))
-                eq_1D_loc%tot_i_min = [1,0]
-                eq_1D_loc%tot_i_max = [grid_trim%n(3),size(eq%flux_p_E,2)-1]
-                eq_1D_loc%loc_i_min = [grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = [grid_trim%i_max,size(eq%flux_p_E,2)-1]
-                allocate(eq_1D_loc%p(size(eq%flux_p_E(norm_id(1):&
-                    &norm_id(2),:))))
-                eq_1D_loc%p = reshape(eq%flux_p_E(norm_id(1):norm_id(2),:),&
-                    &[size(eq%flux_p_E(norm_id(1):norm_id(2),:))])
-                
-                ! flux_t_E
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'flux_t_E'
-                allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
-                allocate(eq_1D_loc%loc_i_min(2),eq_1D_loc%loc_i_max(2))
-                eq_1D_loc%tot_i_min = [1,0]
-                eq_1D_loc%tot_i_max = [grid_trim%n(3),size(eq%flux_t_E,2)-1]
-                eq_1D_loc%loc_i_min = [grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = [grid_trim%i_max,size(eq%flux_t_E,2)-1]
-                allocate(eq_1D_loc%p(size(eq%flux_t_E(norm_id(1):&
-                    &norm_id(2),:))))
-                eq_1D_loc%p = reshape(eq%flux_t_E(norm_id(1):norm_id(2),:),&
-                    &[size(eq%flux_t_E(norm_id(1):norm_id(2),:))])
-                
-                ! mn_V
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'mn_V'
-                allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
-                allocate(eq_1D_loc%loc_i_min(2),eq_1D_loc%loc_i_max(2))
-                eq_1D_loc%tot_i_min = [1,1]
-                eq_1D_loc%tot_i_max = [mnmax_V,2]
-                eq_1D_loc%loc_i_min = [1,1]
-                if (rank.eq.0) then
-                    eq_1D_loc%loc_i_max = [mnmax_V,2]
-                    allocate(eq_1D_loc%p(size(mn_V)))
-                    eq_1D_loc%p = reshape(mn_V,[size(mn_V)])
-                else
-                    eq_1D_loc%loc_i_max = [mnmax_V,0]
-                    allocate(eq_1D_loc%p(0))
-                end if
-                
-                ! R_V_c
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'R_V_c'
-                allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
-                allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
-                eq_1D_loc%tot_i_min = [1,1,0]
-                eq_1D_loc%tot_i_max = [mnmax_V,grid_trim%n(3),size(R_V_c,3)-1]
-                eq_1D_loc%loc_i_min = [1,grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = [mnmax_V,grid_trim%i_max,size(R_V_c,3)-1]
-                allocate(eq_1D_loc%p(size(R_V_c(:,norm_id_f(1):&
-                    &norm_id_f(2),:))))
-                eq_1D_loc%p = reshape(R_V_c(:,norm_id_f(1):norm_id_f(2),:),&
-                    &[size(R_V_c(:,norm_id_f(1):norm_id_f(2),:))])
-                
-                ! R_V_s
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'R_V_s'
-                allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
-                allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
-                eq_1D_loc%tot_i_min = [1,1,0]
-                eq_1D_loc%tot_i_max = [mnmax_V,grid_trim%n(3),size(R_V_s,3)-1]
-                eq_1D_loc%loc_i_min = [1,grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = [mnmax_V,grid_trim%i_max,size(R_V_s,3)-1]
-                allocate(eq_1D_loc%p(size(R_V_s(:,norm_id_f(1):&
-                    &norm_id_f(2),:))))
-                eq_1D_loc%p = reshape(R_V_s(:,norm_id_f(1):norm_id_f(2),:),&
-                    &[size(R_V_s(:,norm_id_f(1):norm_id_f(2),:))])
-                
-                ! Z_V_c
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'Z_V_c'
-                allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
-                allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
-                eq_1D_loc%tot_i_min = [1,1,0]
-                eq_1D_loc%tot_i_max = [mnmax_V,grid_trim%n(3),size(Z_V_c,3)-1]
-                eq_1D_loc%loc_i_min = [1,grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = [mnmax_V,grid_trim%i_max,size(Z_V_c,3)-1]
-                allocate(eq_1D_loc%p(size(Z_V_c(:,norm_id_f(1):&
-                    &norm_id_f(2),:))))
-                eq_1D_loc%p = reshape(Z_V_c(:,norm_id_f(1):&
-                    &norm_id_f(2),:),&
-                    &[size(Z_V_c(:,norm_id_f(1):norm_id_f(2),:))])
-                
-                ! Z_V_s
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'Z_V_s'
-                allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
-                allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
-                eq_1D_loc%tot_i_min = [1,1,0]
-                eq_1D_loc%tot_i_max = [mnmax_V,grid_trim%n(3),size(Z_V_s,3)-1]
-                eq_1D_loc%loc_i_min = [1,grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = [mnmax_V,grid_trim%i_max,size(Z_V_s,3)-1]
-                allocate(eq_1D_loc%p(size(Z_V_s(:,norm_id_f(1):&
-                    &norm_id_f(2),:))))
-                eq_1D_loc%p = reshape(Z_V_s(:,norm_id_f(1):norm_id_f(2),:),&
-                    &[size(Z_V_s(:,norm_id_f(1):norm_id_f(2),:))])
-                
-                ! L_V_c
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'L_V_c'
-                allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
-                allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
-                eq_1D_loc%tot_i_min = [1,1,0]
-                eq_1D_loc%tot_i_max = [mnmax_V,grid_trim%n(3),size(L_V_c,3)-1]
-                eq_1D_loc%loc_i_min = [1,grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = [mnmax_V,grid_trim%i_max,size(L_V_c,3)-1]
-                allocate(eq_1D_loc%p(size(L_V_c(:,norm_id_f(1):&
-                    &norm_id_f(2),:))))
-                eq_1D_loc%p = reshape(L_V_c(:,norm_id_f(1):norm_id_f(2),:),&
-                    &[size(L_V_c(:,norm_id_f(1):norm_id_f(2),:))])
-                
-                ! L_V_s
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'L_V_s'
-                allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
-                allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
-                eq_1D_loc%tot_i_min = [1,1,0]
-                eq_1D_loc%tot_i_max = [mnmax_V,grid_trim%n(3),size(L_V_s,3)-1]
-                eq_1D_loc%loc_i_min = [1,grid_trim%i_min,0]
-                eq_1D_loc%loc_i_max = [mnmax_V,grid_trim%i_max,size(L_V_s,3)-1]
-                allocate(eq_1D_loc%p(size(L_V_s(:,norm_id_f(1):&
-                    &norm_id_f(2),:))))
-                eq_1D_loc%p = reshape(L_V_s(:,norm_id_f(1):norm_id_f(2),:),&
-                    &[size(L_V_s(:,norm_id_f(1):norm_id_f(2),:))])
-            case (2)                                                            ! HELENA
-                ! R_H
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'R_H'
-                allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
-                allocate(eq_1D_loc%loc_i_min(2),eq_1D_loc%loc_i_max(2))
-                eq_1D_loc%tot_i_min = [1,1]
-                eq_1D_loc%tot_i_max = [nchi,grid_trim%n(3)]
-                eq_1D_loc%loc_i_min = [1,grid_trim%i_min]
-                eq_1D_loc%loc_i_max = [nchi,grid_trim%i_max]
-                allocate(eq_1D_loc%p(size(R_H(:,grid_trim%i_min:&
-                    &grid_trim%i_max))))
-                eq_1D_loc%p = reshape(R_H(:,norm_id_f(1):norm_id_f(2)),&
-                    &[size(R_H(:,norm_id_f(1):norm_id_f(2)))])
-                
-                ! Z_H
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'Z_H'
-                allocate(eq_1D_loc%tot_i_min(2),eq_1D_loc%tot_i_max(2))
-                allocate(eq_1D_loc%loc_i_min(2),eq_1D_loc%loc_i_max(2))
-                eq_1D_loc%tot_i_min = [1,1]
-                eq_1D_loc%tot_i_max = [nchi,grid_trim%n(3)]
-                eq_1D_loc%loc_i_min = [1,grid_trim%i_min]
-                eq_1D_loc%loc_i_max = [nchi,grid_trim%i_max]
-                allocate(eq_1D_loc%p(size(Z_H(:,grid_trim%i_min:&
-                    &grid_trim%i_max))))
-                eq_1D_loc%p = reshape(Z_H(:,norm_id_f(1):norm_id_f(2)),&
-                    &[size(Z_H(:,norm_id_f(1):norm_id_f(2)))])
-                
-                ! chi_H
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'chi_H'
-                allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
-                allocate(eq_1D_loc%loc_i_min(1),eq_1D_loc%loc_i_max(1))
-                eq_1D_loc%tot_i_min = [1]
-                eq_1D_loc%tot_i_max = [nchi]
-                eq_1D_loc%loc_i_min = [1]
-                if (rank.eq.0) then
-                    eq_1D_loc%loc_i_max = [nchi]
-                    allocate(eq_1D_loc%p(nchi))
-                    eq_1D_loc%p = chi_H
-                else
-                    eq_1D_loc%loc_i_max = [0]
-                    allocate(eq_1D_loc%p(0))
-                end if
-                
-                ! flux_p_H
-                eq_1D_loc => eq_1D(id); id = id+1
-                eq_1D_loc%var_name = 'flux_p_H'
-                allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
-                allocate(eq_1D_loc%loc_i_min(1),eq_1D_loc%loc_i_max(1))
-                eq_1D_loc%tot_i_min = [1]
-                eq_1D_loc%tot_i_max = [grid_trim%n(3)]
-                eq_1D_loc%loc_i_min = [grid_trim%i_min]
-                eq_1D_loc%loc_i_max = [grid_trim%i_max]
-                allocate(eq_1D_loc%p(size(flux_p_H(grid_trim%i_min:&
-                    &grid_trim%i_max))))
-                eq_1D_loc%p = flux_p_H(norm_id_f(1):norm_id_f(2))
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-        
         call lvl_ud(-1)
         
         ! write
         call writo('Writing using HDF5')
         call lvl_ud(1)
-        ierr = print_HDF5_arrs(eq_1D,PB3D_name,'eq')
+        ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,'eq')
         CHCKERR('')
         call lvl_ud(-1)
         

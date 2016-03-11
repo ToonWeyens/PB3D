@@ -16,15 +16,17 @@ module HELENA_vars
     implicit none
     private
     public read_HEL, dealloc_HEL, &
-        &pres_H, qs, flux_p_H, nchi, chi_H, ias, h_H_11, h_H_12, h_H_33, &
-        &RBphi, R_H, Z_H
+        &pres_H, qs_H, flux_p_H, nchi, chi_H, ias, RBphi_H, R_H, Z_H
+#if ldebug
+    public h_H_11, h_H_12, h_H_33
+#endif
     
     ! global variables
     real(dp), allocatable :: chi_H(:)                                           ! poloidal angle
     real(dp), allocatable :: flux_p_H(:)                                        ! normal coordinate values (poloidal flux)
     real(dp), allocatable :: pres_H(:)                                          ! pressure profile
-    real(dp), allocatable :: qs(:)                                              ! safety factor
-    real(dp), allocatable :: RBphi(:)                                           ! R B_phi (= F)
+    real(dp), allocatable :: qs_H(:)                                            ! safety factor
+    real(dp), allocatable :: RBphi_H(:)                                         ! R B_phi (= F)
     real(dp), allocatable :: h_H_11(:,:)                                        ! adapted upper metric factor 11 (gem11)
     real(dp), allocatable :: h_H_12(:,:)                                        ! adapted upper metric factor 12 (gem12)
     real(dp), allocatable :: h_H_33(:,:)                                        ! adapted upper metric factor 33 (1/gem33)
@@ -36,25 +38,32 @@ module HELENA_vars
 contains
     ! Reads the HELENA equilibrium data
     ! (from HELENA routine IODSK)
-    ! Note: The variables in HELENA output are normalized globally w.r.t.
-    !   - R_m: radius of magnetic axis at equilibrium
-    !   - B_m: magnetic field at magnetic axis at equilibrium ,
-    ! These have to be specified (see global variables above)
-    ! Moreover, the variables R_H and Z_H  are also normalized w.r.t. a radius a
-    ! and a diameter R_0:
-    !   - R_H = (R-R_0)/a
-    !   - Z_H = Z/a ,
-    ! where R_0 and a are found through the variable "radius" and "eps"
-    !   - radius = a / R_m
-    !   - eps = a / R_0 ,
-    ! as a function of R_m, which is the global normalization factor used here.
-    ! Furthermore,  the  varaible  "cs"  contains the  sqrt  of  the  normalized
-    ! flux/2pi  on  the normal  positions,  where  the normalization  factor  is
-    ! contained in "cpsurf", which is the poloidal flux at the surface.
-    ! Finally, some variables are not tabulated on the magnetic axis.
-    ! Note that in the asymmetric case,  the number of poloidal points, nchi, is
-    ! aumented by one  and the information for 0 is  copied into the information
-    ! for 2pi, to facilitate interpolation.
+    ! Note: The variales in the HELENA mapping file are globalized in two ways:
+    !   -  X and  Y  are  normalized w.r.t.  geometric  axis  R_geo, and  vacuum
+    !   toroidal field at  the geometric axis B_geo,V (though the  latter one is
+    !   unused).
+    !       * R[m] = R_geo[m] + a[m] X[],
+    !       * Z[m] = a[m] Y[].
+    !   - covariant toroidal field F_H,  pres_H and poloidal flux are normalized
+    !   w.r.t magnetic axis R_m and total toroidal field at magnetic axis B_m.
+    !       * RBphi[Tm]     = F_H[] R_m[m] B_m[T],
+    !       * pres[N/m^2]   = pres_H[] (B_m[T])^2/mu_0[N/A^2],
+    !       * flux_p[Tm^2]  = 2pi (s[])^2 cpsurf[] B_m[T] (R_m[m])^2.
+    ! The  first normalization  type is  the HELENA  normalization, whereas  the
+    ! second is  the MISHKA  normalization. Everything  is translated  to MISHKA
+    ! normalization to  make comparison with  MISHKA simple. This is  done using
+    ! the factors
+    !   - radius[] = a[m] / R_m[m],
+    !   - eps[] = a[m] / R_geo[m],
+    ! so that the expressions become:
+    !   - R[m]          = radius[] (1/eps[] + X[])            R_m[m],
+    !   - Z[m]          = radius[] Y[]                        R_m[m],
+    !   - RBphi[Tm]     = F_H[]                     B_m[T]    R_m[m],
+    !   - pres[N/m^2]   = pres_H[]                  B_m[T]^2  mu_0[N/A^2]^-1
+    !   - flux_p[Tm^2]  = 2pi (s[])^2 cpsurf[]      B_m[T]    R_m[T]^2,
+    ! where in  MISHKA usually B_m =  1 T and  R_m = 1 m,  as well as rho_m  = 1
+    ! kg/m^3, to complete the normalization. If this is not the case, the
+    ! Alfven time has to be adjusted.
     integer function read_HEL(n_r_eq,use_pol_flux_H) result(ierr)
         use num_vars, only: eq_name, eq_i
         
@@ -69,7 +78,7 @@ contains
         integer :: id, kd                                                       ! counters
         integer :: nchi_loc                                                     ! local nchi
         real(dp), allocatable :: s_H(:)                                         ! flux coordinate s
-        real(dp), allocatable :: dqs(:)                                         ! derivative of q
+        real(dp), allocatable :: dqs_H(:)                                       ! derivative of q
         real(dp), allocatable :: curj(:)                                        ! toroidal current
         real(dp), allocatable :: vx(:), vy(:)                                   ! R and Z of surface
         real(dp) :: Dj0, Dje                                                    ! derivative of toroidal current on axis and surface
@@ -102,15 +111,15 @@ contains
         read(eq_i,*,IOSTAT=ierr) (s_H(kd),kd=1,n_r_eq)                          ! it is squared below, after reading cpsurf
         CHCKERR(err_msg)
         
-        allocate(qs(n_r_eq))                                                    ! safety factor
-        read(eq_i,*,IOSTAT=ierr) (qs(kd),kd=1,n_r_eq)
+        allocate(qs_H(n_r_eq))                                                  ! safety factor
+        read(eq_i,*,IOSTAT=ierr) (qs_H(kd),kd=1,n_r_eq)
         CHCKERR(err_msg)
         
-        allocate(dqs(n_r_eq))                                                   ! derivative of safety factor
-        read(eq_i,*,IOSTAT=ierr) dqs(1),dqs(n_r_eq)                             ! first point, last point
+        allocate(dqs_H(n_r_eq))                                                 ! derivative of safety factor
+        read(eq_i,*,IOSTAT=ierr) dqs_H(1),dqs_H(n_r_eq)                         ! first point, last point
         CHCKERR(err_msg)
         
-        read(eq_i,*,IOSTAT=ierr) (dqs(kd),kd=2,n_r_eq)                          ! second to last point (again)
+        read(eq_i,*,IOSTAT=ierr) (dqs_H(kd),kd=2,n_r_eq)                        ! second to last point (again)
         CHCKERR(err_msg)
         
         allocate(curj(n_r_eq))                                                  ! toroidal current
@@ -166,8 +175,8 @@ contains
         read(eq_i,*,IOSTAT=ierr) Dpres_H_0,Dpres_H_e                            ! derivarives of pressure on axis and surface
         CHCKERR(err_msg)
         
-        allocate(RBphi(n_r_eq))                                                 ! R B_phi (= F)
-        read(eq_i,*,IOSTAT=ierr) (RBphi(kd),kd=1,n_r_eq)
+        allocate(RBphi_H(n_r_eq))                                               ! R B_phi (= F)
+        read(eq_i,*,IOSTAT=ierr) (RBphi_H(kd),kd=1,n_r_eq)
         CHCKERR(err_msg)
         
         read(eq_i,*,IOSTAT=ierr) dRBphi0,dRBphie                                ! derivatives of R B_phi on axis and surface
@@ -200,11 +209,18 @@ contains
         Z_H(:,1) = Z_H(:,2)                                                     ! first point is not given: set equal to second one
         if (ias.ne.0) Z_H(nchi,:) = Z_H(1,:)
         
-        ! transform back to unnormalized quantities
+        ! transform to MISHKA normalization
         radius = radius * raxis                                                 ! global length normalization with R_m
         flux_p_H = 2*pi*s_H**2 * cpsurf                                         ! rescale flux coordinate (HELENA uses psi_pol/2pi as flux)
         R_H = radius*(1._dp/eps + R_H)                                          ! local normalization with a
         Z_H = radius*Z_H                                                        ! local normalization with a
+        
+#if ldebug
+        ! do nothing
+#else
+        ! deallocate variables not used
+        deallocate(h_H_11,h_H_12,h_H_33)
+#endif
        
         ! HELENA always uses the poloidal flux
         use_pol_flux_H = .true.
@@ -221,15 +237,17 @@ contains
     
     ! deallocates HELENA quantities that are not used any more
     subroutine dealloc_HEL
-        if (allocated(h_H_11)) deallocate(h_H_11)
-        if (allocated(h_H_12)) deallocate(h_H_12)
-        if (allocated(h_H_33)) deallocate(h_H_33)
-        if (allocated(chi_H)) deallocate(chi_H)
-        if (allocated(flux_p_H)) deallocate(flux_p_H)
-        if (allocated(pres_H)) deallocate(pres_H)
-        if (allocated(qs)) deallocate(qs)
-        if (allocated(RBphi)) deallocate(RBphi)
-        if (allocated(R_H)) deallocate(R_H)
-        if (allocated(Z_H)) deallocate(Z_H)
+        deallocate(chi_H)
+        deallocate(flux_p_H)
+        deallocate(pres_H)
+        deallocate(qs_H)
+        deallocate(RBphi_H)
+        deallocate(R_H)
+        deallocate(Z_H)
+#if ldebug
+        deallocate(h_H_11)
+        deallocate(h_H_12)
+        deallocate(h_H_33)
+#endif
     end subroutine dealloc_HEL
 end module HELENA_vars

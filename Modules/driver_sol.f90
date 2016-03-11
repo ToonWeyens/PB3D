@@ -31,22 +31,23 @@ contains
     ! discretization in the normal direction
     integer function run_driver_sol() result(ierr)
         use num_vars, only: EV_style, eq_style
-        use rich, only: n_r_sol
         use grid_vars, only: dealloc_grid
         use eq_vars, only: dealloc_eq
-        use VMEC, only: dealloc_VMEC
-        use HELENA_vars, only: dealloc_HEL
         use met_vars, only: dealloc_met
         use X_vars, only: dealloc_X
         use sol_vars, only: dealloc_sol
         use utilities, only: test_max_memory
-        use PB3D_ops, only: read_PB3D, reconstruct_PB3D
+        use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
+            &reconstruct_PB3D_eq, reconstruct_PB3D_X_2
         use MPI_utilities, only: wait_MPI
         use SLEPC_ops, only: solve_EV_system_SLEPC
         use grid_ops, only: calc_norm_range, setup_and_calc_grid_sol, &
             &print_output_grid
         use sol_ops, only: print_output_sol
-        use rich, only: rich_info_short, calc_rich_ex
+        use rich_vars, only: rich_info_short, &
+            &n_r_sol
+        use rich_ops, only: calc_rich_ex
+        use files_ops, only: dealloc_in
         !!use utilities, only: calc_aux_utilities
 #if ldebug
         use num_vars, only: iu, use_pol_flux_F
@@ -59,7 +60,7 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         type(grid_type) :: grid_eq                                              ! equilibrium grid
-        type(grid_type) :: grid_X                                               ! perturbation grid
+        type(grid_type), target :: grid_X                                       ! perturbation grid
         type(grid_type) :: grid_sol                                             ! solution grid
         type(eq_type) :: eq                                                     ! equilibrium variables
         type(met_type) :: met                                                   ! metric variables
@@ -81,6 +82,10 @@ contains
         ierr = 0
         
         ! some preliminary things
+        ierr = wait_MPI()
+        CHCKERR('')
+        ierr = reconstruct_PB3D_in()                                            ! reconstruct miscellaneous PB3D output variables
+        CHCKERR('')
         
         ! test maximum memory
         ierr = test_max_memory()
@@ -95,25 +100,35 @@ contains
         ierr = calc_norm_range(sol_limits=sol_limits,r_F_sol=r_F_sol)
         CHCKERR('')
         
-        ! read PB3D output file
-        ierr = read_PB3D(.false.,.true.,.true.,.false.,.true.,.false.,.true.,&
-            &.false.)                                                           ! read the equilibrium and tensorial perturbation variables
-        CHCKERR('')
-        
         ! reconstruct PB3D variables, using sol limits for X grid
         ! user output
         call writo('Reconstructing PB3D output on output grid')
         call lvl_ud(1)
+        ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq')
+        CHCKERR('')
+        ierr = reconstruct_PB3D_grid(grid_X,'grid_X'//trim(rich_info_short()),&
+            &grid_limits=sol_limits)
+        CHCKERR('')
+        ierr = reconstruct_PB3D_eq(grid_eq,eq,met)
+        CHCKERR('')
+        ierr = reconstruct_PB3D_X_2(grid_X,X,X_limits=sol_limits)
+        CHCKERR('')
 #if ldebug
-        ierr = reconstruct_PB3D(.false.,.true.,.true.,.false.,.true.,.false.,&
-            &.true.,.false.,grid_eq=grid_eq,grid_X=grid_X,grid_X_B=grid_X_B,&
-            &eq=eq,met=met,X_2=X,X_limits=sol_limits,use_setup_nm_X=.false.)
-        CHCKERR('')
-#else
-        ierr = reconstruct_PB3D(.false.,.true.,.true.,.false.,.true.,.false.,&
-            &.true.,.false.,grid_eq=grid_eq,grid_X=grid_X,eq=eq,met=met,X_2=X,&
-            &X_limits=sol_limits,use_setup_nm_X=.false.)
-        CHCKERR('')
+        ! need field-aligned perturbation grid as well
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                grid_X_B => grid_X
+            case (2)                                                            ! HELENA
+                allocate(grid_X_B)
+                ierr = reconstruct_PB3D_grid(grid_X_B,'grid_X_B'//&
+                    &trim(rich_info_short()),grid_limits=sol_limits)
+                CHCKERR('')
+            case default
+                ierr = 1
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                CHCKERR(err_msg)
+        end select
 #endif
         call lvl_ud(-1)
         call writo('PB3D output reconstructed')
@@ -182,6 +197,11 @@ contains
             
             ! clean up
             nullify(ang_par_F)
+            if (eq_style.eq.2) then
+                call dealloc_grid(grid_X_B)
+                deallocate(grid_X_B)
+            end if
+            nullify(grid_X_B)
             
             call writo('The output should be compared with the POST-&
                 &output')
@@ -200,30 +220,17 @@ contains
         CHCKERR('')
         
         ! calculate Richardson extrapolation factors if necessary
-        ierr = calc_rich_ex(sol%val)
-        CHCKERR('')
+        call calc_rich_ex(sol%val)
         
         ! clean up
         call writo('Cleaning up')
         call lvl_ud(1)
+        ierr = dealloc_in()
+        CHCKERR('')
         call dealloc_grid(grid_eq)
         call dealloc_grid(grid_X)
         call dealloc_grid(grid_sol)
         call dealloc_eq(eq)
-        ! deallocate variables depending on equilibrium style
-        !   1:  VMEC
-        !   2:  HELENA
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                call dealloc_VMEC
-            case (2)                                                            ! HELENA
-                call dealloc_HEL
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
         call dealloc_met(met)
         call dealloc_X(X)
         call dealloc_sol(sol)

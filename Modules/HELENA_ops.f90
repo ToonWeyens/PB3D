@@ -968,7 +968,7 @@ contains
             ! calculate Jacobian differently
             allocate(jac_alt(nchi,n_r))
             do kd = 1,n_r
-                jac_alt(:,kd) = qs(kd)/(h_H_33(:,kd)*RBphi(kd))
+                jac_alt(:,kd) = qs_H(kd)/(h_H_33(:,kd)*RBphi_H(kd))
             end do
             
             ! output jacobian
@@ -1038,18 +1038,18 @@ contains
             !   3: D1 (q/F h_11) ,
             !   4: D2 (q/F h_12) .
             allocate(tempvar(nchi,1,n_r,4))
-            ierr = apply_disc(RBphi,norm_deriv_data,tempvar(1,1,:,1))
+            ierr = apply_disc(RBphi_H,norm_deriv_data,tempvar(1,1,:,1))
             CHCKERR('')
             ierr = apply_disc(pres_H,norm_deriv_data,tempvar(1,1,:,2))
             CHCKERR('')
             do id = 1,nchi
                 tempvar(id,1,:,1:2) = tempvar(1,1,:,1:2)
-                ierr = apply_disc(qs/RBphi*h_H_11(id,:),norm_deriv_data,&
+                ierr = apply_disc(qs_H/RBphi_H*h_H_11(id,:),norm_deriv_data,&
                     &tempvar(id,1,:,3))
                 CHCKERR('')
             end do
             do kd = 1,n_r
-                ierr = apply_disc(qs(kd)/RBphi(kd)*h_H_12(:,kd),&
+                ierr = apply_disc(qs_H(kd)/RBphi_H(kd)*h_H_12(:,kd),&
                     &ang_deriv_data,tempvar(:,1,kd,4))
                 CHCKERR('')
             end do
@@ -1057,8 +1057,8 @@ contains
             ! calculate pressure  balance in tempvar(1)
             !   mu_0 p' = F/(qR^2) (d/d1 (h_11 q/F) + d/d2 (h_12 q/F) + q F')
             do kd = 1,n_r
-                tempvar(:,1,kd,1) = -RBphi(kd)*h_H_33(:,kd)/qs(kd) * &
-                    &(tempvar(:,1,kd,1)*qs(kd) + tempvar(:,1,kd,3) + &
+                tempvar(:,1,kd,1) = -RBphi_H(kd)*h_H_33(:,kd)/qs_H(kd) * &
+                    &(tempvar(:,1,kd,1)*qs_H(kd) + tempvar(:,1,kd,3) + &
                     &tempvar(:,1,kd,4))
             end do
             

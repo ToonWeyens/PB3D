@@ -99,7 +99,7 @@ contains
                 &round_with_tol
             use grid_utilities, only: setup_deriv_data, apply_disc
             use VMEC, only: flux_t_V, Dflux_t_V, rot_t_V
-            use HELENA_vars, only: flux_p_H, qs
+            use HELENA_vars, only: flux_p_H, qs_H
             use X_vars, only: min_r_sol, max_r_sol
             use grid_vars, only: n_r_eq
             
@@ -141,7 +141,6 @@ contains
                     end if
                     ! set up E flux
                     if (use_pol_flux_E) then
-                    write(*,*) '!!! CHANGED rot_t_V to -rot_t_V BUT NOT SURE !!'
                         ierr = calc_int(-Dflux_t_V*rot_t_V,&
                             &1.0_dp/(n_r_eq-1.0_dp),flux_E)                     ! conversion VMEC LH -> RH coord. system
                         CHCKERR('')
@@ -161,14 +160,14 @@ contains
                     if (use_pol_flux_F) then
                         flux_F = flux_p_H
                     else
-                        ierr = calc_int(qs*Dflux_p_H,flux_p_H/(2*pi),flux_F)
+                        ierr = calc_int(qs_H*Dflux_p_H,flux_p_H/(2*pi),flux_F)
                         CHCKERR('')
                     end if
                     ! set up E flux
                     if (use_pol_flux_E) then
                         flux_E = flux_p_H
                     else
-                        ierr = calc_int(qs*Dflux_p_H,flux_p_H/(2*pi),flux_E)
+                        ierr = calc_int(qs_H*Dflux_p_H,flux_p_H/(2*pi),flux_E)
                         CHCKERR('')
                     end if
                 case default
@@ -650,7 +649,8 @@ contains
     integer function calc_ang_grid_eq_B(grid_eq,eq) result(ierr)
         use num_vars, only: use_pol_flux_F, use_pol_flux_E, &
             &eq_style, tol_NR
-        use grid_vars, only: min_par_X, max_par_X, alpha
+        use grid_vars, only: min_par_X, max_par_X
+        use sol_vars, only: alpha
         use eq_vars, only: max_flux_p_E, max_flux_t_E
         use grid_utilities, only: coord_F2E, calc_eqd_grid
         
@@ -1073,10 +1073,11 @@ contains
     end function plot_grid_real
     
     ! Print grid variables to an output file.
-    integer function print_output_grid(grid,grid_name,output_name) result(ierr)
-        use num_vars, only: PB3D_name
+    integer function print_output_grid(grid,grid_name,data_name) result(ierr)
+        use num_vars, only: PB3D_name, rank
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type
+        use HDF5_vars, only: var_1D_type, &
+            &max_dim_var_1D
         use grid_vars, only: dealloc_grid
         use grid_utilities, only: trim_grid
         
@@ -1085,7 +1086,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! grid variables
         character(len=*), intent(in) :: grid_name                               ! name to display
-        character(len=*), intent(in) :: output_name                             ! name under which to store
+        character(len=*), intent(in) :: data_name                               ! name under which to store
         
         ! local variables
         type(grid_type) :: grid_trim                                            ! trimmed grid
@@ -1111,14 +1112,28 @@ contains
         CHCKERR('')
         
         ! Set up the 1D equivalents of the perturbation variables
-        if (product(grid%n(1:2)).ne.0) then                                     ! 3D grid
-            allocate(grid_1D(6))
-        else                                                                    ! 1D grid
-            allocate(grid_1D(2))
-        end if
+        allocate(grid_1D(max_dim_var_1D))
         
         ! set up variables grid_1D
         id = 1
+        
+        ! n
+        grid_1D_loc => grid_1D(id); id = id+1
+        grid_1D_loc%var_name = 'n'
+        allocate(grid_1D_loc%tot_i_min(1),grid_1D_loc%tot_i_max(1))
+        allocate(grid_1D_loc%loc_i_min(1),grid_1D_loc%loc_i_max(1))
+        grid_1D_loc%tot_i_min = [1]
+        grid_1D_loc%tot_i_max = [3]
+        if (rank.eq.0) then
+            grid_1D_loc%loc_i_min = [1]
+            grid_1D_loc%loc_i_max = [3]
+            allocate(grid_1D_loc%p(3))
+            grid_1D_loc%p = grid_trim%n
+        else
+            grid_1D_loc%loc_i_min = [1]
+            grid_1D_loc%loc_i_max = [0]
+            allocate(grid_1D_loc%p(0))
+        end if
         
         ! r_F
         grid_1D_loc => grid_1D(id); id = id+1
@@ -1154,7 +1169,7 @@ contains
             grid_1D_loc%tot_i_min = [1,1,1]
             grid_1D_loc%tot_i_max = grid_trim%n
             grid_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
-            grid_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
+            grid_1D_loc%loc_i_max = [grid_trim%n(1:2),grid_trim%i_max]
             allocate(grid_1D_loc%p(size(grid_trim%theta_F)))
             grid_1D_loc%p = reshape(grid_trim%theta_F,[size(grid_trim%theta_F)])
             
@@ -1166,8 +1181,7 @@ contains
             grid_1D_loc%tot_i_min = [1,1,1]
             grid_1D_loc%tot_i_max = grid_trim%n
             grid_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
-            grid_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),&
-                &grid_trim%i_max]
+            grid_1D_loc%loc_i_max = [grid_trim%n(1:2),grid_trim%i_max]
             allocate(grid_1D_loc%p(size(grid_trim%theta_E)))
             grid_1D_loc%p = reshape(grid_trim%theta_E,[size(grid_trim%theta_E)])
             
@@ -1179,8 +1193,7 @@ contains
             grid_1D_loc%tot_i_min = [1,1,1]
             grid_1D_loc%tot_i_max = grid_trim%n
             grid_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
-            grid_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),&
-                &grid_trim%i_max]
+            grid_1D_loc%loc_i_max = [grid_trim%n(1:2),grid_trim%i_max]
             allocate(grid_1D_loc%p(size(grid_trim%zeta_F)))
             grid_1D_loc%p = reshape(grid_trim%zeta_F,[size(grid_trim%zeta_F)])
             
@@ -1192,8 +1205,7 @@ contains
             grid_1D_loc%tot_i_min = [1,1,1]
             grid_1D_loc%tot_i_max = grid_trim%n
             grid_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
-            grid_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),&
-                &grid_trim%i_max]
+            grid_1D_loc%loc_i_max = [grid_trim%n(1:2),grid_trim%i_max]
             allocate(grid_1D_loc%p(size(grid_trim%zeta_E)))
             grid_1D_loc%p = reshape(grid_trim%zeta_E,[size(grid_trim%zeta_E)])
         end if
@@ -1205,7 +1217,8 @@ contains
         call lvl_ud(1)
         
         ! write
-        ierr = print_HDF5_arrs(grid_1D,PB3D_name,'grid_'//trim(output_name))
+        ierr = print_HDF5_arrs(grid_1D(1:id-1),PB3D_name,&
+            &'grid_'//trim(data_name))
         CHCKERR('')
         
         ! clean up

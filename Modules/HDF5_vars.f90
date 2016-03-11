@@ -13,7 +13,7 @@ module HDF5_vars
     public init_HDF5, dealloc_var_1D, &
         &XML_str_type, HDF5_file_type, var_1D_type, xmf_fmt, XDMF_num_types, &
         &XDMF_format_types, XDMF_geom_types, XDMF_top_types, XDMF_att_types, &
-        &XDMF_center_types, XDMF_grid_types
+        &XDMF_center_types, XDMF_grid_types, max_dim_var_1D
     
     ! global variables
     integer, parameter :: max_xml_ln = 300                                      ! max. length of xml string
@@ -49,6 +49,9 @@ module HDF5_vars
     character(len=max_str_ln) :: XDMF_att_types(1)                              ! possible XDMF attribute types
     character(len=max_str_ln) :: XDMF_center_types(2)                           ! possible XDMF attribute center types
     character(len=max_str_ln) :: XDMF_grid_types(3)                             ! possible XDMF grid types
+    
+    ! global variables
+    integer, parameter :: max_dim_var_1D = 1000                                 ! maximum dimension of var_1D
     
     ! interfaces
     interface dealloc_var_1D

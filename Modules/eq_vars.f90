@@ -84,7 +84,14 @@ contains
     ! creates new equilibrium
     ! The normal and angular grid can be  in any coord. system, as only the grid
     ! sizes are used, not the coordinate values.
-    integer function create_eq(grid,eq) result(ierr)
+    ! Optionally, it can be chosen individually whether the E or F(D) quantities
+    ! are allocated. The rationale behind this is that the E quantities are only
+    ! used in  the pre-perturbation  phase. Note  that they  are not  written in
+    ! print_output_eq either.
+    ! Note:  The quantities  that  do not  have a  derivative  are considered  F
+    ! quantities. Alternatively, all quantities that  have only one version, are
+    ! considered F quantities, such as rho, kappa_n, ...
+    integer function create_eq(grid,eq,setup_E,setup_F) result(ierr)
         use num_vars, only: max_deriv, eq_style
         
         character(*), parameter :: rout_name = 'create_eq'
@@ -92,14 +99,23 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
         type(eq_type), intent(inout) :: eq                                      ! equilibrium to be created
+        logical, intent(in), optional :: setup_E                                ! whether to set up E
+        logical, intent(in), optional :: setup_F                                ! whether to set up F
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: loc_n_r, n                                                   ! local and total nr. of normal points
         integer :: n_par, n_geo                                                 ! tot. nr. of angular points in parallel and geodesic direction
+        logical :: setup_E_loc, setup_F_loc                                     ! local versions of setup_E and setup_F
         
         ! initialize ierr
         ierr = 0
+        
+        ! setup local setup_E and setup_F
+        setup_E_loc = .true.
+        if (present(setup_E)) setup_E_loc = setup_E
+        setup_F_loc = .true.
+        if (present(setup_F)) setup_F_loc = setup_F
         
         ! set local variables
         loc_n_r = grid%loc_n_r
@@ -107,80 +123,84 @@ contains
         n_geo = grid%n(2)
         n = grid%n(3)
         
-        ! pres_FD
-        allocate(eq%pres_FD(loc_n_r,0:max_deriv+1))
+        if (setup_E_loc) then
+            ! pres_E
+            allocate(eq%pres_E(loc_n_r,0:max_deriv+1))
+            
+            ! q_saf_E
+            allocate(eq%q_saf_E(loc_n_r,0:max_deriv+1))
+            
+            ! rot_t_E
+            allocate(eq%rot_t_E(loc_n_r,0:max_deriv+1))
+            
+            ! initialize  variables that  are  specificic  to which  equilibrium
+            ! style is being used:
+            !   1:  VMEC
+            !   2:  HELENA
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ! R
+                    allocate(eq%R_E(n_par,n_geo,loc_n_r,&
+                        &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+                    
+                    ! Z
+                    allocate(eq%Z_E(n_par,n_geo,loc_n_r,&
+                        &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+                    
+                    ! lambda
+                    allocate(eq%L_E(n_par,n_geo,loc_n_r,&
+                        &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+                    
+                    ! flux_p_E
+                    allocate(eq%flux_p_E(loc_n_r,0:max_deriv+2))                ! Need extra order because used in transformation of flux q.
+                    
+                    ! flux_t_E
+                    allocate(eq%flux_t_E(loc_n_r,0:max_deriv+2))                ! Need extra order because used in transformation of flux q.
+                case (2)                                                        ! HELENA
+                    ! flux_p_E
+                    allocate(eq%flux_p_E(loc_n_r,0:max_deriv+1))
+                    
+                    ! flux_t_E
+                    allocate(eq%flux_t_E(loc_n_r,0:max_deriv+1))
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+        end if
         
-        ! flux_p_FD
-        allocate(eq%flux_p_FD(loc_n_r,0:max_deriv+1))
-        
-        ! flux_t_FD
-        allocate(eq%flux_t_FD(loc_n_r,0:max_deriv+1))
-        
-        ! q_saf_FD
-        allocate(eq%q_saf_FD(loc_n_r,0:max_deriv+1))
-        
-        ! rot_t_FD
-        allocate(eq%rot_t_FD(loc_n_r,0:max_deriv+1))
-        
-        ! pres_E
-        allocate(eq%pres_E(loc_n_r,0:max_deriv+1))
-        
-        ! q_saf_E
-        allocate(eq%q_saf_E(loc_n_r,0:max_deriv+1))
-        
-        ! rot_t_E
-        allocate(eq%rot_t_E(loc_n_r,0:max_deriv+1))
-        
-        ! rho
-        allocate(eq%rho(grid%loc_n_r))
-        
-        ! magnetic shear
-        allocate(eq%S(n_par,n_geo,loc_n_r))
-        
-        ! normal curvature
-        allocate(eq%kappa_n(n_par,n_geo,loc_n_r))
-        
-        ! geodesic curvature
-        allocate(eq%kappa_g(n_par,n_geo,loc_n_r))
-        
-        ! parallel current
-        allocate(eq%sigma(n_par,n_geo,loc_n_r))
-        
-        ! initialize variables that are specificic to which equilibrium style is
-        ! being used:
-        !   1:  VMEC
-        !   2:  HELENA
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ! R
-                allocate(eq%R_E(n_par,n_geo,loc_n_r,&
-                    &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
-                
-                ! Z
-                allocate(eq%Z_E(n_par,n_geo,loc_n_r,&
-                    &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
-                
-                ! lambda
-                allocate(eq%L_E(n_par,n_geo,loc_n_r,&
-                    &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
-                
-                ! flux_p_E
-                allocate(eq%flux_p_E(loc_n_r,0:max_deriv+2))                    ! Need extra order because used in transformation of flux q.
-                
-                ! flux_t_E
-                allocate(eq%flux_t_E(loc_n_r,0:max_deriv+2))                    ! Need extra order because used in transformation of flux q.
-            case (2)                                                            ! HELENA
-                ! flux_p_E
-                allocate(eq%flux_p_E(loc_n_r,0:max_deriv+1))
-                
-                ! flux_t_E
-                allocate(eq%flux_t_E(loc_n_r,0:max_deriv+1))
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
+        if (setup_F_loc) then
+            ! pres_FD
+            allocate(eq%pres_FD(loc_n_r,0:max_deriv+1))
+            
+            ! flux_p_FD
+            allocate(eq%flux_p_FD(loc_n_r,0:max_deriv+1))
+            
+            ! flux_t_FD
+            allocate(eq%flux_t_FD(loc_n_r,0:max_deriv+1))
+            
+            ! q_saf_FD
+            allocate(eq%q_saf_FD(loc_n_r,0:max_deriv+1))
+            
+            ! rot_t_FD
+            allocate(eq%rot_t_FD(loc_n_r,0:max_deriv+1))
+            
+            ! rho
+            allocate(eq%rho(grid%loc_n_r))
+            
+            ! magnetic shear
+            allocate(eq%S(n_par,n_geo,loc_n_r))
+            
+            ! normal curvature
+            allocate(eq%kappa_n(n_par,n_geo,loc_n_r))
+            
+            ! geodesic curvature
+            allocate(eq%kappa_g(n_par,n_geo,loc_n_r))
+            
+            ! parallel current
+            allocate(eq%sigma(n_par,n_geo,loc_n_r))
+        end if
     end function create_eq
     
     ! deallocates equilibrium quantities
@@ -188,13 +208,23 @@ contains
         ! input / output
         type(eq_type), intent(inout) :: eq                                      ! equilibrium to be deallocated
         
-        ! deallocate allocated pointers
-        deallocate(eq%flux_p_E,eq%flux_t_E)
-        deallocate(eq%flux_p_FD,eq%flux_t_FD)
-        
-        ! nullify pointers
-        nullify(eq%flux_p_E,eq%flux_t_E)
-        nullify(eq%flux_p_FD,eq%flux_t_FD)
+        ! deallocate and nullify allocated pointers
+        if (associated(eq%flux_p_E)) then
+            deallocate(eq%flux_p_E)
+            nullify(eq%flux_p_E)
+        end if
+        if (associated(eq%flux_t_E)) then
+            deallocate(eq%flux_t_E)
+            nullify(eq%flux_t_E)
+        end if
+        if (associated(eq%flux_p_FD)) then
+            deallocate(eq%flux_p_FD)
+            nullify(eq%flux_p_FD)
+        end if
+        if (associated(eq%flux_t_FD)) then
+            deallocate(eq%flux_t_FD)
+            nullify(eq%flux_t_FD)
+        end if
         
         ! deallocate allocatable variables
         call dealloc_eq_final(eq)

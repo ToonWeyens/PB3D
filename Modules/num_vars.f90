@@ -7,7 +7,7 @@ module num_vars
     implicit none
     private
     public dp, qp, max_str_ln, max_name_ln, max_deriv, prog_name, output_name, &
-        &prog_version, prog_style, &
+        &prog_version, prog_style, min_PB3D_version, &
         &max_mem_per_proc, n_procs, rank, X_jobs_lims, X_jobs_taken, X_job_nr, &
         &X_jobs_file_name, X_jobs_lock_file_name, HDF5_lock_file_name, &
         &pi, mu_0_original, iu, &
@@ -22,8 +22,7 @@ module num_vars
         &GP_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
-        &no_execute_command_line, &
-        &input_name, &
+        &no_execute_command_line, input_name, rich_restart_lvl, &
         &plot_size, &
         &spline_type
 
@@ -38,7 +37,8 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 1.09_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.10_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.10_dp                           ! minimum PB3D version
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
@@ -112,6 +112,7 @@ module num_vars
     integer :: n_sol_requested                                                  ! how many solutions requested
     integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
     integer :: plot_size(2)                                                     ! size of plot in inches
+    integer :: rich_restart_lvl                                                 ! starting Richardson level (0: none [default])
     logical :: retain_all_sol                                                   ! retain also faulty solutions
     character(len=max_str_ln) :: input_name                                     ! will hold the full name of the input file
     

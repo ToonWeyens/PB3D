@@ -9,7 +9,7 @@ module files_ops
     implicit none
     private
     public open_input, open_output, parse_args, init_files, &
-        &opt_args, close_output
+        &opt_args, close_output, print_output_in, dealloc_in
 
     ! user-specified arguments
     integer :: numargs                                                          ! control the user-specified arguments
@@ -171,12 +171,13 @@ contains
     end function parse_args
 
     ! open the input files
+    ! [MPI] only master
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
-            &no_execute_command_line
+            &no_execute_command_line, output_name, prog_name
         use files_utilities, only: search_file
-        use rich, only: no_guess
+        use rich_vars, only: no_guess
 #if ldebug
         use num_vars, only: ltest
 #endif
@@ -226,6 +227,7 @@ contains
                     ! Determine which equilibrium style (1: VMEC, 2: HELENA)
                     ! set eq_style to a nonsensical value
                     eq_style = -1
+                    
                     ! Check for VMEC
                     do id = len(eq_name)-1,1,-1
                         if (eq_name(id:id).eq.'.') then
@@ -237,12 +239,14 @@ contains
                         eq_style = 1
                         close(eq_i)
                     end if
+                    
                     ! Check for HELENA
                     read(eq_i,*,IOSTAT=istat) first_ints
                     backspace(UNIT=eq_i)                                        ! go back one line in the equilibrium file
                     if (istat.eq.0) then
                         eq_style = 2
                     end if
+                    
                     ! Check if something was found
                     if (eq_style.lt.1 .or. eq_style.gt.2) then
                         ierr = 1
@@ -252,6 +256,9 @@ contains
                             &variable IAS')
                         CHCKERR('')
                     end if
+                    
+                    ! set PB3D output name
+                    PB3D_name = prog_name//'_'//trim(output_name)//'.h5'
                 case(2)                                                         ! POST
                     ! check for correct input file and use default if needed
                     input_name = command_arg(1)                                 ! first argument is the name of the input file
@@ -406,228 +413,67 @@ contains
     end function open_input
 
     ! Open an output file and write (PB3D) or read (POST) the common variables.
+    ! Note: If  there is Richardson restart,  no HDF5 files are  opened for PB3D
+    ! and the output log file name is different.
     integer function open_output() result(ierr)
-        use num_vars, only: eq_style, rho_style, rank, prog_version, &
-            &use_pol_flux_E, use_pol_flux_F, use_normalization, &
-            &norm_disc_prec_eq, PB3D_name, output_i, output_name, prog_name, &
-            &norm_disc_prec_X, prog_style, norm_style, U_style, X_style, &
-            &matrix_SLEPC_style
+        use num_vars, only: prog_style, output_i, output_name, prog_name, &
+            &rich_restart_lvl
         use messages, only: temp_output, temp_output_active
         use files_utilities, only: nextunit
         use HDF5_ops, only: create_output_HDF5, print_HDF5_arrs
         use HDF5_vars, only: var_1D_type
-        use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm
-        use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
-            &n_mod_X
-        use PB3D_ops, only: read_PB3D, reconstruct_PB3D
-        use grid_vars, only: alpha
-        use HELENA_vars, only: nchi, ias
-        use VMEC, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V
         
         character(*), parameter :: rout_name = 'open_output'
         
         ! local variables (also used in child functions)
         integer :: id                                                           ! counter
         character(len=max_str_ln) :: full_output_name                           ! full name
-        type(var_1D_type), allocatable, target :: misc_1D(:)                    ! 1D equivalent of miscelleanous variables
-        type(var_1D_type), pointer :: misc_1D_loc => null()                     ! local element in misc_1D
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
-        ! output files common for all program styles
-        if (rank.eq.0) then                                                     ! only master
-            ! user output
-            call writo('Attempting to open output file')
-            call lvl_ud(1)
-            
-            ! append extension to output name
-            full_output_name = prog_name//'_'//output_name//'.txt'
-            
-            ! open file
+        ! user output
+        call writo('Attempting to open output files')
+        call lvl_ud(1)
+        
+        ! append extension to output name
+        full_output_name = prog_name//'_'//trim(output_name)//'.txt'
+        
+        ! actions depending on Richardson restart level
+        if (rich_restart_lvl.eq.0) then
+            ! open file after wiping it
             open(unit=nextunit(output_i),file=trim(full_output_name),&
-                &iostat=ierr)
-            CHCKERR('Cannot open log output file')
+                &status='replace',iostat=ierr)
             
             ! print message
             call writo('log output file "'//trim(full_output_name)//&
                 &'" opened at number '//trim(i2str(output_i)))
+        else
+            ! append to existing file
+            open(unit=nextunit(output_i),file=trim(full_output_name),&
+                &status='old',position='append',iostat=ierr)
             
-            ! if temporary output present, silently write it to log output file
-            do id = 1,size(temp_output)
-                write(output_i,*) temp_output(id)
-            end do
-            
-            call lvl_ud(-1)
-            call writo('Output file opened')
+            ! print message
+            call writo('log output file "'//trim(full_output_name)//&
+                &'" reopened at number '//trim(i2str(output_i)))
         end if
+        
+        ! if temporary output present, silently write it to log output file
+        do id = 1,size(temp_output)
+            write(output_i,*) temp_output(id)
+        end do
         
         ! specific actions for program styles
         select case (prog_style)
             case (1)                                                            ! PB3D
-                ! set PB3D output name
-                PB3D_name = prog_name//'_'//output_name//'.h5'
-                
-                ! open HDF5 file for output
-                ierr = create_output_HDF5()
-                CHCKERR('')
-                
-                ! write miscellaneous variables
-                if (rank.eq.0) then
-                    ! user output
-                    call writo('Writing miscellaneous variables to output file')
-                    call lvl_ud(1)
-                    
-                    ! user output
-                    call writo('Preparing variables for writing')
-                    call lvl_ud(1)
-                    
-                    ! set up 1D equivalents of miscellaneous variables
-                    allocate(misc_1D(3))
-                    
-                    ! Set up common variables eq_misc_1D
-                    id = 1
-                    
-                    ! eq
-                    misc_1D_loc => misc_1D(id); id = id+1
-                    misc_1D_loc%var_name = 'eq'
-                    allocate(misc_1D_loc%tot_i_min(1),misc_1D_loc%tot_i_max(1))
-                    allocate(misc_1D_loc%loc_i_min(1),misc_1D_loc%loc_i_max(1))
-                    if (rank.eq.0) then
-                        misc_1D_loc%loc_i_min = [1]
-                        misc_1D_loc%loc_i_max = [15]
-                        allocate(misc_1D_loc%p(15))
-                        misc_1D_loc%p = [prog_version,eq_style*1._dp,&
-                            &rho_style*1._dp,alpha,R_0,pres_0,B_0,psi_0,rho_0,&
-                            &T_0,vac_perm,-1._dp,-1._dp,-1._dp,&
-                            &norm_disc_prec_eq*1._dp]
-                        if (use_pol_flux_E) misc_1D_loc%p(12) = 1._dp
-                        if (use_pol_flux_F) misc_1D_loc%p(13) = 1._dp
-                        if (use_normalization) misc_1D_loc%p(14) = 1._dp
-                    else
-                        misc_1D_loc%loc_i_min = [1]
-                        misc_1D_loc%loc_i_max = [0]
-                        allocate(misc_1D_loc%p(0))
-                    end if
-                    misc_1D_loc%tot_i_min = [1]
-                    misc_1D_loc%tot_i_max = [15]
-                    
-                    ! eq_V or eq_H, depending on equilibrium style
-                    select case (eq_style)
-                        case (1)                                                ! VMEC
-                            ! eq_V
-                            misc_1D_loc => misc_1D(id); id = id+1
-                            misc_1D_loc%var_name = 'eq_V'
-                            allocate(misc_1D_loc%tot_i_min(1),&
-                                &misc_1D_loc%tot_i_max(1))
-                            allocate(misc_1D_loc%loc_i_min(1),&
-                                &misc_1D_loc%loc_i_max(1))
-                            if (rank.eq.0) then
-                                misc_1D_loc%loc_i_min = [1]
-                                misc_1D_loc%loc_i_max = [5]
-                                allocate(misc_1D_loc%p(5))
-                                misc_1D_loc%p = [-1._dp,-1._dp,mnmax_V*1._dp,&
-                                    &mpol_V*1._dp,ntor_V*1._dp]
-                                if (is_asym_V) misc_1D_loc%p(1) = 1._dp
-                                if (is_freeb_V) misc_1D_loc%p(2) = 1._dp
-                            else
-                                misc_1D_loc%loc_i_min = [1]
-                                misc_1D_loc%loc_i_max = [0]
-                                allocate(misc_1D_loc%p(0))
-                            end if
-                            misc_1D_loc%tot_i_min = [1]
-                            misc_1D_loc%tot_i_max = [5]
-                        case (2)                                                ! HELENA
-                            ! eq_H
-                            misc_1D_loc => misc_1D(id); id = id+1
-                            misc_1D_loc%var_name = 'eq_H'
-                            allocate(misc_1D_loc%tot_i_min(1),&
-                                &misc_1D_loc%tot_i_max(1))
-                            allocate(misc_1D_loc%loc_i_min(1),&
-                                &misc_1D_loc%loc_i_max(1))
-                            if (rank.eq.0) then
-                                misc_1D_loc%loc_i_min = [1]
-                                misc_1D_loc%loc_i_max = [2]
-                                allocate(misc_1D_loc%p(2))
-                                misc_1D_loc%p = [ias*1._dp,nchi*1._dp]
-                            else
-                                misc_1D_loc%loc_i_min = [1]
-                                misc_1D_loc%loc_i_max = [0]
-                                allocate(misc_1D_loc%p(0))
-                            end if
-                            misc_1D_loc%tot_i_min = [1]
-                            misc_1D_loc%tot_i_max = [2]
-                        case default
-                            err_msg = 'No equilibrium style associated with '//&
-                                &trim(i2str(eq_style))
-                            ierr = 1
-                            CHCKERR(err_msg)
-                    end select
-                    
-                    ! X
-                    misc_1D_loc => misc_1D(id); id = id+1
-                    misc_1D_loc%var_name = 'X'
-                    allocate(misc_1D_loc%tot_i_min(1),misc_1D_loc%tot_i_max(1))
-                    allocate(misc_1D_loc%loc_i_min(1),misc_1D_loc%loc_i_max(1))
-                    if (rank.eq.0) then
-                        misc_1D_loc%loc_i_min = [1]
-                        misc_1D_loc%loc_i_max = [11]
-                        allocate(misc_1D_loc%p(11))
-                        misc_1D_loc%p = [min_r_sol,max_r_sol,prim_X*1._dp,&
-                            &n_mod_X*1._dp,min_sec_X*1._dp,max_sec_X*1._dp,&
-                            &norm_disc_prec_X*1._dp,norm_style*1._dp,&
-                            &U_style*1._dp,X_style*1._dp,&
-                            &matrix_SLEPC_style*1._dp]
-                    else
-                        misc_1D_loc%loc_i_min = [1]
-                        misc_1D_loc%loc_i_max = [0]
-                        allocate(misc_1D_loc%p(0))
-                    end if
-                    misc_1D_loc%tot_i_min = [1]
-                    misc_1D_loc%tot_i_max = [11]
-                    
-                    call lvl_ud(-1)
-                    
-                    ! write
-                    call writo('Writing using HDF5')
-                    call lvl_ud(1)
-                    ierr = print_HDF5_arrs(misc_1D,PB3D_name,'misc')
+                ! create HDF5 file for output if no restart
+                if (rich_restart_lvl.eq.0) then
+                    ierr = create_output_HDF5()
                     CHCKERR('')
-                    call lvl_ud(-1)
-                    
-                    ! deallocate
-                    deallocate(misc_1D)
-                    
-                    ! clean up
-                    nullify(misc_1D_loc)
-                    
-                    ! user output
-                    call lvl_ud(-1)
-                    call writo('Miscellaneous variables written to output')
                 end if
-            case (2)
-                ! read miscellaneous variables
-                if (rank.eq.0) then
-                    ! user output
-                    call writo('Reading miscellaneous variables from output &
-                        &file')
-                    call lvl_ud(1)
-                    
-                    ! read PB3D output file miscellaneous variables
-                    ierr = read_PB3D(.true.,.false.,.false.,.false.,.false.,&
-                        &.false.,.false.,.false.)
-                    CHCKERR('')
-                    
-                    ! reconstruct miscellaneous variables
-                    ierr = reconstruct_PB3D(.true.,.false.,.false.,.false.,&
-                        &.false.,.false.,.false.,.false.)
-                    CHCKERR('')
-                    
-                    ! user output
-                    call lvl_ud(-1)
-                    call writo('Miscellaneous variables read')
-                end if
+            case (2)                                                            ! POST
+                ! do nothing
             case default
                 ierr = 1
                 err_msg = 'No program style associated with '//&
@@ -640,14 +486,417 @@ contains
         
         ! deallocate temporary output if allocated
         if (allocated(temp_output)) deallocate(temp_output)
+        
+        call lvl_ud(-1)
+        call writo('Output files opened')
     end function open_output
     
+    ! Print input quantities to an output file:
+    !   - misc_eq:   prog_version, eq_style, rho_style, R_0, pres_0, B_0, psi_0
+    !                rho_0, T_0, vac_perm, use_pol_flux_F, use_pol_flux_E,
+    !                use_normalization, norm_disc_prec_eq, n_r_eq, n_par_X
+    !   - misc_eq_V: is_asym_V, is_freeb_V, mnmax_V, mpol_V, ntor_V, gam_V
+    !   - flux_q_H:  flux_t_V, Dflux_t_V, pres_V, rot_t_V
+    !   - mn_V
+    !   - RZL_V:     R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s
+    !   - B_V_sub:   B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
+    !   - misc_eq_H: ias, nchi
+    !   - RZ_H:      R_H, Z_H
+    !   - chi_H
+    !   - qs_H
+    !   - RBphi_H
+    !   - pres_H
+    !   - flux_p_H
+    !   - misc_X:    prim_X, n_mod_X, min_sec_X, max_sec_X, norm_disc_prec_X,
+    !                norm_style, U_style, X_style, matrix_SLEPC_style
+    !   - misc_sol:  min_r_sol, max_r_sol, alpha, norm_disc_prec_sol, BC_style,
+    !                EV_BC, EV_BC
+    integer function print_output_in() result(ierr)
+        use num_vars, only: eq_style, rho_style, prog_version, use_pol_flux_E, &
+            &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
+            &norm_disc_prec_X, norm_style, U_style, X_style, &
+            &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, EV_BC
+        use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm
+        use grid_vars, onLy: n_r_eq, n_par_X
+        use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
+            &n_mod_X
+        use sol_vars, only: alpha
+        use HDF5_ops, only: print_HDF5_arrs
+        use HDF5_vars, only: var_1D_type, &
+            &max_dim_var_1D
+        use HELENA_vars, only: chi_H, flux_p_H, R_H, Z_H, nchi, ias, qs_H, &
+            &pres_H, RBphi_H
+        use VMEC, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, gam_V, &
+            &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V, rot_t_V, &
+            &pres_V, flux_t_V, Dflux_t_V
+#if ldebug
+        use HELENA_vars, only: h_H_11, h_H_12, h_H_33
+        use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
+#endif
+        
+        character(*), parameter :: rout_name = 'print_output_in'
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        type(var_1D_type), allocatable, target :: in_1D(:)                      ! 1D equivalent of input variables
+        type(var_1D_type), pointer :: in_1D_loc => null()                       ! local element in in_1D
+        integer :: id                                                           ! counter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Writing input variables to output file')
+        call lvl_ud(1)
+        
+        ! user output
+        call writo('Preparing variables for writing')
+        call lvl_ud(1)
+        
+        ! set up 1D equivalents of input variables
+        allocate(in_1D(max_dim_var_1D))
+        
+        ! Set up common variables in_1D
+        id = 1
+        
+        ! misc_eq
+        in_1D_loc => in_1D(id); id = id+1
+        in_1D_loc%var_name = 'misc_eq'
+        allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+        allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+        in_1D_loc%loc_i_min = [1]
+        in_1D_loc%loc_i_max = [16]
+        in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+        in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+        allocate(in_1D_loc%p(16))
+        in_1D_loc%p = [prog_version,eq_style*1._dp,rho_style*1._dp,&
+            &R_0,pres_0,B_0,psi_0,rho_0,T_0,vac_perm,-1._dp,-1._dp,&
+            &-1._dp,norm_disc_prec_eq*1._dp,n_r_eq*1._dp,n_par_X*1._dp]
+        if (use_pol_flux_E) in_1D_loc%p(11) = 1._dp
+        if (use_pol_flux_F) in_1D_loc%p(12) = 1._dp
+        if (use_normalization) in_1D_loc%p(13) = 1._dp
+        
+        ! misc_eq_V or misc_eq_H, depending on equilibrium style
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! misc_eq_V
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'misc_eq_V'
+                allocate(in_1D_loc%tot_i_min(1),&
+                    &in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),&
+                    &in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [6]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(6))
+                in_1D_loc%p = [-1._dp,-1._dp,mnmax_V*1._dp,mpol_V*1._dp,&
+                    &ntor_V*1._dp,gam_V]
+                if (is_asym_V) in_1D_loc%p(1) = 1._dp
+                if (is_freeb_V) in_1D_loc%p(2) = 1._dp
+                
+                ! flux_t_V
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'flux_t_V'
+                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(n_r_eq))
+                in_1D_loc%p = flux_t_V
+                
+                ! Dflux_t_V
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'Dflux_t_V'
+                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(n_r_eq))
+                in_1D_loc%p = Dflux_t_V
+                
+                ! pres_V
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'pres_V'
+                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(n_r_eq))
+                in_1D_loc%p = pres_V
+                
+                ! rot_t_V
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'rot_t_V'
+                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(n_r_eq))
+                in_1D_loc%p = rot_t_V
+                
+                ! mn_V
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'mn_V'
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,1]
+                in_1D_loc%loc_i_max = [mnmax_V,2]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(size(mn_V)))
+                in_1D_loc%p = reshape(mn_V,[size(mn_V)])
+                
+                ! RZL_V
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'RZL_V'
+                allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
+                allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
+                in_1D_loc%loc_i_min = [1,1,1]
+                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,6]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(6*size(R_V_c)))
+                in_1D_loc%p = reshape([R_V_c(:,:,0),R_V_s(:,:,0),&
+                    &Z_V_c(:,:,0),Z_V_s(:,:,0),L_V_c(:,:,0),L_V_s(:,:,0)],&
+                    &[6*size(R_V_c)]) 
+                
+#if ldebug
+                ! B_V_sub
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'B_V_sub'
+                allocate(in_1D_loc%tot_i_min(4),in_1D_loc%tot_i_max(4))
+                allocate(in_1D_loc%loc_i_min(4),in_1D_loc%loc_i_max(4))
+                in_1D_loc%loc_i_min = [1,1,1,1]
+                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,3,2]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(2*size(B_V_sub_c)))
+                in_1D_loc%p = reshape([B_V_sub_c,B_V_sub_s],[2*size(B_V_sub_c)])
+                
+                ! B_V
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'B_V'
+                allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
+                allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
+                in_1D_loc%loc_i_min = [1,1,1]
+                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,2]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(2*size(B_V_c)))
+                in_1D_loc%p = reshape([B_V_c,B_V_s],[2*size(B_V_c)])
+                
+                ! jac_V
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'jac_V'
+                allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
+                allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
+                in_1D_loc%loc_i_min = [1,1,1]
+                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,2]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(2*size(jac_V_c)))
+                in_1D_loc%p = reshape([jac_V_c,jac_V_s],[2*size(jac_V_c)])
+#endif
+            case (2)                                                            ! HELENA
+                ! misc_eq_H
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'misc_eq_H'
+                allocate(in_1D_loc%tot_i_min(1),&
+                    &in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),&
+                    &in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [2]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(2))
+                in_1D_loc%p = [ias*1._dp,nchi*1._dp]
+                
+                ! RZ_H
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'RZ_H'
+                allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
+                allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
+                in_1D_loc%loc_i_min = [1,1,1]
+                in_1D_loc%loc_i_max = [nchi,n_r_eq,2]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(2*size(R_H)))
+                in_1D_loc%p = reshape([R_H,Z_H],[2*size(R_H)])
+                
+                ! chi_H
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'chi_H'
+                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [nchi]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(nchi))
+                in_1D_loc%p = chi_H
+                
+                ! flux_p_H
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'flux_p_H'
+                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(size(flux_p_H)))
+                in_1D_loc%p = flux_p_H
+                
+                ! qs_H
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'qs_H'
+                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(size(qs_H)))
+                in_1D_loc%p = qs_H
+                
+                ! pres_H
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'pres_H'
+                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(size(pres_H)))
+                in_1D_loc%p = pres_H
+                
+                ! RBphi_H
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'RBphi_H'
+                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(size(RBphi_H)))
+                in_1D_loc%p = RBphi_H
+                
+#if ldebug
+                ! h_H
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'h_H'
+                allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
+                allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
+                in_1D_loc%loc_i_min = [1,1,1]
+                in_1D_loc%loc_i_max = [nchi,n_r_eq,3]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(3*size(h_H_12)))
+                in_1D_loc%p = reshape([h_H_11,h_H_12,h_H_33],&
+                    &[3*size(h_H_12)])
+#endif
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        
+        ! misc_X
+        in_1D_loc => in_1D(id); id = id+1
+        in_1D_loc%var_name = 'misc_X'
+        allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+        allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+        in_1D_loc%loc_i_min = [1]
+        in_1D_loc%loc_i_max = [9]
+        in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+        in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+        allocate(in_1D_loc%p(9))
+        in_1D_loc%p = [prim_X*1._dp,n_mod_X*1._dp,min_sec_X*1._dp,&
+            &max_sec_X*1._dp,norm_disc_prec_X*1._dp,norm_style*1._dp,&
+            &U_style*1._dp,X_style*1._dp,matrix_SLEPC_style*1._dp]
+        
+        ! misc_sol
+        in_1D_loc => in_1D(id); id = id+1
+        in_1D_loc%var_name = 'misc_sol'
+        allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+        allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+        in_1D_loc%loc_i_min = [1]
+        in_1D_loc%loc_i_max = [7]
+        in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+        in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+        allocate(in_1D_loc%p(7))
+        in_1D_loc%p = [min_r_sol,max_r_sol,alpha,&
+            &norm_disc_prec_sol*1._dp,BC_style*1._dp,EV_style*1._dp,EV_BC]
+        
+        call lvl_ud(-1)
+        
+        ! write
+        call writo('Writing using HDF5')
+        call lvl_ud(1)
+        ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,'in')
+        CHCKERR('')
+        call lvl_ud(-1)
+        
+        ! deallocate
+        deallocate(in_1D)
+        
+        ! clean up
+        nullify(in_1D_loc)
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Input variables written to output')
+    end function print_output_in
+    
+    ! Cleans up input from equilibrium codes.
+    integer function dealloc_in() result(ierr)
+        use num_vars, only: eq_style
+        use VMEC, only: dealloc_VMEC
+        use HELENA_vars, only: dealloc_HEL
+        
+        character(*), parameter :: rout_name = 'dealloc_in'
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! deallocate depending on equilibrium style
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                call dealloc_VMEC
+            case (2)                                                            ! HELENA
+                call dealloc_HEL
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+    end function dealloc_in
+    
     ! closes the output file
-    ! [MPI] only group masters
+    ! [MPI] only master
     subroutine close_output
         use num_vars, only: rank, output_i
         
         call writo('Closing output files')
+        call writo('')
         
         if (rank.eq.0) close(output_i)
     end subroutine
