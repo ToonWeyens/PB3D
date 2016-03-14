@@ -343,3 +343,12 @@ CHANGELOG
       - Split "rich" module in two parts: "rich_vars" and "rich_ops".
       - The deallocation of equilibrium input (VMEC or HELENA) now happens through "dealloc_in".
       - Standardized the outline of driver routines, by making them start by reconstructing the necessary PB3D output and finish by deallocating.
+
+1.11: - Bug fixed: The input phase now passes on a trimmed range. The "calc_norm_range" routine has been extended accordingly.
+      - "misc_eq", "misc_eq_V" and "misc_eq_H" have been renamed to "misc_in", "misc_in_V" and "misc_in_H". "n_r_in" has been added.
+      - "max_flux" now only refers to the maximum flux in the coordinate system used (i.e. poloidal or toroidal).
+      - Fixed a bug in "calc_res_surf" where instead of the rotational transform the safety factor was used.
+      - "flux_p_V" and "Dflux_p_V" are now calculated inside "read_VMEC" as the full input grid is needed.
+      - "calc_XYZ" now requires the equilibrium grid for the routine to know how the input variables are tabulated.
+      - "coord_E2F" and "coord_F2E" do not need the equilibrium variables any more. Also, "calc_loc_r" has been deleted.
+      - VMEC now also uses magnetic field on axis as normalization, saved in "B_0_V" in VMEC.

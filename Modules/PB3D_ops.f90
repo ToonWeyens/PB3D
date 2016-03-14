@@ -39,8 +39,9 @@ contains
         use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
-        use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm
-        use grid_vars, onLy: n_r_eq, n_par_X
+        use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
+            &max_flux_E, max_flux_F
+        use grid_vars, onLy: n_r_in, n_r_eq, n_par_X
         use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
             &n_mod_X
         use sol_vars, only: alpha
@@ -48,7 +49,7 @@ contains
             &pres_H, RBphi_H
         use VMEC, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, gam_V, &
             &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V, rot_t_V, &
-            &pres_V, flux_t_V, Dflux_t_V
+            &pres_V, flux_t_V, Dflux_t_V, flux_p_V, Dflux_p_V, nfp_V
 #if ldebug
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
         use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
@@ -81,8 +82,8 @@ contains
         call writo('Restore variables')
         call lvl_ud(1)
         
-        ! misc_eq
-        ierr = retrieve_var_1D_id(vars_1D,'misc_eq',var_1D_id)
+        ! misc_in
+        ierr = retrieve_var_1D_id(vars_1D,'misc_in',var_1D_id)
         CHCKERR('')
         call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
         PB3D_version = dum_1D(1)
@@ -102,15 +103,18 @@ contains
         if (dum_1D(12).gt.0) use_pol_flux_F = .true.
         if (dum_1D(13).gt.0) use_normalization = .true.
         norm_disc_prec_eq = nint(dum_1D(14))
-        n_r_eq = nint(dum_1D(15))
-        n_par_X = nint(dum_1D(16))
+        n_r_in = nint(dum_1D(15))
+        n_r_eq = nint(dum_1D(16))
+        n_par_X = nint(dum_1D(17))
+        max_flux_E = dum_1D(18)
+        max_flux_F = dum_1D(19)
         deallocate(dum_1D)
         
         ! variables depending on equilibrium style
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ! misc_eq_V
-                ierr = retrieve_var_1D_id(vars_1D,'misc_eq_V',var_1D_id)
+                ! misc_in_V
+                ierr = retrieve_var_1D_id(vars_1D,'misc_in_V',var_1D_id)
                 CHCKERR('')
                 call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
                 is_asym_V = .false.
@@ -120,7 +124,8 @@ contains
                 mnmax_V = nint(dum_1D(3))
                 mpol_V = nint(dum_1D(4))
                 ntor_V = nint(dum_1D(5))
-                gam_V = dum_1D(6)
+                nfp_V = nint(dum_1D(6))
+                gam_V = dum_1D(7)
                 deallocate(dum_1D)
                 
                 ! flux_t_V
@@ -137,6 +142,22 @@ contains
                 call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
                 allocate(Dflux_t_V(n_r_eq))
                 Dflux_t_V = dum_1D
+                deallocate(dum_1D)
+                
+                ! flux_p_V
+                ierr = retrieve_var_1D_id(vars_1D,'flux_p_V',var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
+                allocate(flux_p_V(n_r_eq))
+                flux_p_V = dum_1D
+                deallocate(dum_1D)
+                
+                ! Dflux_p_V
+                ierr = retrieve_var_1D_id(vars_1D,'Dflux_p_V',var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
+                allocate(Dflux_p_V(n_r_eq))
+                Dflux_p_V = dum_1D
                 deallocate(dum_1D)
                 
                 ! pres_V
@@ -213,8 +234,8 @@ contains
                 deallocate(dum_3D)
 #endif
             case (2)                                                            ! HELENA
-                ! misc_eq_H
-                ierr = retrieve_var_1D_id(vars_1D,'misc_eq_H',var_1D_id)
+                ! misc_in_H
+                ierr = retrieve_var_1D_id(vars_1D,'misc_in_H',var_1D_id)
                 CHCKERR('')
                 call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
                 ias = nint(dum_1D(1))
@@ -473,8 +494,7 @@ contains
     integer function reconstruct_PB3D_eq(grid_eq,eq,met,eq_limits) result(ierr)
         use num_vars, only: PB3D_name
         use met_vars, only: create_met
-        use eq_vars, only: create_eq, max_flux_p_E, max_flux_t_E, &
-            &max_flux_p_F, max_flux_t_F
+        use eq_vars, only: create_eq
         use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
@@ -522,16 +542,6 @@ contains
         ! restore variables
         call writo('Restore variables')
         call lvl_ud(1)
-        
-        ! max_flux
-        ierr = retrieve_var_1D_id(vars_1D,'max_flux',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
-        max_flux_p_E = dum_1D(1)
-        max_flux_t_E = dum_1D(2)
-        max_flux_p_F = dum_1D(3)
-        max_flux_t_F = dum_1D(4)
-        deallocate(dum_1D)
         
         ! pres_FD
         ierr = retrieve_var_1D_id(vars_1D,'pres_FD',var_1D_id)

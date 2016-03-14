@@ -167,6 +167,8 @@ contains
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! the field-aligned quantities are already found
+                grid_eq_B => grid_eq
+                grid_X_B => grid_X
                 eq_B => eq
                 met_B => met
                 X_B => X
@@ -241,11 +243,11 @@ contains
         
         call writo('Setting up the grids')
         call lvl_ud(1)
-        ierr = extend_grid_E(grid_eq,grid_eq_plot,grid_eq=grid_eq,eq=eq)        ! extend eq grid and convert to F
+        ierr = extend_grid_E(grid_eq,grid_eq_plot,grid_eq=grid_eq)              ! extend eq grid and convert to F
         CHCKERR('')
-        ierr = extend_grid_E(grid_X,grid_X_plot,grid_eq=grid_eq,eq=eq)          ! extend X grid and convert to F
+        ierr = extend_grid_E(grid_X,grid_X_plot,grid_eq=grid_eq)                ! extend X grid and convert to F
         CHCKERR('')
-        ierr = extend_grid_E(grid_sol,grid_sol_plot,grid_eq=grid_eq,eq=eq)      ! extend sol grid and convert to F
+        ierr = extend_grid_E(grid_sol,grid_sol_plot,grid_eq=grid_eq)            ! extend sol grid and convert to F
         CHCKERR('')
         call lvl_ud(-1)
         call writo('Grids set up')
@@ -255,17 +257,20 @@ contains
             case (1)                                                            ! VMEC
                 call writo('Calculating quantities on plot grid')
                 call lvl_ud(1)
+                
                 ! back up no_plots and no_output and set to .true.
                 no_plots_loc = no_plots; no_plots = .true.
                 no_output_loc = no_output; no_output = .true.
+                
                 ! setup plot quantities
                 ierr = create_eq(grid_eq_plot,eq_plot)
                 CHCKERR('')
-                ! calculate flux quantities
-                ierr = calc_flux_q(grid_eq,eq)
-                ! Calculate the metric quantities
+                
+                ! calculate flux and metric quantities
+                ierr = calc_flux_q(grid_eq,eq_plot)
                 ierr = calc_met(grid_eq_plot,eq_plot,met_plot)
                 CHCKERR('')
+                
                 ! Transform E into F derivatives
 #if ldebug
                 ierr = calc_F_derivs(grid_eq_plot,eq_plot,met_plot)
@@ -273,28 +278,31 @@ contains
                 ierr = calc_F_derivs(eq_plot,met_plot)
 #endif
                 CHCKERR('')
+                
                 ! Calculate derived metric quantities
                 call calc_derived_q(grid_eq_plot,eq_plot,met_plot)
+                
                 ! calculate X variables, vector phase
                 ierr = calc_X(grid_eq_plot,grid_X_plot,eq_plot,met_plot,&
                     &X_plot)
                 CHCKERR('')
+                
                 ! reset no_plots and no_output
                 no_plots = no_plots_loc
                 no_output = no_output_loc
+                
                 call lvl_ud(-1)
                 call writo('Quantities calculated')
             case (2)                                                            ! HELENA
-                call writo('Preparing quantities')
+                call writo('Interpolating quantities on plot grid')
                 call lvl_ud(1)
+                
                 ! setup plot quantities
                 ierr = create_eq(grid_eq_plot,eq_plot)
                 CHCKERR('')
                 ierr = create_met(grid_eq_plot,met_plot)
                 CHCKERR('')
                 call create_X(grid_X_plot,X_plot)
-                call lvl_ud(-1)
-                call writo('Quantities prepared')
                 
                 ! call HELENA grid interpolation
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_plot,eq=eq,&
@@ -304,6 +312,9 @@ contains
                 ierr = interp_HEL_on_grid(grid_X,grid_X_plot,X_1=X,&
                     &X_1_out=X_plot,grid_name='perturbation plot grid')
                 CHCKERR('')
+                
+                call lvl_ud(-1)
+                call writo('Quantities interpolated')
             case default
                 ierr = 1
                 err_msg = 'No equilibrium style associated with '//&
@@ -348,7 +359,7 @@ contains
         call lvl_ud(1)
         allocate(XYZ_plot(grid_sol_plot%n(1),grid_sol_plot%n(2),&
             &grid_sol_plot%loc_n_r,3))
-        ierr = calc_XYZ_grid(grid_sol_plot,XYZ_plot(:,:,:,1),&
+        ierr = calc_XYZ_grid(grid_eq,grid_sol_plot,XYZ_plot(:,:,:,1),&
             &XYZ_plot(:,:,:,2),XYZ_plot(:,:,:,3))
         CHCKERR('')
         call lvl_ud(-1)

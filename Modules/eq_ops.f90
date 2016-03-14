@@ -35,7 +35,7 @@ contains
         use num_vars, only: eq_style, use_pol_flux_E
         use VMEC, only: read_VMEC
         use HELENA_vars, only: read_HEL
-        use grid_vars, only: n_r_eq
+        use grid_vars, only: n_r_in
         
         character(*), parameter :: rout_name = 'read_eq'
         
@@ -50,10 +50,10 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ierr = read_VMEC(n_r_eq,use_pol_flux_E)
+                ierr = read_VMEC(n_r_in,use_pol_flux_E)
                 CHCKERR('')
             case (2)                                                            ! HELENA
-                ierr = read_HEL(n_r_eq,use_pol_flux_E)
+                ierr = read_HEL(n_r_in,use_pol_flux_E)
                 CHCKERR('')
             case default
                 err_msg = 'No equilibrium style associated with '//&
@@ -64,10 +64,7 @@ contains
     end function read_eq
     
     ! calculate  the equilibrium  quantities on  a grid  determined by  straight
-    ! field lines. This  grid has the dimensions (n_par,loc_n_r)  where n_par is
-    ! the number of points taken along  the magnetic field lines and loc_n_r.le.
-    ! n_r_eq  is  the normal  extent  in  the  equilibrium  grid of  this  rank,
-    ! determined by sharing the workload evenly over the processes.
+    ! field lines. This grid has the dimensions (n_par,loc_n_r).
     integer function calc_eq(grid_eq,eq) result(ierr)
         use eq_vars, only: create_eq
         use grid_ops, only: calc_norm_range, setup_grid_eq, calc_ang_grid_eq
@@ -153,7 +150,6 @@ contains
         
         ! local variables
         integer :: kd                                                           ! counter
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         ! submatrices
         ! jacobian
         real(dp), pointer :: J(:,:,:) => null()                                 ! jac
@@ -188,6 +184,7 @@ contains
         type(disc_type) :: ang_deriv_data                                      ! data for angular derivatives
         integer :: istat                                                        ! status
         integer :: jd                                                           ! counter
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
 #endif
         
         ! user output
@@ -302,7 +299,8 @@ contains
                 &grid_eq_trim%loc_n_r))
             allocate(Z_plot(grid_eq_trim%n(1),grid_eq_trim%n(2),&
                 &grid_eq_trim%loc_n_r))
-            istat = calc_XYZ_grid(grid_eq_trim,X_plot,Y_plot,Z_plot)
+            istat = calc_XYZ_grid(grid_eq_trim,grid_eq_trim,X_plot,Y_plot,&
+                &Z_plot)
             CHCKSTT
             
             ! plot shear
@@ -358,9 +356,7 @@ contains
     integer function calc_flux_q(grid_eq,eq) result(ierr)
         use num_vars, only: eq_style, max_deriv, use_pol_flux_E, &
             &use_pol_flux_F, rho_style, use_normalization, norm_disc_prec_eq
-        use utilities, only: calc_int
-        use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &
-            &max_flux_t_F, rho_0
+        use eq_vars, only: rho_0
         use grid_utilities, only: setup_deriv_data, apply_disc
         
         character(*), parameter :: rout_name = 'calc_flux_q'
@@ -436,7 +432,10 @@ contains
         ! wrt.  to  the  maximum  flux,  equidistantly,  so  the  step  size  is
         ! 1/(n(3)-1)
         integer function calc_flux_q_VMEC() result(ierr)
-            use VMEC, only: rot_t_V, flux_t_V, Dflux_t_V, pres_V
+            use VMEC, only: rot_t_V, flux_t_V, Dflux_t_V, flux_p_V, Dflux_p_V, &
+                &pres_V
+            use eq_vars, only: max_flux_E
+            use grid_vars, only: n_r_in, n_r_eq
             
             character(*), parameter :: rout_name = 'calc_flux_q_VMEC'
             
@@ -453,10 +452,11 @@ contains
             allocate(q_saf_E_full(grid_eq%n(3),0:max_deriv+1))
             allocate(rot_t_E_full(grid_eq%n(3),0:max_deriv+1))
             
-            ! calculate data for normal derivatives with equidistant grid
+            ! calculate data  for normal derivatives with  equidistant grid with
+            ! grid size 1/(n_r_in-1), but n_r_eq points
             allocate(norm_deriv_data(max_deriv+2))
             do kd = 1,max_deriv+2
-                ierr = setup_deriv_data(1._dp/(grid_eq%n(3)-1),grid_eq%n(3),&
+                ierr = setup_deriv_data(1._dp/(n_r_in-1),n_r_eq,&
                     &norm_deriv_data(kd),kd,norm_disc_prec_eq)
                 CHCKERR('')
             end do
@@ -470,14 +470,12 @@ contains
                 CHCKERR('')
             end do
             
-            ! calculate poloidal flux and derivatives
-            flux_p_E_full(:,1) = rot_t_V*flux_t_E_full(:,1)
-            ierr = calc_int(flux_p_E_full(:,1),1.0_dp/(grid_eq%n(3)-1.0_dp),&
-                &flux_p_E_full(:,0))                                            ! equidistant grid (0..1) with n(3) points
-            CHCKERR('')
+            ! calculate derivatives of poloidal flux
+            flux_p_E_full(:,0) = flux_p_V
+            flux_p_E_full(:,1) = Dflux_p_V
             do kd = 2,max_deriv+2
-                ierr = apply_disc(flux_p_E_full(:,1),norm_deriv_data(kd-1),&
-                    &flux_p_E_full(:,kd))
+                ierr = apply_disc(flux_p_E_full(:,1),&
+                    &norm_deriv_data(kd-1),flux_p_E_full(:,kd))
                 CHCKERR('')
             end do
             
@@ -507,17 +505,13 @@ contains
             
             ! max flux and  normal coord. of eq grid  in Equilibrium coordinates
             ! (uses poloidal flux by default)
-            max_flux_p_E = flux_p_E_full(grid_eq%n(3),0)
-            max_flux_t_E = flux_t_E_full(grid_eq%n(3),0)
             if (use_pol_flux_E) then
-                grid_eq%r_E = flux_p_E_full(:,0)/max_flux_p_E
+                grid_eq%r_E = flux_p_E_full(:,0)/max_flux_E
             else
-                grid_eq%r_E = flux_t_E_full(:,0)/max_flux_t_E
+                grid_eq%r_E = flux_t_E_full(:,0)/max_flux_E
             end if
             
             ! max flux and normal coord. of eq grid in Flux coordinates
-            max_flux_p_F = flux_p_E_full(grid_eq%n(3),0)
-            max_flux_t_F = - flux_t_E_full(grid_eq%n(3),0)                      ! conversion VMEC LH -> PB3D RH coord. system
             if (use_pol_flux_F) then
                 grid_eq%r_F = flux_p_E_full(:,0)/(2*pi)                         ! psi_F = flux_p/2pi
             else
@@ -529,6 +523,7 @@ contains
         ! The HELENA normal coord. is the poloidal flux divided by 2pi
         integer function calc_flux_q_HEL() result(ierr)
             use HELENA_vars, only: qs_H, flux_p_H, pres_H
+            use utilities, only: calc_int
             
             character(*), parameter :: rout_name = 'calc_flux_q_HEL'
             
@@ -598,13 +593,9 @@ contains
             
             ! max flux and  normal coord. of eq grid  in Equilibrium coordinates
             ! (uses poloidal flux by default)
-            max_flux_p_E = flux_p_E_full(grid_eq%n(3),0)
-            max_flux_t_E = flux_t_E_full(grid_eq%n(3),0)
             grid_eq%r_E = flux_p_E_full(:,0)/(2*pi)
             
             ! max flux and normal coord. of eq grid in Flux coordinates
-            max_flux_p_F = flux_p_E_full(grid_eq%n(3),0)
-            max_flux_t_F = flux_t_E_full(grid_eq%n(3),0)
             if (use_pol_flux_F) then
                 grid_eq%r_F = flux_p_E_full(:,0)/(2*pi)                         ! psi_F = flux_p/2pi
             else
@@ -695,6 +686,7 @@ contains
         use VMEC, only: calc_trigon_factors, &
             &R_V_c, Z_V_s, L_V_s, R_V_s, Z_V_c, L_V_c
         use grid_utilities, only: setup_deriv_data, apply_disc
+        use grid_vars, only: n_r_in
         
         character(*), parameter :: rout_name = 'prepare_RZL'
         
@@ -711,9 +703,9 @@ contains
         ! normal derivatives of these factors
         ! The VMEC normal coord. is  the toroidal (or poloidal) flux, normalized
         ! wrt.  to  the  maximum  flux,  equidistantly,  so  the  step  size  is
-        ! 1/(grid_eq%n(3)-1).
+        ! 1/(n_r_in-1).
         do kd = 1,max_deriv+1
-            ierr = setup_deriv_data(1._dp/(grid%n(3)-1),grid%n(3),&
+            ierr = setup_deriv_data(1._dp/(n_r_in-1),grid%n(3),&
                 &norm_deriv_data,kd,norm_disc_prec_eq)
             CHCKERR('')
             ierr = apply_disc(R_V_c(:,:,0),norm_deriv_data,R_V_c(:,:,kd),2)
@@ -909,8 +901,8 @@ contains
                 &n_vars))
             
             ! calculate 3D X,Y and Z
-            ierr = calc_XYZ_grid(grid_plot,X_plot(:,:,:,1),Y_plot(:,:,:,1),&
-                &Z_plot(:,:,:,1))
+            ierr = calc_XYZ_grid(grid_eq,grid_plot,X_plot(:,:,:,1),&
+                &Y_plot(:,:,:,1),Z_plot(:,:,:,1))
             CHCKERR('')
             do id = 2,n_vars
                 X_plot(:,:,:,id) = X_plot(:,:,:,1)
@@ -938,8 +930,8 @@ contains
         
         ! plots the pressure and fluxes in GNUplot
         integer function flux_q_plot_GP() result(ierr)
-            use eq_vars, only: max_flux_p_F, max_flux_t_F, pres_0, psi_0
-            use num_vars, only: use_pol_flux_F, use_normalization
+            use eq_vars, only: max_flux_F, pres_0, psi_0
+            use num_vars, only: use_normalization
             
             character(*), parameter :: rout_name = 'flux_q_plot_GP'
             
@@ -993,11 +985,7 @@ contains
                 file_name(2) = 'flux'
                 
                 ! 2D normal variable (normalized F coordinate)
-                if (use_pol_flux_F) then
-                    X_plot_2D(:,1) = grid_trim%r_F*2*pi/max_flux_p_F
-                else
-                    X_plot_2D(:,1) = grid_trim%r_F*2*pi/max_flux_t_F
-                end if
+                X_plot_2D(:,1) = grid_trim%r_F*2*pi/max_flux_F
                 do id = 2,n_vars
                     X_plot_2D(:,id) = X_plot_2D(:,1)
                 end do
@@ -1092,8 +1080,8 @@ contains
     contains 
         ! VMEC version
         !   R_0:    major radius (= average R on axis)
-        !   pres_0: pressure on axis
-        !   B_0:    average magnetic field (= sqrt(mu_0 pres_0))
+        !   B_0:    B on magnetic axis (theta = zeta = 0)
+        !   pres_0: reference pressure (= B_0^2/mu_0)
         !   psi_0:  reference flux (= R_0^2 B_0)
         !   rho_0:  reference mass density
         ! Note: The  orthodox way of doing  this is by setting  B_0 the toroidal
@@ -1102,7 +1090,7 @@ contains
         ! Note that  rho_0 is  not given  through by  the equilibrium  codes and
         ! should be user-supplied
         subroutine calc_normalization_const_VMEC
-            use VMEC, only: R_V_c, pres_V
+            use VMEC, only: R_V_c, B_0_V
             
             ! set the major  radius as the average value of  R_V on the magnetic
             ! axis
@@ -1112,16 +1100,16 @@ contains
                 nr_overriden_const = nr_overriden_const + 1
             end if
             
-            ! set pres_0 as pressure on axis
-            if (pres_0.ge.huge(1._dp)) then                                     ! user did not provide a value
-                pres_0 = pres_V(1)
+            ! set the reference value for B_0 = B_0_V
+            if (B_0.ge.huge(1._dp)) then                                        ! user did not provide a value
+                B_0 = B_0_V
             else
                 nr_overriden_const = nr_overriden_const + 1
             end if
             
-            ! set the reference value for B_0 = sqrt(mu_0_original pres_0)
-            if (B_0.ge.huge(1._dp)) then                                        ! user did not provide a value
-                B_0 = sqrt(pres_0 * mu_0_original)
+            ! set pres_0 from B_0
+            if (pres_0.ge.huge(1._dp)) then                                     ! user did not provide a value
+                pres_0 = B_0**2/mu_0_original
             else
                 nr_overriden_const = nr_overriden_const + 1
             end if
@@ -1222,17 +1210,13 @@ contains
     !   - eq:       pres_FD, q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, rho, S,
     !               kappa_n, kappa_g, sigma
     !   - metric:   g_FD, h_FD, jac_FD
-    !   - VMEC:     R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s
-    !   - HELENA:   R_H, Z_H
     ! Note: The equilibrium quantities are outputted in Flux coordinates.
     integer function print_output_eq(grid_eq,eq,met) result(ierr)
-        use num_vars, only: PB3D_name, rank
+        use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
             &max_dim_var_1D
         use grid_utilities, only: trim_grid
-        use eq_vars, only: max_flux_p_E, max_flux_t_E, max_flux_p_F, &
-            &max_flux_t_F
         
         character(*), parameter :: rout_name = 'print_output_eq'
         
@@ -1243,7 +1227,6 @@ contains
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: norm_id_f(2)                                                 ! untrimmed full normal indices for trimmed grids
         type(var_1D_type), allocatable, target :: eq_1D(:)                      ! 1D equivalent of eq. variables
         type(var_1D_type), pointer :: eq_1D_loc => null()                       ! local element in eq_1D
         type(grid_type) :: grid_trim                                            ! trimmed grid
@@ -1264,32 +1247,11 @@ contains
         ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
         
-        ! set i_min and i_max for variables tabulated on full grid, trimmed
-        norm_id_f = norm_id + grid_eq%i_min - 1
-        
         ! set up the 1D equivalents of the equilibrium variables
         allocate(eq_1D(max_dim_var_1D))
         
         ! Set up common variables eq_1D
         id = 1
-        
-        ! max_flux
-        eq_1D_loc => eq_1D(id); id = id+1
-        eq_1D_loc%var_name = 'max_flux'
-        allocate(eq_1D_loc%tot_i_min(1),eq_1D_loc%tot_i_max(1))
-        allocate(eq_1D_loc%loc_i_min(1),eq_1D_loc%loc_i_max(1))
-        if (rank.eq.0) then
-            eq_1D_loc%loc_i_min = [1]
-            eq_1D_loc%loc_i_max = [4]
-            allocate(eq_1D_loc%p(4))
-            eq_1D_loc%p = [max_flux_p_E,max_flux_t_E,max_flux_p_F,max_flux_t_F]
-        else
-            eq_1D_loc%loc_i_min = [1]
-            eq_1D_loc%loc_i_max = [0]
-            allocate(eq_1D_loc%p(0))
-        end if
-        eq_1D_loc%tot_i_min = [1]
-        eq_1D_loc%tot_i_max = [4]
         
         ! pres_FD
         eq_1D_loc => eq_1D(id); id = id+1

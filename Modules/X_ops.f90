@@ -145,7 +145,7 @@ contains
         use MPI_utilities, only: get_ser_var
         use grid_vars, only: dealloc_grid, disc_type, dealloc_disc
         use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
-        use eq_vars, only: max_flux_p_F, max_flux_t_F
+        use eq_vars, only: max_flux_F
         
         character(*), parameter :: rout_name = 'setup_nm_X'
         
@@ -302,11 +302,7 @@ contains
             do ld = 1,n_mod_X
                 x_plot(:,ld) = grid_X_trim%r_F
             end do
-            if (use_pol_flux_F) then
-                x_plot = x_plot*2*pi/max_flux_p_F
-            else
-                x_plot = x_plot*2*pi/max_flux_t_F
-            end if
+            x_plot = x_plot*2*pi/max_flux_F
             ! plot poloidal modes
             plot_title = 'poloidal mode numbers'
             plot_name = 'modes_m_X'
@@ -599,12 +595,17 @@ contains
     ! consists of mode  number, resonating normal position and  the fraction n/m
     ! or m/n for  those modes for which  a solution is found that  is within the
     ! plasma range.
+    ! The output contains three pieces of information:
+    !   - (:,1): the mode index
+    !   - (:,2): the radial position in Flux coordinates
+    !   - (:,3): the fraction m/n or n/m
+    ! for every single mode in sec_X_ind.
     ! Optionally,  the  total  safety  factor or  rotational  transform  can  be
     ! returned to the master.
     integer function calc_res_surf(grid_eq,eq,res_surf,info,jq) result(ierr)
         use X_vars, only: min_n_X, min_m_X, sec_X_ind, prim_X
         use num_vars, only: use_pol_flux_F
-        use eq_vars, only: max_flux_p_F, max_flux_t_F
+        use eq_vars, only: max_flux_F, max_flux_F
         use utilities, only: calc_zero_NR, interp_fun
         use grid_vars, only: dealloc_grid
         use grid_utilities, only: trim_grid
@@ -668,7 +669,7 @@ contains
                     jq_tot(:,kd) = jq_loc
                 end do
             else
-                jq_tot = eq%q_saf_FD
+                jq_tot = eq%rot_t_FD
             end if
         end if
         if (present(jq)) then
@@ -680,11 +681,7 @@ contains
         allocate(res_surf_loc(1:size(sec_X_ind,2),3))
         
         ! calculate normalization factor max_flux / 2pi
-        if (use_pol_flux_F) then
-            norm_factor = max_flux_p_F/(2*pi)
-        else
-            norm_factor = max_flux_t_F/(2*pi)
-        end if
+        norm_factor = max_flux_F/(2*pi)
         
         ! loop over all modes (and shift the index in x and y_vars by 1)
         ld_loc = 1
@@ -822,7 +819,7 @@ contains
         use num_vars, only: use_pol_flux_F, no_plots, n_theta_plot, &
             &n_zeta_plot, rank
         use grid_vars, only: create_grid, dealloc_grid
-        use eq_vars, only: max_flux_p_F, max_flux_t_F
+        use eq_vars, only: max_flux_F
         use grid_utilities, only: calc_XYZ_grid, calc_eqd_grid, coord_F2E, &
             &trim_grid
         use X_vars, only: prim_X
@@ -845,7 +842,7 @@ contains
         integer :: plot_dim(4)                                                  ! plot dimensions (total = local because only masters)
         type(grid_type) :: grid_trim                                            ! trimmed version of grid
         type(grid_type) :: grid_plot                                            ! grid for plotting
-        real(dp), allocatable :: r_plot_E(:)                                    ! normal E coordinates of plot
+        real(dp), allocatable :: r_plot_E(:)                                    ! normal E coordinates of plot (needed to calculate X, Y and Z)
         real(dp), allocatable :: theta_plot(:,:,:), zeta_plot(:,:,:)            ! pol. and tor. angle of plot
         real(dp), allocatable :: X_plot(:,:,:,:), Y_plot(:,:,:,:), &
             &Z_plot(:,:,:,:)                                                    ! X, Y and Z of plot of all surfaces
@@ -948,7 +945,7 @@ contains
             
             ! calculate normal vars in Equilibrium coords.
             allocate(r_plot_E(n_mod_loc))
-            ierr = coord_F2E(grid,eq,x_vars(n_r,2:n_mod_loc+1),r_plot_E,&
+            ierr = coord_F2E(grid,x_vars(n_r,2:n_mod_loc+1),r_plot_E,&
                 &r_F_array=grid%r_F,r_E_array=grid%r_E)
             CHCKERR('')
             
@@ -969,7 +966,7 @@ contains
                 grid_plot%loc_r_E = r_plot_E(ld)
                 
                 ! calculate X, Y and Z
-                ierr = calc_XYZ_grid(grid_plot,X_plot(:,:,:,ld),&
+                ierr = calc_XYZ_grid(grid,grid_plot,X_plot(:,:,:,ld),&
                     &Y_plot(:,:,:,ld),Z_plot(:,:,:,ld))
                 CHCKERR('')
             end do
@@ -990,11 +987,7 @@ contains
             call lvl_ud(1)
             
             ! rescale x_vars by max_flux_F/2*pi
-            if (use_pol_flux_F) then
-                x_vars = x_vars*2*pi/max_flux_p_F
-            else
-                x_vars = x_vars*2*pi/max_flux_t_F
-            end if
+            x_vars = x_vars*2*pi/max_flux_F
             
             ! print to file
             call print_GP_2D(plot_title,file_name,y_vars,x=x_vars,draw=.false.)
@@ -1116,8 +1109,8 @@ contains
         real(dp), pointer :: D13h23(:,:,:)                                      ! D_alpha,theta h^psi,theta
         real(dp), pointer :: D33h23(:,:,:)                                      ! D_theta,theta h^psi,theta
         ! helper variables
-        real(dp), pointer :: ang_par_F(:,:,:)                                   ! parallel angle in flux coordinates
-        real(dp), pointer :: ang_geo_F(:,:,:)                                   ! geodesical angle in flux coordinates
+        real(dp), pointer :: ang_par_F(:,:,:)                                   ! equilibrium parallel angle in flux coordinates
+        real(dp), pointer :: ang_geo_F(:,:,:)                                   ! equilibrium geodesical angle in flux coordinates
         real(dp), allocatable :: q_saf(:), rot_t(:)                             ! safety factor and rotational transform in X grid
         real(dp), allocatable :: djq(:)                                         ! either q' (pol. flux) or -iota' (tor. flux)
         real(dp), allocatable :: Theta_3(:,:,:), D1Theta_3(:,:,:), &
@@ -1501,13 +1494,20 @@ contains
             call lvl_ud(1)
             
             ! set up DU_0 and DU_1
-            allocate(DU_0(grid_X%n(1),grid_X%n(2),grid_X%n(3)))
-            allocate(DU_1(grid_X%n(1),grid_X%n(2),grid_X%n(3)))
+            allocate(DU_0(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+            allocate(DU_1(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+            
+            ! reset pointers
+            if (use_pol_flux_F) then
+                ang_par_F => grid_X%theta_F
+            else
+                ang_par_F => grid_X%zeta_F
+            end if
             
             ! loop over all modes
             do ld = 1,X%n_mod
                 ! loop over all normal points
-                do kd = 1,grid_X%n(3)
+                do kd = 1,grid_X%loc_n_r
                     ! derive numerically
                     do jd = 1,grid_X%n(2)
                         ierr = setup_deriv_data(ang_par_F(:,jd,kd),&
@@ -1520,12 +1520,6 @@ contains
                             &DU_1(:,jd,kd))
                         CHCKERR('')
                     end do
-                    
-                    ! add the second part
-                    DU_0(:,:,kd) = DU_0(:,:,kd) + &
-                        &iu*n_frac(kd,ld)*X%U_0(:,:,kd,ld)
-                    DU_1(:,:,kd) = DU_1(:,:,kd) + &
-                        &iu*n_frac(kd,ld)*X%U_1(:,:,kd,ld)
                 end do
                 
                 ! set some variables

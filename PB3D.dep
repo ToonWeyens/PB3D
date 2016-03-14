@@ -348,6 +348,7 @@ files_ops.o : \
     HDF5_ops.o \
     HDF5_vars.o \
     grid_vars.o \
+    grid_ops.o \
     X_vars.o \
     PB3D_ops.o \
     HELENA_vars.o \

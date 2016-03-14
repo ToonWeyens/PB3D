@@ -2124,42 +2124,33 @@ contains
         call writo('Test complete')
     end function test_T_EF
     
-    ! performs tests on pressure balance
-    !   - mu_0 D2p = 1/J (D3 B_2 - D2 B_3)
-    !   - mu_0 J D3p = 0 => D3 B_1 = D1 B_3
-    ! (working in the (modified) Flux coordinates (alpha,psi,theta)_F)
-    integer function test_p(grid_eq,eq,met) result(ierr)
-        use utilities, only: c
+    ! Tests whether D1 D2 h_H is calculated correctly
+    integer function test_D12h_H(grid_eq,met) result(ierr)
         use grid_utilities, only: trim_grid, setup_deriv_data, apply_disc
-        use eq_vars, only: vac_perm
-        use num_vars, only: eq_style, norm_disc_prec_eq
-        use HELENA_vars, only: RBphi_H, h_H_11, h_H_12
+        use utilities, only: c
+        use num_vars, only: norm_disc_prec_eq
         
-        character(*), parameter :: rout_name = 'test_p'
+        character(*), parameter :: rout_name = 'test_D12h_H'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(met_type), intent(in) :: met                                       ! metric variables
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
-        type(disc_type) :: ang_deriv_data                                       ! data for angular derivative
         integer :: id, jd, kd                                                   ! counters
+        real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
+        type(disc_type) :: ang_deriv_data                                       ! data for angular derivative
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
         integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
-        integer :: n_H(2)                                                       ! indices in Helena coords.
         
         ! initialize ierr
         ierr = 0
         
         ! output
-        call writo('Going to test the consistency of the metric variables with &
-            &the given pressure')
+        call writo('Going to test whether D1 D2 h_H is calculated correctly')
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
@@ -2167,149 +2158,47 @@ contains
         CHCKERR('')
         
         ! set up res
-        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,2))
-        
-        ! user output
-        call writo('Checking if mu_0 D2 p = 1/J (D3 B_2 - D2_B3)')
-        call lvl_ud(1)
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,6))
         
         ! set total and local dimensions and local offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
         loc_offset = [0,0,grid_trim%i_min-1]
         
-        ! calculate mu_0 D2p
-        res(:,:,:,1) = &
-            &(met%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,1) - &
-            &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,1,0))/&
-            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
-            &(met%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,0)*&
-            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,1) - &
-            &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0)*&
-            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,1,0))/ &
-            &(met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2)
-        res(:,:,:,1) = res(:,:,:,1)/met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)
-        
-        ! save mu_0 D2p in res
+        ! calculate D1 D2 h_H alternatively
         do kd = norm_id(1),norm_id(2)
-            res(:,:,kd-norm_id(1)+1,2) = vac_perm*eq%pres_FD(kd,1)
-        end do
-        
-        ! set some variables
-        file_name = 'TEST_D2p'
-        description = 'Testing whether mu_0 D2 p = 1/J (D3 B_2 - D2_B3)'
-        
-        ! plot difference
-        call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
-            &loc_offset,description,output_message=.true.)
-        
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('Checking if mu_0 J D1p = 0 => D3 B_1 = D2 B_3')
-        call lvl_ud(1)
-        
-        ! calculate D3 B1
-        res(:,:,:,1) = met%g_FD(:,:,norm_id(1):norm_id(2),c([1,3],.true.),0,0,1)/&
-            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
-            &met%g_FD(:,:,norm_id(1):norm_id(2),c([1,3],.true.),0,0,0)*&
-            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,1) / &
-            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2
-        
-        ! calculate D1 B3
-        res(:,:,:,2) = met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),1,0,0)/&
-            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
-            &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0)*&
-            &met%jac_FD(:,:,norm_id(1):norm_id(2),1,0,0) / &
-            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2
-        
-        ! set some variables
-        file_name = 'TEST_D1p'
-        description = 'Testing whether D3 B_1 = D1 B_3'
-        
-        ! plot difference
-        call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
-            &loc_offset,description,output_message=.true.)
-        
-        call lvl_ud(-1)
-        
-        ! extra testing if Helena
-        if (eq_style.eq.2) then
-            ! set n_H
-            n_H = grid_eq%i_min+norm_id-1
-            
-            ! user output
-            call writo('Checking if D2 B_3 |F = D1 (qF+qh_11/F) |H')
-            call lvl_ud(1)
-            
-            ! calculate if D2 B_3 = D1 (qF) + D1 (q/F h_11)
-            res(:,:,:,1) = &
-                &(met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,1,0)/&
-                &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
-                &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0)*&
-                &met%jac_FD(:,:,norm_id(1):norm_id(2),0,1,0)/ &
-                &(met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2))
-            ierr = setup_deriv_data(grid_trim%loc_r_E,norm_deriv_data,1,&
-                &norm_disc_prec_eq)
-            CHCKERR('')
             do jd = 1,grid_trim%n(2)
-                do id = 1,grid_trim%n(1)
-                    ierr = apply_disc(eq%q_saf_E(norm_id(1):norm_id(2),0)*&
-                        &RBphi_H(n_H(1):n_H(2))+&
-                        &eq%q_saf_E(norm_id(1):norm_id(2),0)*&
-                        &h_H_11(id,n_H(1):n_H(2))/&
-                        &RBphi_H(n_H(1):n_H(2)),norm_deriv_data,res(id,jd,:,2))
-                    CHCKERR('')
-                end do
+                ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
+                    &ang_deriv_data,1,norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = apply_disc(met%h_E(:,jd,kd,:,1,0,0),&
+                    &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,:),1)
             end do
-            call dealloc_disc(norm_deriv_data)
-            
-            ! set some variables
-            file_name = 'TEST_D2B_3'
-            description = 'Testing whether D2 B_3 |F = D1 (qF+qh_11/F) |H'
-            
-            ! plot difference
-            call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
-                &loc_offset,description,output_message=.true.)
-            
-            call lvl_ud(-1)
-            
-            ! user output
-            call writo('Checking if D3 B_2 |F = -q/F D2 h_11 + F q'' |H')
-            call lvl_ud(1)
-            
-            ! calculate if D3 B_2 = -q/F D2 h_11 + F D1 q
-            res(:,:,:,1) = &
-                &met%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,1)/&
-                &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
-                &met%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,0)*&
-                &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,1)/ &
-                &(met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2)
-            do kd = norm_id(1),norm_id(2)
-                do jd = 1,grid_trim%n(2)
-                    ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                        &ang_deriv_data,1,norm_disc_prec_eq)
-                    CHCKERR('')
-                    ierr = apply_disc(h_H_12(:,kd+grid_eq%i_min-1),&
-                        &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,2))
-                end do
-                res(:,:,kd-norm_id(1)+1,2) = &
-                    &-eq%q_saf_E(kd,0)/RBphi_H(kd+grid_eq%i_min-1) * &
-                    &res(:,:,kd-norm_id(1)+1,2) + &
-                    &RBphi_H(kd+grid_eq%i_min-1) * &
-                    &eq%q_saf_E(kd,1)
+        end do
+        call dealloc_disc(ang_deriv_data)
+        
+        ! set up plot variables for calculated values
+        do id = 1,3
+            do kd = 1,3
+                ! user output
+                call writo('Testing h_H('//trim(i2str(kd))//','//&
+                    &trim(i2str(id))//')')
+                call lvl_ud(1)
+                
+                ! set some variables
+                file_name = 'TEST_D12h_H_'//trim(i2str(kd))//'_'//&
+                    &trim(i2str(id))
+                description = 'Testing calculated with given value for D12h_H('&
+                    &//trim(i2str(kd))//','//trim(i2str(id))//')'
+                
+                ! plot difference
+                call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.)),&
+                    &met%h_E(:,:,norm_id(1):norm_id(2),&
+                    &c([kd,id],.true.),1,1,0),file_name,tot_dim,loc_offset,&
+                    &description,output_message=.true.)
+                
+                call lvl_ud(-1)
             end do
-            call dealloc_disc(ang_deriv_data)
-            
-            ! set some variables
-            file_name = 'TEST_D3B_2'
-            description = 'Testing whether D3 B_2 |F = -D2 (qh_12/F) + f q'' |H'
-            
-            ! plot difference
-            call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
-                &loc_offset,description,output_message=.true.)
-            
-            call lvl_ud(-1)
-        end if
+        end do
         
         ! clean up
         call dealloc_grid(grid_trim)
@@ -2317,7 +2206,7 @@ contains
         ! user output
         call lvl_ud(-1)
         call writo('Test complete')
-    end function test_p
+    end function test_D12h_H
     
     ! performs tests on Jacobian in Flux coordinates
     !   - comparing it with the determinant of g_F
@@ -2550,6 +2439,7 @@ contains
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        integer :: norm_id_f(2)                                                 ! norm_id transposed to full grid
         real(dp), allocatable :: res(:,:,:)                                     ! result variable
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
@@ -2568,6 +2458,9 @@ contains
         ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
         
+        ! set norm_id_f for quantities tabulated on full grid
+        norm_id_f = grid_eq%i_min+norm_id-1
+        
         ! set total and local dimensions and local offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
         loc_offset = [0,0,grid_trim%i_min-1]
@@ -2576,10 +2469,8 @@ contains
         allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
         
         ! get jac_V from VMEC
-        ierr = fourier2real(jac_V_c(:,norm_id(1)+grid_eq%i_min-1:&
-            &norm_id(2)+grid_eq%i_min-1),&
-            &jac_V_s(:,norm_id(1)+grid_eq%i_min-1:&
-            &norm_id(2)+grid_eq%i_min-1),&
+        ierr = fourier2real(jac_V_c(:,norm_id_f(1):norm_id_f(2)),&
+            &jac_V_s(:,norm_id_f(1):norm_id_f(2)),&
             &grid_eq%trigon_factors(:,:,:,norm_id(1):norm_id(2),:),&
             &res,[0,0])
         CHCKERR('')
@@ -2624,6 +2515,7 @@ contains
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        integer :: norm_id_f(2)                                                 ! norm_id transposed to full grid
         integer :: id, kd                                                       ! counters
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
         real(dp), allocatable :: res2(:,:,:,:)                                  ! result variable
@@ -2645,6 +2537,9 @@ contains
         ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
         
+        ! set norm_id_f for quantities tabulated on full grid
+        norm_id_f = grid_eq%i_min+norm_id-1
+        
         ! set up res and res2
         allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,4))
         allocate(res2(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,4))
@@ -2661,18 +2556,14 @@ contains
             case (1)                                                            ! VMEC
                 do id = 1,3
                     ierr = fourier2real(&
-                        &B_V_sub_c(:,norm_id(1)+grid_eq%i_min-1:&
-                        &norm_id(2)+grid_eq%i_min-1,id),&
-                        &B_V_sub_s(:,norm_id(1)+grid_eq%i_min-1:&
-                        &norm_id(2)+grid_eq%i_min-1,id),&
+                        &B_V_sub_c(:,norm_id_f(1):norm_id_f(2),id),&
+                        &B_V_sub_s(:,norm_id_f(1):norm_id_f(2),id),&
                         &grid_eq%trigon_factors(:,:,:,norm_id(1):&
                         &norm_id(2),:),res(:,:,:,id),[0,0])
                     CHCKERR('')
                 end do
-                ierr = fourier2real(B_V_c(:,norm_id(1)+grid_eq%i_min-1:&
-                    &norm_id(2)+grid_eq%i_min-1),&
-                    &B_V_s(:,norm_id(1)+grid_eq%i_min-1:&
-                    &norm_id(2)+grid_eq%i_min-1),&
+                ierr = fourier2real(B_V_c(:,norm_id_f(1):norm_id_f(2)),&
+                    &B_V_s(:,norm_id_f(1):norm_id_f(2)),&
                     &grid_eq%trigon_factors(:,:,:,norm_id(1):norm_id(2),:),&
                     &res(:,:,:,4),[0,0])
                 CHCKERR('')
@@ -2757,23 +2648,31 @@ contains
         call writo('Test complete')
     end function test_B_F
     
-    ! Tests whether D1 D2 h_H is calculated correctly
-    integer function test_D12h_H(grid_eq,met) result(ierr)
-        use grid_utilities, only: trim_grid, setup_deriv_data, apply_disc
+    ! performs tests on pressure balance
+    !   - mu_0 D2p = 1/J (D3 B_2 - D2 B_3)
+    !   - mu_0 J D3p = 0 => D3 B_1 = D1 B_3
+    ! (working in the (modified) Flux coordinates (alpha,psi,theta)_F)
+    integer function test_p(grid_eq,eq,met) result(ierr)
         use utilities, only: c
-        use num_vars, only: norm_disc_prec_eq
+        use grid_utilities, only: trim_grid, setup_deriv_data, apply_disc
+        use eq_vars, only: vac_perm
+        use num_vars, only: eq_style, norm_disc_prec_eq
+        use HELENA_vars, only: RBphi_H, h_H_11, h_H_12
         
-        character(*), parameter :: rout_name = 'test_D12h_H'
+        character(*), parameter :: rout_name = 'test_p'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(met_type), intent(in) :: met                                       ! metric variables
+        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: id, jd, kd                                                   ! counters
+        integer :: norm_id_f(2)                                                 ! norm_id transposed to full grid
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
+        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
         type(disc_type) :: ang_deriv_data                                       ! data for angular derivative
+        integer :: id, jd, kd                                                   ! counters
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
         integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
@@ -2783,7 +2682,8 @@ contains
         ierr = 0
         
         ! output
-        call writo('Going to test whether D1 D2 h_H is calculated correctly')
+        call writo('Going to test the consistency of the metric variables with &
+            &the given pressure')
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
@@ -2791,47 +2691,150 @@ contains
         CHCKERR('')
         
         ! set up res
-        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,6))
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,2))
+        
+        ! user output
+        call writo('Checking if mu_0 D2 p = 1/J (D3 B_2 - D2_B3)')
+        call lvl_ud(1)
         
         ! set total and local dimensions and local offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
         loc_offset = [0,0,grid_trim%i_min-1]
         
-        ! calculate D1 D2 h_H alternatively
-        do kd = norm_id(1),norm_id(2)
-            do jd = 1,grid_trim%n(2)
-                ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                    &ang_deriv_data,1,norm_disc_prec_eq)
-                CHCKERR('')
-                ierr = apply_disc(met%h_E(:,jd,kd,:,1,0,0),&
-                    &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,:),1)
-            end do
-        end do
-        call dealloc_disc(ang_deriv_data)
+        ! calculate mu_0 D2p
+        res(:,:,:,1) = &
+            &(met%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,1) - &
+            &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,1,0))/&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
+            &(met%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,0)*&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,1) - &
+            &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0)*&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,1,0))/ &
+            &(met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2)
+        res(:,:,:,1) = res(:,:,:,1)/met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)
         
-        ! set up plot variables for calculated values
-        do id = 1,3
-            do kd = 1,3
-                ! user output
-                call writo('Testing h_H('//trim(i2str(kd))//','//&
-                    &trim(i2str(id))//')')
-                call lvl_ud(1)
-                
-                ! set some variables
-                file_name = 'TEST_D12h_H_'//trim(i2str(kd))//'_'//&
-                    &trim(i2str(id))
-                description = 'Testing calculated with given value for D12h_H('&
-                    &//trim(i2str(kd))//','//trim(i2str(id))//')'
-                
-                ! plot difference
-                call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.)),&
-                    &met%h_E(:,:,norm_id(1):norm_id(2),&
-                    &c([kd,id],.true.),1,1,0),file_name,tot_dim,loc_offset,&
-                    &description,output_message=.true.)
-                
-                call lvl_ud(-1)
-            end do
+        ! save mu_0 D2p in res
+        do kd = norm_id(1),norm_id(2)
+            res(:,:,kd-norm_id(1)+1,2) = vac_perm*eq%pres_FD(kd,1)
         end do
+        
+        ! set some variables
+        file_name = 'TEST_D2p'
+        description = 'Testing whether mu_0 D2 p = 1/J (D3 B_2 - D2_B3)'
+        
+        ! plot difference
+        call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
+            &loc_offset,description,output_message=.true.)
+        
+        call lvl_ud(-1)
+        
+        ! user output
+        call writo('Checking if mu_0 J D1p = 0 => D3 B_1 = D2 B_3')
+        call lvl_ud(1)
+        
+        ! calculate D3 B1
+        res(:,:,:,1) = met%g_FD(:,:,norm_id(1):norm_id(2),c([1,3],.true.),0,0,1)/&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
+            &met%g_FD(:,:,norm_id(1):norm_id(2),c([1,3],.true.),0,0,0)*&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,1) / &
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2
+        
+        ! calculate D1 B3
+        res(:,:,:,2) = met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),1,0,0)/&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
+            &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0)*&
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),1,0,0) / &
+            &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2
+        
+        ! set some variables
+        file_name = 'TEST_D1p'
+        description = 'Testing whether D3 B_1 = D1 B_3'
+        
+        ! plot difference
+        call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
+            &loc_offset,description,output_message=.true.)
+        
+        call lvl_ud(-1)
+        
+        ! extra testing if Helena
+        if (eq_style.eq.2) then
+            ! set norm_id_f for quantities tabulated on full grid
+            norm_id_f = grid_eq%i_min+norm_id-1
+            
+            ! user output
+            call writo('Checking if D2 B_3 |F = D1 (qF+qh_11/F) |H')
+            call lvl_ud(1)
+            
+            ! calculate if D2 B_3 = D1 (qF) + D1 (q/F h_11)
+            res(:,:,:,1) = &
+                &(met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,1,0)/&
+                &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
+                &met%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0)*&
+                &met%jac_FD(:,:,norm_id(1):norm_id(2),0,1,0)/ &
+                &(met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2))
+            ierr = setup_deriv_data(grid_trim%loc_r_E,norm_deriv_data,1,&
+                &norm_disc_prec_eq)
+            CHCKERR('')
+            do jd = 1,grid_trim%n(2)
+                do id = 1,grid_trim%n(1)
+                    ierr = apply_disc(eq%q_saf_E(norm_id(1):norm_id(2),0)*&
+                        &RBphi_H(norm_id_f(1):norm_id_f(2))+&
+                        &eq%q_saf_E(norm_id(1):norm_id(2),0)*&
+                        &h_H_11(id,norm_id_f(1):norm_id_f(2))/&
+                        &RBphi_H(norm_id_f(1):norm_id_f(2)),&
+                        &norm_deriv_data,res(id,jd,:,2))
+                    CHCKERR('')
+                end do
+            end do
+            call dealloc_disc(norm_deriv_data)
+            
+            ! set some variables
+            file_name = 'TEST_D2B_3'
+            description = 'Testing whether D2 B_3 |F = D1 (qF+qh_11/F) |H'
+            
+            ! plot difference
+            call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
+                &loc_offset,description,output_message=.true.)
+            
+            call lvl_ud(-1)
+            
+            ! user output
+            call writo('Checking if D3 B_2 |F = -q/F D2 h_11 + F q'' |H')
+            call lvl_ud(1)
+            
+            ! calculate if D3 B_2 = -q/F D2 h_11 + F D1 q
+            res(:,:,:,1) = &
+                &met%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,1)/&
+                &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0) - &
+                &met%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,0)*&
+                &met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,1)/ &
+                &(met%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2)
+            do kd = norm_id(1),norm_id(2)
+                do jd = 1,grid_trim%n(2)
+                    ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
+                        &ang_deriv_data,1,norm_disc_prec_eq)
+                    CHCKERR('')
+                    ierr = apply_disc(h_H_12(:,kd+grid_eq%i_min-1),&
+                        &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,2))
+                end do
+                res(:,:,kd-norm_id(1)+1,2) = &
+                    &-eq%q_saf_E(kd,0)/RBphi_H(kd+grid_eq%i_min-1) * &
+                    &res(:,:,kd-norm_id(1)+1,2) + &
+                    &RBphi_H(kd+grid_eq%i_min-1) * &
+                    &eq%q_saf_E(kd,1)
+            end do
+            call dealloc_disc(ang_deriv_data)
+            
+            ! set some variables
+            file_name = 'TEST_D3B_2'
+            description = 'Testing whether D3 B_2 |F = -D2 (qh_12/F) + f q'' |H'
+            
+            ! plot difference
+            call plot_diff_HDF5(res(:,:,:,1),res(:,:,:,2),file_name,tot_dim,&
+                &loc_offset,description,output_message=.true.)
+            
+            call lvl_ud(-1)
+        end if
         
         ! clean up
         call dealloc_grid(grid_trim)
@@ -2839,6 +2842,6 @@ contains
         ! user output
         call lvl_ud(-1)
         call writo('Test complete')
-    end function test_D12h_H
+    end function test_p
 #endif
 end module met_ops

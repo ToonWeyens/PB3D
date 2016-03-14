@@ -51,7 +51,7 @@ module HDF5_vars
     character(len=max_str_ln) :: XDMF_grid_types(3)                             ! possible XDMF grid types
     
     ! global variables
-    integer, parameter :: max_dim_var_1D = 1000                                 ! maximum dimension of var_1D
+    integer, parameter :: max_dim_var_1D = 100000                               ! maximum dimension of var_1D
     
     ! interfaces
     interface dealloc_var_1D

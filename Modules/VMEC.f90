@@ -12,7 +12,7 @@ module VMEC
     use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
         &is_asym_V => lasym, VMEC_version => version_, is_freeb_V => lfreeb, &  ! stellerator symmetry, version number, free boundary or not
         &n_r_VMEC => ns, mpol_V => mpol, ntor_V => ntor, xn, xm, &              ! n_r, mpol, ntor, xn, xm
-        &mnmax_V => mnmax, nfp, &                                               ! mnmax, nfp
+        &mnmax_V => mnmax, nfp_V => nfp, &                                      ! mnmax, nfp
         &phi, phipf, &                                                          ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
         &iotaf, &                                                               ! rot. transf. (tor. flux) or saf. fac. (pol. flux) (FM)
         &presf, &                                                               ! pressure (FM)
@@ -29,15 +29,17 @@ module VMEC
     public read_VMEC, dealloc_VMEC, normalize_VMEC, &
         &calc_trigon_factors, fourier2real, &
         &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mpol_V, ntor_V, &
-        &mn_V, pres_V, rot_t_V, is_asym_V, flux_t_V, Dflux_t_V, VMEC_version, &
-        &gam_V, is_freeb_V
+        &mn_V, pres_V, rot_t_V, is_asym_V, flux_t_V, Dflux_t_V, flux_p_V, &
+        &Dflux_p_V, VMEC_version, gam_V, is_freeb_V, nfp_V, B_0_V
 #if ldebug
     public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
 
     ! local variables
     integer, allocatable :: mn_V(:,:)                                           ! m and n of modes
+    real(dp) :: B_0_V                                                           ! the magnitude of B at the magnetic axis, theta = zeta = 0
     real(dp), allocatable :: flux_t_V(:), Dflux_t_V(:)                          ! toroidal flux and derivative
+    real(dp), allocatable :: flux_p_V(:), Dflux_p_V(:)                          ! poloidal flux and derivative
     real(dp), allocatable :: pres_V(:)                                          ! pressure
     real(dp), allocatable :: rot_t_V(:)                                         ! rotational transform
     real(dp), allocatable :: R_V_c(:,:,:), R_V_s(:,:,:)                         ! Coeff. of R in (co)sine series (FM) and norm. deriv.
@@ -50,14 +52,14 @@ module VMEC
 contains
     ! Reads the VMEC equilibrium data
     ! [MPI] only master
-    integer function read_VMEC(n_r_eq,use_pol_flux_V) result(ierr)
-        use utilities, only: conv_FHM
+    integer function read_VMEC(n_r_in,use_pol_flux_V) result(ierr)
+        use utilities, only: conv_FHM, calc_int
         use num_vars, only: eq_name
         
         character(*), parameter :: rout_name = 'read_VMEC'
         
         ! input / output
-        integer, intent(inout) :: n_r_eq                                        ! nr. of normal points in equilibrium grid
+        integer, intent(inout) :: n_r_in                                        ! nr. of normal points in input grid
         logical, intent(inout) :: use_pol_flux_V                                ! .true. if VMEC equilibrium is based on poloidal flux
         
         ! local variables
@@ -85,14 +87,19 @@ contains
         CHCKERR('Failed to read the VMEC file')
         
         ! set some variables
-        allocate(flux_t_V(n_r_eq))
-        allocate(Dflux_t_V(n_r_eq))
-        allocate(rot_t_V(n_r_eq))
-        allocate(pres_V(n_r_eq))
-        n_r_eq = n_r_VMEC
+        n_r_in = n_r_VMEC
+        allocate(flux_t_V(n_r_in))
+        allocate(Dflux_t_V(n_r_in))
+        allocate(flux_p_V(n_r_in))
+        allocate(Dflux_p_V(n_r_in))
+        allocate(rot_t_V(n_r_in))
+        allocate(pres_V(n_r_in))
         use_pol_flux_V = lrfp
         flux_t_V = phi
         Dflux_t_V = phipf
+        Dflux_p_V = iotaf*phipf
+        ierr = calc_int(Dflux_p_V,1.0_dp/(n_r_in-1.0_dp),flux_p_V)              ! needs to be calculated here, on full input grid
+        CHCKERR('')
         pres_V = presf
         rot_t_V = iotaf
         if (use_pol_flux_V) then
@@ -100,6 +107,7 @@ contains
         else
             flux_name = 'toroidal'
         end if
+        B_0_V = sum(bmnc(:,2))
         
         call writo('VMEC version is ' // trim(r2str(VMEC_version)))
         if (is_freeb_V) then
@@ -117,7 +125,7 @@ contains
         end if
         call writo('VMEC has '//trim(i2str(mpol_V))//' poloidal and '&
             &//trim(i2str(ntor_V))//' toroidal modes, defined on '&
-            &//trim(i2str(n_r_eq))//' '//flux_name//' flux surfaces')
+            &//trim(i2str(n_r_in))//' '//flux_name//' flux surfaces')
         
         call writo('Running tests')
         call lvl_ud(1)
@@ -141,14 +149,14 @@ contains
         
         ! Allocate the Fourier coefficients and store the underived ones
         ! (only allocate for the underived indices 0)
-        allocate(R_V_c(mnmax_V,n_r_eq,0:0))
-        allocate(R_V_s(mnmax_V,n_r_eq,0:0))
-        allocate(Z_V_c(mnmax_V,n_r_eq,0:0))
-        allocate(Z_V_s(mnmax_V,n_r_eq,0:0))
-        allocate(L_V_c(mnmax_V,n_r_eq,0:0))
-        allocate(L_V_s(mnmax_V,n_r_eq,0:0))
-        allocate(L_c_H(mnmax_V,n_r_eq,0:0))
-        allocate(L_s_H(mnmax_V,n_r_eq,0:0))
+        allocate(R_V_c(mnmax_V,n_r_in,0:0))
+        allocate(R_V_s(mnmax_V,n_r_in,0:0))
+        allocate(Z_V_c(mnmax_V,n_r_in,0:0))
+        allocate(Z_V_s(mnmax_V,n_r_in,0:0))
+        allocate(L_V_c(mnmax_V,n_r_in,0:0))
+        allocate(L_V_s(mnmax_V,n_r_in,0:0))
+        allocate(L_c_H(mnmax_V,n_r_in,0:0))
+        allocate(L_s_H(mnmax_V,n_r_in,0:0))
         
         ! factors R_V_c,s; Z_V_c,s and L_C,s and HM varieties
         R_V_c(:,:,0) = rmnc
@@ -174,12 +182,12 @@ contains
         
 #if ldebug
         ! allocate helper variables
-        allocate(B_V_sub_c_M(mnmax_V,n_r_eq,3)); B_V_sub_c_M = 0._dp
-        allocate(B_V_sub_s_M(mnmax_V,n_r_eq,3)); B_V_sub_s_M = 0._dp
-        allocate(B_V_c_H(mnmax_V,n_r_eq)); B_V_c_H = 0._dp
-        allocate(B_V_s_H(mnmax_V,n_r_eq)); B_V_s_H = 0._dp
-        allocate(jac_V_c_H(mnmax_V,n_r_eq)); jac_V_c_H = 0._dp
-        allocate(jac_V_s_H(mnmax_V,n_r_eq))
+        allocate(B_V_sub_c_M(mnmax_V,n_r_in,3)); B_V_sub_c_M = 0._dp
+        allocate(B_V_sub_s_M(mnmax_V,n_r_in,3)); B_V_sub_s_M = 0._dp
+        allocate(B_V_c_H(mnmax_V,n_r_in)); B_V_c_H = 0._dp
+        allocate(B_V_s_H(mnmax_V,n_r_in)); B_V_s_H = 0._dp
+        allocate(jac_V_c_H(mnmax_V,n_r_in)); jac_V_c_H = 0._dp
+        allocate(jac_V_s_H(mnmax_V,n_r_in))
         
         ! store in helper variables
         B_V_sub_s_M(:,:,1) = bsubsmns
@@ -202,12 +210,12 @@ contains
         end if
         
         ! allocate FM variables
-        allocate(B_V_sub_c(mnmax_V,n_r_eq,3))
-        allocate(B_V_sub_s(mnmax_V,n_r_eq,3))
-        allocate(B_V_c(mnmax_V,n_r_eq))
-        allocate(B_V_s(mnmax_V,n_r_eq))
-        allocate(jac_V_c(mnmax_V,n_r_eq))
-        allocate(jac_V_s(mnmax_V,n_r_eq))
+        allocate(B_V_sub_c(mnmax_V,n_r_in,3))
+        allocate(B_V_sub_s(mnmax_V,n_r_in,3))
+        allocate(B_V_c(mnmax_V,n_r_in))
+        allocate(B_V_s(mnmax_V,n_r_in))
+        allocate(jac_V_c(mnmax_V,n_r_in))
+        allocate(jac_V_s(mnmax_V,n_r_in))
         
         ! conversion HM -> FM (B_V_sub, B_V, jac_V)
         do id = 1,mnmax_V
@@ -248,6 +256,8 @@ contains
         deallocate(pres_V)
         deallocate(flux_t_V)
         deallocate(Dflux_t_V)
+        deallocate(flux_p_V)
+        deallocate(Dflux_p_V)
         deallocate(mn_V)
         deallocate(R_V_c)
         deallocate(R_V_s)
@@ -330,11 +340,11 @@ contains
         !   cos(m theta) sin(n zeta)
         do id = 1,mnmax_V
             trigon_factors(id,:,:,:,1) = &
-                &cos_theta(mn_V(id,1),:,:,:)*cos_zeta(mn_V(id,2),:,:,:) + &
-                &sin_theta(mn_V(id,1),:,:,:)*sin_zeta(mn_V(id,2),:,:,:)
+                &cos_theta(mn_V(id,1),:,:,:)*cos_zeta(mn_V(id,2)/nfp_V,:,:,:) + &
+                &sin_theta(mn_V(id,1),:,:,:)*sin_zeta(mn_V(id,2)/nfp_V,:,:,:)
             trigon_factors(id,:,:,:,2) = &
-                &sin_theta(mn_V(id,1),:,:,:)*cos_zeta(mn_V(id,2),:,:,:) - &
-                &cos_theta(mn_V(id,1),:,:,:)*sin_zeta(mn_V(id,2),:,:,:)
+                &sin_theta(mn_V(id,1),:,:,:)*cos_zeta(mn_V(id,2)/nfp_V,:,:,:) - &
+                &cos_theta(mn_V(id,1),:,:,:)*sin_zeta(mn_V(id,2)/nfp_V,:,:,:)
         end do
         
         ! deallocate variables
@@ -445,6 +455,8 @@ contains
         pres_V = pres_V/pres_0
         flux_t_V = flux_t_V/psi_0
         Dflux_t_V = Dflux_t_V/psi_0
+        flux_p_V = flux_p_V/psi_0
+        Dflux_p_V = Dflux_p_V/psi_0
         R_V_c = R_V_c/R_0
         R_V_s = R_V_s/R_0
         Z_V_c = Z_V_c/R_0

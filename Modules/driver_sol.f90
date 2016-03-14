@@ -137,7 +137,7 @@ contains
         ! coordinate
         call writo('Setting up solution grid')
         call lvl_ud(1)
-        ierr = setup_and_calc_grid_sol(grid_eq,grid_sol,eq,r_F_sol,&
+        ierr = setup_and_calc_grid_sol(grid_eq,grid_sol,r_F_sol,&
             &sol_limits)
         CHCKERR('')
         deallocate(r_F_sol)

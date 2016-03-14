@@ -25,7 +25,7 @@ contains
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
             &tol_norm, tol_SLEPC, max_it_slepc, n_procs, pi, plot_size, &
             &U_style, norm_style, test_max_mem, X_style, matrix_SLEPC_style,  &
-            &input_name, rich_restart_lvl
+            &input_name, rich_restart_lvl, eq_style
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use messages, only: writo, lvl_ud
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
@@ -69,8 +69,21 @@ contains
             
             ! common variables for all program styles
             max_mem_per_proc = 6000_dp/n_procs                                  ! count with 6GB
-            plot_size = [10,5]
+            plot_size = [10,5]                                                  ! size of plot in inch
             test_max_mem = .false.                                              ! do not test maximum memory
+            select case(eq_style)
+                case (1)                                                        ! VMEC
+                    n_theta_plot = 201                                          ! nr. poloidal points in plot
+                    n_zeta_plot = 101                                           ! nr. toroidal points in plot
+                case (2)                                                        ! HELENA
+                    n_theta_plot = 501                                          ! nr. poloidal points in plot
+                    n_zeta_plot = 1                                             ! nr. toroidal points in plot
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
             
             ! select depending on program style
             select case (prog_style)
@@ -85,6 +98,7 @@ contains
                     ierr = 1
                     CHCKERR(err_msg)
             end select
+            
             
             ! read user input
             ! select depending on program style
@@ -184,7 +198,7 @@ contains
         end if
     contains
         subroutine default_input_PB3D
-            use num_vars, only: eq_style, use_pol_flux_E
+            use num_vars, only: use_pol_flux_E
             
             ! concerning Newton-Rhapson
             max_it_NR = 500                                                     ! maximum 500 Newton-Rhapson iterations
@@ -212,23 +226,6 @@ contains
             n_sol_requested = 3                                                 ! request solutions with 3 highes EV
             retain_all_sol = .false.                                            ! don't retain faulty ones
             rich_restart_lvl = 0                                                ! don't restart
-            ! default   values   of  n_theta_plot  and   n_zeta_plot  depend  on
-            ! equilibrium style being used:
-            !   1:  VMEC
-            !   2:  HELENA
-            select case(eq_style)
-                case (1)                                                        ! VMEC
-                    n_theta_plot = 201                                          ! nr. poloidal points in plot
-                    n_zeta_plot = 101                                           ! nr. toroidal points in plot
-                case (2)                                                        ! HELENA
-                    n_theta_plot = 501                                          ! nr. poloidal points in plot
-                    n_zeta_plot = 1                                             ! nr. toroidal points in plot
-                case default
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
             
             ! variables concerning poloidal mode numbers m
             nyq_fac = 10                                                        ! need at least 10 points per period for perturbation quantitites
@@ -268,8 +265,6 @@ contains
         end subroutine default_input_PB3D
         
         integer function default_input_POST() result(ierr)
-            use num_vars, only: eq_style
-            
             character(*), parameter :: rout_name = 'default_input_POST'
             
             ! initialize ierr
@@ -291,23 +286,6 @@ contains
             
             ! variables concerning output
             n_sol_plotted = n_sol_requested                                     ! plot all solutions
-            ! default   values   of  n_theta_plot  and   n_zeta_plot  depend  on
-            ! equilibrium style being used:
-            !   1:  VMEC
-            !   2:  HELENA
-            select case(eq_style)
-                case (1)                                                        ! VMEC
-                    n_theta_plot = 201                                          ! nr. poloidal points in plot
-                    n_zeta_plot = 101                                           ! nr. toroidal points in plot
-                case (2)                                                        ! HELENA
-                    n_theta_plot = 501                                          ! nr. poloidal points in plot
-                    n_zeta_plot = 1                                             ! nr. toroidal points in plot
-                case default
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
-            end select
         end function default_input_POST
         
         ! checks whether the variables concerning run-time are chosen correctly.
@@ -365,13 +343,13 @@ contains
         subroutine adapt_plot
             if (n_theta_plot.lt.1) then
                 n_theta_plot = 1
-                call writo('WARNING: n_theta_plot cannot be negative and is &
-                    &set to '//trim(i2str(n_theta_plot)))
+                call writo('WARNING: n_theta_plot cannot be negative and &
+                    &is set to '//trim(i2str(n_theta_plot)))
             end if
             if (n_zeta_plot.lt.1) then
                 n_zeta_plot = 1
-                call writo('WARNING: n_zeta_plot cannot be negative and is &
-                    &set to '//trim(i2str(n_zeta_plot)))
+                call writo('WARNING: n_zeta_plot cannot be negative and &
+                    &is set to '//trim(i2str(n_zeta_plot)))
             end if
         end subroutine adapt_plot
         

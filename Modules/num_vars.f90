@@ -37,8 +37,8 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 1.10_dp                               ! version number
-    real(dp), parameter :: min_PB3D_version = 1.10_dp                           ! minimum PB3D version
+    real(dp), parameter :: prog_version = 1.11_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.11_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]

@@ -11,7 +11,7 @@ module grid_vars
     private
     public create_grid, dealloc_grid, grid_type, create_disc, dealloc_disc, &
         &disc_type, &
-        &n_r_eq, n_par_X, min_par_X, max_par_X
+        &n_r_in, n_r_eq, n_par_X, min_par_X, max_par_X
 
     ! type for grids
     ! The grids  are saved in  the following format:  (angle_1,angle_2,r), where
@@ -60,6 +60,7 @@ module grid_vars
     ! global variables
     ! (These  variables  should  be   used   only  until  the  grids  have  been
     ! established. They are put here for lack of a better place.)
+    integer :: n_r_in                                                           ! nr. of normal points in input grid
     integer :: n_r_eq                                                           ! nr. of normal points in equilibrium grid
     integer :: n_par_X                                                          ! nr. of parallel points in field-aligned grid
     real(dp) :: min_par_X, max_par_X                                            ! min. and max. of parallel coordinate [pi] in field-aligned grid
@@ -110,6 +111,8 @@ contains
                 grid%loc_n_r = i_lim(2)-i_lim(1)+1
                 if (i_lim(2)-i_lim(1)+1.lt.n(3)) grid%divided = .true.          ! only divided if difference between local and total
             else                                                                ! certainly not divided grid
+                grid%i_min = 1
+                grid%i_max = n(3)
                 grid%loc_n_r = n(3)
             end if
             
@@ -162,6 +165,8 @@ contains
             grid%loc_n_r = i_lim(2)-i_lim(1)+1
             if (i_lim(2)-i_lim(1)+1.lt.n) grid%divided = .true.                 ! only divided if difference between local and total
         else                                                                    ! certainly not divided grid
+            grid%i_min = 1
+            grid%i_max = n
             grid%loc_n_r = n
         end if
         

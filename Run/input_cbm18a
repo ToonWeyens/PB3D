@@ -12,7 +12,8 @@
     use_pol_flux_F          = .true.
     use_normalization       = .true.
     prim_X                  = 10
-    n_mod_X                 = 2
+    min_sec_X               = 12
+    max_sec_X               = 15
     tol_rich                = 5.0E-6
     tol_SLEPC               = 5.0E-8
     n_sol_requested         = 1
@@ -25,12 +26,9 @@
     plot_grid               = .false.
     plot_flux_q             = .false.
     plot_resonance          = .false.
-    B_0                     = 1.0004
-    R_0                     = 1.0002
-    n_zeta_plot             = 1
     matrix_SLEPC_style      = 1
     max_it_rich             = 1
-    rich_restart_lvl        = 0
+    rich_restart_lvl        = 1
 /
     n_mod_X                 = 5
     min_sec_X               = 12

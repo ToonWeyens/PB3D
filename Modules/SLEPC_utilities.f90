@@ -57,7 +57,7 @@ contains
     ! To conclude, for  fast X type 2,  the number of modes (n_mod_X)  has to be
     ! chosen high enough  compared with the variation of the  mode numbers; i.e.
     ! the variation of the safety factor or rotational transform.
-    integer function insert_block_mat(block,mat,norm_id,ind,n_sol,transp,&
+    integer function insert_block_mat(block,mat,r_id,ind,n_sol,transp,&
         &overwrite) result(ierr)
         use X_vars, only: n_X, m_X, n_mod_X
         use MPI_utilities, only: wait_MPI
@@ -71,8 +71,8 @@ contains
         ! input / output
         PetscScalar :: block(:,:)                                               ! (n_mod x n_mod) block matrix for 1 normal point
         Mat, intent(inout) :: mat                                               ! matrix in which to insert block
-        PetscInt, intent(in) :: norm_id                                         ! normal position of corresponding V^0 (starting at 0)
-        PetscInt, intent(in) :: ind(2)                                          ! 2D index in matrix, relative to norm_id
+        PetscInt, intent(in) :: r_id                                            ! normal position of corresponding V^0 (starting at 0)
+        PetscInt, intent(in) :: ind(2)                                          ! 2D index in matrix, relative to r_id
         PetscInt, intent(in) :: n_sol                                           ! number of grid points of solution grid
         PetscBool, intent(in), optional :: transp                               ! also set Hermitian transpose
         PetscBool, intent(in), optional :: overwrite                            ! overwrite
@@ -100,8 +100,8 @@ contains
         ! set up local k and m
         allocate(loc_k(size(block_loc,1)))
         allocate(loc_m(size(block_loc,2)))
-        loc_k = [(kd, kd = 0,n_mod_X-1)] + (norm_id+ind(1))*n_mod_X
-        loc_m = [(kd, kd = 0,n_mod_X-1)] + (norm_id+ind(2))*n_mod_X
+        loc_k = [(kd, kd = 0,n_mod_X-1)] + (r_id+ind(1))*n_mod_X
+        loc_m = [(kd, kd = 0,n_mod_X-1)] + (r_id+ind(2))*n_mod_X
         
         ! set operation
         if (overwrite_loc) then
@@ -113,14 +113,14 @@ contains
 #if ldebug
         ! user output
         if (debug_insert_block_mat) then
-            call writo('>>> at (k,m) = '//trim(i2str(norm_id))//' + ('//&
+            call writo('>>> at (k,m) = '//trim(i2str(r_id))//' + ('//&
                 &trim(i2str(ind(1)))//','//trim(i2str(ind(2)))//'):')
             call lvl_ud(1)
         end if
 #endif
         
         ! only set values if within matrix range
-        if (minval(norm_id+ind).ge.0 .and. maxval(norm_id+ind).lt.n_sol) then
+        if (minval(r_id+ind).ge.0 .and. maxval(r_id+ind).lt.n_sol) then
             ! set error message
             err_msg = 'Couldn''t add values to matrix'
             
@@ -130,11 +130,11 @@ contains
             do m = 1,n_mod_X
                 do k = 1,n_mod_X
                     if (use_pol_flux_F) then
-                        k_loc = k + m_X(norm_id+1,k) - m_X(norm_id+1+ind(1),k)
-                        m_loc = m + m_X(norm_id+1,k) - m_X(norm_id+1+ind(2),k)
+                        k_loc = k + m_X(r_id+1,k) - m_X(r_id+1+ind(1),k)
+                        m_loc = m + m_X(r_id+1,k) - m_X(r_id+1+ind(2),k)
                     else
-                        k_loc = k + n_X(norm_id+1,k) - n_X(norm_id+1+ind(1),k)
-                        m_loc = m + n_X(norm_id+1,k) - n_X(norm_id+1+ind(2),k)
+                        k_loc = k + n_X(r_id+1,k) - n_X(r_id+1+ind(1),k)
+                        m_loc = m + n_X(r_id+1,k) - n_X(r_id+1+ind(2),k)
                     end if
                     if (k_loc.ge.1 .and. m_loc.ge.1 .and. &
                         &k_loc.le.n_mod_X .and. m_loc.le.n_mod_X) &

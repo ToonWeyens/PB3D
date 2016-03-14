@@ -363,8 +363,8 @@ contains
         integer function plot_harmonics(grid_sol,sol,X_id,res_surf) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ser_var
             use output_ops, only: merge_GP
-            use num_vars, only: use_pol_flux_F, GP_max_size, rank, no_plots
-            use eq_vars, only: max_flux_p_F, max_flux_t_F
+            use num_vars, only: GP_max_size, rank, no_plots
+            use eq_vars, only: max_flux_F
             use X_vars, only: sec_X_ind
             use sol_utilities, only: calc_tot_sol_vec
             
@@ -417,11 +417,7 @@ contains
                 ierr = calc_tot_sol_vec(1,sol_vec_ser,sol_vec_ser_tot)
                 CHCKERR('')
                 
-                if (use_pol_flux_F) then
-                    norm_factor = max_flux_p_F/(2*pi)
-                else
-                    norm_factor = max_flux_t_F/(2*pi)
-                end if
+                norm_factor = max_flux_F/(2*pi)
             end if
             
             ! master sets up x_plot

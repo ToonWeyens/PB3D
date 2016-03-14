@@ -30,7 +30,7 @@ contains
         use sol_vars, only: alpha
         use grid_ops, only: setup_and_calc_grid_eq_B, print_output_grid, &
             &plot_grid_real
-        use grid_ops, only: calc_norm_range, setup_grid_eq, calc_ang_grid_eq
+        use grid_ops, only: setup_grid_eq, calc_ang_grid_eq
         use PB3D_ops, only: reconstruct_PB3D_in
         use utilities, only: derivs
         use files_ops, only: dealloc_in

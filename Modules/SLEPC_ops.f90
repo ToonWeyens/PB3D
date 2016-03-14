@@ -1159,13 +1159,13 @@ contains
         !   A(ind,ind) = EV_BC, B(ind,ind) = 1,
         !   A(ind+1..ind+p,ind+1..ind+p) = 0, B(ind+1..ind+p,ind+1..ind+p) = 0,
         ! where ind indicates the row where the BC is centered.
-        integer function set_BC_1(norm_id,A,B,BC_right) result(ierr)
+        integer function set_BC_1(r_id,A,B,BC_right) result(ierr)
             use num_vars, only: EV_BC, norm_disc_prec_sol
             
             character(*), parameter :: rout_name = 'set_BC_1'
             
             ! input / output
-            integer, intent(in) :: norm_id                                      ! position at which to set BC
+            integer, intent(in) :: r_id                                         ! position at which to set BC
             Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
             logical :: BC_right                                                 ! if BC is at right (so there are vacuum terms)
             
@@ -1178,7 +1178,7 @@ contains
             ierr = 0
             
             ! user output
-            call writo('Boundary style at row '//trim(i2str(norm_id+1))//&
+            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
                 &': Eigenvector set to zero',persistent=.true.)
             
             ! initialize local blocks
@@ -1195,21 +1195,21 @@ contains
                 pmone = -1
             end if
             
-            ! set block norm_id + (0,0)
-            ierr = insert_block_mat(EV_BC*loc_block,A,norm_id,[0,0],n_sol,&
+            ! set block r_id + (0,0)
+            ierr = insert_block_mat(EV_BC*loc_block,A,r_id,[0,0],n_sol,&
                 &overwrite=.true.)
             CHCKERR('')
-            ierr = insert_block_mat(loc_block,B,norm_id,[0,0],n_sol,&
+            ierr = insert_block_mat(loc_block,B,r_id,[0,0],n_sol,&
                 &overwrite=.true.)
             CHCKERR('')
             
             ! iterate over range 2
             do kd = 1,2*norm_disc_prec_sol
-                ! set block norm_id +/- (0,kd) and Hermitian conjugate
-                ierr = insert_block_mat(0*loc_block,A,norm_id,[0,-pmone*kd],&
+                ! set block r_id +/- (0,kd) and Hermitian conjugate
+                ierr = insert_block_mat(0*loc_block,A,r_id,[0,-pmone*kd],&
                     &n_sol,overwrite=.true.,transp=.true.)
                 CHCKERR('')
-                ierr = insert_block_mat(0*loc_block,B,norm_id,[0,-pmone*kd],&
+                ierr = insert_block_mat(0*loc_block,B,r_id,[0,-pmone*kd],&
                     &n_sol,overwrite=.true.,transp=.true.)
                 CHCKERR('')
             end do
@@ -1217,13 +1217,13 @@ contains
         
         ! set BC style 2:
         !   minimization of surface energy term (see [ADD REF])
-        integer function set_BC_2(norm_id,norm_id_loc,X,A,B,i_geo,n_sol,&
+        integer function set_BC_2(r_id,r_id_loc,X,A,B,i_geo,n_sol,&
             &norm_disc_coeff,BC_right)                                          result(ierr)
             character(*), parameter :: rout_name = 'set_BC_2'
             
             ! input / output
-            integer, intent(in) :: norm_id                                      ! global position at which to set BC
-            integer, intent(in) :: norm_id_loc                                       ! index in perturbation tables
+            integer, intent(in) :: r_id                                         ! global position at which to set BC (starting at 0)
+            integer, intent(in) :: r_id_loc                                     ! local index in perturbation tables
             type(X_2_type), intent(in) :: X                                     ! tensorial perturbation variables
             Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
             integer, intent(in) :: i_geo                                        ! at which geodesic index to perform the calculations
@@ -1239,7 +1239,7 @@ contains
             ierr = 0
             
             ! user output
-            call writo('Boundary style at row '//trim(i2str(norm_id+1))//&
+            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
                 &': Minimization of surface energy',persistent=.true.)
             
             ! -----------------!
@@ -1247,17 +1247,17 @@ contains
             ! -----------------!
             ! calculate modified terms V_int_0_mod
             allocate(V_int_0_mod(n_mod,n_mod,2))
-            ierr = calc_V_0_mod(X%PV_int_0(i_geo,norm_id_loc,:),&
-                &X%KV_int_0(i_geo,norm_id_loc,:),&
-                &X%PV_int_1(i_geo,norm_id_loc,:),&
-                &X%KV_int_1(i_geo,norm_id_loc,:),&
-                &X%KV_int_2(i_geo,norm_id_loc,:),V_int_0_mod)
+            ierr = calc_V_0_mod(X%PV_int_0(i_geo,r_id_loc,:),&
+                &X%KV_int_0(i_geo,r_id_loc,:),&
+                &X%PV_int_1(i_geo,r_id_loc,:),&
+                &X%KV_int_1(i_geo,r_id_loc,:),&
+                &X%KV_int_2(i_geo,r_id_loc,:),V_int_0_mod)
             CHCKERR('')
             
-            ! add block to norm_id + (0,0)
-            ierr = insert_block_mat(V_int_0_mod(:,:,1),A,norm_id,[0,0],n_sol)
+            ! add block to r_id + (0,0)
+            ierr = insert_block_mat(V_int_0_mod(:,:,1),A,r_id,[0,0],n_sol)
             CHCKERR('')
-            ierr = insert_block_mat(V_int_0_mod(:,:,2),B,norm_id,[0,0],n_sol)
+            ierr = insert_block_mat(V_int_0_mod(:,:,2),B,r_id,[0,0],n_sol)
             CHCKERR('')
             
             ! deallocate modified V_0
@@ -1266,13 +1266,13 @@ contains
             ! -------------!
             ! BLOCKS ~ vac !
             ! -------------!
-            ! add block to norm_id + (0,-p..p) + Hermitian conjugate
+            ! add block to r_id + (0,-p..p) + Hermitian conjugate
             if (BC_right) then
                 do jd = -norm_disc_prec_sol,norm_disc_prec_sol
-                    if (norm_id.lt.n_sol .and. norm_id+jd.lt.n_sol) then
+                    if (r_id.lt.n_sol .and. r_id+jd.lt.n_sol) then
                         ierr = insert_block_mat(-X%vac_res*&
                             &norm_disc_coeff(jd+norm_disc_prec_sol+1),A,&
-                            &norm_id,[0,jd],n_sol,transp=.true.)
+                            &r_id,[0,jd],n_sol,transp=.true.)
                         CHCKERR('')
                     end if
                 end do
@@ -1281,11 +1281,11 @@ contains
         
         ! set BC style 3:
         !   minimization of vacuum energy (see [ADD REF])
-        integer function set_BC_3(norm_id,X,A) result(ierr)
-            character(*), parameter :: rout_name = 'set_BC_2'
+        integer function set_BC_3(r_id,X,A) result(ierr)
+            character(*), parameter :: rout_name = 'set_BC_3'
             
             ! input / output
-            integer, intent(in) :: norm_id                                      ! position at which to set BC
+            integer, intent(in) :: r_id                                         ! position at which to set BC
             type(X_2_type), intent(in) :: X                                     ! tensorial perturbation variables
             Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
             
@@ -1293,14 +1293,14 @@ contains
             ierr = 0
             
             ! user output
-            call writo('Boundary style at row '//trim(i2str(norm_id+1))//&
+            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
                 &': Minimization of vacuum energy',persistent=.true.)
             
             ! -------------!
             ! BLOCKS ~ vac !
             ! -------------!
-            ! add block to norm_id + (0,0)
-            ierr = insert_block_mat(X%vac_res,A,norm_id,[0,0],n_sol)
+            ! add block to r_id + (0,0)
+            ierr = insert_block_mat(X%vac_res,A,r_id,[0,0],n_sol)
             CHCKERR('')
         end function set_BC_3
         

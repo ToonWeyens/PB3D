@@ -35,15 +35,14 @@ module eq_vars
     private
     public create_eq, dealloc_eq, &
         &eq_type, &
-        &R_0, pres_0, B_0, psi_0, rho_0, T_0, max_flux_p_E, max_flux_p_F, &
-        &max_flux_t_E, max_flux_t_F, vac_perm
+        &R_0, pres_0, B_0, psi_0, rho_0, T_0, max_flux_E, max_flux_F, vac_perm
     
     ! global variables
     real(dp) :: R_0, pres_0, rho_0                                              ! independent normalization constants for nondimensionalization
     real(dp) :: B_0, psi_0, T_0                                                 ! derived normalization constants for nondimensionalization
     real(dp) :: vac_perm = mu_0_original                                        ! either usual mu_0 (default) or normalized
-    real(dp) :: max_flux_p_E, max_flux_p_F                                      ! max. pol. flux in Equilibrium and Flux coordinates
-    real(dp) :: max_flux_t_E, max_flux_t_F                                      ! max. tor. flux in Equilibrium and Flux coordinates
+    real(dp) :: max_flux_E                                                      ! max. flux in Equilibrium coordinates
+    real(dp) :: max_flux_F                                                      ! max. flux in Flux coordinates
     
     ! equilibrium type
     ! The arrays here are of the form (except for rho):

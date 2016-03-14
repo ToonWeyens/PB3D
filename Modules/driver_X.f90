@@ -209,7 +209,7 @@ contains
         ! create and setup perturbation grid with division limits
         call writo('Setting up perturbation grid')
         call lvl_ud(1)
-        ierr = setup_and_calc_grid_X(grid_eq,grid_X,eq,r_F_X,X_limits)
+        ierr = setup_and_calc_grid_X(grid_eq,grid_X,r_F_X,X_limits)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -237,7 +237,7 @@ contains
                 call writo('Setting up field-aligned perturbation grid')
                 call lvl_ud(1)
                 allocate(grid_X_B)
-                ierr = setup_and_calc_grid_X(grid_eq_B,grid_X_B,eq,r_F_X,&
+                ierr = setup_and_calc_grid_X(grid_eq_B,grid_X_B,r_F_X,&
                     &X_limits)
                 CHCKERR('')
                 call lvl_ud(-1)

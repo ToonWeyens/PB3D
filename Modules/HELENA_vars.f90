@@ -64,13 +64,13 @@ contains
     ! where in  MISHKA usually B_m =  1 T and  R_m = 1 m,  as well as rho_m  = 1
     ! kg/m^3, to complete the normalization. If this is not the case, the
     ! Alfven time has to be adjusted.
-    integer function read_HEL(n_r_eq,use_pol_flux_H) result(ierr)
+    integer function read_HEL(n_r_in,use_pol_flux_H) result(ierr)
         use num_vars, only: eq_name, eq_i
         
         character(*), parameter :: rout_name = 'read_HEL'
         
         ! input / output
-        integer, intent(inout) :: n_r_eq                                        ! nr. of normal points in equilibrium grid
+        integer, intent(inout) :: n_r_in                                        ! nr. of normal points in input grid
         logical, intent(inout) :: use_pol_flux_H                                ! .true. if HELENA equilibrium is based on pol. flux
         
         ! local variables
@@ -103,27 +103,27 @@ contains
         rewind(eq_i)
         
         ! read mapped equilibrium from disk
-        read(eq_i,*,IOSTAT=ierr) n_r_eq,ias                                     ! nr. normal points (JS0), top-bottom symmetry
+        read(eq_i,*,IOSTAT=ierr) n_r_in,ias                                     ! nr. normal points (JS0), top-bottom symmetry
         CHCKERR(err_msg)
-        n_r_eq = n_r_eq + 1                                                     ! HELENA outputs nr. of normal points - 1
+        n_r_in = n_r_in + 1                                                     ! HELENA outputs nr. of normal points - 1
         
-        allocate(s_H(n_r_eq))                                                   ! flux coordinate
-        read(eq_i,*,IOSTAT=ierr) (s_H(kd),kd=1,n_r_eq)                          ! it is squared below, after reading cpsurf
-        CHCKERR(err_msg)
-        
-        allocate(qs_H(n_r_eq))                                                  ! safety factor
-        read(eq_i,*,IOSTAT=ierr) (qs_H(kd),kd=1,n_r_eq)
+        allocate(s_H(n_r_in))                                                   ! flux coordinate
+        read(eq_i,*,IOSTAT=ierr) (s_H(kd),kd=1,n_r_in)                          ! it is squared below, after reading cpsurf
         CHCKERR(err_msg)
         
-        allocate(dqs_H(n_r_eq))                                                 ! derivative of safety factor
-        read(eq_i,*,IOSTAT=ierr) dqs_H(1),dqs_H(n_r_eq)                         ! first point, last point
+        allocate(qs_H(n_r_in))                                                  ! safety factor
+        read(eq_i,*,IOSTAT=ierr) (qs_H(kd),kd=1,n_r_in)
         CHCKERR(err_msg)
         
-        read(eq_i,*,IOSTAT=ierr) (dqs_H(kd),kd=2,n_r_eq)                        ! second to last point (again)
+        allocate(dqs_H(n_r_in))                                                 ! derivative of safety factor
+        read(eq_i,*,IOSTAT=ierr) dqs_H(1),dqs_H(n_r_in)                         ! first point, last point
         CHCKERR(err_msg)
         
-        allocate(curj(n_r_eq))                                                  ! toroidal current
-        read(eq_i,*,IOSTAT=ierr) (curj(kd),kd=1,n_r_eq)
+        read(eq_i,*,IOSTAT=ierr) (dqs_H(kd),kd=2,n_r_in)                        ! second to last point (again)
+        CHCKERR(err_msg)
+        
+        allocate(curj(n_r_in))                                                  ! toroidal current
+        read(eq_i,*,IOSTAT=ierr) (curj(kd),kd=1,n_r_in)
         CHCKERR(err_msg)
         
         read(eq_i,*,IOSTAT=ierr) Dj0,Dje                                        ! derivative of toroidal current at first and last point
@@ -139,18 +139,18 @@ contains
         CHCKERR(err_msg)
         if (ias.ne.0) chi_H(nchi) = 2*pi
         
-        allocate(h_H_11(nchi,n_r_eq))                                           ! upper metric factor 1,1
+        allocate(h_H_11(nchi,n_r_in))                                           ! upper metric factor 1,1
         read(eq_i,*,IOSTAT=ierr) &
             &(h_H_11(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
-            &id=nchi_loc+1,n_r_eq*nchi_loc)                                     ! (gem11)
+            &id=nchi_loc+1,n_r_in*nchi_loc)                                     ! (gem11)
         CHCKERR(err_msg)
         h_H_11(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
         if (ias.ne.0) h_H_11(nchi,:) = h_H_11(1,:)
         
-        allocate(h_H_12(nchi,n_r_eq))                                           ! upper metric factor 1,2
+        allocate(h_H_12(nchi,n_r_in))                                           ! upper metric factor 1,2
         read(eq_i,*,IOSTAT=ierr) &
             &(h_H_12(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
-            &id=nchi_loc+1,n_r_eq*nchi_loc)                                     ! (gem12)
+            &id=nchi_loc+1,n_r_in*nchi_loc)                                     ! (gem12)
         CHCKERR(err_msg)
         h_H_12(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
         if (ias.ne.0) h_H_12(nchi,:) = h_H_12(1,:)
@@ -158,10 +158,10 @@ contains
         read(eq_i,*,IOSTAT=ierr) cpsurf, radius                                 ! poloidal flux on surface, minor radius
         CHCKERR(err_msg)
         
-        allocate(h_H_33(nchi,n_r_eq))                                           ! upper metric factor 3,3
+        allocate(h_H_33(nchi,n_r_in))                                           ! upper metric factor 3,3
         read(eq_i,*,IOSTAT=ierr) &
             &(h_H_33(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),id=&
-            &nchi_loc+1,n_r_eq*nchi_loc)                                        ! (gem33)
+            &nchi_loc+1,n_r_in*nchi_loc)                                        ! (gem33)
         h_H_33(:,:) = 1._dp/h_H_33(:,:)                                         ! HELENA gives R^2, but need 1/R^2
         h_H_33(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
         if (ias.ne.0) h_H_33(nchi,:) = h_H_33(1,:)
@@ -169,14 +169,14 @@ contains
         read(eq_i,*,IOSTAT=ierr) raxis                                          ! major radius
         CHCKERR(err_msg)
         
-        allocate(pres_H(n_r_eq))                                                ! pressure profile
-        read(eq_i,*,IOSTAT=ierr) (pres_H(kd),kd=1,n_r_eq)
+        allocate(pres_H(n_r_in))                                                ! pressure profile
+        read(eq_i,*,IOSTAT=ierr) (pres_H(kd),kd=1,n_r_in)
         CHCKERR(err_msg)
         read(eq_i,*,IOSTAT=ierr) Dpres_H_0,Dpres_H_e                            ! derivarives of pressure on axis and surface
         CHCKERR(err_msg)
         
-        allocate(RBphi_H(n_r_eq))                                               ! R B_phi (= F)
-        read(eq_i,*,IOSTAT=ierr) (RBphi_H(kd),kd=1,n_r_eq)
+        allocate(RBphi_H(n_r_in))                                               ! R B_phi (= F)
+        read(eq_i,*,IOSTAT=ierr) (RBphi_H(kd),kd=1,n_r_in)
         CHCKERR(err_msg)
         
         read(eq_i,*,IOSTAT=ierr) dRBphi0,dRBphie                                ! derivatives of R B_phi on axis and surface
@@ -195,23 +195,24 @@ contains
         read(eq_i,*,IOSTAT=ierr) eps                                            ! inverse aspect ratio
         CHCKERR(err_msg)
         
-        allocate(R_H(nchi,n_r_eq))                                              ! major radius R
+        allocate(R_H(nchi,n_r_in))                                              ! major radius R
         read(eq_i,*,IOSTAT=ierr) (R_H(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
-            &id=nchi_loc+1,n_r_eq*nchi_loc)                                     ! (xout)
+            &id=nchi_loc+1,n_r_in*nchi_loc)                                     ! (xout)
         CHCKERR(err_msg)
         R_H(:,1) = R_H(:,2)                                                     ! first point is not given: set equal to second one
         if (ias.ne.0) R_H(nchi,:) = R_H(1,:)
         
-        allocate(Z_H(nchi,n_r_eq))                                              ! height Z
+        allocate(Z_H(nchi,n_r_in))                                              ! height Z
         read(eq_i,*,IOSTAT=ierr) (Z_H(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
-            &id=nchi_loc+1,n_r_eq*nchi_loc)                                     ! (yout)
+            &id=nchi_loc+1,n_r_in*nchi_loc)                                     ! (yout)
         CHCKERR(err_msg)
         Z_H(:,1) = Z_H(:,2)                                                     ! first point is not given: set equal to second one
         if (ias.ne.0) Z_H(nchi,:) = Z_H(1,:)
         
         ! transform to MISHKA normalization
-        radius = radius * raxis                                                 ! global length normalization with R_m
+        allocate(flux_p_H(n_r_in))
         flux_p_H = 2*pi*s_H**2 * cpsurf                                         ! rescale flux coordinate (HELENA uses psi_pol/2pi as flux)
+        radius = radius * raxis                                                 ! global length normalization with R_m
         R_H = radius*(1._dp/eps + R_H)                                          ! local normalization with a
         Z_H = radius*Z_H                                                        ! local normalization with a
         
@@ -227,7 +228,7 @@ contains
         
         ! user output
         call writo('HELENA output given on '//trim(i2str(nchi))//&
-            &' poloidal and '//trim(i2str(n_r_eq))//' normal points')
+            &' poloidal and '//trim(i2str(n_r_in))//' normal points')
         call lvl_ud(-1)
         call writo('Data from HELENA output succesfully read')
         
