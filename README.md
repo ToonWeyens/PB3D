@@ -352,3 +352,13 @@ CHANGELOG
       - "calc_XYZ" now requires the equilibrium grid for the routine to know how the input variables are tabulated.
       - "coord_E2F" and "coord_F2E" do not need the equilibrium variables any more. Also, "calc_loc_r" has been deleted.
       - VMEC now also uses magnetic field on axis as normalization, saved in "B_0_V" in VMEC.
+
+1.12: - VMEC IS WORKING AND HAS BEEN TESTED FOR AXISYMMETRIC CBM18A.
+      - HOWEVER, THE PROCESS OF CHANGING RICHARDSON EXTRAPOLATION IS NOT COMPLETED YET.
+      - "eq_type" and "met_type" have been merged and split differently again in flux equilibrium variables and metric equilibrium variables.
+      - "eq_ops" and "met_ops" have been merged and some routines have been split off in "eq_utilities".
+      - "interp_HEL_on_grid" interpolates metric equilibrium variables only, though flux equilibrium variables are needed to do it.
+      - "calc_flux_q" has been absorbed in "calc_eq_1".
+      - Moved "print_output_in" and "read_eq" to input_ops and "dealloc_in" to input_utilities.
+      - "rich_restart_lvl" now can take on values 1..max_lvl_rich, not 0.
+      - Streamlined output from reconstruct_PB3D routines.

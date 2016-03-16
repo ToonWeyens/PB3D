@@ -9,8 +9,7 @@ module sol_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, pi
     use grid_vars, only: grid_type, disc_type, dealloc_disc
-    use eq_vars, only: eq_type
-    use met_vars, only: met_type
+    use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type
     use sol_vars, only: sol_type
 
@@ -23,10 +22,10 @@ module sol_ops
     
     ! global variables
 #if ldebug
-    logical :: debug_plot_sol_vec = .true.                                     ! plot debug information for plot_sol_vec
+    logical :: debug_plot_sol_vec = .false.                                     ! plot debug information for plot_sol_vec
     logical :: debug_calc_E = .false.                                           ! plot debug information for calc_E
     logical :: debug_X_norm = .false.                                           ! plot debug information X_norm
-    logical :: debug_DU = .true.                                               ! plot debug information for calculation of DU
+    logical :: debug_DU = .false.                                               ! plot debug information for calculation of DU
 #endif
 
 contains
@@ -92,13 +91,8 @@ contains
     ! Plots  Eigenvectors  using  the  angular  part  of  the  the  provided
     ! equilibrium  grid and  the normal  part of  the provided  perturbation
     ! grid.
-#if ldebug
-    integer function plot_sol_vec(grid_eq,grid_X,grid_sol,eq,met,X,sol,XYZ,&
-        &X_id,res_surf) result(ierr)
-#else
-    integer function plot_sol_vec(grid_eq,grid_X,grid_sol,eq,X,sol,XYZ,X_id,&
-        &res_surf) result(ierr)
-#endif
+    integer function plot_sol_vec(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
+        &XYZ,X_id,res_surf) result(ierr)
         use num_vars, only: no_plots
         use grid_vars, only: dealloc_grid
         use grid_utilities, only: trim_grid
@@ -115,10 +109,8 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-#if ldebug
-        type(met_type), intent(in) :: met                                       ! metric variables
-#endif
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         real(dp), intent(in) :: XYZ(:,:,:,:)                                    ! X, Y and Z of extended eq_grid
@@ -241,10 +233,10 @@ contains
         ! perturbation X_F
         allocate(f_plot(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r,&
             &product(n_t),2))
-        ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,1,time,&
+        ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,1,time,&
             &f_plot(:,:,:,:,1))
         CHCKERR('')
-        ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,2,time,&
+        ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,2,time,&
             &f_plot(:,:,:,:,2))
         CHCKERR('')
         
@@ -279,17 +271,17 @@ contains
             if (use_pol_flux_F) then
                 do kd = 1,grid_eq%loc_n_r
                     U_inf_prop(:,:,kd) = &
-                        &met%h_FD(:,:,kd,c([1,2],.true.),0,0,0)/&
-                        &met%h_FD(:,:,kd,c([2,2],.true.),0,0,0) + &
-                        &eq%q_saf_FD(kd,1)*grid_eq%theta_F(:,:,kd)
+                        &eq_2%h_FD(:,:,kd,c([1,2],.true.),0,0,0)/&
+                        &eq_2%h_FD(:,:,kd,c([2,2],.true.),0,0,0) + &
+                        &eq_1%q_saf_FD(kd,1)*grid_eq%theta_F(:,:,kd)
                 end do
                 nm = X%n(1,1)
             else
                 do kd = 1,grid_eq%loc_n_r
                     U_inf_prop(:,:,kd) = &
-                        &met%h_FD(:,:,kd,c([1,2],.true.),0,0,0)/&
-                        &met%h_FD(:,:,kd,c([2,2],.true.),0,0,0) - &
-                        &eq%rot_t_FD(kd,1)*grid_eq%zeta_F(:,:,kd)
+                        &eq_2%h_FD(:,:,kd,c([1,2],.true.),0,0,0)/&
+                        &eq_2%h_FD(:,:,kd,c([2,2],.true.),0,0,0) - &
+                        &eq_1%rot_t_FD(kd,1)*grid_eq%zeta_F(:,:,kd)
                 end do
                 nm = X%m(1,1)
             end if
@@ -567,8 +559,8 @@ contains
     ! default, they are instead written to an output file.
     ! Also, the  fraction between potential and kinetic energy  can be returned,
     ! compared with the Eigenvalue.
-    integer function decompose_energy(grid_eq,grid_X,grid_sol,eq,met,X,sol,&
-        &X_id,log_i,B_aligned,XYZ,sol_val_comp) result(ierr)
+    integer function decompose_energy(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
+        &sol,X_id,log_i,B_aligned,XYZ,sol_val_comp) result(ierr)
         use grid_vars, only: dealloc_grid
         use grid_utilities, only: trim_grid
         use num_vars, only: rank, no_plots
@@ -579,8 +571,8 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(met_type), intent(in) :: met                                       ! metric variables
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
@@ -621,8 +613,8 @@ contains
         call writo('Calculate energy terms')
         call lvl_ud(1)
         
-        ierr = calc_E(grid_eq,grid_X,grid_sol,eq,met,X,sol,B_aligned,X_id,&
-            &E_pot,E_kin,E_pot_int,E_kin_int)
+        ierr = calc_E(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,B_aligned,&
+            &X_id,E_pot,E_kin,E_pot_int,E_kin_int)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -815,8 +807,8 @@ contains
     
     ! Calculate the energy terms in the energy decomposition.
     ! Note: see explanation of routine in "decompose_energy"
-    integer function calc_E(grid_eq,grid_X,grid_sol,eq,met,X,sol,B_aligned,&
-        &X_id,E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
+    integer function calc_E(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
+        &B_aligned,X_id,E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
         use num_vars, only: use_pol_flux_F, n_procs, norm_style, &
             &norm_disc_prec_sol, rank
         use eq_vars, only: vac_perm
@@ -836,8 +828,8 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 ! and solution grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(met_type), intent(in) :: met                                       ! metric variables
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         logical, intent(in) :: B_aligned                                        ! whether grid is field-aligned
@@ -896,8 +888,8 @@ contains
             allocate(S(loc_dim(1),loc_dim(2),loc_dim(3)))
             
             ! calculate D_par U
-            ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,2,0._dp,DU,&
-                &met=met,deriv=.true.)
+            ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,2,&
+                &0._dp,DU,deriv=.true.)
             CHCKERR('')
         end if
 #endif
@@ -909,31 +901,31 @@ contains
             i_lo = floor(loc_r_eq)
             i_hi = ceiling(loc_r_eq)
             
-            h22(:,:,kd) = met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)+&
+            h22(:,:,kd) = eq_2%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)+&
                 &(loc_r_eq-i_lo)*&
-                &(met%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0)&
-                &-met%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0))
-            g33(:,:,kd) = met%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0)+&
+                &(eq_2%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0)&
+                &-eq_2%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0))
+            g33(:,:,kd) = eq_2%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0)+&
                 &(loc_r_eq-i_lo)*&
-                &(met%g_FD(:,:,i_hi,c([3,3],.true.),0,0,0)&
-                &-met%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0))
-            J(:,:,kd) = met%jac_FD(:,:,i_lo,0,0,0)+(loc_r_eq-i_lo)*&
-                &(met%jac_FD(:,:,i_hi,0,0,0)&
-                &-met%jac_FD(:,:,i_lo,0,0,0))
-            kappa_n(:,:,kd) = eq%kappa_n(:,:,i_lo)+(loc_r_eq-i_lo)*&
-                &(eq%kappa_n(:,:,i_hi)-eq%kappa_n(:,:,i_lo))
-            kappa_g(:,:,kd) = eq%kappa_g(:,:,i_lo)+(loc_r_eq-i_lo)*&
-                &(eq%kappa_g(:,:,i_hi)-eq%kappa_g(:,:,i_lo))
-            sigma(:,:,kd) = eq%sigma(:,:,i_lo)+(loc_r_eq-i_lo)*&
-                &(eq%sigma(:,:,i_hi)-eq%sigma(:,:,i_lo))
-            D2p(:,:,kd) = eq%pres_FD(i_lo,1)+(loc_r_eq-i_lo)*&
-                &(eq%pres_FD(i_hi,1)-eq%pres_FD(i_lo,1))
-            rho(:,:,kd) = eq%rho(i_lo)+(loc_r_eq-i_lo)*&
-                &(eq%rho(i_hi)-eq%rho(i_lo))
+                &(eq_2%g_FD(:,:,i_hi,c([3,3],.true.),0,0,0)&
+                &-eq_2%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0))
+            J(:,:,kd) = eq_2%jac_FD(:,:,i_lo,0,0,0)+(loc_r_eq-i_lo)*&
+                &(eq_2%jac_FD(:,:,i_hi,0,0,0)&
+                &-eq_2%jac_FD(:,:,i_lo,0,0,0))
+            kappa_n(:,:,kd) = eq_2%kappa_n(:,:,i_lo)+(loc_r_eq-i_lo)*&
+                &(eq_2%kappa_n(:,:,i_hi)-eq_2%kappa_n(:,:,i_lo))
+            kappa_g(:,:,kd) = eq_2%kappa_g(:,:,i_lo)+(loc_r_eq-i_lo)*&
+                &(eq_2%kappa_g(:,:,i_hi)-eq_2%kappa_g(:,:,i_lo))
+            sigma(:,:,kd) = eq_2%sigma(:,:,i_lo)+(loc_r_eq-i_lo)*&
+                &(eq_2%sigma(:,:,i_hi)-eq_2%sigma(:,:,i_lo))
+            D2p(:,:,kd) = eq_1%pres_FD(i_lo,1)+(loc_r_eq-i_lo)*&
+                &(eq_1%pres_FD(i_hi,1)-eq_1%pres_FD(i_lo,1))
+            rho(:,:,kd) = eq_1%rho(i_lo)+(loc_r_eq-i_lo)*&
+                &(eq_1%rho(i_hi)-eq_1%rho(i_lo))
 #if ldebug
             if (debug_calc_E) then
-                S(:,:,kd) = eq%S(:,:,i_lo)+(loc_r_eq-i_lo)*&
-                    &(eq%S(:,:,i_hi)-eq%S(:,:,i_lo))
+                S(:,:,kd) = eq_2%S(:,:,i_lo)+(loc_r_eq-i_lo)*&
+                    &(eq_2%S(:,:,i_hi)-eq_2%S(:,:,i_lo))
             end if
 #endif
         end do
@@ -954,8 +946,8 @@ contains
         
         ! calculate X, U, Q_n and Q_g
         do kd = 1,4
-            ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,kd,0._dp,&
-                &XUQ(:,:,:,kd),met=met)
+            ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,kd,&
+                &0._dp,XUQ(:,:,:,kd))
             CHCKERR('')
         end do
         
@@ -1134,10 +1126,6 @@ contains
             call writo('Writing solution variables to output file')
             call lvl_ud(1)
             
-            ! user output
-            call writo('Preparing variables for writing')
-            call lvl_ud(1)
-            
             ! trim grids
             ierr = trim_grid(grid,grid_trim,norm_id)
             CHCKERR('')
@@ -1209,12 +1197,6 @@ contains
                 &reshape(imagpart(sol%vec(:,norm_id(1):norm_id(2),:)),&
                 &[size(sol%vec(:,norm_id(1):norm_id(2),:))])
             
-            call lvl_ud(-1)
-            
-            ! user output
-            call writo('Writing using HDF5')
-            call lvl_ud(1)
-            
             ! write
             ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,'sol'//&
                 &trim(rich_info_short()))
@@ -1223,9 +1205,6 @@ contains
             ! clean up
             call dealloc_grid(grid_trim)
             nullify(sol_1D_loc)
-            
-            ! user output
-            call lvl_ud(-1)
             
             ! user output
             call lvl_ud(-1)

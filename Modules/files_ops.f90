@@ -9,7 +9,7 @@ module files_ops
     implicit none
     private
     public open_input, open_output, parse_args, init_files, &
-        &opt_args, close_output, print_output_in, dealloc_in
+        &opt_args, close_output
 
     ! user-specified arguments
     integer :: numargs                                                          ! control the user-specified arguments
@@ -237,7 +237,6 @@ contains
                     end do
                     if (trim(file_ext).eq.'nc') then
                         eq_style = 1
-                        close(eq_i)
                     end if
                     
                     ! Check for HELENA
@@ -441,16 +440,8 @@ contains
         ! append extension to output name
         full_output_name = prog_name//'_'//trim(output_name)//'.txt'
         
-        ! actions depending on Richardson restart level
-        if (rich_restart_lvl.eq.0) then
-            ! open file after wiping it
-            open(unit=nextunit(output_i),file=trim(full_output_name),&
-                &status='replace',iostat=ierr)
-            
-            ! print message
-            call writo('log output file "'//trim(full_output_name)//&
-                &'" opened at number '//trim(i2str(output_i)))
-        else
+        ! actions depending on Richardson restart level and program style
+        if (rich_restart_lvl.gt.1 .and. prog_style.eq.1) then
             ! append to existing file
             open(unit=nextunit(output_i),file=trim(full_output_name),&
                 &status='old',position='append',iostat=ierr)
@@ -458,6 +449,14 @@ contains
             ! print message
             call writo('log output file "'//trim(full_output_name)//&
                 &'" reopened at number '//trim(i2str(output_i)))
+        else
+            ! open file after wiping it
+            open(unit=nextunit(output_i),file=trim(full_output_name),&
+                &status='replace',iostat=ierr)
+            
+            ! print message
+            call writo('log output file "'//trim(full_output_name)//&
+                &'" opened at number '//trim(i2str(output_i)))
         end if
         
         ! if temporary output present, silently write it to log output file
@@ -469,7 +468,7 @@ contains
         select case (prog_style)
             case (1)                                                            ! PB3D
                 ! create HDF5 file for output if no restart
-                if (rich_restart_lvl.eq.0) then
+                if (rich_restart_lvl.eq.1) then
                     ierr = create_output_HDF5()
                     CHCKERR('')
                 end if
@@ -491,455 +490,6 @@ contains
         call lvl_ud(-1)
         call writo('Output files opened')
     end function open_output
-    
-    ! Print input quantities to an output file:
-    !   - misc_in:   prog_version, eq_style, rho_style, R_0, pres_0, B_0, psi_0
-    !                rho_0, T_0, vac_perm, use_pol_flux_F, use_pol_flux_E,
-    !                use_normalization, norm_disc_prec_eq, n_r_in, n_par_X
-    !   - misc_in_V: is_asym_V, is_freeb_V, mnmax_V, mpol_V, ntor_V, gam_V
-    !   - flux_q_H:  flux_t_V, Dflux_t_V, flux_p_V, Dflux_p_V, pres_V, rot_t_V
-    !   - mn_V
-    !   - RZL_V:     R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s
-    !   - B_V_sub:   B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
-    !   - misc_in_H: ias, nchi
-    !   - RZ_H:      R_H, Z_H
-    !   - chi_H
-    !   - qs_H
-    !   - RBphi_H
-    !   - pres_H
-    !   - flux_p_H
-    !   - misc_X:    prim_X, n_mod_X, min_sec_X, max_sec_X, norm_disc_prec_X,
-    !                norm_style, U_style, X_style, matrix_SLEPC_style
-    !   - misc_sol:  min_r_sol, max_r_sol, alpha, norm_disc_prec_sol, BC_style,
-    !                EV_BC, EV_BC
-    integer function print_output_in() result(ierr)
-        use num_vars, only: eq_style, rho_style, prog_version, use_pol_flux_E, &
-            &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
-            &norm_disc_prec_X, norm_style, U_style, X_style, tol_norm, &
-            &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, EV_BC
-        use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
-            &max_flux_E, max_flux_F
-        use grid_vars, onLy: n_r_in, n_r_eq, n_par_X
-        use grid_ops, only: calc_norm_range
-        use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
-            &n_mod_X
-        use sol_vars, only: alpha
-        use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type, &
-            &max_dim_var_1D
-        use HELENA_vars, only: chi_H, flux_p_H, R_H, Z_H, nchi, ias, qs_H, &
-            &pres_H, RBphi_H
-        use VMEC, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, gam_V, &
-            &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V, rot_t_V, &
-            &pres_V, flux_t_V, Dflux_t_V, flux_p_V, Dflux_p_V, nfp_V
-#if ldebug
-        use HELENA_vars, only: h_H_11, h_H_12, h_H_33
-        use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
-#endif
-        
-        character(*), parameter :: rout_name = 'print_output_in'
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        type(var_1D_type), allocatable, target :: in_1D(:)                      ! 1D equivalent of input variables
-        type(var_1D_type), pointer :: in_1D_loc => null()                       ! local element in in_1D
-        integer :: id                                                           ! counter
-        integer :: in_limits(2)                                                 ! min. and max. index of input variable grid of this process
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! user output
-        call writo('Writing input variables to output file')
-        call lvl_ud(1)
-        
-        ! user output
-        call writo('Preparing variables for writing')
-        call lvl_ud(1)
-        
-        ! calculate limits of input range
-        ierr = calc_norm_range(in_limits=in_limits)
-        CHCKERR('')
-        n_r_eq = in_limits(2)-in_limits(1)+1
-        call writo('Only the normal range '//trim(i2str(in_limits(1)))//'..'//&
-            &trim(i2str(in_limits(2)))//' is written')
-        call writo('(input range relevant to the solution range '//&
-            &trim(r2strt(min_r_sol))//'..'//trim(r2strt(max_r_sol))//&
-            &' with tolerance '//trim(r2strt(tol_norm))//')')
-        
-        ! set up 1D equivalents of input variables
-        allocate(in_1D(max_dim_var_1D))
-        
-        ! Set up common variables in_1D
-        id = 1
-        
-        ! misc_in
-        in_1D_loc => in_1D(id); id = id+1
-        in_1D_loc%var_name = 'misc_in'
-        allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-        allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-        in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [19]
-        in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-        in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(19))
-        in_1D_loc%p = [prog_version,eq_style*1._dp,rho_style*1._dp,&
-            &R_0,pres_0,B_0,psi_0,rho_0,T_0,vac_perm,-1._dp,-1._dp,&
-            &-1._dp,norm_disc_prec_eq*1._dp,n_r_in*1._dp,n_r_eq*1._dp,&
-            &n_par_X*1._dp,max_flux_E,max_flux_F]
-        if (use_pol_flux_E) in_1D_loc%p(11) = 1._dp
-        if (use_pol_flux_F) in_1D_loc%p(12) = 1._dp
-        if (use_normalization) in_1D_loc%p(13) = 1._dp
-        
-        ! misc_in_V or misc_in_H, depending on equilibrium style
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ! misc_in_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'misc_in_V'
-                allocate(in_1D_loc%tot_i_min(1),&
-                    &in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),&
-                    &in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [7]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(7))
-                in_1D_loc%p = [-1._dp,-1._dp,mnmax_V*1._dp,mpol_V*1._dp,&
-                    &ntor_V*1._dp,nfp_V*1._dp,gam_V]
-                if (is_asym_V) in_1D_loc%p(1) = 1._dp
-                if (is_freeb_V) in_1D_loc%p(2) = 1._dp
-                
-                ! flux_t_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'flux_t_V'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = flux_t_V(in_limits(1):in_limits(2))
-                
-                ! Dflux_t_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'Dflux_t_V'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = Dflux_t_V(in_limits(1):in_limits(2))
-                
-                ! flux_p_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'flux_p_V'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = flux_p_V(in_limits(1):in_limits(2))
-                
-                ! Dflux_p_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'Dflux_p_V'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = Dflux_p_V(in_limits(1):in_limits(2))
-                
-                ! pres_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'pres_V'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = pres_V(in_limits(1):in_limits(2))
-                
-                ! rot_t_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'rot_t_V'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = rot_t_V(in_limits(1):in_limits(2))
-                
-                ! mn_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'mn_V'
-                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
-                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
-                in_1D_loc%loc_i_min = [1,1]
-                in_1D_loc%loc_i_max = [mnmax_V,2]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(size(mn_V)))
-                in_1D_loc%p = reshape(mn_V,[size(mn_V)])
-                
-                ! RZL_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'RZL_V'
-                allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
-                allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
-                in_1D_loc%loc_i_min = [1,1,1]
-                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,6]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(6*mnmax_V*n_r_eq))
-                in_1D_loc%p = reshape([R_V_c(:,in_limits(1):in_limits(2),0),&
-                    &R_V_s(:,in_limits(1):in_limits(2),0),&
-                    &Z_V_c(:,in_limits(1):in_limits(2),0),&
-                    &Z_V_s(:,in_limits(1):in_limits(2),0),&
-                    &L_V_c(:,in_limits(1):in_limits(2),0),&
-                    &L_V_s(:,in_limits(1):in_limits(2),0)],&
-                    &[6*mnmax_V*n_r_eq]) 
-                
-#if ldebug
-                ! B_V_sub
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'B_V_sub'
-                allocate(in_1D_loc%tot_i_min(4),in_1D_loc%tot_i_max(4))
-                allocate(in_1D_loc%loc_i_min(4),in_1D_loc%loc_i_max(4))
-                in_1D_loc%loc_i_min = [1,1,1,1]
-                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,3,2]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(2*mnmax_V*n_r_eq*3))
-                in_1D_loc%p = reshape([&
-                    &B_V_sub_c(:,in_limits(1):in_limits(2),:),&
-                    &B_V_sub_s(:,in_limits(1):in_limits(2),:)],&
-                    &[2*mnmax_V*n_r_eq*3])
-                
-                ! B_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'B_V'
-                allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
-                allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
-                in_1D_loc%loc_i_min = [1,1,1]
-                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,2]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(2*mnmax_V*n_r_eq))
-                in_1D_loc%p = reshape([B_V_c(:,in_limits(1):in_limits(2)),&
-                    &B_V_s(:,in_limits(1):in_limits(2))],[2*mnmax_V*n_r_eq])
-                
-                ! jac_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'jac_V'
-                allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
-                allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
-                in_1D_loc%loc_i_min = [1,1,1]
-                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,2]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(2*mnmax_V*n_r_eq))
-                in_1D_loc%p = reshape([jac_V_c(:,in_limits(1):in_limits(2)),&
-                    &jac_V_s(:,in_limits(1):in_limits(2))],[2*mnmax_V*n_r_eq])
-#endif
-            case (2)                                                            ! HELENA
-                ! misc_in_H
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'misc_in_H'
-                allocate(in_1D_loc%tot_i_min(1),&
-                    &in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),&
-                    &in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [2]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(2))
-                in_1D_loc%p = [ias*1._dp,nchi*1._dp]
-                
-                ! RZ_H
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'RZ_H'
-                allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
-                allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
-                in_1D_loc%loc_i_min = [1,1,1]
-                in_1D_loc%loc_i_max = [nchi,n_r_eq,2]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(2*nchi*n_r_eq))
-                in_1D_loc%p = reshape([R_H(:,in_limits(1):in_limits(2)),&
-                    &Z_H(:,in_limits(1):in_limits(2))],[2*nchi*n_r_eq])
-                
-                ! chi_H
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'chi_H'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [nchi]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(nchi))
-                in_1D_loc%p = chi_H
-                
-                ! flux_p_H
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'flux_p_H'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = flux_p_H(in_limits(1):in_limits(2))
-                
-                ! qs_H
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'qs_H'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = qs_H(in_limits(1):in_limits(2))
-                
-                ! pres_H
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'pres_H'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = pres_H(in_limits(1):in_limits(2))
-                
-                ! RBphi_H
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'RBphi_H'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = RBphi_H(in_limits(1):in_limits(2))
-                
-#if ldebug
-                ! h_H
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'h_H'
-                allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
-                allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
-                in_1D_loc%loc_i_min = [1,1,1]
-                in_1D_loc%loc_i_max = [nchi,n_r_eq,3]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(3*nchi*n_r_eq))
-                in_1D_loc%p = reshape([h_H_11(:,in_limits(1):in_limits(2)),&
-                    &h_H_12(:,in_limits(1):in_limits(2)),&
-                    &h_H_33(:,in_limits(1):in_limits(2))],&
-                    &[3*nchi*n_r_eq])
-#endif
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-        
-        ! misc_X
-        in_1D_loc => in_1D(id); id = id+1
-        in_1D_loc%var_name = 'misc_X'
-        allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-        allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-        in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [9]
-        in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-        in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(9))
-        in_1D_loc%p = [prim_X*1._dp,n_mod_X*1._dp,min_sec_X*1._dp,&
-            &max_sec_X*1._dp,norm_disc_prec_X*1._dp,norm_style*1._dp,&
-            &U_style*1._dp,X_style*1._dp,matrix_SLEPC_style*1._dp]
-        
-        ! misc_sol
-        in_1D_loc => in_1D(id); id = id+1
-        in_1D_loc%var_name = 'misc_sol'
-        allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-        allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-        in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [7]
-        in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-        in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(7))
-        in_1D_loc%p = [min_r_sol,max_r_sol,alpha,&
-            &norm_disc_prec_sol*1._dp,BC_style*1._dp,EV_style*1._dp,EV_BC]
-        
-        call lvl_ud(-1)
-        
-        ! write
-        call writo('Writing using HDF5')
-        call lvl_ud(1)
-        ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,'in')
-        CHCKERR('')
-        call lvl_ud(-1)
-        
-        ! deallocate
-        deallocate(in_1D)
-        
-        ! clean up
-        nullify(in_1D_loc)
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Input variables written to output')
-    end function print_output_in
-    
-    ! Cleans up input from equilibrium codes.
-    integer function dealloc_in() result(ierr)
-        use num_vars, only: eq_style
-        use VMEC, only: dealloc_VMEC
-        use HELENA_vars, only: dealloc_HEL
-        
-        character(*), parameter :: rout_name = 'dealloc_in'
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! deallocate depending on equilibrium style
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                call dealloc_VMEC
-            case (2)                                                            ! HELENA
-                call dealloc_HEL
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-    end function dealloc_in
     
     ! closes the output file
     ! [MPI] only master

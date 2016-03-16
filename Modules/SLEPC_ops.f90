@@ -1508,7 +1508,7 @@ contains
         if (n_sol_requested.gt.grid_sol%n(3)*n_mod) then
             call writo('WARNING: max. nr. of solutions requested capped to &
                 &problem dimension ('//trim(i2str(grid_sol%n(3)*n_mod))//')')
-            call writo('Increase either min_n_r_sol or number of pol. modes or &
+            call writo('Increase either n_r_sol or number of pol. modes or &
                 &decrease n_sol_requested')
             n_sol = grid_sol%n(3)*n_mod
         else

@@ -911,9 +911,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! user output
-        call writo('Preparing')
-        
         ! set local disp_info
         disp_info_loc = .false.
         if (present(disp_info)) disp_info_loc = disp_info
@@ -965,7 +962,7 @@ contains
         CHCKERR('Failed to enable error printing')
         
         ! user output
-        call writo('Writing data to PB3D output "'//trim(PB3D_name)//'/'//&
+        call writo('Write data to PB3D output "'//trim(PB3D_name)//'/'//&
             &trim(head_name)//'"')
         call lvl_ud(1)
         
@@ -1090,9 +1087,6 @@ contains
         call H5Close_f(ierr)
         err_msg = 'Failed to close FORTRAN HDF5 interface'
         CHCKERR(err_msg)
-        
-        ! user output
-        call writo('Variables written')
     contains
         ! Calculate the 1D memory block, offset, count and stride:
         !   -  block corresponds  to the  group size  in the  divided dimension,

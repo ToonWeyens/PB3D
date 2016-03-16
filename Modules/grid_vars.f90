@@ -11,7 +11,7 @@ module grid_vars
     private
     public create_grid, dealloc_grid, grid_type, create_disc, dealloc_disc, &
         &disc_type, &
-        &n_r_in, n_r_eq, n_par_X, min_par_X, max_par_X
+        &n_r_in, n_r_eq, n_r_sol, min_par_X, max_par_X
 
     ! type for grids
     ! The grids  are saved in  the following format:  (angle_1,angle_2,r), where
@@ -58,11 +58,9 @@ module grid_vars
     end type
     
     ! global variables
-    ! (These  variables  should  be   used   only  until  the  grids  have  been
-    ! established. They are put here for lack of a better place.)
     integer :: n_r_in                                                           ! nr. of normal points in input grid
-    integer :: n_r_eq                                                           ! nr. of normal points in equilibrium grid
-    integer :: n_par_X                                                          ! nr. of parallel points in field-aligned grid
+    integer :: n_r_eq                                                           ! nr. of normal points in equilibrium (and perturbation) grid
+    integer :: n_r_sol                                                          ! nr. of normal points in solution grid
     real(dp) :: min_par_X, max_par_X                                            ! min. and max. of parallel coordinate [pi] in field-aligned grid
     
     ! interfaces

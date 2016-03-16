@@ -11,13 +11,15 @@ module rich_vars
     implicit none
     private
     public rich_info, rich_info_short, &
-        &rich_lvl, no_guess, use_guess, n_r_sol, min_n_r_sol, rich_conv, &
-        &sol_val_rich, x_axis_rich, max_rel_err, loc_max_rel_err
+        &rich_lvl, no_guess, use_guess, n_par_X, min_n_par_X, rich_conv, &
+        &sol_val_rich, x_axis_rich, max_rel_err, loc_max_rel_err, &
+        &req_min_n_par_X
     
     ! global variables
     integer :: rich_lvl                                                         ! current level of Richardson extrapolation
-    integer :: n_r_sol                                                          ! nr. of normal points in sol grid for Richardson lvl
-    integer :: min_n_r_sol                                                      ! min. of n_r_sol (e.g. first value in Richardson loop)
+    integer :: n_par_X                                                          ! nr. of parallel points in field-aligned grid
+    integer, parameter :: req_min_n_par_X = 20                                  ! required minimum n_par_X
+    integer :: min_n_par_X                                                      ! min. of n_par_X (e.g. first value in Richardson loop)
     logical :: use_guess                                                        ! whether a guess is formed from previous level of Richardson
     logical :: no_guess                                                         ! disable guessing Eigenfunction from previous level of Richardson
     logical :: rich_conv                                                        ! if Richarson extrapolation has converged

@@ -8,8 +8,7 @@ module driver_POST
     use messages
     use num_vars, only: max_str_ln, dp, iu
     use grid_vars, only: grid_type
-    use eq_vars, only: eq_type
-    use met_vars, only: met_type
+    use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type
     use sol_vars, only: sol_type
     
@@ -29,20 +28,18 @@ contains
     ! already given, but the  output on the plot grid has  to be calculated from
     ! scratch, while  for HELENA both outputs  have to be interpolated  from the
     ! output tables.
-    ! Note:  Miscellaneous  variables  are reconstructed  in  "open_output"  in
-    ! "files_ops", before the driver is called.
     integer function run_driver_POST() result(ierr)
         use num_vars, only: no_output, no_plots, eq_style, plot_resonance, &
             &plot_flux_q, plot_grid, prog_name, output_name, rank
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
-            &reconstruct_PB3D_eq, reconstruct_PB3D_X_1, reconstruct_PB3D_sol
+            &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
+            &reconstruct_PB3D_X_1, reconstruct_PB3D_sol
         use PB3D_utilities, only: retrieve_var_1D_id
         use grid_vars, only: create_grid, dealloc_grid
         use grid_ops, only: calc_norm_range, plot_grid_real
         use eq_vars, only: create_eq, dealloc_eq
-        use eq_ops, only: calc_eq, flux_q_plot, calc_derived_q, calc_flux_q
-        use met_vars, only: create_met, dealloc_met
-        use met_ops, only: calc_met, calc_F_derivs
+        use eq_ops, only: calc_eq, flux_q_plot, calc_derived_q
+        use eq_utilities, only: calc_F_derivs
         use X_vars, only: create_X, dealloc_X
         use sol_vars, only: dealloc_sol
         use grid_utilities, only: calc_XYZ_grid, extend_grid_E
@@ -50,7 +47,7 @@ contains
         use sol_ops, only: plot_sol_vals, plot_sol_vec, decompose_energy
         use HELENA_ops, only: interp_HEL_on_grid
         use files_utilities, only: nextunit
-        use files_ops, only: dealloc_in
+        use input_utilities, only: dealloc_in
         use utilities, only: calc_aux_utilities
         use MPI_utilities, only: wait_MPI
         use rich_vars, only: rich_info_short
@@ -66,12 +63,10 @@ contains
         type(grid_type) :: grid_X_plot                                          ! plot perturbation grid
         type(grid_type), target :: grid_sol                                     ! solution grid
         type(grid_type) :: grid_sol_plot                                        ! plot solution grid
-        type(eq_type), target :: eq                                             ! equilbrium variables
-        type(eq_type), pointer :: eq_B                                          ! field-aligned equilibrium variables
-        type(eq_type) :: eq_plot                                                ! plot equilibrium variables
-        type(met_type), target :: met                                           ! metric variables
-        type(met_type), pointer :: met_B                                        ! field-aligned metric variables
-        type(met_type) :: met_plot                                              ! plot metric variables
+        type(eq_1_type) :: eq_1                                                 ! flux equilibrium
+        type(eq_2_type), target :: eq_2                                         ! metric equilibrium
+        type(eq_2_type), pointer :: eq_2_B                                      ! field-aligned metric equilibrium
+        type(eq_2_type) :: eq_2_plot                                            ! plot metric equilibrium
         type(X_1_type), target :: X                                             ! vectorial perturbation variables
         type(X_1_type), pointer :: X_B                                          ! field-aligned vectorial perturbation variables
         type(X_1_type) :: X_plot                                                ! plot vectorial perturbation variables
@@ -111,7 +106,7 @@ contains
         call lvl_ud(1)
         
         ! reconstruct full equilibrium, perturbation and solution grids
-        ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq')
+        ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq'//trim(rich_info_short()))
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_X,'grid_X'//trim(rich_info_short()))
         CHCKERR('')
@@ -141,10 +136,11 @@ contains
         ! reconstruct local equilibrium, perturbation and solution grids
         call writo('Reconstructing output grids')
         call lvl_ud(1)
-        ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq',grid_limits=eq_limits)
+        ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq'//&
+            &trim(rich_info_short()),grid_limits=eq_limits)
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_X,'grid_X'//trim(rich_info_short()),&
-            &grid_limits=X_limits)
+        ierr = reconstruct_PB3D_grid(grid_X,'grid_X'//&
+            &trim(rich_info_short()),grid_limits=X_limits)
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_sol,'grid_sol'//&
             &trim(rich_info_short()),grid_limits=sol_limits)
@@ -155,12 +151,14 @@ contains
         ! user output
         call writo('Reconstructing PB3D output on output grid')
         call lvl_ud(1)
-        ierr = reconstruct_PB3D_eq(grid_eq,eq,met,eq_limits=eq_limits)
+        !!ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,eq_limits=eq_limits)
+        !!CHCKERR('')
+        !!ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,eq_limits=eq_limits)
+        !!CHCKERR('')
+        ierr = setup_nm_X(grid_eq,grid_X,eq_1)
         CHCKERR('')
-        ierr = setup_nm_X(grid_eq,grid_X,eq)
-        CHCKERR('')
-        ierr = reconstruct_PB3D_X_1(grid_X,X,X_limits=X_limits)
-        CHCKERR('')
+        !!ierr = reconstruct_PB3D_X_1(grid_X,X,X_limits=X_limits)
+        !!CHCKERR('')
         ierr = reconstruct_PB3D_sol(grid_X,sol,sol_limits=sol_limits)
         CHCKERR('')
         ! reconstructing grids depends on equilibrium style
@@ -169,29 +167,25 @@ contains
                 ! the field-aligned quantities are already found
                 grid_eq_B => grid_eq
                 grid_X_B => grid_X
-                eq_B => eq
-                met_B => met
+                eq_2_B => eq_2
                 X_B => X
             case (2)                                                            ! HELENA
                 ! also need field-aligned quantities
                 allocate(grid_eq_B)
                 allocate(grid_X_B)
-                allocate(eq_B)
-                allocate(met_B)
+                allocate(eq_2_B)
                 allocate(X_B)
-                ierr = reconstruct_PB3D_grid(grid_eq_B,'grid_eq_B',&
-                    &grid_limits=eq_limits)
+                ierr = reconstruct_PB3D_grid(grid_eq_B,'grid_eq_B'//&
+                    &trim(rich_info_short()),grid_limits=eq_limits)
                 CHCKERR('')
                 ierr = reconstruct_PB3D_grid(grid_X_B,'grid_X_B'//&
                     &trim(rich_info_short()),grid_limits=X_limits)
                 CHCKERR('')
-                ierr = create_eq(grid_eq_B,eq_B)
-                CHCKERR('')
-                ierr = create_met(grid_eq_B,met_B)
+                ierr = create_eq(grid_eq_B,eq_2_B)
                 CHCKERR('')
                 call create_X(grid_X_B,X_B)
-                ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,eq=eq,eq_out=eq_B,&
-                    &met=met,met_out=met_B,eq_met=eq,&
+                ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,eq_2=eq_2,&
+                    &eq_2_out=eq_2_B,eq_1=eq_1,&
                     &grid_name='field-aligned equilibrium grid')
                 CHCKERR('')
                 ierr = interp_HEL_on_grid(grid_X,grid_X_B,X_1=X,&
@@ -211,13 +205,13 @@ contains
         call lvl_ud(1)
         
         if (plot_resonance) then
-            ierr = resonance_plot(eq,grid_eq)
+            ierr = resonance_plot(eq_1,grid_eq)
             CHCKERR('')
         else
             call writo('Resonance plot not requested')
         end if
         if (plot_flux_q) then
-            ierr = flux_q_plot(grid_eq,eq)
+            ierr = flux_q_plot(grid_eq,eq_1)
             CHCKERR('')
         else
             call writo('Flux quantities plot not requested')
@@ -263,27 +257,22 @@ contains
                 no_output_loc = no_output; no_output = .true.
                 
                 ! setup plot quantities
-                ierr = create_eq(grid_eq_plot,eq_plot)
+                ierr = create_eq(grid_eq_plot,eq_2_plot)
                 CHCKERR('')
                 
-                ! calculate flux and metric quantities
-                ierr = calc_flux_q(grid_eq,eq_plot)
-                ierr = calc_met(grid_eq_plot,eq_plot,met_plot)
+                ! calculate metric equilibrium quantitities
+                ierr = calc_eq(grid_eq_plot,eq_1,eq_2_plot)
                 CHCKERR('')
                 
                 ! Transform E into F derivatives
-#if ldebug
-                ierr = calc_F_derivs(grid_eq_plot,eq_plot,met_plot)
-#else
-                ierr = calc_F_derivs(eq_plot,met_plot)
-#endif
+                ierr = calc_F_derivs(eq_2_plot)
                 CHCKERR('')
                 
                 ! Calculate derived metric quantities
-                call calc_derived_q(grid_eq_plot,eq_plot,met_plot)
+                call calc_derived_q(grid_eq_plot,eq_1,eq_2_plot)
                 
                 ! calculate X variables, vector phase
-                ierr = calc_X(grid_eq_plot,grid_X_plot,eq_plot,met_plot,&
+                ierr = calc_X(grid_eq_plot,grid_X_plot,eq_1,eq_2_plot,&
                     &X_plot)
                 CHCKERR('')
                 
@@ -298,15 +287,13 @@ contains
                 call lvl_ud(1)
                 
                 ! setup plot quantities
-                ierr = create_eq(grid_eq_plot,eq_plot)
-                CHCKERR('')
-                ierr = create_met(grid_eq_plot,met_plot)
+                ierr = create_eq(grid_eq_plot,eq_2_plot)
                 CHCKERR('')
                 call create_X(grid_X_plot,X_plot)
                 
                 ! call HELENA grid interpolation
-                ierr = interp_HEL_on_grid(grid_eq,grid_eq_plot,eq=eq,&
-                    &eq_out=eq_plot,met=met,met_out=met_plot,eq_met=eq,&
+                ierr = interp_HEL_on_grid(grid_eq,grid_eq_plot,eq_2=eq_2,&
+                    &eq_2_out=eq_2_plot,eq_1=eq_1,&
                     &grid_name='equilibrium plot grid')
                 CHCKERR('')
                 ierr = interp_HEL_on_grid(grid_X,grid_X_plot,X_1=X,&
@@ -366,7 +353,7 @@ contains
         
         call writo('Calculate resonant surfaces')
         call lvl_ud(1)
-        ierr = calc_res_surf(grid_eq,eq,res_surf,info=.false.)
+        ierr = calc_res_surf(grid_eq,eq_1,res_surf,info=.false.)
         call lvl_ud(-1)
         
         call writo('Open decomposition log file')
@@ -433,13 +420,8 @@ contains
                 
                 call writo('Plot the Eigenvector')
                 call lvl_ud(1)
-#if ldebug
                 ierr = plot_sol_vec(grid_eq_plot,grid_X_plot,grid_sol_plot,&
-                    &eq_plot,met_plot,X_plot,sol,XYZ_plot,id,res_surf)
-#else
-                ierr = plot_sol_vec(grid_eq_plot,grid_X_plot,grid_sol_plot,&
-                    &eq_plot,X_plot,sol,XYZ_plot,id,res_surf)
-#endif
+                    &eq_1,eq_2_plot,X_plot,sol,XYZ_plot,id,res_surf)
                 CHCKERR('')
                 call lvl_ud(-1)
                 
@@ -452,8 +434,8 @@ contains
                 call lvl_ud(1)
                 allocate(sol_val_comp_loc(2,2,size(sol_val_comp,3)+1))
                 sol_val_comp_loc(:,:,1:size(sol_val_comp,3)) = sol_val_comp
-                ierr = decompose_energy(grid_eq_B,grid_X_B,grid_sol,eq_B,met_B,&
-                    &X_B,sol,id,output_EN_i,.true.,sol_val_comp=&
+                ierr = decompose_energy(grid_eq_B,grid_X_B,grid_sol,eq_1,&
+                    &eq_2_B,X_B,sol,id,output_EN_i,.true.,sol_val_comp=&
                     &sol_val_comp_loc(:,:,size(sol_val_comp_loc,3)))
                 CHCKERR('')
                 deallocate(sol_val_comp)
@@ -461,7 +443,7 @@ contains
                 sol_val_comp = sol_val_comp_loc
                 deallocate(sol_val_comp_loc)
                 ierr = decompose_energy(grid_eq_plot,grid_X_plot,grid_sol,&
-                    &eq_plot,met_plot,X_plot,sol,id,output_EN_i,.false.,&
+                    &eq_1,eq_2_plot,X_plot,sol,id,output_EN_i,.false.,&
                     &XYZ=XYZ_plot)
                 CHCKERR('')
                 call lvl_ud(-1)
@@ -488,42 +470,37 @@ contains
         call lvl_ud(-1)
         call writo('Variables for different ranges plotted')
         
-        ! clean up 
-        call writo('Cleaning up')
+        ! clean up
+        call writo('Clean up')
         call lvl_ud(1)
         ierr = dealloc_in()
         CHCKERR('')
         call dealloc_grid(grid_eq)
         call dealloc_grid(grid_X)
         call dealloc_grid(grid_sol)
-        call dealloc_eq(eq)
-        call dealloc_met(met)
+        call dealloc_eq(eq_1)
+        call dealloc_eq(eq_2)
         call dealloc_X(X)
         call dealloc_sol(sol)
         if (eq_style.eq.2) then
             call dealloc_grid(grid_eq_B)
             call dealloc_grid(grid_X_B)
-            call dealloc_eq(eq_B)
-            call dealloc_met(met_B)
+            call dealloc_eq(eq_2_B)
             call dealloc_X(X_B)
             deallocate(grid_eq_B)
             deallocate(grid_X_B)
-            deallocate(eq_B)
-            deallocate(met_B)
+            deallocate(eq_2_B)
             deallocate(X_B)
         end if
         nullify(grid_eq_B)
         nullify(grid_X_B)
-        nullify(eq_B)
-        nullify(met_B)
+        nullify(eq_2_B)
         nullify(X_B)
         call dealloc_grid(grid_eq_plot)
         call dealloc_grid(grid_sol_plot)
-        call dealloc_eq(eq_plot)
-        call dealloc_met(met_plot)
+        call dealloc_eq(eq_2_plot)
         call dealloc_X(X_plot)
         call lvl_ud(-1)
-        call writo('Clean')
         
         ! synchronize processes
         ierr = wait_MPI()

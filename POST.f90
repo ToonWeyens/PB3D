@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.11                                                              !
+!   Version: 1.12                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -32,10 +32,10 @@ program POST
     use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_opts
     use files_ops, only: init_files, parse_args, open_input, open_output, &
         &close_output
-    use input_ops, only: read_input
+    use input_ops, only: read_input_opts
     use driver_POST, only: run_driver_POST
     use PB3D_ops, only: reconstruct_PB3D_in
-    use files_ops, only: dealloc_in
+    use input_utilities, only: dealloc_in
 #if ldebug
     use num_vars, only: ltest
     use test, only: generic_tests
@@ -74,7 +74,7 @@ program POST
         CHCKERR
         ierr = reconstruct_PB3D_in()                                            ! reconstruct miscellaneous PB3D output variables
         CHCKERR
-        ierr = read_input()                                                     ! read input file
+        ierr = read_input_opts()                                                ! read input options file
         CHCKERR
         ierr = open_output()                                                    ! open output file per alpha group
         CHCKERR
@@ -119,9 +119,9 @@ program POST
     call lvl_ud(-1)
 
     !-------------------------------------------------------
-    !   cleaning up
+    !   clean up
     !-------------------------------------------------------
-    call writo('Cleanup')
+    call writo('Clean up')
     call lvl_ud(1)
     ierr = stop_MPI()
     CHCKERR

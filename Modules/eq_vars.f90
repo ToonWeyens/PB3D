@@ -1,11 +1,11 @@
 !------------------------------------------------------------------------------!
 !   Variables that have to do with equilibrium quantities and the grid used in !
 !   the calculations:                                                          !
-!       -  The  equilibrium  variables  are comprised  of  the  variable  that !
+!       - The  equilibrium  variables  are  comprised  of  the  variables that !
 !       result from the equilibrium  calculation, such as pressure, rotational !
 !       transform, etc.                                                        !
-!       - These variables  are tabulated on a 3D grid,  following the magnetic !
-!       field:                                                                 !
+!       - The flux variables are tabulated on a 1D grid.                       !
+!       - The metric variables are tabulated on a 3D grid                      !
 !           + In the normal coordinate,  they are tabulated in the equilibrium !
 !           grid.                                                              !
 !           + In the  angular coordinates, they are tabulated  in the solution !
@@ -22,7 +22,8 @@
 !   In many places  in the code a  range in the normal  coordinate is selected !
 !   for each of the variables on different processes. This selection has to be !
 !   done correctly  and things  can get  a little  bit complicated  if trimmed !
-!   grids are used (grids that have no overlap between processes).             !
+!   grids  are  used (grids  that  have  no  overlap between  processes).  See !
+!   grid_ops.                                                                  !
 !------------------------------------------------------------------------------!
 module eq_vars
 #include <PB3D_macros.h>
@@ -34,7 +35,7 @@ module eq_vars
     implicit none
     private
     public create_eq, dealloc_eq, &
-        &eq_type, &
+        &eq_1_type, eq_2_type, &
         &R_0, pres_0, B_0, psi_0, rho_0, T_0, max_flux_E, max_flux_F, vac_perm
     
     ! global variables
@@ -44,10 +45,29 @@ module eq_vars
     real(dp) :: max_flux_E                                                      ! max. flux in Equilibrium coordinates
     real(dp) :: max_flux_F                                                      ! max. flux in Flux coordinates
     
-    ! equilibrium type
-    ! The arrays here are of the form (except for rho):
-    !   - (r,Dr)                        for flux quantities
-    !   - (angle_1,angle_2,r,D123)      for normal quantities
+    ! flux equilibrium type
+    ! The arrays here are of the form
+    !   - (r)                               for vars. without derivs.
+    !   - (r,Dr)                            for vars. with derivs.
+    type :: eq_1_type
+        real(dp), allocatable :: pres_E(:,:)                                    ! pressure, and norm. deriv.
+        real(dp), allocatable :: q_saf_E(:,:)                                   ! safety factor
+        real(dp), allocatable :: rot_t_E(:,:)                                   ! rot. transform
+        real(dp), pointer :: flux_p_E(:,:) => null()                            ! poloidal flux and norm. deriv.
+        real(dp), pointer :: flux_t_E(:,:) => null()                            ! toroidal flux and norm. deriv.
+        real(dp), allocatable :: pres_FD(:,:)                                   ! pressure, and norm. deriv.
+        real(dp), allocatable :: q_saf_FD(:,:)                                  ! safety factor
+        real(dp), allocatable :: rot_t_FD(:,:)                                  ! rot. transform
+        real(dp), pointer :: flux_p_FD(:,:) => null()                           ! poloidal flux and norm. deriv.
+        real(dp), pointer :: flux_t_FD(:,:) => null()                           ! toroidal flux and norm. deriv.
+        real(dp), allocatable :: rho(:)                                         ! density
+    end type
+    
+    ! metric equilibrium type
+    ! The arrays here are of the form
+    !   - (angle_1,angle_2,r)               for scalar vars. without derivs.
+    !   - (angle_1,angle_2,r,D123)          for scalar vars. with derivs.
+    !   - (angle_1,angle_2,r,6/9,D1,D2,D3)  for tensorial vars. with derivs.
     ! where it is refered to the discussion  of the grid type for an explanation
     ! of the angles angle_1 and angle_2.
     ! The last index refers  to the derivatives in coordinate 1,  2 and 3, which
@@ -56,28 +76,52 @@ module eq_vars
     !   - For F(lux) coordinates, they are (alpha,psi,ang_par)_F, where
     !       + alpha = zeta - q theta and ang_par = theta for pol. flux,
     !       + alpha = -theta + iota zeta and ang_par = zeta for tor. flux.
-    ! This order  of variables is  important when setting up  the transformation
-    ! matrices between the E and F coordinate systems.
-    type :: eq_type
+    ! The  fourth  index for  tensorial  variables  correspond  to  the 9  or  6
+    ! (symmetric) different values:
+    !   (1 4 7)      (1    )
+    !   (2 5 8)  or  (2 4  )
+    !   (3 6 9)      (3 5 6)
+    ! Note that Fortran only allows for 7 dimensions in arrays.
+    type :: eq_2_type
+        ! coordinate variables R, Z and L (VMEC)
         real(dp), allocatable :: R_E(:,:,:,:,:,:)                               ! R in E(quilibrium) coord
         real(dp), allocatable :: Z_E(:,:,:,:,:,:)                               ! Z in E(quilibrium) coords.
         real(dp), allocatable :: L_E(:,:,:,:,:,:)                               ! L(ambda) in E(quilibrium) coords.
-        real(dp), allocatable :: pres_E(:,:)                                    ! pressure, and norm. Deriv. in E(equilibrium) coords.
-        real(dp), allocatable :: q_saf_E(:,:)                                   ! safety factor in E(equilibrium) coordinates
-        real(dp), allocatable :: rot_t_E(:,:)                                   ! rot. transform in E(equilibrium) coordinates
-        real(dp), pointer :: flux_p_E(:,:) => null()                            ! poloidal flux and norm. Deriv. in E(equilibrium) coords.
-        real(dp), pointer :: flux_t_E(:,:) => null()                            ! toroidal flux and norm. Deriv. in E(equilibrium) coords.
-        real(dp), allocatable :: pres_FD(:,:)                                   ! pressure, and norm. Deriv. with values and Derivs. in F(lux) coords.
-        real(dp), allocatable :: q_saf_FD(:,:)                                  ! safety factor, Deriv. in F(lux) coords.
-        real(dp), allocatable :: rot_t_FD(:,:)                                  ! rot. transform, Deriv. in F(lux) coords.
-        real(dp), pointer :: flux_p_FD(:,:) => null()                           ! poloidal flux, and norm. Deriv. with values and Derivs. in F(lux) coords.
-        real(dp), pointer :: flux_t_FD(:,:) => null()                           ! toroidal flux, and norm. Deriv. with values and Derivs. in F(lux) coords.
-        real(dp), allocatable :: rho(:)                                         ! density (in all coord. systems)
+        ! upper (h) and lower (g) metric factors
+        real(dp), allocatable :: g_C(:,:,:,:,:,:,:)                             ! in the C(ylindrical) coord. system
+        real(dp), allocatable :: g_E(:,:,:,:,:,:,:)                             ! in the E(quilibrium) coord. system
+        real(dp), allocatable :: h_E(:,:,:,:,:,:,:)                             ! in the E(quilibrium) coord. system
+        real(dp), allocatable :: g_F(:,:,:,:,:,:,:)                             ! in the F(lux) coord. system with derivs. in V(MEC) system
+        real(dp), allocatable :: h_F(:,:,:,:,:,:,:)                             ! in the F(lux) coord. system with derivs. in V(MEC) system
+        real(dp), pointer :: g_FD(:,:,:,:,:,:,:) => null()                      ! in the F(lux) coord. system with derivs in F(lux) system
+        real(dp), pointer :: h_FD(:,:,:,:,:,:,:) => null()                      ! in the F(lux) coord. system with derivs in F(lux) system
+        ! transformation matrices
+        real(dp), allocatable :: T_VC(:,:,:,:,:,:,:)                            ! C(ylindrical) to V(MEC)
+        real(dp), allocatable :: T_EF(:,:,:,:,:,:,:)                            ! E(quilibrium) to F(lux)
+        real(dp), allocatable :: T_FE(:,:,:,:,:,:,:)                            ! F(lux) to E(quilibrium)
+        ! determinants of transformation matrices
+        real(dp), allocatable :: det_T_VC(:,:,:,:,:,:)                          ! determinant of T_VC
+        real(dp), allocatable :: det_T_EF(:,:,:,:,:,:)                          ! determinant of T_EF
+        real(dp), allocatable :: det_T_FE(:,:,:,:,:,:)                          ! determinant of T_FE
+        ! Jacobians
+        real(dp), allocatable :: jac_C(:,:,:,:,:,:)                             ! jacobian of C(ylindrical) coord. system
+        real(dp), allocatable :: jac_E(:,:,:,:,:,:)                             ! jacobian of E(quilibrium) coord. system
+        real(dp), allocatable :: jac_F(:,:,:,:,:,:)                             ! jacobian of F(lux) coord. system with derivs. in V(MEC) system
+        real(dp), pointer :: jac_FD(:,:,:,:,:,:) => null()                      ! jacobian of F(lux) coord. system with derivs. in F(lux) system
+        ! derived variables
         real(dp), allocatable :: S(:,:,:)                                       ! magnetic shear
         real(dp), allocatable :: kappa_n(:,:,:)                                 ! normal curvature
         real(dp), allocatable :: kappa_g(:,:,:)                                 ! geodesic curvature
         real(dp), allocatable :: sigma(:,:,:)                                   ! parallel current
     end type
+    
+    ! interfaces
+    interface create_eq
+        module procedure create_eq_1, create_eq_2
+    end interface
+    interface dealloc_eq
+        module procedure dealloc_eq_1, dealloc_eq_2
+    end interface
 
 contains
     ! creates new equilibrium
@@ -90,21 +134,20 @@ contains
     ! Note:  The quantities  that  do not  have a  derivative  are considered  F
     ! quantities. Alternatively, all quantities that  have only one version, are
     ! considered F quantities, such as rho, kappa_n, ...
-    integer function create_eq(grid,eq,setup_E,setup_F) result(ierr)
+    integer function create_eq_1(grid,eq,setup_E,setup_F) result(ierr)          ! flux version
         use num_vars, only: max_deriv, eq_style
         
-        character(*), parameter :: rout_name = 'create_eq'
+        character(*), parameter :: rout_name = 'create_eq_1'
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
-        type(eq_type), intent(inout) :: eq                                      ! equilibrium to be created
+        type(eq_1_type), intent(inout) :: eq                                    ! equilibrium to be created
         logical, intent(in), optional :: setup_E                                ! whether to set up E
         logical, intent(in), optional :: setup_F                                ! whether to set up F
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: loc_n_r, n                                                   ! local and total nr. of normal points
-        integer :: n_par, n_geo                                                 ! tot. nr. of angular points in parallel and geodesic direction
         logical :: setup_E_loc, setup_F_loc                                     ! local versions of setup_E and setup_F
         
         ! initialize ierr
@@ -118,8 +161,6 @@ contains
         
         ! set local variables
         loc_n_r = grid%loc_n_r
-        n_par = grid%n(1)
-        n_geo = grid%n(2)
         n = grid%n(3)
         
         if (setup_E_loc) then
@@ -138,18 +179,6 @@ contains
             !   2:  HELENA
             select case (eq_style)
                 case (1)                                                        ! VMEC
-                    ! R
-                    allocate(eq%R_E(n_par,n_geo,loc_n_r,&
-                        &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
-                    
-                    ! Z
-                    allocate(eq%Z_E(n_par,n_geo,loc_n_r,&
-                        &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
-                    
-                    ! lambda
-                    allocate(eq%L_E(n_par,n_geo,loc_n_r,&
-                        &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
-                    
                     ! flux_p_E
                     allocate(eq%flux_p_E(loc_n_r,0:max_deriv+2))                ! Need extra order because used in transformation of flux q.
                     
@@ -187,25 +216,153 @@ contains
             
             ! rho
             allocate(eq%rho(grid%loc_n_r))
+        end if
+    end function create_eq_1
+    integer function create_eq_2(grid,eq,setup_E,setup_F) result(ierr)          ! metric version
+        use num_vars, only: max_deriv, eq_style
+        
+        character(*), parameter :: rout_name = 'create_eq_2'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid                                     ! equilibrium grid
+        type(eq_2_type), intent(inout) :: eq                                    ! equilibrium to be created
+        logical, intent(in), optional :: setup_E                                ! whether to set up E
+        logical, intent(in), optional :: setup_F                                ! whether to set up F
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        logical :: setup_E_loc, setup_F_loc                                     ! local versions of setup_E and setup_F
+        integer :: dims(3)                                                      ! dimensions
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local variables
+        dims = [grid%n(1),grid%n(2),grid%loc_n_r]
+        
+        ! setup local setup_E and setup_F
+        setup_E_loc = .true.
+        if (present(setup_E)) setup_E_loc = setup_E
+        setup_F_loc = .true.
+        if (present(setup_F)) setup_F_loc = setup_F
+        
+        if (setup_E_loc) then
+            ! initialize variables that are used for all equilibrium styles
+            ! g_E
+            allocate(eq%g_E(dims(1),dims(2),dims(3),6,&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
+            
+            ! h_E
+            allocate(eq%h_E(dims(1),dims(2),dims(3),6,&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
+            
+            ! g_F
+            allocate(eq%g_F(dims(1),dims(2),dims(3),6,&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
+            
+            ! h_F
+            allocate(eq%h_F(dims(1),dims(2),dims(3),6,&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
+            
+            ! jac_E
+            allocate(eq%jac_E(dims(1),dims(2),dims(3),&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
+            
+            ! jac_F
+            allocate(eq%jac_F(dims(1),dims(2),dims(3),&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
+            
+            ! T_EF
+            allocate(eq%T_EF(dims(1),dims(2),dims(3),9,&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
+            
+            ! T_FE
+            allocate(eq%T_FE(dims(1),dims(2),dims(3),9,&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
+            
+            ! det_T_EF
+            allocate(eq%det_T_EF(dims(1),dims(2),dims(3),&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
+            
+            ! det_T_FE
+            allocate(eq%det_T_FE(dims(1),dims(2),dims(3),&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
+            
+            ! initialize  variables that  are  specificic  to which  equilibrium
+            ! style is being used:
+            !   1:  VMEC
+            !   2:  HELENA
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ! g_C
+                    allocate(eq%g_C(dims(1),dims(2),dims(3),6,&
+                        &0:max_deriv,0:max_deriv,0:max_deriv))
+                    
+                    ! T_VC
+                    allocate(eq%T_VC(dims(1),dims(2),dims(3),9,&
+                        &0:max_deriv,0:max_deriv,0:max_deriv))
+                    
+                    ! det_T_VC
+                    allocate(eq%det_T_VC(dims(1),dims(2),dims(3),&
+                        &0:max_deriv,0:max_deriv,0:max_deriv))
+                    
+                    ! jac_C
+                    allocate(eq%jac_C(dims(1),dims(2),dims(3),&
+                        &0:max_deriv,0:max_deriv,0:max_deriv))
+                    
+                    ! R
+                    allocate(eq%R_E(dims(1),dims(2),dims(3),&
+                        &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+                    
+                    ! Z
+                    allocate(eq%Z_E(dims(1),dims(2),dims(3),&
+                        &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+                    
+                    ! lambda
+                    allocate(eq%L_E(dims(1),dims(2),dims(3),&
+                        &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+                case (2)                                                        ! HELENA
+                    ! do nothing
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+        end if
+        
+        if (setup_F_loc) then
+            ! initialize variables that are used for all equilibrium styles
+            ! g_FD
+            allocate(eq%g_FD(dims(1),dims(2),dims(3),6,&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
+            
+            ! h_FD
+            allocate(eq%h_FD(dims(1),dims(2),dims(3),6,&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
+            
+            ! jac_FD
+            allocate(eq%jac_FD(dims(1),dims(2),dims(3),&
+                &0:max_deriv,0:max_deriv,0:max_deriv))
             
             ! magnetic shear
-            allocate(eq%S(n_par,n_geo,loc_n_r))
+            allocate(eq%S(dims(1),dims(2),dims(3)))
             
             ! normal curvature
-            allocate(eq%kappa_n(n_par,n_geo,loc_n_r))
+            allocate(eq%kappa_n(dims(1),dims(2),dims(3)))
             
             ! geodesic curvature
-            allocate(eq%kappa_g(n_par,n_geo,loc_n_r))
+            allocate(eq%kappa_g(dims(1),dims(2),dims(3)))
             
             ! parallel current
-            allocate(eq%sigma(n_par,n_geo,loc_n_r))
+            allocate(eq%sigma(dims(1),dims(2),dims(3)))
         end if
-    end function create_eq
+    end function create_eq_2
     
     ! deallocates equilibrium quantities
-    subroutine dealloc_eq(eq)
+    subroutine dealloc_eq_1(eq)                                                 ! flux version
         ! input / output
-        type(eq_type), intent(inout) :: eq                                      ! equilibrium to be deallocated
+        type(eq_1_type), intent(inout) :: eq                                    ! equilibrium to be deallocated
         
         ! deallocate and nullify allocated pointers
         if (associated(eq%flux_p_E)) then
@@ -226,12 +383,39 @@ contains
         end if
         
         ! deallocate allocatable variables
-        call dealloc_eq_final(eq)
+        call dealloc_eq_1_final(eq)
     contains
         ! Note: intent(out) automatically deallocates the variable
-        subroutine dealloc_eq_final(eq)
+        subroutine dealloc_eq_1_final(eq)
             ! input / output
-            type(eq_type), intent(out) :: eq                                    ! equilibrium to be deallocated
-        end subroutine dealloc_eq_final
-    end subroutine dealloc_eq
+            type(eq_1_type), intent(out) :: eq                                  ! equilibrium to be deallocated
+        end subroutine dealloc_eq_1_final
+    end subroutine dealloc_eq_1
+    subroutine dealloc_eq_2(eq)                                                 ! metric version
+        ! input / output
+        type(eq_2_type), intent(inout) :: eq                                    ! equilibrium to be deallocated
+        
+        ! deallocate and nullify allocated pointers
+        if (associated(eq%g_FD)) then
+            deallocate(eq%g_FD)
+            nullify(eq%g_FD)
+        end if
+        if (associated(eq%h_FD)) then
+            deallocate(eq%h_FD)
+            nullify(eq%h_FD)
+        end if
+        if (associated(eq%jac_FD)) then
+            deallocate(eq%jac_FD)
+            nullify(eq%jac_FD)
+        end if
+        
+        ! deallocate allocatable variables
+        call dealloc_eq_2_final(eq)
+    contains
+        ! Note: intent(out) automatically deallocates the variable
+        subroutine dealloc_eq_2_final(eq)
+            ! input / output
+            type(eq_2_type), intent(out) :: eq                                  ! equilibrium to be deallocated
+        end subroutine dealloc_eq_2_final
+    end subroutine dealloc_eq_2
 end module eq_vars

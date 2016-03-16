@@ -124,8 +124,9 @@ contains
             call writo('Stellerator symmetry')
         end if
         call writo('VMEC has '//trim(i2str(mpol_V))//' poloidal and '&
-            &//trim(i2str(ntor_V))//' toroidal modes, defined on '&
-            &//trim(i2str(n_r_in))//' '//flux_name//' flux surfaces')
+            &//trim(i2str(ntor_V))//' toroidal modes,')
+        call writo('defined on '//trim(i2str(n_r_in))//' '//flux_name//&
+            &' flux surfaces')
         
         call writo('Running tests')
         call lvl_ud(1)

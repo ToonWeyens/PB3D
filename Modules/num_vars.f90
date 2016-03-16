@@ -18,7 +18,7 @@ module num_vars
         &norm_disc_prec_X, norm_disc_prec_sol, &
         &max_it_rich, tol_rich, &
         &max_it_inv, &
-        &max_it_NR, tol_NR, nyq_fac, tol_norm, &
+        &max_it_NR, tol_NR, tol_norm, &
         &GP_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
@@ -37,7 +37,7 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 1.11_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.12_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.11_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
@@ -90,7 +90,6 @@ module num_vars
     ! concerning finding the magnetic field lines
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
     real(dp) :: tol_NR                                                          ! tolerance for Newton-Rhapson
-    integer :: nyq_fac                                                          ! Nyquist factor to avoid aliasing in perturbation integrals
     real(dp) :: tol_norm                                                        ! tolerance for normal range (normalized to 0..1)
 
     ! concerning input / output

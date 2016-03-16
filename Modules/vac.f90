@@ -7,9 +7,6 @@ module vac
     use messages
     use output_ops
     use num_vars, only: dp, pi, max_str_ln, iu
-    use grid_vars, only: grid_type
-    use eq_vars, only: eq_type
-    use met_vars, only: met_type
     use X_vars, only: X_2_type
 
     implicit none

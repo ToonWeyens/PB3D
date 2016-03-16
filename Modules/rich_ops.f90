@@ -16,8 +16,7 @@ module rich_ops
     
 contains
     integer function init_rich() result(ierr)
-        use num_vars, only: n_sol_requested
-        use num_vars, only: rich_restart_lvl
+        use num_vars, only: n_sol_requested, rich_restart_lvl
         use PB3D_ops, only: reconstruct_PB3D_rich
         
         character(*), parameter :: rout_name = 'init_rich'
@@ -33,16 +32,16 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! allocate variables
+        allocate(sol_val_rich(max_it_rich,max_it_rich,n_sol_requested))
+        sol_val_rich = 0.0_dp
+        allocate(x_axis_rich(max_it_rich,n_sol_requested))
+        allocate(max_rel_err(max_it_rich-1))
+        allocate(loc_max_rel_err(max_it_rich-1,1))
+        
         ! set variables
         if (max_it_rich.gt.1) then                                              ! only when more than one level
-            ! allocate variables
-            allocate(sol_val_rich(max_it_rich,max_it_rich,n_sol_requested))
-            sol_val_rich = 0.0_dp
-            allocate(x_axis_rich(max_it_rich,n_sol_requested))
-            allocate(max_rel_err(max_it_rich-1))
-            allocate(loc_max_rel_err(max_it_rich-1,1))
-            
-            if (rich_restart_lvl.eq.0) then
+            if (rich_restart_lvl.eq.1) then
                 ! user output
                 call writo('Starting Richardson extrapolation loop')
                 call lvl_ud(1)
@@ -55,9 +54,9 @@ contains
                 ! fast-forward counting variables
                 rich_lvl = rich_restart_lvl
                 if (rich_restart_lvl.ge.2) then
-                    n_r_sol = min_n_r_sol
+                    n_par_X = min_n_par_X
                     do rd = 2,rich_restart_lvl-1
-                        n_r_sol = 2 * n_r_sol - 1
+                        n_par_X = 2 * n_par_X - 1
                     end do
                 end if
                 
@@ -76,12 +75,13 @@ contains
     end function init_rich
     
     integer function term_rich() result(ierr)
-        use num_vars, only: rank,norm_disc_prec_sol
+        use num_vars, only: rank,norm_disc_prec_sol, no_output
         
         character(*), parameter :: rout_name = 'term_rich'
         
         ! local variables
         integer :: id                                                           ! counter
+        logical :: no_output_loc                                                ! local copy of no_output
         
         ! initialize ierr
         ierr = 0
@@ -127,11 +127,18 @@ contains
             
             ! draw X values
             if (rank.eq.0) call draw_sol_val_rich()
-            
-            ! print Richardson variables
-            ierr = print_output_rich()
-            CHCKERR('')
-            
+        end if
+        
+        ! no output if only one Richardson level
+        if (max_it_rich.eq.1) no_output_loc = no_output
+        if (max_it_rich.eq.1) no_output = .true.
+        ! print Richardson variables
+        ierr = print_output_rich()
+        CHCKERR('')
+        ! no output if only one Richardson level
+        if (max_it_rich.eq.1) no_output = no_output_loc
+        
+        if (max_it_rich.gt.1) then                                              ! only when more than one level
             call writo('')
             call lvl_ud(-1)
         end if
@@ -181,9 +188,9 @@ contains
     subroutine start_rich_lvl
         ! Calculate number of normal points for the solution in Richardson loops
         if (rich_lvl.eq.1) then
-            n_r_sol = min_n_r_sol
+            n_par_X = min_n_par_X
         else
-            n_r_sol = 2 * n_r_sol - 1
+            n_par_X = 2 * n_par_X - 1
         end if
         
         ! set use_guess to .false. if user sets no_guess
@@ -192,15 +199,15 @@ contains
     
     ! stop a Richardson level
     subroutine stop_rich_lvl
+        ! update the x axis of the Eigenvalue plot
+        x_axis_rich(rich_lvl,:) = 1.0_dp*n_par_X
+        
         ! Richardson extrapolation
         if (max_it_rich.gt.1) then                                              ! only do this if more than 1 Richardson level
             ! user output
             if (rich_lvl.gt.1) call writo('Richardson level '//&
                 &trim(i2str(rich_lvl))//' summary')
             call lvl_ud(1)
-            
-            ! update the x axis of the Eigenvalue plot
-            x_axis_rich(rich_lvl,:) = 1.0_dp*n_r_sol
             
             ! decide whether converged or not
             call check_conv()
@@ -287,17 +294,15 @@ contains
         ! local variables
         integer :: ir                                                           ! counter
         
-        if (max_it_rich.gt.1) then                                              ! only when more than one level
-            ! do calculations if rich_lvl > 1
-            sol_val_rich(rich_lvl,1,1:size(sol_val)) = sol_val                  ! size(sol_val) can be less than n_sol_requested
-            do ir = 2,rich_lvl
-                sol_val_rich(rich_lvl,ir,1:size(sol_val)) = &
-                    &sol_val_rich(rich_lvl,ir-1,1:size(sol_val)) + &
-                    &1._dp/(2**(2*(ir-1)*norm_disc_prec_sol)-1._dp) * &
-                    &(sol_val_rich(rich_lvl,ir-1,1:size(sol_val)) - &
-                    &sol_val_rich(rich_lvl-1,ir-1,1:size(sol_val)))
-            end do
-        end if
+        ! do calculations if rich_lvl > 1
+        sol_val_rich(rich_lvl,1,1:size(sol_val)) = sol_val                      ! size(sol_val) can be less than n_sol_requested
+        do ir = 2,rich_lvl
+            sol_val_rich(rich_lvl,ir,1:size(sol_val)) = &
+                &sol_val_rich(rich_lvl,ir-1,1:size(sol_val)) + &
+                &1._dp/(2**(2*(ir-1)*norm_disc_prec_sol)-1._dp) * &
+                &(sol_val_rich(rich_lvl,ir-1,1:size(sol_val)) - &
+                &sol_val_rich(rich_lvl-1,ir-1,1:size(sol_val)))
+        end do
     end subroutine calc_rich_ex
     
     ! Probe to find out which Richardson levels are available.
@@ -363,10 +368,6 @@ contains
             call writo('Writing richardson variables to output file')
             call lvl_ud(1)
             
-            ! user output
-            call writo('Preparing variables for writing')
-            call lvl_ud(1)
-            
             ! Set up the 1D equivalents of the perturbation variables
             allocate(rich_1D(max_dim_var_1D))
             
@@ -421,43 +422,36 @@ contains
             allocate(rich_1D_loc%p(size(x_axis_rich)))
             rich_1D_loc%p = reshape(x_axis_rich,[size(x_axis_rich)])
             
-            ! max_rel_err
-            rich_1D_loc => rich_1D(id); id = id+1
-            rich_1D_loc%var_name = 'max_rel_err'
-            allocate(rich_1D_loc%tot_i_min(1),rich_1D_loc%tot_i_max(1))
-            allocate(rich_1D_loc%loc_i_min(1),rich_1D_loc%loc_i_max(1))
-            rich_1D_loc%tot_i_min = [1]
-            rich_1D_loc%tot_i_max = [max_it_rich-1]
-            rich_1D_loc%loc_i_min = rich_1D_loc%tot_i_min
-            rich_1D_loc%loc_i_max = rich_1D_loc%tot_i_max
-            allocate(rich_1D_loc%p(size(max_rel_err)))
-            rich_1D_loc%p = max_rel_err
-            
-            ! loc_max_rel_err
-            rich_1D_loc => rich_1D(id); id = id+1
-            rich_1D_loc%var_name = 'loc_max_rel_err'
-            allocate(rich_1D_loc%tot_i_min(2),rich_1D_loc%tot_i_max(2))
-            allocate(rich_1D_loc%loc_i_min(2),rich_1D_loc%loc_i_max(2))
-            rich_1D_loc%tot_i_min = [1,1]
-            rich_1D_loc%tot_i_max = [max_it_rich-1,1]
-            rich_1D_loc%loc_i_min = rich_1D_loc%tot_i_min
-            rich_1D_loc%loc_i_max = rich_1D_loc%tot_i_max
-            allocate(rich_1D_loc%p(size(loc_max_rel_err)))
-            rich_1D_loc%p = reshape(loc_max_rel_err*1._dp,&
-                &[size(loc_max_rel_err)])
-            
-            call lvl_ud(-1)
-            
-            ! user output
-            call writo('Writing using HDF5')
-            call lvl_ud(1)
+            if (max_it_rich.gt.1) then
+                ! max_rel_err
+                rich_1D_loc => rich_1D(id); id = id+1
+                rich_1D_loc%var_name = 'max_rel_err'
+                allocate(rich_1D_loc%tot_i_min(1),rich_1D_loc%tot_i_max(1))
+                allocate(rich_1D_loc%loc_i_min(1),rich_1D_loc%loc_i_max(1))
+                rich_1D_loc%tot_i_min = [1]
+                rich_1D_loc%tot_i_max = [max_it_rich-1]
+                rich_1D_loc%loc_i_min = rich_1D_loc%tot_i_min
+                rich_1D_loc%loc_i_max = rich_1D_loc%tot_i_max
+                allocate(rich_1D_loc%p(size(max_rel_err)))
+                rich_1D_loc%p = max_rel_err
+                
+                ! loc_max_rel_err
+                rich_1D_loc => rich_1D(id); id = id+1
+                rich_1D_loc%var_name = 'loc_max_rel_err'
+                allocate(rich_1D_loc%tot_i_min(2),rich_1D_loc%tot_i_max(2))
+                allocate(rich_1D_loc%loc_i_min(2),rich_1D_loc%loc_i_max(2))
+                rich_1D_loc%tot_i_min = [1,1]
+                rich_1D_loc%tot_i_max = [max_it_rich-1,1]
+                rich_1D_loc%loc_i_min = rich_1D_loc%tot_i_min
+                rich_1D_loc%loc_i_max = rich_1D_loc%tot_i_max
+                allocate(rich_1D_loc%p(size(loc_max_rel_err)))
+                rich_1D_loc%p = reshape(loc_max_rel_err*1._dp,&
+                    &[size(loc_max_rel_err)])
+            end if
             
             ! write
             ierr = print_HDF5_arrs(rich_1D(1:id-1),PB3D_name,'rich')
             CHCKERR('')
-            
-            ! user output
-            call lvl_ud(-1)
             
             ! clean up
             nullify(rich_1D_loc)

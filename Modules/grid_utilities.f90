@@ -8,7 +8,6 @@ module grid_utilities
     use messages
     use num_vars, only: dp, pi, max_str_ln, iu
     use grid_vars, only: grid_type, disc_type
-    use eq_vars, only: eq_type
 
     implicit none
     private

@@ -9,7 +9,6 @@ module HELENA_vars
     use messages
     use num_vars, only: dp, max_str_ln
     use grid_vars, only: grid_type
-    use eq_vars, only: eq_type
     use met_vars, only: met_type
     use X_vars, only: X_1_type, X_2_type
     
@@ -231,9 +230,6 @@ contains
             &' poloidal and '//trim(i2str(n_r_in))//' normal points')
         call lvl_ud(-1)
         call writo('Data from HELENA output succesfully read')
-        
-        ! close the HELENA file
-        close(eq_i)
     end function read_HEL
     
     ! deallocates HELENA quantities that are not used any more

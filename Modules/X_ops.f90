@@ -8,8 +8,7 @@ module X_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, max_name_ln, pi
     use grid_vars, onlY: grid_type, disc_type, dealloc_grid, dealloc_disc
-    use eq_vars, only: eq_type
-    use met_vars, only: met_type
+    use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, X_2_type
 
     implicit none
@@ -38,7 +37,8 @@ contains
     ! Optionally, the  secondary mode  numbers can be  specified (m  if poloidal
     ! flux is used and n if toroidal  flux). By default, they are taken from the
     ! global X_vars variables.
-    integer function calc_X_1(grid_eq,grid_X,eq,met,X,lim_sec_X) result(ierr)   ! vectorial version
+    integer function calc_X_1(grid_eq,grid_X,eq_1,eq_2,X,lim_sec_X) &
+        &result(ierr)                                                           ! vectorial version
         use X_vars, only: create_X
         
         character(*), parameter :: rout_name = 'calc_X_1'
@@ -46,8 +46,8 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(met_type), intent(in) :: met                                       ! metric variables
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         type(X_1_type), intent(inout) :: X                                      ! vectorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
         
@@ -64,7 +64,7 @@ contains
         ! calculate U and DU
         call writo('Calculating U and DU...')
         call lvl_ud(1)
-        ierr = calc_U(grid_eq,grid_X,eq,met,X)
+        ierr = calc_U(grid_eq,grid_X,eq_1,eq_2,X)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -72,7 +72,7 @@ contains
         call lvl_ud(-1)
         call writo('Vectorial perturbation variables calculated')
     end function calc_X_1
-    integer function calc_X_2(grid_eq,grid_X,eq,met,X_a,X_b,X,lim_sec_X) &
+    integer function calc_X_2(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
         &result(ierr)                                                           ! tensorial version
         use X_vars, only: create_X
         
@@ -81,8 +81,8 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(met_type), intent(in) :: met                                       ! metric variables
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         type(X_1_type), intent(inout) :: X_a, X_b                               ! vectorial perturbation variables
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
@@ -101,7 +101,7 @@ contains
         ! values of the normal coordinate
         call writo('Calculating PV...')
         call lvl_ud(1)
-        ierr = calc_PV(grid_eq,grid_X,eq,met,X_a,X_b,X,lim_sec_X)
+        ierr = calc_PV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -109,7 +109,7 @@ contains
         ! values of the normal coordinate
         call writo('Calculating KV...')
         call lvl_ud(1)
-        ierr = calc_KV(grid_eq,grid_X,eq,met,X_a,X_b,X,lim_sec_X)
+        ierr = calc_KV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -152,7 +152,7 @@ contains
         ! input / output
         type(grid_type) :: grid_eq                                              ! equilibrium grid
         type(grid_type) :: grid_X                                               ! perturbation grid
-        type(eq_type) :: eq                                                     ! equilibrium variables
+        type(eq_1_type) :: eq                                                   ! flux equilibrium
         
         ! local variables
         type(grid_type) :: grid_eq_trim                                         ! trimmed version of equilibrium
@@ -206,7 +206,7 @@ contains
                     &jq_tot,scatter=.true.)
                 CHCKERR('')
             else
-                jq_tot = eq%q_saf_FD(:,0)
+                jq_tot = eq%rot_t_FD(:,0)
             end if
         end if
         
@@ -374,7 +374,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -413,7 +413,7 @@ contains
             character(*), parameter :: rout_name = 'check_X_modes_1'
             
             ! input / output
-            type(eq_type), intent(in) :: eq                                     ! equilibrium variables
+            type(eq_1_type), intent(in) :: eq                                   ! flux equilibrium
             
             ! local variables
             integer :: id                                                       ! counter
@@ -507,7 +507,7 @@ contains
             
             ! input / output
             type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid
-            type(eq_type), intent(in) :: eq                                     ! equilibrium variables
+            type(eq_1_type), intent(in) :: eq                                   ! flux equilibrium
             
             ! local variables
             integer :: jd, kd, ld                                               ! counters
@@ -615,7 +615,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid_eq
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium
         real(dp), intent(inout), allocatable :: res_surf(:,:)                   ! resonant surface
         logical, intent(in), optional :: info                                   ! if info is displayed
         real(dp), intent(inout), optional, allocatable :: jq(:)                 ! either safety factor or rotational transform
@@ -827,7 +827,7 @@ contains
         character(*), parameter :: rout_name = 'resonance_plot'
         
         ! input / output
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
         
         ! local variables (not to be used in child functions)
@@ -1056,7 +1056,7 @@ contains
     ! which is valid for poloidal Flux coordinates and where n is to be replaced
     ! by m and (nq-m) by (n-iota m) for toroidal Flux coordinates.
     ! For VMEC, these factors are also derived in the parallel coordinate.
-    integer function calc_U(grid_eq,grid_X,eq,met,X) result(ierr)
+    integer function calc_U(grid_eq,grid_X,eq_1,eq_2,X) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, U_style, norm_disc_prec_X
         use utilities, only: c
         use input_utilities, only: get_log, pause_prog
@@ -1073,8 +1073,8 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(met_type), intent(in) :: met                                       ! metric variables
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         type(X_1_type), intent(inout) :: X                                      ! vectorial perturbation variables
         
         ! local variables
@@ -1187,33 +1187,33 @@ contains
             ang_par_F => grid_eq%zeta_F
             ang_geo_F => grid_eq%theta_F
         end if
-        J => met%jac_FD(:,:,:,0,0,0)
-        D3J => met%jac_FD(:,:,:,0,0,1)
-        g13 => met%g_FD(:,:,:,c([1,3],.true.),0,0,0)
-        D3g13 => met%g_FD(:,:,:,c([1,3],.true.),0,0,1)
-        g23 => met%g_FD(:,:,:,c([2,3],.true.),0,0,0)
-        D3g23 => met%g_FD(:,:,:,c([2,3],.true.),0,0,1)
-        g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,0)
-        D3g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,1)
-        h12 => met%h_FD(:,:,:,c([1,2],.true.),0,0,0)
-        D3h12 => met%h_FD(:,:,:,c([1,2],.true.),0,0,1)
-        h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
-        D1h22 => met%h_FD(:,:,:,c([2,2],.true.),1,0,0)
-        D3h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,1)
-        D13h22 => met%h_FD(:,:,:,c([2,2],.true.),1,0,1)
-        D33h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,2)
-        h23 => met%h_FD(:,:,:,c([2,3],.true.),0,0,0)
-        D1h23 => met%h_FD(:,:,:,c([2,3],.true.),1,0,0)
-        D3h23 => met%h_FD(:,:,:,c([2,3],.true.),0,0,1)
-        D13h23 => met%h_FD(:,:,:,c([2,3],.true.),1,0,1)
-        D33h23 => met%h_FD(:,:,:,c([2,3],.true.),0,0,2)
+        J => eq_2%jac_FD(:,:,:,0,0,0)
+        D3J => eq_2%jac_FD(:,:,:,0,0,1)
+        g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0)
+        D3g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,1)
+        g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,0)
+        D3g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,1)
+        g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+        D3g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,1)
+        h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0)
+        D3h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,1)
+        h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+        D1h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),1,0,0)
+        D3h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,1)
+        D13h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),1,0,1)
+        D33h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,2)
+        h23 => eq_2%h_FD(:,:,:,c([2,3],.true.),0,0,0)
+        D1h23 => eq_2%h_FD(:,:,:,c([2,3],.true.),1,0,0)
+        D3h23 => eq_2%h_FD(:,:,:,c([2,3],.true.),0,0,1)
+        D13h23 => eq_2%h_FD(:,:,:,c([2,3],.true.),1,0,1)
+        D33h23 => eq_2%h_FD(:,:,:,c([2,3],.true.),0,0,2)
         
         ! set up helper variables in eq grid
         if (use_pol_flux_F) then
             nm = X%n
-            djq = eq%q_saf_FD(:,1)
+            djq = eq_1%q_saf_FD(:,1)
         else
-            djq = -eq%rot_t_FD(:,1)
+            djq = -eq_1%rot_t_FD(:,1)
             nm = X%m
         end if
         Theta_3 = h23/h22
@@ -1270,7 +1270,7 @@ contains
         do kd = 1,grid_eq%loc_n_r
             T2(:,:,kd,1) = h12(:,:,kd)/h22(:,:,kd) + djq(kd)*ang_par_F(:,:,kd)
             T3(:,:,kd,1) = T1(:,:,kd,1)*djq(kd) + &
-                &J(:,:,kd)**2*vac_perm*eq%pres_FD(kd,1)/g33(:,:,kd)
+                &J(:,:,kd)**2*vac_perm*eq_1%pres_FD(kd,1)/g33(:,:,kd)
             T4(:,:,kd,1) = T1(:,:,kd,1)*djq(kd)*ang_par_F(:,:,kd) - &
                 &g23(:,:,kd)/g33(:,:,kd)
         end do
@@ -1284,7 +1284,7 @@ contains
                 T2(:,:,kd,2) = D3h12(:,:,kd)/h22(:,:,kd) - &
                     &h12(:,:,kd)*D3h22(:,:,kd)/h22(:,:,kd)**2 + djq(kd)
                 T3(:,:,kd,2) = T1(:,:,kd,2)*djq(kd) + &
-                    &J(:,:,kd)*vac_perm*eq%pres_FD(kd,1)/g33(:,:,kd) * &
+                    &J(:,:,kd)*vac_perm*eq_1%pres_FD(kd,1)/g33(:,:,kd) * &
                     &(2*D3J(:,:,kd)-D3g33(:,:,kd)*J(:,:,kd)/g33(:,:,kd))
                 T4(:,:,kd,2) = (T1(:,:,kd,2)*ang_par_F(:,:,kd)+T1(:,:,kd,1))*&
                     &djq(kd) - D3g23(:,:,kd)/g33(:,:,kd) + &
@@ -1301,9 +1301,9 @@ contains
         CHCKERR('')
         
         ! interpolate
-        ierr = apply_disc(eq%q_saf_FD(:,0),norm_interp_data,q_saf)
+        ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,q_saf)
         CHCKERR('')
-        ierr = apply_disc(eq%rot_t_FD(:,0),norm_interp_data,rot_t)
+        ierr = apply_disc(eq_1%rot_t_FD(:,0),norm_interp_data,rot_t)
         CHCKERR('')
         ierr = apply_disc(T1,norm_interp_data,T1_X,3)
         CHCKERR('')
@@ -1579,13 +1579,13 @@ contains
     !   - T4 = 1/mu_0 J^2 h22
     !   - T5 = 2 p' kappa_n
     ! The interpolated Ti_X are then used to calculate PV:
-    !   - PV_0 = T1(DU_k^0* - T2)(DU_m^0 - T2) -T3 + (nq-m)(nq-k)T4 - T5
+    !   - PV_0 = T1(DU_k^0* - T2)(DU_m^0 - T2) - T3 + (nq-m)(nq-k)T4 - T5
     !   - PV_1 = T1(DU_k^0* - T2) DU_m^1
     !   - PV_2 = T1 DU_k^1* DU_m^1
     ! which  is valid for  poloidal Flux coordinates and  where (nq-m) is  to be
     ! replaced by (n-iota m) for toroidal Flux coordinates.
     ! (see [ADD REF] for details)
-    integer function calc_PV(grid_eq,grid_X,eq,met,X_a,X_b,X,lim_sec_X) &
+    integer function calc_PV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
         &result(ierr)
         use num_vars, only: use_pol_flux_F, norm_disc_prec_X
         use eq_vars, only: vac_perm
@@ -1600,8 +1600,8 @@ contains
         ! use input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(met_type), intent(in) :: met                                       ! metric variables
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         type(X_1_type), intent(in) :: X_a, X_b                                  ! vectorial perturbation variables
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
@@ -1654,17 +1654,17 @@ contains
         allocate(T5_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
         
         ! set pointers
-        J => met%jac_FD(:,:,:,0,0,0)
-        g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,0)
-        h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+        J => eq_2%jac_FD(:,:,:,0,0,0)
+        g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+        h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
         
         ! set up PV factors in eq grid
         T1 = h22/(vac_perm*g33)
-        T2 = J*eq%S + vac_perm*eq%sigma*g33/(J*h22)
-        T3 = eq%sigma/J*T2
+        T2 = J*eq_2%S + vac_perm*eq_2%sigma*g33/(J*h22)
+        T3 = eq_2%sigma/J*T2
         T4 = 1._dp/(vac_perm*J**2*h22)
         do kd = 1,grid_eq%loc_n_r
-            T5(:,:,kd) = 2*eq%pres_FD(kd,1)*eq%kappa_n(:,:,kd)
+            T5(:,:,kd) = 2*eq_1%pres_FD(kd,1)*eq_2%kappa_n(:,:,kd)
         end do
         
         ! setup normal interpolation data
@@ -1673,13 +1673,13 @@ contains
         CHCKERR('')
         
         ! interpolate
-        ierr = apply_disc(eq%q_saf_FD(:,0),norm_interp_data,q_saf)
+        ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,q_saf)
         CHCKERR('')
         
         ! interpolate
-        ierr = apply_disc(eq%q_saf_FD(:,0),norm_interp_data,q_saf)
+        ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,q_saf)
         CHCKERR('')
-        ierr = apply_disc(eq%rot_t_FD(:,0),norm_interp_data,rot_t)
+        ierr = apply_disc(eq_1%rot_t_FD(:,0),norm_interp_data,rot_t)
         CHCKERR('')
         ierr = apply_disc(T1,norm_interp_data,T1_X,3)
         CHCKERR('')
@@ -1773,7 +1773,7 @@ contains
     ! which  is valid for  poloidal Flux coordinates and  where (nq-m) is  to be
     ! replaced by (n-iota m) for toroidal Flux coordinates.
     ! (see [ADD REF] for details)
-    integer function calc_KV(grid_eq,grid_X,eq,met,X_a,X_b,X,lim_sec_X) &
+    integer function calc_KV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
         &result(ierr)
         use num_vars, only: norm_style, norm_disc_prec_X
         use utilities, only: c
@@ -1787,8 +1787,8 @@ contains
         ! use input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
-        type(met_type), intent(in) :: met                                       ! metric variables
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         type(X_1_type), intent(in) :: X_a, X_b                                  ! vectorial perturbation variables
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
@@ -1823,14 +1823,14 @@ contains
         allocate(T2_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
         
         ! set pointers
-        J => met%jac_FD(:,:,:,0,0,0)
-        g33 => met%g_FD(:,:,:,c([3,3],.true.),0,0,0)
-        h22 => met%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+        J => eq_2%jac_FD(:,:,:,0,0,0)
+        g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+        h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
         
         ! set up KV factors in eq grid
         do kd = 1,grid_eq%loc_n_r
-            T1(:,:,kd) = eq%rho(kd)*J(:,:,kd)**2*h22(:,:,kd)/g33(:,:,kd)
-            T2(:,:,kd) = eq%rho(kd)/h22(:,:,kd)
+            T1(:,:,kd) = eq_1%rho(kd)*J(:,:,kd)**2*h22(:,:,kd)/g33(:,:,kd)
+            T2(:,:,kd) = eq_1%rho(kd)/h22(:,:,kd)
         end do
         
         ! setup normal interpolation data
@@ -1920,7 +1920,7 @@ contains
     
     ! Calculate the  magnetic integrals  from PV_i and  KV_i. All  the variables
     ! should thus be field-line oriented.
-    integer function calc_magn_ints(grid_eq,grid_X,met,X,lim_sec_X) result(ierr)
+    integer function calc_magn_ints(grid_eq,grid_X,eq,X,lim_sec_X) result(ierr)
         use num_vars, only: use_pol_flux_F, norm_disc_prec_X
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
@@ -1933,7 +1933,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(met_type), intent(in) :: met                                       ! metric variables
+        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
         
@@ -1966,7 +1966,7 @@ contains
         CHCKERR('')
         
         ! interpolate
-        ierr = apply_disc(met%jac_FD(:,:,:,0,0,0),norm_interp_data,J,3)
+        ierr = apply_disc(eq%jac_FD(:,:,:,0,0,0),norm_interp_data,J,3)
         CHCKERR('')
         
         ! clean up
@@ -2060,7 +2060,7 @@ contains
     !     (the non-integrated variables are heavy and not requested)
     ! Note: Flux coordinates used as normal coordinates
     integer function print_output_X_1(grid,X,lim_sec_X) result(ierr)            ! vectorial version
-        use num_vars, only: PB3D_name
+        use num_vars, only: PB3D_name, eq_style
         use rich_vars, only: rich_info_short
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
@@ -2077,6 +2077,8 @@ contains
         ! local variables
         type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
         type(var_1D_type), pointer :: X_1D_loc => null()                        ! local element in X_1D
+        character(len=max_str_ln) :: data_name                                  ! name under which to store
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, jd                                                       ! counters
         integer :: suffix                                                       ! suffix
         
@@ -2085,10 +2087,6 @@ contains
         
         ! user output
         call writo('Writing vectorial perturbation variables to output file')
-        call lvl_ud(1)
-        
-        ! user output
-        call writo('Preparing variables for writing')
         call lvl_ud(1)
         
         ! Set up the 1D equivalents of the perturbation variables
@@ -2211,19 +2209,20 @@ contains
                 &[size(X%DU_1(:,:,:,jd))])
         end do
         
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('Writing using HDF5')
-        call lvl_ud(1)
-        
         ! write
-        ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,&
-            &'X_1'//trim(rich_info_short()))
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                data_name = 'X_1'//trim(rich_info_short())
+            case (2)                                                            ! HELENA
+                data_name = 'X_1'
+            case default
+                ierr = 1
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                CHCKERR(err_msg)
+        end select
+        ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,trim(data_name))
         CHCKERR('')
-        
-        ! user output
-        call lvl_ud(-1)
         
         ! clean up
         nullify(X_1D_loc)
@@ -2262,10 +2261,6 @@ contains
         
         ! user output
         call writo('Writing tensorial perturbation variables to output file')
-        call lvl_ud(1)
-        
-        ! user output
-        call writo('Preparing variables for writing')
         call lvl_ud(1)
         
         ! Set up the 1D equivalents of the perturbation variables
@@ -2489,19 +2484,10 @@ contains
             end do
         end do
         
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('Writing using HDF5')
-        call lvl_ud(1)
-        
         ! write
         ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,&
             &'X_2'//trim(rich_info_short()))
         CHCKERR('')
-        
-        ! user output
-        call lvl_ud(-1)
         
         ! clean up
         nullify(X_1D_loc)

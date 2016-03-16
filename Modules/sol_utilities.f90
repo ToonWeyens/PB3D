@@ -8,8 +8,7 @@ module sol_utilities
     use messages
     use num_vars, only: dp, iu, max_str_ln, pi
     use grid_vars, only: grid_type, disc_type, dealloc_disc
-    use eq_vars, only: eq_type
-    use met_vars, only: met_type
+    use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type
     use sol_vars, only: sol_type
 
@@ -51,8 +50,8 @@ contains
     ! angular  extent as  the equilibrium  and  metric variables,  and the  same
     ! normal  extent as  the solution  variables.  The output  then follows  the
     ! perturbation grid.
-    integer function calc_XUQ_arr(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,&
-        &XUQ_style,time,XUQ,met,deriv) result(ierr)                             ! (time) array version
+    integer function calc_XUQ_arr(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,&
+        &XUQ_style,time,XUQ,deriv) result(ierr)                                 ! (time) array version
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, &
             &norm_disc_prec_X
         use utilities, only: con2dis
@@ -69,14 +68,14 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
         integer, intent(in) :: XUQ_style                                        ! whether to calculate X, U, Qn or Qg
         real(dp), intent(in) :: time(:)                                         ! time range
         complex(dp), intent(inout) :: XUQ(:,:,:,:)                              ! X, U, Qn or Qg
-        type(met_type), optional, intent(in) :: met                             ! metric variables
         logical, intent(in), optional :: deriv                                  ! return parallel derivative
         
         ! local variables
@@ -126,12 +125,6 @@ contains
             err_msg = 'XUQ needs to have the correct dimensions'
             CHCKERR(err_msg)
         end if
-        if ((XUQ_style.eq.3 .or. XUQ_style.eq.4).and..not.present(met)) then
-            ierr = 1
-            err_msg = 'When calculating Q, also metric variables have to be &
-                &provided'
-            CHCKERR(err_msg)
-        end if
         
         ! set up local copy of deriv
         deriv_loc = .false.
@@ -165,8 +158,8 @@ contains
         allocate(par_fac(grid_X%loc_n_r))
         allocate(jq(grid_X%loc_n_r))
         allocate(S(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
-        if (present(met)) allocate(inv_J(grid_X%n(1),grid_X%n(2),&
-            &grid_X%loc_n_r))
+        if ((XUQ_style.eq.3 .or. XUQ_style.eq.4)) &
+            &allocate(inv_J(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
         allocate(expon(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
         
         ! setup normal interpolation data for equilibrium grid
@@ -176,16 +169,16 @@ contains
         
         ! interpolate
         if (use_pol_flux_F) then
-            ierr = apply_disc(eq%q_saf_FD(:,0),norm_interp_data,jq)
+            ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,jq)
             CHCKERR('')
         else
-            ierr = apply_disc(eq%rot_T_FD(:,0),norm_interp_data,jq)
+            ierr = apply_disc(eq_1%rot_T_FD(:,0),norm_interp_data,jq)
             CHCKERR('')
         end if
-        ierr = apply_disc(eq%S,norm_interp_data,S,3)
+        ierr = apply_disc(eq_2%S,norm_interp_data,S,3)
         CHCKERR('')
-        if (present(met)) then
-            ierr = apply_disc(1._dp/met%jac_FD(:,:,:,0,0,0),norm_interp_data,&
+        if ((XUQ_style.eq.3 .or. XUQ_style.eq.4)) then
+            ierr = apply_disc(1._dp/eq_2%jac_FD(:,:,:,0,0,0),norm_interp_data,&
                 &inv_J,3)
             CHCKERR('')
         end if
@@ -345,22 +338,22 @@ contains
             end do normal
         end do Fourier
     end function calc_XUQ_arr
-    integer function calc_XUQ_ind(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,&
-        &XUQ_style,time,XUQ,met,deriv) result(ierr)                             ! (time) individual version
+    integer function calc_XUQ_ind(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,&
+        &XUQ_style,time,XUQ,deriv) result(ierr)                                 ! (time) individual version
         character(*), parameter :: rout_name = 'calc_XUQ_ind'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibirum grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium variables
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
         integer, intent(in) :: XUQ_style                                        ! whether to calculate X, U, Qn or Qg
         real(dp), intent(in) :: time                                            ! time
         complex(dp), intent(inout) :: XUQ(:,:,:)                                ! normal component of perturbation
-        type(met_type), optional, intent(in) :: met                             ! metric variables
         logical, intent(in), optional :: deriv                                  ! return parallel derivative
         
         ! local variables
@@ -370,8 +363,8 @@ contains
         allocate(XUQ_arr(size(XUQ,1),size(XUQ,2),size(XUQ,3),1))
         
         ! call array version
-        ierr = calc_XUQ_arr(grid_eq,grid_X,grid_sol,eq,X,sol,X_id,XUQ_style,&
-            &[time],XUQ_arr,met,deriv)
+        ierr = calc_XUQ_arr(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,&
+            &XUQ_style,[time],XUQ_arr,deriv)
         CHCKERR('')
         
         ! copy array to individual XUQ

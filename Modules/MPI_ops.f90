@@ -455,7 +455,7 @@ contains
     integer function broadcast_input_opts() result(ierr)
         use num_vars, only: max_str_ln, ltest, max_it_NR, &
             &max_it_rich, tol_NR, n_procs, n_sol_requested, &
-            &nyq_fac, tol_rich, &
+            &tol_rich, &
             &retain_all_sol, plot_flux_q, plot_grid, no_plots, &
             &n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, tol_SLEPC, prog_style, &
@@ -465,7 +465,7 @@ contains
             &rich_restart_lvl, &
             &PB3D_name
         use grid_vars, only: min_par_X, max_par_X
-        use rich_vars, only: min_n_r_sol, no_guess, rich_lvl
+        use rich_vars, only: no_guess, rich_lvl, min_n_par_X
         
         character(*), parameter :: rout_name = 'broadcast_input_opts'
         
@@ -520,9 +520,7 @@ contains
                 case(1)                                                         ! PB3D
                     call MPI_Bcast(no_guess,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(nyq_fac,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(min_n_r_sol,1,MPI_INTEGER,0,MPI_Comm_world,&
+                    call MPI_Bcast(min_n_par_X,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(max_it_inv,1,MPI_INTEGER,0,MPI_Comm_world,&

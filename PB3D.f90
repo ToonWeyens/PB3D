@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.11                                                              !
+!   Version: 1.12                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -33,15 +33,15 @@ program PB3D
     use driver_X, only: run_driver_X
     use driver_sol, only: run_driver_sol
     use files_ops, only: open_input, open_output, parse_args, init_files, &
-        &close_output, print_output_in
-    use input_ops, only: read_input
+        &close_output
+    use input_ops, only: read_input_opts, read_input_eq, print_output_in
+    use input_utilities, only: dealloc_in
     use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_opts, sudden_stop
     use MPI_utilities, only: wait_MPI
-    use eq_ops, only: read_eq, calc_normalization_const, normalize_input
+    use eq_ops, only: calc_normalization_const, normalize_input
     use rich_ops, only: init_rich, term_rich, do_rich, start_rich_lvl, &
         &stop_rich_lvl
     use rich_vars, only: rich_info
-    use files_ops, only: dealloc_in
 #if ldebug
     use num_vars, only: ltest
     use test, only: generic_tests
@@ -51,11 +51,6 @@ program PB3D
 
     ! local variables
     integer :: ierr                                                             ! error
-    
-    write(*,*) '!!!!!!! IMPLEMENT DIFFERENT HDF5 SYSTEM WHERE THERE IS ONE !!!!!!!!!!!!'
-    write(*,*) '!!!!!!! VARIABLE FOR X WHICH IS PARTIALLY READ AND WRITTEN !!!!!!!!!!!!'
-    write(*,*) '!!!!!!! (https://www.hdfgroup.org/HDF5/doc/H5.intro.html#Intro-PMRdWrPortion) !!!!!!!!!!!!'
-    write(*,*) '!!!!!!! NEED TO HAVE DIFFERENT EQ GRID AND X GRID FOR VMEC !!!!!!!!!!!!'
     
     !-------------------------------------------------------
     !   Initialize some routines
@@ -85,10 +80,10 @@ program PB3D
         CHCKERR
         ierr = open_input()                                                     ! open the input files
         CHCKERR
-        ierr = read_input()                                                     ! read input file
+        ierr = read_input_opts()                                                ! read input options ile
         CHCKERR
-        if (rich_restart_lvl.eq.0) then
-            ierr = read_eq()                                                    ! read equilibrium file
+        if (rich_restart_lvl.eq.1) then
+            ierr = read_input_eq()                                              ! read input equilibrium file
             CHCKERR
             ierr = calc_normalization_const()                                   ! set up normalization constants
             CHCKERR
@@ -97,7 +92,7 @@ program PB3D
         end if
         ierr = open_output()                                                    ! open output file
         CHCKERR
-        if (rich_restart_lvl.eq.0) then
+        if (rich_restart_lvl.eq.1) then
             ierr = print_output_in()                                            ! print input outputs
             CHCKERR
             ierr = dealloc_in()                                                 ! clean up input from equilibrium codes
@@ -129,19 +124,6 @@ program PB3D
 #endif
     
     !-------------------------------------------------------
-    !   Driver: Pre-Perturbation part
-    !-------------------------------------------------------
-    call start_time
-    call writo('Pre-perturbation driver')
-    call lvl_ud(1)
-    ierr = run_driver_eq()                                                      ! equilibrium driver
-    CHCKERR
-    call writo('')
-    call passed_time
-    call writo('')
-    call lvl_ud(-1)
-    
-    !-------------------------------------------------------
     !   Start Richardson Extrapolation Loop
     !-------------------------------------------------------
     call start_time
@@ -153,6 +135,19 @@ program PB3D
         call start_time
         call start_rich_lvl()                                                   ! start Richardson level, setting n_r_sol and other variables
         call stop_time
+        
+        !-------------------------------------------------------
+        !   Main Driver: Pre-Perturbation part
+        !-------------------------------------------------------
+        call start_time
+        call writo('Pre-perturbation driver'//trim(rich_info()))
+        call lvl_ud(1)
+        ierr = run_driver_eq()                                                  ! equilibrium driver
+        CHCKERR
+        call writo('')
+        call passed_time
+        call writo('')
+        call lvl_ud(-1)
         
         !---------------------------------------------------
         !   Main driver: Perturbation part
@@ -194,9 +189,9 @@ program PB3D
     call stop_time
     
     !-------------------------------------------------------
-    !   Cleaning up
+    !   Clean up
     !-------------------------------------------------------
-    call writo('Cleanup')
+    call writo('Clean up')
     call lvl_ud(1)
     ierr = stop_MPI()
     CHCKERR

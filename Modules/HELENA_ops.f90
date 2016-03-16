@@ -9,7 +9,7 @@ module HELENA_ops
     use messages
     use num_vars, only: dp, max_str_ln
     use grid_vars, only: grid_type, disc_type, dealloc_disc
-    use eq_vars, only: eq_type
+    use eq_vars, only: eq_1_type, eq_2_type
     use met_vars, only: met_type
     use X_vars, only: X_1_type, X_2_type
     use HELENA_vars
@@ -180,8 +180,8 @@ contains
     ! Note:  as  the  equilibrium  and   perturbation  grid  are  not  generally
     ! identical,  this routine  has to  be called  separately for  the variables
     ! tabulated in either grid.
-    integer function interp_HEL_on_grid(grid_in,grid_out,eq,met,X_1,X_2,&
-        &eq_out,met_out,X_1_out,X_2_out,eq_met,grid_name) result(ierr)
+    integer function interp_HEL_on_grid(grid_in,grid_out,eq_2,X_1,X_2,&
+        &eq_2_out,X_1_out,X_2_out,eq_1,grid_name) result(ierr)
         
         use num_vars, only: use_pol_flux_F
         
@@ -189,15 +189,13 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_in, grid_out                        ! input and output grid
-        type(eq_type), intent(inout), optional :: eq                            ! general equilibrium variables
-        type(met_type), intent(inout), optional :: met                          ! general metric variables
+        type(eq_2_type), intent(inout), optional :: eq_2                        ! general metric equilibrium variables
         type(X_1_type), intent(inout), optional  :: X_1                         ! general vectorial perturbation variables
         type(X_2_type), intent(inout), optional  :: X_2                         ! general tensorial perturbation variables
-        type(eq_type), intent(inout), optional :: eq_out                        ! field-aligned equilibrium variables
-        type(met_type), intent(inout), optional :: met_out                      ! field-aligned metric variables
+        type(eq_2_type), intent(inout), optional :: eq_2_out                    ! field-aligned metric equilibrium variables
         type(X_1_type), intent(inout), optional  :: X_1_out                     ! field-aligned vectorial perturbation variables
         type(X_2_type), intent(inout), optional  :: X_2_out                     ! field-aligned tensorial perturbation variables
-        type(eq_type), intent(in), optional :: eq_met                           ! general equilibrium variables for metric interpolation
+        type(eq_1_type), intent(in), optional :: eq_1                           ! general flux equilibrium variables for metric interpolation
         character(len=*), intent(in), optional :: grid_name                     ! name of grid to which to adapt quantities
         
         ! local variables
@@ -216,14 +214,13 @@ contains
         end if
         
         ! tests
-        if (present(met).and..not.present(eq_met)) then
+        if (present(eq_2).and..not.present(eq_1)) then
             ierr =1 
-            err_msg = 'To interpolate metric variables, equilibrium has to be &
-                &provided as well through eq_met'
+            err_msg = 'To interpolate metric equilibrium variables, flux &
+                &equilibrium has to be provided as well through eq_1'
             CHCKERR(err_msg)
         end if
-        if ((present(eq).or.present(met)) .and. &
-            &(present(X_1).or.present(X_2))) then
+        if (present(eq_2) .and. (present(X_1).or.present(X_2))) then
             ierr = 1
             err_msg = 'Only the quantities on one type of grid can be &
                 &interpolated in a single call'
@@ -243,49 +240,37 @@ contains
         CHCKERR('')
         
         ! adapt equilibrium quantities
-        if (present(eq)) then
-            if (present(eq_out)) then
-                eq_out%pres_FD = eq%pres_FD
-                eq_out%q_saf_FD = eq%q_saf_FD
-                eq_out%rot_t_FD = eq%rot_t_FD
-                eq_out%flux_p_FD = eq%flux_p_FD
-                eq_out%flux_t_FD = eq%flux_t_FD
-                eq_out%rho = eq%rho
-                ierr = interp_var_3D_real(eq%S,eq_out%S)
+        if (present(eq_2)) then
+            if (present(eq_2_out)) then
+                ierr = interp_var_6D_real(eq_2%jac_FD,eq_2_out%jac_FD)
                 CHCKERR('')
-                ierr = interp_var_3D_real(eq%sigma,eq_out%sigma)
+                ierr = interp_var_7D_real(eq_2%g_FD,eq_2_out%g_FD,sym_type=3)
                 CHCKERR('')
-                ierr = interp_var_3D_real(eq%kappa_n,eq_out%kappa_n)
+                ierr = interp_var_7D_real(eq_2%h_FD,eq_2_out%h_FD,sym_type=4)
                 CHCKERR('')
-                ierr = interp_var_3D_real(eq%kappa_g,eq_out%kappa_g,sym_type=2)
+                ierr = interp_var_3D_real(eq_2%S,eq_2_out%S)
                 CHCKERR('')
-            else
-                ierr = interp_var_3D_real_ow(eq%S)
+                ierr = interp_var_3D_real(eq_2%sigma,eq_2_out%sigma)
                 CHCKERR('')
-                ierr = interp_var_3D_real_ow(eq%sigma)
+                ierr = interp_var_3D_real(eq_2%kappa_n,eq_2_out%kappa_n)
                 CHCKERR('')
-                ierr = interp_var_3D_real_ow(eq%kappa_n)
-                CHCKERR('')
-                ierr = interp_var_3D_real_ow(eq%kappa_g,sym_type=2)
-                CHCKERR('')
-            end if
-        end if
-        
-        ! metric quantities
-        if (present(met)) then
-            if (present(met_out)) then
-                ierr = interp_var_6D_real(met%jac_FD,met_out%jac_FD)
-                CHCKERR('')
-                ierr = interp_var_7D_real(met%g_FD,met_out%g_FD,sym_type=3)
-                CHCKERR('')
-                ierr = interp_var_7D_real(met%h_FD,met_out%h_FD,sym_type=4)
+                ierr = interp_var_3D_real(eq_2%kappa_g,eq_2_out%kappa_g,&
+                    &sym_type=2)
                 CHCKERR('')
             else
-                ierr = interp_var_6D_real_ow(met%jac_FD)
+                ierr = interp_var_6D_real_ow(eq_2%jac_FD)
                 CHCKERR('')
-                ierr = interp_var_7D_real_ow(met%g_FD,sym_type=3)
+                ierr = interp_var_7D_real_ow(eq_2%g_FD,sym_type=3)
                 CHCKERR('')
-                ierr = interp_var_7D_real_ow(met%h_FD,sym_type=4)
+                ierr = interp_var_7D_real_ow(eq_2%h_FD,sym_type=4)
+                CHCKERR('')
+                ierr = interp_var_3D_real_ow(eq_2%S)
+                CHCKERR('')
+                ierr = interp_var_3D_real_ow(eq_2%sigma)
+                CHCKERR('')
+                ierr = interp_var_3D_real_ow(eq_2%kappa_n)
+                CHCKERR('')
+                ierr = interp_var_3D_real_ow(eq_2%kappa_g,sym_type=2)
                 CHCKERR('')
             end if
         end if
@@ -733,14 +718,14 @@ contains
                     do ld = 0,max_deriv
                         do kd = 1,size(theta_i,3)
                             T_met(:,:,kd,0,ld,0) = &
-                                &2*pi*eq_met%q_saf_FD(kd,ld+1)
+                                &2*pi*eq_1%q_saf_FD(kd,ld+1)
                         end do
                     end do
                 else
                     do ld = 0,max_deriv
                         do kd = 1,size(theta_i,3)
                             T_met(:,:,kd,0,ld,0) = &
-                                &-2*pi*eq_met%rot_t_FD(kd,ld+1)
+                                &-2*pi*eq_1%rot_t_FD(kd,ld+1)
                         end do
                     end do
                 end if

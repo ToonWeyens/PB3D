@@ -8,8 +8,7 @@ module driver_sol
     use messages
     use num_vars, only: dp, pi, max_str_ln
     use grid_vars, only: grid_type
-    use eq_vars, only: eq_type
-    use met_vars, only: met_type
+    use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_2_type
     use sol_vars, only: sol_type
     
@@ -31,23 +30,21 @@ contains
     ! discretization in the normal direction
     integer function run_driver_sol() result(ierr)
         use num_vars, only: EV_style, eq_style
-        use grid_vars, only: dealloc_grid
+        use grid_vars, only: dealloc_grid, &
+            &n_r_sol
         use eq_vars, only: dealloc_eq
-        use met_vars, only: dealloc_met
         use X_vars, only: dealloc_X
         use sol_vars, only: dealloc_sol
         use utilities, only: test_max_memory
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
-            &reconstruct_PB3D_eq, reconstruct_PB3D_X_2
+            &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, reconstruct_PB3D_X_2
         use MPI_utilities, only: wait_MPI
         use SLEPC_ops, only: solve_EV_system_SLEPC
-        use grid_ops, only: calc_norm_range, setup_and_calc_grid_sol, &
-            &print_output_grid
+        use grid_ops, only: calc_norm_range, setup_grid_sol, print_output_grid
         use sol_ops, only: print_output_sol
-        use rich_vars, only: rich_info_short, &
-            &n_r_sol
+        use rich_vars, only: rich_info_short
         use rich_ops, only: calc_rich_ex
-        use files_ops, only: dealloc_in
+        use input_utilities, only: dealloc_in
         !!use utilities, only: calc_aux_utilities
 #if ldebug
         use num_vars, only: iu, use_pol_flux_F
@@ -62,8 +59,8 @@ contains
         type(grid_type) :: grid_eq                                              ! equilibrium grid
         type(grid_type), target :: grid_X                                       ! perturbation grid
         type(grid_type) :: grid_sol                                             ! solution grid
-        type(eq_type) :: eq                                                     ! equilibrium variables
-        type(met_type) :: met                                                   ! metric variables
+        type(eq_1_type) :: eq_1                                                 ! flux equilibrium
+        type(eq_2_type) :: eq_2                                                 ! metric equilibrium
         type(X_2_type) :: X                                                     ! tensorial perturbation variables
         type(sol_type) :: sol                                                   ! solution variables
         integer :: sol_limits(2)                                                ! min. and max. index of sol grid for this process
@@ -104,12 +101,29 @@ contains
         ! user output
         call writo('Reconstructing PB3D output on output grid')
         call lvl_ud(1)
-        ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq')
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq'//&
+                    &trim(rich_info_short()))
+                CHCKERR('')
+                ierr = reconstruct_PB3D_grid(grid_X,'grid_X'//&
+                    &trim(rich_info_short()),grid_limits=sol_limits)
+                CHCKERR('')
+            case (2)                                                            ! HELENA
+                ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq')
+                CHCKERR('')
+                ierr = reconstruct_PB3D_grid(grid_X,'grid_X',&
+                    &grid_limits=sol_limits)
+                CHCKERR('')
+            case default
+                ierr = 1
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                CHCKERR(err_msg)
+        end select
+        ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1)
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_X,'grid_X'//trim(rich_info_short()),&
-            &grid_limits=sol_limits)
-        CHCKERR('')
-        ierr = reconstruct_PB3D_eq(grid_eq,eq,met)
+        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2)
         CHCKERR('')
         ierr = reconstruct_PB3D_X_2(grid_X,X,X_limits=sol_limits)
         CHCKERR('')
@@ -135,13 +149,10 @@ contains
         
         ! create solution grid with division limits and setup normal
         ! coordinate
-        call writo('Setting up solution grid')
-        call lvl_ud(1)
-        ierr = setup_and_calc_grid_sol(grid_eq,grid_sol,r_F_sol,&
-            &sol_limits)
+        call writo('Set up solution grid')
+        ierr = setup_grid_sol(grid_eq,grid_sol,r_F_sol,sol_limits)
         CHCKERR('')
         deallocate(r_F_sol)
-        call lvl_ud(-1)
         
         ! solve the system
         call writo('Solving the system')
@@ -203,8 +214,7 @@ contains
             end if
             nullify(grid_X_B)
             
-            call writo('The output should be compared with the POST-&
-                &output')
+            call writo('The output should be compared with the POST-output')
             
             call lvl_ud(-1)
         end if
@@ -223,19 +233,18 @@ contains
         call calc_rich_ex(sol%val)
         
         ! clean up
-        call writo('Cleaning up')
+        call writo('Clean up')
         call lvl_ud(1)
         ierr = dealloc_in()
         CHCKERR('')
         call dealloc_grid(grid_eq)
         call dealloc_grid(grid_X)
         call dealloc_grid(grid_sol)
-        call dealloc_eq(eq)
-        call dealloc_met(met)
+        call dealloc_eq(eq_1)
+        call dealloc_eq(eq_2)
         call dealloc_X(X)
         call dealloc_sol(sol)
         call lvl_ud(-1)
-        call writo('Clean')
         
         ! synchronize MPI
         ierr = wait_MPI()

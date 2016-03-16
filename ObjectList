@@ -11,6 +11,7 @@ driver_X.o \
 driver_sol.o \
 driver_POST.o \
 eq_ops.o \
+eq_utilities.o \
 eq_vars.o \
 files_ops.o \
 files_utilities.o \
@@ -19,8 +20,6 @@ HELENA_ops.o \
 input_ops.o \
 input_utilities.o \
 messages.o \
-met_ops.o \
-met_vars.o \
 MPI_ops.o \
 num_vars.o \
 output_ops.o \

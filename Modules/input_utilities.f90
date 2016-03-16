@@ -10,7 +10,7 @@ module input_utilities
     
     implicit none
     private
-    public pause_prog, get_real, get_int, get_log
+    public pause_prog, get_real, get_int, get_log, dealloc_in
     
 contains
     ! Queries for a logical value yes or no, where the default answer is also to
@@ -255,4 +255,32 @@ contains
                 &wrong. Continuing.')
         end if
     end subroutine pause_prog
+    
+    ! Cleans up input from equilibrium codes.
+    integer function dealloc_in() result(ierr)
+        use num_vars, only: eq_style
+        use VMEC, only: dealloc_VMEC
+        use HELENA_vars, only: dealloc_HEL
+        
+        character(*), parameter :: rout_name = 'dealloc_in'
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! deallocate depending on equilibrium style
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                call dealloc_VMEC
+            case (2)                                                            ! HELENA
+                call dealloc_HEL
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+    end function dealloc_in
 end module input_utilities

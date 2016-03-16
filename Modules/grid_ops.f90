@@ -8,13 +8,12 @@ module grid_ops
     use messages
     use num_vars, only: dp, pi, max_str_ln
     use grid_vars, only: grid_type, disc_type, dealloc_disc
-    use eq_vars, only: eq_type
+    use eq_vars, only: eq_1_type
 
     implicit none
     private
-    public calc_norm_range, calc_ang_grid_eq, calc_ang_grid_eq_B, &
-        &plot_grid_real, setup_grid_eq, setup_and_calc_grid_eq_B, &
-        &setup_and_calc_grid_X, setup_and_calc_grid_sol, print_output_grid
+    public calc_norm_range, calc_ang_grid_eq_B, plot_grid_real, setup_grid_eq, &
+        &setup_grid_eq_B, setup_grid_X, setup_grid_sol, print_output_grid
 #if ldebug
     public debug_calc_ang_grid_eq_B
 #endif
@@ -388,26 +387,21 @@ contains
     ! Sets up the general equilibrium grid, in which the following variables are
     ! calculated:
     !   - equilibrium variables (eq)
-    !   - metric variables (met)
     !   - perturbation variables (X)
     ! For the implementation of the equilibrium grid the normal part of the grid
     ! is always  given by the  output of the  equilibrium code, but  the angular
     ! part depends on the style:
     !   -  VMEC:  The  output  is   analytic  in  the  angular  coordinates,  so
-    !   field-oriented coordinates are used.
+    !   field-aligned coordinates  are used.  Later, in  calc_ang_grid_eq_B, the
+    !   angular variables are calculated.
     !   - HELENA: The output is given on a poloidal grid (no toroidal dependency
-    !   due to axisymmetry), so
-    ! Here,  the  normal   variables  are  set  up  in  this   grid.  Later,  in
-    ! calc_ang_grid_eq, the angular variables are calculated.
-    ! Note that the general equilibrium grid using HELENA does not depend on the
-    ! perturbation, and  therefore could theoretically be  calculated only once,
-    ! before entering the Richardson loop.  However, to keep the structure clear
-    ! this is not done and the grid is recalculated for every step.
+    !   due to axisymmetry), which is used.
     integer function setup_grid_eq(grid_eq,eq_limits) result(ierr)
         use num_vars, only: eq_style
         use grid_vars, only: create_grid, &
-            &n_par_X, n_r_eq
-        use HELENA_vars, only: nchi
+            &n_r_eq
+        use HELENA_vars, only: nchi, chi_H
+        use rich_vars, only: n_par_X
         
         character(*), parameter :: rout_name = 'setup_grid_eq'
         
@@ -417,9 +411,12 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: id                                                           ! counter
         
         ! initialize ierr
         ierr = 0
+        
+        call lvl_ud(1)
         
         ! set up general equilibrium grid:
         ! choose which equilibrium style is being used:
@@ -427,17 +424,44 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
+                ! user output
+                call writo('Field-aligned with '//trim(i2str(n_par_X))//&
+                    &' parallel and '//trim(i2str(n_r_eq))//' normal points')
+                
+                ! create grid
                 ierr = create_grid(grid_eq,[n_par_X,1,n_r_eq],eq_limits)        ! only one field line
                 CHCKERR('')
             case (2)                                                            ! HELENA
+                ! user output
+                call writo('Identical to the equilibrium input grid')
+                call writo(trim(i2str(nchi))//' angular and '//&
+                    &trim(i2str(n_r_eq))//' normal points')
+                call writo('Poloidal range '//trim(r2strt(chi_H(1)))//'..'//&
+                    &trim(r2strt(chi_H(nchi))))
+                call writo('Will be interpolated to a field-aligned grid &
+                    &later')
+                
+                ! create grid
                 ierr = create_grid(grid_eq,[nchi,1,n_r_eq],eq_limits)           ! axisymmetric equilibrium
                 CHCKERR('')
+                
+                ! copy angular grid from HELENA
+                do id = 1,grid_eq%n(1)
+                    grid_eq%theta_E(id,:,:) = chi_H(id)
+                end do
+                grid_eq%zeta_E = 0._dp
+                
+                ! convert to Flux coordinates (trivial)
+                grid_eq%theta_F = grid_eq%theta_E
+                grid_eq%zeta_F = grid_eq%zeta_E
             case default
                 err_msg = 'No equilibrium style associated with '//&
                     &trim(i2str(eq_style))
                 ierr = 1
                 CHCKERR(err_msg)
         end select
+        
+        call lvl_ud(-1)
     end function setup_grid_eq
     
     ! Sets up  the field-aligned equilibrium grid,  which serves as a  bridge to
@@ -446,18 +470,17 @@ contains
     ! grid.
     ! In contrast to setup_grid_eq,  the angular coordinates are also calculated
     ! here.
-    integer function setup_and_calc_grid_eq_B(grid_eq,grid_eq_B,eq) &
-        &result(ierr)
+    integer function setup_grid_eq_B(grid_eq,grid_eq_B,eq) result(ierr)
         use num_vars, only: eq_style
-        use grid_vars, only: create_grid, &
-            &n_par_X
+        use grid_vars, only: create_grid
+        use rich_vars, only: n_par_X
         
-        character(*), parameter :: rout_name = 'setup_and_calc_grid_eq_B'
+        character(*), parameter :: rout_name = 'setup_grid_eq_B'
         
         ! input / output
-        type(grid_type), intent(inout), target :: grid_eq                       ! general equilibrium grid
-        type(grid_type), intent(inout), pointer :: grid_eq_B                    ! field-aligned equilibrium grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium containing the angular grid
+        type(grid_type), intent(inout) :: grid_eq                               ! general equilibrium grid
+        type(grid_type), intent(inout) :: grid_eq_B                             ! field-aligned equilibrium grid
+        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -470,21 +493,9 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ! user output
-                call writo('Equilibrium grid is already field-aligned')
-                call lvl_ud(1)
-                
-                ! the general equilibrium grid is already field-aligned
-                grid_eq_B => grid_eq
+                ! do nothing: grid_eq already field-aligned
             case (2)                                                            ! HELENA
-                ! user output
-                call writo('Start determining field-aligned grid in '//&
-                    &trim(i2str(n_par_X))//' parallel and '//&
-                    &trim(i2str(grid_eq%n(3)))//' normal points')
-                call lvl_ud(1)
-                
                 ! create the grid
-                allocate(grid_eq_B)
                 ierr = create_grid(grid_eq_B,[n_par_X,1,grid_eq%n(3)],&
                     &[grid_eq%i_min,grid_eq%i_max])
                 CHCKERR('')
@@ -504,11 +515,7 @@ contains
                 ierr = 1
                 CHCKERR(err_msg)
         end select
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Field-aligned equilibrium grid set up')
-    end function setup_and_calc_grid_eq_B
+    end function setup_grid_eq_B
     
     ! Sets up the general perturbation grid, in which the perturbation variables
     ! are calculated. This  grid has the same angular extent  as the equilibrium
@@ -516,13 +523,12 @@ contains
     ! 'r_F_X'.
     ! Note that no ghost  range is needed as the full normal  range is used: The
     ! division is in the mode numbers
-    integer function setup_and_calc_grid_X(grid_eq,grid_X,r_F_X,X_limits) &
-        &result(ierr)
+    integer function setup_grid_X(grid_eq,grid_X,r_F_X,X_limits) result(ierr)
         use num_vars, only: norm_disc_prec_X
         use grid_vars, only: create_grid, dealloc_disc, disc_type
         use grid_utilities, only: coord_F2E, setup_interp_data, apply_disc
         
-        character(*), parameter :: rout_name = 'setup_and_calc_grid_X'
+        character(*), parameter :: rout_name = 'setup_grid_X'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
@@ -535,6 +541,8 @@ contains
         
         ! initialize ierr
         ierr = 0
+        
+        call lvl_ud(1)
         
         ! create grid
         ierr = create_grid(grid_X,[grid_eq%n(1:2),size(r_F_X)],X_limits)
@@ -569,16 +577,18 @@ contains
         
         ! clean up
         call dealloc_disc(norm_interp_data)
-    end function setup_and_calc_grid_X
+        
+        call lvl_ud(-1)
+    end function setup_grid_X
     
     ! Sets  up the general  solution grid, in  which the solution  variables are
     ! calculated.
-    integer function setup_and_calc_grid_sol(grid_eq,grid_sol,r_F_sol,&
-        &sol_limits) result(ierr)
+    integer function setup_grid_sol(grid_eq,grid_sol,r_F_sol,sol_limits) &
+        &result(ierr)
         use grid_vars, only: create_grid
         use grid_utilities, only: coord_F2E
         
-        character(*), parameter :: rout_name = 'setup_and_calc_grid_sol'
+        character(*), parameter :: rout_name = 'setup_grid_sol'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
@@ -588,6 +598,8 @@ contains
         
         ! initialize ierr
         ierr = 0
+        
+        call lvl_ud(1)
         
         ! create grid
         ierr = create_grid(grid_sol,size(r_F_sol),sol_limits)
@@ -604,55 +616,9 @@ contains
         ierr = coord_F2E(grid_eq,grid_sol%loc_r_F,grid_sol%loc_r_E,&
             &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
         CHCKERR('')
-    end function setup_and_calc_grid_sol
-    
-    ! Calculate the angular equilibrium grid.
-    ! As explained in setup_grid_eq, the angular part of the equilibrium grid is
-    ! determined by the equilibrium style.
-    ! The variable  use_pol_flux determines  whether theta (.true.)  or zeta
-    ! (.false.) is used as the parallel variable.
-    integer function calc_ang_grid_eq(grid_eq,eq) result(ierr)
-        use num_vars, only: eq_style
-        use HELENA_vars, only: chi_H
         
-        character(*), parameter :: rout_name = 'calc_ang_grid_eq'
-        
-        ! input / output
-        type(grid_type), intent(inout) :: grid_eq                               ! general equilibrium grid
-        type(eq_type), intent(in) :: eq                                         ! equilibrium containing the angular grid
-        
-        ! local variables
-        integer :: id                                                           ! counters
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! choose which equilibrium style is being used:
-        !   1:  VMEC
-        !   2:  HELENA
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ! calculate the angular grid that follows the magnetic field
-                ierr = calc_ang_grid_eq_B(grid_eq,eq)
-                CHCKERR('')
-            case (2)                                                            ! HELENA
-                ! calculate the angular grid from HELENA
-                do id = 1,grid_eq%n(1)
-                    grid_eq%theta_E(id,:,:) = chi_H(id)
-                end do
-                grid_eq%zeta_E = 0._dp
-                
-                ! convert to Flux coordinates (trivial)
-                grid_eq%theta_F = grid_eq%theta_E
-                grid_eq%zeta_F = grid_eq%zeta_E
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-    end function calc_ang_grid_eq
+        call lvl_ud(-1)
+    end function setup_grid_sol
     
     ! Calculate grid that follows magnetic field lines.
     ! Note: The end-points are included for the grids in the parallel direction.
@@ -665,12 +631,13 @@ contains
         use sol_vars, only: alpha
         use eq_vars, only: max_flux_E
         use grid_utilities, only: coord_F2E, calc_eqd_grid
+        use rich_vars, only: n_par_X
         
         character(*), parameter :: rout_name = 'calc_ang_grid_eq_B'
         
         ! input / output
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid of which to calculate angular part
-        type(eq_type), intent(in) :: eq                                         ! equilibrium containing the angular grid
+        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -683,6 +650,14 @@ contains
         
         ! initialize ierr
         ierr = 0
+        
+        call lvl_ud(1)
+        
+        ! user output
+        call writo(trim(i2str(n_par_X))//' parallel and '//&
+            &trim(i2str(grid_eq%n(3)))//' normal points')
+        call writo('parallel range '//trim(r2strt(min_par_X*pi))//'..'//&
+            &trim(r2strt(max_par_X*pi)))
         
         ! set up flux_E and plus minus one
         ! Note: this routine  is similar to calc_loc_r, but  that routine cannot
@@ -765,6 +740,8 @@ contains
         deallocate(r_E_loc)
         nullify(flux_F,flux_E)
         
+        call lvl_ud(-1)
+        
 #if ldebug
         if (debug_calc_ang_grid_eq_B) then
             call writo('Plotting theta_E, theta_F, zeta_E and zeta_F')
@@ -787,6 +764,7 @@ contains
         use num_vars, only: rank, n_procs, no_plots, n_theta_plot, n_zeta_plot
         use grid_vars, only: create_grid, dealloc_grid
         use grid_utilities, only: trim_grid, extend_grid_E, calc_XYZ_grid
+        use rich_vars, only: rich_info_short
         
         character(*), parameter :: rout_name = 'plot_grid_real'
         
@@ -807,8 +785,7 @@ contains
         integer :: id, jd                                                       ! counters
         integer :: n_theta_plot_old                                             ! backup of n_theta_plot
         integer :: n_zeta_plot_old                                              ! backup of n_zeta_plot
-        character(len=*), parameter :: anim_name = &
-            &'Magnetic field in flux surfaces'                                  ! name of animation
+        character(len=max_str_ln) :: anim_name                                  ! name of animation
         
         ! initialize ierr
         ierr = 0
@@ -839,6 +816,9 @@ contains
         ! trim extended grid into plot grid
         ierr = trim_grid(grid_ext,grid_plot)
         CHCKERR('')
+        
+        ! set animation name
+        anim_name = 'Magnetic field in flux surfaces'//trim(rich_info_short())
         
         ! 1. plot flux surfaces
         call writo('writing flux surfaces')
@@ -1114,10 +1094,6 @@ contains
             &file')
         call lvl_ud(1)
         
-        ! user output
-        call writo('Preparing variables for writing')
-        call lvl_ud(1)
-        
         ! trim grid
         ierr = trim_grid(grid,grid_trim)
         CHCKERR('')
@@ -1221,12 +1197,6 @@ contains
             grid_1D_loc%p = reshape(grid_trim%zeta_E,[size(grid_trim%zeta_E)])
         end if
         
-        call lvl_ud(-1)
-        
-        ! user output
-        call writo('Writing using HDF5')
-        call lvl_ud(1)
-        
         ! write
         ierr = print_HDF5_arrs(grid_1D(1:id-1),PB3D_name,&
             &'grid_'//trim(data_name))
@@ -1234,9 +1204,6 @@ contains
         
         ! clean up
         call dealloc_grid(grid_trim)
-        
-        ! user output
-        call lvl_ud(-1)
         
         ! clean up
         nullify(grid_1D_loc)
