@@ -134,10 +134,8 @@ contains
     ! Note:  The quantities  that  do not  have a  derivative  are considered  F
     ! quantities. Alternatively, all quantities that  have only one version, are
     ! considered F quantities, such as rho, kappa_n, ...
-    integer function create_eq_1(grid,eq,setup_E,setup_F) result(ierr)          ! flux version
+    subroutine create_eq_1(grid,eq,setup_E,setup_F)                             ! flux version
         use num_vars, only: max_deriv, eq_style
-        
-        character(*), parameter :: rout_name = 'create_eq_1'
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
@@ -146,12 +144,8 @@ contains
         logical, intent(in), optional :: setup_F                                ! whether to set up F
         
         ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: loc_n_r, n                                                   ! local and total nr. of normal points
         logical :: setup_E_loc, setup_F_loc                                     ! local versions of setup_E and setup_F
-        
-        ! initialize ierr
-        ierr = 0
         
         ! setup local setup_E and setup_F
         setup_E_loc = .true.
@@ -190,11 +184,6 @@ contains
                     
                     ! flux_t_E
                     allocate(eq%flux_t_E(loc_n_r,0:max_deriv+1))
-                case default
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
             end select
         end if
         
@@ -217,11 +206,9 @@ contains
             ! rho
             allocate(eq%rho(grid%loc_n_r))
         end if
-    end function create_eq_1
-    integer function create_eq_2(grid,eq,setup_E,setup_F) result(ierr)          ! metric version
+    end subroutine create_eq_1
+    subroutine create_eq_2(grid,eq,setup_E,setup_F)                             ! metric version
         use num_vars, only: max_deriv, eq_style
-        
-        character(*), parameter :: rout_name = 'create_eq_2'
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
@@ -230,12 +217,8 @@ contains
         logical, intent(in), optional :: setup_F                                ! whether to set up F
         
         ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: setup_E_loc, setup_F_loc                                     ! local versions of setup_E and setup_F
         integer :: dims(3)                                                      ! dimensions
-        
-        ! initialize ierr
-        ierr = 0
         
         ! set up local variables
         dims = [grid%n(1),grid%n(2),grid%loc_n_r]
@@ -323,11 +306,6 @@ contains
                         &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
                 case (2)                                                        ! HELENA
                     ! do nothing
-                case default
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
             end select
         end if
         
@@ -357,7 +335,7 @@ contains
             ! parallel current
             allocate(eq%sigma(dims(1),dims(2),dims(3)))
         end if
-    end function create_eq_2
+    end subroutine create_eq_2
     
     ! deallocates equilibrium quantities
     subroutine dealloc_eq_1(eq)                                                 ! flux version

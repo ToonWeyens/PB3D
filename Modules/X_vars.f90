@@ -49,9 +49,11 @@ module X_vars
     
     ! tensorial perturbation type with arrays of the form:
     !   - (angle_1,angle_2,r,n_mod^2)       for PVi, KVi
-    !   - (n_mod^2,angle_2,r,3)             for KV_int, PV_int
+    !   - (n_mod,n_mod)                     for vac_res
     ! where it is refered to the discussion  of the grid type for an explanation
     ! of the angles angle_1 and angle_2.
+    ! Note that this type is also used for field-averaged tensorial perturbation
+    ! variables, with angle_1 = 1.
     type :: X_2_type
         integer :: n_mod(2)                                                     ! size of n and m (nr. of modes)
         integer, allocatable :: n_1(:,:)                                        ! vector of toroidal mode numbers of dimension 1
@@ -64,12 +66,6 @@ module X_vars
         complex(dp), allocatable :: KV_0(:,:,:,:)                               ! ~KV^0 coefficient
         complex(dp), allocatable :: KV_1(:,:,:,:)                               ! ~KV^1 coefficient
         complex(dp), allocatable :: KV_2(:,:,:,:)                               ! ~KV^2 coefficient
-        complex(dp), allocatable :: PV_int_0(:,:,:)                             ! <~PV^0 e^i(k-m)ang_par_F> coefficient
-        complex(dp), allocatable :: PV_int_1(:,:,:)                             ! <~PV^1 e^i(k-m)ang_par_F> coefficient
-        complex(dp), allocatable :: PV_int_2(:,:,:)                             ! <~PV^2 e^i(k-m)ang_par_F> coefficient
-        complex(dp), allocatable :: KV_int_0(:,:,:)                             ! <~KV^0 e^i(k-m)ang_par_F> coefficient
-        complex(dp), allocatable :: KV_int_1(:,:,:)                             ! <~KV^1 e^i(k-m)ang_par_F> coefficient
-        complex(dp), allocatable :: KV_int_2(:,:,:)                             ! <~KV^2 e^i(k-m)ang_par_F> coefficient
         complex(dp), allocatable :: vac_res(:,:)                                ! vacuum response
     end type
     
@@ -98,18 +94,18 @@ contains
         X_1_var_names(8) = 'IM_DU_1'
         
         allocate(X_2_var_names(12))
-        X_2_var_names(1) = 'RE_PV_int_0'
-        X_2_var_names(2) = 'IM_PV_int_0'
-        X_2_var_names(3) = 'RE_PV_int_1'
-        X_2_var_names(4) = 'IM_PV_int_1'
-        X_2_var_names(5) = 'RE_PV_int_2'
-        X_2_var_names(6) = 'IM_PV_int_2'
-        X_2_var_names(7) = 'RE_KV_int_0'
-        X_2_var_names(8) = 'IM_KV_int_0'
-        X_2_var_names(9) = 'RE_KV_int_1'
-        X_2_var_names(10) = 'IM_KV_int_1'
-        X_2_var_names(11) = 'RE_KV_int_2'
-        X_2_var_names(12) = 'IM_KV_int_2'
+        X_2_var_names(1) = 'RE_PV_0'
+        X_2_var_names(2) = 'IM_PV_0'
+        X_2_var_names(3) = 'RE_PV_1'
+        X_2_var_names(4) = 'IM_PV_1'
+        X_2_var_names(5) = 'RE_PV_2'
+        X_2_var_names(6) = 'IM_PV_2'
+        X_2_var_names(7) = 'RE_KV_0'
+        X_2_var_names(8) = 'IM_KV_0'
+        X_2_var_names(9) = 'RE_KV_1'
+        X_2_var_names(10) = 'IM_KV_1'
+        X_2_var_names(11) = 'RE_KV_2'
+        X_2_var_names(12) = 'IM_KV_2'
     end subroutine init_X_vars
     
     ! Create  a  vectorial  or  tensorial perturbation  type  and  allocate  the
@@ -117,6 +113,9 @@ contains
     ! Optionally, the  secondary mode  numbers can be  specified (m  if poloidal
     ! flux is used and n if toroidal  flux). By default, they are taken from the
     ! global X_vars variables.
+    ! Furthermore, the tensorial  perturbation type can also be  used for field-
+    ! aligned  variables, in  which  case the  first index  is  assumed to  have
+    ! dimension 1 only. This can be triggered using "is_field_averaged".
     ! Note: The  lowest limits of the grid  need to be 1; e.g.  grid_X%i_min = 1
     ! for first process.
     subroutine create_X_1(grid_X,X,lim_sec_X)                                   ! vectorial version
@@ -152,11 +151,12 @@ contains
         ! allocate DU_1
         allocate(X%DU_1(n_par,n_geo,loc_n_r,X%n_mod))
     end subroutine create_X_1
-    subroutine create_X_2(grid_X,X,lim_sec_X)                                   ! tensorial version
+    subroutine create_X_2(grid_X,X,lim_sec_X,is_field_averaged)                 ! tensorial version
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol. flux) or n_X (tor. flux) for both dimensions
+        logical, intent(in), optional :: is_field_averaged                      ! if field-aligned, only one dimension for first index
         
         ! local variables
         integer :: loc_n_r                                                      ! local nr. of normal points
@@ -164,9 +164,12 @@ contains
         integer :: nn_mod                                                       ! either n_mod^2, n_mod*(n_mod+1)/2 or 0
         
         ! set local variables
-        loc_n_r = grid_X%loc_n_r
         n_par = grid_X%n(1)
+        if (present(is_field_averaged)) then
+            if (is_field_averaged) n_par = 1
+        end if
         n_geo = grid_X%n(2)
+        loc_n_r = grid_X%loc_n_r
         
         ! set mode numbers
         call set_nm_X(grid_X,X%n_1,X%m_1,X%n_2,X%m_2,lim_sec_X)
@@ -187,16 +190,6 @@ contains
         allocate(X%KV_0(n_par,n_geo,loc_n_r,nn_mod))                            ! symmetric
         allocate(X%KV_1(n_par,n_geo,loc_n_r,product(X%n_mod)))                  ! not symmetric
         allocate(X%KV_2(n_par,n_geo,loc_n_r,nn_mod))                            ! symmetric
-        
-        ! allocate PV_int_i
-        allocate(X%PV_int_0(n_geo,loc_n_r,nn_mod))                              ! symmetric
-        allocate(X%PV_int_1(n_geo,loc_n_r,product(X%n_mod)))                    ! not symmetric
-        allocate(X%PV_int_2(n_geo,loc_n_r,nn_mod))                              ! symmetric
-        
-        ! allocate KV_int_i
-        allocate(X%KV_int_0(n_geo,loc_n_r,nn_mod))                              ! symmetric
-        allocate(X%KV_int_1(n_geo,loc_n_r,product(X%n_mod)))                    ! not symmetric
-        allocate(X%KV_int_2(n_geo,loc_n_r,nn_mod))                              ! symmetric
         
         ! allocate vacuum response
         allocate(X%vac_res(X%n_mod(1),X%n_mod(2)))

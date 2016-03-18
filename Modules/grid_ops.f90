@@ -61,9 +61,6 @@ contains
         real(dp), intent(inout), optional :: r_F_X(:)                           ! perturbation r_F
         real(dp), intent(inout), optional :: r_F_sol(:)                         ! solution r_F
         
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
         ! initialize ierr
         ierr = 0
         
@@ -95,11 +92,6 @@ contains
                 ierr = calc_norm_range_POST(eq_limits,X_limits,sol_limits,&
                     &r_F_eq,r_F_sol)
                 CHCKERR('')
-            case default
-                err_msg = 'No program style associated with '//&
-                    &trim(i2str(prog_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
     contains
         ! The normal  range is calculated by  finding the tightest range  of the
@@ -137,7 +129,6 @@ contains
             real(dp) :: tot_max_r_in_E_con                                      ! tot_max_r_in in continuous E coords.
             real(dp) :: tot_min_r_in_E_dis                                      ! tot_min_r_in in discrete E coords., unrounded
             real(dp) :: tot_max_r_in_E_dis                                      ! tot_max_r_in in discrete E coords., unrounded
-            character(len=max_str_ln) :: err_msg                                ! error message
             
             ! initialize ierr
             ierr = 0
@@ -184,11 +175,6 @@ contains
                         ierr = calc_int(qs_H*Dflux_p_H,flux_p_H/(2*pi),flux_E)
                         CHCKERR('')
                     end if
-                case default
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
             end select
             
             ! set max_flux
@@ -410,7 +396,6 @@ contains
         integer, intent(in) :: eq_limits(2)                                     ! min. and max. index of eq grid of this process
         
         ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id                                                           ! counter
         
         ! initialize ierr
@@ -454,11 +439,6 @@ contains
                 ! convert to Flux coordinates (trivial)
                 grid_eq%theta_F = grid_eq%theta_E
                 grid_eq%zeta_F = grid_eq%zeta_E
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         call lvl_ud(-1)
@@ -481,9 +461,6 @@ contains
         type(grid_type), intent(inout) :: grid_eq                               ! general equilibrium grid
         type(grid_type), intent(inout) :: grid_eq_B                             ! field-aligned equilibrium grid
         type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -509,11 +486,6 @@ contains
                 ! calculate the angular grid that follows the magnetic field
                 ierr = calc_ang_grid_eq_B(grid_eq_B,eq)
                 CHCKERR('')
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
     end function setup_grid_eq_B
     
@@ -679,11 +651,6 @@ contains
                 flux_E => eq%flux_p_E(:,0)
                 r_E_factor = 2*pi
                 pmone = 1
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         ! set up flux_F
@@ -1064,6 +1031,7 @@ contains
     end function plot_grid_real
     
     ! Print grid variables to an output file.
+    ! Note: "grid_" is added in front the data_name.
     integer function print_output_grid(grid,grid_name,data_name) result(ierr)
         use num_vars, only: PB3D_name, rank
         use HDF5_ops, only: print_HDF5_arrs

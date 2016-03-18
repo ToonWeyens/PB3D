@@ -15,7 +15,6 @@ To set up:
 3. copy or add symbolic links to the output files (e.g. wout_cdxu or cbm18a)
 4. Libraries to install:
     - HDF5: libhdf5-openmpi-dev
-    - FFTW: libfftw3-dev
 
 CHANGELOG
 
@@ -362,3 +361,10 @@ CHANGELOG
       - Moved "print_output_in" and "read_eq" to input_ops and "dealloc_in" to input_utilities.
       - "rich_restart_lvl" now can take on values 1..max_lvl_rich, not 0.
       - Streamlined output from reconstruct_PB3D routines.
+
+1.13: - X_2 now holds only 6 variables, and is reused for the field-averaged variables as well.
+      - Got rid of unnecessary and cluttering default case selection for variables that are checked in initialization.
+      - Print_output routines need data set names provided, similar for reconstruction.
+      - Now shell commands are saved in a log file that can be run afterwards, which is useful in combination with "--no_execute_command_line".
+      - "rich_info_short" now always returns the Richardson level in the output.
+      - Fixed bug in "find_max_lvl_rich" where groups were not properly closed.

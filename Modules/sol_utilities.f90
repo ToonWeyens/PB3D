@@ -457,11 +457,6 @@ contains
                             &sol_vec_loc(sec_X_ind(kd_loc,ld),kd)
                     end do
                 end do
-            case default
-                err_msg = 'No X style associated with '//&
-                    &trim(i2str(X_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
     end function calc_tot_sol_vec
     integer function calc_loc_sol_vec(i_min,sol_vec_tot,sol_vec_loc) &
@@ -534,11 +529,6 @@ contains
                             &sol_vec_tot(ld,kd)
                     end do
                 end do
-            case default
-                err_msg = 'No X style associated with '//&
-                    &trim(i2str(X_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
     end function calc_loc_sol_vec
 end module sol_utilities

@@ -16,8 +16,7 @@ module driver_eq
     public run_driver_eq
     
 contains
-    ! Main driver of PB3D_eq.
-    ! Note: This is skipped if Richardson restart.
+    ! Main driver of PB3D equilibrium part.
     integer function run_driver_eq() result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, plot_grid
         use MPI_utilities, only: wait_MPI
@@ -38,7 +37,6 @@ contains
         
         ! local variables
         character(len=8) :: flux_name                                           ! toroidal or poloidal
-        character(len=max_str_ln) :: err_msg                                    ! error message
         type(grid_type), target :: grid_eq                                      ! equilibrium grid
         type(grid_type), pointer :: grid_eq_B => null()                         ! field-aligned equilibrium grid
         type(eq_1_type) :: eq_1                                                 ! equilibrium for
@@ -52,7 +50,7 @@ contains
         ! some preliminary things
         ierr = wait_MPI()
         CHCKERR('')
-        ierr = reconstruct_PB3D_in()                                            ! reconstruct miscellaneous PB3D output variables
+        ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables
         CHCKERR('')
         
         !!! calculate auxiliary quantities for utilities
@@ -97,7 +95,7 @@ contains
         ! write flux equilibrium variables to output if first level
         if (rich_lvl.eq.1) then
             ! print output
-            ierr = print_output_eq(grid_eq,eq_1)
+            ierr = print_output_eq(grid_eq,eq_1,'eq_1')
             CHCKERR('')
             
             ! plot flux quantities if requested
@@ -134,7 +132,8 @@ contains
                 CHCKERR('')
                 
                 ! write metric equilibrium variables to output
-                ierr = print_output_eq(grid_eq,eq_2)
+                ierr = print_output_eq(grid_eq,eq_2,'eq_2'//&
+                    &trim(rich_info_short()))
                 CHCKERR('')
                 
                 ! the equilibrium grid is field-aligned already
@@ -150,7 +149,7 @@ contains
                     CHCKERR('')
                     
                     ! write metric equilibrium variables to output
-                    ierr = print_output_eq(grid_eq,eq_2)
+                    ierr = print_output_eq(grid_eq,eq_2,'eq_2')
                     CHCKERR('')
                 end if
                 
@@ -164,11 +163,6 @@ contains
                 ierr = print_output_grid(grid_eq_B,'field-aligned equilibrium',&
                     &'eq_B'//trim(rich_info_short()))
                 CHCKERR('')
-            case default
-                ierr = 1
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                CHCKERR(err_msg)
         end select
         
         ! plot grid if requested
@@ -185,8 +179,7 @@ contains
         ! clean up
         call writo('Clean up')
         call lvl_ud(1)
-        ierr = dealloc_in()
-        CHCKERR('')
+        call dealloc_in()
         call dealloc_grid(grid_eq)
         call dealloc_eq(eq_1)
         call dealloc_eq(eq_2)

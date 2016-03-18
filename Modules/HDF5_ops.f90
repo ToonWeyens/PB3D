@@ -832,9 +832,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! user output
-        call writo('Creating HDF5 output file')
-        
         call lvl_ud(1)
         
         ! initialize FORTRAN predefined datatypes
@@ -855,9 +852,9 @@ contains
         err_msg = 'Failed to close FORTRAN HDF5 interface'
         CHCKERR(err_msg)
         
-        ! user output
         call lvl_ud(-1)
         
+        ! user output
         call writo('HDF5 output file '//trim(PB3D_name)//' created')
     end function create_output_HDF5
     
@@ -907,6 +904,13 @@ contains
         integer(HSIZE_T) :: mem_stride(1)                                       ! stride in memory
         integer(HSIZE_T) :: mem_count(1)                                        ! nr. of repetitions of block in memory
         integer(HSIZE_T) :: mem_offset(1)                                       ! offset in memory
+        
+        character(len=max_str_ln) :: group_name                                 ! name of group
+        integer :: storage_type                                                 ! type of storage used in HDF5 file
+        integer :: nr_lnks_head                                                 ! number of links in head group
+        integer(SIZE_T) :: name_len                                             ! length of name of group
+        integer :: max_corder                                                   ! current maximum creation order value for group
+        integer(HSIZE_T) :: kd                                                  ! counter
         
         ! initialize ierr
         ierr = 0
@@ -1233,13 +1237,23 @@ contains
         ! preparation
         HDF5_kind_64 = H5kind_to_type(dp,H5_REAL_KIND)
         
+        ! user output
+        if (disp_info_loc) then
+            call writo('Opening file '//trim(PB3D_name))
+        end if
+        
         ! open the file
         call H5Fopen_f(trim(PB3D_name),H5F_ACC_RDONLY_F,HDF5_i,ierr)
         CHCKERR('Failed to open file')
         
+        ! user output
+        if (disp_info_loc) then
+            call writo('Opening variable "'//trim(head_name)//'"')
+        end if
+        
         ! open head group
         call H5Gopen_f(HDF5_i,trim(head_name),head_group_id,ierr)
-        CHCKERR('Failed to open group')
+        CHCKERR('Failed to open head group')
         
         ! get number of objects in group to allocate vars
         call H5Gget_info_f(head_group_id,storage_type,nr_lnks_head,max_corder,&
@@ -1430,6 +1444,12 @@ contains
         ! reenable error messages
         call h5eset_auto_f(1,ierr)
         CHCKERR('Failed to enable error printing')
+        
+        ! close group
+        if (group_exists) then
+            call H5gclose_f(group_id,ierr)
+            CHCKERR('Failed to close head group')
+        end if
         
         ! close the HDF5 file
         call H5Fclose_f(HDF5_i,ierr)

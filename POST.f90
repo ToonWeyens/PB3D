@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.12                                                              !
+!   Version: 1.13                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -53,13 +53,12 @@ program POST
     CHCKERR
     prog_name = 'POST'                                                          ! program name
     prog_style = 2                                                              ! post-processing part
-    call print_hello                                                            ! print message with time, etc
-    call init_messages                                                          ! initialize message operations
-    ierr = init_files()                                                         ! initialize file operations
-    CHCKERR
-    call init_time                                                              ! initialize time
-    call init_HDF5                                                              ! initialize HDF5
-    call init_X_vars                                                            ! initialize perturbation vars
+    call print_hello()                                                          ! print message with time, etc
+    call init_messages()                                                        ! initialize message operations
+    call init_files()                                                           ! initialize file operations
+    call init_time()                                                            ! initialize time
+    call init_HDF5()                                                            ! initialize HDF5
+    call init_X_vars()                                                          ! initialize perturbation vars
  
     !-------------------------------------------------------
     !   Read the PB3D output
@@ -72,14 +71,13 @@ program POST
         CHCKERR
         ierr = open_input()                                                     ! open the input files
         CHCKERR
-        ierr = reconstruct_PB3D_in()                                            ! reconstruct miscellaneous PB3D output variables
+        ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables
         CHCKERR
         ierr = read_input_opts()                                                ! read input options file
         CHCKERR
         ierr = open_output()                                                    ! open output file per alpha group
         CHCKERR
-        ierr = dealloc_in()                                                     ! clean up input from equilibrium codes
-        CHCKERR
+        call dealloc_in()                                                       ! clean up input from equilibrium codes
     end if
     ierr = broadcast_input_opts()                                               ! broadcast input options to other processors
     CHCKERR

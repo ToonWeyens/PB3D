@@ -1095,9 +1095,8 @@ contains
     
     ! Print solution quantities to an output file:
     !   - sol:    val, vec
-    integer function print_output_sol(grid,sol) result(ierr)
+    integer function print_output_sol(grid,sol,data_name) result(ierr)
         use num_vars, only: rank, PB3D_name
-        use rich_vars, only: rich_info_short
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
             &max_dim_var_1D
@@ -1109,6 +1108,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! solution grid variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
+        character(len=*), intent(in) :: data_name                               ! name under which to store
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -1198,8 +1198,7 @@ contains
                 &[size(sol%vec(:,norm_id(1):norm_id(2),:))])
             
             ! write
-            ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,'sol'//&
-                &trim(rich_info_short()))
+            ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,trim(data_name))
             CHCKERR('')
             
             ! clean up

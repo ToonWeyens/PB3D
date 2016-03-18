@@ -61,7 +61,7 @@ contains
                 end if
                 
                 ! reconstruct Richardson variables
-                ierr = reconstruct_PB3D_rich()
+                ierr = reconstruct_PB3D_rich('rich')
                 CHCKERR('')
             end if
             
@@ -75,22 +75,27 @@ contains
     end function init_rich
     
     integer function term_rich() result(ierr)
-        use num_vars, only: rank,norm_disc_prec_sol, no_output
+        use num_vars, only: rank,norm_disc_prec_sol
         
         character(*), parameter :: rout_name = 'term_rich'
         
         ! local variables
         integer :: id                                                           ! counter
-        logical :: no_output_loc                                                ! local copy of no_output
         
         ! initialize ierr
         ierr = 0
         
+        ! user output
+        if (max_it_rich.gt.1) &
+            &call writo('Finishing Richardson extrapolation loop')
+        
+        call lvl_ud(1)
+        
+        ! print Richardson variables
+        ierr = print_output_rich('rich')
+        CHCKERR('')
+        
         if (max_it_rich.gt.1) then                                              ! only when more than one level
-            ! user output
-            call writo('Finishing Richardson extrapolation loop')
-            call lvl_ud(1)
-            
             ! user output
             if (rich_conv) then
                 call writo('Convergence reached in '//trim(i2str(rich_lvl-1))//&
@@ -127,24 +132,14 @@ contains
             
             ! draw X values
             if (rank.eq.0) call draw_sol_val_rich()
-        end if
-        
-        ! no output if only one Richardson level
-        if (max_it_rich.eq.1) no_output_loc = no_output
-        if (max_it_rich.eq.1) no_output = .true.
-        ! print Richardson variables
-        ierr = print_output_rich()
-        CHCKERR('')
-        ! no output if only one Richardson level
-        if (max_it_rich.eq.1) no_output = no_output_loc
-        
-        if (max_it_rich.gt.1) then                                              ! only when more than one level
+            
             call writo('')
-            call lvl_ud(-1)
         end if
+        
+        call lvl_ud(-1)
     contains
         ! Draws  the   Eigenvalues  for  the  different   levels  of  Richardson
-        ! extrapolation as a function of the number of normal points.
+        ! extrapolation as a function of the number of parallel points.
         subroutine draw_sol_val_rich()
             use num_vars, only: n_sol_requested
             
@@ -153,12 +148,12 @@ contains
             character(len=max_str_ln) :: plot_name                              ! name of plot
             
             ! user output
-            call writo('Plotting Eigenvalues as function of nr. of normal &
+            call writo('Plotting Eigenvalues as function of nr. of parallel &
                 &points')
             call lvl_ud(1)
             
             ! print, using rich_lvl-1 as it has been aumented
-            plot_title = 'Eigenvalues as function of nr. of normal points'
+            plot_title = 'Eigenvalues as function of nr. of parallel points'
             plot_name = 'Eigenvalues_richardson'
             call print_GP_2D(plot_title,plot_name,&
                 &realpart(sol_val_rich(1:rich_lvl-1,1,:)),&
@@ -186,7 +181,7 @@ contains
     
     ! start a Richardson level
     subroutine start_rich_lvl
-        ! Calculate number of normal points for the solution in Richardson loops
+        ! Calculate number of parallel points for the solution in Richardson loops
         if (rich_lvl.eq.1) then
             n_par_X = min_n_par_X
         else
@@ -331,7 +326,7 @@ contains
             max_lvl_rich_file = 1
         else
             ! try opening solutions for different Richardson level
-            ir = 2                                                              ! initialize counter
+            ir = 1                                                              ! initialize counter
             group_exists = .true.                                               ! group_exists becomes stopping criterion
             do while (group_exists)
                 group_name = 'sol_R_'//trim(i2str(ir))
@@ -339,14 +334,14 @@ contains
                 CHCKERR('')
                 ir = ir + 1                                                     ! increment counter
             end do
-            max_lvl_rich_file = ir-2
+            max_lvl_rich_file = ir-2                                            ! -2 because there will be one additional iteration
         end if
     end function find_max_lvl_rich
     
     ! Print Richardson variables to an output file:
     !   sol_val_rich, x_axis_rich, max_rel_err, loc_max_rel_err
-    integer function print_output_rich() result(ierr)
-        use num_vars, only: PB3D_name, n_sol_requested, rank
+    integer function print_output_rich(data_name) result(ierr)
+        use num_vars, only: PB3D_name, n_sol_requested, rank, no_output
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
             &max_dim_var_1D
@@ -354,13 +349,21 @@ contains
         
         character(*), parameter :: rout_name = 'print_output_rich'
         
+        ! input / output
+        character(len=*), intent(in) :: data_name                               ! name under which to store
+        
         ! local variables
         type(var_1D_type), allocatable, target :: rich_1D(:)                    ! 1D equivalent of X variables
         type(var_1D_type), pointer :: rich_1D_loc => null()                     ! local element in rich_1D
         integer :: id                                                           ! counters
+        logical :: no_output_loc                                                ! local copy of no_output
         
         ! initialize ierr
         ierr = 0
+        
+        ! no output if only one Richardson level
+        if (max_it_rich.eq.1) no_output_loc = no_output
+        if (max_it_rich.eq.1) no_output = .true.
         
         ! only master does this
         if (rank.eq.0) then
@@ -450,7 +453,7 @@ contains
             end if
             
             ! write
-            ierr = print_HDF5_arrs(rich_1D(1:id-1),PB3D_name,'rich')
+            ierr = print_HDF5_arrs(rich_1D(1:id-1),PB3D_name,trim(data_name))
             CHCKERR('')
             
             ! clean up
@@ -460,6 +463,9 @@ contains
             call lvl_ud(-1)
             call writo('Richardson variables written to output')
         end if
+        
+        ! reset no_output
+        if (max_it_rich.eq.1) no_output = no_output_loc
         
         ! wait for all processes
         ierr = wait_MPI()

@@ -651,7 +651,6 @@ contains
         
         ! local variables
         integer :: id
-        character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: T_FE_loc(:,:)                                  ! T_FE(2,1)
         
         ! initialize ierr
@@ -720,11 +719,6 @@ contains
                 eq%pres_FD = eq%pres_E
                 eq%q_saf_FD = eq%q_saf_E
                 eq%rot_t_FD = eq%rot_t_E
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
     end function calc_F_derivs_1
     integer function calc_F_derivs_2(eq) result(ierr)                           ! metric version
@@ -739,7 +733,6 @@ contains
         ! local variables
         integer :: id
         integer :: pmone                                                        ! plus or minus one
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -752,11 +745,6 @@ contains
                 pmone = -1                                                      ! conversion VMEC LH -> RH coord. system
             case (2)                                                            ! HELENA
                 pmone = 1
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         ! user output

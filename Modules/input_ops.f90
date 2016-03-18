@@ -80,11 +80,6 @@ contains
                 case (2)                                                        ! HELENA
                     n_theta_plot = 501                                          ! nr. poloidal points in plot
                     n_zeta_plot = 1                                             ! nr. toroidal points in plot
-                case default
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
             end select
             
             ! select depending on program style
@@ -94,11 +89,6 @@ contains
                 case(2)                                                         ! POST
                     ierr = default_input_POST()
                     CHCKERR('')
-                case default
-                    err_msg = 'No program style associated with '//&
-                        &trim(i2str(prog_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
             end select
             
             call lvl_ud(-1)
@@ -185,11 +175,6 @@ contains
                     ! set up max_it_rich and rich_lvl
                     max_it_rich = PB3D_lvl_rich
                     rich_lvl = PB3D_lvl_rich
-                case default
-                    err_msg = 'No program style associated with '//&
-                        &trim(i2str(prog_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
             end select
             
             ! user output
@@ -321,7 +306,8 @@ contains
         
         ! checks whether the variables concerning output are chosen correctly.
         ! n_sol_requested has to be at least one
-        ! rich_restart_lvl has to not more than max_it_rich
+        ! rich_restart_lvl  can be  at most  one more  than the  maximally found
+        ! level, nor can it be higher than max_it_rich.
         integer function adapt_inoutput() result(ierr)
             character(*), parameter :: rout_name = 'adapt_inoutput'
             
@@ -344,6 +330,16 @@ contains
                 err_msg = 'rich_restart_lvl not within 1..max_it_rich = 1..'//&
                     &trim(i2str(max_it_rich))
                 CHCKERR(err_msg)
+            end if
+            if (rich_restart_lvl.gt.1) then
+                ierr = find_max_lvl_rich(PB3D_lvl_rich)
+                CHCKERR('')
+                if (rich_restart_lvl.gt.PB3D_lvl_rich+1) then
+                    ierr = 1
+                    err_msg = 'The highest Richardson level found was '//&
+                        &trim(i2str(PB3D_lvl_rich))
+                    CHCKERR(err_msg)
+                end if
             end if
         end function adapt_inoutput
         
@@ -429,11 +425,6 @@ contains
                             &least one'
                         CHCKERR(err_msg)
                     end if
-                case default
-                    err_msg = 'No X style associated with '//&
-                        &trim(i2str(X_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
             end select
         end function adapt_X_modes
         
@@ -563,8 +554,6 @@ contains
         
         character(*), parameter :: rout_name = 'read_input_eq'
         
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -579,11 +568,6 @@ contains
             case (2)                                                            ! HELENA
                 ierr = read_HEL(n_r_in,use_pol_flux_E)
                 CHCKERR('')
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         ! close equilibrium file
@@ -611,7 +595,7 @@ contains
     !                norm_style, U_style, X_style, matrix_SLEPC_style
     !   - misc_sol:  min_r_sol, max_r_sol, alpha, norm_disc_prec_sol, BC_style,
     !                EV_BC, EV_BC
-    integer function print_output_in() result(ierr)
+    integer function print_output_in(data_name) result(ierr)
         use num_vars, only: eq_style, rho_style, prog_version, use_pol_flux_E, &
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, tol_norm, &
@@ -638,8 +622,10 @@ contains
         
         character(*), parameter :: rout_name = 'print_output_in'
         
+        ! input / output
+        character(len=*), intent(in) :: data_name                               ! name under which to store
+        
         ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
         type(var_1D_type), allocatable, target :: in_1D(:)                      ! 1D equivalent of input variables
         type(var_1D_type), pointer :: in_1D_loc => null()                       ! local element in in_1D
         integer :: id                                                           ! counter
@@ -954,11 +940,6 @@ contains
                     &h_H_33(:,in_limits(1):in_limits(2))],&
                     &[3*nchi*n_r_eq])
 #endif
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         ! misc_X
@@ -989,7 +970,7 @@ contains
             &norm_disc_prec_sol*1._dp,BC_style*1._dp,EV_style*1._dp,EV_BC]
         
         ! write
-        ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,'in')
+        ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,trim(data_name))
         CHCKERR('')
         
         ! deallocate

@@ -107,7 +107,7 @@ contains
         call lvl_ud(1)
         
         ! create equilibrium
-        ierr = create_eq(grid_eq,eq)
+        call create_eq(grid_eq,eq)
         
         ! choose which equilibrium style is being used:
         !   1:  VMEC
@@ -119,11 +119,6 @@ contains
             case (2)                                                            ! HELENA
                 ierr = calc_flux_q_HEL()
                 CHCKERR('')
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         ! clean up
@@ -436,7 +431,6 @@ contains
         ! local variables
         integer :: id
         integer :: pmone                                                        ! plus or minus one
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! user output
         call writo('Start setting up metric equilibrium quantities')
@@ -444,8 +438,7 @@ contains
         call lvl_ud(1)
         
         ! create metric equilibrium variables
-        ierr = create_eq(grid_eq,eq_2)
-        CHCKERR('')
+        call create_eq(grid_eq,eq_2)
         
         ! do some preparations depending on equilibrium style used
         !   1:  VMEC
@@ -584,11 +577,6 @@ contains
                 
                 ! set up plus minus one
                 pmone = 1
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
 #if ldebug
@@ -2149,19 +2137,13 @@ contains
     end subroutine calc_derived_q
     
     ! Sets up normalization constants.
-    integer function calc_normalization_const() result(ierr)
+    subroutine calc_normalization_const()
         use num_vars, only: rank, eq_style, mu_0_original, use_normalization, &
             &rich_restart_lvl
         use eq_vars, only: T_0, B_0, pres_0, psi_0, R_0, rho_0
         
-        character(*), parameter :: rout_name = 'calc_normalization_const'
-        
         ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: nr_overriden_const                                           ! nr. of user-overriden constants, to print warning if > 0
-        
-        ! initialize ierr
-        ierr = 0
         
         if (use_normalization) then
             ! user output
@@ -2181,11 +2163,6 @@ contains
                         call calc_normalization_const_VMEC
                     case (2)                                                    ! HELENA
                         call calc_normalization_const_HEL
-                    case default
-                        err_msg = 'No equilibrium style associated with '//&
-                            &trim(i2str(eq_style))
-                        ierr = 1
-                        CHCKERR(err_msg)
                 end select
             end if
             
@@ -2290,21 +2267,13 @@ contains
             end if
             if (T_0.ge.huge(1._dp)) T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0     ! only if user did not provide a value
         end subroutine calc_normalization_const_HEL
-    end function calc_normalization_const
+    end subroutine calc_normalization_const
     
     ! Normalize input quantities.
-    integer function normalize_input() result(ierr)
+    subroutine normalize_input()
         use num_vars, only: use_normalization, eq_style, mu_0_original
         use VMEC, only: normalize_VMEC
         use eq_vars, only: vac_perm
-        
-        character(*), parameter :: rout_name = 'normalize_input'
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
         
         ! only normalize if needed
         if (use_normalization) then
@@ -2325,25 +2294,20 @@ contains
                     ! other HELENA input already normalized
                     call writo('HELENA input is already normalized with MISHKA &
                         &normalization')
-                case default
-                    err_msg = 'No equilibrium style associated with '//&
-                        &trim(i2str(eq_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
             end select
             
             ! user output
             call lvl_ud(-1)
             call writo('Normalization done')
         end if
-    end function normalize_input
+    end subroutine normalize_input
     
     ! Print equilibrium quantities to an output file:
     !   - flux:     pres_FD, q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, rho, S,
     !               kappa_n, kappa_g, sigma
     !   - metric:   g_FD, h_FD, jac_FD
     ! Note: The equilibrium quantities are outputted in Flux coordinates.
-    integer function print_output_eq_1(grid_eq,eq) result(ierr)                 ! flux version
+    integer function print_output_eq_1(grid_eq,eq,data_name) result(ierr)       ! flux version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
@@ -2355,6 +2319,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
         type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
+        character(len=*), intent(in) :: data_name                               ! name under which to store
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -2459,7 +2424,7 @@ contains
         
         
         ! write
-        ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,'eq_1')
+        ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,trim(data_name))
         CHCKERR('')
         
         ! deallocate
@@ -2469,27 +2434,25 @@ contains
         call lvl_ud(-1)
         call writo('Flux equilibrium variables written to output')
     end function print_output_eq_1
-    integer function print_output_eq_2(grid_eq,eq) result(ierr)                 ! metric version
-        use num_vars, only: PB3D_name, eq_style
+    integer function print_output_eq_2(grid_eq,eq,data_name) result(ierr)       ! metric version
+        use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
             &max_dim_var_1D
         use grid_utilities, only: trim_grid
-        use rich_vars, only: rich_info_short
         
         character(*), parameter :: rout_name = 'print_output_eq_2'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
         type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
+        character(len=*), intent(in) :: data_name                               ! name under which to store
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         type(var_1D_type), allocatable, target :: eq_1D(:)                      ! 1D equivalent of eq. variables
         type(var_1D_type), pointer :: eq_1D_loc => null()                       ! local element in eq_1D
         type(grid_type) :: grid_trim                                            ! trimmed grid
-        character(len=max_str_ln) :: data_name                                  ! name of data
-        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id                                                           ! counter
         
         ! initialize ierr
@@ -2613,17 +2576,6 @@ contains
             &[size(eq%sigma(:,:,norm_id(1):norm_id(2)))])
         
         ! write
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                data_name = 'eq_2'//trim(rich_info_short())
-            case (2)                                                            ! HELENA
-                data_name = 'eq_2'
-            case default
-                ierr = 1
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                CHCKERR(err_msg)
-        end select
         ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,trim(data_name))
         CHCKERR('')
         
@@ -2659,7 +2611,6 @@ contains
         character(len=max_str_ln) :: description                                ! description of plot
         integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -2774,11 +2725,6 @@ contains
                     ! calculate T_EF(3,3)
                     res(:,:,:,9) = 1._dp
                 end if
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         ! set up plot variables for calculated values
@@ -2920,7 +2866,6 @@ contains
         character(len=max_str_ln) :: description                                ! description of plot
         integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
-        character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), pointer :: Dflux(:) => null()                                 ! points to D flux_p or D flux_t in E coordinates
         integer :: pmone                                                        ! plus or minus one
         
@@ -2991,11 +2936,6 @@ contains
                             &RBphi_H(kd+grid_eq%i_min-1))                       ! h_H_33 = 1/R^2 and RBphi_H = F are tabulated in eq. grid
                     end do
                 end do
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         ! set some variables
@@ -3210,7 +3150,6 @@ contains
         character(len=max_str_ln) :: description                                ! description of plot
         integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -3274,11 +3213,6 @@ contains
                             &eq_2%jac_E(:,:,kd,0,0,0)
                     end do
                 end do
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         ! transform them to Flux coord. system

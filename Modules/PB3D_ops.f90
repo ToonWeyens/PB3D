@@ -30,7 +30,7 @@ module PB3D_ops
     
 contains
     ! Reconstructs the input variables from PB3D output.
-    integer function reconstruct_PB3D_in() result(ierr)
+    integer function reconstruct_PB3D_in(data_name) result(ierr)
         use num_vars, only: eq_style, rho_style, use_pol_flux_E, max_deriv, &
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, prog_style, &
@@ -55,6 +55,9 @@ contains
 #endif
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_in'
+            
+        ! input / output
+        character(len=*), intent(in) :: data_name                               ! name of grid
         
         ! local variables
         integer :: var_1D_id                                                    ! index in var_1D
@@ -71,7 +74,7 @@ contains
         call lvl_ud(1)
         
         ! prepare
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,'in')
+        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name))
         
         ! restore variables
         
@@ -298,11 +301,6 @@ contains
                 h_H_33 = dum_3D(:,:,3)
                 deallocate(dum_3D)
 #endif
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         ! misc_X
@@ -357,16 +355,12 @@ contains
                 end if
                 
                 call lvl_ud(-1)
-            case default
-                err_msg = 'No program style associated with '//&
-                    &trim(i2str(prog_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
     end function reconstruct_PB3D_in
     
     ! Reconstructs grid variables from PB3D output.
-    integer function reconstruct_PB3D_grid(grid,grid_name,grid_limits) &
+    ! Note: "grid_" is added in front the data_name.
+    integer function reconstruct_PB3D_grid(grid,data_name,grid_limits) &
         &result(ierr)
         use num_vars, only: PB3D_name
         use grid_vars, only: create_grid
@@ -378,7 +372,7 @@ contains
         
         ! input / output
         type(grid_type), intent(inout), optional :: grid                        ! grid 
-        character(len=*), intent(in) :: grid_name                               ! name of grid
+        character(len=*), intent(in) :: data_name                               ! name of grid
         integer, intent(in), optional :: grid_limits(2)                         ! i_limit of grid
         
         ! local variables
@@ -397,17 +391,20 @@ contains
         ! prepare
         
         ! read HDF5 variables
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,grid_name)
+        ierr = read_HDF5_arrs(vars_1D,PB3D_name,'grid_'//trim(data_name))
         CHCKERR('')
+        
         ! n
         ierr = retrieve_var_1D_id(vars_1D,'n',var_1D_id)
         CHCKERR('')
         call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
         n = nint(dum_1D)
         deallocate(dum_1D)
+        
         ! set up local grid_limits
         grid_limits_loc = [1,n(3)]
         if (present(grid_limits)) grid_limits_loc = grid_limits
+        
         ! create grid
         ierr = create_grid(grid,n,grid_limits_loc)
         CHCKERR('')
@@ -474,7 +471,8 @@ contains
     end function reconstruct_PB3D_grid
     
     ! Reconstructs the equilibrium variables from PB3D output.
-    integer function reconstruct_PB3D_eq_1(grid_eq,eq,eq_limits) result(ierr)   ! flux version
+    integer function reconstruct_PB3D_eq_1(grid_eq,eq,data_name,eq_limits) &
+        &result(ierr)   ! flux version
         use num_vars, only: PB3D_name
         use eq_vars, only: create_eq
         use HDF5_vars, only: dealloc_var_1D
@@ -486,6 +484,7 @@ contains
         ! input / output
         type(grid_type), intent(inout), optional :: grid_eq                     ! equilibrium grid 
         type(eq_1_type), intent(inout), optional :: eq                          ! flux equilibrium
+        character(len=*), intent(in) :: data_name                               ! name to reconstruct
         integer, intent(in), optional :: eq_limits(2)                           ! i_limit of eq variables
         
         ! local variables
@@ -503,11 +502,11 @@ contains
         ! prepare
         
         ! read HDF5 variables
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,'eq_1')
+        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name))
         CHCKERR('')
+        
         ! create equilibrium
-        ierr = create_eq(grid_eq,eq,setup_E=.false.,setup_F=.true.)
-        CHCKERR('')
+        call create_eq(grid_eq,eq,setup_E=.false.,setup_F=.true.)
         
         ! set up local eq_limits
         eq_limits_loc = [1,grid_eq%n(3)]
@@ -566,26 +565,25 @@ contains
     end function reconstruct_PB3D_eq_1
     
     ! Reconstructs the equilibrium variables from PB3D output.
-    integer function reconstruct_PB3D_eq_2(grid_eq,eq,eq_limits) result(ierr)   ! metric version
-        use num_vars, only: PB3D_name, eq_style
+    integer function reconstruct_PB3D_eq_2(grid_eq,eq,data_name,eq_limits) &
+        &result(ierr)                                                           ! metric version
+        use num_vars, only: PB3D_name
         use eq_vars, only: create_eq
         use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
-        use rich_vars, only: rich_info_short
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_eq'
         
         ! input / output
         type(grid_type), intent(inout), optional :: grid_eq                     ! equilibrium grid 
         type(eq_2_type), intent(inout), optional :: eq                          ! metric equilibrium
+        character(len=*), intent(in) :: data_name                               ! name to reconstruct
         integer, intent(in), optional :: eq_limits(2)                           ! i_limit of eq variables
         
         ! local variables
         integer :: var_1D_id                                                    ! index in var_1D
         type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
-        character(len=max_str_ln) :: eq_name                                    ! name of metric equilibrium
-        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: eq_limits_loc(2)                                             ! local versions of eq_limits
         
         ! initialize ierr
@@ -599,22 +597,11 @@ contains
         ! prepare
         
         ! read HDF5 variables
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                eq_name = 'eq_2'//trim(rich_info_short())
-            case (2)                                                            ! HELENA
-                eq_name = 'eq_2'
-            case default
-                ierr = 1
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                CHCKERR(err_msg)
-        end select
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(eq_name))
+        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name))
         CHCKERR('')
+        
         ! create equilibrium
-        ierr = create_eq(grid_eq,eq,setup_E=.false.,setup_F=.true.)
-        CHCKERR('')
+        call create_eq(grid_eq,eq,setup_E=.false.,setup_F=.true.)
         
         ! set up local eq_limits
         eq_limits_loc = [1,grid_eq%n(3)]
@@ -681,15 +668,14 @@ contains
     end function reconstruct_PB3D_eq_2
     
     ! Reconstructs the vectorial perturbation variables from PB3D output.
-    integer function reconstruct_PB3D_X_1(grid_X,X,X_limits,lim_sec_X) &
-        &result(ierr)
-        use num_vars, only: PB3D_name, eq_style
+    integer function reconstruct_PB3D_X_1(grid_X,X,data_name,X_limits,&
+        &lim_sec_X) result(ierr)
+        use num_vars, only: PB3D_name
         use X_vars, only: create_X, &
             &X_1_var_names, n_mod_X
         use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
-        use rich_vars, only: rich_info_short
         use PB3D_utilities, only: get_full_var_names
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_X_1'
@@ -697,6 +683,7 @@ contains
         ! input / output
         type(grid_type), intent(inout), optional :: grid_X                      ! perturbation grid 
         type(X_1_type), intent(inout), optional :: X                            ! vectorial perturbation variables
+        character(len=*), intent(in) :: data_name                               ! name to reconstruct
         integer, intent(in), optional :: X_limits(2)                            ! i_limit of X variables
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
         
@@ -704,8 +691,6 @@ contains
         integer :: var_1D_id                                                    ! index in var_1D
         type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
         character(len=max_name_ln), allocatable :: req_var_names(:)             ! requested variable names
-        character(len=max_name_ln) :: X_name                                    ! name of vectorial perturbation
-        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: X_limits_loc(2)                                              ! local versions of X_limits
         integer :: lim_sec_X_loc(2)                                             ! local version of lim_sec_X
         integer :: id                                                           ! counter
@@ -723,27 +708,20 @@ contains
         ! set up local lim_sec_X
         lim_sec_X_loc = [1,n_mod_X]
         if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
+        
         ! get full variable names
         call get_full_var_names(X_1_var_names,req_var_names,lim_sec_X_loc)
+        
         ! read PB3D arrays
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                X_name = 'X_1'//trim(rich_info_short())
-            case (2)                                                            ! HELENA
-                X_name = 'X_1'
-            case default
-                ierr = 1
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                CHCKERR(err_msg)
-        end select
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,X_name,&
+        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
             &acc_var_names=req_var_names)
         CHCKERR('')
         deallocate(req_var_names)
+        
         ! set up local X_limits
         X_limits_loc = [1,grid_X%n(3)]
         if (present(X_limits)) X_limits_loc = X_limits
+        
         ! create X
         call create_X(grid_X,X,lim_sec_X)
         
@@ -843,15 +821,17 @@ contains
     end function reconstruct_PB3D_X_1
     
     ! Reconstructs the tensorial perturbation variables from PB3D output.
-    integer function reconstruct_PB3D_X_2(grid_X,X,X_limits,lim_sec_X) &
-        &result(ierr)
+    ! Note: the tensorial perturbation type can  also be used for field- aligned
+    ! variables, in  which case the first  index is assumed to  have dimension 1
+    ! only. This can be triggered using "is_field_averaged".
+    integer function reconstruct_PB3D_X_2(grid_X,X,data_name,X_limits,&
+        &lim_sec_X,is_field_averaged) result(ierr)
         use num_vars, only: PB3D_name
         use X_vars, only: create_X, &
             &X_2_var_names, n_mod_X
         use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
-        use rich_vars, only: rich_info_short
         use PB3D_utilities, only: get_full_var_names
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_X_2'
@@ -859,8 +839,10 @@ contains
         ! input / output
         type(grid_type), intent(inout), optional :: grid_X                      ! perturbation grid 
         type(X_2_type), intent(inout), optional :: X                            ! tensorial perturbation variables
+        character(len=*), intent(in) :: data_name                               ! name to reconstruct
         integer, intent(in), optional :: X_limits(2)                            ! i_limit of X variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
+        logical, intent(in), optional :: is_field_averaged                      ! if field-averaged, only one dimension for first index
         
         ! local variables
         integer :: var_1D_id                                                    ! index in var_1D
@@ -869,6 +851,7 @@ contains
         integer :: X_limits_loc(2)                                              ! local versions of X_limits
         integer :: lim_sec_X_loc(2,2)                                           ! local version of lim_sec_X
         integer :: id                                                           ! counter
+        integer :: par_lim(2)                                                   ! limits on parallel variable
         
         ! initialize ierr
         ierr = 0
@@ -880,163 +863,187 @@ contains
         
         ! prepare
         
+        ! set parallel limits
+        par_lim = [1,grid_X%n(1)]
+        if (present(is_field_averaged)) then                                    ! only first parallel index
+            if (is_field_averaged) then
+                par_lim = [1,1]
+            end if
+        end if
+        
         ! set up local lim_sec_X
         lim_sec_X_loc(:,1) = [1,n_mod_X]
         lim_sec_X_loc(:,2) = [1,n_mod_X]
         if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
+        
         ! get full variable names
         call get_full_var_names(X_2_var_names,[.true.,.true.,.false.,.false.,&
             &.true.,.true.,.true.,.true.,.false.,.false.,.true.,.true.],&
             &req_var_names,lim_sec_X_loc)
+        
         ! read PB3D arrays
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,&
-            &'X_2'//trim(rich_info_short()),acc_var_names=req_var_names)
+        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
+            &acc_var_names=req_var_names)
         CHCKERR('')
         deallocate(req_var_names)
+        
         ! set up local X_limits
         X_limits_loc = [1,grid_X%n(3)]
         if (present(X_limits)) X_limits_loc = X_limits
+        
         ! create X
-        call create_X(grid_X,X,lim_sec_X)
+        call create_X(grid_X,X,lim_sec_X,is_field_averaged)
         
         ! restore variables
         
-        ! RE_PV_int_0
+        ! RE_PV_0
         call get_full_var_names([X_2_var_names(1)],[.true.],req_var_names,&
             &lim_sec_X_loc)
         do id = 1,size(req_var_names)
             ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            X%PV_int_0(:,:,id) = dum_2D(:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_2D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            X%PV_0(par_lim(1):par_lim(2),:,:,id) = &
+                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
+            deallocate(dum_3D)
         end do
         
-        ! IM_PV_int_0
+        ! IM_PV_0
         call get_full_var_names([X_2_var_names(2)],[.true.],req_var_names,&
             &lim_sec_X_loc)
         do id = 1,size(req_var_names)
             ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            X%PV_int_0(:,:,id) = X%PV_int_0(:,:,id) + &
-                &iu*dum_2D(:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_2D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            X%PV_0(par_lim(1):par_lim(2),:,:,id) = &
+                &X%PV_0(par_lim(1):par_lim(2),:,:,id) + iu*&
+                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
+            deallocate(dum_3D)
         end do
         
-        ! RE_PV_int_1
+        ! RE_PV_1
         call get_full_var_names([X_2_var_names(3)],[.false.],req_var_names,&
             &lim_sec_X_loc)
         do id = 1,size(req_var_names)
             ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            X%PV_int_1(:,:,id) = dum_2D(:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_2D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            X%PV_1(par_lim(1):par_lim(2),:,:,id) = &
+                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
+            deallocate(dum_3D)
         end do
         
-        ! IM_PV_int_1
+        ! IM_PV_1
         call get_full_var_names([X_2_var_names(4)],[.false.],req_var_names,&
             &lim_sec_X_loc)
         do id = 1,size(req_var_names)
             ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            X%PV_int_1(:,:,id) = X%PV_int_1(:,:,id) + &
-                &iu*dum_2D(:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_2D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            X%PV_1(par_lim(1):par_lim(2),:,:,id) = &
+                &X%PV_1(par_lim(1):par_lim(2),:,:,id) + iu*&
+                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
+            deallocate(dum_3D)
         end do
         
-        ! RE_PV_int_2
+        ! RE_PV_2
         call get_full_var_names([X_2_var_names(5)],[.true.],req_var_names,&
             &lim_sec_X_loc)
         do id = 1,size(req_var_names)
             ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            X%PV_int_2(:,:,id) = dum_2D(:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_2D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            X%PV_2(par_lim(1):par_lim(2),:,:,id) = &
+                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
+            deallocate(dum_3D)
         end do
         
-        ! IM_PV_int_2
+        ! IM_PV_2
         call get_full_var_names([X_2_var_names(6)],[.true.],req_var_names,&
             &lim_sec_X_loc)
         do id = 1,size(req_var_names)
             ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            X%PV_int_2(:,:,id) = X%PV_int_2(:,:,id) + &
-                &iu*dum_2D(:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_2D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            X%PV_2(par_lim(1):par_lim(2),:,:,id) = &
+                &X%PV_2(par_lim(1):par_lim(2),:,:,id) + iu*&
+                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
+            deallocate(dum_3D)
         end do
         
-        ! RE_KV_int_0
+        ! RE_KV_0
         call get_full_var_names([X_2_var_names(7)],[.true.],req_var_names,&
             &lim_sec_X_loc)
         do id = 1,size(req_var_names)
             ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            X%KV_int_0(:,:,id) = dum_2D(:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_2D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            X%KV_0(par_lim(1):par_lim(2),:,:,id) = &
+                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
+            deallocate(dum_3D)
         end do
         
-        ! IM_KV_int_0
+        ! IM_KV_0
         call get_full_var_names([X_2_var_names(8)],[.true.],req_var_names,&
             &lim_sec_X_loc)
         do id = 1,size(req_var_names)
             ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            X%KV_int_0(:,:,id) = X%KV_int_0(:,:,id) + &
-                &iu*dum_2D(:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_2D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            X%KV_0(par_lim(1):par_lim(2),:,:,id) = &
+                &X%KV_0(par_lim(1):par_lim(2),:,:,id) + iu*&
+                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
+            deallocate(dum_3D)
         end do
         
-        ! RE_KV_int_1
+        ! RE_KV_1
         call get_full_var_names([X_2_var_names(9)],[.false.],req_var_names,&
             &lim_sec_X_loc)
         do id = 1,size(req_var_names)
             ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            X%KV_int_1(:,:,id) = dum_2D(:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_2D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            X%KV_1(par_lim(1):par_lim(2),:,:,id) = &
+                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
+            deallocate(dum_3D)
         end do
         
-        ! IM_KV_int_1
+        ! IM_KV_1
         call get_full_var_names([X_2_var_names(10)],[.false.],req_var_names,&
             &lim_sec_X_loc)
         do id = 1,size(req_var_names)
             ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            X%KV_int_1(:,:,id) = X%KV_int_1(:,:,id) + &
-                &iu*dum_2D(:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_2D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            X%KV_1(par_lim(1):par_lim(2),:,:,id) = &
+                &X%KV_1(par_lim(1):par_lim(2),:,:,id) + iu*&
+                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
+            deallocate(dum_3D)
         end do
         
-        ! RE_KV_int_2
+        ! RE_KV_2
         call get_full_var_names([X_2_var_names(11)],[.true.],req_var_names,&
             &lim_sec_X_loc)
         do id = 1,size(req_var_names)
             ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            X%KV_int_2(:,:,id) = dum_2D(:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_2D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            X%KV_2(par_lim(1):par_lim(2),:,:,id) = &
+                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
+            deallocate(dum_3D)
         end do
         
-        ! IM_KV_int_2
+        ! IM_KV_2
         call get_full_var_names([X_2_var_names(12)],[.true.],req_var_names,&
             &lim_sec_X_loc)
         do id = 1,size(req_var_names)
             ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            X%KV_int_2(:,:,id) = X%KV_int_2(:,:,id) + &
-                &iu*dum_2D(:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_2D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            X%KV_2(par_lim(1):par_lim(2),:,:,id) = &
+                &X%KV_2(par_lim(1):par_lim(2),:,:,id) + iu*&
+                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
+            deallocate(dum_3D)
         end do
         
         ! clean up
@@ -1049,20 +1056,20 @@ contains
     end function reconstruct_PB3D_X_2
     
     ! Reconstructs the solution variables from PB3D output.
-    integer function reconstruct_PB3D_sol(grid_sol,sol,sol_limits,lim_sec_sol) &
-        &result(ierr)
+    integer function reconstruct_PB3D_sol(grid_sol,sol,data_name,sol_limits,&
+        &lim_sec_sol) result(ierr)
         use num_vars, only: PB3D_name
         use sol_vars, only: create_sol
         use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
-        use rich_vars, only: rich_info_short
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_sol'
         
         ! input / output
         type(grid_type), intent(inout), optional :: grid_sol                    ! solution grid 
         type(sol_type), intent(inout), optional :: sol                          ! solution variables
+        character(len=*), intent(in) :: data_name                               ! name to reconstruct
         integer, intent(in), optional :: sol_limits(2)                          ! i_limit of sol variables
         integer, intent(in), optional :: lim_sec_sol(2)                         ! limits of m_X (pol. flux) or n_X (tor. flux)
         
@@ -1082,12 +1089,14 @@ contains
         ! prepare
         
         ! read HDF5 arrays
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,'sol'//trim(rich_info_short()))
+        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name))
         CHCKERR('')
+        
         ! set n_EV
         ierr = retrieve_var_1D_id(vars_1D,'RE_sol_vec',var_1D_id)
         CHCKERR('')
         n_EV = vars_1D(var_1D_id)%tot_i_max(3)-vars_1D(var_1D_id)%tot_i_min(3)+1
+        
         ! create solution
         call create_sol(grid_sol,sol,n_EV,lim_sec_sol)
         
@@ -1134,7 +1143,7 @@ contains
     end function reconstruct_PB3D_sol
     
     ! Reconstructs the Richardson variables from PB3D output.
-    integer function reconstruct_PB3D_rich() result(ierr)
+    integer function reconstruct_PB3D_rich(data_name) result(ierr)
         use num_vars, only: PB3D_name, max_it_rich, n_sol_requested
         use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
@@ -1144,11 +1153,14 @@ contains
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_rich'
         
+        ! input / output
+        character(len=*), intent(in) :: data_name                               ! name to reconstruct
+        
         ! local variables
         integer :: var_1D_id                                                    ! index in var_1D
         type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
-        integer :: mir_loc                                              ! max_it_rich of reconstructed variables
-        integer :: nsr_loc                                          ! n_sol_requested of reconstucted variables
+        integer :: mir_loc                                                      ! max_it_rich of reconstructed variables
+        integer :: nsr_loc                                                      ! n_sol_requested of reconstucted variables
         
         ! initialize ierr
         ierr = 0
@@ -1160,7 +1172,7 @@ contains
         ! prepare
         
         ! read HDF5 variables
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,'rich')
+        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name))
         CHCKERR('')
         
         ! restore variables

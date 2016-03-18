@@ -125,8 +125,7 @@ contains
     end subroutine get_full_var_names_2
     
     ! Retrieves variable index from array 1D equivalents
-    integer function retrieve_var_1D_id(vars,var_name,var_id) &
-        &result(ierr)
+    integer function retrieve_var_1D_id(vars,var_name,var_id) result(ierr)
         character(*), parameter :: rout_name = 'retrieve_var_1D'
         
         ! input / output

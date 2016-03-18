@@ -7,7 +7,7 @@ module num_vars
     implicit none
     private
     public dp, qp, max_str_ln, max_name_ln, max_deriv, prog_name, output_name, &
-        &prog_version, prog_style, min_PB3D_version, &
+        &prog_version, prog_style, min_PB3D_version, shell_commands_name, &
         &max_mem_per_proc, n_procs, rank, X_jobs_lims, X_jobs_taken, X_job_nr, &
         &X_jobs_file_name, X_jobs_lock_file_name, HDF5_lock_file_name, &
         &pi, mu_0_original, iu, &
@@ -37,8 +37,9 @@ module num_vars
     integer :: prog_style                                                       ! program style (1: PB3D, 2: PB3D_POST)
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
-    real(dp), parameter :: prog_version = 1.12_dp                               ! version number
-    real(dp), parameter :: min_PB3D_version = 1.11_dp                           ! minimum PB3D version for POST
+    character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
+    real(dp), parameter :: prog_version = 1.13_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.13_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]

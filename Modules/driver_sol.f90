@@ -26,8 +26,7 @@ module driver_sol
 #endif
     
 contains
-    ! Implementation   of  the  driver,  using  Richardson's  extrapolation  and
-    ! discretization in the normal direction
+    ! Main driver of PB3D solution part.
     integer function run_driver_sol() result(ierr)
         use num_vars, only: EV_style, eq_style
         use grid_vars, only: dealloc_grid, &
@@ -61,7 +60,7 @@ contains
         type(grid_type) :: grid_sol                                             ! solution grid
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium
         type(eq_2_type) :: eq_2                                                 ! metric equilibrium
-        type(X_2_type) :: X                                                     ! tensorial perturbation variables
+        type(X_2_type) :: X                                                     ! field-averged tensorial perturbation variables (only 1 par dim)
         type(sol_type) :: sol                                                   ! solution variables
         integer :: sol_limits(2)                                                ! min. and max. index of sol grid for this process
         real(dp), allocatable :: r_F_sol(:)                                     ! normal points in solution grid
@@ -81,7 +80,7 @@ contains
         ! some preliminary things
         ierr = wait_MPI()
         CHCKERR('')
-        ierr = reconstruct_PB3D_in()                                            ! reconstruct miscellaneous PB3D output variables
+        ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables
         CHCKERR('')
         
         ! test maximum memory
@@ -103,29 +102,30 @@ contains
         call lvl_ud(1)
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq'//&
+                ierr = reconstruct_PB3D_grid(grid_eq,'eq'//&
                     &trim(rich_info_short()))
                 CHCKERR('')
-                ierr = reconstruct_PB3D_grid(grid_X,'grid_X'//&
+                ierr = reconstruct_PB3D_grid(grid_X,'X'//&
                     &trim(rich_info_short()),grid_limits=sol_limits)
                 CHCKERR('')
-            case (2)                                                            ! HELENA
-                ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq')
+                ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
                 CHCKERR('')
-                ierr = reconstruct_PB3D_grid(grid_X,'grid_X',&
+                ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2'//&
+                    &trim(rich_info_short()))
+                CHCKERR('')
+            case (2)                                                            ! HELENA
+                ierr = reconstruct_PB3D_grid(grid_eq,'eq')
+                CHCKERR('')
+                ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
+                CHCKERR('')
+                ierr = reconstruct_PB3D_grid(grid_X,'X',&
                     &grid_limits=sol_limits)
                 CHCKERR('')
-            case default
-                ierr = 1
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                CHCKERR(err_msg)
+                ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2')
         end select
-        ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1)
-        CHCKERR('')
-        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2)
-        CHCKERR('')
-        ierr = reconstruct_PB3D_X_2(grid_X,X,X_limits=sol_limits)
+        ierr = reconstruct_PB3D_X_2(grid_X,X,'X_2_int'//&
+            &trim(rich_info_short()),X_limits=sol_limits,&
+            &is_field_averaged=.true.)
         CHCKERR('')
 #if ldebug
         ! need field-aligned perturbation grid as well
@@ -134,14 +134,9 @@ contains
                 grid_X_B => grid_X
             case (2)                                                            ! HELENA
                 allocate(grid_X_B)
-                ierr = reconstruct_PB3D_grid(grid_X_B,'grid_X_B'//&
+                ierr = reconstruct_PB3D_grid(grid_X_B,'X_B'//&
                     &trim(rich_info_short()),grid_limits=sol_limits)
                 CHCKERR('')
-            case default
-                ierr = 1
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                CHCKERR(err_msg)
         end select
 #endif
         call lvl_ud(-1)
@@ -226,7 +221,7 @@ contains
         CHCKERR('')
         
         ! write solution variables to output
-        ierr = print_output_sol(grid_sol,sol)
+        ierr = print_output_sol(grid_sol,sol,'sol'//trim(rich_info_short()))
         CHCKERR('')
         
         ! calculate Richardson extrapolation factors if necessary
@@ -235,8 +230,7 @@ contains
         ! clean up
         call writo('Clean up')
         call lvl_ud(1)
-        ierr = dealloc_in()
-        CHCKERR('')
+        call dealloc_in()
         call dealloc_grid(grid_eq)
         call dealloc_grid(grid_X)
         call dealloc_grid(grid_sol)

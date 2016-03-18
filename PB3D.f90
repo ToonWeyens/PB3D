@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.12                                                              !
+!   Version: 1.13                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -59,13 +59,12 @@ program PB3D
     CHCKERR
     prog_name = 'PB3D'                                                          ! program name
     prog_style = 1                                                              ! main part
-    call print_hello                                                            ! print message with time, etc
-    call init_messages                                                          ! initialize message operations
-    ierr = init_files()                                                         ! initialize file operations
-    CHCKERR
-    call init_time                                                              ! initialize time
-    call init_HDF5                                                              ! initialize HDF5
-    call init_X_vars                                                            ! initialize perturbation vars
+    call print_hello()                                                          ! print message with time, etc
+    call init_messages()                                                        ! initialize message operations
+    call init_files()                                                           ! initialize file operations
+    call init_time()                                                            ! initialize time
+    call init_HDF5()                                                            ! initialize HDF5
+    call init_X_vars()                                                          ! initialize perturbation vars
  
     !-------------------------------------------------------
     !   Read the user-provided input file and the VMEC output
@@ -85,18 +84,15 @@ program PB3D
         if (rich_restart_lvl.eq.1) then
             ierr = read_input_eq()                                              ! read input equilibrium file
             CHCKERR
-            ierr = calc_normalization_const()                                   ! set up normalization constants
-            CHCKERR
-            ierr = normalize_input()                                            ! normalize the input
-            CHCKERR
+            call calc_normalization_const()                                     ! set up normalization constants
+            call normalize_input()                                              ! normalize the input
         end if
         ierr = open_output()                                                    ! open output file
         CHCKERR
         if (rich_restart_lvl.eq.1) then
-            ierr = print_output_in()                                            ! print input outputs
+            ierr = print_output_in('in')                                        ! print input outputs
             CHCKERR
-            ierr = dealloc_in()                                                 ! clean up input from equilibrium codes
-            CHCKERR
+            call dealloc_in()                                                   ! clean up input from equilibrium codes
         end if
     end if
     ierr = broadcast_input_opts()                                               ! broadcast input options to other processors

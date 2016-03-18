@@ -23,11 +23,11 @@
     max_it_slepc            = 100000
     max_mem_per_proc        = 1000
     plot_grid               = .false.
-    plot_flux_q             = .false.
-    plot_resonance          = .false.
+    plot_flux_q             = .true.
+    plot_resonance          = .true.
     matrix_SLEPC_style      = 1
-    max_it_rich             = 2
-    rich_restart_lvl        = 1
+    max_it_rich             = 3
+    rich_restart_lvl        = 3
 /
     n_mod_X                 = 5
     min_sec_X               = 12

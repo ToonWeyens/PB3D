@@ -28,7 +28,8 @@ module rich_vars
     real(dp), allocatable :: max_rel_err(:)                                     ! maximum relative error for all Richardson levels
     integer, allocatable :: loc_max_rel_err(:,:)                                ! location of maximum of relative error
 contains
-    ! possible extension with Richardson level or nothing if only one level
+    ! possible extension  with Richardson  level or nothing  if only  one level,
+    ! except for the short version, which always returns the Richardson level.
     elemental character(len=max_str_ln) function rich_info()                    ! full version
         if (max_it_rich.gt.1) then
             rich_info = ' for Richardson level '//trim(i2str(rich_lvl))
@@ -37,10 +38,6 @@ contains
         end if
     end function rich_info
     elemental character(len=max_str_ln) function rich_info_short()              ! short version
-        if (max_it_rich.gt.1) then
-            rich_info_short = '_R_'//trim(i2str(rich_lvl))
-        else
-            rich_info_short = ''
-        end if
+        rich_info_short = '_R_'//trim(i2str(rich_lvl))
     end function rich_info_short
 end module rich_vars

@@ -1615,9 +1615,11 @@ contains
         end subroutine
     end subroutine plot_diff_HDF5
     
-    ! Executes command line, or displays a message if disabled.
+    ! Executes command line, or displays a message if disabled. Also keeps a log
+    ! of all shell commands executed.
     subroutine use_execute_command_line(command,exitstat,cmdstat,cmdmsg)
-        use num_vars, only: no_execute_command_line
+        use num_vars, only: no_execute_command_line, prog_name, &
+            &shell_commands_name
         
         ! input / output
         character(len=*), intent(in) :: command                                 ! command to execute
@@ -1625,18 +1627,40 @@ contains
         integer, intent(inout), optional :: cmdstat                             ! command status
         character(len=*), intent(inout), optional :: cmdmsg                     ! command message
         
+        ! local variables
+        integer :: istat                                                        ! status
+        integer :: shell_commands_i                                             ! handle for shell commands file
+        character(len=max_str_ln) :: full_name                                  ! full name
+        
+        ! set up the full shell commands file name
+        full_name = prog_name//'_'//trim(shell_commands_name)//'.sh'
+        
+        ! write the command to the file
+        open(unit=nextunit(shell_commands_i),file=trim(full_name),&
+            &status='old',position='append',iostat=istat)
+        if (istat.eq.0) then
+            write(shell_commands_i,'(A)') trim(command)
+            close(shell_commands_i)
+        else
+            call writo('WARNING: Failed to write to shell commands log file "'&
+                &//trim(full_name)//'"')
+        end if
+        
+        ! execute command line
         if (no_execute_command_line) then
             call writo('WARNING: Not executing command')
             call lvl_ud(1)
             call writo(command)
             call lvl_ud(-1)
             call writo('This can be run manually')
+            if (istat.eq.0) call writo('And the command is also written to &
+                &the log file "'//trim(full_name)//'"')
             if (present(exitstat)) exitstat = 1
             if (present(cmdstat)) cmdstat = 0
             if (present(cmdmsg)) cmdmsg = ''
         else
-            call execute_command_line(command,EXITSTAT=exitstat,CMDSTAT=cmdstat,&
-                &CMDMSG=cmdmsg)
+            call execute_command_line(command,EXITSTAT=exitstat,&
+                &CMDSTAT=cmdstat,CMDMSG=cmdmsg)
         end if
     end subroutine
 end module output_ops

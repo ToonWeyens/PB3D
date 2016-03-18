@@ -22,16 +22,8 @@ module files_ops
 contains
     ! initialize the variables for the module
     ! [MPI] All ranks
-    integer function init_files() result(ierr)
+    subroutine init_files()
         use num_vars, only: ltest, prog_style
-        
-        character(*), parameter :: rout_name = 'init_files'
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
         
         ! select according to program style
         select case (prog_style)
@@ -52,11 +44,6 @@ contains
                 allocate(opt_args(5), inc_args(5))
                 opt_args = ''
                 inc_args = 0
-            case default
-                err_msg = 'No program style associated with '//&
-                    &trim(i2str(prog_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         ! set common option arguments
@@ -68,7 +55,7 @@ contains
         opt_args(4) = '--no_output'
         opt_args(5) = '--no_execute_command_line'
         inc_args(1:5) = [0,0,0,0,0]
-    end function init_files
+    end subroutine init_files
 
     ! parses the command line arguments
     ! The input arguments are saved in command_arg
@@ -84,7 +71,6 @@ contains
         integer :: iseq                                                         ! control the user-specified arguments
         integer :: id                                                           ! dummy integer
         character(len=max_str_ln) :: dum_str                                    ! dummy string
-        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: min_args                                                     ! minimal nr. of arguments
         
         ! initialize ierr
@@ -129,11 +115,6 @@ contains
                     &command-line options"
                 open_help(6) = ""
                 min_args = 2
-            case default
-                err_msg = 'No program style associated with '//&
-                    &trim(i2str(prog_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         call writo("Parsing command line arguments")
@@ -282,11 +263,6 @@ contains
                             &// '" opened')
                         close(PB3D_i)
                     end if
-                case default
-                    err_msg = 'No program style associated with '//&
-                        &trim(i2str(prog_style))
-                    ierr = 1
-                    CHCKERR(err_msg)
             end select
             
             ! set options
@@ -354,12 +330,6 @@ contains
                                         case(2)                                 ! POST
                                             call writo('WARNING: Invalid &
                                                 &option number')
-                                        case default
-                                            err_msg = 'No program style &
-                                                &associated with '//&
-                                                &trim(i2str(prog_style))
-                                            ierr = 1
-                                            CHCKERR(err_msg)
                                     end select
                             end select
                             opt_taken(jd) = .true.
@@ -417,7 +387,7 @@ contains
     ! and the output log file name is different.
     integer function open_output() result(ierr)
         use num_vars, only: prog_style, output_i, output_name, prog_name, &
-            &rich_restart_lvl
+            &rich_restart_lvl, shell_commands_name
         use messages, only: temp_output, temp_output_active
         use files_utilities, only: nextunit
         use HDF5_ops, only: create_output_HDF5, print_HDF5_arrs
@@ -428,7 +398,8 @@ contains
         ! local variables (also used in child functions)
         integer :: id                                                           ! counter
         character(len=max_str_ln) :: full_output_name                           ! full name
-        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: shell_commands_i                                             ! handle for shell commands file
+        integer :: istat                                                        ! status
         
         ! initialize ierr
         ierr = 0
@@ -464,6 +435,25 @@ contains
             write(output_i,*) temp_output(id)
         end do
         
+        ! recycle full_output_name for shell_commands file
+        full_output_name = prog_name//'_'//trim(shell_commands_name)//'.sh'
+        
+        ! create output file for shell commands
+        open(unit=nextunit(shell_commands_i),file=trim(full_output_name),&
+            &status='replace',iostat=ierr)
+        
+        ! write header, close and make executable
+        write(shell_commands_i,'(A)') '#!/bin/bash'
+        write(shell_commands_i,'(A)') '# This file contains all the shell &
+            &commands from the '//trim(prog_name)//' run'
+        close(shell_commands_i)
+        call execute_command_line('chmod +x '//trim(full_output_name),&
+            &EXITSTAT=istat)                                                    ! not too terrible if execute_command_line fails
+        
+        ! print message
+        call writo('shell commands log output file "'//trim(full_output_name)//&
+            &'" created')
+        
         ! specific actions for program styles
         select case (prog_style)
             case (1)                                                            ! PB3D
@@ -474,11 +464,6 @@ contains
                 end if
             case (2)                                                            ! POST
                 ! do nothing
-            case default
-                ierr = 1
-                err_msg = 'No program style associated with '//&
-                    &trim(i2str(prog_style))
-                CHCKERR(err_msg)
         end select
         
         ! no more temporary output
@@ -494,9 +479,14 @@ contains
     ! closes the output file
     ! [MPI] only master
     subroutine close_output
-        use num_vars, only: rank, output_i
+        use num_vars, only: rank, output_i, prog_name, shell_commands_name
         
         call writo('Closing output files')
+        call lvl_ud(1)
+        call writo('A log of the shell command is kept in the log file "'//&
+            &trim(prog_name)//'_'//trim(shell_commands_name)//'.sh"')
+        call lvl_ud(-1)
+        call writo('Output files closed')
         call writo('')
         
         if (rank.eq.0) close(output_i)

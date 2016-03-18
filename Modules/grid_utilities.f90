@@ -120,11 +120,6 @@ contains
                 ! trivial HELENA uses flux coordinates
                 theta_E = theta_F
                 zeta_E = zeta_F
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
     contains
         integer function coord_F2E_VMEC() result(ierr)
@@ -397,11 +392,6 @@ contains
                 ! trivial HELENA uses flux coordinates
                 theta_F = theta_E
                 zeta_F = zeta_E
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
     contains
         integer function coord_E2F_VMEC() result(ierr)
@@ -580,11 +570,6 @@ contains
             case (2)                                                            ! HELENA
                 ierr = calc_XYZ_grid_HEL(grid_eq,grid_XYZ,X,Y,Z)
                 CHCKERR('')
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
         
         ! if normalized, return to physical value

@@ -56,7 +56,6 @@ contains
                     val = .true.
                 case ('n','N','no','No','NO','nO') 
                     val = .false.
-                case default 
             end select
         end if
         
@@ -257,18 +256,10 @@ contains
     end subroutine pause_prog
     
     ! Cleans up input from equilibrium codes.
-    integer function dealloc_in() result(ierr)
+    subroutine dealloc_in()
         use num_vars, only: eq_style
         use VMEC, only: dealloc_VMEC
         use HELENA_vars, only: dealloc_HEL
-        
-        character(*), parameter :: rout_name = 'dealloc_in'
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
         
         ! deallocate depending on equilibrium style
         select case (eq_style)
@@ -276,11 +267,6 @@ contains
                 call dealloc_VMEC
             case (2)                                                            ! HELENA
                 call dealloc_HEL
-            case default
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
-    end function dealloc_in
+    end subroutine dealloc_in
 end module input_utilities

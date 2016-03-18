@@ -23,9 +23,6 @@ contains
         
         character(*), parameter :: rout_name = 'generic_tests'
         
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
         ! initialize ierr
         ierr = 0
         
@@ -52,11 +49,6 @@ contains
                     CHCKERR('')
                     call pause_prog
                 end if
-            case default
-                err_msg = 'No program style associated with '//&
-                    &trim(i2str(prog_style))
-                ierr = 1
-                CHCKERR(err_msg)
         end select
     end function generic_tests
     

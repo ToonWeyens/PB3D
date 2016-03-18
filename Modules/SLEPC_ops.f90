@@ -62,7 +62,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(X_2_type), intent(in) :: X                                         ! perturbation variables
+        type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
         type(sol_type), intent(inout) :: sol                                    ! solution variables
         integer, intent(in), optional :: i_geo                                  ! at which geodesic index to perform the calculations
         
@@ -78,7 +78,6 @@ contains
         PetscReal, allocatable :: norm_disc_coeff(:)                            ! discretization coefficients
         PetscReal :: step_size                                                  ! step size in flux coordinates
         PetscBool :: done_inverse                                               ! is it converged?
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -179,11 +178,6 @@ contains
                     !!ierr = 1
                     !!err_msg = 'NOT YET IMPLEMENTED FOR SHELL MATRICES'
                     !!CHCKERR(err_msg)
-                case default
-                    ierr = 1
-                    err_msg = 'No SLEPC matrix type associated to '//&
-                        &trim(i2str(matrix_SLEPC_style))
-                    CHCKERR(err_msg)
             end select
             
             ! set up solver
@@ -432,7 +426,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(X_2_type), intent(in) :: X                                         ! perturbation variables
+        type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
         Mat, intent(inout) :: A, B                                              ! matrix A and B
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
         PetscReal, intent(in) :: norm_disc_coeff(:)                             ! discretization coefficients for normal derivatives
@@ -506,8 +500,8 @@ contains
                 deallocate(d_nz,o_nz)
                 
                 ! fill the matrix A
-                ierr = fill_mat(X%PV_int_0(i_geo,:,:),X%PV_int_1(i_geo,:,:),&
-                    &X%PV_int_2(i_geo,:,:),n_r,norm_disc_coeff,bulk_i_lim,A)
+                ierr = fill_mat(X%PV_0(1,i_geo,:,:),X%PV_1(1,i_geo,:,:),&
+                    &X%PV_2(1,i_geo,:,:),n_r,norm_disc_coeff,bulk_i_lim,A)
                 CHCKERR('')
                 
                 call writo('matrix A set up:')
@@ -523,8 +517,8 @@ contains
                 CHCKERR('failed to duplicate A into B')
                 
                 ! fill the matrix B
-                ierr = fill_mat(X%KV_int_0(i_geo,:,:),X%KV_int_1(i_geo,:,:),&
-                    &X%KV_int_2(i_geo,:,:),n_r,norm_disc_coeff,bulk_i_lim,B)
+                ierr = fill_mat(X%KV_0(1,i_geo,:,:),X%KV_1(1,i_geo,:,:),&
+                    &X%KV_2(1,i_geo,:,:),n_r,norm_disc_coeff,bulk_i_lim,B)
                 CHCKERR('')
                 
                 call writo('matrix B set up:')
@@ -557,11 +551,6 @@ contains
                 CHCKERR(err_msg)
                 call MatShellSetOperation(B,MATOP_GET_DIAGONAL,&
                     &shell_B_diagonal,ierr)
-                CHCKERR(err_msg)
-            case default
-                ierr = 1
-                err_msg = 'No SLEPC matrix type associated to '//&
-                    &trim(i2str(matrix_SLEPC_style))
                 CHCKERR(err_msg)
         end select
     contains
@@ -861,8 +850,8 @@ contains
             ierr = 0
             
             ! call with PV
-            ierr = shell_mat_product(X%PV_int_0(i_geo,:,:),&
-                &X%PV_int_1(i_geo,:,:),X%PV_int_2(i_geo,:,:),vec_in,vec_out)
+            ierr = shell_mat_product(X%PV_0(1,i_geo,:,:),&
+                &X%PV_1(1,i_geo,:,:),X%PV_2(1,i_geo,:,:),vec_in,vec_out)
             CHCKERR('')
         end subroutine shell_A_product
         subroutine shell_B_product(mat,vec_in,vec_out,ierr)
@@ -877,8 +866,8 @@ contains
             ierr = 0
             
             ! call with KV
-            ierr = shell_mat_product(X%KV_int_0(i_geo,:,:),&
-                &X%KV_int_1(i_geo,:,:),X%KV_int_2(i_geo,:,:),vec_in,vec_out)
+            ierr = shell_mat_product(X%KV_0(1,i_geo,:,:),&
+                &X%KV_1(1,i_geo,:,:),X%KV_2(1,i_geo,:,:),vec_in,vec_out)
             CHCKERR('')
         end subroutine shell_B_product
         integer function shell_mat_product(V_0,V_1,V_2,vec_in,vec_out) &
@@ -937,7 +926,7 @@ contains
             PetscInt :: ierr                                                    ! error variable
             
             ! call with PV
-            ierr = shell_mat_diagonal(X%PV_int_0(i_geo,:,:),diag)
+            ierr = shell_mat_diagonal(X%PV_0(1,i_geo,:,:),diag)
             CHCKERR('')
         end subroutine shell_A_diagonal
         subroutine shell_B_diagonal(mat,diag,ierr)
@@ -952,7 +941,7 @@ contains
             ierr = 0
             
             ! call with KV
-            ierr = shell_mat_diagonal(X%KV_int_0(i_geo,:,:),diag)
+            ierr = shell_mat_diagonal(X%KV_0(1,i_geo,:,:),diag)
             CHCKERR('')
         end subroutine shell_B_diagonal
         integer function shell_mat_diagonal(V_0,diag) result(ierr)
@@ -1009,7 +998,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables
+        type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
         Mat, intent(inout) :: A, B                                              ! Matrices A and B from A X = lambda B X
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
         integer, intent(in) :: n_sol                                            ! number of grid points of solution grid
@@ -1224,7 +1213,7 @@ contains
             ! input / output
             integer, intent(in) :: r_id                                         ! global position at which to set BC (starting at 0)
             integer, intent(in) :: r_id_loc                                     ! local index in perturbation tables
-            type(X_2_type), intent(in) :: X                                     ! tensorial perturbation variables
+            type(X_2_type), intent(in) :: X                                     ! field-averaged perturbation variables (so only first index)
             Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
             integer, intent(in) :: i_geo                                        ! at which geodesic index to perform the calculations
             integer, intent(in) :: n_sol                                        ! number of grid points of solution grid
@@ -1247,11 +1236,11 @@ contains
             ! -----------------!
             ! calculate modified terms V_int_0_mod
             allocate(V_int_0_mod(n_mod,n_mod,2))
-            ierr = calc_V_0_mod(X%PV_int_0(i_geo,r_id_loc,:),&
-                &X%KV_int_0(i_geo,r_id_loc,:),&
-                &X%PV_int_1(i_geo,r_id_loc,:),&
-                &X%KV_int_1(i_geo,r_id_loc,:),&
-                &X%KV_int_2(i_geo,r_id_loc,:),V_int_0_mod)
+            ierr = calc_V_0_mod(X%PV_0(1,i_geo,r_id_loc,:),&
+                &X%KV_0(1,i_geo,r_id_loc,:),&
+                &X%PV_1(1,i_geo,r_id_loc,:),&
+                &X%KV_1(1,i_geo,r_id_loc,:),&
+                &X%KV_2(1,i_geo,r_id_loc,:),V_int_0_mod)
             CHCKERR('')
             
             ! add block to r_id + (0,0)
@@ -1286,7 +1275,7 @@ contains
             
             ! input / output
             integer, intent(in) :: r_id                                         ! position at which to set BC
-            type(X_2_type), intent(in) :: X                                     ! tensorial perturbation variables
+            type(X_2_type), intent(in) :: X                                     ! field-averaged perturbation variables (so only first index)
             Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
             
             ! initialize ierr
@@ -1466,7 +1455,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables
+        type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
         Mat, intent(inout) :: A, B                                              ! matrix A and B
         EPS, intent(inout) :: solver                                            ! EV solver
         
@@ -1710,7 +1699,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(X_2_type), intent(in) :: X                                         ! perturbation variables
+        type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
         type(sol_type), intent(inout) :: sol                                    ! solution variables
         EPS, intent(inout) :: solver                                            ! EV solver
         PetscInt, intent(inout) :: max_n_EV                                     ! nr. of EV's saved, up to n_conv
@@ -1816,11 +1805,6 @@ contains
                             &trim(r2str(1._dp/T_0**2))//' Hz^2'
                     case (2)                                                    ! HELENA
                         write(output_EV_i,'(A)') '#     (HELENA normalization)'
-                    case default
-                        err_msg = 'No equilibrium style associated with '//&
-                            &trim(i2str(eq_style))
-                        ierr = 1
-                        CHCKERR(err_msg)
                 end select
             else
                 write(output_EV_i,'(A)') '# Eigenvalues'

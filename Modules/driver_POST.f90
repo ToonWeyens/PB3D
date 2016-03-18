@@ -66,6 +66,7 @@ contains
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium
         type(eq_2_type), target :: eq_2                                         ! metric equilibrium
         type(eq_2_type), pointer :: eq_2_B                                      ! field-aligned metric equilibrium
+        type(eq_1_type) :: eq_1_plot                                            ! plot flux equilibrium
         type(eq_2_type) :: eq_2_plot                                            ! plot metric equilibrium
         type(X_1_type), target :: X                                             ! vectorial perturbation variables
         type(X_1_type), pointer :: X_B                                          ! field-aligned vectorial perturbation variables
@@ -84,9 +85,12 @@ contains
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
         complex(dp), allocatable :: sol_val_comp(:,:,:)                         ! fraction between total E_pot and E_kin, compared with EV
         complex(dp), allocatable :: sol_val_comp_loc(:,:,:)                     ! local sol_val_comp
-        character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln) :: full_output_name                           ! full name
         character(len=max_str_ln) :: format_head                                ! header
+        character(len=max_str_ln) :: grid_eq_name                               ! name of grid_eq data set
+        character(len=max_str_ln) :: grid_X_name                                ! name of grid_X data set
+        character(len=max_str_ln) :: eq_2_name                                  ! name of eq_2 data set
+        character(len=max_str_ln) :: X_1_name                                   ! name of X_1 data set
         !real(dp), allocatable :: plot_var(:,:,:) 
         
         ! initialize ierr
@@ -95,8 +99,22 @@ contains
         ! some preliminary things
         ierr = wait_MPI()
         CHCKERR('')
-        ierr = reconstruct_PB3D_in()                                            ! reconstruct miscellaneous PB3D output variables
+        ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables
         CHCKERR('')
+        
+        ! set up name of grid_eq, grid_X, eq_2 and X_1 data set
+        select case (eq_style)
+            case (1)                                                    ! VMEC
+                grid_eq_name = 'eq'//trim(rich_info_short())
+                grid_X_name = 'X'//trim(rich_info_short())
+                eq_2_name = 'eq_2'//trim(rich_info_short())
+                X_1_name = 'X_1'//trim(rich_info_short())
+            case (2)                                                    ! HELENA
+                grid_eq_name = 'eq'
+                grid_X_name = 'X'
+                eq_2_name = 'eq_2'
+                X_1_name = 'X_1'
+        end select
         
         !!! calculate auxiliary quantities for utilities
         !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
@@ -106,12 +124,11 @@ contains
         call lvl_ud(1)
         
         ! reconstruct full equilibrium, perturbation and solution grids
-        ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq'//trim(rich_info_short()))
+        ierr = reconstruct_PB3D_grid(grid_eq,trim(grid_eq_name))
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_X,'grid_X'//trim(rich_info_short()))
+        ierr = reconstruct_PB3D_grid(grid_X,trim(grid_X_name))
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_sol,'grid_sol'//&
-            &trim(rich_info_short()))
+        ierr = reconstruct_PB3D_grid(grid_sol,'sol'//trim(rich_info_short()))
         CHCKERR('')
         
         ! set eq and X limits, using r_F of the grids
@@ -136,13 +153,13 @@ contains
         ! reconstruct local equilibrium, perturbation and solution grids
         call writo('Reconstructing output grids')
         call lvl_ud(1)
-        ierr = reconstruct_PB3D_grid(grid_eq,'grid_eq'//&
-            &trim(rich_info_short()),grid_limits=eq_limits)
+        ierr = reconstruct_PB3D_grid(grid_eq,trim(grid_eq_name),&
+            &grid_limits=eq_limits)
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_X,'grid_X'//&
-            &trim(rich_info_short()),grid_limits=X_limits)
+        ierr = reconstruct_PB3D_grid(grid_X,trim(grid_X_name),&
+            &grid_limits=X_limits)
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_sol,'grid_sol'//&
+        ierr = reconstruct_PB3D_grid(grid_sol,'sol'//&
             &trim(rich_info_short()),grid_limits=sol_limits)
         CHCKERR('')
         call lvl_ud(-1)
@@ -151,15 +168,17 @@ contains
         ! user output
         call writo('Reconstructing PB3D output on output grid')
         call lvl_ud(1)
-        !!ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,eq_limits=eq_limits)
-        !!CHCKERR('')
-        !!ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,eq_limits=eq_limits)
-        !!CHCKERR('')
-        ierr = setup_nm_X(grid_eq,grid_X,eq_1)
+        ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1',eq_limits=eq_limits)
         CHCKERR('')
-        !!ierr = reconstruct_PB3D_X_1(grid_X,X,X_limits=X_limits)
-        !!CHCKERR('')
-        ierr = reconstruct_PB3D_sol(grid_X,sol,sol_limits=sol_limits)
+        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,trim(eq_2_name),&
+            &eq_limits=eq_limits)
+        CHCKERR('')
+        ierr = setup_nm_X(grid_eq,grid_X,eq_1)                                  ! is necessary for X variables
+        CHCKERR('')
+        ierr = reconstruct_PB3D_X_1(grid_X,X,trim(X_1_name),X_limits=X_limits)
+        CHCKERR('')
+        ierr = reconstruct_PB3D_sol(grid_X,sol,'sol'//trim(rich_info_short()),&
+            &sol_limits=sol_limits)
         CHCKERR('')
         ! reconstructing grids depends on equilibrium style
         select case (eq_style)
@@ -175,14 +194,13 @@ contains
                 allocate(grid_X_B)
                 allocate(eq_2_B)
                 allocate(X_B)
-                ierr = reconstruct_PB3D_grid(grid_eq_B,'grid_eq_B'//&
+                ierr = reconstruct_PB3D_grid(grid_eq_B,'eq_B'//&
                     &trim(rich_info_short()),grid_limits=eq_limits)
                 CHCKERR('')
-                ierr = reconstruct_PB3D_grid(grid_X_B,'grid_X_B'//&
+                ierr = reconstruct_PB3D_grid(grid_X_B,'X_B'//&
                     &trim(rich_info_short()),grid_limits=X_limits)
                 CHCKERR('')
-                ierr = create_eq(grid_eq_B,eq_2_B)
-                CHCKERR('')
+                call create_eq(grid_eq_B,eq_2_B)
                 call create_X(grid_X_B,X_B)
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,eq_2=eq_2,&
                     &eq_2_out=eq_2_B,eq_1=eq_1,&
@@ -191,11 +209,6 @@ contains
                 ierr = interp_HEL_on_grid(grid_X,grid_X_B,X_1=X,&
                     &X_1_out=X_B,grid_name='field-aligned perturbation grid')
                 CHCKERR('')
-            case default
-                ierr = 1
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                CHCKERR(err_msg)
         end select
         call lvl_ud(-1)
         call writo('PB3D output reconstructed')
@@ -256,12 +269,13 @@ contains
                 no_plots_loc = no_plots; no_plots = .true.
                 no_output_loc = no_output; no_output = .true.
                 
-                ! setup plot quantities
-                ierr = create_eq(grid_eq_plot,eq_2_plot)
+                ! Calculate the flux equilibrium quantities
+                ! Note: Only F quantities are saved, but E are needed here
+                ierr = calc_eq(grid_eq_plot,eq_1_plot)
                 CHCKERR('')
                 
-                ! calculate metric equilibrium quantitities
-                ierr = calc_eq(grid_eq_plot,eq_1,eq_2_plot)
+                ! Calculate the metric equilibrium quantitities
+                ierr = calc_eq(grid_eq_plot,eq_1_plot,eq_2_plot)
                 CHCKERR('')
                 
                 ! Transform E into F derivatives
@@ -269,12 +283,15 @@ contains
                 CHCKERR('')
                 
                 ! Calculate derived metric quantities
-                call calc_derived_q(grid_eq_plot,eq_1,eq_2_plot)
+                call calc_derived_q(grid_eq_plot,eq_1_plot,eq_2_plot)
                 
                 ! calculate X variables, vector phase
-                ierr = calc_X(grid_eq_plot,grid_X_plot,eq_1,eq_2_plot,&
+                ierr = calc_X(grid_eq_plot,grid_X_plot,eq_1_plot,eq_2_plot,&
                     &X_plot)
                 CHCKERR('')
+                
+                ! no need any more for eq_1_plot E vars so eq_1 will do.
+                call dealloc_eq(eq_1_plot)
                 
                 ! reset no_plots and no_output
                 no_plots = no_plots_loc
@@ -287,8 +304,7 @@ contains
                 call lvl_ud(1)
                 
                 ! setup plot quantities
-                ierr = create_eq(grid_eq_plot,eq_2_plot)
-                CHCKERR('')
+                call create_eq(grid_eq_plot,eq_2_plot)
                 call create_X(grid_X_plot,X_plot)
                 
                 ! call HELENA grid interpolation
@@ -302,11 +318,6 @@ contains
                 
                 call lvl_ud(-1)
                 call writo('Quantities interpolated')
-            case default
-                ierr = 1
-                err_msg = 'No equilibrium style associated with '//&
-                    &trim(i2str(eq_style))
-                CHCKERR(err_msg)
         end select
         
         ! user output
@@ -473,8 +484,7 @@ contains
         ! clean up
         call writo('Clean up')
         call lvl_ud(1)
-        ierr = dealloc_in()
-        CHCKERR('')
+        call dealloc_in()
         call dealloc_grid(grid_eq)
         call dealloc_grid(grid_X)
         call dealloc_grid(grid_sol)
