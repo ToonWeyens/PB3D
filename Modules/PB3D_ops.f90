@@ -17,7 +17,7 @@ module PB3D_ops
     private
     public reconstruct_PB3D_in, reconstruct_PB3D_grid, reconstruct_PB3D_eq_1, &
         &reconstruct_PB3D_eq_2, reconstruct_PB3D_X_1, reconstruct_PB3D_X_2, &
-        &reconstruct_PB3D_sol, reconstruct_PB3D_rich
+        &reconstruct_PB3D_sol
     
     ! global variables
     real(dp), allocatable :: dum_1D(:)                                          ! dummy variables
@@ -34,7 +34,8 @@ contains
         use num_vars, only: eq_style, rho_style, use_pol_flux_E, max_deriv, &
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, prog_style, &
-            &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, EV_BC
+            &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
+            &EV_BC
         use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
@@ -359,9 +360,13 @@ contains
     end function reconstruct_PB3D_in
     
     ! Reconstructs grid variables from PB3D output.
+    ! Optionally, the grid limits can be provided.
+    ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
+    ! name if  it is >  0 and if with  "tot_rich" the information  from previous
+    ! Richardson levels can be combined.
     ! Note: "grid_" is added in front the data_name.
-    integer function reconstruct_PB3D_grid(grid,data_name,grid_limits) &
-        &result(ierr)
+    integer function reconstruct_PB3D_grid(grid,data_name,rich_lvl,tot_rich,&
+        &grid_limits) result(ierr)
         use num_vars, only: PB3D_name
         use grid_vars, only: create_grid
         use HDF5_vars, only: dealloc_var_1D
@@ -371,8 +376,10 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_eq'
         
         ! input / output
-        type(grid_type), intent(inout), optional :: grid                        ! grid 
+        type(grid_type), intent(inout) :: grid                                  ! grid 
         character(len=*), intent(in) :: data_name                               ! name of grid
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
         integer, intent(in), optional :: grid_limits(2)                         ! i_limit of grid
         
         ! local variables
@@ -380,18 +387,29 @@ contains
         type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
         integer :: grid_limits_loc(2)                                           ! local versions of grid_limits
         integer :: n(3)                                                         ! total n
+        integer :: rich_lvl_loc                                                 ! local rich_lvl
+        logical :: tot_rich_loc                                                 ! local tot_rich
+        integer :: par_id(3)                                                    ! parallel indices (start, end, stride)
+        integer :: rich_id(2)                                                   ! richardson level indices (start, end)
+        integer :: id                                                           ! counter
         
         ! initialize ierr
         ierr = 0
         
-        ! user output
-        call writo('Reconstructing grid variables from PB3D output')
-        call lvl_ud(1)
+        ! set up local rich_lvl
+        rich_lvl_loc = 0
+        if (present(rich_lvl)) rich_lvl_loc = rich_lvl
         
-        ! prepare
+        ! set up local tot_rich
+        tot_rich_loc = .false.
+        if (present(tot_rich) .and. rich_lvl_loc.gt.1) tot_rich_loc = tot_rich  ! only for higher Richardson levels
+        
+        ! setup rich_id
+        rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
         
         ! read HDF5 variables
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,'grid_'//trim(data_name))
+        ierr = read_HDF5_arrs(vars_1D,PB3D_name,'grid_'//trim(data_name),&
+            &rich_lvl=rich_lvl_loc)
         CHCKERR('')
         
         ! n
@@ -400,6 +418,7 @@ contains
         call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
         n = nint(dum_1D)
         deallocate(dum_1D)
+        if (tot_rich_loc) n(1) = n(1)*2+1                                       ! only half of the points were saved in last Richardson level
         
         ! set up local grid_limits
         grid_limits_loc = [1,n(3)]
@@ -409,70 +428,82 @@ contains
         ierr = create_grid(grid,n,grid_limits_loc)
         CHCKERR('')
         
-        ! restore variables
-        
-        ! r_F
-        ierr = retrieve_var_1D_id(vars_1D,'r_F',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
-        grid%r_F = dum_1D
-        deallocate(dum_1D)
-        
-        ! r_E
-        ierr = retrieve_var_1D_id(vars_1D,'r_E',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
-        grid%r_E = dum_1D
-        deallocate(dum_1D)
-        
-        ! loc_r_F
-        grid%loc_r_F = grid%r_F(grid_limits_loc(1):grid_limits_loc(2))
-        
-        ! loc_r_E
-        grid%loc_r_E = grid%r_E(grid_limits_loc(1):grid_limits_loc(2))
-        
-        ! only for 3D grids
-        if (product(grid%n(1:2)).ne.0) then
-            ! theta_F
-            ierr = retrieve_var_1D_id(vars_1D,'theta_F',var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            grid%theta_F = dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
-            deallocate(dum_3D)
+        ! restore looping over richardson levels
+        do id = rich_id(2),rich_id(1),-1
+            ! setup par_id
+            par_id = setup_par_id(grid,rich_lvl_loc,id,tot_rich)
             
-            ! theta_E
-            ierr = retrieve_var_1D_id(vars_1D,'theta_E',var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            grid%theta_E = dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
-            deallocate(dum_3D)
+            ! read HDF5 variables
+            if (id.lt.rich_lvl_loc) then                                              ! highest level already read
+                ierr = read_HDF5_arrs(vars_1D,PB3D_name,&
+                    &'grid_'//trim(data_name),rich_lvl=id)
+                CHCKERR('')
+            end if
             
-            ! zeta_F
-            ierr = retrieve_var_1D_id(vars_1D,'zeta_F',var_1D_id)
+            ! r_F
+            ierr = retrieve_var_1D_id(vars_1D,'r_F',var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            grid%zeta_F = dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
-            deallocate(dum_3D)
+            call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
+            grid%r_F = dum_1D
+            deallocate(dum_1D)
             
-            ! zeta_E
-            ierr = retrieve_var_1D_id(vars_1D,'zeta_E',var_1D_id)
+            ! r_E
+            ierr = retrieve_var_1D_id(vars_1D,'r_E',var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            grid%zeta_E = dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
-            deallocate(dum_3D)
-        end if
-        
-        ! clean up
-        call dealloc_var_1D(vars_1D)
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Grid variables from PB3D output reconstructed')
+            call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
+            grid%r_E = dum_1D
+            deallocate(dum_1D)
+            
+            ! loc_r_F
+            grid%loc_r_F = grid%r_F(grid_limits_loc(1):grid_limits_loc(2))
+            
+            ! loc_r_E
+            grid%loc_r_E = grid%r_E(grid_limits_loc(1):grid_limits_loc(2))
+            
+            ! only for 3D grids
+            if (product(grid%n(1:2)).ne.0) then
+                ! theta_F
+                ierr = retrieve_var_1D_id(vars_1D,'theta_F',var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                grid%theta_F(par_id(1):par_id(2):par_id(3),:,:) = &
+                    &dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
+                deallocate(dum_3D)
+                
+                ! theta_E
+                ierr = retrieve_var_1D_id(vars_1D,'theta_E',var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                grid%theta_E(par_id(1):par_id(2):par_id(3),:,:) = &
+                    &dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
+                deallocate(dum_3D)
+                
+                ! zeta_F
+                ierr = retrieve_var_1D_id(vars_1D,'zeta_F',var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                grid%zeta_F(par_id(1):par_id(2):par_id(3),:,:) = &
+                    & dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
+                deallocate(dum_3D)
+                
+                ! zeta_E
+                ierr = retrieve_var_1D_id(vars_1D,'zeta_E',var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                grid%zeta_E(par_id(1):par_id(2):par_id(3),:,:) = &
+                    & dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
+                deallocate(dum_3D)
+            end if
+            
+            ! clean up
+            call dealloc_var_1D(vars_1D)
+        end do
     end function reconstruct_PB3D_grid
     
     ! Reconstructs the equilibrium variables from PB3D output.
+    ! Optionally, the grid limits can be provided.
     integer function reconstruct_PB3D_eq_1(grid_eq,eq,data_name,eq_limits) &
-        &result(ierr)   ! flux version
+        &result(ierr)                                                           ! flux version
         use num_vars, only: PB3D_name
         use eq_vars, only: create_eq
         use HDF5_vars, only: dealloc_var_1D
@@ -482,7 +513,7 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_eq'
         
         ! input / output
-        type(grid_type), intent(inout), optional :: grid_eq                     ! equilibrium grid 
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid 
         type(eq_1_type), intent(inout), optional :: eq                          ! flux equilibrium
         character(len=*), intent(in) :: data_name                               ! name to reconstruct
         integer, intent(in), optional :: eq_limits(2)                           ! i_limit of eq variables
@@ -494,10 +525,6 @@ contains
         
         ! initialize ierr
         ierr = 0
-        
-        ! user output
-        call writo('Reconstructing flux equilibrium variables from PB3D output')
-        call lvl_ud(1)
         
         ! prepare
         
@@ -558,15 +585,15 @@ contains
         
         ! clean up
         call dealloc_var_1D(vars_1D)
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Flux equilibrium variables from PB3D output reconstructed')
     end function reconstruct_PB3D_eq_1
     
     ! Reconstructs the equilibrium variables from PB3D output.
-    integer function reconstruct_PB3D_eq_2(grid_eq,eq,data_name,eq_limits) &
-        &result(ierr)                                                           ! metric version
+    ! Optionally, the grid limits can be provided.
+    ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
+    ! name if  it is >  0 and if with  "tot_rich" the information  from previous
+    ! Richardson levels can be combined.
+    integer function reconstruct_PB3D_eq_2(grid_eq,eq,data_name,rich_lvl,&
+        &tot_rich,eq_limits) result(ierr)                                       ! metric version
         use num_vars, only: PB3D_name
         use eq_vars, only: create_eq
         use HDF5_vars, only: dealloc_var_1D
@@ -576,100 +603,117 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_eq'
         
         ! input / output
-        type(grid_type), intent(inout), optional :: grid_eq                     ! equilibrium grid 
-        type(eq_2_type), intent(inout), optional :: eq                          ! metric equilibrium
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid 
+        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
         character(len=*), intent(in) :: data_name                               ! name to reconstruct
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
         integer, intent(in), optional :: eq_limits(2)                           ! i_limit of eq variables
         
         ! local variables
         integer :: var_1D_id                                                    ! index in var_1D
         type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
         integer :: eq_limits_loc(2)                                             ! local versions of eq_limits
+        integer :: rich_lvl_loc                                                 ! local rich_lvl
+        integer :: par_id(3)                                                    ! parallel indices (start, end, stride)
+        integer :: rich_id(2)                                                   ! richardson level indices (start, end)
+        integer :: id                                                           ! counter
         
         ! initialize ierr
         ierr = 0
         
-        ! user output
-        call writo('Reconstructing metric equilibrium variables from PB3D &
-            &output')
-        call lvl_ud(1)
+        ! set up local rich_lvl
+        rich_lvl_loc = 0
+        if (present(rich_lvl)) rich_lvl_loc = rich_lvl
         
-        ! prepare
-        
-        ! read HDF5 variables
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name))
-        CHCKERR('')
-        
-        ! create equilibrium
-        call create_eq(grid_eq,eq,setup_E=.false.,setup_F=.true.)
+        ! setup rich_id
+        rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
         
         ! set up local eq_limits
         eq_limits_loc = [1,grid_eq%n(3)]
         if (present(eq_limits)) eq_limits_loc = eq_limits
         
-        ! restore variables
+        ! create equilibrium
+        call create_eq(grid_eq,eq,setup_E=.false.,setup_F=.true.)
         
-        ! g_FD
-        ierr = retrieve_var_1D_id(vars_1D,'g_FD',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_7D)
-        eq%g_FD = dum_7D(:,:,eq_limits_loc(1):eq_limits_loc(2),:,:,:,:)
-        deallocate(dum_7D)
-        
-        ! h_FD
-        ierr = retrieve_var_1D_id(vars_1D,'h_FD',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_7D)
-        eq%h_FD = dum_7D(:,:,eq_limits_loc(1):eq_limits_loc(2),:,:,:,:)
-        deallocate(dum_7D)
-        
-        ! jac_FD
-        ierr = retrieve_var_1D_id(vars_1D,'jac_FD',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_6D)
-        eq%jac_FD = dum_6D(:,:,eq_limits_loc(1):eq_limits_loc(2),:,:,:)
-        deallocate(dum_6D)
-        
-        ! S
-        ierr = retrieve_var_1D_id(vars_1D,'S',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-        eq%S = dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
-        deallocate(dum_3D)
-        
-        ! kappa_n
-        ierr = retrieve_var_1D_id(vars_1D,'kappa_n',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-        eq%kappa_n = dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
-        deallocate(dum_3D)
-        
-        ! kappa_g
-        ierr = retrieve_var_1D_id(vars_1D,'kappa_g',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-        eq%kappa_g = dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
-        deallocate(dum_3D)
-        
-        ! sigma
-        ierr = retrieve_var_1D_id(vars_1D,'sigma',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-        eq%sigma = dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
-        deallocate(dum_3D)
-        
-        ! clean up
-        call dealloc_var_1D(vars_1D)
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Metric equilibrium variables from PB3D output &
-            &reconstructed')
+        ! restore looping over richardson levels
+        do id = rich_id(2),rich_id(1),-1
+            ! setup par_id
+            par_id = setup_par_id(grid_eq,rich_lvl_loc,id,tot_rich)
+            
+            ! read HDF5 variables
+            ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
+                &rich_lvl=id)
+            CHCKERR('')
+            
+            ! g_FD
+            ierr = retrieve_var_1D_id(vars_1D,'g_FD',var_1D_id)
+            CHCKERR('')
+            call conv_1D2ND(vars_1D(var_1D_id),dum_7D)
+            eq%g_FD(par_id(1):par_id(2):par_id(3),:,:,:,:,:,:) = &
+                &dum_7D(:,:,eq_limits_loc(1):eq_limits_loc(2),:,:,:,:)
+            deallocate(dum_7D)
+            
+            ! h_FD
+            ierr = retrieve_var_1D_id(vars_1D,'h_FD',var_1D_id)
+            CHCKERR('')
+            call conv_1D2ND(vars_1D(var_1D_id),dum_7D)
+            eq%h_FD(par_id(1):par_id(2):par_id(3),:,:,:,:,:,:) = &
+                &dum_7D(:,:,eq_limits_loc(1):eq_limits_loc(2),:,:,:,:)
+            deallocate(dum_7D)
+            
+            ! jac_FD
+            ierr = retrieve_var_1D_id(vars_1D,'jac_FD',var_1D_id)
+            CHCKERR('')
+            call conv_1D2ND(vars_1D(var_1D_id),dum_6D)
+            eq%jac_FD(par_id(1):par_id(2):par_id(3),:,:,:,:,:) = &
+                &dum_6D(:,:,eq_limits_loc(1):eq_limits_loc(2),:,:,:)
+            deallocate(dum_6D)
+            
+            ! S
+            ierr = retrieve_var_1D_id(vars_1D,'S',var_1D_id)
+            CHCKERR('')
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            eq%S(par_id(1):par_id(2):par_id(3),:,:) = &
+                &dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
+            deallocate(dum_3D)
+            
+            ! kappa_n
+            ierr = retrieve_var_1D_id(vars_1D,'kappa_n',var_1D_id)
+            CHCKERR('')
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            eq%kappa_n(par_id(1):par_id(2):par_id(3),:,:) = &
+                &dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
+            deallocate(dum_3D)
+            
+            ! kappa_g
+            ierr = retrieve_var_1D_id(vars_1D,'kappa_g',var_1D_id)
+            CHCKERR('')
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            eq%kappa_g(par_id(1):par_id(2):par_id(3),:,:) = &
+                &dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
+            deallocate(dum_3D)
+            
+            ! sigma
+            ierr = retrieve_var_1D_id(vars_1D,'sigma',var_1D_id)
+            CHCKERR('')
+            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            eq%sigma(par_id(1):par_id(2):par_id(3),:,:) = &
+                &dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
+            deallocate(dum_3D)
+            
+            ! clean up
+            call dealloc_var_1D(vars_1D)
+        end do
     end function reconstruct_PB3D_eq_2
     
     ! Reconstructs the vectorial perturbation variables from PB3D output.
-    integer function reconstruct_PB3D_X_1(grid_X,X,data_name,X_limits,&
-        &lim_sec_X) result(ierr)
+    ! Optionally, the grid limits can be provided.
+    ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
+    ! name if  it is >  0 and if with  "tot_rich" the information  from previous
+    ! Richardson levels can be combined.
+    integer function reconstruct_PB3D_X_1(grid_X,X,data_name,rich_lvl,tot_rich,&
+        &X_limits,lim_sec_X) result(ierr)
         use num_vars, only: PB3D_name
         use X_vars, only: create_X, &
             &X_1_var_names, n_mod_X
@@ -681,9 +725,11 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_X_1'
         
         ! input / output
-        type(grid_type), intent(inout), optional :: grid_X                      ! perturbation grid 
-        type(X_1_type), intent(inout), optional :: X                            ! vectorial perturbation variables
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid 
+        type(X_1_type), intent(inout) :: X                                      ! vectorial perturbation variables
         character(len=*), intent(in) :: data_name                               ! name to reconstruct
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
         integer, intent(in), optional :: X_limits(2)                            ! i_limit of X variables
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
         
@@ -693,139 +739,160 @@ contains
         character(len=max_name_ln), allocatable :: req_var_names(:)             ! requested variable names
         integer :: X_limits_loc(2)                                              ! local versions of X_limits
         integer :: lim_sec_X_loc(2)                                             ! local version of lim_sec_X
-        integer :: id                                                           ! counter
+        integer :: id, jd                                                       ! counters
+        integer :: rich_lvl_loc                                                 ! local rich_lvl
+        integer :: par_id(3)                                                    ! parallel indices (start, end, stride)
+        integer :: rich_id(2)                                                   ! richardson level indices (start, end)
         
         ! initialize ierr
         ierr = 0
         
-        ! user output
-        call writo('Reconstructing vectorial perturbation variables from PB3D &
-            &output')
-        call lvl_ud(1)
+        ! set up local rich_lvl
+        rich_lvl_loc = 0
+        if (present(rich_lvl)) rich_lvl_loc = rich_lvl
         
-        ! prepare
-        
-        ! set up local lim_sec_X
-        lim_sec_X_loc = [1,n_mod_X]
-        if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
-        
-        ! get full variable names
-        call get_full_var_names(X_1_var_names,req_var_names,lim_sec_X_loc)
-        
-        ! read PB3D arrays
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
-            &acc_var_names=req_var_names)
-        CHCKERR('')
-        deallocate(req_var_names)
+        ! setup rich_id
+        rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
         
         ! set up local X_limits
         X_limits_loc = [1,grid_X%n(3)]
         if (present(X_limits)) X_limits_loc = X_limits
         
+        ! set up local lim_sec_X
+        lim_sec_X_loc = [1,n_mod_X]
+        if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
+        
         ! create X
         call create_X(grid_X,X,lim_sec_X)
         
-        ! restore variables
+        ! get full variable names
+        call get_full_var_names(X_1_var_names,req_var_names,lim_sec_X_loc)
         
-        ! RE_U_0
-        call get_full_var_names([X_1_var_names(1)],req_var_names,lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
+        ! restore looping over richardson levels
+        do id = rich_id(2),rich_id(1),-1
+            ! setup par_id
+            par_id = setup_par_id(grid_X,rich_lvl_loc,id,tot_rich)
+            
+            ! read HDF5 variables
+            ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
+                &rich_lvl=id,acc_var_names=req_var_names)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%U_0(:,:,:,id) = dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
+            
+            ! RE_U_0
+            call get_full_var_names([X_1_var_names(1)],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%U_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! IM_U_0
+            call get_full_var_names([X_1_var_names(2)],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%U_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &X%U_0(par_id(1):par_id(2):par_id(3),:,:,jd) + &
+                    &iu*dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! RE_U_1
+            call get_full_var_names([X_1_var_names(3)],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%U_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! IM_U_1
+            call get_full_var_names([X_1_var_names(4)],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%U_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &X%U_1(par_id(1):par_id(2):par_id(3),:,:,jd) + &
+                    &iu*dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! RE_DU_0
+            call get_full_var_names([X_1_var_names(5)],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%DU_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! IM_DU_0
+            call get_full_var_names([X_1_var_names(6)],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%DU_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &X%DU_0(par_id(1):par_id(2):par_id(3),:,:,jd) + &
+                    &iu*dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! RE_DU_1
+            call get_full_var_names([X_1_var_names(7)],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%DU_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! IM_DU_1
+            call get_full_var_names([X_1_var_names(8)],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%DU_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &X%DU_1(par_id(1):par_id(2):par_id(3),:,:,jd) + &
+                    &iu*dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! clean up
+            call dealloc_var_1D(vars_1D)
         end do
-        
-        ! IM_U_0
-        call get_full_var_names([X_1_var_names(2)],req_var_names,lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%U_0(:,:,:,id) = X%U_0(:,:,:,id) + &
-                &iu*dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! RE_U_1
-        call get_full_var_names([X_1_var_names(3)],req_var_names,lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%U_1(:,:,:,id) = dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! IM_U_1
-        call get_full_var_names([X_1_var_names(4)],req_var_names,lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%U_1(:,:,:,id) = X%U_1(:,:,:,id) + &
-                &iu*dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! RE_DU_0
-        call get_full_var_names([X_1_var_names(5)],req_var_names,lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%DU_0(:,:,:,id) = dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! IM_DU_0
-        call get_full_var_names([X_1_var_names(6)],req_var_names,lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%DU_0(:,:,:,id) = X%DU_0(:,:,:,id) + &
-                &iu*dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! RE_DU_1
-        call get_full_var_names([X_1_var_names(7)],req_var_names,lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%DU_1(:,:,:,id) = dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! IM_DU_1
-        call get_full_var_names([X_1_var_names(8)],req_var_names,lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%DU_1(:,:,:,id) = X%DU_1(:,:,:,id) + &
-                &iu*dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! clean up
-        call dealloc_var_1D(vars_1D)
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Vectorial perturbation variables from PB3D output &
-            &reconstructed')
     end function reconstruct_PB3D_X_1
     
     ! Reconstructs the tensorial perturbation variables from PB3D output.
+    ! Optionally, the grid limits can be provided.
+    ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
+    ! name if  it is >  0 and if with  "tot_rich" the information  from previous
+    ! Richardson levels can be combined.
     ! Note: the tensorial perturbation type can  also be used for field- aligned
     ! variables, in  which case the first  index is assumed to  have dimension 1
     ! only. This can be triggered using "is_field_averaged".
-    integer function reconstruct_PB3D_X_2(grid_X,X,data_name,X_limits,&
-        &lim_sec_X,is_field_averaged) result(ierr)
+    integer function reconstruct_PB3D_X_2(grid_X,X,data_name,rich_lvl,tot_rich,&
+        &X_limits,lim_sec_X,is_field_averaged) result(ierr)
         use num_vars, only: PB3D_name
         use X_vars, only: create_X, &
             &X_2_var_names, n_mod_X
@@ -837,9 +904,11 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_X_2'
         
         ! input / output
-        type(grid_type), intent(inout), optional :: grid_X                      ! perturbation grid 
-        type(X_2_type), intent(inout), optional :: X                            ! tensorial perturbation variables
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid 
+        type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         character(len=*), intent(in) :: data_name                               ! name to reconstruct
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
         integer, intent(in), optional :: X_limits(2)                            ! i_limit of X variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
         logical, intent(in), optional :: is_field_averaged                      ! if field-averaged, only one dimension for first index
@@ -848,216 +917,235 @@ contains
         integer :: var_1D_id                                                    ! index in var_1D
         type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
         character(len=max_name_ln), allocatable :: req_var_names(:)             ! requested variable names
+        logical :: is_field_averaged_loc                                        ! local is_field_averaged
         integer :: X_limits_loc(2)                                              ! local versions of X_limits
         integer :: lim_sec_X_loc(2,2)                                           ! local version of lim_sec_X
-        integer :: id                                                           ! counter
-        integer :: par_lim(2)                                                   ! limits on parallel variable
+        integer :: id, jd                                                       ! counters
+        integer :: rich_lvl_loc                                                 ! local rich_lvl
+        integer :: par_id(3)                                                    ! parallel indices (start, end, stride)
+        integer :: par_id_loc(2)                                                ! local parallel indices (start, end)
+        integer :: rich_id(2)                                                   ! richardson level indices (start, end)
         
         ! initialize ierr
         ierr = 0
         
-        ! user output
-        call writo('Reconstructing tensorial perturbation variables from PB3D &
-            &output')
-        call lvl_ud(1)
+        ! set up local rich_lvl
+        rich_lvl_loc = 0
+        if (present(rich_lvl)) rich_lvl_loc = rich_lvl
         
-        ! prepare
+        ! set up local is_field_averaged
+        is_field_averaged_loc = .false.
+        if (present(is_field_averaged)) is_field_averaged_loc = &
+            &is_field_averaged
         
-        ! set parallel limits
-        par_lim = [1,grid_X%n(1)]
-        if (present(is_field_averaged)) then                                    ! only first parallel index
-            if (is_field_averaged) then
-                par_lim = [1,1]
-            end if
-        end if
+        ! setup rich_id
+        rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
+        
+        ! set up local X_limits
+        X_limits_loc = [1,grid_X%n(3)]
+        if (present(X_limits)) X_limits_loc = X_limits
         
         ! set up local lim_sec_X
         lim_sec_X_loc(:,1) = [1,n_mod_X]
         lim_sec_X_loc(:,2) = [1,n_mod_X]
         if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
         
-        ! get full variable names
-        call get_full_var_names(X_2_var_names,[.true.,.true.,.false.,.false.,&
-            &.true.,.true.,.true.,.true.,.false.,.false.,.true.,.true.],&
-            &req_var_names,lim_sec_X_loc)
-        
-        ! read PB3D arrays
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
-            &acc_var_names=req_var_names)
-        CHCKERR('')
-        deallocate(req_var_names)
-        
-        ! set up local X_limits
-        X_limits_loc = [1,grid_X%n(3)]
-        if (present(X_limits)) X_limits_loc = X_limits
-        
         ! create X
         call create_X(grid_X,X,lim_sec_X,is_field_averaged)
         
-        ! restore variables
-        
-        ! RE_PV_0
-        call get_full_var_names([X_2_var_names(1)],[.true.],req_var_names,&
-            &lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
+        ! restore looping over richardson levels
+        do id = rich_id(2),rich_id(1),-1
+            ! setup par_id
+            if (is_field_averaged_loc) then
+                par_id = [1,1,1]                                                ! only first element
+                par_id_loc = [1,1]                                              ! only first element
+            else
+                par_id = setup_par_id(grid_X,rich_lvl_loc,id,tot_rich)
+                par_id_loc = [1,(par_id(2)-par_id(1))/par_id(3)+1]              ! the number of elements par_id(1):par_id(2), stride par_id(3)
+            end if
+            
+            ! get full variable names
+            call get_full_var_names(X_2_var_names,&
+                &[.true.,.true.,.false.,.false.,.true.,.true.,.&
+                &true.,.true.,.false.,.false.,.true.,.true.],&
+                &req_var_names,lim_sec_X_loc)
+            
+            ! read PB3D arrays
+            ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
+                &rich_lvl=id,acc_var_names=req_var_names)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%PV_0(par_lim(1):par_lim(2),:,:,id) = &
-                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
+            
+            ! RE_PV_0
+            call get_full_var_names([X_2_var_names(1)],[.true.],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%PV_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &dum_3D(par_id_loc(1):par_id_loc(2),:,&
+                    &X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! IM_PV_0
+            call get_full_var_names([X_2_var_names(2)],[.true.],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%PV_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &X%PV_0(par_id(1):par_id(2):par_id(3),:,:,jd) + iu*&
+                    &dum_3D(par_id_loc(1):par_id_loc(2),:,&
+                    &X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! RE_PV_1
+            call get_full_var_names([X_2_var_names(3)],[.false.],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%PV_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &dum_3D(par_id_loc(1):par_id_loc(2),:,&
+                    &X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! IM_PV_1
+            call get_full_var_names([X_2_var_names(4)],[.false.],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%PV_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &X%PV_1(par_id(1):par_id(2):par_id(3),:,:,jd) + iu*&
+                    &dum_3D(par_id_loc(1):par_id_loc(2),:,&
+                    &X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! RE_PV_2
+            call get_full_var_names([X_2_var_names(5)],[.true.],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%PV_2(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &dum_3D(par_id_loc(1):par_id_loc(2),:,&
+                    &X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! IM_PV_2
+            call get_full_var_names([X_2_var_names(6)],[.true.],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%PV_2(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &X%PV_2(par_id(1):par_id(2):par_id(3),:,:,jd) + iu*&
+                    &dum_3D(par_id_loc(1):par_id_loc(2),:,&
+                    &X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! RE_KV_0
+            call get_full_var_names([X_2_var_names(7)],[.true.],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%KV_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &dum_3D(par_id_loc(1):par_id_loc(2),:,&
+                    &X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! IM_KV_0
+            call get_full_var_names([X_2_var_names(8)],[.true.],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%KV_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &X%KV_0(par_id(1):par_id(2):par_id(3),:,:,jd) + iu*&
+                    &dum_3D(par_id_loc(1):par_id_loc(2),:,&
+                    &X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! RE_KV_1
+            call get_full_var_names([X_2_var_names(9)],[.false.],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%KV_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &dum_3D(par_id_loc(1):par_id_loc(2),:,&
+                    &X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! IM_KV_1
+            call get_full_var_names([X_2_var_names(10)],[.false.],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%KV_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &X%KV_1(par_id(1):par_id(2):par_id(3),:,:,jd) + iu*&
+                    &dum_3D(par_id_loc(1):par_id_loc(2),:,&
+                    &X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! RE_KV_2
+            call get_full_var_names([X_2_var_names(11)],[.true.],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%KV_2(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &dum_3D(par_id_loc(1):par_id_loc(2),:,&
+                    &X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! IM_KV_2
+            call get_full_var_names([X_2_var_names(12)],[.true.],req_var_names,&
+                &lim_sec_X_loc)
+            do jd = 1,size(req_var_names)
+                ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
+                CHCKERR('')
+                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                X%KV_2(par_id(1):par_id(2):par_id(3),:,:,jd) = &
+                    &X%KV_2(par_id(1):par_id(2):par_id(3),:,:,jd) + iu*&
+                    &dum_3D(par_id_loc(1):par_id_loc(2),:,&
+                    &X_limits_loc(1):X_limits_loc(2))
+                deallocate(dum_3D)
+            end do
+            
+            ! clean up
+            call dealloc_var_1D(vars_1D)
         end do
-        
-        ! IM_PV_0
-        call get_full_var_names([X_2_var_names(2)],[.true.],req_var_names,&
-            &lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%PV_0(par_lim(1):par_lim(2),:,:,id) = &
-                &X%PV_0(par_lim(1):par_lim(2),:,:,id) + iu*&
-                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! RE_PV_1
-        call get_full_var_names([X_2_var_names(3)],[.false.],req_var_names,&
-            &lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%PV_1(par_lim(1):par_lim(2),:,:,id) = &
-                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! IM_PV_1
-        call get_full_var_names([X_2_var_names(4)],[.false.],req_var_names,&
-            &lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%PV_1(par_lim(1):par_lim(2),:,:,id) = &
-                &X%PV_1(par_lim(1):par_lim(2),:,:,id) + iu*&
-                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! RE_PV_2
-        call get_full_var_names([X_2_var_names(5)],[.true.],req_var_names,&
-            &lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%PV_2(par_lim(1):par_lim(2),:,:,id) = &
-                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! IM_PV_2
-        call get_full_var_names([X_2_var_names(6)],[.true.],req_var_names,&
-            &lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%PV_2(par_lim(1):par_lim(2),:,:,id) = &
-                &X%PV_2(par_lim(1):par_lim(2),:,:,id) + iu*&
-                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! RE_KV_0
-        call get_full_var_names([X_2_var_names(7)],[.true.],req_var_names,&
-            &lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%KV_0(par_lim(1):par_lim(2),:,:,id) = &
-                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! IM_KV_0
-        call get_full_var_names([X_2_var_names(8)],[.true.],req_var_names,&
-            &lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%KV_0(par_lim(1):par_lim(2),:,:,id) = &
-                &X%KV_0(par_lim(1):par_lim(2),:,:,id) + iu*&
-                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! RE_KV_1
-        call get_full_var_names([X_2_var_names(9)],[.false.],req_var_names,&
-            &lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%KV_1(par_lim(1):par_lim(2),:,:,id) = &
-                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! IM_KV_1
-        call get_full_var_names([X_2_var_names(10)],[.false.],req_var_names,&
-            &lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%KV_1(par_lim(1):par_lim(2),:,:,id) = &
-                &X%KV_1(par_lim(1):par_lim(2),:,:,id) + iu*&
-                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! RE_KV_2
-        call get_full_var_names([X_2_var_names(11)],[.true.],req_var_names,&
-            &lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%KV_2(par_lim(1):par_lim(2),:,:,id) = &
-                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! IM_KV_2
-        call get_full_var_names([X_2_var_names(12)],[.true.],req_var_names,&
-            &lim_sec_X_loc)
-        do id = 1,size(req_var_names)
-            ierr = retrieve_var_1D_id(vars_1D,req_var_names(id),var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-            X%KV_2(par_lim(1):par_lim(2),:,:,id) = &
-                &X%KV_2(par_lim(1):par_lim(2),:,:,id) + iu*&
-                &dum_3D(par_lim(1):par_lim(2),:,X_limits_loc(1):X_limits_loc(2))
-            deallocate(dum_3D)
-        end do
-        
-        ! clean up
-        call dealloc_var_1D(vars_1D)
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Tensorial perturbation variables from PB3D output &
-            &reconstructed')
     end function reconstruct_PB3D_X_2
     
     ! Reconstructs the solution variables from PB3D output.
-    integer function reconstruct_PB3D_sol(grid_sol,sol,data_name,sol_limits,&
-        &lim_sec_sol) result(ierr)
+    ! Optionally, the grid limits can be provided.
+    integer function reconstruct_PB3D_sol(grid_sol,sol,data_name,rich_lvl,&
+        &sol_limits,lim_sec_sol) result(ierr)
         use num_vars, only: PB3D_name
         use sol_vars, only: create_sol
         use HDF5_vars, only: dealloc_var_1D
@@ -1067,9 +1155,10 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_sol'
         
         ! input / output
-        type(grid_type), intent(inout), optional :: grid_sol                    ! solution grid 
-        type(sol_type), intent(inout), optional :: sol                          ! solution variables
+        type(grid_type), intent(in) :: grid_sol                                 ! solution grid 
+        type(sol_type), intent(inout) :: sol                                    ! solution variables
         character(len=*), intent(in) :: data_name                               ! name to reconstruct
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
         integer, intent(in), optional :: sol_limits(2)                          ! i_limit of sol variables
         integer, intent(in), optional :: lim_sec_sol(2)                         ! limits of m_X (pol. flux) or n_X (tor. flux)
         
@@ -1082,14 +1171,11 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! user output
-        call writo('Reconstructing solution variables from PB3D output')
-        call lvl_ud(1)
-        
         ! prepare
         
         ! read HDF5 arrays
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name))
+        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
+            &rich_lvl=rich_lvl)
         CHCKERR('')
         
         ! set n_EV
@@ -1136,102 +1222,58 @@ contains
         
         ! clean up
         call dealloc_var_1D(vars_1D)
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Solution variables from PB3D output reconstructed')
     end function reconstruct_PB3D_sol
     
-    ! Reconstructs the Richardson variables from PB3D output.
-    integer function reconstruct_PB3D_rich(data_name) result(ierr)
-        use num_vars, only: PB3D_name, max_it_rich, n_sol_requested
-        use HDF5_vars, only: dealloc_var_1D
-        use HDF5_ops, only: read_HDF5_arrs
-        use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
-        use rich_vars, only: sol_val_rich, x_axis_rich, max_rel_err, &
-            &loc_max_rel_err
-        
-        character(*), parameter :: rout_name = 'reconstruct_PB3D_rich'
+    ! setup parallel id:
+    !   par_id(1): start index
+    !   par_id(2): end index
+    !   par_id(3): stride
+    function setup_par_id(grid,rich_lvl_max,rich_lvl_loc,tot_rich) &
+        &result(par_id)
         
         ! input / output
-        character(len=*), intent(in) :: data_name                               ! name to reconstruct
+        type(grid_type), intent(in) :: grid                                     ! grid
+        integer, intent(in) :: rich_lvl_max                                     ! maximum Richardson level
+        integer, intent(in) :: rich_lvl_loc                                     ! local Richardson level
+        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
+        integer :: par_id(3)                                                    ! parallel id
         
         ! local variables
-        integer :: var_1D_id                                                    ! index in var_1D
-        type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
-        integer :: mir_loc                                                      ! max_it_rich of reconstructed variables
-        integer :: nsr_loc                                                      ! n_sol_requested of reconstucted variables
+        logical :: tot_rich_loc                                                 ! local tot_rich
         
-        ! initialize ierr
-        ierr = 0
+        ! set up local tot_rich
+        tot_rich_loc = .false.
+        if (present(tot_rich) .and. rich_lvl_max.gt.1) tot_rich_loc = tot_rich  ! only for higher Richardson levels
         
-        ! user output
-        call writo('Reconstructing Richardson variables from PB3D output')
-        call lvl_ud(1)
-        
-        ! prepare
-        
-        ! read HDF5 variables
-        ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name))
-        CHCKERR('')
-        
-        ! restore variables
-        
-        ! global_vars
-        ierr = retrieve_var_1D_id(vars_1D,'global_vars',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
-        mir_loc = nint(dum_1D(1))
-        nsr_loc = nint(dum_1D(2))
-        mir_loc = min(mir_loc,max_it_rich)                                      ! limit to actual max_it_rich
-        nsr_loc = min(nsr_loc,n_sol_requested)                                  ! limit to actual n_sol_requested
-        deallocate(dum_1D)
-        
-        ! RE_sol_val_rich
-        ierr = retrieve_var_1D_id(vars_1D,'RE_sol_val_rich',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-        sol_val_rich(1:mir_loc,1:mir_loc,1:nsr_loc) = &
-            &dum_3D(1:mir_loc,1:mir_loc,1:nsr_loc)
-        deallocate(dum_3D)
-        
-        ! IM_sol_val_rich
-        ierr = retrieve_var_1D_id(vars_1D,'IM_sol_val_rich',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
-        sol_val_rich(1:mir_loc,1:mir_loc,1:nsr_loc) = &
-            &sol_val_rich(1:mir_loc,1:mir_loc,1:nsr_loc) + &
-            &iu*dum_3D(1:mir_loc,1:mir_loc,1:nsr_loc)
-        deallocate(dum_3D)
-        
-        ! x_axis_rich
-        ierr = retrieve_var_1D_id(vars_1D,'x_axis_rich',var_1D_id)
-        CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-        x_axis_rich(1:mir_loc,1:nsr_loc) = dum_2D(1:mir_loc,1:nsr_loc)
-        deallocate(dum_2D)
-        
-        if (mir_loc.gt.1) then
-            ! max_rel_err
-            ierr = retrieve_var_1D_id(vars_1D,'max_rel_err',var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
-            max_rel_err(1:mir_loc-1) = dum_1D(1:mir_loc-1)
-            deallocate(dum_1D)
-            
-            ! loc_max_rel_err
-            ierr = retrieve_var_1D_id(vars_1D,'loc_max_rel_err',var_1D_id)
-            CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_2D)
-            loc_max_rel_err(1:mir_loc-1,:) = nint(dum_2D(1:mir_loc-1,:))
-            deallocate(dum_2D)
+        ! set up parallel indices
+        if (tot_rich_loc) then
+            if (rich_lvl_loc.eq.1) then
+                par_id(1) = 1                                                   ! start at 1
+                par_id(2) = grid%n(1)                                           ! end at n(1)
+                par_id(3) = 2**(rich_lvl_max-1)                                 ! stride 2^(rich_lvl_max-1), same as for rich_lvl_loc = 2
+            else
+                par_id(1) = 1+2**(rich_lvl_max-rich_lvl_loc)                    ! start at 1+2^(rich_lvl_max-rich_lvl_loc)
+                par_id(2) = grid%n(1)-2**(rich_lvl_max-rich_lvl_loc)            ! end at n(1)-2^(rich_lvl_max-rich_lvl_loc)
+                par_id(3) = 2**(rich_lvl_max+1-rich_lvl_loc)                    ! stride 2^(rich_lvl_max+1-rich_lvl_loc)
+            end if
+        else
+            par_id = [1,grid%n(1),1]                                            ! start at 1, end at n(1), stride 1
         end if
+    end function setup_par_id
+    
+    ! setup richardson id:
+    !   rich_id(1): start Richardson level
+    !   rich_id(2): end Richardson level
+    function setup_rich_id(rich_lvl_max,tot_rich) result(rich_id)
+        ! input / output
+        integer, intent(in) :: rich_lvl_max                                     ! maximum Richardson level
+        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
+        integer :: rich_id(2)                                                   ! Richardson id
         
-        ! clean up
-        call dealloc_var_1D(vars_1D)
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Richardson variables from PB3D output reconstructed')
-    end function reconstruct_PB3D_rich
+        ! set up rich_id
+        rich_id = [rich_lvl_max,rich_lvl_max]
+        if (present(tot_rich) .and. rich_lvl_max.gt.1) then                     ! only for higher Richardson levels
+            if (tot_rich) rich_id = [1,rich_lvl_max]
+        end if
+    end function setup_rich_id
 end module PB3D_ops

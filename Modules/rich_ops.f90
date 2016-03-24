@@ -7,6 +7,9 @@ module rich_ops
     use output_ops
     use messages
     use num_vars, only: dp, pi, max_str_ln, max_it_rich, tol_rich
+    use grid_vars, only: grid_type
+    use eq_vars, only: eq_1_type
+    use sol_vars, only: sol_type
     use rich_vars
 
     implicit none
@@ -16,21 +19,55 @@ module rich_ops
     
 contains
     integer function init_rich() result(ierr)
-        use num_vars, only: n_sol_requested, rich_restart_lvl
-        use PB3D_ops, only: reconstruct_PB3D_rich
+        use num_vars, only: n_sol_requested, rich_restart_lvl, eq_style, &
+            &rank
+        use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
+            &reconstruct_PB3D_eq_1, reconstruct_PB3D_sol
+        use X_ops, only: setup_nm_X
+        use grid_vars, only: dealloc_grid
+        use eq_vars, only: dealloc_eq
+        use X_vars, only: dealloc_X
+        use sol_vars, only: dealloc_sol
+        use MPI_utilities, only: wait_MPI
+        use input_utilities, only: dealloc_in
         
         character(*), parameter :: rout_name = 'init_rich'
         
         ! local variables
-        integer :: rd                                                           ! counter
+        type(grid_type) :: grid_eq_B                                            ! equilibrium grid
+        type(grid_type) :: grid_X_B                                             ! field-aligned perturbation grid
+        type(eq_1_type) :: eq                                                   ! flux equilibrium variables
+        type(sol_type) :: sol                                                   ! solution variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=4) :: grid_eq_name                                        ! name of equilibrium grid
+        character(len=4) :: grid_X_name                                         ! name of perturbation grid
         
         ! set variables
         rich_lvl = 1
         rich_conv = .false.
-        no_guess = .true.
+        use_guess = .false.
         
         ! initialize ierr
         ierr = 0
+        
+        ! user output (only master has variables set up)
+        if (rank.eq.0 .and. max_it_rich.gt.1) then                              ! only when more than one level
+            if (rich_restart_lvl.eq.1) then
+                ! user output
+                call writo('Starting Richardson extrapolation loop')
+            else
+                ! user output
+                call writo('Resuming Richardson extrapolation loop at level '&
+                    &//trim(i2str(rich_restart_lvl)))
+            end if
+        end if
+        call lvl_ud(1)
+        
+        ! some preliminary things
+        ierr = wait_MPI()
+        CHCKERR('')
+        ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables
+        CHCKERR('')
         
         ! allocate variables
         allocate(sol_val_rich(max_it_rich,max_it_rich,n_sol_requested))
@@ -41,62 +78,140 @@ contains
         
         ! set variables
         if (max_it_rich.gt.1) then                                              ! only when more than one level
-            if (rich_restart_lvl.eq.1) then
+            if (rich_restart_lvl.gt.1) then
                 ! user output
-                call writo('Starting Richardson extrapolation loop')
-                call lvl_ud(1)
-            else
-                ! user output
-                call writo('Resuming Richardson extrapolation loop at level '&
-                    &//trim(i2str(rich_restart_lvl)))
+                call writo('reconstructing Richardson extrapolation variables')
                 call lvl_ud(1)
                 
-                ! fast-forward counting variables
-                rich_lvl = rich_restart_lvl
-                if (rich_restart_lvl.ge.2) then
-                    n_par_X = min_n_par_X
-                    do rd = 2,rich_restart_lvl-1
-                        n_par_X = 2 * n_par_X - 1
-                    end do
-                end if
+                call writo('Prepare general variables')
+                call lvl_ud(1)
                 
-                ! reconstruct Richardson variables
-                ierr = reconstruct_PB3D_rich('rich')
+                ! use guess
+                use_guess = .true.
+                
+                ! set up grid name
+                select case (eq_style)
+                    case (1)                                                    ! VMEC
+                        grid_X_name = 'X'                                       ! grids are already field-aligned
+                        grid_eq_name = 'eq'                                     ! grids are already field-aligned
+                    case (2)                                                    ! HELENA
+                        grid_X_name = 'X_B'                                     ! field-aligned grid is separate
+                        grid_eq_name = 'eq_B'                                   ! field-aligned grid is separate
+                end select
+                
+                ! reconstruct field-aligned equilibrium grid (for level 1)
+                ierr = reconstruct_PB3D_grid(grid_eq_B,trim(grid_eq_name),&
+                    &rich_lvl=1)
                 CHCKERR('')
+                
+                ! reconstruct flux equilibrium variables
+                ierr = reconstruct_PB3D_eq_1(grid_eq_B,eq,'eq_1')
+                CHCKERR('')
+                
+                call lvl_ud(-1)
+                
+                ! loop  over all  previous Richardson  levels using  rich_lvl as
+                ! counter
+                do rich_lvl = 1,rich_restart_lvl-1
+                    call writo('Prepare variables for Richardson level '//&
+                        &trim(i2str(rich_lvl)))
+                    call lvl_ud(1)
+                    
+                    ! reconstruct field-aligned perturbation grid
+                    ierr = reconstruct_PB3D_grid(grid_X_B,trim(grid_X_name),&
+                        &rich_lvl=rich_lvl)
+                    CHCKERR('')
+                    
+                    if (rich_lvl.eq.1) then
+                        ! set up n and m variables
+                        ierr = setup_nm_X(grid_eq_B,grid_X_B,eq)
+                        CHCKERR('')
+                    end if
+                    
+                    ! reconstruct solution
+                    ierr = reconstruct_PB3D_sol(grid_X_B,sol,'sol',&
+                        &rich_lvl=rich_lvl)
+                    CHCKERR('')
+                    
+                    call lvl_ud(-1)
+                    
+                    call writo('Recreate Richardson variables')
+                    call lvl_ud(1)
+                    
+                    ! set x_axis_rich
+                    if (rich_lvl.eq.1) then
+                        ! set up n_par_X for first rich_lvl
+                        n_par_X = grid_X_B%n(1)
+                        
+                        ! check it
+                        if (n_par_X.eq.min_n_par_X) then
+                            ! set x_axis_rich
+                            x_axis_rich(1,:) = min_n_par_X
+                        else
+                            ierr = 1
+                            err_msg = 'Saved variables started with &
+                                &min_n_par_X = '//trim(i2str(n_par_X))//&
+                                &' whereas here '//trim(i2str(min_n_par_X))//&
+                                &' is specified'
+                            CHCKERR(err_msg)
+                        end if
+                    else
+                        ! update n_par_X
+                        n_par_X = n_par_X*2-1
+                        
+                        ! set x_axis_rich
+                        x_axis_rich(rich_lvl,:) = x_axis_rich(rich_lvl-1,:)*2-1
+                    end if
+                    
+                    ! calculate Richardson extrapolation
+                    call calc_rich_ex(sol%val)
+                    
+                    ! update error variables
+                    call check_conv()
+                    
+                    ! clean up
+                    call dealloc_grid(grid_X_B)
+                    call dealloc_sol(sol)
+                    
+                    call lvl_ud(-1)
+                end do
+                
+                ! clean up
+                call dealloc_grid(grid_eq_B)
+                call dealloc_eq(eq)
+                
+                ! set rich_lvl
+                rich_lvl = rich_restart_lvl
+                
+                call lvl_ud(-1)
+                call writo('Richardson extrapolation variables reconstructed')
             end if
             
             call writo('Maximum number of iterations: '//&
                 &trim(i2str(max_it_rich)))
-            call writo('Tolerance requested: '//trim(r2str(tol_rich)))
+            call writo('Tolerance requested: '//trim(r2strt(tol_rich)))
             
             call writo('')
-            call lvl_ud(-1)
         end if
+        
+        ! clean up
+        call dealloc_in()
+        
+        call lvl_ud(-1)
     end function init_rich
     
-    integer function term_rich() result(ierr)
+    subroutine term_rich()
         use num_vars, only: rank,norm_disc_prec_sol
-        
-        character(*), parameter :: rout_name = 'term_rich'
         
         ! local variables
         integer :: id                                                           ! counter
         
-        ! initialize ierr
-        ierr = 0
-        
         ! user output
-        if (max_it_rich.gt.1) &
-            &call writo('Finishing Richardson extrapolation loop')
-        
-        call lvl_ud(1)
-        
-        ! print Richardson variables
-        ierr = print_output_rich('rich')
-        CHCKERR('')
-        
-        if (max_it_rich.gt.1) then                                              ! only when more than one level
+        if (max_it_rich.gt.1) then
             ! user output
+            call writo('Finishing Richardson extrapolation loop')
+            call lvl_ud(1)
+            
             if (rich_conv) then
                 call writo('Convergence reached in '//trim(i2str(rich_lvl-1))//&
                     &' steps:')
@@ -104,12 +219,13 @@ contains
                 call writo('After '//trim(i2str(rich_lvl-1))//&
                     &' steps, no convergence reached:')
             end if
+            
             call lvl_ud(1)
             
             call writo('Maximum relative error '//&
                 &trim(r2str(max_rel_err(rich_lvl-2)))//&
                 &' for Eigenvalue '//trim(i2str(loc_max_rel_err(rich_lvl-2,1))))
-            call writo('Tolerance requested: '//trim(r2str(tol_rich)))
+            call writo('Tolerance requested: '//trim(r2strt(tol_rich)))
             call writo('Resulting best guesses for Eigenvalues:')
             call lvl_ud(1)
             do id = 1,size(sol_val_rich,3)
@@ -134,9 +250,9 @@ contains
             if (rank.eq.0) call draw_sol_val_rich()
             
             call writo('')
+            
+            call lvl_ud(-1)
         end if
-        
-        call lvl_ud(-1)
     contains
         ! Draws  the   Eigenvalues  for  the  different   levels  of  Richardson
         ! extrapolation as a function of the number of parallel points.
@@ -168,7 +284,7 @@ contains
             call lvl_ud(-1)
             call writo('Done plotting Eigenvalues')
         end subroutine draw_sol_val_rich
-    end function term_rich
+    end subroutine term_rich
     
     ! if this Richardson level should be done
     logical function do_rich()
@@ -195,7 +311,7 @@ contains
     ! stop a Richardson level
     subroutine stop_rich_lvl
         ! update the x axis of the Eigenvalue plot
-        x_axis_rich(rich_lvl,:) = 1.0_dp*n_par_X
+        x_axis_rich(rich_lvl,:) = 1._dp*n_par_X
         
         ! Richardson extrapolation
         if (max_it_rich.gt.1) then                                              ! only do this if more than 1 Richardson level
@@ -219,48 +335,6 @@ contains
         ! increase level
         rich_lvl = rich_lvl + 1
     contains
-        ! Decides  whether  the  difference  between the  approximation  of  the
-        ! Eigenvalues  in  this Richardson  level  and  the previous  Richardson
-        ! level, with the same order of the error, falls below a threshold
-        ! [ADD SOURCE]
-        subroutine check_conv()
-            ! local variables
-            real(dp), allocatable :: corr(:)                                    ! correction for order (rich_lvl-1) of error
-            integer :: ir                                                       ! counter
-            
-            if (rich_lvl.gt.1) then                                             ! only do this if in Richardson level higher than 1
-                ! set relative correction
-                allocate(corr(size(sol_val_rich,3)))
-                corr = abs(2*(sol_val_rich(rich_lvl,rich_lvl-1,:)-&
-                    &sol_val_rich(rich_lvl-1,rich_lvl-1,:))/&
-                    &(sol_val_rich(rich_lvl,rich_lvl-1,:)+&
-                    &sol_val_rich(rich_lvl-1,rich_lvl-1,:)))
-                
-                ! get maximum and location of maximum for relative correction
-                max_rel_err(rich_lvl-1) = maxval(corr)
-                loc_max_rel_err(rich_lvl-1,:) = maxloc(corr)
-                
-                ! user output
-                do ir = 1,rich_lvl-1
-                    call writo('Richardson level '//trim(i2str(ir))//' -> '//&
-                        &trim(i2str(ir+1))//': maximum relative error '//&
-                        &trim(r2strt(max_rel_err(ir)))//' for Eigenvalue '//&
-                        &trim(i2str(loc_max_rel_err(ir,1))))
-                end do
-                
-                ! check whether tolerance has been reached
-                if (max_rel_err(rich_lvl-1).lt.tol_rich) then
-                    rich_conv = .true.
-                    call writo('tolerance '//trim(r2strt(tol_rich))//&
-                        &' reached after '//trim(i2str(rich_lvl))//&
-                        &' iterations')
-                else
-                    call writo('tolerance '//trim(r2strt(tol_rich))//' not yet &
-                        &reached')
-                end if
-            end if
-        end subroutine check_conv
-        
         ! Decides whether  a guess should be used in  a possible next Richardson
         ! level.
         subroutine set_guess()
@@ -300,6 +374,48 @@ contains
         end do
     end subroutine calc_rich_ex
     
+    ! Decides  whether   the  difference   between  the  approximation   of  the
+    ! Eigenvalues in  this Richardson level  and the previous  Richardson level,
+    ! with the same order of the error, falls below a threshold
+    ! [ADD SOURCE]
+    subroutine check_conv()
+        ! local variables
+        real(dp), allocatable :: corr(:)                                        ! correction for order (rich_lvl-1) of error
+        integer :: ir                                                           ! counter
+        
+        if (rich_lvl.gt.1) then                                                 ! only do this if in Richardson level higher than 1
+            ! set relative correction
+            allocate(corr(size(sol_val_rich,3)))
+            corr = abs(2*(sol_val_rich(rich_lvl,rich_lvl-1,:)-&
+                &sol_val_rich(rich_lvl-1,rich_lvl-1,:))/&
+                &(sol_val_rich(rich_lvl,rich_lvl-1,:)+&
+                &sol_val_rich(rich_lvl-1,rich_lvl-1,:)))
+            
+            ! get maximum and location of maximum for relative correction
+            max_rel_err(rich_lvl-1) = maxval(corr)
+            loc_max_rel_err(rich_lvl-1,:) = maxloc(corr)
+            
+            ! user output
+            do ir = 1,rich_lvl-1
+                call writo('Richardson level '//trim(i2str(ir))//' -> '//&
+                    &trim(i2str(ir+1))//': maximum relative error '//&
+                    &trim(r2strt(max_rel_err(ir)))//' for Eigenvalue '//&
+                    &trim(i2str(loc_max_rel_err(ir,1))))
+            end do
+            
+            ! check whether tolerance has been reached
+            if (max_rel_err(rich_lvl-1).lt.tol_rich) then
+                rich_conv = .true.
+                call writo('tolerance '//trim(r2strt(tol_rich))//&
+                    &' reached after '//trim(i2str(rich_lvl))//&
+                    &' iterations')
+            else
+                call writo('tolerance '//trim(r2strt(tol_rich))//' not yet &
+                    &reached')
+            end if
+        end if
+    end subroutine check_conv
+    
     ! Probe to find out which Richardson levels are available.
     integer function find_max_lvl_rich(max_lvl_rich_file) result(ierr)
         use num_vars, only: PB3D_name
@@ -337,138 +453,4 @@ contains
             max_lvl_rich_file = ir-2                                            ! -2 because there will be one additional iteration
         end if
     end function find_max_lvl_rich
-    
-    ! Print Richardson variables to an output file:
-    !   sol_val_rich, x_axis_rich, max_rel_err, loc_max_rel_err
-    integer function print_output_rich(data_name) result(ierr)
-        use num_vars, only: PB3D_name, n_sol_requested, rank, no_output
-        use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type, &
-            &max_dim_var_1D
-        use MPI_utilities, only: wait_MPI
-        
-        character(*), parameter :: rout_name = 'print_output_rich'
-        
-        ! input / output
-        character(len=*), intent(in) :: data_name                               ! name under which to store
-        
-        ! local variables
-        type(var_1D_type), allocatable, target :: rich_1D(:)                    ! 1D equivalent of X variables
-        type(var_1D_type), pointer :: rich_1D_loc => null()                     ! local element in rich_1D
-        integer :: id                                                           ! counters
-        logical :: no_output_loc                                                ! local copy of no_output
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! no output if only one Richardson level
-        if (max_it_rich.eq.1) no_output_loc = no_output
-        if (max_it_rich.eq.1) no_output = .true.
-        
-        ! only master does this
-        if (rank.eq.0) then
-            ! user output
-            call writo('Writing richardson variables to output file')
-            call lvl_ud(1)
-            
-            ! Set up the 1D equivalents of the perturbation variables
-            allocate(rich_1D(max_dim_var_1D))
-            
-            ! set up variables rich_1D
-            id = 1
-            
-            ! global_vars
-            rich_1D_loc => rich_1D(id); id = id+1
-            rich_1D_loc%var_name = 'global_vars'
-            allocate(rich_1D_loc%tot_i_min(1),rich_1D_loc%tot_i_max(1))
-            allocate(rich_1D_loc%loc_i_min(1),rich_1D_loc%loc_i_max(1))
-            rich_1D_loc%tot_i_min = [1]
-            rich_1D_loc%tot_i_max = [2]
-            rich_1D_loc%loc_i_min = rich_1D_loc%tot_i_min
-            rich_1D_loc%loc_i_max = rich_1D_loc%tot_i_max
-            allocate(rich_1D_loc%p(2))
-            rich_1D_loc%p = [max_it_rich,n_sol_requested]
-            
-            ! RE_sol_val_rich
-            rich_1D_loc => rich_1D(id); id = id+1
-            rich_1D_loc%var_name = 'RE_sol_val_rich'
-            allocate(rich_1D_loc%tot_i_min(3),rich_1D_loc%tot_i_max(3))
-            allocate(rich_1D_loc%loc_i_min(3),rich_1D_loc%loc_i_max(3))
-            rich_1D_loc%tot_i_min = [1,1,1]
-            rich_1D_loc%tot_i_max = [max_it_rich,max_it_rich,n_sol_requested]
-            rich_1D_loc%loc_i_min = rich_1D_loc%tot_i_min
-            rich_1D_loc%loc_i_max = rich_1D_loc%tot_i_max
-            allocate(rich_1D_loc%p(size(sol_val_rich)))
-            rich_1D_loc%p = reshape(realpart(sol_val_rich),[size(sol_val_rich)])
-            
-            ! IM_sol_val_rich
-            rich_1D_loc => rich_1D(id); id = id+1
-            rich_1D_loc%var_name = 'IM_sol_val_rich'
-            allocate(rich_1D_loc%tot_i_min(3),rich_1D_loc%tot_i_max(3))
-            allocate(rich_1D_loc%loc_i_min(3),rich_1D_loc%loc_i_max(3))
-            rich_1D_loc%tot_i_min = [1,1,1]
-            rich_1D_loc%tot_i_max = [max_it_rich,max_it_rich,n_sol_requested]
-            rich_1D_loc%loc_i_min = rich_1D_loc%tot_i_min
-            rich_1D_loc%loc_i_max = rich_1D_loc%tot_i_max
-            allocate(rich_1D_loc%p(size(sol_val_rich)))
-            rich_1D_loc%p = reshape(imagpart(sol_val_rich),[size(sol_val_rich)])
-            
-            ! x_axis_rich
-            rich_1D_loc => rich_1D(id); id = id+1
-            rich_1D_loc%var_name = 'x_axis_rich'
-            allocate(rich_1D_loc%tot_i_min(2),rich_1D_loc%tot_i_max(2))
-            allocate(rich_1D_loc%loc_i_min(2),rich_1D_loc%loc_i_max(2))
-            rich_1D_loc%tot_i_min = [1,1]
-            rich_1D_loc%tot_i_max = [max_it_rich,n_sol_requested]
-            rich_1D_loc%loc_i_min = rich_1D_loc%tot_i_min
-            rich_1D_loc%loc_i_max = rich_1D_loc%tot_i_max
-            allocate(rich_1D_loc%p(size(x_axis_rich)))
-            rich_1D_loc%p = reshape(x_axis_rich,[size(x_axis_rich)])
-            
-            if (max_it_rich.gt.1) then
-                ! max_rel_err
-                rich_1D_loc => rich_1D(id); id = id+1
-                rich_1D_loc%var_name = 'max_rel_err'
-                allocate(rich_1D_loc%tot_i_min(1),rich_1D_loc%tot_i_max(1))
-                allocate(rich_1D_loc%loc_i_min(1),rich_1D_loc%loc_i_max(1))
-                rich_1D_loc%tot_i_min = [1]
-                rich_1D_loc%tot_i_max = [max_it_rich-1]
-                rich_1D_loc%loc_i_min = rich_1D_loc%tot_i_min
-                rich_1D_loc%loc_i_max = rich_1D_loc%tot_i_max
-                allocate(rich_1D_loc%p(size(max_rel_err)))
-                rich_1D_loc%p = max_rel_err
-                
-                ! loc_max_rel_err
-                rich_1D_loc => rich_1D(id); id = id+1
-                rich_1D_loc%var_name = 'loc_max_rel_err'
-                allocate(rich_1D_loc%tot_i_min(2),rich_1D_loc%tot_i_max(2))
-                allocate(rich_1D_loc%loc_i_min(2),rich_1D_loc%loc_i_max(2))
-                rich_1D_loc%tot_i_min = [1,1]
-                rich_1D_loc%tot_i_max = [max_it_rich-1,1]
-                rich_1D_loc%loc_i_min = rich_1D_loc%tot_i_min
-                rich_1D_loc%loc_i_max = rich_1D_loc%tot_i_max
-                allocate(rich_1D_loc%p(size(loc_max_rel_err)))
-                rich_1D_loc%p = reshape(loc_max_rel_err*1._dp,&
-                    &[size(loc_max_rel_err)])
-            end if
-            
-            ! write
-            ierr = print_HDF5_arrs(rich_1D(1:id-1),PB3D_name,trim(data_name))
-            CHCKERR('')
-            
-            ! clean up
-            nullify(rich_1D_loc)
-            
-            ! user output
-            call lvl_ud(-1)
-            call writo('Richardson variables written to output')
-        end if
-        
-        ! reset no_output
-        if (max_it_rich.eq.1) no_output = no_output_loc
-        
-        ! wait for all processes
-        ierr = wait_MPI()
-        CHCKERR('')
-    end function print_output_rich
 end module rich_ops

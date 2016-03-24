@@ -2306,6 +2306,8 @@ contains
     !   - flux:     pres_FD, q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, rho, S,
     !               kappa_n, kappa_g, sigma
     !   - metric:   g_FD, h_FD, jac_FD
+    ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
+    ! it is > 0 (only for eq_2).
     ! Note: The equilibrium quantities are outputted in Flux coordinates.
     integer function print_output_eq_1(grid_eq,eq,data_name) result(ierr)       ! flux version
         use num_vars, only: PB3D_name
@@ -2332,7 +2334,7 @@ contains
         ierr = 0
         
         ! user output
-        call writo('Writing flux equilibrium variables to output file')
+        call writo('Write flux equilibrium variables to output file')
         call lvl_ud(1)
         
         ! trim grids
@@ -2432,9 +2434,9 @@ contains
         
         ! user output
         call lvl_ud(-1)
-        call writo('Flux equilibrium variables written to output')
     end function print_output_eq_1
-    integer function print_output_eq_2(grid_eq,eq,data_name) result(ierr)       ! metric version
+    integer function print_output_eq_2(grid_eq,eq,data_name,rich_lvl) &
+        &result(ierr)                                                           ! metric version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
@@ -2447,6 +2449,7 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
         type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
         character(len=*), intent(in) :: data_name                               ! name under which to store
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -2459,7 +2462,7 @@ contains
         ierr = 0
         
         ! user output
-        call writo('Writing metric equilibrium variables to output file')
+        call writo('Write metric equilibrium variables to output file')
         call lvl_ud(1)
         
         ! trim grids
@@ -2576,7 +2579,8 @@ contains
             &[size(eq%sigma(:,:,norm_id(1):norm_id(2)))])
         
         ! write
-        ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,trim(data_name))
+        ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,trim(data_name),&
+            &rich_lvl=rich_lvl)
         CHCKERR('')
         
         ! deallocate
@@ -2584,7 +2588,6 @@ contains
         
         ! user output
         call lvl_ud(-1)
-        call writo('Metric equilibrium variables written to output')
     end function print_output_eq_2
 
 #if ldebug

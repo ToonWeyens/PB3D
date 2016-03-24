@@ -135,10 +135,11 @@ contains
     ! but at the same  time, both m and n have to be  larger, in absolute value,
     ! than  min_sec_X. Therefore,  the range  of  width n_mod_X  can be  shifted
     ! upwards.
+    ! Optionally, n and m can be plot.
     ! Note: the limits are setup in the  equilibrium grid but the values are set
     ! up in the perturbation grid.
     ! Note: The perturbation grid has to be setup for this routine to work.
-    integer function setup_nm_X(grid_eq,grid_X,eq) result(ierr)
+    integer function setup_nm_X(grid_eq,grid_X,eq,plot_nm) result(ierr)
         use num_vars, only: use_pol_flux_F, X_style, rank, norm_disc_prec_X
         use X_vars, only: prim_X, min_sec_X, max_sec_X, n_mod_X, min_n_X, &
             &max_n_X, min_m_X, max_m_X, min_nm_X, n_X, m_X, sec_X_ind
@@ -153,6 +154,7 @@ contains
         type(grid_type) :: grid_eq                                              ! equilibrium grid
         type(grid_type) :: grid_X                                               ! perturbation grid
         type(eq_1_type) :: eq                                                   ! flux equilibrium
+        logical, intent(in), optional :: plot_nm                                ! plot n and m
         
         ! local variables
         type(grid_type) :: grid_eq_trim                                         ! trimmed version of equilibrium
@@ -167,6 +169,7 @@ contains
         integer :: n_mod_tot                                                    ! total number of modes, not equal to n_mod_X for X_style 2
         character(len=max_str_ln) :: plot_title                                 ! title for plots
         character(len=max_str_ln) :: plot_name                                  ! file name for plots
+        logical :: plot_nm_loc                                                  ! local plot_nm
         
         ! initialize ierr
         ierr = 0
@@ -174,6 +177,10 @@ contains
         ! user output
         call writo('Setting up perturbation modes')
         call lvl_ud(1)
+        
+        ! set local plot_nm
+        plot_nm_loc = .false.
+        if (present(plot_nm)) plot_nm_loc = plot_nm
         
         ! get trimmed grids
         ierr = trim_grid(grid_eq,grid_eq_trim,norm_eq_id)
@@ -290,8 +297,8 @@ contains
             end do
         end if
         
-        ! master plots output
-        if (rank.eq.0) then
+        ! master plots output if requested
+        if (rank.eq.0 .and. plot_nm_loc) then
             ! set up x values
             allocate(x_plot(grid_X_trim%n(3),n_mod_X))
             do ld = 1,n_mod_X
@@ -595,11 +602,11 @@ contains
     ! returned to the master.
     integer function calc_res_surf(grid_eq,eq,res_surf,info,jq) result(ierr)
         use X_vars, only: min_n_X, min_m_X, sec_X_ind, prim_X
-        use num_vars, only: use_pol_flux_F
+        use num_vars, only: use_pol_flux_F, norm_disc_prec_eq
         use eq_vars, only: max_flux_F, max_flux_F
-        use utilities, only: calc_zero_NR, interp_fun
-        use grid_vars, only: dealloc_grid
-        use grid_utilities, only: trim_grid
+        use utilities, only: calc_zero_NR
+        use grid_vars, only: dealloc_grid, dealloc_disc
+        use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
         use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'calc_res_surf'
@@ -613,6 +620,7 @@ contains
         
         ! local variables (also used in child functions)
         real(dp) :: nmfrac_fun                                                  ! fraction m/n or n/m to determine resonant flux surface
+        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! local variables (not to be used in child functions)
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grid
@@ -732,6 +740,7 @@ contains
         
         ! clean up
         call dealloc_grid(grid_eq_trim)
+        call dealloc_disc(norm_interp_data)
     contains
         ! Returns q-m/n or  iota-n/m in Flux coordinates, used to  solve for q =
         ! m/n or iota = n/m.
@@ -744,6 +753,7 @@ contains
             ! local variables
             integer :: i_min, i_max                                             ! index of minimum and maximum value of x
             real(dp) :: x_min, x_max                                            ! minimum and maximum value of x
+            real(dp) :: res_loc(1)                                              ! local copy of res
             
             ! initialize res
             res = 0
@@ -762,10 +772,16 @@ contains
                 ! extrapolate variable from maximum value
                 res = jq_tot(i_max,0) - nmfrac_fun + jq_tot(i_max,1)*(pt-x_max)
             else                                                                ! point requested between 0 and 1
-                ! interpolate using interp_fun
-                ierr = interp_fun(res,jq_tot(:,0)-nmfrac_fun,pt,&
-                    &x=grid_eq_trim%r_F)
+                ! setup interpolation data
+                ierr = setup_interp_data(grid_eq_trim%r_F,[pt],&
+                    &norm_interp_data,norm_disc_prec_eq)
                 CHCKERR('')
+                ! interpolate
+                ierr = apply_disc(jq_tot(:,0)-nmfrac_fun,norm_interp_data,&
+                    &res_loc)
+                CHCKERR('')
+                ! copy
+                res = res_loc(1)
             end if
         end function jq_fun
         
@@ -779,6 +795,7 @@ contains
             ! local variables
             integer :: i_min, i_max                                             ! index of minimum and maximum value of x
             real(dp) :: x_min, x_max                                            ! minimum and maximum value of x
+            real(dp) :: res_loc(1)                                              ! local copy of res
             
             ! initialize res
             res = 0
@@ -797,9 +814,13 @@ contains
                 ! extrapolate variable from maximum value
                 res = jq_tot(i_max,1) + jq_tot(i_max,2)*(pt-x_max)
             else                                                                ! point requested between 0 and 1
-                ! interpolate using interp_fun
-                ierr = interp_fun(res,jq_tot(:,1),pt,x=grid_eq_trim%r_F)
+                ! no need to set up interpolation data (already done in jq_fun)
+                ! interpolate
+                ierr = apply_disc(jq_tot(:,1)-nmfrac_fun,norm_interp_data,&
+                    &res_loc)
                 CHCKERR('')
+                ! copy
+                res = res_loc(1)
             end if
         end function jq_dfun
     end function calc_res_surf
@@ -2056,11 +2077,14 @@ contains
     !   - vectorial:    U, DU
     !   - tensorial:    PV_int, KV_int
     !     (the non-integrated variables are heavy and not requested)
+    ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
+    ! it is > 0.
     ! Note: Flux coordinates used as normal coordinates
     ! Note: the tensorial perturbation type can  also be used for field- aligned
     ! variables, in  which case the first  index is assumed to  have dimension 1
     ! only. This can be triggered using "is_field_averaged".
-    integer function print_output_X_1(grid,X,data_name,lim_sec_X) result(ierr)  ! vectorial version
+    integer function print_output_X_1(grid,X,data_name,rich_lvl,lim_sec_X) &
+        &result(ierr)                                                           ! vectorial version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
@@ -2073,6 +2097,7 @@ contains
         type(grid_type), intent(in) :: grid                                     ! perturbation grid variables
         type(X_1_type), intent(in) :: X                                         ! vectorial perturbation variables 
         character(len=*), intent(in) :: data_name                               ! name under which to store
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
         
         ! local variables
@@ -2086,7 +2111,7 @@ contains
         ierr = 0
         
         ! user output
-        call writo('Writing vectorial perturbation variables to output file')
+        call writo('Write vectorial perturbation variables to output file')
         call lvl_ud(1)
         
         ! Set up the 1D equivalents of the perturbation variables
@@ -2205,7 +2230,8 @@ contains
         end do
         
         ! write
-        ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,trim(data_name))
+        ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,trim(data_name),&
+            &rich_lvl=rich_lvl)
         CHCKERR('')
         
         ! clean up
@@ -2213,9 +2239,8 @@ contains
         
         ! user output
         call lvl_ud(-1)
-        call writo('Vectorial perturbation variables written to output')
     end function print_output_X_1
-    integer function print_output_X_2(grid,X,data_name,lim_sec_X,&
+    integer function print_output_X_2(grid,X,data_name,rich_lvl,lim_sec_X,&
         &is_field_averaged) result(ierr)                                        ! tensorial version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
@@ -2231,6 +2256,7 @@ contains
         type(grid_type), intent(in) :: grid                                     ! perturbation grid variables
         type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables 
         character(len=*), intent(in) :: data_name                               ! name under which to store
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol. flux) or n_X (tor. flux)
         logical, intent(in), optional :: is_field_averaged                      ! if field-averaged, only one dimension for first index
         
@@ -2248,7 +2274,7 @@ contains
         ierr = 0
         
         ! user output
-        call writo('Writing tensorial perturbation variables to output file')
+        call writo('Write tensorial perturbation variables to output file')
         call lvl_ud(1)
         
         ! Set up the 1D equivalents of the perturbation variables
@@ -2495,7 +2521,8 @@ contains
         end do
         
         ! write
-        ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,data_name)
+        ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,trim(data_name),&
+            &rich_lvl=rich_lvl)
         CHCKERR('')
         
         ! clean up
@@ -2503,6 +2530,5 @@ contains
         
         ! user output
         call lvl_ud(-1)
-        call writo('Tensorial perturbation variables written to output')
     end function print_output_X_2
 end module

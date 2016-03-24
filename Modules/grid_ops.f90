@@ -105,14 +105,15 @@ contains
             &result(ierr)                                                       ! PB3D version for equilibrium grid
             use num_vars, only: use_pol_flux_E, use_pol_flux_F, eq_style, &
                 &tol_norm, norm_disc_prec_eq
-            use utilities, only: con2dis, dis2con, calc_int, interp_fun, &
-                &round_with_tol
-            use grid_utilities, only: setup_deriv_data, apply_disc
+            use utilities, only: con2dis, dis2con, calc_int, round_with_tol
+            use grid_utilities, only: setup_deriv_data, setup_interp_data, &
+                &apply_disc
             use VMEC, only: flux_p_V, flux_t_V
             use HELENA_vars, only: flux_p_H, qs_H
             use X_vars, only: min_r_sol, max_r_sol
             use eq_vars, only: max_flux_E, max_flux_F
-            use grid_vars, only: n_r_in
+            use grid_vars, only: dealloc_disc, &
+                &n_r_in
             
             character(*), parameter :: rout_name = 'calc_norm_range_PB3D_in'
             
@@ -125,10 +126,11 @@ contains
             type(disc_type) :: norm_deriv_data                                  ! data for normal derivatives
             real(dp) :: tot_min_r_in_F_con                                      ! tot_min_r_in in continuous F coords.
             real(dp) :: tot_max_r_in_F_con                                      ! tot_max_r_in in continuous F coords.
-            real(dp) :: tot_min_r_in_E_con                                      ! tot_min_r_in in continuous E coords.
-            real(dp) :: tot_max_r_in_E_con                                      ! tot_max_r_in in continuous E coords.
+            real(dp) :: tot_min_r_in_E_con(1)                                   ! tot_min_r_in in continuous E coords.
+            real(dp) :: tot_max_r_in_E_con(1)                                   ! tot_max_r_in in continuous E coords.
             real(dp) :: tot_min_r_in_E_dis                                      ! tot_min_r_in in discrete E coords., unrounded
             real(dp) :: tot_max_r_in_E_dis                                      ! tot_max_r_in in discrete E coords., unrounded
+            type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
             
             ! initialize ierr
             ierr = 0
@@ -195,23 +197,27 @@ contains
             ierr = round_with_tol(tot_max_r_in_F_con,0._dp,1._dp)
             CHCKERR('')
             ! 3. continuous E coords
-            ierr = interp_fun(tot_min_r_in_E_con,flux_E,tot_min_r_in_F_con,&
-                &flux_F)
+            ierr = setup_interp_data(flux_F,[tot_min_r_in_F_con],&
+                &norm_interp_data,norm_disc_prec_eq)
             CHCKERR('')
-            ierr = interp_fun(tot_max_r_in_E_con,flux_E,tot_max_r_in_F_con,&
-                &flux_F)
+            ierr = apply_disc(flux_E,norm_interp_data,tot_min_r_in_E_con)
+            CHCKERR('')
+            ierr = setup_interp_data(flux_F,[tot_max_r_in_F_con],&
+                &norm_interp_data,norm_disc_prec_eq)
+            CHCKERR('')
+            ierr = apply_disc(flux_E,norm_interp_data,tot_max_r_in_E_con)
             CHCKERR('')
             ! 4. discrete E index, unrounded
-            ierr = con2dis(tot_min_r_in_E_con,tot_min_r_in_E_dis,flux_E)
+            ierr = con2dis(tot_min_r_in_E_con(1),tot_min_r_in_E_dis,flux_E)
             CHCKERR('')
-            ierr = con2dis(tot_max_r_in_E_con,tot_max_r_in_E_dis,flux_E)
+            ierr = con2dis(tot_max_r_in_E_con(1),tot_max_r_in_E_dis,flux_E)
             CHCKERR('')
             ! 5. discrete E index, rounded
             in_limits(1) = floor(tot_min_r_in_E_dis)
             in_limits(2) = ceiling(tot_max_r_in_E_dis)
             
             ! clean up
-            deallocate(flux_F,flux_E)
+            call dealloc_disc(norm_interp_data)
         end function calc_norm_range_PB3D_in
         
         ! The normal range is calculated  by dividing the full equilibrium range
@@ -382,7 +388,10 @@ contains
     !   angular variables are calculated.
     !   - HELENA: The output is given on a poloidal grid (no toroidal dependency
     !   due to axisymmetry), which is used.
-    integer function setup_grid_eq(grid_eq,eq_limits) result(ierr)
+    ! Note: by  setting the flag "only_half_grid",  only the even points  of the
+    ! parallel grid are set up. (Only for VMEC)
+    integer function setup_grid_eq(grid_eq,eq_limits,only_half_grid) &
+        &result(ierr)
         use num_vars, only: eq_style
         use grid_vars, only: create_grid, &
             &n_r_eq
@@ -394,14 +403,31 @@ contains
         ! input / output
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
         integer, intent(in) :: eq_limits(2)                                     ! min. and max. index of eq grid of this process
+        logical, intent(in), optional :: only_half_grid                         ! calculate only half grid with even points
         
         ! local variables
         integer :: id                                                           ! counter
+        integer :: n_par_X_loc                                                  ! local n_par_X
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
         call lvl_ud(1)
+        
+        ! set local n_par_X
+        n_par_X_loc = n_par_X
+        if (present(only_half_grid)) then
+            if (only_half_grid) then
+                if (mod(n_par_X,2).eq.1) then
+                    n_par_X_loc = (n_par_X-1)/2
+                else
+                    ierr = 1
+                    err_msg = 'Need odd number of points'
+                    CHCKERR(err_msg)
+                end if
+            end if
+        end if
         
         ! set up general equilibrium grid:
         ! choose which equilibrium style is being used:
@@ -414,7 +440,7 @@ contains
                     &' parallel and '//trim(i2str(n_r_eq))//' normal points')
                 
                 ! create grid
-                ierr = create_grid(grid_eq,[n_par_X,1,n_r_eq],eq_limits)        ! only one field line
+                ierr = create_grid(grid_eq,[n_par_X_loc,1,n_r_eq],eq_limits)    ! only one field line
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! user output
@@ -462,6 +488,9 @@ contains
         type(grid_type), intent(inout) :: grid_eq_B                             ! field-aligned equilibrium grid
         type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
         
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
         ! initialize ierr
         ierr = 0
         
@@ -470,7 +499,10 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ! do nothing: grid_eq already field-aligned
+                ! the grid is already field aligned
+                ierr = 1
+                err_msg = 'The grid is already field-aligned for VMEC'
+                CHCKERR(err_msg)
             case (2)                                                            ! HELENA
                 ! create the grid
                 ierr = create_grid(grid_eq_B,[n_par_X,1,grid_eq%n(3)],&
@@ -596,7 +628,11 @@ contains
     ! Note: The end-points are included for the grids in the parallel direction.
     ! This is to  facilitate working with the trapezoidal  rule for integration.
     ! This is NOT valid in general!!!
-    integer function calc_ang_grid_eq_B(grid_eq,eq) result(ierr)
+    ! Note: by  setting the flag "only_half_grid",  only the even points  of the
+    ! parallel grid are calculated, which is useful for higher Richardson levels
+    ! with VMEC so that only new angular  points are calculated and the old ones
+    ! reused.
+    integer function calc_ang_grid_eq_B(grid_eq,eq,only_half_grid) result(ierr)
         use num_vars, only: use_pol_flux_F, use_pol_flux_E, &
             &eq_style, tol_NR
         use grid_vars, only: min_par_X, max_par_X
@@ -610,6 +646,7 @@ contains
         ! input / output
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid of which to calculate angular part
         type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
+        logical, intent(in), optional :: only_half_grid                         ! calculate only half grid with even points
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -618,18 +655,34 @@ contains
         real(dp), pointer :: flux_E(:) => null()                                ! flux that the E uses as normal coord.
         real(dp) :: r_F_factor, r_E_factor                                      ! mult. factors for r_F and r_E
         integer :: pmone                                                        ! plus or minus one
-        integer :: kd                                                           ! counter
+        integer :: id, kd                                                       ! counters
+        logical :: only_half_grid_loc                                           ! local only_half_grid
+        real(dp), allocatable :: theta_F_loc(:,:,:)                             ! local theta_F
+        real(dp), allocatable :: zeta_F_loc(:,:,:)                              ! local zeta_F
         
         ! initialize ierr
         ierr = 0
         
         call lvl_ud(1)
         
+        ! set local only_half_grid
+        only_half_grid_loc = .false.
+        if (present(only_half_grid)) only_half_grid_loc = only_half_grid
+        
+        ! tests
+        if (only_half_grid_loc .and. mod(n_par_X,2).ne.1) then
+            ierr = 1
+            err_msg = 'Need odd number of points'
+            CHCKERR(err_msg)
+        end if
+        
         ! user output
         call writo(trim(i2str(n_par_X))//' parallel and '//&
             &trim(i2str(grid_eq%n(3)))//' normal points')
         call writo('parallel range '//trim(r2strt(min_par_X*pi))//'..'//&
             &trim(r2strt(max_par_X*pi)))
+        if (only_half_grid_loc) call writo('only the even points are &
+            &setup up')
         
         ! set up flux_E and plus minus one
         ! Note: this routine  is similar to calc_loc_r, but  that routine cannot
@@ -664,24 +717,37 @@ contains
         
         ! set up parallel angle in  Flux coordinates on equidistant grid        
         ! and use this to calculate the other angle as well
+        allocate(theta_F_loc(n_par_X,1,grid_eq%loc_n_r))
+        allocate(zeta_F_loc(n_par_X,1,grid_eq%loc_n_r))
         if (use_pol_flux_F) then                                                ! parallel angle theta
-            ierr = calc_eqd_grid(grid_eq%theta_F,min_par_X*pi,&
+            ierr = calc_eqd_grid(theta_F_loc,min_par_X*pi,&
                 &max_par_X*pi,1,excl_last=.false.)                              ! first index corresponds to parallel angle
             CHCKERR('')
             do kd = 1,grid_eq%loc_n_r
-                grid_eq%zeta_F(:,:,kd) = pmone*eq%q_saf_E(kd,0)*&
-                    &grid_eq%theta_F(:,:,kd)
+                zeta_F_loc(:,:,kd) = pmone*eq%q_saf_E(kd,0)*&
+                    &theta_F_loc(:,:,kd)
             end do
-            grid_eq%zeta_F = grid_eq%zeta_F + alpha
+            zeta_F_loc = zeta_F_loc + alpha
         else                                                                    ! parallel angle zeta
-            ierr = calc_eqd_grid(grid_eq%zeta_F,min_par_X*pi,&
+            ierr = calc_eqd_grid(zeta_F_loc,min_par_X*pi,&
                 &max_par_X*pi,1,excl_last=.false.)                              ! first index corresponds to parallel angle
             CHCKERR('')
             do kd = 1,grid_eq%loc_n_r
-                grid_eq%theta_F(:,:,kd) = pmone*eq%rot_t_E(kd,0)*&
-                    &grid_eq%zeta_F(:,:,kd)
+                theta_F_loc(:,:,kd) = pmone*eq%rot_t_E(kd,0)*&
+                    &zeta_F_loc(:,:,kd)
             end do
-            grid_eq%theta_F = grid_eq%theta_F - alpha
+            theta_F_loc = theta_F_loc - alpha
+        end if
+        
+        ! set up grid_eq angular F coordinates
+        if (only_half_grid_loc) then
+            do id = 1,grid_eq%n(1)
+                grid_eq%theta_F(id,:,:) = theta_F_loc(2*id,:,:)
+                grid_eq%zeta_F(id,:,:) = zeta_F_loc(2*id,:,:)
+            end do
+        else
+            grid_eq%theta_F = theta_F_loc
+            grid_eq%zeta_F = zeta_F_loc
         end if
         
         ! allocate local r_E
@@ -731,7 +797,6 @@ contains
         use num_vars, only: rank, n_procs, no_plots, n_theta_plot, n_zeta_plot
         use grid_vars, only: create_grid, dealloc_grid
         use grid_utilities, only: trim_grid, extend_grid_E, calc_XYZ_grid
-        use rich_vars, only: rich_info_short
         
         character(*), parameter :: rout_name = 'plot_grid_real'
         
@@ -785,7 +850,7 @@ contains
         CHCKERR('')
         
         ! set animation name
-        anim_name = 'Magnetic field in flux surfaces'//trim(rich_info_short())
+        anim_name = 'Magnetic field in flux surfaces'
         
         ! 1. plot flux surfaces
         call writo('writing flux surfaces')
@@ -900,6 +965,7 @@ contains
                 &print_HDF5_top, print_HDF5_geom, print_HDF5_3D_data_item, &
                 &print_HDF5_grid, close_HDF5_file
             use HDF5_vars, only: XML_str_type, HDF5_file_type
+            use rich_vars, only: rich_lvl
             
             character(*), parameter :: rout_name = 'plot_grid_real_HDF5'
             
@@ -910,6 +976,7 @@ contains
             
             ! local variables
             character(len=max_str_ln) :: plot_title(2)                          ! plot title for flux surface and for field lines
+            character(len=max_str_ln) :: file_name                              ! name of file
             integer :: id                                                       ! counter
             type(HDF5_file_type) :: file_info                                   ! file info
             type(XML_str_type) :: grids(2)                                      ! grid in spatial collection (flux surface, field line)
@@ -935,12 +1002,14 @@ contains
                 loc_dim(:,2) = [size(X_2,1),size(X_2,2),1]
                 n_r = size(X_1,3) - 1                                           ! should be same for all other X_i, Y_i and Z_i
                 
-                ! set up plot titles
+                ! set up plot titles and file name
                 plot_title(1) = 'Magnetic Flux Surfaces'
                 plot_title(2) = 'Magnetic Field Lines'
+                file_name = 'field_lines_in_flux_surfaces_R_'//&
+                    &trim(i2str(rich_lvl))
                 
                 ! open HDF5 file
-                ierr = open_HDF5_file(file_info,'field_lines_in_flux_surfaces',&
+                ierr = open_HDF5_file(file_info,trim(file_name),&
                     &description=anim_name,ind_plot=.true.)
                 CHCKERR('')
                 
@@ -1032,7 +1101,10 @@ contains
     
     ! Print grid variables to an output file.
     ! Note: "grid_" is added in front the data_name.
-    integer function print_output_grid(grid,grid_name,data_name) result(ierr)
+    ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
+    ! it is > 0.
+    integer function print_output_grid(grid,grid_name,data_name,rich_lvl) &
+        &result(ierr)
         use num_vars, only: PB3D_name, rank
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
@@ -1046,19 +1118,19 @@ contains
         type(grid_type), intent(in) :: grid                                     ! grid variables
         character(len=*), intent(in) :: grid_name                               ! name to display
         character(len=*), intent(in) :: data_name                               ! name under which to store
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
         
         ! local variables
         type(grid_type) :: grid_trim                                            ! trimmed grid
         type(var_1D_type), allocatable, target :: grid_1D(:)                    ! 1D equivalent of grid variables
         type(var_1D_type), pointer :: grid_1D_loc => null()                     ! local element in grid_1D
         integer :: id                                                           ! counter
-        character :: first_char                                                 ! first character of string
         
         ! initialize ierr
         ierr = 0
         
         ! user output
-        call writo('Writing '//trim(grid_name)//' grid variables to output &
+        call writo('Write '//trim(grid_name)//' grid variables to output &
             &file')
         call lvl_ud(1)
         
@@ -1167,7 +1239,7 @@ contains
         
         ! write
         ierr = print_HDF5_arrs(grid_1D(1:id-1),PB3D_name,&
-            &'grid_'//trim(data_name))
+            &'grid_'//trim(data_name),rich_lvl=rich_lvl)
         CHCKERR('')
         
         ! clean up
@@ -1178,8 +1250,5 @@ contains
         
         ! user output
         call lvl_ud(-1)
-        first_char = strl2h(grid_name(1:1))                                     ! convert first character to uppercase
-        call writo(first_char//trim(grid_name(2:len(grid_name)))//&
-            &' grid variables written to output file')
     end function print_output_grid
 end module grid_ops

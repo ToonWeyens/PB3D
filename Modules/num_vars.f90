@@ -18,7 +18,7 @@ module num_vars
         &norm_disc_prec_X, norm_disc_prec_sol, &
         &max_it_rich, tol_rich, &
         &max_it_inv, &
-        &max_it_NR, tol_NR, tol_norm, &
+        &max_it_NR, relax_fac_NR, tol_NR, tol_norm, &
         &GP_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
@@ -38,8 +38,8 @@ module num_vars
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
-    real(dp), parameter :: prog_version = 1.13_dp                               ! version number
-    real(dp), parameter :: min_PB3D_version = 1.13_dp                           ! minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 1.14_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.14_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
     real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
@@ -76,7 +76,7 @@ module num_vars
     logical :: use_normalization                                                ! whether to use normalization or not
     logical :: test_max_mem                                                     ! whether to test maximum memory
     real(dp) :: EV_BC                                                           ! value of artificial Eigenvalue for boundary condition
-    real(dp) :: tol_SLEPC                                                       ! tolerance for SLEPC
+    real(dp), allocatable :: tol_SLEPC(:)                                       ! tolerance for SLEPC for different Richardson levels
     integer :: norm_disc_prec_eq                                                ! precision for normal discretization for equilibrium
     integer :: norm_disc_prec_X                                                 ! precision for normal discretization for perturbation
     integer :: norm_disc_prec_sol                                               ! precision for normal discretization for solution
@@ -90,6 +90,7 @@ module num_vars
 
     ! concerning finding the magnetic field lines
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
+    real(dp) :: relax_fac_NR                                                    ! standard relaxation factor for Newton-Rhapson iterations
     real(dp) :: tol_NR                                                          ! tolerance for Newton-Rhapson
     real(dp) :: tol_norm                                                        ! tolerance for normal range (normalized to 0..1)
 

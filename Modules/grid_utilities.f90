@@ -54,7 +54,6 @@ contains
         use num_vars, only: tol_NR, eq_style
         use VMEC, only: fourier2real, calc_trigon_factors, &
             &L_V_c, L_V_s
-        use utilities, only: interp_fun
         
         character(*), parameter :: rout_name = 'coord_F2E_rtz'
         
@@ -78,9 +77,9 @@ contains
         ierr = 0
         
         ! set up array sizes
-        n_par = size(theta_E,1)
-        n_geo = size(theta_E,2)
-        n_r = size(theta_E,3)
+        n_par = grid_eq%n(1)
+        n_geo = grid_eq%n(2)
+        n_r = grid_eq%loc_n_r
         
         ! tests
         if (size(theta_F,1).ne.size(zeta_F,1) .or. &
@@ -123,13 +122,16 @@ contains
         end select
     contains
         integer function coord_F2E_VMEC() result(ierr)
+            use num_vars, only: norm_disc_prec_eq
             use utilities, only: calc_zero_NR
             use VMEC, only: mnmax_V
+            use grid_vars, only: dealloc_disc
             
             character(*), parameter :: rout_name = 'coord_F2E_VMEC'
             
             ! local variables
             real(dp), pointer :: loc_r_F(:) => null()                           ! loc_r in F coords.
+            type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
             
             ! initialize ierr
             ierr = 0
@@ -145,22 +147,25 @@ contains
             zeta_E = - zeta_F                                                   ! conversion VMEC LH -> RH coord. system
             
             ! allocate local copies of L_V_c and L_V_s
-            allocate(L_V_c_loc(mnmax_V,1:1))
-            allocate(L_V_s_loc(mnmax_V,1:1))
+            allocate(L_V_c_loc(mnmax_V,n_r))
+            allocate(L_V_s_loc(mnmax_V,n_r))
             
-            ! loop over all normal points
+            ! set up interpolation data
+            ierr = setup_interp_data(loc_r_F,r_F,norm_interp_data,&
+                &norm_disc_prec_eq)
+            CHCKERR('')
+            
+            ! interpolate L_V_c and L_V_s at requested normal points r_F
+            ierr = apply_disc(L_V_c(:,grid_eq%i_min:grid_eq%i_max,0),&
+                &norm_interp_data,L_V_c_loc,2)
+            CHCKERR('')
+            ierr = apply_disc(L_V_s(:,grid_eq%i_min:grid_eq%i_max,0),&
+                &norm_interp_data,L_V_s_loc,2)
+            CHCKERR('')
+            
+            ! the poloidal angle has to be found as the zero of
+            !   f = theta_F - theta_E - lambda
             do kd = 1,n_r
-                ! interpolate L_V_c and L_V_s at requested normal point r_F
-                ierr = interp_fun(L_V_c_loc(:,1),&
-                    &L_V_c(:,grid_eq%i_min:grid_eq%i_max,0),r_F(kd),loc_r_F)
-                CHCKERR('')
-                ierr = interp_fun(L_V_s_loc(:,1),&
-                    &L_V_s(:,grid_eq%i_min:grid_eq%i_max,0),r_F(kd),loc_r_F)
-                CHCKERR('')
-                
-                ! the poloidal angle has to be found as the zero of
-                !   f = theta_F - theta_E - lambda
-                ! loop over all angular points
                 do jd = 1,n_geo
                     do id = 1,n_par
                         ! calculate zero of f
@@ -187,6 +192,7 @@ contains
             
             ! clean up
             nullify(loc_r_F)
+            call dealloc_disc(norm_interp_data)
         end function coord_F2E_VMEC
         
         ! function that returns f = theta_F  - theta_V - lambda. It uses theta_F
@@ -217,7 +223,8 @@ contains
             CHCKERR('')
             
             ! calculate lambda
-            ierr = fourier2real(L_V_c_loc,L_V_s_loc,trigon_factors_loc,lam)
+            ierr = fourier2real(L_V_c_loc(:,kd:kd),L_V_s_loc(:,kd:kd),&
+                &trigon_factors_loc,lam)
             CHCKERR('')
             
             ! calculate the output function
@@ -255,8 +262,8 @@ contains
             CHCKERR('')
             
             ! calculate lambda
-            ierr = fourier2real(L_V_c_loc,L_V_s_loc,trigon_factors_loc,dlam,&
-                &[1,0])
+            ierr = fourier2real(L_V_c_loc(:,kd:kd),L_V_s_loc(:,kd:kd),&
+                &trigon_factors_loc,dlam,[1,0])
             CHCKERR('')
             
             ! calculate the output function
@@ -268,7 +275,8 @@ contains
     end function coord_F2E_rtz
     integer function coord_F2E_r(grid_eq,r_F,r_E,r_F_array,r_E_array) &
         &result(ierr)                                                           ! version with only r
-        use utilities, only: interp_fun
+        use num_vars, only: norm_disc_prec_eq
+        use grid_vars, only: dealloc_disc
         
         character(*), parameter :: rout_name = 'coord_F2E_r'
         
@@ -281,9 +289,9 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_r                                                          ! dimension of the grid
-        integer :: kd                                                           ! counter
         real(dp), pointer :: loc_r_E(:) => null()                               ! loc_r in E coords.
         real(dp), pointer :: loc_r_F(:) => null()                               ! loc_r in F coords.
+        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! initialize ierr
         ierr = 0
@@ -312,15 +320,18 @@ contains
             loc_r_F => grid_eq%loc_r_F
         end if
         
+        ! set up interpolation data
+        ierr = setup_interp_data(loc_r_F,r_F,norm_interp_data,&
+            &norm_disc_prec_eq)
+        CHCKERR('')
+        
         ! convert normal position
-        do kd = 1,n_r
-            ierr = interp_fun(r_E(kd),loc_r_E,r_F(kd),loc_r_F)
-            CHCKERR('')
-            r_E(kd) = r_E(kd)
-        end do
+        ierr = apply_disc(loc_r_E,norm_interp_data,r_E)
+        CHCKERR('')
         
         ! clean up
         nullify(loc_r_E,loc_r_F)
+        call dealloc_disc(norm_interp_data)
     end function coord_F2E_r
     
     ! Converts  Equilibrium  coordinates  (r,theta,zeta)_E to  Flux  coordinates
@@ -331,7 +342,6 @@ contains
     integer function coord_E2F_rtz(grid_eq,r_E,theta_E,zeta_E,r_F,&
         &theta_F,zeta_F,r_E_array,r_F_array) result(ierr)                       ! version with r, theta and zeta
         use num_vars, only: eq_style
-        use utilities, only: interp_fun
         
         character(*), parameter :: rout_name = 'coord_E2F_rtz'
         
@@ -344,7 +354,6 @@ contains
         ! local variables (also used in child functions)
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_r, n_par, n_geo                                            ! dimensions of the grid
-        integer :: kd                                                           ! counter
         
         ! initialize ierr
         ierr = 0
@@ -395,8 +404,10 @@ contains
         end select
     contains
         integer function coord_E2F_VMEC() result(ierr)
+            use num_vars, only: norm_disc_prec_eq
             use VMEC, only: calc_trigon_factors, fourier2real, &
                 &mnmax_V, L_V_c, L_V_s
+            use grid_vars, only: dealloc_disc
             
             character(*), parameter :: rout_name = 'coord_E2F_VMEC'
             
@@ -405,6 +416,7 @@ contains
             real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:)              ! trigonometric factor cosine for the inverse fourier transf.
             real(dp), allocatable :: lam(:,:,:)                                 ! lambda
             real(dp), pointer :: loc_r_E(:) => null()                           ! loc_r in E coords.
+            type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
             
             ! initialize ierr
             ierr = 0
@@ -424,16 +436,18 @@ contains
             allocate(L_V_s_loc(mnmax_V,n_r))
             allocate(lam(n_par,n_geo,n_r))
             
-            ! interpolate L_V_c and L_V_s at requested normal point r_E
-            ! loop over all normal points
-            do kd = 1,n_r
-                ierr = interp_fun(L_V_c_loc(:,kd),&
-                    &L_V_c(:,grid_eq%i_min:grid_eq%i_max,0),r_E(kd),loc_r_E)
-                CHCKERR('')
-                ierr = interp_fun(L_V_s_loc(:,kd),&
-                    &L_V_s(:,grid_eq%i_min:grid_eq%i_max,0),r_E(kd),loc_r_E)
-                CHCKERR('')
-            end do
+            ! set up interpolation data
+            ierr = setup_interp_data(loc_r_E,r_E,norm_interp_data,&
+                &norm_disc_prec_eq)
+            CHCKERR('')
+            
+            ! interpolate L_V_c and L_V_s at requested normal points r_E
+            ierr = apply_disc(L_V_c(:,grid_eq%i_min:grid_eq%i_max,0),&
+                &norm_interp_data,L_V_c_loc,2)
+            CHCKERR('')
+            ierr = apply_disc(L_V_s(:,grid_eq%i_min:grid_eq%i_max,0),&
+                &norm_interp_data,L_V_s_loc,2)
+            CHCKERR('')
             
             ! calculate the (co)sines to transform lambda to real space
             ierr = calc_trigon_factors(theta_E,zeta_E,trigon_factors_loc)
@@ -449,11 +463,13 @@ contains
             
             ! clean up
             nullify(loc_r_E)
+            call dealloc_disc(norm_interp_data)
         end function coord_E2F_VMEC
     end function coord_E2F_rtz
     integer function coord_E2F_r(grid_eq,r_E,r_F,r_E_array,r_F_array) &
         &result(ierr)                                                           ! version with only r
-        use utilities, only: interp_fun
+        use num_vars, only: norm_disc_prec_eq
+        use grid_vars, only: dealloc_disc
         
         character(*), parameter :: rout_name = 'coord_E2F_r'
         
@@ -466,9 +482,9 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_r                                                          ! dimension of the grid
-        integer :: kd                                                           ! counter
         real(dp), pointer :: loc_r_E(:) => null()                               ! loc_r in E coords.
         real(dp), pointer :: loc_r_F(:) => null()                               ! loc_r in F coords.
+        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! initialize ierr
         ierr = 0
@@ -497,14 +513,18 @@ contains
             loc_r_F => grid_eq%loc_r_F
         end if
         
+        ! set up interpolation data
+        ierr = setup_interp_data(loc_r_E,r_E,norm_interp_data,&
+            &norm_disc_prec_eq)
+        CHCKERR('')
+        
         ! convert normal position
-        do kd = 1,n_r
-            ierr = interp_fun(r_F(kd),loc_r_F,r_E(kd),loc_r_E)
-            CHCKERR('')
-        end do
+        ierr = apply_disc(loc_r_F,norm_interp_data,r_F)
+        CHCKERR('')
         
         ! clean up
         nullify(loc_r_E,loc_r_F)
+        call dealloc_disc(norm_interp_data)
     end function coord_E2F_r
     
     ! Calculates X,Y  and Z on a  grid, which should have  the local equilibrium
@@ -515,7 +535,7 @@ contains
     ! this variable is not used.
     integer function calc_XYZ_grid(grid_eq,grid_XYZ,X,Y,Z,L) result(ierr)
         use num_vars, only: eq_style, use_normalization
-        use utilities, only: interp_fun, round_with_tol
+        use utilities, only: round_with_tol
         use eq_vars, only: R_0
         
         character(*), parameter :: rout_name = 'calc_XYZ_grid'
@@ -675,6 +695,8 @@ contains
         ! HELENA version
         integer function calc_XYZ_grid_HEL(grid_eq,grid_XYZ,X,Y,Z) result(ierr)
             use HELENA_vars, only: R_H, Z_H, chi_H, ias, nchi
+            use num_vars, only: norm_disc_prec_eq
+            use grid_vars, only: dealloc_disc
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_HEL'
             
@@ -685,9 +707,12 @@ contains
             
             ! local variables
             integer :: id, jd, kd                                               ! counters
-            real(dp), allocatable :: R_H_int(:), Z_H_int(:)                     ! R and Z at interpolated normal value
+            integer :: pmone                                                    ! plus or minus one
+            real(dp), allocatable :: R_H_int(:,:), Z_H_int(:,:)                 ! R and Z at interpolated normal value
             real(dp), allocatable :: R(:,:,:)                                   ! R in Cylindrical coordinates
             real(dp) :: theta_loc                                               ! local copy of theta_E
+            type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
+            type(disc_type) :: pol_interp_data                                  ! data for poloidal interpolation
             
             ! initialize ierr
             ierr = 0
@@ -696,27 +721,32 @@ contains
             allocate(R(grid_XYZ%n(1),grid_XYZ%n(2),grid_XYZ%loc_n_r))
             
             ! set up interpolated R and Z
-            allocate(R_H_int(nchi),Z_H_int(nchi))
+            allocate(R_H_int(nchi,grid_XYZ%loc_n_r))
+            allocate(Z_H_int(nchi,grid_XYZ%loc_n_r))
+            
+            ! set up interpolation data
+            ierr = setup_interp_data(grid_eq%r_E,grid_XYZ%loc_r_E,&
+                &norm_interp_data,norm_disc_prec_eq)
+            CHCKERR('')
             
             ! interpolate HELENA output  R_H and Z_H for  every requested normal
             ! point
+            ierr = apply_disc(R_H,norm_interp_data,R_H_int,2)
+            CHCKERR('')
+            ierr = apply_disc(Z_H,norm_interp_data,Z_H_int,2)
+            CHCKERR('')
+            
             ! Note:  R_H and  Z_H  are not  adapted to  the  parallel grid,  but
             ! tabulated in the original HELENA poloidal grid.
-            ! interpolate the HELENA tables in normal direction
+            ! loop over normal points
             do kd = 1,grid_XYZ%loc_n_r                                          ! loop over all normal points
-                do id = 1,nchi
-                    ierr = interp_fun(R_H_int(id),R_H(id,:),&
-                        &grid_XYZ%loc_r_E(kd),x=grid_eq%r_E)
-                    CHCKERR('')
-                    ierr = interp_fun(Z_H_int(id),Z_H(id,:),&
-                        &grid_XYZ%loc_r_E(kd),x=grid_eq%r_E)
-                    CHCKERR('')
-                end do
                 ! loop over toroidal points
                 do jd = 1,grid_XYZ%n(2)
                     ! interpolate at the requested poloidal points
                     do id = 1,grid_XYZ%n(1)
+                        ! initialize local theta
                         theta_loc = grid_XYZ%theta_E(id,jd,kd)
+                        
                         ! add or subtract 2pi to  the parallel angle until it is
                         ! at least 0 to get principal range 0..2pi
                         if (theta_loc.lt.0._dp) then
@@ -728,23 +758,27 @@ contains
                                 theta_loc = theta_loc - 2*pi
                             end do
                         end if
-                        ! Interpolate  the HELENA  variables poloidally,  taking
-                        ! into account the possible symmetry
+                        
+                        ! take into account possible symmetry
                         if (ias.eq.0 .and. theta_loc.gt.pi) then
-                            ierr = interp_fun(R(id,jd,kd),R_H_int,&
-                                &2*pi-theta_loc,x=chi_H)
-                            CHCKERR('')
-                            ierr = interp_fun(Z(id,jd,kd),-Z_H_int,&
-                                &2*pi-theta_loc,x=chi_H)                        ! Z at second half of period is inverted
-                            CHCKERR('')
+                            theta_loc = 2*pi-theta_loc
+                            pmone = -1
                         else
-                            ierr = interp_fun(R(id,jd,kd),R_H_int,theta_loc,&
-                                &x=chi_H)
-                            CHCKERR('')
-                            ierr = interp_fun(Z(id,jd,kd),Z_H_int,theta_loc,&
-                                &x=chi_H)
-                            CHCKERR('')
+                            pmone = 1
                         end if
+                        
+                        ! set up interpolation data
+                        ierr = setup_interp_data(chi_H,[theta_loc],&
+                            &pol_interp_data,norm_disc_prec_eq)                 ! use same precision as normal discretization
+                        CHCKERR('')
+                        
+                        ! interpolate  the HELENA  variables poloidally
+                        ierr = apply_disc(R_H_int(:,kd),pol_interp_data,&
+                            &R(id:id,jd,kd))
+                        CHCKERR('')
+                        ierr = apply_disc(pmone*Z_H_int(:,kd),pol_interp_data,&
+                            &Z(id:id,jd,kd))
+                        CHCKERR('')
                     end do
                 end do
             end do
@@ -755,6 +789,8 @@ contains
             
             ! deallocate
             deallocate(R)
+            call dealloc_disc(norm_interp_data)
+            call dealloc_disc(pol_interp_data)
         end function calc_XYZ_grid_HEL
     end function calc_XYZ_grid
 
@@ -1834,9 +1870,6 @@ contains
         use num_vars, only: n_procs, rank
         use mpi_utilities, only: get_ser_var
         use grid_vars, only: create_grid
-#if ldebug
-        use mpi_utilities, only: wait_mpi
-#endif
         
         character(*), parameter :: rout_name = 'trim_grid'
         

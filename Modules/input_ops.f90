@@ -21,12 +21,13 @@ contains
             &max_it_NR, tol_NR, max_it_rich, input_i, use_pol_flux_F, &
             &EV_style, max_mem_per_proc, plot_resonance, tol_rich, &
             &n_sol_requested, rank, plot_grid, plot_flux_q, &
-            &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
-            &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
-            &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
-            &tol_norm, tol_SLEPC, max_it_slepc, n_procs, pi, plot_size, &
-            &U_style, norm_style, test_max_mem, X_style, matrix_SLEPC_style,  &
-            &input_name, rich_restart_lvl, eq_style
+            &use_normalization, n_sol_plotted, n_theta_plot, &
+            &n_zeta_plot, EV_BC, rho_style, retain_all_sol, prog_style, &
+            &norm_disc_prec_X, norm_disc_prec_eq, norm_disc_prec_sol, &
+            &BC_style, max_it_inv, tol_norm, tol_SLEPC_loc => tol_SLEPC, &
+            &max_it_slepc, n_procs, pi, plot_size, U_style, norm_style, &
+            &test_max_mem, X_style, matrix_SLEPC_style, input_name, &
+            &rich_restart_lvl, eq_style, relax_fac_NR
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use messages, only: writo, lvl_ud
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
@@ -39,8 +40,12 @@ contains
         character(*), parameter :: rout_name = 'read_input_opts'
         
         ! local variables
-        integer :: PB3D_lvl_rich                                                ! Richardson level to post-process (for POST)
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: PB3D_lvl_rich                                                ! Richardson level to post-process (for POST)
+        integer, parameter :: max_size_tol_SLEPC = 100                          ! maximum size of tol_SLEPC
+        real(dp) :: tol_SLEPC(max_size_tol_SLEPC)                               ! tol_SLEPC
+        real(dp), parameter :: min_tol = 1.E-10_dp                              ! minimum general tolerance
+        real(dp), parameter :: max_tol = 1.E-3_dp                               ! maximum general tolerance
         
         ! input options
         namelist /inputdata_PB3D/ min_par_X, max_par_X, alpha, min_r_sol, &
@@ -52,10 +57,11 @@ contains
             &EV_BC, tol_SLEPC, retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, &
             &norm_disc_prec_X, BC_style, max_it_inv, max_it_slepc, &
             &norm_disc_prec_sol, plot_size, U_style, norm_style, test_max_mem, &
-            &matrix_SLEPC_style, rich_restart_lvl, min_n_par_X
+            &matrix_SLEPC_style, rich_restart_lvl, min_n_par_X, relax_fac_NR
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_grid, norm_disc_prec_sol, &
-            &plot_size, test_max_mem, PB3D_lvl_rich, max_it_NR, tol_NR
+            &plot_size, test_max_mem, PB3D_lvl_rich, max_it_NR, tol_NR, &
+            &relax_fac_NR
         
         ! initialize ierr
         ierr = 0
@@ -81,6 +87,7 @@ contains
                     n_theta_plot = 501                                          ! nr. poloidal points in plot
                     n_zeta_plot = 1                                             ! nr. toroidal points in plot
             end select
+            relax_fac_NR = 0.75_dp                                              ! standard relaxation factor
             
             ! select depending on program style
             select case (prog_style)
@@ -121,32 +128,29 @@ contains
                         ! adapt min_n_par_X if needed
                         call adapt_min_n_par_X
                         
-                        ! adapt tolerances if needed
-                        call adapt_tol_rich
-                        
                         ! adapt solution grid
                         ierr = adapt_sol_grid()
                         CHCKERR('')
-                        
-                        ! adapt Newton-Rhapson variables if needed
-                        call adapt_NR
                         
                         ! adapt normalization variables if needed
                         ierr = adapt_normalization()
                         CHCKERR('')
                         
+                        ! adapt Richardson variables if needed
+                        call adapt_rich
+                        
                         ! adapt input / output variables if needed
                         ierr = adapt_inoutput()
                         CHCKERR('')
-                        
-                        ! adapt Richardson variables if needed
-                        call adapt_r
                         
                         ! adapt variables for inverse if needed
                         call adapt_inv
                         
                         ! adapt Newton-Rhapson variables if needed
                         call adapt_NR
+                        
+                        ! adapt tolerances if needed
+                        call adapt_tols
                         
                         call lvl_ud(-1)
                     else                                                        ! cannot read input data
@@ -190,7 +194,7 @@ contains
             
             ! concerning Newton-Rhapson
             max_it_NR = 500                                                     ! maximum 500 Newton-Rhapson iterations
-            tol_NR = 1.0E-10_dp                                                 ! wanted relative error in Newton-Rhapson iteration
+            tol_NR = 1.0E-10_dp                                                 ! very low tolerance for calculation of field lines
             
             ! runtime variables
             use_normalization = .true.                                          ! use normalization for the variables
@@ -199,7 +203,7 @@ contains
             norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
             max_it_slepc = 10000                                                ! max. nr. of iterations for SLEPC
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
-            tol_SLEPC = 1.E-8_dp                                                ! tolerance of 1E-8
+            tol_SLEPC = huge(1._dp)                                             ! nonsensible value to check for user overwriting
             rho_style = 1                                                       ! constant pressure profile, equal to rho_0
             U_style = 3                                                         ! full expression for U, up to order 3
             norm_style = 1                                                      ! perpendicular kinetic energy normalized
@@ -245,7 +249,7 @@ contains
             
             ! concerning Richardson extrapolation
             max_it_rich = 1                                                     ! by default no Richardson extrapolation
-            tol_rich = 1E-5                                                     ! wanted relative error in Richardson extrapolation
+            tol_rich = 1.E-5_dp                                                 ! tolerance of 1E-5
             
             ! concerning calculating the inverse
             max_it_inv = 1                                                      ! by default no iteration to calculate inverse
@@ -488,12 +492,12 @@ contains
         
         ! checks  whether the variables concerning  Richardson extrapolation are
         ! correct. max_it_rich has to be at least 1
-        subroutine adapt_r
+        subroutine adapt_rich
             if (max_it_rich.lt.1) then
                 max_it_rich = 1
                 call writo('WARNING: max_it_rich has been increased to 1')
             end if
-        end subroutine adapt_r
+        end subroutine adapt_rich
         
         ! checks whether  the variables  concerning calculating the  inverse are
         ! correct. max_it_inv has to be at least 1
@@ -505,25 +509,108 @@ contains
         end subroutine adapt_inv
         
         ! checks  whether the  variables concerning Newton-Rhapson  are correct.
-        ! max_it_NR has to be at least 2
+        !   max_it_NR has to be at least 2
+        !   relax_fac_NR has to be between 0 and 1
         subroutine adapt_NR
             if (max_it_NR.lt.1) then
                 max_it_NR = 2
                 call writo('WARNING: max_it_NR has been increased to 2')
             end if
+            if (relax_fac_NR.lt.0 .or. relax_fac_NR.gt.1) then
+                relax_fac_NR = 0.5
+                call writo('WARNING: reset relax_fac_NR to '//&
+                    &trim(r2strt(relax_fac_NR))//' as it should be 0..1')
+            end if
         end subroutine adapt_NR
         
-        ! checks whether Richardson tolerances are correct
-        subroutine adapt_tol_rich
-            if (tol_norm.lt.0) then
+        ! checks whether tolerances are correct
+        !   tol_norm needs to be 0..1
+        !   tol_NR needs to be min_tol..max_tol
+        !   tol_rich needs to be min_tol..max_tol
+        !   tol_SLEPC needs to be min_tol..max_tol
+        ! also sets local tol_SLEPC
+        subroutine adapt_tols
+            ! local variables
+            integer :: id                                                       ! counter
+            integer :: max_id                                                   ! maximum of user-set id
+            real(dp), parameter :: tol_SLEPC_def = 1.E-5_dp                     ! default tol_SLEPC
+            
+            ! check tol_norm
+            if (tol_norm.lt.0._dp) then
                 call writo('WARNING: tol_norm has been increased to 0')
                 tol_norm = 0._dp
             end if
-            if (tol_norm.gt.1) then
+            if (tol_norm.gt.1._dp) then
                 call writo('WARNING: tol_norm has been decreased to 1')
                 tol_norm = 1._dp
             end if
-        end subroutine adapt_tol_rich
+            
+            ! check tol_rich
+            if (tol_rich.lt.min_tol) then
+                call writo('WARNING: tol_rich has been increased to '//&
+                    &trim(r2str(min_tol)))
+                tol_rich = min_tol
+            end if
+            if (tol_rich.gt.max_tol) then
+                call writo('WARNING: tol_rich has been decreased to '//&
+                    &trim(r2str(max_tol)))
+                tol_rich = max_tol
+            end if
+            
+            ! check tol_NR
+            if (tol_NR.lt.min_tol) then
+                call writo('WARNING: tol_NR has been increased to '//&
+                    &trim(r2str(min_tol)))
+                tol_NR = min_tol
+            end if
+            if (tol_NR.gt.max_tol) then
+                call writo('WARNING: tol_NR has been decreased to '//&
+                    &trim(r2str(max_tol)))
+                tol_NR = max_tol
+            end if
+            
+            ! check and setup tol_SLEPC
+            allocate(tol_SLEPC_loc(max_it_rich))
+            ! get maximum index set by user and correct
+            max_id = 0
+            do id = 1,max_size_tol_SLEPC
+                if (tol_SLEPC(id).lt.huge(1._dp)) then                          ! was overwritten by user
+                    max_id = id
+                    if (tol_SLEPC(id).lt.min_tol) then
+                        call writo('WARNING: tol_SLEPC('//trim(i2str(id))//&
+                            &') has been increased to '//trim(r2str(min_tol)))
+                        tol_SLEPC = min_tol
+                    end if
+                    if (tol_SLEPC(id).gt.max_tol) then
+                        call writo('WARNING: tol_SLEPC has been decreased to '&
+                            &//trim(r2str(max_tol)))
+                        tol_SLEPC = max_tol
+                    end if
+                end if
+            end do
+            ! set local variable
+            if (max_id.gt.0) then                                               ! was overwritten by user
+                if (max_id.gt.max_it_rich) then                                 ! too many values given
+                    call writo('WARNING: '//trim(i2str(max_id-max_it_rich))//&
+                        &' last values discarded for tol_SLEPC')
+                    tol_SLEPC_loc = tol_SLEPC(1:max_it_rich)
+                else if (max_id.eq.max_it_rich) then                            ! exactly the right amount of values given
+                    tol_SLEPC_loc = tol_SLEPC(1:max_it_rich)
+                else                                                            ! not enough values given
+                    call writo('WARNING: '//trim(i2str(max_it_rich-max_id))//&
+                        &' last values of tol_SLEPC set to '//&
+                        &trim(r2str(tol_SLEPC_def)))
+                    tol_SLEPC_loc(1:max_id) = tol_SLEPC(1:max_id)
+                    tol_SLEPC(max_id+1:max_it_rich) = tol_SLEPC_def
+                end if
+            else                                                                ! was not overwritten by user
+                tol_SLEPC_loc(max_it_rich) = tol_SLEPC_def                      ! last tolerance always equal to default
+                do id = 1,max_it_rich-1                                         ! the Richardson levels prior to the last one
+                    tol_SLEPC_loc(id) = max_tol + (id-1._dp)/(max_it_rich-1)*&
+                        &(tol_SLEPC_def-max_tol)                                ! ramp it up from max_tol to default tolerance
+                end do
+            end if
+        end subroutine adapt_tols
         
         ! checks whether normalization variables are chosen correctly. rho_0 has
         ! to be positive
@@ -599,7 +686,8 @@ contains
         use num_vars, only: eq_style, rho_style, prog_version, use_pol_flux_E, &
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, tol_norm, &
-            &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, EV_BC
+            &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
+            &EV_BC
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
         use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
@@ -635,7 +723,7 @@ contains
         ierr = 0
         
         ! user output
-        call writo('Writing input variables to output file')
+        call writo('Write input variables to output file')
         call lvl_ud(1)
         
         ! calculate limits of input range
@@ -981,6 +1069,5 @@ contains
         
         ! user output
         call lvl_ud(-1)
-        call writo('Input variables written to output')
     end function print_output_in
 end module input_ops

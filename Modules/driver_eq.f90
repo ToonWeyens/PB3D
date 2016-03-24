@@ -9,7 +9,6 @@ module driver_eq
     use num_vars, only: dp, pi, max_str_ln
     use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
-    use met_vars, only: met_type
     
     implicit none
     private
@@ -24,13 +23,12 @@ contains
         use grid_vars, only: dealloc_grid
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot
         use sol_vars, only: alpha
-        use grid_ops, only: setup_grid_eq_B, print_output_grid, plot_grid_real, &
-            &calc_norm_range, setup_grid_eq, calc_ang_grid_eq_B
+        use grid_ops, only: setup_grid_eq_B, print_output_grid, &
+            &plot_grid_real, calc_norm_range, setup_grid_eq, calc_ang_grid_eq_B
         use PB3D_ops, only: reconstruct_PB3D_in
         use utilities, only: derivs
         use input_utilities, only: dealloc_in
-        use rich_vars, only: rich_info_short, &
-            &rich_lvl
+        use rich_vars, only: rich_lvl
         !!use utilities, only: calc_aux_utilities
         
         character(*), parameter :: rout_name = 'run_driver_eq'
@@ -41,8 +39,8 @@ contains
         type(grid_type), pointer :: grid_eq_B => null()                         ! field-aligned equilibrium grid
         type(eq_1_type) :: eq_1                                                 ! equilibrium for
         type(eq_2_type) :: eq_2                                                 ! equilibrium for
-        type(met_type) :: met                                                   ! metric variables
         integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid of this process
+        logical :: only_half_grid                                               ! calculate only half grid
         
         ! initialize ierr
         ierr = 0
@@ -78,13 +76,22 @@ contains
         ierr = calc_norm_range(eq_limits=eq_limits)
         CHCKERR('')
         call lvl_ud(-1)
-        write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
-        write(*,*) '!!!!!!!!!!!!!! NEED TO REUSE VMEC POINTS !!!!!!!!!!!!!!!'
-        write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+        
+        ! set up whether half or full parallel grid has to be calculated
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                if (rich_lvl.eq.1) then
+                    only_half_grid = .false.
+                else
+                    only_half_grid = .true.
+                end if
+            case (2)                                                            ! HELENA
+                only_half_grid = .false.
+        end select
         
         ! setup equilibrium grid
         call writo('Determine the equilibrium grid')
-        ierr = setup_grid_eq(grid_eq,eq_limits)
+        ierr = setup_grid_eq(grid_eq,eq_limits,only_half_grid=only_half_grid)
         CHCKERR('')
         
         ! Calculate the flux equilibrium quantities
@@ -119,12 +126,13 @@ contains
             case (1)                                                            ! VMEC
                 ! calculate angular grid points for equilibrium grid
                 call writo('Calculate angular equilibrium grid')
-                ierr = calc_ang_grid_eq_B(grid_eq,eq_1)
+                ierr = calc_ang_grid_eq_B(grid_eq,eq_1,only_half_grid=&
+                    &only_half_grid)
                 CHCKERR('')
                 
                 ! write equilibrium grid variables to output
-                ierr = print_output_grid(grid_eq,'equilibrium','eq'//&
-                    &trim(rich_info_short()))
+                ierr = print_output_grid(grid_eq,'equilibrium','eq',&
+                    &rich_lvl=rich_lvl)
                 CHCKERR('')
                 
                 ! Calculate the metric equilibrium quantities
@@ -132,8 +140,7 @@ contains
                 CHCKERR('')
                 
                 ! write metric equilibrium variables to output
-                ierr = print_output_eq(grid_eq,eq_2,'eq_2'//&
-                    &trim(rich_info_short()))
+                ierr = print_output_eq(grid_eq,eq_2,'eq_2',rich_lvl=rich_lvl)
                 CHCKERR('')
                 
                 ! the equilibrium grid is field-aligned already
@@ -161,7 +168,7 @@ contains
                 
                 ! write field-aligned equilibrium grid variables to output
                 ierr = print_output_grid(grid_eq_B,'field-aligned equilibrium',&
-                    &'eq_B'//trim(rich_info_short()))
+                    &'eq_B',rich_lvl=rich_lvl)
                 CHCKERR('')
         end select
         
@@ -266,16 +273,16 @@ contains
                 
                 ! metric fators
                 call plot_HDF5('jac_FD','jac_FD',&
-                    &met%jac_FD(:,:,:,d(1),d(2),d(3)),&
+                    &eq_2%jac_FD(:,:,:,d(1),d(2),d(3)),&
                     &x=x_plot,y=y_plot,z=z_plot)
                 do id = 1,6
                     call plot_HDF5('g_FD_'//trim(i2str(id)),&
                         &'g_FD_'//trim(i2str(id)),&
-                        &met%g_FD(:,:,:,id,d(1),d(2),d(3)),&
+                        &eq_2%g_FD(:,:,:,id,d(1),d(2),d(3)),&
                         &x=x_plot,y=y_plot,z=z_plot)
                     call plot_HDF5('h_FD_'//trim(i2str(id)),&
                         &'h_FD_'//trim(i2str(id)),&
-                        &met%h_FD(:,:,:,id,d(1),d(2),d(3)),&
+                        &eq_2%h_FD(:,:,:,id,d(1),d(2),d(3)),&
                         &x=x_plot,y=y_plot,z=z_plot)
                 end do
                 

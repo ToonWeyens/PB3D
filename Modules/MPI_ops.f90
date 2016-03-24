@@ -76,7 +76,7 @@ contains
     ! variables 'X_jobs_lims'  and 'X_jobs_taken' for  data of a  certain order,
     ! given by div_ord.  E.g. for the vector  phase, the order is 1  and for the
     ! tensorial phase it is 2.
-    integer function divide_X_jobs(grid,div_ord) result(ierr)
+    integer function divide_X_jobs(arr_size,div_ord) result(ierr)
         use num_vars, only: max_mem_per_proc, n_procs, X_jobs_lims, rank, &
             &X_jobs_file_name, X_jobs_taken, X_jobs_lock_file_name
         use X_vars, only: n_mod_X
@@ -86,11 +86,10 @@ contains
         character(*), parameter :: rout_name = 'divide_X_jobs'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid on which X vars are tabulated
+        integer, intent(in) :: arr_size                                         ! array size (using loc_n_r)
         integer, intent(in) :: div_ord                                          ! division order
         
         ! local variables
-        integer :: arr_size                                                     ! array size
         integer :: n_div                                                        ! factor by which to divide the total size
         real(dp) :: mem_size                                                    ! approximation of memory required for X variables
         integer :: n_mod_block                                                  ! nr. of modes in block
@@ -107,9 +106,6 @@ contains
             &trim(i2str(div_ord)))
         call lvl_ud(1)
         
-        ! set arr_size
-        arr_size = product(grid%n(1:2))*grid%loc_n_r
-        
         ! calculate largest possible block of (k,m) values
         n_div = 0
         mem_size = huge(1._dp)
@@ -117,6 +113,7 @@ contains
             n_div = n_div + 1
             n_mod_block = ceiling(n_mod_X*1._dp/n_div)
             ierr = calc_memory(div_ord,arr_size,n_mod_block,mem_size)
+            CHCKERR('')
             if (n_div.gt.n_mod_X) then
                 ierr = 1
                 err_msg = 'The memory limit is too low'
@@ -188,7 +185,7 @@ contains
         ! Calculate memory in MB necessary for X variables of a certain order
         !   - order 1: 4x n_par_X x n_geo x loc_n_r x n_mod
         !   - order 2: 2x n_par_X x n_geo x loc_n_r x n_mod^2
-        !              4x n_par_X x n_geo x loc_n_r x n_mod^2
+        !              4x n_par_X x n_geo x loc_n_r x n_mod(n_mod+1)/2
         !   - higher order: not used
         ! where n_par_X  x n_geo x  loc_n_r should  be passed as  'arr_size' and
         ! n_mod as well
@@ -224,8 +221,8 @@ contains
                     mem_size = mem_size*dp_size
                 case (2)                                                        ! tensorial data: PV, KV
                     ! set memory size
-                    mem_size = 6*arr_size
-                    mem_size = mem_size*n_mod**ord
+                    mem_size = arr_size
+                    mem_size = mem_size*(2*n_mod**ord+4*n_mod*(n_mod+1)/2)
                     mem_size = mem_size*dp_size
                 case default
                     ierr = 1
@@ -453,8 +450,8 @@ contains
     ! Broadcasts options (e.g. user-prescribed) that  are not passed through the
     ! HDF5 output file (i.e. ltest, no_plots, ...).
     integer function broadcast_input_opts() result(ierr)
-        use num_vars, only: max_str_ln, ltest, max_it_NR, &
-            &max_it_rich, tol_NR, n_procs, n_sol_requested, &
+        use num_vars, only: max_str_ln, ltest, max_it_NR, rank, &
+            &max_it_rich, relax_fac_NR, tol_NR, n_procs, n_sol_requested, &
             &tol_rich, &
             &retain_all_sol, plot_flux_q, plot_grid, no_plots, &
             &n_sol_plotted, n_theta_plot, n_zeta_plot, &
@@ -498,6 +495,9 @@ contains
             call MPI_Bcast(plot_grid,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(plot_resonance,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(relax_fac_NR,1,MPI_DOUBLE_PRECISION,0,&
+                &MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(tol_NR,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
@@ -555,8 +555,9 @@ contains
                     call MPI_Bcast(tol_rich,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(tol_SLEPC,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,ierr)
+                    if (rank.ne.0) allocate(tol_SLEPC(max_it_rich))
+                    call MPI_Bcast(tol_SLEPC,max_it_rich,MPI_DOUBLE_PRECISION,&
+                        &0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                 case(2)                                                         ! POST
                     call MPI_Bcast(n_sol_plotted,4,MPI_INTEGER,0,&

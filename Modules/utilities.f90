@@ -11,14 +11,12 @@ module utilities
     implicit none
     private
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
-        &conv_FHM, check_deriv, calc_inv, interp_fun, calc_mult, &
-        &calc_aux_utilities, derivs, con2dis, dis2con, round_with_tol, &
-        &conv_mat, is_sym, calc_spline_3, con, calc_coeff_fin_diff, fac, &
-        &test_max_memory, &
+        &conv_FHM, check_deriv, calc_inv, calc_mult, calc_aux_utilities, &
+        &derivs, con2dis, dis2con, round_with_tol, conv_mat, is_sym, &
+        &calc_spline_3, con, calc_coeff_fin_diff, fac, test_max_memory, &
         &d, m, f
 #if ldebug
-    public debug_interp_fun_0D_real, debug_calc_zero_NR, &
-        &debug_con2dis_reg, debug_calc_coeff_fin_diff
+    public debug_calc_zero_NR, debug_con2dis_reg, debug_calc_coeff_fin_diff
 #endif
     
     ! global variables
@@ -57,19 +55,12 @@ module utilities
     interface dis2con
         module procedure dis2con_eqd, dis2con_reg
     end interface
-    interface interp_fun
-        module procedure &
-            &interp_fun_0D_real, interp_fun_0D_complex, &
-            &interp_fun_1D_real, interp_fun_1D_complex, &
-            &interp_fun_2D_real, interp_fun_2D_complex
-    end interface
     interface con
         module procedure con_3D, con_2D, con_1D, con_0D
     end interface
     
     ! global variables
 #if ldebug
-    logical :: debug_interp_fun_0D_real = .false.                               ! plot debug information for interp_fun_0D_real
     logical :: debug_calc_zero_NR = .false.                                     ! plot debug information for calc_zero_NR
     logical :: debug_con2dis_reg = .false.                                      ! plot debug information for con2dis_reg
     logical :: debug_calc_coeff_fin_diff = .false.                              ! plot debug information for calc_coeff_fin_diff
@@ -1431,8 +1422,8 @@ contains
     
     ! Finds the zero of a  function using Newton-Rhapson iteration. If something
     ! goes wrong, an error message is returned, that is empty otherwise.
-    function calc_zero_NR(zero_NR,fun,dfun,guess) result(err_msg)
-        use num_vars, only: max_it_NR, tol_NR
+    function calc_zero_NR(zero_NR,fun,dfun,guess,relax_fac) result(err_msg)
+        use num_vars, only: max_it_NR, tol_NR, relax_fac_NR
         
         ! input / output
         real(dp), intent(inout) :: zero_NR                                      ! output
@@ -1449,12 +1440,13 @@ contains
             end function dfun
         end interface
         real(dp), intent(in) :: guess                                           ! first guess
+        real(dp), intent(in), optional :: relax_fac                             ! relaxation factor
         character(len=max_str_ln) :: err_msg                                    ! possible error message
         
         ! local variables
         integer :: jd
         real(dp) :: corr
-        real(dp), parameter :: relax_fac = 0.2_dp                               ! factor for relaxation
+        real(dp) :: relax_fac_loc                                               ! local relaxation factor
 #if ldebug
         real(dp), allocatable :: corrs(:)                                       ! corrections for all steps
         real(dp), allocatable :: values(:)                                      ! values for all steps
@@ -1465,6 +1457,10 @@ contains
         
         ! set up zero_NR
         zero_NR = guess
+        
+        ! set up local relaxation factor
+        relax_fac_loc = relax_fac_NR
+        if (present(relax_fac)) relax_fac_loc = relax_fac
         
 #if ldebug
         if (debug_calc_zero_NR) then
@@ -1483,7 +1479,7 @@ contains
                 values(jd) = zero_NR
             end if
 #endif
-            zero_NR = zero_NR + relax_fac*corr
+            zero_NR = zero_NR + relax_fac_loc*corr
             
             ! check for convergence
             if (abs(corr).lt.tol_NR) then
@@ -1792,219 +1788,6 @@ contains
         
         val = vals(1)
     end function round_with_tol_ind
-    
-    ! Linearly interpolate a  1D function y(:,:,x), y(:,x) or  y(x) by providing
-    ! the array y  and x_in. The result is  stored in y_out. The array  x can be
-    ! optionally passed.  If not, it is  assumed to be the  (equidistant) linear
-    ! space between 0 and 1.
-    ! Note: This function is assumed to be monotomous. If not, an error results.
-    ! Note:  The  combination  of   "setup_interp_data"  and  "apply_disc"  from
-    ! "grid_utilities"  is  more  powerful,  though  for  non-repetitive  linear
-    ! calculations a bit slower than this function.
-    integer function interp_fun_2D_real(y_out,y,x_in,x) result(ierr)            ! 2D real version
-        character(*), parameter :: rout_name = 'interp_fun_2D_real'
-        
-        ! input / output
-        real(dp), intent(inout) :: y_out(:,:)                                   ! output y_out
-        real(dp), intent(in) :: y(:,:,:)                                        ! y(x)
-        real(dp), intent(in) :: x_in                                            ! input x_in
-        real(dp), intent(in), optional :: x(:)                                  ! x(x)
-        
-        ! local variables
-        integer :: n_pt                                                         ! nr. points in y
-        real(dp) :: ind                                                         ! unrounded x-index
-        integer :: ind_lo, ind_hi                                               ! lower and higher index of x_in in x(x)
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up n_pt
-        n_pt = size(y,3)
-        
-        ! tests
-        if (present(x)) then
-            if (size(x).ne.n_pt) then
-                err_msg = 'x and y need to have the same size'
-                ierr = 1
-                CHCKERR(err_msg)
-            end if
-        end if
-        
-        ! find the lower range of the index in the x array
-        if (present(x)) then
-            ierr = con2dis(x_in,ind,x)
-        else
-            ierr = con2dis(x_in,ind,[0._dp,1._dp],[1,n_pt])
-        end if
-        CHCKERR('')
-        
-        ! set ind_lo and ind_hi
-        ind_lo = floor(ind)
-        ind_hi = ceiling(ind)
-        
-        ! calculate y_out
-        y_out = y(:,:,ind_lo) + (y(:,:,ind_hi)-y(:,:,ind_lo)) * &
-            &(ind-ind_lo)
-    end function interp_fun_2D_real
-    integer function interp_fun_1D_real(y_out,y,x_in,x) result(ierr)            ! 1D real version
-        character(*), parameter :: rout_name = 'interp_fun_1D_real'
-        
-        ! input / output
-        real(dp), intent(inout) :: y_out(:)                                     ! output y_out
-        real(dp), intent(in) :: y(:,:)                                          ! y(x)
-        real(dp), intent(in) :: x_in                                            ! input x_in
-        real(dp), intent(in), optional :: x(:)                                  ! x(x)
-        
-        ! local variables
-        real(dp), allocatable :: y_out_loc(:,:)
-        
-        ! allocate y_out_loc
-        allocate(y_out_loc(1,size(y_out)))
-        
-        ! call 2D version
-        ierr = interp_fun_2D_real(y_out_loc,&
-            &reshape(y,[1,size(y,1),size(y,2)]),x_in,x)
-        CHCKERR('')
-        
-        ! copy to y_out
-        y_out = y_out_loc(1,:)
-        
-        ! clean up
-        deallocate(y_out_loc)
-    end function interp_fun_1D_real
-    integer function interp_fun_0D_real(y_out,y,x_in,x) result(ierr)            ! 0D real version
-        character(*), parameter :: rout_name = 'interp_fun_0D_real'
-        
-        ! input / output
-        real(dp), intent(inout) :: y_out                                        ! output y_out
-        real(dp), intent(in) :: y(:)                                            ! y(x)
-        real(dp), intent(in) :: x_in                                            ! input x_in
-        real(dp), intent(in), optional :: x(:)                                  ! x(x)
-        
-        ! local variables
-        real(dp) :: y_out_loc(1,1)
-#if ldebug
-        integer :: kd                                                           ! counter
-#endif
-        
-#if ldebug
-        ! plot for debugging
-        if (debug_interp_fun_0D_real) then
-            call writo('finding y('//trim(r2strt(x_in))//')')
-            if (present(x)) then
-                call print_GP_2D('y(x)','',y,X=x)
-            else
-                call print_GP_2D('y(x)','',y,&
-                    &X=[((kd-1._dp)/(size(y)-1),kd=1,size(y))])
-            end if
-        end if
-#endif
-        
-        ! call 2D version
-        ierr = interp_fun_2D_real(y_out_loc,reshape(y,[1,1,size(y)]),x_in,x)
-        CHCKERR('')
-        
-        ! copy to y_out
-        y_out = y_out_loc(1,1)
-        
-#if ldebug
-        ! plot for debugging
-        if (debug_interp_fun_0D_real) call writo(' => y('//trim(r2strt(x_in))//&
-            &') = '//trim(r2strt(y_out)))
-#endif
-    end function interp_fun_0D_real
-    integer function interp_fun_2D_complex(y_out,y,x_in,x) result(ierr)         ! 2D complex version
-        character(*), parameter :: rout_name = 'interp_fun_2D_complex'
-        
-        ! input / output
-        complex(dp), intent(inout) :: y_out(:,:)                                ! output y_out
-        complex(dp), intent(in) :: y(:,:,:)                                     ! y(x)
-        real(dp), intent(in) :: x_in                                            ! input x_in
-        real(dp), intent(in), optional :: x(:)                                  ! x(x)
-        
-        ! local variables
-        integer :: n_pt                                                         ! nr. points in y
-        real(dp) :: ind                                                         ! unrounded x-index
-        integer :: ind_lo, ind_hi                                               ! lower and higher index of x_in in x(x)
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up n_pt
-        n_pt = size(y,3)
-        
-        ! tests
-        if (present(x)) then
-            if (size(x).ne.n_pt) then
-                err_msg = 'x and y need to have the same size'
-                ierr = 1
-                CHCKERR(err_msg)
-            end if
-        end if
-        
-        ! find the lower range of the index in the x array
-        if (present(x)) then
-            ierr = con2dis(x_in,ind,x)
-        else
-            ierr = con2dis(x_in,ind,[0._dp,1._dp],[1,n_pt])
-        end if
-        CHCKERR('')
-        
-        ! set ind_lo and ind_hi
-        ind_lo = floor(ind)
-        ind_hi = ceiling(ind)
-        
-        ! calculate y_out
-        y_out = y(:,:,ind_lo) + (y(:,:,ind_hi)-y(:,:,ind_lo)) * &
-            &(ind-ind_lo)
-    end function interp_fun_2D_complex
-    integer function interp_fun_1D_complex(y_out,y,x_in,x) result(ierr)         ! 1D complex version
-        character(*), parameter :: rout_name = 'interp_fun_1D_complex'
-        
-        ! input / output
-        complex(dp), intent(inout) :: y_out(:)                                  ! output y_out
-        complex(dp), intent(in) :: y(:,:)                                       ! y(x)
-        real(dp), intent(in) :: x_in                                            ! input x_in
-        real(dp), intent(in), optional :: x(:)                                  ! x(x)
-        
-        ! local variables
-        complex(dp), allocatable :: y_out_loc(:,:)
-        
-        ! allocate y_out_loc
-        allocate(y_out_loc(1,size(y_out)))
-        
-        ! call 2D version
-        ierr = interp_fun_2D_complex(y_out_loc,&
-            &reshape(y,[1,size(y,1),size(y,2)]),x_in,x)
-        CHCKERR('')
-        
-        ! copy to y_out
-        y_out = y_out_loc(1,:)
-        
-        ! clean up
-        deallocate(y_out_loc)
-    end function interp_fun_1D_complex
-    integer function interp_fun_0D_complex(y_out,y,x_in,x) result(ierr)         ! 0D complex version
-        character(*), parameter :: rout_name = 'interp_fun_0D_complex'
-        
-        ! input / output
-        complex(dp), intent(inout) :: y_out                                     ! output y_out
-        complex(dp), intent(in) :: y(:)                                         ! y(x)
-        real(dp), intent(in) :: x_in                                            ! input x_in
-        real(dp), intent(in), optional :: x(:)                                  ! x(x)
-        
-        ! local variables
-        complex(dp) :: y_out_loc(1,1)
-        
-        ! call 2D version
-        ierr = interp_fun_2D_complex(y_out_loc,reshape(y,[1,1,size(y)]),x_in,x)
-        CHCKERR('')
-        
-        ! copy to y_out
-        y_out = y_out_loc(1,1)
-    end function interp_fun_0D_complex
     
     ! Calculate the  coefficients for central finite  differences representing a
     ! derivative of degree deriv and order  ord, referring to (half) the stencil

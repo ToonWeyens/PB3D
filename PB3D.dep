@@ -285,6 +285,7 @@ eq_ops.o : \
     utilities.o \
     MPI_utilities.o \
     grid_utilities.o \
+    input_utilities.o \
     VMEC.o \
     HELENA_vars.o \
     HELENA_ops.o \

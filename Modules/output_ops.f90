@@ -10,7 +10,6 @@ module output_ops
         &script_dir, plot_size
     use files_utilities, only: nextunit
     use grid_vars, only: grid_type
-    use met_vars, only: met_type
     
     
     implicit none

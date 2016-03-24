@@ -36,12 +36,13 @@ contains
         use sol_vars, only: dealloc_sol
         use utilities, only: test_max_memory
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
-            &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, reconstruct_PB3D_X_2
+            &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
+            &reconstruct_PB3D_X_2, reconstruct_PB3D_sol
         use MPI_utilities, only: wait_MPI
         use SLEPC_ops, only: solve_EV_system_SLEPC
         use grid_ops, only: calc_norm_range, setup_grid_sol, print_output_grid
         use sol_ops, only: print_output_sol
-        use rich_vars, only: rich_info_short
+        use rich_vars, only: rich_lvl, use_guess
         use rich_ops, only: calc_rich_ex
         use input_utilities, only: dealloc_in
         !!use utilities, only: calc_aux_utilities
@@ -62,7 +63,9 @@ contains
         type(eq_2_type) :: eq_2                                                 ! metric equilibrium
         type(X_2_type) :: X                                                     ! field-averged tensorial perturbation variables (only 1 par dim)
         type(sol_type) :: sol                                                   ! solution variables
+        type(sol_type) :: sol_prev                                              ! previous solution variables
         integer :: sol_limits(2)                                                ! min. and max. index of sol grid for this process
+        integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
         real(dp), allocatable :: r_F_sol(:)                                     ! normal points in solution grid
 #if ldebug
         type(grid_type), pointer :: grid_X_B                                    ! field-aligned perturbation grid
@@ -87,11 +90,19 @@ contains
         ierr = test_max_memory()
         CHCKERR('')
         
+        ! set up whether Richardson level has to be appended to the name
+        select case (eq_style) 
+            case (1)                                                            ! VMEC
+                rich_lvl_name = rich_lvl                                        ! append richardson level
+            case (2)                                                            ! HELENA
+                rich_lvl_name = 0                                               ! do not append name
+        end select
+        
         !!! calculate auxiliary quantities for utilities
         !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
         
-        ! Divide solution grid under group processes, calculating the limits
-        ! and the normal coordinate.
+        ! Divide solution grid under group processes, calculating the limits and
+        ! the normal coordinate.
         allocate(r_F_sol(n_r_sol))
         ierr = calc_norm_range(sol_limits=sol_limits,r_F_sol=r_F_sol)
         CHCKERR('')
@@ -100,33 +111,30 @@ contains
         ! user output
         call writo('Reconstructing PB3D output on output grid')
         call lvl_ud(1)
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ierr = reconstruct_PB3D_grid(grid_eq,'eq'//&
-                    &trim(rich_info_short()))
-                CHCKERR('')
-                ierr = reconstruct_PB3D_grid(grid_X,'X'//&
-                    &trim(rich_info_short()),grid_limits=sol_limits)
-                CHCKERR('')
-                ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
-                CHCKERR('')
-                ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2'//&
-                    &trim(rich_info_short()))
-                CHCKERR('')
-            case (2)                                                            ! HELENA
-                ierr = reconstruct_PB3D_grid(grid_eq,'eq')
-                CHCKERR('')
-                ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
-                CHCKERR('')
-                ierr = reconstruct_PB3D_grid(grid_X,'X',&
-                    &grid_limits=sol_limits)
-                CHCKERR('')
-                ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2')
-        end select
-        ierr = reconstruct_PB3D_X_2(grid_X,X,'X_2_int'//&
-            &trim(rich_info_short()),X_limits=sol_limits,&
-            &is_field_averaged=.true.)
+        ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name,&
+            &tot_rich=.true.)
         CHCKERR('')
+        ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name,&
+            &grid_limits=sol_limits,tot_rich=.true.)
+        CHCKERR('')
+        if (rich_lvl.gt.1) then                                                 ! also need solution grid
+            ierr = reconstruct_PB3D_grid(grid_sol,'sol',grid_limits=sol_limits)
+            CHCKERR('')
+        end if
+        ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
+        CHCKERR('')
+        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',&
+            &rich_lvl=rich_lvl_name,tot_rich=.true.)
+        CHCKERR('')
+        ierr = reconstruct_PB3D_X_2(grid_X,X,'X_2_int',rich_lvl=rich_lvl,&
+            &X_limits=sol_limits,is_field_averaged=.true.)
+        CHCKERR('')
+        ! need previous solution as well if guess is used
+        if (use_guess .and. rich_lvl.gt.1) then
+            ierr = reconstruct_PB3D_sol(grid_X,sol_prev,'sol',&
+                &rich_lvl=rich_lvl-1,sol_limits=sol_limits)
+            CHCKERR('')
+        end if
 #if ldebug
         ! need field-aligned perturbation grid as well
         select case (eq_style)
@@ -134,19 +142,33 @@ contains
                 grid_X_B => grid_X
             case (2)                                                            ! HELENA
                 allocate(grid_X_B)
-                ierr = reconstruct_PB3D_grid(grid_X_B,'X_B'//&
-                    &trim(rich_info_short()),grid_limits=sol_limits)
+                ierr = reconstruct_PB3D_grid(grid_X_B,'X_B',rich_lvl=rich_lvl,&
+                    &grid_limits=sol_limits)
                 CHCKERR('')
         end select
 #endif
         call lvl_ud(-1)
         call writo('PB3D output reconstructed')
         
-        ! create solution grid with division limits and setup normal
-        ! coordinate
-        call writo('Set up solution grid')
-        ierr = setup_grid_sol(grid_eq,grid_sol,r_F_sol,sol_limits)
-        CHCKERR('')
+        ! set up solution grid if first level
+        if (rich_lvl.eq.1) then
+            call writo('Set up solution grid')
+            call lvl_ud(1)
+            
+            call writo('Calculate the grid')
+            call lvl_ud(1)
+            ierr = setup_grid_sol(grid_eq,grid_sol,r_F_sol,sol_limits)
+            CHCKERR('')
+            call lvl_ud(-1)
+            
+            call writo('Write to output file')
+            call lvl_ud(1)
+            ierr = print_output_grid(grid_sol,'solution','sol')
+            CHCKERR('')
+            call lvl_ud(-1)
+            
+            call lvl_ud(-1)
+        end if
         deallocate(r_F_sol)
         
         ! solve the system
@@ -155,7 +177,7 @@ contains
         select case (EV_style)
             case(1)                                                             ! SLEPC solver for EV problem
                 ! solve the system
-                ierr = solve_EV_system_SLEPC(grid_sol,X,sol)
+                ierr = solve_EV_system_SLEPC(grid_sol,X,sol,sol_prev=sol_prev)
                 CHCKERR('')
             case default
                 err_msg = 'No EV solver style associated with '//&
@@ -215,13 +237,8 @@ contains
         end if
 #endif
         
-        ! write perturbation grid variables to output
-        ierr = print_output_grid(grid_sol,'solution',&
-            &'sol'//trim(rich_info_short()))
-        CHCKERR('')
-        
         ! write solution variables to output
-        ierr = print_output_sol(grid_sol,sol,'sol'//trim(rich_info_short()))
+        ierr = print_output_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl)
         CHCKERR('')
         
         ! calculate Richardson extrapolation factors if necessary
@@ -238,6 +255,7 @@ contains
         call dealloc_eq(eq_2)
         call dealloc_X(X)
         call dealloc_sol(sol)
+        call dealloc_sol(sol_prev)
         call lvl_ud(-1)
         
         ! synchronize MPI

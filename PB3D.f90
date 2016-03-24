@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.13                                                              !
+!   Version: 1.14                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -180,8 +180,7 @@ program PB3D
     !   Stop Richarson Extrapolation Loop
     !-------------------------------------------------------
     call start_time
-    ierr = term_rich()                                                          ! stop Richardson loop
-    CHCKERR
+    call term_rich()                                                          ! stop Richardson loop
     call stop_time
     
     !-------------------------------------------------------

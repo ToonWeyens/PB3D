@@ -50,7 +50,7 @@ contains
         use input_utilities, only: dealloc_in
         use utilities, only: calc_aux_utilities
         use MPI_utilities, only: wait_MPI
-        use rich_vars, only: rich_info_short
+        use rich_vars, only: rich_lvl
         
         character(*), parameter :: rout_name = 'run_driver_POST'
         
@@ -79,6 +79,7 @@ contains
         integer :: eq_limits(2)                                                 ! i_limit of eq variables
         integer :: X_limits(2)                                                  ! i_limit of X variables
         integer :: sol_limits(2)                                                ! i_limit of sol variables
+        integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
         logical :: no_plots_loc                                                 ! local copy of no_plots
         logical :: no_output_loc                                                ! local copy of no_output
         real(dp), allocatable :: XYZ_plot(:,:,:,:)                              ! X, Y and Z on plot grid
@@ -87,10 +88,6 @@ contains
         complex(dp), allocatable :: sol_val_comp_loc(:,:,:)                     ! local sol_val_comp
         character(len=max_str_ln) :: full_output_name                           ! full name
         character(len=max_str_ln) :: format_head                                ! header
-        character(len=max_str_ln) :: grid_eq_name                               ! name of grid_eq data set
-        character(len=max_str_ln) :: grid_X_name                                ! name of grid_X data set
-        character(len=max_str_ln) :: eq_2_name                                  ! name of eq_2 data set
-        character(len=max_str_ln) :: X_1_name                                   ! name of X_1 data set
         !real(dp), allocatable :: plot_var(:,:,:) 
         
         ! initialize ierr
@@ -102,18 +99,12 @@ contains
         ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables
         CHCKERR('')
         
-        ! set up name of grid_eq, grid_X, eq_2 and X_1 data set
-        select case (eq_style)
-            case (1)                                                    ! VMEC
-                grid_eq_name = 'eq'//trim(rich_info_short())
-                grid_X_name = 'X'//trim(rich_info_short())
-                eq_2_name = 'eq_2'//trim(rich_info_short())
-                X_1_name = 'X_1'//trim(rich_info_short())
-            case (2)                                                    ! HELENA
-                grid_eq_name = 'eq'
-                grid_X_name = 'X'
-                eq_2_name = 'eq_2'
-                X_1_name = 'X_1'
+        ! set up whether Richardson level has to be appended to the name
+        select case (eq_style) 
+            case (1)                                                            ! VMEC
+                rich_lvl_name = rich_lvl                                        ! append richardson level
+            case (2)                                                            ! HELENA
+                rich_lvl_name = 0                                               ! do not append name
         end select
         
         !!! calculate auxiliary quantities for utilities
@@ -124,11 +115,11 @@ contains
         call lvl_ud(1)
         
         ! reconstruct full equilibrium, perturbation and solution grids
-        ierr = reconstruct_PB3D_grid(grid_eq,trim(grid_eq_name))
+        ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name)
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_X,trim(grid_X_name))
+        ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name)
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_sol,'sol'//trim(rich_info_short()))
+        ierr = reconstruct_PB3D_grid(grid_sol,'sol',rich_lvl=rich_lvl)
         CHCKERR('')
         
         ! set eq and X limits, using r_F of the grids
@@ -153,14 +144,14 @@ contains
         ! reconstruct local equilibrium, perturbation and solution grids
         call writo('Reconstructing output grids')
         call lvl_ud(1)
-        ierr = reconstruct_PB3D_grid(grid_eq,trim(grid_eq_name),&
+        ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name,&
             &grid_limits=eq_limits)
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_X,trim(grid_X_name),&
+        ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name,&
             &grid_limits=X_limits)
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_sol,'sol'//&
-            &trim(rich_info_short()),grid_limits=sol_limits)
+        ierr = reconstruct_PB3D_grid(grid_sol,'sol',rich_lvl=rich_lvl,&
+            &grid_limits=sol_limits)
         CHCKERR('')
         call lvl_ud(-1)
         call writo('Output grids reconstructed')
@@ -170,14 +161,15 @@ contains
         call lvl_ud(1)
         ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1',eq_limits=eq_limits)
         CHCKERR('')
-        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,trim(eq_2_name),&
-            &eq_limits=eq_limits)
+        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',&
+            &rich_lvl=rich_lvl_name,eq_limits=eq_limits)
         CHCKERR('')
-        ierr = setup_nm_X(grid_eq,grid_X,eq_1)                                  ! is necessary for X variables
+        ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.true.)                   ! is necessary for X variables
         CHCKERR('')
-        ierr = reconstruct_PB3D_X_1(grid_X,X,trim(X_1_name),X_limits=X_limits)
+        ierr = reconstruct_PB3D_X_1(grid_X,X,'X_1',rich_lvl=rich_lvl_name,&
+            &X_limits=X_limits)
         CHCKERR('')
-        ierr = reconstruct_PB3D_sol(grid_X,sol,'sol'//trim(rich_info_short()),&
+        ierr = reconstruct_PB3D_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl,&
             &sol_limits=sol_limits)
         CHCKERR('')
         ! reconstructing grids depends on equilibrium style
@@ -194,11 +186,11 @@ contains
                 allocate(grid_X_B)
                 allocate(eq_2_B)
                 allocate(X_B)
-                ierr = reconstruct_PB3D_grid(grid_eq_B,'eq_B'//&
-                    &trim(rich_info_short()),grid_limits=eq_limits)
+                ierr = reconstruct_PB3D_grid(grid_eq_B,'eq_B',&
+                    &rich_lvl=rich_lvl,grid_limits=eq_limits)
                 CHCKERR('')
-                ierr = reconstruct_PB3D_grid(grid_X_B,'X_B'//&
-                    &trim(rich_info_short()),grid_limits=X_limits)
+                ierr = reconstruct_PB3D_grid(grid_X_B,'X_B',rich_lvl=rich_lvl,&
+                    &grid_limits=X_limits)
                 CHCKERR('')
                 call create_eq(grid_eq_B,eq_2_B)
                 call create_X(grid_X_B,X_B)

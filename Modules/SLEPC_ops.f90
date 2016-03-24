@@ -49,7 +49,8 @@ contains
     ! technique,  using "get_norm_interp_data"  and  "interp_V" can  be seen  in
     ! builds previous to 1.06. These have been superseded by "setup_interp_data"
     ! followed by "apply_disc".
-    integer function solve_EV_system_SLEPC(grid_sol,X,sol,i_geo) result(ierr)
+    integer function solve_EV_system_SLEPC(grid_sol,X,sol,sol_prev,i_geo) &
+        &result(ierr)
         use num_vars, only: max_it_inv, norm_disc_prec_sol, matrix_SLEPC_style
         use utilities, only: calc_coeff_fin_diff
         use rich_vars, only: use_guess
@@ -64,6 +65,7 @@ contains
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
         type(sol_type), intent(inout) :: sol                                    ! solution variables
+        type(sol_type), intent(in), optional :: sol_prev                        ! previous solution variables
         integer, intent(in), optional :: i_geo                                  ! at which geodesic index to perform the calculations
         
         ! local variables
@@ -71,8 +73,6 @@ contains
         Mat, target :: B                                                        ! matrix B in EV problem A X = lambda B X
         EPS :: solver                                                           ! EV solver
         PetscInt :: max_n_EV                                                    ! how many solutions saved
-        PetscInt, save :: guess_start_id = -10                                  ! start of index of previous vector, saved for next iteration
-        PetscInt, save :: prev_n_EV                                             ! nr. of solutions of previous vector
         PetscInt :: inv_lvl_nr                                                  ! level of inverse calculation
         PetscInt :: i_geo_loc                                                   ! local copy of i_geo
         PetscReal, allocatable :: norm_disc_coeff(:)                            ! discretization coefficients
@@ -127,11 +127,6 @@ contains
             call lvl_ud(-1)
         end if
 #endif
-        
-        ! set up guess
-        call writo('Set up guess')
-        
-        if (use_guess) call setup_guess(sol,A,solver,guess_start_id,prev_n_EV)
         
         ! iterate over matrix inverse
         if (max_it_inv.gt.1) then
@@ -209,6 +204,15 @@ contains
             end if
 #endif
             
+            ! set up guess
+            if (present(sol_prev) .and. use_guess) then
+                call writo('Set up guess')
+                call lvl_ud(1)
+                ierr = setup_guess(sol_prev,A,solver)
+                CHCKERR('')
+                call lvl_ud(-1)
+            end if
+            
             ! get solution
             call writo('Get solution')
             
@@ -218,6 +222,7 @@ contains
             ! check for convergence
             inv_lvl_nr = inv_lvl_nr+1
             !!! TO BE IMPLEMENTED !!!
+            !!! ALSO, GUESS SHOULD BE ADAPTED TO PREVIOUS GUESS PROBABLY ???
             
             if (max_it_inv.gt.1) call lvl_ud(-1)
         end do Inverse
@@ -249,8 +254,7 @@ contains
         call writo('Finalize SLEPC')
         
         ! stop SLEPC
-        ierr = stop_SLEPC(grid_sol,A,B,solver,guess_start_id,prev_n_EV,&
-            &max_n_EV)
+        ierr = stop_SLEPC(grid_sol,A,B,solver)
         CHCKERR('')
         
 #if ldebug
@@ -780,8 +784,10 @@ contains
                 &trim(r2strt(mat_info(MAT_INFO_MEMORY)*1.E-6_dp))//' MB')
             call writo('nonzero''s allocated: '//&
                 &trim(r2strt(mat_info(MAT_INFO_NZ_ALLOCATED))))
-            call writo('of which unused: '//&
-                &trim(r2strt(mat_info(MAT_INFO_NZ_UNNEEDED))))
+            if (mat_info(MAT_INFO_NZ_UNNEEDED).gt.0._dp) then
+                call writo('of which unused: '//&
+                    &trim(r2strt(mat_info(MAT_INFO_NZ_UNNEEDED))))
+            end if
             
             call lvl_ud(-1)
         end function disp_mat_info
@@ -1450,6 +1456,7 @@ contains
     ! sets up EV solver
     integer function setup_solver(grid_sol,X,A,B,solver) result(ierr)
         use num_vars, only: n_sol_requested, tol_SLEPC, max_it_slepc
+        use rich_vars, only: rich_lvl
         
         character(*), parameter :: rout_name = 'setup_solver'
         
@@ -1506,99 +1513,79 @@ contains
         call EPSSetDimensions(solver,n_sol,PETSC_DECIDE,&
             &PETSC_DECIDE,ierr)
         CHCKERR('EPSSetDimensions failed')
-        call EPSSetTolerances(solver,tol_SLEPC,max_it_slepc,ierr)
+        call EPSSetTolerances(solver,tol_SLEPC(rich_lvl),max_it_slepc,ierr)
         CHCKERR('EPSSetTolerances failed')
         
         ! user output
-        call writo('tolerance: '//trim(r2str(tol_SLEPC)))
+        call writo('tolerance: '//trim(r2str(tol_SLEPC(rich_lvl))))
         call writo('maximum nr. of iterations: '//trim(i2str(max_it_slepc)))
         
         call lvl_ud(-1)
     end function setup_solver
     
     ! sets up guess in solver
-    subroutine setup_guess(sol,A,solver,start_id,prev_n_EV)
+    integer function setup_guess(sol,A,solver) result(ierr)
+        character(*), parameter :: rout_name = 'setup_guess'
+        
         ! input / output
         type(sol_type), intent(in) :: sol                                       ! solution variables
         Mat, intent(in) :: A                                                    ! matrix A (or B)
         EPS, intent(inout) :: solver                                            ! EV solver
-        PetscInt, intent(in) :: start_id                                        ! start of index of previous vector, saved for next iteration
-        PetscInt, intent(in) :: prev_n_EV                                       ! nr. of solutions of previous vector
         
         ! local variables
         Vec, allocatable :: guess_vec(:)                                        ! guess to solution EV parallel vector
-        PetscInt, allocatable :: guess_id(:)                                    ! indices of elements in guess
-        PetscInt :: id, jd, kd                                                  ! counters
-        PetscInt :: istat                                                       ! status for commands
-        PetscInt :: n_prev_guess                                                ! nr. elements in previous vector to put in guess
-        !PetscViewer :: guess_viewer                                             ! viewer for guess object
+        PetscInt :: kd                                                          ! counter
+        PetscInt :: n_EV_prev                                                   ! nr. of previous solutions
+        PetscScalar, pointer ::  guess_vec_ptr(:)                               ! pointer to local guess_vec
+        
+        ! initialize ierr
+        ierr = 0
         
         call lvl_ud(1)
         
-        ! set guess for EV if sol vec is allocated and use_guess is true
-        if (allocated(sol%vec)) then
+        ! set guess for EV if sol vec is allocated
+        if (allocated(sol%val)) then
+            ! set n_EV_prev
+            n_EV_prev = size(sol%val)
+            
             ! allocate guess vectors
-            allocate(guess_vec(prev_n_EV))
+            allocate(guess_vec(n_EV_prev))
             
-            ! create vecctor guess_vec
-            do kd = 1,prev_n_EV
-                !call MatGetVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,istat)        ! get compatible parallel vectors to matrix A (petsc 3.5.3)
-                call MatCreateVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,istat)     ! get compatible parallel vectors to matrix A (petsc 3.6.1)
-                call VecSetOption(guess_vec(kd),&
-                    &VEC_IGNORE_NEGATIVE_INDICES,PETSC_TRUE,istat)              ! ignore negative indices for compacter notation
-            end do
-            
-            ! set the indices and nr. of values to set in guess_vec
-            n_prev_guess = size(sol%vec,2)
-            allocate(guess_id(n_prev_guess*sol%n_mod))
-            do id = 0,n_prev_guess-1
-                do jd = 1,sol%n_mod
-                    guess_id(id*sol%n_mod+jd) = (start_id-1)*sol%n_mod*2 + &
-                        &id*sol%n_mod*2 + jd
-                end do
-            end do
-            
-            do kd = 1,prev_n_EV
-                ! set even values of guess_vec
-                call VecSetValues(guess_vec(kd),n_prev_guess*sol%n_mod,&
-                    &guess_id-1,sol%vec(:,:,kd),INSERT_VALUES,istat)
-                ! set odd values of guess_vec
-                call VecSetValues(guess_vec(kd),n_prev_guess*sol%n_mod,&
-                    &guess_id-1-sol%n_mod,sol%vec(:,:,kd),INSERT_VALUES,istat)
-                    
-                ! assemble the guess vector
-                call VecAssemblyBegin(guess_vec(kd),istat)
-                call VecAssemblyEnd(guess_vec(kd),istat)
+            ! create vecctor guess_vec and set values
+            do kd = 1,n_EV_prev
+                ! create the vectors
+                !call MatGetVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,ierr)        ! get compatible parallel vectors to matrix A (petsc 3.5.3)
+                call MatCreateVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,ierr)     ! get compatible parallel vectors to matrix A (petsc 3.6.1)
+                CHCKERR('Failed to create vector')
+                
+                ! get pointer
+                call VecGetArrayF90(guess_vec(kd),guess_vec_ptr,ierr)
+                CHCKERR('Failed to get pointer')
+                
+                ! copy the values
+                guess_vec_ptr = reshape([sol%vec(:,:,kd)],&
+                    &[size(sol%vec(:,:,kd))])
+                
+                ! return pointer
+                call VecRestoreArrayF90(guess_vec(kd),guess_vec_ptr,ierr)
+                CHCKERR('Failed to restore pointer')
+                
+                !! visualize guess
+                !call VecView(guess_vec(kd),PETSC_VIEWER_STDOUT_WORLD,ierr)
+                !CHCKERR('Cannot view vector')
             end do
                 
             ! set guess
-            call EPSSetInitialSpace(solver,prev_n_EV,guess_vec,istat)
-            
-            !! visualize guess
-            !if (allocated(sol%vec) .and. id.le.prev_n_EV) then
-                !call PetscViewerDrawOpen(0,PETSC_NULL_CHARACTER,&
-                    !&'guess vector '//trim(i2str(id))//' with '//&
-                    !&trim(i2str(n_r_sol))//' points',0,0,1000,1000,&
-                    !&guess_viewer,istat)
-                !call VecView(guess_vec(id),guess_viewer,istat)
-                !call VecDestroy(guess_vec(id),istat)                            ! destroy guess vector
-            !end if
+            call EPSSetInitialSpace(solver,n_EV_prev,guess_vec,ierr)
+            CHCKERR('Failed to set guess')
             
             ! destroy guess vector
-            call VecDestroy(guess_vec,istat)                                    ! destroy guess vector
-            
-            ! check the status
-            if (istat.ne.0) then
-                call writo('WARNING: unable to set guess for Eigenvector, &
-                    &working with random guess')
-            else
-                call writo('initial guess set up from previous Richardson &
-                    &level')
-            end if
+            call VecDestroy(guess_vec,ierr)                                     ! destroy guess vector
+            CHCKERR('Failed to destroy vector')
         end if
         
         call lvl_ud(-1)
-    end subroutine setup_guess
+    end function setup_guess
     
     ! get the solution vectors
     integer function get_solution(solver) result(ierr)
@@ -1692,8 +1679,8 @@ contains
             &n_procs, rank, tol_SLEPC, eq_style
         use files_utilities, only: nextunit
         use MPI_utilities, only: get_ser_var
-        use sol_vars, only: dealloc_sol, create_sol
-        use rich_vars, only: rich_info_short
+        use sol_vars, only: create_sol
+        use rich_vars, only: rich_lvl
         
         character(*), parameter :: rout_name = 'store_results'
         
@@ -1761,7 +1748,6 @@ contains
         end do
         
         ! create solution variables
-        if (allocated(sol%val)) call dealloc_sol(sol)
         call create_sol(grid_sol,sol,max_n_EV)
         
         ! create solution vector
@@ -1787,8 +1773,8 @@ contains
         
         ! open output file for the log
         if (rank.eq.0) then
-            full_output_name = prog_name//'_'//trim(output_name)//'_EV'//&
-                &trim(rich_info_short())//'.txt'
+            full_output_name = prog_name//'_'//trim(output_name)//'_EV_R_'//&
+                &trim(i2str(rich_lvl))//'.txt'
             open(unit=nextunit(output_EV_i),file=full_output_name,iostat=ierr)
             CHCKERR('Cannot open EV output file')
         end if
@@ -1840,7 +1826,7 @@ contains
             sol_val_loc = sol%val(id)
             
             ! tests
-            tol_complex = tol_SLEPC
+            tol_complex = tol_SLEPC(rich_lvl)
             if (abs(imagpart(sol%val(id))/realpart(sol%val(id))).gt.&
                 &tol_complex) then                                              ! test for unphysical complex solution
                 EV_err_str = '# WARNING: Unphysical complex Eigenvalue!'
@@ -1888,18 +1874,6 @@ contains
                 sol%vec(:,:,id) = sol%vec(:,:,id) / &
                     &sol_vec_max(sol_vec_max_loc(1))
             end if
-            
-            !! visualize solution
-            !call PetscViewerDrawOpen(PETSC_COMM_WORLD,PETSC_NULL_CHARACTER,&
-                !&'solution '//trim(i2str(id))//' vector with '//&
-                !&trim(i2str(grid_sol%n(3)))//' points',0,&
-                !&0,1000,1000,guess_viewer,ierr)
-            !call VecView(sol_vec,guess_viewer,ierr)
-            !CHCKERR('Cannot view vector')
-            
-            !call writo('Eigenvector = ')
-            !call VecView(sol_vec,PETSC_VIEWER_STDOUT_WORLD,ierr)
-            !CHCKERR('Cannot view vector')
             
             if (EV_err_str.eq.'') then
                 ! user message
@@ -2093,26 +2067,18 @@ contains
     
     ! stop PETSC and SLEPC
     ! [MPI] Collective call
-    integer function stop_SLEPC(grid_sol,A,B,solver,guess_start_id,prev_n_EV,&
-        &max_n_EV) result(ierr)
+    integer function stop_SLEPC(grid_sol,A,B,solver) result(ierr)
         character(*), parameter :: rout_name = 'stop_SLEPC'
         
         ! input / output
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         Mat, intent(in) :: A, B                                                 ! matrices A and B in EV problem A X = lambda B X
         EPS, intent(in) :: solver                                               ! EV solver
-        PetscInt, intent(inout):: guess_start_id                                ! start of index of vector, saved for next iteration
-        PetscInt, intent(inout) :: prev_n_EV                                    ! nr. of solutions of previous vector, saved for next iteration
-        PetscInt, intent(in) :: max_n_EV                                        ! nr. of EV's saved
         
         ! initialize ierr
         ierr = 0
         
         call lvl_ud(1)
-        
-        ! set guess_start_id and prev_n_EV
-        guess_start_id = grid_sol%i_min
-        prev_n_EV = max_n_EV
         
         ! destroy objects
         call EPSDestroy(solver,ierr)

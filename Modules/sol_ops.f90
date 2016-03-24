@@ -1095,7 +1095,9 @@ contains
     
     ! Print solution quantities to an output file:
     !   - sol:    val, vec
-    integer function print_output_sol(grid,sol,data_name) result(ierr)
+    ! If "rich_lvl" is  provided, "_B_rich_lvl" is appended to the  data name if
+    ! it is > 0.
+    integer function print_output_sol(grid,sol,data_name,rich_lvl) result(ierr)
         use num_vars, only: rank, PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
@@ -1109,6 +1111,7 @@ contains
         type(grid_type), intent(in) :: grid                                     ! solution grid variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         character(len=*), intent(in) :: data_name                               ! name under which to store
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -1123,7 +1126,7 @@ contains
         ! only write to output file if at least one solution
         if (size(sol%val).gt.0) then
             ! user output
-            call writo('Writing solution variables to output file')
+            call writo('Write solution variables to output file')
             call lvl_ud(1)
             
             ! trim grids
@@ -1198,7 +1201,8 @@ contains
                 &[size(sol%vec(:,norm_id(1):norm_id(2),:))])
             
             ! write
-            ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,trim(data_name))
+            ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,trim(data_name),&
+                &rich_lvl=rich_lvl)
             CHCKERR('')
             
             ! clean up
@@ -1207,7 +1211,6 @@ contains
             
             ! user output
             call lvl_ud(-1)
-            call writo('Solution variables written to output')
         else
             ! user output
             call writo('No solutions to write')

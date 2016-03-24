@@ -368,3 +368,15 @@ CHANGELOG
       - Now shell commands are saved in a log file that can be run afterwards, which is useful in combination with "--no_execute_command_line".
       - "rich_info_short" now always returns the Richardson level in the output.
       - Fixed bug in "find_max_lvl_rich" where groups were not properly closed.
+
+1.14: - BOTH VMEC AND HELENA WORK FINE WITH RICHARDSON EXTRAPOLATION
+      - Passing the Richardson level to be used in the data name for HDF5 output is now done using an optional integer.
+      - "rich_info_short" has been removed.
+      - For VMEC, variables saved in HDF5 from different levels are now combined correctly in the reconstruct_PB3D routines through "tot_rich".
+      - "tol_SLEPC" is now an array to be passed for every Richardson level, or is set intelligently by default.
+      - The guess for different Richardson levels is set correctly again, keeping in mind that every level has the same nr. of normal points.
+      - Migrated away completely from "interp_fun". The functionality is coverd by "setup_interp_data" and "apply_disc".
+      - The user can now provide the default relaxation factor for Newton-Rhapson.
+      - Tweaked the calculation of magnetic field lines to make it faster
+      - HDF5 datasets can be overwritten when Richardson restart is used.
+      - Richardson variables are not written to HDF5 any more and reconstructed for Richardson restart but are set up from solutions.

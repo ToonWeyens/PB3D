@@ -10,7 +10,6 @@ module HELENA_ops
     use num_vars, only: dp, max_str_ln
     use grid_vars, only: grid_type, disc_type, dealloc_disc
     use eq_vars, only: eq_1_type, eq_2_type
-    use met_vars, only: met_type
     use X_vars, only: X_1_type, X_2_type
     use HELENA_vars
     
@@ -209,7 +208,7 @@ contains
         
         ! user output
         if (present(grid_name)) then
-            call writo('Adapting quantities to '//trim(grid_name))
+            call writo('Adapt quantities to '//trim(grid_name))
             call lvl_ud(1)
         end if
         
@@ -333,7 +332,6 @@ contains
         ! user output
         if (present(grid_name)) then
             call lvl_ud(-1)
-            call writo('Quantities adapted to '//trim(grid_name))
         end if
     contains
         ! Interpolate a  variable defined  on an  axisymmetric grid  at poloidal
