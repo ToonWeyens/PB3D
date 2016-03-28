@@ -11,6 +11,7 @@ display_usage() {
 # Setting some variables
 #slepc_opt="-st_pc_factor_shift_type NONZERO -st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_view"
 slepc_opt="-st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_ncv 100 -eps_mpd 100"
+#slepc_opt="-st_pc_type jacobi -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_ncv 100 -eps_mpd 100"
 debug_opt=""
 extra_debug_opt=""
 n_opt_args=0
@@ -25,7 +26,7 @@ while getopts "o:dsl" opt; do
             n_opt_args=$((n_opt_args+2))                                        # 2 arguments
         ;;
         d)
-            debug_opt="valgrind"
+            debug_opt="valgrind --db-attach=yes"
             n_opt_args=$((n_opt_args+1))                                        # 1 argument
         ;;
         s)

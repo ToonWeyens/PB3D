@@ -2167,9 +2167,10 @@ contains
             end if
             
             ! print warning if user-overriden
-            if (nr_overriden_const.gt.0) call writo('WARNING: '&
-                &//trim(i2str(nr_overriden_const))//' constants were overriden &
-                &by user. Consistency is NOT checked!')
+            if (nr_overriden_const.gt.0) &
+                &call writo(trim(i2str(nr_overriden_const))//&
+                &' constants were overriden by user. Consistency is NOT &
+                &checked!',warning=.true.)
             
             ! user output
             call writo('R_0    = '//trim(r2str(R_0))//' m')
@@ -2312,7 +2313,7 @@ contains
     integer function print_output_eq_1(grid_eq,eq,data_name) result(ierr)       ! flux version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type, &
+        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
         use grid_utilities, only: trim_grid
         
@@ -2329,6 +2330,7 @@ contains
         type(var_1D_type), pointer :: eq_1D_loc => null()                       ! local element in eq_1D
         type(grid_type) :: grid_trim                                            ! trimmed grid
         integer :: id                                                           ! counter
+        integer :: loc_size                                                     ! local size
         
         ! initialize ierr
         ierr = 0
@@ -2356,9 +2358,9 @@ contains
         eq_1D_loc%tot_i_max = [grid_trim%n(3),size(eq%pres_FD,2)-1]
         eq_1D_loc%loc_i_min = [grid_trim%i_min,0]
         eq_1D_loc%loc_i_max = [grid_trim%i_max,size(eq%pres_FD,2)-1]
-        allocate(eq_1D_loc%p(size(eq%pres_FD(norm_id(1):norm_id(2),:))))
-        eq_1D_loc%p = reshape(eq%pres_FD(norm_id(1):norm_id(2),:),&
-            &[size(eq%pres_FD(norm_id(1):norm_id(2),:))])
+        loc_size = size(eq%pres_FD(norm_id(1):norm_id(2),:))
+        allocate(eq_1D_loc%p(loc_size))
+        eq_1D_loc%p = reshape(eq%pres_FD(norm_id(1):norm_id(2),:),[loc_size])
         
         ! q_saf_FD
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2369,9 +2371,9 @@ contains
         eq_1D_loc%tot_i_max = [grid_trim%n(3),size(eq%q_saf_FD,2)-1]
         eq_1D_loc%loc_i_min = [grid_trim%i_min,0]
         eq_1D_loc%loc_i_max = [grid_trim%i_max,size(eq%q_saf_FD,2)-1]
-        allocate(eq_1D_loc%p(size(eq%q_saf_FD(norm_id(1):norm_id(2),:))))
-        eq_1D_loc%p = reshape(eq%q_saf_FD(norm_id(1):norm_id(2),:),&
-            &[size(eq%q_saf_FD(norm_id(1):norm_id(2),:))])
+        loc_size = size(eq%q_saf_FD(norm_id(1):norm_id(2),:))
+        allocate(eq_1D_loc%p(loc_size))
+        eq_1D_loc%p = reshape(eq%q_saf_FD(norm_id(1):norm_id(2),:),[loc_size])
         
         ! rot_t_FD
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2382,9 +2384,9 @@ contains
         eq_1D_loc%tot_i_max = [grid_trim%n(3),size(eq%rot_t_FD,2)-1]
         eq_1D_loc%loc_i_min = [grid_trim%i_min,0]
         eq_1D_loc%loc_i_max = [grid_trim%i_max,size(eq%rot_t_FD,2)-1]
-        allocate(eq_1D_loc%p(size(eq%rot_t_FD(norm_id(1):norm_id(2),:))))
-        eq_1D_loc%p = reshape(eq%rot_t_FD(norm_id(1):norm_id(2),:),&
-            &[size(eq%rot_t_FD(norm_id(1):norm_id(2),:))])
+        loc_size = size(eq%rot_t_FD(norm_id(1):norm_id(2),:))
+        allocate(eq_1D_loc%p(loc_size))
+        eq_1D_loc%p = reshape(eq%rot_t_FD(norm_id(1):norm_id(2),:),[loc_size])
         
         ! flux_p_FD
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2395,9 +2397,9 @@ contains
         eq_1D_loc%tot_i_max = [grid_trim%n(3),size(eq%flux_p_FD,2)-1]
         eq_1D_loc%loc_i_min = [grid_trim%i_min,0]
         eq_1D_loc%loc_i_max = [grid_trim%i_max,size(eq%flux_p_FD,2)-1]
-        allocate(eq_1D_loc%p(size(eq%flux_p_FD(norm_id(1):norm_id(2),:))))
-        eq_1D_loc%p = reshape(eq%flux_p_FD(norm_id(1):norm_id(2),:),&
-            &[size(eq%flux_p_FD(norm_id(1):norm_id(2),:))])
+        loc_size = size(eq%flux_p_FD(norm_id(1):norm_id(2),:))
+        allocate(eq_1D_loc%p(loc_size))
+        eq_1D_loc%p = reshape(eq%flux_p_FD(norm_id(1):norm_id(2),:),[loc_size])
         
         ! flux_t_FD
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2408,9 +2410,9 @@ contains
         eq_1D_loc%tot_i_max = [grid_trim%n(3),size(eq%flux_t_FD,2)-1]
         eq_1D_loc%loc_i_min = [grid_trim%i_min,0]
         eq_1D_loc%loc_i_max = [grid_trim%i_max,size(eq%flux_t_FD,2)-1]
-        allocate(eq_1D_loc%p(size(eq%flux_t_FD(norm_id(1):norm_id(2),:))))
-        eq_1D_loc%p = reshape(eq%flux_t_FD(norm_id(1):norm_id(2),:),&
-            &[size(eq%flux_t_FD(norm_id(1):norm_id(2),:))])
+        loc_size = size(eq%flux_t_FD(norm_id(1):norm_id(2),:))
+        allocate(eq_1D_loc%p(loc_size))
+        eq_1D_loc%p = reshape(eq%flux_t_FD(norm_id(1):norm_id(2),:),[loc_size])
         
         ! rho
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2421,7 +2423,8 @@ contains
         eq_1D_loc%tot_i_max = grid_trim%n(3)
         eq_1D_loc%loc_i_min = grid_trim%i_min
         eq_1D_loc%loc_i_max = grid_trim%i_max
-        allocate(eq_1D_loc%p(size(eq%rho(norm_id(1):norm_id(2)))))
+        loc_size = size(eq%rho(norm_id(1):norm_id(2)))
+        allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = eq%rho(norm_id(1):norm_id(2))
         
         
@@ -2429,8 +2432,10 @@ contains
         ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,trim(data_name))
         CHCKERR('')
         
-        ! deallocate
-        deallocate(eq_1D)
+        ! clean up
+        call dealloc_grid(grid_trim)
+        call dealloc_var_1D(eq_1D)
+        nullify(eq_1D_loc)
         
         ! user output
         call lvl_ud(-1)
@@ -2439,7 +2444,7 @@ contains
         &result(ierr)                                                           ! metric version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type, &
+        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
         use grid_utilities, only: trim_grid
         
@@ -2457,6 +2462,7 @@ contains
         type(var_1D_type), pointer :: eq_1D_loc => null()                       ! local element in eq_1D
         type(grid_type) :: grid_trim                                            ! trimmed grid
         integer :: id                                                           ! counter
+        integer :: loc_size                                                     ! local size
         
         ! initialize ierr
         ierr = 0
@@ -2487,9 +2493,10 @@ contains
         eq_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),&
             &grid_trim%i_max,6,size(eq%g_FD,5)-1,size(eq%g_FD,6)-1,&
             &size(eq%g_FD,7)-1]
-        allocate(eq_1D_loc%p(size(eq%g_FD(:,:,norm_id(1):norm_id(2),:,:,:,:))))
+        loc_size = size(eq%g_FD(:,:,norm_id(1):norm_id(2),:,:,:,:))
+        allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%g_FD(:,:,norm_id(1):norm_id(2),:,:,:,:),&
-            &[size(eq%g_FD(:,:,norm_id(1):norm_id(2),:,:,:,:))])
+            &[loc_size])
         
         ! h_FD
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2503,9 +2510,10 @@ contains
         eq_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),&
             &grid_trim%i_max,6,size(eq%h_FD,5)-1,size(eq%h_FD,6)-1,&
             &size(eq%h_FD,7)-1]
-        allocate(eq_1D_loc%p(size(eq%h_FD(:,:,norm_id(1):norm_id(2),:,:,:,:))))
+        loc_size = size(eq%h_FD(:,:,norm_id(1):norm_id(2),:,:,:,:))
+        allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%h_FD(:,:,norm_id(1):norm_id(2),:,:,:,:),&
-            &[size(eq%h_FD(:,:,norm_id(1):norm_id(2),:,:,:,:))])
+            &[loc_size])
         
         ! jac_FD
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2519,9 +2527,10 @@ contains
         eq_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),&
             &grid_trim%i_max,size(eq%jac_FD,4)-1,size(eq%jac_FD,5)-1,&
             &size(eq%jac_FD,6)-1]
-        allocate(eq_1D_loc%p(size(eq%jac_FD(:,:,norm_id(1):norm_id(2),:,:,:))))
+        loc_size = size(eq%jac_FD(:,:,norm_id(1):norm_id(2),:,:,:))
+        allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%jac_FD(:,:,norm_id(1):norm_id(2),:,:,:),&
-            &[size(eq%jac_FD(:,:,norm_id(1):norm_id(2),:,:,:))])
+            &[loc_size])
         
         ! S
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2533,9 +2542,10 @@ contains
         eq_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
         eq_1D_loc%loc_i_max = &
             &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
-        allocate(eq_1D_loc%p(size(eq%S(:,:,norm_id(1):norm_id(2)))))
+        loc_size = size(eq%S(:,:,norm_id(1):norm_id(2)))
+        allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%S(:,:,norm_id(1):norm_id(2)),&
-            &[size(eq%S(:,:,norm_id(1):norm_id(2)))])
+            &[loc_size])
         
         ! kappa_n
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2547,9 +2557,10 @@ contains
         eq_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
         eq_1D_loc%loc_i_max = &
             &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
-        allocate(eq_1D_loc%p(size(eq%kappa_n(:,:,norm_id(1):norm_id(2)))))
+        loc_size = size(eq%kappa_n(:,:,norm_id(1):norm_id(2)))
+        allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%kappa_n(:,:,norm_id(1):norm_id(2)),&
-            &[size(eq%kappa_n(:,:,norm_id(1):norm_id(2)))])
+            &[loc_size])
         
         ! kappa_g
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2561,9 +2572,10 @@ contains
         eq_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
         eq_1D_loc%loc_i_max = &
             &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
-        allocate(eq_1D_loc%p(size(eq%kappa_g(:,:,norm_id(1):norm_id(2)))))
+        loc_size = size(eq%kappa_g(:,:,norm_id(1):norm_id(2)))
+        allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%kappa_g(:,:,norm_id(1):norm_id(2)),&
-            &[size(eq%kappa_g(:,:,norm_id(1):norm_id(2)))])
+            &[loc_size])
         
         ! sigma
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2574,17 +2586,20 @@ contains
         eq_1D_loc%tot_i_max = grid_trim%n
         eq_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
         eq_1D_loc%loc_i_max = [grid_trim%n(1:2),grid_trim%i_max]
-        allocate(eq_1D_loc%p(size(eq%sigma(:,:,norm_id(1):norm_id(2)))))
+        loc_size = size(eq%sigma(:,:,norm_id(1):norm_id(2)))
+        allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%sigma(:,:,norm_id(1):norm_id(2)),&
-            &[size(eq%sigma(:,:,norm_id(1):norm_id(2)))])
+            &[loc_size])
         
         ! write
         ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,trim(data_name),&
             &rich_lvl=rich_lvl)
         CHCKERR('')
         
-        ! deallocate
-        deallocate(eq_1D)
+        ! clean up
+        call dealloc_grid(grid_trim)
+        call dealloc_var_1D(eq_1D)
+        nullify(eq_1D_loc)
         
         ! user output
         call lvl_ud(-1)

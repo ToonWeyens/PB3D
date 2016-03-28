@@ -4,12 +4,17 @@
 module messages
     use str_ops
     use num_vars, only: dp, max_str_ln
+    use foul
+    
     implicit none
     private
     public init_messages, lvl_ud, writo, print_ar_1, print_ar_2, &
         &print_err_msg, init_time, start_time, stop_time, passed_time, &
         &print_hello, print_goodbye, &
         &temp_output, lvl, lvl_sep, temp_output_active, time_sep
+#if ldebug
+    public get_mem_usage
+#endif
 
     ! global variables
     integer :: lvl                                                              ! lvl determines the indenting. higher lvl = more indenting
@@ -26,6 +31,9 @@ contains
     ! [MPI] All ranks
     subroutine init_messages
         use num_vars, only: rank
+#if ldebug
+        use num_vars, only: mem_usage_count
+#endif
         
         ! output level
         lvl = 1
@@ -43,6 +51,10 @@ contains
         else
             temp_output_active = .false.
         end if
+        
+#if ldebug
+        mem_usage_count = 0
+#endif
     end subroutine init_messages
     
     ! prints first message
@@ -50,9 +62,10 @@ contains
         use num_vars, only: rank, prog_name, prog_version
         
         if (rank.eq.0) then
-            write(*,*) 'Simulation started on '//get_date()//', at '//&
-                &get_clock()
-            write(*,*) prog_name//' version: '//trim(r2strt(prog_version))
+            call write_formatted(' Simulation started on '//get_date()//', at '&
+                &//get_clock(),'italic')
+            call write_formatted(' '//prog_name//' version: '//&
+                &trim(r2strt(prog_version)),'italic')
             write(*,*) ''
         end if
     end subroutine print_hello
@@ -63,8 +76,8 @@ contains
         
         if (rank.eq.0) then
             write(*,*) ''
-            write(*,*) 'Simulation finished on '//get_date()//&
-                &', at '//get_clock()
+            call write_formatted(' Simulation finished on '//get_date()//&
+                &', at '//get_clock(),'italic')
         end if
     end subroutine print_goodbye
     
@@ -75,18 +88,19 @@ contains
         t1 = 0
         t2 = 0
         running = .false. 
-    end subroutine
+    end subroutine init_time
 
     ! start a timer
     ! [MPI] All ranks
     subroutine start_time
         if (running) then
-            call writo('WARNING: Tried to start timer, but was already running')
+            call writo('Tried to start timer, but was already running',&
+                &warning=.true.)
         else
             call cpu_time(t1)
             running = .true.
         end if
-    end subroutine
+    end subroutine start_time
 
     ! stop a timer
     subroutine stop_time
@@ -101,9 +115,10 @@ contains
             t2 = 0
             running = .false.
         else
-            call writo('WARNING: Tried to stop timer, but was already stopped')
+            call writo('Tried to stop timer, but was already stopped',&
+                &warning=.true.)
         end if
-    end subroutine
+    end subroutine stop_time
 
     ! display the time that has passed between t1 and t2
     ! automatically stops time and resets everything to zero
@@ -150,7 +165,7 @@ contains
         
         ! restart deltat
         call init_time
-    end subroutine
+    end subroutine passed_time
     
     ! returns the date
     ! (from http://infohost.nmt.edu/tcc/help/lang/fortran/date.html)
@@ -194,74 +209,128 @@ contains
                 &//trim(i2str(rank)),persistent=.true.)
         else
             call writo('ERROR in '//trim(routine_name)//': '//trim(err_msg),&
-                &persistent=.true.)
+                &persistent=.true.,error=.true.)
         end if
-    end subroutine
+    end subroutine print_err_msg
     
     ! increases/decreases lvl of output
     subroutine lvl_ud(inc)                                                      ! ud from up / down
         integer :: inc
         if (lvl+inc.lt.1) then
-            write(*,*) 'WARNING: cannot go below lowest level.'
             lvl = 1
+            call writo('cannot go below lowest level',warning=.true.)
         else
             lvl = lvl + inc
         end if
-    end subroutine
+    end subroutine lvl_ud
     
     ! write output to file identified by output_i, using the correct indentation
     ! for the level ('lvl_loc') of the output. If first alpha group, also output
     ! to screen
+    ! Optionally, special formatting for error, warning or alert can be chosen.
     ! [MPI] Only masters of groups of alpha and the global master call these
     !       The  global master  outputs to  the  master output  file, while  the
     !       masters  of the  groups of  alpha  write their  output to  different
     !       files, which  are then read  by the  global master when  the group's
     !       work is done
-    subroutine writo(input_str,persistent)
+    subroutine writo(input_str,persistent,error,warning,alert)
         use num_vars, only: rank, output_i, no_output
+#if ldebug
+        use num_vars, only: print_mem_usage, prog_name, mem_usage_name, &
+            &mem_usage_i, mem_usage_count
+#endif
         
         ! input / output
         character(len=*), intent(in) :: input_str                               ! the name that is searched for
-        logical, optional, intent(in) :: persistent                             ! output even if not group master
+        logical, intent(in), optional :: persistent                             ! output even if not group master
+        logical, intent(in), optional :: error                                  ! error message
+        logical, intent(in), optional :: warning                                ! warning message
+        logical, intent(in), optional :: alert                                  ! alert message
         
         ! local variables
-        character(len=max_str_ln) :: output_str                                 ! the name that is searched for
-        character(len=max_str_ln) :: header_str                                 ! the name that is searched for
+        character(len=max_str_ln) :: output_str                                 ! output string
+        character(len=max_str_ln) :: time_str                                   ! time string
+        character(len=max_str_ln) :: header_str                                 ! header string
+        character(len=max_str_ln) :: input_str_loc                              ! local input string
+        character(len=max_str_ln), allocatable :: temp_output_loc(:)            ! local temporary output
         integer :: id, i_part                                                   ! counters
         integer :: max_len_part, num_parts, st_part, en_part                    ! variables controlling strings
         logical :: ignore                                                       ! normally, everybody but group master is ignored
-        character(len=max_str_ln), allocatable :: temp_output_loc(:)            ! local temporary output
+        logical :: error_loc                                                    ! local error
+        logical :: warning_loc                                                  ! local warning
+        logical :: alert_loc                                                    ! local alert
+#if ldebug
+        integer :: istat                                                        ! status
+        integer :: now(3)                                                       ! time
+#endif
         
         ! bypass output if no_output
         if (no_output) return
         
-        ! setup ignore
+        ! setup ignore, error, warning and alert
         ignore = .true.                                                         ! ignore by default
         if (rank.eq.0) ignore = .false.                                         ! master process can output
         if (present(persistent)) ignore = .not.persistent                       ! persistent can override this
+        error_loc = .false.
+        if (present(error)) error_loc = error
+        warning_loc = .false.
+        if (present(warning)) warning_loc = warning
+        alert_loc = .false.
+        if (present(alert)) alert_loc = alert
+        
+        ! set local input string
+        input_str_loc = input_str
+        
+        ! prepend "WARNING: " if warning
+        if (warning_loc) input_str_loc = 'WARNING: '//trim(input_str_loc)
+        
+#if ldebug
+        ! memory usage
+        if (print_mem_usage) then
+            ! get time and increment counter
+            call itime(now)
+            mem_usage_count = mem_usage_count + 1
+            
+            ! append count and memory usage in MegaBytes
+            input_str_loc = trim(input_str_loc)//' - ['//&
+                &trim(i2str(mem_usage_count))//': '//&
+                &trim(i2str(get_mem_usage()))//'kB]'
+            
+            ! write rank, count, time, memory usage to file
+            open(UNIT=mem_usage_i,FILE=prog_name//'_'//trim(mem_usage_name)//&
+                &'.dat',STATUS='old',POSITION='append',IOSTAT=istat)
+            write(mem_usage_i,*) rank, mem_usage_count, &
+                &(now(1)*60+now(2))*60+now(3), get_mem_usage()
+            close(UNIT=mem_usage_i)
+        end if
+#endif
         
         if (.not.ignore) then                                                   ! only group master (= global master if no groups) or persistent
+            ! set local error
+            
             ! Divide the input string length by the max_str_ln and loop over the
             ! different parts
             max_len_part = max_str_ln-(lvl-1)*len(lvl_sep) - len(time_sep)      ! max length of a part including time part
-            num_parts = (len(trim(input_str))-1)/(max_len_part) + 1             ! how many parts there are
+            num_parts = (len(trim(input_str_loc))-1)/(max_len_part) + 1         ! how many parts there are
             do i_part = 1, num_parts
                 ! construct input string for the appropriate level
                 st_part = (i_part-1)*max_len_part+1                             ! index of start of this part
                 if (i_part.lt.num_parts) then                                   ! index of end of this part
                     en_part = i_part*max_len_part 
                 else                                                            ! last part is shorter
-                    en_part = len(trim(input_str))
+                    en_part = len(trim(input_str_loc))
                 end if
-                output_str = input_str(st_part:en_part)
+                output_str = input_str_loc(st_part:en_part)
                 call format_str(lvl,output_str)
+                call get_time_str(time_str)
                 
                 ! construct header string of equal length as output strength
                 header_str = ''
-                do id = 1, len(trim(output_str)) - len(time_sep)                ! including time part
+                do id = 1, len(trim(output_str)) + len(trim(time_str)) + 1 - &
+                    &len(time_sep)                                              ! not including time part, 1 for the space
                     header_str =  trim(header_str) // '-'
                 end do
-                header_str = '          '//trim(header_str)
+                header_str =  '          '//trim(header_str)                    ! number of spaces matches time string
                 
                 ! write output to file output_i or to temporary output
                 if (temp_output_active) then                                    ! temporary output to internal variable temp_output
@@ -274,37 +343,55 @@ contains
                     if (lvl.eq.1) then                                          ! first level
                         allocate(temp_output(size(temp_output_loc)+3))
                         temp_output(1:size(temp_output_loc)) = temp_output_loc
-                        temp_output(size(temp_output_loc)+1) = header_str       ! first level gets extra lines
-                        temp_output(size(temp_output_loc)+2) = output_str
-                        temp_output(size(temp_output_loc)+3) = header_str
+                        temp_output(size(temp_output_loc)+1) = trim(header_str) ! first level gets extra lines
+                        temp_output(size(temp_output_loc)+2) = trim(time_str)//&
+                            &' '//trim(output_str)
+                        temp_output(size(temp_output_loc)+3) = trim(header_str)
                     else                                                        ! other levels only need one line
                         allocate(temp_output(size(temp_output_loc)+1))
                         temp_output(1:size(temp_output_loc)) = temp_output_loc
-                        temp_output(size(temp_output_loc)+1) = output_str
+                        temp_output(size(temp_output_loc)+1) = trim(time_str)//&
+                            &' '//output_str
                     end if
                     
                     ! deallocate local variable
                     deallocate(temp_output_loc)
                 else                                                            ! normal output to file output_i
                     if (output_i.ne.0) then
-                        if (lvl.eq.1) write(output_i,*) header_str              ! first level gets extra lines
-                        write(output_i,*) output_str
-                        if (lvl.eq.1) write(output_i,*) header_str
+                        if (lvl.eq.1) write(output_i,*) trim(header_str)              ! first level gets extra lines
+                        write(output_i,*) trim(time_str)//' '//trim(output_str)
+                        if (lvl.eq.1) write(output_i,*) trim(header_str)
                     end if
                 end if
                 
                 ! also write output to screen
-                if (lvl.eq.1) write(*,*) header_str
-                write(*,*) output_str
-                if (lvl.eq.1) write(*,*) header_str
+                if (error_loc) then
+                    call write_formatted(' '//trim(time_str)//' ',&
+                        &'background_white',trim(output_str),'italic underline')
+                else if (warning_loc .or. alert_loc) then
+                    call write_formatted(' '//trim(time_str)//' ',&
+                        &'background_white',trim(output_str),'')
+                else if (lvl.eq.1) then
+                    call write_formatted(' '//trim(header_str),&
+                        &'bright red')
+                    call write_formatted(' '//trim(time_str)//' ','',&
+                        &trim(output_str),'bright red')
+                    call write_formatted(' '//trim(header_str),&
+                        &'bright red')
+                else if (lvl.eq.2) then
+                    call write_formatted(' '//trim(time_str)//' ','',&
+                        &trim(output_str),'bright blue')
+                else
+                    write(*,*) trim(time_str)//' '//trim(output_str)
+                end if
             end do
         end if
     contains
-        ! formats the string
+        ! formats the string, merging time information with the string.
         subroutine format_str(lvl,str)
             ! input / output
-            character(len=*), intent(inout) :: str                              ! string that is to be formatted for the lvl
             integer, intent(in) :: lvl                                          ! lvl of indentation
+            character(len=*), intent(inout) :: str                              ! string that is to be formatted for the lvl
             
             ! local variables
             integer :: id                                                       ! counter
@@ -312,9 +399,16 @@ contains
             do id = 1,lvl-1                                                     ! start with lvl 1
                 str = lvl_sep // trim(str)
             end do
-            str = get_clock()//': '//trim(str)
         end subroutine format_str
-    end subroutine
+        
+        ! prints a string with time information
+        subroutine get_time_str(time_str)
+            ! input / output
+            character(len=*), intent(inout) :: time_str                         ! string with time information
+            
+            time_str = get_clock()//':'
+        end subroutine get_time_str
+    end subroutine writo
 
     ! print an array of dimension 2 on the screen
     subroutine print_ar_2(arr)
@@ -325,7 +419,7 @@ contains
         do id=1,size(arr,1)
             call print_ar_1(arr(id,:))
         end do
-    end subroutine
+    end subroutine print_ar_2
 
     ! print an array of dimension 1 on the screen
     subroutine print_ar_1(arr)
@@ -363,8 +457,8 @@ contains
                 &id.eq.size(arr)) then
                 continue
             else                                                                ! this should never be reached
-                call writo('WARNING: not enough room to display variable. &
-                    &Something went wrong')
+                call writo('not enough room to display variable. Something &
+                    &went wrong',warning=.true.)
                 return
             end if
             
@@ -382,5 +476,52 @@ contains
         end do
         output_str = trim(output_str) // ' |'
         write(*,*) output_str
-    end subroutine
+    end subroutine print_ar_1
+    
+#if ldebug
+    ! Returns the memory usage in kilobytes.
+    ! (based on http://stackoverflow.com/questions/22028571/
+    !  track-memory-usage-in-fortran-90)
+    ! Note: only works under linux
+    integer function get_mem_usage() result(mem)
+        use num_vars, only: mem_usage_i
+        
+        ! local variables
+        character(len=200):: filename=' '                                       ! name of file where memory stored
+        character(len=80) :: line                                               ! line of memory file
+        character(len=8)  :: pid_char=' '                                       ! process ID in string
+        logical :: exists                                                       ! whether memory file exists
+        integer :: pid                                                          ! process ID
+        integer :: istat                                                        ! status
+        
+        ! initiazlie mem to negative number
+        mem = -1
+        
+        ! get process ID and write it in string
+        pid = getpid()
+        write(pid_char,'(I8)') pid
+        
+        ! set up file name
+        filename='/proc/'//trim(adjustl(pid_char))//'/status'
+        
+        ! inquire about memory file
+        inquire (file=filename,exist=exists)
+        if (.not.exists) return
+        
+        ! open and read memory file
+        open(UNIT=mem_usage_i-1,FILE=filename,ACTION='read',IOSTAT=istat)
+        if (istat.ne.0) return
+        do
+            read (mem_usage_i-1,'(A)',IOSTAT=istat) line
+            if (istat.ne.0) return
+            if (line(1:6).eq.'VmRSS:') then
+                read (line(7:),*) mem
+                exit
+            endif
+        end do
+        
+        ! close memory file
+        close(mem_usage_i-1)
+    end function get_mem_usage
+#endif
 end module messages

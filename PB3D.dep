@@ -306,6 +306,7 @@ eq_utilities.o : \
 messages.o : \
     num_vars.o \
     str_ops.o \
+    foul.o \
 
 output_ops.o : \
     grid_vars.o \
@@ -444,3 +445,5 @@ str_ops.o : \
     num_vars.o \
 
 num_vars.o : \
+
+foul.o : \

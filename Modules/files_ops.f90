@@ -28,20 +28,20 @@ contains
         ! select according to program style
         select case (prog_style)
             case(1)                                                             ! PB3D
-                allocate(opt_args(13), inc_args(13))
+                allocate(opt_args(14), inc_args(14))
                 opt_args = ''
                 inc_args = 0
-                opt_args(6) = '--no_guess'
-                opt_args(7) = '-st_pc_factor_shift_type'
-                opt_args(8) = '-st_pc_type'
-                opt_args(9) = '-st_pc_factor_mat_solver_package'
-                opt_args(10) = '-eps_monitor'
-                opt_args(11) = '-eps_tol'
-                opt_args(12) = '-eps_ncv'
-                opt_args(13) = '-eps_mpd'
-                inc_args(6:13) = [0,1,1,1,0,1,1,1]
+                opt_args(7) = '--no_guess'
+                opt_args(8) = '-st_pc_factor_shift_type'
+                opt_args(9) = '-st_pc_type'
+                opt_args(10) = '-st_pc_factor_mat_solver_package'
+                opt_args(11) = '-eps_monitor'
+                opt_args(12) = '-eps_tol'
+                opt_args(13) = '-eps_ncv'
+                opt_args(14) = '-eps_mpd'
+                inc_args(7:14) = [0,1,1,1,0,1,1,1]
             case(2)                                                             ! POST
-                allocate(opt_args(5), inc_args(5))
+                allocate(opt_args(6), inc_args(6))
                 opt_args = ''
                 inc_args = 0
         end select
@@ -54,7 +54,8 @@ contains
         opt_args(3) = '--no_plots'
         opt_args(4) = '--no_output'
         opt_args(5) = '--no_execute_command_line'
-        inc_args(1:5) = [0,0,0,0,0]
+        opt_args(6) = '--mem_info'
+        inc_args(1:6) = [0,0,0,0,0,0]
     end subroutine init_files
 
     ! parses the command line arguments
@@ -156,7 +157,7 @@ contains
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
-            &no_execute_command_line, output_name, prog_name
+            &no_execute_command_line, output_name, prog_name, print_mem_usage
         use files_utilities, only: search_file
         use rich_vars, only: no_guess
 #if ldebug
@@ -210,6 +211,7 @@ contains
                     eq_style = -1
                     
                     ! Check for VMEC
+                    file_ext = ''
                     do id = len(eq_name)-1,1,-1
                         if (eq_name(id:id).eq.'.') then
                             file_ext = eq_name(id+1:len(eq_name))
@@ -295,9 +297,8 @@ contains
                     if (trim(command_arg(id)).eq.trim(opt_args(jd))) then       ! option found
                         opt_found = .true.
                         if (opt_taken(jd)) then                                 ! option already taken
-                            call writo('WARNING: Option "' // &
-                                &trim(command_arg(id)) // '" already set, &
-                                &ignoring...')
+                            call writo('Option "'//trim(command_arg(id))//&
+                                &'" already set, ignoring...',warning=.true.)
                         else                                                    ! option not yet taken
                             select case(jd)
                                 ! common options 1..5
@@ -306,9 +307,9 @@ contains
                                     call writo('option test chosen')
                                     ltest = .true.
 #else
-                                    call writo('WARNING: option test not &
-                                        &available. Recompile with cpp &
-                                        &flag ''ldebug''...')
+                                    call writo('option test not available. &
+                                        &Recompile with cpp flag &
+                                        &''ldebug''...',warning=.true.)
 #endif
                                 case (3)                                        ! disable plotting
                                     call writo('option no_plots chosen: &
@@ -322,14 +323,22 @@ contains
                                     call writo('option no_execute_command_line &
                                         &chosen: execute_command_line disabled')
                                     no_execute_command_line = .true.
+                                case (6)                                        ! disable execute_command_line
+                                    call writo('option mem_info chosen: &
+                                        &memory usage is printed')
+                                    call lvl_ud(1)
+                                    call writo('The PID of this process is: '//&
+                                        &trim(i2str(getpid())))
+                                    print_mem_usage = .true.
+                                    call lvl_ud(-1)
                                 ! specific options for each program style
                                 case default
                                     select case (prog_style)
                                         case(1)                                 ! PB3D
                                             call apply_opt_PB3D(jd,id)
                                         case(2)                                 ! POST
-                                            call writo('WARNING: Invalid &
-                                                &option number')
+                                            call writo('Invalid option number',&
+                                                &warning=.true.)
                                     end select
                             end select
                             opt_taken(jd) = .true.
@@ -340,13 +349,13 @@ contains
                     ! FIND THE INCREMENT WITH BELOW FUNCTION
                 end do
                 if (.not.opt_found) then
-                    call writo('WARNING: Option "' // &
-                        &trim(command_arg(id)) // '" invalid')
+                    call writo('Option "'//trim(command_arg(id))//'" invalid',&
+                        &warning=.true.)
                 end if
                 id = id + 1
                 opt_found = .false.
             end do
-        end subroutine
+        end subroutine read_opts
         
         ! this subroutine applies chosen options
         subroutine apply_opt_PB3D(opt_nr,arg_nr)                                ! PB3D version
@@ -354,29 +363,29 @@ contains
             integer :: opt_nr, arg_nr
             
             select case(opt_nr)
-                case (6)                                                        ! disable guessing Eigenfunction from previous Richardson level
+                case (7)                                                        ! disable guessing Eigenfunction from previous Richardson level
                     call writo('option no_guess chosen: Eigenfunction not &
                         &guessed from previous Richardson level')
                     no_guess = .true.
-                case (7)
+                case (8)
                     call writo('option st_pc_factor_shift_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (8)
+                case (9)
                     call writo('option st_pc_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (9)
+                case (10)
                     call writo('option st_pc_factor_mat_solver_package '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (10)
-                    call writo('option eps_monitor passed to SLEPC')
                 case (11)
-                    call writo('option eps_tol passed to SLEPC')
+                    call writo('option eps_monitor passed to SLEPC')
                 case (12)
-                    call writo('option eps_ncv passed to SLEPC')
+                    call writo('option eps_tol passed to SLEPC')
                 case (13)
+                    call writo('option eps_ncv passed to SLEPC')
+                case (14)
                     call writo('option eps_mpd passed to SLEPC')
                 case default
-                    call writo('WARNING: Invalid option number')
+                    call writo('Invalid option number',warning=.true.)
             end select
         end subroutine apply_opt_PB3D
     end function open_input
@@ -390,16 +399,18 @@ contains
             &rich_restart_lvl, shell_commands_name
         use messages, only: temp_output, temp_output_active
         use files_utilities, only: nextunit
-        use HDF5_ops, only: create_output_HDF5, print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type
+        use HDF5_ops, only: create_output_HDF5
+#if ldebug
+        use num_vars, only: print_mem_usage, mem_usage_name, mem_usage_i
+#endif
         
         character(*), parameter :: rout_name = 'open_output'
         
         ! local variables (also used in child functions)
         integer :: id                                                           ! counter
         character(len=max_str_ln) :: full_output_name                           ! full name
-        integer :: shell_commands_i                                             ! handle for shell commands file
         integer :: istat                                                        ! status
+        integer :: shell_commands_i                                             ! handle for shell commands file
         
         ! initialize ierr
         ierr = 0
@@ -408,22 +419,24 @@ contains
         call writo('Attempting to open output files')
         call lvl_ud(1)
         
+        ! 1. LOG OUTPUT
+        
         ! append extension to output name
         full_output_name = prog_name//'_'//trim(output_name)//'.txt'
         
         ! actions depending on Richardson restart level and program style
         if (rich_restart_lvl.gt.1 .and. prog_style.eq.1) then
             ! append to existing file
-            open(unit=nextunit(output_i),file=trim(full_output_name),&
-                &status='old',position='append',iostat=ierr)
+            open(UNIT=nextunit(output_i),FILE=trim(full_output_name),&
+                &STATUS='old',POSITION='append',IOSTAT=ierr)
             
             ! print message
             call writo('log output file "'//trim(full_output_name)//&
                 &'" reopened at number '//trim(i2str(output_i)))
         else
             ! open file after wiping it
-            open(unit=nextunit(output_i),file=trim(full_output_name),&
-                &status='replace',iostat=ierr)
+            open(UNIT=nextunit(output_i),FILE=trim(full_output_name),&
+                &STATUS='replace',IOSTAT=ierr)
             
             ! print message
             call writo('log output file "'//trim(full_output_name)//&
@@ -432,27 +445,32 @@ contains
         
         ! if temporary output present, silently write it to log output file
         do id = 1,size(temp_output)
-            write(output_i,*) temp_output(id)
+            write(output_i,*) trim(temp_output(id))
         end do
+        
+        ! 2. SHELL COMMANDS
         
         ! recycle full_output_name for shell_commands file
         full_output_name = prog_name//'_'//trim(shell_commands_name)//'.sh'
         
         ! create output file for shell commands
-        open(unit=nextunit(shell_commands_i),file=trim(full_output_name),&
-            &status='replace',iostat=ierr)
+        open(UNIT=nextunit(shell_commands_i),FILE=trim(full_output_name),&
+            &STATUS='replace',IOSTAT=ierr)
         
         ! write header, close and make executable
         write(shell_commands_i,'(A)') '#!/bin/bash'
         write(shell_commands_i,'(A)') '# This file contains all the shell &
             &commands from the '//trim(prog_name)//' run'
         close(shell_commands_i)
+        istat = 0
         call execute_command_line('chmod +x '//trim(full_output_name),&
             &EXITSTAT=istat)                                                    ! not too terrible if execute_command_line fails
         
         ! print message
-        call writo('shell commands log output file "'//trim(full_output_name)//&
+        call writo('shell commands script file "'//trim(full_output_name)//&
             &'" created')
+        
+        ! 3. PROGRAM SPECIFIC
         
         ! specific actions for program styles
         select case (prog_style)
@@ -465,6 +483,26 @@ contains
             case (2)                                                            ! POST
                 ! do nothing
         end select
+        
+#if ldebug
+        ! 4. MEMORY USAGE
+        if (print_mem_usage) then
+            ! recycle full_output_name for mem_usage file
+            full_output_name = prog_name//'_'//trim(mem_usage_name)//'.dat'
+            
+            ! create output file for memory usage
+            open(UNIT=mem_usage_i,FILE=trim(full_output_name),&
+                &STATUS='replace',IOSTAT=ierr)
+            
+            ! write header and close
+            write(mem_usage_i,'(A)') '# Rank - Time - Memory usage [kB]'
+            close(mem_usage_i)
+            
+            ! print message
+            call writo('memory usage data file "'//trim(full_output_name)//&
+                &'" created')
+        end if
+#endif
         
         ! no more temporary output
         temp_output_active = .false.

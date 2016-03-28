@@ -233,6 +233,18 @@ contains
     
     ! deallocates HELENA quantities that are not used any more
     subroutine dealloc_HEL
+#if ldebug
+        use messages, only: get_mem_usage
+        use num_vars, only: rank, print_mem_usage
+        
+        ! local variables
+        integer :: mem_diff                                                     ! difference in memory
+        
+        ! memory usage before deallocation
+        if (print_mem_usage) mem_diff = get_mem_usage()
+#endif
+        
+        ! deallocate
         deallocate(chi_H)
         deallocate(flux_p_H)
         deallocate(pres_H)
@@ -240,10 +252,18 @@ contains
         deallocate(RBphi_H)
         deallocate(R_H)
         deallocate(Z_H)
+        
 #if ldebug
         deallocate(h_H_11)
         deallocate(h_H_12)
         deallocate(h_H_33)
+        
+        ! memory usage difference after deallocation
+        if (print_mem_usage) then
+            mem_diff = mem_diff - get_mem_usage()
+            call writo('Rank '//trim(i2str(rank))//' liberated '//&
+                &trim(i2str(mem_diff))//'kB deallocating HELENA')
+        end if
 #endif
     end subroutine dealloc_HEL
 end module HELENA_vars

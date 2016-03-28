@@ -5,7 +5,7 @@ module X_vars
 #include <PB3D_macros.h>
     use str_ops
     use messages
-    use num_vars, only: dp, max_name_ln, iu
+    use num_vars, only: dp, max_name_ln, iu, weight_dp
     use grid_vars, only: grid_type
     
     implicit none
@@ -16,6 +16,9 @@ module X_vars
         &n_mod_X, prim_X, min_sec_X, max_sec_X, min_nm_X, min_n_X, max_n_X, &
         &min_m_X, max_m_X, min_r_sol, max_r_sol, X_1_var_names, X_2_var_names, &
         &n_X, m_X, sec_X_ind
+#if ldebug
+    public n_alloc_X_1s, n_alloc_X_2s
+#endif
     
     ! global variables
     integer :: prim_X                                                           ! n_X (pol. flux) or m_X (tor. flux)
@@ -32,6 +35,10 @@ module X_vars
     real(dp) :: min_r_sol, max_r_sol                                            ! min. and max. normal range for pert.
     character(len=max_name_ln), allocatable :: X_1_var_names(:)                 ! internal vectorial perturbation variables names
     character(len=max_name_ln), allocatable :: X_2_var_names(:)                 ! internal tensorial perturbation variables names
+#if ldebug
+    integer :: n_alloc_X_1s                                                     ! nr. of allocated X_1's
+    integer :: n_alloc_X_2s                                                     ! nr. of allocated X_2's
+#endif
     
     ! vectorial perturbation type with arrays of the form:
     !   - (angle_1,angle_2,r,n_mod)         for U_X_i, DU_X_i
@@ -45,6 +52,9 @@ module X_vars
         complex(dp), allocatable :: U_1(:,:,:,:)                                ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
         complex(dp), allocatable :: DU_0(:,:,:,:)                               ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
         complex(dp), allocatable :: DU_1(:,:,:,:)                               ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
+#if ldebug
+        real(dp) :: estim_mem_usage                                             ! estimated memory usage
+#endif
     end type
     
     ! tensorial perturbation type with arrays of the form:
@@ -67,6 +77,9 @@ module X_vars
         complex(dp), allocatable :: KV_1(:,:,:,:)                               ! ~KV^1 coefficient
         complex(dp), allocatable :: KV_2(:,:,:,:)                               ! ~KV^2 coefficient
         complex(dp), allocatable :: vac_res(:,:)                                ! vacuum response
+#if ldebug
+        real(dp) :: estim_mem_usage                                             ! estimated memory usage
+#endif
     end type
     
     ! interfaces
@@ -119,6 +132,10 @@ contains
     ! Note: The  lowest limits of the grid  need to be 1; e.g.  grid_X%i_min = 1
     ! for first process.
     subroutine create_X_1(grid_X,X,lim_sec_X)                                   ! vectorial version
+#if ldebug
+        use num_vars, only: print_mem_usage, rank
+#endif
+        
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_1_type), intent(inout) :: X                                      ! vectorial perturbation variables
@@ -132,6 +149,11 @@ contains
         loc_n_r = grid_X%loc_n_r
         n_par = grid_X%n(1)
         n_geo = grid_X%n(2)
+        
+#if ldebug
+        ! initialize memory usage
+        if (print_mem_usage) X%estim_mem_usage = 0._dp
+#endif
         
         ! set mode numbers
         call set_nm_X(grid_X,X%n,X%m,lim_sec_X)
@@ -150,8 +172,26 @@ contains
         
         ! allocate DU_1
         allocate(X%DU_1(n_par,n_geo,loc_n_r,X%n_mod))
+        
+#if ldebug
+        ! set estimated memory usage
+        if (print_mem_usage) X%estim_mem_usage = X%estim_mem_usage + &
+            &(n_par*n_geo*loc_n_r)*(X%n_mod*4)
+        
+        ! increment n_alloc_X_1s
+        n_alloc_X_1s = n_alloc_X_1s + 1
+        
+        ! print memory usage
+        if (print_mem_usage) call writo('[rank '//trim(i2str(rank))//&
+            &' - Expected memory usage of X_1: '//&
+            &trim(r2strt(X%estim_mem_usage*weight_dp*2))//' kB]',alert=.true.)
+#endif
     end subroutine create_X_1
     subroutine create_X_2(grid_X,X,lim_sec_X,is_field_averaged)                 ! tensorial version
+#if ldebug
+        use num_vars, only: print_mem_usage, rank
+#endif
+        
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
@@ -170,6 +210,11 @@ contains
         end if
         n_geo = grid_X%n(2)
         loc_n_r = grid_X%loc_n_r
+        
+#if ldebug
+        ! initialize memory usage
+        if (print_mem_usage) X%estim_mem_usage = 0._dp
+#endif
         
         ! set mode numbers
         call set_nm_X(grid_X,X%n_1,X%m_1,X%n_2,X%m_2,lim_sec_X)
@@ -193,6 +238,21 @@ contains
         
         ! allocate vacuum response
         allocate(X%vac_res(X%n_mod(1),X%n_mod(2)))
+        
+#if ldebug
+        ! set estimated memory usage
+        if (print_mem_usage) X%estim_mem_usage = &
+            &X%estim_mem_usage + (n_par*n_geo*loc_n_r)*&
+            &(nn_mod*4+product(X%n_mod)*2) + product(X%n_mod)
+        
+        ! increment n_alloc_X_2s
+        n_alloc_X_2s = n_alloc_X_2s + 1
+        
+        ! print memory usage
+        if (print_mem_usage) call writo('[rank '//trim(i2str(rank))//&
+            &' - Expected memory usage of X_2: '//&
+            &trim(r2strt(X%estim_mem_usage*weight_dp*2))//' kB]',alert=.true.)
+#endif
     end subroutine create_X_2
     
     ! Sets number of entries for symmetric tensorial perturbation variables.
@@ -269,11 +329,93 @@ contains
     
     ! deallocates perturbation variables
     subroutine dealloc_X_1(X)                                                   ! vectorial version
+#if ldebug
+        use messages, only: get_mem_usage
+        use num_vars, only: rank, print_mem_usage
+#endif
+        
         ! input / output
-        type(X_1_type), intent(out) :: X                                        ! perturbation variables to be deallocated
+        type(X_1_type), intent(inout) :: X                                      ! perturbation variables to be deallocated
+        
+#if ldebug
+        ! local variables
+        integer :: mem_diff                                                     ! difference in memory
+        real(dp) :: estim_mem_usage                                             ! estimated memory usage
+        
+        ! memory usage before deallocation
+        if (print_mem_usage) then
+            mem_diff = get_mem_usage()
+            estim_mem_usage = X%estim_mem_usage
+        end if
+#endif
+        
+        ! deallocate allocatable variables
+        call dealloc_X_1_final(X)
+        
+#if ldebug
+        ! decrement n_alloc_X_1s
+        n_alloc_X_1s = n_alloc_X_1s - 1
+        
+        ! memory usage difference after deallocation
+        if (print_mem_usage) then
+            mem_diff = mem_diff - get_mem_usage()
+            call writo('[Rank '//trim(i2str(rank))//' - liberated '//&
+                &trim(i2str(mem_diff))//'kB deallocating X_1 ('//&
+                &trim(i2str(nint(100*mem_diff/&
+                &(estim_mem_usage*weight_dp*2))))//&
+                &'% of estimated)]',alert=.true.)
+        end if
+#endif
+    contains
+        ! Note: intent(out) automatically deallocates the variable
+        subroutine dealloc_X_1_final(X)
+            ! input / output
+            type(X_1_type), intent(out) :: X                                    ! equilibrium to be deallocated
+        end subroutine dealloc_X_1_final
     end subroutine dealloc_X_1
     subroutine dealloc_X_2(X)                                                   ! tensorial version
+#if ldebug
+        use messages, only: get_mem_usage
+        use num_vars, only: rank, print_mem_usage
+#endif
+        
         ! input / output
-        type(X_2_type), intent(out) :: X                                        ! perturbation variables to be deallocated
+        type(X_2_type), intent(inout) :: X                                      ! perturbation variables to be deallocated
+        
+#if ldebug
+        ! local variables
+        integer :: mem_diff                                                     ! difference in memory
+        real(dp) :: estim_mem_usage                                             ! estimated memory usage
+        
+        ! memory usage before deallocation
+        if (print_mem_usage) then
+            mem_diff = get_mem_usage()
+            estim_mem_usage = X%estim_mem_usage
+        end if
+#endif
+        
+        ! deallocate allocatable variables
+        call dealloc_X_2_final(X)
+        
+#if ldebug
+        ! decrement n_alloc_X_2s
+        n_alloc_X_2s = n_alloc_X_2s - 1
+        
+        ! memory usage difference after deallocation
+        if (print_mem_usage) then
+            mem_diff = mem_diff - get_mem_usage()
+            call writo('[Rank '//trim(i2str(rank))//' - liberated '//&
+                &trim(i2str(mem_diff))//'kB deallocating X_2 ('//&
+                &trim(i2str(nint(100*mem_diff/&
+                &(estim_mem_usage*weight_dp*2))))//&
+                &'% of estimated)]',alert=.true.)
+        end if
+#endif
+    contains
+        ! Note: intent(out) automatically deallocates the variable
+        subroutine dealloc_X_2_final(X)
+            ! input / output
+            type(X_2_type), intent(out) :: X                                    ! equilibrium to be deallocated
+        end subroutine dealloc_X_2_final
     end subroutine dealloc_X_2
 end module X_vars

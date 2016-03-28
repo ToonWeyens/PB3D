@@ -380,9 +380,9 @@ contains
         ! use MPI_Comm_world for PETSC_COMM_WORLD
         PETSC_COMM_WORLD = MPI_Comm_world
         if (n_procs.gt.n_r_sol) then                                            ! too many processors
-            call writo('WARNING: using too many processors: '&
-                &//trim(i2str(n_procs))//', while beyond '//&
-                &trim(i2str(n_r_sol))//' does not bring improvement')
+            call writo('using too many processors: '//trim(i2str(n_procs))//&
+                &', while beyond '//trim(i2str(n_r_sol))//&
+                &' does not bring improvement',warning=.true.)
         end if
         call SlepcInitialize(PETSC_NULL_CHARACTER,ierr)                         ! initialize SLEPC
         CHCKERR('SLEPC failed to initialize')
@@ -425,6 +425,8 @@ contains
         use num_vars, only: ltest
         use input_utilities, only: get_real, get_log
 #endif
+        !!! TEMPORARY !!!
+        use MPI_utilities, only: wait_MPI
         
         character(*), parameter :: rout_name = 'setup_mats'
         
@@ -444,6 +446,11 @@ contains
         PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
         PetscInt, allocatable :: o_nz(:)                                        ! nr. of off-diagonal non-zeros
         character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        !!! TEMPORARY !!!
+        Vec :: vec_in
+        Vec :: vec_out
+        PetscScalar, pointer :: vec_in_loc(:)
         
         ! local variables also used in child routines
         PetscInt :: bulk_i_lim(2)                                               ! absolute limits of bulk matrix (excluding the BC's)
@@ -542,6 +549,29 @@ contains
                 call MatShellSetOperation(A,MATOP_GET_DIAGONAL,&
                     &shell_A_diagonal,ierr)
                 CHCKERR(err_msg)
+                
+                !!!!!!!! TEMPORARY !!!!!!!!!!
+                ! test multiplication of A
+                call MatCreateVecs(A,vec_in,PETSC_NULL_OBJECT,ierr)        ! get compatible parallel vectors to matrix A (petsc 3.6.1)
+                CHCKERR('Failed to create vector')
+                call MatCreateVecs(A,vec_out,PETSC_NULL_OBJECT,ierr)        ! get compatible parallel vectors to matrix A (petsc 3.6.1)
+                CHCKERR('Failed to create vector')
+                call VecGetArrayF90(vec_in,vec_in_loc,ierr)
+                CHCKERR('Failed to get pointer')
+                vec_in_loc = [(kd*1._dp,kd=1,size(vec_in_loc))]
+                call MatMult(A,vec_in,vec_out,ierr)
+                CHCKERR('Failed to multiply')
+                write(*,*) 'vec_in = '
+                call VecView(vec_in,PETSC_VIEWER_STDOUT_WORLD,ierr)
+                CHCKERR('Cannot view vector')
+                write(*,*) 'vec_out = '
+                call VecView(vec_out,PETSC_VIEWER_STDOUT_WORLD,ierr)
+                CHCKERR('Cannot view vector')
+                call VecRestoreArrayReadF90(vec_in,vec_in_loc,ierr)
+                CHCKERR('Failed to restore pointer')
+                ierr = wait_MPI()
+                CHCKERR('')
+                !!!!!!!! TEMPORARY !!!!!!!!!!
                 
                 ! create matrix B
                 call MatCreateShell(PETSC_COMM_WORLD,loc_n_r*n_mod,&
@@ -913,6 +943,8 @@ contains
                 ! set diagonal
                 !diag_loc(kd) = V_0(
             end do
+            !!! TEMPORARY !!!!
+            vec_out_loc = 3._dp
             
             ! restore vectors
             err_msg = 'Failed to restore array'
@@ -1502,8 +1534,9 @@ contains
         
         ! request n_sol_requested Eigenpairs
         if (n_sol_requested.gt.grid_sol%n(3)*n_mod) then
-            call writo('WARNING: max. nr. of solutions requested capped to &
-                &problem dimension ('//trim(i2str(grid_sol%n(3)*n_mod))//')')
+            call writo('max. nr. of solutions requested capped to problem &
+                &dimension ('//trim(i2str(grid_sol%n(3)*n_mod))//')',&
+                &warning=.true.)
             call writo('Increase either n_r_sol or number of pol. modes or &
                 &decrease n_sol_requested')
             n_sol = grid_sol%n(3)*n_mod
@@ -1554,8 +1587,8 @@ contains
             ! create vecctor guess_vec and set values
             do kd = 1,n_EV_prev
                 ! create the vectors
-                !call MatGetVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,ierr)        ! get compatible parallel vectors to matrix A (petsc 3.5.3)
-                call MatCreateVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,ierr)     ! get compatible parallel vectors to matrix A (petsc 3.6.1)
+                !call MatGetVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,ierr)         ! get compatible parallel vectors to matrix A (petsc 3.5.3)
+                call MatCreateVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,ierr)      ! get compatible parallel vectors to matrix A (petsc 3.6.1)
                 CHCKERR('Failed to create vector')
                 
                 ! get pointer
@@ -1657,8 +1690,8 @@ contains
         
         ! set maximum nr of solutions to be saved
         if (n_sol_requested.gt.n_conv) then
-            call writo('WARNING: max. nr. of solutions found only '//&
-                &trim(i2str(n_conv)))
+            call writo('max. nr. of solutions found only '//&
+                &trim(i2str(n_conv)),warning=.true.)
             max_n_EV = n_conv
         else
             max_n_EV = n_sol_requested

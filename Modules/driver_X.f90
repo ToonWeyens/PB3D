@@ -423,7 +423,7 @@ contains
         call lvl_ud(1)
         call dealloc_eq(eq_2)
         do id = 1,2
-            call dealloc_X(X_1(id))
+            if (allocated(X_1(id)%n)) call dealloc_X(X_1(id))
         end do
         call lvl_ud(-1)
         

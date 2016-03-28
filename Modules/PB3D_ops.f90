@@ -11,7 +11,7 @@ module PB3D_ops
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, X_2_type
     use sol_vars, only: sol_type
-    use HDF5_vars, only: var_1D_type
+    use HDF5_vars, only: dealloc_var_1D, var_1D_type
 
     implicit none
     private
@@ -36,7 +36,6 @@ contains
             &norm_disc_prec_X, norm_style, U_style, X_style, prog_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
             &EV_BC
-        use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
@@ -63,8 +62,8 @@ contains
         ! local variables
         integer :: var_1D_id                                                    ! index in var_1D
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), parameter :: tol_version = 1.E-8_dp                           ! tolerance for version control
         type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
+        real(dp), parameter :: tol_version = 1.E-8_dp                           ! tolerance for version control
         real(dp) :: PB3D_version                                                ! version of PB3D variable read
         
         ! initialize ierr
@@ -369,11 +368,10 @@ contains
         &grid_limits) result(ierr)
         use num_vars, only: PB3D_name
         use grid_vars, only: create_grid
-        use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         
-        character(*), parameter :: rout_name = 'reconstruct_PB3D_eq'
+        character(*), parameter :: rout_name = 'reconstruct_PB3D_grid'
         
         ! input / output
         type(grid_type), intent(inout) :: grid                                  ! grid 
@@ -506,11 +504,10 @@ contains
         &result(ierr)                                                           ! flux version
         use num_vars, only: PB3D_name
         use eq_vars, only: create_eq
-        use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         
-        character(*), parameter :: rout_name = 'reconstruct_PB3D_eq'
+        character(*), parameter :: rout_name = 'reconstruct_PB3D_eq_1'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid 
@@ -596,11 +593,10 @@ contains
         &tot_rich,eq_limits) result(ierr)                                       ! metric version
         use num_vars, only: PB3D_name
         use eq_vars, only: create_eq
-        use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         
-        character(*), parameter :: rout_name = 'reconstruct_PB3D_eq'
+        character(*), parameter :: rout_name = 'reconstruct_PB3D_eq_2'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid 
@@ -717,7 +713,6 @@ contains
         use num_vars, only: PB3D_name
         use X_vars, only: create_X, &
             &X_1_var_names, n_mod_X
-        use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         use PB3D_utilities, only: get_full_var_names
@@ -896,7 +891,6 @@ contains
         use num_vars, only: PB3D_name
         use X_vars, only: create_X, &
             &X_2_var_names, n_mod_X
-        use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         use PB3D_utilities, only: get_full_var_names
@@ -1148,7 +1142,6 @@ contains
         &sol_limits,lim_sec_sol) result(ierr)
         use num_vars, only: PB3D_name
         use sol_vars, only: create_sol
-        use HDF5_vars, only: dealloc_var_1D
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         

@@ -45,9 +45,11 @@ module VMEC
     real(dp), allocatable :: R_V_c(:,:,:), R_V_s(:,:,:)                         ! Coeff. of R in (co)sine series (FM) and norm. deriv.
     real(dp), allocatable :: Z_V_c(:,:,:), Z_V_s(:,:,:)                         ! Coeff. of Z in (co)sine series (FM) and norm. deriv.
     real(dp), allocatable :: L_V_c(:,:,:), L_V_s(:,:,:)                         ! Coeff. of lambda in (co)sine series (HM) and norm. deriv.
+#if ldebug
     real(dp), allocatable :: B_V_sub_c(:,:,:), B_V_sub_s(:,:,:)                 ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM)
     real(dp), allocatable :: B_V_c(:,:), B_V_s(:,:)                             ! Coeff. of magnitude of B (HM and FM)
     real(dp), allocatable :: jac_V_c(:,:), jac_V_s(:,:)                         ! Jacobian in VMEC coordinates (HM and FM)
+#endif
 
 contains
     ! Reads the VMEC equilibrium data
@@ -253,6 +255,18 @@ contains
     
     ! deallocates VMEC quantities that are not used anymore
     subroutine dealloc_VMEC
+#if ldebug
+        use messages, only: get_mem_usage
+        use num_vars, only: rank, print_mem_usage
+        
+        ! local variables
+        integer :: mem_diff                                                     ! difference in memory
+        
+        ! memory usage before deallocation
+        if (print_mem_usage) mem_diff = get_mem_usage()
+#endif
+        
+        ! deallocate
         deallocate(rot_t_V)
         deallocate(pres_V)
         deallocate(flux_t_V)
@@ -273,6 +287,13 @@ contains
         deallocate(B_V_s)
         deallocate(jac_V_c)
         deallocate(jac_V_s)
+        
+        ! memory usage difference after deallocation
+        if (print_mem_usage) then
+            mem_diff = mem_diff - get_mem_usage()
+            call writo('Rank '//trim(i2str(rank))//' liberated '//&
+                &trim(i2str(mem_diff))//'kB deallocating VMEC')
+        end if
 #endif
     end subroutine dealloc_VMEC
     

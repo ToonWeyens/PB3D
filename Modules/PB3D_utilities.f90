@@ -86,8 +86,8 @@ contains
         
         ! tests
         if (size(var_names).ne.size(sym)) then
-            call writo('WARNING: size of sym has to be equal to size of &
-                &var_names')
+            call writo('size of sym has to be equal to size of var_names',&
+                &warning=.true.)
             return
         end if
         

@@ -8,6 +8,7 @@ module num_vars
     private
     public dp, qp, max_str_ln, max_name_ln, max_deriv, prog_name, output_name, &
         &prog_version, prog_style, min_PB3D_version, shell_commands_name, &
+        &mem_usage_name, mem_usage_i, mem_usage_count, weight_dp, &
         &max_mem_per_proc, n_procs, rank, X_jobs_lims, X_jobs_taken, X_job_nr, &
         &X_jobs_file_name, X_jobs_lock_file_name, HDF5_lock_file_name, &
         &pi, mu_0_original, iu, &
@@ -22,15 +23,15 @@ module num_vars
         &GP_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
-        &no_execute_command_line, input_name, rich_restart_lvl, &
-        &plot_size, &
-        &spline_type
+        &no_execute_command_line, print_mem_usage, input_name, &
+        &rich_restart_lvl, plot_size
 
     ! technical variables
     !integer, parameter :: dp = kind(1.d0)                                       ! double precision
     !integer, parameter :: qp = selected_real_kind (32)                          ! quadruple precision
     integer, parameter :: dp = REAL64                                           ! double precision
     integer, parameter :: qp = REAL128                                          ! quadruple precision
+    real(dp), parameter :: weight_dp = 0.008                                    ! size of double precision in kB
     integer, parameter :: max_str_ln = 120                                      ! maximum length of strings
     integer, parameter :: max_name_ln = 30                                      ! maximum length of filenames
     integer, parameter :: max_deriv = 2                                         ! highest derivatives for metric factors in Flux coords.
@@ -38,7 +39,10 @@ module num_vars
     character(len=4) :: prog_name                                               ! name of program, used for info
     character(len=3), parameter :: output_name = 'out'                          ! name of output file
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
-    real(dp), parameter :: prog_version = 1.14_dp                               ! version number
+    character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
+    integer :: mem_usage_count                                                  ! counter for memory usage output
+    integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
+    real(dp), parameter :: prog_version = 1.15_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.14_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
@@ -105,6 +109,7 @@ module num_vars
     logical :: no_plots = .false.                                               ! true if no plots should be made
     logical :: no_output = .false.                                              ! true if no output should be shown
     logical :: no_execute_command_line = .false.                                ! true if "execute_command_line" should not be called
+    logical :: print_mem_usage = .false.                                        ! true if memory usage is printed
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots
     character(len=4) :: data_dir = 'Data'                                       ! directory where to save data for plots
@@ -116,18 +121,4 @@ module num_vars
     integer :: rich_restart_lvl                                                 ! starting Richardson level (0: none [default])
     logical :: retain_all_sol                                                   ! retain also faulty solutions
     character(len=max_str_ln) :: input_name                                     ! will hold the full name of the input file
-    
-    ! concerning  spline interpolation
-    ! The type of the spline is determined by "spline_type":
-    !   1:  cubic
-    ! The coefficients that are stored here are:
-    !   x:  the abscissa at which the spline was calculated
-    !   y:  the ordinates at which the spline was calculated
-    !   z:  the calculated second order derivatives at the points x
-    type :: spline_type
-        integer :: spline_type                                                  ! determines type of spline
-        real(dp), allocatable :: x(:)                                           ! abscissa
-        real(dp), allocatable :: y(:)                                           ! ordinate
-        real(dp), allocatable :: z(:)                                           ! second order derivatives of spline
-    end type spline_type
 end module num_vars

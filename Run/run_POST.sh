@@ -25,7 +25,7 @@ while getopts "o:dsl" opt; do
             n_opt_args=$((n_opt_args+2))                                        # 2 arguments
         ;;
         d)
-            debug_opt="valgrind"
+            debug_opt="valgrind --db-attach=yes"
             n_opt_args=$((n_opt_args+1))                                        # 1 argument
         ;;
         s)

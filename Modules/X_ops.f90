@@ -19,6 +19,11 @@ module X_ops
     public debug_check_X_modes_2
 #endif
     
+    ! global variables
+#if ldebug
+    logical :: debug_check_X_modes_2 = .false.                                  ! plot debug information for calc_XUQ_arr
+#endif
+    
     ! interfaces
     interface calc_X
         module procedure calc_X_1, calc_X_2
@@ -26,11 +31,6 @@ module X_ops
     interface print_output_X
         module procedure print_output_X_1, print_output_X_2
     end interface
-    
-    ! global variables
-#if ldebug
-    logical :: debug_check_X_modes_2 = .false.                                  ! plot debug information for calc_XUQ_arr
-#endif
     
 contains
     ! Calculates either vectorial or tensorial perturbation variables.
@@ -1365,8 +1365,8 @@ contains
                 end do
             end if
             if (U_style.ge.4) then
-                call writo('WARNING: The geodesic perturbation U is &
-                    &implemented up to order 3')
+                call writo('The geodesic perturbation U is implemented up to &
+                    &order 3',warning=.true.)
             end if
         end do
         
@@ -1403,8 +1403,8 @@ contains
                         end do
                     end if
                     if (U_style.ge.4) then
-                        call writo('WARNING: The geodesic perturbation U is &
-                            &implemented up to order 3')
+                        call writo('The geodesic perturbation U is implemented &
+                            &only up to order 3',warning=.true.)
                     end if
                 end do
 #if ldebug
@@ -1485,8 +1485,8 @@ contains
             ierr = 0
             
             ! warning
-            call writo('WARNING: This test is only representable if there &
-                &are enough parallel points in the grid!')
+            call writo('This test is representable only if there are enough &
+                &parallel points in the grid!',warning=.true.)
             
             ! output
             call writo('Going to test whether DU is consistent with U')
@@ -2087,7 +2087,7 @@ contains
         &result(ierr)                                                           ! vectorial version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type, &
+        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
         use X_utilities, only: get_suffix
         
@@ -2235,6 +2235,7 @@ contains
         CHCKERR('')
         
         ! clean up
+        call dealloc_var_1D(X_1D)
         nullify(X_1D_loc)
         
         ! user output
@@ -2244,7 +2245,7 @@ contains
         &is_field_averaged) result(ierr)                                        ! tensorial version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type, &
+        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
         use X_utilities, only: is_necessary_X, get_suffix
         use X_vars, only: n_mod_X
@@ -2526,6 +2527,7 @@ contains
         CHCKERR('')
         
         ! clean up
+        call dealloc_var_1D(X_1D)
         nullify(X_1D_loc)
         
         ! user output

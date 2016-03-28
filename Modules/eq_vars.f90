@@ -29,7 +29,7 @@ module eq_vars
 #include <PB3D_macros.h>
     use str_ops
     use messages
-    use num_vars, only: dp, pi, max_str_ln, mu_0_original
+    use num_vars, only: dp, pi, max_str_ln, mu_0_original, weight_dp
     use grid_vars, only: grid_type
 
     implicit none
@@ -37,6 +37,9 @@ module eq_vars
     public create_eq, dealloc_eq, &
         &eq_1_type, eq_2_type, &
         &R_0, pres_0, B_0, psi_0, rho_0, T_0, max_flux_E, max_flux_F, vac_perm
+#if ldebug
+    public n_alloc_eq_1s, n_alloc_eq_2s
+#endif
     
     ! global variables
     real(dp) :: R_0, pres_0, rho_0                                              ! independent normalization constants for nondimensionalization
@@ -44,6 +47,9 @@ module eq_vars
     real(dp) :: vac_perm = mu_0_original                                        ! either usual mu_0 (default) or normalized
     real(dp) :: max_flux_E                                                      ! max. flux in Equilibrium coordinates
     real(dp) :: max_flux_F                                                      ! max. flux in Flux coordinates
+#if ldebug
+    integer :: n_alloc_eq_1s, n_alloc_eq_2s                                     ! nr. of allocated equilibria
+#endif
     
     ! flux equilibrium type
     ! The arrays here are of the form
@@ -61,6 +67,9 @@ module eq_vars
         real(dp), pointer :: flux_p_FD(:,:) => null()                           ! poloidal flux and norm. deriv.
         real(dp), pointer :: flux_t_FD(:,:) => null()                           ! toroidal flux and norm. deriv.
         real(dp), allocatable :: rho(:)                                         ! density
+#if ldebug
+        real(dp) :: estim_mem_usage(2)                                          ! expected memory usage
+#endif
     end type
     
     ! metric equilibrium type
@@ -113,6 +122,9 @@ module eq_vars
         real(dp), allocatable :: kappa_n(:,:,:)                                 ! normal curvature
         real(dp), allocatable :: kappa_g(:,:,:)                                 ! geodesic curvature
         real(dp), allocatable :: sigma(:,:,:)                                   ! parallel current
+#if ldebug
+        real(dp) :: estim_mem_usage(2)                                          ! expected memory usage
+#endif
     end type
     
     ! interfaces
@@ -136,6 +148,9 @@ contains
     ! considered F quantities, such as rho, kappa_n, ...
     subroutine create_eq_1(grid,eq,setup_E,setup_F)                             ! flux version
         use num_vars, only: max_deriv, eq_style
+#if ldebug
+        use num_vars, only: print_mem_usage, rank
+#endif
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
@@ -146,6 +161,10 @@ contains
         ! local variables
         integer :: loc_n_r, n                                                   ! local and total nr. of normal points
         logical :: setup_E_loc, setup_F_loc                                     ! local versions of setup_E and setup_F
+#if ldebug
+        ! initialize memory usage
+        if (print_mem_usage) eq%estim_mem_usage = 0._dp
+#endif
         
         ! setup local setup_E and setup_F
         setup_E_loc = .true.
@@ -167,6 +186,12 @@ contains
             ! rot_t_E
             allocate(eq%rot_t_E(loc_n_r,0:max_deriv+1))
             
+#if ldebug
+            ! set estimated memory usage
+            if (print_mem_usage) eq%estim_mem_usage(1) = &
+                &eq%estim_mem_usage(1) + loc_n_r*(max_deriv+2)*3
+#endif
+            
             ! initialize  variables that  are  specificic  to which  equilibrium
             ! style is being used:
             !   1:  VMEC
@@ -178,12 +203,24 @@ contains
                     
                     ! flux_t_E
                     allocate(eq%flux_t_E(loc_n_r,0:max_deriv+2))                ! Need extra order because used in transformation of flux q.
+                    
+#if ldebug
+                    ! set estimated memory usage
+                    if (print_mem_usage) eq%estim_mem_usage(1) = &
+                        &eq%estim_mem_usage(1) + loc_n_r*(max_deriv+3)*2
+#endif
                 case (2)                                                        ! HELENA
                     ! flux_p_E
                     allocate(eq%flux_p_E(loc_n_r,0:max_deriv+1))
                     
                     ! flux_t_E
                     allocate(eq%flux_t_E(loc_n_r,0:max_deriv+1))
+                    
+#if ldebug
+                    ! set estimated memory usage
+                    if (print_mem_usage) eq%estim_mem_usage(1) = &
+                        &eq%estim_mem_usage(1) + loc_n_r*(max_deriv+2)*2
+#endif
             end select
         end if
         
@@ -205,10 +242,31 @@ contains
             
             ! rho
             allocate(eq%rho(grid%loc_n_r))
+            
+#if ldebug
+            ! set estimated memory usage
+            if (print_mem_usage) eq%estim_mem_usage(2) = &
+                &eq%estim_mem_usage(2) + loc_n_r*((max_deriv+2)*5+1)
+#endif
         end if
+        
+#if ldebug
+        ! increment n_alloc_eq_1s
+        n_alloc_eq_1s = n_alloc_eq_1s + 1
+        
+        ! print memory usage
+        if (print_mem_usage) call writo('[rank '//trim(i2str(rank))//&
+            &' - Expected memory usage of eq_1: '//&
+            &trim(r2strt(eq%estim_mem_usage(1)*0.008))//' kB for E and '//&
+            &trim(r2strt(eq%estim_mem_usage(2)*0.008))//' kB for E]',&
+            &alert=.true.)
+#endif
     end subroutine create_eq_1
     subroutine create_eq_2(grid,eq,setup_E,setup_F)                             ! metric version
         use num_vars, only: max_deriv, eq_style
+#if ldebug
+        use num_vars, only: print_mem_usage, rank
+#endif
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
@@ -222,6 +280,11 @@ contains
         
         ! set up local variables
         dims = [grid%n(1),grid%n(2),grid%loc_n_r]
+        
+#if ldebug
+        ! initialize memory usage
+        if (print_mem_usage) eq%estim_mem_usage = 0._dp
+#endif
         
         ! setup local setup_E and setup_F
         setup_E_loc = .true.
@@ -271,6 +334,13 @@ contains
             allocate(eq%det_T_FE(dims(1),dims(2),dims(3),&
                 &0:max_deriv,0:max_deriv,0:max_deriv))
             
+#if ldebug
+            ! set estimated memory usage
+            if (print_mem_usage) eq%estim_mem_usage(1) = &
+                &eq%estim_mem_usage(1) + product(dims)*&
+                &((max_deriv+1)**3*(4*6+2*9+4))
+#endif
+            
             ! initialize  variables that  are  specificic  to which  equilibrium
             ! style is being used:
             !   1:  VMEC
@@ -304,6 +374,14 @@ contains
                     ! lambda
                     allocate(eq%L_E(dims(1),dims(2),dims(3),&
                         &0:max_deriv+1,0:max_deriv+1,0:max_deriv+1))
+                    
+#if ldebug
+                    ! set estimated memory usage
+                    if (print_mem_usage) eq%estim_mem_usage(1) = &
+                        &eq%estim_mem_usage(1) + product(dims)*(&
+                        &(max_deriv+1)**3*(1*6+1*9+2) + &
+                        &(max_deriv+2)**3*(3))
+#endif
                 case (2)                                                        ! HELENA
                     ! do nothing
             end select
@@ -334,13 +412,50 @@ contains
             
             ! parallel current
             allocate(eq%sigma(dims(1),dims(2),dims(3)))
+            
+#if ldebug
+            ! set estimated memory usage
+            if (print_mem_usage) eq%estim_mem_usage(2) = &
+                &eq%estim_mem_usage(2) + product(dims)*(&
+                &(max_deriv+1)**3*(2*6+1) + &
+                &4)
+#endif
         end if
+        
+#if ldebug
+        ! increment n_alloc_eq_2s
+        n_alloc_eq_2s = n_alloc_eq_2s + 1
+        
+        ! print memory usage
+        if (print_mem_usage) call writo('[rank '//trim(i2str(rank))//&
+            &' - Expected memory usage of eq_2: '//&
+            &trim(r2strt(eq%estim_mem_usage(1)*0.008))//' kB for E and '//&
+            &trim(r2strt(eq%estim_mem_usage(2)*0.008))//' kB for E]',&
+            &alert=.true.)
+#endif
     end subroutine create_eq_2
     
     ! deallocates equilibrium quantities
     subroutine dealloc_eq_1(eq)                                                 ! flux version
+#if ldebug
+        use messages, only: get_mem_usage
+        use num_vars, only: rank, print_mem_usage
+#endif
+        
         ! input / output
         type(eq_1_type), intent(inout) :: eq                                    ! equilibrium to be deallocated
+        
+#if ldebug
+        ! local variables
+        integer :: mem_diff                                                     ! difference in memory
+        real(dp) :: estim_mem_usage                                             ! estimated memory usage
+        
+        ! memory usage before deallocation
+        if (print_mem_usage) then
+            mem_diff = get_mem_usage()
+            estim_mem_usage = sum(eq%estim_mem_usage)
+        end if
+#endif
         
         ! deallocate and nullify allocated pointers
         if (associated(eq%flux_p_E)) then
@@ -362,6 +477,21 @@ contains
         
         ! deallocate allocatable variables
         call dealloc_eq_1_final(eq)
+        
+#if ldebug
+        ! decrement n_alloc_eq_1s
+        n_alloc_eq_1s = n_alloc_eq_1s - 1
+        
+        ! memory usage difference after deallocation
+        if (print_mem_usage) then
+            mem_diff = mem_diff - get_mem_usage()
+            call writo('[Rank '//trim(i2str(rank))//' - liberated '//&
+                &trim(i2str(mem_diff))//'kB deallocating eq_1 ('//&
+                &trim(i2str(nint(100*mem_diff/&
+                &(estim_mem_usage*weight_dp))))//&
+                &'% of estimated)]',alert=.true.)
+        end if
+#endif
     contains
         ! Note: intent(out) automatically deallocates the variable
         subroutine dealloc_eq_1_final(eq)
@@ -370,8 +500,24 @@ contains
         end subroutine dealloc_eq_1_final
     end subroutine dealloc_eq_1
     subroutine dealloc_eq_2(eq)                                                 ! metric version
+#if ldebug
+        use messages, only: get_mem_usage
+        use num_vars, only: rank, print_mem_usage
+#endif
         ! input / output
         type(eq_2_type), intent(inout) :: eq                                    ! equilibrium to be deallocated
+        
+#if ldebug
+        ! local variables
+        integer :: mem_diff                                                     ! difference in memory
+        real(dp) :: estim_mem_usage                                             ! estimated memory usage
+        
+        ! memory usage before deallocation
+        if (print_mem_usage) then
+            mem_diff = get_mem_usage()
+            estim_mem_usage = sum(eq%estim_mem_usage)
+        end if
+#endif
         
         ! deallocate and nullify allocated pointers
         if (associated(eq%g_FD)) then
@@ -389,6 +535,21 @@ contains
         
         ! deallocate allocatable variables
         call dealloc_eq_2_final(eq)
+        
+#if ldebug
+        ! decrement n_alloc_eq_2s
+        n_alloc_eq_2s = n_alloc_eq_2s - 1
+        
+        ! memory usage difference after deallocation
+        if (print_mem_usage) then
+            mem_diff = mem_diff - get_mem_usage()
+            call writo('[Rank '//trim(i2str(rank))//' - liberated '//&
+                &trim(i2str(mem_diff))//'kB deallocating eq_2 ('//&
+                &trim(i2str(nint(100*mem_diff/&
+                &(estim_mem_usage*weight_dp))))//&
+                &'% of estimated)]',alert=.true.)
+        end if
+#endif
     contains
         ! Note: intent(out) automatically deallocates the variable
         subroutine dealloc_eq_2_final(eq)

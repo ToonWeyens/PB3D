@@ -91,7 +91,9 @@ contains
         
         ! setup equilibrium grid
         call writo('Determine the equilibrium grid')
+        call lvl_ud(1)
         ierr = setup_grid_eq(grid_eq,eq_limits,only_half_grid=only_half_grid)
+        call lvl_ud(-1)
         CHCKERR('')
         
         ! Calculate the flux equilibrium quantities
@@ -143,6 +145,9 @@ contains
                 ierr = print_output_eq(grid_eq,eq_2,'eq_2',rich_lvl=rich_lvl)
                 CHCKERR('')
                 
+                ! clean up
+                call dealloc_eq(eq_2)
+                
                 ! the equilibrium grid is field-aligned already
                 grid_eq_B => grid_eq
             case (2)                                                            ! HELENA
@@ -158,6 +163,9 @@ contains
                     ! write metric equilibrium variables to output
                     ierr = print_output_eq(grid_eq,eq_2,'eq_2')
                     CHCKERR('')
+                    
+                    ! clean up
+                    call dealloc_eq(eq_2)
                 end if
                 
                 ! set up field-aligned equilibrium grid
@@ -189,7 +197,6 @@ contains
         call dealloc_in()
         call dealloc_grid(grid_eq)
         call dealloc_eq(eq_1)
-        call dealloc_eq(eq_2)
         if (eq_style.eq.2) then
             call dealloc_grid(grid_eq_B)
             deallocate(grid_eq_B)

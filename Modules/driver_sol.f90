@@ -136,16 +136,18 @@ contains
             CHCKERR('')
         end if
 #if ldebug
-        ! need field-aligned perturbation grid as well
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                grid_X_B => grid_X
-            case (2)                                                            ! HELENA
-                allocate(grid_X_B)
-                ierr = reconstruct_PB3D_grid(grid_X_B,'X_B',rich_lvl=rich_lvl,&
-                    &grid_limits=sol_limits)
-                CHCKERR('')
-        end select
+        ! need field-aligned perturbation grid as well for debugging
+        if (debug_X_norm) then
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    grid_X_B => grid_X
+                case (2)                                                        ! HELENA
+                    allocate(grid_X_B)
+                    ierr = reconstruct_PB3D_grid(grid_X_B,'X_B',rich_lvl=rich_lvl,&
+                        &grid_limits=sol_limits)
+                    CHCKERR('')
+            end select
+        end if
 #endif
         call lvl_ud(-1)
         call writo('PB3D output reconstructed')
@@ -255,7 +257,7 @@ contains
         call dealloc_eq(eq_2)
         call dealloc_X(X)
         call dealloc_sol(sol)
-        call dealloc_sol(sol_prev)
+        if (use_guess .and. rich_lvl.gt.1) call dealloc_sol(sol_prev)
         call lvl_ud(-1)
         
         ! synchronize MPI

@@ -17,6 +17,19 @@ module output_ops
     public print_GP_2D, print_GP_3D, draw_GP, draw_GP_animated, merge_GP, &
         &plot_HDF5, plot_diff_HDF5
     
+    ! global variables
+    character(len=9) :: line_clrs(9) = ["'#000090'","'#000fff'","'#0090ff'",&
+        &"'#0fffee'", "'#90ff70'", "'#ffee00'", "'#ff7000'", "'#ee0000'", &
+        &"'#7f0000'"]                                                           ! color specifications for plotting
+    !character(len=max_str_ln) :: line_style = 'lt 1 lw 1 pt 7 pi -1 ps 0.5; &
+        !&set pointintervalbox 0.75;'                                            ! with little space in line connecting points
+    character(len=max_str_ln) :: line_style = 'lt 1 lw 1 pt 7 ps 0.5;'          ! without little space in line connecting points
+#if ldebug
+    character(len=0) :: err_output_str = ''                                     ! string with error output
+#else
+    character(len=14) :: err_output_str = ' 2> /dev/null'                       ! string with error output (/dev/null)
+#endif
+    
     ! interfaces
     interface print_GP_2D
         module procedure print_GP_2D_ind, print_GP_2D_arr
@@ -33,19 +46,6 @@ module output_ops
     interface draw_GP_animated
         module procedure draw_GP_animated_ind, draw_GP_animated_arr
     end interface
-    
-    ! global variables
-    character(len=9) :: line_clrs(9) = ["'#000090'","'#000fff'","'#0090ff'",&
-        &"'#0fffee'", "'#90ff70'", "'#ffee00'", "'#ff7000'", "'#ee0000'", &
-        &"'#7f0000'"]                                                           ! color specifications for plotting
-    !character(len=max_str_ln) :: line_style = 'lt 1 lw 1 pt 7 pi -1 ps 0.5; &
-        !&set pointintervalbox 0.75;'                                            ! with little space in line connecting points
-    character(len=max_str_ln) :: line_style = 'lt 1 lw 1 pt 7 ps 0.5;'          ! without little space in line connecting points
-#if ldebug
-    character(len=0) :: err_output_str = ''                                     ! string with error output
-#else
-    character(len=14) :: err_output_str = ' 2> /dev/null'                       ! string with error output (/dev/null)
-#endif
     
 contains
     ! print 2D output on a file
@@ -102,8 +102,8 @@ contains
         nplt = size(y,2)
         if (present(x)) then
             if (size(x,1).ne.size(y,1) .or. size(x,2).ne.size(y,2)) then
-                call writo('WARNING: In print_GP_2D, the size of x and y has &
-                    &to be the same... Skipping plot',persistent=.true.)
+                call writo('In print_GP_2D, the size of x and y has to be the &
+                    &same... Skipping plot',persistent=.true.,warning=.true.)
             end if
         end if
         
@@ -229,16 +229,16 @@ contains
         if (present(x)) then
             if (size(x,1).ne.size(z,1) .or. size(x,2).ne.size(z,2) .or. &
                 &size(x,3).ne.size(z,3)) then
-                call writo('WARNING: In print_GP, the size of x and z has to &
-                    &be the same... Skipping plot',persistent=.true.)
+                call writo('In print_GP, the size of x and z has to be the &
+                    &same... Skipping plot',persistent=.true.,warning=.true.)
                 return
             end if
         end if
         if (present(y)) then
             if (size(y,1).ne.size(z,1) .or. size(y,2).ne.size(z,2) .or. &
                 &size(y,3).ne.size(z,3)) then
-                call writo('WARNING: In print_GP, the size of y and z has to &
-                    &be the same... Skipping plot',persistent=.true.)
+                call writo('In print_GP, the size of y and z has to be the &
+                    &same... Skipping plot',persistent=.true.,warning=.true.)
                 return
             end if
         end if
@@ -366,8 +366,9 @@ contains
         ! tests
         if (present(draw_ops)) then
             if (nfl.ne.size(draw_ops)) then
-                call writo('WARNING: in draw_GP, one value for draw_ops has to &
-                    &be provided for each file to plot',persistent=.true.)
+                call writo('in draw_GP, one value for draw_ops has to be &
+                    &provided for each file to plot',persistent=.true.,&
+                    &warning=.true.)
                 return
             end if
         end if
@@ -383,8 +384,8 @@ contains
         ! open script file
         open(unit=nextunit(cmd_i),file=trim(script_name),iostat=istat)
         if (istat.ne.0) then
-            call writo('WARNING: Could not open file for gnuplot command',&
-                &persistent=.true.)
+            call writo('Could not open file for gnuplot command',&
+                &persistent=.true.,warning=.true.)
             return
         end if
         
@@ -604,9 +605,9 @@ contains
         ! tests
         if (present(draw_ops)) then
             if (nfl.ne.size(draw_ops)) then
-                call writo('WARNING: in draw_GP_animated, one value for &
-                    &draw_ops has to be provided for each file to plot',&
-                    &persistent=.true.)
+                call writo('in draw_GP_animated, one value for draw_ops has to &
+                    &be provided for each file to plot',persistent=.true.,&
+                    &warning=.true.)
                 return
             end if
         end if
@@ -624,8 +625,8 @@ contains
         ! open script file
         open(unit=nextunit(cmd_i),file=trim(script_name),iostat=istat)
         if (istat.ne.0) then
-            call writo('WARNING: Could not open file for gnuplot command',&
-                &persistent=.true.)
+            call writo('Could not open file for gnuplot command',&
+                &persistent=.true.,warning=.true.)
             return
         end if
         
@@ -645,8 +646,8 @@ contains
                     if (size(ranges,1).eq.2 .and. size(ranges,2).eq.2) then
                         ranges_loc = ranges
                     else
-                        call writo('WARNING: invalid ranges given to &
-                            &draw_GP_animated',persistent=.true.)
+                        call writo('invalid ranges given to draw_GP_animated',&
+                            &persistent=.true.,warning=.true.)
                     end if
                 else
                     ! initialize ranges
@@ -670,8 +671,8 @@ contains
                     if (size(ranges,1).eq.3 .and. size(ranges,2).eq.2) then
                         ranges_loc = ranges
                     else
-                        call writo('WARNING: invalid ranges given to &
-                            &draw_GP_animated',persistent=.true.)
+                        call writo('invalid ranges given to draw_GP_animated',&
+                            &persistent=.true.,warning=.true.)
                     end if
                 else
                     ranges_loc(:,1) = 1.E14_dp                                  ! minimum value
@@ -916,7 +917,8 @@ contains
         ! concatenate using shell
         call use_execute_command_line(trim(shell_cmd),exitstat=istat)
         if (istat.ne.0) then
-            call writo('WARNING: merge_GP failed to merge',persistent=.true.)
+            call writo('merge_GP failed to merge',persistent=.true.,&
+                &warning=.true.)
             return
         end if
         
@@ -938,8 +940,8 @@ contains
             ! delete using shell
             call use_execute_command_line(trim(shell_cmd),exitstat=istat)
             if (istat.ne.0) then
-                call writo('WARNING: merge_GP failed to delete',&
-                &persistent=.true.)
+                call writo('merge_GP failed to delete',persistent=.true.,&
+                    &warning=.true.)
                 return
             end if
         end if
@@ -981,7 +983,8 @@ contains
         use HDF5_ops, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
             &print_HDF5_geom, print_HDF5_3D_data_item, print_HDF5_att, &
             &print_HDF5_grid, close_HDF5_file
-        use HDF5_vars, only: XML_str_type, HDF5_file_type
+        use HDF5_vars, only: dealloc_XML_str, &
+            &XML_str_type, HDF5_file_type
         use num_vars, only: n_procs
         use MPI_utilities, only: get_ser_var
         
@@ -1048,15 +1051,15 @@ contains
         ! tests
         if (tot_dim_loc(col_id_loc).ne.n_plot) then
             istat = 1
-            call writo('WARNING: In plot_HDF5, all the processes need to have &
-                &the full range in the dimension given by col_id',&
-                &persistent=.true.)
+            call writo('In plot_HDF5, all the processes need to have the full &
+                &range in the dimension given by col_id',persistent=.true.,&
+                &warning=.true.)
             CHCKSTT
         end if
         if (n_plot.eq.1 .and. col_loc.ne.1) then
             istat = 1
-            call writo('WARNING: In plot_HDF5, if single plot, the collection &
-                &type needs to be one',persistent=.true.)
+            call writo('In plot_HDF5, if single plot, the collection type &
+                &needs to be one',persistent=.true.,warning=.true.)
             CHCKSTT
         end if
         
@@ -1132,15 +1135,15 @@ contains
                     att_names = var_names
                 else if (size(var_names).gt.n_plot) then                        ! too many variable names provided
                     att_names = var_names(1:n_plot)
-                    call writo('WARNING: Too many variable names provided',&
-                &persistent=.true.)
+                    call writo('Too many variable names provided',&
+                        &persistent=.true.,warning=.true.)
                 else                                                            ! not enough variable names provided
                     att_names(1:size(var_names)) = var_names
                     do id = size(var_names)+1,n_plot
                         att_names(id) = 'unnamed variable '//trim(i2str(id))
                     end do
-                    call writo('WARNING: Not enough variable names provided',&
-                &persistent=.true.)
+                    call writo('Not enough variable names provided',&
+                        &persistent=.true.,warning=.true.)
                 end if
                 grd_names = 'default_grid_name'
             else                                                                ! multiple plots: grid name is important
@@ -1148,22 +1151,22 @@ contains
                     grd_names = var_names
                 else if (size(var_names).gt.n_plot) then                        ! too many variable names provided
                     grd_names = var_names(1:n_plot)
-                    call writo('WARNING: Too many variable names provided',&
-                &persistent=.true.)
+                    call writo('Too many variable names provided',&
+                        &persistent=.true.,warning=.true.)
                 else                                                            ! not enough variable names provided
                     grd_names(1:size(var_names)) = var_names
                     do id = size(var_names)+1,n_plot
                         grd_names(id) = 'unnamed variable '//trim(i2str(id))
                     end do
-                    call writo('WARNING: Not enough variable names provided',&
-                &persistent=.true.)
+                    call writo('Not enough variable names provided',&
+                        &persistent=.true.,warning=.true.)
                 end if
                 att_names = 'default_att_name'
             end if
         else                                                                    ! collections: attribute name is important
             att_names = var_names(1)
-            if (size(var_names).gt.1) call writo('WARNING: For collections, &
-                &only the first variable name is used',persistent=.true.)
+            if (size(var_names).gt.1) call writo('For collections, only the &
+                &first variable name is used',persistent=.true.,warning=.true.)
             grd_names = 'default_grid_name'
         end if
         
@@ -1230,9 +1233,8 @@ contains
                     CHCKSTT
                 case default                                                    ! no symmetry
                     istat = 1
-                    call writo('WARNING: symmetry type '//&
-                        &trim(i2str(sym_type))//' not recognized',&
-                        &persistent=.true.)
+                    call writo('symmetry type '//trim(i2str(sym_type))//&
+                        &' not recognized',persistent=.true.,warning=.true.)
                     CHCKSTT
             end select
             
@@ -1293,6 +1295,12 @@ contains
         ! clean up
         nullify(var_3D)
         nullify(X_3D,Y_3D,Z_3D)
+        call dealloc_XML_str(col_grid)
+        call dealloc_XML_str(grids)
+        call dealloc_XML_str(top)
+        call dealloc_XML_str(XYZ)
+        call dealloc_XML_str(geom)
+        call dealloc_XML_str(att(1))
     contains
         ! assigns the 3D subarray pointer variables
         subroutine assign_pointers(id)
@@ -1503,8 +1511,8 @@ contains
         ! tests
         if (size(A,1).ne.size(B,1) .or. size(A,2).ne.size(B,2) .or. &
             &size(A,3).ne.size(B,3)) then
-            call writo('WARNING: in plot_diff_HDF5, A and B need to have the &
-                &correct size',persistent=.true.)
+            call writo('in plot_diff_HDF5, A and B need to have the correct &
+                &size',persistent=.true.,warning=.true.)
             return
         end if
         
@@ -1641,13 +1649,13 @@ contains
             write(shell_commands_i,'(A)') trim(command)
             close(shell_commands_i)
         else
-            call writo('WARNING: Failed to write to shell commands log file "'&
-                &//trim(full_name)//'"')
+            call writo('Failed to write to shell commands log file "'&
+                &//trim(full_name)//'"',warning=.true.)
         end if
         
         ! execute command line
         if (no_execute_command_line) then
-            call writo('WARNING: Not executing command')
+            call writo('Not executing command',warning=.true.)
             call lvl_ud(1)
             call writo(command)
             call lvl_ud(-1)

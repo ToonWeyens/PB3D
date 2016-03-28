@@ -1100,7 +1100,7 @@ contains
     integer function print_output_sol(grid,sol,data_name,rich_lvl) result(ierr)
         use num_vars, only: rank, PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type, &
+        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
         use grid_utilities, only: trim_grid
         use grid_vars, only: dealloc_grid
@@ -1207,6 +1207,7 @@ contains
             
             ! clean up
             call dealloc_grid(grid_trim)
+            call dealloc_var_1D(sol_1D)
             nullify(sol_1D_loc)
             
             ! user output

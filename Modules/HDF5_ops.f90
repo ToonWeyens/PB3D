@@ -52,7 +52,7 @@ contains
         character(*), parameter :: rout_name = 'open_HDF5_file'
         
         ! input / output
-        type(HDF5_file_type) :: file_info                                       ! info about HDF5 file
+        type(HDF5_file_type), intent(inout) :: file_info                        ! info about HDF5 file
         character(len=*), intent(in) :: file_name                               ! name of HDF5 file
         character(len=*), intent(in), optional  :: description                  ! description of file
         logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
@@ -131,7 +131,7 @@ contains
         character(*), parameter :: rout_name = 'close_HDF5_file'
         
         ! input / output
-        type(HDF5_file_type) :: file_info                                       ! info about HDF5 file
+        type(HDF5_file_type), intent(inout) :: file_info                        ! info about HDF5 file
         logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
@@ -183,8 +183,8 @@ contains
         use num_vars, only: rank
         
         ! input / output
-        type(HDF5_file_type) :: file_info                                       ! info about HDF5 file
-        type(XML_str_type) :: XDMF_item                                         ! XDMF item to add
+        type(HDF5_file_type), intent(inout) :: file_info                        ! info about HDF5 file
+        type(XML_str_type), intent(inout) :: XDMF_item                          ! XDMF item to add
         logical, intent(in), optional :: reset                                  ! if .true., XDMF_item is reset
         logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
@@ -219,70 +219,6 @@ contains
         end if
     end subroutine add_HDF5_item
     
-    ! resets an HDF5 XDMF item
-    ! Note: individual version cannot make use of array version because then the
-    ! deallocation does not work properly>
-    ! [MPI] Only group master
-    subroutine reset_HDF5_item_arr(XDMF_items,ind_plot)                         ! array version
-        use num_vars, only: rank
-        
-        ! input / output
-        type(XML_str_type) :: XDMF_items(:)                                     ! XDMF items to reset
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
-        
-        ! local variables
-        integer :: id                                                           ! counter
-        integer :: n_items                                                      ! nr. of items
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
-        
-        ! set up local ind_plot
-        if (present(ind_plot)) ind_plot_loc = ind_plot
-        
-        ! set n_items
-        n_items = size(XDMF_items)
-        
-        ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
-            do id = 1,n_items
-                if (.not.allocated(XDMF_items(id)%xml_str)) then
-                    call writo('WARNING: Could not reset HDF5 XDMF item "'&
-                        &//trim(XDMF_items(id)%name)//'"')
-                else
-                    if (debug_HDF5_ops) write(*,*) 'reset "'//&
-                        &trim(XDMF_items(id)%name)//'"'
-                    XDMF_items(id)%name = ''
-                    deallocate(XDMF_items(id)%xml_str)
-                end if
-            end do
-        end if
-    end subroutine reset_HDF5_item_arr
-    subroutine reset_HDF5_item_ind(XDMF_item,ind_plot)                          ! individual version
-        use num_vars, only: rank
-        
-        ! input / output
-        type(XML_str_type) :: XDMF_item                                         ! XDMF item to reset
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
-        
-        ! local variables
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
-        
-        ! set up local ind_plot
-        if (present(ind_plot)) ind_plot_loc = ind_plot
-        
-        ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
-            if (.not.allocated(XDMF_item%xml_str)) then
-                call writo('WARNING: Could not reset HDF5 XDMF item "'&
-                    &//trim(XDMF_item%name)//'"')
-            else
-                if (debug_HDF5_ops) write(*,*) 'reset "'//trim(XDMF_item%name)&
-                    &//'"'
-                XDMF_item%name = ''
-                deallocate(XDMF_item%xml_str)
-            end if
-        end if
-    end subroutine reset_HDF5_item_ind
-    
     ! prints an HDF5 data item
     ! If this is a parallel data item, the group dimension and offset have to be
     ! specified as well.
@@ -294,8 +230,8 @@ contains
         character(*), parameter :: rout_name = 'print_HDF5_3D_data_item'
         
         ! input / output
-        type(XML_str_type) :: dataitem_id                                       ! ID of data item
-        type(HDF5_file_type) :: file_info                                       ! info about HDF5 file
+        type(XML_str_type), intent(inout) :: dataitem_id                        ! ID of data item
+        type(HDF5_file_type), intent(in) :: file_info                           ! info about HDF5 file
         character(len=*), intent(in) :: var_name                                ! name of variable
         real(dp), intent(in) :: var(:,:,:)                                      ! variable to write
         integer, intent(in) :: tot_dim(3)                                       ! total dimensions of variable
@@ -477,8 +413,8 @@ contains
         use num_vars, only: rank
         
         ! input / output
-        type(XML_str_type) :: att_id                                            ! ID of attribute
-        type(XML_str_type) :: att_dataitem                                      ! dataitem of attribute
+        type(XML_str_type), intent(inout) :: att_id                             ! ID of attribute
+        type(XML_str_type), intent(inout) :: att_dataitem                       ! dataitem of attribute
         character(len=*), intent(in) :: att_name                                ! name of attribute
         integer, intent(in) :: att_center                                       ! center of attribute
         logical, intent(in), optional :: reset                                  ! if .true., data items are reset
@@ -531,7 +467,7 @@ contains
         use num_vars, only: rank
         
         ! input / output
-        type(XML_str_type) ::  top_id                                           ! ID of topology
+        type(XML_str_type), intent(inout) ::  top_id                            ! ID of topology
         integer, intent(in) :: top_type                                         ! type
         integer, intent(in) :: top_n_elem(:)                                    ! nr. of elements
         logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
@@ -575,9 +511,9 @@ contains
         use num_vars, only: rank
         
         ! input / output
-        type(XML_str_type) ::  geom_id                                          ! ID of geometry
+        type(XML_str_type), intent(inout) ::  geom_id                           ! ID of geometry
         integer, intent(in) :: geom_type                                        ! type of geometry
-        type(XML_str_type) :: geom_dataitems(:)                                 ! data items of geometry
+        type(XML_str_type), intent(inout) :: geom_dataitems(:)                  ! data items of geometry
         logical, intent(in), optional :: reset                                  ! if .true., data items are reset
         logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
@@ -646,7 +582,7 @@ contains
         character(*), parameter :: rout_name = 'print_HDF5_grid'
         
         ! input / output
-        type(XML_str_type) :: grid_id                                           ! ID of grid
+        type(XML_str_type), intent(inout) :: grid_id                            ! ID of grid
         character(len=*), intent(in) :: grid_name                               ! name
         integer, intent(in) :: grid_type                                        ! type
         real(dp), intent(in), optional :: grid_time                             ! time of grid
@@ -1230,7 +1166,7 @@ contains
         character(*), parameter :: rout_name = 'read_HDF5_arrs'
         
         ! input / output
-        type(var_1D_type), intent(inout), allocatable :: vars(:)                ! variables to write
+        type(var_1D_type), intent(inout), allocatable :: vars(:)                ! variables to read
         character(len=*), intent(in) :: PB3D_name                               ! name of PB3D file
         character(len=*), intent(in) :: head_name                               ! head name of variables
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
@@ -1508,6 +1444,70 @@ contains
         call H5Close_f(ierr)
         CHCKERR('Failed to close FORTRAN HDF5 interface')
     end function probe_HDF5_group
+    
+    ! resets an HDF5 XDMF item
+    ! Note: individual version cannot make use of array version because then the
+    ! deallocation does not work properly.
+    ! [MPI] Only group master
+    subroutine reset_HDF5_item_arr(XDMF_items,ind_plot)                         ! array version
+        use num_vars, only: rank
+        
+        ! input / output
+        type(XML_str_type), intent(inout) :: XDMF_items(:)                      ! XDMF items to reset
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        integer :: n_items                                                      ! nr. of items
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! set n_items
+        n_items = size(XDMF_items)
+        
+        ! only group master if parallel plot or current rank if individual plot
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
+            do id = 1,n_items
+                if (.not.allocated(XDMF_items(id)%xml_str)) then
+                    call writo('Could not reset HDF5 XDMF item "'&
+                        &//trim(XDMF_items(id)%name)//'"',warning=.true.)
+                else
+                    if (debug_HDF5_ops) write(*,*) 'reset "'//&
+                        &trim(XDMF_items(id)%name)//'"'
+                    XDMF_items(id)%name = ''
+                    deallocate(XDMF_items(id)%xml_str)
+                end if
+            end do
+        end if
+    end subroutine reset_HDF5_item_arr
+    subroutine reset_HDF5_item_ind(XDMF_item,ind_plot)                          ! individual version
+        use num_vars, only: rank
+        
+        ! input / output
+        type(XML_str_type), intent(inout) :: XDMF_item                          ! XDMF item to reset
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        
+        ! local variables
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! only group master if parallel plot or current rank if individual plot
+        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
+            if (.not.allocated(XDMF_item%xml_str)) then
+                call writo('Could not reset HDF5 XDMF item "'&
+                    &//trim(XDMF_item%name)//'"',warning=.true.)
+            else
+                if (debug_HDF5_ops) write(*,*) 'reset "'//trim(XDMF_item%name)&
+                    &//'"'
+                XDMF_item%name = ''
+                deallocate(XDMF_item%xml_str)
+            end if
+        end if
+    end subroutine reset_HDF5_item_ind
 
 #if ldebug
     integer function list_all_vars_in_group(group_id) result(ierr)

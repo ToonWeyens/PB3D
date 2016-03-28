@@ -44,7 +44,7 @@ contains
         integer :: PB3D_lvl_rich                                                ! Richardson level to post-process (for POST)
         integer, parameter :: max_size_tol_SLEPC = 100                          ! maximum size of tol_SLEPC
         real(dp) :: tol_SLEPC(max_size_tol_SLEPC)                               ! tol_SLEPC
-        real(dp), parameter :: min_tol = 1.E-10_dp                              ! minimum general tolerance
+        real(dp), parameter :: min_tol = 1.E-12_dp                              ! minimum general tolerance
         real(dp), parameter :: max_tol = 1.E-3_dp                               ! maximum general tolerance
         
         ! input options
@@ -299,7 +299,8 @@ contains
             end if
             if (eq_style.eq.2 .and. .not.use_normalization) then
                 use_normalization = .true.
-                call writo('WARNING: normalization is always used for HELENA')
+                call writo('normalization is always used for HELENA',&
+                    &warning=.true.)
             end if
             if (matrix_SLEPC_style.lt.1 .or. matrix_SLEPC_style.gt.2) then
                 ierr = 1
@@ -320,13 +321,14 @@ contains
             
             if (n_sol_requested.lt.1) then
                 n_sol_requested = 1
-                call writo('WARNING: n_sol_requested has been increased to '&
-                    &//trim(i2str(n_sol_requested)))
+                call writo('n_sol_requested has been increased to '&
+                    &//trim(i2str(n_sol_requested)),warning=.true.)
             end if
             if (rich_restart_lvl.lt.1) then
-                call writo('WARNING: rich_restart_lvl was '//&
+                call writo('rich_restart_lvl was '//&
                     &trim(i2str(rich_restart_lvl))//&
-                    &' but cannot be lower than 1, so it was reset to 1')
+                    &' but cannot be lower than 1, so it was reset to 1',&
+                    &warning=.true.)
                 rich_restart_lvl = 1
             end if
             if (rich_restart_lvl.gt.max_it_rich) then
@@ -352,13 +354,13 @@ contains
         subroutine adapt_plot
             if (n_theta_plot.lt.1) then
                 n_theta_plot = 1
-                call writo('WARNING: n_theta_plot cannot be negative and &
-                    &is set to '//trim(i2str(n_theta_plot)))
+                call writo('n_theta_plot cannot be negative and is set to '//&
+                    &trim(i2str(n_theta_plot)),warning=.true.)
             end if
             if (n_zeta_plot.lt.1) then
                 n_zeta_plot = 1
-                call writo('WARNING: n_zeta_plot cannot be negative and &
-                    &is set to '//trim(i2str(n_zeta_plot)))
+                call writo('n_zeta_plot cannot be negative and is set to '//&
+                    &trim(i2str(n_zeta_plot)),warning=.true.)
             end if
         end subroutine adapt_plot
         
@@ -437,8 +439,8 @@ contains
         subroutine adapt_min_n_par_X
             if (min_n_par_X.lt.req_min_n_par_X)  then
                 min_n_par_X = req_min_n_par_X
-                call writo('WARNING: min_n_par_X has been increased to '//&
-                    &trim(i2str(min_n_par_X)))
+                call writo('min_n_par_X has been increased to '//&
+                    &trim(i2str(min_n_par_X)),warning=.true.)
             end if
         end subroutine adapt_min_n_par_X
         
@@ -462,15 +464,15 @@ contains
             ! check min_r_sol
             if (min_r_sol.lt.one/(n_r_eq-1)) then
                 min_r_sol = one/(n_r_eq-1)
-                call writo('WARNING: min_r_sol has been increased to '//&
-                    &trim(r2strt(min_r_sol)))
+                call writo('min_r_sol has been increased to '//&
+                    &trim(r2strt(min_r_sol)),warning=.true.)
             end if
             
             ! check if max_r_sol is not greater than 1
             if (max_r_sol.gt.1.0) then
                 max_r_sol = 1.
-                call writo('WARNING: max_r_sol has been decreased to '//&
-                    &trim(r2strt(max_r_sol)))
+                call writo('max_r_sol has been decreased to '//&
+                    &trim(r2strt(max_r_sol)),warning=.true.)
             end if
             
             ! check if min_r_sol < max_r_sol  with at least one equilbrium point
@@ -485,8 +487,8 @@ contains
             ! check n_r_sol
             if (n_r_sol.lt.6*norm_disc_prec_X+2) then
                 n_r_sol = 6*norm_disc_prec_X+2
-                call writo('WARNING: n_r_sol has been increased to '//&
-                    &trim(i2str(n_r_sol)))
+                call writo('n_r_sol has been increased to '//&
+                    &trim(i2str(n_r_sol)),warning=.true.)
             end if
         end function adapt_sol_grid
         
@@ -495,7 +497,7 @@ contains
         subroutine adapt_rich
             if (max_it_rich.lt.1) then
                 max_it_rich = 1
-                call writo('WARNING: max_it_rich has been increased to 1')
+                call writo('max_it_rich has been increased to 1',warning=.true.)
             end if
         end subroutine adapt_rich
         
@@ -504,7 +506,7 @@ contains
         subroutine adapt_inv
             if (max_it_inv.lt.1) then
                 max_it_inv = 1
-                call writo('WARNING: max_it_inv has been increased to 1')
+                call writo('max_it_inv has been increased to 1',warning=.true.)
             end if
         end subroutine adapt_inv
         
@@ -514,12 +516,12 @@ contains
         subroutine adapt_NR
             if (max_it_NR.lt.1) then
                 max_it_NR = 2
-                call writo('WARNING: max_it_NR has been increased to 2')
+                call writo('max_it_NR has been increased to 2',warning=.true.)
             end if
             if (relax_fac_NR.lt.0 .or. relax_fac_NR.gt.1) then
                 relax_fac_NR = 0.5
-                call writo('WARNING: reset relax_fac_NR to '//&
-                    &trim(r2strt(relax_fac_NR))//' as it should be 0..1')
+                call writo('reset relax_fac_NR to '//trim(r2strt(relax_fac_NR))&
+                    &//' as it should be 0..1',warning=.true.)
             end if
         end subroutine adapt_NR
         
@@ -537,35 +539,35 @@ contains
             
             ! check tol_norm
             if (tol_norm.lt.0._dp) then
-                call writo('WARNING: tol_norm has been increased to 0')
+                call writo('tol_norm has been increased to 0',warning=.true.)
                 tol_norm = 0._dp
             end if
             if (tol_norm.gt.1._dp) then
-                call writo('WARNING: tol_norm has been decreased to 1')
+                call writo('tol_norm has been decreased to 1',warning=.true.)
                 tol_norm = 1._dp
             end if
             
             ! check tol_rich
             if (tol_rich.lt.min_tol) then
-                call writo('WARNING: tol_rich has been increased to '//&
-                    &trim(r2str(min_tol)))
+                call writo('tol_rich has been increased to '//&
+                    &trim(r2str(min_tol)),warning=.true.)
                 tol_rich = min_tol
             end if
             if (tol_rich.gt.max_tol) then
-                call writo('WARNING: tol_rich has been decreased to '//&
-                    &trim(r2str(max_tol)))
+                call writo('tol_rich has been decreased to '//&
+                    &trim(r2str(max_tol)),warning=.true.)
                 tol_rich = max_tol
             end if
             
             ! check tol_NR
             if (tol_NR.lt.min_tol) then
-                call writo('WARNING: tol_NR has been increased to '//&
-                    &trim(r2str(min_tol)))
+                call writo('tol_NR has been increased to '//&
+                    &trim(r2str(min_tol)),warning=.true.)
                 tol_NR = min_tol
             end if
             if (tol_NR.gt.max_tol) then
-                call writo('WARNING: tol_NR has been decreased to '//&
-                    &trim(r2str(max_tol)))
+                call writo('tol_NR has been decreased to '//&
+                    &trim(r2str(max_tol)),warning=.true.)
                 tol_NR = max_tol
             end if
             
@@ -577,13 +579,14 @@ contains
                 if (tol_SLEPC(id).lt.huge(1._dp)) then                          ! was overwritten by user
                     max_id = id
                     if (tol_SLEPC(id).lt.min_tol) then
-                        call writo('WARNING: tol_SLEPC('//trim(i2str(id))//&
-                            &') has been increased to '//trim(r2str(min_tol)))
+                        call writo('tol_SLEPC('//trim(i2str(id))//&
+                            &') has been increased to '//trim(r2str(min_tol)),&
+                            &warning=.true.)
                         tol_SLEPC = min_tol
                     end if
                     if (tol_SLEPC(id).gt.max_tol) then
-                        call writo('WARNING: tol_SLEPC has been decreased to '&
-                            &//trim(r2str(max_tol)))
+                        call writo('tol_SLEPC has been decreased to '&
+                            &//trim(r2str(max_tol)),warning=.true.)
                         tol_SLEPC = max_tol
                     end if
                 end if
@@ -591,15 +594,15 @@ contains
             ! set local variable
             if (max_id.gt.0) then                                               ! was overwritten by user
                 if (max_id.gt.max_it_rich) then                                 ! too many values given
-                    call writo('WARNING: '//trim(i2str(max_id-max_it_rich))//&
-                        &' last values discarded for tol_SLEPC')
+                    call writo(trim(i2str(max_id-max_it_rich))//&
+                        &' last values discarded for tol_SLEPC',warning=.true.)
                     tol_SLEPC_loc = tol_SLEPC(1:max_it_rich)
                 else if (max_id.eq.max_it_rich) then                            ! exactly the right amount of values given
                     tol_SLEPC_loc = tol_SLEPC(1:max_it_rich)
                 else                                                            ! not enough values given
-                    call writo('WARNING: '//trim(i2str(max_it_rich-max_id))//&
+                    call writo(trim(i2str(max_it_rich-max_id))//&
                         &' last values of tol_SLEPC set to '//&
-                        &trim(r2str(tol_SLEPC_def)))
+                        &trim(r2str(tol_SLEPC_def)),warning=.true.)
                     tol_SLEPC_loc(1:max_id) = tol_SLEPC(1:max_id)
                     tol_SLEPC(max_id+1:max_it_rich) = tol_SLEPC_def
                 end if
@@ -696,7 +699,7 @@ contains
             &n_mod_X
         use sol_vars, only: alpha
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type, &
+        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
         use HELENA_vars, only: chi_H, flux_p_H, R_H, Z_H, nchi, ias, qs_H, &
             &pres_H, RBphi_H
@@ -1061,10 +1064,8 @@ contains
         ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,trim(data_name))
         CHCKERR('')
         
-        ! deallocate
-        deallocate(in_1D)
-        
         ! clean up
+        call dealloc_var_1D(in_1D)
         nullify(in_1D_loc)
         
         ! user output

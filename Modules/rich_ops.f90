@@ -26,7 +26,6 @@ contains
         use X_ops, only: setup_nm_X
         use grid_vars, only: dealloc_grid
         use eq_vars, only: dealloc_eq
-        use X_vars, only: dealloc_X
         use sol_vars, only: dealloc_sol
         use MPI_utilities, only: wait_MPI
         use input_utilities, only: dealloc_in

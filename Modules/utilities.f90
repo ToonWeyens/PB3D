@@ -13,8 +13,7 @@ module utilities
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &conv_FHM, check_deriv, calc_inv, calc_mult, calc_aux_utilities, &
         &derivs, con2dis, dis2con, round_with_tol, conv_mat, is_sym, &
-        &calc_spline_3, con, calc_coeff_fin_diff, fac, test_max_memory, &
-        &d, m, f
+        &con, calc_coeff_fin_diff, fac, test_max_memory, d, m, f
 #if ldebug
     public debug_calc_zero_NR, debug_con2dis_reg, debug_calc_coeff_fin_diff
 #endif
@@ -23,6 +22,11 @@ module utilities
     integer, allocatable :: d(:,:,:)                                            ! 1D array indices of derivatives
     integer, allocatable :: m(:,:)                                              ! 1D array indices of metric indices
     integer, allocatable :: f(:,:)                                              ! 1D array indices of Fourier mode combination indices
+#if ldebug
+    logical :: debug_calc_zero_NR = .false.                                     ! plot debug information for calc_zero_NR
+    logical :: debug_con2dis_reg = .false.                                      ! plot debug information for con2dis_reg
+    logical :: debug_calc_coeff_fin_diff = .false.                              ! plot debug information for calc_coeff_fin_diff
+#endif
 
     ! interfaces
     interface add_arr_mult
@@ -58,13 +62,6 @@ module utilities
     interface con
         module procedure con_3D, con_2D, con_1D, con_0D
     end interface
-    
-    ! global variables
-#if ldebug
-    logical :: debug_calc_zero_NR = .false.                                     ! plot debug information for calc_zero_NR
-    logical :: debug_con2dis_reg = .false.                                      ! plot debug information for con2dis_reg
-    logical :: debug_calc_coeff_fin_diff = .false.                              ! plot debug information for calc_coeff_fin_diff
-#endif
     
 contains
     ! initialize utilities for fast future reference, depending on program style
@@ -233,70 +230,6 @@ contains
             derivs_res = 0
         end if
     end function derivs
-    
-    ! Calculates the coefficients of a cubic  spline through a number of points,
-    ! which  can  later  be  used  to  calculate  the  interpolating  values  or
-    ! derivatives thereof.
-    ! The information about the spline is saved in the spline_info object.
-    ! Based on http://www.math.ntnu.no/emner/TMA4215/2008h/cubicsplines.pdf
-    !!!! FOR NOW, JUST USE CUBIC SPLINE IN 1 D AND DON'T THINK ABOUT THE OTHER DIMENSIONS !!!!
-    integer function calc_spline_3(x,y,spline_info) result(ierr)
-        use num_vars, only: spline_type
-        
-        character(*), parameter :: rout_name = 'calc_spline_3'
-        
-        ! input / output
-        real(dp), intent(in) :: x(:), y(:)                                      ! abscissa and ordenate
-        type(spline_type), intent(inout) :: spline_info                         ! stores the spline information
-        
-        ! local variables
-        integer :: n_pt                                                         ! nr. of points
-        real(dp), allocatable :: h(:)                                           ! h(i) = x(i+1)-x(i)
-        real(dp), allocatable :: b(:)                                           ! b(i) = (y(i+1)-y(i))/h(i)
-        real(dp), allocatable :: v(:)                                           ! v(i) = 2(h(i-1)+h(i))
-        real(dp), allocatable :: u(:)                                           ! u(i) = 6(b(i)-b(i-1))
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set n_pt
-        n_pt = size(x)
-        
-        ! tests
-        if (size(y).ne.n_pt) then
-            err_msg = 'x and y need to have the same dimensions'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        
-        if (allocated(spline_info%x) .or. allocated(spline_info%y) .or. &
-            &allocated(spline_info%z)) then
-            call writo('WARING: spline_info was already in use and will be &
-                &overwritten')
-            if (allocated(spline_info%x)) deallocate(spline_info%x)
-            if (allocated(spline_info%y)) deallocate(spline_info%y)
-            if (allocated(spline_info%z)) deallocate(spline_info%z)
-        end if
-        
-        ! set up objects in spline_info
-        allocate(spline_info%x(n_pt))
-        allocate(spline_info%y(n_pt))
-        allocate(spline_info%z(n_pt))
-        spline_info%x = x
-        spline_info%y = y
-        
-        ! precalculations in order to get z
-        allocate(h(n_pt),b(n_pt),u(n_pt),v(n_pt))
-        h(1:n_pt-1) = x(2:n_pt)-x(1:n_pt-1)                                     ! h(n_pt) has no meaning
-        b(1:n_pt-1) = (y(2:n_pt)-y(1:n_pt-1))/h(1:n_pt-1)                       ! b(n_pt) has no meaning
-        v(2:n_pt) = 2*(h(2:n_pt)+h(1:n_pt-1))                                   ! v(1) has no meaning
-        u(2:n_pt) = 6*(b(2:n_pt)+b(1:n_pt-1))                                   ! u(1) has no meaning
-        
-        ierr = 1
-        err_msg = 'SPLINES NOT YET IMPLEMENTED!!!'
-        CHCKERR(err_msg)
-    end function calc_spline_3
 
     ! numerically interpolates a function that is given on either FM to HM or to
     ! FM. If FM2HM is .true., the starting variable is FM, if .false., it is HM
@@ -1721,7 +1654,7 @@ contains
         if (pt_d.lt.1 .or. pt_d.gt.size(var_c)) then
             pt_c = -1._dp
             ierr = 1
-            err_msg = 'WARNING: pt_c not within range'
+            err_msg = 'pt_c not within range'
             CHCKERR(err_msg)
         end if
         

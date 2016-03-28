@@ -101,7 +101,7 @@ contains
         
         ! check status
         if (istat.ne.0) then
-            call writo('WARNING: call to stat failed')
+            call writo('call to stat failed',warning=.true.)
             if (present(file_size)) file_size = 0
             if (present(acc_time)) acc_time = 0
             if (present(mod_time)) mod_time = 0

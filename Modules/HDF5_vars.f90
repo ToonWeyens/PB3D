@@ -10,7 +10,7 @@ module HDF5_vars
     
     implicit none
     private
-    public init_HDF5, dealloc_var_1D, &
+    public init_HDF5, dealloc_XML_str, dealloc_var_1D, &
         &XML_str_type, HDF5_file_type, var_1D_type, xmf_fmt, XDMF_num_types, &
         &XDMF_format_types, XDMF_geom_types, XDMF_top_types, XDMF_att_types, &
         &XDMF_center_types, XDMF_grid_types, max_dim_var_1D
@@ -18,6 +18,16 @@ module HDF5_vars
     ! global variables
     integer, parameter :: max_xml_ln = 300                                      ! max. length of xml string
     character(len=6) :: xmf_fmt = '(999A)'                                      ! format to write the xmf file
+    integer, parameter :: max_dim_var_1D = 100000                               ! maximum dimension of var_1D
+    
+    ! XDMF possibilities
+    character(len=max_str_ln) :: XDMF_num_types(2)                              ! possible XDMF number types
+    character(len=max_str_ln) :: XDMF_format_types(2)                           ! possible XDMF format types
+    character(len=max_str_ln) :: XDMF_geom_types(2)                             ! possible XDMF geometry types
+    character(len=max_str_ln) :: XDMF_top_types(2)                              ! possible XDMF topology types
+    character(len=max_str_ln) :: XDMF_att_types(1)                              ! possible XDMF attribute types
+    character(len=max_str_ln) :: XDMF_center_types(2)                           ! possible XDMF attribute center types
+    character(len=max_str_ln) :: XDMF_grid_types(3)                             ! possible XDMF grid types
     
     ! XML strings used in XDMF
     type :: XML_str_type
@@ -26,7 +36,7 @@ module HDF5_vars
         character(len=max_xml_ln), allocatable :: xml_str(:)                    ! XML string
     end type XML_str_type
     
-    ! HDF5 data tipe
+    ! HDF5 data type
     type :: HDF5_file_type                                                      ! type containing the information about HDF5 files
         integer :: HDF5_i                                                       ! HDF5 file handle
         integer :: XDMF_i                                                       ! XDMF file handle
@@ -41,19 +51,10 @@ module HDF5_vars
         character(len=max_str_ln) :: var_name                                   ! name of variable
     end type var_1D_type
     
-    ! XDMF possibilities
-    character(len=max_str_ln) :: XDMF_num_types(2)                              ! possible XDMF number types
-    character(len=max_str_ln) :: XDMF_format_types(2)                           ! possible XDMF format types
-    character(len=max_str_ln) :: XDMF_geom_types(2)                             ! possible XDMF geometry types
-    character(len=max_str_ln) :: XDMF_top_types(2)                              ! possible XDMF topology types
-    character(len=max_str_ln) :: XDMF_att_types(1)                              ! possible XDMF attribute types
-    character(len=max_str_ln) :: XDMF_center_types(2)                           ! possible XDMF attribute center types
-    character(len=max_str_ln) :: XDMF_grid_types(3)                             ! possible XDMF grid types
-    
-    ! global variables
-    integer, parameter :: max_dim_var_1D = 100000                               ! maximum dimension of var_1D
-    
     ! interfaces
+    interface dealloc_XML_str
+        module procedure dealloc_XML_str_ind, dealloc_XML_str_arr
+    end interface
     interface dealloc_var_1D
         module procedure dealloc_var_1D_ind, dealloc_var_1D_arr
     end interface
@@ -90,10 +91,42 @@ contains
         XDMF_grid_types(3) = "Spatial"
     end subroutine init_HDF5
     
+    ! deallocates XML_str_type
+    subroutine dealloc_XML_str_arr(XML_str)                                     ! array version
+        ! input / output
+        type(XML_str_type), intent(inout), allocatable :: XML_str(:)            ! array of XML strings to be deallocated
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        
+        ! deallocate individual arrays
+        do id = 1,size(XML_str)
+            call dealloc_XML_str_ind(XML_str(id))
+        end do
+        
+        ! deallocate the array
+        deallocate(XML_str)
+    end subroutine dealloc_XML_str_arr
+    subroutine dealloc_XML_str_ind(XML_str)                                     ! individual version
+        ! input / output
+        type(XML_str_type), intent(out) :: XML_str                              ! XML string to be deallocated
+    end subroutine dealloc_XML_str_ind
+    
     ! deallocates 1D variable
     subroutine dealloc_var_1D_arr(var_1D)                                       ! array version
         ! input / output
-        type(var_1D_type), intent(out), allocatable :: var_1D(:)                ! arra of 1D variables to be deallocated
+        type(var_1D_type), intent(inout), allocatable :: var_1D(:)              ! array of 1D variables to be deallocated
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        
+        ! deallocate individual arrays
+        do id = 1,size(var_1D)
+            call dealloc_var_1D_ind(var_1D(id))
+        end do
+        
+        ! deallocate the array
+        deallocate(var_1D)
     end subroutine dealloc_var_1D_arr
     subroutine dealloc_var_1D_ind(var_1D)                                       ! individual version
         ! input / output

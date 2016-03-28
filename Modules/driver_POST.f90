@@ -34,7 +34,6 @@ contains
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol
-        use PB3D_utilities, only: retrieve_var_1D_id
         use grid_vars, only: create_grid, dealloc_grid
         use grid_ops, only: calc_norm_range, plot_grid_real
         use eq_vars, only: create_eq, dealloc_eq
@@ -119,7 +118,7 @@ contains
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name)
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_sol,'sol',rich_lvl=rich_lvl)
+        ierr = reconstruct_PB3D_grid(grid_sol,'sol')
         CHCKERR('')
         
         ! set eq and X limits, using r_F of the grids
@@ -150,8 +149,7 @@ contains
         ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name,&
             &grid_limits=X_limits)
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_sol,'sol',rich_lvl=rich_lvl,&
-            &grid_limits=sol_limits)
+        ierr = reconstruct_PB3D_grid(grid_sol,'sol',grid_limits=sol_limits)
         CHCKERR('')
         call lvl_ud(-1)
         call writo('Output grids reconstructed')
@@ -499,6 +497,7 @@ contains
         nullify(eq_2_B)
         nullify(X_B)
         call dealloc_grid(grid_eq_plot)
+        call dealloc_grid(grid_X_plot)
         call dealloc_grid(grid_sol_plot)
         call dealloc_eq(eq_2_plot)
         call dealloc_X(X_plot)

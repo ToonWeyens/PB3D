@@ -35,6 +35,7 @@ module eq_utilities
         module procedure transf_deriv_3_ind, transf_deriv_3_arr, &
             &transf_deriv_3_arr_2D, transf_deriv_1_ind
     end interface
+    
 contains
     ! calculate D_1^m1 D_2^m2 D_3^m3 X from D_1^i1 D_2^i2 D_3^3 X and 
     ! D_1^j1 D_2^j2 D_3^j3 Y where XY = 1, i,j = 0..m, according to [ADD REF]
@@ -106,8 +107,8 @@ contains
 #if ldebug
             ! check if X*Y is unity indeed if debugging
             if (debug_calc_inv_met_ind) then
-                if (n_procs.gt.1) call writo('WARNING: Debugging of &
-                    &calc_inv_met_ind should be done with one processor only')
+                if (n_procs.gt.1) call writo('Debugging of calc_inv_met_ind &
+                    &should be done with one processor only',warning=.true.)
                 call writo('checking if X*Y = 1')
                 call lvl_ud(1)
                 allocate(XY(dims(1),dims(2),dims(3),9))

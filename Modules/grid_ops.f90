@@ -413,8 +413,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call lvl_ud(1)
-        
         ! set local n_par_X
         n_par_X_loc = n_par_X
         if (present(only_half_grid)) then
@@ -466,8 +464,6 @@ contains
                 grid_eq%theta_F = grid_eq%theta_E
                 grid_eq%zeta_F = grid_eq%zeta_E
         end select
-        
-        call lvl_ud(-1)
     end function setup_grid_eq
     
     ! Sets up  the field-aligned equilibrium grid,  which serves as a  bridge to
@@ -546,8 +542,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call lvl_ud(1)
-        
         ! create grid
         ierr = create_grid(grid_X,[grid_eq%n(1:2),size(r_F_X)],X_limits)
         CHCKERR('')
@@ -581,8 +575,6 @@ contains
         
         ! clean up
         call dealloc_disc(norm_interp_data)
-        
-        call lvl_ud(-1)
     end function setup_grid_X
     
     ! Sets  up the general  solution grid, in  which the solution  variables are
@@ -603,10 +595,8 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call lvl_ud(1)
-        
         ! create grid
-        ierr = create_grid(grid_sol,size(r_F_sol),sol_limits)
+        ierr = create_grid(grid_sol,[0,0,size(r_F_sol)],sol_limits)
         CHCKERR('')
         
         ! set Flux variables
@@ -620,8 +610,6 @@ contains
         ierr = coord_F2E(grid_eq,grid_sol%loc_r_F,grid_sol%loc_r_E,&
             &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
         CHCKERR('')
-        
-        call lvl_ud(-1)
     end function setup_grid_sol
     
     ! Calculate grid that follows magnetic field lines.
@@ -964,7 +952,8 @@ contains
             use HDF5_ops, only: open_HDF5_file, add_HDF5_item, &
                 &print_HDF5_top, print_HDF5_geom, print_HDF5_3D_data_item, &
                 &print_HDF5_grid, close_HDF5_file
-            use HDF5_vars, only: XML_str_type, HDF5_file_type
+            use HDF5_vars, only: dealloc_XML_str, &
+                & XML_str_type, HDF5_file_type
             use rich_vars, only: rich_lvl
             
             character(*), parameter :: rout_name = 'plot_grid_real_HDF5'
@@ -1095,6 +1084,18 @@ contains
                 CHCKERR('')
                 
                 call lvl_ud(-1)
+                
+                ! clean up
+                do id = 1,2
+                    call dealloc_XML_str(grids(id))
+                end do
+                call dealloc_XML_str(space_col_grids)
+                call dealloc_XML_str(time_col_grid)
+                call dealloc_XML_str(top)
+                do id = 1,3
+                    call dealloc_XML_str(XYZ(id))
+                end do
+                call dealloc_XML_str(geom)
             end if
         end function plot_grid_real_HDF5
     end function plot_grid_real

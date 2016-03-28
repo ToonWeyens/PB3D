@@ -19,15 +19,15 @@ module sol_utilities
     public debug_calc_XUQ_arr
 #endif
     
-    ! interfaces
-    interface calc_XUQ
-        module procedure calc_XUQ_arr, calc_XUQ_ind
-    end interface
-    
     ! global variables
 #if ldebug
     logical :: debug_calc_XUQ_arr = .false.                                     ! plot debug information for calc_XUQ_arr
 #endif
+    
+    ! interfaces
+    interface calc_XUQ
+        module procedure calc_XUQ_arr, calc_XUQ_ind
+    end interface
 
 contains
     ! Calculates the normal or geodesic components of the plasma perturbation or

@@ -62,8 +62,8 @@ contains
         ! if not individual, broadcast result
         if (.not.ind_loc) then
             istat = broadcast_var(val)
-            if (istat.ne.0) call writo('WARNING: In get_log, something went &
-                &wrong. Default used.')
+            if (istat.ne.0) call writo('In get_log, something went wrong. &
+                &Default used.',warning=.true.)
         end if
     end function get_log
     
@@ -136,8 +136,8 @@ contains
         ! if not individual, broadcast result
         if (.not.ind_loc) then
             istat = broadcast_var(val)
-            if (istat.ne.0) call writo('WARNING: In get_real, something went &
-                &wrong. Default of zero used.')
+            if (istat.ne.0) call writo('In get_real, something went &
+                &wrong. Default of zero used.',warning=.true.)
         end if
     end function get_real
     
@@ -210,8 +210,8 @@ contains
         ! if not individual, broadcast result
         if (.not.ind_loc) then
             istat = broadcast_var(val)
-            if (istat.ne.0) call writo('WARNING: In get_int, something went &
-                &wrong. Default of zero used.')
+            if (istat.ne.0) call writo('In get_int, something went &
+                &wrong. Default of zero used.',warning=.true.)
         end if
     end function get_int
     
@@ -250,8 +250,8 @@ contains
         ! wait for MPI
         if (.not.ind_loc) then
             istat = wait_MPI()
-            if (istat.ne.0) call writo('WARNING: In pause_prog, something went &
-                &wrong. Continuing.')
+            if (istat.ne.0) call writo('In pause_prog, something went &
+                &wrong. Continuing.',warning=.true.)
         end if
     end subroutine pause_prog
     

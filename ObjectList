@@ -39,3 +39,4 @@ test.o \
 PB3D_utilities.o \
 PB3D_ops.o \
 vac.o \
+foul.o \

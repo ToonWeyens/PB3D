@@ -19,6 +19,12 @@ contains
     ! [MPI] Collective call
     integer function start_MPI() result(ierr)
         use num_vars, only: rank, n_procs
+#if ldebug
+        use grid_vars, only: n_alloc_grids, n_alloc_discs
+        use eq_vars, only: n_alloc_eq_1s, n_alloc_eq_2s
+        use X_vars, only: n_alloc_X_1s, n_alloc_X_2s
+        use sol_vars, only: n_alloc_sols
+#endif
         
         character(*), parameter :: rout_name = 'start_MPI'
         
@@ -32,11 +38,30 @@ contains
         CHCKERR('MPI rank failed')
         call MPI_Comm_size(MPI_Comm_world,n_procs,ierr)                         ! nr. processes
         CHCKERR('MPI size failed')
+        
+#if ldebug
+        ! set up allocated variable counters
+        n_alloc_discs = 0
+        n_alloc_grids = 0
+        n_alloc_eq_1s = 0
+        n_alloc_eq_2s = 0
+        n_alloc_X_1s = 0
+        n_alloc_X_2s = 0
+        n_alloc_sols = 0
+#endif
     end function start_MPI
     
     ! stop MPI
     ! [MPI] Collective call
     integer function stop_MPI() result(ierr)
+#if ldebug
+        use num_vars, only: rank
+        use grid_vars, only: n_alloc_grids, n_alloc_discs
+        use eq_vars, only: n_alloc_eq_1s, n_alloc_eq_2s
+        use X_vars, only: n_alloc_X_1s, n_alloc_X_2s
+        use sol_vars, only: n_alloc_sols
+#endif
+        
         character(*), parameter :: rout_name = 'stop_MPI'
         
         ! initialize ierr
@@ -45,6 +70,24 @@ contains
         call writo('Stopping MPI')
         call MPI_finalize(ierr)
         CHCKERR('MPI stop failed')
+        
+#if ldebug
+        ! information about allocated variables
+        if (n_alloc_discs.ne.0) call writo('For rank '//trim(i2str(rank))//&
+            &', n_alloc_discs = '//trim(i2str(n_alloc_discs)))
+        if (n_alloc_grids.ne.0) call writo('For rank '//trim(i2str(rank))//&
+            &', n_alloc_grids = '//trim(i2str(n_alloc_grids)))
+        if (n_alloc_eq_1s.ne.0) call writo('For rank '//trim(i2str(rank))//&
+            &', n_alloc_eq_1s = '//trim(i2str(n_alloc_eq_1s)))
+        if (n_alloc_eq_2s.ne.0) call writo('For rank '//trim(i2str(rank))//&
+            &', n_alloc_eq_2s = '//trim(i2str(n_alloc_eq_2s)))
+        if (n_alloc_X_1s.ne.0) call writo('For rank '//trim(i2str(rank))//&
+            &', n_alloc_X_1s = '//trim(i2str(n_alloc_X_1s)))
+        if (n_alloc_X_2s.ne.0) call writo('For rank '//trim(i2str(rank))//&
+            &', n_alloc_X_2s = '//trim(i2str(n_alloc_X_2s)))
+        if (n_alloc_sols.ne.0) call writo('For rank '//trim(i2str(rank))//&
+            &', n_alloc_sols = '//trim(i2str(n_alloc_sols)))
+#endif
     end function stop_MPI
     
     ! abort MPI
@@ -458,7 +501,7 @@ contains
             &plot_resonance, tol_SLEPC, prog_style, &
             &max_it_inv, tol_norm, max_it_slepc, &
             &max_mem_per_proc, plot_size, &
-            &test_max_mem, no_execute_command_line, &
+            &test_max_mem, no_execute_command_line, print_mem_usage, &
             &rich_restart_lvl, &
             &PB3D_name
         use grid_vars, only: min_par_X, max_par_X
@@ -487,6 +530,7 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(no_execute_command_line,1,MPI_LOGICAL,0,&
                 &MPI_Comm_world,ierr)
+            call MPI_Bcast(print_mem_usage,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(test_max_mem,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)

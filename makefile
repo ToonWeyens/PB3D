@@ -44,16 +44,20 @@ include  $(SLEPC_DIR)/lib/slepc/conf/slepc_variables
 
 # HDF5
 # (from http://www.hdfgroup.org/ftp/HDF5/examples/howto/makefiles/Makefilef)
-HDF5_lib = /usr/lib/x86_64-linux-gnu# laptop repository
-HDF5_inc = /usr/include/#laptop repository
+#HDF5_lib = /usr/lib/x86_64-linux-gnu# laptop repository
+#HDF5_inc = /usr/include/#laptop repository
+HDF5_lib = /opt/HDF5_1.8.16/hdf5/lib# laptop 1.8.16
+HDF5_inc = /opt/HDF5_1.8.16/hdf5/include/#laptop 1.8.16
 #HDF5_lib = /opt/HDF5_1.8.15-patch1/lib# laptop 1.8.15 patched
 #HDF5_inc = /opt/HDF5_1.8.15-patch1/include# laptop 1.8.15 patched
 #HDF5_lib = $(HOME)/lib# quadrivium 1.8.15 patched
 #HDF5_inc = $(HOME)/include# quadrivium 1.8.15 patched
 
 # NETCDF
-NETCDF_lib = /usr/lib/# laptop repository
-NETCDF_inc = /usr/include/#laptop repository
+#NETCDF_lib = /usr/lib/# laptop repository
+#NETCDF_inc = /usr/include/#laptop repository
+NETCDF_lib = /opt/NetCDF-4.4.0/NetCDF/lib# laptop 4.4.0
+NETCDF_inc = /opt/NetCDF-4.4.0/NetCDF/include/#laptop 4.4.0
 
 # Add "Modules" to the search path for the prerequisites
 VPATH = Modules
@@ -91,9 +95,7 @@ LINK_FLAGS = -fPIC -pg
 # libraries
 LINK_LIB = $(HOME_BIN)/libstell.a -lgfortran -llapack -lblas \
 	$(HDF5_lib)/libhdf5_fortran.a $(HDF5_lib)/libhdf5.a -L$(NETCDF_lib) -lnetcdf -lnetcdff  \
-	-lz -lpthread -ldl -lm
-	#L/opt/openmpi/1.10.0/lib -lmpi_usempi -lmpi_mpifh -lmpi
-
+	-Wl,-R$(NETCDF_lib) -lz -lpthread -ldl -lm# -Wl,-R[PATH] to set to default search path http://superuser.com/questions/192573/how-do-you-specify-the-location-of-libraries-to-a-binary-linux)
 
 # link command
 LINK    = $(LINK_DIR) $(LINK_FLAGS)

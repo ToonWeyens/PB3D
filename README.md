@@ -380,3 +380,11 @@ CHANGELOG
       - Tweaked the calculation of magnetic field lines to make it faster
       - HDF5 datasets can be overwritten when Richardson restart is used.
       - Richardson variables are not written to HDF5 any more and reconstructed for Richardson restart but are set up from solutions.
+
+1.15: - IMPROVED MEMORY USAGE. CURRENTLY BEHAVIOR IS NOT COMPLETELY UNDERSTOOD BUT MEMORY USE SEEMS TO BE LIMITED.
+      - Removed splines.
+      - Fixed memory leaks concerning "disc", "grid", "eq_1", "eq_2", "X_1", "X_2" and "sol" variables and added a check.
+      - Fixed memory leaks concerning the printing of variables to HDF5: previously there was no deallocation of var_1D.
+      - Added color to the output, using the FOUL module. There is now the option "warning" to subroutine "writo".
+      - Added option "--mem_usage" to print information about memory usage at the end of every message.
+      - Simplified "create_grid".

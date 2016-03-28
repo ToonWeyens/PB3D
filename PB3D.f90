@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.14                                                              !
+!   Version: 1.15                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -133,10 +133,10 @@ program PB3D
         call stop_time
         
         !-------------------------------------------------------
-        !   Main Driver: Pre-Perturbation part
+        !   Main Driver: Equilibrium part
         !-------------------------------------------------------
         call start_time
-        call writo('Pre-perturbation driver'//trim(rich_info()))
+        call writo('Equilibrium driver'//trim(rich_info()))
         call lvl_ud(1)
         ierr = run_driver_eq()                                                  ! equilibrium driver
         CHCKERR
