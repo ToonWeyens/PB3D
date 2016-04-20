@@ -233,10 +233,10 @@ contains
         ! perturbation X_F
         allocate(f_plot(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r,&
             &product(n_t),2))
-        ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,1,time,&
+        ierr = calc_XUQ(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,1,time,&
             &f_plot(:,:,:,:,1))
         CHCKERR('')
-        ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,2,time,&
+        ierr = calc_XUQ(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,2,time,&
             &f_plot(:,:,:,:,2))
         CHCKERR('')
         
@@ -888,8 +888,8 @@ contains
             allocate(S(loc_dim(1),loc_dim(2),loc_dim(3)))
             
             ! calculate D_par U
-            ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,2,&
-                &0._dp,DU,deriv=.true.)
+            ierr = calc_XUQ(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,2,0._dp,DU,&
+                &deriv=.true.)
             CHCKERR('')
         end if
 #endif
@@ -946,8 +946,8 @@ contains
         
         ! calculate X, U, Q_n and Q_g
         do kd = 1,4
-            ierr = calc_XUQ(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,kd,&
-                &0._dp,XUQ(:,:,:,kd))
+            ierr = calc_XUQ(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,kd,0._dp,&
+                &XUQ(:,:,:,kd))
             CHCKERR('')
         end do
         

@@ -17,14 +17,14 @@ module driver_eq
 contains
     ! Main driver of PB3D equilibrium part.
     integer function run_driver_eq() result(ierr)
-        use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, plot_grid
+        use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q
         use MPI_utilities, only: wait_MPI
         use eq_vars, only: dealloc_eq
         use grid_vars, only: dealloc_grid
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot
         use sol_vars, only: alpha
         use grid_ops, only: setup_grid_eq_B, print_output_grid, &
-            &plot_grid_real, calc_norm_range, setup_grid_eq, calc_ang_grid_eq_B
+            &calc_norm_range, setup_grid_eq, calc_ang_grid_eq_B
         use PB3D_ops, only: reconstruct_PB3D_in
         use utilities, only: derivs
         use input_utilities, only: dealloc_in
@@ -179,14 +179,6 @@ contains
                     &'eq_B',rich_lvl=rich_lvl)
                 CHCKERR('')
         end select
-        
-        ! plot grid if requested
-        if (plot_grid) then
-            ierr = plot_grid_real(grid_eq_B)
-            CHCKERR('')
-        else
-            call writo('Magnetic grid plot not requested')
-        end if
         
         !!! plot information for comparison between VMEC and HELENA
         !!call plot_info_for_VMEC_HEL_comparision()

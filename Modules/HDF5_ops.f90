@@ -1240,6 +1240,14 @@ contains
         call H5Gopen_f(HDF5_i,trim(head_name_loc),head_group_id,ierr)
         CHCKERR('Failed to open head group')
         
+#if ldebug
+        ! display all variables in group
+        if (disp_info_loc) then
+            ierr = list_all_vars_in_group(head_group_id)
+            CHCKERR('')
+        end if
+#endif
+        
         ! get number of objects in group to allocate vars
         call H5Gget_info_f(head_group_id,storage_type,nr_lnks_head,max_corder,&
             &ierr)

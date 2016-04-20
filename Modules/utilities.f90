@@ -1354,9 +1354,12 @@ contains
     end function conv_mat_0D_complex
     
     ! Finds the zero of a  function using Newton-Rhapson iteration. If something
-    ! goes wrong, an error message is returned, that is empty otherwise.
-    function calc_zero_NR(zero_NR,fun,dfun,guess,relax_fac) result(err_msg)
-        use num_vars, only: max_it_NR, tol_NR, relax_fac_NR
+    ! goes wrong,  by default multiple tries  can be attempted, by  lowering the
+    ! relaxation  factor. If  still nothing  is  achieved, an  error message  is
+    ! returned, that is empty otherwise.
+    function calc_zero_NR(zero_NR,fun,dfun,guess,relax_fac,max_nr_tries) &
+        &result(err_msg)
+        use num_vars, only: max_it_NR, tol_NR, relax_fac_NR, max_nr_tries_NR
         
         ! input / output
         real(dp), intent(inout) :: zero_NR                                      ! output
@@ -1374,11 +1377,13 @@ contains
         end interface
         real(dp), intent(in) :: guess                                           ! first guess
         real(dp), intent(in), optional :: relax_fac                             ! relaxation factor
+        integer, intent(in), optional :: max_nr_tries                           ! max nr. of tries with different relaxation factors
         character(len=max_str_ln) :: err_msg                                    ! possible error message
         
         ! local variables
-        integer :: jd
-        real(dp) :: corr
+        integer :: id, jd                                                       ! counters
+        integer :: max_nr_tries_loc                                             ! local max_nr_tries
+        real(dp) :: corr                                                        ! correction
         real(dp) :: relax_fac_loc                                               ! local relaxation factor
 #if ldebug
         real(dp), allocatable :: corrs(:)                                       ! corrections for all steps
@@ -1391,46 +1396,63 @@ contains
         ! set up zero_NR
         zero_NR = guess
         
+        ! set up local max_nr_tries
+        max_nr_tries_loc = max_nr_tries_NR
+        if (present(max_nr_tries)) max_nr_tries_loc = max_nr_tries
+        
         ! set up local relaxation factor
         relax_fac_loc = relax_fac_NR
         if (present(relax_fac)) relax_fac_loc = relax_fac
         
-#if ldebug
-        if (debug_calc_zero_NR) then
-            ! set up corrs
-            allocate(corrs(max_it_NR))
-            allocate(values(max_it_NR))
-        end if
-#endif
-        
-        NR: do jd = 1,max_it_NR
-            ! correction to theta_NR
-            corr = -fun(zero_NR)/dfun(zero_NR)
+        ! possibly multiple tries with different relaxation factors
+        do id = 1, max_nr_tries_loc
 #if ldebug
             if (debug_calc_zero_NR) then
-                corrs(jd) = corr
-                values(jd) = zero_NR
+                ! set up corrs
+                allocate(corrs(max_it_NR))
+                allocate(values(max_it_NR))
             end if
 #endif
-            zero_NR = zero_NR + relax_fac_loc*corr
             
-            ! check for convergence
-            if (abs(corr).lt.tol_NR) then
+            NR: do jd = 1,max_it_NR
+                ! correction to theta_NR
+                corr = -fun(zero_NR)/dfun(zero_NR)
 #if ldebug
-                if (debug_calc_zero_NR) &
-                    &call plot_evolution(corrs(1:jd),values(1:jd))
+                if (debug_calc_zero_NR) then
+                    corrs(jd) = corr
+                    values(jd) = zero_NR
+                end if
 #endif
-                return
-            else if (jd .eq. max_it_NR) then
-                err_msg = 'Not converged after '//trim(i2str(jd))//&
-                    &' iterations, with residual '//trim(r2strt(corr))//&
-                    &' and final value '//trim(r2strt(zero_NR))
-                zero_NR = 0.0_dp
+                zero_NR = zero_NR + relax_fac_loc/id*corr                       ! relaxation factor scaled by id
+                
+                ! check for convergence
+                if (abs(corr).lt.tol_NR) then
 #if ldebug
-                if (debug_calc_zero_NR) call plot_evolution(corrs,values)
+                    if (debug_calc_zero_NR) &
+                        &call plot_evolution(corrs(1:jd),values(1:jd))
 #endif
-            end if
-        end do NR
+                    return
+                else if (jd .eq. max_it_NR) then
+#if ldebug
+                    if (debug_calc_zero_NR) then
+                        call plot_evolution(corrs,values)
+                        deallocate(corrs)
+                        deallocate(values)
+                        if (id.lt.max_nr_tries_loc) &
+                            &call writo('Trying again with relaxation factor &
+                            &divided by '//trim(i2str(id)))
+                    end if
+#endif
+                    if (id.eq.max_nr_tries_loc) then
+                        err_msg = 'Not converged after '//trim(i2str(jd))//&
+                            &' iterations, with residual '//&
+                            &trim(r2strt(corr))//' and final value '//&
+                            &trim(r2strt(zero_NR))
+                        zero_NR = 0.0_dp
+                    end if
+                end if
+            end do NR
+        end do
 #if ldebug
     contains
         ! plots corrections

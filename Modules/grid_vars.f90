@@ -112,6 +112,11 @@ contains
         ! set divided and loc_n_r
         grid%divided = .false.
         if (present(i_lim)) then                                                ! might be divided grid
+            if (i_lim(2).le.i_lim(1)) then
+                ierr = 1
+                err_msg = 'faulty i_lim'
+                CHCKERR(err_msg)
+            end if
             grid%i_min = i_lim(1)
             grid%i_max = i_lim(2)
             grid%loc_n_r = i_lim(2)-i_lim(1)+1

@@ -50,7 +50,7 @@ contains
     ! angular  extent as  the equilibrium  and  metric variables,  and the  same
     ! normal  extent as  the solution  variables.  The output  then follows  the
     ! perturbation grid.
-    integer function calc_XUQ_arr(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,&
+    integer function calc_XUQ_arr(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,&
         &XUQ_style,time,XUQ,deriv) result(ierr)                                 ! (time) array version
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, &
             &norm_disc_prec_X
@@ -67,7 +67,6 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
         type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
@@ -113,8 +112,7 @@ contains
         n_mod_tot = size(sec_X_ind,2)
         
         ! tests
-        if (grid_eq%n(1).ne.grid_X%n(1) .or. grid_eq%n(2).ne.grid_X%n(2) .or. &
-            &grid_sol%loc_n_r.ne.grid_X%loc_n_r) then
+        if (grid_eq%n(1).ne.grid_X%n(1) .or. grid_eq%n(2).ne.grid_X%n(2)) then
             ierr = 1
             err_msg = 'Grids need to be compatible'
             CHCKERR(err_msg)
@@ -338,14 +336,13 @@ contains
             end do normal
         end do Fourier
     end function calc_XUQ_arr
-    integer function calc_XUQ_ind(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,&
+    integer function calc_XUQ_ind(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,&
         &XUQ_style,time,XUQ,deriv) result(ierr)                                 ! (time) individual version
         character(*), parameter :: rout_name = 'calc_XUQ_ind'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibirum grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
         type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
@@ -363,8 +360,8 @@ contains
         allocate(XUQ_arr(size(XUQ,1),size(XUQ,2),size(XUQ,3),1))
         
         ! call array version
-        ierr = calc_XUQ_arr(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,X_id,&
-            &XUQ_style,[time],XUQ_arr,deriv)
+        ierr = calc_XUQ_arr(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,XUQ_style,&
+            &[time],XUQ_arr,deriv)
         CHCKERR('')
         
         ! copy array to individual XUQ

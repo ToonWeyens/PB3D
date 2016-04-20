@@ -344,9 +344,6 @@ contains
             cos_theta(m,:,:,:) = cos(m*theta)
             sin_theta(m,:,:,:) = sin(m*theta)
         end do
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !! MAYBE IN CALC_TRIGON_FACTORS, MAYBE YOU HAVE TO USE - ZETA???????  !!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         do n = -ntor_V,ntor_V
             cos_zeta(n,:,:,:) = cos(n*zeta)
             sin_zeta(n,:,:,:) = sin(n*zeta)
@@ -356,10 +353,10 @@ contains
         allocate(trigon_factors(mnmax_V,n_ang_1,n_ang_2,n_r,2))
         trigon_factors = 0.0_dp
         
-        ! calculate cos(m theta - n zeta) = cos(m theta) cos(n zeta) + 
-        !   sin(m theta) sin(n zeta) and
-        ! sin(m theta - n zeta) = sin(m theta) cos(n zeta) -
-        !   cos(m theta) sin(n zeta)
+        ! calculate cos(m theta - n zeta) =
+        !   cos(m theta) cos(n zeta) + sin(m theta) sin(n zeta)
+        ! and sin(m theta - n zeta) =
+        !   sin(m theta) cos(n zeta) - cos(m theta) sin(n zeta)
         do id = 1,mnmax_V
             trigon_factors(id,:,:,:,1) = &
                 &cos_theta(mn_V(id,1),:,:,:)*cos_zeta(mn_V(id,2)/nfp_V,:,:,:) + &

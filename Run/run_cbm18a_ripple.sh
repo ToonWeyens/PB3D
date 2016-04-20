@@ -77,14 +77,14 @@ mkdir -p $out $out/Plots $out/Data $out/Scripts &&
 echo "Working in directory $out/"
 echo ""
 # Copy inputs and the program
-cp input_qps $out
-cp wout_qps.nc $out
+cp input_cbm18a_ripple $out
+cp wout_cbm18a_ripple.nc $out
 cp ../PB3D $out
 chmod +x $out/PB3D
 cd $out
 rm -f .lock_file*
-echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_qps wout_qps.nc $slepc_opt ${@:2}" > command
-mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_qps wout_qps.nc $slepc_opt ${@:2}
+echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a_ripple wout_cbm18a_ripple.nc $slepc_opt ${@:2}" > command
+mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a_ripple wout_cbm18a_ripple.nc $slepc_opt ${@:2}
 cd ../
 echo ""
 echo "Leaving directory $out/"

@@ -388,3 +388,14 @@ CHANGELOG
       - Added color to the output, using the FOUL module. There is now the option "warning" to subroutine "writo".
       - Added option "--mem_usage" to print information about memory usage at the end of every message.
       - Simplified "create_grid".
+
+1.16: - Fixed a bug in POST where not the total Richardson variables were taken.
+      - Fixed a bug in "reconstruct_PB3D_X_1" where the variable names were read incorrectly.
+      - "calc_XUQ" does not need "grid_sol" any more, as stated in the header.
+      - Calculation of extended plot grids in POST is now much more economical.
+      - Fixed a bug for negative normal coordinates, but the code has not been debugged properly for this!
+      - min and max of theta and zeta_plot is now an input variable.
+      - Moved "grid_plot_real" to the magnetic integral phase of driver_X because it needs the full field-aligned equilibrium grid.
+      - Fixed bug concerning "test_p": The test should be done after F derivatives are calculated from E derivatives.
+      - Command line is not any more executed by default.
+      - Introduced multiple tries for Newton-Rhapson, with different relaxation factors.

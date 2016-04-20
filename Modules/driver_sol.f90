@@ -143,8 +143,8 @@ contains
                     grid_X_B => grid_X
                 case (2)                                                        ! HELENA
                     allocate(grid_X_B)
-                    ierr = reconstruct_PB3D_grid(grid_X_B,'X_B',rich_lvl=rich_lvl,&
-                        &grid_limits=sol_limits)
+                    ierr = reconstruct_PB3D_grid(grid_X_B,'X_B',&
+                        &rich_lvl=rich_lvl,grid_limits=sol_limits)
                     CHCKERR('')
             end select
         end if

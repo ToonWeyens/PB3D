@@ -829,12 +829,14 @@ contains
     ! n-iotam = 0 indicate if requested
     integer function resonance_plot(eq,grid) result(ierr)
         use num_vars, only: use_pol_flux_F, no_plots, n_theta_plot, &
-            &n_zeta_plot, rank
+            &n_zeta_plot, rank, eq_style, min_theta_plot, max_theta_plot, &
+            &min_zeta_plot, max_zeta_plot
         use grid_vars, only: create_grid, dealloc_grid
         use eq_vars, only: max_flux_F
         use grid_utilities, only: calc_XYZ_grid, calc_eqd_grid, coord_F2E, &
             &trim_grid
         use X_vars, only: prim_X
+        use VMEC, only: calc_trigon_factors
         
         character(*), parameter :: rout_name = 'resonance_plot'
         
@@ -925,9 +927,11 @@ contains
             ! set up pol. and tor. angle for plot
             allocate(theta_plot(n_theta_plot,n_zeta_plot,1))
             allocate(zeta_plot(n_theta_plot,n_zeta_plot,1))
-            ierr = calc_eqd_grid(theta_plot,1*pi,3*pi,1)                        ! starting from pi gives nicer results
+            ierr = calc_eqd_grid(theta_plot,min_theta_plot*pi,&
+                &max_theta_plot*pi,1)
             CHCKERR('')
-            ierr = calc_eqd_grid(zeta_plot,0*pi,2*pi,2)
+            ierr = calc_eqd_grid(zeta_plot,min_zeta_plot*pi,&
+                &max_zeta_plot*pi,2)
             CHCKERR('')
             
             ! set up vars
@@ -952,7 +956,7 @@ contains
                 end do
             end if
             
-            ! set dimensions
+            ! set dimensions for single flux surface
             plot_dim = [n_theta_plot,n_zeta_plot,1,n_mod_loc]
             
             ! calculate normal vars in Equilibrium coords.
@@ -961,11 +965,18 @@ contains
                 &r_F_array=grid%r_F,r_E_array=grid%r_E)
             CHCKERR('')
             
-            ! create plot grid
+            ! create plot grid for single flux surface
             ierr = create_grid(grid_plot,plot_dim(1:3))
             CHCKERR('')
             grid_plot%theta_E = theta_plot
             grid_plot%zeta_E = zeta_plot
+            
+            ! if VMEC, calculate trigonometric factors of plot grid
+            if (eq_style.eq.1) then
+                ierr = calc_trigon_factors(grid_plot%theta_E,grid_plot%zeta_E,&
+                    &grid_plot%trigon_factors)
+                CHCKERR('')
+            end if
             
             ! set up plot X, Y and Z
             allocate(X_plot(n_theta_plot,n_zeta_plot,1,n_mod_loc))

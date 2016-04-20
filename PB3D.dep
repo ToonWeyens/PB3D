@@ -164,6 +164,7 @@ driver_X.o : \
     messages.o \
     num_vars.o \
     grid_vars.o \
+    grid_ops.o \
     eq_vars.o \
     X_vars.o \
     X_ops.o \
@@ -174,6 +175,7 @@ driver_X.o : \
     rich_vars.o \
     files_ops.o \
     input_utilities.o \
+    VMEC.o \
 
 driver_sol.o : \
     str_ops.o \
@@ -241,7 +243,6 @@ X_ops.o : \
     eq_ops.o \
     utilities.o \
     MPI_utilities.o \
-    VMEC.o \
     output_ops.o \
     messages.o \
     X_vars.o \
@@ -253,6 +254,7 @@ X_ops.o : \
     HDF5_ops.o \
     rich_vars.o \
     X_utilities.o \
+    VMEC.o \
 
 X_vars.o : \
     num_vars.o \
@@ -353,7 +355,6 @@ input_ops.o : \
 files_ops.o : \
     num_vars.o \
     str_ops.o \
-    grid_vars.o \
     messages.o \
     MPI_utilities.o \
     HDF5_ops.o \

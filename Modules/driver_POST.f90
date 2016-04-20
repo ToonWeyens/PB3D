@@ -23,6 +23,8 @@ contains
     !   - VMEC: field-aligned grid on which EV problem has been solved.
     !   - HELENA: output  grid  on  which equilibrium  and metric  variables are
     !   tabulated.
+    ! Furthermore,  if Richardson  extrapolation  is used,  the  VMEC grids  and
+    ! variables are contained in multiple HDF5 variables.
     ! These variables are needed here both in a field-aligned and a plot grid. A
     ! consequence of  the above  is that  for VMEC  the field-aligned  output is
     ! already given, but the  output on the plot grid has  to be calculated from
@@ -30,21 +32,24 @@ contains
     ! output tables.
     integer function run_driver_POST() result(ierr)
         use num_vars, only: no_output, no_plots, eq_style, plot_resonance, &
-            &plot_flux_q, plot_grid, prog_name, output_name, rank
+            &plot_flux_q, plot_grid, prog_name, output_name, rank, &
+            &norm_disc_prec_X
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol
-        use grid_vars, only: create_grid, dealloc_grid
+        use grid_vars, only: create_grid, dealloc_grid, dealloc_disc, disc_type
         use grid_ops, only: calc_norm_range, plot_grid_real
         use eq_vars, only: create_eq, dealloc_eq
         use eq_ops, only: calc_eq, flux_q_plot, calc_derived_q
         use eq_utilities, only: calc_F_derivs
         use X_vars, only: create_X, dealloc_X
         use sol_vars, only: dealloc_sol
-        use grid_utilities, only: calc_XYZ_grid, extend_grid_E
+        use grid_utilities, only: calc_XYZ_grid, extend_grid_E, &
+            &setup_interp_data, apply_disc
         use X_ops, only: calc_X, resonance_plot, calc_res_surf, setup_nm_X
         use sol_ops, only: plot_sol_vals, plot_sol_vec, decompose_energy
         use HELENA_ops, only: interp_HEL_on_grid
+        use VMEC, onLy: calc_trigon_factors
         use files_utilities, only: nextunit
         use input_utilities, only: dealloc_in
         use utilities, only: calc_aux_utilities
@@ -59,9 +64,9 @@ contains
         type(grid_type) :: grid_eq_plot                                         ! plot equilibrium grid
         type(grid_type), target :: grid_X                                       ! perturbation grid
         type(grid_type), pointer :: grid_X_B                                    ! field-aligned perturbation grid
-        type(grid_type) :: grid_X_plot                                          ! plot perturbation grid
-        type(grid_type), target :: grid_sol                                     ! solution grid
-        type(grid_type) :: grid_sol_plot                                        ! plot solution grid
+        type(grid_type), target :: grid_X_plot                                  ! plot perturbation grid
+        type(grid_type) :: grid_sol                                             ! solution grid
+        type(grid_type), pointer :: grid_sol_plot                               ! plot solution grid
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium
         type(eq_2_type), target :: eq_2                                         ! metric equilibrium
         type(eq_2_type), pointer :: eq_2_B                                      ! field-aligned metric equilibrium
@@ -71,6 +76,7 @@ contains
         type(X_1_type), pointer :: X_B                                          ! field-aligned vectorial perturbation variables
         type(X_1_type) :: X_plot                                                ! plot vectorial perturbation variables
         type(sol_type), target :: sol                                           ! solution variables
+        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         integer :: id, jd                                                       ! counter
         integer :: min_id(3), max_id(3)                                         ! min. and max. index of range 1, 2 and 3
         integer :: last_unstable_id                                             ! index of last unstable EV
@@ -114,6 +120,7 @@ contains
         call lvl_ud(1)
         
         ! reconstruct full equilibrium, perturbation and solution grids
+        ! note: only the normal part is needed, so no need for tot_rich.
         ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name)
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name)
@@ -144,10 +151,10 @@ contains
         call writo('Reconstructing output grids')
         call lvl_ud(1)
         ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name,&
-            &grid_limits=eq_limits)
+            &tot_rich=.true.,grid_limits=eq_limits)
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name,&
-            &grid_limits=X_limits)
+            &tot_rich=.true.,grid_limits=X_limits)
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_sol,'sol',grid_limits=sol_limits)
         CHCKERR('')
@@ -160,12 +167,12 @@ contains
         ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1',eq_limits=eq_limits)
         CHCKERR('')
         ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',&
-            &rich_lvl=rich_lvl_name,eq_limits=eq_limits)
+            &rich_lvl=rich_lvl_name,tot_rich=.true.,eq_limits=eq_limits)
         CHCKERR('')
         ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.true.)                   ! is necessary for X variables
         CHCKERR('')
         ierr = reconstruct_PB3D_X_1(grid_X,X,'X_1',rich_lvl=rich_lvl_name,&
-            &X_limits=X_limits)
+            &tot_rich=.true.,X_limits=X_limits)
         CHCKERR('')
         ierr = reconstruct_PB3D_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl,&
             &sol_limits=sol_limits)
@@ -185,10 +192,10 @@ contains
                 allocate(eq_2_B)
                 allocate(X_B)
                 ierr = reconstruct_PB3D_grid(grid_eq_B,'eq_B',&
-                    &rich_lvl=rich_lvl,grid_limits=eq_limits)
+                    &rich_lvl=rich_lvl,tot_rich=.true.,grid_limits=eq_limits)
                 CHCKERR('')
                 ierr = reconstruct_PB3D_grid(grid_X_B,'X_B',rich_lvl=rich_lvl,&
-                    &grid_limits=X_limits)
+                    &tot_rich=.true.,grid_limits=X_limits)
                 CHCKERR('')
                 call create_eq(grid_eq_B,eq_2_B)
                 call create_X(grid_X_B,X_B)
@@ -240,12 +247,46 @@ contains
         
         call writo('Setting up the grids')
         call lvl_ud(1)
+        
+        ! extend eq grid
+        call writo('Extend equilibrium grid')
+        call lvl_ud(1)
         ierr = extend_grid_E(grid_eq,grid_eq_plot,grid_eq=grid_eq)              ! extend eq grid and convert to F
         CHCKERR('')
-        ierr = extend_grid_E(grid_X,grid_X_plot,grid_eq=grid_eq)                ! extend X grid and convert to F
+        call lvl_ud(-1)
+        
+        ! interpolate extended eq grid to extended X grid
+        call writo('Interpolate to extended perturbation grid')
+        call lvl_ud(1)
+        ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
+            &norm_interp_data,norm_disc_prec_X)
         CHCKERR('')
-        ierr = extend_grid_E(grid_sol,grid_sol_plot,grid_eq=grid_eq)            ! extend sol grid and convert to F
+        ierr = create_grid(grid_X_plot,[grid_eq_plot%n(1:2),grid_X%n(3)],&
+            &i_lim=X_limits)
         CHCKERR('')
+        grid_X_plot%r_E = grid_X%r_E
+        grid_X_plot%r_F = grid_X%r_F
+        grid_X_plot%loc_r_E = grid_X%loc_r_E
+        grid_X_plot%loc_r_F = grid_X%loc_r_F
+        ierr = apply_disc(grid_eq_plot%theta_E,norm_interp_data,&
+            &grid_X_plot%theta_E,3)
+        CHCKERR('')
+        ierr = apply_disc(grid_eq_plot%theta_F,norm_interp_data,&
+            &grid_X_plot%theta_F,3)
+        CHCKERR('')
+        ierr = apply_disc(grid_eq_plot%zeta_E,norm_interp_data,&
+            &grid_X_plot%zeta_E,3)
+        CHCKERR('')
+        ierr = apply_disc(grid_eq_plot%zeta_F,norm_interp_data,&
+            &grid_X_plot%zeta_F,3)
+        CHCKERR('')
+        call dealloc_disc(norm_interp_data)                                     ! clean up
+        call lvl_ud(-1)
+        
+        ! point extended sol grid to extended X grid
+        call writo('Point extended solution grid to extended perturbation grid')
+        grid_sol_plot => grid_X_plot                                            ! extended sol grid identical to extended X grid
+        
         call lvl_ud(-1)
         call writo('Grids set up')
         
@@ -345,11 +386,21 @@ contains
         
         call writo('Calculate helper variables')
         call lvl_ud(1)
+        
+        ! if VMEC, calculate trigonometric factors of plot grid
+        if (eq_style.eq.1) then
+            ierr = calc_trigon_factors(grid_sol_plot%theta_E,&
+                &grid_sol_plot%zeta_E,grid_sol_plot%trigon_factors)
+            CHCKERR('')
+        end if
+        
+        ! set up XYZ
         allocate(XYZ_plot(grid_sol_plot%n(1),grid_sol_plot%n(2),&
             &grid_sol_plot%loc_n_r,3))
         ierr = calc_XYZ_grid(grid_eq,grid_sol_plot,XYZ_plot(:,:,:,1),&
             &XYZ_plot(:,:,:,2),XYZ_plot(:,:,:,3))
         CHCKERR('')
+        
         call lvl_ud(-1)
         
         call writo('Calculate resonant surfaces')
@@ -494,11 +545,11 @@ contains
         end if
         nullify(grid_eq_B)
         nullify(grid_X_B)
+        nullify(grid_sol_plot)
         nullify(eq_2_B)
         nullify(X_B)
         call dealloc_grid(grid_eq_plot)
         call dealloc_grid(grid_X_plot)
-        call dealloc_grid(grid_sol_plot)
         call dealloc_eq(eq_2_plot)
         call dealloc_X(X_plot)
         call lvl_ud(-1)

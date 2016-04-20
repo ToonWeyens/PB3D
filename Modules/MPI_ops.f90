@@ -495,13 +495,14 @@ contains
     integer function broadcast_input_opts() result(ierr)
         use num_vars, only: max_str_ln, ltest, max_it_NR, rank, &
             &max_it_rich, relax_fac_NR, tol_NR, n_procs, n_sol_requested, &
-            &tol_rich, &
+            &tol_rich, max_nr_tries_NR, &
             &retain_all_sol, plot_flux_q, plot_grid, no_plots, &
-            &n_sol_plotted, n_theta_plot, n_zeta_plot, &
+            &n_sol_plotted, n_theta_plot, n_zeta_plot, min_theta_plot, &
+            &max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &plot_resonance, tol_SLEPC, prog_style, &
             &max_it_inv, tol_norm, max_it_slepc, &
             &max_mem_per_proc, plot_size, &
-            &test_max_mem, no_execute_command_line, print_mem_usage, &
+            &test_max_mem, do_execute_command_line, print_mem_usage, &
             &rich_restart_lvl, &
             &PB3D_name
         use grid_vars, only: min_par_X, max_par_X
@@ -528,7 +529,7 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(no_execute_command_line,1,MPI_LOGICAL,0,&
+            call MPI_Bcast(do_execute_command_line,1,MPI_LOGICAL,0,&
                 &MPI_Comm_world,ierr)
             call MPI_Bcast(print_mem_usage,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
@@ -545,6 +546,18 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(tol_NR,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
+            call MPI_Bcast(min_theta_plot,1,MPI_DOUBLE_PRECISION,0,&
+                &MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(max_theta_plot,1,MPI_DOUBLE_PRECISION,0,&
+                &MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(min_zeta_plot,1,MPI_DOUBLE_PRECISION,0,&
+                &MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(max_zeta_plot,1,MPI_DOUBLE_PRECISION,0,&
+                &MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
             call MPI_Bcast(n_theta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(n_zeta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
@@ -554,6 +567,8 @@ contains
             call MPI_Bcast(max_it_rich,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(max_it_NR,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(max_nr_tries_NR,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(PB3D_name,len(PB3D_name),MPI_CHARACTER,0,&
                 &MPI_Comm_world,ierr)

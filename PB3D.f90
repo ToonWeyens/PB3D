@@ -15,7 +15,7 @@
 !                Universidad Carlos III de Madrid, Spain                       !
 !   Contact: tweyens@fis.uc3m.es                                               !
 !------------------------------------------------------------------------------!
-!   Version: 1.15                                                              !
+!   Version: 1.16                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -65,6 +65,8 @@ program PB3D
     call init_time()                                                            ! initialize time
     call init_HDF5()                                                            ! initialize HDF5
     call init_X_vars()                                                          ! initialize perturbation vars
+    write(*,*) '!!!!!! TEST_Dp DOES NOT WORK FOR VMEC !!!!'
+    write(*,*) '!!!!!! THE SHAPE OF THE FLUX SURFACES IS UNCORRECT!!!! COMPARE WITH MATLAB !!!!!!!!'
  
     !-------------------------------------------------------
     !   Read the user-provided input file and the VMEC output

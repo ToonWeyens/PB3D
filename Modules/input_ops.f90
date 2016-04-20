@@ -27,7 +27,8 @@ contains
             &BC_style, max_it_inv, tol_norm, tol_SLEPC_loc => tol_SLEPC, &
             &max_it_slepc, n_procs, pi, plot_size, U_style, norm_style, &
             &test_max_mem, X_style, matrix_SLEPC_style, input_name, &
-            &rich_restart_lvl, eq_style, relax_fac_NR
+            &rich_restart_lvl, eq_style, relax_fac_NR, min_theta_plot, &
+            &max_theta_plot, min_zeta_plot, max_zeta_plot, max_nr_tries_NR
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use messages, only: writo, lvl_ud
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
@@ -57,11 +58,14 @@ contains
             &EV_BC, tol_SLEPC, retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, &
             &norm_disc_prec_X, BC_style, max_it_inv, max_it_slepc, &
             &norm_disc_prec_sol, plot_size, U_style, norm_style, test_max_mem, &
-            &matrix_SLEPC_style, rich_restart_lvl, min_n_par_X, relax_fac_NR
+            &matrix_SLEPC_style, rich_restart_lvl, min_n_par_X, relax_fac_NR, &
+            &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
+            &max_nr_tries_NR
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_grid, norm_disc_prec_sol, &
             &plot_size, test_max_mem, PB3D_lvl_rich, max_it_NR, tol_NR, &
-            &relax_fac_NR
+            &relax_fac_NR, min_theta_plot, max_theta_plot, min_zeta_plot, &
+            &max_zeta_plot, max_nr_tries_NR
         
         ! initialize ierr
         ierr = 0
@@ -79,15 +83,22 @@ contains
             max_mem_per_proc = 6000_dp/n_procs                                  ! count with 6GB
             plot_size = [10,5]                                                  ! size of plot in inch
             test_max_mem = .false.                                              ! do not test maximum memory
+            min_theta_plot = 1                                                  ! starting from pi gives nicer plots
+            max_theta_plot = 3
             select case(eq_style)
                 case (1)                                                        ! VMEC
                     n_theta_plot = 201                                          ! nr. poloidal points in plot
                     n_zeta_plot = 101                                           ! nr. toroidal points in plot
+                    min_zeta_plot = 0
+                    max_zeta_plot = 2
                 case (2)                                                        ! HELENA
                     n_theta_plot = 501                                          ! nr. poloidal points in plot
                     n_zeta_plot = 1                                             ! nr. toroidal points in plot
+                    min_zeta_plot = 0
+                    max_zeta_plot = min_zeta_plot
             end select
             relax_fac_NR = 0.75_dp                                              ! standard relaxation factor
+            max_nr_tries_NR = 6                                                 ! standard nr. of tries
             
             ! select depending on program style
             select case (prog_style)
@@ -169,6 +180,15 @@ contains
                     if (ierr.eq.0) then                                         ! input file succesfully read
                         call writo('Overwriting with user-provided file "'&
                             &//trim(input_name) // '"')
+                        
+                        call writo('Checking user-provided file')
+                        
+                        call lvl_ud(1)
+                        
+                        ! adapt plotting variables if needed
+                        call adapt_plot
+                        
+                        call lvl_ud(-1)
                     else                                                        ! cannot read input data
                         ierr = 1
                         err_msg = 'Cannot read user-provided file "'&
@@ -177,6 +197,10 @@ contains
                     end if
                     
                     ! set up max_it_rich and rich_lvl
+                    call lvl_ud(1)
+                    call writo('PB3D level to be processed: '//&
+                        &trim(i2str(PB3D_lvl_rich)))
+                    call lvl_ud(-1)
                     max_it_rich = PB3D_lvl_rich
                     rich_lvl = PB3D_lvl_rich
             end select
@@ -350,8 +374,13 @@ contains
         end function adapt_inoutput
         
         ! checks whether the variables concerning plotting are chosen correctly.
-        ! n_theta and n_zeta_plot have to be positive
+        !   n_theta_plot and n_zeta_plot have to be positive
+        !   if n_theta_plot or  n_zeta_plot is equal to 1, the  minimum value is
+        !   chosen
         subroutine adapt_plot
+            ! local variables
+            real(dp), parameter :: tol = 1.E-6_dp                               ! tolerance for checks
+            
             if (n_theta_plot.lt.1) then
                 n_theta_plot = 1
                 call writo('n_theta_plot cannot be negative and is set to '//&
@@ -361,6 +390,20 @@ contains
                 n_zeta_plot = 1
                 call writo('n_zeta_plot cannot be negative and is set to '//&
                     &trim(i2str(n_zeta_plot)),warning=.true.)
+            end if
+            if (n_theta_plot.eq.1 .and. &
+                &abs(max_theta_plot-min_theta_plot).gt.tol) then
+                call writo('For n_theta_plot = 1, max_theta_plot is changed to &
+                    &min_theta_plot = '//trim(r2strt(min_theta_plot)),&
+                    &warning=.true.)
+                max_theta_plot = min_theta_plot
+            end if
+            if (n_zeta_plot.eq.1 .and. &
+                &abs(max_zeta_plot-min_zeta_plot).gt.tol) then
+                call writo('For n_zeta_plot = 1, max_zeta_plot is changed to &
+                    &min_zeta_plot = '//trim(r2strt(min_zeta_plot)),&
+                    &warning=.true.)
+                max_zeta_plot = min_zeta_plot
             end if
         end subroutine adapt_plot
         

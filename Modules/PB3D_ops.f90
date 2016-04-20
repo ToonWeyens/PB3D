@@ -760,13 +760,13 @@ contains
         ! create X
         call create_X(grid_X,X,lim_sec_X)
         
-        ! get full variable names
-        call get_full_var_names(X_1_var_names,req_var_names,lim_sec_X_loc)
-        
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
             ! setup par_id
             par_id = setup_par_id(grid_X,rich_lvl_loc,id,tot_rich)
+            
+            ! get full variable names
+            call get_full_var_names(X_1_var_names,req_var_names,lim_sec_X_loc)
             
             ! read HDF5 variables
             ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
@@ -964,7 +964,7 @@ contains
                 &true.,.true.,.false.,.false.,.true.,.true.],&
                 &req_var_names,lim_sec_X_loc)
             
-            ! read PB3D arrays
+            ! read HDF5 variables
             ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
                 &rich_lvl=id,acc_var_names=req_var_names)
             CHCKERR('')
@@ -1166,7 +1166,7 @@ contains
         
         ! prepare
         
-        ! read HDF5 arrays
+        ! read HDF5 variables
         ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
             &rich_lvl=rich_lvl)
         CHCKERR('')

@@ -620,6 +620,13 @@ contains
             CHCKERR('')
         end do
         
+        ! Transform metric equilibrium E into F derivatives
+        ierr = calc_F_derivs(eq_2)
+        CHCKERR('')
+        
+        ! Calculate derived metric quantities
+        call calc_derived_q(grid_eq,eq_1,eq_2)
+        
 #if ldebug
         if (ltest) then
             call writo('Test Jacobian in Flux coordinates?')
@@ -642,13 +649,6 @@ contains
             end if
         end if
 #endif
-        
-        ! Transform metric equilibrium E into F derivatives
-        ierr = calc_F_derivs(eq_2)
-        CHCKERR('')
-        
-        ! Calculate derived metric quantities
-        call calc_derived_q(grid_eq,eq_1,eq_2)
         
         call lvl_ud(-1)
         
@@ -719,9 +719,11 @@ contains
     contains
         ! plots the flux quantities in HDF5
         integer function flux_q_plot_HDF5() result(ierr)
+            use num_vars, only: eq_style
             use output_ops, only: plot_HDF5
             use grid_utilities, only: calc_XYZ_grid, extend_grid_E, trim_grid
             use grid_vars, only: dealloc_grid
+            use VMEC, only: calc_trigon_factors
             
             character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
             
@@ -754,6 +756,15 @@ contains
             ! extend trimmed equilibrium grid
             ierr = extend_grid_E(grid_trim,grid_plot)
             CHCKERR('')
+            
+            ! if VMEC, calculate trigonometric factors of plot grid
+            if (eq_style.eq.1) then
+                write(*,*) '!!!!!!!!!!!!!!!!!!!! TRIGON_FACTORS CONTAIN A LOT &
+                    &OF REDUNDANCY FOR PLOT GRID !!!!!'
+                ierr = calc_trigon_factors(grid_plot%theta_E,grid_plot%zeta_E,&
+                    &grid_plot%trigon_factors)
+                CHCKERR('')
+            end if
             
             ! set up plot_dim and plot_offset
             plot_dim = [grid_plot%n(1),grid_plot%n(2),grid_plot%n(3),n_vars]
@@ -1923,12 +1934,13 @@ contains
     subroutine calc_derived_q(grid_eq,eq_1,eq_2)
         use utilities, only: c
         use eq_vars, only: vac_perm
-        use num_vars, only: norm_disc_prec_eq
+        use num_vars, only: norm_disc_prec_eq, eq_style
 #if ldebug
         use num_vars, only: use_pol_flux_F
         use grid_vars, only: dealloc_grid
         use grid_utilities, only: trim_grid, calc_XYZ_grid, setup_deriv_data, &
             &apply_disc
+        use VMEC, only: calc_trigon_factors
 #endif
         
         ! input / output
@@ -2041,6 +2053,13 @@ contains
             ! trim equilibrium grid
             istat = trim_grid(grid_eq,grid_eq_trim,norm_id)
             CHCKSTT
+            
+            ! if VMEC, calculate trigonometric factors of plot grid
+            if (eq_style.eq.1) then
+                istat = calc_trigon_factors(grid_eq_trim%theta_E,&
+                    &grid_eq_trim%zeta_E,grid_eq_trim%trigon_factors)
+                CHCKSTT
+            end if
             
             ! allocate variables
             allocate(D3sigma(grid_eq_trim%n(1),grid_eq_trim%n(2),&
@@ -3267,15 +3286,13 @@ contains
             ! plot difference
             if (id.lt.4) then
                 call plot_diff_HDF5(res2(:,:,:,id),&
-                    &eq_2%g_F(:,:,norm_id(1):norm_id(2),c([3,id],.true.),&
-                    &0,0,0)/&
-                    &eq_2%jac_F(:,:,norm_id(1):norm_id(2),0,0,0),file_name,&
+                    &eq_2%g_F(:,:,norm_id(1):norm_id(2),c([3,id],.true.),0,0,0)&
+                    &/eq_2%jac_F(:,:,norm_id(1):norm_id(2),0,0,0),file_name,&
                     &tot_dim,loc_offset,description,output_message=.true.)
             else
                 call plot_diff_HDF5(res2(:,:,:,id),sqrt(&
-                    &eq_2%g_F(:,:,norm_id(1):norm_id(2),c([3,3],.true.),&
-                    &0,0,0))/&
-                    &eq_2%jac_F(:,:,norm_id(1):norm_id(2),0,0,0),file_name,&
+                    &eq_2%g_F(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0))&
+                    &/eq_2%jac_F(:,:,norm_id(1):norm_id(2),0,0,0),file_name,&
                     &tot_dim,loc_offset,description,output_message=.true.)
             end if
             

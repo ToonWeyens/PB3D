@@ -1625,7 +1625,7 @@ contains
     ! Executes command line, or displays a message if disabled. Also keeps a log
     ! of all shell commands executed.
     subroutine use_execute_command_line(command,exitstat,cmdstat,cmdmsg)
-        use num_vars, only: no_execute_command_line, prog_name, &
+        use num_vars, only: do_execute_command_line, prog_name, &
             &shell_commands_name
         
         ! input / output
@@ -1653,21 +1653,20 @@ contains
                 &//trim(full_name)//'"',warning=.true.)
         end if
         
+        ! initialize stati
+        if (present(exitstat)) exitstat = 0
+        if (present(cmdstat)) cmdstat = 0
+        if (present(cmdmsg)) cmdmsg = ''
+        
         ! execute command line
-        if (no_execute_command_line) then
-            call writo('Not executing command',warning=.true.)
+        if (do_execute_command_line) then
+            call execute_command_line(command,EXITSTAT=exitstat,&
+                &CMDSTAT=cmdstat,CMDMSG=cmdmsg)
+        else
+            call writo('Command added to log file "'//trim(full_name)//'":')
             call lvl_ud(1)
             call writo(command)
             call lvl_ud(-1)
-            call writo('This can be run manually')
-            if (istat.eq.0) call writo('And the command is also written to &
-                &the log file "'//trim(full_name)//'"')
-            if (present(exitstat)) exitstat = 1
-            if (present(cmdstat)) cmdstat = 0
-            if (present(cmdmsg)) cmdmsg = ''
-        else
-            call execute_command_line(command,EXITSTAT=exitstat,&
-                &CMDSTAT=cmdstat,CMDMSG=cmdmsg)
         end if
     end subroutine
 end module output_ops

@@ -53,7 +53,7 @@ contains
         opt_args(2) = '--test'
         opt_args(3) = '--no_plots'
         opt_args(4) = '--no_output'
-        opt_args(5) = '--no_execute_command_line'
+        opt_args(5) = '--do_execute_command_line'
         opt_args(6) = '--mem_info'
         inc_args(1:6) = [0,0,0,0,0,0]
     end subroutine init_files
@@ -157,7 +157,7 @@ contains
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
-            &no_execute_command_line, output_name, prog_name, print_mem_usage
+            &do_execute_command_line, output_name, prog_name, print_mem_usage
         use files_utilities, only: search_file
         use rich_vars, only: no_guess
 #if ldebug
@@ -320,9 +320,9 @@ contains
                                         &messages disabled')
                                     no_output = .true.
                                 case (5)                                        ! disable execute_command_line
-                                    call writo('option no_execute_command_line &
-                                        &chosen: execute_command_line disabled')
-                                    no_execute_command_line = .true.
+                                    call writo('option do_execute_command_line &
+                                        &chosen: execute_command_line enabled')
+                                    do_execute_command_line = .true.
                                 case (6)                                        ! disable execute_command_line
                                     call writo('option mem_info chosen: &
                                         &memory usage is printed')
@@ -517,12 +517,15 @@ contains
     ! closes the output file
     ! [MPI] only master
     subroutine close_output
-        use num_vars, only: rank, output_i, prog_name, shell_commands_name
+        use num_vars, only: rank, output_i, prog_name, shell_commands_name, &
+            &do_execute_command_line
         
         call writo('Closing output files')
         call lvl_ud(1)
         call writo('A log of the shell command is kept in the log file "'//&
             &trim(prog_name)//'_'//trim(shell_commands_name)//'.sh"')
+        if (.not.do_execute_command_line) &
+            &call writo('Execute this script to do all the shell commands')
         call lvl_ud(-1)
         call writo('Output files closed')
         call writo('')

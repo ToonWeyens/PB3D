@@ -11,7 +11,6 @@ display_usage() {
 # Setting some variables
 #slepc_opt="-st_pc_factor_shift_type NONZERO -st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_view"
 slepc_opt="-st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_ncv 100 -eps_mpd 100"
-#slepc_opt="-st_pc_type jacobi -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_ncv 100 -eps_mpd 100"
 debug_opt=""
 extra_debug_opt=""
 n_opt_args=0
@@ -77,14 +76,14 @@ mkdir -p $out $out/Plots $out/Data $out/Scripts &&
 echo "Working in directory $out/"
 echo ""
 # Copy inputs and the program
-cp input_qps $out
-cp wout_qps.nc $out
+cp input_cbm18a $out
+cp cbm18a $out
 cp ../PB3D $out
 chmod +x $out/PB3D
 cd $out
 rm -f .lock_file*
-echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_qps wout_qps.nc $slepc_opt ${@:2}" > command
-mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_qps wout_qps.nc $slepc_opt ${@:2}
+echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2}" > command
+mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a cbm18a $slepc_opt ${@:2}
 cd ../
 echo ""
 echo "Leaving directory $out/"

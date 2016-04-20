@@ -533,6 +533,8 @@ contains
     ! If VMEC is the equilibrium  model, this routine also optionally calculates
     ! lambda on the grid, as this is  also needed some times. If HELENA is used,
     ! this variable is not used.
+    ! Note: For  VMEC, the trigonometric factors of grid_XYZ  must be calculated
+    ! beforehand.
     integer function calc_XYZ_grid(grid_eq,grid_XYZ,X,Y,Z,L) result(ierr)
         use num_vars, only: eq_style, use_normalization
         use utilities, only: round_with_tol
@@ -603,7 +605,7 @@ contains
         integer function calc_XYZ_grid_VMEC(grid_eq,grid_XYZ,X,Y,Z,L) &
             &result(ierr)
             use num_vars, only: norm_disc_prec_eq
-            use VMEC, only: calc_trigon_factors, fourier2real, &
+            use VMEC, only: fourier2real, &
                 &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V
             use grid_vars, only: dealloc_disc
             
@@ -619,7 +621,6 @@ contains
             real(dp), allocatable :: R_V_c_int(:,:), R_V_s_int(:,:)             ! interpolated version of R_V_c and R_V_s
             real(dp), allocatable :: Z_V_c_int(:,:), Z_V_s_int(:,:)             ! interpolated version of Z_V_c and Z_V_s
             real(dp), allocatable :: L_V_c_int(:,:), L_V_s_int(:,:)             ! interpolated version of L_V_c and L_V_s
-            real(dp), allocatable :: trigon_factors(:,:,:,:,:)                  ! trigonometric factor cosine for the inverse fourier transf.
             real(dp), allocatable :: R(:,:,:)                                   ! R in Cylindrical coordinates
             type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
             
@@ -660,26 +661,21 @@ contains
             ! clean up
             call dealloc_disc(norm_interp_data)
             
-            ! calculate trigonometric factors
-            ierr = calc_trigon_factors(grid_XYZ%theta_E,grid_XYZ%zeta_E,&
-                &trigon_factors)
-            CHCKERR('')
-            
             ! allocate R
             allocate(R(grid_XYZ%n(1),grid_XYZ%n(2),grid_XYZ%loc_n_r))
             
             ! inverse fourier transform with trigonometric factors
-            ierr = fourier2real(R_V_c_int,R_V_s_int,trigon_factors,R,[0,0])
+            ierr = fourier2real(R_V_c_int,R_V_s_int,&
+                &grid_XYZ%trigon_factors,R,[0,0])
             CHCKERR('')
-            ierr = fourier2real(Z_V_c_int,Z_V_s_int,trigon_factors,Z,[0,0])
+            ierr = fourier2real(Z_V_c_int,Z_V_s_int,&
+                &grid_XYZ%trigon_factors,Z,[0,0])
             CHCKERR('')
             if (present(L)) then
-                ierr = fourier2real(L_V_c_int,L_V_s_int,trigon_factors,L,[0,0])
+                ierr = fourier2real(L_V_c_int,L_V_s_int,&
+                    &grid_XYZ%trigon_factors,L,[0,0])
                 CHCKERR('')
             end if
-            
-            ! deallocate
-            deallocate(trigon_factors)
             
             ! transform cylindrical to cartesian
             ! (the geometrical zeta is the inverse of VMEC zeta)
@@ -905,9 +901,12 @@ contains
     ! Extend a  grid angularly using  equidistant variables of  n_theta_plot and
     ! n_zeta_plot angular and own loc_n_r points in E coordinates.
     ! Optionally,  the grid  can  also  be converted  to  F  coordinates if  the
-    ! equilibrium grid is provided.
+    ! equilibrium grid is provided. Though this is required for many operations,
+    ! it  is  not   required  for  the  calculation  of  X,   Y  and  Z  through
+    ! calc_XYZ_grid.
     integer function extend_grid_E(grid_in,grid_ext,grid_eq) result(ierr)
-        use num_vars, only: n_theta_plot, n_zeta_plot
+        use num_vars, only: n_theta_plot, n_zeta_plot, min_theta_plot, &
+            &max_theta_plot, min_zeta_plot, max_zeta_plot
         use grid_vars, only: create_grid
         
         character(*), parameter :: rout_name = 'extend_grid_E'
@@ -928,9 +927,11 @@ contains
         CHCKERR('')
         grid_ext%r_E = grid_in%r_E
         grid_ext%loc_r_E = grid_in%loc_r_E
-        ierr = calc_eqd_grid(grid_ext%theta_E,1*pi,3*pi,1)                      ! starting from pi gives nicer plots
+        ierr = calc_eqd_grid(grid_ext%theta_E,min_theta_plot*pi,&
+            &max_theta_plot*pi,1)
         CHCKERR('')
-        ierr = calc_eqd_grid(grid_ext%zeta_E,0*pi,2*pi,2)
+        ierr = calc_eqd_grid(grid_ext%zeta_E,min_zeta_plot*pi,&
+            &max_zeta_plot*pi,2)
         CHCKERR('')
         
         ! convert all E coordinates to F coordinates if requested

@@ -512,12 +512,14 @@ contains
     integer function run_driver_X_2(eq_1) result(ierr)
         use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
         use MPI_utilities, only: wait_MPI
-        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style
+        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
+            &plot_grid
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_X_2
         use rich_vars, only: rich_lvl
         use X_ops, only: calc_X, print_output_X, calc_magn_ints
         use grid_vars, only: dealloc_grid
+        use grid_ops, only: plot_grid_real
         use eq_vars, only: create_eq, dealloc_eq
         use X_vars, only: dealloc_X
         use HELENA_ops, only: interp_HEL_on_grid
@@ -591,6 +593,16 @@ contains
         end select
         
         call lvl_ud(-1)
+        
+        ! plot grid if requested
+        if (plot_grid) then
+            if (rank.eq.0) then
+                ierr = plot_grid_real(grid_eq_B)
+                CHCKERR('')
+            end if
+        else
+            call writo('Magnetic grid plot not requested')
+        end if
         
         ! divide perturbation jobs, tensor phase
         select case (eq_style)

@@ -357,9 +357,9 @@ contains
                 end do
             else                                                                ! descending r_F_eq
                 do id = 1,n_r_eq
-                    if (r_F_eq(n_r_eq-id+1).le.min_sol+tol) &
-                        &eq_limits(1) = n_r_eq-id+1                             ! move lower limit up
-                    if (r_F_eq(id).ge.max_sol-tol) eq_limits(2) = id            ! move upper limit down
+                    if (r_F_eq(id).ge.max_sol+tol) eq_limits(1) = id            ! move lower limit up
+                    if (r_F_eq(n_r_eq-id+1).le.min_sol-tol) &
+                        &eq_limits(2) = n_r_eq-id+1                             ! move upper limit down
                 end do
             end if
             
@@ -369,7 +369,6 @@ contains
                 err_msg = 'Solution range not contained in equilibrium range'
                 CHCKERR(err_msg)
             end if
-                
             
             ! copy solution range to perturbation range
             X_limits = sol_limits
@@ -782,9 +781,12 @@ contains
     ! has to be 3D also in the axisymmetric case.
     ! [MPI] Collective call
     integer function plot_grid_real(grid) result(ierr)
-        use num_vars, only: rank, n_procs, no_plots, n_theta_plot, n_zeta_plot
+        use num_vars, only: rank, no_plots, n_theta_plot, n_zeta_plot, &
+            &eq_style, min_theta_plot, max_theta_plot, min_zeta_plot, &
+            &max_zeta_plot
         use grid_vars, only: create_grid, dealloc_grid
         use grid_utilities, only: trim_grid, extend_grid_E, calc_XYZ_grid
+        use VMEC, only: calc_trigon_factors
         
         character(*), parameter :: rout_name = 'plot_grid_real'
         
@@ -805,6 +807,8 @@ contains
         integer :: id, jd                                                       ! counters
         integer :: n_theta_plot_old                                             ! backup of n_theta_plot
         integer :: n_zeta_plot_old                                              ! backup of n_zeta_plot
+        real(dp) :: min_theta_plot_old, max_theta_plot_old                      ! backup of min and max_theta_plot
+        real(dp) :: min_zeta_plot_old, max_zeta_plot_old                        ! backup of min and max_zeta_plot
         character(len=max_str_ln) :: anim_name                                  ! name of animation
         
         ! initialize ierr
@@ -822,8 +826,16 @@ contains
         ! save n_theta_plot and n_zeta_plot and change them
         n_theta_plot_old = n_theta_plot
         n_zeta_plot_old = n_zeta_plot
+        min_theta_plot_old = min_theta_plot
+        max_theta_plot_old = max_theta_plot
+        min_zeta_plot_old = min_zeta_plot
+        max_zeta_plot_old = max_zeta_plot
         n_theta_plot = 40
         n_zeta_plot = 160
+        min_theta_plot = 1
+        max_theta_plot = 3
+        min_zeta_plot = 0
+        max_zeta_plot = 2
         
         ! extend grid
         ierr = extend_grid_E(grid,grid_ext)
@@ -832,10 +844,21 @@ contains
         ! restore n_theta_plot and n_zeta_plot
         n_theta_plot = n_theta_plot_old
         n_zeta_plot = n_zeta_plot_old
+        min_theta_plot = min_theta_plot_old
+        max_theta_plot = max_theta_plot_old
+        min_zeta_plot = min_zeta_plot_old
+        max_zeta_plot = max_zeta_plot_old
         
         ! trim extended grid into plot grid
         ierr = trim_grid(grid_ext,grid_plot)
         CHCKERR('')
+        
+        ! if VMEC, calculate trigonometric factors of plot grid
+        if (eq_style.eq.1) then
+            ierr = calc_trigon_factors(grid_plot%theta_E,grid_plot%zeta_E,&
+                &grid_plot%trigon_factors)
+            CHCKERR('')
+        end if
         
         ! set animation name
         anim_name = 'Magnetic field in flux surfaces'
@@ -860,6 +883,13 @@ contains
         ierr = trim_grid(grid,grid_plot)
         CHCKERR('')
         
+        ! if VMEC, calculate trigonometric factors of plot grid
+        if (eq_style.eq.1) then
+            ierr = calc_trigon_factors(grid_plot%theta_E,grid_plot%zeta_E,&
+                &grid_plot%trigon_factors)
+            CHCKERR('')
+        end if
+        
         ! calculate X_2,Y_2 and Z_2
         allocate(X_2(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r))
         allocate(Y_2(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r))
@@ -872,9 +902,10 @@ contains
         call dealloc_grid(grid_ext)
         
         ! get pointers to full X, Y and Z
-        ! The reason for  this is that the  plot is not as simple  as usual, and
-        ! also  efficiency  is not  the  biggest  priority. Therefore,  all  the
-        ! plotting of the local is handled by a single process, the master.
+        ! The reason for this is that the plot  is not as simple as usual, so no
+        ! divided  plots  are used,  and  also  efficiency  is not  the  biggest
+        ! priority. Therefore,  all the plotting  of the  local is handled  by a
+        ! single process, the master.
         call get_full_XYZ(X_1,Y_1,Z_1,X_1_tot,Y_1_tot,Z_1_tot,'flux surfaces')
         call get_full_XYZ(X_2,Y_2,Z_2,X_2_tot,Y_2_tot,Z_2_tot,'field lines')
         
@@ -907,7 +938,7 @@ contains
             integer, allocatable :: tot_dim(:)                                  ! total dimensions for plot 
             
             ! merge plots for flux surfaces if more than one process
-            if (n_procs.gt.1) then                                              ! merge local plots
+            if (grid%divided) then                                              ! merge local plots
                 ! user output
                 call writo('Merging local plots for '//merge_name)
                 

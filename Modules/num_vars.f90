@@ -19,11 +19,12 @@ module num_vars
         &norm_disc_prec_X, norm_disc_prec_sol, &
         &max_it_rich, tol_rich, &
         &max_it_inv, &
-        &max_it_NR, relax_fac_NR, tol_NR, tol_norm, &
+        &max_it_NR, max_nr_tries_NR, relax_fac_NR, tol_NR, tol_norm, &
         &GP_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
-        &n_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
-        &no_execute_command_line, print_mem_usage, input_name, &
+        &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
+        &max_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
+        &do_execute_command_line, print_mem_usage, input_name, &
         &rich_restart_lvl, plot_size
 
     ! technical variables
@@ -42,7 +43,7 @@ module num_vars
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
     integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
-    real(dp), parameter :: prog_version = 1.15_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.16_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.14_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
@@ -94,6 +95,7 @@ module num_vars
 
     ! concerning finding the magnetic field lines
     integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
+    integer :: max_nr_tries_NR                                                  ! maximum number of tries for Newton-Rhapson, relax. factors
     real(dp) :: relax_fac_NR                                                    ! standard relaxation factor for Newton-Rhapson iterations
     real(dp) :: tol_NR                                                          ! tolerance for Newton-Rhapson
     real(dp) :: tol_norm                                                        ! tolerance for normal range (normalized to 0..1)
@@ -108,13 +110,15 @@ module num_vars
     integer :: output_i                                                         ! file number of output file
     logical :: no_plots = .false.                                               ! true if no plots should be made
     logical :: no_output = .false.                                              ! true if no output should be shown
-    logical :: no_execute_command_line = .false.                                ! true if "execute_command_line" should not be called
+    logical :: do_execute_command_line = .false.                                ! true if "execute_command_line" should be called
     logical :: print_mem_usage = .false.                                        ! true if memory usage is printed
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots
     character(len=4) :: data_dir = 'Data'                                       ! directory where to save data for plots
     integer :: n_theta_plot                                                     ! nr. of poloidal points in plot
     integer :: n_zeta_plot                                                      ! nr. of toroidal points in plot
+    real(dp) :: min_theta_plot, max_theta_plot                                  ! min. and max. of theta_plot
+    real(dp) :: min_zeta_plot, max_zeta_plot                                    ! min. and max. of zeta_plot
     integer :: n_sol_requested                                                  ! how many solutions requested
     integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
     integer :: plot_size(2)                                                     ! size of plot in inches
