@@ -19,6 +19,8 @@ module driver_X
     character(len=8) :: flux_name(2)                                            ! name of flux variable
     character(len=1) :: mode_name(2)                                            ! name of modes
     integer :: rich_lvl_name                                                    ! either the Richardson level or zero, to append to names
+    logical :: debug_run_driver_X_1 = .false.                                   ! debug information for run_driver_X_1
+    logical :: debug_run_driver_X_2 = .false.                                   ! debug information for run_driver_X_2
     
 contains
     ! Main driver of PB3D perturbation part.
@@ -267,6 +269,11 @@ contains
         type(eq_2_type) :: eq_2                                                 ! metric equilibrium variables
         type(X_1_type) :: X_1(2)                                                ! vectorial X variables
         type(X_2_type) :: X_2                                                   ! tensorial X variables
+#if ldebug
+        character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
+        character(len=max_str_ln) :: file_name                                  ! name of file
+        integer :: ld                                                           ! counter
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -313,8 +320,77 @@ contains
                 &rich_lvl=rich_lvl_name,lim_sec_X=X_jobs_lims(:,X_job_nr))
             CHCKERR('')
             
+#if ldebug
+            ! write vectorial perturbation quantities to output
+            if (debug_run_driver_X_1) then
+                ! angles
+                call plot_HDF5('theta_F_B','theta_F',grid_X%theta_F)
+                call plot_HDF5('zeta_F_B','zeta_F',grid_X%zeta_F)
+                ! U_0
+                allocate(var_names(size(X_1(1)%U_0,4)))
+                if (n_procs.eq.1) then
+                    file_name = 'U_0'
+                else
+                    file_name = 'U_0'//trim(i2str(rank))
+                end if
+                do ld = 1,size(var_names)
+                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+                end do
+                call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                    &realpart(X_1(1)%U_0),col_id=4,col=1)
+                call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                    &imagpart(X_1(1)%U_0),col_id=4,col=1)
+                deallocate(var_names)
+                ! U_1
+                allocate(var_names(size(X_1(1)%U_1,4)))
+                if (n_procs.eq.1) then
+                    file_name = 'U_1'
+                else
+                    file_name = 'U_1'//trim(i2str(rank))
+                end if
+                do ld = 1,size(var_names)
+                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+                end do
+                call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                    &realpart(X_1(1)%U_1),col_id=4,col=1)
+                call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                    &imagpart(X_1(1)%U_1),col_id=4,col=1)
+                deallocate(var_names)
+                ! DU_0
+                allocate(var_names(size(X_1(1)%DU_0,4)))
+                if (n_procs.eq.1) then
+                    file_name = 'DU_0'
+                else
+                    file_name = 'DU_0'//trim(i2str(rank))
+                end if
+                do ld = 1,size(var_names)
+                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+                end do
+                call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                    &realpart(X_1(1)%DU_0),col_id=4,col=1)
+                call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                    &imagpart(X_1(1)%DU_0),col_id=4,col=1)
+                deallocate(var_names)
+                ! DU_1
+                allocate(var_names(size(X_1(1)%DU_1,4)))
+                if (n_procs.eq.1) then
+                    file_name = 'DU_1'
+                else
+                    file_name = 'DU_1'//trim(i2str(rank))
+                end if
+                do ld = 1,size(var_names)
+                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+                end do
+                call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                    &realpart(X_1(1)%DU_1),col_id=4,col=1)
+                call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                    &imagpart(X_1(1)%DU_1),col_id=4,col=1)
+                deallocate(var_names)
+            end if
+            
             !!! plot information for comparison between VMEC and HELENA
             !!call plot_info_for_VMEC_HEL_comparison(grid_X,X_1(1))
+#endif
             
             ! clean up
             call dealloc_X(X_1(1))
@@ -515,7 +591,7 @@ contains
         use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
             &plot_grid
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
-            &reconstruct_PB3D_X_1, reconstruct_PB3D_X_2
+            &reconstruct_PB3D_X_2
         use rich_vars, only: rich_lvl
         use X_ops, only: calc_X, print_output_X, calc_magn_ints
         use grid_vars, only: dealloc_grid
@@ -539,6 +615,11 @@ contains
         type(eq_2_type), pointer :: eq_2_B                                      ! field-aligned tensorial perturbation variables
         type(X_2_type) :: X_2                                                   ! tensorial X variables
         integer :: arr_size                                                     ! size of array for jobs division
+#if ldebug
+        character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
+        character(len=max_str_ln) :: file_name                                  ! name of file
+        integer :: ld                                                           ! counter
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -647,6 +728,105 @@ contains
                         &grid_name='field-aligned perturbation grid')
                     CHCKERR('')
             end select
+            
+#if ldebug
+            ! write field-aligned tensorial perturbation quantities to output
+            if (debug_run_driver_X_2) then
+                ! angles
+                call plot_HDF5('theta_F_B','theta_F_B',grid_X_B%theta_F)
+                call plot_HDF5('zeta_F_B','zeta_F_B',grid_X_B%zeta_F)
+                ! PV_0
+                allocate(var_names(size(X_2%PV_0,4)))
+                if (n_procs.eq.1) then
+                    file_name = 'PV_0'
+                else
+                    file_name = 'PV_0_'//trim(i2str(rank))
+                end if
+                do ld = 1,size(var_names)
+                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+                end do
+                call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                    &realpart(X_2%PV_0),col_id=4,col=1)
+                call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                    &imagpart(X_2%PV_0),col_id=4,col=1)
+                deallocate(var_names)
+                ! PV_1
+                allocate(var_names(size(X_2%PV_1,4)))
+                if (n_procs.eq.1) then
+                    file_name = 'PV_1'
+                else
+                    file_name = 'PV_1_'//trim(i2str(rank))
+                end if
+                do ld = 1,size(var_names)
+                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+                end do
+                call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                    &realpart(X_2%PV_1),col_id=4,col=1)
+                call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                    &imagpart(X_2%PV_1),col_id=4,col=1)
+                deallocate(var_names)
+                ! PV_2
+                allocate(var_names(size(X_2%PV_2,4)))
+                if (n_procs.eq.1) then
+                    file_name = 'PV_2'
+                else
+                    file_name = 'PV_2_'//trim(i2str(rank))
+                end if
+                do ld = 1,size(var_names)
+                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+                end do
+                call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                    &realpart(X_2%PV_2),col_id=4,col=1)
+                call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                    &imagpart(X_2%PV_2),col_id=4,col=1)
+                deallocate(var_names)
+                ! KV_0
+                allocate(var_names(size(X_2%KV_0,4)))
+                if (n_procs.eq.1) then
+                    file_name = 'KV_0'
+                else
+                    file_name = 'KV_0_'//trim(i2str(rank))
+                end if
+                do ld = 1,size(var_names)
+                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+                end do
+                call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                    &realpart(X_2%KV_0),col_id=4,col=1)
+                call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                    &imagpart(X_2%KV_0),col_id=4,col=1)
+                deallocate(var_names)
+                ! KV_1
+                allocate(var_names(size(X_2%KV_1,4)))
+                if (n_procs.eq.1) then
+                    file_name = 'KV_1'
+                else
+                    file_name = 'KV_1_'//trim(i2str(rank))
+                end if
+                do ld = 1,size(var_names)
+                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+                end do
+                call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                    &realpart(X_2%KV_1),col_id=4,col=1)
+                call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                    &imagpart(X_2%KV_1),col_id=4,col=1)
+                deallocate(var_names)
+                ! KV_2
+                allocate(var_names(size(X_2%KV_2,4)))
+                if (n_procs.eq.1) then
+                    file_name = 'KV_2'
+                else
+                    file_name = 'KV_2_'//trim(i2str(rank))
+                end if
+                do ld = 1,size(var_names)
+                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+                end do
+                call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                    &realpart(X_2%KV_2),col_id=4,col=1)
+                call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                    &imagpart(X_2%KV_2),col_id=4,col=1)
+                deallocate(var_names)
+            end if
+#endif
             
             ! integrate magnetic  integrals of tensorial  perturbation variables
             ! over field-aligned grid and write output in same variable X_2.

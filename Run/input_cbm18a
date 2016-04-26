@@ -2,7 +2,7 @@
     min_n_par_X             = 20
     min_par_X               = -1.0
     max_par_X               = 1.0
-    alpha                   = 0.3
+    alpha                   = 0.0
     min_r_sol               = 0.2
     max_r_sol               = 1.0
     n_r_sol                 = 200
@@ -12,7 +12,8 @@
     use_pol_flux_F          = .true.
     use_normalization       = .true.
     prim_X                  = 10
-    n_mod_X                 = 15
+    min_sec_X               = 12
+    max_sec_X               = 15
     tol_rich                = 1.0E-12
     n_sol_requested         = 1
     max_it_inv              = 1
@@ -21,11 +22,11 @@
     U_style                 = 3
     max_it_slepc            = 100000
     max_mem_per_proc        = 1000
-    plot_grid               = .true.
+    plot_grid               = .false.
     plot_flux_q             = .false.
-    plot_resonance          = .true.
+    plot_resonance          = .false.
     matrix_SLEPC_style      = 1
-    max_it_rich             = 2
+    max_it_rich             = 1
     rich_restart_lvl        = 1
     n_zeta_plot             = 1
 /

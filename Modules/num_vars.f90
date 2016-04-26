@@ -16,7 +16,7 @@ module num_vars
         &X_style, matrix_SLEPC_style, plot_resonance, plot_grid, plot_flux_q, &
         &ltest, use_pol_flux_E, use_pol_flux_F, use_normalization, EV_BC, &
         &test_max_mem, tol_SLEPC, max_it_slepc, norm_disc_prec_eq, &
-        &norm_disc_prec_X, norm_disc_prec_sol, &
+        &norm_disc_prec_X, norm_disc_prec_sol, POST_style, &
         &max_it_rich, tol_rich, &
         &max_it_inv, &
         &max_it_NR, max_nr_tries_NR, relax_fac_NR, tol_NR, tol_norm, &
@@ -24,7 +24,7 @@ module num_vars
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
         &max_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
-        &do_execute_command_line, print_mem_usage, input_name, &
+        &do_execute_command_line, print_mem_usage, input_name, slab_plots, &
         &rich_restart_lvl, plot_size
 
     ! technical variables
@@ -43,7 +43,7 @@ module num_vars
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
     integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
-    real(dp), parameter :: prog_version = 1.16_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.17_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.14_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
@@ -71,6 +71,7 @@ module num_vars
     integer :: BC_style(2)                                                      ! style for BC left and right
     integer :: X_style                                                          ! style for secondary mode numbers (1: prescribed, 2: fast)
     integer :: matrix_SLEPC_style                                               ! style for matrix storage (1: sparse, 2: shell)
+    integer :: POST_style                                                       ! style for POST (1: extended grid, 2: B-aligned grid)
     integer :: max_it_slepc                                                     ! maximum nr. of iterations for SLEPC
     logical :: plot_resonance                                                   ! whether to plot the q-profile or iota-profile with resonances
     logical :: plot_grid                                                        ! whether to plot the grid in real coordinates
@@ -112,6 +113,8 @@ module num_vars
     logical :: no_output = .false.                                              ! true if no output should be shown
     logical :: do_execute_command_line = .false.                                ! true if "execute_command_line" should be called
     logical :: print_mem_usage = .false.                                        ! true if memory usage is printed
+    logical :: retain_all_sol                                                   ! retain also faulty solutions
+    logical :: slab_plots                                                       ! slab plots (only for POST)
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots
     character(len=4) :: data_dir = 'Data'                                       ! directory where to save data for plots
@@ -123,6 +126,5 @@ module num_vars
     integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
     integer :: plot_size(2)                                                     ! size of plot in inches
     integer :: rich_restart_lvl                                                 ! starting Richardson level (0: none [default])
-    logical :: retain_all_sol                                                   ! retain also faulty solutions
     character(len=max_str_ln) :: input_name                                     ! will hold the full name of the input file
 end module num_vars

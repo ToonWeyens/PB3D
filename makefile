@@ -31,13 +31,13 @@ LINK_DIR = /usr/bin/g++# laptop
 #SLEPC_DIR = /opt/slepc-3.5.3
 #include  $(PETSC_DIR)/conf/variables
 #include  $(SLEPC_DIR)/conf/slepc_variables
-# version 3.6.1 on laptop
-PETSC_DIR = /opt/petsc-3.6.1
-SLEPC_DIR = /opt/slepc-3.6.0
-# version 3.6.1 on quadrivium
+# version 3.6 on laptop
+PETSC_DIR = /opt/petsc-3.6.4
+SLEPC_DIR = /opt/slepc-3.6.3
+# version 3.6 on quadrivium
 #PETSC_DIR = $(HOME)/Programs/petsc-3.6.1
 #SLEPC_DIR = $(HOME)/Programs/slepc-3.6.1
-# version 3.6.1 for both
+# version 3.6 for both
 PETSC_ARCH = debug-complex
 include  $(PETSC_DIR)/lib/petsc/conf/variables
 include  $(SLEPC_DIR)/lib/slepc/conf/slepc_variables
@@ -46,8 +46,8 @@ include  $(SLEPC_DIR)/lib/slepc/conf/slepc_variables
 # (from http://www.hdfgroup.org/ftp/HDF5/examples/howto/makefiles/Makefilef)
 #HDF5_lib = /usr/lib/x86_64-linux-gnu# laptop repository
 #HDF5_inc = /usr/include/#laptop repository
-HDF5_lib = /opt/HDF5_1.8.16/hdf5/lib# laptop 1.8.16
-HDF5_inc = /opt/HDF5_1.8.16/hdf5/include/#laptop 1.8.16
+HDF5_lib = /opt/hdf5-1.8.16/hdf5/lib# laptop 1.8.16
+HDF5_inc = /opt/hdf5-1.8.16/hdf5/include/#laptop 1.8.16
 #HDF5_lib = /opt/HDF5_1.8.15-patch1/lib# laptop 1.8.15 patched
 #HDF5_inc = /opt/HDF5_1.8.15-patch1/include# laptop 1.8.15 patched
 #HDF5_lib = $(HOME)/lib# quadrivium 1.8.15 patched

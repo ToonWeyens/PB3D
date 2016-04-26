@@ -28,7 +28,8 @@ contains
             &max_it_slepc, n_procs, pi, plot_size, U_style, norm_style, &
             &test_max_mem, X_style, matrix_SLEPC_style, input_name, &
             &rich_restart_lvl, eq_style, relax_fac_NR, min_theta_plot, &
-            &max_theta_plot, min_zeta_plot, max_zeta_plot, max_nr_tries_NR
+            &max_theta_plot, min_zeta_plot, max_zeta_plot, max_nr_tries_NR, &
+            &POST_style, slab_plots
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use messages, only: writo, lvl_ud
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
@@ -65,7 +66,7 @@ contains
             &plot_resonance, plot_flux_q, plot_grid, norm_disc_prec_sol, &
             &plot_size, test_max_mem, PB3D_lvl_rich, max_it_NR, tol_NR, &
             &relax_fac_NR, min_theta_plot, max_theta_plot, min_zeta_plot, &
-            &max_zeta_plot, max_nr_tries_NR
+            &max_zeta_plot, max_nr_tries_NR, POST_style, slab_plots
         
         ! initialize ierr
         ierr = 0
@@ -127,7 +128,8 @@ contains
                         call lvl_ud(1)
                         
                         ! adapt run-time variables if needed
-                        call adapt_run
+                        ierr = adapt_run_PB3D()
+                        CHCKERR('')
                         
                         ! adapt plotting variables if needed
                         call adapt_plot
@@ -184,6 +186,10 @@ contains
                         call writo('Checking user-provided file')
                         
                         call lvl_ud(1)
+                        
+                        ! adapt run-time variables if needed
+                        ierr = adapt_run_POST()
+                        CHCKERR('')
                         
                         ! adapt plotting variables if needed
                         call adapt_plot
@@ -294,6 +300,10 @@ contains
             plot_flux_q = .false.                                               ! do not plot the flux quantities
             plot_grid = .false.                                                 ! do not plot the grid
             norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
+            POST_style = 1                                                      ! process on extended plot grid
+            
+            ! variables concerning input / output
+            slab_plots = .false.                                                ! normal plots on 3D geometry
             
             ! Richardson variables
             ierr = find_max_lvl_rich(PB3D_lvl_rich)                             ! highest Richardson level found
@@ -313,8 +323,13 @@ contains
         ! checks whether the variables concerning run-time are chosen correctly.
         ! rho_style has  to be 1  (constant rho = rho_0)  and matrix_SLEPC_style
         ! has to be 0..1.
-        subroutine adapt_run
+        integer function adapt_run_PB3D() result(ierr)
             use num_vars, only: eq_style
+            
+            character(*), parameter :: rout_name = 'adapt_run_PB3D'
+            
+            ! initialize ierr
+            ierr = 0
             
             if (rho_style.ne.1) then
                 ierr = 1
@@ -331,7 +346,24 @@ contains
                 err_msg = 'matrix_SLEPC_style has to be 1 (sparse) or 2 (shell)'
                 CHCKERR(err_msg)
             end if
-        end subroutine adapt_run
+        end function adapt_run_PB3D
+        
+        ! checks whether the variables concerning run-time are chosen correctly.
+        ! POST_style  should be  1 (plotting  on extended  plot grid)  or 2
+        ! (plotting on field-aligned grid also used in PB3D).
+        integer function adapt_run_POST() result(ierr)
+            character(*), parameter :: rout_name = 'adapt_run_POST'
+            
+            ! initialize ierr
+            ierr = 0
+            
+            if (POST_style.lt.1 .or. POST_style.gt.2) then
+                ierr = 1
+                err_msg = 'POST_style has to be 1 (extended grid) or 2 &
+                    &(field-aligned grid)'
+                CHCKERR(err_msg)
+            end if
+        end function adapt_run_POST
         
         ! checks whether the variables concerning output are chosen correctly.
         ! n_sol_requested has to be at least one
@@ -383,12 +415,12 @@ contains
             
             if (n_theta_plot.lt.1) then
                 n_theta_plot = 1
-                call writo('n_theta_plot cannot be negative and is set to '//&
+                call writo('n_theta_plot has to be positive and is set to '//&
                     &trim(i2str(n_theta_plot)),warning=.true.)
             end if
             if (n_zeta_plot.lt.1) then
                 n_zeta_plot = 1
-                call writo('n_zeta_plot cannot be negative and is set to '//&
+                call writo('n_zeta_plot has to be positive and is set to '//&
                     &trim(i2str(n_zeta_plot)),warning=.true.)
             end if
             if (n_theta_plot.eq.1 .and. &

@@ -228,8 +228,11 @@ contains
             call writo('Resulting best guesses for Eigenvalues:')
             call lvl_ud(1)
             do id = 1,size(sol_val_rich,3)
-                call writo('For Eigenvalue '//trim(i2str(id))//': '//&
-                    &trim(c2str(sol_val_rich(rich_lvl-1,rich_lvl-1,id)))//',')
+                call writo('For Eigenvalue '//trim(i2str(id))//':')
+                call lvl_ud(1)
+                call writo(trim(c2str(sol_val_rich(rich_lvl-1,rich_lvl-1,id))),&
+                    &alert=.true.)
+                call lvl_ud(-1)
             end do
             call lvl_ud(-1)
             call writo('with, theoretically, an error of the order O(Δ^'//&

@@ -207,12 +207,19 @@ contains
             CHCKERR('')
             ierr = apply_disc(flux_E,norm_interp_data,tot_max_r_in_E_con)
             CHCKERR('')
-            ! 4. discrete E index, unrounded
+            ! 4. round with tolerance
+            ierr = round_with_tol(tot_min_r_in_E_con,minval(flux_E),&
+                &maxval(flux_E))
+            CHCKERR('')
+            ierr = round_with_tol(tot_max_r_in_E_con,minval(flux_E),&
+                &maxval(flux_E))
+            CHCKERR('')
+            ! 5. discrete E index, unrounded
             ierr = con2dis(tot_min_r_in_E_con(1),tot_min_r_in_E_dis,flux_E)
             CHCKERR('')
             ierr = con2dis(tot_max_r_in_E_con(1),tot_max_r_in_E_dis,flux_E)
             CHCKERR('')
-            ! 5. discrete E index, rounded
+            ! 6. discrete E index, rounded
             in_limits(1) = floor(tot_min_r_in_E_dis)
             in_limits(2) = ceiling(tot_max_r_in_E_dis)
             

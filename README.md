@@ -399,3 +399,12 @@ CHANGELOG
       - Fixed bug concerning "test_p": The test should be done after F derivatives are calculated from E derivatives.
       - Command line is not any more executed by default.
       - Introduced multiple tries for Newton-Rhapson, with different relaxation factors.
+
+1.17: - Fixed a bug in the calculation of the normal range for high discretization orders.
+      - Fixed a bug in the interpolation routines for high discretization orders.
+      - The routines that adapt input variables now have correct error handling.
+      - New input flag "POST_post_style" that allows choice between POST output on extended grid (1) or field-aligned grid (2).
+      - Reorganized the POST driver structure.
+      - User can now use input variable 'slab_plots' to optionally generate slab plots.
+      - Fixed bug in 'plot_HDF5' where plot was wrongly identified as having poloidal symmetry while it was just a slab plot.
+      - For debugging, the angular coordinates in POST plotting can be swapped for style 2 (field-aligned).

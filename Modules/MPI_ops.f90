@@ -496,10 +496,10 @@ contains
         use num_vars, only: max_str_ln, ltest, max_it_NR, rank, &
             &max_it_rich, relax_fac_NR, tol_NR, n_procs, n_sol_requested, &
             &tol_rich, max_nr_tries_NR, &
-            &retain_all_sol, plot_flux_q, plot_grid, no_plots, &
+            &retain_all_sol, plot_flux_q, plot_grid, no_plots, slab_plots, &
             &n_sol_plotted, n_theta_plot, n_zeta_plot, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &plot_resonance, tol_SLEPC, prog_style, &
+            &plot_resonance, tol_SLEPC, prog_style, POST_style, &
             &max_it_inv, tol_norm, max_it_slepc, &
             &max_mem_per_proc, plot_size, &
             &test_max_mem, do_execute_command_line, print_mem_usage, &
@@ -619,10 +619,16 @@ contains
                         &0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                 case(2)                                                         ! POST
+                    call MPI_Bcast(slab_plots,1,MPI_LOGICAL,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
                     call MPI_Bcast(n_sol_plotted,4,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(rich_lvl,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(POST_style,1,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
                     CHCKERR(err_msg)
                 case default
                     err_msg = 'No program style associated with '//&

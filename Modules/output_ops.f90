@@ -975,9 +975,8 @@ contains
     ! col_id. (This could  be implemented by changing how n_plot  is defined and
     ! selectively  letting  each  processer  write  in  the  main  loop  at  its
     ! corresponding indices.)
-    ! Note:  This  routine is  written  with  toroidal configurations  in  mind.
-    ! Therefore, if X or Y is negative,  and there is poloidal symmetry, this is
-    ! ignored and X and Y are combined into R = sqrt(X^2+Y^2).
+    ! Note: To  project the data to  2D in VisIt, use the  projection tool under
+    ! Operators > Transform
     subroutine plot_HDF5_arr(var_names,file_name,vars,tot_dim,loc_offset,&
         &X,Y,Z,col_id,col,description)                                          ! array version
         use HDF5_ops, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
@@ -1097,7 +1096,9 @@ contains
                 call assign_pointers(id)
                 ! check poloidal angle
                 sym_ang = atan(Y_3D/X_3D)
-                if (maxval(sym_ang)-minval(sym_ang).lt.tol_sym) &
+                if (maxval(sym_ang)-minval(sym_ang).lt.tol_sym .and. &
+                    &(maxval(X_3D).ge.0._dp .neqv. minval(X_3D).lt.0._dp).and.& ! X has to be either positive or negative
+                    &(maxval(Y_3D).ge.0._dp .neqv. minval(Y_3D).lt.0._dp)) &    ! Y has to be either positive or negative
                     &sym_pol = sym_pol+1                                        ! poloidal symmetry for this plot
                 ! check toroidal angle
                 sym_ang = atan(sqrt(Z_3D**2/(X_3D**2+Y_3D**2)))

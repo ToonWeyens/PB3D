@@ -1532,6 +1532,7 @@ contains
         real(dp) :: x_interp_disc                                               ! discrete index of current x_interp
         real(dp), allocatable :: mat_loc(:,:)                                   ! local matrix (transpose of header info)
         real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
+        real(dp), parameter :: tol = 1.0E-8                                     ! tolerance
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! set n_loc and n
@@ -1558,28 +1559,37 @@ contains
             ! find the base of the interpolation value
             ierr = con2dis(x_interp(id),x_interp_disc,x)
             CHCKERR('')
+            
+            ! set up start id
             A%id_start(id) = ceiling(x_interp_disc-n_loc*0.5_dp)                ! get minimum of bounding indices
             A%id_start(id) = max(1,min(A%id_start(id),size(x)-n_loc+1))         ! limit to lie within x
             
-            ! calculate elements of local matrix (transposed) and rhs
-            mat_loc(1,:) = 1._dp
-            do kd = 1,n_loc
-                do jd = 2,n_loc
-                    mat_loc(jd,kd) = x(A%id_start(id)+kd-1)**(jd-1)
+            ! check for (near) exact match
+            if (mod(x_interp_disc,1._dp).lt.tol) then
+                ! directly set the correct index to 1
+                A%dat(id,:) = 0._dp
+                A%dat(id,nint(x_interp_disc)-A%id_start(id)+1) = 1._dp
+            else
+                ! calculate elements of local matrix (transposed) and rhs
+                mat_loc(1,:) = 1._dp
+                do kd = 1,n_loc
+                    do jd = 2,n_loc
+                        mat_loc(jd,kd) = x(A%id_start(id)+kd-1)**(jd-1)
+                    end do
+                    rhs_loc(kd) = x_interp(id)**(kd-1)
                 end do
-                rhs_loc(kd) = x_interp(id)**(kd-1)
-            end do
-            
-            ! solve with lapack, making use of lu factorization
-            call dgetrf(n_loc,n_loc,mat_loc,n_loc,ipiv,ierr)                    ! lu factorization
-            err_msg = 'lapack couldn''t find the lu factorization'
-            CHCKERR(err_msg)
-            call dgetrs('n',n_loc,1,mat_loc,n_loc,ipiv,rhs_loc,n_loc,ierr)      ! solve
-            err_msg = 'lapack couldn''t compute the inverse'
-            CHCKERR(err_msg)
-            
-            ! save in A
-            A%dat(id,:) = rhs_loc
+                
+                ! solve with lapack, making use of lu factorization
+                call dgetrf(n_loc,n_loc,mat_loc,n_loc,ipiv,ierr)                ! lu factorization
+                err_msg = 'lapack couldn''t find the lu factorization'
+                CHCKERR(err_msg)
+                call dgetrs('n',n_loc,1,mat_loc,n_loc,ipiv,rhs_loc,n_loc,ierr)  ! solve
+                err_msg = 'lapack couldn''t compute the inverse'
+                CHCKERR(err_msg)
+                
+                ! save in A
+                A%dat(id,:) = rhs_loc
+            end if
         end do
     end function setup_interp_data
     

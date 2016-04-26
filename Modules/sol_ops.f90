@@ -205,7 +205,6 @@ contains
         ! size from the trimmed sol grid.
         plot_dim = [grid_eq%n(1), grid_eq%n(2),grid_sol_trim%n(3),product(n_t)]
         plot_offset = [0,0,grid_sol_trim%i_min-1,0]
-        !plot_offset = [0,0,grid_sol_trim%i_min-1,product(n_t)]                  !!! THIS WAS WRITTEN FIRST: IS IT CORRECT?!
         
         ! set up copies of XYZ for plot
         allocate(XYZ_plot(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
@@ -560,7 +559,7 @@ contains
     ! Also, the  fraction between potential and kinetic energy  can be returned,
     ! compared with the Eigenvalue.
     integer function decompose_energy(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
-        &sol,X_id,log_i,B_aligned,XYZ,sol_val_comp) result(ierr)
+        &sol,X_id,B_aligned,log_i,XYZ,sol_val_comp) result(ierr)
         use grid_vars, only: dealloc_grid
         use grid_utilities, only: trim_grid
         use num_vars, only: rank, no_plots
@@ -576,8 +575,8 @@ contains
         type(X_1_type), intent(in) :: X                                         ! perturbation variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
-        integer, intent(in) :: log_i                                            ! file number of log file
         logical, intent(in) :: B_aligned                                        ! whether grid is field-aligned
+        integer, intent(in), optional :: log_i                                  ! file number of log file
         real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z for plotting
         complex(dp), intent(inout), optional :: sol_val_comp(2,2)               ! comparison of EV and energy fraction
         
@@ -625,7 +624,8 @@ contains
             sol_val_comp(:,2) = [sol%val(X_id),sum(E_pot_int)/sum(E_kin_int)]
         end if
         
-        if (.not.present(XYZ)) then                                             ! writing to log file
+        ! write to log file if wanted
+        if (present(log_i)) then
             ! user output
             call writo('Write to log file')
             call lvl_ud(1)
@@ -679,7 +679,10 @@ contains
             end if
             
             call lvl_ud(-1)
-        else                                                                    ! plotting
+        end if
+        
+        ! plot if wanted
+        if (present(XYZ)) then
             ! bypass plots if no_plots
             if (no_plots) return
             
