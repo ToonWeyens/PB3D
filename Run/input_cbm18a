@@ -1,10 +1,10 @@
 &inputdata_PB3D
-    min_n_par_X             = 20
-    min_par_X               = -1.0
-    max_par_X               = 1.0
+    min_n_par_X             = 50
+    min_par_X               = -2.0
+    max_par_X               = 2.0
     alpha                   = 0.0
     min_r_sol               = 0.2
-    max_r_sol               = 1.0
+    max_r_sol               = 0.9
     n_r_sol                 = 200
     norm_disc_prec_sol      = 3
     norm_disc_prec_eq       = 5
@@ -12,9 +12,8 @@
     use_pol_flux_F          = .true.
     use_normalization       = .true.
     prim_X                  = 10
-    min_sec_X               = 12
-    max_sec_X               = 15
-    tol_rich                = 1.0E-12
+    n_mod_X                 = 15
+    tol_rich                = 1.0E-05
     n_sol_requested         = 1
     max_it_inv              = 1
     BC_style                = 1 1
@@ -26,7 +25,7 @@
     plot_flux_q             = .false.
     plot_resonance          = .false.
     matrix_SLEPC_style      = 1
-    max_it_rich             = 1
+    max_it_rich             = 3
     rich_restart_lvl        = 1
     n_zeta_plot             = 1
 /

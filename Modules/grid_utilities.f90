@@ -230,7 +230,7 @@ contains
             ! calculate the output function
             fun_pol = theta_F(id,jd,kd) - theta_E_in - lam(1,1,1)
             
-            ! deallocate trigoniometric factors
+            ! deallocate trigonometric factors
             deallocate(trigon_factors_loc)
         end function fun_pol
         
@@ -269,7 +269,7 @@ contains
             ! calculate the output function
             dfun_pol = -1._dp - dlam(1,1,1)
             
-            ! deallocate trigoniometric factors
+            ! deallocate trigonometric factors
             deallocate(trigon_factors_loc)
         end function dfun_pol
     end function coord_F2E_rtz
@@ -1525,18 +1525,22 @@ contains
         integer, intent(in) :: ord                                              ! order of derivative
         
         ! local variables
+        logical :: success                                                      ! interpolation data successfuly found
         integer :: id, jd, kd                                                   ! counters
         integer :: n                                                            ! size of x
-        integer :: n_loc                                                        ! local size of problem to solve
+        integer :: n_mat                                                        ! size of problem to solve
+        integer :: n_mat_loc                                                    ! local n_mat
+        integer :: istat                                                        ! status
         integer, allocatable :: ipiv(:)                                         ! pivot variable, used by lapack
+        integer :: n_lower_ord                                                  ! how many times order has been lowered
         real(dp) :: x_interp_disc                                               ! discrete index of current x_interp
         real(dp), allocatable :: mat_loc(:,:)                                   ! local matrix (transpose of header info)
         real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
         real(dp), parameter :: tol = 1.0E-8                                     ! tolerance
         character(len=max_str_ln) :: err_msg                                    ! error message
         
-        ! set n_loc and n
-        n_loc = ord+1
+        ! set n_mat and n
+        n_mat = ord+1
         n = size(x_interp)
         
         ! tests
@@ -1547,12 +1551,13 @@ contains
         end if
         
         ! set variables
-        allocate(mat_loc(n_loc,n_loc))
-        allocate(rhs_loc(n_loc))
-        allocate(ipiv(n_loc))
+        allocate(mat_loc(n_mat,n_mat))
+        allocate(rhs_loc(n_mat))
+        allocate(ipiv(n_mat))
         ipiv = 0
-        ierr = create_disc(A,n,n_loc)
+        ierr = create_disc(A,n,n_mat)
         CHCKERR('')
+        n_lower_ord = 0
         
         ! iterate over all x_interp values
         do id = 1,n
@@ -1560,37 +1565,68 @@ contains
             ierr = con2dis(x_interp(id),x_interp_disc,x)
             CHCKERR('')
             
-            ! set up start id
-            A%id_start(id) = ceiling(x_interp_disc-n_loc*0.5_dp)                ! get minimum of bounding indices
-            A%id_start(id) = max(1,min(A%id_start(id),size(x)-n_loc+1))         ! limit to lie within x
+            ! initialize success
+            success = .false.
             
-            ! check for (near) exact match
-            if (mod(x_interp_disc,1._dp).lt.tol) then
-                ! directly set the correct index to 1
-                A%dat(id,:) = 0._dp
-                A%dat(id,nint(x_interp_disc)-A%id_start(id)+1) = 1._dp
-            else
-                ! calculate elements of local matrix (transposed) and rhs
-                mat_loc(1,:) = 1._dp
-                do kd = 1,n_loc
-                    do jd = 2,n_loc
-                        mat_loc(jd,kd) = x(A%id_start(id)+kd-1)**(jd-1)
+            ! possibly lower the order locally
+            lower_order: do n_mat_loc = n_mat,2,-1                              ! possibly decrease from n_mat, up to 2
+                ! set up start id
+                A%id_start(id) = ceiling(x_interp_disc-n_mat_loc*0.5_dp)        ! get minimum of bounding indices
+                A%id_start(id) = &
+                    &max(1,min(A%id_start(id),size(x)-n_mat_loc+1))             ! limit to lie within x
+                
+                ! check for (near) exact match
+                if (mod(x_interp_disc,1._dp).lt.tol) then
+                    ! directly set the correct index to 1
+                    A%dat(id,:) = 0._dp
+                    A%dat(id,nint(x_interp_disc)-A%id_start(id)+1) = 1._dp
+                else
+                    ! calculate elements of local matrix (transposed) and rhs
+                    mat_loc(1,:) = 1._dp
+                    do kd = 1,n_mat_loc
+                        do jd = 2,n_mat_loc
+                            mat_loc(jd,kd) = x(A%id_start(id)+kd-1)**(jd-1)
+                        end do
+                        rhs_loc(kd) = x_interp(id)**(kd-1)
                     end do
-                    rhs_loc(kd) = x_interp(id)**(kd-1)
-                end do
+                    
+                    ! solve with lapack, making use of lu factorization
+                    call dgetrf(n_mat_loc,n_mat_loc,&
+                        &mat_loc(1:n_mat_loc,1:n_mat_loc),n_mat_loc,ipiv,istat) ! lu factorization
+                    if (istat.ne.0) then
+                        n_lower_ord = n_lower_ord + 1
+                        err_msg = 'lapack couldn''t find the lu factorization'
+                        cycle
+                    endif
+                    call dgetrs('n',n_mat_loc,1,&
+                        &mat_loc(1:n_mat_loc,1:n_mat_loc),n_mat_loc,ipiv,&
+                        &rhs_loc(1:n_mat_loc),n_mat_loc,istat)                  ! solve
+                    if (istat.ne.0) then
+                        n_lower_ord = n_lower_ord + 1
+                        err_msg = 'lapack couldn''t compute the inverse'
+                        cycle
+                    end if
+                    
+                    ! save in A
+                    A%dat(id,1:n_mat_loc) = rhs_loc(1:n_mat_loc)
+                    A%dat(id,n_mat_loc+1:n_mat) = 0._dp
+                end if
                 
-                ! solve with lapack, making use of lu factorization
-                call dgetrf(n_loc,n_loc,mat_loc,n_loc,ipiv,ierr)                ! lu factorization
-                err_msg = 'lapack couldn''t find the lu factorization'
+                ! set success and exit
+                success = .true.
+                exit lower_order
+            end do lower_order
+            
+            ! check for success and if not, print error message
+            if (.not.success) then
+                ierr = 1
                 CHCKERR(err_msg)
-                call dgetrs('n',n_loc,1,mat_loc,n_loc,ipiv,rhs_loc,n_loc,ierr)  ! solve
-                err_msg = 'lapack couldn''t compute the inverse'
-                CHCKERR(err_msg)
-                
-                ! save in A
-                A%dat(id,:) = rhs_loc
             end if
         end do
+        
+        ! if order has been lowered, print warning
+        if (n_lower_ord.gt.0) call writo('In setup_interp_data, the order was &
+            &lowered '//trim(i2str(n_lower_ord))//' time(s)',warning=.true.)
     end function setup_interp_data
     
     ! Applies  the   discretization  data  calculated  in   setup_deriv_data  or

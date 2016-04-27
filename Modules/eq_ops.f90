@@ -907,7 +907,7 @@ contains
         character(*), parameter :: rout_name = 'prepare_RZL'
         
         ! input / output
-        type(grid_type), intent(inout) :: grid                                  ! grid for which to prepare the trigoniometric factors
+        type(grid_type), intent(inout) :: grid                                  ! grid for which to prepare the trigonometric factors
         
         ! local variables
         integer :: kd                                                           ! counter
@@ -939,7 +939,7 @@ contains
         end do
         call dealloc_disc(norm_deriv_data)
         
-        ! calculate trigoniometric factors using theta_E and zeta_E
+        ! calculate trigonometric factors using theta_E and zeta_E
         ierr = calc_trigon_factors(grid%theta_E,grid%zeta_E,grid%trigon_factors)
         CHCKERR('')
     end function prepare_RZL
@@ -960,7 +960,7 @@ contains
         character(*), parameter :: rout_name = 'calc_RZL_ind'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid for which to prepare the trigoniometric factors
+        type(grid_type), intent(in) :: grid                                     ! grid for which to prepare the trigonometric factors
         type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
         integer, intent(in) :: deriv(3)                                         ! derivatives
         
@@ -989,7 +989,7 @@ contains
         character(*), parameter :: rout_name = 'calc_RZL_arr'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid for which to prepare the trigoniometric factors
+        type(grid_type), intent(in) :: grid                                     ! grid for which to prepare the trigonometric factors
         type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
         integer, intent(in) :: deriv(:,:)
         

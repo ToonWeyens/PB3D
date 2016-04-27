@@ -41,8 +41,9 @@ contains
                 opt_args(14) = '-eps_mpd'
                 inc_args(7:14) = [0,1,1,1,0,1,1,1]
             case(2)                                                             ! POST
-                allocate(opt_args(6), inc_args(6))
+                allocate(opt_args(7), inc_args(7))
                 opt_args = ''
+                opt_args(7) = '--swap_angles'
                 inc_args = 0
         end select
         
@@ -157,7 +158,8 @@ contains
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
-            &do_execute_command_line, output_name, prog_name, print_mem_usage
+            &do_execute_command_line, output_name, prog_name, &
+            &print_mem_usage, swap_angles
         use files_utilities, only: search_file
         use rich_vars, only: no_guess
 #if ldebug
@@ -285,7 +287,7 @@ contains
             logical :: opt_taken(size(opt_args))                                ! which of the options has been taken
             logical :: opt_found
             
-            ! set number of options still to be processed and no option taken yet
+            ! set number of options still to be processed, no option taken yet
             numopts = size(opt_args)
             opt_taken = .false. 
             opt_found = .false.
@@ -301,7 +303,7 @@ contains
                                 &'" already set, ignoring...',warning=.true.)
                         else                                                    ! option not yet taken
                             select case(jd)
-                                ! common options 1..5
+                                ! common options 1..6
                                 case (1,2)                                      ! option test
 #if ldebug
                                     call writo('option test chosen')
@@ -337,8 +339,7 @@ contains
                                         case(1)                                 ! PB3D
                                             call apply_opt_PB3D(jd,id)
                                         case(2)                                 ! POST
-                                            call writo('Invalid option number',&
-                                                &warning=.true.)
+                                            call apply_opt_POST(jd)
                                     end select
                             end select
                             opt_taken(jd) = .true.
@@ -357,10 +358,11 @@ contains
             end do
         end subroutine read_opts
         
-        ! this subroutine applies chosen options
+        ! apply chosen options for PB3D
         subroutine apply_opt_PB3D(opt_nr,arg_nr)                                ! PB3D version
             ! input / output
-            integer :: opt_nr, arg_nr
+            integer, intent(in) :: opt_nr                                       ! option number
+            integer, intent(in) :: arg_nr                                       ! argument number
             
             select case(opt_nr)
                 case (7)                                                        ! disable guessing Eigenfunction from previous Richardson level
@@ -388,6 +390,21 @@ contains
                     call writo('Invalid option number',warning=.true.)
             end select
         end subroutine apply_opt_PB3D
+        
+        ! apply chosen options for POST
+        subroutine apply_opt_POST(opt_nr)                                       ! POST version
+            ! input / output
+            integer, intent(in) :: opt_nr                                       ! option number
+            
+            select case(opt_nr)
+                case (7)                                                        ! disable guessing Eigenfunction from previous Richardson level
+                    call writo('option swap_angles chosen: theta and zeta are &
+                        &swapped in plots')
+                    swap_angles = .true.
+                case default
+                    call writo('Invalid option number',warning=.true.)
+            end select
+        end subroutine apply_opt_POST
     end function open_input
 
     ! Open an output file and write (PB3D) or read (POST) the common variables.

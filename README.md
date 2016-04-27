@@ -408,3 +408,11 @@ CHANGELOG
       - User can now use input variable 'slab_plots' to optionally generate slab plots.
       - Fixed bug in 'plot_HDF5' where plot was wrongly identified as having poloidal symmetry while it was just a slab plot.
       - For debugging, the angular coordinates in POST plotting can be swapped for style 2 (field-aligned).
+
+1.18: - FIRST WORKING 3-D VERSION, though there might be bugs.
+      - The swapping of angular coordinates in POST plotting is now runtime option '--swap_angles', not only for debug.
+      - Fixed bug where alpha was twice multiplied by pi in output.
+      - Fixed bug where SLEPC tolerance was wrongly set.
+      - The phase of the Eigenvectors is also plotted now.
+      - Fixed bug in the calculation of trigonometric factors, where nfp was forgotten.
+      - Improved the routine that calculates numerical interpolation by allowing it to switch to lower orders.

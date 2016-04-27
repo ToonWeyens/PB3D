@@ -15,11 +15,6 @@ module driver_POST
     implicit none
     private
     public run_driver_POST
-    
-    ! global variables
-#if ldebug
-    logical :: debug_slab_plots = .false.                                       ! plot debug information for slab_plots
-#endif
 
 contains
     ! The main driver routine for postprocessing
@@ -38,7 +33,7 @@ contains
     integer function run_driver_POST() result(ierr)
         use num_vars, only: no_output, no_plots, eq_style, plot_resonance, &
             &plot_flux_q, plot_grid, rank, norm_disc_prec_X, POST_style, &
-            &slab_plots, use_pol_flux_F, pi
+            &slab_plots, use_pol_flux_F, pi, swap_angles
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol
@@ -434,9 +429,8 @@ contains
             call lvl_ud(1)
             
             if (B_aligned) then
-#if ldebug
-                if (debug_slab_plots) then
-                    call writo('For debugging, the angular coordinates are &
+                if (swap_angles) then
+                    call writo('For plotting, the angular coordinates are &
                         &swapped: theta <-> zeta')
                     if (use_pol_flux_F) then
                         XYZ_out(:,:,:,1) = grid_X_out%zeta_F/pi
@@ -444,15 +438,12 @@ contains
                         XYZ_out(:,:,:,1) = grid_X_out%theta_F/pi
                     end if
                 else
-#endif
                     if (use_pol_flux_F) then
                         XYZ_out(:,:,:,1) = grid_X_out%theta_F/pi
                     else
                         XYZ_out(:,:,:,1) = grid_X_out%zeta_F/pi
                     end if
-#if ldebug
                 end if
-#endif
                 XYZ_out(:,:,:,2) = alpha
                 do kd = 1,grid_X_out%loc_n_r
                     XYZ_out(:,:,kd,3) = grid_X_out%r_F(kd)/max_flux_F*2*pi
@@ -477,7 +468,7 @@ contains
             CHCKERR('')
         end if
         
-        ! deallocate memory-thirsty trigoniometric factors
+        ! deallocate memory-thirsty trigonometric factors
         if (eq_style.eq.1) deallocate(grid_X_out%trigon_factors)
         
         call lvl_ud(-1)

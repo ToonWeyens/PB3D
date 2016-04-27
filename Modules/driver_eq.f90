@@ -14,6 +14,11 @@ module driver_eq
     private
     public run_driver_eq
     
+    ! global variables
+#if ldebug
+    logical :: plot_info= .false.                                               ! plot information for comparison with HELENA
+#endif
+    
 contains
     ! Main driver of PB3D equilibrium part.
     integer function run_driver_eq() result(ierr)
@@ -63,7 +68,7 @@ contains
         else
             flux_name = 'toroidal'
         end if
-        call writo('for alpha = '//trim(r2strt(alpha*pi)))
+        call writo('for alpha = '//trim(r2strt(alpha)))
         call writo('using the '//trim(flux_name)//' flux as the normal &
             &variable')
         
@@ -145,6 +150,13 @@ contains
                 ierr = print_output_eq(grid_eq,eq_2,'eq_2',rich_lvl=rich_lvl)
                 CHCKERR('')
                 
+#if ldebug
+                if (plot_info) then
+                    ! plot information for comparison between VMEC and HELENA
+                    call plot_info_for_VMEC_HEL_comparision()
+                end if
+#endif
+                
                 ! clean up
                 call dealloc_eq(eq_2)
                 
@@ -164,6 +176,14 @@ contains
                     ierr = print_output_eq(grid_eq,eq_2,'eq_2')
                     CHCKERR('')
                     
+#if ldebug
+                    if (plot_info) then
+                        !  plot  information  for comparison  between  VMEC  and
+                        ! HELENA
+                        call plot_info_for_VMEC_HEL_comparision()
+                    end if
+#endif
+                    
                     ! clean up
                     call dealloc_eq(eq_2)
                 end if
@@ -179,9 +199,6 @@ contains
                     &'eq_B',rich_lvl=rich_lvl)
                 CHCKERR('')
         end select
-        
-        !!! plot information for comparison between VMEC and HELENA
-        !!call plot_info_for_VMEC_HEL_comparision()
         
         ! clean up
         call writo('Clean up')
@@ -211,8 +228,8 @@ contains
             integer :: d(3)
             logical :: not_ready = .true.
             
-            write(*,*) '!!!! PLOTTING INFORMATION FOR COMPARISON BETWEEN &
-                &VMEC AND HELENA !!!!'
+            call writo('Plotting information for comparison between VMEC and &
+                &HELENA',alert=.true.)
             do while (not_ready)
                 call writo('derivative in dim 1?')
                 d(1) =  get_int(lim_lo=0)
@@ -249,14 +266,14 @@ contains
                 call draw_GP('flux_t_FD','flux_t_FD','flux_t_FD',1,1,.false.)
                 
                 ! R and Z
-                if (sum(d).eq.0) then
-                    select case (eq_style)
-                        case(1)
-                            call plot_HDF5('R_V','R_V',eq_2%R_E(:,:,:,0,0,0),&
-                                &x=x_plot,y=y_plot,z=z_plot)
-                            call plot_HDF5('Z_V','Z_V',eq_2%Z_E(:,:,:,0,0,0),&
-                                &x=x_plot,y=y_plot,z=z_plot)
-                        case(2)
+                select case (eq_style)
+                    case(1)
+                        call plot_HDF5('R_V','R_V',eq_2%R_E(:,:,:,0,0,0),&
+                            &x=x_plot,y=y_plot,z=z_plot)
+                        call plot_HDF5('Z_V','Z_V',eq_2%Z_E(:,:,:,0,0,0),&
+                            &x=x_plot,y=y_plot,z=z_plot)
+                    case(2)
+                        if (sum(d).eq.0) then
                             call plot_HDF5('R_H','R_H',&
                                 &reshape(R_H(:,grid_eq%i_min:grid_eq%i_max),&
                                 &[grid_eq%n(1:2),grid_eq%loc_n_r]),&
@@ -265,10 +282,10 @@ contains
                                 &reshape(Z_H(:,grid_eq%i_min:grid_eq%i_max),&
                                 &[grid_eq%n(1:2),grid_eq%loc_n_r]),&
                                 &x=x_plot,y=y_plot,z=z_plot)
-                    end select
-                else
-                    call writo('R and Z can only be plot for d = 0')
-                end if
+                        else
+                            call writo('R and Z can only be plot for d = 0')
+                        end if
+                end select
                 
                 ! metric fators
                 call plot_HDF5('jac_FD','jac_FD',&
@@ -292,7 +309,7 @@ contains
                 not_ready = get_log(.true.)
             end do
             
-            write(*,*) '!!!! DONE, PAUSED !!!!'
+            call writo('Done, paused',alert=.true.)
             call pause_prog()
         end subroutine plot_info_for_VMEC_HEL_comparision
 #endif

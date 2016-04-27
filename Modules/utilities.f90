@@ -1405,7 +1405,7 @@ contains
         if (present(relax_fac)) relax_fac_loc = relax_fac
         
         ! possibly multiple tries with different relaxation factors
-        do id = 1, max_nr_tries_loc
+        do id = 1,max_nr_tries_loc
 #if ldebug
             if (debug_calc_zero_NR) then
                 ! set up corrs

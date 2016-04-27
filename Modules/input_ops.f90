@@ -25,7 +25,7 @@ contains
             &n_zeta_plot, EV_BC, rho_style, retain_all_sol, prog_style, &
             &norm_disc_prec_X, norm_disc_prec_eq, norm_disc_prec_sol, &
             &BC_style, max_it_inv, tol_norm, tol_SLEPC_loc => tol_SLEPC, &
-            &max_it_slepc, n_procs, pi, plot_size, U_style, norm_style, &
+            &max_it_SLEPC, n_procs, pi, plot_size, U_style, norm_style, &
             &test_max_mem, X_style, matrix_SLEPC_style, input_name, &
             &rich_restart_lvl, eq_style, relax_fac_NR, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, max_nr_tries_NR, &
@@ -231,7 +231,7 @@ contains
             norm_disc_prec_eq = 1                                               ! precision 1 normal discretization of equilibrium
             norm_disc_prec_X = 1                                                ! precision 1 normal discretization of perturbation
             norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
-            max_it_slepc = 10000                                                ! max. nr. of iterations for SLEPC
+            max_it_SLEPC = 1000                                                 ! max. nr. of iterations for SLEPC
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
             tol_SLEPC = huge(1._dp)                                             ! nonsensible value to check for user overwriting
             rho_style = 1                                                       ! constant pressure profile, equal to rho_0
@@ -308,7 +308,7 @@ contains
             ! Richardson variables
             ierr = find_max_lvl_rich(PB3D_lvl_rich)                             ! highest Richardson level found
             CHCKERR('')
-            if (PB3D_lvl_rich.lt.0) then
+            if (PB3D_lvl_rich.le.0) then
                 ierr = 1
                 err_msg = 'No suitable Richardson level found'
                 CHCKERR(err_msg)
@@ -321,8 +321,8 @@ contains
         end function default_input_POST
         
         ! checks whether the variables concerning run-time are chosen correctly.
-        ! rho_style has  to be 1  (constant rho = rho_0)  and matrix_SLEPC_style
-        ! has to be 0..1.
+        ! rho_style has  to be 1  (constant rho = rho_0), matrix_SLEPC_style
+        ! has to be 0..1 and max_it_SLEPC has to be at least 1.
         integer function adapt_run_PB3D() result(ierr)
             use num_vars, only: eq_style
             
@@ -345,6 +345,11 @@ contains
                 ierr = 1
                 err_msg = 'matrix_SLEPC_style has to be 1 (sparse) or 2 (shell)'
                 CHCKERR(err_msg)
+            end if
+            if (max_it_SLEPC.le.0) then
+                max_it_SLEPC = 1
+                call writo('max_it_SLEPC has to be positive and is set to 1',&
+                    &warning=.true.)
             end if
         end function adapt_run_PB3D
         
@@ -657,12 +662,13 @@ contains
                         call writo('tol_SLEPC('//trim(i2str(id))//&
                             &') has been increased to '//trim(r2str(min_tol)),&
                             &warning=.true.)
-                        tol_SLEPC = min_tol
+                        tol_SLEPC(id) = min_tol
                     end if
                     if (tol_SLEPC(id).gt.max_tol) then
-                        call writo('tol_SLEPC has been decreased to '&
-                            &//trim(r2str(max_tol)),warning=.true.)
-                        tol_SLEPC = max_tol
+                        call writo('tol_SLEPC('//trim(i2str(id))//&
+                            &') has been decreased to '//trim(r2str(max_tol)),&
+                            &warning=.true.)
+                        tol_SLEPC(id) = max_tol
                     end if
                 end if
             end do
@@ -675,11 +681,12 @@ contains
                 else if (max_id.eq.max_it_rich) then                            ! exactly the right amount of values given
                     tol_SLEPC_loc = tol_SLEPC(1:max_it_rich)
                 else                                                            ! not enough values given
-                    call writo(trim(i2str(max_it_rich-max_id))//&
-                        &' last values of tol_SLEPC set to '//&
-                        &trim(r2str(tol_SLEPC_def)),warning=.true.)
+                    call writo('tol_SLEPC('//trim(i2str(max_id+1))//':'//&
+                        &trim(i2str(max_it_rich))//') has been set to '//&
+                        &trim(r2str(tol_SLEPC_def))//' [default]',&
+                        &warning=.true.)
                     tol_SLEPC_loc(1:max_id) = tol_SLEPC(1:max_id)
-                    tol_SLEPC(max_id+1:max_it_rich) = tol_SLEPC_def
+                    tol_SLEPC_loc(max_id+1:max_it_rich) = tol_SLEPC_def
                 end if
             else                                                                ! was not overwritten by user
                 tol_SLEPC_loc(max_it_rich) = tol_SLEPC_def                      ! last tolerance always equal to default

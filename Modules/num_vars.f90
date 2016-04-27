@@ -25,7 +25,7 @@ module num_vars
         &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
         &max_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
         &do_execute_command_line, print_mem_usage, input_name, slab_plots, &
-        &rich_restart_lvl, plot_size
+        &swap_angles, rich_restart_lvl, plot_size
 
     ! technical variables
     !integer, parameter :: dp = kind(1.d0)                                       ! double precision
@@ -113,6 +113,7 @@ module num_vars
     logical :: no_output = .false.                                              ! true if no output should be shown
     logical :: do_execute_command_line = .false.                                ! true if "execute_command_line" should be called
     logical :: print_mem_usage = .false.                                        ! true if memory usage is printed
+    logical :: swap_angles = .false.                                            ! swap angles theta and zeta in plots (only for POST)
     logical :: retain_all_sol                                                   ! retain also faulty solutions
     logical :: slab_plots                                                       ! slab plots (only for POST)
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots

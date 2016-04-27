@@ -13,9 +13,12 @@
 !   Author: Toon Weyens                                                        !
 !   Institution: Departamento de Física,                                       !
 !                Universidad Carlos III de Madrid, Spain                       !
-!   Contact: tweyens@fis.uc3m.es                                               !
+!                            ---                                               !
+!                Department of Applied Physics                                 !
+!                Eindhoven University of Technology                            !
+!   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.17                                                              !
+!   Version: 1.18                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !

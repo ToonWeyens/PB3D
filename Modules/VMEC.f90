@@ -297,7 +297,7 @@ contains
 #endif
     end subroutine dealloc_VMEC
     
-    ! Calculate the trigoniometric cosine and sine factors on a grid (1:mnmax_V)
+    ! Calculate the trigonometric cosine and  sine factors on a grid (1:mnmax_V)
     ! at given 3D arrays for the (VMEC) E(quilibrium) angles theta_E and zeta_E.
     integer function calc_trigon_factors(theta,zeta,trigon_factors) &
         &result(ierr)
@@ -345,8 +345,8 @@ contains
             sin_theta(m,:,:,:) = sin(m*theta)
         end do
         do n = -ntor_V,ntor_V
-            cos_zeta(n,:,:,:) = cos(n*zeta)
-            sin_zeta(n,:,:,:) = sin(n*zeta)
+            cos_zeta(n,:,:,:) = cos(n*nfp_V*zeta)
+            sin_zeta(n,:,:,:) = sin(n*nfp_V*zeta)
         end do
         
         ! initialize trigon_factors
@@ -357,6 +357,7 @@ contains
         !   cos(m theta) cos(n zeta) + sin(m theta) sin(n zeta)
         ! and sin(m theta - n zeta) =
         !   sin(m theta) cos(n zeta) - cos(m theta) sin(n zeta)
+        ! Note: need to scale the indices mn_V(:,2) by nfp_V.
         do id = 1,mnmax_V
             trigon_factors(id,:,:,:,1) = &
                 &cos_theta(mn_V(id,1),:,:,:)*cos_zeta(mn_V(id,2)/nfp_V,:,:,:) + &

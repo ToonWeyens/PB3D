@@ -19,8 +19,11 @@ module driver_X
     character(len=8) :: flux_name(2)                                            ! name of flux variable
     character(len=1) :: mode_name(2)                                            ! name of modes
     integer :: rich_lvl_name                                                    ! either the Richardson level or zero, to append to names
+#if ldebug
     logical :: debug_run_driver_X_1 = .false.                                   ! debug information for run_driver_X_1
     logical :: debug_run_driver_X_2 = .false.                                   ! debug information for run_driver_X_2
+    logical :: plot_info= .false.                                               ! plot information for comparison with HELENA
+#endif
     
 contains
     ! Main driver of PB3D perturbation part.
@@ -388,8 +391,10 @@ contains
                 deallocate(var_names)
             end if
             
-            !!! plot information for comparison between VMEC and HELENA
-            !!call plot_info_for_VMEC_HEL_comparison(grid_X,X_1(1))
+            if (plot_info) then
+                ! plot information for comparison between VMEC and HELENA
+                call plot_info_for_VMEC_HEL_comparison(grid_X,X_1(1))
+            end if
 #endif
             
             ! clean up
@@ -528,8 +533,8 @@ contains
             integer :: id, ld
             logical :: not_ready = .true.
             
-            write(*,*) '!!!! PLOTTING INFORMATION FOR COMPARISON BETWEEN &
-                &VMEC AND HELENA !!!!'
+            call writo('Plotting information for comparison between VMEC and &
+                &HELENA',alert=.true.)
             do while (not_ready)
                 call writo('Plots for which mode number?')
                 ld =  get_int(lim_lo=1,lim_hi=X%n_mod)
@@ -578,7 +583,7 @@ contains
                 not_ready = get_log(.true.)
             end do
             
-            write(*,*) '!!!! DONE, PAUSED !!!!'
+            call writo('Done, paused',alert=.true.)
             call pause_prog()
         end subroutine plot_info_for_VMEC_HEL_comparison
 #endif

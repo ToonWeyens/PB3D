@@ -380,6 +380,7 @@ contains
             complex(dp), allocatable :: sol_vec_ser(:,:)                        ! serial MPI Eigenvector for local number of modes
             complex(dp), allocatable :: sol_vec_ser_tot(:,:)                    ! serial MPI Eigenvector for total number of modes
             complex(dp), allocatable :: sol_vec_ser_loc(:)                      ! local sol_vec_ser
+            real(dp), allocatable :: sol_vec_phase(:,:)                         ! phase of sol_vec
             
             ! initialize ierr
             ierr = 0
@@ -477,9 +478,45 @@ contains
                     &reshape(imagpart(transpose(sol_vec_ser_tot)),&
                     &[1,grid_sol%n(3),n_mod_tot]),y=reshape(x_plot,&
                     &[1,grid_sol%n(3),n_mod_tot]))
+            end if
+            
+            ! synchronize processes
+            ierr = wait_MPI()
+            CHCKERR('')
+            
+            ! master plots phase at midplane
+            if (rank.eq.0) then
+                ! set up file name of this rank and plot title
+                file_name = trim(i2str(X_id))//'_EV_midplane_PH'
+                plot_title = 'EV - midplane'
+                
+                ! set up phase
+                allocate(sol_vec_phase(grid_sol%n(3),n_mod_tot))
+                sol_vec_phase = atan2(imagpart(transpose(sol_vec_ser_tot)),&
+                    &realpart(transpose(sol_vec_ser_tot)))
+                where (sol_vec_phase.lt.0) sol_vec_phase = sol_vec_phase + 2*pi
+                
+                ! print imag amplitude of harmonics of eigenvector at midplane
+                call print_GP_2D(plot_title,file_name,sol_vec_phase,x=x_plot,&
+                    &draw=.false.)
+                
+                ! plot in file
+                call draw_GP(plot_title,file_name,file_name,n_mod_tot,1,.false.)
+                
+                ! plot in file using decoupled 3D in GNUPlot if not too big
+                if (n_mod_tot*grid_sol%n(3).le.GP_max_size) then
+                    call draw_GP(trim(plot_title)//' - 3D',file_name,&
+                        &trim(file_name)//'_3D',n_mod_tot,3,.false.)
+                end if
+                
+                ! plot using HDF5
+                call plot_HDF5(trim(plot_title),trim(file_name),&
+                    &reshape(sol_vec_phase,[1,grid_sol%n(3),n_mod_tot]),&
+                    &y=reshape(x_plot,[1,grid_sol%n(3),n_mod_tot]))
                 
                 ! deallocate variables
                 deallocate(x_plot)
+                deallocate(sol_vec_phase)
             end if
             
             ! synchronize processes
