@@ -15,12 +15,13 @@ module grid_utilities
         &calc_int_vol, trim_grid, untrim_grid, setup_deriv_data, &
         &setup_interp_data, apply_disc
 #if ldebug
-    public debug_calc_int_vol
+    public debug_calc_int_vol, debug_setup_interp_dat
 #endif
     
     ! global variables
 #if ldebug
     logical :: debug_calc_int_vol = .false.                                     ! plot debug information for calc_int_vol
+    logical :: debug_setup_interp_dat = .false.                                     ! plot debug information for calc_int_vol
 #endif
     
     interface coord_F2E
@@ -123,7 +124,7 @@ contains
     contains
         integer function coord_F2E_VMEC() result(ierr)
             use num_vars, only: norm_disc_prec_eq
-            use utilities, only: calc_zero_NR
+            use num_utilities, only: calc_zero_NR
             use VMEC, only: mnmax_V
             use grid_vars, only: dealloc_disc
             
@@ -132,6 +133,7 @@ contains
             ! local variables
             real(dp), pointer :: loc_r_F(:) => null()                           ! loc_r in F coords.
             type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
+            real(dp), allocatable :: theta_E_guess(:,:)                         ! guess for theta_E for a flux surface
             
             ! initialize ierr
             ierr = 0
@@ -150,6 +152,9 @@ contains
             allocate(L_V_c_loc(mnmax_V,n_r))
             allocate(L_V_s_loc(mnmax_V,n_r))
             
+            ! allocate guess
+            allocate(theta_E_guess(n_par,n_geo))
+            
             ! set up interpolation data
             ierr = setup_interp_data(loc_r_F,r_F,norm_interp_data,&
                 &norm_disc_prec_eq)
@@ -166,11 +171,18 @@ contains
             ! the poloidal angle has to be found as the zero of
             !   f = theta_F - theta_E - lambda
             do kd = 1,n_r
+                ! setup theta_E_guess
+                if (kd.eq.1) then
+                    theta_E_guess = theta_F(:,:,kd)                             ! use theta_F as guess
+                else
+                    theta_E_guess = theta_E(:,:,kd-1)                           ! use theta_E of previous flux surface as guess
+                end if
+                
                 do jd = 1,n_geo
                     do id = 1,n_par
                         ! calculate zero of f
                         err_msg = calc_zero_NR(theta_E(id,jd,kd),fun_pol,&
-                            &dfun_pol,theta_F(id,jd,kd))                        ! use theta_F as guess for theta_E
+                            &dfun_pol,theta_E_guess(id,jd))
                         if (err_msg.ne.'') then
                             ierr = 1
                             CHCKERR(err_msg)
@@ -537,7 +549,7 @@ contains
     ! beforehand.
     integer function calc_XYZ_grid(grid_eq,grid_XYZ,X,Y,Z,L) result(ierr)
         use num_vars, only: eq_style, use_normalization
-        use utilities, only: round_with_tol
+        use num_utilities, only: round_with_tol
         use eq_vars, only: R_0
         
         character(*), parameter :: rout_name = 'calc_XYZ_grid'
@@ -1309,7 +1321,7 @@ contains
     ! passed  in  n,  in contrast  to  the  regular  version,  where it  is  set
     ! automatically.
     integer function setup_deriv_data_eqd(step,n,A,ord,prec) result(ierr)       ! equidistant version
-        use utilities, only: fac
+        use num_utilities, only: fac
         use grid_vars, only: create_disc
         
         character(*), parameter :: rout_name = 'setup_deriv_data_eqd'
@@ -1400,7 +1412,7 @@ contains
         end do
     end function setup_deriv_data_eqd
     integer function setup_deriv_data_reg(x,A,ord,prec) result(ierr)            ! regular version
-        use utilities, only: fac
+        use num_utilities, only: fac
         use grid_vars, only: disc_type, create_disc
         
         character(*), parameter :: rout_name = 'setup_deriv_data_reg'
@@ -1486,35 +1498,28 @@ contains
     end function setup_deriv_data_reg
     
     ! Set up the factors for the interpolation calculation in a matrix "A" using
-    ! a  polynomial order  "ord".  This  is done  by  first  finding the  values
-    ! of  "x"  closes to  each  of  the  interpolation points  "x_interp",  then
-    ! determining the polynomial through these points and finally setting up the
-    ! multiplicative coefficients to find the values at the interpolation point.
-    ! The structure of the local problem is as follows:
-    !   [  x(0)^0   x(0)^1  ...  x(0)^ord  ] [  c_0  ]   [  f(1)  ]
-    !   [  x(1)^0   x(1)^1  ...  x(1)^ord  ] [  c_1  ]   [  f(2)  ]
-    !   [   ...      ...    ...    ...     ] [  ...  ] = [  ...   ]
-    !   [ x(ord)^0 x(ord)^1 ... x(ord)^ord ] [ c_ord ]   [ f(ord) ]
-    ! The solution vector [ c_i ] then can be used to calculate the interpolated
-    ! value for f at x_i:
-    !   f(x_i) = [ x_i^0 x_i^1 ... x_i^ord ] [ c_i ]^T
-    !         [  x_i^0  ]^T [  x(0)^0   x(0)^1  ...  x(0)^ord  ]^-1 [  f(1)  ]
-    !         [  x_i^1  ]   [  x(1)^0   x(1)^1  ...  x(1)^ord  ]    [  f(2)  ]
-    !       = [   ...   ]   [   ...      ...    ...    ...     ]    [  ...   ]
-    !         [ x_ord^1 ]   [ x(ord)^0 x(ord)^1 ... x(ord)^ord ]    [ f(ord) ]
-    !       = A(i,:) [ f ] ,
-    ! so  afterwards,  the matrix  A  has to  be multiplied  with the  tabulated
-    ! function to obtain the requested interpolation.
-    ! To calculate A, it is best to avoid the inverse of the local matrix:
-    !   A(i,:) = [ x_i^j ]^T mat_loc^-1
-    ! which is rewritten as
-    !   A(i,:) mat_loc = [ x_i^j ]^T
-    ! and then transposed to
-    !   mat_loc^T A(i,:)^T = [ x_i^j ]
-    ! so row i of matrix A can be found by solving a linear system.
+    ! a polynomial order "ord".
+    ! This  is  done  using  Barycentric Lagrangian  polynomials,  which  are  a
+    ! computationally  more  advantageous  way   of  expressing  the  Lagrangian
+    ! interpolating polynomial:
+    !   L(x) = sum_j=0^N (w_j f_j /(x-x_j)) / sum_j=0^N (w_j/(x-x_j)) , with 
+    !   w_j = 1 / l'(x_j) , where
+    !   l(x) = product_i=0^N (x-x_i) , so that
+    !   l'(x_j) = product_j.ne.i (x_j-x_i)
+    ! [https://people.maths.ox.ac.uk/trefethen/barycentric.pdf, 02/05/2016]
+    !  The  optimal range  of grid  points  "x" around  the interpolation  point
+    ! "x_interp" is first  calculated, after which the weight  functions w_j are
+    ! calculated  for  each of  the  interpolation  points,  multiplied by  1  /
+    ! (x-x_j). The result is scaled by the sum of all, and this is tabulated.
+    ! Note: To avoid numerical problems, the  factors (x_j-x_i) are divided by a
+    ! characteristic length  len, equal  tot the average  length of  the working
+    ! interval. This  scales both the  enumerator and the denominator  by len^N,
+    ! which  therefore cancel.  Also,  if the  interpolation  point x_interp  is
+    ! within a tiny tolerance of the grid points x, the machinery is bypassed to
+    ! avoid unstabilities.
     integer function setup_interp_data(x,x_interp,A,ord) result(ierr)
         use grid_vars, only: disc_type, create_disc
-        use utilities, only: con2dis
+        use num_utilities, only: con2dis
         
         character(*), parameter :: rout_name = 'setup_interp_data'
         
@@ -1525,19 +1530,14 @@ contains
         integer, intent(in) :: ord                                              ! order of derivative
         
         ! local variables
-        logical :: success                                                      ! interpolation data successfuly found
         integer :: id, jd, kd                                                   ! counters
         integer :: n                                                            ! size of x
         integer :: n_mat                                                        ! size of problem to solve
-        integer :: n_mat_loc                                                    ! local n_mat
-        integer :: istat                                                        ! status
-        integer, allocatable :: ipiv(:)                                         ! pivot variable, used by lapack
-        integer :: n_lower_ord                                                  ! how many times order has been lowered
+        real(dp) :: len                                                         ! interval length
         real(dp) :: x_interp_disc                                               ! discrete index of current x_interp
-        real(dp), allocatable :: mat_loc(:,:)                                   ! local matrix (transpose of header info)
-        real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
         real(dp), parameter :: tol = 1.0E-8                                     ! tolerance
         character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), allocatable :: weight(:)                                      ! weights w_j
         
         ! set n_mat and n
         n_mat = ord+1
@@ -1551,13 +1551,9 @@ contains
         end if
         
         ! set variables
-        allocate(mat_loc(n_mat,n_mat))
-        allocate(rhs_loc(n_mat))
-        allocate(ipiv(n_mat))
-        ipiv = 0
+        allocate(weight(n_mat))
         ierr = create_disc(A,n,n_mat)
         CHCKERR('')
-        n_lower_ord = 0
         
         ! iterate over all x_interp values
         do id = 1,n
@@ -1565,68 +1561,45 @@ contains
             ierr = con2dis(x_interp(id),x_interp_disc,x)
             CHCKERR('')
             
-            ! initialize success
-            success = .false.
-            
             ! possibly lower the order locally
-            lower_order: do n_mat_loc = n_mat,2,-1                              ! possibly decrease from n_mat, up to 2
-                ! set up start id
-                A%id_start(id) = ceiling(x_interp_disc-n_mat_loc*0.5_dp)        ! get minimum of bounding indices
-                A%id_start(id) = &
-                    &max(1,min(A%id_start(id),size(x)-n_mat_loc+1))             ! limit to lie within x
-                
-                ! check for (near) exact match
-                if (mod(x_interp_disc,1._dp).lt.tol) then
-                    ! directly set the correct index to 1
-                    A%dat(id,:) = 0._dp
-                    A%dat(id,nint(x_interp_disc)-A%id_start(id)+1) = 1._dp
-                else
-                    ! calculate elements of local matrix (transposed) and rhs
-                    mat_loc(1,:) = 1._dp
-                    do kd = 1,n_mat_loc
-                        do jd = 2,n_mat_loc
-                            mat_loc(jd,kd) = x(A%id_start(id)+kd-1)**(jd-1)
-                        end do
-                        rhs_loc(kd) = x_interp(id)**(kd-1)
+            ! set up start id
+            A%id_start(id) = ceiling(x_interp_disc-n_mat*0.5_dp)                ! get minimum of bounding indices
+            A%id_start(id) = max(1,min(A%id_start(id),size(x)-n_mat+1))         ! limit to lie within x
+            
+            ! check for (near) exact match
+            if (mod(x_interp_disc,1._dp).lt.tol) then
+                ! directly set the correct index to 1
+                A%dat(id,:) = 0._dp
+                A%dat(id,nint(x_interp_disc)-A%id_start(id)+1) = 1._dp
+            else
+                ! calculate w_j/(x-x_j)
+                weight = 1._dp
+                len = (x(A%id_start(id)+n_mat-1) - x(A%id_start(id)))/n_mat
+                do jd = 1,n_mat
+                    ! calculate l'(x_j) = product_k.ne.j (x_j-x_k)
+                    do kd = 1,jd-1
+                        weight(jd) = weight(jd) * &
+                            &(x(A%id_start(id)-1+jd)-x(A%id_start(id)-1+kd)) / &
+                            &len
+                    end do
+                    do kd = jd+1,n_mat
+                        weight(jd) = weight(jd) * &
+                            &(x(A%id_start(id)-1+jd)-x(A%id_start(id)-1+kd)) / &
+                            &len
                     end do
                     
-                    ! solve with lapack, making use of lu factorization
-                    call dgetrf(n_mat_loc,n_mat_loc,&
-                        &mat_loc(1:n_mat_loc,1:n_mat_loc),n_mat_loc,ipiv,istat) ! lu factorization
-                    if (istat.ne.0) then
-                        n_lower_ord = n_lower_ord + 1
-                        err_msg = 'lapack couldn''t find the lu factorization'
-                        cycle
-                    endif
-                    call dgetrs('n',n_mat_loc,1,&
-                        &mat_loc(1:n_mat_loc,1:n_mat_loc),n_mat_loc,ipiv,&
-                        &rhs_loc(1:n_mat_loc),n_mat_loc,istat)                  ! solve
-                    if (istat.ne.0) then
-                        n_lower_ord = n_lower_ord + 1
-                        err_msg = 'lapack couldn''t compute the inverse'
-                        cycle
-                    end if
-                    
-                    ! save in A
-                    A%dat(id,1:n_mat_loc) = rhs_loc(1:n_mat_loc)
-                    A%dat(id,n_mat_loc+1:n_mat) = 0._dp
-                end if
+                    ! multiply by (x_interp-x_j)
+                    weight(jd) = weight(jd) * &
+                        &(x_interp(id)-x(A%id_start(id)-1+jd)) / len
+                end do
                 
-                ! set success and exit
-                success = .true.
-                exit lower_order
-            end do lower_order
-            
-            ! check for success and if not, print error message
-            if (.not.success) then
-                ierr = 1
-                CHCKERR(err_msg)
+                ! invert
+                weight = 1._dp/weight
+                
+                ! scale by sum and save in A
+                A%dat(id,:) = weight/sum(weight)
             end if
         end do
-        
-        ! if order has been lowered, print warning
-        if (n_lower_ord.gt.0) call writo('In setup_interp_data, the order was &
-            &lowered '//trim(i2str(n_lower_ord))//' time(s)',warning=.true.)
     end function setup_interp_data
     
     ! Applies  the   discretization  data  calculated  in   setup_deriv_data  or

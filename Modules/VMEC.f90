@@ -55,7 +55,7 @@ contains
     ! Reads the VMEC equilibrium data
     ! [MPI] only master
     integer function read_VMEC(n_r_in,use_pol_flux_V) result(ierr)
-        use utilities, only: conv_FHM, calc_int
+        use num_utilities, only: conv_FHM, calc_int
         use num_vars, only: eq_name
         
         character(*), parameter :: rout_name = 'read_VMEC'

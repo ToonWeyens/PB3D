@@ -9,7 +9,7 @@ module eq_utilities
     use num_vars, only: pi, dp, max_str_ln, max_deriv
     use grid_vars, only: grid_type, disc_type, dealloc_grid, dealloc_disc
     use eq_vars, only: eq_1_type, eq_2_type
-    use utilities, only: check_deriv
+    use num_utilities, only: check_deriv
     
     implicit none
     private
@@ -42,7 +42,7 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_inv_met_ind(X,Y,deriv) result(ierr)                   ! matrix version
-        use utilities, only: calc_inv, calc_mult, c, conv_mat
+        use num_utilities, only: calc_inv, calc_mult, c, conv_mat
 #if ldebug
         use num_vars, only: n_procs
 #endif
@@ -275,7 +275,7 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect. This is not checked!
     integer function calc_g(g_A,T_BA,g_B,deriv,max_deriv) result(ierr)
-        use utilities, only: calc_mult, conv_mat
+        use num_utilities, only: calc_mult, conv_mat
         
         character(*), parameter :: rout_name = 'calc_g'
         
@@ -406,7 +406,7 @@ contains
     ! see [ADD REF] for more detailed information
     integer recursive function transf_deriv_3_ind(X_A,T_BA,X_B,max_deriv,&
         &deriv_B,deriv_A_input) result(ierr)                                    ! normal variable version
-        use utilities, only: add_arr_mult, c
+        use num_utilities, only: add_arr_mult, c
         
         character(*), parameter :: rout_name = 'transf_deriv_3_ind'
         
@@ -531,7 +531,7 @@ contains
     end function transf_deriv_3_arr
     integer function transf_deriv_3_arr_2D(X_A,T_BA,X_B,max_deriv,derivs) &
         &result(ierr)                                                           ! matrix version
-        use utilities, only: is_sym, c
+        use num_utilities, only: is_sym, c
         
         character(*), parameter :: rout_name = 'transf_deriv_3_arr_2D'
         
@@ -568,7 +568,7 @@ contains
     end function transf_deriv_3_arr_2D
     integer recursive function transf_deriv_1_ind(X_A,T_BA,X_B,max_deriv,&
         &deriv_B,deriv_A_input) result(ierr)                                    ! flux variable version
-        use utilities, only: add_arr_mult
+        use num_utilities, only: add_arr_mult
         
         character(*), parameter :: rout_name = 'transf_deriv_1_ind'
         
@@ -642,7 +642,7 @@ contains
     ! coordinates to derivatives in the F coordinates.
     integer function calc_F_derivs_1(grid_eq,eq) result(ierr)                   ! flux version
         use num_vars, only: eq_style, max_deriv, use_pol_flux_F
-        use utilities, only: derivs, c, fac
+        use num_utilities, only: derivs, c, fac
         
         character(*), parameter :: rout_name = 'calc_F_derivs_1'
         
@@ -724,7 +724,7 @@ contains
     end function calc_F_derivs_1
     integer function calc_F_derivs_2(eq) result(ierr)                           ! metric version
         use num_vars, only: eq_style
-        use utilities, only: derivs, c
+        use num_utilities, only: derivs, c
         
         character(*), parameter :: rout_name = 'calc_F_derivs_2'
         

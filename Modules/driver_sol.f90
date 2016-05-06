@@ -34,7 +34,7 @@ contains
         use eq_vars, only: dealloc_eq
         use X_vars, only: dealloc_X
         use sol_vars, only: dealloc_sol
-        use utilities, only: test_max_memory
+        use num_utilities, only: test_max_memory
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_2, reconstruct_PB3D_sol
@@ -45,10 +45,10 @@ contains
         use rich_vars, only: rich_lvl, use_guess
         use rich_ops, only: calc_rich_ex
         use input_utilities, only: dealloc_in
-        !!use utilities, only: calc_aux_utilities
+        !!use num_utilities, only: calc_aux_utilities
 #if ldebug
         use num_vars, only: iu, use_pol_flux_F
-        use utilities, only: c, con
+        use num_utilities, only: c, con
         use MPI_utilities, only: get_ser_var
 #endif
         

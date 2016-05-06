@@ -52,7 +52,7 @@ contains
     integer function solve_EV_system_SLEPC(grid_sol,X,sol,sol_prev,i_geo) &
         &result(ierr)
         use num_vars, only: max_it_inv, norm_disc_prec_sol, matrix_SLEPC_style
-        use utilities, only: calc_coeff_fin_diff
+        use num_utilities, only: calc_coeff_fin_diff
         use rich_vars, only: use_guess
 #if ldebug
         use num_vars, only: ltest
@@ -604,7 +604,7 @@ contains
         !   calculation of every quantity.
         integer function fill_mat(V_0,V_1,V_2,n_sol,norm_disc_coeff,bulk_i_lim,&
             &mat) result(ierr)
-            use utilities, only: c, con
+            use num_utilities, only: c, con
             
             character(*), parameter :: rout_name = 'fill_mat'
             
@@ -1029,7 +1029,7 @@ contains
         &result(ierr)
         use num_vars, only: norm_disc_prec_sol, BC_style
         use MPI_utilities, only: get_ser_var, wait_MPI
-        use utilities, only: con, c
+        use num_utilities, only: con, c
         use SLEPC_utilities, only: insert_block_mat
         
         character(*), parameter :: rout_name = 'set_BC'

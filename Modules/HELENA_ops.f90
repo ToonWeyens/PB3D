@@ -53,7 +53,7 @@ contains
     ! be changed optionally with the flag "use_E".
     integer function get_ang_interp_data_HEL(grid_in,grid_out,theta_i,&
         &fund_theta_int_displ,tb_sym,use_E) result(ierr)
-        use utilities, only: con2dis
+        use num_utilities, only: con2dis
         
         character(*), parameter :: rout_name = 'get_ang_interp_data_HEL'
         
@@ -623,7 +623,7 @@ contains
             var = var_6D_loc
         end function interp_var_6D_real_ow
         integer function interp_var_7D_real(var,var_int,sym_type) result(ierr)  ! 7D_real version, separate output variable
-            use utilities, only: calc_mult, c, add_arr_mult, derivs
+            use num_utilities, only: calc_mult, c, add_arr_mult, derivs
             use num_vars, only: max_deriv
             
             ! input / output

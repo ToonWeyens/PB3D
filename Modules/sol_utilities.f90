@@ -54,12 +54,12 @@ contains
         &XUQ_style,time,XUQ,deriv) result(ierr)                                 ! (time) array version
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, &
             &norm_disc_prec_X
-        use utilities, only: con2dis
+        use num_utilities, only: con2dis
         use grid_utilities, only: setup_deriv_data, setup_interp_data, &
             &apply_disc
         use X_vars, only: sec_X_ind
 #if ldebug
-        use utilities, only: calc_int
+        use num_utilities, only: calc_int
 #endif
         
         character(*), parameter :: rout_name = 'calc_XUQ_arr'

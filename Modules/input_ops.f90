@@ -29,7 +29,7 @@ contains
             &test_max_mem, X_style, matrix_SLEPC_style, input_name, &
             &rich_restart_lvl, eq_style, relax_fac_NR, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, max_nr_tries_NR, &
-            &POST_style, slab_plots
+            &POST_style, slab_plots, def_relax_fac_NR
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use messages, only: writo, lvl_ud
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
@@ -98,7 +98,7 @@ contains
                     min_zeta_plot = 0
                     max_zeta_plot = min_zeta_plot
             end select
-            relax_fac_NR = 0.75_dp                                              ! standard relaxation factor
+            relax_fac_NR = def_relax_fac_NR                                     ! default relaxation factor
             max_nr_tries_NR = 6                                                 ! standard nr. of tries
             
             ! select depending on program style
@@ -592,16 +592,16 @@ contains
         
         ! checks  whether the  variables concerning Newton-Rhapson  are correct.
         !   max_it_NR has to be at least 2
-        !   relax_fac_NR has to be between 0 and 1
+        !   relax_fac_NR has to be larger than 0
         subroutine adapt_NR
             if (max_it_NR.lt.1) then
                 max_it_NR = 2
                 call writo('max_it_NR has been increased to 2',warning=.true.)
             end if
-            if (relax_fac_NR.lt.0 .or. relax_fac_NR.gt.1) then
-                relax_fac_NR = 0.5
-                call writo('reset relax_fac_NR to '//trim(r2strt(relax_fac_NR))&
-                    &//' as it should be 0..1',warning=.true.)
+            if (relax_fac_NR.lt.0) then
+                relax_fac_NR = def_relax_fac_NR
+                call writo('reset relax_fac_NR to '//trim(r2strt(def_relax_fac_NR))&
+                    &//' as it should be larger than 0',warning=.true.)
             end if
         end subroutine adapt_NR
         

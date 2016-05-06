@@ -28,7 +28,7 @@ SLEPC_utilities.o \
 sol_ops.o \
 sol_utilities.o \
 str_ops.o \
-utilities.o \
+num_utilities.o \
 MPI_utilities.o \
 VMEC.o \
 X_ops.o \

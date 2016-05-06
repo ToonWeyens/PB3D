@@ -1,7 +1,7 @@
 !------------------------------------------------------------------------------!
 !   Numerical utilities                                                        !
 !------------------------------------------------------------------------------!
-module utilities
+module num_utilities
 #include <PB3D_macros.h>
     use str_ops
     use output_ops
@@ -2068,4 +2068,4 @@ contains
             call writo('Maximum memory allocatable')
         end if
     end function test_max_memory
-end module utilities
+end module num_utilities

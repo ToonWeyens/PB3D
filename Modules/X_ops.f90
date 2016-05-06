@@ -604,7 +604,7 @@ contains
         use X_vars, only: min_n_X, min_m_X, sec_X_ind, prim_X
         use num_vars, only: use_pol_flux_F, norm_disc_prec_eq
         use eq_vars, only: max_flux_F, max_flux_F
-        use utilities, only: calc_zero_NR
+        use num_utilities, only: calc_zero_NR
         use grid_vars, only: dealloc_grid, dealloc_disc
         use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
         use MPI_utilities, only: get_ser_var
@@ -1081,7 +1081,7 @@ contains
     ! For VMEC, these factors are also derived in the parallel coordinate.
     integer function calc_U(grid_eq,grid_X,eq_1,eq_2,X) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, U_style, norm_disc_prec_X
-        use utilities, only: c
+        use num_utilities, only: c
         use input_utilities, only: get_log, pause_prog
         use eq_vars, only: vac_perm
         use grid_vars, only: disc_type, dealloc_disc
@@ -1599,7 +1599,7 @@ contains
         &result(ierr)
         use num_vars, only: use_pol_flux_F, norm_disc_prec_X
         use eq_vars, only: vac_perm
-        use utilities, only: c
+        use num_utilities, only: c
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
         use grid_vars, only: disc_type, dealloc_disc
@@ -1786,7 +1786,7 @@ contains
     integer function calc_KV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
         &result(ierr)
         use num_vars, only: norm_style, norm_disc_prec_X
-        use utilities, only: c
+        use num_utilities, only: c
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
         use grid_vars, only: disc_type, dealloc_disc
@@ -1932,7 +1932,7 @@ contains
         use num_vars, only: use_pol_flux_F, norm_disc_prec_X
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
-        use utilities, only: c
+        use num_utilities, only: c
         use grid_vars, only: disc_type, dealloc_disc
         use grid_utilities, only: setup_interp_data, apply_disc
         
@@ -2260,7 +2260,7 @@ contains
             &max_dim_var_1D
         use X_utilities, only: is_necessary_X, get_suffix
         use X_vars, only: n_mod_X
-        use utilities, only: c
+        use num_utilities, only: c
         
         character(*), parameter :: rout_name = 'print_output_X_2'
         

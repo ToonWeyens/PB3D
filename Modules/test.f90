@@ -291,7 +291,7 @@ contains
     ! tests the conversion between full and half mesh
     integer function test_conv_FHM() result(ierr)
         use num_vars, only: rank
-        use utilities, only: conv_FHM
+        use num_utilities, only: conv_FHM
         use input_utilities, only: get_log, get_int
         
         character(*), parameter :: rout_name = 'test_conv_FHM'

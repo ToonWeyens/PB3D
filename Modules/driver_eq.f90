@@ -31,10 +31,10 @@ contains
         use grid_ops, only: setup_grid_eq_B, print_output_grid, &
             &calc_norm_range, setup_grid_eq, calc_ang_grid_eq_B
         use PB3D_ops, only: reconstruct_PB3D_in
-        use utilities, only: derivs
+        use num_utilities, only: derivs
         use input_utilities, only: dealloc_in
         use rich_vars, only: rich_lvl
-        !!use utilities, only: calc_aux_utilities
+        !!use num_utilities, only: calc_aux_utilities
         
         character(*), parameter :: rout_name = 'run_driver_eq'
         

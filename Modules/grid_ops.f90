@@ -105,7 +105,7 @@ contains
             &result(ierr)                                                       ! PB3D version for equilibrium grid
             use num_vars, only: use_pol_flux_E, use_pol_flux_F, eq_style, &
                 &tol_norm, norm_disc_prec_eq
-            use utilities, only: con2dis, dis2con, calc_int, round_with_tol
+            use num_utilities, only: con2dis, dis2con, calc_int, round_with_tol
             use grid_utilities, only: setup_deriv_data, setup_interp_data, &
                 &apply_disc
             use VMEC, only: flux_p_V, flux_t_V
@@ -275,7 +275,7 @@ contains
             use num_vars, only: n_procs, rank
             use eq_vars, only: max_flux_F
             use X_vars, only: min_r_sol, max_r_sol
-            use utilities, only: round_with_tol
+            use num_utilities, only: round_with_tol
             
             character(*), parameter :: rout_name = 'calc_norm_range_PB3D_sol'
             

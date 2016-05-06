@@ -416,3 +416,10 @@ CHANGELOG
       - The phase of the Eigenvectors is also plotted now.
       - Fixed bug in the calculation of trigonometric factors, where nfp was forgotten.
       - Improved the routine that calculates numerical interpolation by allowing it to switch to lower orders.
+
+1.19: - Both the real and the imaginary part, as well as the phase, of the output vectors are now plotted in HDF5.
+      - Fixed a bug with the radial coordinate of the plots for POST when multiple processes are used.
+      - Replaced the workings of "setup_interp_data" to use Barycentric Lagrangian polynomials.
+      - Renamed "utilities" to "num_utilities".
+      - Fine-tuned usage of "calc_zero_NR" when calculating the magnetic field lines by using a better guess.
+      - Removed the restriction of the 3D decoupled GNUPlot plot of the modes as by default nothing gets plotted.

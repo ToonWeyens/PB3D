@@ -9,7 +9,7 @@ module eq_ops
     use num_vars, only: pi, dp, max_str_ln, max_deriv
     use grid_vars, only: grid_type, disc_type, dealloc_grid, dealloc_disc
     use eq_vars, only: eq_1_type, eq_2_type
-    use utilities, only: check_deriv
+    use num_utilities, only: check_deriv
     
     implicit none
     private
@@ -77,7 +77,7 @@ contains
         use grid_utilities, only: setup_deriv_data, apply_disc
         use eq_vars, only: create_eq, &
             &rho_0
-        use utilities, only: derivs
+        use num_utilities, only: derivs
         use eq_utilities, only: calc_F_derivs
         
         character(*), parameter :: rout_name = 'calc_eq_1'
@@ -255,7 +255,7 @@ contains
         ! The HELENA normal coord. is the poloidal flux divided by 2pi
         integer function calc_flux_q_HEL() result(ierr)
             use HELENA_vars, only: qs_H, flux_p_H, pres_H
-            use utilities, only: calc_int
+            use num_utilities, only: calc_int
             
             character(*), parameter :: rout_name = 'calc_flux_q_HEL'
             
@@ -413,7 +413,7 @@ contains
     integer function calc_eq_2(grid_eq,eq_1,eq_2) result(ierr)                  ! metric version
         use num_vars, only: eq_style
         use eq_vars, only: create_eq
-        use utilities, only: derivs, c
+        use num_utilities, only: derivs, c
         use eq_utilities, only: calc_inv_met, calc_F_derivs
 #if ldebug
         use num_vars, only: ltest
@@ -954,7 +954,7 @@ contains
     integer function calc_RZL_ind(grid,eq,deriv) result(ierr)
         use VMEC, only: fourier2real, &
             &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s
-        use utilities, only: check_deriv
+        use num_utilities, only: check_deriv
         use num_vars, only: max_deriv
         
         character(*), parameter :: rout_name = 'calc_RZL_ind'
@@ -1004,7 +1004,7 @@ contains
     
     ! calculate the lower metric elements in the C(ylindrical) coordinate system
     integer function calc_g_C_ind(eq,deriv) result(ierr)
-        use utilities, only: add_arr_mult, c
+        use num_utilities, only: add_arr_mult, c
         
         character(*), parameter :: rout_name = 'calc_g_C_ind'
         
@@ -1093,7 +1093,7 @@ contains
     integer function calc_h_H_ind(grid,eq,deriv) result(ierr)
         use num_vars, only: max_deriv, norm_disc_prec_eq
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
-        use utilities, only: c
+        use num_utilities, only: c
         use grid_utilities, only: setup_deriv_data, apply_disc
         
         character(*), parameter :: rout_name = 'calc_h_H_ind'
@@ -1287,7 +1287,7 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_jac_V_ind(eq,deriv) result(ierr)
-        use utilities, only: add_arr_mult
+        use num_utilities, only: add_arr_mult
         
         character(*), parameter :: rout_name = 'calc_jac_V_ind'
         
@@ -1444,7 +1444,7 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_jac_F_ind(eq,deriv) result(ierr)
-        use utilities, only: add_arr_mult
+        use num_utilities, only: add_arr_mult
         
         character(*), parameter :: rout_name = 'calc_jac_F_ind'
         
@@ -1486,7 +1486,7 @@ contains
     ! calculate  the transformation  matrix  between  C(ylindrical) and  V(mec)
     ! coordinate system
     integer function calc_T_VC_ind(eq,deriv) result(ierr)
-        use utilities, only: add_arr_mult, c
+        use num_utilities, only: add_arr_mult, c
         
         character(*), parameter :: rout_name = 'calc_T_VC_ind'
         
@@ -1551,7 +1551,7 @@ contains
     ! oordinate system
     integer function calc_T_VF_ind(grid,eq_1,eq_2,deriv) result(ierr)
         use num_vars, only: use_pol_flux_F
-        use utilities, only: add_arr_mult, c
+        use num_utilities, only: add_arr_mult, c
         
         character(*), parameter :: rout_name = 'calc_T_VF_ind'
         
@@ -1739,7 +1739,7 @@ contains
     ! system
     integer function calc_T_HF_ind(grid,eq_1,eq_2,deriv) result(ierr)
         use num_vars, only: use_pol_flux_F
-        use utilities, only: add_arr_mult, c
+        use num_utilities, only: add_arr_mult, c
         
         character(*), parameter :: rout_name = 'calc_T_HF_ind'
         
@@ -1932,7 +1932,7 @@ contains
     !   - geodesic curvature kappa_g
     !   - parallel current sigma
     subroutine calc_derived_q(grid_eq,eq_1,eq_2)
-        use utilities, only: c
+        use num_utilities, only: c
         use eq_vars, only: vac_perm
         use num_vars, only: norm_disc_prec_eq, eq_style
 #if ldebug
@@ -2630,7 +2630,7 @@ contains
         use num_vars, only: use_pol_flux_F, eq_style
         use grid_vars, only: dealloc_grid
         use grid_utilities, only: trim_grid
-        use utilities, only: c
+        use num_utilities, only: c
         use output_ops, only: plot_diff_HDF5
         
         character(*), parameter :: rout_name = 'test_T_EF'
@@ -2798,7 +2798,7 @@ contains
     ! Tests whether D1 D2 h_H is calculated correctly
     integer function test_D12h_H(grid_eq,eq) result(ierr)
         use grid_utilities, only: trim_grid, setup_deriv_data, apply_disc
-        use utilities, only: c
+        use num_utilities, only: c
         use num_vars, only: norm_disc_prec_eq
         
         character(*), parameter :: rout_name = 'test_D12h_H'
@@ -2885,7 +2885,7 @@ contains
     integer function test_jac_F(grid_eq,eq_1,eq_2) result(ierr)
         use num_vars, only: eq_style, use_pol_flux_F
         use grid_utilities, only: trim_grid
-        use utilities, only: calc_det
+        use num_utilities, only: calc_det
         use HELENA_vars, only: h_H_33, RBphi_H
         
         character(*), parameter :: rout_name = 'test_jac_F'
@@ -2997,7 +2997,7 @@ contains
     ! Tests whether g_V is calculated correctly
     integer function test_g_V(grid_eq,eq) result(ierr)
         use grid_utilities, only: trim_grid
-        use utilities, only: c
+        use num_utilities, only: c
         
         character(*), parameter :: rout_name = 'test_g_V'
         
@@ -3166,7 +3166,7 @@ contains
     integer function test_B_F(grid_eq,eq_1,eq_2) result(ierr)
         use num_vars, only: eq_style
         use grid_utilities, only: trim_grid
-        use utilities, only: c
+        use num_utilities, only: c
         use VMEC, only: fourier2real, &
             &B_V_sub_s, B_V_sub_c, B_V_c, B_V_s
         
@@ -3312,7 +3312,7 @@ contains
     !   - mu_0 J D3p = 0 => D3 B_1 = D1 B_3
     ! (working in the (modified) Flux coordinates (alpha,psi,theta)_F)
     integer function test_p(grid_eq,eq_1,eq_2) result(ierr)
-        use utilities, only: c
+        use num_utilities, only: c
         use grid_utilities, only: trim_grid, setup_deriv_data, apply_disc
         use eq_vars, only: vac_perm
         use num_vars, only: eq_style, norm_disc_prec_eq

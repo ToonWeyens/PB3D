@@ -99,7 +99,7 @@ contains
         use sol_utilities, only: calc_XUQ
 #if ldebug
         use num_vars, only: norm_disc_prec_sol, use_pol_flux_F
-        use utilities, only: con2dis, c
+        use num_utilities, only: con2dis, c
         use grid_utilities, only: setup_deriv_data, apply_disc
 #endif
         
@@ -127,6 +127,7 @@ contains
         integer :: col                                                          ! collection type for HDF5 plot
         real(dp), allocatable :: time(:)                                        ! fraction of Alfvén time
         real(dp), allocatable :: XYZ_plot(:,:,:,:,:)                            ! copies of XYZ
+        real(dp), allocatable :: f_plot_phase(:,:,:,:)                          ! phase of f_plot
         complex(dp) :: omega                                                    ! sqrt of Eigenvalue
         complex(dp), allocatable :: f_plot(:,:,:,:,:)                           ! the function to plot
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -336,12 +337,29 @@ contains
             &for Eigenvalue '//trim(i2str(X_id))//' with omega = '//&
             &trim(r2str(realpart(omega)))
         
+        ! set up temporary variable for phase
+        allocate(f_plot_phase(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
+            &product(n_t)))
+        
         do kd = 1,2
-            call plot_HDF5([var_name(kd)],file_name(kd),&
+            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_RE',&
                 &realpart(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
                 &tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
                 &Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
                 &description=description(kd))
+            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_IM',&
+                &imagpart(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
+                &tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
+                &Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
+                &description=description(kd))
+            f_plot_phase = atan2(&
+                &imagpart(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
+                &realpart(f_plot(:,:,norm_id(1):norm_id(2),:,kd)))
+            where (f_plot_phase.lt.0) f_plot_phase = f_plot_phase + 2*pi
+            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_PH',&
+                &f_plot_phase,tot_dim=plot_dim,loc_offset=plot_offset,&
+                &X=XYZ_plot(:,:,:,:,1),Y=XYZ_plot(:,:,:,:,2),&
+                &Z=XYZ_plot(:,:,:,:,3),col=col,description=description(kd))
         end do
         
         ! clean up
@@ -437,11 +455,9 @@ contains
                 ! plot in file
                 call draw_GP(plot_title,file_name,file_name,n_mod_tot,1,.false.)
                 
-                ! plot in file using decoupled 3D in GNUPlot if not too big
-                if (n_mod_tot*grid_sol%n(3).le.GP_max_size) then
-                    call draw_GP(trim(plot_title)//' - 3D',file_name,&
-                        &trim(file_name)//'_3D',n_mod_tot,3,.false.)
-                end if
+                ! plot in file using decoupled 3D in GNUPlot
+                call draw_GP(trim(plot_title)//' - 3D',file_name,&
+                    &trim(file_name)//'_3D',n_mod_tot,3,.false.)
                 
                 ! plot using HDF5
                 call plot_HDF5(trim(plot_title),trim(file_name),&
@@ -852,7 +868,7 @@ contains
         use num_vars, only: use_pol_flux_F, n_procs, norm_style, &
             &norm_disc_prec_sol, rank
         use eq_vars, only: vac_perm
-        use utilities, only: c, con2dis
+        use num_utilities, only: c, con2dis
         use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid
         use grid_vars, only: dealloc_grid
         use sol_vars, only: alpha

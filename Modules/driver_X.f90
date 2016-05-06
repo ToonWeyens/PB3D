@@ -42,12 +42,12 @@ contains
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_2
-        use utilities, only: test_max_memory
+        use num_utilities, only: test_max_memory
         use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
             &setup_nm_X, print_output_X
         use input_utilities, only: dealloc_in
-        !!use utilities, only: calc_aux_utilities
+        !!use num_utilities, only: calc_aux_utilities
 #if ldebug
         use X_vars, only: create_X
         use eq_vars, only: create_eq

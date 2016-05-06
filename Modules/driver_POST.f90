@@ -53,7 +53,7 @@ contains
         use HELENA_ops, only: interp_HEL_on_grid
         use VMEC, onLy: calc_trigon_factors
         use input_utilities, only: dealloc_in
-        use utilities, only: calc_aux_utilities
+        use num_utilities, only: calc_aux_utilities
         use MPI_utilities, only: wait_MPI
         use rich_vars, only: rich_lvl
         
@@ -446,7 +446,7 @@ contains
                 end if
                 XYZ_out(:,:,:,2) = alpha
                 do kd = 1,grid_X_out%loc_n_r
-                    XYZ_out(:,:,kd,3) = grid_X_out%r_F(kd)/max_flux_F*2*pi
+                    XYZ_out(:,:,kd,3) = grid_X_out%loc_r_F(kd)/max_flux_F*2*pi
                 end do
             else
                 if (use_pol_flux_F) then
@@ -457,7 +457,7 @@ contains
                     XYZ_out(:,:,:,2) = grid_X_out%theta_F/pi
                 end if
                 do kd = 1,grid_X_out%loc_n_r
-                    XYZ_out(:,:,kd,3) = grid_X_out%r_F(kd)/max_flux_F*2*pi
+                    XYZ_out(:,:,kd,3) = grid_X_out%loc_r_F(kd)/max_flux_F*2*pi
                 end do
             end if
             
