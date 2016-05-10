@@ -32,13 +32,13 @@ contains
     ! output tables.
     integer function run_driver_POST() result(ierr)
         use num_vars, only: no_output, no_plots, eq_style, plot_resonance, &
-            &plot_flux_q, plot_grid, rank, norm_disc_prec_X, POST_style, &
+            &plot_flux_q, plot_magn_grid, rank, norm_disc_prec_X, POST_style, &
             &slab_plots, use_pol_flux_F, pi, swap_angles
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol
         use grid_vars, only: create_grid, dealloc_grid, dealloc_disc, disc_type
-        use grid_ops, only: calc_norm_range, plot_grid_real
+        use grid_ops, only: calc_norm_range, magn_grid_plot
         use eq_vars, only: create_eq, dealloc_eq, &
             &max_flux_F
         use eq_ops, only: calc_eq, flux_q_plot, calc_derived_q
@@ -361,9 +361,9 @@ contains
         else
             call writo('Flux quantities plot not requested')
         end if
-        if (plot_grid) then
+        if (plot_magn_grid) then
             if (POST_style.eq.2) then                                           ! output grid is field-aligned
-                ierr = plot_grid_real(grid_eq_out)
+                ierr = magn_grid_plot(grid_eq_out)
                 CHCKERR('')
             else
                 call writo('Need POST style 2 (field-aligned) for grid plot',&

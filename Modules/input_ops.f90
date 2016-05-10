@@ -20,7 +20,7 @@ contains
         use num_vars, only: &
             &max_it_NR, tol_NR, max_it_rich, input_i, use_pol_flux_F, &
             &EV_style, max_mem_per_proc, plot_resonance, tol_rich, &
-            &n_sol_requested, rank, plot_grid, plot_flux_q, &
+            &n_sol_requested, rank, plot_magn_grid, plot_flux_q, &
             &use_normalization, n_sol_plotted, n_theta_plot, &
             &n_zeta_plot, EV_BC, rho_style, retain_all_sol, prog_style, &
             &norm_disc_prec_X, norm_disc_prec_eq, norm_disc_prec_sol, &
@@ -29,7 +29,7 @@ contains
             &test_max_mem, X_style, matrix_SLEPC_style, input_name, &
             &rich_restart_lvl, eq_style, relax_fac_NR, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, max_nr_tries_NR, &
-            &POST_style, slab_plots, def_relax_fac_NR
+            &POST_style, slab_plots, def_relax_fac_NR, magn_int_style
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use messages, only: writo, lvl_ud
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
@@ -52,7 +52,7 @@ contains
         ! input options
         namelist /inputdata_PB3D/ min_par_X, max_par_X, alpha, min_r_sol, &
             &max_r_sol, max_it_NR, tol_NR, use_pol_flux_F, rho_style, &
-            &rho_0, plot_grid, plot_flux_q, prim_X, min_sec_X, max_sec_X, &
+            &rho_0, plot_magn_grid, plot_flux_q, prim_X, min_sec_X, max_sec_X, &
             &n_mod_X, use_normalization, n_theta_plot, n_zeta_plot, &
             &norm_disc_prec_eq, tol_norm, max_mem_per_proc, n_r_sol, &
             &max_it_rich, tol_rich, EV_style, plot_resonance, n_sol_requested, &
@@ -61,9 +61,9 @@ contains
             &norm_disc_prec_sol, plot_size, U_style, norm_style, test_max_mem, &
             &matrix_SLEPC_style, rich_restart_lvl, min_n_par_X, relax_fac_NR, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &max_nr_tries_NR
+            &max_nr_tries_NR, magn_int_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
-            &plot_resonance, plot_flux_q, plot_grid, norm_disc_prec_sol, &
+            &plot_resonance, plot_flux_q, plot_magn_grid, norm_disc_prec_sol, &
             &plot_size, test_max_mem, PB3D_lvl_rich, max_it_NR, tol_NR, &
             &relax_fac_NR, min_theta_plot, max_theta_plot, min_zeta_plot, &
             &max_zeta_plot, max_nr_tries_NR, POST_style, slab_plots
@@ -231,6 +231,7 @@ contains
             norm_disc_prec_eq = 1                                               ! precision 1 normal discretization of equilibrium
             norm_disc_prec_X = 1                                                ! precision 1 normal discretization of perturbation
             norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
+            magn_int_style = 1                                                  ! trapezoidal rule
             max_it_SLEPC = 1000                                                 ! max. nr. of iterations for SLEPC
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
             tol_SLEPC = huge(1._dp)                                             ! nonsensible value to check for user overwriting
@@ -241,7 +242,7 @@ contains
             X_style = 2                                                         ! fast style: mode numbers optimized in normal coordinate
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
             plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
-            plot_grid = .false.                                                 ! do not plot the grid
+            plot_magn_grid = .false.                                            ! do not plot the magnetic grid
             plot_flux_q = .false.                                               ! do not plot the flux quantities
             
             ! variables concerning input / output
@@ -298,7 +299,7 @@ contains
             ! runtime variables
             plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
             plot_flux_q = .false.                                               ! do not plot the flux quantities
-            plot_grid = .false.                                                 ! do not plot the grid
+            plot_magn_grid = .false.                                            ! do not plot the magnetic grid
             norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
             POST_style = 1                                                      ! process on extended plot grid
             
@@ -320,9 +321,11 @@ contains
             n_sol_plotted = n_sol_requested                                     ! plot all solutions
         end function default_input_POST
         
-        ! checks whether the variables concerning run-time are chosen correctly.
-        ! rho_style has  to be 1  (constant rho = rho_0), matrix_SLEPC_style
-        ! has to be 0..1 and max_it_SLEPC has to be at least 1.
+        ! Checks whether the variables concerning run-time are chosen correctly:
+        !   rho_style has  to be 1  (constant rho = rho_0),
+        !   matrix_SLEPC_style has to be 0..1,
+        !   max_it_SLEPC has to be at least 1,
+        !   magnetic integral style has to be 1..2.
         integer function adapt_run_PB3D() result(ierr)
             use num_vars, only: eq_style
             
@@ -351,11 +354,17 @@ contains
                 call writo('max_it_SLEPC has to be positive and is set to 1',&
                     &warning=.true.)
             end if
+            if (magn_int_style.lt.1 .or. magn_int_style.gt.2) then
+                ierr = 1
+                err_msg = 'magn_int_style has to be 1 (trapezoidal) or 2 &
+                    &(Simpson 3/8 rule)'
+                CHCKERR(err_msg)
+            end if
         end function adapt_run_PB3D
         
-        ! checks whether the variables concerning run-time are chosen correctly.
-        ! POST_style  should be  1 (plotting  on extended  plot grid)  or 2
-        ! (plotting on field-aligned grid also used in PB3D).
+        ! Checks whether the variables concerning run-time are chosen correctly:
+        !    POST_style  should be  1  (plotting  on extended  plot  grid) or  2
+        !    (plotting on field-aligned grid also used in PB3D).
         integer function adapt_run_POST() result(ierr)
             character(*), parameter :: rout_name = 'adapt_run_POST'
             
@@ -370,10 +379,10 @@ contains
             end if
         end function adapt_run_POST
         
-        ! checks whether the variables concerning output are chosen correctly.
-        ! n_sol_requested has to be at least one
-        ! rich_restart_lvl  can be  at most  one more  than the  maximally found
-        ! level, nor can it be higher than max_it_rich.
+        ! Checks whether the variables concerning output are chosen correctly:
+        !   n_sol_requested has to be at least one,
+        !   rich_restart_lvl can  be at most  one more than the  maximally found
+        !   level, nor can it be higher than max_it_rich.
         integer function adapt_inoutput() result(ierr)
             character(*), parameter :: rout_name = 'adapt_inoutput'
             
@@ -410,10 +419,10 @@ contains
             end if
         end function adapt_inoutput
         
-        ! checks whether the variables concerning plotting are chosen correctly.
-        !   n_theta_plot and n_zeta_plot have to be positive
+        ! Checks whether the variables concerning plotting are chosen correctly:
+        !   n_theta_plot and n_zeta_plot have to be positive,
         !   if n_theta_plot or  n_zeta_plot is equal to 1, the  minimum value is
-        !   chosen
+        !   chosen.
         subroutine adapt_plot
             ! local variables
             real(dp), parameter :: tol = 1.E-6_dp                               ! tolerance for checks
@@ -437,22 +446,24 @@ contains
             end if
             if (n_zeta_plot.eq.1 .and. &
                 &abs(max_zeta_plot-min_zeta_plot).gt.tol) then
-                call writo('For n_zeta_plot = 1, max_zeta_plot is changed to &
-                    &min_zeta_plot = '//trim(r2strt(min_zeta_plot)),&
+                call writo('For n_zeta_plot = 1, min_zeta_plot and &
+                    &max_zeta_plot are changed to their average = '//&
+                    &trim(r2strt((min_zeta_plot+max_zeta_plot)/2)),&
                     &warning=.true.)
-                max_zeta_plot = min_zeta_plot
+                max_zeta_plot = 0.5*(min_zeta_plot+max_zeta_plot)
+                min_zeta_plot = max_zeta_plot
             end if
         end subroutine adapt_plot
         
-        ! checks whether  variables concerning  perturbation modes  are correct:
-        ! the absolute value of prim_X has to be at least min_nm_X.
-        ! Also  deduces the X  style; min_sec_X  and max_sec_X, pertaining  to X
-        ! style 1 and n_sec_X, pertaining to X style 2 cannot be both given.
-        ! Furthermore, if  X style 1  (prescribed), max_sec_X has to  be greater
-        ! than min_sec_X in absolute value. If  X style 2 (fast), n_mod_X has to
-        ! be a number greater than 0.
-        ! Lastly,  for every X  style, some checks  are made and  some variables
-        ! set.
+        ! Checks whether  variables concerning  perturbation modes  are correct:
+        !   the absolute value of prim_X has to be at least min_nm_X,
+        !   deduces the X  style,
+        !   min_sec_X  and  max_sec_X, pertaining  to  X  style 1  and  n_sec_X,
+        !   pertaining to X style 2 cannot be both given,
+        !   if  X  style  1  (prescribed),  max_sec_X has  to  be  greater  than
+        !   min_sec_X in absolute value,
+        !   if  X style 2 (fast), n_mod_X has to be a number greater than 0,
+        !   for every X style, some checks are made and some variables set.
         integer function adapt_X_modes() result(ierr)
             use X_vars, only: min_nm_X
             
@@ -514,21 +525,48 @@ contains
             end select
         end function adapt_X_modes
         
-        ! Checks whether  min_n_par_X has  been chosen  correctly: It  should be
-        ! larger than 10 (arbitrary) if an integral is to be calculated.
+        ! Checks whether  min_n_par_X has  been chosen  correctly:
+        !   It should be larger than  req_min_n_par_X (arbitrary) if an integral
+        !   is to be calculated. However,  there are additional requirements for
+        !   the different magnetic integral styles: for style 1 min_par_X has to
+        !   be of the form 2+k and for style 2 of the form 4+3k.
         subroutine adapt_min_n_par_X
+            ! local variables
+            integer :: mult_fac(2)                                              ! multiple factor
+            
+            ! check req_min_n_par_X
             if (min_n_par_X.lt.req_min_n_par_X)  then
                 min_n_par_X = req_min_n_par_X
                 call writo('min_n_par_X has been increased to '//&
-                    &trim(i2str(min_n_par_X)),warning=.true.)
+                    &trim(i2str(min_n_par_X))//' to have enough parallel &
+                    &resolution',warning=.true.)
+            end if
+            
+            ! check for individual magnetic integral style
+            select case (magn_int_style)
+                case (1)                                                        ! Trapezoidal rule
+                    mult_fac = [2,1]
+                case (2)                                                        ! Simpson's 3/8 rule
+                    mult_fac = [4,3]
+            end select
+            if (mod(min_n_par_X-mult_fac(1),mult_fac(2)).ne.0) then
+                min_n_par_X = mult_fac(1) + mult_fac(2) * &
+                    &((min_n_par_X-mult_fac(1))/mult_fac(2) + 1)
+                call writo('min_n_par_X has been increased to '//&
+                    &trim(i2str(min_n_par_X))//' to be a of the form '//&
+                    &trim(i2str(mult_fac(1)))//' + '//&
+                    &trim(i2str(mult_fac(2)))//&
+                    &'k for magnetic integral style '//&
+                    &trim(i2str(magn_int_style)),warning=.true.)
             end if
         end subroutine adapt_min_n_par_X
         
         ! Checks  whether variables  concerning the  solution grid  are correct:
-        ! min_r_sol  should not  be too  close to  zero because  the equilibrium
-        ! calculations yield an infinity at  the magnetic axis. max_r_sol cannot
-        ! be larger  than 1.0  and has  to be larger  than min_r_sol.  Also, the
-        ! number of normal points has to be big enough.
+        !   min_r_sol should  not be too  close to zero because  the equilibrium
+        !   calculations yield an infinity at the magnetic axis,
+        !   max_r_sol  cannot be  larger  than 1.0  and has  to  be larger  than
+        !   min_r_sol,
+        !   the number of normal points has to be big enough.
         integer function adapt_sol_grid() result(ierr)
             use grid_vars, only: n_r_eq
             
@@ -572,8 +610,9 @@ contains
             end if
         end function adapt_sol_grid
         
-        ! checks  whether the variables concerning  Richardson extrapolation are
-        ! correct. max_it_rich has to be at least 1
+        ! Checks  whether the variables concerning  Richardson extrapolation are
+        ! correct:
+        !   max_it_rich has to be at least 1.
         subroutine adapt_rich
             if (max_it_rich.lt.1) then
                 max_it_rich = 1
@@ -581,8 +620,9 @@ contains
             end if
         end subroutine adapt_rich
         
-        ! checks whether  the variables  concerning calculating the  inverse are
-        ! correct. max_it_inv has to be at least 1
+        ! Checks whether  the variables  concerning calculating the  inverse are
+        ! correct:
+        !   max_it_inv has to be at least 1.
         subroutine adapt_inv
             if (max_it_inv.lt.1) then
                 max_it_inv = 1
@@ -590,9 +630,9 @@ contains
             end if
         end subroutine adapt_inv
         
-        ! checks  whether the  variables concerning Newton-Rhapson  are correct.
-        !   max_it_NR has to be at least 2
-        !   relax_fac_NR has to be larger than 0
+        ! Checks whether the variables concerning Newton-Rhapson are correct:
+        !   max_it_NR has to be at least 2,
+        !   relax_fac_NR has to be larger than 0.
         subroutine adapt_NR
             if (max_it_NR.lt.1) then
                 max_it_NR = 2
@@ -605,12 +645,12 @@ contains
             end if
         end subroutine adapt_NR
         
-        ! checks whether tolerances are correct
-        !   tol_norm needs to be 0..1
-        !   tol_NR needs to be min_tol..max_tol
-        !   tol_rich needs to be min_tol..max_tol
-        !   tol_SLEPC needs to be min_tol..max_tol
-        ! also sets local tol_SLEPC
+        ! Checks whether tolerances are correct:
+        !   tol_norm needs to be 0..1,
+        !   tol_NR needs to be min_tol..max_tol,
+        !   tol_rich needs to be min_tol..max_tol,
+        !   tol_SLEPC needs to be min_tol..max_tol.
+        ! Also sets local tol_SLEPC.
         subroutine adapt_tols
             ! local variables
             integer :: id                                                       ! counter
@@ -697,8 +737,8 @@ contains
             end if
         end subroutine adapt_tols
         
-        ! checks whether normalization variables are chosen correctly. rho_0 has
-        ! to be positive
+        ! Checks whether normalization variables are chosen correctly:
+        !   rho_0 has to be positive.
         integer function adapt_normalization() result(ierr)
             character(*), parameter :: rout_name = 'adapt_normalization'
             
@@ -772,7 +812,7 @@ contains
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, tol_norm, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
-            &EV_BC
+            &EV_BC, magn_int_style
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
         use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
@@ -1121,13 +1161,14 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [9]
+        in_1D_loc%loc_i_max = [10]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(9))
+        allocate(in_1D_loc%p(10))
         in_1D_loc%p = [prim_X*1._dp,n_mod_X*1._dp,min_sec_X*1._dp,&
             &max_sec_X*1._dp,norm_disc_prec_X*1._dp,norm_style*1._dp,&
-            &U_style*1._dp,X_style*1._dp,matrix_SLEPC_style*1._dp]
+            &U_style*1._dp,X_style*1._dp,matrix_SLEPC_style*1._dp,&
+            &magn_int_style*1._dp]
         
         ! misc_sol
         in_1D_loc => in_1D(id); id = id+1
@@ -1139,8 +1180,8 @@ contains
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
         allocate(in_1D_loc%p(7))
-        in_1D_loc%p = [min_r_sol,max_r_sol,alpha,&
-            &norm_disc_prec_sol*1._dp,BC_style*1._dp,EV_style*1._dp,EV_BC]
+        in_1D_loc%p = [min_r_sol,max_r_sol,alpha,norm_disc_prec_sol*1._dp,&
+            &BC_style*1._dp,EV_style*1._dp,EV_BC]
         
         ! write
         ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,trim(data_name))

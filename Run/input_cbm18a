@@ -1,5 +1,5 @@
 &inputdata_PB3D
-    min_n_par_X             = 30
+    min_n_par_X             = 20
     min_par_X               = -1.0
     max_par_X               = 1.0
     alpha                   = 0.0
@@ -21,7 +21,7 @@
     U_style                 = 3
     max_it_slepc            = 100000
     max_mem_per_proc        = 1000
-    plot_grid               = .false.
+    plot_magn_grid          = .false.
     plot_flux_q             = .false.
     plot_resonance          = .false.
     matrix_SLEPC_style      = 1

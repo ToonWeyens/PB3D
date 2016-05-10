@@ -35,7 +35,7 @@ contains
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, prog_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
-            &EV_BC
+            &EV_BC, magn_int_style
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
@@ -316,6 +316,7 @@ contains
         U_style = nint(dum_1D(7))
         X_style = nint(dum_1D(8))
         matrix_SLEPC_style = nint(dum_1D(9))
+        magn_int_style = nint(dum_1D(10))
         deallocate(dum_1D)
         
         ! misc_sol

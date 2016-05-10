@@ -1922,19 +1922,29 @@ contains
         nullify(h22)
     end function calc_KV
     
-    ! Calculate the  magnetic integrals  from PV_i and  KV_i. All  the variables
-    ! should thus be field-line oriented. The result is savd in the first index
-    ! of the X variables, the other can be ignored.
+    ! Calculate the magnetic integrals from PV_i and KV_i in an equidistant grid
+    ! where the step  size can vary depending on the  normal coordinate. All the
+    ! variables should  thus be field-line oriented.  The result is savd  in the
+    ! first index of the X variables, the other can be ignored.
+    ! If X_prev is present, this is interpreted as the magnetic integrals of the
+    ! previous Richardson  level. In this  case, they  are added to  the current
+    ! integral, and the current integral the  indices are modified [ADD REF]:
+    !   for magn_int_style = 1: 1 2 2 2 2 2 1 -> 2 2 2 2 2 2,
+    !   for magn_int_style = 2: 1 3 3 2 3 3 1 -> 3 2 3 3 2 3.
     ! Note:  The  variable  type   for  the  integrated  tensorial  perturbation
     ! variables  is  also X_2,  but  it  is assumed  that  the  first index  has
     ! dimension 1, the rest is ignored.
-    integer function calc_magn_ints(grid_eq,grid_X,eq,X,lim_sec_X) result(ierr)
-        use num_vars, only: use_pol_flux_F, norm_disc_prec_X
+    ! Note: Simpson's 3/8  rule converges faster than the  trapezoidal rule, but
+    ! normally needs a better starting point (i.e. higher min_n_par_X)
+    integer function calc_magn_ints(grid_eq,grid_X,eq,X,X_prev,lim_sec_X) &
+        &result(ierr)
+        use num_vars, only: use_pol_flux_F, norm_disc_prec_X, magn_int_style
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
         use num_utilities, only: c
         use grid_vars, only: disc_type, dealloc_disc
         use grid_utilities, only: setup_interp_data, apply_disc
+        use rich_vars, only: rich_lvl
         
         character(*), parameter :: rout_name = 'calc_magn_ints'
         
@@ -1943,16 +1953,26 @@ contains
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
+        type(X_2_type), intent(in), optional :: X_prev                          ! tensorial perturbation variables of previous level
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
         
-        ! local variables
-        integer :: k, m                                                         ! counters
-        integer :: id, kd                                                       ! counters
+        ! local variables, not used in subroutines
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
+        integer :: k, m                                                         ! counters
+        integer :: kd                                                           ! counter
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
-        complex(dp), allocatable :: J_exp_ang(:,:,:)                            ! J * exponential of Flux parallel angle
+        real(dp), allocatable :: step_size(:)                                   ! step size for every normal point
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle in flux coordinates
+        complex(dp), allocatable :: V_int_work(:,:)                             ! work V_int
         type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
+        
+        ! local variables, also used in subroutines
+        integer :: nr_int_regions                                               ! nr. of integration regions
+        integer, allocatable :: int_dims(:,:)                                   ! dimension information of integration regions
+        real(dp), allocatable :: int_facs(:)                                    ! integration factors for each of the regions
+        complex(dp), allocatable :: J_exp_ang(:,:,:)                            ! J * exponential of Flux parallel angle
+        
+        ! Makes use of nr_int_regions, int_dims, int_facs and J_exp_ang
         
         ! jacobian
         real(dp), allocatable :: J(:,:,:)                                       ! jac
@@ -1987,6 +2007,62 @@ contains
             ang_par_F => grid_X%zeta_F
         end if
         
+        ! set up integration variables
+        
+        ! set nr_int_regions and user output
+        select case (magn_int_style)
+            case (1)                                                            ! Trapezoidal rule
+                call writo('magnetic interpolation style: 1 (trapezoidal rule)')
+                if (present(X_prev)) then
+                    nr_int_regions = 1
+                else
+                    nr_int_regions = 2
+                end if
+            case (2)                                                            ! Simpson's 3/8 rule
+                call writo('magnetic interpolation style: 2 (Simpson 3/8 rule)')
+                if (present(X_prev)) then
+                    nr_int_regions = 3
+                else
+                    nr_int_regions = 4
+                end if
+        end select
+        
+        ! set up integration factors and dimensions
+        allocate(int_facs(nr_int_regions))
+        allocate(int_dims(nr_int_regions,3))
+        select case (magn_int_style)
+            case (1)                                                            ! Trapezoidal rule
+                if (present(X_prev)) then
+                    int_facs = 0.5_dp*[2]
+                    int_dims(1,:) = [1,grid_X%n(1),1]                           ! region 1: all points
+                else
+                    int_facs = 0.5_dp*[1,2]
+                    int_dims(1,:) = [1,grid_X%n(1),grid_X%n(1)-1]               ! region 1: first and last points
+                    int_dims(2,:) = [2,grid_X%n(1)-1,1]                         ! region 2: intermediate points
+                end if
+            case (2)                                                            ! Simpson's 3/8 rule
+                if (present(X_prev)) then
+                    int_facs = 0.375_dp*[3,2,3]
+                    int_dims(1,:) = [1,grid_X%n(1)-2,3]                         ! region 1: intermediate points ~ 3
+                    int_dims(2,:) = [2,grid_X%n(1)-1,3]                         ! region 2: intermediate points ~ 2
+                    int_dims(3,:) = [3,grid_X%n(1),3]                           ! region 3: intermediate points ~ 3
+                else
+                    int_facs = 0.375_dp*[1,3,3,2]
+                    int_dims(1,:) = [1,grid_X%n(1),grid_X%n(1)-1]               ! region 1: first and last points
+                    int_dims(2,:) = [2,grid_X%n(1)-2,3]                         ! region 2: intermediate points ~ 3
+                    int_dims(3,:) = [3,grid_X%n(1)-1,3]                         ! region 3: intermediate points ~ 3
+                    int_dims(4,:) = [4,grid_X%n(1)-3,3]                         ! region 4: intermediate points ~ 2
+                end if
+        end select
+        
+        ! set up step size
+        allocate(step_size(grid_X%loc_n_r))
+        step_size = ang_par_F(2,1,:)-ang_par_F(1,1,:)
+        if (rich_lvl.gt.1) step_size = step_size*0.5_dp                         ! only half of points present: step size is actually half
+        
+        ! initialize local V_int
+        allocate(V_int_work(grid_X%n(2),grid_X%loc_n_r))
+        
         ! loop over all modes
         do m = 1,X%n_mod(2)
             do k = 1,X%n_mod(1)
@@ -2011,69 +2087,41 @@ contains
                     end if
                 end do
                 
-                ! initialize integrated quantities: do first integration step
+                ! integrate PV_0 and KV_0
                 if (calc_this(1)) then
-                    X%PV_0(1,:,:,c_loc(1)) = &
-                        &(J_exp_ang(2,:,:)*X%PV_0(2,:,:,c_loc(1))&
-                        &+J_exp_ang(1,:,:)*X%PV_0(1,:,:,c_loc(1)))/2 &
-                        &*(ang_par_F(2,:,:)-ang_par_F(1,:,:))
-                    X%KV_0(1,:,:,c_loc(1)) = &
-                        &(J_exp_ang(2,:,:)*X%KV_0(2,:,:,c_loc(1))&
-                        &+J_exp_ang(1,:,:)*X%KV_0(1,:,:,c_loc(1)))/2 &
-                        &*(ang_par_F(2,:,:)-ang_par_F(1,:,:))
-                    X%PV_2(1,:,:,c_loc(1)) = &
-                        &(J_exp_ang(2,:,:)*X%PV_2(2,:,:,c_loc(1))&
-                        &+J_exp_ang(1,:,:)*X%PV_2(1,:,:,c_loc(1)))/2 &
-                        &*(ang_par_F(2,:,:)-ang_par_F(1,:,:))
-                    X%KV_2(1,:,:,c_loc(1)) = &
-                        &(J_exp_ang(2,:,:)*X%KV_2(2,:,:,c_loc(1))&
-                        &+J_exp_ang(1,:,:)*X%KV_2(1,:,:,c_loc(1)))/2 &
-                        &*(ang_par_F(2,:,:)-ang_par_F(1,:,:))
-                end if
-                if (calc_this(2)) then
-                    X%PV_1(1,:,:,c_loc(2)) = &
-                        &(J_exp_ang(2,:,:)*X%PV_1(2,:,:,c_loc(2))&
-                        &+J_exp_ang(1,:,:)*X%PV_1(1,:,:,c_loc(2)))/2 &
-                        &*(ang_par_F(2,:,:)-ang_par_F(1,:,:))
-                    X%KV_1(1,:,:,c_loc(2)) = &
-                        &(J_exp_ang(2,:,:)*X%KV_1(2,:,:,c_loc(2))&
-                        &+J_exp_ang(1,:,:)*X%KV_1(1,:,:,c_loc(2)))/2 &
-                        &*(ang_par_F(2,:,:)-ang_par_F(1,:,:))
+                    call calc_magn_int_loc(X%PV_0(:,:,:,c_loc(1)),&
+                        &X%PV_0(1,:,:,c_loc(1)),V_int_work,step_size)
+                    call calc_magn_int_loc(X%KV_0(:,:,:,c_loc(1)),&
+                        &X%KV_0(1,:,:,c_loc(1)),V_int_work,step_size)
                 end if
                 
-                ! parallel integration loop
-                do id = 3,grid_X%n(1)
-                    if (calc_this(1)) then
-                        X%PV_0(1,:,:,c_loc(1)) = X%PV_0(1,:,:,c_loc(1)) + &
-                            &(J_exp_ang(id,:,:)*X%PV_0(id,:,:,c_loc(1))&
-                            &+J_exp_ang(id-1,:,:)*X%PV_0(id-1,:,:,c_loc(1)))/2 &
-                            &*(ang_par_F(id,:,:)-ang_par_F(id-1,:,:))
-                        X%KV_0(1,:,:,c_loc(1)) = X%KV_0(1,:,:,c_loc(1)) + &
-                            &(J_exp_ang(id,:,:)*X%KV_0(id,:,:,c_loc(1))&
-                            &+J_exp_ang(id-1,:,:)*X%KV_0(id-1,:,:,c_loc(1)))/2 &
-                            &*(ang_par_F(id,:,:)-ang_par_F(id-1,:,:))
-                        X%KV_2(1,:,:,c_loc(1)) = X%KV_2(1,:,:,c_loc(1)) + &
-                            &(J_exp_ang(id,:,:)*X%KV_2(id,:,:,c_loc(1))&
-                            &+J_exp_ang(id-1,:,:)*X%KV_2(id-1,:,:,c_loc(1)))/2 &
-                            &*(ang_par_F(id,:,:)-ang_par_F(id-1,:,:))
-                        X%PV_2(1,:,:,c_loc(1)) = X%PV_2(1,:,:,c_loc(1)) + &
-                            &(J_exp_ang(id,:,:)*X%PV_2(id,:,:,c_loc(1))&
-                            &+J_exp_ang(id-1,:,:)*X%PV_2(id-1,:,:,c_loc(1)))/2 &
-                            &*(ang_par_F(id,:,:)-ang_par_F(id-1,:,:))
-                    end if
-                    if (calc_this(2)) then
-                        X%PV_1(1,:,:,c_loc(2)) = X%PV_1(1,:,:,c_loc(2)) + &
-                            &(J_exp_ang(id,:,:)*X%PV_1(id,:,:,c_loc(2))&
-                            &+J_exp_ang(id-1,:,:)*X%PV_1(id-1,:,:,c_loc(2)))/2 &
-                            &*(ang_par_F(id,:,:)-ang_par_F(id-1,:,:))
-                        X%KV_1(1,:,:,c_loc(2)) = X%KV_1(1,:,:,c_loc(2)) + &
-                            &(J_exp_ang(id,:,:)*X%KV_1(id,:,:,c_loc(2))&
-                            &+J_exp_ang(id-1,:,:)*X%KV_1(id-1,:,:,c_loc(2)))/2 &
-                            &*(ang_par_F(id,:,:)-ang_par_F(id-1,:,:))
-                    end if
-                end do
+                ! integrate PV_1 and KV_1
+                if (calc_this(2)) then
+                    call calc_magn_int_loc(X%PV_1(:,:,:,c_loc(2)),&
+                        &X%PV_1(1,:,:,c_loc(2)),V_int_work,step_size)
+                    call calc_magn_int_loc(X%KV_1(:,:,:,c_loc(2)),&
+                        &X%KV_1(1,:,:,c_loc(2)),V_int_work,step_size)
+                end if
+                
+                ! integrate PV_2 and KV_2
+                if (calc_this(1)) then
+                    call calc_magn_int_loc(X%PV_2(:,:,:,c_loc(1)),&
+                        &X%PV_2(1,:,:,c_loc(1)),V_int_work,step_size)
+                    call calc_magn_int_loc(X%KV_2(:,:,:,c_loc(1)),&
+                        &X%KV_2(1,:,:,c_loc(1)),V_int_work,step_size)
+                end if
             end do
         end do
+        
+        ! add previous integral divided by 2 if provided
+        if (present(X_prev)) then
+            X%PV_0(1,:,:,:) = X%PV_0(1,:,:,:) + 0.5_dp*X_prev%PV_0(1,:,:,:)
+            X%PV_1(1,:,:,:) = X%PV_1(1,:,:,:) + 0.5_dp*X_prev%PV_1(1,:,:,:)
+            X%PV_2(1,:,:,:) = X%PV_2(1,:,:,:) + 0.5_dp*X_prev%PV_2(1,:,:,:)
+            X%KV_0(1,:,:,:) = X%KV_0(1,:,:,:) + 0.5_dp*X_prev%KV_0(1,:,:,:)
+            X%KV_1(1,:,:,:) = X%KV_1(1,:,:,:) + 0.5_dp*X_prev%KV_1(1,:,:,:)
+            X%KV_2(1,:,:,:) = X%KV_2(1,:,:,:) + 0.5_dp*X_prev%KV_2(1,:,:,:)
+        end if
         
         ! clean up
         nullify(ang_par_F)
@@ -2081,6 +2129,42 @@ contains
         ! user output
         call lvl_ud(-1)
         call writo('Field-line averages calculated')
+    contains
+        ! Integrate local magnetic integral.
+        ! Makes use of nr_int_regions, int_dims, int_facs and J_exp_ang
+        subroutine calc_magn_int_loc(V,V_int,V_int_work,step_size)
+            ! input / output
+            complex(dp), intent(in) :: V(:,:,:)                                 ! V
+            complex(dp), intent(inout) :: V_int(:,:)                            ! integrated V
+            complex(dp), intent(inout) :: V_int_work(:,:)                       ! workint variable
+            real(dp) :: step_size(:)                                            ! step size for every normal point
+            
+            ! local variables
+            integer :: id, kd, ld                                               ! counters
+            
+            ! loop over regions
+            do ld = 1,nr_int_regions
+                ! initialize
+                V_int_work = 0
+                
+                ! integrate
+                do id = int_dims(ld,1),int_dims(ld,2),int_dims(ld,3)
+                    V_int_work = V_int_work + J_exp_ang(id,:,:)*V(id,:,:)
+                end do
+                
+                ! scale by integration factor and update V_int
+                if (ld.eq.1) then
+                    V_int = V_int_work*int_facs(ld)                             ! initialize
+                else
+                    V_int = V_int + V_int_work*int_facs(ld)                     ! update
+                end if
+            end do
+            
+            ! scale by step size
+            do kd = 1,size(step_size)
+                V_int(:,kd) = V_int(:,kd)*step_size(kd)
+            end do
+        end subroutine calc_magn_int_loc
     end function calc_magn_ints
     
     ! Print either  vectorial or tensorial perturbation quantities  of a certain
@@ -2318,8 +2402,8 @@ contains
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
                     suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'RE_PV_0_'//&
-                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
+                    X_1D_loc%var_name = 'RE_PV_0_'//trim(i2str(suffix(1)))//&
+                        &'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
                     allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
                     X_1D_loc%tot_i_min = [1,1,1]
@@ -2336,8 +2420,8 @@ contains
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
                     suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'IM_PV_0_'//&
-                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
+                    X_1D_loc%var_name = 'IM_PV_0_'//trim(i2str(suffix(1)))//&
+                        &'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
                     allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
                     X_1D_loc%tot_i_min = [1,1,1]
@@ -2354,8 +2438,8 @@ contains
                 if (print_this(2)) then
                     X_1D_loc => X_1D(id); id = id+1
                     suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'RE_PV_1_'//&
-                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
+                    X_1D_loc%var_name = 'RE_PV_1_'//trim(i2str(suffix(1)))//&
+                        &'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
                     allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
                     X_1D_loc%tot_i_min = [1,1,1]
@@ -2372,8 +2456,8 @@ contains
                 if (print_this(2)) then
                     X_1D_loc => X_1D(id); id = id+1
                     suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'IM_PV_1_'//&
-                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
+                    X_1D_loc%var_name = 'IM_PV_1_'//trim(i2str(suffix(1)))//&
+                        &'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
                     allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
                     X_1D_loc%tot_i_min = [1,1,1]
@@ -2390,8 +2474,8 @@ contains
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
                     suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'RE_PV_2_'//&
-                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
+                    X_1D_loc%var_name = 'RE_PV_2_'//trim(i2str(suffix(1)))//&
+                        &'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
                     allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
                     X_1D_loc%tot_i_min = [1,1,1]
@@ -2408,8 +2492,8 @@ contains
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
                     suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'IM_PV_2_'//&
-                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
+                    X_1D_loc%var_name = 'IM_PV_2_'//trim(i2str(suffix(1)))//&
+                        &'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
                     allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
                     X_1D_loc%tot_i_min = [1,1,1]
@@ -2426,8 +2510,8 @@ contains
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
                     suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'RE_KV_0_'//&
-                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
+                    X_1D_loc%var_name = 'RE_KV_0_'//trim(i2str(suffix(1)))//&
+                        &'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
                     allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
                     X_1D_loc%tot_i_min = [1,1,1]
@@ -2444,8 +2528,8 @@ contains
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
                     suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'IM_KV_0_'//&
-                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
+                    X_1D_loc%var_name = 'IM_KV_0_'//trim(i2str(suffix(1)))//&
+                        &'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
                     allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
                     X_1D_loc%tot_i_min = [1,1,1]
@@ -2462,8 +2546,8 @@ contains
                 if (print_this(2)) then
                     X_1D_loc => X_1D(id); id = id+1
                     suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'RE_KV_1_'//&
-                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
+                    X_1D_loc%var_name = 'RE_KV_1_'//trim(i2str(suffix(1)))//&
+                        &'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
                     allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
                     X_1D_loc%tot_i_min = [1,1,1]
@@ -2480,8 +2564,8 @@ contains
                 if (print_this(2)) then
                     X_1D_loc => X_1D(id); id = id+1
                     suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'IM_KV_1_'//&
-                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
+                    X_1D_loc%var_name = 'IM_KV_1_'//trim(i2str(suffix(1)))//&
+                        &'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
                     allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
                     X_1D_loc%tot_i_min = [1,1,1]
@@ -2498,8 +2582,8 @@ contains
                 if (print_this(1)) then
                     X_1D_loc => X_1D(id); id = id+1
                     suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'RE_KV_2_'//&
-                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
+                    X_1D_loc%var_name = 'RE_KV_2_'//trim(i2str(suffix(1)))//&
+                        &'_'//trim(i2str(suffix(2)))
                     allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
                     allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
                     X_1D_loc%tot_i_min = [1,1,1]

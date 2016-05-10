@@ -22,15 +22,16 @@ module driver_eq
 contains
     ! Main driver of PB3D equilibrium part.
     integer function run_driver_eq() result(ierr)
-        use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q
+        use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
+            &plot_magn_grid
         use MPI_utilities, only: wait_MPI
         use eq_vars, only: dealloc_eq
         use grid_vars, only: dealloc_grid
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot
         use sol_vars, only: alpha
         use grid_ops, only: setup_grid_eq_B, print_output_grid, &
-            &calc_norm_range, setup_grid_eq, calc_ang_grid_eq_B
-        use PB3D_ops, only: reconstruct_PB3D_in
+            &calc_norm_range, setup_grid_eq, calc_ang_grid_eq_B, magn_grid_plot
+        use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid
         use num_utilities, only: derivs
         use input_utilities, only: dealloc_in
         use rich_vars, only: rich_lvl
@@ -46,6 +47,8 @@ contains
         type(eq_2_type) :: eq_2                                                 ! equilibrium for
         integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid of this process
         logical :: only_half_grid                                               ! calculate only half grid
+        character(len=max_str_ln) :: grid_eq_B_name                             ! name of grid_eq_B
+        integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
         
         ! initialize ierr
         ierr = 0
@@ -83,16 +86,11 @@ contains
         call lvl_ud(-1)
         
         ! set up whether half or full parallel grid has to be calculated
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                if (rich_lvl.eq.1) then
-                    only_half_grid = .false.
-                else
-                    only_half_grid = .true.
-                end if
-            case (2)                                                            ! HELENA
-                only_half_grid = .false.
-        end select
+        if (rich_lvl.eq.1) then
+            only_half_grid = .false.
+        else
+            only_half_grid = .true.
+        end if
         
         ! setup equilibrium grid
         call writo('Determine the equilibrium grid')
@@ -159,9 +157,6 @@ contains
                 
                 ! clean up
                 call dealloc_eq(eq_2)
-                
-                ! the equilibrium grid is field-aligned already
-                grid_eq_B => grid_eq
             case (2)                                                            ! HELENA
                 if (rich_lvl.eq.1) then
                     ! write equilibrium grid variables to output
@@ -191,7 +186,8 @@ contains
                 ! set up field-aligned equilibrium grid
                 call writo('Determine the field-aligned equilibrium grid')
                 allocate(grid_eq_B)
-                ierr = setup_grid_eq_B(grid_eq,grid_eq_B,eq_1)
+                ierr = setup_grid_eq_B(grid_eq,grid_eq_B,eq_1,&
+                    &only_half_grid=only_half_grid)
                 CHCKERR('')
                 
                 ! write field-aligned equilibrium grid variables to output
@@ -203,7 +199,6 @@ contains
         ! clean up
         call writo('Clean up')
         call lvl_ud(1)
-        call dealloc_in()
         call dealloc_grid(grid_eq)
         call dealloc_eq(eq_1)
         if (eq_style.eq.2) then
@@ -211,6 +206,44 @@ contains
             deallocate(grid_eq_B)
         end if
         nullify(grid_eq_B)
+        call lvl_ud(-1)
+        
+        ! plot full field-aligned grid if requested
+        if (plot_magn_grid) then
+            ! allocate
+            allocate(grid_eq_B)
+            
+            ! set up the name of grid_eq_B and rich_lvl
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    grid_eq_B_name = 'eq'                                       ! already field-aligned
+                    rich_lvl_name = rich_lvl                                    ! append richardson level
+                case (2)                                                        ! HELENA
+                    grid_eq_B_name = 'eq_B'                                     ! not already field-aligned
+                    rich_lvl_name = 0                                           ! do not append name
+            end select
+            
+            ! reconstruct the full field-aligned grid
+            ierr = reconstruct_PB3D_grid(grid_eq_B,trim(grid_eq_B_name),&
+                &rich_lvl=rich_lvl_name,tot_rich=.true.)
+            CHCKERR('')
+            
+            ! plot it
+            ierr = magn_grid_plot(grid_eq_B)
+            CHCKERR('')
+            
+            ! deallocate
+            call dealloc_grid(grid_eq_B)
+            deallocate(grid_eq_B)
+            nullify(grid_eq_B)
+        else
+            call writo('Magnetic grid plot not requested')
+        end if
+        
+        ! clean up
+        call writo('Clean up')
+        call lvl_ud(1)
+        call dealloc_in()
         call lvl_ud(-1)
         
         ! synchronize MPI

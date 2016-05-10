@@ -129,6 +129,7 @@ contains
         ierr = reconstruct_PB3D_X_2(grid_X,X,'X_2_int',rich_lvl=rich_lvl,&
             &X_limits=sol_limits,is_field_averaged=.true.)
         CHCKERR('')
+        
         ! need previous solution as well if guess is used
         if (use_guess .and. rich_lvl.gt.1) then
             ierr = reconstruct_PB3D_sol(grid_X,sol_prev,'sol',&

@@ -13,10 +13,10 @@ module num_vars
         &X_jobs_file_name, X_jobs_lock_file_name, HDF5_lock_file_name, &
         &pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
-        &X_style, matrix_SLEPC_style, plot_resonance, plot_grid, plot_flux_q, &
-        &ltest, use_pol_flux_E, use_pol_flux_F, use_normalization, EV_BC, &
-        &test_max_mem, tol_SLEPC, max_it_slepc, norm_disc_prec_eq, &
-        &norm_disc_prec_X, norm_disc_prec_sol, POST_style, &
+        &X_style, matrix_SLEPC_style, plot_resonance, plot_magn_grid, &
+        &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, use_normalization, &
+        &EV_BC, test_max_mem, tol_SLEPC, max_it_slepc, norm_disc_prec_eq, &
+        &norm_disc_prec_X, norm_disc_prec_sol, POST_style, magn_int_style, &
         &max_it_rich, tol_rich, &
         &max_it_inv, &
         &max_it_NR, max_nr_tries_NR, relax_fac_NR, tol_NR, tol_norm, &
@@ -44,7 +44,7 @@ module num_vars
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
     integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
-    real(dp), parameter :: prog_version = 1.19_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.20_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.14_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
@@ -75,7 +75,7 @@ module num_vars
     integer :: POST_style                                                       ! style for POST (1: extended grid, 2: B-aligned grid)
     integer :: max_it_slepc                                                     ! maximum nr. of iterations for SLEPC
     logical :: plot_resonance                                                   ! whether to plot the q-profile or iota-profile with resonances
-    logical :: plot_grid                                                        ! whether to plot the grid in real coordinates
+    logical :: plot_magn_grid                                                   ! whether to plot the grid in real coordinates
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates
     logical :: ltest                                                            ! whether or not to call the testing routines
     logical :: use_pol_flux_E                                                   ! whether poloidal flux is used in E coords.
@@ -87,6 +87,7 @@ module num_vars
     integer :: norm_disc_prec_eq                                                ! precision for normal discretization for equilibrium
     integer :: norm_disc_prec_X                                                 ! precision for normal discretization for perturbation
     integer :: norm_disc_prec_sol                                               ! precision for normal discretization for solution
+    integer :: magn_int_style                                                   ! style for magnetic integrals (1: trapezoidal, 2: Simpson 3/8)
     
     ! concerning Richardson extrapolation
     integer :: max_it_rich                                                      ! number of levels for Richardson extrapolation

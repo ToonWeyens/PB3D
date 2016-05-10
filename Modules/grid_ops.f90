@@ -12,7 +12,7 @@ module grid_ops
 
     implicit none
     private
-    public calc_norm_range, calc_ang_grid_eq_B, plot_grid_real, setup_grid_eq, &
+    public calc_norm_range, calc_ang_grid_eq_B, magn_grid_plot, setup_grid_eq, &
         &setup_grid_eq_B, setup_grid_X, setup_grid_sol, print_output_grid
 #if ldebug
     public debug_calc_ang_grid_eq_B
@@ -401,6 +401,7 @@ contains
         use num_vars, only: eq_style
         use grid_vars, only: create_grid, &
             &n_r_eq
+        use grid_utilities, only: calc_n_par_X_loc
         use HELENA_vars, only: nchi, chi_H
         use rich_vars, only: n_par_X
         
@@ -414,24 +415,9 @@ contains
         ! local variables
         integer :: id                                                           ! counter
         integer :: n_par_X_loc                                                  ! local n_par_X
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
-        
-        ! set local n_par_X
-        n_par_X_loc = n_par_X
-        if (present(only_half_grid)) then
-            if (only_half_grid) then
-                if (mod(n_par_X,2).eq.1) then
-                    n_par_X_loc = (n_par_X-1)/2
-                else
-                    ierr = 1
-                    err_msg = 'Need odd number of points'
-                    CHCKERR(err_msg)
-                end if
-            end if
-        end if
         
         ! set up general equilibrium grid:
         ! choose which equilibrium style is being used:
@@ -442,6 +428,10 @@ contains
                 ! user output
                 call writo('Field-aligned with '//trim(i2str(n_par_X))//&
                     &' parallel and '//trim(i2str(n_r_eq))//' normal points')
+                
+                ! set local n_par_X
+                ierr = calc_n_par_X_loc(n_par_X_loc,only_half_grid)
+                CHCKERR('')
                 
                 ! create grid
                 ierr = create_grid(grid_eq,[n_par_X_loc,1,n_r_eq],eq_limits)    ! only one field line
@@ -478,10 +468,11 @@ contains
     ! grid.
     ! In contrast to setup_grid_eq,  the angular coordinates are also calculated
     ! here.
-    integer function setup_grid_eq_B(grid_eq,grid_eq_B,eq) result(ierr)
+    integer function setup_grid_eq_B(grid_eq,grid_eq_B,eq,only_half_grid) &
+        &result(ierr)
         use num_vars, only: eq_style
         use grid_vars, only: create_grid
-        use rich_vars, only: n_par_X
+        use grid_utilities, only: calc_n_par_X_loc
         
         character(*), parameter :: rout_name = 'setup_grid_eq_B'
         
@@ -489,9 +480,11 @@ contains
         type(grid_type), intent(inout) :: grid_eq                               ! general equilibrium grid
         type(grid_type), intent(inout) :: grid_eq_B                             ! field-aligned equilibrium grid
         type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
+        logical, intent(in), optional :: only_half_grid                         ! calculate only half grid with even points
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: n_par_X_loc                                                  ! local n_par_X
         
         ! initialize ierr
         ierr = 0
@@ -506,8 +499,12 @@ contains
                 err_msg = 'The grid is already field-aligned for VMEC'
                 CHCKERR(err_msg)
             case (2)                                                            ! HELENA
+                ! set local n_par_X
+                ierr = calc_n_par_X_loc(n_par_X_loc,only_half_grid)
+                CHCKERR('')
+                
                 ! create the grid
-                ierr = create_grid(grid_eq_B,[n_par_X,1,grid_eq%n(3)],&
+                ierr = create_grid(grid_eq_B,[n_par_X_loc,1,grid_eq%n(3)],&
                     &[grid_eq%i_min,grid_eq%i_max])
                 CHCKERR('')
                 
@@ -518,7 +515,7 @@ contains
                 grid_eq_B%r_F = grid_eq%r_F
                 
                 ! calculate the angular grid that follows the magnetic field
-                ierr = calc_ang_grid_eq_B(grid_eq_B,eq)
+                ierr = calc_ang_grid_eq_B(grid_eq_B,eq,only_half_grid)
                 CHCKERR('')
         end select
     end function setup_grid_eq_B
@@ -620,8 +617,8 @@ contains
     
     ! Calculate grid that follows magnetic field lines.
     ! Note: The end-points are included for the grids in the parallel direction.
-    ! This is to  facilitate working with the trapezoidal  rule for integration.
-    ! This is NOT valid in general!!!
+    ! This is to  facilitate working with the trapezoidal rule  or Simpson's 3/8
+    ! rule for integration. This is NOT valid in general!
     ! Note: by  setting the flag "only_half_grid",  only the even points  of the
     ! parallel grid are calculated, which is useful for higher Richardson levels
     ! with VMEC so that only new angular  points are calculated and the old ones
@@ -787,7 +784,7 @@ contains
     ! num_vars, but instead  temporarily overwrites them with its  own, since it
     ! has to be 3D also in the axisymmetric case.
     ! [MPI] Collective call
-    integer function plot_grid_real(grid) result(ierr)
+    integer function magn_grid_plot(grid) result(ierr)
         use num_vars, only: rank, no_plots, n_theta_plot, n_zeta_plot, &
             &eq_style, min_theta_plot, max_theta_plot, min_zeta_plot, &
             &max_zeta_plot
@@ -795,7 +792,7 @@ contains
         use grid_utilities, only: trim_grid, extend_grid_E, calc_XYZ_grid
         use VMEC, only: calc_trigon_factors
         
-        character(*), parameter :: rout_name = 'plot_grid_real'
+        character(*), parameter :: rout_name = 'magn_grid_plot'
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! fieldline-oriented equilibrium grid
@@ -916,7 +913,7 @@ contains
         call get_full_XYZ(X_1,Y_1,Z_1,X_1_tot,Y_1_tot,Z_1_tot,'flux surfaces')
         call get_full_XYZ(X_2,Y_2,Z_2,X_2_tot,Y_2_tot,Z_2_tot,'field lines')
         
-        ierr = plot_grid_real_HDF5(X_1_tot,X_2_tot,Y_1_tot,Y_2_tot,&
+        ierr = magn_grid_plot_HDF5(X_1_tot,X_2_tot,Y_1_tot,Y_2_tot,&
             &Z_1_tot,Z_2_tot,anim_name)
         CHCKERR('')
         
@@ -985,7 +982,7 @@ contains
         end subroutine get_full_XYZ
         
         ! Plot with HDF5
-        integer function plot_grid_real_HDF5(X_1,X_2,Y_1,Y_2,Z_1,Z_2,&
+        integer function magn_grid_plot_HDF5(X_1,X_2,Y_1,Y_2,Z_1,Z_2,&
             &anim_name) result(ierr)
             use HDF5_ops, only: open_HDF5_file, add_HDF5_item, &
                 &print_HDF5_top, print_HDF5_geom, print_HDF5_3D_data_item, &
@@ -994,7 +991,7 @@ contains
                 & XML_str_type, HDF5_file_type
             use rich_vars, only: rich_lvl
             
-            character(*), parameter :: rout_name = 'plot_grid_real_HDF5'
+            character(*), parameter :: rout_name = 'magn_grid_plot_HDF5'
             
             ! input / output
             real(dp), intent(in) :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)          ! X, Y and Z of surface in Axisymmetric coordinates
@@ -1135,8 +1132,8 @@ contains
                 end do
                 call dealloc_XML_str(geom)
             end if
-        end function plot_grid_real_HDF5
-    end function plot_grid_real
+        end function magn_grid_plot_HDF5
+    end function magn_grid_plot
     
     ! Print grid variables to an output file.
     ! Note: "grid_" is added in front the data_name.

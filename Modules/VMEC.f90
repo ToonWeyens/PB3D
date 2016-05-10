@@ -32,7 +32,13 @@ module VMEC
         &mn_V, pres_V, rot_t_V, is_asym_V, flux_t_V, Dflux_t_V, flux_p_V, &
         &Dflux_p_V, VMEC_version, gam_V, is_freeb_V, nfp_V, B_0_V
 #if ldebug
-    public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, jac_V_c, jac_V_s
+    public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, jac_V_c, jac_V_s, &
+        &debug_calc_trigon_factors
+#endif
+    
+    ! global variables
+#if ldebug
+    logical :: debug_calc_trigon_factors = .false.                              ! plot debug information for calc_trigon_factors
 #endif
 
     ! local variables
@@ -325,6 +331,16 @@ contains
         n_ang_1 = size(theta,1)
         n_ang_2 = size(theta,2)
         n_r = size(theta,3)
+
+#if ldebug
+        if (debug_calc_trigon_factors) then
+            call writo('Note: TRIGON_FACTORS CONTAIN A LOT OF REDUNDANCY FOR &
+                &PLOT GRID!!!')
+            call writo('Calculate trigonometric factors for grid of size ['//&
+                &trim(i2str(n_ang_1))//','//trim(i2str(n_ang_2))//','//&
+                &trim(i2str(n_r))//']')
+        end if
+#endif
         
         ! tests
         if (size(zeta,1).ne.n_ang_1 .or. size(zeta,2).ne.n_ang_2 .or. &
@@ -341,10 +357,23 @@ contains
         allocate(sin_zeta(-ntor_V:ntor_V,n_ang_1,n_ang_2,n_r))
         
         do m = 0,mpol_V-1
+#if ldebug
+            if (debug_calc_trigon_factors) then
+                call writo('Calculating for m = '//trim(i2str(m))//&
+                    &' of [0..'//trim(i2str(mpol_V-1))//']')
+            end if
+#endif
             cos_theta(m,:,:,:) = cos(m*theta)
             sin_theta(m,:,:,:) = sin(m*theta)
         end do
         do n = -ntor_V,ntor_V
+#if ldebug
+            if (debug_calc_trigon_factors) then
+                call writo('Calculating for n = '//trim(i2str(n))//&
+                    &' of ['//trim(i2str(-ntor_V))//'..'//&
+                    &trim(i2str(ntor_V))//']')
+            end if
+#endif
             cos_zeta(n,:,:,:) = cos(n*nfp_V*zeta)
             sin_zeta(n,:,:,:) = sin(n*nfp_V*zeta)
         end do
@@ -359,12 +388,22 @@ contains
         !   sin(m theta) cos(n zeta) - cos(m theta) sin(n zeta)
         ! Note: need to scale the indices mn_V(:,2) by nfp_V.
         do id = 1,mnmax_V
+#if ldebug
+            if (debug_calc_trigon_factors) then
+                call writo('Calculating for id = '//trim(i2str(id))//&
+                        &' of [1..'//trim(i2str(mnmax_V))//']')
+            end if
+#endif
             trigon_factors(id,:,:,:,1) = &
-                &cos_theta(mn_V(id,1),:,:,:)*cos_zeta(mn_V(id,2)/nfp_V,:,:,:) + &
-                &sin_theta(mn_V(id,1),:,:,:)*sin_zeta(mn_V(id,2)/nfp_V,:,:,:)
+                &cos_theta(mn_V(id,1),:,:,:)*&
+                &cos_zeta(mn_V(id,2)/nfp_V,:,:,:) + &
+                &sin_theta(mn_V(id,1),:,:,:)*&
+                &sin_zeta(mn_V(id,2)/nfp_V,:,:,:)
             trigon_factors(id,:,:,:,2) = &
-                &sin_theta(mn_V(id,1),:,:,:)*cos_zeta(mn_V(id,2)/nfp_V,:,:,:) - &
-                &cos_theta(mn_V(id,1),:,:,:)*sin_zeta(mn_V(id,2)/nfp_V,:,:,:)
+                &sin_theta(mn_V(id,1),:,:,:)*&
+                &cos_zeta(mn_V(id,2)/nfp_V,:,:,:) - &
+                &cos_theta(mn_V(id,1),:,:,:)*&
+                &sin_zeta(mn_V(id,2)/nfp_V,:,:,:)
         end do
         
         ! deallocate variables

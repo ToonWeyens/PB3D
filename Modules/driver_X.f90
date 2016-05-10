@@ -37,21 +37,13 @@ contains
         use grid_vars, only: dealloc_grid, &
             &n_r_sol, min_par_X, max_par_X
         use eq_vars, only: dealloc_eq
-        use grid_ops, only: calc_norm_range, setup_grid_X, &
-            &print_output_grid
-        use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
-            &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
-            &reconstruct_PB3D_X_2
+        use PB3D_ops, only: reconstruct_PB3D_in
         use num_utilities, only: test_max_memory
         use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
-            &setup_nm_X, print_output_X
+            &setup_nm_X
         use input_utilities, only: dealloc_in
         !!use num_utilities, only: calc_aux_utilities
-#if ldebug
-        use X_vars, only: create_X
-        use eq_vars, only: create_eq
-#endif
         
         character(*), parameter :: rout_name = 'run_driver_X'
         
@@ -59,10 +51,10 @@ contains
         type(grid_type), target :: grid_eq                                      ! equilibrium grid
         type(grid_type), pointer :: grid_eq_B                                   ! field-aligned equilibrium grid
         type(grid_type), target :: grid_X                                       ! perturbation grid
-        type(grid_type), pointer :: grid_X_B                                    ! perturbation grid
+        type(grid_type), pointer :: grid_X_B                                    ! field-aligned perturbation grid
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium variables
-        integer :: X_limits(2)                                                  ! min. and max. index of X grid for this process
-        real(dp), allocatable :: r_F_X(:)                                       ! normal points in perturbation grid
+        type(eq_2_type), target :: eq_2                                         ! metric equilibrium variables
+        type(eq_2_type), pointer :: eq_2_B                                      ! field-aligned metric equilibrium variables
         
         ! initialize ierr
         ierr = 0
@@ -123,7 +115,92 @@ contains
         
         call lvl_ud(-1)
         
-        ! reconstruct equilibrium grid and equilibrium output variables
+        ! Run grid part of driver
+        ierr = run_driver_X_0(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,&
+            &eq_2,eq_2_B)
+        CHCKERR('')
+        
+        ! setup nm and check the X modes if lowest (or restart) Richardson level
+        if (rich_lvl.eq.rich_restart_lvl) then
+            ! setup limits of modes
+            ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.true.)
+            CHCKERR('')
+            
+            ! tests
+            ierr = check_X_modes(grid_eq,eq_1)
+            CHCKERR('')
+        end if
+        
+        ! plot resonances if requested
+        if (plot_resonance .and. rank.eq.0 .and. rich_lvl.eq.1) then
+            ierr = resonance_plot(eq_1,grid_eq)
+            CHCKERR('')
+        else
+            call writo('Resonance plot not requested')
+        end if
+        
+        ! Run vectorial part of driver
+        ierr = run_driver_X_1(grid_eq,grid_X,eq_1,eq_2)
+        CHCKERR('')
+        
+        ! Run Tensorial part of driver
+        ierr = run_driver_X_2(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,&
+            &eq_2,eq_2_B)
+        CHCKERR('')
+        
+        ! clean up
+        call writo('Clean up')
+        call lvl_ud(1)
+        call dealloc_in()
+        call dealloc_grid(grid_eq)
+        call dealloc_grid(grid_X)
+        call dealloc_eq(eq_1)
+        call dealloc_eq(eq_2)
+        if (eq_style.eq.2) then
+            call dealloc_grid(grid_eq_B)
+            call dealloc_grid(grid_X_B)
+            call dealloc_eq(eq_2_B)
+            deallocate(grid_eq_B)
+            deallocate(grid_X_B)
+            deallocate(eq_2_B)
+        end if
+        nullify(grid_eq_B)
+        nullify(grid_X_B)
+        nullify(eq_2_B)
+        call lvl_ud(-1)
+    end function run_driver_X
+    
+    ! part  0  of  driver X:  perturbation  grid as  well  as reconstruction  of
+    ! variables.
+    integer function run_driver_X_0(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,&
+        &eq_2,eq_2_B) result(ierr)
+        use num_vars, only: eq_style, rank
+        use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_1, &
+            &reconstruct_PB3D_eq_2
+        use grid_ops, only: calc_norm_range, setup_grid_X, print_output_grid
+        use grid_vars, only: n_r_sol
+        use rich_vars, only: rich_lvl
+        use HELENA_ops, only: interp_HEL_on_grid
+        use eq_vars, only: create_eq
+        
+        character(*), parameter :: rout_name = 'run_driver_X_0'
+        
+        ! input / output
+        type(grid_type), intent(inout), target :: grid_eq                       ! equilibrium grid
+        type(grid_type), intent(inout), pointer :: grid_eq_B                    ! field-aligned equilibrium grid
+        type(grid_type), intent(inout), target :: grid_X                        ! perturbation grid
+        type(grid_type), intent(inout), pointer :: grid_X_B                     ! field-aligned perturbation grid
+        type(eq_1_type), intent(inout) :: eq_1                                  ! flux equilibrium variables
+        type(eq_2_type), intent(inout), target :: eq_2                          ! metric equilibrium variables
+        type(eq_2_type), intent(inout), pointer :: eq_2_B                       ! field-aligned metric equilibrium variables
+        
+        ! local variables
+        integer :: X_limits(2)                                                  ! min. and max. index of X grid for this process
+        real(dp), allocatable :: r_F_X(:)                                       ! normal points in perturbation grid
+        
+        ! initialize ierr
+        ierr = 0
+        
         ! user output
         call writo('Setting up perturbation grid')
         call lvl_ud(1)
@@ -134,13 +211,27 @@ contains
         CHCKERR('')
         ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
         CHCKERR('')
+        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',rich_lvl=rich_lvl_name)
+        CHCKERR('')
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ! do nothing: grid is already field-aligned
+                ! point: grid is already field-aligned
+                grid_eq_B => grid_eq
+                eq_2_B => eq_2
             case (2)                                                            ! HELENA
-                ! also reconstruct field-aligned equilibrium grid
+                ! allocate field-aligned equilibrium grid and variables
                 allocate(grid_eq_B)
+                allocate(eq_2_B)
+                
+                ! reconstruct field-aligned equilibrium grid
                 ierr = reconstruct_PB3D_grid(grid_eq_B,'eq_B',rich_lvl=rich_lvl)
+                CHCKERR('')
+                
+                ! interpolate field-aligned metric equilibrium variables
+                call create_eq(grid_eq_B,eq_2_B)
+                ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,eq_2=eq_2,&
+                    &eq_2_out=eq_2_B,eq_1=eq_1,grid_name='field-aligned &
+                    &equilibrium grid')
                 CHCKERR('')
         end select
         call lvl_ud(-1)
@@ -162,6 +253,7 @@ contains
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! do nothing: grid is already field-aligned
+                grid_X_B => grid_X
             case (2)                                                            ! HELENA
                 ! also set up field-aligned perturbation grid
                 allocate(grid_X_B)
@@ -193,70 +285,18 @@ contains
         
         call lvl_ud(-1)
         call writo('Perturbation grid set up')
-        
-        ! setup nm and check the X modes if lowest (or restart) Richardson level
-        if (rich_lvl.eq.rich_restart_lvl) then
-            ! setup limits of modes
-            ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.true.)
-            CHCKERR('')
-            
-            ! tests
-            ierr = check_X_modes(grid_eq,eq_1)
-            CHCKERR('')
-        end if
-        
-        ! plot resonances if requested
-        if (plot_resonance .and. rank.eq.0 .and. rich_lvl.eq.1) then
-            ierr = resonance_plot(eq_1,grid_eq)
-            CHCKERR('')
-        else
-            call writo('Resonance plot not requested')
-        end if
-        
-        ! Run the  first part of the  driver. For VMEC  this has to be  done for
-        ! every Richardson level, but for HELENA only for the first one.
-        if (eq_style.eq.1 .or. (eq_style.eq.2 .and. rich_lvl.eq.1)) then
-            ierr = run_driver_X_1(grid_eq,grid_X,eq_1)
-            CHCKERR('')
-        end if
-        
-        ! Run  the second  part of  the driver. This  has to  be done  for every
-        ! Richardson level.
-        ierr = run_driver_X_2(eq_1)
-        CHCKERR('')
-        
-        ! clean up
-        call writo('Clean up')
-        call lvl_ud(1)
-        call dealloc_in()
-        call dealloc_grid(grid_eq)
-        call dealloc_grid(grid_X)
-        call dealloc_eq(eq_1)
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ! do nothing: everything already field-aligned
-            case (2)                                                            ! HELENA
-                ! clean up
-                call dealloc_grid(grid_eq_B)
-                call dealloc_grid(grid_X_B)
-                deallocate(grid_eq_B)
-                deallocate(grid_X_B)
-                nullify(grid_eq_B)
-                nullify(grid_X_B)
-        end select
-        call lvl_ud(-1)
-    end function run_driver_X
+    end function run_driver_X_0
     
-    ! Part 1 of driver_X: up to the calculation of magnetic integrals.
-    integer function run_driver_X_1(grid_eq,grid_X,eq_1) result(ierr)
+    ! Part 1 of driver_X: Vectorial jobs.
+    ! Note: everything  is  done  here in  the original  grids, not  necessarily
+    ! field-aligned.
+    integer function run_driver_X_1(grid_eq,grid_X,eq_1,eq_2) result(ierr)
         use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
         use MPI_utilities, only: wait_MPI
-        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs
-        use PB3D_ops, only: reconstruct_PB3D_eq_2, reconstruct_PB3D_X_1
+        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style
         use X_ops, only: calc_X, print_output_X
-        use eq_vars, only: dealloc_eq
         use X_vars, only: dealloc_X
-        use vac, only: calc_vac
+        use rich_vars, only: rich_lvl
         
         character(*), parameter :: rout_name = 'run_driver_X_1'
         
@@ -264,14 +304,11 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
         
         ! local variables
-        logical :: dim_reused(2)                                                ! wether dimension is reused
-        integer :: id                                                           ! counter
         integer :: arr_size                                                     ! size of array for jobs division
-        type(eq_2_type) :: eq_2                                                 ! metric equilibrium variables
-        type(X_1_type) :: X_1(2)                                                ! vectorial X variables
-        type(X_2_type) :: X_2                                                   ! tensorial X variables
+        type(X_1_type) :: X_1                                                   ! vectorial X variables
 #if ldebug
         character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
         character(len=max_str_ln) :: file_name                                  ! name of file
@@ -281,9 +318,9 @@ contains
         ! initialize ierr
         ierr = 0
         
-        !!!!!!!!!!!!!!!!!!!!!
-        ! 1. Vectorial jobs !
-        !!!!!!!!!!!!!!!!!!!!!
+        ! For  VMEC this  has to  be done  for every  Richardson level,  but for
+        ! HELENA only for the first one. Escape if this is the case.
+        if (eq_style.eq.2 .and. rich_lvl.gt.1) return
         
         call writo('Setting up vectorial perturbation jobs')
         call lvl_ud(1)
@@ -291,10 +328,6 @@ contains
         ! divide perturbation jobs
         arr_size = grid_X%loc_n_r*product(grid_X%n(1:2))
         ierr = divide_X_jobs(arr_size,1)
-        CHCKERR('')
-        
-        ! get metric equilibrium quantities
-        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',rich_lvl=rich_lvl_name)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -314,12 +347,12 @@ contains
             call print_info_X_1()
             
             ! calc variables
-            ierr = calc_X(grid_eq,grid_X,eq_1,eq_2,X_1(1),&
+            ierr = calc_X(grid_eq,grid_X,eq_1,eq_2,X_1,&
                 &lim_sec_X=X_jobs_lims(:,X_job_nr))
             CHCKERR('')
             
             ! write vectorial perturbation variables to output
-            ierr = print_output_X(grid_X,X_1(1),'X_1',&
+            ierr = print_output_X(grid_X,X_1,'X_1',&
                 &rich_lvl=rich_lvl_name,lim_sec_X=X_jobs_lims(:,X_job_nr))
             CHCKERR('')
             
@@ -330,7 +363,7 @@ contains
                 call plot_HDF5('theta_F_B','theta_F',grid_X%theta_F)
                 call plot_HDF5('zeta_F_B','zeta_F',grid_X%zeta_F)
                 ! U_0
-                allocate(var_names(size(X_1(1)%U_0,4)))
+                allocate(var_names(size(X_1%U_0,4)))
                 if (n_procs.eq.1) then
                     file_name = 'U_0'
                 else
@@ -340,12 +373,12 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_1(1)%U_0),col_id=4,col=1)
+                    &realpart(X_1%U_0),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_1(1)%U_0),col_id=4,col=1)
+                    &imagpart(X_1%U_0),col_id=4,col=1)
                 deallocate(var_names)
                 ! U_1
-                allocate(var_names(size(X_1(1)%U_1,4)))
+                allocate(var_names(size(X_1%U_1,4)))
                 if (n_procs.eq.1) then
                     file_name = 'U_1'
                 else
@@ -355,12 +388,12 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_1(1)%U_1),col_id=4,col=1)
+                    &realpart(X_1%U_1),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_1(1)%U_1),col_id=4,col=1)
+                    &imagpart(X_1%U_1),col_id=4,col=1)
                 deallocate(var_names)
                 ! DU_0
-                allocate(var_names(size(X_1(1)%DU_0,4)))
+                allocate(var_names(size(X_1%DU_0,4)))
                 if (n_procs.eq.1) then
                     file_name = 'DU_0'
                 else
@@ -370,12 +403,12 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_1(1)%DU_0),col_id=4,col=1)
+                    &realpart(X_1%DU_0),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_1(1)%DU_0),col_id=4,col=1)
+                    &imagpart(X_1%DU_0),col_id=4,col=1)
                 deallocate(var_names)
                 ! DU_1
-                allocate(var_names(size(X_1(1)%DU_1,4)))
+                allocate(var_names(size(X_1%DU_1,4)))
                 if (n_procs.eq.1) then
                     file_name = 'DU_1'
                 else
@@ -385,20 +418,20 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_1(1)%DU_1),col_id=4,col=1)
+                    &realpart(X_1%DU_1),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_1(1)%DU_1),col_id=4,col=1)
+                    &imagpart(X_1%DU_1),col_id=4,col=1)
                 deallocate(var_names)
             end if
             
             if (plot_info) then
                 ! plot information for comparison between VMEC and HELENA
-                call plot_info_for_VMEC_HEL_comparison(grid_X,X_1(1))
+                call plot_info_for_VMEC_HEL_comparison(grid_X,X_1)
             end if
 #endif
             
             ! clean up
-            call dealloc_X(X_1(1))
+            call dealloc_X(X_1)
             
             ! user output
             call lvl_ud(-1)
@@ -419,105 +452,6 @@ contains
         ierr = print_jobs_info()
         CHCKERR('')
         
-        !!!!!!!!!!!!!!!!!!!!!
-        ! 2. Tensorial jobs !
-        !!!!!!!!!!!!!!!!!!!!!
-        
-        call writo('Setting up Tensorial perturbation jobs')
-        call lvl_ud(1)
-        
-        ! divide perturbation jobs, tensor phase
-        arr_size = grid_X%loc_n_r*product(grid_X%n(1:2))
-        ierr = divide_X_jobs(arr_size,2)
-        CHCKERR('')
-        
-        call lvl_ud(-1)
-        call writo('Tensorial perturbation jobs set up')
-        
-        ! main loop over tensorial jobs
-        X_job_nr = 0
-        call writo('Starting tensorial perturbation jobs')
-        call lvl_ud(1)
-        X_jobs_2: do
-            ! get next job
-            ierr = get_next_job(X_job_nr,dim_reused)
-            CHCKERR('')
-            if (X_job_nr.lt.0) exit
-            
-            ! user output
-            call print_info_X_2()
-            
-            ! retrieve vectorial perturbation if dimension not reused
-            do id = 1,2
-                if (dim_reused(id)) then
-                    call writo('Vectorial perturbation variables for &
-                        &dimension '//trim(i2str(id))//' reused')
-                else
-                    ! free the variable
-                    if (allocated(X_1(id)%n)) call dealloc_X(X_1(id))
-                    
-                    ! user output
-                    call writo('Requesting vectorial perturbation &
-                        &variables for dimension '//trim(i2str(id)))
-                    call lvl_ud(1)
-                    
-                    ! reconstruct PB3D X_1 quantities for this dimension
-                    ierr = reconstruct_PB3D_X_1(grid_X,X_1(id),'X_1',&
-                        &rich_lvl=rich_lvl_name,lim_sec_X=&
-                        &X_jobs_lims((id-1)*2+1:(id-1)*2+2,X_job_nr))
-                    CHCKERR('')
-                    
-                    ! user output
-                    call lvl_ud(-1)
-                    call writo('Vectorial perturbation variables for &
-                        &dimension '//trim(i2str(id))//' loaded')
-                end if
-            end do
-            
-            ! calculate X variables, tensor phase
-            ierr = calc_X(grid_eq,grid_X,eq_1,eq_2,X_1(1),X_1(2),X_2,&
-                &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
-            CHCKERR('')
-            
-            ! calculate vacuum response
-            ierr = calc_vac(X_2)
-            CHCKERR('')
-            
-            ! write tensorial perturbation variables to output file
-            ierr = print_output_X(grid_X,X_2,'X_2',rich_lvl=rich_lvl_name,&
-                &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
-            CHCKERR('')
-            
-            ! clean up
-            call dealloc_X(X_2)
-            
-            ! user output
-            call lvl_ud(-1)
-            call writo('Job '//trim(i2str(X_job_nr))//&
-                &' completed by process '//trim(i2str(rank)))
-        end do X_jobs_2
-        call lvl_ud(-1)
-        call writo('Tensorial perturbation jobs finished')
-        
-        ! clean up
-        call writo('Clean up tensorial perturbation variables')
-        call lvl_ud(1)
-        call dealloc_eq(eq_2)
-        do id = 1,2
-            if (allocated(X_1(id)%n)) call dealloc_X(X_1(id))
-        end do
-        call lvl_ud(-1)
-        
-        ! user output
-        if (n_procs.gt.1) call writo('Waiting for the other processes')
-        
-        ! synchronize MPI
-        ierr = wait_MPI()
-        CHCKERR('')
-        
-        ! print jobs information from other processes
-        ierr = print_jobs_info()
-        CHCKERR('')
 #if ldebug
     contains
         subroutine plot_info_for_VMEC_HEL_comparison(grid_X,X)
@@ -589,19 +523,15 @@ contains
 #endif
     end function run_driver_X_1
     
-    ! Part 2 of driver_X: calculation of magnetic integrals.
-    integer function run_driver_X_2(eq_1) result(ierr)
+    ! Part 2 of driver_X: Tensorial jobs.
+    integer function run_driver_X_2(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,&
+        &eq_2,eq_2_B) result(ierr)
         use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
         use MPI_utilities, only: wait_MPI
-        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
-            &plot_grid
-        use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
-            &reconstruct_PB3D_X_2
+        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style
+        use PB3D_ops, only: reconstruct_PB3D_X_1, reconstruct_PB3D_X_2
         use rich_vars, only: rich_lvl
         use X_ops, only: calc_X, print_output_X, calc_magn_ints
-        use grid_vars, only: dealloc_grid
-        use grid_ops, only: plot_grid_real
-        use eq_vars, only: create_eq, dealloc_eq
         use X_vars, only: dealloc_X
         use HELENA_ops, only: interp_HEL_on_grid
         use vac, only: calc_vac
@@ -609,17 +539,21 @@ contains
         character(*), parameter :: rout_name = 'run_driver_X_2'
         
         ! input / output
-        type(eq_1_type), intent(in) :: eq_1                                     ! vectorial perturbation variables
+        type(grid_type), intent(inout), target :: grid_eq                       ! equilibrium grid
+        type(grid_type), intent(inout), pointer :: grid_eq_B                    ! field-aligned equilibrium grid
+        type(grid_type), intent(inout), target :: grid_X                        ! perturbation grid
+        type(grid_type), intent(inout), pointer :: grid_X_B                     ! field-aligned perturbation grid
+        type(eq_1_type), intent(inout) :: eq_1                                  ! flux equilibrium variables
+        type(eq_2_type), intent(inout), target :: eq_2                          ! metric equilibrium variables
+        type(eq_2_type), intent(inout), pointer :: eq_2_B                       ! field-aligned metric equilibrium variables
         
         ! local variables
-        type(grid_type), target :: grid_eq                                      ! equilibrium grid
-        type(grid_type), pointer :: grid_eq_B                                   ! field-aligned equilibrium grid
-        type(grid_type), target :: grid_X                                       ! perturbation grid
-        type(grid_type), pointer :: grid_X_B                                    ! perturbation grid
-        type(eq_2_type), target :: eq_2                                         ! tensorial perturbation variables
-        type(eq_2_type), pointer :: eq_2_B                                      ! field-aligned tensorial perturbation variables
+        type(X_1_type) :: X_1(2)                                                ! vectorial X variables
         type(X_2_type) :: X_2                                                   ! tensorial X variables
+        type(X_2_type) :: X_2_prev                                              ! previous tensorial X variables
+        integer :: id                                                           ! counter
         integer :: arr_size                                                     ! size of array for jobs division
+        logical :: dim_reused(2)                                                ! wether dimension is reused
 #if ldebug
         character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
         character(len=max_str_ln) :: file_name                                  ! name of file
@@ -629,66 +563,8 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('Setting up magnetic averaging jobs')
+        call writo('Setting up Tensorial perturbation jobs')
         call lvl_ud(1)
-        
-        call writo('Reconstruct equilibrium and perturbation grids and &
-            &variables')
-        call lvl_ud(1)
-        
-        ! Reconstruct equilibrium  and perturbation grid and  metric equilibrium
-        ! variables using all Richardson levels.
-        ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name,&
-            &tot_rich=.true.)
-        CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name,&
-            &tot_rich=.true.)
-        CHCKERR('')
-        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',&
-            &rich_lvl=rich_lvl_name,tot_rich=.true.)
-        CHCKERR('')
-        
-        ! Setup  field-aligned  equilibrium  and perturbation  grid  and  metric
-        ! equilibirum variables depending on equilibrium type.
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ! point
-                grid_eq_B => grid_eq
-                grid_X_B => grid_X
-                eq_2_B => eq_2
-            case (2)                                                            ! HELENA
-                ! allocate
-                allocate(grid_eq_B)
-                allocate(grid_X_B)
-                allocate(eq_2_B)
-                
-                ! reconstruct field-aligned equilibrium and perturbation grids
-                ierr = reconstruct_PB3D_grid(grid_eq_B,'eq_B',&
-                    &rich_lvl=rich_lvl)
-                CHCKERR('')
-                ierr = reconstruct_PB3D_grid(grid_X_B,'X_B',&
-                    &rich_lvl=rich_lvl)
-                CHCKERR('')
-                
-                ! interpolate field-aligned metric equilibrium variables
-                call create_eq(grid_eq_B,eq_2_B)
-                ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,eq_2=eq_2,&
-                    &eq_2_out=eq_2_B,eq_1=eq_1,grid_name='field-aligned &
-                    &equilibrium grid')
-                CHCKERR('')
-        end select
-        
-        call lvl_ud(-1)
-        
-        ! plot grid if requested
-        if (plot_grid) then
-            if (rank.eq.0) then
-                ierr = plot_grid_real(grid_eq_B)
-                CHCKERR('')
-            end if
-        else
-            call writo('Magnetic grid plot not requested')
-        end if
         
         ! divide perturbation jobs, tensor phase
         select case (eq_style)
@@ -696,38 +572,88 @@ contains
                 arr_size = grid_X%loc_n_r*product(grid_X_B%n(1:2))
             case (2)                                                            ! HELENA
                 arr_size = grid_X%loc_n_r*&
-                    &max(product(grid_X%n(1:2)),product(grid_X_B%n(1:2)))
+                    &(product(grid_X%n(1:2))+product(grid_X_B%n(1:2)))
         end select
         ierr = divide_X_jobs(arr_size,2)
         CHCKERR('')
         
         call lvl_ud(-1)
-        call writo('Magnetic averaging jobs set up')
+        call writo('Tensorial perturbation jobs set up')
         
         ! main loop over tensorial jobs
         X_job_nr = 0
-        call writo('Starting magnetic averaging jobs')
+        call writo('Starting tensorial perturbation jobs')
         call lvl_ud(1)
-        X_jobs_3: do
+        X_jobs_2: do
             ! get next job
-            ierr = get_next_job(X_job_nr)
+            ierr = get_next_job(X_job_nr,dim_reused)
             CHCKERR('')
             if (X_job_nr.lt.0) exit
             
             ! user output
             call print_info_X_2()
             
-            ! reconstruct the tensorial perturbation variables
-            ierr = reconstruct_PB3D_X_2(grid_X,X_2,'X_2',&
-                &rich_lvl=rich_lvl_name,tot_rich=.true.,&
-                &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
-            CHCKERR('')
+            ! For VMEC the first part has to be done for every Richardson level,
+            ! but for HELENA only for the first one.
+            if (eq_style.ne.2 .or. rich_lvl.eq.1) then
+                ! retrieve vectorial perturbation if dimension not reused
+                do id = 1,2
+                    if (dim_reused(id)) then
+                        call writo('Vectorial perturbation variables for &
+                            &dimension '//trim(i2str(id))//' reused')
+                    else
+                        ! free the variable
+                        if (allocated(X_1(id)%n)) call dealloc_X(X_1(id))
+                        
+                        ! user output
+                        call writo('Requesting vectorial perturbation &
+                            &variables for dimension '//trim(i2str(id)))
+                        call lvl_ud(1)
+                        
+                        ! reconstruct PB3D X_1 quantities for this dimension
+                        ierr = reconstruct_PB3D_X_1(grid_X,X_1(id),'X_1',&
+                            &rich_lvl=rich_lvl_name,lim_sec_X=&
+                            &X_jobs_lims((id-1)*2+1:(id-1)*2+2,X_job_nr))
+                        CHCKERR('')
+                        
+                        ! user output
+                        call lvl_ud(-1)
+                        call writo('Vectorial perturbation variables for &
+                            &dimension '//trim(i2str(id))//' loaded')
+                    end if
+                end do
+                
+                ! calculate X variables, tensor phase
+                ierr = calc_X(grid_eq,grid_X,eq_1,eq_2,X_1(1),X_1(2),X_2,&
+                    &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
+                CHCKERR('')
+                
+                ! calculate vacuum response
+                ierr = calc_vac(X_2)
+                CHCKERR('')
+                
+                ! write  tensorial  perturbation  variables  to  output file  if
+                ! HELENA, only for first richardson level
+                if (eq_style.eq.2) then
+                    ierr = print_output_X(grid_X,X_2,'X_2',rich_lvl=0,&
+                        &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
+                    CHCKERR('')
+                end if
+            end if
             
-            ! Adapt to field-aligned grid if necessary
+            ! Adapt X_2 to field-aligned grid if necessary
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     ! do nothing
                 case (2)                                                        ! HELENA
+                    ! reconstruct if not first Richardson level
+                    if (rich_lvl.gt.1) then
+                        ierr = reconstruct_PB3D_X_2(grid_X,X_2,'X_2',&
+                            &rich_lvl=0,&
+                            &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
+                        CHCKERR('')
+                    end if
+                    
                     ! interpolate tensorial perturbations to field-aligned grid
                     ierr = interp_HEL_on_grid(grid_X,grid_X_B,X_2=X_2,&
                         &grid_name='field-aligned perturbation grid')
@@ -832,12 +758,26 @@ contains
                 deallocate(var_names)
             end if
 #endif
+            ! Reconstruct magnetic integrals if not first level
+            if (rich_lvl.gt.1) then
+                ierr = reconstruct_PB3D_X_2(grid_X,X_2_prev,'X_2_int',&
+                    &rich_lvl=rich_lvl-1,&
+                    &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]),&
+                    &is_field_averaged=.true.)
+                CHCKERR('')
+            end if
             
             ! integrate magnetic  integrals of tensorial  perturbation variables
-            ! over field-aligned grid and write output in same variable X_2.
-            ierr = calc_magn_ints(grid_eq_B,grid_X_B,eq_2_B,X_2,&
-                &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
-            CHCKERR('')
+            ! over field-aligned grid. If not first level, provide previous X_2.
+            if (rich_lvl.eq.1) then
+                ierr = calc_magn_ints(grid_eq_B,grid_X_B,eq_2_B,X_2,&
+                    &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
+                CHCKERR('')
+            else
+                ierr = calc_magn_ints(grid_eq_B,grid_X_B,eq_2_B,X_2,X_2_prev,&
+                    &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
+                CHCKERR('')
+            end if
             
             ! write field-averaged tensorial perturbation variables to output
             ierr = print_output_X(grid_X_B,X_2,'X_2_int',rich_lvl=rich_lvl,&
@@ -847,32 +787,22 @@ contains
             
             ! clean up
             call dealloc_X(X_2)
+            if (rich_lvl.gt.1) call dealloc_X(X_2_prev)
             
             ! user output
             call lvl_ud(-1)
             call writo('Job '//trim(i2str(X_job_nr))//&
                 &' completed by process '//trim(i2str(rank)))
-        end do X_jobs_3
+        end do X_jobs_2
         call lvl_ud(-1)
-        call writo('Magnetic averaging jobs done')
+        call writo('Tensorial perturbation jobs finished')
         
         ! clean up
-        call writo('Clean up magnetic averaging variables')
+        call writo('Clean up tensorial perturbation variables')
         call lvl_ud(1)
-        call dealloc_grid(grid_eq)
-        call dealloc_grid(grid_X)
-        call dealloc_eq(eq_2)
-        if (eq_style.eq.2) then
-            call dealloc_grid(grid_eq_B)
-            call dealloc_grid(grid_X_B)
-            call dealloc_eq(eq_2_B)
-            deallocate(grid_eq_B)
-            deallocate(grid_X_B)
-            deallocate(eq_2_B)
-        end if
-        nullify(grid_eq_B)
-        nullify(grid_X_B)
-        nullify(eq_2_B)
+        do id = 1,2
+            if (allocated(X_1(id)%n)) call dealloc_X(X_1(id))
+        end do
         call lvl_ud(-1)
         
         ! user output

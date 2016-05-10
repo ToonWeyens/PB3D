@@ -211,7 +211,7 @@ contains
             
             ! write the strings to the file
             do id = 1,item_len
-                write(file_info%XDMF_i,xmf_fmt) XDMF_item%xml_str(id)
+                write(file_info%XDMF_i,xmf_fmt) trim(XDMF_item%xml_str(id))
             end do
             
             ! reset if requested

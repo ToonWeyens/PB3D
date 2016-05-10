@@ -13,7 +13,7 @@ module grid_utilities
     private
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_E, &
         &calc_int_vol, trim_grid, untrim_grid, setup_deriv_data, &
-        &setup_interp_data, apply_disc
+        &setup_interp_data, apply_disc, calc_n_par_X_loc
 #if ldebug
     public debug_calc_int_vol, debug_setup_interp_dat
 #endif
@@ -987,9 +987,13 @@ contains
     ! cells. This is  done by taking the  average of the 2^3=8 points  for fJ as
     ! well as the transformation of the Jacobian.
     ! Note: if the coordinates are independent, this method is equivalent to the
-    ! repeated numerical integration using the trapezoidal method.
+    ! repeated numerical integration using the trapezoidal method, NOT Simpson's
+    ! 3/8 rule!
     ! Note: by  setting debug_calc_int_vol, this  method can be compared  to the
-    ! trapezoidal and simple method for independent coordinates.
+    ! trapezoidal and simple method for independent coordinates, again NOT for 
+    ! Simpson's 3/8 rule!
+    ! The  Simpson's  3/8  rule  could  be developed  but  it  is not  of  great
+    ! importance.
     integer function calc_int_vol(ang_1,ang_2,norm,J,f,f_int) result(ierr)
 #if ldebug
         use num_vars, only: rank, n_procs
@@ -2053,4 +2057,36 @@ contains
         grid_out%r_e = grid_in%r_e
         grid_out%r_f = grid_in%r_f
     end function untrim_grid
+    
+    ! calculates the local  number of parallel grid points,  taking into account
+    ! cthat it ould be half.
+    integer function calc_n_par_X_loc(n_par_X_loc,only_half_grid) result(ierr)
+        use rich_vars, only: n_par_X
+        
+        character(*), parameter :: rout_name = 'calc_n_par_X_loc'
+        
+        ! input / output
+        integer, intent(inout) :: n_par_X_loc                                   ! local n_par_X
+        logical, intent(in), optional :: only_half_grid                         ! calculate only half grid with even points
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! possibly divide n_par_X by 2
+        n_par_X_loc = n_par_X
+        if (present(only_half_grid)) then
+            if (only_half_grid) then
+                if (mod(n_par_X,2).eq.1) then
+                    n_par_X_loc = (n_par_X-1)/2
+                else
+                    ierr = 1
+                    err_msg = 'Need odd number of points'
+                    CHCKERR(err_msg)
+                end if
+            end if
+        end if
+    end function calc_n_par_X_loc
 end module grid_utilities

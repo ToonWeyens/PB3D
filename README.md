@@ -423,3 +423,11 @@ CHANGELOG
       - Renamed "utilities" to "num_utilities".
       - Fine-tuned usage of "calc_zero_NR" when calculating the magnetic field lines by using a better guess.
       - Removed the restriction of the 3D decoupled GNUPlot plot of the modes as by default nothing gets plotted.
+
+1.20: - Updated the manner in which Richardson extrapolation is done by reusing the previous magnetic integrals, and not the values.
+      - The values of "X_2" are not any more written to HDF5, only the magnetic integrals.
+      - For HELENA, the grid is also halved for higher Richardson levels.
+      - Apart from the trapezoidal rule, also Simpson's 3/8 rule can be used for magnetic integrals.
+      - Renamed "plot_grid" and "plot_grid_real" to "plot_magn_grid" and "magn_grid_plot" for consistency.
+      - Moved "magn_grid_plot" back to the equilibrium driver. The full grid is reconstructed specially.
+      - Reorganized perturbation driver: It consistts now of 3 subdrivers.

@@ -759,8 +759,6 @@ contains
             
             ! if VMEC, calculate trigonometric factors of plot grid
             if (eq_style.eq.1) then
-                write(*,*) '!!!!!!!!!!!!!!!!!!!! TRIGON_FACTORS CONTAIN A LOT &
-                    &OF REDUNDANCY FOR PLOT GRID !!!!!'
                 ierr = calc_trigon_factors(grid_plot%theta_E,grid_plot%zeta_E,&
                     &grid_plot%trigon_factors)
                 CHCKERR('')
