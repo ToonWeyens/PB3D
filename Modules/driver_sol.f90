@@ -8,7 +8,6 @@ module driver_sol
     use messages
     use num_vars, only: dp, pi, max_str_ln
     use grid_vars, only: grid_type
-    use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_2_type
     use sol_vars, only: sol_type
     
@@ -29,14 +28,9 @@ contains
     ! Main driver of PB3D solution part.
     integer function run_driver_sol() result(ierr)
         use num_vars, only: EV_style, eq_style
-        use grid_vars, only: dealloc_grid, &
-            &n_r_sol
-        use eq_vars, only: dealloc_eq
-        use X_vars, only: dealloc_X
-        use sol_vars, only: dealloc_sol
+        use grid_vars, only: n_r_sol
         use num_utilities, only: test_max_memory
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
-            &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_2, reconstruct_PB3D_sol
         use MPI_utilities, only: wait_MPI
         use SLEPC_ops, only: solve_EV_system_SLEPC
@@ -59,8 +53,6 @@ contains
         type(grid_type) :: grid_eq                                              ! equilibrium grid
         type(grid_type), target :: grid_X                                       ! perturbation grid
         type(grid_type) :: grid_sol                                             ! solution grid
-        type(eq_1_type) :: eq_1                                                 ! flux equilibrium
-        type(eq_2_type) :: eq_2                                                 ! metric equilibrium
         type(X_2_type) :: X                                                     ! field-averged tensorial perturbation variables (only 1 par dim)
         type(sol_type) :: sol                                                   ! solution variables
         type(sol_type) :: sol_prev                                              ! previous solution variables
@@ -121,11 +113,6 @@ contains
             ierr = reconstruct_PB3D_grid(grid_sol,'sol',grid_limits=sol_limits)
             CHCKERR('')
         end if
-        ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
-        CHCKERR('')
-        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',&
-            &rich_lvl=rich_lvl_name,tot_rich=.true.)
-        CHCKERR('')
         ierr = reconstruct_PB3D_X_2(grid_X,X,'X_2_int',rich_lvl=rich_lvl,&
             &X_limits=sol_limits,is_field_averaged=.true.)
         CHCKERR('')
@@ -229,7 +216,7 @@ contains
             ! clean up
             nullify(ang_par_F)
             if (eq_style.eq.2) then
-                call dealloc_grid(grid_X_B)
+                call grid_X_B%dealloc()
                 deallocate(grid_X_B)
             end if
             nullify(grid_X_B)
@@ -251,14 +238,12 @@ contains
         call writo('Clean up')
         call lvl_ud(1)
         call dealloc_in()
-        call dealloc_grid(grid_eq)
-        call dealloc_grid(grid_X)
-        call dealloc_grid(grid_sol)
-        call dealloc_eq(eq_1)
-        call dealloc_eq(eq_2)
-        call dealloc_X(X)
-        call dealloc_sol(sol)
-        if (use_guess .and. rich_lvl.gt.1) call dealloc_sol(sol_prev)
+        call grid_eq%dealloc()
+        call grid_X%dealloc()
+        call grid_sol%dealloc()
+        call X%dealloc()
+        call sol%dealloc
+        if (use_guess .and. rich_lvl.gt.1) call sol_prev%dealloc()
         call lvl_ud(-1)
         
         ! synchronize MPI

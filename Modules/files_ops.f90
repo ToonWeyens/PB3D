@@ -512,7 +512,7 @@ contains
                 &STATUS='replace',IOSTAT=ierr)
             
             ! write header and close
-            write(mem_usage_i,'(A)') '# Rank - Time - Memory usage [kB]'
+            write(mem_usage_i,'(A)') '# Rank - count - Time - Memory usage [kB]'
             close(mem_usage_i)
             
             ! print message

@@ -56,7 +56,7 @@ contains
     integer function test_calc_deriv() result(ierr)
         use num_vars, only: rank
         use input_utilities, only: get_log, get_int, get_real
-        use grid_vars, only: disc_type, dealloc_disc
+        use grid_vars, only: disc_type
         use grid_utilities, only: setup_deriv_data, apply_disc
         
         character(*), parameter :: rout_name = 'test_calc_deriv'
@@ -240,7 +240,7 @@ contains
                         CHCKERR('')
                     end do
                 end if
-                call dealloc_disc(deriv_data)
+                call deriv_data%dealloc()
                 
                 ! max and mean errors
                 do kd = 1,max_deriv
@@ -405,7 +405,6 @@ contains
     integer function test_calc_int_vol() result(ierr)
         use num_vars, only: rank
         use input_utilities, only: get_int, get_log
-        use grid_vars, only: create_grid
         use grid_utilities, only: calc_eqd_grid, calc_int_vol, &
             &debug_calc_int_vol
         

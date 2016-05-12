@@ -8,7 +8,7 @@ module sol_ops
     use output_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, pi
-    use grid_vars, only: grid_type, disc_type, dealloc_disc
+    use grid_vars, only: grid_type, disc_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type
     use sol_vars, only: sol_type
@@ -94,7 +94,6 @@ contains
     integer function plot_sol_vec(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
         &XYZ,X_id,res_surf) result(ierr)
         use num_vars, only: no_plots
-        use grid_vars, only: dealloc_grid
         use grid_utilities, only: trim_grid
         use sol_utilities, only: calc_XUQ
 #if ldebug
@@ -264,7 +263,7 @@ contains
             CHCKERR('')
             ierr = apply_disc(f_plot(:,:,:,:,1),norm_deriv_data,U_inf,3)
             CHCKERR('')
-            call dealloc_disc(norm_deriv_data)
+            call norm_deriv_data%dealloc()
             
             ! set up dummy variable Theta^alpha + q' theta and nm
             allocate(U_inf_prop(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
@@ -363,7 +362,7 @@ contains
         end do
         
         ! clean up
-        call dealloc_grid(grid_sol_trim)
+        call grid_sol_trim%dealloc()
         
         call lvl_ud(-1)
     contains
@@ -613,7 +612,6 @@ contains
     ! compared with the Eigenvalue.
     integer function decompose_energy(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
         &sol,X_id,B_aligned,log_i,XYZ,sol_val_comp) result(ierr)
-        use grid_vars, only: dealloc_grid
         use grid_utilities, only: trim_grid
         use num_vars, only: rank, no_plots
         
@@ -857,7 +855,7 @@ contains
             ! clean up
             nullify(E_kin_trim,E_pot_trim)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
-            call dealloc_grid(grid_sol_trim)
+            call grid_sol_trim%dealloc()
         end if
     end function decompose_energy
     
@@ -870,7 +868,6 @@ contains
         use eq_vars, only: vac_perm
         use num_utilities, only: c, con2dis
         use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid
-        use grid_vars, only: dealloc_grid
         use sol_vars, only: alpha
         use MPI_utilities, only: get_ser_var, wait_MPI
         use sol_utilities, only: calc_XUQ
@@ -1077,7 +1074,7 @@ contains
                     CHCKERR('')
                 end do
             end do
-            call dealloc_disc(ang_1_deriv_data)
+            call ang_1_deriv_data%dealloc()
             
             ! plot real part
             call plot_HDF5('RE U','TEST_RE_U_'//&
@@ -1145,8 +1142,8 @@ contains
         E_pot_int = E_pot_int
         
         ! deallocate variables
-        call dealloc_grid(grid_sol_trim)
-        call dealloc_grid(grid_sol_ghost)
+        call grid_sol_trim%dealloc()
+        call grid_sol_ghost%dealloc()
     end function calc_E
     
     ! Print solution quantities to an output file:
@@ -1159,7 +1156,6 @@ contains
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
         use grid_utilities, only: trim_grid
-        use grid_vars, only: dealloc_grid
         
         character(*), parameter :: rout_name = 'print_output_sol'
         
@@ -1262,7 +1258,7 @@ contains
             CHCKERR('')
             
             ! clean up
-            call dealloc_grid(grid_trim)
+            call grid_trim%dealloc()
             call dealloc_var_1D(sol_1D)
             nullify(sol_1D_loc)
             

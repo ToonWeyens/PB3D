@@ -25,8 +25,6 @@ contains
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
             &plot_magn_grid
         use MPI_utilities, only: wait_MPI
-        use eq_vars, only: dealloc_eq
-        use grid_vars, only: dealloc_grid
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot
         use sol_vars, only: alpha
         use grid_ops, only: setup_grid_eq_B, print_output_grid, &
@@ -144,19 +142,20 @@ contains
                 ierr = calc_eq(grid_eq,eq_1,eq_2)
                 CHCKERR('')
                 
-                ! write metric equilibrium variables to output
-                ierr = print_output_eq(grid_eq,eq_2,'eq_2',rich_lvl=rich_lvl)
-                CHCKERR('')
-                
 #if ldebug
                 if (plot_info) then
-                    ! plot information for comparison between VMEC and HELENA
+                    ! plot info for comparison between VMEC and HELENA
                     call plot_info_for_VMEC_HEL_comparision()
                 end if
 #endif
                 
+                ! write metric equilibrium variables to output
+                ierr = print_output_eq(grid_eq,eq_2,'eq_2',rich_lvl=rich_lvl,&
+                    &dealloc_vars=.true.)
+                CHCKERR('')
+                
                 ! clean up
-                call dealloc_eq(eq_2)
+                call eq_2%dealloc()
             case (2)                                                            ! HELENA
                 if (rich_lvl.eq.1) then
                     ! write equilibrium grid variables to output
@@ -167,20 +166,20 @@ contains
                     ierr = calc_eq(grid_eq,eq_1,eq_2)
                     CHCKERR('')
                     
-                    ! write metric equilibrium variables to output
-                    ierr = print_output_eq(grid_eq,eq_2,'eq_2')
-                    CHCKERR('')
-                    
 #if ldebug
                     if (plot_info) then
-                        !  plot  information  for comparison  between  VMEC  and
-                        ! HELENA
+                        ! plot info for comparison between VMEC and HELENA
                         call plot_info_for_VMEC_HEL_comparision()
                     end if
 #endif
                     
+                    ! write metric equilibrium variables to output
+                    ierr = print_output_eq(grid_eq,eq_2,'eq_2',&
+                        &dealloc_vars=.true.)
+                    CHCKERR('')
+                    
                     ! clean up
-                    call dealloc_eq(eq_2)
+                    call eq_2%dealloc()
                 end if
                 
                 ! set up field-aligned equilibrium grid
@@ -199,10 +198,10 @@ contains
         ! clean up
         call writo('Clean up')
         call lvl_ud(1)
-        call dealloc_grid(grid_eq)
-        call dealloc_eq(eq_1)
+        call grid_eq%dealloc()
+        call eq_1%dealloc()
         if (eq_style.eq.2) then
-            call dealloc_grid(grid_eq_B)
+            call grid_eq_B%dealloc()
             deallocate(grid_eq_B)
         end if
         nullify(grid_eq_B)
@@ -233,7 +232,7 @@ contains
             CHCKERR('')
             
             ! deallocate
-            call dealloc_grid(grid_eq_B)
+            call grid_eq_B%dealloc()
             deallocate(grid_eq_B)
             nullify(grid_eq_B)
         else

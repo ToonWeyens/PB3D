@@ -7,7 +7,7 @@ module sol_utilities
     use output_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, pi
-    use grid_vars, only: grid_type, disc_type, dealloc_disc
+    use grid_vars, only: grid_type, disc_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type
     use sol_vars, only: sol_type
@@ -182,7 +182,7 @@ contains
         end if
         
         ! clean up normal interpolation data
-        call dealloc_disc(norm_interp_data)
+        call norm_interp_data%dealloc()
         
         ! initialize XUQ
         XUQ = 0._dp
@@ -212,7 +212,7 @@ contains
             CHCKERR('')
             ierr = apply_disc(sol_vec_tot,norm_deriv_data,Dsol_vec_tot,2)
             CHCKERR('')
-            call dealloc_disc(norm_deriv_data)
+            call norm_deriv_data%dealloc()
             
 #if ldebug
             if (debug_calc_XUQ_arr) then

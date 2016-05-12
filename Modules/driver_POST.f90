@@ -37,15 +37,12 @@ contains
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol
-        use grid_vars, only: create_grid, dealloc_grid, dealloc_disc, disc_type
+        use grid_vars, only: disc_type
         use grid_ops, only: calc_norm_range, magn_grid_plot
-        use eq_vars, only: create_eq, dealloc_eq, &
-            &max_flux_F
+        use eq_vars, only: max_flux_F
         use eq_ops, only: calc_eq, flux_q_plot, calc_derived_q
         use eq_utilities, only: calc_F_derivs
-        use X_vars, only: create_X, dealloc_X
-        use sol_vars, only: dealloc_sol, &
-            &alpha
+        use sol_vars, only: alpha
         use grid_utilities, only: calc_XYZ_grid, extend_grid_E, &
             &setup_interp_data, apply_disc
         use X_ops, only: calc_X, resonance_plot, calc_res_surf, setup_nm_X
@@ -130,9 +127,9 @@ contains
         CHCKERR('')
         
         ! deallocate the grids
-        call dealloc_grid(grid_eq)
-        call dealloc_grid(grid_X)
-        call dealloc_grid(grid_sol)
+        call grid_eq%dealloc()
+        call grid_X%dealloc()
+        call grid_sol%dealloc()
         
         ! user output
         call lvl_ud(-1)
@@ -195,8 +192,8 @@ contains
                 ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
                     &norm_interp_data,norm_disc_prec_X)
                 CHCKERR('')
-                ierr = create_grid(grid_X_out,&
-                    &[grid_eq_out%n(1:2),grid_X%n(3)],i_lim=X_limits)
+                ierr = grid_X_out%init([grid_eq_out%n(1:2),grid_X%n(3)],&
+                    &i_lim=X_limits)
                 CHCKERR('')
                 grid_X_out%r_E = grid_X%r_E
                 grid_X_out%r_F = grid_X%r_F
@@ -214,7 +211,7 @@ contains
                 ierr = apply_disc(grid_eq_out%zeta_F,norm_interp_data,&
                     &grid_X_out%zeta_F,3)
                 CHCKERR('')
-                call dealloc_disc(norm_interp_data)                             ! clean up
+                call norm_interp_data%dealloc()                                 ! clean up
                 call lvl_ud(-1)
             case (2)                                                            ! field-aligned grid
                 ! user output
@@ -298,7 +295,7 @@ contains
                         CHCKERR('')
                         
                         ! no need any more for eq_1_out E vars so eq_1 will do.
-                        call dealloc_eq(eq_1_out)
+                        call eq_1_out%dealloc()
                         
                         ! reset no_plots and no_output
                         no_plots = no_plots_loc
@@ -323,8 +320,8 @@ contains
                 allocate(X_out)
                 
                 ! interpolate
-                call create_eq(grid_eq_out,eq_2_out)
-                call create_X(grid_X_out,X_out)
+                call eq_2_out%init(grid_eq_out)
+                call X_out%init(grid_X_out)
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_out,eq_2=eq_2,&
                     &eq_2_out=eq_2_out,eq_1=eq_1,&
                     &grid_name='output equilibrium grid')
@@ -563,19 +560,19 @@ contains
         call writo('Clean up')
         call lvl_ud(1)
         call dealloc_in()
-        call dealloc_grid(grid_eq)
-        call dealloc_grid(grid_X)
-        call dealloc_grid(grid_sol)
-        call dealloc_eq(eq_1)
-        call dealloc_eq(eq_2)
-        call dealloc_X(X)
-        call dealloc_sol(sol)
+        call grid_eq%dealloc()
+        call grid_X%dealloc()
+        call grid_sol%dealloc()
+        call eq_1%dealloc()
+        call eq_2%dealloc()
+        call X%dealloc()
+        call sol%dealloc()
         select case (POST_style)
             case (1)                                                            ! extended grid
-                call dealloc_grid(grid_eq_out)
-                call dealloc_grid(grid_X_out)
-                call dealloc_eq(eq_2_out)
-                call dealloc_X(X_out)
+                call grid_eq_out%dealloc()
+                call grid_X_out%dealloc()
+                call eq_2_out%dealloc()
+                call X_out%dealloc()
                 deallocate(grid_eq_out)
                 deallocate(grid_X_out)
                 deallocate(eq_2_out)
@@ -585,10 +582,10 @@ contains
                     case (1)                                                    ! VMEC
                         ! do nothing
                     case (2)                                                    ! HELENA
-                        call dealloc_grid(grid_eq_out)
-                        call dealloc_grid(grid_X_out)
-                        call dealloc_eq(eq_2_out)
-                        call dealloc_X(X_out)
+                        call grid_eq_out%dealloc()
+                        call grid_X_out%dealloc()
+                        call eq_2_out%dealloc()
+                        call X_out%dealloc()
                         deallocate(grid_eq_out)
                         deallocate(grid_X_out)
                         deallocate(eq_2_out)

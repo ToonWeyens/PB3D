@@ -1712,7 +1712,6 @@ contains
             &n_procs, rank, tol_SLEPC, eq_style
         use files_utilities, only: nextunit
         use MPI_utilities, only: get_ser_var
-        use sol_vars, only: create_sol
         use rich_vars, only: rich_lvl
         
         character(*), parameter :: rout_name = 'store_results'
@@ -1781,7 +1780,7 @@ contains
         end do
         
         ! create solution variables
-        call create_sol(grid_sol,sol,max_n_EV)
+        call sol%init(grid_sol,max_n_EV)
         
         ! create solution vector
         call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,&

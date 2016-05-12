@@ -7,7 +7,7 @@ module X_ops
     use output_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, max_name_ln, pi
-    use grid_vars, onlY: grid_type, disc_type, dealloc_grid, dealloc_disc
+    use grid_vars, onlY: grid_type, disc_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, X_2_type
 
@@ -39,7 +39,6 @@ contains
     ! global X_vars variables.
     integer function calc_X_1(grid_eq,grid_X,eq_1,eq_2,X,lim_sec_X) &
         &result(ierr)                                                           ! vectorial version
-        use X_vars, only: create_X
         
         character(*), parameter :: rout_name = 'calc_X_1'
         
@@ -59,7 +58,7 @@ contains
         call lvl_ud(1)
         
         ! create perturbation with modes of current X job
-        call create_X(grid_X,X,lim_sec_X)
+        call X%init(grid_X,lim_sec_X)
         
         ! calculate U and DU
         call writo('Calculating U and DU...')
@@ -74,7 +73,6 @@ contains
     end function calc_X_1
     integer function calc_X_2(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
         &result(ierr)                                                           ! tensorial version
-        use X_vars, only: create_X
         
         character(*), parameter :: rout_name = 'calc_X_2'
         
@@ -95,7 +93,7 @@ contains
         call lvl_ud(1)
         
         ! create perturbation with modes of current X job
-        call create_X(grid_X,X,lim_sec_X)
+        call X%init(grid_X,lim_sec_X)
         
         ! Calculate  PV_i  for  all (k,m)  pairs  and n_r  (equilibrium)
         ! values of the normal coordinate
@@ -144,7 +142,7 @@ contains
         use X_vars, only: prim_X, min_sec_X, max_sec_X, n_mod_X, min_n_X, &
             &max_n_X, min_m_X, max_m_X, min_nm_X, n_X, m_X, sec_X_ind
         use MPI_utilities, only: get_ser_var
-        use grid_vars, only: dealloc_grid, disc_type, dealloc_disc
+        use grid_vars, only: disc_type
         use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
         use eq_vars, only: max_flux_F
         
@@ -244,11 +242,11 @@ contains
                         min_m_X = max_m_X - n_mod_X + 1
                     end if
                 else
-                    if (prim_X*jq_tot(1).gt.0) then                             ! nq > 0: m > 0
+                    if (prim_X*jq_tot(1).gt.0) then                             ! m iota > 0: n > 0
                         min_n_X = nint(prim_X*jq_tot-n_mod_X*0.5)
                         min_n_X = max(min_nm_X,min_n_X)
                         max_n_X = min_n_X + n_mod_X - 1
-                    else                                                        ! nq < 0: m < 0
+                    else                                                        ! m iota < 0: n < 0
                         max_n_X = nint(prim_X*jq_tot+n_mod_X*0.5)
                         max_n_X = min(-min_nm_X,max_n_X)
                         min_n_X = max_n_X - n_mod_X + 1
@@ -276,7 +274,7 @@ contains
         CHCKERR('')
         
         ! clean up
-        call dealloc_disc(norm_interp_data)
+        call norm_interp_data%dealloc()
         
         ! set n and m
         if (allocated(n_X)) deallocate(n_X)
@@ -292,7 +290,7 @@ contains
         else
             do kd = 1,grid_X_trim%n(3)
                 n_X(kd,:) = [(ld, ld = nint(lim_nm_X_interp(1,kd)),&
-                    &nint(lim_nm_X_interp(3,kd)))]
+                    &nint(lim_nm_X_interp(2,kd)))]
                 m_X(kd,:) = nint(lim_nm_X_interp(3,kd))
             end do
         end if
@@ -347,8 +345,8 @@ contains
         end do
         
         ! clean up
-        call dealloc_grid(grid_eq_trim)
-        call dealloc_grid(grid_X_trim)
+        call grid_eq_trim%dealloc()
+        call grid_X_trim%dealloc()
         
         call lvl_ud(-1)
         call writo('Perturbation modes set up')
@@ -602,10 +600,9 @@ contains
     ! returned to the master.
     integer function calc_res_surf(grid_eq,eq,res_surf,info,jq) result(ierr)
         use X_vars, only: min_n_X, min_m_X, sec_X_ind, prim_X
-        use num_vars, only: use_pol_flux_F, norm_disc_prec_eq
+        use num_vars, only: use_pol_flux_F, norm_disc_prec_eq, relax_fac_NR
         use eq_vars, only: max_flux_F, max_flux_F
         use num_utilities, only: calc_zero_NR
-        use grid_vars, only: dealloc_grid, dealloc_disc
         use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
         use MPI_utilities, only: get_ser_var
         
@@ -631,6 +628,7 @@ contains
         real(dp), allocatable :: jq_tot(:,:)                                    ! saf. fac. or rot. transf. and derivs. in Flux coords.
         real(dp), allocatable :: jq_loc(:)                                      ! local version of jq
         real(dp) :: norm_factor                                                 ! normalization factor to make normal coordinate 0..1
+        real(dp) :: relax_fac_NR_old                                            ! old relax_fac_NR
         type(grid_type) :: grid_eq_trim                                         ! trimmed version of equilibrium grid
         integer :: n_loc, m_loc                                                 ! local n and m
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -685,6 +683,7 @@ contains
         ! loop over all modes (and shift the index in x and y_vars by 1)
         ld_loc = 1
         do ld = 1,size(sec_X_ind,2)
+            
             ! Find place  where q  = m/n or  iota = n/m  in Flux  coordinates by
             ! solving q-m/n  = 0 or  iota-n/m=0, using the functin  jq_fun. Only
             ! consider modes  that appear  somewhere in  the plasma  (e.g. where
@@ -708,8 +707,11 @@ contains
             ! calculate zero using Newton-Rhapson
             res_surf_loc(ld_loc,1) = ld
             res_surf_loc(ld_loc,3) = nmfrac_fun
+            relax_fac_NR_old = relax_fac_NR
+            relax_fac_NR = 0.25                                                 ! this is a difficult function to find the zero of
             err_msg = calc_zero_NR(res_surf_loc(ld_loc,2),jq_fun,jq_dfun,&
                 &(maxval(grid_eq_trim%r_F)+minval(grid_eq_trim%r_F))/2)         ! guess halfway between minimum and maximum normal range
+            relax_fac_NR = relax_fac_NR_old
             
             ! intercept error
             if (err_msg.ne.'') then
@@ -739,8 +741,8 @@ contains
         res_surf = res_surf_loc(1:ld_loc-1,:)
         
         ! clean up
-        call dealloc_grid(grid_eq_trim)
-        call dealloc_disc(norm_interp_data)
+        call grid_eq_trim%dealloc()
+        call norm_interp_data%dealloc()
     contains
         ! Returns q-m/n or  iota-n/m in Flux coordinates, used to  solve for q =
         ! m/n or iota = n/m.
@@ -831,7 +833,6 @@ contains
         use num_vars, only: use_pol_flux_F, no_plots, n_theta_plot, &
             &n_zeta_plot, rank, eq_style, min_theta_plot, max_theta_plot, &
             &min_zeta_plot, max_zeta_plot
-        use grid_vars, only: create_grid, dealloc_grid
         use eq_vars, only: max_flux_F
         use grid_utilities, only: calc_XYZ_grid, calc_eqd_grid, coord_F2E, &
             &trim_grid
@@ -966,7 +967,7 @@ contains
             CHCKERR('')
             
             ! create plot grid for single flux surface
-            ierr = create_grid(grid_plot,plot_dim(1:3))
+            ierr = grid_plot%init(plot_dim(1:3))
             CHCKERR('')
             grid_plot%theta_E = theta_plot
             grid_plot%zeta_E = zeta_plot
@@ -1046,11 +1047,11 @@ contains
             call lvl_ud(-1)
             
             ! clean up
-            call dealloc_grid(grid_plot)
+            call grid_plot%dealloc()
         end if
         
         ! clean up
-        call dealloc_grid(grid_trim)
+        call grid_trim%dealloc()
         
         call lvl_ud(-1)
     end function resonance_plot
@@ -1084,7 +1085,7 @@ contains
         use num_utilities, only: c
         use input_utilities, only: get_log, pause_prog
         use eq_vars, only: vac_perm
-        use grid_vars, only: disc_type, dealloc_disc
+        use grid_vars, only: disc_type
         use grid_utilities, only: setup_deriv_data, setup_interp_data, &
             &apply_disc
 #if ldebug
@@ -1097,7 +1098,7 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid variables
         type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
+        type(eq_2_type), intent(in), target :: eq_2                             ! metric equilibrium
         type(X_1_type), intent(inout) :: X                                      ! vectorial perturbation variables
         
         ! local variables
@@ -1257,7 +1258,7 @@ contains
                             CHCKERR('')
                         end do
                     end do
-                    call dealloc_disc(geo_deriv_data)
+                    call geo_deriv_data%dealloc()
                 else
                     D1Theta_3 = 0._dp
                 end if
@@ -1273,7 +1274,7 @@ contains
                             CHCKERR('')
                         end do
                     end do
-                    call dealloc_disc(par_deriv_data)
+                    call par_deriv_data%dealloc()
                 else
                     D3Theta_3 = 0._dp
                 end if
@@ -1343,7 +1344,7 @@ contains
         end do
         
         ! clean up
-        call dealloc_disc(norm_interp_data)
+        call norm_interp_data%dealloc()
         
         ! calculate U_0 and U_1 for all modes
         do ld = 1,X%n_mod
@@ -1455,7 +1456,7 @@ contains
                         CHCKERR('')
                     end do
                 end do
-                call dealloc_disc(par_deriv_data)
+                call par_deriv_data%dealloc()
         end select
         
         ! add second part of derivatives ~ n_frac
@@ -1568,7 +1569,7 @@ contains
                 call plot_diff_HDF5(imagpart(DU_1),imagpart(X%DU_1(:,:,:,ld)),&
                     &file_name,description=description,output_message=.true.)
             end do
-            call dealloc_disc(par_deriv_data)
+            call par_deriv_data%dealloc()
             
             ! user output
             call lvl_ud(-1)
@@ -1602,7 +1603,7 @@ contains
         use num_utilities, only: c
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
-        use grid_vars, only: disc_type, dealloc_disc
+        use grid_vars, only: disc_type
         use grid_utilities, only: setup_interp_data, apply_disc
         
         character(*), parameter :: rout_name = 'calc_PV'
@@ -1611,7 +1612,7 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
+        type(eq_2_type), intent(in), target :: eq_2                             ! metric equilibrium
         type(X_1_type), intent(in) :: X_a, X_b                                  ! vectorial perturbation variables
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
@@ -1712,7 +1713,7 @@ contains
         end if
         
         ! clean up
-        call dealloc_disc(norm_interp_data)
+        call norm_interp_data%dealloc()
         
         ! loop over all modes
         do m = 1,X_b%n_mod
@@ -1789,7 +1790,7 @@ contains
         use num_utilities, only: c
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
-        use grid_vars, only: disc_type, dealloc_disc
+        use grid_vars, only: disc_type
         use grid_utilities, only: setup_interp_data, apply_disc
         
         character(*), parameter :: rout_name = 'calc_KV'
@@ -1798,7 +1799,7 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
+        type(eq_2_type), intent(in), target :: eq_2                             ! metric equilibrium
         type(X_1_type), intent(in) :: X_a, X_b                                  ! vectorial perturbation variables
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
@@ -1854,7 +1855,7 @@ contains
         CHCKERR('')
         
         ! clean up
-        call dealloc_disc(norm_interp_data)
+        call norm_interp_data%dealloc()
         
         ! loop over all modes
         do m = 1,X_b%n_mod
@@ -1942,7 +1943,7 @@ contains
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
         use num_utilities, only: c
-        use grid_vars, only: disc_type, dealloc_disc
+        use grid_vars, only: disc_type
         use grid_utilities, only: setup_interp_data, apply_disc
         use rich_vars, only: rich_lvl
         
@@ -1998,7 +1999,7 @@ contains
         CHCKERR('')
         
         ! clean up
-        call dealloc_disc(norm_interp_data)
+        call norm_interp_data%dealloc()
         
         ! set up parallel angle in flux coordinates
         if (use_pol_flux_F) then

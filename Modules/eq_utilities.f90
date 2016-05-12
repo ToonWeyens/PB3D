@@ -7,7 +7,7 @@ module eq_utilities
     use output_ops
     use messages
     use num_vars, only: pi, dp, max_str_ln, max_deriv
-    use grid_vars, only: grid_type, disc_type, dealloc_grid, dealloc_disc
+    use grid_vars, only: grid_type, disc_type
     use eq_vars, only: eq_1_type, eq_2_type
     use num_utilities, only: check_deriv
     
@@ -643,6 +643,7 @@ contains
     integer function calc_F_derivs_1(grid_eq,eq) result(ierr)                   ! flux version
         use num_vars, only: eq_style, max_deriv, use_pol_flux_F
         use num_utilities, only: derivs, c, fac
+        use eq_vars, only: max_flux_E
         
         character(*), parameter :: rout_name = 'calc_F_derivs_1'
         
@@ -670,15 +671,14 @@ contains
                 
                 ! set up local T_FE
                 allocate(T_FE_loc(grid_eq%loc_n_r,0:max_deriv+1))
-                do id = 0,max_deriv+1
-                    if (use_pol_flux_F) then
-                        T_FE_loc(:,id) = &
-                            &2*pi*(-1)**id*fac(id)/eq%flux_p_E(:,id+1)
-                    else
-                        T_FE_loc(:,id) = &
-                            &-2*pi*(-1)**id*fac(id)/eq%flux_t_E(:,id+1)
-                    end if
-                end do
+                if (use_pol_flux_F) then
+                    do id = 0,max_deriv+1
+                        T_FE_loc(:,id) = 2*pi/max_flux_E*eq%q_saf_E(:,id)
+                    end do
+                else
+                    T_FE_loc(:,0) = -2*pi/max_flux_E
+                    T_FE_loc(:,1:max_deriv+1) = 0._dp
+                end if
                 
                 ! Transform the  derivatives in E coordinates  to derivatives in
                 ! the F coordinates.
@@ -729,7 +729,7 @@ contains
         character(*), parameter :: rout_name = 'calc_F_derivs_2'
         
         ! input / output
-        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
+        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium variables
         
         ! local variables
         integer :: id

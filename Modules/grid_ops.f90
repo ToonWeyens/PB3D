@@ -7,7 +7,7 @@ module grid_ops
     use output_ops
     use messages
     use num_vars, only: dp, pi, max_str_ln
-    use grid_vars, only: grid_type, disc_type, dealloc_disc
+    use grid_vars, only: grid_type, disc_type
     use eq_vars, only: eq_1_type
 
     implicit none
@@ -112,8 +112,7 @@ contains
             use HELENA_vars, only: flux_p_H, qs_H
             use X_vars, only: min_r_sol, max_r_sol
             use eq_vars, only: max_flux_E, max_flux_F
-            use grid_vars, only: dealloc_disc, &
-                &n_r_in
+            use grid_vars, only: n_r_in
             
             character(*), parameter :: rout_name = 'calc_norm_range_PB3D_in'
             
@@ -162,7 +161,7 @@ contains
                     CHCKERR('')
                     ierr = apply_disc(flux_p_H,norm_deriv_data,Dflux_p_H)
                     CHCKERR('')
-                    call dealloc_disc(norm_deriv_data)
+                    call norm_deriv_data%dealloc()
                     ! set up F flux
                     if (use_pol_flux_F) then
                         flux_F = flux_p_H
@@ -224,7 +223,7 @@ contains
             in_limits(2) = ceiling(tot_max_r_in_E_dis)
             
             ! clean up
-            call dealloc_disc(norm_interp_data)
+            call norm_interp_data%dealloc()
         end function calc_norm_range_PB3D_in
         
         ! The normal range is calculated  by dividing the full equilibrium range
@@ -399,8 +398,7 @@ contains
     integer function setup_grid_eq(grid_eq,eq_limits,only_half_grid) &
         &result(ierr)
         use num_vars, only: eq_style
-        use grid_vars, only: create_grid, &
-            &n_r_eq
+        use grid_vars, only: n_r_eq
         use grid_utilities, only: calc_n_par_X_loc
         use HELENA_vars, only: nchi, chi_H
         use rich_vars, only: n_par_X
@@ -434,7 +432,7 @@ contains
                 CHCKERR('')
                 
                 ! create grid
-                ierr = create_grid(grid_eq,[n_par_X_loc,1,n_r_eq],eq_limits)    ! only one field line
+                ierr = grid_eq%init([n_par_X_loc,1,n_r_eq],eq_limits)           ! only one field line
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! user output
@@ -447,7 +445,7 @@ contains
                     &later')
                 
                 ! create grid
-                ierr = create_grid(grid_eq,[nchi,1,n_r_eq],eq_limits)           ! axisymmetric equilibrium
+                ierr = grid_eq%init([nchi,1,n_r_eq],eq_limits)                  ! axisymmetric equilibrium
                 CHCKERR('')
                 
                 ! copy angular grid from HELENA
@@ -471,7 +469,6 @@ contains
     integer function setup_grid_eq_B(grid_eq,grid_eq_B,eq,only_half_grid) &
         &result(ierr)
         use num_vars, only: eq_style
-        use grid_vars, only: create_grid
         use grid_utilities, only: calc_n_par_X_loc
         
         character(*), parameter :: rout_name = 'setup_grid_eq_B'
@@ -504,7 +501,7 @@ contains
                 CHCKERR('')
                 
                 ! create the grid
-                ierr = create_grid(grid_eq_B,[n_par_X_loc,1,grid_eq%n(3)],&
+                ierr = grid_eq_B%init([n_par_X_loc,1,grid_eq%n(3)],&
                     &[grid_eq%i_min,grid_eq%i_max])
                 CHCKERR('')
                 
@@ -528,7 +525,7 @@ contains
     ! division is in the mode numbers
     integer function setup_grid_X(grid_eq,grid_X,r_F_X,X_limits) result(ierr)
         use num_vars, only: norm_disc_prec_X
-        use grid_vars, only: create_grid, dealloc_disc, disc_type
+        use grid_vars, only: disc_type
         use grid_utilities, only: coord_F2E, setup_interp_data, apply_disc
         
         character(*), parameter :: rout_name = 'setup_grid_X'
@@ -546,7 +543,7 @@ contains
         ierr = 0
         
         ! create grid
-        ierr = create_grid(grid_X,[grid_eq%n(1:2),size(r_F_X)],X_limits)
+        ierr = grid_X%init([grid_eq%n(1:2),size(r_F_X)],X_limits)
         CHCKERR('')
         
         ! set Flux variables
@@ -577,14 +574,13 @@ contains
         CHCKERR('')
         
         ! clean up
-        call dealloc_disc(norm_interp_data)
+        call norm_interp_data%dealloc()
     end function setup_grid_X
     
     ! Sets  up the general  solution grid, in  which the solution  variables are
     ! calculated.
     integer function setup_grid_sol(grid_eq,grid_sol,r_F_sol,sol_limits) &
         &result(ierr)
-        use grid_vars, only: create_grid
         use grid_utilities, only: coord_F2E
         
         character(*), parameter :: rout_name = 'setup_grid_sol'
@@ -599,7 +595,7 @@ contains
         ierr = 0
         
         ! create grid
-        ierr = create_grid(grid_sol,[0,0,size(r_F_sol)],sol_limits)
+        ierr = grid_sol%init([0,0,size(r_F_sol)],sol_limits)
         CHCKERR('')
         
         ! set Flux variables
@@ -636,7 +632,7 @@ contains
         
         ! input / output
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid of which to calculate angular part
-        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
+        type(eq_1_type), intent(in), target :: eq                               ! flux equilibrium variables
         logical, intent(in), optional :: only_half_grid                         ! calculate only half grid with even points
         
         ! local variables
@@ -788,7 +784,6 @@ contains
         use num_vars, only: rank, no_plots, n_theta_plot, n_zeta_plot, &
             &eq_style, min_theta_plot, max_theta_plot, min_zeta_plot, &
             &max_zeta_plot
-        use grid_vars, only: create_grid, dealloc_grid
         use grid_utilities, only: trim_grid, extend_grid_E, calc_XYZ_grid
         use VMEC, only: calc_trigon_factors
         
@@ -878,7 +873,7 @@ contains
         CHCKERR('')
         
         ! dealloc grid
-        call dealloc_grid(grid_plot)
+        call grid_plot%dealloc()
         
         ! 2. plot field lines
         call writo('writing field lines')
@@ -902,8 +897,8 @@ contains
         CHCKERR('')
         
         ! dealloc grids
-        call dealloc_grid(grid_plot)
-        call dealloc_grid(grid_ext)
+        call grid_plot%dealloc()
+        call grid_ext%dealloc()
         
         ! get pointers to full X, Y and Z
         ! The reason for this is that the plot  is not as simple as usual, so no
@@ -1145,7 +1140,6 @@ contains
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
             &max_dim_var_1D
-        use grid_vars, only: dealloc_grid
         use grid_utilities, only: trim_grid
         
         character(*), parameter :: rout_name = 'print_output_grid'
@@ -1279,7 +1273,7 @@ contains
         CHCKERR('')
         
         ! clean up
-        call dealloc_grid(grid_trim)
+        call grid_trim%dealloc()
         
         ! clean up
         nullify(grid_1D_loc)

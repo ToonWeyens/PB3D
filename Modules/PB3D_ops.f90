@@ -63,7 +63,7 @@ contains
         integer :: var_1D_id                                                    ! index in var_1D
         character(len=max_str_ln) :: err_msg                                    ! error message
         type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
-        real(dp), parameter :: tol_version = 1.E-8_dp                           ! tolerance for version control
+        real(dp), parameter :: tol_version = 1.E-4_dp                           ! tolerance for version control
         real(dp) :: PB3D_version                                                ! version of PB3D variable read
         
         ! initialize ierr
@@ -368,7 +368,6 @@ contains
     integer function reconstruct_PB3D_grid(grid,data_name,rich_lvl,tot_rich,&
         &grid_limits) result(ierr)
         use num_vars, only: PB3D_name
-        use grid_vars, only: create_grid
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         
@@ -424,7 +423,7 @@ contains
         if (present(grid_limits)) grid_limits_loc = grid_limits
         
         ! create grid
-        ierr = create_grid(grid,n,grid_limits_loc)
+        ierr = grid%init(n,grid_limits_loc)
         CHCKERR('')
         
         ! restore looping over richardson levels
@@ -504,7 +503,6 @@ contains
     integer function reconstruct_PB3D_eq_1(grid_eq,eq,data_name,eq_limits) &
         &result(ierr)                                                           ! flux version
         use num_vars, only: PB3D_name
-        use eq_vars, only: create_eq
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         
@@ -531,7 +529,7 @@ contains
         CHCKERR('')
         
         ! create equilibrium
-        call create_eq(grid_eq,eq,setup_E=.false.,setup_F=.true.)
+        call eq%init(grid_eq,setup_E=.false.,setup_F=.true.)
         
         ! set up local eq_limits
         eq_limits_loc = [1,grid_eq%n(3)]
@@ -593,7 +591,6 @@ contains
     integer function reconstruct_PB3D_eq_2(grid_eq,eq,data_name,rich_lvl,&
         &tot_rich,eq_limits) result(ierr)                                       ! metric version
         use num_vars, only: PB3D_name
-        use eq_vars, only: create_eq
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         
@@ -631,7 +628,7 @@ contains
         if (present(eq_limits)) eq_limits_loc = eq_limits
         
         ! create equilibrium
-        call create_eq(grid_eq,eq,setup_E=.false.,setup_F=.true.)
+        call eq%init(grid_eq,setup_E=.false.,setup_F=.true.)
         
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
@@ -712,8 +709,7 @@ contains
     integer function reconstruct_PB3D_X_1(grid_X,X,data_name,rich_lvl,tot_rich,&
         &X_limits,lim_sec_X) result(ierr)
         use num_vars, only: PB3D_name
-        use X_vars, only: create_X, &
-            &X_1_var_names, n_mod_X
+        use X_vars, only: X_1_var_names, n_mod_X
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         use PB3D_utilities, only: get_full_var_names
@@ -759,7 +755,7 @@ contains
         if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
         
         ! create X
-        call create_X(grid_X,X,lim_sec_X)
+        call X%init(grid_X,lim_sec_X)
         
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
@@ -890,8 +886,7 @@ contains
     integer function reconstruct_PB3D_X_2(grid_X,X,data_name,rich_lvl,tot_rich,&
         &X_limits,lim_sec_X,is_field_averaged) result(ierr)
         use num_vars, only: PB3D_name
-        use X_vars, only: create_X, &
-            &X_2_var_names, n_mod_X
+        use X_vars, only: X_2_var_names, n_mod_X
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         use PB3D_utilities, only: get_full_var_names
@@ -946,7 +941,7 @@ contains
         if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
         
         ! create X
-        call create_X(grid_X,X,lim_sec_X,is_field_averaged)
+        call X%init(grid_X,lim_sec_X,is_field_averaged)
         
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
@@ -1142,7 +1137,6 @@ contains
     integer function reconstruct_PB3D_sol(grid_sol,sol,data_name,rich_lvl,&
         &sol_limits,lim_sec_sol) result(ierr)
         use num_vars, only: PB3D_name
-        use sol_vars, only: create_sol
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         
@@ -1178,7 +1172,7 @@ contains
         n_EV = vars_1D(var_1D_id)%tot_i_max(3)-vars_1D(var_1D_id)%tot_i_min(3)+1
         
         ! create solution
-        call create_sol(grid_sol,sol,n_EV,lim_sec_sol)
+        call sol%init(grid_sol,n_EV,lim_sec_sol)
         
         ! set up local sol_limits
         sol_limits_loc = [1,grid_sol%n(3)]

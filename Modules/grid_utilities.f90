@@ -20,7 +20,7 @@ module grid_utilities
     
     ! global variables
 #if ldebug
-    logical :: debug_calc_int_vol = .false.                                     ! plot debug information for calc_int_vol
+    logical :: debug_calc_int_vol = .true.                                     ! plot debug information for calc_int_vol
     logical :: debug_setup_interp_dat = .false.                                     ! plot debug information for calc_int_vol
 #endif
     
@@ -126,7 +126,6 @@ contains
             use num_vars, only: norm_disc_prec_eq
             use num_utilities, only: calc_zero_NR
             use VMEC, only: mnmax_V
-            use grid_vars, only: dealloc_disc
             
             character(*), parameter :: rout_name = 'coord_F2E_VMEC'
             
@@ -204,7 +203,7 @@ contains
             
             ! clean up
             nullify(loc_r_F)
-            call dealloc_disc(norm_interp_data)
+            call norm_interp_data%dealloc()
         end function coord_F2E_VMEC
         
         ! function that returns f = theta_F  - theta_V - lambda. It uses theta_F
@@ -288,7 +287,6 @@ contains
     integer function coord_F2E_r(grid_eq,r_F,r_E,r_F_array,r_E_array) &
         &result(ierr)                                                           ! version with only r
         use num_vars, only: norm_disc_prec_eq
-        use grid_vars, only: dealloc_disc
         
         character(*), parameter :: rout_name = 'coord_F2E_r'
         
@@ -343,7 +341,7 @@ contains
         
         ! clean up
         nullify(loc_r_E,loc_r_F)
-        call dealloc_disc(norm_interp_data)
+        call norm_interp_data%dealloc()
     end function coord_F2E_r
     
     ! Converts  Equilibrium  coordinates  (r,theta,zeta)_E to  Flux  coordinates
@@ -419,7 +417,6 @@ contains
             use num_vars, only: norm_disc_prec_eq
             use VMEC, only: calc_trigon_factors, fourier2real, &
                 &mnmax_V, L_V_c, L_V_s
-            use grid_vars, only: dealloc_disc
             
             character(*), parameter :: rout_name = 'coord_E2F_VMEC'
             
@@ -475,13 +472,12 @@ contains
             
             ! clean up
             nullify(loc_r_E)
-            call dealloc_disc(norm_interp_data)
+            call norm_interp_data%dealloc()
         end function coord_E2F_VMEC
     end function coord_E2F_rtz
     integer function coord_E2F_r(grid_eq,r_E,r_F,r_E_array,r_F_array) &
         &result(ierr)                                                           ! version with only r
         use num_vars, only: norm_disc_prec_eq
-        use grid_vars, only: dealloc_disc
         
         character(*), parameter :: rout_name = 'coord_E2F_r'
         
@@ -536,7 +532,7 @@ contains
         
         ! clean up
         nullify(loc_r_E,loc_r_F)
-        call dealloc_disc(norm_interp_data)
+        call norm_interp_data%dealloc()
     end function coord_E2F_r
     
     ! Calculates X,Y  and Z on a  grid, which should have  the local equilibrium
@@ -619,7 +615,6 @@ contains
             use num_vars, only: norm_disc_prec_eq
             use VMEC, only: fourier2real, &
                 &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V
-            use grid_vars, only: dealloc_disc
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_VMEC'
             
@@ -671,7 +666,7 @@ contains
             end if
             
             ! clean up
-            call dealloc_disc(norm_interp_data)
+            call norm_interp_data%dealloc()
             
             ! allocate R
             allocate(R(grid_XYZ%n(1),grid_XYZ%n(2),grid_XYZ%loc_n_r))
@@ -704,7 +699,6 @@ contains
         integer function calc_XYZ_grid_HEL(grid_eq,grid_XYZ,X,Y,Z) result(ierr)
             use HELENA_vars, only: R_H, Z_H, chi_H, ias, nchi
             use num_vars, only: norm_disc_prec_eq
-            use grid_vars, only: dealloc_disc
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_HEL'
             
@@ -797,8 +791,8 @@ contains
             
             ! deallocate
             deallocate(R)
-            call dealloc_disc(norm_interp_data)
-            call dealloc_disc(pol_interp_data)
+            call norm_interp_data%dealloc()
+            call pol_interp_data%dealloc()
         end function calc_XYZ_grid_HEL
     end function calc_XYZ_grid
 
@@ -919,7 +913,6 @@ contains
     integer function extend_grid_E(grid_in,grid_ext,grid_eq) result(ierr)
         use num_vars, only: n_theta_plot, n_zeta_plot, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot
-        use grid_vars, only: create_grid
         
         character(*), parameter :: rout_name = 'extend_grid_E'
         
@@ -933,8 +926,7 @@ contains
         
         ! creating  equilibrium  grid  for  the output  that  covers  the  whole
         ! geometry angularly in E coordinates
-        ierr = create_grid(grid_ext,&
-            &[n_theta_plot,n_zeta_plot,grid_in%n(3)],&
+        ierr = grid_ext%init([n_theta_plot,n_zeta_plot,grid_in%n(3)],&
             &[grid_in%i_min,grid_in%i_max])
         CHCKERR('')
         grid_ext%r_E = grid_in%r_E
@@ -1326,7 +1318,6 @@ contains
     ! automatically.
     integer function setup_deriv_data_eqd(step,n,A,ord,prec) result(ierr)       ! equidistant version
         use num_utilities, only: fac
-        use grid_vars, only: create_disc
         
         character(*), parameter :: rout_name = 'setup_deriv_data_eqd'
         
@@ -1375,7 +1366,7 @@ contains
         allocate(rhs_loc(n_loc))
         allocate(ipiv(n_loc))
         ipiv = 0
-        ierr = create_disc(A,n,n_loc)
+        ierr = A%init(n,n_loc)
         CHCKERR('')
         
         ! iterate over all x values
@@ -1417,7 +1408,7 @@ contains
     end function setup_deriv_data_eqd
     integer function setup_deriv_data_reg(x,A,ord,prec) result(ierr)            ! regular version
         use num_utilities, only: fac
-        use grid_vars, only: disc_type, create_disc
+        use grid_vars, only: disc_type
         
         character(*), parameter :: rout_name = 'setup_deriv_data_reg'
         
@@ -1467,7 +1458,7 @@ contains
         allocate(rhs_loc(n_loc))
         allocate(ipiv(n_loc))
         ipiv = 0
-        ierr = create_disc(A,n,n_loc)
+        ierr = A%init(n,n_loc)
         CHCKERR('')
         
         ! iterate over all x values
@@ -1522,7 +1513,7 @@ contains
     ! within a tiny tolerance of the grid points x, the machinery is bypassed to
     ! avoid unstabilities.
     integer function setup_interp_data(x,x_interp,A,ord) result(ierr)
-        use grid_vars, only: disc_type, create_disc
+        use grid_vars, only: disc_type
         use num_utilities, only: con2dis
         
         character(*), parameter :: rout_name = 'setup_interp_data'
@@ -1556,7 +1547,7 @@ contains
         
         ! set variables
         allocate(weight(n_mat))
-        ierr = create_disc(A,n,n_mat)
+        ierr = A%init(n,n_mat)
         CHCKERR('')
         
         ! iterate over all x_interp values
@@ -1893,7 +1884,6 @@ contains
     integer function trim_grid(grid_in,grid_out,norm_id) result(ierr)
         use num_vars, only: n_procs, rank
         use mpi_utilities, only: get_ser_var
-        use grid_vars, only: create_grid
         
         character(*), parameter :: rout_name = 'trim_grid'
         
@@ -1949,7 +1939,7 @@ contains
             n_out(3) = sum(tot_i_max-tot_i_min+1)
             
             ! create new grid
-            ierr = create_grid(grid_out,n_out,i_lim_out-tot_i_min(1)+1)         ! limits shifted by min of first process
+            ierr = grid_out%init(n_out,i_lim_out-tot_i_min(1)+1)                ! limits shifted by min of first process
             CHCKERR('')
             
             ! recycle  i_lim_out  for  shifted  array  indices, set  norm_id  if
@@ -1968,7 +1958,7 @@ contains
             i_lim_out = i_lim_out-i_lim_out(1)+1
             
             ! create new grid
-            ierr = create_grid(grid_out,n_out,i_lim_out)                        ! grid not divided
+            ierr = grid_out%init(n_out,i_lim_out)                               ! grid not divided
             CHCKERR('')
         end if
         
@@ -2001,7 +1991,6 @@ contains
     integer function untrim_grid(grid_in,grid_out,size_ghost) result(ierr)
         use num_vars, only: n_procs, rank
         use mpi_utilities, only: get_ghost_arr, get_ser_var
-        use grid_vars, only: create_grid
         
         character(*), parameter :: rout_name = 'untrim_grid'
         
@@ -2032,7 +2021,7 @@ contains
         if (rank.lt.n_procs-1) i_lim_out(2) = i_lim_out(2)+size_ghost_loc
         
         ! create grid
-        ierr = create_grid(grid_out,grid_in%n,i_lim_out)
+        ierr = grid_out%init(grid_in%n,i_lim_out)
         CHCKERR('')
         
         ! set ghosted variables

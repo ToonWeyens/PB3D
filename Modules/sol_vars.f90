@@ -12,7 +12,7 @@ module sol_vars
     implicit none
     
     private
-    public dealloc_sol, create_sol, sol_type, &
+    public sol_type, &
         &alpha
 #if ldebug
     public n_alloc_sols
@@ -37,25 +37,28 @@ module sol_vars
 #if ldebug
         real(dp) :: estim_mem_usage                                             ! estimated memory usage
 #endif
+    contains
+        procedure :: init => init_sol
+        procedure :: dealloc => dealloc_sol
     end type
     
 contains
-    ! Create a solution type and allocate  the variables. The number of modes as
-    ! well as n and m set up.
+    ! Initialize a solution type and allocate the variables. The number of modes
+    ! as well as n and m set up.
     ! Optionally, the secondary mode number can be specified (m if poloidal flux
     ! is used  and n  if toroidal  flux). By  default, they  are taken  from the
     ! global X_vars variables.
     ! Note: The lowest limits of the grid  need to be 1; e.g. grid_sol%i_min = 1
     ! for first process.
-    subroutine create_sol(grid_sol,sol,n_EV,lim_sec_X)
+    subroutine init_sol(sol,grid_sol,n_EV,lim_sec_X)
         use X_vars, only: set_nm_X
 #if ldebug
         use num_vars, only: print_mem_usage, rank
 #endif
         
         ! input / output
+        class(sol_type), intent(inout) :: sol                                   ! solution variables
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(sol_type), intent(inout) :: sol                                    ! solution variables
         integer, intent(in) :: n_EV                                             ! nr. of Eigenvalues
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
         
@@ -87,7 +90,7 @@ contains
             &' - Expected memory usage of sol: '//&
             &trim(r2strt(sol%estim_mem_usage*weight_dp*2))//' kB]',alert=.true.)
 #endif
-    end subroutine create_sol
+    end subroutine init_sol
     
     ! deallocates solution variables
     ! Note: intent(out) automatically deallocates the variable
@@ -98,7 +101,7 @@ contains
 #endif
         
         ! input / output
-        type(sol_type), intent(inout) :: sol                                    ! solution variables to be deallocated
+        class(sol_type), intent(inout) :: sol                                   ! solution variables to be deallocated
         
 #if ldebug
         ! local variables

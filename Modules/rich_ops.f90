@@ -24,9 +24,6 @@ contains
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_sol
         use X_ops, only: setup_nm_X
-        use grid_vars, only: dealloc_grid
-        use eq_vars, only: dealloc_eq
-        use sol_vars, only: dealloc_sol
         use MPI_utilities, only: wait_MPI
         use input_utilities, only: dealloc_in
         
@@ -169,15 +166,15 @@ contains
                     call check_conv()
                     
                     ! clean up
-                    call dealloc_grid(grid_X_B)
-                    call dealloc_sol(sol)
+                    call grid_X_B%dealloc()
+                    call sol%dealloc()
                     
                     call lvl_ud(-1)
                 end do
                 
                 ! clean up
-                call dealloc_grid(grid_eq_B)
-                call dealloc_eq(eq)
+                call grid_eq_B%dealloc()
+                call eq%dealloc()
                 
                 ! set rich_lvl
                 rich_lvl = rich_restart_lvl

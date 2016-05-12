@@ -32,11 +32,9 @@ contains
             &X_style, rich_restart_lvl
         use rich_vars, only: n_par_X, rich_lvl
         use MPI_utilities, only: wait_MPI
-        use X_vars, only: dealloc_X, &
-            &min_sec_X, max_sec_X, prim_X, min_r_sol, max_r_sol, n_mod_X
-        use grid_vars, only: dealloc_grid, &
-            &n_r_sol, min_par_X, max_par_X
-        use eq_vars, only: dealloc_eq
+        use X_vars, only: min_sec_X, max_sec_X, prim_X, min_r_sol, max_r_sol, &
+            &n_mod_X
+        use grid_vars, only: n_r_sol, min_par_X, max_par_X
         use PB3D_ops, only: reconstruct_PB3D_in
         use num_utilities, only: test_max_memory
         use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
@@ -152,14 +150,14 @@ contains
         call writo('Clean up')
         call lvl_ud(1)
         call dealloc_in()
-        call dealloc_grid(grid_eq)
-        call dealloc_grid(grid_X)
-        call dealloc_eq(eq_1)
-        call dealloc_eq(eq_2)
+        call grid_eq%dealloc()
+        call grid_X%dealloc()
+        call eq_1%dealloc()
+        call eq_2%dealloc()
         if (eq_style.eq.2) then
-            call dealloc_grid(grid_eq_B)
-            call dealloc_grid(grid_X_B)
-            call dealloc_eq(eq_2_B)
+            call grid_eq_B%dealloc()
+            call grid_X_B%dealloc()
+            call eq_2_B%dealloc()
             deallocate(grid_eq_B)
             deallocate(grid_X_B)
             deallocate(eq_2_B)
@@ -181,7 +179,6 @@ contains
         use grid_vars, only: n_r_sol
         use rich_vars, only: rich_lvl
         use HELENA_ops, only: interp_HEL_on_grid
-        use eq_vars, only: create_eq
         
         character(*), parameter :: rout_name = 'run_driver_X_0'
         
@@ -228,7 +225,7 @@ contains
                 CHCKERR('')
                 
                 ! interpolate field-aligned metric equilibrium variables
-                call create_eq(grid_eq_B,eq_2_B)
+                call eq_2_B%init(grid_eq_B)
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,eq_2=eq_2,&
                     &eq_2_out=eq_2_B,eq_1=eq_1,grid_name='field-aligned &
                     &equilibrium grid')
@@ -295,7 +292,6 @@ contains
         use MPI_utilities, only: wait_MPI
         use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style
         use X_ops, only: calc_X, print_output_X
-        use X_vars, only: dealloc_X
         use rich_vars, only: rich_lvl
         
         character(*), parameter :: rout_name = 'run_driver_X_1'
@@ -431,7 +427,7 @@ contains
 #endif
             
             ! clean up
-            call dealloc_X(X_1)
+            call X_1%dealloc()
             
             ! user output
             call lvl_ud(-1)
@@ -532,7 +528,6 @@ contains
         use PB3D_ops, only: reconstruct_PB3D_X_1, reconstruct_PB3D_X_2
         use rich_vars, only: rich_lvl
         use X_ops, only: calc_X, print_output_X, calc_magn_ints
-        use X_vars, only: dealloc_X
         use HELENA_ops, only: interp_HEL_on_grid
         use vac, only: calc_vac
         
@@ -603,7 +598,7 @@ contains
                             &dimension '//trim(i2str(id))//' reused')
                     else
                         ! free the variable
-                        if (allocated(X_1(id)%n)) call dealloc_X(X_1(id))
+                        if (allocated(X_1(id)%n)) call X_1(id)%dealloc()
                         
                         ! user output
                         call writo('Requesting vectorial perturbation &
@@ -786,8 +781,8 @@ contains
             CHCKERR('')
             
             ! clean up
-            call dealloc_X(X_2)
-            if (rich_lvl.gt.1) call dealloc_X(X_2_prev)
+            call X_2%dealloc()
+            if (rich_lvl.gt.1) call X_2_prev%dealloc()
             
             ! user output
             call lvl_ud(-1)
@@ -801,7 +796,7 @@ contains
         call writo('Clean up tensorial perturbation variables')
         call lvl_ud(1)
         do id = 1,2
-            if (allocated(X_1(id)%n)) call dealloc_X(X_1(id))
+            if (allocated(X_1(id)%n)) call X_1(id)%dealloc()
         end do
         call lvl_ud(-1)
         

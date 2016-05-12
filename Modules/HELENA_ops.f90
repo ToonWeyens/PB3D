@@ -8,7 +8,7 @@ module HELENA_ops
     use output_ops
     use messages
     use num_vars, only: dp, max_str_ln
-    use grid_vars, only: grid_type, disc_type, dealloc_disc
+    use grid_vars, only: grid_type, disc_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, X_2_type
     use HELENA_vars
@@ -587,7 +587,7 @@ contains
         end function interp_var_6D_real
         integer function interp_var_6D_real_ow(var,sym_type) result(ierr)       ! 6D_real version, overwriting variable
             ! input / output
-            real(dp), intent(inout), pointer :: var(:,:,:,:,:,:)                ! variable to be interpolated
+            real(dp), intent(inout), allocatable :: var(:,:,:,:,:,:)            ! variable to be interpolated
             integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
             
             ! local variables
@@ -844,7 +844,7 @@ contains
         integer function interp_var_7D_real_ow(var,sym_type) result(ierr)       ! 7D_real version, overwriting variable
             
             ! input / output
-            real(dp), intent(inout), pointer :: var(:,:,:,:,:,:,:)              ! variable to be interpolated
+            real(dp), intent(inout), allocatable :: var(:,:,:,:,:,:,:)          ! variable to be interpolated
             integer, intent(in), optional :: sym_type                           ! optionally another type of symmetry
             
             ! local variables
@@ -1056,8 +1056,8 @@ contains
                 &file_name,description=description,output_message=.true.)
             
             ! clean up
-            call dealloc_disc(norm_deriv_data)
-            call dealloc_disc(ang_deriv_data)
+            call norm_deriv_data%dealloc()
+            call ang_deriv_data%dealloc()
             
             ! user output
             call lvl_ud(-1)

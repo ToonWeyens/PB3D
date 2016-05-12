@@ -34,8 +34,7 @@ module eq_vars
 
     implicit none
     private
-    public create_eq, dealloc_eq, &
-        &eq_1_type, eq_2_type, &
+    public eq_1_type, eq_2_type, &
         &R_0, pres_0, B_0, psi_0, rho_0, T_0, max_flux_E, max_flux_F, vac_perm
 #if ldebug
     public n_alloc_eq_1s, n_alloc_eq_2s
@@ -59,17 +58,20 @@ module eq_vars
         real(dp), allocatable :: pres_E(:,:)                                    ! pressure, and norm. deriv.
         real(dp), allocatable :: q_saf_E(:,:)                                   ! safety factor
         real(dp), allocatable :: rot_t_E(:,:)                                   ! rot. transform
-        real(dp), pointer :: flux_p_E(:,:) => null()                            ! poloidal flux and norm. deriv.
-        real(dp), pointer :: flux_t_E(:,:) => null()                            ! toroidal flux and norm. deriv.
+        real(dp), allocatable :: flux_p_E(:,:)                                  ! poloidal flux and norm. deriv.
+        real(dp), allocatable :: flux_t_E(:,:)                                  ! toroidal flux and norm. deriv.
         real(dp), allocatable :: pres_FD(:,:)                                   ! pressure, and norm. deriv.
         real(dp), allocatable :: q_saf_FD(:,:)                                  ! safety factor
         real(dp), allocatable :: rot_t_FD(:,:)                                  ! rot. transform
-        real(dp), pointer :: flux_p_FD(:,:) => null()                           ! poloidal flux and norm. deriv.
-        real(dp), pointer :: flux_t_FD(:,:) => null()                           ! toroidal flux and norm. deriv.
+        real(dp), allocatable :: flux_p_FD(:,:)                                 ! poloidal flux and norm. deriv.
+        real(dp), allocatable :: flux_t_FD(:,:)                                 ! toroidal flux and norm. deriv.
         real(dp), allocatable :: rho(:)                                         ! density
 #if ldebug
         real(dp) :: estim_mem_usage(2)                                          ! expected memory usage
 #endif
+    contains
+        procedure :: init => init_eq_1
+        procedure :: dealloc => dealloc_eq_1
     end type
     
     ! metric equilibrium type
@@ -102,8 +104,8 @@ module eq_vars
         real(dp), allocatable :: h_E(:,:,:,:,:,:,:)                             ! in the E(quilibrium) coord. system
         real(dp), allocatable :: g_F(:,:,:,:,:,:,:)                             ! in the F(lux) coord. system with derivs. in V(MEC) system
         real(dp), allocatable :: h_F(:,:,:,:,:,:,:)                             ! in the F(lux) coord. system with derivs. in V(MEC) system
-        real(dp), pointer :: g_FD(:,:,:,:,:,:,:) => null()                      ! in the F(lux) coord. system with derivs in F(lux) system
-        real(dp), pointer :: h_FD(:,:,:,:,:,:,:) => null()                      ! in the F(lux) coord. system with derivs in F(lux) system
+        real(dp), allocatable :: g_FD(:,:,:,:,:,:,:)                            ! in the F(lux) coord. system with derivs in F(lux) system
+        real(dp), allocatable :: h_FD(:,:,:,:,:,:,:)                            ! in the F(lux) coord. system with derivs in F(lux) system
         ! transformation matrices
         real(dp), allocatable :: T_VC(:,:,:,:,:,:,:)                            ! C(ylindrical) to V(MEC)
         real(dp), allocatable :: T_EF(:,:,:,:,:,:,:)                            ! E(quilibrium) to F(lux)
@@ -116,7 +118,7 @@ module eq_vars
         real(dp), allocatable :: jac_C(:,:,:,:,:,:)                             ! jacobian of C(ylindrical) coord. system
         real(dp), allocatable :: jac_E(:,:,:,:,:,:)                             ! jacobian of E(quilibrium) coord. system
         real(dp), allocatable :: jac_F(:,:,:,:,:,:)                             ! jacobian of F(lux) coord. system with derivs. in V(MEC) system
-        real(dp), pointer :: jac_FD(:,:,:,:,:,:) => null()                      ! jacobian of F(lux) coord. system with derivs. in F(lux) system
+        real(dp), allocatable :: jac_FD(:,:,:,:,:,:)                            ! jacobian of F(lux) coord. system with derivs. in F(lux) system
         ! derived variables
         real(dp), allocatable :: S(:,:,:)                                       ! magnetic shear
         real(dp), allocatable :: kappa_n(:,:,:)                                 ! normal curvature
@@ -125,18 +127,13 @@ module eq_vars
 #if ldebug
         real(dp) :: estim_mem_usage(2)                                          ! expected memory usage
 #endif
+    contains
+        procedure :: init => init_eq_2
+        procedure :: dealloc => dealloc_eq_2
     end type
-    
-    ! interfaces
-    interface create_eq
-        module procedure create_eq_1, create_eq_2
-    end interface
-    interface dealloc_eq
-        module procedure dealloc_eq_1, dealloc_eq_2
-    end interface
 
 contains
-    ! creates new equilibrium
+    ! initializes new equilibrium
     ! The normal and angular grid can be  in any coord. system, as only the grid
     ! sizes are used, not the coordinate values.
     ! Optionally, it can be chosen individually whether the E or F(D) quantities
@@ -146,15 +143,15 @@ contains
     ! Note:  The quantities  that  do not  have a  derivative  are considered  F
     ! quantities. Alternatively, all quantities that  have only one version, are
     ! considered F quantities, such as rho, kappa_n, ...
-    subroutine create_eq_1(grid,eq,setup_E,setup_F)                             ! flux version
+    subroutine init_eq_1(eq,grid,setup_E,setup_F)                               ! flux version
         use num_vars, only: max_deriv, eq_style
 #if ldebug
         use num_vars, only: print_mem_usage, rank
 #endif
         
         ! input / output
+        class(eq_1_type), intent(inout) :: eq                                   ! equilibrium to be initialized
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
-        type(eq_1_type), intent(inout) :: eq                                    ! equilibrium to be created
         logical, intent(in), optional :: setup_E                                ! whether to set up E
         logical, intent(in), optional :: setup_F                                ! whether to set up F
         
@@ -261,16 +258,16 @@ contains
             &trim(r2strt(eq%estim_mem_usage(2)*0.008))//' kB for E]',&
             &alert=.true.)
 #endif
-    end subroutine create_eq_1
-    subroutine create_eq_2(grid,eq,setup_E,setup_F)                             ! metric version
+    end subroutine init_eq_1
+    subroutine init_eq_2(eq,grid,setup_E,setup_F)                               ! metric version
         use num_vars, only: max_deriv, eq_style
 #if ldebug
         use num_vars, only: print_mem_usage, rank
 #endif
         
         ! input / output
+        class(eq_2_type), intent(inout) :: eq                                   ! equilibrium to be initialized
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
-        type(eq_2_type), intent(inout) :: eq                                    ! equilibrium to be created
         logical, intent(in), optional :: setup_E                                ! whether to set up E
         logical, intent(in), optional :: setup_F                                ! whether to set up F
         
@@ -433,7 +430,7 @@ contains
             &trim(r2strt(eq%estim_mem_usage(2)*0.008))//' kB for E]',&
             &alert=.true.)
 #endif
-    end subroutine create_eq_2
+    end subroutine init_eq_2
     
     ! deallocates equilibrium quantities
     subroutine dealloc_eq_1(eq)                                                 ! flux version
@@ -443,7 +440,7 @@ contains
 #endif
         
         ! input / output
-        type(eq_1_type), intent(inout) :: eq                                    ! equilibrium to be deallocated
+        class(eq_1_type), intent(inout) :: eq                                   ! equilibrium to be deallocated
         
 #if ldebug
         ! local variables
@@ -456,24 +453,6 @@ contains
             estim_mem_usage = sum(eq%estim_mem_usage)
         end if
 #endif
-        
-        ! deallocate and nullify allocated pointers
-        if (associated(eq%flux_p_E)) then
-            deallocate(eq%flux_p_E)
-            nullify(eq%flux_p_E)
-        end if
-        if (associated(eq%flux_t_E)) then
-            deallocate(eq%flux_t_E)
-            nullify(eq%flux_t_E)
-        end if
-        if (associated(eq%flux_p_FD)) then
-            deallocate(eq%flux_p_FD)
-            nullify(eq%flux_p_FD)
-        end if
-        if (associated(eq%flux_t_FD)) then
-            deallocate(eq%flux_t_FD)
-            nullify(eq%flux_t_FD)
-        end if
         
         ! deallocate allocatable variables
         call dealloc_eq_1_final(eq)
@@ -505,7 +484,7 @@ contains
         use num_vars, only: rank, print_mem_usage
 #endif
         ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! equilibrium to be deallocated
+        class(eq_2_type), intent(inout) :: eq                                   ! equilibrium to be deallocated
         
 #if ldebug
         ! local variables
@@ -518,20 +497,6 @@ contains
             estim_mem_usage = sum(eq%estim_mem_usage)
         end if
 #endif
-        
-        ! deallocate and nullify allocated pointers
-        if (associated(eq%g_FD)) then
-            deallocate(eq%g_FD)
-            nullify(eq%g_FD)
-        end if
-        if (associated(eq%h_FD)) then
-            deallocate(eq%h_FD)
-            nullify(eq%h_FD)
-        end if
-        if (associated(eq%jac_FD)) then
-            deallocate(eq%jac_FD)
-            nullify(eq%jac_FD)
-        end if
         
         ! deallocate allocatable variables
         call dealloc_eq_2_final(eq)

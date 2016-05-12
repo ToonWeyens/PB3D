@@ -11,7 +11,7 @@ module X_vars
     implicit none
     
     private
-    public init_X_vars, create_X, dealloc_X, set_nm_X, set_nn_mod, &
+    public init_X_vars, set_nm_X, set_nn_mod, &
         &X_1_type, X_2_type, &
         &n_mod_X, prim_X, min_sec_X, max_sec_X, min_nm_X, min_n_X, max_n_X, &
         &min_m_X, max_m_X, min_r_sol, max_r_sol, X_1_var_names, X_2_var_names, &
@@ -55,6 +55,9 @@ module X_vars
 #if ldebug
         real(dp) :: estim_mem_usage                                             ! estimated memory usage
 #endif
+    contains
+        procedure :: init => init_X_1
+        procedure :: dealloc => dealloc_X_1
     end type
     
     ! tensorial perturbation type with arrays of the form:
@@ -80,17 +83,14 @@ module X_vars
 #if ldebug
         real(dp) :: estim_mem_usage                                             ! estimated memory usage
 #endif
+    contains
+        procedure :: init => init_X_2
+        procedure :: dealloc => dealloc_X_2
     end type
     
     ! interfaces
-    interface create_X
-        module procedure create_X_1, create_X_2
-    end interface
     interface set_nm_X
         module procedure set_nm_X_1, set_nm_X_2
-    end interface
-    interface dealloc_X
-        module procedure dealloc_X_1, dealloc_X_2
     end interface
     
 contains
@@ -121,7 +121,7 @@ contains
         X_2_var_names(12) = 'IM_KV_2'
     end subroutine init_X_vars
     
-    ! Create  a  vectorial  or  tensorial perturbation  type  and  allocate  the
+    ! Initializes a  vectorial or tensorial  perturbation type and  allocate the
     ! variables, the number of modes, as well as n and m
     ! Optionally, the  secondary mode  numbers can be  specified (m  if poloidal
     ! flux is used and n if toroidal  flux). By default, they are taken from the
@@ -131,14 +131,14 @@ contains
     ! dimension 1 only. This can be triggered using "is_field_averaged".
     ! Note: The  lowest limits of the grid  need to be 1; e.g.  grid_X%i_min = 1
     ! for first process.
-    subroutine create_X_1(grid_X,X,lim_sec_X)                                   ! vectorial version
+    subroutine init_X_1(X,grid_X,lim_sec_X)                                     ! vectorial version
 #if ldebug
         use num_vars, only: print_mem_usage, rank
 #endif
         
         ! input / output
+        class(X_1_type), intent(inout) :: X                                     ! vectorial perturbation variables
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_1_type), intent(inout) :: X                                      ! vectorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
         
         ! local variables
@@ -186,15 +186,15 @@ contains
             &' - Expected memory usage of X_1: '//&
             &trim(r2strt(X%estim_mem_usage*weight_dp*2))//' kB]',alert=.true.)
 #endif
-    end subroutine create_X_1
-    subroutine create_X_2(grid_X,X,lim_sec_X,is_field_averaged)                 ! tensorial version
+    end subroutine init_X_1
+    subroutine init_X_2(X,grid_X,lim_sec_X,is_field_averaged)                   ! tensorial version
 #if ldebug
         use num_vars, only: print_mem_usage, rank
 #endif
         
         ! input / output
+        class(X_2_type), intent(inout) :: X                                     ! tensorial perturbation variables
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol. flux) or n_X (tor. flux) for both dimensions
         logical, intent(in), optional :: is_field_averaged                      ! if field-aligned, only one dimension for first index
         
@@ -253,7 +253,7 @@ contains
             &' - Expected memory usage of X_2: '//&
             &trim(r2strt(X%estim_mem_usage*weight_dp*2))//' kB]',alert=.true.)
 #endif
-    end subroutine create_X_2
+    end subroutine init_X_2
     
     ! Sets number of entries for symmetric tensorial perturbation variables.
     integer function set_nn_mod(lim_sec_X) result(nn_mod)
@@ -335,7 +335,7 @@ contains
 #endif
         
         ! input / output
-        type(X_1_type), intent(inout) :: X                                      ! perturbation variables to be deallocated
+        class(X_1_type), intent(inout) :: X                                     ! perturbation variables to be deallocated
         
 #if ldebug
         ! local variables
@@ -380,7 +380,7 @@ contains
 #endif
         
         ! input / output
-        type(X_2_type), intent(inout) :: X                                      ! perturbation variables to be deallocated
+        class(X_2_type), intent(inout) :: X                                     ! perturbation variables to be deallocated
         
 #if ldebug
         ! local variables

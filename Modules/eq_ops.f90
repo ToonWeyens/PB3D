@@ -7,7 +7,7 @@ module eq_ops
     use output_ops
     use messages
     use num_vars, only: pi, dp, max_str_ln, max_deriv
-    use grid_vars, only: grid_type, disc_type, dealloc_grid, dealloc_disc
+    use grid_vars, only: grid_type, disc_type
     use eq_vars, only: eq_1_type, eq_2_type
     use num_utilities, only: check_deriv
     
@@ -75,8 +75,7 @@ contains
         use num_vars, only: eq_style, rho_style, use_normalization, &
             &norm_disc_prec_eq, use_pol_flux_E, use_pol_flux_F
         use grid_utilities, only: setup_deriv_data, apply_disc
-        use eq_vars, only: create_eq, &
-            &rho_0
+        use eq_vars, only: rho_0
         use num_utilities, only: derivs
         use eq_utilities, only: calc_F_derivs
         
@@ -107,7 +106,7 @@ contains
         call lvl_ud(1)
         
         ! create equilibrium
-        call create_eq(grid_eq,eq)
+        call eq%init(grid_eq)
         
         ! choose which equilibrium style is being used:
         !   1:  VMEC
@@ -123,7 +122,7 @@ contains
         
         ! clean up
         do id = 1,size(norm_deriv_data)
-            call dealloc_disc(norm_deriv_data(id))
+            call norm_deriv_data(id)%dealloc()
         end do
         deallocate(norm_deriv_data)
         
@@ -412,7 +411,6 @@ contains
     end function calc_eq_1
     integer function calc_eq_2(grid_eq,eq_1,eq_2) result(ierr)                  ! metric version
         use num_vars, only: eq_style
-        use eq_vars, only: create_eq
         use num_utilities, only: derivs, c
         use eq_utilities, only: calc_inv_met, calc_F_derivs
 #if ldebug
@@ -438,7 +436,7 @@ contains
         call lvl_ud(1)
         
         ! create metric equilibrium variables
-        call create_eq(grid_eq,eq_2)
+        call eq_2%init(grid_eq)
         
         ! do some preparations depending on equilibrium style used
         !   1:  VMEC
@@ -713,7 +711,7 @@ contains
         CHCKERR('')
         
         ! clean up
-        call dealloc_grid(grid_trim)
+        call grid_trim%dealloc()
         
         call lvl_ud(-1)
     contains
@@ -722,7 +720,6 @@ contains
             use num_vars, only: eq_style
             use output_ops, only: plot_HDF5
             use grid_utilities, only: calc_XYZ_grid, extend_grid_E, trim_grid
-            use grid_vars, only: dealloc_grid
             use VMEC, only: calc_trigon_factors
             
             character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
@@ -803,7 +800,7 @@ contains
             ! deallocate and destroy grid
             deallocate(Y_plot_2D)
             deallocate(X_plot,Y_plot,Z_plot,f_plot)
-            call dealloc_grid(grid_plot)
+            call grid_plot%dealloc()
         end function flux_q_plot_HDF5
         
         ! plots the pressure and fluxes in GNUplot
@@ -935,7 +932,7 @@ contains
             ierr = apply_disc(L_V_s(:,:,0),norm_deriv_data,L_V_s(:,:,kd),2)
             CHCKERR('')
         end do
-        call dealloc_disc(norm_deriv_data)
+        call norm_deriv_data%dealloc()
         
         ! calculate trigonometric factors using theta_E and zeta_E
         ierr = calc_trigon_factors(grid%theta_E,grid%zeta_E,grid%trigon_factors)
@@ -1140,7 +1137,7 @@ contains
             ierr = apply_disc(eq%h_E(:,:,:,:,0,0,0),norm_deriv_data,&
                 &eq%h_E(:,:,:,:,1,0,0),3)
             CHCKERR('')
-            call dealloc_disc(norm_deriv_data)
+            call norm_deriv_data%dealloc()
         else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
             ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,2,&
                 &norm_disc_prec_eq)
@@ -1148,7 +1145,7 @@ contains
             ierr = apply_disc(eq%h_E(:,:,:,:,0,0,0),norm_deriv_data,&
                 &eq%h_E(:,:,:,:,2,0,0),3)
             CHCKERR('')
-            call dealloc_disc(norm_deriv_data)
+            call norm_deriv_data%dealloc()
         else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
             do kd = 1,grid%loc_n_r
                 do jd = 1,grid%n(2)
@@ -1160,7 +1157,7 @@ contains
                     CHCKERR('')
                 end do
             end do
-            call dealloc_disc(ang_deriv_data)
+            call ang_deriv_data%dealloc()
         else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
             do kd = 1,grid%loc_n_r
                 do jd = 1,grid%n(2)
@@ -1172,7 +1169,7 @@ contains
                     CHCKERR('')
                 end do
             end do
-            call dealloc_disc(ang_deriv_data)
+            call ang_deriv_data%dealloc()
         else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
             ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
                 &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
@@ -1180,7 +1177,7 @@ contains
             ierr = apply_disc(eq%h_E(:,:,:,:,0,1,0),norm_deriv_data,&
                 &eq%h_E(:,:,:,:,1,1,0),3) 
             CHCKERR('')
-            call dealloc_disc(norm_deriv_data)
+            call norm_deriv_data%dealloc()
         else
             ierr = 1
             err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
@@ -1370,7 +1367,7 @@ contains
             ierr = apply_disc(eq_2%jac_E(:,:,:,0,0,0),norm_deriv_data,&
                 &eq_2%jac_E(:,:,:,1,0,0),3)
             CHCKERR('')
-            call dealloc_disc(norm_deriv_data)
+            call norm_deriv_data%dealloc()
         else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
             ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,2,&
                 &norm_disc_prec_eq)
@@ -1378,7 +1375,7 @@ contains
             ierr = apply_disc(eq_2%jac_E(:,:,:,0,0,0),norm_deriv_data,&
                 &eq_2%jac_E(:,:,:,2,0,0),3)
             CHCKERR('')
-            call dealloc_disc(norm_deriv_data)
+            call norm_deriv_data%dealloc()
         else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
             do kd = 1,grid%loc_n_r
                 do jd = 1,grid%n(2)
@@ -1390,7 +1387,7 @@ contains
                     CHCKERR('')
                 end do
             end do
-            call dealloc_disc(ang_deriv_data)
+            call ang_deriv_data%dealloc()
         else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
             do kd = 1,grid%loc_n_r
                 do jd = 1,grid%n(2)
@@ -1402,7 +1399,7 @@ contains
                     CHCKERR('')
                 end do
             end do
-            call dealloc_disc(ang_deriv_data)
+            call ang_deriv_data%dealloc()
         else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
             ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
                 &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
@@ -1410,7 +1407,7 @@ contains
             ierr = apply_disc(eq_2%jac_E(:,:,:,0,1,0),norm_deriv_data,&
                 &eq_2%jac_E(:,:,:,1,1,0),3) 
             CHCKERR('')
-            call dealloc_disc(norm_deriv_data)
+            call norm_deriv_data%dealloc()
         else
             ierr = 1
             err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
@@ -1935,7 +1932,6 @@ contains
         use num_vars, only: norm_disc_prec_eq, eq_style
 #if ldebug
         use num_vars, only: use_pol_flux_F
-        use grid_vars, only: dealloc_grid
         use grid_utilities, only: trim_grid, calc_XYZ_grid, setup_deriv_data, &
             &apply_disc
         use VMEC, only: calc_trigon_factors
@@ -1944,7 +1940,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(inout) :: eq_2                                  ! metric equilibrium variables
+        type(eq_2_type), intent(inout), target :: eq_2                          ! metric equilibrium variables
         
         ! local variables
         integer :: kd                                                           ! counter
@@ -2083,7 +2079,7 @@ contains
                     CHCKSTT
                 end do
             end do
-            call dealloc_disc(ang_deriv_data)
+            call ang_deriv_data%dealloc()
             
             ! calculate alternatively derived sigma
             do kd = norm_id(1),norm_id(2)
@@ -2134,7 +2130,7 @@ contains
             
             ! clean up
             nullify(ang_par_F)
-            call dealloc_grid(grid_eq_trim)
+            call grid_eq_trim%dealloc()
             
             call lvl_ud(-1)
             call writo('Testing done')
@@ -2327,6 +2323,11 @@ contains
     ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
     ! it is > 0 (only for eq_2).
     ! Note: The equilibrium quantities are outputted in Flux coordinates.
+    ! Note: The  metric equilibrium  quantities can be  deallocated on  the fly,
+    ! which is useful if this routine is  followed by a deallocation any way, so
+    ! that  memory usage  does not  almost  double. Technically,  they are  then
+    ! reallocated  with  zero  size  so that  the  normal  deallocation  routine
+    ! encounters no problems.
     integer function print_output_eq_1(grid_eq,eq,data_name) result(ierr)       ! flux version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
@@ -2450,15 +2451,15 @@ contains
         CHCKERR('')
         
         ! clean up
-        call dealloc_grid(grid_trim)
+        call grid_trim%dealloc()
         call dealloc_var_1D(eq_1D)
         nullify(eq_1D_loc)
         
         ! user output
         call lvl_ud(-1)
     end function print_output_eq_1
-    integer function print_output_eq_2(grid_eq,eq,data_name,rich_lvl) &
-        &result(ierr)                                                           ! metric version
+    integer function print_output_eq_2(grid_eq,eq,data_name,rich_lvl,&
+        &dealloc_vars) result(ierr)                                             ! metric version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
@@ -2469,9 +2470,10 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
-        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
+        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium variables
         character(len=*), intent(in) :: data_name                               ! name under which to store
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        logical, intent(in), optional :: dealloc_vars                           ! deallocate variables on the fly after writing
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -2480,6 +2482,7 @@ contains
         type(grid_type) :: grid_trim                                            ! trimmed grid
         integer :: id                                                           ! counter
         integer :: loc_size                                                     ! local size
+        logical :: dealloc_vars_loc                                             ! local dealloc_vars
         
         ! initialize ierr
         ierr = 0
@@ -2491,6 +2494,11 @@ contains
         ! trim grids
         ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
+        
+        ! set up local dealloc_vars
+        dealloc_vars_loc = .false.
+        if (present(dealloc_vars)) dealloc_vars_loc = dealloc_vars
+        write(*,*) '>>>>>>>>>>>>>>>>>>>>>>>>> dealloc_vars_loc = ', dealloc_vars_loc
         
         ! set up the 1D equivalents of the equilibrium variables
         allocate(eq_1D(max_dim_var_1D))
@@ -2514,6 +2522,7 @@ contains
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%g_FD(:,:,norm_id(1):norm_id(2),:,:,:,:),&
             &[loc_size])
+        if (dealloc_vars_loc) deallocate(eq%g_FD)
         
         ! h_FD
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2531,6 +2540,7 @@ contains
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%h_FD(:,:,norm_id(1):norm_id(2),:,:,:,:),&
             &[loc_size])
+        if (dealloc_vars_loc) deallocate(eq%h_FD)
         
         ! jac_FD
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2548,6 +2558,7 @@ contains
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%jac_FD(:,:,norm_id(1):norm_id(2),:,:,:),&
             &[loc_size])
+        if (dealloc_vars_loc) deallocate(eq%jac_FD)
         
         ! S
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2563,6 +2574,7 @@ contains
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%S(:,:,norm_id(1):norm_id(2)),&
             &[loc_size])
+        if (dealloc_vars_loc) deallocate(eq%S)
         
         ! kappa_n
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2578,6 +2590,7 @@ contains
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%kappa_n(:,:,norm_id(1):norm_id(2)),&
             &[loc_size])
+        if (dealloc_vars_loc) deallocate(eq%kappa_n)
         
         ! kappa_g
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2593,6 +2606,7 @@ contains
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%kappa_g(:,:,norm_id(1):norm_id(2)),&
             &[loc_size])
+        if (dealloc_vars_loc) deallocate(eq%kappa_g)
         
         ! sigma
         eq_1D_loc => eq_1D(id); id = id+1
@@ -2607,6 +2621,7 @@ contains
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%sigma(:,:,norm_id(1):norm_id(2)),&
             &[loc_size])
+        if (dealloc_vars_loc) deallocate(eq%sigma)
         
         ! write
         ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,trim(data_name),&
@@ -2614,7 +2629,7 @@ contains
         CHCKERR('')
         
         ! clean up
-        call dealloc_grid(grid_trim)
+        call grid_trim%dealloc()
         call dealloc_var_1D(eq_1D)
         nullify(eq_1D_loc)
         
@@ -2626,7 +2641,6 @@ contains
     ! See if T_EF it complies with the theory of [ADD REF]
     integer function test_T_EF(grid_eq,eq_1,eq_2) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style
-        use grid_vars, only: dealloc_grid
         use grid_utilities, only: trim_grid
         use num_utilities, only: c
         use output_ops, only: plot_diff_HDF5
@@ -2786,7 +2800,7 @@ contains
         end do
         
         ! clean up
-        call dealloc_grid(grid_trim)
+        call grid_trim%dealloc()
         
         ! user output
         call lvl_ud(-1)
@@ -2843,7 +2857,7 @@ contains
                     &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,:),1)
             end do
         end do
-        call dealloc_disc(ang_deriv_data)
+        call ang_deriv_data%dealloc()
         
         ! set up plot variables for calculated values
         do id = 1,3
@@ -2870,7 +2884,7 @@ contains
         end do
         
         ! clean up
-        call dealloc_grid(grid_trim)
+        call grid_trim%dealloc()
         
         ! user output
         call lvl_ud(-1)
@@ -2890,7 +2904,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
+        type(eq_1_type), intent(in), target :: eq_1                             ! flux equilibrium
         type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
         
         ! local variables
@@ -2985,7 +2999,7 @@ contains
         
         ! clean up
         nullify(Dflux)
-        call dealloc_grid(grid_trim)
+        call grid_trim%dealloc()
         
         ! user output
         call lvl_ud(-1)
@@ -3080,7 +3094,7 @@ contains
         end do
         
         ! clean up
-        call dealloc_grid(grid_trim)
+        call grid_trim%dealloc()
         
         ! user output
         call lvl_ud(-1)
@@ -3153,7 +3167,7 @@ contains
         call lvl_ud(-1)
         
         ! clean up
-        call dealloc_grid(grid_trim)
+        call grid_trim%dealloc()
         
         ! user output
         call lvl_ud(-1)
@@ -3298,7 +3312,7 @@ contains
         end do
         
         ! clean up
-        call dealloc_grid(grid_trim)
+        call grid_trim%dealloc()
         
         ! user output
         call lvl_ud(-1)
@@ -3369,6 +3383,12 @@ contains
             &eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,1,0))/ &
             &(eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2)
         res(:,:,:,1) = res(:,:,:,1)/eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)
+        call plot_HDF5('var','TEST_Dg_FD_23',eq_2%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,1))
+        call plot_HDF5('var','TEST_g_FD_23',eq_2%g_FD(:,:,norm_id(1):norm_id(2),c([2,3],.true.),0,0,0))
+        call plot_HDF5('var','TEST_Dg_FD_33',eq_2%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,1,0))
+        call plot_HDF5('var','TEST_g_FD_33',eq_2%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0))
+        call plot_HDF5('var','TEST_Dg_FD',eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,0,1))
+        call plot_HDF5('var','TEST_g_FD',eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0))
         
         ! save mu_0 D2p in res
         do kd = norm_id(1),norm_id(2)
@@ -3445,7 +3465,7 @@ contains
                     CHCKERR('')
                 end do
             end do
-            call dealloc_disc(norm_deriv_data)
+            call norm_deriv_data%dealloc()
             
             ! set some variables
             file_name = 'TEST_D2B_3'
@@ -3482,7 +3502,7 @@ contains
                     &RBphi_H(kd+grid_eq%i_min-1) * &
                     &eq_1%q_saf_E(kd,1)
             end do
-            call dealloc_disc(ang_deriv_data)
+            call ang_deriv_data%dealloc()
             
             ! set some variables
             file_name = 'TEST_D3B_2'
@@ -3496,7 +3516,7 @@ contains
         end if
         
         ! clean up
-        call dealloc_grid(grid_trim)
+        call grid_trim%dealloc()
         
         ! user output
         call lvl_ud(-1)

@@ -431,3 +431,9 @@ CHANGELOG
       - Renamed "plot_grid" and "plot_grid_real" to "plot_magn_grid" and "magn_grid_plot" for consistency.
       - Moved "magn_grid_plot" back to the equilibrium driver. The full grid is reconstructed specially.
       - Reorganized perturbation driver: It consistts now of 3 subdrivers.
+
+1.21: - Fixed a bug in the calculation of n and m for toroidal flux.
+      - Fixed a bug in the calculation of the F derivatives of the flux quantities, which was ugly but did not have many consequences.
+      - Removed unnecessary reconstruction of equilibrium variables in solution driver.
+      - Replaced pointers in eq_types by allocatables.
+      - Rewrote the initialization and deallocation routines for eq, X and sol variables.

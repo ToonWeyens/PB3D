@@ -9,8 +9,7 @@ module grid_vars
 
     implicit none
     private
-    public create_grid, dealloc_grid, grid_type, create_disc, dealloc_disc, &
-        &disc_type, &
+    public grid_type, disc_type, &
         &n_r_in, n_r_eq, n_r_sol, min_par_X, max_par_X
 #if ldebug
     public n_alloc_grids, n_alloc_discs
@@ -60,6 +59,9 @@ module grid_vars
 #if ldebug
         real(dp) :: estim_mem_usage                                             ! estimated memory usage
 #endif
+    contains
+        procedure :: init => init_grid
+        procedure :: dealloc => dealloc_grid
     end type
     
     ! type for data of discretization operations:
@@ -71,20 +73,23 @@ module grid_vars
         integer :: n, n_loc                                                     ! total and local size of discretization variables
         real(dp), allocatable :: dat(:,:)                                       ! nonzero elements of matrix corresponding to discretization
         integer, allocatable :: id_start(:)                                     ! start index of data in dat
+    contains
+        procedure :: init => init_disc
+        procedure :: dealloc => dealloc_disc
     end type
     
 contains
-    ! creates a new grid
+    ! Initializes a new grid.
     ! Optionally, the local limits can be provided for a divided grid.
     ! Note: intent(out) automatically deallocates the variable
-    integer function create_grid(grid,n,i_lim) result(ierr)                     ! 3D version
+    integer function init_grid(grid,n,i_lim) result(ierr)
 #if ldebug
         use num_vars, only: print_mem_usage, rank
 #endif
-        character(*), parameter :: rout_name = 'create_grid'
+        character(*), parameter :: rout_name = 'init_grid'
         
         ! input / output
-        type(grid_type), intent(out) :: grid                                    ! grid to be created
+        class(grid_type), intent(out) :: grid                                   ! grid to be initialized
         integer :: n(3)                                                         ! tot. nr. of points (par,r,alpha)
         integer, optional :: i_lim(2)                                           ! min. and max. local normal index
         
@@ -165,7 +170,7 @@ contains
             &trim(r2strt(grid%estim_mem_usage*weight_dp))//' kB]',&
             &alert=.true.)
 #endif
-    end function create_grid
+    end function init_grid
     
     ! deallocates a grid
     subroutine dealloc_grid(grid)
@@ -174,7 +179,7 @@ contains
         use num_vars, only: rank, print_mem_usage
 #endif
         ! input / output
-        type(grid_type), intent(inout) :: grid                                  ! grid to be deallocated
+        class(grid_type), intent(inout) :: grid                                 ! grid to be deallocated
         
         ! local variables
 #if ldebug
@@ -227,12 +232,12 @@ contains
         end subroutine dealloc_grid_final
     end subroutine dealloc_grid
     
-    ! Create discretization variable, possibly overwriting.
-    integer function create_disc(disc,n,n_loc) result(ierr)
-        character(*), parameter :: rout_name = 'create_disc'
+    ! Initialize discretization variable, possibly overwriting.
+    integer function init_disc(disc,n,n_loc) result(ierr)
+        character(*), parameter :: rout_name = 'init_disc'
         
         ! input / output
-        type(disc_type), intent(inout) :: disc                                  ! discretization variable
+        class(disc_type), intent(inout) :: disc                                  ! discretization variable
         integer, intent(in) :: n, n_loc                                         ! total and local size of discretization
         
         ! local variables
@@ -278,7 +283,7 @@ contains
             n_alloc_discs = n_alloc_discs + 1
         end if
 #endif
-    end function create_disc
+    end function init_disc
     
     ! Deallocate discretization variable type
     subroutine dealloc_disc(disc)
@@ -287,7 +292,7 @@ contains
 #endif
         
         ! input / output
-        type(disc_type), intent(inout) :: disc                                  ! discretization variable to be deallocated
+        class(disc_type), intent(inout) :: disc                                 ! discretization variable to be deallocated
         
         ! deallocate allocatable variables
         call dealloc_disc_final(disc)
