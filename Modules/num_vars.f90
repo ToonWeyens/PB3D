@@ -9,13 +9,15 @@ module num_vars
     public dp, qp, max_str_ln, max_name_ln, max_deriv, prog_name, output_name, &
         &prog_version, prog_style, min_PB3D_version, shell_commands_name, &
         &mem_usage_name, mem_usage_i, mem_usage_count, weight_dp, &
-        &max_mem_per_proc, n_procs, rank, X_jobs_lims, X_jobs_taken, X_job_nr, &
-        &X_jobs_file_name, X_jobs_lock_file_name, HDF5_lock_file_name, &
+        &rank, n_procs, HDF5_lock_file_name, &
+        &max_tot_mem_per_proc, max_X_mem_per_proc, X_jobs_lims, X_jobs_taken, &
+        &X_job_nr, X_jobs_file_name, X_jobs_lock_file_name, eq_jobs_lims, &
+        &eq_job_nr, mem_scale_fac, &
         &pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
         &X_style, matrix_SLEPC_style, plot_resonance, plot_magn_grid, &
         &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, use_normalization, &
-        &EV_BC, test_max_mem, tol_SLEPC, max_it_slepc, norm_disc_prec_eq, &
+        &EV_BC, tol_SLEPC, max_it_slepc, norm_disc_prec_eq, &
         &norm_disc_prec_X, norm_disc_prec_sol, POST_style, magn_int_style, &
         &max_it_rich, tol_rich, &
         &max_it_inv, &
@@ -26,7 +28,7 @@ module num_vars
         &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
         &max_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
         &do_execute_command_line, print_mem_usage, input_name, slab_plots, &
-        &swap_angles, rich_restart_lvl, plot_size
+        &swap_angles, rich_restart_lvl, plot_size, minim_output, PB3D_name_eq
 
     ! technical variables
     !integer, parameter :: dp = kind(1.d0)                                       ! double precision
@@ -44,19 +46,25 @@ module num_vars
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
     integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
-    real(dp), parameter :: prog_version = 1.21_dp                               ! version number
-    real(dp), parameter :: min_PB3D_version = 1.21_dp                           ! minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 1.22_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.22_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
-    real(dp) :: max_mem_per_proc                                                ! maximum memory per process [MB]
     integer :: rank                                                             ! MPI rank
     integer :: n_procs                                                          ! nr. of MPI processes
+    character(len=15) :: HDF5_lock_file_name = '.lock_file_HDF5'                ! name of lock file for HDF5 operations
+    
+    ! job variables
+    real(dp) :: max_tot_mem_per_proc                                            ! maximum total memory per process [MB]
+    real(dp) :: max_X_mem_per_proc                                              ! maximum memory for perturbation calculations per process [MB]
     integer, allocatable :: X_jobs_lims(:,:)                                    ! data about X jobs: [min_k, max_k, min_m, max_m] for all jobs
     logical, allocatable :: X_jobs_taken(:)                                     ! X jobs taken
+    integer, allocatable :: eq_jobs_lims(:,:)                                   ! data about eq jobs: [min_theta,max_theta] for all jobs
     integer :: X_job_nr                                                         ! nr. of X job
+    integer :: eq_job_nr                                                        ! nr. of eq job
     character(len=10) :: X_jobs_file_name = 'X_jobs.txt'                        ! name of X jobs file
     character(len=12) :: X_jobs_lock_file_name = '.lock_file_X'                 ! name of lock file for X jobs
-    character(len=15) :: HDF5_lock_file_name = '.lock_file_HDF5'                ! name of lock file for HDF5 operations
+    real(dp), parameter :: mem_scale_fac = 1.5                                  ! empirical scale factor of memory (because operations are done)
 
     ! physical and mathematical variables
     real(dp), parameter :: pi=4_dp*datan(1.0_dp)                                ! pi
@@ -81,7 +89,6 @@ module num_vars
     logical :: use_pol_flux_E                                                   ! whether poloidal flux is used in E coords.
     logical :: use_pol_flux_F                                                   ! whether poloidal flux is used in F coords.
     logical :: use_normalization                                                ! whether to use normalization or not
-    logical :: test_max_mem                                                     ! whether to test maximum memory
     real(dp) :: EV_BC                                                           ! value of artificial Eigenvalue for boundary condition
     real(dp), allocatable :: tol_SLEPC(:)                                       ! tolerance for SLEPC for different Richardson levels
     integer :: norm_disc_prec_eq                                                ! precision for normal discretization for equilibrium
@@ -111,12 +118,14 @@ module num_vars
     character(len=max_str_ln) :: eq_name                                        ! name of equilibrium file from VMEC or HELENA
     integer :: PB3D_i                                                           ! file number of PB3D output file
     character(len=max_str_ln) :: PB3D_name                                      ! name of PB3D output file
+    character(len=max_str_ln) :: PB3D_name_eq                                   ! name of PB3D output file for vars on eq grid (see minim_output)
     integer :: output_i                                                         ! file number of output file
-    logical :: no_plots = .false.                                               ! true if no plots should be made
-    logical :: no_output = .false.                                              ! true if no output should be shown
-    logical :: do_execute_command_line = .false.                                ! true if "execute_command_line" should be called
-    logical :: print_mem_usage = .false.                                        ! true if memory usage is printed
+    logical :: no_plots = .false.                                               ! no plots made
+    logical :: no_output = .false.                                              ! no output shown
+    logical :: do_execute_command_line = .false.                                ! call "execute_command_line" inside program
+    logical :: print_mem_usage = .false.                                        ! print memory usage is printed
     logical :: swap_angles = .false.                                            ! swap angles theta and zeta in plots (only for POST)
+    logical :: minim_output = .false.                                           ! minimize output file size
     logical :: retain_all_sol                                                   ! retain also faulty solutions
     logical :: slab_plots                                                       ! slab plots (only for POST)
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots

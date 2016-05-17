@@ -397,9 +397,9 @@ contains
     ! parallel grid are set up. (Only for VMEC)
     integer function setup_grid_eq(grid_eq,eq_limits,only_half_grid) &
         &result(ierr)
-        use num_vars, only: eq_style
+        use num_vars, only: eq_style, eq_jobs_lims, eq_job_nr
         use grid_vars, only: n_r_eq
-        use grid_utilities, only: calc_n_par_X_loc
+        use grid_utilities, only: calc_n_par_X_rich
         use HELENA_vars, only: nchi, chi_H
         use rich_vars, only: n_par_X
         
@@ -412,7 +412,7 @@ contains
         
         ! local variables
         integer :: id                                                           ! counter
-        integer :: n_par_X_loc                                                  ! local n_par_X
+        integer :: n_par_X_rich                                                 ! n_par_X for this Richardson level
         
         ! initialize ierr
         ierr = 0
@@ -424,21 +424,22 @@ contains
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! user output
-                call writo('Field-aligned with '//trim(i2str(n_par_X))//&
-                    &' parallel and '//trim(i2str(n_r_eq))//' normal points')
+                call writo('Field-aligned with '//trim(i2str(n_r_eq))//&
+                    &' normal and '//trim(i2str(n_par_X))//' parallel points')
                 
                 ! set local n_par_X
-                ierr = calc_n_par_X_loc(n_par_X_loc,only_half_grid)
+                ierr = calc_n_par_X_rich(n_par_X_rich,only_half_grid)
                 CHCKERR('')
                 
-                ! create grid
-                ierr = grid_eq%init([n_par_X_loc,1,n_r_eq],eq_limits)           ! only one field line
+                ! create grid with eq_jobs_lims
+                ierr = grid_eq%init([eq_jobs_lims(2,eq_job_nr)-&
+                    &eq_jobs_lims(1,eq_job_nr)+1,1,n_r_eq],eq_limits)           ! only one field line
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! user output
                 call writo('Identical to the equilibrium input grid')
-                call writo(trim(i2str(nchi))//' angular and '//&
-                    &trim(i2str(n_r_eq))//' normal points')
+                call writo(trim(i2str(n_r_eq))//' normal and '//&
+                    &trim(i2str(nchi))//' angular points')
                 call writo('Poloidal range '//trim(r2strt(chi_H(1)))//'..'//&
                     &trim(r2strt(chi_H(nchi))))
                 call writo('Will be interpolated to a field-aligned grid &
@@ -468,8 +469,8 @@ contains
     ! here.
     integer function setup_grid_eq_B(grid_eq,grid_eq_B,eq,only_half_grid) &
         &result(ierr)
-        use num_vars, only: eq_style
-        use grid_utilities, only: calc_n_par_X_loc
+        use num_vars, only: eq_style, eq_jobs_lims, eq_job_nr
+        use grid_utilities, only: calc_n_par_X_rich
         
         character(*), parameter :: rout_name = 'setup_grid_eq_B'
         
@@ -481,7 +482,7 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: n_par_X_loc                                                  ! local n_par_X
+        integer :: n_par_X_rich                                                 ! n_par_X for this Richardson level
         
         ! initialize ierr
         ierr = 0
@@ -497,12 +498,13 @@ contains
                 CHCKERR(err_msg)
             case (2)                                                            ! HELENA
                 ! set local n_par_X
-                ierr = calc_n_par_X_loc(n_par_X_loc,only_half_grid)
+                ierr = calc_n_par_X_rich(n_par_X_rich,only_half_grid)
                 CHCKERR('')
                 
-                ! create the grid
-                ierr = grid_eq_B%init([n_par_X_loc,1,grid_eq%n(3)],&
-                    &[grid_eq%i_min,grid_eq%i_max])
+                ! create grid with eq_jobs_lims
+                ierr = grid_eq_B%init([eq_jobs_lims(2,eq_job_nr)-&
+                    &eq_jobs_lims(1,eq_job_nr)+1,1,grid_eq%n(3)],&
+                    &[grid_eq%i_min,grid_eq%i_max])                             ! only one field line
                 CHCKERR('')
                 
                 ! copy the normal coords.
@@ -621,12 +623,14 @@ contains
     ! reused.
     integer function calc_ang_grid_eq_B(grid_eq,eq,only_half_grid) result(ierr)
         use num_vars, only: use_pol_flux_F, use_pol_flux_E, &
-            &eq_style, tol_NR
+            &eq_style, tol_NR, eq_job_nr, eq_jobs_lims
         use grid_vars, only: min_par_X, max_par_X
         use sol_vars, only: alpha
         use eq_vars, only: max_flux_E
-        use grid_utilities, only: coord_F2E, calc_eqd_grid
+        use grid_utilities, only: coord_F2E, calc_eqd_grid, calc_n_par_X_rich
+        use eq_utilities, only: print_info_eq
         use rich_vars, only: n_par_X
+        use X_vars, only: min_r_sol, max_r_sol
         
         character(*), parameter :: rout_name = 'calc_ang_grid_eq_B'
         
@@ -643,6 +647,7 @@ contains
         real(dp) :: r_F_factor, r_E_factor                                      ! mult. factors for r_F and r_E
         integer :: pmone                                                        ! plus or minus one
         integer :: id, kd                                                       ! counters
+        integer :: n_par_X_loc                                                  ! local n_par_X
         logical :: only_half_grid_loc                                           ! local only_half_grid
         real(dp), allocatable :: theta_F_loc(:,:,:)                             ! local theta_F
         real(dp), allocatable :: zeta_F_loc(:,:,:)                              ! local zeta_F
@@ -656,20 +661,22 @@ contains
         only_half_grid_loc = .false.
         if (present(only_half_grid)) only_half_grid_loc = only_half_grid
         
-        ! tests
-        if (only_half_grid_loc .and. mod(n_par_X,2).ne.1) then
-            ierr = 1
-            err_msg = 'Need odd number of points'
-            CHCKERR(err_msg)
-        end if
+        ! set local n_par_X_rich
+        ierr = calc_n_par_X_rich(n_par_X_loc,only_half_grid_loc)
+        CHCKERR('')
         
         ! user output
-        call writo(trim(i2str(n_par_X))//' parallel and '//&
-            &trim(i2str(grid_eq%n(3)))//' normal points')
-        call writo('parallel range '//trim(r2strt(min_par_X*pi))//'..'//&
+        call writo('for '//trim(i2str(grid_eq%n(3)))//&
+            &' values on normal range '//trim(r2strt(min_r_sol))//'..'//&
+            &trim(r2strt(max_r_sol)))
+        call writo('for '//trim(i2str(n_par_X))//' values on parallel &
+            &range '//trim(r2strt(min_par_X*pi))//'..'//&
             &trim(r2strt(max_par_X*pi)))
-        if (only_half_grid_loc) call writo('only the even points are &
-            &setup up')
+        call lvl_ud(1)
+        if (only_half_grid_loc) call writo('for this Richardson level, only &
+            &the even points are setup up')
+        call print_info_eq(n_par_X_loc)
+        call lvl_ud(-1)
         
         ! set up flux_E and plus minus one
         ! Note: this routine  is similar to calc_loc_r, but  that routine cannot
@@ -728,13 +735,17 @@ contains
         
         ! set up grid_eq angular F coordinates
         if (only_half_grid_loc) then
-            do id = 1,grid_eq%n(1)
-                grid_eq%theta_F(id,:,:) = theta_F_loc(2*id,:,:)
-                grid_eq%zeta_F(id,:,:) = zeta_F_loc(2*id,:,:)
+            do id = eq_jobs_lims(1,eq_job_nr),eq_jobs_lims(2,eq_job_nr)
+                grid_eq%theta_F(id-eq_jobs_lims(1,eq_job_nr)+1,:,:) = &
+                    &theta_F_loc(2*id,:,:)
+                grid_eq%zeta_F(id-eq_jobs_lims(1,eq_job_nr)+1,:,:) = &
+                    &zeta_F_loc(2*id,:,:)
             end do
         else
-            grid_eq%theta_F = theta_F_loc
-            grid_eq%zeta_F = zeta_F_loc
+            grid_eq%theta_F = theta_F_loc(eq_jobs_lims(1,eq_job_nr):&
+                &eq_jobs_lims(2,eq_job_nr),:,:)
+            grid_eq%zeta_F = zeta_F_loc(eq_jobs_lims(1,eq_job_nr):&
+                &eq_jobs_lims(2,eq_job_nr),:,:)
         end if
         
         ! allocate local r_E
@@ -1133,9 +1144,9 @@ contains
     ! Print grid variables to an output file.
     ! Note: "grid_" is added in front the data_name.
     ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
-    ! it is > 0.
-    integer function print_output_grid(grid,grid_name,data_name,rich_lvl) &
-        &result(ierr)
+    ! it is > 0 (only for eq_2), and similarly for "eq_job" through "_E_eq_job".
+    integer function print_output_grid(grid,grid_name,data_name,rich_lvl,&
+        &eq_job) result(ierr)
         use num_vars, only: PB3D_name, rank
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
@@ -1149,6 +1160,7 @@ contains
         character(len=*), intent(in) :: grid_name                               ! name to display
         character(len=*), intent(in) :: data_name                               ! name under which to store
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
         
         ! local variables
         type(grid_type) :: grid_trim                                            ! trimmed grid
@@ -1269,7 +1281,7 @@ contains
         
         ! write
         ierr = print_HDF5_arrs(grid_1D(1:id-1),PB3D_name,&
-            &'grid_'//trim(data_name),rich_lvl=rich_lvl)
+            &'grid_'//trim(data_name),rich_lvl=rich_lvl,eq_job=eq_job)
         CHCKERR('')
         
         ! clean up

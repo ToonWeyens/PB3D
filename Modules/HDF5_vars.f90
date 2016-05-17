@@ -56,7 +56,8 @@ module HDF5_vars
         module procedure dealloc_XML_str_ind, dealloc_XML_str_arr
     end interface
     interface dealloc_var_1D
-        module procedure dealloc_var_1D_ind, dealloc_var_1D_arr
+        module procedure dealloc_var_1D_ind, dealloc_var_1D_arr, &
+            &dealloc_var_1D_arr_2
     end interface
     
 contains
@@ -113,6 +114,23 @@ contains
     end subroutine dealloc_XML_str_ind
     
     ! deallocates 1D variable
+    subroutine dealloc_var_1D_arr_2(var_1D)                                     ! rank 2 array version
+        ! input / output
+        type(var_1D_type), intent(inout), allocatable :: var_1D(:,:)            ! array of 1D variables to be deallocated
+        
+        ! local variables
+        integer :: id, jd                                                       ! counters
+        
+        ! deallocate individual arrays
+        do jd = 1,size(var_1D,2)
+            do id = 1,size(var_1D,1)
+                call dealloc_var_1D_ind(var_1D(id,jd))
+            end do
+        end do
+        
+        ! deallocate the array
+        deallocate(var_1D)
+    end subroutine dealloc_var_1D_arr_2
     subroutine dealloc_var_1D_arr(var_1D)                                       ! array version
         ! input / output
         type(var_1D_type), intent(inout), allocatable :: var_1D(:)              ! array of 1D variables to be deallocated

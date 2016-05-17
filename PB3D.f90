@@ -18,7 +18,7 @@
 !                Eindhoven University of Technology                            !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.21                                                              !
+!   Version: 1.22                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -42,9 +42,11 @@ program PB3D
     use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_opts, sudden_stop
     use MPI_utilities, only: wait_MPI
     use eq_ops, only: calc_normalization_const, normalize_input
+    use eq_utilities, only: do_eq, eq_info
     use rich_ops, only: init_rich, term_rich, do_rich, start_rich_lvl, &
         &stop_rich_lvl
-    use rich_vars, only: rich_info
+    use rich_vars, only: rich_info, &
+        &rich_lvl
 #if ldebug
     use num_vars, only: ltest
     use test, only: generic_tests
@@ -123,7 +125,7 @@ program PB3D
 #endif
     
     !-------------------------------------------------------
-    !   Start Richardson Extrapolation Loop
+    !   Initialize Richardson Extrapolation Loop
     !-------------------------------------------------------
     call start_time
     ierr = init_rich()
@@ -131,35 +133,47 @@ program PB3D
     call stop_time
     
     RICH: do while(do_rich())
+        !-------------------------------------------------------
+        !   Start Richardson level
+        !-------------------------------------------------------
         call start_time
-        call start_rich_lvl()                                                   ! start Richardson level, setting n_r_sol and other variables
+        call writo('Richardson level '//trim(i2str(rich_lvl)))
+        call lvl_ud(1)
+        ierr = start_rich_lvl()                                                 ! start Richardson level, setting n_r_sol and other variables
+        CHCKERR
         call stop_time
-        
-        !-------------------------------------------------------
-        !   Main Driver: Equilibrium part
-        !-------------------------------------------------------
-        call start_time
-        call writo('Equilibrium driver'//trim(rich_info()))
-        call lvl_ud(1)
-        ierr = run_driver_eq()                                                  ! equilibrium driver
-        CHCKERR
-        call writo('')
-        call passed_time
         call writo('')
         call lvl_ud(-1)
         
-        !---------------------------------------------------
-        !   Main driver: Perturbation part
-        !---------------------------------------------------
-        call start_time
-        call writo('Perturbation driver'//trim(rich_info()))
-        call lvl_ud(1)
-        ierr = run_driver_X()                                                   ! perturbation driver
-        CHCKERR
-        call writo('')
-        call passed_time
-        call writo('')
-        call lvl_ud(-1)
+        PAR: do while(do_eq())
+            !-------------------------------------------------------
+            !   Main Driver: Equilibrium part
+            !-------------------------------------------------------
+            call start_time
+            call writo('Equilibrium driver'//trim(rich_info())//&
+                &trim(eq_info()))
+            call lvl_ud(1)
+            ierr = run_driver_eq()                                              ! equilibrium driver
+            CHCKERR
+            call writo('')
+            call passed_time
+            call writo('')
+            call lvl_ud(-1)
+            
+            !---------------------------------------------------
+            !   Main driver: Perturbation part
+            !---------------------------------------------------
+            call start_time
+            call writo('Perturbation driver'//trim(rich_info())//&
+                &trim(eq_info()))
+            call lvl_ud(1)
+            ierr = run_driver_X()                                               ! perturbation driver
+            CHCKERR
+            call writo('')
+            call passed_time
+            call writo('')
+            call lvl_ud(-1)
+        end do PAR
         
         !---------------------------------------------------
         !   Main driver: Solution part

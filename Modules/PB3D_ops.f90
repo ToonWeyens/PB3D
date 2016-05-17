@@ -12,6 +12,7 @@ module PB3D_ops
     use X_vars, only: X_1_type, X_2_type
     use sol_vars, only: sol_type
     use HDF5_vars, only: dealloc_var_1D, var_1D_type
+    use PB3D_utilities, only: setup_rich_id, setup_eq_id, setup_par_id
 
     implicit none
     private
@@ -24,7 +25,6 @@ module PB3D_ops
     real(dp), allocatable :: dum_2D(:,:)                                        ! dummy variables
     real(dp), allocatable :: dum_3D(:,:,:)                                      ! dummy variables
     real(dp), allocatable :: dum_4D(:,:,:,:)                                    ! dummy variables
-    !real(dp), allocatable :: dum_5D(:,:,:,:,:)                                  ! dummy variables
     real(dp), allocatable :: dum_6D(:,:,:,:,:,:)                                ! dummy variables
     real(dp), allocatable :: dum_7D(:,:,:,:,:,:,:)                              ! dummy variables
     
@@ -362,11 +362,12 @@ contains
     ! Reconstructs grid variables from PB3D output.
     ! Optionally, the grid limits can be provided.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
-    ! name if  it is >  0 and if with  "tot_rich" the information  from previous
-    ! Richardson levels can be combined.
+    ! name  if it  is  >  0, and  similarly  for  "eq_job" through  "_E_eq_job".
+    ! With "tot_rich"  the information  from previous  Richardson levels  can be
+    ! combined.
     ! Note: "grid_" is added in front the data_name.
-    integer function reconstruct_PB3D_grid(grid,data_name,rich_lvl,tot_rich,&
-        &grid_limits) result(ierr)
+    integer function reconstruct_PB3D_grid(grid,data_name,rich_lvl,eq_job,&
+        &tot_rich,grid_limits) result(ierr)
         use num_vars, only: PB3D_name
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
@@ -377,19 +378,23 @@ contains
         type(grid_type), intent(inout) :: grid                                  ! grid 
         character(len=*), intent(in) :: data_name                               ! name of grid
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
         logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
         integer, intent(in), optional :: grid_limits(2)                         ! i_limit of grid
         
         ! local variables
-        integer :: var_1D_id                                                    ! index in var_1D
-        type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
+        integer, allocatable :: var_1D_id(:)                                    ! index in var_1D
+        type(var_1D_type), allocatable :: vars_1D(:,:)                          ! 1D variables
         integer :: grid_limits_loc(2)                                           ! local versions of grid_limits
         integer :: n(3)                                                         ! total n
+        integer :: loc_n_r                                                      ! local n
+        integer :: id                                                           ! counter
         integer :: rich_lvl_loc                                                 ! local rich_lvl
-        logical :: tot_rich_loc                                                 ! local tot_rich
         integer :: par_id(3)                                                    ! parallel indices (start, end, stride)
         integer :: rich_id(2)                                                   ! richardson level indices (start, end)
-        integer :: id                                                           ! counter
+        integer :: eq_id(2)                                                     ! equilibrium job indices (start, end)
+        logical :: overlap                                                      ! overlap in equilibrium jobs if first Richardson level
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -398,25 +403,46 @@ contains
         rich_lvl_loc = 0
         if (present(rich_lvl)) rich_lvl_loc = rich_lvl
         
-        ! set up local tot_rich
-        tot_rich_loc = .false.
-        if (present(tot_rich) .and. rich_lvl_loc.gt.1) tot_rich_loc = tot_rich  ! only for higher Richardson levels
-        
-        ! setup rich_id
+        ! setup rich_id and eq_id
         rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
+        eq_id = setup_eq_id('grid_'//trim(data_name),eq_job=eq_job,&
+            &rich_lvl=rich_lvl)
+        if (minval(eq_id).lt.0) then
+            ierr = 1
+            err_msg = 'Variable "grid_'//trim(data_name)//'" not found, nor &
+                &using _R_ and _E_ suffixes'
+            CHCKERR(err_msg)
+        end if
         
-        ! read HDF5 variables
+        ! read HDF5 variables for rich_lvl_loc
         ierr = read_HDF5_arrs(vars_1D,PB3D_name,'grid_'//trim(data_name),&
-            &rich_lvl=rich_lvl_loc)
+            &rich_lvl=rich_lvl_loc,eq_job=eq_id)
         CHCKERR('')
         
-        ! n
+        ! set n
+        n = 0
         ierr = retrieve_var_1D_id(vars_1D,'n',var_1D_id)
         CHCKERR('')
-        call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
-        n = nint(dum_1D)
-        deallocate(dum_1D)
-        if (tot_rich_loc) n(1) = n(1)*2+1                                       ! only half of the points were saved in last Richardson level
+        do id = 1,eq_id(2)-eq_id(1)+1
+            call conv_1D2ND(vars_1D(var_1D_id(id),id),dum_1D)
+            if (id.eq.1) then
+                n = nint(dum_1D)
+            else if (n(2).eq.nint(dum_1D(2)) .and. n(3).eq.nint(dum_1D(3))) then
+                n(1) = n(1) + nint(dum_1D(1))
+                if (rich_lvl_loc.le.1) n(1) = n(1) - 1
+            else
+                ierr = 1
+                err_msg = 'Variables for different equilibrium jobs not &
+                    &compatible'
+                CHCKERR(err_msg)
+            end if
+            deallocate(dum_1D)
+        end do
+        
+        ! possibly only half of the points were saved in last Richardson level
+        if (present(tot_rich) .and. rich_lvl_loc.gt.1) then
+            if (tot_rich) n(1) = n(1)*2+1
+        end if
         
         ! set up local grid_limits
         grid_limits_loc = [1,n(3)]
@@ -428,27 +454,34 @@ contains
         
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
-            ! setup par_id
+            ! setup par_id, loc_n_r and overlap
             par_id = setup_par_id(grid,rich_lvl_loc,id,tot_rich)
+            loc_n_r = (par_id(2)-par_id(1))/par_id(3)+1
+            overlap = id.le.1                                                   ! overlap for first Richardson level
             
             ! read HDF5 variables
-            if (id.lt.rich_lvl_loc) then                                              ! highest level already read
+            if (id.lt.rich_lvl_loc) then                                        ! highest level already read
+                ! set up local eq_id
+                eq_id = setup_eq_id('grid_'//trim(data_name),eq_job=eq_job,&
+                    &rich_lvl=id)
+                
+                ! read the variables for this level
                 ierr = read_HDF5_arrs(vars_1D,PB3D_name,&
-                    &'grid_'//trim(data_name),rich_lvl=id)
+                    &'grid_'//trim(data_name),rich_lvl=id,eq_job=eq_id)
                 CHCKERR('')
             end if
             
             ! r_F
             ierr = retrieve_var_1D_id(vars_1D,'r_F',var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
+            call conv_1D2ND(vars_1D(var_1D_id(1),1),dum_1D)                     ! use equilibrium job 1, as it should be invariant
             grid%r_F = dum_1D
             deallocate(dum_1D)
             
             ! r_E
             ierr = retrieve_var_1D_id(vars_1D,'r_E',var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_1D)
+            call conv_1D2ND(vars_1D(var_1D_id(1),1),dum_1D)                     ! use equilibrium job 1, as it should be invariant
             grid%r_E = dum_1D
             deallocate(dum_1D)
             
@@ -463,7 +496,7 @@ contains
                 ! theta_F
                 ierr = retrieve_var_1D_id(vars_1D,'theta_F',var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 grid%theta_F(par_id(1):par_id(2):par_id(3),:,:) = &
                     &dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
                 deallocate(dum_3D)
@@ -471,7 +504,7 @@ contains
                 ! theta_E
                 ierr = retrieve_var_1D_id(vars_1D,'theta_E',var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 grid%theta_E(par_id(1):par_id(2):par_id(3),:,:) = &
                     &dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
                 deallocate(dum_3D)
@@ -479,17 +512,17 @@ contains
                 ! zeta_F
                 ierr = retrieve_var_1D_id(vars_1D,'zeta_F',var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 grid%zeta_F(par_id(1):par_id(2):par_id(3),:,:) = &
-                    & dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
+                    &dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
                 deallocate(dum_3D)
                 
                 ! zeta_E
                 ierr = retrieve_var_1D_id(vars_1D,'zeta_E',var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 grid%zeta_E(par_id(1):par_id(2):par_id(3),:,:) = &
-                    & dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
+                    &dum_3D(:,:,grid_limits_loc(1):grid_limits_loc(2))
                 deallocate(dum_3D)
             end if
             
@@ -586,11 +619,12 @@ contains
     ! Reconstructs the equilibrium variables from PB3D output.
     ! Optionally, the grid limits can be provided.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
-    ! name if  it is >  0 and if with  "tot_rich" the information  from previous
-    ! Richardson levels can be combined.
+    ! name  if it  is  >  0, and  similarly  for  "eq_job" through  "_E_eq_job".
+    ! With "tot_rich"  the information  from previous  Richardson levels  can be
+    ! combined.
     integer function reconstruct_PB3D_eq_2(grid_eq,eq,data_name,rich_lvl,&
-        &tot_rich,eq_limits) result(ierr)                                       ! metric version
-        use num_vars, only: PB3D_name
+        &eq_job,tot_rich,eq_limits) result(ierr)                                ! metric version
+        use num_vars, only: PB3D_name_eq
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
         
@@ -601,27 +635,41 @@ contains
         type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
         character(len=*), intent(in) :: data_name                               ! name to reconstruct
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
         logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
         integer, intent(in), optional :: eq_limits(2)                           ! i_limit of eq variables
         
         ! local variables
-        integer :: var_1D_id                                                    ! index in var_1D
-        type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
+        integer, allocatable :: var_1D_id(:)                                    ! index in var_1D
+        type(var_1D_type), allocatable :: vars_1D(:,:)                          ! 1D variables
         integer :: eq_limits_loc(2)                                             ! local versions of eq_limits
+        integer :: loc_n_r                                                      ! local n
+        integer :: id                                                           ! counter
         integer :: rich_lvl_loc                                                 ! local rich_lvl
         integer :: par_id(3)                                                    ! parallel indices (start, end, stride)
         integer :: rich_id(2)                                                   ! richardson level indices (start, end)
-        integer :: id                                                           ! counter
+        integer :: eq_id(2)                                                     ! equilibrium job indices (start, end)
+        logical :: overlap                                                      ! overlap in equilibrium jobs if first Richardson level
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
-        ! set up local rich_lvl
+        ! set up local rich_lvl and overlap
         rich_lvl_loc = 0
         if (present(rich_lvl)) rich_lvl_loc = rich_lvl
+        overlap = rich_lvl_loc.le.1
         
-        ! setup rich_id
+        ! setup rich_id and eq_id
         rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
+        eq_id = setup_eq_id(trim(data_name),eq_job=eq_job,rich_lvl=rich_lvl)
+        if (minval(eq_id).lt.0) then
+            call writo('Variable "'//trim(data_name)//'" not found, nor &
+                &using _R_ and _E_ suffixes')
+            ierr = 1
+            err_msg = 'Are you sure the PB3D output file is not minimal?'
+            CHCKERR(err_msg)
+        end if
         
         ! set up local eq_limits
         eq_limits_loc = [1,grid_eq%n(3)]
@@ -634,16 +682,17 @@ contains
         do id = rich_id(2),rich_id(1),-1
             ! setup par_id
             par_id = setup_par_id(grid_eq,rich_lvl_loc,id,tot_rich)
+            loc_n_r = (par_id(2)-par_id(1))/par_id(3)+1
             
             ! read HDF5 variables
-            ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
-                &rich_lvl=id)
+            ierr = read_HDF5_arrs(vars_1D,PB3D_name_eq,trim(data_name),&
+                &rich_lvl=id,eq_job=eq_id)
             CHCKERR('')
             
             ! g_FD
             ierr = retrieve_var_1D_id(vars_1D,'g_FD',var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_7D)
+            call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_7D)
             eq%g_FD(par_id(1):par_id(2):par_id(3),:,:,:,:,:,:) = &
                 &dum_7D(:,:,eq_limits_loc(1):eq_limits_loc(2),:,:,:,:)
             deallocate(dum_7D)
@@ -651,7 +700,7 @@ contains
             ! h_FD
             ierr = retrieve_var_1D_id(vars_1D,'h_FD',var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_7D)
+            call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_7D)
             eq%h_FD(par_id(1):par_id(2):par_id(3),:,:,:,:,:,:) = &
                 &dum_7D(:,:,eq_limits_loc(1):eq_limits_loc(2),:,:,:,:)
             deallocate(dum_7D)
@@ -659,7 +708,7 @@ contains
             ! jac_FD
             ierr = retrieve_var_1D_id(vars_1D,'jac_FD',var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_6D)
+            call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_6D)
             eq%jac_FD(par_id(1):par_id(2):par_id(3),:,:,:,:,:) = &
                 &dum_6D(:,:,eq_limits_loc(1):eq_limits_loc(2),:,:,:)
             deallocate(dum_6D)
@@ -667,7 +716,7 @@ contains
             ! S
             ierr = retrieve_var_1D_id(vars_1D,'S',var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
             eq%S(par_id(1):par_id(2):par_id(3),:,:) = &
                 &dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_3D)
@@ -675,7 +724,7 @@ contains
             ! kappa_n
             ierr = retrieve_var_1D_id(vars_1D,'kappa_n',var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
             eq%kappa_n(par_id(1):par_id(2):par_id(3),:,:) = &
                 &dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_3D)
@@ -683,7 +732,7 @@ contains
             ! kappa_g
             ierr = retrieve_var_1D_id(vars_1D,'kappa_g',var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
             eq%kappa_g(par_id(1):par_id(2):par_id(3),:,:) = &
                 &dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_3D)
@@ -691,7 +740,7 @@ contains
             ! sigma
             ierr = retrieve_var_1D_id(vars_1D,'sigma',var_1D_id)
             CHCKERR('')
-            call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+            call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
             eq%sigma(par_id(1):par_id(2):par_id(3),:,:) = &
                 &dum_3D(:,:,eq_limits_loc(1):eq_limits_loc(2))
             deallocate(dum_3D)
@@ -704,11 +753,12 @@ contains
     ! Reconstructs the vectorial perturbation variables from PB3D output.
     ! Optionally, the grid limits can be provided.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
-    ! name if  it is >  0 and if with  "tot_rich" the information  from previous
-    ! Richardson levels can be combined.
-    integer function reconstruct_PB3D_X_1(grid_X,X,data_name,rich_lvl,tot_rich,&
-        &X_limits,lim_sec_X) result(ierr)
-        use num_vars, only: PB3D_name
+    ! name  if it  is  >  0, and  similarly  for  "eq_job" through  "_E_eq_job".
+    ! With "tot_rich"  the information  from previous  Richardson levels  can be
+    ! combined.
+    integer function reconstruct_PB3D_X_1(grid_X,X,data_name,rich_lvl,eq_job,&
+        &tot_rich,X_limits,lim_sec_X) result(ierr)
+        use num_vars, only: PB3D_name_eq
         use X_vars, only: X_1_var_names, n_mod_X
         use HDF5_ops, only: read_HDF5_arrs
         use PB3D_utilities, only: retrieve_var_1D_id, conv_1D2ND
@@ -721,30 +771,44 @@ contains
         type(X_1_type), intent(inout) :: X                                      ! vectorial perturbation variables
         character(len=*), intent(in) :: data_name                               ! name to reconstruct
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
         logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
         integer, intent(in), optional :: X_limits(2)                            ! i_limit of X variables
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
         
         ! local variables
-        integer :: var_1D_id                                                    ! index in var_1D
-        type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
+        integer, allocatable :: var_1D_id(:)                                    ! index in var_1D
+        type(var_1D_type), allocatable :: vars_1D(:,:)                          ! 1D variables
         character(len=max_name_ln), allocatable :: req_var_names(:)             ! requested variable names
         integer :: X_limits_loc(2)                                              ! local versions of X_limits
         integer :: lim_sec_X_loc(2)                                             ! local version of lim_sec_X
+        integer :: loc_n_r                                                      ! local n
         integer :: id, jd                                                       ! counters
         integer :: rich_lvl_loc                                                 ! local rich_lvl
         integer :: par_id(3)                                                    ! parallel indices (start, end, stride)
         integer :: rich_id(2)                                                   ! richardson level indices (start, end)
+        integer :: eq_id(2)                                                     ! equilibrium job indices (start, end)
+        logical :: overlap                                                      ! overlap in equilibrium jobs if first Richardson level
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
-        ! set up local rich_lvl
+        ! set up local rich_lvl and overlap
         rich_lvl_loc = 0
         if (present(rich_lvl)) rich_lvl_loc = rich_lvl
+        overlap = rich_lvl_loc.le.1
         
-        ! setup rich_id
+        ! setup rich_id and eq_id
         rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
+        eq_id = setup_eq_id(trim(data_name),eq_job=eq_job,rich_lvl=rich_lvl)
+        if (minval(eq_id).lt.0) then
+            call writo('Variable "'//trim(data_name)//'" not found, nor &
+                &using _R_ and _E_ suffixes')
+            ierr = 1
+            err_msg = 'Are you sure the PB3D output file is not minimal?'
+            CHCKERR(err_msg)
+        end if
         
         ! set up local X_limits
         X_limits_loc = [1,grid_X%n(3)]
@@ -761,13 +825,14 @@ contains
         do id = rich_id(2),rich_id(1),-1
             ! setup par_id
             par_id = setup_par_id(grid_X,rich_lvl_loc,id,tot_rich)
+            loc_n_r = (par_id(2)-par_id(1))/par_id(3)+1
             
             ! get full variable names
             call get_full_var_names(X_1_var_names,req_var_names,lim_sec_X_loc)
             
             ! read HDF5 variables
-            ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
-                &rich_lvl=id,acc_var_names=req_var_names)
+            ierr = read_HDF5_arrs(vars_1D,PB3D_name_eq,trim(data_name),&
+                &rich_lvl=id,eq_job=eq_id,acc_var_names=req_var_names)
             CHCKERR('')
             
             ! RE_U_0
@@ -776,7 +841,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%U_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
                 deallocate(dum_3D)
@@ -788,7 +853,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%U_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &X%U_0(par_id(1):par_id(2):par_id(3),:,:,jd) + &
                     &iu*dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
@@ -801,7 +866,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%U_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
                 deallocate(dum_3D)
@@ -813,7 +878,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%U_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &X%U_1(par_id(1):par_id(2):par_id(3),:,:,jd) + &
                     &iu*dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
@@ -826,7 +891,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%DU_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
                 deallocate(dum_3D)
@@ -838,7 +903,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%DU_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &X%DU_0(par_id(1):par_id(2):par_id(3),:,:,jd) + &
                     &iu*dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
@@ -851,7 +916,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%DU_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
                 deallocate(dum_3D)
@@ -863,7 +928,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%DU_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &X%DU_1(par_id(1):par_id(2):par_id(3),:,:,jd) + &
                     &iu*dum_3D(:,:,X_limits_loc(1):X_limits_loc(2))
@@ -878,13 +943,14 @@ contains
     ! Reconstructs the tensorial perturbation variables from PB3D output.
     ! Optionally, the grid limits can be provided.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
-    ! name if  it is >  0 and if with  "tot_rich" the information  from previous
-    ! Richardson levels can be combined.
+    ! name  if it  is  >  0, and  similarly  for  "eq_job" through  "_E_eq_job".
+    ! With "tot_rich"  the information  from previous  Richardson levels  can be
+    ! combined.
     ! Note: the tensorial perturbation type can  also be used for field- aligned
     ! variables, in  which case the first  index is assumed to  have dimension 1
     ! only. This can be triggered using "is_field_averaged".
-    integer function reconstruct_PB3D_X_2(grid_X,X,data_name,rich_lvl,tot_rich,&
-        &X_limits,lim_sec_X,is_field_averaged) result(ierr)
+    integer function reconstruct_PB3D_X_2(grid_X,X,data_name,rich_lvl,eq_job,&
+        &tot_rich,X_limits,lim_sec_X,is_field_averaged) result(ierr)
         use num_vars, only: PB3D_name
         use X_vars, only: X_2_var_names, n_mod_X
         use HDF5_ops, only: read_HDF5_arrs
@@ -898,38 +964,51 @@ contains
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         character(len=*), intent(in) :: data_name                               ! name to reconstruct
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
         logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
         integer, intent(in), optional :: X_limits(2)                            ! i_limit of X variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
         logical, intent(in), optional :: is_field_averaged                      ! if field-averaged, only one dimension for first index
         
         ! local variables
-        integer :: var_1D_id                                                    ! index in var_1D
-        type(var_1D_type), allocatable :: vars_1D(:)                            ! 1D variables
+        integer, allocatable :: var_1D_id(:)                                    ! index in var_1D
+        type(var_1D_type), allocatable :: vars_1D(:,:)                          ! 1D variables
         character(len=max_name_ln), allocatable :: req_var_names(:)             ! requested variable names
         logical :: is_field_averaged_loc                                        ! local is_field_averaged
         integer :: X_limits_loc(2)                                              ! local versions of X_limits
         integer :: lim_sec_X_loc(2,2)                                           ! local version of lim_sec_X
         integer :: id, jd                                                       ! counters
+        integer :: loc_n_r                                                      ! local n
         integer :: rich_lvl_loc                                                 ! local rich_lvl
         integer :: par_id(3)                                                    ! parallel indices (start, end, stride)
         integer :: par_id_loc(2)                                                ! local parallel indices (start, end)
         integer :: rich_id(2)                                                   ! richardson level indices (start, end)
+        integer :: eq_id(2)                                                     ! equilibrium job indices (start, end)
+        logical :: overlap                                                      ! overlap in equilibrium jobs if first Richardson level
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
-        ! set up local rich_lvl
+        ! set up local rich_lvl and overlap
         rich_lvl_loc = 0
         if (present(rich_lvl)) rich_lvl_loc = rich_lvl
+        overlap = rich_lvl_loc.le.1
         
         ! set up local is_field_averaged
         is_field_averaged_loc = .false.
         if (present(is_field_averaged)) is_field_averaged_loc = &
             &is_field_averaged
         
-        ! setup rich_id
+        ! setup rich_id and eq_id
         rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
+        eq_id = setup_eq_id(trim(data_name),eq_job=eq_job,rich_lvl=rich_lvl)
+        if (minval(eq_id).lt.0) then
+            ierr = 1
+            err_msg = 'Variable "'//trim(data_name)//'" not found, nor &
+                &using _R_ and _E_ suffixes'
+            CHCKERR(err_msg)
+        end if
         
         ! set up local X_limits
         X_limits_loc = [1,grid_X%n(3)]
@@ -953,6 +1032,7 @@ contains
                 par_id = setup_par_id(grid_X,rich_lvl_loc,id,tot_rich)
                 par_id_loc = [1,(par_id(2)-par_id(1))/par_id(3)+1]              ! the number of elements par_id(1):par_id(2), stride par_id(3)
             end if
+            loc_n_r = (par_id(2)-par_id(1))/par_id(3)+1
             
             ! get full variable names
             call get_full_var_names(X_2_var_names,&
@@ -962,7 +1042,7 @@ contains
             
             ! read HDF5 variables
             ierr = read_HDF5_arrs(vars_1D,PB3D_name,trim(data_name),&
-                &rich_lvl=id,acc_var_names=req_var_names)
+                &rich_lvl=id,eq_job=eq_id,acc_var_names=req_var_names)
             CHCKERR('')
             
             ! RE_PV_0
@@ -971,7 +1051,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%PV_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &dum_3D(par_id_loc(1):par_id_loc(2),:,&
                     &X_limits_loc(1):X_limits_loc(2))
@@ -984,7 +1064,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%PV_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &X%PV_0(par_id(1):par_id(2):par_id(3),:,:,jd) + iu*&
                     &dum_3D(par_id_loc(1):par_id_loc(2),:,&
@@ -998,7 +1078,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%PV_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &dum_3D(par_id_loc(1):par_id_loc(2),:,&
                     &X_limits_loc(1):X_limits_loc(2))
@@ -1011,7 +1091,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%PV_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &X%PV_1(par_id(1):par_id(2):par_id(3),:,:,jd) + iu*&
                     &dum_3D(par_id_loc(1):par_id_loc(2),:,&
@@ -1025,7 +1105,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%PV_2(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &dum_3D(par_id_loc(1):par_id_loc(2),:,&
                     &X_limits_loc(1):X_limits_loc(2))
@@ -1038,7 +1118,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%PV_2(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &X%PV_2(par_id(1):par_id(2):par_id(3),:,:,jd) + iu*&
                     &dum_3D(par_id_loc(1):par_id_loc(2),:,&
@@ -1052,7 +1132,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%KV_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &dum_3D(par_id_loc(1):par_id_loc(2),:,&
                     &X_limits_loc(1):X_limits_loc(2))
@@ -1065,7 +1145,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%KV_0(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &X%KV_0(par_id(1):par_id(2):par_id(3),:,:,jd) + iu*&
                     &dum_3D(par_id_loc(1):par_id_loc(2),:,&
@@ -1079,7 +1159,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%KV_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &dum_3D(par_id_loc(1):par_id_loc(2),:,&
                     &X_limits_loc(1):X_limits_loc(2))
@@ -1087,12 +1167,12 @@ contains
             end do
             
             ! IM_KV_1
-            call get_full_var_names([X_2_var_names(10)],[.false.],req_var_names,&
-                &lim_sec_X_loc)
+            call get_full_var_names([X_2_var_names(10)],[.false.],&
+                &req_var_names,lim_sec_X_loc)
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%KV_1(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &X%KV_1(par_id(1):par_id(2):par_id(3),:,:,jd) + iu*&
                     &dum_3D(par_id_loc(1):par_id_loc(2),:,&
@@ -1106,7 +1186,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%KV_2(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &dum_3D(par_id_loc(1):par_id_loc(2),:,&
                     &X_limits_loc(1):X_limits_loc(2))
@@ -1119,7 +1199,7 @@ contains
             do jd = 1,size(req_var_names)
                 ierr = retrieve_var_1D_id(vars_1D,req_var_names(jd),var_1D_id)
                 CHCKERR('')
-                call conv_1D2ND(vars_1D(var_1D_id),dum_3D)
+                call conv_1D2ND(vars_1D,var_1D_id,loc_n_r,overlap,dum_3D)
                 X%KV_2(par_id(1):par_id(2):par_id(3),:,:,jd) = &
                     &X%KV_2(par_id(1):par_id(2):par_id(3),:,:,jd) + iu*&
                     &dum_3D(par_id_loc(1):par_id_loc(2),:,&
@@ -1211,57 +1291,4 @@ contains
         ! clean up
         call dealloc_var_1D(vars_1D)
     end function reconstruct_PB3D_sol
-    
-    ! setup parallel id:
-    !   par_id(1): start index
-    !   par_id(2): end index
-    !   par_id(3): stride
-    function setup_par_id(grid,rich_lvl_max,rich_lvl_loc,tot_rich) &
-        &result(par_id)
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid
-        integer, intent(in) :: rich_lvl_max                                     ! maximum Richardson level
-        integer, intent(in) :: rich_lvl_loc                                     ! local Richardson level
-        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
-        integer :: par_id(3)                                                    ! parallel id
-        
-        ! local variables
-        logical :: tot_rich_loc                                                 ! local tot_rich
-        
-        ! set up local tot_rich
-        tot_rich_loc = .false.
-        if (present(tot_rich) .and. rich_lvl_max.gt.1) tot_rich_loc = tot_rich  ! only for higher Richardson levels
-        
-        ! set up parallel indices
-        if (tot_rich_loc) then
-            if (rich_lvl_loc.eq.1) then
-                par_id(1) = 1                                                   ! start at 1
-                par_id(2) = grid%n(1)                                           ! end at n(1)
-                par_id(3) = 2**(rich_lvl_max-1)                                 ! stride 2^(rich_lvl_max-1), same as for rich_lvl_loc = 2
-            else
-                par_id(1) = 1+2**(rich_lvl_max-rich_lvl_loc)                    ! start at 1+2^(rich_lvl_max-rich_lvl_loc)
-                par_id(2) = grid%n(1)-2**(rich_lvl_max-rich_lvl_loc)            ! end at n(1)-2^(rich_lvl_max-rich_lvl_loc)
-                par_id(3) = 2**(rich_lvl_max+1-rich_lvl_loc)                    ! stride 2^(rich_lvl_max+1-rich_lvl_loc)
-            end if
-        else
-            par_id = [1,grid%n(1),1]                                            ! start at 1, end at n(1), stride 1
-        end if
-    end function setup_par_id
-    
-    ! setup richardson id:
-    !   rich_id(1): start Richardson level
-    !   rich_id(2): end Richardson level
-    function setup_rich_id(rich_lvl_max,tot_rich) result(rich_id)
-        ! input / output
-        integer, intent(in) :: rich_lvl_max                                     ! maximum Richardson level
-        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
-        integer :: rich_id(2)                                                   ! Richardson id
-        
-        ! set up rich_id
-        rich_id = [rich_lvl_max,rich_lvl_max]
-        if (present(tot_rich) .and. rich_lvl_max.gt.1) then                     ! only for higher Richardson levels
-            if (tot_rich) rich_id = [1,rich_lvl_max]
-        end if
-    end function setup_rich_id
 end module PB3D_ops

@@ -1163,7 +1163,7 @@ contains
         type(grid_type), intent(in) :: grid                                     ! solution grid variables
         type(sol_type), intent(in) :: sol                                       ! solution variables
         character(len=*), intent(in) :: data_name                               ! name under which to store
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to print
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids

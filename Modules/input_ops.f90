@@ -19,17 +19,17 @@ contains
     integer function read_input_opts() result(ierr)
         use num_vars, only: &
             &max_it_NR, tol_NR, max_it_rich, input_i, use_pol_flux_F, &
-            &EV_style, max_mem_per_proc, plot_resonance, tol_rich, &
+            &EV_style, max_tot_mem_per_proc, plot_resonance, tol_rich, &
             &n_sol_requested, rank, plot_magn_grid, plot_flux_q, &
-            &use_normalization, n_sol_plotted, n_theta_plot, &
-            &n_zeta_plot, EV_BC, rho_style, retain_all_sol, prog_style, &
-            &norm_disc_prec_X, norm_disc_prec_eq, norm_disc_prec_sol, &
-            &BC_style, max_it_inv, tol_norm, tol_SLEPC_loc => tol_SLEPC, &
-            &max_it_SLEPC, n_procs, pi, plot_size, U_style, norm_style, &
-            &test_max_mem, X_style, matrix_SLEPC_style, input_name, &
-            &rich_restart_lvl, eq_style, relax_fac_NR, min_theta_plot, &
-            &max_theta_plot, min_zeta_plot, max_zeta_plot, max_nr_tries_NR, &
-            &POST_style, slab_plots, def_relax_fac_NR, magn_int_style
+            &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
+            &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
+            &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
+            &tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, n_procs, pi, &
+            &plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
+            &input_name, rich_restart_lvl, eq_style, relax_fac_NR, &
+            &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
+            &max_nr_tries_NR, POST_style, slab_plots, def_relax_fac_NR, &
+            &magn_int_style
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use messages, only: writo, lvl_ud
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
@@ -54,17 +54,17 @@ contains
             &max_r_sol, max_it_NR, tol_NR, use_pol_flux_F, rho_style, &
             &rho_0, plot_magn_grid, plot_flux_q, prim_X, min_sec_X, max_sec_X, &
             &n_mod_X, use_normalization, n_theta_plot, n_zeta_plot, &
-            &norm_disc_prec_eq, tol_norm, max_mem_per_proc, n_r_sol, &
+            &norm_disc_prec_eq, tol_norm, max_tot_mem_per_proc, n_r_sol, &
             &max_it_rich, tol_rich, EV_style, plot_resonance, n_sol_requested, &
             &EV_BC, tol_SLEPC, retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, &
             &norm_disc_prec_X, BC_style, max_it_inv, max_it_slepc, &
-            &norm_disc_prec_sol, plot_size, U_style, norm_style, test_max_mem, &
+            &norm_disc_prec_sol, plot_size, U_style, norm_style, &
             &matrix_SLEPC_style, rich_restart_lvl, min_n_par_X, relax_fac_NR, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &max_nr_tries_NR, magn_int_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_magn_grid, norm_disc_prec_sol, &
-            &plot_size, test_max_mem, PB3D_lvl_rich, max_it_NR, tol_NR, &
+            &plot_size, PB3D_lvl_rich, max_it_NR, tol_NR, &
             &relax_fac_NR, min_theta_plot, max_theta_plot, min_zeta_plot, &
             &max_zeta_plot, max_nr_tries_NR, POST_style, slab_plots
         
@@ -81,9 +81,8 @@ contains
             call lvl_ud(1)
             
             ! common variables for all program styles
-            max_mem_per_proc = 6000_dp/n_procs                                  ! count with 6GB
+            max_tot_mem_per_proc = 6000_dp/n_procs                              ! count with 6GB total
             plot_size = [10,5]                                                  ! size of plot in inch
-            test_max_mem = .false.                                              ! do not test maximum memory
             min_theta_plot = 1                                                  ! starting from pi gives nicer plots
             max_theta_plot = 3
             select case(eq_style)
@@ -412,8 +411,12 @@ contains
                 CHCKERR('')
                 if (rich_restart_lvl.gt.PB3D_lvl_rich+1) then
                     ierr = 1
-                    err_msg = 'The highest Richardson level found was '//&
-                        &trim(i2str(PB3D_lvl_rich))
+                    if (PB3D_lvl_rich.gt.0) then
+                        err_msg = 'The highest Richardson level found was '//&
+                            &trim(i2str(PB3D_lvl_rich))
+                    else
+                        err_msg = 'No Richardson level found'
+                    end if
                     CHCKERR(err_msg)
                 end if
             end if
@@ -532,7 +535,7 @@ contains
         !   be of the form 2+k and for style 2 of the form 4+3k.
         subroutine adapt_min_n_par_X
             ! local variables
-            integer :: mult_fac(2)                                              ! multiple factor
+            integer :: fund_n_par                                               ! fundamental interval width
             
             ! check req_min_n_par_X
             if (min_n_par_X.lt.req_min_n_par_X)  then
@@ -545,17 +548,17 @@ contains
             ! check for individual magnetic integral style
             select case (magn_int_style)
                 case (1)                                                        ! Trapezoidal rule
-                    mult_fac = [2,1]
+                    fund_n_par = 1
                 case (2)                                                        ! Simpson's 3/8 rule
-                    mult_fac = [4,3]
+                    fund_n_par = 3
             end select
-            if (mod(min_n_par_X-mult_fac(1),mult_fac(2)).ne.0) then
-                min_n_par_X = mult_fac(1) + mult_fac(2) * &
-                    &((min_n_par_X-mult_fac(1))/mult_fac(2) + 1)
+            if (mod(min_n_par_X-1,fund_n_par).ne.0) then                        ! there is a remainder
+                min_n_par_X = 1 + fund_n_par * &
+                    &((min_n_par_X-1)/fund_n_par + 1)
                 call writo('min_n_par_X has been increased to '//&
                     &trim(i2str(min_n_par_X))//' to be a of the form '//&
-                    &trim(i2str(mult_fac(1)))//' + '//&
-                    &trim(i2str(mult_fac(2)))//&
+                    &trim(i2str(fund_n_par+1))//' + '//&
+                    &trim(i2str(fund_n_par))//&
                     &'k for magnetic integral style '//&
                     &trim(i2str(magn_int_style)),warning=.true.)
             end if

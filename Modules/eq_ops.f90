@@ -14,7 +14,7 @@ module eq_ops
     implicit none
     private
     public calc_eq, calc_derived_q, calc_normalization_const, normalize_input, &
-        &print_output_eq, flux_q_plot, prepare_RZL, calc_RZL
+        &print_output_eq, flux_q_plot
 #if ldebug
     public debug_calc_derived_q
 #endif
@@ -71,6 +71,8 @@ module eq_ops
 contains
     ! calculate  the equilibrium  quantities on  a grid  determined by  straight
     ! field lines. This grid has the dimensions (n_par,loc_n_r).
+    ! Optionally, for eq_2, the used variables can be deallocated on the fly, to
+    ! limit memory usage.
     integer function calc_eq_1(grid_eq,eq) result(ierr)                         ! flux version
         use num_vars, only: eq_style, rho_style, use_normalization, &
             &norm_disc_prec_eq, use_pol_flux_E, use_pol_flux_F
@@ -409,7 +411,7 @@ contains
             close(file_i)
         end subroutine write_flux_q_in_file_for_VMEC
     end function calc_eq_1
-    integer function calc_eq_2(grid_eq,eq_1,eq_2) result(ierr)                  ! metric version
+    integer function calc_eq_2(grid_eq,eq_1,eq_2,dealloc_vars) result(ierr)     ! metric version
         use num_vars, only: eq_style
         use num_utilities, only: derivs, c
         use eq_utilities, only: calc_inv_met, calc_F_derivs
@@ -425,15 +427,21 @@ contains
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
         type(eq_1_type), intent(in) :: eq_1                                     ! metric equilibrium variables
         type(eq_2_type), intent(inout) :: eq_2                                  ! metric equilibrium variables
+        logical, intent(in), optional :: dealloc_vars                           ! deallocate variables on the fly after writing
         
         ! local variables
         integer :: id
         integer :: pmone                                                        ! plus or minus one
+        logical :: dealloc_vars_loc                                             ! local dealloc_vars
         
         ! user output
         call writo('Start setting up metric equilibrium quantities')
         
         call lvl_ud(1)
+        
+        ! set up local dealloc_vars
+        dealloc_vars_loc = .false.
+        if (present(dealloc_vars)) dealloc_vars_loc = dealloc_vars
         
         ! create metric equilibrium variables
         call eq_2%init(grid_eq)
@@ -522,6 +530,13 @@ contains
                 
                 ! set up plus minus one
                 pmone = -1                                                      ! conversion VMEC LH -> RH coord. system
+                
+                ! possibly deallocate
+                if (dealloc_vars_loc) then
+                    deallocate(eq_2%R_E,eq_2%Z_E,eq_2%L_E)
+                    deallocate(eq_2%g_C,eq_2%jac_C)
+                    deallocate(eq_2%T_VC,eq_2%det_T_VC)
+                end if
             case (2)                                                            ! HELENA
 #if ldebug
                 if (ltest) then
@@ -575,6 +590,11 @@ contains
                 
                 ! set up plus minus one
                 pmone = 1
+                
+                ! possibly deallocate
+                if (dealloc_vars_loc) then
+                    deallocate(eq_2%h_E)
+                end if
         end select
         
 #if ldebug
@@ -618,9 +638,20 @@ contains
             CHCKERR('')
         end do
         
+        ! possibly deallocate
+        if (dealloc_vars_loc) then
+            deallocate(eq_2%g_E,eq_2%jac_E)
+        end if
+        
         ! Transform metric equilibrium E into F derivatives
         ierr = calc_F_derivs(eq_2)
         CHCKERR('')
+        
+        ! possibly deallocate
+        if (dealloc_vars_loc) then
+            deallocate(eq_2%g_F,eq_2%h_F,eq_2%jac_F)
+            deallocate(eq_2%T_EF,eq_2%T_FE,eq_2%det_T_EF,eq_2%det_T_FE)
+        end if
         
         ! Calculate derived metric quantities
         call calc_derived_q(grid_eq,eq_1,eq_2)
@@ -2321,13 +2352,12 @@ contains
     !               kappa_n, kappa_g, sigma
     !   - metric:   g_FD, h_FD, jac_FD
     ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
-    ! it is > 0 (only for eq_2).
+    ! it is > 0 (only for eq_2), and similarly for "eq_job" through "_E_eq_job".
+    ! This counts only for eq_2.
     ! Note: The equilibrium quantities are outputted in Flux coordinates.
     ! Note: The  metric equilibrium  quantities can be  deallocated on  the fly,
     ! which is useful if this routine is  followed by a deallocation any way, so
-    ! that  memory usage  does not  almost  double. Technically,  they are  then
-    ! reallocated  with  zero  size  so that  the  normal  deallocation  routine
-    ! encounters no problems.
+    ! that memory usage does not almost double.
     integer function print_output_eq_1(grid_eq,eq,data_name) result(ierr)       ! flux version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
@@ -2458,9 +2488,9 @@ contains
         ! user output
         call lvl_ud(-1)
     end function print_output_eq_1
-    integer function print_output_eq_2(grid_eq,eq,data_name,rich_lvl,&
+    integer function print_output_eq_2(grid_eq,eq,data_name,rich_lvl,eq_job,&
         &dealloc_vars) result(ierr)                                             ! metric version
-        use num_vars, only: PB3D_name
+        use num_vars, only: PB3D_name_eq
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
@@ -2472,7 +2502,8 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
         type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium variables
         character(len=*), intent(in) :: data_name                               ! name under which to store
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to print
+        integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
         logical, intent(in), optional :: dealloc_vars                           ! deallocate variables on the fly after writing
         
         ! local variables
@@ -2498,7 +2529,6 @@ contains
         ! set up local dealloc_vars
         dealloc_vars_loc = .false.
         if (present(dealloc_vars)) dealloc_vars_loc = dealloc_vars
-        write(*,*) '>>>>>>>>>>>>>>>>>>>>>>>>> dealloc_vars_loc = ', dealloc_vars_loc
         
         ! set up the 1D equivalents of the equilibrium variables
         allocate(eq_1D(max_dim_var_1D))
@@ -2624,8 +2654,8 @@ contains
         if (dealloc_vars_loc) deallocate(eq%sigma)
         
         ! write
-        ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,trim(data_name),&
-            &rich_lvl=rich_lvl)
+        ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name_eq,trim(data_name),&
+            &rich_lvl=rich_lvl,eq_job=eq_job)
         CHCKERR('')
         
         ! clean up

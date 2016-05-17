@@ -13,7 +13,7 @@ module grid_utilities
     private
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_E, &
         &calc_int_vol, trim_grid, untrim_grid, setup_deriv_data, &
-        &setup_interp_data, apply_disc, calc_n_par_X_loc
+        &setup_interp_data, apply_disc, calc_n_par_X_rich
 #if ldebug
     public debug_calc_int_vol, debug_setup_interp_dat
 #endif
@@ -2047,15 +2047,15 @@ contains
         grid_out%r_f = grid_in%r_f
     end function untrim_grid
     
-    ! calculates the local  number of parallel grid points,  taking into account
-    ! cthat it ould be half.
-    integer function calc_n_par_X_loc(n_par_X_loc,only_half_grid) result(ierr)
+    ! Calculates the  local number of  parallel grid points for  this Richardson
+    ! level, taking into account that it ould be half the actual number.
+    integer function calc_n_par_X_rich(n_par_X_rich,only_half_grid) result(ierr)
         use rich_vars, only: n_par_X
         
-        character(*), parameter :: rout_name = 'calc_n_par_X_loc'
+        character(*), parameter :: rout_name = 'calc_n_par_X_rich'
         
         ! input / output
-        integer, intent(inout) :: n_par_X_loc                                   ! local n_par_X
+        integer, intent(inout) :: n_par_X_rich                                  ! n_par_X for this Richardson level
         logical, intent(in), optional :: only_half_grid                         ! calculate only half grid with even points
         
         ! local variables
@@ -2065,11 +2065,11 @@ contains
         ierr = 0
         
         ! possibly divide n_par_X by 2
-        n_par_X_loc = n_par_X
+        n_par_X_rich = n_par_X
         if (present(only_half_grid)) then
             if (only_half_grid) then
                 if (mod(n_par_X,2).eq.1) then
-                    n_par_X_loc = (n_par_X-1)/2
+                    n_par_X_rich = (n_par_X-1)/2
                 else
                     ierr = 1
                     err_msg = 'Need odd number of points'
@@ -2077,5 +2077,5 @@ contains
                 end if
             end if
         end if
-    end function calc_n_par_X_loc
+    end function calc_n_par_X_rich
 end module grid_utilities

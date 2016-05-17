@@ -37,6 +37,9 @@ module HDF5_ops
     interface reset_HDF5_item
         module procedure reset_HDF5_item_ind, reset_HDF5_item_arr
     end interface
+    interface read_HDF5_arrs
+        module procedure read_HDF5_arrs_ind, read_HDF5_arrs_range
+    end interface
     
 contains
     ! Opens an HDF5 file and accompanying xmf file and returns the handles.
@@ -759,10 +762,11 @@ contains
     end function print_HDF5_grid
     
     ! creates an HDF5 output file
-    integer function create_output_HDF5() result(ierr)
-        use num_vars, only: PB3D_name
-        
+    integer function create_output_HDF5(HDF5_name) result(ierr)
         character(*), parameter :: rout_name = 'create_output_HDF5'
+        
+        ! input / output
+        character(len=*), intent(in) :: HDF5_name                               ! name of HDF5 file
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -778,7 +782,7 @@ contains
         CHCKERR('Failed to initialize HDF5')
         
         ! create the file by group master
-        call H5Fcreate_f(PB3D_name,H5F_ACC_TRUNC_F,HDF5_i,&
+        call H5Fcreate_f(trim(HDF5_name),H5F_ACC_TRUNC_F,HDF5_i,&
             &ierr)
         CHCKERR('Failed to create file')
         
@@ -794,17 +798,18 @@ contains
         call lvl_ud(-1)
         
         ! user output
-        call writo('HDF5 output file '//trim(PB3D_name)//' created')
+        call writo('HDF5 output file '//trim(HDF5_name)//' created')
     end function create_output_HDF5
     
     ! Prints a series of arrays, in the form of an array of pointers, to an HDF5
     ! file.
     ! Optionally, output can be given about the variable being written.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the head
-    ! name if it is > 0.
+    ! name if  it is  > 0.  Similarly, if "eq_job"  is provided,  "_E_eq_job" is
+    ! appended.
     ! Note: See https://www.hdfgroup.org/HDF5/doc/UG/12_Dataspaces.html, 7.4.2.3
     ! for an explanation of the selection of the dataspaces.
-    integer function print_HDF5_arrs(vars,PB3D_name,head_name,rich_lvl,&
+    integer function print_HDF5_arrs(vars,PB3D_name,head_name,rich_lvl,eq_job,&
         &disp_info) result(ierr)
         use num_vars, only: n_procs, rank, HDF5_lock_file_name
         use messages, only: lvl_ud
@@ -817,7 +822,8 @@ contains
         type(var_1D_type), intent(in) :: vars(:)                                ! variables to write
         character(len=*), intent(in) :: PB3D_name                               ! name of PB3D file
         character(len=*), intent(in) :: head_name                               ! head name of variables
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to append to file name
+        integer, intent(in), optional :: eq_job                                 ! equilibrium job to append to file name
         logical, intent(in), optional :: disp_info                              ! display additional information about variable being read
         
         ! local variables
@@ -860,6 +866,10 @@ contains
         if (present(rich_lvl)) then
             if (rich_lvl.gt.0) head_name_loc = trim(head_name_loc)//'_R_'//&
                 &trim(i2str(rich_lvl))
+        end if
+        if (present(eq_job)) then
+            if (eq_job.gt.0) head_name_loc = trim(head_name_loc)//'_E_'//&
+                &trim(i2str(eq_job))
         end if
         
         ! detect whether individual or collective print
@@ -985,7 +995,7 @@ contains
             CHCKERR('Failed to set parallel property')
             
             ! create memory data space
-            dimsm = mem_block                                               ! memory space has group dimensions
+            dimsm = mem_block                                                   ! memory space has group dimensions
             call H5Screate_simple_f(1,dimsm*next_dims,memspace,ierr)
             CHCKERR('Failed to create memory space')
             
@@ -993,6 +1003,9 @@ contains
             call H5Dwrite_f(dset_id,HDF5_kind_64,vars(id)%p,&
                 &dimsf*next_dims,ierr,file_space_id=filespace,&
                 &mem_space_id=memspace,xfer_prp=plist_id)
+            if (ierr.ne.0) call writo('Did you increase max_tot_mem_per_proc &
+                &while restarting Richardson? If so, must start from 1...',&
+                &alert=.true.)
             CHCKERR('Failed to write data data set')
             call H5Pclose_f(plist_id,ierr)
             CHCKERR('Failed to close property list')
@@ -1160,16 +1173,17 @@ contains
     ! acceptable variable names can be passed.
     ! Optionally, output can be given about the variable being read.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the head
-    ! name if it is > 0.
-    integer function read_HDF5_arrs(vars,PB3D_name,head_name,rich_lvl,&
-        &disp_info,acc_var_names) result(ierr)
-        character(*), parameter :: rout_name = 'read_HDF5_arrs'
+    ! name if it is > 0, and similarly for "eq_job" in "_E_eq_job".
+    integer function read_HDF5_arrs_ind(vars,PB3D_name,head_name,rich_lvl,&
+        &eq_job,disp_info,acc_var_names) result(ierr)                           ! individual version
+        character(*), parameter :: rout_name = 'read_HDF5_arrs_ind'
         
         ! input / output
         type(var_1D_type), intent(inout), allocatable :: vars(:)                ! variables to read
         character(len=*), intent(in) :: PB3D_name                               ! name of PB3D file
         character(len=*), intent(in) :: head_name                               ! head name of variables
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        integer, intent(in), optional :: eq_job                                 ! equilibrium job to append to file name
         logical, intent(in), optional :: disp_info                              ! display additional information about variable being read
         character(len=*), intent(in), optional :: acc_var_names(:)              ! acceptable variables
         
@@ -1208,6 +1222,10 @@ contains
         if (present(rich_lvl)) then
             if (rich_lvl.gt.0) head_name_loc = trim(head_name_loc)//'_R_'//&
                 &trim(i2str(rich_lvl))
+        end if
+        if (present(eq_job)) then
+            if (eq_job.gt.0) head_name_loc = trim(head_name_loc)//'_E_'//&
+                &trim(i2str(eq_job))
         end if
         
         ! user output
@@ -1398,7 +1416,46 @@ contains
                 res = .true.
             end if
         end function is_acc
-    end function read_HDF5_arrs
+    end function read_HDF5_arrs_ind
+    integer function read_HDF5_arrs_range(vars,PB3D_name,head_name,rich_lvl,&
+        &eq_job,disp_info,acc_var_names) result(ierr)
+        character(*), parameter :: rout_name = 'read_HDF5_arrs_range'           ! range version
+        
+        ! input / output
+        type(var_1D_type), intent(inout), allocatable :: vars(:,:)              ! variables to read
+        character(len=*), intent(in) :: PB3D_name                               ! name of PB3D file
+        character(len=*), intent(in) :: head_name                               ! head name of variables
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        integer, intent(in), optional :: eq_job(2)                              ! equilibrium job to append to file name
+        logical, intent(in), optional :: disp_info                              ! display additional information about variable being read
+        character(len=*), intent(in), optional :: acc_var_names(:)              ! acceptable variables
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        type(var_1D_type), allocatable :: vars_loc(:)                           ! local vars
+        integer, allocatable :: eq_job_loc(:)                                   ! local eq_job
+        
+        ! set up local eq_job
+        allocate(eq_job_loc(2))
+        if (present(eq_job)) then
+            eq_job_loc = eq_job
+        else
+            eq_job_loc = 0
+        end if
+        
+        
+        ! call individual version for every local eq_job
+        do id = eq_job_loc(1),eq_job_loc(2)
+            ierr = read_HDF5_arrs_ind(vars_loc,PB3D_name,head_name,&
+                &rich_lvl=rich_lvl,eq_job=id,disp_info=disp_info,&
+                &acc_var_names=acc_var_names)
+            CHCKERR('')
+            if (id.eq.eq_job_loc(1)) &
+                &allocate(vars(size(vars_loc),eq_job(2)-eq_job(1)+1))
+            vars(:,id-eq_job_loc(1)+1) = vars_loc
+            deallocate(vars_loc)
+        end do
+    end function read_HDF5_arrs_range
     
     ! Probe HDF5 file for group existence.
     integer function probe_HDF5_group(HDF5_name,group_name,group_exists) &

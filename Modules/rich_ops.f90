@@ -50,11 +50,11 @@ contains
         if (rank.eq.0 .and. max_it_rich.gt.1) then                              ! only when more than one level
             if (rich_restart_lvl.eq.1) then
                 ! user output
-                call writo('Starting Richardson extrapolation loop')
+                call writo('Richardson extrapolation loop initialization')
             else
                 ! user output
-                call writo('Resuming Richardson extrapolation loop at level '&
-                    &//trim(i2str(rich_restart_lvl)))
+                call writo('Richardson extrapolation loop continuation at &
+                    &level '//trim(i2str(rich_restart_lvl)))
             end if
         end if
         call lvl_ud(1)
@@ -295,20 +295,98 @@ contains
     end function do_rich
     
     ! start a Richardson level
-    subroutine start_rich_lvl
-        ! Calculate number of parallel points for the solution in Richardson loops
+    integer function start_rich_lvl() result(ierr)
+        use grid_utilities, only: calc_n_par_X_rich
+        use grid_vars, only: n_r_eq
+        use eq_utilities, only: divide_eq_jobs
+        use HELENA_vars, only: nchi
+        use num_vars, only: eq_jobs_lims, eq_style, rank, n_procs, &
+            &minim_output, PB3D_name_eq
+        use HDF5_ops, only: create_output_HDF5
+        use MPI_utilities, only: get_ser_var
+        
+        character(*), parameter :: rout_name = 'start_rich_lvl'
+        
+        ! local variables
+        logical :: only_half_grid                                               ! calculate only half grid with even points
+        integer :: n_par_X_loc                                                  ! local n_par_X
+        real(dp) :: tot_mem_size                                                ! total memory size per process
+        real(dp), allocatable :: tot_mem_size_full(:)                           ! tot_mem_size for all processes
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! Calculate  total  number  of  parallel  points  for  the  solution  in
+        ! Richardson loops
         if (rich_lvl.eq.1) then
             n_par_X = min_n_par_X
+            only_half_grid = .false.
         else
             n_par_X = 2 * n_par_X - 1
+            only_half_grid = .true.
         end if
+        
+        ! use calc_n_par_X_rich, taking into account possible half grid
+        ierr = calc_n_par_X_rich(n_par_X_loc,only_half_grid)
+        CHCKERR('')
+        
+        ! Get local n_par_X to divide the equilibrium jobs. Note that the 
+        ! average size per process is n_r_eeq / n_procs
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! divide equilibrium jobs
+                ierr = divide_eq_jobs(n_par_X_loc,n_r_eq/n_procs)
+                CHCKERR('')
+            case (2)                                                            ! HELENA
+                ! divide equilibrium jobs
+                ierr = divide_eq_jobs(n_par_X_loc,n_r_eq/n_procs,&
+                    &n_par_X_base=nchi,tot_mem_size=tot_mem_size)               ! always use nchi points as base
+                CHCKERR('')
+                
+                ! check whether  calculation for  first Richardson level  can be
+                ! done,  as this  is  the calculation  where  the variables  are
+                ! calculated that are interpolated in all levels.
+                ! Note: This could be changed, and HELENA could be calculated by
+                ! dividing up  the parallel grid.  However, this is very  low on
+                ! the list of priorities as  it would required ghost regions and
+                ! all those things. For now: use more memory per process or more
+                ! processes.
+                if (rich_lvl.eq.1 .and. size(eq_jobs_lims,2).gt.1) then
+                    ierr = get_ser_var([tot_mem_size],tot_mem_size_full)
+                    CHCKERR('')
+                    if (rank.eq.0) then
+                        ierr = 1
+                        err_msg = 'Need at least '//&
+                            &trim(i2str(ceiling(sum(tot_mem_size_full))))//&
+                            &'MB for HELENA calculations'
+                        CHCKERR(err_msg)
+                    end if
+                end if
+        end select
         
         ! set use_guess to .false. if user sets no_guess
         if (no_guess) use_guess = .false.
-    end subroutine start_rich_lvl
+        
+        ! possibly create separate output for eq
+        if (minim_output) then
+            call writo('Output file size minimized: equilbiria get temporary &
+                &file')
+            call lvl_ud(1)
+            ierr = create_output_HDF5(PB3D_name_eq)
+            CHCKERR('')
+            call lvl_ud(-1)
+        end if
+    end function start_rich_lvl
     
     ! stop a Richardson level
     subroutine stop_rich_lvl
+        use num_vars, only: minim_output, PB3D_name_eq
+        use files_utilities, only: delete_file
+        
+        ! local variables
+        integer :: istat                                                        ! status
+        
         ! update the x axis of the Eigenvalue plot
         x_axis_rich(rich_lvl,:) = 1._dp*n_par_X
         
@@ -333,6 +411,9 @@ contains
         
         ! increase level
         rich_lvl = rich_lvl + 1
+        
+        ! possibly remove separate output for eq
+        if (minim_output) istat = delete_file(PB3D_name_eq)
     contains
         ! Decides whether  a guess should be used in  a possible next Richardson
         ! level.
@@ -376,11 +457,15 @@ contains
     ! Decides  whether   the  difference   between  the  approximation   of  the
     ! Eigenvalues in  this Richardson level  and the previous  Richardson level,
     ! with the same order of the error, falls below a threshold
+    ! Also increases the next tol_SLEPC if it is too low.
     ! [ADD SOURCE]
     subroutine check_conv()
+        use num_vars, only: tol_SLEPC
+        
         ! local variables
         real(dp), allocatable :: corr(:)                                        ! correction for order (rich_lvl-1) of error
         integer :: ir                                                           ! counter
+        real(dp) :: tol_SLEPC_adapt_factor = 0.1_dp                             ! factor to relate tol_SLEPC to maximum relative error
         
         if (rich_lvl.gt.1) then                                                 ! only do this if in Richardson level higher than 1
             ! set relative correction
@@ -412,6 +497,10 @@ contains
                 call writo('tolerance '//trim(r2strt(tol_rich))//' not yet &
                     &reached')
             end if
+            
+            ! check whether to decrease next tol_SLEPC
+            tol_SLEPC(rich_lvl+1) = min(tol_SLEPC(rich_lvl+1),&
+                &tol_SLEPC_adapt_factor*max_rel_err(rich_lvl-1))
         end if
     end subroutine check_conv
     

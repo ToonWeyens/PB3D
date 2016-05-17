@@ -389,7 +389,7 @@ contains
         
         ! output
         call writo('slepc started with '//trim(i2str(n_procs))&
-            &//' processors')
+            &//' processes')
         
         call lvl_ud(-1)
         

@@ -437,3 +437,17 @@ CHANGELOG
       - Removed unnecessary reconstruction of equilibrium variables in solution driver.
       - Replaced pointers in eq_types by allocatables.
       - Rewrote the initialization and deallocation routines for eq, X and sol variables.
+
+1.22: - NOW THE MEMORY LIMITS ARE CORRECTLY HANDLED BY INTRODUCING EQUILIBRIUM JOBS.
+      - Equilibrium jobs now handle a subset of the parallel grid.
+      - Added option to deallocate unused variables on the fly in "calc_eq_2". Using this, the memory spikes for the equilibrium phase are lower.
+      - Fixed bug where memory info was printed before the file existed.
+      - Moved "divide_X_jobs" to "X_utilities".
+      - Created an equilibrium version of "divide_X_jobs".
+      - Removed the routine "test_max_mem".
+      - Input variable "max_mem_per_proc" has been renamed to "max_tot_mem_per_proc", to distinguish from internal variable "max_X_mem_per_proc".
+      - "read_HDF5_arrs" now has an array version as well, which uses the individual version.
+      - The same for "retrieve_var_1D_id".
+      - Using "minim_output", the output file size can be minimized, by not saving eq_2 and X_1 variables between Richardson levels.
+      - "tol_SLEPC" for next Richardson levels is adapted to the maximum relative Richardson error.
+      - Memory information is extended with the limits.

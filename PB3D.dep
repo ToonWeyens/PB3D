@@ -12,6 +12,7 @@ PB3D.o : \
     num_utilities.o \
     MPI_ops.o \
     eq_ops.o \
+    eq_utilities.o \
     test.o \
     X_vars.o \
     rich_vars.o \
@@ -115,6 +116,7 @@ grid_ops.o : \
     num_vars.o \
     grid_vars.o \
     eq_vars.o \
+    eq_utilities.o \
     sol_vars.o \
     num_utilities.o \
     VMEC.o \
@@ -141,6 +143,7 @@ rich_ops.o : \
     HDF5_vars.o \
     HDF5_ops.o \
     MPI_utilities.o \
+    eq_utilities.o \
 
 driver_eq.o : \
     num_vars.o \
@@ -168,6 +171,7 @@ driver_X.o : \
     grid_ops.o \
     eq_vars.o \
     X_vars.o \
+    X_utilities.o \
     X_ops.o \
     MPI_ops.o \
     vac.o \
@@ -305,6 +309,8 @@ eq_utilities.o : \
     grid_vars.o \
     eq_vars.o \
     num_utilities.o \
+    grid_utilities.o \
+    rich_vars.o \
     
 messages.o : \
     num_vars.o \

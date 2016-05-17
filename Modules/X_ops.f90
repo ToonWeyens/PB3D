@@ -1925,20 +1925,33 @@ contains
     
     ! Calculate the magnetic integrals from PV_i and KV_i in an equidistant grid
     ! where the step  size can vary depending on the  normal coordinate. All the
-    ! variables should  thus be field-line oriented.  The result is savd  in the
+    ! variables should thus  be field-line oriented. The result is  saved in the
     ! first index of the X variables, the other can be ignored.
-    ! If X_prev is present, this is interpreted as the magnetic integrals of the
-    ! previous Richardson  level. In this  case, they  are added to  the current
-    ! integral, and the current integral the  indices are modified [ADD REF]:
-    !   for magn_int_style = 1: 1 2 2 2 2 2 1 -> 2 2 2 2 2 2,
-    !   for magn_int_style = 2: 1 3 3 2 3 3 1 -> 3 2 3 3 2 3.
+    ! If X_prev is present, this is interpreted as either the magnetic integrals
+    ! of the previous  Richardson level or that one of  the previous equilibrium
+    ! job [ADD REF]:
+    !   prev_style=1: Add to current integral.
+    !   prev_style=2: Divide by  2 and add to current integral.  Also modify the
+    !   indices of the current integral:
+    !       for magn_int_style = 1: 1 2 2 2 2 2 1 -> 2 2 2 2 2 2,
+    !       for magn_int_style = 2: 1 3 3 2 3 3 1 -> 3 2 3 3 2 3.
+    !   prev_style=3: Add  to current integral.  Also modify the indices  of the
+    !   current integral as in prev_style = 2.
+    !   else: ignore previous magnetic integrals.
+    ! Therefore, it  is to  be used  in order. For  example:
+    !      (R=1,E=1): style 0,
+    !   => (R=1,E=2): style 1,
+    !   => (R=2,E=1): style 2,
+    !   => (R=2,E=2): style 3.
+    ! Afterwards, it would cycle through 2 and 3,  as style 0 and 1 are only for
+    ! the first Richardson level.
     ! Note:  The  variable  type   for  the  integrated  tensorial  perturbation
     ! variables  is  also X_2,  but  it  is assumed  that  the  first index  has
     ! dimension 1, the rest is ignored.
     ! Note: Simpson's 3/8  rule converges faster than the  trapezoidal rule, but
     ! normally needs a better starting point (i.e. higher min_n_par_X)
-    integer function calc_magn_ints(grid_eq,grid_X,eq,X,X_prev,lim_sec_X) &
-        &result(ierr)
+    integer function calc_magn_ints(grid_eq,grid_X,eq,X,X_prev,prev_style,&
+        &lim_sec_X) result(ierr)
         use num_vars, only: use_pol_flux_F, norm_disc_prec_X, magn_int_style
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
@@ -1955,6 +1968,7 @@ contains
         type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium
         type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation variables
         type(X_2_type), intent(in), optional :: X_prev                          ! tensorial perturbation variables of previous level
+        integer, intent(in), optional :: prev_style                             ! style to treat X_prev
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
         
         ! local variables, not used in subroutines
@@ -1962,6 +1976,8 @@ contains
         integer :: k, m                                                         ! counters
         integer :: kd                                                           ! counter
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
+        integer :: prev_style_loc                                               ! local prev_style
+        real(dp) :: prev_mult_fac                                               ! multiplicative factor for previous style
         real(dp), allocatable :: step_size(:)                                   ! step size for every normal point
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle in flux coordinates
         complex(dp), allocatable :: V_int_work(:,:)                             ! work V_int
@@ -1984,6 +2000,11 @@ contains
         ! user output
         call writo('Calculating field-line averages')
         call lvl_ud(1)
+        
+        ! set up local prev_style
+        prev_style_loc = 0
+        if (present(prev_style) .and. present(X_prev)) &
+            &prev_style_loc = prev_style
         
         ! allocate variables
         allocate(J(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
@@ -2014,18 +2035,20 @@ contains
         select case (magn_int_style)
             case (1)                                                            ! Trapezoidal rule
                 call writo('magnetic interpolation style: 1 (trapezoidal rule)')
-                if (present(X_prev)) then
-                    nr_int_regions = 1
-                else
-                    nr_int_regions = 2
-                end if
+                select case (prev_style_loc)
+                    case (2,3)                                                  ! change indices
+                        nr_int_regions = 1
+                    case default                                                ! don't change indices
+                        nr_int_regions = 2
+                end select
             case (2)                                                            ! Simpson's 3/8 rule
                 call writo('magnetic interpolation style: 2 (Simpson 3/8 rule)')
-                if (present(X_prev)) then
-                    nr_int_regions = 3
-                else
-                    nr_int_regions = 4
-                end if
+                select case (prev_style_loc)
+                    case (2,3)                                                  ! change indices
+                        nr_int_regions = 3
+                    case default                                                ! don't change indices
+                        nr_int_regions = 4
+                end select
         end select
         
         ! set up integration factors and dimensions
@@ -2033,27 +2056,38 @@ contains
         allocate(int_dims(nr_int_regions,3))
         select case (magn_int_style)
             case (1)                                                            ! Trapezoidal rule
-                if (present(X_prev)) then
-                    int_facs = 0.5_dp*[2]
-                    int_dims(1,:) = [1,grid_X%n(1),1]                           ! region 1: all points
-                else
-                    int_facs = 0.5_dp*[1,2]
-                    int_dims(1,:) = [1,grid_X%n(1),grid_X%n(1)-1]               ! region 1: first and last points
-                    int_dims(2,:) = [2,grid_X%n(1)-1,1]                         ! region 2: intermediate points
-                end if
+                select case (prev_style_loc)
+                    case (2,3)                                                  ! change indices
+                        int_facs = 0.5_dp*[2]
+                        int_dims(1,:) = [1,grid_X%n(1),1]                       ! region 1: all points
+                    case default                                                ! don't change indices
+                        int_facs = 0.5_dp*[1,2]
+                        int_dims(1,:) = [1,grid_X%n(1),grid_X%n(1)-1]           ! region 1: first and last points
+                        int_dims(2,:) = [2,grid_X%n(1)-1,1]                     ! region 2: intermediate points
+                end select
             case (2)                                                            ! Simpson's 3/8 rule
-                if (present(X_prev)) then
-                    int_facs = 0.375_dp*[3,2,3]
-                    int_dims(1,:) = [1,grid_X%n(1)-2,3]                         ! region 1: intermediate points ~ 3
-                    int_dims(2,:) = [2,grid_X%n(1)-1,3]                         ! region 2: intermediate points ~ 2
-                    int_dims(3,:) = [3,grid_X%n(1),3]                           ! region 3: intermediate points ~ 3
-                else
-                    int_facs = 0.375_dp*[1,3,3,2]
-                    int_dims(1,:) = [1,grid_X%n(1),grid_X%n(1)-1]               ! region 1: first and last points
-                    int_dims(2,:) = [2,grid_X%n(1)-2,3]                         ! region 2: intermediate points ~ 3
-                    int_dims(3,:) = [3,grid_X%n(1)-1,3]                         ! region 3: intermediate points ~ 3
-                    int_dims(4,:) = [4,grid_X%n(1)-3,3]                         ! region 4: intermediate points ~ 2
-                end if
+                select case (prev_style_loc)
+                    case (2,3)                                                  ! change indices
+                        int_facs = 0.375_dp*[3,2,3]
+                        int_dims(1,:) = [1,grid_X%n(1)-2,3]                     ! region 1: intermediate points ~ 3
+                        int_dims(2,:) = [2,grid_X%n(1)-1,3]                     ! region 2: intermediate points ~ 2
+                        int_dims(3,:) = [3,grid_X%n(1),3]                       ! region 3: intermediate points ~ 3
+                    case default                                                ! don't change indices
+                        int_facs = 0.375_dp*[1,3,3,2]
+                        int_dims(1,:) = [1,grid_X%n(1),grid_X%n(1)-1]           ! region 1: first and last points
+                        int_dims(2,:) = [2,grid_X%n(1)-2,3]                     ! region 2: intermediate points ~ 3
+                        int_dims(3,:) = [3,grid_X%n(1)-1,3]                     ! region 3: intermediate points ~ 3
+                        int_dims(4,:) = [4,grid_X%n(1)-3,3]                     ! region 4: intermediate points ~ 2
+                end select
+        end select
+        
+        ! set up multiplicative factor for previous level
+        select case (prev_style_loc)
+            case (1,3)                                                          ! add to integral of previous equilibrium job
+                prev_mult_fac = 1.0_dp
+            case (2)                                                            ! add to integral of previous Richardson level / 2
+                prev_mult_fac = 0.5_dp
+            case default                                                        ! don't add
         end select
         
         ! set up step size
@@ -2115,13 +2149,19 @@ contains
         end do
         
         ! add previous integral divided by 2 if provided
-        if (present(X_prev)) then
-            X%PV_0(1,:,:,:) = X%PV_0(1,:,:,:) + 0.5_dp*X_prev%PV_0(1,:,:,:)
-            X%PV_1(1,:,:,:) = X%PV_1(1,:,:,:) + 0.5_dp*X_prev%PV_1(1,:,:,:)
-            X%PV_2(1,:,:,:) = X%PV_2(1,:,:,:) + 0.5_dp*X_prev%PV_2(1,:,:,:)
-            X%KV_0(1,:,:,:) = X%KV_0(1,:,:,:) + 0.5_dp*X_prev%KV_0(1,:,:,:)
-            X%KV_1(1,:,:,:) = X%KV_1(1,:,:,:) + 0.5_dp*X_prev%KV_1(1,:,:,:)
-            X%KV_2(1,:,:,:) = X%KV_2(1,:,:,:) + 0.5_dp*X_prev%KV_2(1,:,:,:)
+        if (prev_style.ge.1 .and. prev_style.le.3) then
+            X%PV_0(1,:,:,:) = X%PV_0(1,:,:,:) + &
+                &prev_mult_fac*X_prev%PV_0(1,:,:,:)
+            X%PV_1(1,:,:,:) = X%PV_1(1,:,:,:) + &
+                &prev_mult_fac*X_prev%PV_1(1,:,:,:)
+            X%PV_2(1,:,:,:) = X%PV_2(1,:,:,:) + &
+                &prev_mult_fac*X_prev%PV_2(1,:,:,:)
+            X%KV_0(1,:,:,:) = X%KV_0(1,:,:,:) + &
+                &prev_mult_fac*X_prev%KV_0(1,:,:,:)
+            X%KV_1(1,:,:,:) = X%KV_1(1,:,:,:) + &
+                &prev_mult_fac*X_prev%KV_1(1,:,:,:)
+            X%KV_2(1,:,:,:) = X%KV_2(1,:,:,:) + &
+                &prev_mult_fac*X_prev%KV_2(1,:,:,:)
         end if
         
         ! clean up
@@ -2174,14 +2214,14 @@ contains
     !   - tensorial:    PV_int, KV_int
     !     (the non-integrated variables are heavy and not requested)
     ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
-    ! it is > 0.
+    ! it is > 0 (only for eq_2), and similarly for "eq_job" through "_E_eq_job".
     ! Note: Flux coordinates used as normal coordinates
     ! Note: the tensorial perturbation type can  also be used for field- aligned
     ! variables, in  which case the first  index is assumed to  have dimension 1
     ! only. This can be triggered using "is_field_averaged".
-    integer function print_output_X_1(grid,X,data_name,rich_lvl,lim_sec_X) &
-        &result(ierr)                                                           ! vectorial version
-        use num_vars, only: PB3D_name
+    integer function print_output_X_1(grid,X,data_name,rich_lvl,eq_job,&
+        &lim_sec_X) result(ierr)                                                ! vectorial version
+        use num_vars, only: PB3D_name_eq
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
@@ -2193,7 +2233,8 @@ contains
         type(grid_type), intent(in) :: grid                                     ! perturbation grid variables
         type(X_1_type), intent(in) :: X                                         ! vectorial perturbation variables 
         character(len=*), intent(in) :: data_name                               ! name under which to store
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to print
+        integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
         
         ! local variables
@@ -2326,8 +2367,8 @@ contains
         end do
         
         ! write
-        ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,trim(data_name),&
-            &rich_lvl=rich_lvl)
+        ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name_eq,trim(data_name),&
+            &rich_lvl=rich_lvl,eq_job=eq_job)
         CHCKERR('')
         
         ! clean up
@@ -2337,8 +2378,8 @@ contains
         ! user output
         call lvl_ud(-1)
     end function print_output_X_1
-    integer function print_output_X_2(grid,X,data_name,rich_lvl,lim_sec_X,&
-        &is_field_averaged) result(ierr)                                        ! tensorial version
+    integer function print_output_X_2(grid,X,data_name,rich_lvl,eq_job,&
+        &lim_sec_X,is_field_averaged) result(ierr)                              ! tensorial version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
@@ -2353,7 +2394,8 @@ contains
         type(grid_type), intent(in) :: grid                                     ! perturbation grid variables
         type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables 
         character(len=*), intent(in) :: data_name                               ! name under which to store
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to print
+        integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol. flux) or n_X (tor. flux)
         logical, intent(in), optional :: is_field_averaged                      ! if field-averaged, only one dimension for first index
         
@@ -2619,7 +2661,7 @@ contains
         
         ! write
         ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,trim(data_name),&
-            &rich_lvl=rich_lvl)
+            &rich_lvl=rich_lvl,eq_job=eq_job)
         CHCKERR('')
         
         ! clean up

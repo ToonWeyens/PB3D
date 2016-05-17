@@ -8,17 +8,20 @@ module files_utilities
     use num_vars, only: dp, max_str_ln
     implicit none
     private
-    public search_file, nextunit, wait_file, get_file_info
+    public search_file, nextunit, wait_file, get_file_info, &
+        &get_full_PB3D_name, delete_file
 
 contains
     ! looks for the full name of a file and tests for its existence
     ! output:   full name of file, empty string if non-existent
     subroutine search_file(i_unit,file_name)
+        ! input / output
         character(len=*), intent(inout) :: file_name                            ! the name that is searched for
         integer, intent(out) :: i_unit                                          ! will hold the file handle
         
-        character(len=max_str_ln) :: mod_file_name                               ! modified file name
-        integer :: istat
+        ! local variables
+        character(len=max_str_ln) :: mod_file_name                              ! modified file name
+        integer :: istat                                                        ! status
         
         ! try to open the given name
         mod_file_name = file_name                                               ! copy file_name to mod_file_name
@@ -42,14 +45,14 @@ contains
         
         ! local variables
         integer, parameter :: lun_min=10, lun_max=1000
-        logical :: opened
+        logical :: file_open
         integer :: lun
         
         ! iterate over permitted luns until available one found
         nextunit=-1
         do lun=lun_min,lun_max
-            inquire(unit=lun,opened=opened)
-            if (.not. opened) then
+            inquire(UNIT=lun,OPENED=file_open)
+            if (.not.file_open) then
                 nextunit=lun
                 exit
             end if
@@ -111,4 +114,54 @@ contains
             if (present(mod_time)) mod_time = vals(10)
         end if
     end subroutine get_file_info
+    
+    ! Returns the name of the PB3D output file, including the current Richardson
+    ! level. Optionally, this can be overridden If not positive, it is ignored.
+    character(len=max_str_ln) function get_full_PB3D_name(rich_lvl) &
+        &result(full_PB3D_name)
+        use num_vars, only: PB3D_name
+        
+        ! input / output
+        integer, intent(in), optional :: rich_lvl                               ! optional richardson level to be appended
+        
+        ! local variables
+        integer :: rich_lvl_loc                                                 ! local richardson level
+        
+        ! set local rich_lvl
+        rich_lvl_loc = 0
+        if (present(rich_lvl)) rich_lvl_loc = rich_lvl
+        
+        ! set ouput
+        if (rich_lvl_loc.gt.0) then
+            full_PB3D_name = trim(PB3D_name)//'_R_'//&
+                &trim(i2str(rich_lvl_loc))//'.h5'
+        else
+            full_PB3D_name = trim(PB3D_name)//'.h5'
+        end if
+    end function get_full_PB3D_name
+    
+    ! removes a file
+    integer function delete_file(file_name) result(istat)
+        ! input / output
+        character(len=*), intent(inout) :: file_name                            ! the name that is deleted
+        
+        ! local variables
+        integer :: file_i                                                       ! file unit
+        logical :: file_open                                                    ! whether file is open
+        
+        ! initialize istat
+        istat = 0
+        
+        ! check if opened and open if not
+        inquire(FILE=trim(file_name),OPENED=file_open,NUMBER=file_i,&
+            &IOSTAT=istat)
+        CHCKSTT
+        if (.not.file_open) open(FILE=trim(file_name),UNIT=nextunit(file_i),&
+            &IOSTAT=istat)
+        CHCKSTT
+        
+        ! remove open file
+        close(UNIT=file_i,STATUS='delete',IOSTAT=istat)
+        CHCKSTT
+    end function delete_file
 end module files_utilities

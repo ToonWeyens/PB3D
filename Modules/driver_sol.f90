@@ -29,7 +29,6 @@ contains
     integer function run_driver_sol() result(ierr)
         use num_vars, only: EV_style, eq_style
         use grid_vars, only: n_r_sol
-        use num_utilities, only: test_max_memory
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_X_2, reconstruct_PB3D_sol
         use MPI_utilities, only: wait_MPI
@@ -76,10 +75,6 @@ contains
         ierr = wait_MPI()
         CHCKERR('')
         ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables
-        CHCKERR('')
-        
-        ! test maximum memory
-        ierr = test_max_memory()
         CHCKERR('')
         
         ! set up whether Richardson level has to be appended to the name

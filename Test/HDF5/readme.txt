@@ -1,0 +1,2 @@
+- Test whether HDF5 gives errors and stalls Valgrind.
+- Tried suggestion given in https://www.hdfgroup.org/HDF5/faq/valgrind.html.

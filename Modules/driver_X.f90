@@ -18,7 +18,8 @@ module driver_X
     ! global variables
     character(len=8) :: flux_name(2)                                            ! name of flux variable
     character(len=1) :: mode_name(2)                                            ! name of modes
-    integer :: rich_lvl_name                                                    ! either the Richardson level or zero, to append to names
+    integer :: rich_lvl_name                                                    ! either the Richardson level or zero
+    integer :: eq_job_name                                                      ! either eq_job_name or 0
 #if ldebug
     logical :: debug_run_driver_X_1 = .false.                                   ! debug information for run_driver_X_1
     logical :: debug_run_driver_X_2 = .false.                                   ! debug information for run_driver_X_2
@@ -29,15 +30,14 @@ contains
     ! Main driver of PB3D perturbation part.
     integer function run_driver_X() result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, rank, plot_resonance, &
-            &X_style, rich_restart_lvl
+            &X_style, rich_restart_lvl, eq_job_nr
         use rich_vars, only: n_par_X, rich_lvl
         use MPI_utilities, only: wait_MPI
         use X_vars, only: min_sec_X, max_sec_X, prim_X, min_r_sol, max_r_sol, &
             &n_mod_X
         use grid_vars, only: n_r_sol, min_par_X, max_par_X
         use PB3D_ops, only: reconstruct_PB3D_in
-        use num_utilities, only: test_max_memory
-        use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
+        use MPI_ops, only: get_next_job, print_jobs_info
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
             &setup_nm_X
         use input_utilities, only: dealloc_in
@@ -60,22 +60,21 @@ contains
         !!! calculate auxiliary quantities for utilities
         !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
         
-        ! test maximum memory
-        ierr = test_max_memory()
-        CHCKERR('')
-        
         ! some preliminary things
         ierr = wait_MPI()
         CHCKERR('')
         ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables
         CHCKERR('')
         
-        ! set up whether Richardson level has to be appended to the name
+        ! set up whether Richardson level  or equilibrium job has to be appended
+        ! to the name
         select case (eq_style) 
             case (1)                                                            ! VMEC
                 rich_lvl_name = rich_lvl                                        ! append richardson level
+                eq_job_name = eq_job_nr                                         ! append equilibrium job nr.
             case (2)                                                            ! HELENA
-                rich_lvl_name = 0                                               ! do not append name
+                rich_lvl_name = 0                                               ! do not append
+                eq_job_name = 0                                                 ! do not append
         end select
         
         ! user output
@@ -172,7 +171,7 @@ contains
     ! variables.
     integer function run_driver_X_0(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,&
         &eq_2,eq_2_B) result(ierr)
-        use num_vars, only: eq_style, rank
+        use num_vars, only: eq_style, rank, eq_job_nr
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_1, &
             &reconstruct_PB3D_eq_2
         use grid_ops, only: calc_norm_range, setup_grid_X, print_output_grid
@@ -204,11 +203,13 @@ contains
         
         call writo('Reconstruct equilibrium grid and variables')
         call lvl_ud(1)
-        ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name)
+        ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name,&
+            &eq_job=eq_job_name)
         CHCKERR('')
         ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
         CHCKERR('')
-        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',rich_lvl=rich_lvl_name)
+        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',&
+            &rich_lvl=rich_lvl_name,eq_job=eq_job_name)
         CHCKERR('')
         select case (eq_style)
             case (1)                                                            ! VMEC
@@ -221,7 +222,8 @@ contains
                 allocate(eq_2_B)
                 
                 ! reconstruct field-aligned equilibrium grid
-                ierr = reconstruct_PB3D_grid(grid_eq_B,'eq_B',rich_lvl=rich_lvl)
+                ierr = reconstruct_PB3D_grid(grid_eq_B,'eq_B',&
+                    &rich_lvl=rich_lvl,eq_job=eq_job_nr)
                 CHCKERR('')
                 
                 ! interpolate field-aligned metric equilibrium variables
@@ -265,7 +267,7 @@ contains
                 case (1)                                                        ! VMEC
                     ! print output
                     ierr = print_output_grid(grid_X,'perturbation',&
-                        &'X',rich_lvl=rich_lvl)
+                        &'X',rich_lvl=rich_lvl,eq_job=eq_job_nr)
                     CHCKERR('')
                 case (2)                                                        ! HELENA
                     ! print output
@@ -275,7 +277,7 @@ contains
                     end if
                     ! also print field-aligned output
                     ierr = print_output_grid(grid_X_B,'field-aligned &
-                        &perturbation','X_B',rich_lvl=rich_lvl)
+                        &perturbation','X_B',rich_lvl=rich_lvl,eq_job=eq_job_nr)
                     CHCKERR('')
             end select
         end if
@@ -288,9 +290,11 @@ contains
     ! Note: everything  is  done  here in  the original  grids, not  necessarily
     ! field-aligned.
     integer function run_driver_X_1(grid_eq,grid_X,eq_1,eq_2) result(ierr)
-        use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
+        use MPI_ops, only: get_next_job, print_jobs_info
         use MPI_utilities, only: wait_MPI
-        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style
+        use X_utilities, only: divide_X_jobs
+        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
+            &eq_job_nr
         use X_ops, only: calc_X, print_output_X
         use rich_vars, only: rich_lvl
         
@@ -348,8 +352,8 @@ contains
             CHCKERR('')
             
             ! write vectorial perturbation variables to output
-            ierr = print_output_X(grid_X,X_1,'X_1',&
-                &rich_lvl=rich_lvl_name,lim_sec_X=X_jobs_lims(:,X_job_nr))
+            ierr = print_output_X(grid_X,X_1,'X_1',rich_lvl=rich_lvl_name,&
+                &eq_job=eq_job_nr,lim_sec_X=X_jobs_lims(:,X_job_nr))
             CHCKERR('')
             
 #if ldebug
@@ -522,9 +526,11 @@ contains
     ! Part 2 of driver_X: Tensorial jobs.
     integer function run_driver_X_2(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,&
         &eq_2,eq_2_B) result(ierr)
-        use MPI_ops, only: divide_X_jobs, get_next_job, print_jobs_info
+        use MPI_ops, only: get_next_job, print_jobs_info
         use MPI_utilities, only: wait_MPI
-        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style
+        use X_utilities, only: divide_X_jobs
+        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
+            &eq_job_nr
         use PB3D_ops, only: reconstruct_PB3D_X_1, reconstruct_PB3D_X_2
         use rich_vars, only: rich_lvl
         use X_ops, only: calc_X, print_output_X, calc_magn_ints
@@ -547,7 +553,9 @@ contains
         type(X_2_type) :: X_2                                                   ! tensorial X variables
         type(X_2_type) :: X_2_prev                                              ! previous tensorial X variables
         integer :: id                                                           ! counter
+        integer :: rich_lvl_prev                                                ! rich_lvl of X_2_prev
         integer :: arr_size                                                     ! size of array for jobs division
+        integer :: prev_style                                                   ! style to treat prev_X
         logical :: dim_reused(2)                                                ! wether dimension is reused
 #if ldebug
         character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
@@ -607,7 +615,8 @@ contains
                         
                         ! reconstruct PB3D X_1 quantities for this dimension
                         ierr = reconstruct_PB3D_X_1(grid_X,X_1(id),'X_1',&
-                            &rich_lvl=rich_lvl_name,lim_sec_X=&
+                            &rich_lvl=rich_lvl_name,eq_job=eq_job_name,&
+                            &lim_sec_X=&
                             &X_jobs_lims((id-1)*2+1:(id-1)*2+2,X_job_nr))
                         CHCKERR('')
                         
@@ -630,7 +639,7 @@ contains
                 ! write  tensorial  perturbation  variables  to  output file  if
                 ! HELENA, only for first richardson level
                 if (eq_style.eq.2) then
-                    ierr = print_output_X(grid_X,X_2,'X_2',rich_lvl=0,&
+                    ierr = print_output_X(grid_X,X_2,'X_2',&
                         &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
                     CHCKERR('')
                 end if
@@ -644,7 +653,6 @@ contains
                     ! reconstruct if not first Richardson level
                     if (rich_lvl.gt.1) then
                         ierr = reconstruct_PB3D_X_2(grid_X,X_2,'X_2',&
-                            &rich_lvl=0,&
                             &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
                         CHCKERR('')
                     end if
@@ -753,26 +761,47 @@ contains
                 deallocate(var_names)
             end if
 #endif
-            ! Reconstruct magnetic integrals if not first level
-            if (rich_lvl.gt.1) then
+            ! Reconstruct  magnetic integrals  if not first  level or  not first
+            ! job:
+            !   - rich_lvl = 1, eq_job_nr = 1: just calculate integral
+            !   - rich_lvl = 1, eq_job_nr > 1: sum to previous integral
+            !   - rich_lvl > 1, eq_job_nr = 1: sum to previous integral / 2
+            !   - rich_lvl > 1, eq_job_nr > 1: sum to previous integral
+            ! This is automatically  taken care of by  taking eq_job_nr-1, which
+            ! is zero for first equilibrium jobs, and is therefore subsequently
+            ! ignored by reconstruct_PB3D_X_2.
+            if (rich_lvl.gt.1 .or. eq_job_nr.gt.1) then
+                if (eq_job_nr.gt.1) then
+                    rich_lvl_prev = rich_lvl
+                else
+                    rich_lvl_prev = rich_lvl-1
+                end if
                 ierr = reconstruct_PB3D_X_2(grid_X,X_2_prev,'X_2_int',&
-                    &rich_lvl=rich_lvl-1,&
+                    &rich_lvl=rich_lvl_prev,&
                     &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]),&
                     &is_field_averaged=.true.)
                 CHCKERR('')
             end if
             
             ! integrate magnetic  integrals of tensorial  perturbation variables
-            ! over field-aligned grid. If not first level, provide previous X_2.
+            ! over  field-aligned  grid.  If   not  first  Richardson  level  or
+            ! equilibrium job, provide previous X_2.
             if (rich_lvl.eq.1) then
-                ierr = calc_magn_ints(grid_eq_B,grid_X_B,eq_2_B,X_2,&
-                    &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
-                CHCKERR('')
+                if (eq_job_nr.eq.1) then
+                    prev_style = 0                                              ! don't add
+                else
+                    prev_style = 1                                              ! add
+                end if
             else
-                ierr = calc_magn_ints(grid_eq_B,grid_X_B,eq_2_B,X_2,X_2_prev,&
-                    &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
-                CHCKERR('')
+                if (eq_job_nr.eq.1) then
+                    prev_style = 2                                              ! divide by 2 and add, change indices
+                else
+                    prev_style = 3                                              ! add, change indices
+                end if
             end if
+            ierr = calc_magn_ints(grid_eq_B,grid_X_B,eq_2_B,X_2,X_2_prev,&
+                &prev_style,lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
+            CHCKERR('')
             
             ! write field-averaged tensorial perturbation variables to output
             ierr = print_output_X(grid_X_B,X_2,'X_2_int',rich_lvl=rich_lvl,&
@@ -782,7 +811,7 @@ contains
             
             ! clean up
             call X_2%dealloc()
-            if (rich_lvl.gt.1) call X_2_prev%dealloc()
+            if (rich_lvl.gt.1 .or. eq_job_nr.gt.1) call X_2_prev%dealloc()
             
             ! user output
             call lvl_ud(-1)

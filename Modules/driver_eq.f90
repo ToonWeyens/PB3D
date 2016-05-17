@@ -23,7 +23,7 @@ contains
     ! Main driver of PB3D equilibrium part.
     integer function run_driver_eq() result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
-            &plot_magn_grid
+            &plot_magn_grid, eq_job_nr
         use MPI_utilities, only: wait_MPI
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot
         use sol_vars, only: alpha
@@ -45,11 +45,16 @@ contains
         type(eq_2_type) :: eq_2                                                 ! equilibrium for
         integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid of this process
         logical :: only_half_grid                                               ! calculate only half grid
+        logical :: dealloc_vars = .true.                                        ! whether to deallocate variables to save memory
         character(len=max_str_ln) :: grid_eq_B_name                             ! name of grid_eq_B
         integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
         
         ! initialize ierr
         ierr = 0
+        
+#if ldebug
+        if (plot_info) dealloc_vars = .false.
+#endif
         
         ! some preliminary things
         ierr = wait_MPI()
@@ -102,8 +107,9 @@ contains
         ierr = calc_eq(grid_eq,eq_1)
         CHCKERR('')
         
-        ! write flux equilibrium variables to output if first level
-        if (rich_lvl.eq.1) then
+        ! write  flux equilibrium variables to  output if first level  and first
+        ! equilibirum job
+        if (rich_lvl.eq.1 .and. eq_job_nr.eq.1) then
             ! print output
             ierr = print_output_eq(grid_eq,eq_1,'eq_1')
             CHCKERR('')
@@ -135,11 +141,11 @@ contains
                 
                 ! write equilibrium grid variables to output
                 ierr = print_output_grid(grid_eq,'equilibrium','eq',&
-                    &rich_lvl=rich_lvl)
+                    &rich_lvl=rich_lvl,eq_job=eq_job_nr)
                 CHCKERR('')
                 
                 ! Calculate the metric equilibrium quantities
-                ierr = calc_eq(grid_eq,eq_1,eq_2)
+                ierr = calc_eq(grid_eq,eq_1,eq_2,dealloc_vars=dealloc_vars)
                 CHCKERR('')
                 
 #if ldebug
@@ -151,7 +157,7 @@ contains
                 
                 ! write metric equilibrium variables to output
                 ierr = print_output_eq(grid_eq,eq_2,'eq_2',rich_lvl=rich_lvl,&
-                    &dealloc_vars=.true.)
+                    &eq_job=eq_job_nr,dealloc_vars=dealloc_vars)
                 CHCKERR('')
                 
                 ! clean up
@@ -163,7 +169,7 @@ contains
                     CHCKERR('')
                     
                     ! Calculate the metric equilibrium quantities
-                    ierr = calc_eq(grid_eq,eq_1,eq_2)
+                    ierr = calc_eq(grid_eq,eq_1,eq_2,dealloc_vars=dealloc_vars)
                     CHCKERR('')
                     
 #if ldebug
@@ -175,7 +181,7 @@ contains
                     
                     ! write metric equilibrium variables to output
                     ierr = print_output_eq(grid_eq,eq_2,'eq_2',&
-                        &dealloc_vars=.true.)
+                        &dealloc_vars=dealloc_vars)
                     CHCKERR('')
                     
                     ! clean up
@@ -191,7 +197,7 @@ contains
                 
                 ! write field-aligned equilibrium grid variables to output
                 ierr = print_output_grid(grid_eq_B,'field-aligned equilibrium',&
-                    &'eq_B',rich_lvl=rich_lvl)
+                    &'eq_B',rich_lvl=rich_lvl,eq_job=eq_job_nr)
                 CHCKERR('')
         end select
         
@@ -340,6 +346,9 @@ contains
                 call writo('Want to redo the plotting?')
                 not_ready = get_log(.true.)
             end do
+            
+            ! reset not_ready
+            not_ready = .true.
             
             call writo('Done, paused',alert=.true.)
             call pause_prog()

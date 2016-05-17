@@ -28,18 +28,19 @@ contains
         ! select according to program style
         select case (prog_style)
             case(1)                                                             ! PB3D
-                allocate(opt_args(14), inc_args(14))
+                allocate(opt_args(15), inc_args(15))
                 opt_args = ''
                 inc_args = 0
-                opt_args(7) = '--no_guess'
-                opt_args(8) = '-st_pc_factor_shift_type'
-                opt_args(9) = '-st_pc_type'
-                opt_args(10) = '-st_pc_factor_mat_solver_package'
-                opt_args(11) = '-eps_monitor'
-                opt_args(12) = '-eps_tol'
-                opt_args(13) = '-eps_ncv'
-                opt_args(14) = '-eps_mpd'
-                inc_args(7:14) = [0,1,1,1,0,1,1,1]
+                opt_args(7) = '--minim_output'
+                opt_args(8) = '--no_guess'
+                opt_args(9) = '-st_pc_factor_shift_type'
+                opt_args(10) = '-st_pc_type'
+                opt_args(11) = '-st_pc_factor_mat_solver_package'
+                opt_args(12) = '-eps_monitor'
+                opt_args(13) = '-eps_tol'
+                opt_args(14) = '-eps_ncv'
+                opt_args(15) = '-eps_mpd'
+                inc_args(7:15) = [0,0,1,1,1,0,1,1,1]
             case(2)                                                             ! POST
                 allocate(opt_args(7), inc_args(7))
                 opt_args = ''
@@ -158,8 +159,8 @@ contains
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
-            &do_execute_command_line, output_name, prog_name, &
-            &print_mem_usage, swap_angles
+            &do_execute_command_line, output_name, prog_name, PB3D_name_eq, &
+            &print_mem_usage, swap_angles, minim_output
         use files_utilities, only: search_file
         use rich_vars, only: no_guess
 #if ldebug
@@ -269,6 +270,9 @@ contains
                     end if
             end select
             
+            ! also initialize PB3D equilibrium output name
+            PB3D_name_eq = PB3D_name
+            
             ! set options
             if (numargs.gt.2) then                                              ! options given
                 call writo('applying options')
@@ -365,26 +369,32 @@ contains
             integer, intent(in) :: arg_nr                                       ! argument number
             
             select case(opt_nr)
-                case (7)                                                        ! disable guessing Eigenfunction from previous Richardson level
+                case (7)                                                        ! minimize output file size by not writing variables on eq grid
+                    call writo('option minim_output chosen: some variables &
+                        &not saved to minimize output file size')
+                    minim_output = .true.
+                    PB3D_name_eq = prog_name//'_'//trim(output_name)//&
+                        &'_temp.h5'
+                case (8)                                                        ! disable guessing Eigenfunction from previous Richardson level
                     call writo('option no_guess chosen: Eigenfunction not &
                         &guessed from previous Richardson level')
                     no_guess = .true.
-                case (8)
+                case (9)
                     call writo('option st_pc_factor_shift_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (9)
+                case (10)
                     call writo('option st_pc_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (10)
+                case (11)
                     call writo('option st_pc_factor_mat_solver_package '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (11)
-                    call writo('option eps_monitor passed to SLEPC')
                 case (12)
-                    call writo('option eps_tol passed to SLEPC')
+                    call writo('option eps_monitor passed to SLEPC')
                 case (13)
-                    call writo('option eps_ncv passed to SLEPC')
+                    call writo('option eps_tol passed to SLEPC')
                 case (14)
+                    call writo('option eps_ncv passed to SLEPC')
+                case (15)
                     call writo('option eps_mpd passed to SLEPC')
                 case default
                     call writo('Invalid option number',warning=.true.)
@@ -413,7 +423,7 @@ contains
     ! and the output log file name is different.
     integer function open_output() result(ierr)
         use num_vars, only: prog_style, output_i, output_name, prog_name, &
-            &rich_restart_lvl, shell_commands_name
+            &rich_restart_lvl, shell_commands_name, PB3D_name
         use messages, only: temp_output, temp_output_active
         use files_utilities, only: nextunit
         use HDF5_ops, only: create_output_HDF5
@@ -494,7 +504,7 @@ contains
             case (1)                                                            ! PB3D
                 ! create HDF5 file for output if no restart
                 if (rich_restart_lvl.eq.1) then
-                    ierr = create_output_HDF5()
+                    ierr = create_output_HDF5(PB3D_name)
                     CHCKERR('')
                 end if
             case (2)                                                            ! POST
@@ -512,7 +522,9 @@ contains
                 &STATUS='replace',IOSTAT=ierr)
             
             ! write header and close
-            write(mem_usage_i,'(A)') '# Rank - count - Time - Memory usage [kB]'
+            write(mem_usage_i,'(A)') '# Rank - Count - Time - &
+                &Memory Usage [kB] - Max. tot. Memory [kB] - &
+                &Max. X. Memory [kB]'
             close(mem_usage_i)
             
             ! print message

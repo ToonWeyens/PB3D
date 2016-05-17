@@ -13,7 +13,7 @@ module num_utilities
     public calc_zero_NR, calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &conv_FHM, check_deriv, calc_inv, calc_mult, calc_aux_utilities, &
         &derivs, con2dis, dis2con, round_with_tol, conv_mat, is_sym, &
-        &con, calc_coeff_fin_diff, fac, test_max_memory, d, m, f
+        &con, calc_coeff_fin_diff, fac, d, m, f
 #if ldebug
     public debug_calc_zero_NR, debug_con2dis_reg, debug_calc_coeff_fin_diff
 #endif
@@ -2025,47 +2025,4 @@ contains
             fact = n * fac(n-1)
         end if
     end function fac
-
-    ! test whether maximum memory feasible
-    integer function test_max_memory() result(ierr)
-        use ISO_C_BINDING
-        use num_vars, only: max_mem_per_proc, n_procs, test_max_mem
-        
-        character(*), parameter :: rout_name = 'test_max_memory'
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), allocatable :: max_mem_arr(:,:)                               ! array with maximum size
-        integer(C_SIZE_T) :: dp_size                                            ! size of dp
-        integer :: n_max                                                        ! maximum size of array
-        
-        ! initialize ierr
-        ierr = 0
-        
-        if (test_max_mem) then
-            call writo('Testing whether maximum memory per process of '//&
-                &trim(r2strt(max_mem_per_proc))//'MB is possible')
-            
-            call lvl_ud(1)
-            
-            ! (lazy) allocation
-            dp_size = sizeof(1._dp)
-            n_max = ceiling(sqrt(max_mem_per_proc/(dp_size*1.E-6)))             ! dp_size in B, max_mem_per_proc in MB
-            call writo('Allocating doubles array of size ('//trim(i2str(n_max))&
-                &//'x'//trim(i2str(n_max))//') on '//trim(i2str(n_procs))//&
-                &' MPI process(es)')
-            allocate(max_mem_arr(n_max,n_max),STAT=ierr)
-            err_msg = 'cannot allocate this much memory. Try setting &
-                &"max_mem_per_proc" lower'
-            CHCKERR(err_msg)
-            
-            ! explicitely set elements
-            max_mem_arr = 0._dp                                                 ! this can fail while lazy allocation does not
-            
-            deallocate(max_mem_arr)
-            
-            call lvl_ud(-1)
-            call writo('Maximum memory allocatable')
-        end if
-    end function test_max_memory
 end module num_utilities

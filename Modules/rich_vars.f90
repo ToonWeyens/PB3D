@@ -29,8 +29,9 @@ module rich_vars
     integer, allocatable :: loc_max_rel_err(:,:)                                ! location of maximum of relative error
     
 contains
-    ! Possible extension with Richardson level or nothing if only one level.
-    elemental character(len=max_str_ln) function rich_info()                    ! full version
+    ! Possible extension with Richardson level or  nothing if only one level and
+    ! one parallel job.
+    elemental character(len=max_str_ln) function rich_info()
         if (max_it_rich.gt.1) then
             rich_info = ' for Richardson level '//trim(i2str(rich_lvl))
         else

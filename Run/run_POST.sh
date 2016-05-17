@@ -96,8 +96,8 @@ if [ "$use_out_loc" = true ]; then
     cp ${1%/}/$PB3D_out_name $out
 fi
 cd $out
-echo "mpirun -np $2 $debug_opt $extra_debug_opt ./POST $POST_in_name PB3D_out.h5 ${@:3}" > command_POST
-mpirun -np $2 $debug_opt $extra_debug_opt ./POST $POST_in_name $PB3D_out_name  ${@:3}
+echo "mpirun -np $2 $debug_opt $extra_debug_opt ./POST $POST_in_name $PB3D_out_name ${@:3}" > command_POST
+mpirun -np $2 $debug_opt $extra_debug_opt ./POST $POST_in_name $PB3D_out_name ${@:3}
 cd ../
 echo ""
 echo "Leaving directory $out/"

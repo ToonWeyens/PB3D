@@ -59,13 +59,19 @@ contains
     
     ! prints first message
     subroutine print_hello
-        use num_vars, only: rank, prog_name, prog_version
+        use num_vars, only: rank, prog_name, prog_version, n_procs
         
         if (rank.eq.0) then
             call write_formatted(' Simulation started on '//get_date()//', at '&
                 &//get_clock(),'italic')
             call write_formatted(' '//prog_name//' version: '//&
                 &trim(r2strt(prog_version)),'italic')
+            if (n_procs.eq.1) then
+                call write_formatted(' 1 MPI process','italic')
+            else
+                call write_formatted(' '//trim(i2str(n_procs))//&
+                    &' MPI processes','italic')
+            end if
             write(*,*) ''
         end if
     end subroutine print_hello
@@ -234,7 +240,8 @@ contains
     !       files, which  are then read  by the  global master when  the group's
     !       work is done
     subroutine writo(input_str,persistent,error,warning,alert)
-        use num_vars, only: rank, output_i, no_output
+        use num_vars, only: rank, output_i, no_output, max_tot_mem_per_proc, &
+            &max_X_mem_per_proc
 #if ldebug
         use num_vars, only: print_mem_usage, prog_name, mem_usage_name, &
             &mem_usage_i, mem_usage_count
@@ -262,6 +269,7 @@ contains
 #if ldebug
         integer :: istat                                                        ! status
         integer :: now(3)                                                       ! time
+        integer :: mem_usage                                                    ! memory usage
 #endif
         
         ! bypass output if no_output
@@ -291,17 +299,24 @@ contains
             call itime(now)
             mem_usage_count = mem_usage_count + 1
             
+            ! get memory usage
+            mem_usage = get_mem_usage()
+            
             ! append count and memory usage in MegaBytes
             input_str_loc = trim(input_str_loc)//' - ['//&
                 &trim(i2str(mem_usage_count))//': '//&
-                &trim(i2str(get_mem_usage()))//'kB]'
+                &trim(i2str(mem_usage))//'kB]'
             
-            ! write rank, count, time, memory usage to file
-            open(UNIT=mem_usage_i,FILE=prog_name//'_'//trim(mem_usage_name)//&
-                &'.dat',STATUS='old',POSITION='append',IOSTAT=istat)
-            write(mem_usage_i,*) rank, mem_usage_count, &
-                &(now(1)*60+now(2))*60+now(3), get_mem_usage()
-            close(UNIT=mem_usage_i)
+            ! write rank, count, time, memory usage to file if not temp_output
+            if (.not.temp_output_active) then
+                open(UNIT=mem_usage_i,FILE=prog_name//'_'//&
+                    &trim(mem_usage_name)//'.dat',STATUS='old',&
+                    &POSITION='append',IOSTAT=istat)
+                write(mem_usage_i,*) rank, mem_usage_count, &
+                    &(now(1)*60+now(2))*60+now(3), mem_usage, &
+                    &max_tot_mem_per_proc*1000, max_X_mem_per_proc*1000
+                close(UNIT=mem_usage_i)
+            end if
         end if
 #endif
         
