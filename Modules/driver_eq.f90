@@ -306,10 +306,15 @@ contains
                 ! R and Z
                 select case (eq_style)
                     case(1)
-                        call plot_HDF5('R_V','R_V',eq_2%R_E(:,:,:,0,0,0),&
-                            &x=x_plot,y=y_plot,z=z_plot)
-                        call plot_HDF5('Z_V','Z_V',eq_2%Z_E(:,:,:,0,0,0),&
-                            &x=x_plot,y=y_plot,z=z_plot)
+                        call plot_HDF5('R_V','R_V',&
+                            &eq_2%R_E(:,:,:,d(1),d(2),d(3)),x=x_plot,y=y_plot,&
+                            &z=z_plot)
+                        call plot_HDF5('Z_V','Z_V',&
+                            &eq_2%Z_E(:,:,:,d(1),d(2),d(3)),x=x_plot,y=y_plot,&
+                            &z=z_plot)
+                        call plot_HDF5('L_V','L_V',&
+                            &eq_2%L_E(:,:,:,d(1),d(2),d(3)),x=x_plot,y=y_plot,&
+                            &z=z_plot)
                     case(2)
                         if (sum(d).eq.0) then
                             call plot_HDF5('R_H','R_H',&

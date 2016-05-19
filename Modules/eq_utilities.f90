@@ -1062,7 +1062,8 @@ contains
         use num_vars, only: eq_jobs_lims, eq_job_nr
         
         if (size(eq_jobs_lims,2).gt.1) then
-            eq_info = ' for Equilibrium job '//trim(i2str(eq_job_nr))
+            eq_info = ' for Equilibrium job '//trim(i2str(eq_job_nr))//&
+                &' of '//trim(i2str(size(eq_jobs_lims,2)))
         else
             eq_info = ''
         end if

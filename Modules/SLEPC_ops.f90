@@ -78,6 +78,7 @@ contains
         PetscReal, allocatable :: norm_disc_coeff(:)                            ! discretization coefficients
         PetscReal :: step_size                                                  ! step size in flux coordinates
         PetscBool :: done_inverse                                               ! is it converged?
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -169,10 +170,9 @@ contains
                     end if
 #endif
                 case (2)                                                        ! shell
-                    write(*,*) '!!!! DISABLED !!!!'
-                    !!ierr = 1
-                    !!err_msg = 'NOT YET IMPLEMENTED FOR SHELL MATRICES'
-                    !!CHCKERR(err_msg)
+                    ierr = 1
+                    err_msg = 'NOT YET IMPLEMENTED FOR SHELL MATRICES'
+                    CHCKERR(err_msg)
             end select
             
             ! set up solver
@@ -250,11 +250,14 @@ contains
         CHCKERR('')
 #endif
         
+        ! clean up
+        deallocate(norm_disc_coeff)
+        
         ! finalize
         call writo('Finalize SLEPC')
         
         ! stop SLEPC
-        ierr = stop_SLEPC(grid_sol,A,B,solver)
+        ierr = stop_SLEPC(A,B,solver)
         CHCKERR('')
         
 #if ldebug
@@ -421,12 +424,11 @@ contains
         &result(ierr)
         use num_vars, only: norm_disc_prec_sol, matrix_SLEPC_style
         use SLEPC_utilities, only: insert_block_mat
+        use X_vars, only: n_mod_X
 #if ldebug
         use num_vars, only: ltest
         use input_utilities, only: get_real, get_log
 #endif
-        !!! TEMPORARY !!!
-        use MPI_utilities, only: wait_MPI
         
         character(*), parameter :: rout_name = 'setup_mats'
         
@@ -438,7 +440,6 @@ contains
         PetscReal, intent(in) :: norm_disc_coeff(:)                             ! discretization coefficients for normal derivatives
         
         ! local variables
-        integer :: n_mod                                                        ! nr. of modes
         PetscInt :: kd                                                          ! counter
         PetscInt :: n_r                                                         ! n_r of trimmed sol grid
         PetscInt :: loc_n_r                                                     ! loc_n_r of trimmed sol grid
@@ -446,11 +447,6 @@ contains
         PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
         PetscInt, allocatable :: o_nz(:)                                        ! nr. of off-diagonal non-zeros
         character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        !!! TEMPORARY !!!
-        Vec :: vec_in
-        Vec :: vec_out
-        PetscScalar, pointer :: vec_in_loc(:)
         
         ! local variables also used in child routines
         PetscInt :: bulk_i_lim(2)                                               ! absolute limits of bulk matrix (excluding the BC's)
@@ -476,11 +472,11 @@ contains
         end if
 #endif
         
-        ! set nr. of modes
-        n_mod = X%n_mod(1)
-        if (n_mod.ne.X%n_mod(2)) then
+        ! check nr. of modes
+        if (n_mod_X.ne.X%n_mod(1) .or. n_mod_X.ne.X%n_mod(2)) then
             ierr = 1
-            CHCKERR('Need square matrix')
+            err_msg = 'Need square matrix of size [n_mod_X:n_mod_X]'
+            CHCKERR(err_msg)
         end if
         
         ! set up loc_n_r and n_r
@@ -501,9 +497,10 @@ contains
                 call set_nonzeros()
                 
                 ! create matrix A
-                call MatCreateAIJ(PETSC_COMM_WORLD,loc_n_r*n_mod,loc_n_r*n_mod,&
-                    &n_r*n_mod,n_r*n_mod,PETSC_NULL_INTEGER,d_nz*n_mod,&
-                    &PETSC_NULL_INTEGER,o_nz*n_mod,A,ierr)
+                call MatCreateAIJ(PETSC_COMM_WORLD,loc_n_r*n_mod_X,&
+                    &loc_n_r*n_mod_X,n_r*n_mod_X,n_r*n_mod_X,&
+                    &PETSC_NULL_INTEGER,d_nz*n_mod_X,PETSC_NULL_INTEGER,&
+                    &o_nz*n_mod_X,A,ierr)
                 err_msg = 'MatCreateAIJ failed for matrix A'
                 CHCKERR(err_msg)
                 
@@ -536,55 +533,8 @@ contains
                 ierr = disp_mat_info(B)
                 CHCKERR('')
             case (2)                                                            ! shell
-                ! create matrix A
-                call MatCreateShell(PETSC_COMM_WORLD,loc_n_r*n_mod,&
-                    &loc_n_r*n_mod,n_r*n_mod,n_r*n_mod,PETSC_NULL_OBJECT,A,ierr)
-                err_msg = 'MatCreateShell failed for matrix A'
-                CHCKERR(err_msg)
-                
-                ! set operations for A
-                err_msg = 'MatShellSetOperation failed for matrix A'
-                call MatShellSetOperation(A,MATOP_MULT,shell_A_product,ierr)
-                CHCKERR(err_msg)
-                call MatShellSetOperation(A,MATOP_GET_DIAGONAL,&
-                    &shell_A_diagonal,ierr)
-                CHCKERR(err_msg)
-                
-                !!!!!!!! TEMPORARY !!!!!!!!!!
-                ! test multiplication of A
-                call MatCreateVecs(A,vec_in,PETSC_NULL_OBJECT,ierr)        ! get compatible parallel vectors to matrix A (petsc 3.6.1)
-                CHCKERR('Failed to create vector')
-                call MatCreateVecs(A,vec_out,PETSC_NULL_OBJECT,ierr)        ! get compatible parallel vectors to matrix A (petsc 3.6.1)
-                CHCKERR('Failed to create vector')
-                call VecGetArrayF90(vec_in,vec_in_loc,ierr)
-                CHCKERR('Failed to get pointer')
-                vec_in_loc = [(kd*1._dp,kd=1,size(vec_in_loc))]
-                call MatMult(A,vec_in,vec_out,ierr)
-                CHCKERR('Failed to multiply')
-                write(*,*) 'vec_in = '
-                call VecView(vec_in,PETSC_VIEWER_STDOUT_WORLD,ierr)
-                CHCKERR('Cannot view vector')
-                write(*,*) 'vec_out = '
-                call VecView(vec_out,PETSC_VIEWER_STDOUT_WORLD,ierr)
-                CHCKERR('Cannot view vector')
-                call VecRestoreArrayReadF90(vec_in,vec_in_loc,ierr)
-                CHCKERR('Failed to restore pointer')
-                ierr = wait_MPI()
-                CHCKERR('')
-                !!!!!!!! TEMPORARY !!!!!!!!!!
-                
-                ! create matrix B
-                call MatCreateShell(PETSC_COMM_WORLD,loc_n_r*n_mod,&
-                    &loc_n_r*n_mod,n_r*n_mod,n_r*n_mod,PETSC_NULL_OBJECT,B,ierr)
-                err_msg = 'MatCreateShell failed for matrix B'
-                CHCKERR(err_msg)
-                
-                ! set operations for B
-                err_msg = 'MatShellSetOperation failed for matrix B'
-                call MatShellSetOperation(B,MATOP_MULT,shell_B_product,ierr)
-                CHCKERR(err_msg)
-                call MatShellSetOperation(B,MATOP_GET_DIAGONAL,&
-                    &shell_B_diagonal,ierr)
+                ierr = 1
+                err_msg = 'NOT YET IMPLEMENTED FOR SHELL MATRICES'
                 CHCKERR(err_msg)
         end select
     contains
@@ -619,7 +569,7 @@ contains
             
             ! local variables (not to be used in child routines)
             character(len=max_str_ln) :: err_msg                                ! error message
-            PetscScalar, allocatable :: loc_block(:,:)                          ! (n_mod x n_mod) block matrix for 1 normal point
+            PetscScalar, allocatable :: loc_block(:,:)                          ! [n_mod_X:n_mod_X] block matrix for 1 normal point
             PetscInt :: id, jd, kd                                              ! counters
             PetscInt :: kd_loc                                                  ! kd in local variables
             PetscInt :: k, m                                                    ! counters
@@ -637,8 +587,8 @@ contains
             call MatGetOwnershipRange(mat,r_sol_start,r_sol_end,ierr)           ! starting and ending row r_sol_start and r_sol_end
             err_msg = 'Couldn''t get ownership range of matrix'
             CHCKERR(err_msg)
-            r_sol_start = r_sol_start/n_mod                                     ! count per block
-            r_sol_end = r_sol_end/n_mod                                         ! count per block
+            r_sol_start = r_sol_start/n_mod_X                                   ! count per block
+            r_sol_end = r_sol_end/n_mod_X                                       ! count per block
             if (grid_sol%i_min.ne.r_sol_start+1) then
                 ierr = 1
                 err_msg = 'start of matrix in this process does not coincide &
@@ -653,7 +603,7 @@ contains
             end if
             
             ! allocate local block
-            allocate(loc_block(n_mod,n_mod))
+            allocate(loc_block(n_mod_X,n_mod_X))
             
             ! iterate over all rows of this rank
             do kd = bulk_i_lim(1)-1,bulk_i_lim(2)-1                             ! (indices start with 0 here)
@@ -666,9 +616,10 @@ contains
                 ! BLOCKS ~ V_0 !
                 ! -------------!
                 ! fill local block
-                do m = 1,n_mod
-                    do k = 1,n_mod
-                        loc_block(k,m) = con(V_0(kd_loc,c([k,m],.true.,n_mod)),&
+                do m = 1,n_mod_X
+                    do k = 1,n_mod_X
+                        loc_block(k,m) = &
+                            &con(V_0(kd_loc,c([k,m],.true.,n_mod_X)),&
                             &[k,m],.true.)                                      ! symmetric matrices need con()
                     end do
                 end do
@@ -676,7 +627,7 @@ contains
 #if ldebug
                 if (test_diff) then
                     ! back up the V_0 block
-                    allocate(loc_block_0_backup(n_mod,n_mod))
+                    allocate(loc_block_0_backup(n_mod_X,n_mod_X))
                     loc_block_0_backup = loc_block
                 end if
 #endif
@@ -689,9 +640,9 @@ contains
                 ! BLOCKS ~ V_1 !
                 ! -------------!
                 ! fill local block
-                do m = 1,n_mod
-                    do k = 1,n_mod
-                        loc_block(k,m) = V_1(kd_loc,c([k,m],.false.,n_mod))     ! asymetric matrices don't need con()
+                do m = 1,n_mod_X
+                    do k = 1,n_mod_X
+                        loc_block(k,m) = V_1(kd_loc,c([k,m],.false.,n_mod_X))   ! asymetric matrices don't need con()
                     end do
                 end do
                 
@@ -707,9 +658,10 @@ contains
                 ! BLOCKS ~ V_2 !
                 ! -------------!
                 ! fill local block
-                do m = 1,n_mod
-                    do k = 1,n_mod
-                        loc_block(k,m) = con(V_2(kd_loc,c([k,m],.true.,n_mod)),&
+                do m = 1,n_mod_X
+                    do k = 1,n_mod_X
+                        loc_block(k,m) = &
+                            &con(V_2(kd_loc,c([k,m],.true.,n_mod_X)),&
                             &[k,m],.true.)                                      ! symmetric matrices need con()
                     end do
                 end do
@@ -742,7 +694,7 @@ contains
             !call MatSetOption(mat,MAT_HERMITIAN,PETSC_TRUE,ierr)                ! Hermitian to a first approximation
             !CHCKERR('Coulnd''t set option Hermitian')
             
-            ! deallocate variables
+            ! clean up
             deallocate(loc_block)
         end function fill_mat
         
@@ -828,26 +780,26 @@ contains
             PetscInt, allocatable :: tot_nz(:)                                  ! nr. of total non-zeros
             
             ! initialize the numbers of non-zeros in diagonal and off-diagonal
-            allocate(tot_nz(loc_n_r*n_mod)); tot_nz = 0
-            allocate(d_nz(loc_n_r*n_mod)); d_nz = 0
-            allocate(o_nz(loc_n_r*n_mod)); o_nz = 0
+            allocate(tot_nz(loc_n_r*n_mod_X)); tot_nz = 0
+            allocate(d_nz(loc_n_r*n_mod_X)); d_nz = 0
+            allocate(o_nz(loc_n_r*n_mod_X)); o_nz = 0
             
             ! calculate number of total nonzero entries
             tot_nz = 1+2*st_size
             do kd = 1,st_size
                 if (kd.ge.grid_sol%i_min .and. kd.le.grid_sol%i_max) &          ! limit due to left BC
-                    &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
-                    &(kd-grid_sol%i_min+1)*n_mod) = &
-                    &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
-                    &(kd-grid_sol%i_min+1)*n_mod) - &
+                    &tot_nz((kd-grid_sol%i_min)*n_mod_X+1:&
+                    &(kd-grid_sol%i_min+1)*n_mod_X) = &
+                    &tot_nz((kd-grid_sol%i_min)*n_mod_X+1:&
+                    &(kd-grid_sol%i_min+1)*n_mod_X) - &
                     &(st_size+1-kd)
             end do
             do kd = n_r,n_r-st_size+1,-1
                 if (kd.ge.grid_sol%i_min .and. kd.le.grid_sol%i_max) &          ! limit due to right BC
-                    &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
-                    &(kd-grid_sol%i_min+1)*n_mod) = &
-                    &tot_nz((kd-grid_sol%i_min)*n_mod+1:&
-                    &(kd-grid_sol%i_min+1)*n_mod) - &
+                    &tot_nz((kd-grid_sol%i_min)*n_mod_X+1:&
+                    &(kd-grid_sol%i_min+1)*n_mod_X) = &
+                    &tot_nz((kd-grid_sol%i_min)*n_mod_X+1:&
+                    &(kd-grid_sol%i_min+1)*n_mod_X) - &
                     &(kd-n_r+st_size)
             end do
             
@@ -856,168 +808,24 @@ contains
                 d_nz = loc_n_r
             else                                                                ! more than (st_size+1) normal points in this process
                 do kd = 1,st_size
-                    d_nz((kd-1)*n_mod+1:kd*n_mod) = &
+                    d_nz((kd-1)*n_mod_X+1:kd*n_mod_X) = &
                         &st_size+kd
-                    d_nz((loc_n_r-kd)*n_mod+1:(loc_n_r-kd+1)*n_mod) = &
+                    d_nz((loc_n_r-kd)*n_mod_X+1:(loc_n_r-kd+1)*n_mod_X) = &
                         &st_size+kd
                 end do
-                d_nz(st_size*n_mod+1:(loc_n_r-st_size)*n_mod) = &
+                d_nz(st_size*n_mod_X+1:(loc_n_r-st_size)*n_mod_X) = &
                     &2*st_size+1
             end if
             d_nz = min(d_nz,loc_n_r)                                            ! limit to loc_n_r
             
             ! calculate number of nonzero off-diagonal entries
-            do kd = 1,loc_n_r*n_mod
+            do kd = 1,loc_n_r*n_mod_X
                 o_nz(kd) = tot_nz(kd)-d_nz(kd)
             end do
+            
+            ! clean up
+            deallocate(tot_nz)
         end subroutine set_nonzeros
-        
-        ! Defines matrix product for shell matrices: Y = A*X and Y = B*X
-        ! Uses the variables A, B, bulk_i_lim, grid_sol from parent routine.
-        subroutine shell_A_product(mat,vec_in,vec_out,ierr)
-            character(*), parameter :: rout_name = 'shell_A_product'
-            
-            ! input / output
-            Mat :: mat                                                          ! matrix (unused)
-            Vec :: vec_in, vec_out                                              ! input and output vector
-            PetscInt :: ierr                                                    ! error variable
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! call with PV
-            ierr = shell_mat_product(X%PV_0(1,i_geo,:,:),&
-                &X%PV_1(1,i_geo,:,:),X%PV_2(1,i_geo,:,:),vec_in,vec_out)
-            CHCKERR('')
-        end subroutine shell_A_product
-        subroutine shell_B_product(mat,vec_in,vec_out,ierr)
-            character(*), parameter :: rout_name = 'shell_B_product'
-            
-            ! input / output
-            Mat :: mat                                                          ! matrix (unused)
-            Vec :: vec_in, vec_out                                              ! input and output vector
-            PetscInt :: ierr                                                    ! error variable
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! call with KV
-            ierr = shell_mat_product(X%KV_0(1,i_geo,:,:),&
-                &X%KV_1(1,i_geo,:,:),X%KV_2(1,i_geo,:,:),vec_in,vec_out)
-            CHCKERR('')
-        end subroutine shell_B_product
-        integer function shell_mat_product(V_0,V_1,V_2,vec_in,vec_out) &
-            &result(ierr)
-            character(*), parameter :: rout_name = 'shell_mat_product'
-            
-            ! input / output
-            PetscScalar, intent(in) :: V_0(:,:)                                 ! either PV_int_0 or KV_int_0 in equilibrium normal grid
-            PetscScalar, intent(in) :: V_1(:,:)                                 ! either PV_int_1 or KV_int_1 in equilibrium normal grid
-            PetscScalar, intent(in) :: V_2(:,:)                                 ! either PV_int_2 or KV_int_2 in equilibrium normal grid
-            Vec, intent(in) :: vec_in                                           ! input vector
-            Vec, intent(inout) :: vec_out                                       ! output vector
-            
-            ! local variables
-            PetscScalar, pointer :: vec_in_loc(:)                               ! local pointer to vec_in
-            PetscScalar, pointer :: vec_out_loc(:)                              ! local pointer to vec_out
-            PetscInt :: kd                                                      ! counter
-            PetscInt :: kd_loc                                                  ! kd in local variables
-            
-            write(*,*) '!!! GOT INTO USER DEFINED SHELL MATRIX PRODUCT !!!!!!!!'
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! get vectors
-            err_msg = 'Failed to get array'
-            call VecGetArrayReadF90(vec_in,vec_in_loc,ierr)
-            CHCKERR(err_msg)
-            call VecGetArrayF90(vec_out,vec_out_loc,ierr)
-            CHCKERR(err_msg)
-            
-            ! loop over all the diagonal elements of the matrix
-            do kd = bulk_i_lim(1)-1,bulk_i_lim(2)-1                             ! (indices start with 0 here)
-                ! set up local kd
-                kd_loc = kd+2-grid_sol%i_min
-                
-                ! set diagonal
-                !diag_loc(kd) = V_0(
-            end do
-            !!! TEMPORARY !!!!
-            vec_out_loc = 3._dp
-            
-            ! restore vectors
-            err_msg = 'Failed to restore array'
-            call VecRestoreArrayReadF90(vec_in,vec_in_loc,ierr)
-            CHCKERR(err_msg)
-            call VecRestoreArrayF90(vec_out,vec_out_loc,ierr)
-            CHCKERR(err_msg)
-        end function shell_mat_product
-        
-        ! Gets diagonal of shell matrix A or B.
-        subroutine shell_A_diagonal(mat,diag,ierr)
-            character(*), parameter :: rout_name = 'shell_A_diagonal'
-            
-            ! input / output
-            Mat :: mat                                                          ! matrix (unused)
-            Vec :: diag                                                         ! diagonal
-            PetscInt :: ierr                                                    ! error variable
-            
-            ! call with PV
-            ierr = shell_mat_diagonal(X%PV_0(1,i_geo,:,:),diag)
-            CHCKERR('')
-        end subroutine shell_A_diagonal
-        subroutine shell_B_diagonal(mat,diag,ierr)
-            character(*), parameter :: rout_name = 'shell_B_diagonal'
-            
-            ! input / output
-            Mat :: mat                                                          ! matrix (unused)
-            Vec :: diag                                                         ! diagonal
-            PetscInt :: ierr                                                    ! error variable
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! call with KV
-            ierr = shell_mat_diagonal(X%KV_0(1,i_geo,:,:),diag)
-            CHCKERR('')
-        end subroutine shell_B_diagonal
-        integer function shell_mat_diagonal(V_0,diag) result(ierr)
-            character(*), parameter :: rout_name = 'shell_mat_diagonal'
-            
-            ! input / output
-            PetscScalar, intent(in) :: V_0(:,:)                                 ! either PV_int_0 or KV_int_0 in equilibrium normal grid
-            Vec, intent(inout) :: diag                                          ! diagonal
-            
-            ! local variables
-            PetscInt :: kd                                                      ! counter
-            PetscInt :: kd_loc                                                  ! kd in local variables
-            PetscScalar, pointer :: diag_loc(:)                                 ! local pointer to diag
-            
-            ! initialize ierr
-            ierr = 0
-            
-            write(*,*) '!!! GOT INTO USER DEFINED SHELL MATRIX PRODUCT !!!!!!!!'
-            
-            ! get vectors
-            err_msg = 'Failed to get array'
-            call VecGetArrayF90(diag,diag_loc,ierr)
-            CHCKERR(err_msg)
-            
-            ! loop over all the diagonal elements of the matrix
-            do kd = bulk_i_lim(1)-1,bulk_i_lim(2)-1                             ! (indices start with 0 here)
-                ! set up local kd
-                kd_loc = kd+2-grid_sol%i_min
-                
-                ! set diagonal
-                !diag_loc(kd) = V_0(
-            end do
-            
-            ! restore vectors
-            err_msg = 'Failed to restore array'
-            call VecRestoreArrayF90(diag,diag_loc,ierr)
-            CHCKERR(err_msg)
-        end function shell_mat_diagonal
     end function setup_mats
     
     ! Sets the  boundary conditions:
@@ -1028,6 +836,7 @@ contains
     integer function set_BC(grid_sol,X,A,B,i_geo,n_sol,norm_disc_coeff) &
         &result(ierr)
         use num_vars, only: norm_disc_prec_sol, BC_style
+        use X_vars, only: n_mod_X
         use MPI_utilities, only: get_ser_var, wait_MPI
         use num_utilities, only: con, c
         use SLEPC_utilities, only: insert_block_mat
@@ -1045,7 +854,6 @@ contains
         PetscInt :: n_min, n_max                                                ! absolute limits excluding the BC's
         
         ! local variables
-        integer :: n_mod                                                        ! nr. of modes
         PetscInt :: kd                                                          ! counter
         
         ! initialize ierr
@@ -1056,11 +864,11 @@ contains
         call writo('Preparing variables')
         call lvl_ud(1)
         
-        ! set nr. of modes
-        n_mod = X%n_mod(1)
-        if (n_mod.ne.X%n_mod(2)) then
+        ! check nr. of modes
+        if (n_mod_X.ne.X%n_mod(1) .or. n_mod_X.ne.X%n_mod(2)) then
             ierr = 1
-            CHCKERR('Need square matrix')
+            err_msg = 'Need square matrix of size [n_mod_X:n_mod_X]'
+            CHCKERR(err_msg)
         end if
         
         call lvl_ud(-1)
@@ -1198,7 +1006,7 @@ contains
             
             ! local variables
             integer :: kd                                                       ! counter
-            PetscScalar, allocatable :: loc_block(:,:)                          ! (n_mod,n_mod) block matrix for 1 normal point
+            PetscScalar, allocatable :: loc_block(:,:)                          ! [n_mod_X:n_mod_X] block matrix for 1 normal point
             PetscInt :: pmone                                                   ! plus or minus one
             
             ! initialize ierr
@@ -1209,9 +1017,9 @@ contains
                 &': Eigenvector set to zero',persistent=.true.)
             
             ! initialize local blocks
-            allocate(loc_block(n_mod,n_mod))
+            allocate(loc_block(n_mod_X,n_mod_X))
             loc_block = 0.0_dp
-            do kd = 1,n_mod
+            do kd = 1,n_mod_X
                 loc_block(kd,kd) = 1.0_dp
             end do
             
@@ -1240,6 +1048,9 @@ contains
                     &n_sol,overwrite=.true.,transp=.true.)
                 CHCKERR('')
             end do
+            
+            ! clean up
+            deallocate(loc_block)
         end function set_BC_1
         
         ! set BC style 2:
@@ -1273,7 +1084,7 @@ contains
             ! BLOCKS ~ V_0,mod !
             ! -----------------!
             ! calculate modified terms V_int_0_mod
-            allocate(V_int_0_mod(n_mod,n_mod,2))
+            allocate(V_int_0_mod(n_mod_X,n_mod_X,2))
             ierr = calc_V_0_mod(X%PV_0(1,i_geo,r_id_loc,:),&
                 &X%KV_0(1,i_geo,r_id_loc,:),&
                 &X%PV_1(1,i_geo,r_id_loc,:),&
@@ -1354,16 +1165,16 @@ contains
             ierr = 0
             
             ! initialize variables
-            allocate(KV_2_inv(n_mod,n_mod))
-            allocate(V_triple(n_mod,n_mod))
-            allocate(KV_1_loc(n_mod,n_mod))
-            allocate(PV_1_loc(n_mod,n_mod))
+            allocate(KV_2_inv(n_mod_X,n_mod_X))
+            allocate(V_triple(n_mod_X,n_mod_X))
+            allocate(KV_1_loc(n_mod_X,n_mod_X))
+            allocate(PV_1_loc(n_mod_X,n_mod_X))
             
             ! make local copy of KV_2 into the inverse array
             KV_2_inv = 0._dp
-            do m = 1,n_mod
+            do m = 1,n_mod_X
                 do k = 1,m                                                      ! only save upper diagonal part
-                    KV_2_inv(k,m) = con(KV_2(c([k,m],.true.,n_mod)),&
+                    KV_2_inv(k,m) = con(KV_2(c([k,m],.true.,n_mod_X)),&
                         &[k,m],.true.)                                          ! symmetric matrices need con()
                 end do
             end do
@@ -1381,21 +1192,21 @@ contains
             
             ! invert matrix KV_2 using Lapack
             uplo = 'U'                                                          ! only lower diagonal matters, but is arbitrary
-            call zpotrf(uplo,n_mod,KV_2_inv,n_mod,ierr)
+            call zpotrf(uplo,n_mod_X,KV_2_inv,n_mod_X,ierr)
             CHCKERR('Failed to decompose KV_2')
-            call zpotri(uplo,n_mod,KV_2_inv,n_mod,ierr)
+            call zpotri(uplo,n_mod_X,KV_2_inv,n_mod_X,ierr)
             CHCKERR('Failed to invert KV_2')
-            do k = 1,n_mod
+            do k = 1,n_mod_X
                 do m = 1,k-1
                     KV_2_inv(k,m) = conjg(KV_2_inv(m,k))
                 end do
             end do
             
             ! save local copy of KV_1 and PV_1
-            do m = 1,n_mod
-                do k = 1,n_mod
-                    KV_1_loc(k,m) = KV_1(c([k,m],.false.,n_mod))                ! asymetric matrices don't need con()
-                    PV_1_loc(k,m) = PV_1(c([k,m],.false.,n_mod))                ! asymetric matrices don't need con()
+            do m = 1,n_mod_X
+                do k = 1,n_mod_X
+                    KV_1_loc(k,m) = KV_1(c([k,m],.false.,n_mod_X))              ! asymetric matrices don't need con()
+                    PV_1_loc(k,m) = PV_1(c([k,m],.false.,n_mod_X))              ! asymetric matrices don't need con()
                 end do
             end do
             
@@ -1410,10 +1221,10 @@ contains
             V_triple = matmul(V_triple,conjg(transpose(KV_1_loc)))
             
             ! fill local block
-            do m = 1,n_mod
-                do k = 1,n_mod
+            do m = 1,n_mod_X
+                do k = 1,n_mod_X
                     V_0_mod(k,m,1) = &
-                        &con(PV_0(c([k,m],.true.,n_mod)),[k,m],.true.)          ! symmetric matrices need con()
+                        &con(PV_0(c([k,m],.true.,n_mod_X)),[k,m],.true.)        ! symmetric matrices need con()
                 end do
             end do
             V_0_mod(:,:,1) = V_0_mod(:,:,1) + &
@@ -1430,10 +1241,10 @@ contains
             V_triple = matmul(V_triple,conjg(transpose(KV_1_loc)))
             
             ! fill V_0_mod(1)
-            do m = 1,n_mod
-                do k = 1,n_mod
+            do m = 1,n_mod_X
+                do k = 1,n_mod_X
                     V_0_mod(k,m,2) = &
-                        &con(KV_0(c([k,m],.true.,n_mod)),[k,m],.true.)          ! symmetric matrices need con()
+                        &con(KV_0(c([k,m],.true.,n_mod_X)),[k,m],.true.)        ! symmetric matrices need con()
                 end do
             end do
             V_0_mod(:,:,2) = V_0_mod(:,:,2) - V_triple
@@ -1482,6 +1293,12 @@ contains
             call print_ar_2(imagpart(V_0_mod(:,:,2)))
         end if
 #endif
+            
+            ! clean up
+            deallocate(KV_2_inv)
+            deallocate(KV_1_loc)
+            deallocate(PV_1_loc)
+            deallocate(V_triple)
         end function calc_V_0_mod
     end function set_BC
     
@@ -1489,6 +1306,7 @@ contains
     integer function setup_solver(grid_sol,X,A,B,solver) result(ierr)
         use num_vars, only: n_sol_requested, tol_SLEPC, max_it_slepc
         use rich_vars, only: rich_lvl
+        use X_vars, only: n_mod_X
         
         character(*), parameter :: rout_name = 'setup_solver'
         
@@ -1499,19 +1317,19 @@ contains
         EPS, intent(inout) :: solver                                            ! EV solver
         
         ! local variables
-        integer :: n_mod                                                        ! nr. of modes
         PetscInt :: n_sol                                                       ! how many solutions can be requested (normally n_sol_requested)
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
         call lvl_ud(1)
         
-        ! set nr. of modes
-        n_mod = X%n_mod(1)
-        if (n_mod.ne.X%n_mod(2)) then
+        ! check nr. of modes
+        if (n_mod_X.ne.X%n_mod(1) .or. n_mod_X.ne.X%n_mod(2)) then
             ierr = 1
-            CHCKERR('Need square matrix')
+            err_msg = 'Need square matrix of size [n_mod_X:n_mod_X]'
+            CHCKERR(err_msg)
         end if
         
         !call PetscOptionsSetValue('-eps_view','-1',ierr)
@@ -1533,13 +1351,13 @@ contains
         CHCKERR('Failed to set which eigenpairs')
         
         ! request n_sol_requested Eigenpairs
-        if (n_sol_requested.gt.grid_sol%n(3)*n_mod) then
+        if (n_sol_requested.gt.grid_sol%n(3)*n_mod_X) then
             call writo('max. nr. of solutions requested capped to problem &
-                &dimension ('//trim(i2str(grid_sol%n(3)*n_mod))//')',&
+                &dimension ('//trim(i2str(grid_sol%n(3)*n_mod_X))//')',&
                 &warning=.true.)
             call writo('Increase either n_r_sol or number of pol. modes or &
                 &decrease n_sol_requested')
-            n_sol = grid_sol%n(3)*n_mod
+            n_sol = grid_sol%n(3)*n_mod_X
         else
             n_sol = n_sol_requested
         end if
@@ -1708,6 +1526,7 @@ contains
     integer function store_results(grid_sol,X,sol,solver,max_n_EV) result(ierr)
 #endif
         use eq_vars, only: T_0
+        use X_vars, only: n_mod_X
         use num_vars, only: use_normalization, EV_BC, prog_name, output_name, &
             &n_procs, rank, tol_SLEPC, eq_style
         use files_utilities, only: nextunit
@@ -1763,12 +1582,12 @@ contains
         call lvl_ud(1)
         
         ! tests
-        if (X%n_mod(1).ne.X%n_mod(2)) then
+        if (n_mod_X.ne.X%n_mod(1) .or. n_mod_X.ne.X%n_mod(2)) then
             ierr = 1
-            err_msg = 'Complete matrix with all the Fourier modes needed'
+            err_msg = 'Need square matrix of size [n_mod_X:n_mod_X]'
             CHCKERR(err_msg)
         end if
-        do id = 1,X%n_mod(1)
+        do id = 1,n_mod_X
             do kd = 1,grid_sol%loc_n_r
                 if (X%n_1(kd,id).ne.X%n_2(kd,id) .or. &
                     &X%m_1(kd,id).ne.X%m_2(kd,id)) then
@@ -1784,7 +1603,7 @@ contains
         
         ! create solution vector
         call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,&
-            &grid_sol%loc_n_r*sol%n_mod,grid_sol%n(3)*sol%n_mod,&
+            &grid_sol%loc_n_r*n_mod_X,grid_sol%n(3)*n_mod_X,&
             &PETSC_NULL_SCALAR,sol_vec,ierr)
         CHCKERR('Failed to create MPI vector with arrays')
         
@@ -2062,7 +1881,7 @@ contains
                 
                 ! save old arrays
                 allocate(sol_val_loc(max_id))
-                allocate(sol_vec_loc(sol%n_mod,grid_sol%loc_n_r,max_id))
+                allocate(sol_vec_loc(n_mod_X,grid_sol%loc_n_r,max_id))
                 sol_val_loc = sol%val
                 sol_vec_loc = sol%vec
                 
@@ -2070,10 +1889,10 @@ contains
                 deallocate(sol%val,sol%vec)
                 if (remove_next_loc) then
                     allocate(sol%val(id-1))
-                    allocate(sol%vec(sol%n_mod,grid_sol%loc_n_r,id-1))
+                    allocate(sol%vec(n_mod_X,grid_sol%loc_n_r,id-1))
                 else
                     allocate(sol%val(max_id-1))
-                    allocate(sol%vec(sol%n_mod,grid_sol%loc_n_r,max_id-1))
+                    allocate(sol%vec(n_mod_X,grid_sol%loc_n_r,max_id-1))
                 end if
                 
                 ! copy other values
@@ -2099,11 +1918,10 @@ contains
     
     ! stop PETSC and SLEPC
     ! [MPI] Collective call
-    integer function stop_SLEPC(grid_sol,A,B,solver) result(ierr)
+    integer function stop_SLEPC(A,B,solver) result(ierr)
         character(*), parameter :: rout_name = 'stop_SLEPC'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         Mat, intent(in) :: A, B                                                 ! matrices A and B in EV problem A X = lambda B X
         EPS, intent(in) :: solver                                               ! EV solver
         

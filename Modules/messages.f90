@@ -243,8 +243,9 @@ contains
         use num_vars, only: rank, output_i, no_output, max_tot_mem_per_proc, &
             &max_X_mem_per_proc
 #if ldebug
+        use MPI
         use num_vars, only: print_mem_usage, prog_name, mem_usage_name, &
-            &mem_usage_i, mem_usage_count
+            &mem_usage_i, mem_usage_count, time_start
 #endif
         
         ! input / output
@@ -268,7 +269,6 @@ contains
         logical :: alert_loc                                                    ! local alert
 #if ldebug
         integer :: istat                                                        ! status
-        integer :: now(3)                                                       ! time
         integer :: mem_usage                                                    ! memory usage
 #endif
         
@@ -295,8 +295,7 @@ contains
 #if ldebug
         ! memory usage
         if (print_mem_usage) then
-            ! get time and increment counter
-            call itime(now)
+            ! increment counter
             mem_usage_count = mem_usage_count + 1
             
             ! get memory usage
@@ -313,7 +312,7 @@ contains
                     &trim(mem_usage_name)//'.dat',STATUS='old',&
                     &POSITION='append',IOSTAT=istat)
                 write(mem_usage_i,*) rank, mem_usage_count, &
-                    &(now(1)*60+now(2))*60+now(3), mem_usage, &
+                    &MPI_Wtime()-time_start, mem_usage, &
                     &max_tot_mem_per_proc*1000, max_X_mem_per_proc*1000
                 close(UNIT=mem_usage_i)
             end if

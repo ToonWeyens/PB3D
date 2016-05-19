@@ -18,7 +18,7 @@ contains
     ! [MPI] only master
     integer function read_input_opts() result(ierr)
         use num_vars, only: &
-            &max_it_NR, tol_NR, max_it_rich, input_i, use_pol_flux_F, &
+            &max_it_zero, tol_zero, max_it_rich, input_i, use_pol_flux_F, &
             &EV_style, max_tot_mem_per_proc, plot_resonance, tol_rich, &
             &n_sol_requested, rank, plot_magn_grid, plot_flux_q, &
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
@@ -26,9 +26,9 @@ contains
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
             &tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, n_procs, pi, &
             &plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
-            &input_name, rich_restart_lvl, eq_style, relax_fac_NR, &
+            &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &max_nr_tries_NR, POST_style, slab_plots, def_relax_fac_NR, &
+            &max_nr_tries_HH, POST_style, slab_plots, def_relax_fac_HH, &
             &magn_int_style
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use messages, only: writo, lvl_ud
@@ -51,7 +51,7 @@ contains
         
         ! input options
         namelist /inputdata_PB3D/ min_par_X, max_par_X, alpha, min_r_sol, &
-            &max_r_sol, max_it_NR, tol_NR, use_pol_flux_F, rho_style, &
+            &max_r_sol, max_it_zero, tol_zero, use_pol_flux_F, rho_style, &
             &rho_0, plot_magn_grid, plot_flux_q, prim_X, min_sec_X, max_sec_X, &
             &n_mod_X, use_normalization, n_theta_plot, n_zeta_plot, &
             &norm_disc_prec_eq, tol_norm, max_tot_mem_per_proc, n_r_sol, &
@@ -59,14 +59,14 @@ contains
             &EV_BC, tol_SLEPC, retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, &
             &norm_disc_prec_X, BC_style, max_it_inv, max_it_slepc, &
             &norm_disc_prec_sol, plot_size, U_style, norm_style, &
-            &matrix_SLEPC_style, rich_restart_lvl, min_n_par_X, relax_fac_NR, &
+            &matrix_SLEPC_style, rich_restart_lvl, min_n_par_X, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &max_nr_tries_NR, magn_int_style
+            &max_nr_tries_HH, magn_int_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_magn_grid, norm_disc_prec_sol, &
-            &plot_size, PB3D_lvl_rich, max_it_NR, tol_NR, &
-            &relax_fac_NR, min_theta_plot, max_theta_plot, min_zeta_plot, &
-            &max_zeta_plot, max_nr_tries_NR, POST_style, slab_plots
+            &plot_size, PB3D_lvl_rich, max_it_zero, tol_zero, &
+            &relax_fac_HH, min_theta_plot, max_theta_plot, min_zeta_plot, &
+            &max_zeta_plot, max_nr_tries_HH, POST_style, slab_plots
         
         ! initialize ierr
         ierr = 0
@@ -97,8 +97,8 @@ contains
                     min_zeta_plot = 0
                     max_zeta_plot = min_zeta_plot
             end select
-            relax_fac_NR = def_relax_fac_NR                                     ! default relaxation factor
-            max_nr_tries_NR = 6                                                 ! standard nr. of tries
+            relax_fac_HH = def_relax_fac_HH                                     ! default relaxation factor
+            max_nr_tries_HH = 6                                                 ! standard nr. of tries
             
             ! select depending on program style
             select case (prog_style)
@@ -158,8 +158,8 @@ contains
                         ! adapt variables for inverse if needed
                         call adapt_inv
                         
-                        ! adapt Newton-Rhapson variables if needed
-                        call adapt_NR
+                        ! adapt Householder variables if needed
+                        call adapt_zero
                         
                         ! adapt tolerances if needed
                         call adapt_tols
@@ -221,9 +221,9 @@ contains
         subroutine default_input_PB3D
             use num_vars, only: use_pol_flux_E
             
-            ! concerning Newton-Rhapson
-            max_it_NR = 500                                                     ! maximum 500 Newton-Rhapson iterations
-            tol_NR = 1.0E-10_dp                                                 ! very low tolerance for calculation of field lines
+            ! concerning finding zeros
+            max_it_zero = 500                                                   ! maximum 500 iterations
+            tol_zero = 1.0E-10_dp                                               ! very low tolerance for calculation of field lines
             
             ! runtime variables
             use_normalization = .true.                                          ! use normalization for the variables
@@ -291,9 +291,9 @@ contains
             ! initialize ierr
             ierr = 0
             
-            ! concerning Newton-Rhapson
-            max_it_NR = 5000                                                    ! more iterations than PB3D
-            tol_NR = 1.0E-8_dp                                                  ! less relative error than PB3D
+            ! concerning finding zeros
+            max_it_zero = 200                                                   ! more iterations than PB3D
+            tol_zero = 1.0E-8_dp                                                ! less relative error than PB3D
             
             ! runtime variables
             plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
@@ -633,24 +633,24 @@ contains
             end if
         end subroutine adapt_inv
         
-        ! Checks whether the variables concerning Newton-Rhapson are correct:
-        !   max_it_NR has to be at least 2,
-        !   relax_fac_NR has to be larger than 0.
-        subroutine adapt_NR
-            if (max_it_NR.lt.1) then
-                max_it_NR = 2
-                call writo('max_it_NR has been increased to 2',warning=.true.)
+        ! Checks whether the variables concerning finding zeros are correct:
+        !   max_it_zero has to be at least 2,
+        !   relax_fac_HH has to be larger than 0.
+        subroutine adapt_zero
+            if (max_it_zero.lt.1) then
+                max_it_zero = 2
+                call writo('max_it_zero has been increased to 2',warning=.true.)
             end if
-            if (relax_fac_NR.lt.0) then
-                relax_fac_NR = def_relax_fac_NR
-                call writo('reset relax_fac_NR to '//trim(r2strt(def_relax_fac_NR))&
+            if (relax_fac_HH.lt.0) then
+                relax_fac_HH = def_relax_fac_HH
+                call writo('reset relax_fac_HH to '//trim(r2strt(def_relax_fac_HH))&
                     &//' as it should be larger than 0',warning=.true.)
             end if
-        end subroutine adapt_NR
+        end subroutine adapt_zero
         
         ! Checks whether tolerances are correct:
         !   tol_norm needs to be 0..1,
-        !   tol_NR needs to be min_tol..max_tol,
+        !   tol_zero needs to be min_tol..max_tol,
         !   tol_rich needs to be min_tol..max_tol,
         !   tol_SLEPC needs to be min_tol..max_tol.
         ! Also sets local tol_SLEPC.
@@ -682,16 +682,16 @@ contains
                 tol_rich = max_tol
             end if
             
-            ! check tol_NR
-            if (tol_NR.lt.min_tol) then
-                call writo('tol_NR has been increased to '//&
+            ! check tol_zero
+            if (tol_zero.lt.min_tol) then
+                call writo('tol_zero has been increased to '//&
                     &trim(r2str(min_tol)),warning=.true.)
-                tol_NR = min_tol
+                tol_zero = min_tol
             end if
-            if (tol_NR.gt.max_tol) then
-                call writo('tol_NR has been decreased to '//&
+            if (tol_zero.gt.max_tol) then
+                call writo('tol_zero has been decreased to '//&
                     &trim(r2str(max_tol)),warning=.true.)
-                tol_NR = max_tol
+                tol_zero = max_tol
             end if
             
             ! check and setup tol_SLEPC

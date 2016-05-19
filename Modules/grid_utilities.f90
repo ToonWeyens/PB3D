@@ -52,9 +52,9 @@ contains
     ! F, the poloidal or toroidal flux in F coordinates, divided by 2pi.
     integer function coord_F2E_rtz(grid_eq,r_F,theta_F,zeta_F,r_E,&
         &theta_E,zeta_E,r_F_array,r_E_array) result(ierr)                       ! version with r, theta and zeta
-        use num_vars, only: tol_NR, eq_style
+        use num_vars, only: tol_zero, eq_style
         use VMEC, only: fourier2real, calc_trigon_factors, &
-            &L_V_c, L_V_s
+            &L_V_c, L_V_s, is_asym_V
         
         character(*), parameter :: rout_name = 'coord_F2E_rtz'
         
@@ -66,21 +66,16 @@ contains
         
         ! local variables (also used in child functions)
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: n_r, n_par, n_geo                                            ! dimensions of the grid
+        integer :: dims(3)                                                      ! dimensions of the grid
         real(dp), allocatable :: L_V_c_loc(:,:)                                 ! local version of L_V_c
         real(dp), allocatable :: L_V_s_loc(:,:)                                 ! local version of L_V_s
-        real(dp) :: theta_V_loc(1,1,1), zeta_V_loc(1,1,1)                       ! local version of theta_V, zeta_V (needs to be 3D matrix)
-        real(dp) :: lam(1,1,1)                                                  ! lambda (needs to be 3D matrix)
-        real(dp) :: dlam(1,1,1)                                                 ! angular derivative of lambda (needs to be 3D matrix)
-        integer :: id, jd, kd                                                   ! counters
         
         ! initialize ierr
         ierr = 0
         
         ! set up array sizes
-        n_par = grid_eq%n(1)
-        n_geo = grid_eq%n(2)
-        n_r = grid_eq%loc_n_r
+        dims(1:2) = grid_eq%n(1:2)
+        dims(3) = grid_eq%loc_n_r
         
         ! tests
         if (size(theta_F,1).ne.size(zeta_F,1) .or. &
@@ -92,8 +87,8 @@ contains
                 &dimensions'
             CHCKERR(err_msg)
         end if
-        if (n_par.ne.size(zeta_E,1) .or. n_geo.ne.size(zeta_E,2) .or. &
-            &n_r.ne.size(zeta_E,3) .or. n_r.ne.size(r_E)) then
+        if (dims(1).ne.size(zeta_E,1) .or. dims(2).ne.size(zeta_E,2) .or. &
+            &dims(3).ne.size(zeta_E,3) .or. dims(3).ne.size(r_E)) then
             ierr = 1
             err_msg = 'theta_E, zeta_E and r_E need to have the correct &
                 &dimensions'
@@ -124,7 +119,7 @@ contains
     contains
         integer function coord_F2E_VMEC() result(ierr)
             use num_vars, only: norm_disc_prec_eq
-            use num_utilities, only: calc_zero_NR
+            use num_utilities, only: calc_zero_HH
             use VMEC, only: mnmax_V
             
             character(*), parameter :: rout_name = 'coord_F2E_VMEC'
@@ -133,6 +128,7 @@ contains
             real(dp), pointer :: loc_r_F(:) => null()                           ! loc_r in F coords.
             type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
             real(dp), allocatable :: theta_E_guess(:,:)                         ! guess for theta_E for a flux surface
+            real(dp), allocatable :: theta_E_guess_3D(:,:,:)                    ! guess for theta_E
             
             ! initialize ierr
             ierr = 0
@@ -148,11 +144,13 @@ contains
             zeta_E = - zeta_F                                                   ! conversion VMEC LH -> RH coord. system
             
             ! allocate local copies of L_V_c and L_V_s
-            allocate(L_V_c_loc(mnmax_V,n_r))
-            allocate(L_V_s_loc(mnmax_V,n_r))
+            allocate(L_V_c_loc(mnmax_V,dims(3)))
+            allocate(L_V_s_loc(mnmax_V,dims(3)))
             
-            ! allocate guess
-            allocate(theta_E_guess(n_par,n_geo))
+            ! set up guess
+            allocate(theta_E_guess(dims(1),dims(2)))
+            allocate(theta_E_guess_3D(dims(1),dims(2),dims(3)))
+            theta_E_guess_3D = theta_F
             
             ! set up interpolation data
             ierr = setup_interp_data(loc_r_F,r_F,norm_interp_data,&
@@ -169,120 +167,59 @@ contains
             
             ! the poloidal angle has to be found as the zero of
             !   f = theta_F - theta_E - lambda
-            do kd = 1,n_r
-                ! setup theta_E_guess
-                if (kd.eq.1) then
-                    theta_E_guess = theta_F(:,:,kd)                             ! use theta_F as guess
-                else
-                    theta_E_guess = theta_E(:,:,kd-1)                           ! use theta_E of previous flux surface as guess
-                end if
-                
-                do jd = 1,n_geo
-                    do id = 1,n_par
-                        ! calculate zero of f
-                        err_msg = calc_zero_NR(theta_E(id,jd,kd),fun_pol,&
-                            &dfun_pol,theta_E_guess(id,jd))
-                        if (err_msg.ne.'') then
-                            ierr = 1
-                            CHCKERR(err_msg)
-                        end if
-                        
-                        ! do a check whether the result is indeed zero
-                        if (abs(fun_pol(theta_E(id,jd,kd))).gt.tol_NR*100) then
-                            err_msg = 'In coord_F2E_VMEC, calculating f as a &
-                                &check, using the theta_E that is the solution&
-                                & of f = 0, yields a calculated f that &
-                                &deviates from 0 by '//trim(r2strt(&
-                                &100*abs(fun_pol(theta_E(id,jd,kd)))))//'%'
-                            ierr = 1
-                            CHCKERR(err_msg)
-                        end if
-                    end do
-                end do
-            end do
+            err_msg = calc_zero_HH(dims,theta_E,fun_pol,3,&
+                &theta_E_guess_3D,relax_fac=1.0_dp)
+            if (err_msg.ne.'') then
+                ierr = 1
+                CHCKERR(err_msg)
+            end if
+            
+            ! do a check whether the result is indeed zero
+            if (maxval(abs(fun_pol(dims,theta_E,0))).gt.tol_zero*100) then
+                err_msg = 'In coord_F2E_VMEC, calculating whether f=0 as a &
+                    &check, yields a deviation from 0 by '//trim(r2strt(&
+                    &100*maxval(abs(fun_pol(dims,theta_E,0)))))//'%'
+                ierr = 1
+                CHCKERR(err_msg)
+            end if
             
             ! clean up
             nullify(loc_r_F)
             call norm_interp_data%dealloc()
         end function coord_F2E_VMEC
         
-        ! function that returns f = theta_F  - theta_V - lambda. It uses theta_F
-        ! and  zeta_E (=  zeta_V)  from the  parent function,  lam  and dlam  to
-        ! contain the variable  lambda or its derivative, as  well as L_V_s_loc,
-        ! L_V_c_loc, theta_V_loc, zeta_V_loc, id, jd and kd.
-        function fun_pol(theta_E_in)
+        ! function  that  returns  f  =  theta_F  -  theta_V  -  lambda  or  its
+        ! derivatives in the poloidal direction.  It uses zeta_E (= zeta_V) from
+        ! the parent function.
+        function fun_pol(dims,theta_E_in,dpol)
             character(*), parameter :: rout_name = 'fun_pol'
             
             ! input / output
-            real(dp) :: fun_pol
-            real(dp), intent(in) :: theta_E_in
+            integer, intent(in) :: dims(3)
+            real(dp), intent(in) :: theta_E_in(dims(1),dims(2),dims(3))
+            integer, intent(in) :: dpol
+            real(dp) :: fun_pol(dims(1),dims(2),dims(3))
             
             ! local variables
-            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:)              ! trigonometric factor cosine for the inverse fourier transf.
+            real(dp) :: lam(dims(1),dims(2),dims(3))
             
             ! initialize fun_pol
             fun_pol = 0.0_dp
             
-            ! set up local copies of theta_V_loc, zeta_V_loc
-            theta_V_loc = theta_E_in
-            zeta_V_loc = zeta_E(id,jd,kd)
-            
-            ! transform lambda from Fourier space to real space
-            ! calculate the (co)sines
-            ierr = calc_trigon_factors(theta_V_loc,zeta_V_loc,&
-                &trigon_factors_loc)
-            CHCKERR('')
-            
             ! calculate lambda
-            ierr = fourier2real(L_V_c_loc(:,kd:kd),L_V_s_loc(:,kd:kd),&
-                &trigon_factors_loc,lam)
+            ierr = fourier2real(L_V_c_loc,L_V_s_loc,&
+                &theta_E_in,zeta_E,lam,sym=[is_asym_V,.true.],deriv=[dpol,0])
             CHCKERR('')
             
             ! calculate the output function
-            fun_pol = theta_F(id,jd,kd) - theta_E_in - lam(1,1,1)
-            
-            ! deallocate trigonometric factors
-            deallocate(trigon_factors_loc)
+            if (dpol.eq.0) then
+                fun_pol = theta_F - theta_E_in - lam
+            else if (dpol.eq.1) then
+                fun_pol = -1 - lam
+            else if (dpol.gt.1) then
+                fun_pol = - lam
+            end if
         end function fun_pol
-        
-        ! function that  returns df/dtheta_V  = -1  - dlambda/dtheta_V.  It uses
-        ! theta_F and zeta_E  (= zeta_V) from the parent function,  lam and dlam
-        ! to  contain  the  variable  lambda  or  its  derivative,  as  well  as
-        ! L_V_s_loc, L_V_c_loc, theta_V_loc, zeta_V_loc, id, jd and kd.
-        function dfun_pol(theta_E_in)
-            character(*), parameter :: rout_name = 'dfun_pol'
-            
-            ! input / output
-            real(dp) :: dfun_pol
-            real(dp), intent(in) :: theta_E_in
-            
-            ! local variables
-            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:)              ! trigonometric factor cosine for the inverse fourier transf.
-            
-            ! initialize dfun_pol
-            dfun_pol = 0.0_dp
-            
-            ! set up local copies of theta_V_loc, zeta_V_loc
-            theta_V_loc = theta_E_in
-            zeta_V_loc = zeta_E(id,jd,kd)
-            
-            ! transform lambda from Fourier space to real space
-            ! calculate the (co)sines
-            ierr = calc_trigon_factors(theta_V_loc,zeta_V_loc,&
-                &trigon_factors_loc)
-            CHCKERR('')
-            
-            ! calculate lambda
-            ierr = fourier2real(L_V_c_loc(:,kd:kd),L_V_s_loc(:,kd:kd),&
-                &trigon_factors_loc,dlam,[1,0])
-            CHCKERR('')
-            
-            ! calculate the output function
-            dfun_pol = -1._dp - dlam(1,1,1)
-            
-            ! deallocate trigonometric factors
-            deallocate(trigon_factors_loc)
-        end function dfun_pol
     end function coord_F2E_rtz
     integer function coord_F2E_r(grid_eq,r_F,r_E,r_F_array,r_E_array) &
         &result(ierr)                                                           ! version with only r
@@ -363,15 +300,13 @@ contains
         
         ! local variables (also used in child functions)
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: n_r, n_par, n_geo                                            ! dimensions of the grid
+        integer :: dims(3)                                                      ! dimensions of the grid
         
         ! initialize ierr
         ierr = 0
         
         ! set up array sizes
-        n_par = size(theta_E,1)
-        n_geo = size(theta_E,2)
-        n_r = size(theta_E,3)
+        dims = shape(theta_E)
         
         ! tests
         if (size(theta_F,1).ne.size(zeta_F,1) .or. &
@@ -383,8 +318,8 @@ contains
                 &dimensions'
             CHCKERR(err_msg)
         end if
-        if (n_par.ne.size(zeta_E,1) .or. n_geo.ne.size(zeta_E,2) .or. &
-            &n_r.ne.size(zeta_E,3) .or. n_r.ne.size(r_E)) then
+        if (dims(1).ne.size(zeta_E,1) .or. dims(2).ne.size(zeta_E,2) .or. &
+            &dims(3).ne.size(zeta_E,3) .or. dims(3).ne.size(r_E)) then
             ierr = 1
             err_msg = 'theta_E, zeta_E and r_E need to have the correct &
                 &dimensions'
@@ -416,13 +351,12 @@ contains
         integer function coord_E2F_VMEC() result(ierr)
             use num_vars, only: norm_disc_prec_eq
             use VMEC, only: calc_trigon_factors, fourier2real, &
-                &mnmax_V, L_V_c, L_V_s
+                &mnmax_V, L_V_c, L_V_s, is_asym_V
             
             character(*), parameter :: rout_name = 'coord_E2F_VMEC'
             
             ! local variables
             real(dp), allocatable :: L_V_c_loc(:,:), L_V_s_loc(:,:)             ! local version of L_V_c and L_V_s
-            real(dp), allocatable :: trigon_factors_loc(:,:,:,:,:)              ! trigonometric factor cosine for the inverse fourier transf.
             real(dp), allocatable :: lam(:,:,:)                                 ! lambda
             real(dp), pointer :: loc_r_E(:) => null()                           ! loc_r in E coords.
             type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
@@ -441,9 +375,9 @@ contains
             zeta_F = - zeta_E                                                   ! conversion VMEC LH -> RH coord. system
             
             ! allocate local copies of L_V_c and L_V_s and lambda
-            allocate(L_V_c_loc(mnmax_V,n_r))
-            allocate(L_V_s_loc(mnmax_V,n_r))
-            allocate(lam(n_par,n_geo,n_r))
+            allocate(L_V_c_loc(mnmax_V,dims(3)))
+            allocate(L_V_s_loc(mnmax_V,dims(3)))
+            allocate(lam(dims(1),dims(2),dims(3)))
             
             ! set up interpolation data
             ierr = setup_interp_data(loc_r_E,r_E,norm_interp_data,&
@@ -458,12 +392,9 @@ contains
                 &norm_interp_data,L_V_s_loc,2)
             CHCKERR('')
             
-            ! calculate the (co)sines to transform lambda to real space
-            ierr = calc_trigon_factors(theta_E,zeta_E,trigon_factors_loc)
-            CHCKERR('')
-            
             ! calculate lambda
-            ierr = fourier2real(L_V_c_loc,L_V_s_loc,trigon_factors_loc,lam)
+            ierr = fourier2real(L_V_c_loc,L_V_s_loc,theta_E,zeta_E,lam,&
+                &sym=[is_asym_V,.true.])
             CHCKERR('')
             
             ! the poloidal angle has to be found as
@@ -614,7 +545,7 @@ contains
             &result(ierr)
             use num_vars, only: norm_disc_prec_eq
             use VMEC, only: fourier2real, &
-                &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V
+                &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, is_asym_V
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_VMEC'
             
@@ -672,15 +603,15 @@ contains
             allocate(R(grid_XYZ%n(1),grid_XYZ%n(2),grid_XYZ%loc_n_r))
             
             ! inverse fourier transform with trigonometric factors
-            ierr = fourier2real(R_V_c_int,R_V_s_int,&
-                &grid_XYZ%trigon_factors,R,[0,0])
+            ierr = fourier2real(R_V_c_int,R_V_s_int,grid_XYZ%trigon_factors,R,&
+                &sym=[.true.,is_asym_V])
             CHCKERR('')
-            ierr = fourier2real(Z_V_c_int,Z_V_s_int,&
-                &grid_XYZ%trigon_factors,Z,[0,0])
+            ierr = fourier2real(Z_V_c_int,Z_V_s_int,grid_XYZ%trigon_factors,Z,&
+                &sym=[is_asym_V,.true.])
             CHCKERR('')
             if (present(L)) then
                 ierr = fourier2real(L_V_c_int,L_V_s_int,&
-                    &grid_XYZ%trigon_factors,L,[0,0])
+                    &grid_XYZ%trigon_factors,L,sym=[is_asym_V,.true.])
                 CHCKERR('')
             end if
             

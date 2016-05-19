@@ -600,9 +600,9 @@ contains
     ! returned to the master.
     integer function calc_res_surf(grid_eq,eq,res_surf,info,jq) result(ierr)
         use X_vars, only: min_n_X, min_m_X, sec_X_ind, prim_X
-        use num_vars, only: use_pol_flux_F, norm_disc_prec_eq, relax_fac_NR
+        use num_vars, only: use_pol_flux_F, norm_disc_prec_eq
         use eq_vars, only: max_flux_F, max_flux_F
-        use num_utilities, only: calc_zero_NR
+        use num_utilities, only: calc_zero_Zhang
         use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
         use MPI_utilities, only: get_ser_var
         
@@ -621,14 +621,13 @@ contains
         
         ! local variables (not to be used in child functions)
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grid
-        integer :: kd, ld                                                       ! counters
+        integer :: ld                                                           ! counter
         integer :: ld_loc                                                       ! local ld
         logical :: info_loc                                                     ! local version of info
         real(dp), allocatable :: res_surf_loc(:,:)                              ! local copy of res_surf
-        real(dp), allocatable :: jq_tot(:,:)                                    ! saf. fac. or rot. transf. and derivs. in Flux coords.
+        real(dp), allocatable :: jq_tot(:)                                      ! saf. fac. or rot. transf. and derivs. in Flux coords.
         real(dp), allocatable :: jq_loc(:)                                      ! local version of jq
         real(dp) :: norm_factor                                                 ! normalization factor to make normal coordinate 0..1
-        real(dp) :: relax_fac_NR_old                                            ! old relax_fac_NR
         type(grid_type) :: grid_eq_trim                                         ! trimmed version of equilibrium grid
         integer :: n_loc, m_loc                                                 ! local n and m
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -645,33 +644,29 @@ contains
         CHCKERR('')
         
         ! get serial version of safety factor or rot. transform
-        allocate(jq_tot(grid_eq_trim%n(3),0:2))
+        allocate(jq_tot(grid_eq_trim%n(3)))
         if (use_pol_flux_F) then
             if (grid_eq%divided) then
-                do kd = 0,2
-                    ierr = get_ser_var(eq%q_saf_FD(norm_id(1):norm_id(2),kd),&
-                        &jq_loc,scatter=.true.)
-                    CHCKERR('')
-                    jq_tot(:,kd) = jq_loc
-                end do
+                ierr = get_ser_var(eq%q_saf_FD(norm_id(1):norm_id(2),0),&
+                    &jq_loc,scatter=.true.)
+                CHCKERR('')
+                jq_tot = jq_loc
             else
-                jq_tot = eq%q_saf_FD
+                jq_tot = eq%q_saf_FD(:,0)
             end if
         else
             if (grid_eq%divided) then
-                do kd = 0,2
-                    ierr = get_ser_var(eq%rot_t_FD(norm_id(1):norm_id(2),kd),&
-                        &jq_loc,scatter=.true.)
-                    CHCKERR('')
-                    jq_tot(:,kd) = jq_loc
-                end do
+                ierr = get_ser_var(eq%rot_t_FD(norm_id(1):norm_id(2),0),&
+                    &jq_loc,scatter=.true.)
+                CHCKERR('')
+                jq_tot = jq_loc
             else
-                jq_tot = eq%rot_t_FD
+                jq_tot = eq%rot_t_FD(:,0)
             end if
         end if
         if (present(jq)) then
             allocate(jq(grid_eq_trim%n(3)))
-            jq = jq_tot(:,0)
+            jq = jq_tot
         end if
         
         ! initialize local res_surf
@@ -704,14 +699,11 @@ contains
                 cycle
             end if
             
-            ! calculate zero using Newton-Rhapson
+            ! calculate zero using Zhang
             res_surf_loc(ld_loc,1) = ld
             res_surf_loc(ld_loc,3) = nmfrac_fun
-            relax_fac_NR_old = relax_fac_NR
-            relax_fac_NR = 0.25                                                 ! this is a difficult function to find the zero of
-            err_msg = calc_zero_NR(res_surf_loc(ld_loc,2),jq_fun,jq_dfun,&
-                &(maxval(grid_eq_trim%r_F)+minval(grid_eq_trim%r_F))/2)         ! guess halfway between minimum and maximum normal range
-            relax_fac_NR = relax_fac_NR_old
+            err_msg = calc_zero_Zhang(res_surf_loc(ld_loc,2),jq_fun,&
+                &[minval(grid_eq_trim%r_F),maxval(grid_eq_trim%r_F)])
             
             ! intercept error
             if (err_msg.ne.'') then
@@ -746,8 +738,6 @@ contains
     contains
         ! Returns q-m/n or  iota-n/m in Flux coordinates, used to  solve for q =
         ! m/n or iota = n/m.
-        ! WARNING: This routine requires that jq_tot's derivatives be calculated
-        ! up to order 1. This is NOT checked!
         real(dp) function jq_fun(pt) result(res)
             ! input / output
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
@@ -767,64 +757,19 @@ contains
             i_max = maxloc(grid_eq_trim%r_F,1)
             
             ! check whether to interpolate or extrapolate
-            if (pt.lt.x_min) then                                               ! point requested lower than minimum x
-                ! extrapolate variable from minimum value
-                res = jq_tot(i_min,0) - nmfrac_fun + jq_tot(i_min,1)*(pt-x_min)
-            else if (pt.gt.x_max) then                                          ! point requested higher than maximum x
-                ! extrapolate variable from maximum value
-                res = jq_tot(i_max,0) - nmfrac_fun + jq_tot(i_max,1)*(pt-x_max)
-            else                                                                ! point requested between 0 and 1
+            if (pt.ge.x_min .and. pt.le.x_max) then                             ! point requested within range
                 ! setup interpolation data
                 ierr = setup_interp_data(grid_eq_trim%r_F,[pt],&
                     &norm_interp_data,norm_disc_prec_eq)
                 CHCKERR('')
                 ! interpolate
-                ierr = apply_disc(jq_tot(:,0)-nmfrac_fun,norm_interp_data,&
+                ierr = apply_disc(jq_tot-nmfrac_fun,norm_interp_data,&
                     &res_loc)
                 CHCKERR('')
                 ! copy
                 res = res_loc(1)
             end if
         end function jq_fun
-        
-        ! returns d(q-m/n)/dr  in Flux coordinates,  used to  solve for q  = m/n
-        ! WARNING: This routine requires that jq_tot's derivatives be calculated
-        ! up to order 2. This is NOT checked!
-        real(dp) function jq_dfun(pt) result(res)
-            ! input / output
-            real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
-            
-            ! local variables
-            integer :: i_min, i_max                                             ! index of minimum and maximum value of x
-            real(dp) :: x_min, x_max                                            ! minimum and maximum value of x
-            real(dp) :: res_loc(1)                                              ! local copy of res
-            
-            ! initialize res
-            res = 0
-            
-            ! set up min. and max index and value
-            x_min = minval(grid_eq_trim%r_F)
-            x_max = maxval(grid_eq_trim%r_F)
-            i_min = minloc(grid_eq_trim%r_F,1)
-            i_max = maxloc(grid_eq_trim%r_F,1)
-            
-            ! check whether to interpolate or extrapolate
-            if (pt.lt.x_min) then                                               ! point requested lower than minimum x
-                ! extrapolate variable from minimum value
-                res = jq_tot(i_min,1) + jq_tot(i_min,2)*(pt-x_min)
-            else if (pt.gt.x_max) then                                          ! point requested higher than maximum x
-                ! extrapolate variable from maximum value
-                res = jq_tot(i_max,1) + jq_tot(i_max,2)*(pt-x_max)
-            else                                                                ! point requested between 0 and 1
-                ! no need to set up interpolation data (already done in jq_fun)
-                ! interpolate
-                ierr = apply_disc(jq_tot(:,1)-nmfrac_fun,norm_interp_data,&
-                    &res_loc)
-                CHCKERR('')
-                ! copy
-                res = res_loc(1)
-            end if
-        end function jq_dfun
     end function calc_res_surf
     
     ! plot  q-profile  or iota-profile  in  flux coordinates  with nq-m  = 0  or

@@ -979,7 +979,7 @@ contains
     ! not exist.
     integer function calc_RZL_ind(grid,eq,deriv) result(ierr)
         use VMEC, only: fourier2real, &
-            &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s
+            &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, is_asym_V
         use num_utilities, only: check_deriv
         use num_vars, only: max_deriv
         
@@ -1000,15 +1000,18 @@ contains
         ! calculate the variables R,Z and their angular derivative
         ierr = fourier2real(R_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
             &R_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
-            &eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3)),[deriv(2),deriv(3)])
+            &eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3)),sym=[.true.,is_asym_V],&
+            &deriv=[deriv(2),deriv(3)])
         CHCKERR('')
         ierr = fourier2real(Z_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
             &Z_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
-            &eq%Z_E(:,:,:,deriv(1),deriv(2),deriv(3)),[deriv(2),deriv(3)])
+            &eq%Z_E(:,:,:,deriv(1),deriv(2),deriv(3)),sym=[is_asym_V,.true.],&
+            &deriv=[deriv(2),deriv(3)])
         CHCKERR('')
         ierr = fourier2real(L_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
             &L_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
-            &eq%L_E(:,:,:,deriv(1),deriv(2),deriv(3)),[deriv(2),deriv(3)])
+            &eq%L_E(:,:,:,deriv(1),deriv(2),deriv(3)),sym=[is_asym_V,.true.],&
+            &deriv=[deriv(2),deriv(3)])
         CHCKERR('')
     end function calc_RZL_ind
     integer function calc_RZL_arr(grid,eq,deriv) result(ierr)
@@ -3135,7 +3138,7 @@ contains
     integer function test_jac_V(grid_eq,eq) result(ierr)
         use grid_utilities, only: trim_grid
         use VMEC, only: fourier2real, &
-            &jac_V_c, jac_V_s
+            &jac_V_c, jac_V_s, is_asym_V
         
         character(*), parameter :: rout_name = 'test_jac_V'
         
@@ -3177,8 +3180,8 @@ contains
         ! get jac_V from VMEC
         ierr = fourier2real(jac_V_c(:,norm_id_f(1):norm_id_f(2)),&
             &jac_V_s(:,norm_id_f(1):norm_id_f(2)),&
-            &grid_eq%trigon_factors(:,:,:,norm_id(1):norm_id(2),:),&
-            &res,[0,0])
+            &grid_eq%trigon_factors(:,:,:,norm_id(1):norm_id(2),:),res,&
+            &sym=[.true.,is_asym_V])
         CHCKERR('')
         
         ! user output
@@ -3210,7 +3213,7 @@ contains
         use grid_utilities, only: trim_grid
         use num_utilities, only: c
         use VMEC, only: fourier2real, &
-            &B_V_sub_s, B_V_sub_c, B_V_c, B_V_s
+            &B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, is_asym_V
         
         character(*), parameter :: rout_name = 'test_B_F'
         
@@ -3264,13 +3267,13 @@ contains
                         &B_V_sub_c(:,norm_id_f(1):norm_id_f(2),id),&
                         &B_V_sub_s(:,norm_id_f(1):norm_id_f(2),id),&
                         &grid_eq%trigon_factors(:,:,:,norm_id(1):&
-                        &norm_id(2),:),res(:,:,:,id),[0,0])
+                        &norm_id(2),:),res(:,:,:,id))
                     CHCKERR('')
                 end do
                 ierr = fourier2real(B_V_c(:,norm_id_f(1):norm_id_f(2)),&
                     &B_V_s(:,norm_id_f(1):norm_id_f(2)),&
                     &grid_eq%trigon_factors(:,:,:,norm_id(1):norm_id(2),:),&
-                    &res(:,:,:,4),[0,0])
+                    &res(:,:,:,4),[.true.,is_asym_V])
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 res(:,:,:,1) = &

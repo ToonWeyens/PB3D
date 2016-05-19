@@ -98,8 +98,8 @@ contains
         if (present(overwrite)) overwrite_loc = overwrite
         
         ! set up local k and m
-        allocate(loc_k(size(block_loc,1)))
-        allocate(loc_m(size(block_loc,2)))
+        allocate(loc_k(size(block,1)))
+        allocate(loc_m(size(block,2)))
         loc_k = [(kd, kd = 0,n_mod_X-1)] + (r_id+ind(1))*n_mod_X
         loc_m = [(kd, kd = 0,n_mod_X-1)] + (r_id+ind(2))*n_mod_X
         
@@ -124,7 +124,7 @@ contains
             ! set error message
             err_msg = 'Couldn''t add values to matrix'
             
-            ! set up local block, possibly translated
+            ! set up local block, possibly translated for fast PB3D
             allocate(block_loc(size(block,1),size(block,2)))
             block_loc = 0._dp
             do m = 1,n_mod_X
@@ -178,6 +178,9 @@ contains
                     &conjg(block_loc),operation,ierr)
                 CHCKERR(err_msg)
             end if
+            
+            ! clean up
+            deallocate(block_loc)
         else
 #if ldebug
             if (debug_insert_block_mat) &
@@ -185,11 +188,14 @@ contains
 #endif
         end if
         
+        ! clean up
+        deallocate(loc_k,loc_m)
+        
 #if ldebug
-            if (debug_insert_block_mat) then
-                call pause_prog()
-                call lvl_ud(-1)
-            endif
+        if (debug_insert_block_mat) then
+            call pause_prog()
+            call lvl_ud(-1)
+        endif
 #endif
     end function insert_block_mat
 end module SLEPC_utilities

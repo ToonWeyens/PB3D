@@ -623,7 +623,7 @@ contains
     ! reused.
     integer function calc_ang_grid_eq_B(grid_eq,eq,only_half_grid) result(ierr)
         use num_vars, only: use_pol_flux_F, use_pol_flux_E, &
-            &eq_style, tol_NR, eq_job_nr, eq_jobs_lims
+            &eq_style, tol_zero, eq_job_nr, eq_jobs_lims
         use grid_vars, only: min_par_X, max_par_X
         use sol_vars, only: alpha
         use eq_vars, only: max_flux_E
@@ -631,6 +631,9 @@ contains
         use eq_utilities, only: print_info_eq
         use rich_vars, only: n_par_X
         use X_vars, only: min_r_sol, max_r_sol
+#if ldebug
+        use grid_utilities, only: coord_E2F
+#endif
         
         character(*), parameter :: rout_name = 'calc_ang_grid_eq_B'
         
@@ -754,34 +757,44 @@ contains
         ! convert  Flux  coordinates  to  Equilibrium  coordinates  (use
         ! custom flux_E and  flux_F because the Flux  quantities are not
         ! yet calculated)
-        ierr = coord_F2E(grid_eq,&
-            &grid_eq%loc_r_F,grid_eq%theta_F,grid_eq%zeta_F,&
-            &r_E_loc,grid_eq%theta_E,grid_eq%zeta_E,&
+        ierr = coord_F2E(grid_eq,grid_eq%loc_r_F,grid_eq%theta_F,&
+            &grid_eq%zeta_F,r_E_loc,grid_eq%theta_E,grid_eq%zeta_E,&
             &r_F_array=flux_F/r_F_factor,r_E_array=flux_E/r_E_factor)
         CHCKERR('')
         
         ! test whether r_E_loc indeed corresponds to loc_r_E of eq grid
-        if (maxval(abs(grid_eq%loc_r_E-r_E_loc)).gt.10*tol_NR) then
+        if (maxval(abs(grid_eq%loc_r_E-r_E_loc)).gt.10*tol_zero) then
             ierr = 1
             err_msg = 'loc_r_E of equilibrium grid is not recovered'
             CHCKERR(err_msg)
         end if
+        
+#if ldebug
+        if (debug_calc_ang_grid_eq_B) then
+            ! test whether F variables recovered
+            deallocate(theta_F_loc,zeta_F_loc)
+            allocate(theta_F_loc(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+            allocate(zeta_F_loc(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+            ierr = coord_E2F(grid_eq,grid_eq%loc_r_E,grid_eq%theta_E,&
+                &grid_eq%zeta_E,grid_eq%loc_r_F,theta_F_loc,zeta_F_loc,&
+                &r_E_array=flux_E/r_E_factor,r_F_array=flux_F/r_F_factor)
+            CHCKERR('')
+            
+            ! plot difference
+            call plot_diff_HDF5(grid_eq%theta_F,theta_F_loc,'TEST_theta_F',&
+                &grid_eq%n,[0,0,grid_eq%i_min-1],'test whether F variable are &
+                &recovered',output_message=.true.)
+            call plot_diff_HDF5(grid_eq%zeta_F,zeta_F_loc,'TEST_zeta_F',&
+                &grid_eq%n,[0,0,grid_eq%i_min-1],'test whether F variable are &
+                &recovered',output_message=.true.)
+        end if
+#endif
         
         ! deallocate local variables
         deallocate(r_E_loc)
         nullify(flux_F,flux_E)
         
         call lvl_ud(-1)
-        
-#if ldebug
-        if (debug_calc_ang_grid_eq_B) then
-            call writo('Plotting theta_E, theta_F, zeta_E and zeta_F')
-            call plot_HDF5('TEST_theta_E','TEST_theta_E',grid_eq%theta_E)
-            call plot_HDF5('TEST_theta_F','TEST_theta_F',grid_eq%theta_F)
-            call plot_HDF5('TEST_zeta_E','TEST_zeta_E',grid_eq%zeta_E)
-            call plot_HDF5('TEST_zeta_F','TEST_zeta_F',grid_eq%zeta_F)
-        end if
-#endif
     end function calc_ang_grid_eq_B
     
     ! plots the grid in real space

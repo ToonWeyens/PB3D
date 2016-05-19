@@ -451,3 +451,13 @@ CHANGELOG
       - Using "minim_output", the output file size can be minimized, by not saving eq_2 and X_1 variables between Richardson levels.
       - "tol_SLEPC" for next Richardson levels is adapted to the maximum relative Richardson error.
       - Memory information is extended with the limits.
+
+1.23: - FIRST OPTIMIZED VERSION TO FIND MAGNETIC FIELD LINES, BUT RESULTS ARE NOT COMPLETELY EQUAL TO BEFORE, AND POST DOES NOT WORK.
+      - Removed shell matrix things, as they are not yet implemented.
+      - Fixed a bug in "insert_block_mat" where "block_loc" was used erroneously.
+      - Clean up a bit the SLEPC routines, all using n_mod_X now, fixed some minor memory leaks.
+      - Time information in memory info now comes from MPI_Wtime.
+      - "fourier2real" now also has a version that does not make use of trigonometric factors, but of theta and zeta directly.
+      - Improved debug of "calc_ang_grid_eq_B" by checking whether F variables are recovered.
+      - There is now also a 3D equivalent of "calc_zero_NR". It is used in "coord_F2E", so now the magnetic field lines are calculated faster.
+      - Implemented Zhang's method for root-finding, which is now used to calculate the resonant flux surfaces.

@@ -9,7 +9,7 @@ module num_vars
     public dp, qp, max_str_ln, max_name_ln, max_deriv, prog_name, output_name, &
         &prog_version, prog_style, min_PB3D_version, shell_commands_name, &
         &mem_usage_name, mem_usage_i, mem_usage_count, weight_dp, &
-        &rank, n_procs, HDF5_lock_file_name, &
+        &rank, n_procs, HDF5_lock_file_name, time_start, &
         &max_tot_mem_per_proc, max_X_mem_per_proc, X_jobs_lims, X_jobs_taken, &
         &X_job_nr, X_jobs_file_name, X_jobs_lock_file_name, eq_jobs_lims, &
         &eq_job_nr, mem_scale_fac, &
@@ -21,8 +21,8 @@ module num_vars
         &norm_disc_prec_X, norm_disc_prec_sol, POST_style, magn_int_style, &
         &max_it_rich, tol_rich, &
         &max_it_inv, &
-        &max_it_NR, max_nr_tries_NR, relax_fac_NR, tol_NR, tol_norm, &
-        &def_relax_fac_NR, &
+        &max_it_zero, max_nr_tries_HH, relax_fac_HH, tol_zero, tol_norm, &
+        &def_relax_fac_HH, &
         &GP_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
@@ -46,13 +46,14 @@ module num_vars
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
     integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
-    real(dp), parameter :: prog_version = 1.22_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.23_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.22_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
     integer :: rank                                                             ! MPI rank
     integer :: n_procs                                                          ! nr. of MPI processes
     character(len=15) :: HDF5_lock_file_name = '.lock_file_HDF5'                ! name of lock file for HDF5 operations
+    real(dp) :: time_start                                                      ! start time of simulation
     
     ! job variables
     real(dp) :: max_tot_mem_per_proc                                            ! maximum total memory per process [MB]
@@ -104,11 +105,11 @@ module num_vars
     integer :: max_it_inv                                                       ! maximum number of iterations to find the inverse
 
     ! concerning finding the magnetic field lines
-    integer :: max_it_NR                                                        ! maximum number of Newton-Rhapson iterations
-    integer :: max_nr_tries_NR                                                  ! maximum number of tries for Newton-Rhapson, relax. factors
-    real(dp), parameter :: def_relax_fac_NR = 0.85                              ! default relax_fac_NR
-    real(dp) :: relax_fac_NR                                                    ! standard relaxation factor for Newton-Rhapson iterations
-    real(dp) :: tol_NR                                                          ! tolerance for Newton-Rhapson
+    integer :: max_it_zero                                                      ! maximum number of iterations to find zeros
+    integer :: max_nr_tries_HH                                                  ! maximum number of tries for Householder, relax. factors
+    real(dp), parameter :: def_relax_fac_HH = 0.5                               ! default relax_fac_HH (can be chosen higher for higher orders)
+    real(dp) :: relax_fac_HH                                                    ! standard relaxation factor for Householder iterations
+    real(dp) :: tol_zero                                                        ! tolerance for zeros
     real(dp) :: tol_norm                                                        ! tolerance for normal range (normalized to 0..1)
 
     ! concerning input / output
