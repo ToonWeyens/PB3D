@@ -664,10 +664,9 @@ contains
         rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
         eq_id = setup_eq_id(trim(data_name),eq_job=eq_job,rich_lvl=rich_lvl)
         if (minval(eq_id).lt.0) then
-            call writo('Variable "'//trim(data_name)//'" not found, nor &
-                &using _R_ and _E_ suffixes')
             ierr = 1
-            err_msg = 'Are you sure the PB3D output file is not minimal?'
+            err_msg = 'Variable "'//trim(data_name)//'" not found, nor &
+                &using _R_ and _E_ suffixes'
             CHCKERR(err_msg)
         end if
         
@@ -803,10 +802,9 @@ contains
         rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
         eq_id = setup_eq_id(trim(data_name),eq_job=eq_job,rich_lvl=rich_lvl)
         if (minval(eq_id).lt.0) then
-            call writo('Variable "'//trim(data_name)//'" not found, nor &
-                &using _R_ and _E_ suffixes')
             ierr = 1
-            err_msg = 'Are you sure the PB3D output file is not minimal?'
+            err_msg = 'Variable "'//trim(data_name)//'" not found, nor &
+                &using _R_ and _E_ suffixes'
             CHCKERR(err_msg)
         end if
         

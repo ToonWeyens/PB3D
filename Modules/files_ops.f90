@@ -370,11 +370,18 @@ contains
             
             select case(opt_nr)
                 case (7)                                                        ! minimize output file size by not writing variables on eq grid
-                    call writo('option minim_output chosen: some variables &
-                        &not saved to minimize output file size')
-                    minim_output = .true.
-                    PB3D_name_eq = prog_name//'_'//trim(output_name)//&
-                        &'_temp.h5'
+                    select case(eq_style)
+                        case (1)                                                ! VMEC
+                            call writo('option minim_output chosen: some &
+                                &variables not saved to minimize output file &
+                                &size')
+                            minim_output = .true.
+                            PB3D_name_eq = prog_name//'_'//trim(output_name)//&
+                                &'_temp.h5'
+                        case (2)                                                ! HELENA
+                            call writo('option minim_output not compatible &
+                                &with HELENA equilibria',alert=.true.)
+                    end select
                 case (8)                                                        ! disable guessing Eigenfunction from previous Richardson level
                     call writo('option no_guess chosen: Eigenfunction not &
                         &guessed from previous Richardson level')

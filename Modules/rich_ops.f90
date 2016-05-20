@@ -15,7 +15,7 @@ module rich_ops
     implicit none
     private
     public init_rich, term_rich, start_rich_lvl, stop_rich_lvl, do_rich, &
-        &calc_rich_ex, find_max_lvl_rich
+        &calc_rich_ex, find_max_rich_lvl
     
 contains
     integer function init_rich() result(ierr)
@@ -505,40 +505,61 @@ contains
     end subroutine check_conv
     
     ! Probe to find out which Richardson levels are available.
-    integer function find_max_lvl_rich(max_lvl_rich_file) result(ierr)
-        use num_vars, only: PB3D_name
+    ! Also sets the global variable minim_output if provided.
+    integer function find_max_rich_lvl(max_lvl_rich_file,minim_output) &
+        &result(ierr)
+        use num_vars, only: PB3D_name, eq_style
         use HDF5_ops, only: probe_HDF5_group
         
-        character(*), parameter :: rout_name = 'find_max_lvl_rich'
+        character(*), parameter :: rout_name = 'find_max_rich_lvl'
         
         ! input / output
         integer, intent(inout) :: max_lvl_rich_file                             ! max. Richardson level found in file
+        logical, intent(inout), optional :: minim_output                        ! minimal output
         
         ! local variables
         integer :: ir                                                           ! counter
         character(len=max_str_ln) :: group_name                                 ! name of group to probe for
-        logical :: group_exists                                                 ! whether probed group exists
+        logical :: group_exists(2)                                              ! whether probed group exists
         
         ! initialize ierr
         ierr = 0
         
-        ! try openining solution without Richardson extrapolation
-        group_name = 'sol'
-        ierr = probe_HDF5_group(PB3D_name,group_name,group_exists)
-        CHCKERR('')
-        if (group_exists) then                                                  ! No Richardson extrapolation
-            max_lvl_rich_file = 1
-        else
-            ! try opening solutions for different Richardson level
-            ir = 1                                                              ! initialize counter
-            group_exists = .true.                                               ! group_exists becomes stopping criterion
-            do while (group_exists)
-                group_name = 'sol_R_'//trim(i2str(ir))
-                ierr = probe_HDF5_group(PB3D_name,group_name,group_exists)
-                CHCKERR('')
-                ir = ir + 1                                                     ! increment counter
-            end do
-            max_lvl_rich_file = ir-2                                            ! -2 because there will be one additional iteration
+        ! try openining solution for different Richardson extrapolation levels
+        group_exists(1) = .true.                                                ! group_exists becomes stopping criterion
+        ir = 1                                                                  ! initialize counter
+        do while (group_exists(1))
+            group_name = 'sol_R_'//trim(i2str(ir))
+            ierr = probe_HDF5_group(PB3D_name,group_name,group_exists(1))
+            CHCKERR('')
+            ir = ir + 1                                                         ! increment counter
+        end do
+        max_lvl_rich_file = ir-2                                                ! -2 because there will be one additional iteration
+        
+        ! set ukp minim_output
+        if (present(minim_output)) then
+            select case(eq_style)
+                case (1)                                                        ! VMEC
+                    ! try  whether eq_2  and X_1 variables  exist with  first eq
+                    ! jobs suffix
+                    group_name = 'eq_2_R_'//trim(i2str(max_lvl_rich_file))//&
+                        &'_E_1'
+                    ierr = probe_HDF5_group(PB3D_name,group_name,&
+                        &group_exists(1))
+                    CHCKERR('')
+                    group_name = 'X_1_R_'//trim(i2str(max_lvl_rich_file))//&
+                        &'_E_1'
+                    ierr = probe_HDF5_group(PB3D_name,group_name,&
+                        &group_exists(2))
+                    CHCKERR('')
+                    if (group_exists(1) .and. group_exists(2)) then
+                        minim_output = .false.
+                    else
+                        minim_output = .true.
+                    end if
+                case (2)                                                        ! HELENA
+                    minim_output = .false.                                      ! never minimal output
+            end select
         end if
-    end function find_max_lvl_rich
+    end function find_max_rich_lvl
 end module rich_ops

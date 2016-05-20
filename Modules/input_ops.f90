@@ -35,7 +35,7 @@ contains
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
         use rich_vars, only: rich_lvl, min_n_par_X, req_min_n_par_X
-        use rich_ops, only: find_max_lvl_rich
+        use rich_ops, only: find_max_rich_lvl
         use grid_vars, only: n_r_sol, min_par_X, max_par_X
         use sol_vars, only: alpha
         
@@ -43,7 +43,7 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: PB3D_lvl_rich                                                ! Richardson level to post-process (for POST)
+        integer :: PB3D_rich_lvl                                                ! Richardson level to post-process (for POST)
         integer, parameter :: max_size_tol_SLEPC = 100                          ! maximum size of tol_SLEPC
         real(dp) :: tol_SLEPC(max_size_tol_SLEPC)                               ! tol_SLEPC
         real(dp), parameter :: min_tol = 1.E-12_dp                              ! minimum general tolerance
@@ -64,7 +64,7 @@ contains
             &max_nr_tries_HH, magn_int_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_magn_grid, norm_disc_prec_sol, &
-            &plot_size, PB3D_lvl_rich, max_it_zero, tol_zero, &
+            &plot_size, PB3D_rich_lvl, max_it_zero, tol_zero, &
             &relax_fac_HH, min_theta_plot, max_theta_plot, min_zeta_plot, &
             &max_zeta_plot, max_nr_tries_HH, POST_style, slab_plots
         
@@ -204,10 +204,10 @@ contains
                     ! set up max_it_rich and rich_lvl
                     call lvl_ud(1)
                     call writo('PB3D level to be processed: '//&
-                        &trim(i2str(PB3D_lvl_rich)))
+                        &trim(i2str(PB3D_rich_lvl)))
                     call lvl_ud(-1)
-                    max_it_rich = PB3D_lvl_rich
-                    rich_lvl = PB3D_lvl_rich
+                    max_it_rich = PB3D_rich_lvl
+                    rich_lvl = PB3D_rich_lvl
             end select
             
             ! user output
@@ -286,6 +286,8 @@ contains
         end subroutine default_input_PB3D
         
         integer function default_input_POST() result(ierr)
+            use num_vars, only: minim_output
+            
             character(*), parameter :: rout_name = 'default_input_POST'
             
             ! initialize ierr
@@ -306,15 +308,15 @@ contains
             slab_plots = .false.                                                ! normal plots on 3D geometry
             
             ! Richardson variables
-            ierr = find_max_lvl_rich(PB3D_lvl_rich)                             ! highest Richardson level found
+            ierr = find_max_rich_lvl(PB3D_rich_lvl,minim_output)                ! get highest Richardson level found and set minim_output
             CHCKERR('')
-            if (PB3D_lvl_rich.le.0) then
+            if (PB3D_rich_lvl.le.0) then
                 ierr = 1
                 err_msg = 'No suitable Richardson level found'
                 CHCKERR(err_msg)
             end if
             call writo('Maximum Richardson level found: '//&
-                &trim(i2str(PB3D_lvl_rich)))
+                &trim(i2str(PB3D_rich_lvl)))
             
             ! variables concerning output
             n_sol_plotted = n_sol_requested                                     ! plot all solutions
@@ -407,13 +409,13 @@ contains
                 CHCKERR(err_msg)
             end if
             if (rich_restart_lvl.gt.1) then
-                ierr = find_max_lvl_rich(PB3D_lvl_rich)
+                ierr = find_max_rich_lvl(PB3D_rich_lvl)
                 CHCKERR('')
-                if (rich_restart_lvl.gt.PB3D_lvl_rich+1) then
+                if (rich_restart_lvl.gt.PB3D_rich_lvl+1) then
                     ierr = 1
-                    if (PB3D_lvl_rich.gt.0) then
+                    if (PB3D_rich_lvl.gt.0) then
                         err_msg = 'The highest Richardson level found was '//&
-                            &trim(i2str(PB3D_lvl_rich))
+                            &trim(i2str(PB3D_rich_lvl))
                     else
                         err_msg = 'No Richardson level found'
                     end if
@@ -732,11 +734,7 @@ contains
                     tol_SLEPC_loc(max_id+1:max_it_rich) = tol_SLEPC_def
                 end if
             else                                                                ! was not overwritten by user
-                tol_SLEPC_loc(max_it_rich) = tol_SLEPC_def                      ! last tolerance always equal to default
-                do id = 1,max_it_rich-1                                         ! the Richardson levels prior to the last one
-                    tol_SLEPC_loc(id) = max_tol + (id-1._dp)/(max_it_rich-1)*&
-                        &(tol_SLEPC_def-max_tol)                                ! ramp it up from max_tol to default tolerance
-                end do
+                tol_SLEPC_loc = tol_SLEPC_def                                   ! all tolerances equal to default
             end if
         end subroutine adapt_tols
         

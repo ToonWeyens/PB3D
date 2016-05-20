@@ -20,8 +20,8 @@ module grid_utilities
     
     ! global variables
 #if ldebug
-    logical :: debug_calc_int_vol = .true.                                     ! plot debug information for calc_int_vol
-    logical :: debug_setup_interp_dat = .false.                                     ! plot debug information for calc_int_vol
+    logical :: debug_calc_int_vol = .false.                                     ! plot debug information for calc_int_vol
+    logical :: debug_setup_interp_dat = .false.                                 ! plot debug information for calc_int_vol
 #endif
     
     interface coord_F2E

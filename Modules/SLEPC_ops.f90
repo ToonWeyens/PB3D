@@ -1445,6 +1445,9 @@ contains
         ! input / output
         EPS, intent(inout) :: solver                                            ! EV solver
         
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
         ! initialize ierr
         ierr = 0
         
@@ -1456,7 +1459,9 @@ contains
         
         ! solve EV problem
         call EPSSolve(solver,ierr) 
-        CHCKERR('EPS couldn''t find a solution')
+        err_msg = 'EPS couldn''t find a solution. Maybe you should increase &
+            &the number of parallel points.'
+        CHCKERR(err_msg)
         
         call lvl_ud(-1)
     end function get_solution

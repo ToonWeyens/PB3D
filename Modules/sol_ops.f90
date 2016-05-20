@@ -92,7 +92,7 @@ contains
     ! equilibrium  grid and  the normal  part of  the provided  perturbation
     ! grid.
     integer function plot_sol_vec(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
-        &XYZ,X_id,res_surf) result(ierr)
+        &XYZ,X_id,res_surf,full_output) result(ierr)
         use num_vars, only: no_plots
         use grid_utilities, only: trim_grid
         use sol_utilities, only: calc_XUQ
@@ -115,6 +115,7 @@ contains
         real(dp), intent(in) :: XYZ(:,:,:,:)                                    ! X, Y and Z of extended eq_grid
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue (for output name)
         real(dp), intent(in) :: res_surf(:,:)                                   ! resonant surfaces
+        logical, intent(in) :: full_output                                      ! whether full output is possible
         
         ! local variables
         type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
@@ -149,20 +150,6 @@ contains
         ! bypass plots if no_plots
         if (no_plots) return
         
-        ! tests
-        if (size(XYZ,4).ne.3) then
-            ierr = 1
-            err_msg = 'X, Y and Z needed'
-            CHCKERR(err_msg)
-        end if
-        if (grid_eq%n(1).ne.size(XYZ,1) .or. &
-            &grid_eq%n(2).ne.size(XYZ,2) .or. &
-            &grid_sol%loc_n_r.ne.size(XYZ,3)) then
-            ierr = 1
-            err_msg = 'XYZ needs to have the correct dimensions'
-            CHCKERR(err_msg)
-        end if
-        
         ! trim sol grid
         ierr = trim_grid(grid_sol,grid_sol_trim,norm_id)
         CHCKERR('')
@@ -176,6 +163,26 @@ contains
         CHCKERR('')
         
         call lvl_ud(-1)
+        
+        ! return if minimal output
+        if (.not.full_output) then
+            call grid_sol_trim%dealloc()
+            return
+        end if
+        
+        ! tests
+        if (size(XYZ,4).ne.3) then
+            ierr = 1
+            err_msg = 'X, Y and Z needed'
+            CHCKERR(err_msg)
+        end if
+        if (grid_eq%n(1).ne.size(XYZ,1) .or. &
+            &grid_eq%n(2).ne.size(XYZ,2) .or. &
+            &grid_sol%loc_n_r.ne.size(XYZ,3)) then
+            ierr = 1
+            err_msg = 'XYZ needs to have the correct dimensions'
+            CHCKERR(err_msg)
+        end if
         
         ! user output
         call writo('Plotting normal components')
@@ -1148,7 +1155,7 @@ contains
     
     ! Print solution quantities to an output file:
     !   - sol:    val, vec
-    ! If "rich_lvl" is  provided, "_B_rich_lvl" is appended to the  data name if
+    ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
     ! it is > 0.
     integer function print_output_sol(grid,sol,data_name,rich_lvl) result(ierr)
         use num_vars, only: rank, PB3D_name

@@ -461,3 +461,8 @@ CHANGELOG
       - Improved debug of "calc_ang_grid_eq_B" by checking whether F variables are recovered.
       - There is now also a 3D equivalent of "calc_zero_NR". It is used in "coord_F2E", so now the magnetic field lines are calculated faster.
       - Implemented Zhang's method for root-finding, which is now used to calculate the resonant flux surfaces.
+
+1.24: - FIRST COMPLETE PB3D VERSION. SUSPECTED PROBLEMS WITH 1.23 WERE DUE TO LOW "tol_SLEPC".
+      - Minimal outputs are also handled by POST now.
+      - Fixed a bug where incompatibility between HELENA and minimal output was ignored.
+      - Improved the handling of "tol_SLEPC".

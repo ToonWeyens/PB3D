@@ -1481,7 +1481,7 @@ contains
         
         ! open the file
         call H5Fopen_f(HDF5_name,H5F_ACC_RDONLY_F,HDF5_i,ierr)
-        CHCKERR('Failed to open file')
+        CHCKERR('Failed to open file. Does it exist?')
         
         ! disable error messages
         call h5eset_auto_f(0,ierr)
