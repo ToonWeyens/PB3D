@@ -434,9 +434,7 @@ contains
             call X_1%dealloc()
             
             ! user output
-            call lvl_ud(-1)
-            call writo('Job '//trim(i2str(X_job_nr))//' completed &
-                &by process '//trim(i2str(rank)))
+            call print_X_end()
         end do X_jobs_1
         call lvl_ud(-1)
         call writo('Vectorial perturbation jobs finished')
@@ -814,9 +812,7 @@ contains
             if (rich_lvl.gt.1 .or. eq_job_nr.gt.1) call X_2_prev%dealloc()
             
             ! user output
-            call lvl_ud(-1)
-            call writo('Job '//trim(i2str(X_job_nr))//&
-                &' completed by process '//trim(i2str(rank)))
+            call print_X_end()
         end do X_jobs_2
         call lvl_ud(-1)
         call writo('Tensorial perturbation jobs finished')
@@ -843,11 +839,9 @@ contains
     
     ! prints information for vectorial perturbation job
     subroutine print_info_X_1()
-        use num_vars, only: rank, X_job_nr, X_jobs_lims
+        use num_vars, only: X_job_nr, X_jobs_lims
         
-        call writo('Job '//trim(i2str(X_job_nr))//' is started by process '&
-            &//trim(i2str(rank)))
-        call lvl_ud(1)
+        call print_X_start()
         
         call writo('The series of '//flux_name(1)//' mode numbers ('//&
             &trim(i2str(X_jobs_lims(1,X_job_nr)))//'..'//&
@@ -856,12 +850,10 @@ contains
     
     ! prints information for tensorial perturbation job
     subroutine print_info_X_2()
-        use num_vars, only: rank, X_job_nr, X_jobs_lims
+        use num_vars, only: X_job_nr, X_jobs_lims
         
         ! user output
-        call writo('Job '//trim(i2str(X_job_nr))//' is started by process '&
-            &//trim(i2str(rank)))
-        call lvl_ud(1)
+        call print_X_start()
         
         call writo('The block of '//flux_name(1)//' mode numbers ('//&
             &trim(i2str(X_jobs_lims(1,X_job_nr)))//'..'//&
@@ -869,4 +861,26 @@ contains
             &trim(i2str(X_jobs_lims(3,X_job_nr)))//'..'//&
             &trim(i2str(X_jobs_lims(4,X_job_nr)))//') is calculated')
     end subroutine print_info_X_2
+    
+    ! prints information for starting perturbation job
+    subroutine print_X_start()
+        use num_vars, only: X_jobs_taken, X_job_nr, rank
+        
+        call writo('Job '//trim(i2str(X_job_nr))//' (of total '//&
+            &trim(i2str(size(X_jobs_taken)))//&
+            &' jobs) is started by process '//trim(i2str(rank)))
+        
+        call lvl_ud(1)
+    end subroutine print_X_start
+    
+    ! prints information for finishing perturbation job
+    subroutine print_X_end()
+        use num_vars, only: X_jobs_taken, X_job_nr, rank
+        
+        call lvl_ud(-1)
+    
+        call writo('Job '//trim(i2str(X_job_nr))//' (of total '//&
+            &trim(i2str(size(X_jobs_taken)))//&
+            &' jobs) completed by process '//trim(i2str(rank)))
+    end subroutine print_X_end
 end module driver_X

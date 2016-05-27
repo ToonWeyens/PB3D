@@ -870,7 +870,7 @@ contains
     ! Note: see explanation of routine in "decompose_energy"
     integer function calc_E(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
         &B_aligned,X_id,E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
-        use num_vars, only: use_pol_flux_F, n_procs, norm_style, &
+        use num_vars, only: use_pol_flux_F, n_procs, K_style, &
             &norm_disc_prec_sol, rank
         use eq_vars, only: vac_perm
         use num_utilities, only: c, con2dis
@@ -1013,7 +1013,7 @@ contains
         
         ! calc kinetic energy
         E_kin(:,:,:,1) = rho/h22*XUQ(:,:,:,1)*conjg(XUQ(:,:,:,1))
-        select case (norm_style)
+        select case (K_style)
             case (1)                                                            ! normalization of full perpendicular component
                 E_kin(:,:,:,2) = &
                     &rho*h22*J**2/g33*XUQ(:,:,:,2)*conjg(XUQ(:,:,:,2))
@@ -1021,7 +1021,7 @@ contains
                 E_kin(:,:,:,2) = 0._dp
             case default
                 err_msg = 'No normalization style associated with '//&
-                    &trim(i2str(norm_style))
+                    &trim(i2str(K_style))
                 ierr = 1
                 CHCKERR(err_msg)
         end select

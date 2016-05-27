@@ -1,5 +1,6 @@
 #!/bin/bash
 # Display usage function
+!!!!!!!!!!!!!!!! NEEDS TO BE UPDATED WITH DRMEMORY AND OTHER THINGS !!!!!!!!!!!
 display_usage() { 
     echo -e "\nUsage:\n$0 [OPTS] NR_PROCS \n" 
     echo -e "    OPTS: -o specify output name"

@@ -60,13 +60,13 @@ echo "Working in directory $out/"
 echo ""
 # Copy inputs and the program
 cp input_cbm18a_ripple $out
-cp wout_cbm18a_ripple_flat_RZ.nc $out
+cp wout_cbm18a_ripple_2.nc $out
 cp ../PB3D $out
 chmod +x $out/PB3D
 cd $out
 rm -f .lock_file*
-echo "$debug_opt -- mpirun -np $1 ./PB3D input_cbm18a_ripple wout_cbm18a_ripple_flat_RZ.nc $slepc_opt ${@:2}" > command
-$debug_opt mpirun -np $1 ./PB3D input_cbm18a_ripple wout_cbm18a_ripple_flat_RZ.nc $slepc_opt ${@:2}
+echo "$debug_opt -- mpirun -np $1 ./PB3D input_cbm18a_ripple wout_cbm18a_ripple_2.nc $slepc_opt ${@:2}" > command
+$debug_opt mpirun -np $1 ./PB3D input_cbm18a_ripple wout_cbm18a_ripple_2.nc $slepc_opt ${@:2}
 cd ../
 echo ""
 echo "Leaving directory $out/"

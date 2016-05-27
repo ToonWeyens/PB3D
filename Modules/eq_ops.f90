@@ -2237,47 +2237,92 @@ contains
         end if
     contains 
         ! VMEC version
-        !   R_0:    major radius (= average R on axis)
-        !   B_0:    B on magnetic axis (theta = zeta = 0)
-        !   pres_0: reference pressure (= B_0^2/mu_0)
-        !   psi_0:  reference flux (= R_0^2 B_0)
-        !   rho_0:  reference mass density
-        ! Note: The  orthodox way of doing  this is by setting  B_0 the toroidal
-        ! field on the magnetic axis, and calculating pres_0 from this, which is
-        ! not done here.
+        ! Normalization depends on style:
+        !   1: COBRA
+        !       R_0:    major radius (= average geometric axis)
+        !       pres_0: pressure on magnetic axis
+        !       B_0:    reference magnetic field (= sqrt(2pres_0mu_0 / beta))
+        !       psi_0:  reference flux (= R_0^2 B_0 / aspr^2)
+        !       rho_0:  reference mass density
+        !   where aspr (aspect ratio) and beta are given by VMEC.
+        !   2: MISHKA
+        !       R_0:    major radius (= average magnetic axis)
+        !       B_0:    B on magnetic axis (theta = zeta = 0)
+        !       pres_0: reference pressure (= B_0^2/mu_0)
+        !       psi_0:  reference flux (= R_0^2 B_0)
+        !       rho_0:  reference mass density
         ! Note that  rho_0 is  not given  through by  the equilibrium  codes and
         ! should be user-supplied
         subroutine calc_normalization_const_VMEC
-            use VMEC, only: R_V_c, B_0_V
+            use num_vars, only: norm_style
+            use VMEC, only: R_V_c, B_0_V, rmax_surf, rmin_surf, pres_V, &
+                &beta_V, aspr_V
             
-            ! set the major  radius as the average value of  R_V on the magnetic
-            ! axis
-            if (R_0.ge.huge(1._dp)) then                                        ! user did not provide a value
-                R_0 = R_V_c(1,1,0)
-            else
-                nr_overriden_const = nr_overriden_const + 1
-            end if
-            
-            ! set the reference value for B_0 = B_0_V
-            if (B_0.ge.huge(1._dp)) then                                        ! user did not provide a value
-                B_0 = B_0_V
-            else
-                nr_overriden_const = nr_overriden_const + 1
-            end if
-            
-            ! set pres_0 from B_0
-            if (pres_0.ge.huge(1._dp)) then                                     ! user did not provide a value
-                pres_0 = B_0**2/mu_0_original
-            else
-                nr_overriden_const = nr_overriden_const + 1
-            end if
-            
-            ! set reference flux
-            if (psi_0.ge.huge(1._dp)) then                                      ! user did not provide a value
-                psi_0 = R_0**2 * B_0
-            else
-                nr_overriden_const = nr_overriden_const + 1
-            end if
+            select case (norm_style)
+                case (1)                                                        ! COBRA
+                    ! user output
+                    call writo('Using COBRA normalization')
+                    
+                    ! set the major radius as the average geometric axis
+                    if (R_0.ge.huge(1._dp)) then                                ! user did not provide a value
+                        R_0 = 0.5_dp*(rmin_surf+rmax_surf)
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set pres_0 from pressure on axis
+                    if (pres_0.ge.huge(1._dp)) then                             ! user did not provide a value
+                        pres_0 = pres_V(1)
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set the reference value for B_0 from pres_0 and beta
+                    if (B_0.ge.huge(1._dp)) then                                ! user did not provide a value
+                        B_0 = sqrt(2._dp*pres_0*mu_0_original/beta_V)
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set reference flux from R_0, B_0 and aspr
+                    if (psi_0.ge.huge(1._dp)) then                              ! user did not provide a value
+                        psi_0 = B_0 * (R_0/aspr_V)**2
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                case (2)                                                        ! MISHKA
+                    ! user output
+                    call writo('Using MISHKA normalization')
+                    
+                    ! set the  major radius as the  average value of R_V  on the
+                    ! magnetic axis
+                    if (R_0.ge.huge(1._dp)) then                                ! user did not provide a value
+                        R_0 = R_V_c(1,1,0)
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set B_0 from magnetic field on axis
+                    if (B_0.ge.huge(1._dp)) then                                ! user did not provide a value
+                        B_0 = B_0_V
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set reference pres_0 from B_0
+                    if (pres_0.ge.huge(1._dp)) then                             ! user did not provide a value
+                        pres_0 = B_0**2/mu_0_original
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set reference flux from R_0 and B_0
+                    if (psi_0.ge.huge(1._dp)) then                              ! user did not provide a value
+                        psi_0 = R_0**2 * B_0
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+            end select
             
             ! rho_0 is set up through an input variable with the same name
             

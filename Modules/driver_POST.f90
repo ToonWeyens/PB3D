@@ -157,22 +157,21 @@ contains
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_sol,'sol',grid_limits=sol_limits)
         CHCKERR('')
-        ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1',eq_limits=eq_limits)
+        ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
         CHCKERR('')
         if (.not.minim_output) then
             ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',&
-                &rich_lvl=rich_lvl_name,tot_rich=.true.,eq_limits=eq_limits)
+                &rich_lvl=rich_lvl_name,tot_rich=.true.)
             CHCKERR('')
         end if
         ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.true.)                   ! is necessary for X variables
         CHCKERR('')
         if (.not.minim_output) then
             ierr = reconstruct_PB3D_X_1(grid_X,X,'X_1',rich_lvl=rich_lvl_name,&
-                &tot_rich=.true.,X_limits=X_limits)
+                &tot_rich=.true.)
             CHCKERR('')
         end if
-        ierr = reconstruct_PB3D_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl,&
-            &sol_limits=sol_limits)
+        ierr = reconstruct_PB3D_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl)
         CHCKERR('')
         call lvl_ud(-1)
         call writo('Original PB3D output reconstructed')

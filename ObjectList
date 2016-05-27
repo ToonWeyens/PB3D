@@ -1,5 +1,6 @@
 ObjectFiles = \
 HDF5_ops.o \
+HDF5_utilities.o \
 HDF5_vars.o \
 grid_vars.o \
 grid_utilities.o \

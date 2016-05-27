@@ -29,7 +29,7 @@ contains
             &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &max_nr_tries_HH, POST_style, slab_plots, def_relax_fac_HH, &
-            &magn_int_style
+            &magn_int_style, K_style
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use messages, only: writo, lvl_ud
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
@@ -58,7 +58,7 @@ contains
             &max_it_rich, tol_rich, EV_style, plot_resonance, n_sol_requested, &
             &EV_BC, tol_SLEPC, retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, &
             &norm_disc_prec_X, BC_style, max_it_inv, max_it_slepc, &
-            &norm_disc_prec_sol, plot_size, U_style, norm_style, &
+            &norm_disc_prec_sol, plot_size, U_style, norm_style, K_style, &
             &matrix_SLEPC_style, rich_restart_lvl, min_n_par_X, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &max_nr_tries_HH, magn_int_style
@@ -236,7 +236,8 @@ contains
             tol_SLEPC = huge(1._dp)                                             ! nonsensible value to check for user overwriting
             rho_style = 1                                                       ! constant pressure profile, equal to rho_0
             U_style = 3                                                         ! full expression for U, up to order 3
-            norm_style = 1                                                      ! perpendicular kinetic energy normalized
+            K_style = 1                                                         ! perpendicular kinetic energy normalized
+            norm_style = 1                                                      ! COBRA normalization
             BC_style = [1,2]                                                    ! left BC zeroed and right BC through minimization of energy
             X_style = 2                                                         ! fast style: mode numbers optimized in normal coordinate
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
@@ -805,7 +806,7 @@ contains
     !   - pres_H
     !   - flux_p_H
     !   - misc_X:    prim_X, n_mod_X, min_sec_X, max_sec_X, norm_disc_prec_X,
-    !                norm_style, U_style, X_style, matrix_SLEPC_style
+    !                norm_style, U_style, X_style, matrix_SLEPC_style, K_style
     !   - misc_sol:  min_r_sol, max_r_sol, alpha, norm_disc_prec_sol, BC_style,
     !                EV_BC, EV_BC
     integer function print_output_in(data_name) result(ierr)
@@ -813,7 +814,7 @@ contains
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, tol_norm, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
-            &EV_BC, magn_int_style
+            &EV_BC, magn_int_style, K_style
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
         use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
@@ -1162,14 +1163,14 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [10]
+        in_1D_loc%loc_i_max = [11]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(10))
+        allocate(in_1D_loc%p(11))
         in_1D_loc%p = [prim_X*1._dp,n_mod_X*1._dp,min_sec_X*1._dp,&
             &max_sec_X*1._dp,norm_disc_prec_X*1._dp,norm_style*1._dp,&
             &U_style*1._dp,X_style*1._dp,matrix_SLEPC_style*1._dp,&
-            &magn_int_style*1._dp]
+            &magn_int_style*1._dp,K_style*1._dp]
         
         ! misc_sol
         in_1D_loc => in_1D(id); id = id+1

@@ -10,13 +10,10 @@ module PB3D_utilities
 
     implicit none
     private
-    public get_full_var_names, retrieve_var_1D_id, conv_1D2ND, setup_rich_id, &
-        &setup_eq_id, setup_par_id
+    public conv_1D2ND, setup_rich_id, setup_eq_id, &
+        &setup_par_id
     
     ! interfaces
-    interface get_full_var_names
-        module procedure get_full_var_names_1, get_full_var_names_2
-    end interface
     interface conv_1D2ND
         module procedure &
             &conv_1D2ND_1D_ind, conv_1D2ND_2D_ind, conv_1D2ND_3D_ind, &
@@ -24,162 +21,8 @@ module PB3D_utilities
             &conv_1D2ND_7D_ind, conv_1D2ND_4D_arr, conv_1D2ND_6D_arr, &
             &conv_1D2ND_7D_arr
     end interface
-    interface retrieve_var_1D_id
-        module procedure retrieve_var_1D_id_ind, retrieve_var_1D_id_arr
-    end interface
     
 contains
-    ! Set  all possible  full  variable names  for given  input  names and  mode
-    ! numbers.
-    ! Note that  due to  strange FORTRAN behavior,  "lim_sec_X" is  not optional
-    ! here: If it  is defined so, for  some reason the allocatable  array is not
-    ! passed correctly. This is the only place where consistency is broken.
-    subroutine get_full_var_names_1(var_names,full_var_names,lim_sec_X)         ! vectorial version
-        use X_utilities, only: get_suffix
-        
-        ! input / output
-        character(len=*), intent(in) :: var_names(:)                            ! internal variable names
-        character(len=max_name_ln), intent(inout), allocatable :: &
-            &full_var_names(:)                                                  ! full HDF5 variable names
-        integer, intent(in) :: lim_sec_X(2)                                     ! limits for m_X (pol flux) or n_X (tor flux)
-        
-        ! local variables
-        integer :: n_vars                                                       ! nr. of input variables
-        integer :: n_mod                                                        ! nr. of secondary modes
-        integer :: id, jd                                                       ! counters
-        integer :: id_loc                                                       ! counter
-        integer :: suffix                                                       ! suffix
-        
-        ! set n_vars and n_mod
-        n_vars = size(var_names)
-        n_mod = lim_sec_X(2) - lim_sec_X(1) + 1
-        
-        ! allocate full HDF5 variable names
-        if (allocated(full_var_names)) deallocate(full_var_names)
-        allocate(full_var_names(n_vars*n_mod))
-        
-        ! loop over all modes
-        id_loc = 1
-        ! loop over all variables
-        do id = 1,n_vars
-            do jd = 1,n_mod
-                suffix = get_suffix(jd,lim_sec_X)
-                full_var_names(id_loc) = trim(var_names(id))//'_'//&
-                    &trim(i2str(suffix))
-                id_loc = id_loc+1
-            end do
-        end do
-    end subroutine get_full_var_names_1
-    subroutine get_full_var_names_2(var_names,sym,full_var_names,lim_sec_X)     ! tensorial version
-        use X_vars, only: set_nn_mod
-        use X_utilities, only: get_suffix, is_necessary_X
-        
-        ! input / output
-        character(len=*), intent(in) :: var_names(:)                            ! internal variable names
-        logical, intent(in) :: sym(:)                                           ! if variable is symmetric
-        character(len=max_name_ln), intent(inout), allocatable :: &
-            &full_var_names(:)                                                  ! full HDF5 variable names
-        integer, intent(in) :: lim_sec_X(2,2)                                   ! limits for m_X (pol flux) or n_X (tor flux) for both dimensions
-        
-        ! local variables
-        integer :: n_vars                                                       ! nr. of input variables
-        integer :: n_mod(2)                                                     ! nr. of secondary modes
-        integer :: id, jd, kd                                                   ! counters
-        integer :: id_loc                                                       ! counter
-        integer :: nn_mod_tot                                                   ! total nn_mod
-        integer :: suffix(2)                                                    ! suffix
-        
-        ! tests
-        if (size(var_names).ne.size(sym)) then
-            call writo('size of sym has to be equal to size of var_names',&
-                &warning=.true.)
-            return
-        end if
-        
-        ! set n_vars and n_mod
-        n_vars = size(var_names)
-        n_mod = lim_sec_X(2,:) - lim_sec_X(1,:) + 1
-        
-        ! allocate full HDF5 variable names
-        if (allocated(full_var_names)) deallocate(full_var_names)
-        nn_mod_tot = 0
-        do id = 1,n_vars
-            if (sym(id)) then
-                nn_mod_tot = nn_mod_tot + set_nn_mod(lim_sec_X)
-            else
-                nn_mod_tot = nn_mod_tot + product(n_mod)
-            end if
-        end do
-        allocate(full_var_names(nn_mod_tot))
-        
-        ! loop over all modes
-        id_loc = 1
-        ! loop over all variables
-        do id = 1,n_vars
-            do kd = 1,n_mod(2)
-                do jd = 1,n_mod(1)
-                    suffix = get_suffix(jd,kd,lim_sec_X)
-                    if (is_necessary_X(sym(id),[jd,kd],lim_sec_X)) then
-                        full_var_names(id_loc) = trim(var_names(id))//'_'//&
-                            &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
-                        id_loc = id_loc+1
-                    end if
-                end do
-            end do
-        end do
-    end subroutine get_full_var_names_2
-    
-    ! Retrieves variable index from array 1D equivalents
-    integer function retrieve_var_1D_id_ind(vars,var_name,var_id) result(ierr)  ! individual version
-        character(*), parameter :: rout_name = 'retrieve_var_1D_ind'
-        
-        ! input / output
-        type(var_1D_type), intent(in) :: vars(:)                                ! array of 1D variables
-        character(len=*), intent(in) :: var_name                                ! name of variable to retrieve
-        integer, intent(inout) :: var_id                                        ! index of variable
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: id                                                           ! counter
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! look up the variable
-        do id = 1,size(vars)
-            if (trim(vars(id)%var_name).eq.trim(var_name)) then                 ! found
-                var_id = id
-                return
-            end if
-        end do
-        
-        ! if still here, nothing found
-        ierr = 1
-        err_msg = 'Variable '//trim(var_name)//' not found'
-        CHCKERR(err_msg)
-    end function retrieve_var_1D_id_ind
-    integer function retrieve_var_1D_id_arr(vars,var_name,var_id) result(ierr)  ! array version
-        character(*), parameter :: rout_name = 'retrieve_var_1D_arr'
-        
-        ! input / output
-        type(var_1D_type), intent(in) :: vars(:,:)                              ! array of 1D variables
-        character(len=*), intent(in) :: var_name                                ! name of variable to retrieve
-        integer, intent(inout), allocatable :: var_id(:)                        ! index of variable
-        
-        ! local variables
-        integer :: id                                                           ! counter
-        
-        ! allocate and test
-        if (allocated(var_id)) deallocate(var_id)
-        allocate(var_id(size(vars,2)))
-        
-        ! call individual version
-        do id = 1,size(vars,2)
-            ierr = retrieve_var_1D_id_ind(vars(:,id),var_name,var_id(id))
-            CHCKERR('')
-        end do
-    end function retrieve_var_1D_id_arr
-    
     ! Converts 1D to nD variables. The output variable has to be allocatable and
     ! unallocated.
     ! The  array versions,  which exist  for  the 3D,  4D, 6D  and 7D  versions,
@@ -187,6 +30,9 @@ contains
     ! with  the  parallel index.  If  this  is  not  the desired  behavior,  the
     ! individual  versions have  to be  called separately.  Furthermore, in  the
     ! array routines, the total size of the first index has to be provided.
+    ! Note that the  output variables are allocatables, which  has the important
+    ! consequence that  lower and upper bounds  are passed as well.  This can be
+    ! seen in the reconstruction routines "reconstruct_PB3D_..".
     subroutine conv_1D2ND_1D_ind(var_in,var_out)                                ! 1D individual version
         ! input / output
         type(var_1D_type), intent(in) :: var_in                                 ! 1D variable
@@ -226,11 +72,10 @@ contains
             &var_in%tot_i_max(2)-var_in%tot_i_min(2)+1,&
             &var_in%tot_i_max(3)-var_in%tot_i_min(3)+1])
     end subroutine conv_1D2ND_3D_ind
-    subroutine conv_1D2ND_3D_arr(var_in,var_1D_id,dim_1,overlap,var_out)        ! 3D array version
+    subroutine conv_1D2ND_3D_arr(var_in,dim_1,overlap,var_out)                  ! 3D array version
         use output_ops
         ! input / output
-        type(var_1D_type), intent(in) :: var_in(:,:)                            ! 2D variable
-        integer, intent(in) :: var_1D_id(:)                                     ! indices in var_in
+        type(var_1D_type), intent(in) :: var_in(:)                              ! 2D variable
         integer :: dim_1                                                        ! size of dimension 1
         logical :: overlap                                                      ! whether overlap of width 1 for equilibrium jobs
         real(dp), intent(inout), allocatable :: var_out(:,:,:)                  ! output variable
@@ -242,10 +87,11 @@ contains
         
         ! loop over all indices
         id_loc = 1
-        do id = 1,size(var_1D_id)
-            call conv_1D2ND_3D_ind(var_in(var_1D_id(id),id),var_out_loc)
-            if (id.eq.1) allocate(var_out(dim_1,size(var_out_loc,2),&
-                &size(var_out_loc,3)))
+        do id = 1,size(var_in)
+            call conv_1D2ND_3D_ind(var_in(id),var_out_loc)
+            if (id.eq.1) allocate(var_out(dim_1,&
+                &lbound(var_out_loc,2):ubound(var_out_loc,2),&
+                &lbound(var_out_loc,3):ubound(var_out_loc,3)))
             var_out(id_loc:id_loc+size(var_out_loc,1)-1,:,:) = var_out_loc
             id_loc = id_loc + size(var_out_loc,1)
             if (overlap) id_loc = id_loc - 1
@@ -269,10 +115,9 @@ contains
             &var_in%tot_i_max(3)-var_in%tot_i_min(3)+1,&
             &var_in%tot_i_max(4)-var_in%tot_i_min(4)+1])
     end subroutine conv_1D2ND_4D_ind
-    subroutine conv_1D2ND_4D_arr(var_in,var_1D_id,dim_1,overlap,var_out)        ! 4D array version
+    subroutine conv_1D2ND_4D_arr(var_in,dim_1,overlap,var_out)                  ! 4D array version
         ! input / output
-        type(var_1D_type), intent(in) :: var_in(:,:)                            ! 2D variable
-        integer, intent(in) :: var_1D_id(:)                                     ! indices in var_in
+        type(var_1D_type), intent(in) :: var_in(:)                              ! 2D variable
         integer :: dim_1                                                        ! size of dimension 1
         logical :: overlap                                                      ! whether overlap of width 1 for equilibrium jobs
         real(dp), intent(inout), allocatable :: var_out(:,:,:,:)                ! output variable
@@ -284,10 +129,12 @@ contains
         
         ! loop over all indices
         id_loc = 1
-        do id = 1,size(var_1D_id)
-            call conv_1D2ND_4D_ind(var_in(var_1D_id(id),id),var_out_loc)
-            if (id.eq.1) allocate(var_out(dim_1,size(var_out_loc,2),&
-                &size(var_out_loc,3),size(var_out_loc,4)))
+        do id = 1,size(var_in)
+            call conv_1D2ND_4D_ind(var_in(id),var_out_loc)
+            if (id.eq.1) allocate(var_out(dim_1,&
+                &lbound(var_out_loc,2):ubound(var_out_loc,2),&
+                &lbound(var_out_loc,3):ubound(var_out_loc,3),&
+                &lbound(var_out_loc,4):ubound(var_out_loc,4)))
             var_out(id_loc:id_loc+size(var_out_loc,1)-1,:,:,:) = var_out_loc
             id_loc = id_loc + size(var_out_loc,1)
             if (overlap) id_loc = id_loc - 1
@@ -315,10 +162,9 @@ contains
             &var_in%tot_i_max(5)-var_in%tot_i_min(5)+1,&
             &var_in%tot_i_max(6)-var_in%tot_i_min(6)+1])
     end subroutine conv_1D2ND_6D_ind
-    subroutine conv_1D2ND_6D_arr(var_in,var_1D_id,dim_1,overlap,var_out)        ! 6D array version
+    subroutine conv_1D2ND_6D_arr(var_in,dim_1,overlap,var_out)                  ! 6D array version
         ! input / output
-        type(var_1D_type), intent(in) :: var_in(:,:)                            ! 2D variable
-        integer, intent(in) :: var_1D_id(:)                                     ! indices in var_in
+        type(var_1D_type), intent(in) :: var_in(:)                              ! 2D variable
         integer :: dim_1                                                        ! size of dimension 1
         logical :: overlap                                                      ! whether overlap of width 1 for equilibrium jobs
         real(dp), intent(inout), allocatable :: var_out(:,:,:,:,:,:)            ! output variable
@@ -330,11 +176,14 @@ contains
         
         ! loop over all indices
         id_loc = 1
-        do id = 1,size(var_1D_id)
-            call conv_1D2ND_6D_ind(var_in(var_1D_id(id),id),var_out_loc)
-            if (id.eq.1) allocate(var_out(dim_1,size(var_out_loc,2),&
-                &size(var_out_loc,3),size(var_out_loc,4),size(var_out_loc,5),&
-                &size(var_out_loc,6)))
+        do id = 1,size(var_in)
+            call conv_1D2ND_6D_ind(var_in(id),var_out_loc)
+            if (id.eq.1) allocate(var_out(dim_1,&
+                &lbound(var_out_loc,2):ubound(var_out_loc,2),&
+                &lbound(var_out_loc,3):ubound(var_out_loc,3),&
+                &lbound(var_out_loc,4):ubound(var_out_loc,4),&
+                &lbound(var_out_loc,5):ubound(var_out_loc,5),&
+                &lbound(var_out_loc,6):ubound(var_out_loc,6)))
             var_out(id_loc:id_loc+size(var_out_loc,1)-1,:,:,:,:,:) = var_out_loc
             id_loc = id_loc + size(var_out_loc,1)
             if (overlap) id_loc = id_loc - 1
@@ -364,10 +213,9 @@ contains
             &var_in%tot_i_max(6)-var_in%tot_i_min(6)+1,&
             &var_in%tot_i_max(7)-var_in%tot_i_min(7)+1])
     end subroutine conv_1D2ND_7D_ind
-    subroutine conv_1D2ND_7D_arr(var_in,var_1D_id,dim_1,overlap,var_out)        ! 7D array version
+    subroutine conv_1D2ND_7D_arr(var_in,dim_1,overlap,var_out)                  ! 7D array version
         ! input / output
-        type(var_1D_type), intent(in) :: var_in(:,:)                            ! 2D variable
-        integer, intent(in) :: var_1D_id(:)                                     ! indices in var_in
+        type(var_1D_type), intent(in) :: var_in(:)                              ! 2D variable
         integer :: dim_1                                                        ! size of dimension 1
         logical :: overlap                                                      ! whether overlap of width 1 for equilibrium jobs
         real(dp), intent(inout), allocatable :: var_out(:,:,:,:,:,:,:)          ! output variable
@@ -379,11 +227,15 @@ contains
         
         ! loop over all indices
         id_loc = 1
-        do id = 1,size(var_1D_id)
-            call conv_1D2ND_7D_ind(var_in(var_1D_id(id),id),var_out_loc)
-            if (id.eq.1) allocate(var_out(dim_1,size(var_out_loc,2),&
-                &size(var_out_loc,3),size(var_out_loc,4),size(var_out_loc,5),&
-                &size(var_out_loc,6),size(var_out_loc,7)))
+        do id = 1,size(var_in)
+            call conv_1D2ND_7D_ind(var_in(id),var_out_loc)
+            if (id.eq.1) allocate(var_out(dim_1,&
+                &lbound(var_out_loc,2):ubound(var_out_loc,2),&
+                &lbound(var_out_loc,3):ubound(var_out_loc,3),&
+                &lbound(var_out_loc,4):ubound(var_out_loc,4),&
+                &lbound(var_out_loc,5):ubound(var_out_loc,5),&
+                &lbound(var_out_loc,6):ubound(var_out_loc,6),&
+                &lbound(var_out_loc,7):ubound(var_out_loc,7)))
             var_out(id_loc:id_loc+size(var_out_loc,1)-1,:,:,:,:,:,:) = &
                 &var_out_loc
             id_loc = id_loc + size(var_out_loc,1)
@@ -447,7 +299,7 @@ contains
     end function setup_rich_id
     
     ! setup equilibrium job id:
-    !   eq_id(1): start equilibirum job (always 1)
+    !   eq_id(1): start equilibrium job (always 1)
     !   eq_id(2): end equilibrium job
     ! This  procedure   first  seeks  whether   a  specific  eq_job  is   to  be
     ! reconstructed. If not,  it checks whether there is a  variable without the
@@ -457,7 +309,7 @@ contains
     ! If nothing found, negative numbers are returned.
     function setup_eq_id(group_name,eq_job,rich_lvl) result(eq_id)
         use num_vars, only: PB3D_name
-        use HDF5_ops, only: probe_HDF5_group
+        use HDF5_utilities, only: probe_HDF5_group
         
         ! input / output
         character(len=*), intent(in) :: group_name                              ! name of variable to find

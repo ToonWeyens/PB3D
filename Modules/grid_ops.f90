@@ -521,8 +521,7 @@ contains
     
     ! Sets up the general perturbation grid, in which the perturbation variables
     ! are calculated. This  grid has the same angular extent  as the equilibrium
-    ! grid but with a higher number  of normal points, indicated by the variable
-    ! 'r_F_X'.
+    ! grid but with different normal points, indicated by the variable 'r_F_X'.
     ! Note that no ghost  range is needed as the full normal  range is used: The
     ! division is in the mode numbers
     integer function setup_grid_X(grid_eq,grid_X,r_F_X,X_limits) result(ierr)
@@ -581,36 +580,27 @@ contains
     
     ! Sets  up the general  solution grid, in  which the solution  variables are
     ! calculated.
-    integer function setup_grid_sol(grid_eq,grid_sol,r_F_sol,sol_limits) &
+    integer function setup_grid_sol(grid_X,grid_sol,sol_limits) &
         &result(ierr)
         use grid_utilities, only: coord_F2E
         
         character(*), parameter :: rout_name = 'setup_grid_sol'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(grid_type), intent(inout) :: grid_sol                              ! solution grid
-        real(dp), intent(in) :: r_F_sol(:)                                      ! points of solution grid
         integer, intent(in) :: sol_limits(2)                                    ! min. and max. index of sol grid of this process
         
         ! initialize ierr
         ierr = 0
         
         ! create grid
-        ierr = grid_sol%init([0,0,size(r_F_sol)],sol_limits)
+        ierr = grid_sol%init([0,0,grid_X%n(3)],sol_limits)
         CHCKERR('')
         
         ! set Flux variables
-        grid_sol%r_F = r_F_sol
-        grid_sol%loc_r_F = r_F_sol(sol_limits(1):sol_limits(2))
-        
-        ! convert to Equilibrium variables
-        ierr = coord_F2E(grid_eq,grid_sol%r_F,grid_sol%r_E,&
-            &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
-        CHCKERR('')
-        ierr = coord_F2E(grid_eq,grid_sol%loc_r_F,grid_sol%loc_r_E,&
-            &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
-        CHCKERR('')
+        grid_sol%r_F = grid_X%r_F
+        grid_sol%loc_r_F = grid_X%loc_r_F
     end function setup_grid_sol
     
     ! Calculate grid that follows magnetic field lines.

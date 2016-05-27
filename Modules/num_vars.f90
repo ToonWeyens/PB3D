@@ -6,9 +6,10 @@ module num_vars
     
     implicit none
     private
-    public dp, qp, max_str_ln, max_name_ln, max_deriv, prog_name, output_name, &
-        &prog_version, prog_style, min_PB3D_version, shell_commands_name, &
-        &mem_usage_name, mem_usage_i, mem_usage_count, weight_dp, &
+    public dp, dpi, max_str_ln, max_name_ln, max_deriv, prog_name, &
+        &output_name, prog_version, prog_style, min_PB3D_version, &
+        &shell_commands_name, mem_usage_name, mem_usage_i, mem_usage_count, &
+        &weight_dp, &
         &rank, n_procs, HDF5_lock_file_name, time_start, &
         &max_tot_mem_per_proc, max_X_mem_per_proc, X_jobs_lims, X_jobs_taken, &
         &X_job_nr, X_jobs_file_name, X_jobs_lock_file_name, eq_jobs_lims, &
@@ -17,7 +18,7 @@ module num_vars
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
         &X_style, matrix_SLEPC_style, plot_resonance, plot_magn_grid, &
         &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, use_normalization, &
-        &EV_BC, tol_SLEPC, max_it_slepc, norm_disc_prec_eq, &
+        &EV_BC, tol_SLEPC, max_it_slepc, norm_disc_prec_eq, K_style, &
         &norm_disc_prec_X, norm_disc_prec_sol, POST_style, magn_int_style, &
         &max_it_rich, tol_rich, &
         &max_it_inv, &
@@ -34,7 +35,8 @@ module num_vars
     !integer, parameter :: dp = kind(1.d0)                                       ! double precision
     !integer, parameter :: qp = selected_real_kind (32)                          ! quadruple precision
     integer, parameter :: dp = REAL64                                           ! double precision
-    integer, parameter :: qp = REAL128                                          ! quadruple precision
+    !integer, parameter :: qp = REAL128                                          ! quadruple precision
+    integer, parameter :: dpi = INT64                                           ! double precision
     real(dp), parameter :: weight_dp = 0.008                                    ! size of double precision in kB
     integer, parameter :: max_str_ln = 120                                      ! maximum length of strings
     integer, parameter :: max_name_ln = 30                                      ! maximum length of filenames
@@ -46,8 +48,8 @@ module num_vars
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
     integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
-    real(dp), parameter :: prog_version = 1.24_dp                               ! version number
-    real(dp), parameter :: min_PB3D_version = 1.22_dp                           ! minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 1.25_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.25_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
     integer :: rank                                                             ! MPI rank
@@ -78,6 +80,7 @@ module num_vars
     integer :: rho_style                                                        ! style for equilibrium density profile
     integer :: U_style                                                          ! style for calculation of U (1: ord.2, 2: ord.1, 1: ord.0)
     integer :: norm_style                                                       ! style for normalization
+    integer :: K_style                                                          ! style for kinetic energy
     integer :: BC_style(2)                                                      ! style for BC left and right
     integer :: X_style                                                          ! style for secondary mode numbers (1: prescribed, 2: fast)
     integer :: matrix_SLEPC_style                                               ! style for matrix storage (1: sparse, 2: shell)

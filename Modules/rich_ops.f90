@@ -370,8 +370,8 @@ contains
         
         ! possibly create separate output for eq
         if (minim_output) then
-            call writo('Output file size minimized: equilbiria get temporary &
-                &file')
+            call writo('Output file size minimized: non-essential variables &
+                &get temporary file')
             call lvl_ud(1)
             ierr = create_output_HDF5(PB3D_name_eq)
             CHCKERR('')
@@ -499,7 +499,8 @@ contains
             end if
             
             ! check whether to decrease next tol_SLEPC
-            tol_SLEPC(rich_lvl+1) = min(tol_SLEPC(rich_lvl+1),&
+            if (rich_lvl.lt.max_it_rich) tol_SLEPC(rich_lvl+1) = min(&
+                &tol_SLEPC(rich_lvl+1),&
                 &tol_SLEPC_adapt_factor*max_rel_err(rich_lvl-1))
         end if
     end subroutine check_conv
@@ -509,7 +510,7 @@ contains
     integer function find_max_rich_lvl(max_lvl_rich_file,minim_output) &
         &result(ierr)
         use num_vars, only: PB3D_name, eq_style
-        use HDF5_ops, only: probe_HDF5_group
+        use HDF5_utilities, only: probe_HDF5_group
         
         character(*), parameter :: rout_name = 'find_max_rich_lvl'
         

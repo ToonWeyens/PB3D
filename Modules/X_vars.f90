@@ -11,11 +11,10 @@ module X_vars
     implicit none
     
     private
-    public init_X_vars, set_nm_X, set_nn_mod, &
+    public set_nm_X, set_nn_mod, &
         &X_1_type, X_2_type, &
         &n_mod_X, prim_X, min_sec_X, max_sec_X, min_nm_X, min_n_X, max_n_X, &
-        &min_m_X, max_m_X, min_r_sol, max_r_sol, X_1_var_names, X_2_var_names, &
-        &n_X, m_X, sec_X_ind
+        &min_m_X, max_m_X, min_r_sol, max_r_sol, n_X, m_X, sec_X_ind
 #if ldebug
     public n_alloc_X_1s, n_alloc_X_2s
 #endif
@@ -33,8 +32,6 @@ module X_vars
     integer, allocatable :: m_X(:,:)                                            ! m for all modes, in total X grid
     integer, allocatable :: sec_X_ind(:,:)                                      ! index of m or n for all possible modes, in total X grid
     real(dp) :: min_r_sol, max_r_sol                                            ! min. and max. normal range for pert.
-    character(len=max_name_ln), allocatable :: X_1_var_names(:)                 ! internal vectorial perturbation variables names
-    character(len=max_name_ln), allocatable :: X_2_var_names(:)                 ! internal tensorial perturbation variables names
 #if ldebug
     integer :: n_alloc_X_1s                                                     ! nr. of allocated X_1's
     integer :: n_alloc_X_2s                                                     ! nr. of allocated X_2's
@@ -94,33 +91,6 @@ module X_vars
     end interface
     
 contains
-    ! Initalizes some of the common variables
-    subroutine init_X_vars()
-        allocate(X_1_var_names(8))
-        X_1_var_names(1) = 'RE_U_0'
-        X_1_var_names(2) = 'IM_U_0'
-        X_1_var_names(3) = 'RE_U_1'
-        X_1_var_names(4) = 'IM_U_1'
-        X_1_var_names(5) = 'RE_DU_0'
-        X_1_var_names(6) = 'IM_DU_0'
-        X_1_var_names(7) = 'RE_DU_1'
-        X_1_var_names(8) = 'IM_DU_1'
-        
-        allocate(X_2_var_names(12))
-        X_2_var_names(1) = 'RE_PV_0'
-        X_2_var_names(2) = 'IM_PV_0'
-        X_2_var_names(3) = 'RE_PV_1'
-        X_2_var_names(4) = 'IM_PV_1'
-        X_2_var_names(5) = 'RE_PV_2'
-        X_2_var_names(6) = 'IM_PV_2'
-        X_2_var_names(7) = 'RE_KV_0'
-        X_2_var_names(8) = 'IM_KV_0'
-        X_2_var_names(9) = 'RE_KV_1'
-        X_2_var_names(10) = 'IM_KV_1'
-        X_2_var_names(11) = 'RE_KV_2'
-        X_2_var_names(12) = 'IM_KV_2'
-    end subroutine init_X_vars
-    
     ! Initializes a  vectorial or tensorial  perturbation type and  allocate the
     ! variables, the number of modes, as well as n and m
     ! Optionally, the  secondary mode  numbers can be  specified (m  if poloidal
@@ -224,7 +194,7 @@ contains
         X%n_mod(2) = size(X%n_2,2)
         
         ! set nnmod for symmetric quantities
-        nn_mod = set_nn_mod(lim_sec_X)
+        nn_mod = set_nn_mod(.true.,lim_sec_X)
         
         ! allocate PV_i
         allocate(X%PV_0(n_par,n_geo,loc_n_r,nn_mod))                            ! symmetric
@@ -255,11 +225,10 @@ contains
 #endif
     end subroutine init_X_2
     
-    ! Sets number of entries for symmetric tensorial perturbation variables.
-    integer function set_nn_mod(lim_sec_X) result(nn_mod)
-        use num_vars, only: use_pol_flux_F
-        
+    ! Sets number of entries for tensorial perturbation variables.
+    integer function set_nn_mod(sym,lim_sec_X) result(nn_mod)
         ! input / output
+        logical, intent(in) :: sym                                              ! whether the variable is symmetric
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
         
         ! local variables
@@ -271,17 +240,18 @@ contains
         lim_sec_X_loc(:,2) = [1,n_mod_X]
         if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
         
-        ! set nnmod for symmetric quantities: discard indices above diagonal
-        nn_mod = 0
-        do jd = lim_sec_X_loc(1,2),lim_sec_X_loc(2,2)
-            do id = lim_sec_X_loc(1,1),lim_sec_X_loc(2,1)
-                if (use_pol_flux_F) then
+        if (sym) then
+            ! set nnmod for symmetric quantities: discard indices above diagonal
+            nn_mod = 0
+            do jd = lim_sec_X_loc(1,2),lim_sec_X_loc(2,2)
+                do id = lim_sec_X_loc(1,1),lim_sec_X_loc(2,1)
                     if (id.ge.jd) nn_mod = nn_mod + 1
-                else
-                    if (id.ge.jd) nn_mod = nn_mod + 1
-                end if
+                end do
             end do
-        end do
+        else
+            ! set nn_mod for asymmetric quantities: don't discard anything
+            nn_mod = product(lim_sec_X_loc(2,:)-lim_sec_X_loc(1,:)+1)
+        end if
     end function set_nn_mod
     
     ! Sets  n_X  and  m_X  using  by default  global  variables  but  optionally

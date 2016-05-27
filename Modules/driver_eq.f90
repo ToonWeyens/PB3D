@@ -108,7 +108,7 @@ contains
         CHCKERR('')
         
         ! write  flux equilibrium variables to  output if first level  and first
-        ! equilibirum job
+        ! equilibrium job
         if (rich_lvl.eq.1 .and. eq_job_nr.eq.1) then
             ! print output
             ierr = print_output_eq(grid_eq,eq_1,'eq_1')

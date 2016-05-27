@@ -18,7 +18,7 @@
 !                Eindhoven University of Technology                            !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.24                                                              !
+!   Version: 1.25                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -31,7 +31,6 @@ program POST
     use messages, only: writo, print_goodbye, lvl_ud, print_hello, &
         &init_messages, init_time, start_time, stop_time, passed_time
     use HDF5_vars, only: init_HDF5
-    use X_vars, only: init_X_vars
     use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_opts
     use files_ops, only: init_files, parse_args, open_input, open_output, &
         &close_output
@@ -61,7 +60,6 @@ program POST
     call init_files()                                                           ! initialize file operations
     call init_time()                                                            ! initialize time
     call init_HDF5()                                                            ! initialize HDF5
-    call init_X_vars()                                                          ! initialize perturbation vars
  
     !-------------------------------------------------------
     !   Read the PB3D output

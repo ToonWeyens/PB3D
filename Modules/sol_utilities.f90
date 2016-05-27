@@ -341,7 +341,7 @@ contains
         character(*), parameter :: rout_name = 'calc_XUQ_ind'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibirum grid
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
         type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium

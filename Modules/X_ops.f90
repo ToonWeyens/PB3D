@@ -1731,7 +1731,7 @@ contains
     ! (see [ADD REF] for details)
     integer function calc_KV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
         &result(ierr)
-        use num_vars, only: norm_style, norm_disc_prec_X
+        use num_vars, only: K_style, norm_disc_prec_X
         use num_utilities, only: c
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
@@ -1824,7 +1824,7 @@ contains
                 c_loc(1) = c([k,m],.true.,n_mod_X,lim_sec_X)
                 c_loc(2) = c([k,m],.false.,n_mod_X,lim_sec_X)
                 
-                select case (norm_style)
+                select case (K_style)
                     case (1)                                                    ! normalization of full perpendicular component
                         ! calculate KV_0
                         if (calc_this(1)) then
@@ -2170,7 +2170,7 @@ contains
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
-        use X_utilities, only: get_suffix
+        use X_vars, only: n_mod_X
         
         character(*), parameter :: rout_name = 'print_output_X_1'
         
@@ -2185,8 +2185,8 @@ contains
         ! local variables
         type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
         type(var_1D_type), pointer :: X_1D_loc => null()                        ! local element in X_1D
-        integer :: id, jd                                                       ! counters
-        integer :: suffix                                                       ! suffix
+        integer :: n_mod_loc                                                    ! local nr. of modes
+        integer :: id                                                           ! counters
         integer :: dims(3)                                                      ! dimension of variables
         
         ! initialize ierr
@@ -2199,117 +2199,112 @@ contains
         ! Set up the 1D equivalents of the perturbation variables
         allocate(X_1D(max_dim_var_1D))
         
-        ! set dimensions
+        ! set dimensions and local n_mod_X
         dims = grid%n
+        if (present(lim_sec_X)) then
+            n_mod_loc = lim_sec_X(2)-lim_sec_X(1)+1
+        else
+            n_mod_loc = n_mod_X
+        end if
         
         ! set up variables X_1D
         id = 1
         
-        do jd = 1,X%n_mod
-            ! RE_U_0
-            X_1D_loc => X_1D(id); id = id+1
-            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
-            X_1D_loc%var_name = 'RE_U_0_'//trim(i2str(suffix))
-            allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-            allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-            X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = dims
-            X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-            X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-            allocate(X_1D_loc%p(product(dims)))
-            X_1D_loc%p = reshape(realpart(X%U_0(:,:,:,jd)),[product(dims)])
-            
-            ! IM_U_0
-            X_1D_loc => X_1D(id); id = id+1
-            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
-            X_1D_loc%var_name = 'IM_U_0_'//trim(i2str(suffix))
-            allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-            allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-            X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = dims
-            X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-            X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-            allocate(X_1D_loc%p(product(dims)))
-            X_1D_loc%p = reshape(imagpart(X%U_0(:,:,:,jd)),[product(dims)])
-            
-            ! RE_U_1
-            X_1D_loc => X_1D(id); id = id+1
-            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
-            X_1D_loc%var_name = 'RE_U_1_'//trim(i2str(suffix))
-            allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-            allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-            X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = dims
-            X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-            X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-            allocate(X_1D_loc%p(product(dims)))
-            X_1D_loc%p = reshape(realpart(X%U_1(:,:,:,jd)),[product(dims)])
-            
-            ! IM_U_1
-            X_1D_loc => X_1D(id); id = id+1
-            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
-            X_1D_loc%var_name = 'IM_U_1_'//trim(i2str(suffix))
-            allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-            allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-            X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = dims
-            X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-            X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-            allocate(X_1D_loc%p(product(dims)))
-            X_1D_loc%p = reshape(imagpart(X%U_1(:,:,:,jd)),[product(dims)])
-            
-            ! RE_DU_0
-            X_1D_loc => X_1D(id); id = id+1
-            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
-            X_1D_loc%var_name = 'RE_DU_0_'//trim(i2str(suffix))
-            allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-            allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-            X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = dims
-            X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-            X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-            allocate(X_1D_loc%p(product(dims)))
-            X_1D_loc%p = reshape(realpart(X%DU_0(:,:,:,jd)),[product(dims)])
-            
-            ! IM_DU_0
-            X_1D_loc => X_1D(id); id = id+1
-            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
-            X_1D_loc%var_name = 'IM_DU_0_'//trim(i2str(suffix))
-            allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-            allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-            X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = dims
-            X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-            X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-            allocate(X_1D_loc%p(product(dims)))
-            X_1D_loc%p = reshape(imagpart(X%DU_0(:,:,:,jd)),[product(dims)])
-            
-            ! RE_DU_1
-            X_1D_loc => X_1D(id); id = id+1
-            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
-            X_1D_loc%var_name = 'RE_DU_1_'//trim(i2str(suffix))
-            allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-            allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-            X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = dims
-            X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-            X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-            allocate(X_1D_loc%p(product(dims)))
-            X_1D_loc%p = reshape(realpart(X%DU_1(:,:,:,jd)),[product(dims)])
-            
-            ! IM_DU_1
-            X_1D_loc => X_1D(id); id = id+1
-            suffix = get_suffix(jd,lim_sec_X=lim_sec_X)
-            X_1D_loc%var_name = 'IM_DU_1_'//trim(i2str(suffix))
-            allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-            allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-            X_1D_loc%tot_i_min = [1,1,1]
-            X_1D_loc%tot_i_max = dims
-            X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-            X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-            allocate(X_1D_loc%p(product(dims)))
-            X_1D_loc%p = reshape(imagpart(X%DU_1(:,:,:,jd)),[product(dims)])
-        end do
+        ! RE_U_0
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'RE_U_0'
+        allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+        X_1D_loc%tot_i_min = [1,1,1,1]
+        X_1D_loc%tot_i_max = [dims,n_mod_X]
+        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
+        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
+        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%p = reshape(realpart(X%U_0),[size(X_1D_loc%p)])
+        
+        ! IM_U_0
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'IM_U_0'
+        allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+        X_1D_loc%tot_i_min = [1,1,1,1]
+        X_1D_loc%tot_i_max = [dims,n_mod_X]
+        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
+        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
+        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%p = reshape(imagpart(X%U_0),[size(X_1D_loc%p)])
+        
+        ! RE_U_1
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'RE_U_1'
+        allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+        X_1D_loc%tot_i_min = [1,1,1,1]
+        X_1D_loc%tot_i_max = [dims,n_mod_X]
+        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
+        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
+        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%p = reshape(realpart(X%U_1),[size(X_1D_loc%p)])
+        
+        ! IM_U_1
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'IM_U_1'
+        allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+        X_1D_loc%tot_i_min = [1,1,1,1]
+        X_1D_loc%tot_i_max = [dims,n_mod_X]
+        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
+        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
+        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%p = reshape(imagpart(X%U_1),[size(X_1D_loc%p)])
+        
+        ! RE_DU_0
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'RE_DU_0'
+        allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+        X_1D_loc%tot_i_min = [1,1,1,1]
+        X_1D_loc%tot_i_max = [dims,n_mod_X]
+        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
+        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
+        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%p = reshape(realpart(X%DU_0),[size(X_1D_loc%p)])
+        
+        ! IM_DU_0
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'IM_DU_0'
+        allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+        X_1D_loc%tot_i_min = [1,1,1,1]
+        X_1D_loc%tot_i_max = [dims,n_mod_X]
+        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
+        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
+        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%p = reshape(imagpart(X%DU_0),[size(X_1D_loc%p)])
+        
+        ! RE_DU_1
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'RE_DU_1'
+        allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+        X_1D_loc%tot_i_min = [1,1,1,1]
+        X_1D_loc%tot_i_max = [dims,n_mod_X]
+        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
+        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
+        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%p = reshape(realpart(X%DU_1),[size(X_1D_loc%p)])
+        
+        ! IM_DU_1
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'IM_DU_1'
+        allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+        allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+        X_1D_loc%tot_i_min = [1,1,1,1]
+        X_1D_loc%tot_i_max = [dims,n_mod_X]
+        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
+        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
+        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%p = reshape(imagpart(X%DU_1),[size(X_1D_loc%p)])
         
         ! write
         ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name_eq,trim(data_name),&
@@ -2329,8 +2324,8 @@ contains
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
-        use X_utilities, only: is_necessary_X, get_suffix
-        use X_vars, only: n_mod_X
+        use X_utilities, only: is_necessary_X, sec_ind_loc2tot, get_sec_X_range
+        use X_vars, only: set_nn_mod
         use num_utilities, only: c
         
         character(*), parameter :: rout_name = 'print_output_X_2'
@@ -2348,9 +2343,12 @@ contains
         type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
         type(var_1D_type), pointer :: X_1D_loc => null()                        ! local element in X_1D
         logical :: print_this(2)                                                ! whether symmetric and asymmetric variables need to be printed
-        integer :: id, jd, kd                                                   ! counters
-        integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
-        integer :: suffix(2)                                                    ! suffix
+        integer :: nn_mod_tot(2)                                                ! total nr. of modes for symmetric and asymmetric variables
+        integer :: nn_mod_loc(2)                                                ! local nr. of modes for symmetric and asymmetric variables
+        integer :: id                                                           ! counter
+        integer :: m, k                                                         ! counters
+        integer :: sXr_loc(2,2)                                                 ! local secondary X limits for symmetric and asymmetric variables
+        integer :: sXr_tot(2,2)                                                 ! total secondary X limits for symmetric and asymmetric variables
         integer :: dims(3)                                                      ! dimension of variables
         integer :: par_lim(2)                                                   ! limits on parallel variable
         
@@ -2364,244 +2362,202 @@ contains
         ! Set up the 1D equivalents of the perturbation variables
         allocate(X_1D(max_dim_var_1D))
         
-        ! set dimensions, parallel limits and perturbation name
+        ! set dimensions, parallel limits and local and total nn_mod_X
         dims = grid%n
         par_lim = [1,grid%n(1)]
         if (present(is_field_averaged)) then                                    ! only first parallel index
             if (is_field_averaged) then
-                dims = [1,dims(2:3)]
+                dims(1) = 1
                 par_lim = [1,1]
             end if
         end if
+        nn_mod_tot(1) = set_nn_mod(.true.)
+        nn_mod_tot(2) = set_nn_mod(.false.)
         
         id = 1
         
-        do kd = 1,X%n_mod(2)
-            do jd = 1,X%n_mod(1)
-                ! set local c's
-                c_loc(1) = c([jd,kd],.true.,n_mod_X,lim_sec_X)
-                c_loc(2) = c([jd,kd],.false.,n_mod_X,lim_sec_X)
-                
-                ! determine whether variables need to be printed
-                print_this(1) = is_necessary_X(.true.,[jd,kd],lim_sec_X)
-                print_this(2) = is_necessary_X(.false.,[jd,kd],lim_sec_X)
-                
+        ! loop over modes of dimension 2
+        do m = 1,X%n_mod(2)
+            ! get contiguous range of modes of this m
+            call get_sec_X_range(sXr_loc(:,1),sXr_tot(:,1),m,.true.,lim_sec_X)
+            call get_sec_X_range(sXr_loc(:,2),sXr_tot(:,2),m,.false.,lim_sec_X)
+            nn_mod_loc = sXr_loc(2,:)-sXr_loc(1,:)+1
+            print_this = .false.
+            do k = 1,2
+                if (sXr_loc(1,k).le.sXr_loc(2,k)) print_this(k) = .true.        ! a bound is found
+            end do
+            
+            if (print_this(1)) then
                 ! RE_PV_0
-                if (print_this(1)) then
-                    X_1D_loc => X_1D(id); id = id+1
-                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'RE_PV_0_'//trim(i2str(suffix(1)))//&
-                        &'_'//trim(i2str(suffix(2)))
-                    allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-                    allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-                    X_1D_loc%tot_i_min = [1,1,1]
-                    X_1D_loc%tot_i_max = dims
-                    X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-                    X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-                    allocate(X_1D_loc%p(product(dims)))
-                    X_1D_loc%p = reshape(realpart(&
-                        &X%PV_0(par_lim(1):par_lim(2),:,:,c_loc(1))),&
-                        &[product(dims)])
-                end if
+                X_1D_loc => X_1D(id); id = id+1
+                X_1D_loc%var_name = 'RE_PV_0'
+                allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+                allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+                X_1D_loc%tot_i_min = [1,1,1,1]
+                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
+                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
+                X_1D_loc%p = reshape(realpart(&
+                    &X%PV_0(par_lim(1):par_lim(2),:,:,&
+                    &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
                 ! IM_PV_0
-                if (print_this(1)) then
-                    X_1D_loc => X_1D(id); id = id+1
-                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'IM_PV_0_'//trim(i2str(suffix(1)))//&
-                        &'_'//trim(i2str(suffix(2)))
-                    allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-                    allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-                    X_1D_loc%tot_i_min = [1,1,1]
-                    X_1D_loc%tot_i_max = dims
-                    X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-                    X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-                    allocate(X_1D_loc%p(product(dims)))
-                    X_1D_loc%p = reshape(imagpart(&
-                        &X%PV_0(par_lim(1):par_lim(2),:,:,c_loc(1))),&
-                        &[product(dims)])
-                end if
-                
-                ! RE_PV_1
-                if (print_this(2)) then
-                    X_1D_loc => X_1D(id); id = id+1
-                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'RE_PV_1_'//trim(i2str(suffix(1)))//&
-                        &'_'//trim(i2str(suffix(2)))
-                    allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-                    allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-                    X_1D_loc%tot_i_min = [1,1,1]
-                    X_1D_loc%tot_i_max = dims
-                    X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-                    X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-                    allocate(X_1D_loc%p(product(dims)))
-                    X_1D_loc%p = reshape(realpart(&
-                        &X%PV_1(par_lim(1):par_lim(2),:,:,c_loc(2))),&
-                        &[product(dims)])
-                end if
-                
-                ! IM_PV_1
-                if (print_this(2)) then
-                    X_1D_loc => X_1D(id); id = id+1
-                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'IM_PV_1_'//trim(i2str(suffix(1)))//&
-                        &'_'//trim(i2str(suffix(2)))
-                    allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-                    allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-                    X_1D_loc%tot_i_min = [1,1,1]
-                    X_1D_loc%tot_i_max = dims
-                    X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-                    X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-                    allocate(X_1D_loc%p(product(dims)))
-                    X_1D_loc%p = reshape(imagpart(&
-                        &X%PV_1(par_lim(1):par_lim(2),:,:,c_loc(2))),&
-                        &[product(dims)])
-                end if
-                
+                X_1D_loc => X_1D(id); id = id+1
+                X_1D_loc%var_name = 'IM_PV_0'
+                allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+                allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+                X_1D_loc%tot_i_min = [1,1,1,1]
+                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
+                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
+                X_1D_loc%p = reshape(imagpart(&
+                    &X%PV_0(par_lim(1):par_lim(2),:,:,&
+                    &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
+                    
                 ! RE_PV_2
-                if (print_this(1)) then
-                    X_1D_loc => X_1D(id); id = id+1
-                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'RE_PV_2_'//trim(i2str(suffix(1)))//&
-                        &'_'//trim(i2str(suffix(2)))
-                    allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-                    allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-                    X_1D_loc%tot_i_min = [1,1,1]
-                    X_1D_loc%tot_i_max = dims
-                    X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-                    X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-                    allocate(X_1D_loc%p(product(dims)))
-                    X_1D_loc%p = reshape(realpart(&
-                        &X%PV_2(par_lim(1):par_lim(2),:,:,c_loc(1))),&
-                        &[product(dims)])
-                end if
+                X_1D_loc => X_1D(id); id = id+1
+                X_1D_loc%var_name = 'RE_PV_2'
+                allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+                allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+                X_1D_loc%tot_i_min = [1,1,1,1]
+                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
+                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
+                X_1D_loc%p = reshape(realpart(&
+                    &X%PV_2(par_lim(1):par_lim(2),:,:,&
+                    &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
                 ! IM_PV_2
-                if (print_this(1)) then
-                    X_1D_loc => X_1D(id); id = id+1
-                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'IM_PV_2_'//trim(i2str(suffix(1)))//&
-                        &'_'//trim(i2str(suffix(2)))
-                    allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-                    allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-                    X_1D_loc%tot_i_min = [1,1,1]
-                    X_1D_loc%tot_i_max = dims
-                    X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-                    X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-                    allocate(X_1D_loc%p(product(dims)))
-                    X_1D_loc%p = reshape(imagpart(&
-                        &X%PV_2(par_lim(1):par_lim(2),:,:,c_loc(1))),&
-                        &[product(dims)])
-                end if
+                X_1D_loc => X_1D(id); id = id+1
+                X_1D_loc%var_name = 'IM_PV_2'
+                allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+                allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+                X_1D_loc%tot_i_min = [1,1,1,1]
+                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
+                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
+                X_1D_loc%p = reshape(imagpart(&
+                    &X%PV_2(par_lim(1):par_lim(2),:,:,&
+                    &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
                 ! RE_KV_0
-                if (print_this(1)) then
-                    X_1D_loc => X_1D(id); id = id+1
-                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'RE_KV_0_'//trim(i2str(suffix(1)))//&
-                        &'_'//trim(i2str(suffix(2)))
-                    allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-                    allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-                    X_1D_loc%tot_i_min = [1,1,1]
-                    X_1D_loc%tot_i_max = dims
-                    X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-                    X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-                    allocate(X_1D_loc%p(product(dims)))
-                    X_1D_loc%p = reshape(realpart(&
-                        &X%KV_0(par_lim(1):par_lim(2),:,:,c_loc(1))),&
-                        &[product(dims)])
-                end if
+                X_1D_loc => X_1D(id); id = id+1
+                X_1D_loc%var_name = 'RE_KV_0'
+                allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+                allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+                X_1D_loc%tot_i_min = [1,1,1,1]
+                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
+                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
+                X_1D_loc%p = reshape(realpart(&
+                    &X%KV_0(par_lim(1):par_lim(2),:,:,&
+                    &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
                 ! IM_KV_0
-                if (print_this(1)) then
-                    X_1D_loc => X_1D(id); id = id+1
-                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'IM_KV_0_'//trim(i2str(suffix(1)))//&
-                        &'_'//trim(i2str(suffix(2)))
-                    allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-                    allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-                    X_1D_loc%tot_i_min = [1,1,1]
-                    X_1D_loc%tot_i_max = dims
-                    X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-                    X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-                    allocate(X_1D_loc%p(product(dims)))
-                    X_1D_loc%p = reshape(imagpart(&
-                        &X%KV_0(par_lim(1):par_lim(2),:,:,c_loc(1))),&
-                        &[product(dims)])
-                end if
-                
-                ! RE_KV_1
-                if (print_this(2)) then
-                    X_1D_loc => X_1D(id); id = id+1
-                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'RE_KV_1_'//trim(i2str(suffix(1)))//&
-                        &'_'//trim(i2str(suffix(2)))
-                    allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-                    allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-                    X_1D_loc%tot_i_min = [1,1,1]
-                    X_1D_loc%tot_i_max = dims
-                    X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-                    X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-                    allocate(X_1D_loc%p(product(dims)))
-                    X_1D_loc%p = reshape(realpart(&
-                        &X%KV_1(par_lim(1):par_lim(2),:,:,c_loc(2))),&
-                        &[product(dims)])
-                end if
-                
-                ! IM_KV_1
-                if (print_this(2)) then
-                    X_1D_loc => X_1D(id); id = id+1
-                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'IM_KV_1_'//trim(i2str(suffix(1)))//&
-                        &'_'//trim(i2str(suffix(2)))
-                    allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-                    allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-                    X_1D_loc%tot_i_min = [1,1,1]
-                    X_1D_loc%tot_i_max = dims
-                    X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-                    X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-                    allocate(X_1D_loc%p(product(dims)))
-                    X_1D_loc%p = reshape(imagpart(&
-                        &X%KV_1(par_lim(1):par_lim(2),:,:,c_loc(2))),&
-                        &[product(dims)])
-                end if
-                
+                X_1D_loc => X_1D(id); id = id+1
+                X_1D_loc%var_name = 'IM_KV_0'
+                allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+                allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+                X_1D_loc%tot_i_min = [1,1,1,1]
+                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
+                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
+                X_1D_loc%p = reshape(imagpart(&
+                    &X%KV_0(par_lim(1):par_lim(2),:,:,&
+                    &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
+                    
                 ! RE_KV_2
-                if (print_this(1)) then
-                    X_1D_loc => X_1D(id); id = id+1
-                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'RE_KV_2_'//trim(i2str(suffix(1)))//&
-                        &'_'//trim(i2str(suffix(2)))
-                    allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-                    allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-                    X_1D_loc%tot_i_min = [1,1,1]
-                    X_1D_loc%tot_i_max = dims
-                    X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-                    X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-                    allocate(X_1D_loc%p(product(dims)))
-                    X_1D_loc%p = reshape(realpart(&
-                        &X%KV_2(par_lim(1):par_lim(2),:,:,c_loc(1))),&
-                        &[product(dims)])
-                end if
+                X_1D_loc => X_1D(id); id = id+1
+                X_1D_loc%var_name = 'RE_KV_2'
+                allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+                allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+                X_1D_loc%tot_i_min = [1,1,1,1]
+                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
+                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
+                X_1D_loc%p = reshape(realpart(&
+                    &X%KV_2(par_lim(1):par_lim(2),:,:,&
+                    &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
                 ! IM_KV_2
-                if (print_this(1)) then
-                    X_1D_loc => X_1D(id); id = id+1
-                    suffix = get_suffix(jd,kd,lim_sec_X=lim_sec_X)
-                    X_1D_loc%var_name = 'IM_KV_2_'//&
-                        &trim(i2str(suffix(1)))//'_'//trim(i2str(suffix(2)))
-                    allocate(X_1D_loc%tot_i_min(3),X_1D_loc%tot_i_max(3))
-                    allocate(X_1D_loc%loc_i_min(3),X_1D_loc%loc_i_max(3))
-                    X_1D_loc%tot_i_min = [1,1,1]
-                    X_1D_loc%tot_i_max = dims
-                    X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-                    X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-                    allocate(X_1D_loc%p(product(dims)))
-                    X_1D_loc%p = reshape(imagpart(&
-                        &X%KV_2(par_lim(1):par_lim(2),:,:,c_loc(1))),&
-                        &[product(dims)])
-                end if
-            end do
+                X_1D_loc => X_1D(id); id = id+1
+                X_1D_loc%var_name = 'IM_KV_2'
+                allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+                allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+                X_1D_loc%tot_i_min = [1,1,1,1]
+                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
+                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
+                X_1D_loc%p = reshape(imagpart(&
+                    &X%KV_2(par_lim(1):par_lim(2),:,:,&
+                    &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
+            end if
+            
+            if (print_this(2)) then
+                ! RE_PV_1
+                X_1D_loc => X_1D(id); id = id+1
+                X_1D_loc%var_name = 'RE_PV_1'
+                allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+                allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+                X_1D_loc%tot_i_min = [1,1,1,1]
+                X_1D_loc%tot_i_max = [dims,nn_mod_tot(2)]
+                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,2)]
+                X_1D_loc%loc_i_max = [dims,sXr_tot(2,2)]
+                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(2)))
+                X_1D_loc%p = reshape(realpart(&
+                    &X%PV_1(par_lim(1):par_lim(2),:,:,&
+                    &sXr_loc(1,2):sXr_loc(2,2))),[size(X_1D_loc%p)])
+                
+                ! IM_PV_1
+                X_1D_loc => X_1D(id); id = id+1
+                X_1D_loc%var_name = 'IM_PV_1'
+                allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+                allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+                X_1D_loc%tot_i_min = [1,1,1,1]
+                X_1D_loc%tot_i_max = [dims,nn_mod_tot(2)]
+                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,2)]
+                X_1D_loc%loc_i_max = [dims,sXr_tot(2,2)]
+                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(2)))
+                X_1D_loc%p = reshape(imagpart(&
+                    &X%PV_1(par_lim(1):par_lim(2),:,:,&
+                    &sXr_loc(1,2):sXr_loc(2,2))),[size(X_1D_loc%p)])
+                
+                ! RE_KV_1
+                X_1D_loc => X_1D(id); id = id+1
+                X_1D_loc%var_name = 'RE_KV_1'
+                allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+                allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+                X_1D_loc%tot_i_min = [1,1,1,1]
+                X_1D_loc%tot_i_max = [dims,nn_mod_tot(2)]
+                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,2)]
+                X_1D_loc%loc_i_max = [dims,sXr_tot(2,2)]
+                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(2)))
+                X_1D_loc%p = reshape(realpart(&
+                    &X%KV_1(par_lim(1):par_lim(2),:,:,&
+                    &sXr_loc(1,2):sXr_loc(2,2))),[size(X_1D_loc%p)])
+                
+                ! IM_KV_1
+                X_1D_loc => X_1D(id); id = id+1
+                X_1D_loc%var_name = 'IM_KV_1'
+                allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
+                allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
+                X_1D_loc%tot_i_min = [1,1,1,1]
+                X_1D_loc%tot_i_max = [dims,nn_mod_tot(2)]
+                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,2)]
+                X_1D_loc%loc_i_max = [dims,sXr_tot(2,2)]
+                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(2)))
+                X_1D_loc%p = reshape(imagpart(&
+                    &X%KV_1(par_lim(1):par_lim(2),:,:,&
+                    &sXr_loc(1,2):sXr_loc(2,2))),[size(X_1D_loc%p)])
+            end if
         end do
         
         ! write

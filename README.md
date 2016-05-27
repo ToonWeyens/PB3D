@@ -466,3 +466,17 @@ CHANGELOG
       - Minimal outputs are also handled by POST now.
       - Fixed a bug where incompatibility between HELENA and minimal output was ignored.
       - Improved the handling of "tol_SLEPC".
+
+1.25: - Added files from Alpha study.
+      - The solution driver now does not need the equilbrium grid any more.
+      - Split off some of the procedures in "HDF5_ops" into "HDF5_utilities".
+      - Implemented "set_1D_vars" which sets the hyperslab of the 1D equivalent of a variable in multiple dimensions and/or chunk variables.
+      - Fixed a bug in the conversion of half to full mesh of VMEC variables.
+      - "norm_style" is now called "K_style" and "norm_style" is used to set the style of normalization (e.g. MISHKA, COBRA, ...).
+      - Updated the run scripts to use Dr. Memory in stead of Valgrind.
+      - "get_suffix" is renamed to "get_sec_ind_tot" as suffixes are not necessary any more, but total secondary index are.
+      - Implemented "get_sec_X_range" that seeks a contiguous range for tensorial perturbation variables.
+      - "read_HFD5_arrs" is now "read_HDF5_arr" and returns just one 1-D variable.
+      - "retrieve_var_1D" is not necessary any more and has been removed.
+      - Improved the MISHKA normalization by using the true value of B on axis, extrapolating half-mesh in VMEC. This changes T_0 slightly.
+      - In the PB3D reconstruction routines, the normal limits are not passed any more, as this information is encoded in the grid already.

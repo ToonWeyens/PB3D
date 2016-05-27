@@ -18,7 +18,7 @@
 !                Eindhoven University of Technology                            !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.24                                                              !
+!   Version: 1.25                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -30,7 +30,6 @@ program PB3D
     use str_ops, only: r2str, i2str
     use messages, only: init_messages, lvl_ud, writo, init_time, start_time, &
         &passed_time, stop_time, print_hello, print_goodbye
-    use X_vars, only: init_X_vars
     use HDF5_vars, only: init_HDF5
     use driver_eq, only: run_driver_eq
     use driver_X, only: run_driver_X
@@ -69,7 +68,6 @@ program PB3D
     call init_files()                                                           ! initialize file operations
     call init_time()                                                            ! initialize time
     call init_HDF5()                                                            ! initialize HDF5
-    call init_X_vars()                                                          ! initialize perturbation vars
  
     !-------------------------------------------------------
     !   Read the user-provided input file and the VMEC output

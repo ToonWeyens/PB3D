@@ -1,11 +1,9 @@
 #!/bin/bash
 # Display usage function
 display_usage() { 
-    echo -e "\nUsage:\n$0 [OPTS] PB3D_DIR NR_PROCS \n" 
+    echo -e "\nUsage:\n$0 [OPTS] NR_PROCS \n" 
     echo -e "    OPTS: -o specify output name"
-    echo -e "          -d use Valgrind debugging"
-    echo -e "          -s trace sources of errors in Valgrind\n"
-    echo -e "          -l check leaks in Valgrind\n"
+    echo -e "          -d use Dr. Memory debugging"
     } 
 #
 # Setting some variables
@@ -25,15 +23,7 @@ while getopts "o:dsl" opt; do
             n_opt_args=$((n_opt_args+2))                                        # 2 arguments
         ;;
         d)
-            debug_opt="valgrind --db-attach=yes"
-            n_opt_args=$((n_opt_args+1))                                        # 1 argument
-        ;;
-        s)
-            extra_debug_opt=$extra_debug_opt" --track-origins=yes"
-            n_opt_args=$((n_opt_args+1))                                        # 1 argument
-        ;;
-        l)
-            extra_debug_opt=$extra_debug_opt" --leak-check=full"
+            debug_opt="/opt/DrMemory-Linux-1.10.1-3/bin/drmemory --"
             n_opt_args=$((n_opt_args+1))                                        # 1 argument
         ;;
         \?)
@@ -96,8 +86,8 @@ if [ "$use_out_loc" = true ]; then
     cp ${1%/}/$PB3D_out_name $out
 fi
 cd $out
-echo "mpirun -np $2 $debug_opt $extra_debug_opt ./POST $POST_in_name $PB3D_out_name ${@:3}" > command_POST
-mpirun -np $2 $debug_opt $extra_debug_opt ./POST $POST_in_name $PB3D_out_name ${@:3}
+echo "$debug_opt mpirun -np $2 ./POST $POST_in_name $PB3D_out_name ${@:3}" > command_POST
+$debug_opt mpirun -np $2 ./POST $POST_in_name $PB3D_out_name ${@:3}
 cd ../
 echo ""
 echo "Leaving directory $out/"

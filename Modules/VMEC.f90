@@ -16,6 +16,8 @@ module VMEC
         &phi, phipf, &                                                          ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
         &iotaf, &                                                               ! rot. transf. (tor. flux) or saf. fac. (pol. flux) (FM)
         &presf, &                                                               ! pressure (FM)
+        &aspr_V => aspect, &                                                    ! aspect ratio
+        &beta_V => betaxis, &                                                   ! beta on axis
         &lrfp, &                                                                ! whether or not the poloidal flux is used as radial variable
         &gam_V => gamma, &                                                      ! gamma in adiabatic law (not important here, incompressibility)
         &bsubumns, bsubumnc, bsubvmns, bsubvmnc, bsubsmns, bsubsmnc, &          ! B_theta (HM), B_zeta (HM), B_r (FM)
@@ -30,7 +32,8 @@ module VMEC
         &calc_trigon_factors, fourier2real, &
         &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mpol_V, ntor_V, &
         &mn_V, pres_V, rot_t_V, is_asym_V, flux_t_V, Dflux_t_V, flux_p_V, &
-        &Dflux_p_V, VMEC_version, gam_V, is_freeb_V, nfp_V, B_0_V
+        &Dflux_p_V, VMEC_version, gam_V, is_freeb_V, nfp_V, B_0_V, rmin_surf, &
+        &rmax_surf, aspr_V, beta_V
 #if ldebug
     public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, jac_V_c, jac_V_s, &
         &debug_calc_trigon_factors
@@ -119,7 +122,7 @@ contains
         else
             flux_name = 'toroidal'
         end if
-        B_0_V = sum(bmnc(:,2))
+        B_0_V = sum(1.5*bmnc(:,2)-0.5_dp*bmnc(:,3))                             ! convert to full mesh
         
         call writo('VMEC version is ' // trim(r2str(VMEC_version)))
         if (is_freeb_V) then
@@ -230,9 +233,9 @@ contains
         allocate(jac_V_c(mnmax_V,n_r_in))
         allocate(jac_V_s(mnmax_V,n_r_in))
         
-        ! conversion HM -> FM (B_V_sub, B_V, jac_V)
+        ! conversion HM -> FM (B_V_sub(2:3), B_V, jac_V)
         do id = 1,mnmax_V
-            do kd = 1,3
+            do kd = 2,3
                 ierr = conv_FHM(B_V_sub_c_M(id,:,kd),B_V_sub_c(id,:,kd),&
                     &.false.)
                 CHCKERR('')

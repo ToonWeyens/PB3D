@@ -14,7 +14,6 @@ PB3D.o : \
     eq_ops.o \
     eq_utilities.o \
     test.o \
-    X_vars.o \
     rich_vars.o \
     rich_ops.o \
 
@@ -29,7 +28,6 @@ POST.o : \
     PB3D_ops.o \
     driver_POST.o \
     num_utilities.o \
-    X_vars.o \
     input_utilities.o \
 
 PB3D_utilities.o : \
@@ -37,6 +35,7 @@ PB3D_utilities.o : \
     messages.o \
     str_ops.o \
     HDF5_vars.o \
+    HDF5_utilities.o \
     X_utilities.o \
     
 PB3D_ops.o : \
@@ -46,6 +45,7 @@ PB3D_ops.o : \
     grid_vars.o \
     eq_vars.o \
     X_vars.o \
+    X_utilities.o \
     X_ops.o \
     sol_vars.o \
     PB3D_utilities.o \
@@ -141,6 +141,7 @@ rich_ops.o : \
     num_vars.o \
     PB3D_ops.o \
     HDF5_vars.o \
+    HDF5_utilities.o \
     HDF5_ops.o \
     MPI_utilities.o \
     eq_utilities.o \
@@ -330,6 +331,13 @@ output_ops.o : \
 HDF5_ops.o : \
     files_utilities.o \
     MPI_utilities.o \
+    num_vars.o \
+    str_ops.o \
+    messages.o \
+    HDF5_vars.o \
+    HDF5_utilities.o \
+
+HDF5_utilities: \
     num_vars.o \
     str_ops.o \
     messages.o \

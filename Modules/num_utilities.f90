@@ -6,7 +6,7 @@ module num_utilities
     use str_ops
     use output_ops
     use messages
-    use num_vars, only: dp, qp, iu, max_str_ln, pi
+    use num_vars, only: dp, iu, max_str_ln, pi
     
     implicit none
     private
@@ -2260,8 +2260,8 @@ contains
     !   c = (j-1)*n + i - (j-1)*j/2   if i.ge.j
     !   c = (i-1)*n + j - (i-1)*i/2   if j.ge.i
     ! since sum_k=1^j-1 = (j-1)*j/2
-    ! For submatrices, the limits in both dimensions have to be passed.
-    ! The  results   for  the  full   matrix  are  then  subtracted   by  amount
+    ! For local indices in submatrices, the limits in both dimensions have to be
+    ! passed. The  results for  the full  matrix are  then subtracted  by amount
     ! corresponding  to the  left, above  and below  parts with  respect to  the
     ! submatrix:
     !   - left: sum_i=1^(min(2)-1) (n-i+1)

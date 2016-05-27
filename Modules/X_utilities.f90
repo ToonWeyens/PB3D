@@ -12,16 +12,16 @@ module X_utilities
     implicit none
     
     private
-    public get_suffix, is_necessary_X, divide_X_jobs
+    public sec_ind_loc2tot, is_necessary_X, get_sec_X_range, divide_X_jobs
     
     ! interfaces
-    interface get_suffix
-        module procedure get_suffix_1, get_suffix_2
+    interface sec_ind_loc2tot
+        module procedure sec_ind_loc2tot_1, sec_ind_loc2tot_2
     end interface
     
 contains
-    ! Sets the suffix used to refer to a perturbation quantity.
-    function get_suffix_1(id,lim_sec_X) result(res)                             ! vectorial version
+    ! Sets the sec_ind_tot used to refer to a perturbation quantity.
+    function sec_ind_loc2tot_1(id,lim_sec_X) result(res)                        ! vectorial version
         ! input / output
         integer, intent(in) :: id                                               ! mode index
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
@@ -34,10 +34,10 @@ contains
         lim_sec_X_loc = [1,n_mod_X]
         if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
         
-        ! set suffix
+        ! set sec_ind_tot
         res = lim_sec_X_loc(1)-1+id
-    end function get_suffix_1
-    function get_suffix_2(id,jd,lim_sec_X) result(res)                          ! tensorial version
+    end function sec_ind_loc2tot_1
+    function sec_ind_loc2tot_2(id,jd,lim_sec_X) result(res)                     ! tensorial version
         ! input / output
         integer, intent(in) :: id, jd                                           ! mode indices
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
@@ -51,9 +51,92 @@ contains
         lim_sec_X_loc(:,2) = [1,n_mod_X]
         if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
         
-        ! set suffix
+        ! set sec_ind_tot
         res = [lim_sec_X_loc(1,1)-1+id,lim_sec_X_loc(1,2)-1+jd]
-    end function get_suffix_2
+    end function sec_ind_loc2tot_2
+    
+    ! Gets  one of  the the  local ranges  of contiguous  tensorial perturbation
+    ! variables to be printed or read  during one call of the corresponding HDF5
+    ! variables. 
+    ! More specifically,  a range of indices  k in the first  dimension is given
+    ! for every value  of the indices m  in the second dimension.  An example is
+    ! now given for the subrange [2:3,2:5] of  a the total range [1:5, 1:5]. For
+    ! asymmetric variables the situation is simple: The k range is [2:3] for all
+    ! 5 values of m. However, for symmetric variables, the upper diagonal values
+    ! are not stored, which  gives k ranges [2:3], [3:3] and no range  for m = 4
+    ! and 5.
+    ! This routine then translates these  ranges to the corresponding 1-D ranges
+    ! that  are used  in  the actual  variables. For  above  example, the  total
+    ! indices are
+    !   [  1  6 11 16 21 ]
+    !   [  2  7 12 17 22 ]
+    !   [  3  8 13 18 23 ] -> [7:8], [12:13], [17:18] and [22:23],
+    !   [  4  9 14 19 24 ]
+    !   [  5 10 15 20 25 ]
+    ! for asymmetric variables and
+    !   [  1  2  3  4  5 ]
+    !   [  2  6  7  8  9 ]
+    !   [  3  7 10 11 12 ] -> [6:7], [10:10], [:] and [:],
+    !   [  4  8 11 13 14 ]
+    !   [  5  9 12 14 15 ]
+    ! for symmetric variables.
+    ! These can  then related  to the  local indices for  the variables  in this
+    ! perturbation job. For above example, the results are:
+    !   [1:2], [3:4], [5:6] and [7:8],
+    ! for asymmetric variables and
+    !   [1:2], [3:3], [:] and [:], 
+    ! for symmetric variables.
+    ! As can be seen, the local ranges of the variables in the submatrix of this
+    ! perturbation job are (designed to be)  contiguous, but the total ranges of
+    ! the variables in the submatrix are clearly not in general.
+    ! The procedure outputs both the local and total ranges.
+    subroutine get_sec_X_range(sec_X_range_loc,sec_X_range_tot,m,sym,lim_sec_X)
+        use X_vars, only: n_mod_X
+        use num_utilities, only: c
+        
+        ! input / output
+        integer, intent(inout) :: sec_X_range_loc(2)                            ! start and end of local range in dimension 1 (vertical)
+        integer, intent(inout) :: sec_X_range_tot(2)                            ! start and end of total range in dimension 1 (vertical)
+        integer, intent(in) :: m                                                ! dimension 2 (horizontal)
+        logical, intent(in) :: sym                                              ! whether the variable is symmetric
+        integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol. flux) or n_X (tor. flux)
+        
+        ! local variables
+        integer :: k_range_loc(2)                                               ! local range of k
+        integer :: k                                                            ! counter
+        integer :: n_mod                                                        ! local n_mod
+        
+        ! set number of modes of dimension 1
+        if (present(lim_sec_X)) then
+            n_mod = lim_sec_X(2,1)-lim_sec_X(1,1)+1
+        else
+            n_mod = n_mod_X
+        endif
+        
+        ! initialize secondary X range
+        k_range_loc = [n_mod+1,0]                                           ! initialize to inverted values, out of bounds
+        
+        ! find start and end of k range
+        find_start: do k = 1,n_mod
+            if (is_necessary_X(sym,[k,m],lim_sec_X)) then                       ! first necessary pair [k,m]
+                k_range_loc(1) = k
+                exit find_start
+            end if
+        end do find_start
+        find_stop: do k = n_mod,k_range_loc(1),-1
+            if (is_necessary_X(sym,[k,m],lim_sec_X)) then                       ! last necessary pair [k,m]
+                k_range_loc(2) = k
+                exit find_stop
+            end if
+        end do find_stop
+        
+        ! translate k range and m value to 1-D index
+        do k = 1,2
+            sec_X_range_loc(k) = c([k_range_loc(k),m],sym,n_mod_X,lim_sec_X)
+            sec_X_range_tot(k) = c(sec_ind_loc2tot(k_range_loc(k),m,lim_sec_X),&
+                &sym,n_mod_X)
+        end do
+    end subroutine get_sec_X_range
     
     ! Determines whether a variable needs to be  considered: Only if it is on or
     ! below the diagonal for symmetric quantities.
@@ -69,13 +152,14 @@ contains
         ! initialize res
         res = .true.
         
-        ! set local lim_sec_X
-        lim_sec_X_loc(:,1) = [1,n_mod_X]
-        lim_sec_X_loc(:,2) = [1,n_mod_X]
-        if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
-        
         ! modify res depending on symmetry
         if (sym) then
+            ! set local lim_sec_X
+            lim_sec_X_loc(:,1) = [1,n_mod_X]
+            lim_sec_X_loc(:,2) = [1,n_mod_X]
+            if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
+            
+            ! set res
             if (lim_sec_X_loc(1,1)+sec_X_id(1).lt.&
                 &lim_sec_X_loc(1,2)+sec_X_id(2)) res = .false.
         end if
@@ -270,6 +354,15 @@ contains
         end function calc_memory
         
         ! Calculate X_jobs_lims.
+        ! These are  stored as follows: The  job index is the  second one, while
+        ! the first index ranges from 1 to  2*ord. For every job in the range of
+        ! job indices, thee first index shows the limits of the different orders
+        ! sequentially. For example:
+        !   - for order 1: [3,4],
+        !       which corresponds to the 1-D range 3..4,
+        !   - for order 2: [3,4,1,5],
+        !       which corresponds to the 2-D range 3..4 x 1..5,
+        ! etc.
         recursive function calc_X_jobs_lims(n_mod,ord) result(res)
             ! input / output
             integer, intent(in) :: n_mod(:)                                     ! X jobs data

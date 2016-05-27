@@ -3,9 +3,7 @@
 display_usage() { 
     echo -e "\nUsage:\n$0 [OPTS] NR_PROCS \n" 
     echo -e "    OPTS: -o specify output name"
-    echo -e "          -d use Valgrind debugging"
-    echo -e "          -s trace sources of errors in Valgrind\n"
-    echo -e "          -l check leaks in Valgrind\n"
+    echo -e "          -d use Dr. Memory debugging"
     } 
 #
 # Setting some variables
@@ -26,15 +24,7 @@ while getopts "o:dsl" opt; do
             n_opt_args=$((n_opt_args+2))                                        # 2 arguments
         ;;
         d)
-            debug_opt="valgrind --db-attach=yes"
-            n_opt_args=$((n_opt_args+1))                                        # 1 argument
-        ;;
-        s)
-            extra_debug_opt=$extra_debug_opt" --track-origins=yes"
-            n_opt_args=$((n_opt_args+1))                                        # 1 argument
-        ;;
-        l)
-            extra_debug_opt=$extra_debug_opt" --leak-check=full"
+            debug_opt="/opt/DrMemory-Linux-1.10.1-3/bin/drmemory --"
             n_opt_args=$((n_opt_args+1))                                        # 1 argument
         ;;
         \?)
@@ -50,15 +40,7 @@ if [ "$#" -lt $((n_opt_args+1)) ]; then
     exit 1
 fi
 if [ -n "$debug_opt" ]; then
-    echo "Using valgrind for debugging"
-    if [ -n "$extra_debug_opt" ]; then
-        echo "Also, tracking sources of errors"
-    fi
-else
-    if [ -n "$extra_debug_opt" ]; then
-        echo "Ignoring extra debugging options because no debugging"
-        extra_debug_opt=""
-    fi
+    echo "Using Dr. Memory for debugging"
 fi
 #
 # Shift arguments to skip options
@@ -83,8 +65,8 @@ cp ../PB3D $out
 chmod +x $out/PB3D
 cd $out
 rm -f .lock_file*
-echo "mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a_ripple wout_cbm18a_ripple_flat_R.nc $slepc_opt ${@:2}" > command
-mpirun -np $1 $debug_opt $extra_debug_opt ./PB3D input_cbm18a_ripple wout_cbm18a_ripple_flat_R.nc $slepc_opt ${@:2}
+echo "$debug_opt -- mpirun -np $1 ./PB3D input_cbm18a_ripple wout_cbm18a_ripple_flat_R.nc $slepc_opt ${@:2}" > command
+$debug_opt mpirun -np $1 ./PB3D input_cbm18a_ripple wout_cbm18a_ripple_flat_R.nc $slepc_opt ${@:2}
 cd ../
 echo ""
 echo "Leaving directory $out/"

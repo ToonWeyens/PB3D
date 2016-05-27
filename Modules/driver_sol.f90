@@ -49,7 +49,6 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        type(grid_type) :: grid_eq                                              ! equilibrium grid
         type(grid_type), target :: grid_X                                       ! perturbation grid
         type(grid_type) :: grid_sol                                             ! solution grid
         type(X_2_type) :: X                                                     ! field-averged tensorial perturbation variables (only 1 par dim)
@@ -98,26 +97,22 @@ contains
         ! user output
         call writo('Reconstructing PB3D output on output grid')
         call lvl_ud(1)
-        ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name,&
-            &tot_rich=.true.)
-        CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name,&
             &grid_limits=sol_limits,tot_rich=.true.)
         CHCKERR('')
         if (rich_lvl.gt.1) then                                                 ! also need solution grid
             ierr = reconstruct_PB3D_grid(grid_sol,'sol',grid_limits=sol_limits)
             CHCKERR('')
+            if (use_guess) then                                                 ! also need previous solution
+                ierr = reconstruct_PB3D_sol(grid_sol,sol_prev,'sol',&
+                    &rich_lvl=rich_lvl-1)
+                CHCKERR('')
+            end if
         end if
         ierr = reconstruct_PB3D_X_2(grid_X,X,'X_2_int',rich_lvl=rich_lvl,&
-            &X_limits=sol_limits,is_field_averaged=.true.)
+            &is_field_averaged=.true.)
         CHCKERR('')
         
-        ! need previous solution as well if guess is used
-        if (use_guess .and. rich_lvl.gt.1) then
-            ierr = reconstruct_PB3D_sol(grid_X,sol_prev,'sol',&
-                &rich_lvl=rich_lvl-1,sol_limits=sol_limits)
-            CHCKERR('')
-        end if
 #if ldebug
         ! need field-aligned perturbation grid as well for debugging
         if (debug_X_norm) then
@@ -142,7 +137,7 @@ contains
             
             call writo('Calculate the grid')
             call lvl_ud(1)
-            ierr = setup_grid_sol(grid_eq,grid_sol,r_F_sol,sol_limits)
+            ierr = setup_grid_sol(grid_X,grid_sol,sol_limits)
             CHCKERR('')
             call lvl_ud(-1)
             
@@ -233,7 +228,6 @@ contains
         call writo('Clean up')
         call lvl_ud(1)
         call dealloc_in()
-        call grid_eq%dealloc()
         call grid_X%dealloc()
         call grid_sol%dealloc()
         call X%dealloc()
