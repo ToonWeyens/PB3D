@@ -11,8 +11,8 @@
     max_it_zero             = 500
     use_pol_flux_F          = .true.
     use_normalization       = .true.
-    prim_X                  = 10
-    n_mod_X                 = 15
+    prim_X                  = 15
+    n_mod_X                 = 22
     tol_rich                = 5.0E-04
     n_sol_requested         = 1
     max_it_inv              = 1
@@ -21,13 +21,13 @@
     norm_style              = 2
     U_style                 = 3
     max_it_slepc            = 200
-    max_tot_mem_per_proc    = 100
+    max_tot_mem_per_proc    = 500
     plot_magn_grid          = .false
     plot_flux_q             = .false.
     plot_resonance          = .false.
     matrix_SLEPC_style      = 1
     max_it_rich             = 10
-    rich_restart_lvl        = 1
+    rich_restart_lvl        = 2
 /
     n_mod_X                 = 5
     min_sec_X               = 12

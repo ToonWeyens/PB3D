@@ -176,6 +176,10 @@ contains
         call writo('Setting up perturbation modes')
         call lvl_ud(1)
         
+        ! user output
+        call writo('Plot mode numbers')
+        call lvl_ud(1)
+        
         ! set local plot_nm
         plot_nm_loc = .false.
         if (present(plot_nm)) plot_nm_loc = plot_nm
@@ -317,6 +321,12 @@ contains
             call draw_GP(plot_title,plot_name,plot_name,n_mod_X,1,.false.)
         end if
         
+        call lvl_ud(-1)
+        
+        ! user output
+        call writo('Set variables')
+        call lvl_ud(1)
+        
         ! total number of modes that might occur
         if (use_pol_flux_F) then
             n_mod_tot = maxval(max_m_X)-minval(min_m_X)+1
@@ -347,6 +357,8 @@ contains
         ! clean up
         call grid_eq_trim%dealloc()
         call grid_X_trim%dealloc()
+        
+        call lvl_ud(-1)
         
         call lvl_ud(-1)
         call writo('Perturbation modes set up')
@@ -2165,7 +2177,7 @@ contains
     ! variables, in  which case the first  index is assumed to  have dimension 1
     ! only. This can be triggered using "is_field_averaged".
     integer function print_output_X_1(grid,X,data_name,rich_lvl,eq_job,&
-        &lim_sec_X) result(ierr)                                                ! vectorial version
+        &lim_sec_X,ind_print) result(ierr)                                      ! vectorial version
         use num_vars, only: PB3D_name_eq
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
@@ -2181,6 +2193,7 @@ contains
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to print
         integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
+        logical, intent(in), optional :: ind_print                              ! individual write
         
         ! local variables
         type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
@@ -2308,7 +2321,7 @@ contains
         
         ! write
         ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name_eq,trim(data_name),&
-            &rich_lvl=rich_lvl,eq_job=eq_job)
+            &rich_lvl=rich_lvl,eq_job=eq_job,ind_print=ind_print)
         CHCKERR('')
         
         ! clean up
@@ -2319,7 +2332,7 @@ contains
         call lvl_ud(-1)
     end function print_output_X_1
     integer function print_output_X_2(grid,X,data_name,rich_lvl,eq_job,&
-        &lim_sec_X,is_field_averaged) result(ierr)                              ! tensorial version
+        &lim_sec_X,is_field_averaged,ind_print) result(ierr)                    ! tensorial version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
@@ -2338,6 +2351,7 @@ contains
         integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol. flux) or n_X (tor. flux)
         logical, intent(in), optional :: is_field_averaged                      ! if field-averaged, only one dimension for first index
+        logical, intent(in), optional :: ind_print                              ! individual write
         
         ! local variables
         type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
@@ -2562,7 +2576,7 @@ contains
         
         ! write
         ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,trim(data_name),&
-            &rich_lvl=rich_lvl,eq_job=eq_job)
+            &rich_lvl=rich_lvl,eq_job=eq_job,ind_print=ind_print)
         CHCKERR('')
         
         ! clean up

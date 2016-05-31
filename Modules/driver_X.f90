@@ -353,7 +353,8 @@ contains
             
             ! write vectorial perturbation variables to output
             ierr = print_output_X(grid_X,X_1,'X_1',rich_lvl=rich_lvl_name,&
-                &eq_job=eq_job_nr,lim_sec_X=X_jobs_lims(:,X_job_nr))
+                &eq_job=eq_job_nr,lim_sec_X=X_jobs_lims(:,X_job_nr),&
+                &ind_print=.true.)
             CHCKERR('')
             
 #if ldebug
@@ -538,13 +539,13 @@ contains
         character(*), parameter :: rout_name = 'run_driver_X_2'
         
         ! input / output
-        type(grid_type), intent(inout), target :: grid_eq                       ! equilibrium grid
-        type(grid_type), intent(inout), pointer :: grid_eq_B                    ! field-aligned equilibrium grid
-        type(grid_type), intent(inout), target :: grid_X                        ! perturbation grid
-        type(grid_type), intent(inout), pointer :: grid_X_B                     ! field-aligned perturbation grid
-        type(eq_1_type), intent(inout) :: eq_1                                  ! flux equilibrium variables
-        type(eq_2_type), intent(inout), target :: eq_2                          ! metric equilibrium variables
-        type(eq_2_type), intent(inout), pointer :: eq_2_B                       ! field-aligned metric equilibrium variables
+        type(grid_type), intent(in), target :: grid_eq                          ! equilibrium grid
+        type(grid_type), intent(in), pointer :: grid_eq_B                       ! field-aligned equilibrium grid
+        type(grid_type), intent(in), target :: grid_X                           ! perturbation grid
+        type(grid_type), intent(in), pointer :: grid_X_B                        ! field-aligned perturbation grid
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
+        type(eq_2_type), intent(in), target :: eq_2                             ! metric equilibrium variables
+        type(eq_2_type), intent(in), pointer :: eq_2_B                          ! field-aligned metric equilibrium variables
         
         ! local variables
         type(X_1_type) :: X_1(2)                                                ! vectorial X variables
@@ -638,7 +639,8 @@ contains
                 ! HELENA, only for first richardson level
                 if (eq_style.eq.2) then
                     ierr = print_output_X(grid_X,X_2,'X_2',&
-                        &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
+                        &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]),&
+                        &ind_print=.true.)
                     CHCKERR('')
                 end if
             end if
@@ -804,7 +806,7 @@ contains
             ! write field-averaged tensorial perturbation variables to output
             ierr = print_output_X(grid_X_B,X_2,'X_2_int',rich_lvl=rich_lvl,&
                 &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]),&
-                &is_field_averaged=.true.)
+                &is_field_averaged=.true.,ind_print=.true.)
             CHCKERR('')
             
             ! clean up

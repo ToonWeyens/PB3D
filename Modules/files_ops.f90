@@ -28,19 +28,20 @@ contains
         ! select according to program style
         select case (prog_style)
             case(1)                                                             ! PB3D
-                allocate(opt_args(15), inc_args(15))
+                allocate(opt_args(16), inc_args(16))
                 opt_args = ''
                 inc_args = 0
                 opt_args(7) = '--minim_output'
                 opt_args(8) = '--no_guess'
-                opt_args(9) = '-st_pc_factor_shift_type'
-                opt_args(10) = '-st_pc_type'
-                opt_args(11) = '-st_pc_factor_mat_solver_package'
-                opt_args(12) = '-eps_monitor'
-                opt_args(13) = '-eps_tol'
-                opt_args(14) = '-eps_ncv'
-                opt_args(15) = '-eps_mpd'
-                inc_args(7:15) = [0,0,1,1,1,0,1,1,1]
+                opt_args(9) = '--jump_to_sol'
+                opt_args(10) = '-st_pc_factor_shift_type'
+                opt_args(11) = '-st_pc_type'
+                opt_args(12) = '-st_pc_factor_mat_solver_package'
+                opt_args(13) = '-eps_monitor'
+                opt_args(14) = '-eps_tol'
+                opt_args(15) = '-eps_ncv'
+                opt_args(16) = '-eps_mpd'
+                inc_args(7:16) = [0,0,0,1,1,1,0,1,1,1]
             case(2)                                                             ! POST
                 allocate(opt_args(7), inc_args(7))
                 opt_args = ''
@@ -160,7 +161,7 @@ contains
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
             &do_execute_command_line, output_name, prog_name, PB3D_name_eq, &
-            &print_mem_usage, swap_angles, minim_output
+            &print_mem_usage, swap_angles, minim_output, jump_to_sol
         use files_utilities, only: search_file
         use rich_vars, only: no_guess
 #if ldebug
@@ -386,22 +387,26 @@ contains
                     call writo('option no_guess chosen: Eigenfunction not &
                         &guessed from previous Richardson level')
                     no_guess = .true.
-                case (9)
+                case (9)                                                        ! disable guessing Eigenfunction from previous Richardson level
+                    call writo('option jump_to_sol chosen: Skip equilibrium &
+                        &and perturbation drivers for first Richardson level')
+                    jump_to_sol = .true.
+                case (10)
                     call writo('option st_pc_factor_shift_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (10)
+                case (11)
                     call writo('option st_pc_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (11)
+                case (12)
                     call writo('option st_pc_factor_mat_solver_package '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (12)
-                    call writo('option eps_monitor passed to SLEPC')
                 case (13)
-                    call writo('option eps_tol passed to SLEPC')
+                    call writo('option eps_monitor passed to SLEPC')
                 case (14)
-                    call writo('option eps_ncv passed to SLEPC')
+                    call writo('option eps_tol passed to SLEPC')
                 case (15)
+                    call writo('option eps_ncv passed to SLEPC')
+                case (16)
                     call writo('option eps_mpd passed to SLEPC')
                 case default
                     call writo('Invalid option number',warning=.true.)

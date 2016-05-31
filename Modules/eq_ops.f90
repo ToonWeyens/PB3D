@@ -2338,6 +2338,9 @@ contains
         ! The  MISHKA normalization  with R_m  = 1  m,  B_m =  1 T  is taken  by
         ! default, see "read_VMEC" for more information.
         subroutine calc_normalization_const_HEL
+            ! user output
+            call writo('Using MISHKA normalization')
+            
             if (R_0.ge.huge(1._dp)) then                                        ! user did not provide a value
                 R_0 = 1._dp
             else

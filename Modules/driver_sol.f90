@@ -51,7 +51,7 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         type(grid_type), target :: grid_X                                       ! perturbation grid
         type(grid_type) :: grid_sol                                             ! solution grid
-        type(X_2_type) :: X                                                     ! field-averged tensorial perturbation variables (only 1 par dim)
+        type(X_2_type) :: X                                                     ! field-averged tensorial perturbation variables
         type(sol_type) :: sol                                                   ! solution variables
         type(sol_type) :: sol_prev                                              ! previous solution variables
         integer :: sol_limits(2)                                                ! min. and max. index of sol grid for this process
@@ -104,11 +104,13 @@ contains
             ierr = reconstruct_PB3D_grid(grid_sol,'sol',grid_limits=sol_limits)
             CHCKERR('')
             if (use_guess) then                                                 ! also need previous solution
+                ! Note: sol_prev is deallocated inside "solve_EV_system_SLEPC"
                 ierr = reconstruct_PB3D_sol(grid_sol,sol_prev,'sol',&
                     &rich_lvl=rich_lvl-1)
                 CHCKERR('')
             end if
         end if
+        ! Note: X is deallocated inside "solve_EV_system_SLEPC"
         ierr = reconstruct_PB3D_X_2(grid_X,X,'X_2_int',rich_lvl=rich_lvl,&
             &is_field_averaged=.true.)
         CHCKERR('')
@@ -230,9 +232,7 @@ contains
         call dealloc_in()
         call grid_X%dealloc()
         call grid_sol%dealloc()
-        call X%dealloc()
-        call sol%dealloc
-        if (use_guess .and. rich_lvl.gt.1) call sol_prev%dealloc()
+        call sol%dealloc()
         call lvl_ud(-1)
         
         ! synchronize MPI

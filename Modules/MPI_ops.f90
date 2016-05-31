@@ -284,7 +284,7 @@ contains
             &slab_plots, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &swap_angles, plot_resonance, tol_SLEPC, prog_style, POST_style, &
-            &minim_output, &
+            &minim_output, jump_to_sol, &
             &max_it_inv, tol_norm, max_it_slepc, &
             &max_tot_mem_per_proc, max_X_mem_per_proc, plot_size, &
             &do_execute_command_line, print_mem_usage, &
@@ -364,6 +364,9 @@ contains
             select case (prog_style)
                 case(1)                                                         ! PB3D
                     call MPI_Bcast(no_guess,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(jump_to_sol,1,MPI_LOGICAL,0,MPI_Comm_world,&
+                        &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(min_n_par_X,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)

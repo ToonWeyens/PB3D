@@ -426,6 +426,7 @@ contains
         
         ! setup rich_id and eq_id
         rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
+#if ldebug
         eq_id = setup_eq_id('grid_'//trim(data_name),eq_job=eq_job,&
             &rich_lvl=rich_lvl)
         if (minval(eq_id).lt.0) then
@@ -434,6 +435,7 @@ contains
                 &using _R_ and _E_ suffixes'
             CHCKERR(err_msg)
         end if
+#endif
         
         ! set n
         n = 0
@@ -472,10 +474,20 @@ contains
         
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
-            ! setup par_id, loc_n_r and overlap
+            ! setup par_id, loc_n_r, overlap and eq_id
             par_id = setup_par_id(grid,rich_lvl_loc,id,tot_rich)
             loc_n_r = (par_id(2)-par_id(1))/par_id(3)+1
             overlap = id.le.1                                                   ! overlap for first Richardson level
+            eq_id = setup_eq_id('grid_'//trim(data_name),eq_job=eq_job,&
+                &rich_lvl=id)
+#if ldebug
+            if (minval(eq_id).lt.0) then
+                ierr = 1
+                err_msg = 'Variable "'//trim(data_name)//'" not found, nor &
+                    &using _R_ and _E_ suffixes'
+                CHCKERR(err_msg)
+            end if
+#endif
             
             ! r_F
             allocate(vars_1D(1))
@@ -666,29 +678,26 @@ contains
         if (present(rich_lvl)) rich_lvl_loc = rich_lvl
         overlap = rich_lvl_loc.le.1
         
-        ! setup rich_id and eq_id
+        ! setup rich_id
         rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
-        eq_id = setup_eq_id(trim(data_name),eq_job=eq_job,rich_lvl=rich_lvl)
-        if (minval(eq_id).lt.0) then
-            ierr = 1
-            err_msg = 'Variable "'//trim(data_name)//'" not found, nor &
-                &using _R_ and _E_ suffixes'
-            CHCKERR(err_msg)
-        end if
         
         ! create equilibrium
         call eq%init(grid_eq,setup_E=.false.,setup_F=.true.)
         
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
-            ! setup par_id
+            ! setup par_id, loc_n_r and eq_id
             par_id = setup_par_id(grid_eq,rich_lvl_loc,id,tot_rich)
             loc_n_r = (par_id(2)-par_id(1))/par_id(3)+1
-            
-            ! read HDF5 variables
-            !ierr = read_HDF5_arrs(vars_1D,PB3D_name_eq,trim(data_name),&
-                !&rich_lvl=id,eq_job=eq_id)
-            CHCKERR('')
+            eq_id = setup_eq_id(trim(data_name),eq_job=eq_job,rich_lvl=id)
+#if ldebug
+            if (minval(eq_id).lt.0) then
+                ierr = 1
+                err_msg = 'Variable "'//trim(data_name)//'" not found, nor &
+                    &using _R_ and _E_ suffixes'
+                CHCKERR(err_msg)
+            end if
+#endif
             
             ! g_FD
             ierr = read_HDF5_arr(vars_1D,PB3D_name_eq,trim(data_name),'g_FD',&
@@ -807,15 +816,8 @@ contains
         if (present(rich_lvl)) rich_lvl_loc = rich_lvl
         overlap = rich_lvl_loc.le.1
         
-        ! setup rich_id and eq_id
+        ! setup rich_id
         rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
-        eq_id = setup_eq_id(trim(data_name),eq_job=eq_job,rich_lvl=rich_lvl)
-        if (minval(eq_id).lt.0) then
-            ierr = 1
-            err_msg = 'Variable "'//trim(data_name)//'" not found, nor &
-                &using _R_ and _E_ suffixes'
-            CHCKERR(err_msg)
-        end if
         
         ! set up local lim_sec_X
         lim_sec_X_loc = [1,n_mod_X]
@@ -830,9 +832,18 @@ contains
         
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
-            ! setup par_id
+            ! setup par_id, loc_n_r and eq_id
             par_id = setup_par_id(grid_X,rich_lvl_loc,id,tot_rich)
             loc_n_r = (par_id(2)-par_id(1))/par_id(3)+1
+            eq_id = setup_eq_id(trim(data_name),eq_job=eq_job,rich_lvl=id)
+#if ldebug
+            if (minval(eq_id).lt.0) then
+                ierr = 1
+                err_msg = 'Variable "'//trim(data_name)//'" not found, nor &
+                    &using _R_ and _E_ suffixes'
+                CHCKERR(err_msg)
+            end if
+#endif
             
             ! RE_U_0
             ierr = read_HDF5_arr(vars_1D,PB3D_name_eq,trim(data_name),&
@@ -972,22 +983,15 @@ contains
         if (present(is_field_averaged)) is_field_averaged_loc = &
             &is_field_averaged
         
-        ! setup rich_id and eq_id
+        ! setup rich_id
         rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
-        eq_id = setup_eq_id(trim(data_name),eq_job=eq_job,rich_lvl=rich_lvl)
-        if (minval(eq_id).lt.0) then
-            ierr = 1
-            err_msg = 'Variable "'//trim(data_name)//'" not found, nor &
-                &using _R_ and _E_ suffixes'
-            CHCKERR(err_msg)
-        end if
         
         ! create X
         call X%init(grid_X,lim_sec_X,is_field_averaged)
         
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
-            ! setup par_id
+            ! setup par_id, loc_n_r and eq_id
             if (is_field_averaged_loc) then
                 par_id = [1,1,1]                                                ! only first element
                 par_id_loc = [1,1]                                              ! only first element
@@ -996,6 +1000,15 @@ contains
                 par_id_loc = [1,(par_id(2)-par_id(1))/par_id(3)+1]              ! the number of elements par_id(1):par_id(2), stride par_id(3)
             end if
             loc_n_r = (par_id(2)-par_id(1))/par_id(3)+1
+            eq_id = setup_eq_id(trim(data_name),eq_job=eq_job,rich_lvl=id)
+#if ldebug
+            if (minval(eq_id).lt.0) then
+                ierr = 1
+                err_msg = 'Variable "'//trim(data_name)//'" not found, nor &
+                    &using _R_ and _E_ suffixes'
+                CHCKERR(err_msg)
+            end if
+#endif
         
             ! loop over second dimension (horizontal)
             do m = 1,X%n_mod(2)

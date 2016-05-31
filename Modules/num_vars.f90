@@ -29,7 +29,8 @@ module num_vars
         &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
         &max_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
         &do_execute_command_line, print_mem_usage, input_name, slab_plots, &
-        &swap_angles, rich_restart_lvl, plot_size, minim_output, PB3D_name_eq
+        &swap_angles, rich_restart_lvl, plot_size, minim_output, PB3D_name_eq, &
+        &jump_to_sol
 
     ! technical variables
     !integer, parameter :: dp = kind(1.d0)                                       ! double precision
@@ -48,7 +49,7 @@ module num_vars
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
     integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
-    real(dp), parameter :: prog_version = 1.25_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.26_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.25_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
@@ -125,6 +126,7 @@ module num_vars
     character(len=max_str_ln) :: PB3D_name_eq                                   ! name of PB3D output file for vars on eq grid (see minim_output)
     integer :: output_i                                                         ! file number of output file
     logical :: no_plots = .false.                                               ! no plots made
+    logical :: jump_to_sol = .false.                                            ! jump to solution
     logical :: no_output = .false.                                              ! no output shown
     logical :: do_execute_command_line = .false.                                ! call "execute_command_line" inside program
     logical :: print_mem_usage = .false.                                        ! print memory usage is printed

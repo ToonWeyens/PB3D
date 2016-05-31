@@ -480,3 +480,10 @@ CHANGELOG
       - "retrieve_var_1D" is not necessary any more and has been removed.
       - Improved the MISHKA normalization by using the true value of B on axis, extrapolating half-mesh in VMEC. This changes T_0 slightly.
       - In the PB3D reconstruction routines, the normal limits are not passed any more, as this information is encoded in the grid already.
+
+1.26: - Added a command-line variable "jump_to_sol" that can be used to jump straight to solution driver for first Richardson level.
+      - The integrated tensorial perturbation are deallocated in the SLEPC routines, instead of in the solution driver, to save memory.
+      - The same is true for the previous solution variables.
+      - Fixed bugs in the PB3D reconstruction routines, where the equilibrium jobs were not appropriately calculated for every Richardson level.
+      - Fixed bug where individual write was neglected for multiple processes.
+      - Changed R_H and Z_H at first normal position to raxis, respectively 0 for HELENA.

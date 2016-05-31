@@ -161,7 +161,7 @@ contains
             &(h_H_33(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),id=&
             &nchi_loc+1,n_r_in*nchi_loc)                                        ! (gem33)
         h_H_33(:,:) = 1._dp/h_H_33(:,:)                                         ! HELENA gives R^2, but need 1/R^2
-        h_H_33(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
+        h_H_33(:,1) = raxis**2                                                  ! first normal point is degenerate, major radius
         if (ias.ne.0) h_H_33(nchi,:) = h_H_33(1,:)
         
         read(eq_i,*,IOSTAT=ierr) raxis                                          ! major radius
@@ -197,15 +197,11 @@ contains
         read(eq_i,*,IOSTAT=ierr) (R_H(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
             &id=nchi_loc+1,n_r_in*nchi_loc)                                     ! (xout)
         CHCKERR(err_msg)
-        R_H(:,1) = R_H(:,2)                                                     ! first point is not given: set equal to second one
-        if (ias.ne.0) R_H(nchi,:) = R_H(1,:)
         
         allocate(Z_H(nchi,n_r_in))                                              ! height Z
         read(eq_i,*,IOSTAT=ierr) (Z_H(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
             &id=nchi_loc+1,n_r_in*nchi_loc)                                     ! (yout)
         CHCKERR(err_msg)
-        Z_H(:,1) = Z_H(:,2)                                                     ! first point is not given: set equal to second one
-        if (ias.ne.0) Z_H(nchi,:) = Z_H(1,:)
         
         ! transform to MISHKA normalization
         allocate(flux_p_H(n_r_in))
@@ -213,6 +209,10 @@ contains
         radius = radius * raxis                                                 ! global length normalization with R_m
         R_H = radius*(1._dp/eps + R_H)                                          ! local normalization with a
         Z_H = radius*Z_H                                                        ! local normalization with a
+        R_H(:,1) = raxis                                                        ! first normal point is degenerate, major radius
+        Z_H(:,1) = 0._dp                                                        ! first normal point is degenerate, 0
+        if (ias.ne.0) R_H(nchi,:) = R_H(1,:)
+        if (ias.ne.0) Z_H(nchi,:) = Z_H(1,:)
         
 #if ldebug
         ! do nothing

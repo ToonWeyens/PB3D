@@ -63,9 +63,9 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
+        type(X_2_type), intent(inout) :: X                                      ! field-averaged perturbation variables (so only first index)
         type(sol_type), intent(inout) :: sol                                    ! solution variables
-        type(sol_type), intent(in), optional :: sol_prev                        ! previous solution variables
+        type(sol_type), intent(inout), optional :: sol_prev                     ! previous solution variables
         integer, intent(in), optional :: i_geo                                  ! at which geodesic index to perform the calculations
         
         ! local variables
@@ -204,6 +204,9 @@ contains
             end if
 #endif
             
+            ! deallocate the X variables
+            call X%dealloc()
+            
             ! set up guess
             if (present(sol_prev) .and. use_guess) then
                 call writo('Set up guess')
@@ -211,6 +214,7 @@ contains
                 ierr = setup_guess(sol_prev,A,solver)
                 CHCKERR('')
                 call lvl_ud(-1)
+                call sol_prev%dealloc()
             end if
             
             ! get solution
@@ -243,10 +247,10 @@ contains
             &stable Eigenvalues')
         
 #if ldebug
-        ierr = store_results(grid_sol,X,sol,solver,max_n_EV,A,B,step_size)
+        ierr = store_results(grid_sol,sol,solver,max_n_EV,A,B,step_size)
         CHCKERR('')
 #else
-        ierr = store_results(grid_sol,X,sol,solver,max_n_EV)
+        ierr = store_results(grid_sol,sol,solver,max_n_EV)
         CHCKERR('')
 #endif
         
@@ -1525,10 +1529,10 @@ contains
     
     ! stores the results
 #if ldebug
-    integer function store_results(grid_sol,X,sol,solver,max_n_EV,A,B,&
+    integer function store_results(grid_sol,sol,solver,max_n_EV,A,B,&
         &step_size) result(ierr)
 #else
-    integer function store_results(grid_sol,X,sol,solver,max_n_EV) result(ierr)
+    integer function store_results(grid_sol,sol,solver,max_n_EV) result(ierr)
 #endif
         use eq_vars, only: T_0
         use X_vars, only: n_mod_X
@@ -1542,7 +1546,6 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
         type(sol_type), intent(inout) :: sol                                    ! solution variables
         EPS, intent(inout) :: solver                                            ! EV solver
         PetscInt, intent(inout) :: max_n_EV                                     ! nr. of EV's saved, up to n_conv
@@ -1552,7 +1555,7 @@ contains
 #endif
         
         ! local variables
-        PetscInt :: id, kd                                                      ! counters
+        PetscInt :: id                                                          ! counters
         PetscInt :: id_tot                                                      ! counters
         Vec :: sol_vec                                                          ! solution EV parallel vector
         PetscInt :: one = 1                                                     ! one
@@ -1585,23 +1588,6 @@ contains
         ierr = 0
         
         call lvl_ud(1)
-        
-        ! tests
-        if (n_mod_X.ne.X%n_mod(1) .or. n_mod_X.ne.X%n_mod(2)) then
-            ierr = 1
-            err_msg = 'Need square matrix of size [n_mod_X:n_mod_X]'
-            CHCKERR(err_msg)
-        end if
-        do id = 1,n_mod_X
-            do kd = 1,grid_sol%loc_n_r
-                if (X%n_1(kd,id).ne.X%n_2(kd,id) .or. &
-                    &X%m_1(kd,id).ne.X%m_2(kd,id)) then
-                    ierr = 1
-                    err_msg = 'Fourier modes do not match in both dimensions'
-                    CHCKERR(err_msg)
-                end if
-            end do
-        end do
         
         ! create solution variables
         call sol%init(grid_sol,max_n_EV)
