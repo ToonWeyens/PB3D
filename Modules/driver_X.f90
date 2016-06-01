@@ -141,8 +141,7 @@ contains
         CHCKERR('')
         
         ! Run Tensorial part of driver
-        ierr = run_driver_X_2(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,&
-            &eq_2,eq_2_B)
+        ierr = run_driver_X_2(grid_eq_B,grid_X,grid_X_B,eq_1,eq_2_B)
         CHCKERR('')
         
         ! clean up
@@ -523,8 +522,10 @@ contains
     end function run_driver_X_1
     
     ! Part 2 of driver_X: Tensorial jobs.
-    integer function run_driver_X_2(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,&
-        &eq_2,eq_2_B) result(ierr)
+    ! Note: Everything is done in the field-aligned grids, where ELENA vectorial
+    ! perturbation variables are first interpolated.
+    integer function run_driver_X_2(grid_eq_B,grid_X,grid_X_B,eq_1,eq_2_B) &
+        &result(ierr)
         use MPI_ops, only: get_next_job, print_jobs_info
         use MPI_utilities, only: wait_MPI
         use X_utilities, only: divide_X_jobs
@@ -539,12 +540,10 @@ contains
         character(*), parameter :: rout_name = 'run_driver_X_2'
         
         ! input / output
-        type(grid_type), intent(in), target :: grid_eq                          ! equilibrium grid
         type(grid_type), intent(in), pointer :: grid_eq_B                       ! field-aligned equilibrium grid
         type(grid_type), intent(in), target :: grid_X                           ! perturbation grid
         type(grid_type), intent(in), pointer :: grid_X_B                        ! field-aligned perturbation grid
         type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(in), target :: eq_2                             ! metric equilibrium variables
         type(eq_2_type), intent(in), pointer :: eq_2_B                          ! field-aligned metric equilibrium variables
         
         ! local variables
@@ -569,13 +568,7 @@ contains
         call lvl_ud(1)
         
         ! divide perturbation jobs, tensor phase
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                arr_size = grid_X%loc_n_r*product(grid_X_B%n(1:2))
-            case (2)                                                            ! HELENA
-                arr_size = grid_X%loc_n_r*&
-                    &(product(grid_X%n(1:2))+product(grid_X_B%n(1:2)))
-        end select
+        arr_size = grid_X_B%loc_n_r*product(grid_X_B%n(1:2))
         ierr = divide_X_jobs(arr_size,2)
         CHCKERR('')
         
@@ -595,73 +588,53 @@ contains
             ! user output
             call print_info_X_2()
             
-            ! For VMEC the first part has to be done for every Richardson level,
-            ! but for HELENA only for the first one.
-            if (eq_style.ne.2 .or. rich_lvl.eq.1) then
-                ! retrieve vectorial perturbation if dimension not reused
-                do id = 1,2
-                    if (dim_reused(id)) then
-                        call writo('Vectorial perturbation variables for &
-                            &dimension '//trim(i2str(id))//' reused')
-                    else
-                        ! free the variable
-                        if (allocated(X_1(id)%n)) call X_1(id)%dealloc()
-                        
-                        ! user output
-                        call writo('Requesting vectorial perturbation &
-                            &variables for dimension '//trim(i2str(id)))
-                        call lvl_ud(1)
-                        
-                        ! reconstruct PB3D X_1 quantities for this dimension
-                        ierr = reconstruct_PB3D_X_1(grid_X,X_1(id),'X_1',&
-                            &rich_lvl=rich_lvl_name,eq_job=eq_job_name,&
-                            &lim_sec_X=&
-                            &X_jobs_lims((id-1)*2+1:(id-1)*2+2,X_job_nr))
-                        CHCKERR('')
-                        
-                        ! user output
-                        call lvl_ud(-1)
-                        call writo('Vectorial perturbation variables for &
-                            &dimension '//trim(i2str(id))//' loaded')
-                    end if
-                end do
-                
-                ! calculate X variables, tensor phase
-                ierr = calc_X(grid_eq,grid_X,eq_1,eq_2,X_1(1),X_1(2),X_2,&
-                    &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
-                CHCKERR('')
-                
-                ! calculate vacuum response
-                ierr = calc_vac(X_2)
-                CHCKERR('')
-                
-                ! write  tensorial  perturbation  variables  to  output file  if
-                ! HELENA, only for first richardson level
-                if (eq_style.eq.2) then
-                    ierr = print_output_X(grid_X,X_2,'X_2',&
-                        &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]),&
-                        &ind_print=.true.)
-                    CHCKERR('')
-                end if
-            end if
-            
-            ! Adapt X_2 to field-aligned grid if necessary
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    ! do nothing
-                case (2)                                                        ! HELENA
-                    ! reconstruct if not first Richardson level
-                    if (rich_lvl.gt.1) then
-                        ierr = reconstruct_PB3D_X_2(grid_X,X_2,'X_2',&
-                            &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
-                        CHCKERR('')
-                    end if
+            ! retrieve vectorial perturbation if dimension not reused
+            do id = 1,2
+                if (dim_reused(id)) then
+                    call writo('Vectorial perturbation variables for &
+                        &dimension '//trim(i2str(id))//' reused')
+                else
+                    ! free the variable
+                    if (allocated(X_1(id)%n)) call X_1(id)%dealloc()
                     
-                    ! interpolate tensorial perturbations to field-aligned grid
-                    ierr = interp_HEL_on_grid(grid_X,grid_X_B,X_2=X_2,&
-                        &grid_name='field-aligned perturbation grid')
+                    ! user output
+                    call writo('Requesting vectorial perturbation &
+                        &variables for dimension '//trim(i2str(id)))
+                    call lvl_ud(1)
+                    
+                    ! reconstruct PB3D X_1 quantities for this dimension
+                    ierr = reconstruct_PB3D_X_1(grid_X,X_1(id),'X_1',&
+                        &rich_lvl=rich_lvl_name,eq_job=eq_job_name,&
+                        &lim_sec_X=&
+                        &X_jobs_lims((id-1)*2+1:(id-1)*2+2,X_job_nr))
                     CHCKERR('')
-            end select
+                    
+                    ! Adapt vectorial X to field-aligned grid if necessary
+                    select case (eq_style)
+                        case (1)                                                ! VMEC
+                            ! do nothing
+                        case (2)                                                ! HELENA
+                            ierr = interp_HEL_on_grid(grid_X,grid_X_B,&
+                                &X_1=X_1(id),grid_name=&
+                                &'field-aligned perturbation grid')
+                            CHCKERR('')
+                    end select
+                    
+                    ! user output
+                    call lvl_ud(-1)
+                    call writo('Vectorial perturbation variables for &
+                        &dimension '//trim(i2str(id))//' loaded')
+                end if
+            end do
+                
+            ! calculate X variables, tensor phase
+            ierr = calc_X(grid_eq_B,grid_X_B,eq_1,eq_2_B,X_1(1),X_1(2),X_2,&
+                &lim_sec_X=reshape(X_jobs_lims(:,X_job_nr),[2,2]))
+            CHCKERR('')
+            
+            ! calculate vacuum response
+            ierr = calc_vac(X_2)
+            CHCKERR('')
             
 #if ldebug
             ! write field-aligned tensorial perturbation quantities to output
@@ -868,21 +841,20 @@ contains
     subroutine print_X_start()
         use num_vars, only: X_jobs_taken, X_job_nr, rank
         
-        call writo('Job '//trim(i2str(X_job_nr))//' (of total '//&
-            &trim(i2str(size(X_jobs_taken)))//&
-            &' jobs) is started by process '//trim(i2str(rank)))
+        call writo('Job '//trim(i2str(X_job_nr))//' (of '//&
+            &trim(i2str(size(X_jobs_taken)-count(X_jobs_taken)))//&
+            &' left) is started by process '//trim(i2str(rank)))
         
         call lvl_ud(1)
     end subroutine print_X_start
     
     ! prints information for finishing perturbation job
     subroutine print_X_end()
-        use num_vars, only: X_jobs_taken, X_job_nr, rank
+        use num_vars, only: X_job_nr, rank
         
         call lvl_ud(-1)
     
-        call writo('Job '//trim(i2str(X_job_nr))//' (of total '//&
-            &trim(i2str(size(X_jobs_taken)))//&
-            &' jobs) completed by process '//trim(i2str(rank)))
+        call writo('Job '//trim(i2str(X_job_nr))//&
+            &' completed by process '//trim(i2str(rank)))
     end subroutine print_X_end
 end module driver_X

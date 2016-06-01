@@ -192,6 +192,11 @@ contains
             ! set up variables
             chunk_size = &
                 &product(lim_tot(1:div_dim-1,2)-lim_tot(1:div_dim-1,1)+1)       ! all dimensions up to divided one
+#if ldebug
+            if (chunk_size.gt.max_chunk_size) call writo('Chunk size of '//&
+                &trim(i2str(chunk_size))//' greater than maximum chunk size'//&
+                &trim(i2str(nint(max_chunk_size))),warning=.true.)
+#endif
             chunk_size = chunk_size / (1 + floor(chunk_size/max_chunk_size))    ! limit to max chunk size
             
             ! set creation property list if provided

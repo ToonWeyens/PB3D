@@ -487,3 +487,8 @@ CHANGELOG
       - Fixed bugs in the PB3D reconstruction routines, where the equilibrium jobs were not appropriately calculated for every Richardson level.
       - Fixed bug where individual write was neglected for multiple processes.
       - Changed R_H and Z_H at first normal position to raxis, respectively 0 for HELENA.
+
+1.27: - Fixed some confusion about parallel acces and transfer property lists in HDF5.
+      - Individual writes of PB3D variables now use standard I/O driver so that more than 2GB can be written independently.
+      - Changed structure of the the X_2 part of the perturbation driver for HELENA: The X_1 variables are written to HDF5, not the X_2.
+      - Slightly improved user output for perturbation driver.

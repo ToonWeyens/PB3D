@@ -18,6 +18,12 @@
 !         Furthermore, the number of slots is chosen to be equal to the number !
 !         of chunks. And Finally,  the chunk size is chosen to  be the size of !
 !         the previous dimensions, if it does not exceed 4GB                   !
+!       - Individual  writes or  plots are  done  now using  the standard  I/O !
+!         driver,  as using  MPI does  not allow  for more  than 2GB.  This is !
+!         important for  the HELENA  version of PB3D  where X_2  variables get !
+!         larger than that.                                                    !
+!         (See https://www.hdfgroup.org/HDF5/doc/UG/OldHtmlSource/             !
+!         UG_frame08TheFile.html) !
 !------------------------------------------------------------------------------!
 module HDF5_ops
 #include <PB3D_macros.h>
@@ -329,8 +335,12 @@ contains
         ! create property list for collective dataset write
         call H5Pcreate_f(H5P_DATASET_XFER_F,plist_id,ierr) 
         CHCKERR('Failed to create property list')
-        call H5Pset_dxpl_mpio_f(plist_id,H5FD_MPIO_COLLECTIVE_F,ierr)
-        CHCKERR('Failed to set parallel property')
+        if (ind_plot_loc) then
+            plist_id = H5P_DEFAULT_F
+        else
+            call H5Pset_dxpl_mpio_f(plist_id,H5FD_MPIO_COLLECTIVE_F,ierr)
+            CHCKERR('Failed to set parallel property')
+        end if
         
         ! write the dataset collectively. 
         call H5Dwrite_f(dset_id,HDF5_kind_64,var,dimsf,ierr,&
@@ -845,6 +855,7 @@ contains
         logical :: ind_print_loc                                                ! local ind_print
         logical :: disp_info_loc                                                ! local disp_info
         integer(HID_T) :: a_plist_id                                            ! access property list identifier 
+        integer(HID_T) :: x_plist_id                                            ! transfer property list identifier 
         integer(HID_T) :: chunk_a_plist_id                                      ! chunk access property list identifier 
         integer(HID_T) :: chunk_c_plist_id                                      ! chunk create property list identifier 
         integer(HID_T) :: HDF5_i                                                ! file identifier 
@@ -898,7 +909,11 @@ contains
         ! setup file access property list with parallel I/O access if needed
         call H5Pcreate_f(H5P_FILE_ACCESS_F,a_plist_id,ierr)
         CHCKERR('Failed to create property list')
-        call H5Pset_fapl_mpio_f(a_plist_id,MPI_Comm,MPI_INFO_NULL,ierr)
+        if (ind_print_loc) then
+            call H5Pset_fapl_stdio_f(a_plist_id,ierr) 
+        else
+            call H5Pset_fapl_mpio_f(a_plist_id,MPI_Comm,MPI_INFO_NULL,ierr)
+        end if
         CHCKERR('Failed to set file access property')
         
         ! wait for file access if individual print and multiple processes
@@ -975,7 +990,7 @@ contains
                 ierr = set_1D_vars(lim_tot,lim_loc,c_plist_id=chunk_c_plist_id,&
                     &a_plist_id=chunk_a_plist_id)
                 CHCKERR('')
-
+                
                 ! create file data set in group
                 call H5Dcreate_f(group_id,'var',HDF5_kind_64,filespace,dset_id,&
                     &ierr,dcpl_id=chunk_c_plist_id,dapl_id=chunk_a_plist_id)
@@ -988,7 +1003,7 @@ contains
                 ! set up chunk access property list
                 ierr = set_1D_vars(lim_tot,lim_loc,a_plist_id=chunk_a_plist_id)
                 CHCKERR('')
-
+                
                 ! open file data set
                 call H5Dopen_f(group_id,'var',dset_id,ierr,dapl_id=&
                     &chunk_a_plist_id)
@@ -1030,10 +1045,14 @@ contains
             CHCKERR('')
             
             ! create property list for collective dataset write
-            call H5Pcreate_f(H5P_DATASET_XFER_F,a_plist_id,ierr) 
+            call H5Pcreate_f(H5P_DATASET_XFER_F,x_plist_id,ierr) 
             CHCKERR('Failed to create property list')
-            call H5Pset_dxpl_mpio_f(a_plist_id,H5FD_MPIO_COLLECTIVE_F,ierr)
-            CHCKERR('Failed to set parallel property')
+            if (ind_print_loc) then
+                x_plist_id = H5P_DEFAULT_F
+            else
+                call H5Pset_dxpl_mpio_f(x_plist_id,H5FD_MPIO_COLLECTIVE_F,ierr)
+                CHCKERR('Failed to set parallel property')
+            end if
             
             ! set dimsm
             dimsm = product(lim_loc(:,2)-lim_loc(:,1)+1)                        ! memory space has local dimensions
@@ -1045,12 +1064,12 @@ contains
             ! write the dataset collectively. 
             call H5Dwrite_f(dset_id,HDF5_kind_64,vars(id)%p,&
                 &dimsf,ierr,file_space_id=filespace,&
-                &mem_space_id=memspace,xfer_prp=a_plist_id)
+                &mem_space_id=memspace,xfer_prp=x_plist_id)
             if (ierr.ne.0) call writo('Did you increase max_tot_mem_per_proc &
                 &while restarting Richardson? If so, must start from 1...',&
                 &alert=.true.)
             CHCKERR('Failed to write data data set')
-            call H5Pclose_f(a_plist_id,ierr)
+            call H5Pclose_f(x_plist_id,ierr)
             CHCKERR('Failed to close property list')
             
             ! close dataspaces
@@ -1100,12 +1119,12 @@ contains
             call H5Dclose_f(dset_id,ierr)
             CHCKERR('Failed to close data set')
             
+            ! deallocate limits
+            deallocate(lim_tot,lim_loc)
+            
             ! close the group
             call H5gclose_f(group_id,ierr)
             CHCKERR('Failed to close group')
-            
-            ! deallocate limits
-            deallocate(lim_tot,lim_loc)
         end do
         
         call lvl_ud(-1)
