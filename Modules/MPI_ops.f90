@@ -359,6 +359,9 @@ contains
             call MPI_Bcast(PB3D_name,len(PB3D_name),MPI_CHARACTER,0,&
                 &MPI_Comm_world,ierr)
             CHCKERR(err_msg)
+            call MPI_Bcast(PB3D_name_eq,len(PB3D_name_eq),MPI_CHARACTER,0,&
+                &MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
             
             ! select according to program style
             select case (prog_style)
@@ -409,9 +412,6 @@ contains
                     if (rank.ne.0) allocate(tol_SLEPC(max_it_rich))
                     call MPI_Bcast(tol_SLEPC,max_it_rich,MPI_DOUBLE_PRECISION,&
                         &0,MPI_Comm_world,ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(PB3D_name_eq,len(PB3D_name_eq),&
-                        &MPI_CHARACTER,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                 case(2)                                                         ! POST
                     call MPI_Bcast(slab_plots,1,MPI_LOGICAL,0,MPI_Comm_world,&

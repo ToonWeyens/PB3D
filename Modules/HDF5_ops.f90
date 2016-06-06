@@ -1027,11 +1027,11 @@ contains
                 ! get chunk cache
                 call H5PGet_chunk_cache_f(a_plist_id,rdcc_nslots,&
                     &rdcc_nbytes,rdcc_w0,ierr)
-                write(*,*) 'Number of chunk slots in the raw data chunk cache &
-                    &hash table:', rdcc_nslots
-                write(*,*) 'Total size of the raw data chunk cache, in &
+                write(*,*) rank, 'Number of chunk slots in the raw data chunk &
+                    &cache hash table:', rdcc_nslots
+                write(*,*) rank, 'Total size of the raw data chunk cache, in &
                     &Mbytes:', rdcc_nbytes*1.E-6_dp
-                write(*,*) 'Preemption Policy:', rdcc_w0
+                write(*,*) rank, 'Preemption Policy:', rdcc_w0
                 CHCKERR('Failed to get chunk cache')
                 
                 ! close data access property list
@@ -1123,7 +1123,7 @@ contains
             deallocate(lim_tot,lim_loc)
             
             ! close the group
-            call H5gclose_f(group_id,ierr)
+            call H5Gclose_f(group_id,ierr)
             CHCKERR('Failed to close group')
         end do
         
@@ -1176,6 +1176,11 @@ contains
     ! Optionally, output can be given about the variable being read.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the head
     ! name if it is > 0, and similarly for "eq_job" in "_E_eq_job".
+    ! Furthermore,  using  lim_loc,  a   contiguous  (yet  only  a  contiguous!)
+    ! hyperslab  of  the variable  can  be  read. Note  that  this  refers to  a
+    ! contiguous  hyperslab of  a stored  variable  in memory.  If therefore  in
+    ! memory a  variable stores,  for example,  only the even  values of  a PB3D
+    ! variable, then this contiguous hyperslab refers to only these even values!
     integer function read_HDF5_arr_ind(var,PB3D_name,head_name,var_name,&
         &rich_lvl,eq_job,disp_info,lim_loc) result(ierr)                        ! individual version
         use HDF5_utilities, only: list_all_vars_in_group, set_1D_vars

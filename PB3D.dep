@@ -2,7 +2,7 @@ PB3D.o : \
     num_vars.o \
     str_ops.o \
     messages.o \
-    HDF5_vars.o \
+    #HDF5_vars.o \
     driver_eq.o \
     driver_X.o \
     driver_sol.o \
@@ -23,7 +23,7 @@ POST.o : \
     MPI_ops.o \
     files_ops.o \
     files_utilities.o \
-    HDF5_vars.o \
+    #HDF5_vars.o \
     input_ops.o \
     PB3D_ops.o \
     driver_POST.o \
@@ -34,8 +34,8 @@ PB3D_utilities.o : \
     num_vars.o \
     messages.o \
     str_ops.o \
-    HDF5_vars.o \
-    HDF5_utilities.o \
+    #HDF5_vars.o \
+    #HDF5_utilities.o \
     X_utilities.o \
     
 PB3D_ops.o : \
@@ -50,8 +50,8 @@ PB3D_ops.o : \
     sol_vars.o \
     PB3D_utilities.o \
     output_ops.o \
-    HDF5_vars.o \
-    HDF5_ops.o \
+    #HDF5_vars.o \
+    #HDF5_ops.o \
     HELENA_vars.o \
     rich_vars.o \
 
@@ -122,8 +122,8 @@ grid_ops.o : \
     VMEC.o \
     HELENA_vars.o \
     X_vars.o \
-    HDF5_ops.o \
-    HDF5_vars.o \
+    #HDF5_ops.o \
+    #HDF5_vars.o \
     MPI_utilities.o \
     grid_utilities.o \
     rich_vars.o \
@@ -140,9 +140,9 @@ rich_ops.o : \
     messages.o \
     num_vars.o \
     PB3D_ops.o \
-    HDF5_vars.o \
-    HDF5_utilities.o \
-    HDF5_ops.o \
+    #HDF5_vars.o \
+    #HDF5_utilities.o \
+    #HDF5_ops.o \
     MPI_utilities.o \
     eq_utilities.o \
 
@@ -257,7 +257,7 @@ X_ops.o : \
     grid_vars.o \
     grid_utilities.o \
     input_utilities.o \
-    HDF5_ops.o \
+    #HDF5_ops.o \
     rich_vars.o \
     X_utilities.o \
     VMEC.o \
@@ -298,7 +298,7 @@ eq_ops.o : \
     HELENA_vars.o \
     HELENA_ops.o \
     grid_ops.o \
-    HDF5_ops.o \
+    #HDF5_ops.o \
     eq_utilities.o \
     rich_vars.o \
 
@@ -321,8 +321,8 @@ messages.o : \
 output_ops.o : \
     grid_vars.o \
     X_vars.o \
-    HDF5_ops.o \
-    HDF5_vars.o \
+    #HDF5_ops.o \
+    #HDF5_vars.o \
     num_vars.o \
     str_ops.o \
     messages.o \
@@ -334,14 +334,14 @@ HDF5_ops.o : \
     num_vars.o \
     str_ops.o \
     messages.o \
-    HDF5_vars.o \
-    HDF5_utilities.o \
+    #HDF5_vars.o \
+    #HDF5_utilities.o \
 
 HDF5_utilities: \
     num_vars.o \
     str_ops.o \
     messages.o \
-    HDF5_vars.o \
+    #HDF5_vars.o \
 
 HDF5_vars.o: \
     num_vars.o \
@@ -372,8 +372,8 @@ files_ops.o : \
     str_ops.o \
     messages.o \
     MPI_utilities.o \
-    HDF5_ops.o \
-    HDF5_vars.o \
+    #HDF5_ops.o \
+    #HDF5_vars.o \
     grid_vars.o \
     grid_ops.o \
     X_vars.o \
@@ -449,7 +449,7 @@ MPI_ops.o : \
     num_utilities.o \
     HELENA_vars.o \
     grid_vars.o \
-    HDF5_vars.o \
+    #HDF5_vars.o \
     rich_vars.o \
 
 MPI_utilities.o : \

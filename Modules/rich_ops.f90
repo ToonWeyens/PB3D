@@ -465,7 +465,7 @@ contains
         ! local variables
         real(dp), allocatable :: corr(:)                                        ! correction for order (rich_lvl-1) of error
         integer :: ir                                                           ! counter
-        real(dp) :: tol_SLEPC_adapt_factor = 0.1_dp                             ! factor to relate tol_SLEPC to maximum relative error
+        real(dp) :: tol_SLEPC_adapt_factor = 0.01_dp                            ! factor to relate tol_SLEPC to maximum relative error
         
         if (rich_lvl.gt.1) then                                                 ! only do this if in Richardson level higher than 1
             ! set relative correction

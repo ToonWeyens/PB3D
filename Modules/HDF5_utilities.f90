@@ -74,6 +74,10 @@ contains
     ! more than once, the w0 factor is set to 1.
     integer function set_1D_vars(lim_tot,lim_loc,space_id,c_plist_id,&
         &a_plist_id) result(ierr)
+#if ldebug
+        use num_vars, only: rank
+#endif
+        
         character(*), parameter :: rout_name = 'set_1D_vars'
         
         ! input / output
@@ -127,11 +131,11 @@ contains
         end do
         
         if (debug_set_1D_vars) then
-            write(*,*) 'in set_1D_vars:'
-            write(*,*) 'lim_tot_lo = ', lim_tot(:,1)
-            write(*,*) 'lim_tot_hi = ', lim_tot(:,2)
-            write(*,*) 'lim_loc_lo = ', lim_loc(:,1)
-            write(*,*) 'lim_loc_hi = ', lim_loc(:,2)
+            write(*,*) rank, 'in set_1D_vars:'
+            write(*,*) rank, 'lim_tot_lo = ', lim_tot(:,1)
+            write(*,*) rank, 'lim_tot_hi = ', lim_tot(:,2)
+            write(*,*) rank, 'lim_loc_lo = ', lim_loc(:,1)
+            write(*,*) rank, 'lim_loc_hi = ', lim_loc(:,2)
         end if
 #endif
         
@@ -160,8 +164,8 @@ contains
                     
 #if ldebug
                     if (debug_set_1D_vars) then
-                        write(*,*) 'dimension', id, 'of', n_dims
-                        write(*,*) 'n_prod = ', n_prod
+                        write(*,*) rank, 'dimension', id, 'of', n_dims
+                        write(*,*) rank, 'n_prod = ', n_prod
                     end if
 #endif
                     
@@ -175,8 +179,8 @@ contains
                     
 #if ldebug
                     if (debug_set_1D_vars) then
-                        write(*,*) 'block, offset, stride, count = ', block, &
-                            &offset, stride, count
+                        write(*,*) rank, 'block, offset, stride, count = ', &
+                            &block, offset, stride, count
                     end if
 #endif
                     
@@ -184,6 +188,15 @@ contains
                         &offset,count,ierr,stride=stride,block=block)
                     CHCKERR('Failed to select hyperslab')
                 end if
+#if ldebug
+                if (debug_set_1D_vars) then
+                    write(*,*) rank, 'total range DIFFERS from local'
+                end if
+            else
+                if (debug_set_1D_vars) then
+                    write(*,*) rank, 'total range EQUAL to local'
+                end if
+#endif
             end if
         end do
         

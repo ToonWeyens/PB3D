@@ -643,6 +643,7 @@ contains
     integer function open_decomp_log(file_i) result(ierr)
         use files_utilities, only: nextunit
         use num_vars, only: prog_name, output_name, rank, POST_style
+        use rich_vars, only: rich_lvl
         
         character(*), parameter :: rout_name = 'open_decomp_log'
         
@@ -672,7 +673,8 @@ contains
             format_head = '("#  ",A23," ",A23," ",A23," ",A23," ",A23," ",&
                 &A23)'
             ! open output file for the log
-            full_output_name = prog_name//'_'//trim(output_name)//'_EN.txt'
+            full_output_name = prog_name//'_'//trim(output_name)//'_EN_R'//&
+                &trim(i2str(rich_lvl))//'.txt'
             open(unit=nextunit(file_i),file=full_output_name,iostat=ierr)
             CHCKERR('Cannot open EN output file')
             call writo('Log file opened in '//trim(full_output_name))

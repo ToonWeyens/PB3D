@@ -492,3 +492,8 @@ CHANGELOG
       - Individual writes of PB3D variables now use standard I/O driver so that more than 2GB can be written independently.
       - Changed structure of the the X_2 part of the perturbation driver for HELENA: The X_1 variables are written to HDF5, not the X_2.
       - Slightly improved user output for perturbation driver.
+
+1.28: - The HDF5 routines do not work if only one process doing HDF5 output. So now there is a duplication in the printing of grids and solutions.
+      - Fixed a bug concerning the reconstruction of full variables for Richardson levels greater than 1, which affects POST only.
+      - The Energy Reconstruction output now carries the Richardson level '_E'.
+      - Fixed a bug in the calculation of the normal ranges for POST, where the sign of the tolerance was taken wrongly.

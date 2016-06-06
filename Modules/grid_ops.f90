@@ -357,8 +357,8 @@ contains
             eq_limits = [0,n_r_eq+1]                                            ! initialize out of range
             if (r_F_eq(1).lt.r_F_eq(n_r_eq)) then                               ! ascending r_F_eq
                 do id = 1,n_r_eq
-                    if (r_F_eq(id).le.min_sol+tol) eq_limits(1) = id            ! move lower limit up
-                    if (r_F_eq(n_r_eq-id+1).ge.max_sol-tol) &
+                    if (r_F_eq(id).le.min_sol-tol) eq_limits(1) = id            ! move lower limit up
+                    if (r_F_eq(n_r_eq-id+1).ge.max_sol+tol) &
                         &eq_limits(2) = n_r_eq-id+1                             ! move upper limit down
                 end do
             else                                                                ! descending r_F_eq
@@ -1150,7 +1150,7 @@ contains
     ! it is > 0 (only for eq_2), and similarly for "eq_job" through "_E_eq_job".
     integer function print_output_grid(grid,grid_name,data_name,rich_lvl,&
         &eq_job) result(ierr)
-        use num_vars, only: PB3D_name, rank
+        use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
             &max_dim_var_1D
@@ -1196,16 +1196,10 @@ contains
         allocate(grid_1D_loc%loc_i_min(1),grid_1D_loc%loc_i_max(1))
         grid_1D_loc%tot_i_min = [1]
         grid_1D_loc%tot_i_max = [3]
-        if (rank.eq.0) then
-            grid_1D_loc%loc_i_min = [1]
-            grid_1D_loc%loc_i_max = [3]
-            allocate(grid_1D_loc%p(3))
-            grid_1D_loc%p = grid_trim%n
-        else
-            grid_1D_loc%loc_i_min = [1]
-            grid_1D_loc%loc_i_max = [0]
-            allocate(grid_1D_loc%p(0))
-        end if
+        grid_1D_loc%loc_i_min = [1]
+        grid_1D_loc%loc_i_max = [3]
+        allocate(grid_1D_loc%p(3))
+        grid_1D_loc%p = grid_trim%n
         
         ! r_F
         grid_1D_loc => grid_1D(id); id = id+1

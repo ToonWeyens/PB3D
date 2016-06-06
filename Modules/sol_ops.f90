@@ -1158,7 +1158,7 @@ contains
     ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
     ! it is > 0.
     integer function print_output_sol(grid,sol,data_name,rich_lvl) result(ierr)
-        use num_vars, only: rank, PB3D_name
+        use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
@@ -1205,14 +1205,9 @@ contains
             sol_1D_loc%tot_i_min = [1]
             sol_1D_loc%tot_i_max = [size(sol%val)]
             sol_1D_loc%loc_i_min = [1]
-            if (rank.eq.0) then
-                sol_1D_loc%loc_i_max = [size(sol%val)]
-                allocate(sol_1D_loc%p(size(sol%val)))
-                sol_1D_loc%p = realpart(sol%val)
-            else
-                sol_1D_loc%loc_i_max = [0]
-                allocate(sol_1D_loc%p(0))
-            end if
+            sol_1D_loc%loc_i_max = [size(sol%val)]
+            allocate(sol_1D_loc%p(size(sol%val)))
+            sol_1D_loc%p = realpart(sol%val)
             
             ! IM_sol_val
             sol_1D_loc => sol_1D(id); id = id+1
@@ -1222,14 +1217,9 @@ contains
             sol_1D_loc%tot_i_min = [1]
             sol_1D_loc%tot_i_max = [size(sol%val)]
             sol_1D_loc%loc_i_min = [1]
-            if (rank.eq.0) then
-                sol_1D_loc%loc_i_max = [size(sol%val)]
-                allocate(sol_1D_loc%p(size(sol%val)))
-                sol_1D_loc%p = imagpart(sol%val)
-            else
-                sol_1D_loc%loc_i_max = [0]
-                allocate(sol_1D_loc%p(0))
-            end if
+            sol_1D_loc%loc_i_max = [size(sol%val)]
+            allocate(sol_1D_loc%p(size(sol%val)))
+            sol_1D_loc%p = imagpart(sol%val)
             
             ! RE_sol_vec
             sol_1D_loc => sol_1D(id); id = id+1
