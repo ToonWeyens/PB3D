@@ -497,3 +497,9 @@ CHANGELOG
       - Fixed a bug concerning the reconstruction of full variables for Richardson levels greater than 1, which affects POST only.
       - The Energy Reconstruction output now carries the Richardson level '_E'.
       - Fixed a bug in the calculation of the normal ranges for POST, where the sign of the tolerance was taken wrongly.
+
+1.29: - Fixed a bug where the reading of X variables where the local parallel limits were erroneously set. Now they are set to -1.
+      - In the reading of HDF5 variables, if there is a negative upper local limit, the total limit is taken.
+      - Reading HDF5 files now also checks for the lock file that indicates the file might be being written at the time.
+      - Fixed a bug in the writing and reading of BC_style, which is an array of size 2, not a scalar.
+      - Cleared confusion about COBRA normalization and fixed the erroneous situation that called for modification of the equations.

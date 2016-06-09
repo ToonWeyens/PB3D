@@ -1181,9 +1181,16 @@ contains
     ! contiguous  hyperslab of  a stored  variable  in memory.  If therefore  in
     ! memory a  variable stores,  for example,  only the even  values of  a PB3D
     ! variable, then this contiguous hyperslab refers to only these even values!
+    ! Furthermore, note that if one of the upper limits of lim_loc is a negative
+    ! value, the  procedure just takes  the entire  range. This is  necessary as
+    ! sometimes  the calling  procuderes don't  have,  and don't  need to  have,
+    ! knowledge  of the  underlying sizes,  for example  in the  case of  having
+    ! multiple parallel jobs.
     integer function read_HDF5_arr_ind(var,PB3D_name,head_name,var_name,&
         &rich_lvl,eq_job,disp_info,lim_loc) result(ierr)                        ! individual version
         use HDF5_utilities, only: list_all_vars_in_group, set_1D_vars
+        use num_vars, only: HDF5_lock_file_name
+        use files_utilities, only: wait_file
         
         character(*), parameter :: rout_name = 'read_HDF5_arr_ind'
         
@@ -1211,6 +1218,7 @@ contains
         integer(HSIZE_T) :: data_size                                           ! size of data set
         integer(HSIZE_T) :: n_dims                                              ! nr. of dimensions
         integer(SIZE_T) :: name_len                                             ! length of name of group
+        integer :: lock_file_i                                                  ! lock file number
         integer :: storage_type                                                 ! type of storage used in HDF5 file
         integer :: nr_lnks_head                                                 ! number of links in head group
         integer :: max_corder                                                   ! current maximum creation order value for group
@@ -1251,6 +1259,12 @@ contains
         
         ! preparation
         HDF5_kind_64 = H5kind_to_type(dp,H5_REAL_KIND)
+        
+        ! wait for file access if currently being written
+        call wait_file(lock_file_i,HDF5_lock_file_name)
+        ! immediately close the lock file, as read can be done in parallel
+        close(lock_file_i,status='DELETE',iostat=ierr)
+        CHCKERR('Failed to delete lock file')
         
         ! user output
         if (disp_info_loc) then
@@ -1348,6 +1362,7 @@ contains
             ! set up local limits
             if (present(lim_loc)) then
                 lim_loc_loc = lim_loc
+                where (lim_loc(:,2).lt.0) lim_loc_loc(:,2) = lim_tot(:,2)
             else
                 lim_loc_loc = lim_tot
             end if
@@ -1369,8 +1384,7 @@ contains
             allocate(var%p(data_size))
             
             ! set up chunk access property list
-            ierr = set_1D_vars(lim_tot,lim_loc_loc,&
-                &a_plist_id=chunk_a_plist_id)
+            ierr = set_1D_vars(lim_tot,lim_loc_loc,a_plist_id=chunk_a_plist_id)
             CHCKERR('')
             
             ! open variable dataset

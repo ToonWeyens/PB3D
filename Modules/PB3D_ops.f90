@@ -351,9 +351,10 @@ contains
         max_r_sol = dum_1D(2)
         alpha = dum_1D(3)
         norm_disc_prec_sol = nint(dum_1D(4))
-        BC_style = nint(dum_1D(5))
-        EV_style = nint(dum_1D(6))
-        EV_BC = dum_1D(7)
+        BC_style(1) = nint(dum_1D(5))
+        BC_style(2) = nint(dum_1D(6))
+        EV_style = nint(dum_1D(7))
+        EV_BC = dum_1D(8)
         deallocate(dum_1D)
         call dealloc_var_1D(var_1D)
         
@@ -843,7 +844,7 @@ contains
             
             ! set up local limits for HDF5 reconstruction
             lim_loc(:,1) = [1,1,grid_X%i_min,lim_sec_X_loc(1)]
-            lim_loc(:,2) = [loc_n_r,grid_X%n(2),grid_X%i_max,lim_sec_X_loc(2)]
+            lim_loc(:,2) = [-1,grid_X%n(2),grid_X%i_max,lim_sec_X_loc(2)]
             
             ! RE_U_0
             ierr = read_HDF5_arr(vars_1D,PB3D_name_eq,trim(data_name),&
@@ -1029,10 +1030,10 @@ contains
                 ! they are valid for a submatrix  of the total matrix; They have
                 ! been set up using the local grid_X limits as well.
                 lim_loc(:,1,1) = [1,1,grid_X%i_min,sXr_tot(1,1)]                ! lower limits for symmetric vars.
-                lim_loc(:,2,1) = [loc_n_r,grid_X%n(2),grid_X%i_max,&
+                lim_loc(:,2,1) = [-1,grid_X%n(2),grid_X%i_max,&
                     &sXr_tot(2,1)]                                              ! upper limits for symmetric vars.
                 lim_loc(:,1,2) = [1,1,grid_X%i_min,sXr_tot(1,2)]                ! lower limits for asymmetric vars.
-                lim_loc(:,2,2) = [loc_n_r,grid_X%n(2),grid_X%i_max,&
+                lim_loc(:,2,2) = [-1,grid_X%n(2),grid_X%i_max,&
                     &sXr_tot(2,2)]                                              ! upper limits for asymmetric vars.
                 
                 if (read_this(1)) then

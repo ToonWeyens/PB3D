@@ -2171,7 +2171,7 @@ contains
     !   - tensorial:    PV_int, KV_int
     !     (the non-integrated variables are heavy and not requested)
     ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
-    ! it is > 0 (only for eq_2), and similarly for "eq_job" through "_E_eq_job".
+    ! it is > 0 , and similarly for "eq_job" through "_E_eq_job".
     ! Note: Flux coordinates used as normal coordinates
     ! Note: the tensorial perturbation type can  also be used for field- aligned
     ! variables, in  which case the first  index is assumed to  have dimension 1

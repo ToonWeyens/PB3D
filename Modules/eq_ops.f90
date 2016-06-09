@@ -2219,14 +2219,9 @@ contains
                 &' constants were overriden by user. Consistency is NOT &
                 &checked!',warning=.true.)
             
-            ! user output
-            call writo('R_0    = '//trim(r2str(R_0))//' m')
-            call writo('rho_0  = '//trim(r2str(rho_0))//' kg/m^3')
-            call writo('B_0    = '//trim(r2str(B_0))//' T')
-            call writo('pres_0 = '//trim(r2str(pres_0))//' Pa')
-            call writo('psi_0  = '//trim(r2str(psi_0))//' Tm^2')
-            call writo('mu_0   = '//trim(r2str(mu_0_original))//' Tm/A')
-            call writo('T_0    = '//trim(r2str(T_0))//' s')
+            ! print constants
+            call print_normalization_const(R_0,rho_0,B_0,pres_0,psi_0,&
+                &mu_0_original,T_0)
             
             ! user output
             call lvl_ud(-1)
@@ -2255,42 +2250,28 @@ contains
         ! should be user-supplied
         subroutine calc_normalization_const_VMEC
             use num_vars, only: norm_style
-            use VMEC, only: R_V_c, B_0_V, rmax_surf, rmin_surf, pres_V, &
-                &beta_V, aspr_V
+            use VMEC, only: R_V_c, B_0_V, rmax_surf, rmin_surf, pres_V, beta_V
+            !use VMEC, only: aspr_V
             
             select case (norm_style)
-                case (1)                                                        ! COBRA
-                    ! user output
-                    call writo('Using COBRA normalization')
-                    
-                    ! set the major radius as the average geometric axis
-                    if (R_0.ge.huge(1._dp)) then                                ! user did not provide a value
-                        R_0 = 0.5_dp*(rmin_surf+rmax_surf)
-                    else
-                        nr_overriden_const = nr_overriden_const + 1
-                    end if
-                    
-                    ! set pres_0 from pressure on axis
-                    if (pres_0.ge.huge(1._dp)) then                             ! user did not provide a value
-                        pres_0 = pres_V(1)
-                    else
-                        nr_overriden_const = nr_overriden_const + 1
-                    end if
-                    
-                    ! set the reference value for B_0 from pres_0 and beta
-                    if (B_0.ge.huge(1._dp)) then                                ! user did not provide a value
-                        B_0 = sqrt(2._dp*pres_0*mu_0_original/beta_V)
-                    else
-                        nr_overriden_const = nr_overriden_const + 1
-                    end if
-                    
-                    ! set reference flux from R_0, B_0 and aspr
-                    if (psi_0.ge.huge(1._dp)) then                              ! user did not provide a value
-                        psi_0 = B_0 * (R_0/aspr_V)**2
-                    else
-                        nr_overriden_const = nr_overriden_const + 1
-                    end if
-                case (2)                                                        ! MISHKA
+                ! Note that PB3D does not run with the exact COBRA normalization
+                ! (for style 2), as it is not a pure nondimensionalization, that
+                ! would  modify the  equations by  intrucing extra  factors. The
+                ! diffference between the COBRA  normalization used here and the
+                ! one used in COBRA is given by:
+                !   - B_0 = sqrt(pres_0 mu_0) here
+                !       versus
+                !     B_0 = sqrt(2 pres_0 mu_0 / beta) in COBRA,
+                !   - psi_0 = B_0 R_0^2 here
+                !       versus
+                !     psi_0 = B_0 (R_0/aspr)^2 in COBRA,
+                ! This results in a difference in the factor T_0:
+                !   - T_0 = sqrt(rho_0/pres_0) R_0 here
+                !       versus
+                !     T_0 = sqrt(rho_0/pres_0) R_0 sqrt(beta/2) in COBRA.
+                ! Therefore, the Eigenvalues here should be rescaled as
+                !   - EV_COBRA = EV_PB3D beta/2. This is done automatically.
+                case (1)                                                        ! MISHKA
                     ! user output
                     call writo('Using MISHKA normalization')
                     
@@ -2322,6 +2303,50 @@ contains
                     else
                         nr_overriden_const = nr_overriden_const + 1
                     end if
+                case (2)                                                        ! COBRA
+                    ! user output
+                    call writo('Using COBRA normalization')
+                    
+                    ! set the major radius as the average geometric axis
+                    if (R_0.ge.huge(1._dp)) then                                ! user did not provide a value
+                        R_0 = 0.5_dp*(rmin_surf+rmax_surf)
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set pres_0 from pressure on axis
+                    if (pres_0.ge.huge(1._dp)) then                             ! user did not provide a value
+                        pres_0 = pres_V(1)
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set the reference value for B_0 from pres_0 and beta
+                    if (B_0.ge.huge(1._dp)) then                                ! user did not provide a value
+                        !B_0 = sqrt(2._dp*pres_0*mu_0_original/beta_V)          ! exact COBRA
+                        B_0 = sqrt(pres_0*mu_0_original)                        ! pure modified COBRA
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set reference flux from R_0, B_0 and aspr
+                    if (psi_0.ge.huge(1._dp)) then                              ! user did not provide a value
+                        !psi_0 = B_0 * (R_0/aspr_V)**2                          ! exact COBRA
+                        psi_0 = B_0 * R_0**2                                    ! pure modified COBRA
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! user output concerning pure modified COBRA
+                    call writo('Exact COBRA normalization is substituted by &
+                        &"pure", modified version',warning=.true.)
+                    call writo('This leaves the equations unmodified',&
+                        &alert=.true.)
+                    call writo('To translate to exact COBRA, manually multiply &
+                        &PB3D Eigenvalues by',alert=.true.)
+                    call lvl_ud(1)
+                    call writo(trim(r2str(beta_V/2)),alert=.true.)
+                    call lvl_ud(-1)
             end select
             
             ! rho_0 is set up through an input variable with the same name
@@ -2363,6 +2388,32 @@ contains
             end if
             if (T_0.ge.huge(1._dp)) T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0     ! only if user did not provide a value
         end subroutine calc_normalization_const_HEL
+        
+        ! prints the Normalization factors
+        subroutine print_normalization_const(R_0,rho_0,B_0,pres_0,psi_0,&
+            &mu_0,T_0)
+            ! input / output
+            real(dp), intent(in), optional :: R_0
+            real(dp), intent(in), optional :: rho_0
+            real(dp), intent(in), optional :: B_0
+            real(dp), intent(in), optional :: pres_0
+            real(dp), intent(in), optional :: psi_0
+            real(dp), intent(in), optional :: mu_0
+            real(dp), intent(in), optional :: T_0
+            
+            ! user output
+            if (present(R_0)) call writo('R_0    = '//trim(r2str(R_0))//' m')
+            if (present(rho_0)) call writo('rho_0  = '//trim(r2str(rho_0))//&
+                &' kg/m^3')
+            if (present(B_0)) call writo('B_0    = '//trim(r2str(B_0))//' T')
+            if (present(pres_0)) call writo('pres_0 = '//trim(r2str(pres_0))//&
+                &' Pa')
+            if (present(psi_0)) call writo('psi_0  = '//trim(r2str(psi_0))//&
+                &' Tm^2')
+            if (present(mu_0)) call writo('mu_0   = '//&
+                &trim(r2str(mu_0))//' Tm/A')
+            if (present(T_0)) call writo('T_0    = '//trim(r2str(T_0))//' s')
+        end subroutine print_normalization_const
     end subroutine calc_normalization_const
     
     ! Normalize input quantities.

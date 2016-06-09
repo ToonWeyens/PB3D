@@ -237,7 +237,7 @@ contains
             rho_style = 1                                                       ! constant pressure profile, equal to rho_0
             U_style = 3                                                         ! full expression for U, up to order 3
             K_style = 1                                                         ! perpendicular kinetic energy normalized
-            norm_style = 1                                                      ! COBRA normalization
+            norm_style = 1                                                      ! MISHKA normalization
             BC_style = [1,2]                                                    ! left BC zeroed and right BC through minimization of energy
             X_style = 2                                                         ! fast style: mode numbers optimized in normal coordinate
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
@@ -1178,12 +1178,12 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [7]
+        in_1D_loc%loc_i_max = [8]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(7))
+        allocate(in_1D_loc%p(8))
         in_1D_loc%p = [min_r_sol,max_r_sol,alpha,norm_disc_prec_sol*1._dp,&
-            &BC_style*1._dp,EV_style*1._dp,EV_BC]
+            &BC_style(1)*1._dp,BC_style(2)*1._dp,EV_style*1._dp,EV_BC]
         
         ! write
         ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,trim(data_name))

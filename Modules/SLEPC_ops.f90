@@ -839,7 +839,7 @@ contains
     ! At the plasma surface, the surface energy is minimized as in [ADD REF].
     integer function set_BC(grid_sol,X,A,B,i_geo,n_sol,norm_disc_coeff) &
         &result(ierr)
-        use num_vars, only: norm_disc_prec_sol, BC_style
+        use num_vars, only: norm_disc_prec_sol, BC_style, EV_BC
         use X_vars, only: n_mod_X
         use MPI_utilities, only: get_ser_var, wait_MPI
         use num_utilities, only: con, c
@@ -911,6 +911,7 @@ contains
         
         call writo('Setting BC deep within plasma')
         call lvl_ud(1)
+        call writo('Using artificial eigenvalue EV_BC = '//trim(r2strt(EV_BC)))
         
         ! iterate over all positions where to set left BC
         do kd = 1,n_min
@@ -999,7 +1000,7 @@ contains
         !   A(ind+1..ind+p,ind+1..ind+p) = 0, B(ind+1..ind+p,ind+1..ind+p) = 0,
         ! where ind indicates the row where the BC is centered.
         integer function set_BC_1(r_id,A,B,BC_right) result(ierr)
-            use num_vars, only: EV_BC, norm_disc_prec_sol
+            use num_vars, only: norm_disc_prec_sol
             
             character(*), parameter :: rout_name = 'set_BC_1'
             

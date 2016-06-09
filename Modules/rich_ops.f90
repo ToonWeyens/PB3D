@@ -537,7 +537,7 @@ contains
         end do
         max_lvl_rich_file = ir-2                                                ! -2 because there will be one additional iteration
         
-        ! set ukp minim_output
+        ! set up minim_output
         if (present(minim_output)) then
             select case(eq_style)
                 case (1)                                                        ! VMEC
