@@ -1518,8 +1518,12 @@ contains
         
         ! set maximum nr of solutions to be saved
         if (n_sol_requested.gt.n_conv) then
-            call writo('max. nr. of solutions found only '//&
-                &trim(i2str(n_conv)),warning=.true.)
+            if (n_conv.eq.0) then
+                call writo('no solutions found',warning=.true.)
+            else
+                call writo('max. nr. of solutions found only '//&
+                    &trim(i2str(n_conv)),warning=.true.)
+            end if
             max_n_EV = n_conv
         else
             max_n_EV = n_sol_requested
@@ -1607,7 +1611,7 @@ contains
         n_err = 0
         EV_err_str = ''
         if (rank.eq.0) then
-            n_digits = ceiling(log10(1._dp*max_n_EV))
+            n_digits = min(ceiling(log10(1._dp*max_n_EV)),16)
             format_val = '(I'//trim(i2str(n_digits))//'," ",ES23.16," ",&
                 &ES23.16," ",ES23.16)'
             format_head = '(A'//trim(i2str(n_digits+3))//'," ",A23," ",A23," ",&

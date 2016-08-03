@@ -49,8 +49,8 @@ module num_vars
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
     integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
-    real(dp), parameter :: prog_version = 1.29_dp                               ! version number
-    real(dp), parameter :: min_PB3D_version = 1.25_dp                           ! minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 1.30_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.30_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
     integer :: rank                                                             ! MPI rank

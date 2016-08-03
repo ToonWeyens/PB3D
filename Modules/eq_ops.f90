@@ -255,7 +255,8 @@ contains
         ! HELENA version
         ! The HELENA normal coord. is the poloidal flux divided by 2pi
         integer function calc_flux_q_HEL() result(ierr)
-            use HELENA_vars, only: qs_H, flux_p_H, pres_H
+            use HELENA_vars, only: qs_H, flux_p_H, flux_t_H, Dflux_p_H, &
+                &Dflux_t_H, pres_H
             use num_utilities, only: calc_int
             
             character(*), parameter :: rout_name = 'calc_flux_q_HEL'
@@ -283,19 +284,18 @@ contains
             
             ! calculate derivatives of poloidal flux
             flux_p_E_full(:,0) = flux_p_H
-            do kd = 1,max_deriv+1
+            flux_p_E_full(:,1) = Dflux_p_H
+            do kd = 2,max_deriv+1
                 ierr = apply_disc(flux_p_E_full(:,0),norm_deriv_data(kd),&
                     &flux_p_E_full(:,kd))
                 CHCKERR('')
             end do
             
             ! calculate toroidal flux and derivatives
-            flux_t_E_full(:,1) = qs_H*flux_p_E_full(:,1)
-            ierr = calc_int(flux_t_E_full(:,1),flux_p_H/(2*pi),&
-                &flux_t_E_full(:,0))
-            CHCKERR('')
+            flux_t_E_full(:,0) = flux_t_H
+            flux_t_E_full(:,1) = Dflux_t_H
             do kd = 2,max_deriv+1
-                ierr = apply_disc(flux_t_E_full(:,1),norm_deriv_data(kd-1),&
+                ierr = apply_disc(flux_t_E_full(:,0),norm_deriv_data(kd),&
                     &flux_t_E_full(:,kd))
                 CHCKERR('')
             end do
@@ -342,12 +342,20 @@ contains
         ! plots flux quantities in file for VMEC port
         subroutine write_flux_q_in_file_for_VMEC()
             use eq_vars, only: pres_0
+            use grid_vars, only: n_r_eq
+            use HELENA_vars, only: nchi, R_H, Z_H, ias
             use files_utilities, only: nextunit
             
             ! local variables
-            integer :: kd                                                       ! counter
+            integer :: id, kd                                                   ! counters
             integer :: file_i                                                   ! file to output flux quantities for VMEC export
+            integer :: n_F                                                      ! nr. of points in Fourier series
+            integer :: m_F                                                      ! nr. of modes
             character(len=max_str_ln) :: file_name                              ! name of file
+            character(len=3) :: plot_name(2)                                    ! name of plot
+            real(dp), allocatable :: work(:,:)                                  ! work array
+            real(dp), allocatable :: RZ_F(:,:)                                  ! fourier series of R and Z
+            real(dp), allocatable :: RZ_F_ind(:,:)                              ! cosine and sine of fourier series
             
             file_name = 'flux_quantities.dat'
             
@@ -358,13 +366,13 @@ contains
             write(file_i,*) '# for export to VMEC'
             write(file_i,*) '# ------------------'
             write(file_i,*) '# total enclosed toroidal flux: ', &
-                &flux_t_E_full(grid_eq%n(3),0)
+                &-flux_t_E_full(grid_eq%n(3),0)
             write(file_i,*) '#'
             write(file_i,*) '# pressure and rotational transform for 2D plot'
             do kd = 1,grid_eq%n(3)
                 write(file_i,'(ES23.16,A,ES23.16,A,ES23.16)') &
                     &flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0), ' ', &
-                    &pres_E_full(kd,0)*pres_0, ' ', rot_t_E_full(kd,0)
+                    &pres_E_full(kd,0)*pres_0, ' ', -rot_t_E_full(kd,0)
             end do
             write(file_i,*) ''
             write(file_i,*) ''
@@ -384,7 +392,7 @@ contains
             write(file_i,*) ''
             write(file_i,*) '# rotational transform'
             do kd = 1,grid_eq%n(3)
-                write(file_i,'(ES23.16)') rot_t_E_full(kd,0)
+                write(file_i,'(ES23.16)') -rot_t_E_full(kd,0)
             end do
             write(file_i,*) ''
             write(file_i,*) ''
@@ -404,7 +412,91 @@ contains
             write(file_i,*) ''
             write(file_i,*) '# rotational transform once every 4 values'
             do kd = 0,(grid_eq%n(3)-1)/4
-                write(file_i,'(ES23.16)') rot_t_E_full(1+kd*4,0)
+                write(file_i,'(ES23.16)') -rot_t_E_full(1+kd*4,0)
+            end do
+            
+            ! Fourier transform of boundary R and Z
+            if (ias.eq.0) then                                                  ! symmetric
+                n_F = nchi*2-2
+            else                                                                ! asymmetric
+                n_F  = nchi-1
+            end if
+            m_F = (n_F-1)/2                                                     ! nr. of modes
+            allocate(work(3*n_F+15,2))                                          ! from manual
+            allocate(RZ_F(n_F,2))                                               ! will contain DF coeffs.
+            allocate(RZ_F_ind(m_F,2))                                           ! DF coeffs of cosine and sine individually
+            if (ias.eq.0) then                                                  ! symmetric
+                RZ_F(1:nchi,1) = R_H(:,n_r_eq)
+                RZ_F(1:nchi,2) = Z_H(:,n_r_eq)
+                do kd = 1,nchi-2
+                    RZ_F(nchi+kd,:) = [R_H(nchi-kd,n_r_eq),-Z_H(nchi-kd,n_r_eq)]
+                end do
+            else
+                RZ_F(1:nchi-1,1) = R_H(1:nchi-1,n_r_eq)
+                RZ_F(1:nchi-1,2) = Z_H(1:nchi-1,n_r_eq)
+            end if
+            !do kd = 1,n_F
+                !RZ_F(kd,1) = &
+                    !&3*cos((kd-1._dp)/n_F*2*pi*1)+&
+                    !&0.5+cos((kd-1._dp)/n_F*2*pi*255)+&
+                    !&1.5*cos((kd-1._dp)/n_F*2*pi*256)+&
+                    !&4*sin((kd-1._dp)/n_F*2*pi*1)+&
+                    !&2*sin((kd-1._dp)/n_F*2*pi*254)+&
+                    !&4.5*sin((kd-1._dp)/n_F*2*pi*255)
+            !end do
+            plot_name(1) = 'R_F'
+            plot_name(2) = 'Z_F'
+            do kd = 1,2
+                ! user output
+                call writo('analyzing '//plot_name(kd))
+                call lvl_ud(1)
+                ! FFT
+                call dffti(n_F,work(:,kd))
+                call dfftf(n_F,RZ_F(:,kd),work(:,kd))
+                ! rescale
+                RZ_F(:,kd) = RZ_F(:,kd)*2/n_F
+                RZ_F(1,kd) = RZ_F(1,kd)/2
+                call writo('DC value = '//trim(r2str(RZ_F(1,kd))))
+                ! separate cos and sine
+                RZ_F_ind(:,1) = RZ_F(2:2*m_F:2,kd)
+                RZ_F_ind(:,2) = -RZ_F(3:2*m_F+1:2,kd)                           ! routine returns - sine factors
+                ! output cos and sine
+                call print_GP_2D(plot_name(kd),plot_name(kd),&
+                    &log10(abs(RZ_F_ind)),draw=.false.)
+                call draw_GP(plot_name(kd),plot_name(kd),plot_name(kd),2,1,&
+                    &.false.)
+                ! multiply by mode number
+                do id = 1,m_F
+                    RZ_F_ind(id,:) = RZ_F_ind(id,:)*id
+                end do
+                ! output cos and sine, multiplied by mode number
+                call print_GP_2D(plot_name(kd)//'_m',plot_name(kd)//'_m',&
+                    &log10(abs(RZ_F_ind)),draw=.false.)
+                call draw_GP(plot_name(kd)//'_m',plot_name(kd)//'_m',&
+                    &plot_name(kd)//'_m',2,1,.false.)
+                call lvl_ud(-1)
+            end do
+            write(file_i,*) ''
+            write(file_i,*) ''
+            write(file_i,*) '# cos and sine factors for R_H'
+            write(file_i,'(A6,I4,A4,ES23.16,A9,I4,A4,ES23.16)') &
+                &'RBC(0,',0,') = ',RZ_F(1,1),&
+                &'   RBS(0,',0,') = ',0._dp
+            do kd = 1,m_F
+                write(file_i,'(A6,I4,A4,ES23.16,A9,I4,A4,ES23.16)') &
+                    &'RBC(0,',kd,') = ',RZ_F(2*kd,1),&
+                    &'   RBS(0,',kd,') = ',-RZ_F(2*kd+1,1)                      ! routine returns - sine factors
+            end do
+            write(file_i,*) ''
+            write(file_i,*) ''
+            write(file_i,*) '# cos and sine factors for Z_H'
+            write(file_i,'(A6,I4,A4,ES23.16,A9,I4,A4,ES23.16)') &
+                &'ZBC(0,',0,') = ',RZ_F(1,2),&
+                &'   ZBS(0,',0,') = ',0._dp
+            do kd = 1,m_F
+                write(file_i,'(A6,I4,A4,ES23.16,A9,I4,A4,ES23.16)') &
+                    &'ZBC(0,',kd,') = ',RZ_F(2*kd,2),&
+                    &'   ZBS(0,',kd,') = ',-RZ_F(2*kd+1,2)                      ! routine returns - sine factors
             end do
             
             ! close file
@@ -2233,19 +2325,19 @@ contains
     contains 
         ! VMEC version
         ! Normalization depends on style:
-        !   1: COBRA
+        !   1: MISHKA
+        !       R_0:    major radius (= average magnetic axis)
+        !       B_0:    B on magnetic axis (theta = zeta = 0)
+        !       pres_0: reference pressure (= B_0^2/mu_0)
+        !       psi_0:  reference flux (= R_0^2 B_0)
+        !       rho_0:  reference mass density
+        !   2: COBRA
         !       R_0:    major radius (= average geometric axis)
         !       pres_0: pressure on magnetic axis
         !       B_0:    reference magnetic field (= sqrt(2pres_0mu_0 / beta))
         !       psi_0:  reference flux (= R_0^2 B_0 / aspr^2)
         !       rho_0:  reference mass density
         !   where aspr (aspect ratio) and beta are given by VMEC.
-        !   2: MISHKA
-        !       R_0:    major radius (= average magnetic axis)
-        !       B_0:    B on magnetic axis (theta = zeta = 0)
-        !       pres_0: reference pressure (= B_0^2/mu_0)
-        !       psi_0:  reference flux (= R_0^2 B_0)
-        !       rho_0:  reference mass density
         ! Note that  rho_0 is  not given  through by  the equilibrium  codes and
         ! should be user-supplied
         subroutine calc_normalization_const_VMEC

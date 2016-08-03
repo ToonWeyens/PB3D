@@ -89,9 +89,8 @@ contains
                     ierr = 1
                     CHCKERR('Incorrect variables provided.')
                 end if
-                ierr = calc_norm_range_POST(eq_limits,X_limits,sol_limits,&
-                    &r_F_eq,r_F_sol)
-                CHCKERR('')
+                call calc_norm_range_POST(eq_limits,X_limits,sol_limits,r_F_eq,&
+                    &r_F_sol)
         end select
     contains
         ! The normal  range is calculated by  finding the tightest range  of the
@@ -314,11 +313,9 @@ contains
         
         ! The normal range is determined  by simply dividing the solution range,
         ! including a ghost range and getting a bounding equilibrium range.
-        integer function calc_norm_range_POST(eq_limits,X_limits,sol_limits,&
-            &r_F_eq,r_F_sol) result(ierr)                                       ! POST version
+        subroutine calc_norm_range_POST(eq_limits,X_limits,sol_limits,r_F_eq,&
+            &r_F_sol)                                                           ! POST version
             use num_vars, only: n_procs, rank, norm_disc_prec_sol
-            
-            character(*), parameter :: rout_name = 'calc_norm_range_POST'
             
             ! input / output
             integer, intent(inout) :: eq_limits(2), X_limits(2), sol_limits(2)  ! min. and max. index of eq, X and sol grid for this process
@@ -330,7 +327,6 @@ contains
             integer :: id                                                       ! counter
             real(dp) :: min_sol, max_sol                                        ! min. and max. of r_F_sol in range of this process
             real(dp), parameter :: tol = 1.E-6                                  ! tolerance for grids
-            character(len=max_str_ln) :: err_msg                                ! error message
             
             ! initialize ierr
             ierr = 0
@@ -354,7 +350,7 @@ contains
             max_sol = maxval(r_F_sol(sol_limits(1):sol_limits(2)))
             
             ! determine eq_limits: smallest eq range comprising sol range
-            eq_limits = [0,n_r_eq+1]                                            ! initialize out of range
+            eq_limits = [1,n_r_eq]                                              ! initialize out of range
             if (r_F_eq(1).lt.r_F_eq(n_r_eq)) then                               ! ascending r_F_eq
                 do id = 1,n_r_eq
                     if (r_F_eq(id).le.min_sol-tol) eq_limits(1) = id            ! move lower limit up
@@ -369,16 +365,9 @@ contains
                 end do
             end if
             
-            ! check if valid limits found
-            if (eq_limits(1).lt.1 .or. eq_limits(2).gt.n_r_eq) then
-                ierr = 1
-                err_msg = 'Solution range not contained in equilibrium range'
-                CHCKERR(err_msg)
-            end if
-            
             ! copy solution range to perturbation range
             X_limits = sol_limits
-        end function calc_norm_range_POST
+        end subroutine calc_norm_range_POST
     end function calc_norm_range
 
     ! Sets up the general equilibrium grid, in which the following variables are

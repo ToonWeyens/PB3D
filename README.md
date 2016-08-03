@@ -503,3 +503,12 @@ CHANGELOG
       - Reading HDF5 files now also checks for the lock file that indicates the file might be being written at the time.
       - Fixed a bug in the writing and reading of BC_style, which is an array of size 2, not a scalar.
       - Cleared confusion about COBRA normalization and fixed the erroneous situation that called for modification of the equations.
+
+1.30: - "minim_output" is now also possible for POST.
+      - Tweaked setting up of guess using now a tolerance.
+      - Fixed a bug considering plotting the grid from HELENA equilibria.
+      - Fixed a bug determining the normal range in POST.
+      - Changed the output of the modes at midplane to use lines, not points.
+      - Updated "write_flux_q_in_file_for_VMEC" to also give the Fourier coefficients of the boundary shape.
+      - read_HEL now calculates the toroidal flux on the full grid.
+      - Moved read_HEL to HELENA_ops, as it needs grid utilities.

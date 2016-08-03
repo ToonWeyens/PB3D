@@ -16,14 +16,14 @@ module driver_eq
     
     ! global variables
 #if ldebug
-    logical :: plot_info= .false.                                               ! plot information for comparison with HELENA
+    logical :: plot_info = .false.                                              ! plot information for comparison with HELENA
 #endif
     
 contains
     ! Main driver of PB3D equilibrium part.
     integer function run_driver_eq() result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
-            &plot_magn_grid, eq_job_nr
+            &plot_magn_grid, eq_job_nr, eq_jobs_lims
         use MPI_utilities, only: wait_MPI
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot
         use sol_vars, only: alpha
@@ -47,7 +47,6 @@ contains
         logical :: only_half_grid                                               ! calculate only half grid
         logical :: dealloc_vars = .true.                                        ! whether to deallocate variables to save memory
         character(len=max_str_ln) :: grid_eq_B_name                             ! name of grid_eq_B
-        integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
         
         ! initialize ierr
         ierr = 0
@@ -214,7 +213,7 @@ contains
         call lvl_ud(-1)
         
         ! plot full field-aligned grid if requested
-        if (plot_magn_grid) then
+        if (plot_magn_grid .and. eq_job_nr.eq.size(eq_jobs_lims,2)) then
             ! allocate
             allocate(grid_eq_B)
             
@@ -222,15 +221,13 @@ contains
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     grid_eq_B_name = 'eq'                                       ! already field-aligned
-                    rich_lvl_name = rich_lvl                                    ! append richardson level
                 case (2)                                                        ! HELENA
                     grid_eq_B_name = 'eq_B'                                     ! not already field-aligned
-                    rich_lvl_name = 0                                           ! do not append name
             end select
             
             ! reconstruct the full field-aligned grid
             ierr = reconstruct_PB3D_grid(grid_eq_B,trim(grid_eq_B_name),&
-                &rich_lvl=rich_lvl_name,tot_rich=.true.)
+                &rich_lvl=rich_lvl,tot_rich=.true.)
             CHCKERR('')
             
             ! plot it

@@ -1,5 +1,8 @@
 !------------------------------------------------------------------------------!
 !   Operations on PB3D output.                                                 !
+!   Note: If you have parallel jobs, if the reconstruction routines are called !
+!   for  multiple equilibrium  jobs,  this can  only be  done  after the  last !
+!   equilibrium job is finished. There are no checks for this.                 !
 !------------------------------------------------------------------------------!
 module PB3D_ops
 #include <PB3D_macros.h>
@@ -44,8 +47,8 @@ contains
         use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
             &n_mod_X
         use sol_vars, only: alpha
-        use HELENA_vars, only: chi_H, flux_p_H, R_H, Z_H, nchi, ias, qs_H, &
-            &pres_H, RBphi_H
+        use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, Dflux_p_H, &
+            &Dflux_t_H, R_H, Z_H, nchi, ias, qs_H, pres_H, RBphi_H
         use VMEC, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, gam_V, &
             &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V, rot_t_V, &
             &pres_V, flux_t_V, Dflux_t_V, flux_p_V, Dflux_p_V, nfp_V
@@ -282,6 +285,36 @@ contains
                 deallocate(dum_1D)
                 call dealloc_var_1D(var_1D)
                 
+                ! flux_t_H
+                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                    &'flux_t_H')
+                CHCKERR('')
+                call conv_1D2ND(var_1D,dum_1D)
+                allocate(flux_t_H(n_r_eq))
+                flux_t_H = dum_1D
+                deallocate(dum_1D)
+                call dealloc_var_1D(var_1D)
+                
+                ! Dflux_p_H
+                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                    &'Dflux_p_H')
+                CHCKERR('')
+                call conv_1D2ND(var_1D,dum_1D)
+                allocate(Dflux_p_H(n_r_eq))
+                Dflux_p_H = dum_1D
+                deallocate(dum_1D)
+                call dealloc_var_1D(var_1D)
+                
+                ! Dflux_t_H
+                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                    &'Dflux_t_H')
+                CHCKERR('')
+                call conv_1D2ND(var_1D,dum_1D)
+                allocate(Dflux_t_H(n_r_eq))
+                Dflux_t_H = dum_1D
+                deallocate(dum_1D)
+                call dealloc_var_1D(var_1D)
+                
                 ! qs_H
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'qs_H')
                 CHCKERR('')
@@ -427,9 +460,9 @@ contains
         
         ! setup rich_id and eq_id
         rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
-#if ldebug
         eq_id = setup_eq_id('grid_'//trim(data_name),eq_job=eq_job,&
             &rich_lvl=rich_lvl)
+#if ldebug
         if (minval(eq_id).lt.0) then
             ierr = 1
             err_msg = 'Variable "grid_'//trim(data_name)//'" not found, nor &

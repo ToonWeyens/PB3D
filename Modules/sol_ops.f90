@@ -459,11 +459,13 @@ contains
                     &realpart(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
                 
                 ! plot in file
-                call draw_GP(plot_title,file_name,file_name,n_mod_tot,1,.false.)
+                call draw_GP(plot_title,file_name,file_name,n_mod_tot,1,&
+                    &.false.,draw_ops='with lines')
                 
                 ! plot in file using decoupled 3D in GNUPlot
                 call draw_GP(trim(plot_title)//' - 3D',file_name,&
-                    &trim(file_name)//'_3D',n_mod_tot,3,.false.)
+                    &trim(file_name)//'_3D',n_mod_tot,3,.false.,&
+                    &draw_ops='with lines')
                 
                 ! plot using HDF5
                 call plot_HDF5(trim(plot_title),trim(file_name),&
@@ -487,12 +489,14 @@ contains
                     &imagpart(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
                 
                 ! plot in file
-                call draw_GP(plot_title,file_name,file_name,n_mod_tot,1,.false.)
+                call draw_GP(plot_title,file_name,file_name,n_mod_tot,1,&
+                    &.false.,draw_ops='with lines')
                 
                 ! plot in file using decoupled 3D in GNUPlot if not too big
                 if (n_mod_tot*grid_sol%n(3).le.GP_max_size) then
                     call draw_GP(trim(plot_title)//' - 3D',file_name,&
-                        &trim(file_name)//'_3D',n_mod_tot,3,.false.)
+                        &trim(file_name)//'_3D',n_mod_tot,3,.false.,&
+                        &draw_ops='with lines')
                 end if
                 
                 ! plot using HDF5
@@ -523,12 +527,14 @@ contains
                     &draw=.false.)
                 
                 ! plot in file
-                call draw_GP(plot_title,file_name,file_name,n_mod_tot,1,.false.)
+                call draw_GP(plot_title,file_name,file_name,n_mod_tot,1,&
+                    &.false.,draw_ops='with lines')
                 
                 ! plot in file using decoupled 3D in GNUPlot if not too big
                 if (n_mod_tot*grid_sol%n(3).le.GP_max_size) then
                     call draw_GP(trim(plot_title)//' - 3D',file_name,&
-                        &trim(file_name)//'_3D',n_mod_tot,3,.false.)
+                        &trim(file_name)//'_3D',n_mod_tot,3,.false.,&
+                        &draw_ops='with lines')
                 end if
                 
                 ! plot using HDF5

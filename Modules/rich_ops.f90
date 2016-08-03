@@ -418,10 +418,13 @@ contains
         ! Decides whether  a guess should be used in  a possible next Richardson
         ! level.
         subroutine set_guess()
+            ! local variables
+            real(dp), parameter :: tol = 5._dp                                  ! tolerance for increase of error
+            
             ! decide on guess
             if (rich_lvl.ge.3) then                                             ! start from level 3
                 use_guess = max_rel_err(rich_lvl-1).lt.&
-                    &max_rel_err(rich_lvl-2)                                    ! set guess for next level to true if max_rel_err is decreasing
+                    &tol*max_rel_err(rich_lvl-2)                                ! set guess for next level to true if max_rel_err is decreasing
             else
                 use_guess = .true.                                              ! for first Richardson level, set guess for next level to true
             end if

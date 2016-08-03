@@ -482,6 +482,11 @@ contains
                 ierr = calc_XYZ_grid(grid_eq,grid_X_out,XYZ_out(:,:,:,1),&
                     &XYZ_out(:,:,:,2),XYZ_out(:,:,:,3))
                 CHCKERR('')
+                !!! To plot the cross-section
+                !!call print_GP_2D('cross_section','cross_section',&
+                    !!&XYZ_out(:,1,:,3),x=XYZ_out(:,1,:,1),draw=.false.)
+                !!call draw_GP('cross_section','cross_section','cross_section',&
+                    !!&size(XYZ_out,3),1,.false.)
             end if
             
             ! deallocate memory-thirsty trigonometric factors

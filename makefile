@@ -60,7 +60,7 @@ NETCDF_lib = /opt/NetCDF-4.4.0/NetCDF/lib# laptop 4.4.0
 NETCDF_inc = /opt/NetCDF-4.4.0/NetCDF/include/#laptop 4.4.0
 
 # Add "Modules" to the search path for the prerequisites
-VPATH = Modules
+VPATH = Modules:Libraries
 
 # Contains list of source files (.o) and dependencies
 DEPLIST = PB3D.dep
@@ -92,7 +92,7 @@ COMPILE = $(COMP_DIR) $(COMP_INC) $(PETSC_FC_INCLUDES) $(SLEPC_INCLUDE) $(COMP_F
 LINK_FLAGS = -fPIC -pg
 
 # libraries
-LINK_LIB = $(HOME_BIN)/libstell.a -lgfortran -llapack -lblas \
+LINK_LIB = $(HOME_BIN)/libstell.a libdfftpack.a -lgfortran -llapack -lblas \
 	$(HDF5_lib)/libhdf5_fortran.a $(HDF5_lib)/libhdf5.a -L$(NETCDF_lib) -lnetcdf -lnetcdff  \
 	-Wl,-R$(NETCDF_lib) -lz -lpthread -ldl -lm# -Wl,-R[PATH] to set to default search path http://superuser.com/questions/192573/how-do-you-specify-the-location-of-libraries-to-a-binary-linux)
 
@@ -104,14 +104,20 @@ LINK    = $(LINK_DIR) $(LINK_FLAGS)
 ##############################################################################
 all:	PB3D POST
 
-PB3D:	$(ObjectFiles) PB3D.o
+PB3D:	$(ObjectFiles) libdfftpack.a PB3D.o
 	$(LINK) -o $@ $(ObjectFiles) PB3D.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
 POST:	$(ObjectFiles) POST.o
 	$(LINK) -o $@ $(ObjectFiles) POST.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
+libdfftpack: 	$(ObjectFiles_dfftpack)
+	ar -rcs libdfftpack.a $(ObjectFiles_dfftpack)
+
 %.o : %.f90
 	$(COMPILE) -c $<
+
+%.o : %.f
+	gfortran -O2 -funroll-loops -fexpensive-optimizations -c $<
 
 clean:
 	@rm -f *.o *.mod *~ fort.* 

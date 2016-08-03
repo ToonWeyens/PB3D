@@ -31,7 +31,6 @@ contains
                 allocate(opt_args(16), inc_args(16))
                 opt_args = ''
                 inc_args = 0
-                opt_args(7) = '--minim_output'
                 opt_args(8) = '--no_guess'
                 opt_args(9) = '--jump_to_sol'
                 opt_args(10) = '-st_pc_factor_shift_type'
@@ -41,11 +40,11 @@ contains
                 opt_args(14) = '-eps_tol'
                 opt_args(15) = '-eps_ncv'
                 opt_args(16) = '-eps_mpd'
-                inc_args(7:16) = [0,0,0,1,1,1,0,1,1,1]
+                inc_args(8:16) = [0,0,1,1,1,0,1,1,1]
             case(2)                                                             ! POST
-                allocate(opt_args(7), inc_args(7))
+                allocate(opt_args(8), inc_args(8))
                 opt_args = ''
-                opt_args(7) = '--swap_angles'
+                opt_args(8) = '--swap_angles'
                 inc_args = 0
         end select
         
@@ -58,7 +57,8 @@ contains
         opt_args(4) = '--no_output'
         opt_args(5) = '--do_execute_command_line'
         opt_args(6) = '--mem_info'
-        inc_args(1:6) = [0,0,0,0,0,0]
+        opt_args(7) = '--minim_output'
+        inc_args(1:7) = [0,0,0,0,0,0,0]
     end subroutine init_files
 
     ! parses the command line arguments
@@ -419,7 +419,11 @@ contains
             integer, intent(in) :: opt_nr                                       ! option number
             
             select case(opt_nr)
-                case (7)                                                        ! disable guessing Eigenfunction from previous Richardson level
+                case (7)                                                        ! minimize output file size by not writing variables on eq grid
+                    call writo('option minim_output chosen: non-minimal plots &
+                        &not performed')
+                    minim_output = .true.
+                case (8)                                                        ! disable guessing Eigenfunction from previous Richardson level
                     call writo('option swap_angles chosen: theta and zeta are &
                         &swapped in plots')
                     swap_angles = .true.

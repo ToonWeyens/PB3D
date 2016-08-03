@@ -366,6 +366,7 @@ input_ops.o : \
     MPI_utilities.o \
     rich_vars.o \
     rich_ops.o \
+    HELENA_ops.o \
 
 files_ops.o : \
     num_vars.o \

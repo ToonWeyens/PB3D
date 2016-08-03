@@ -291,6 +291,9 @@ contains
             
             character(*), parameter :: rout_name = 'default_input_POST'
             
+            ! local variables
+            logical :: PB3D_minim_output                                        ! minim_output from PB3D
+            
             ! initialize ierr
             ierr = 0
             
@@ -309,13 +312,14 @@ contains
             slab_plots = .false.                                                ! normal plots on 3D geometry
             
             ! Richardson variables
-            ierr = find_max_rich_lvl(PB3D_rich_lvl,minim_output)                ! get highest Richardson level found and set minim_output
+            ierr = find_max_rich_lvl(PB3D_rich_lvl,PB3D_minim_output)           ! get highest Richardson level found and set minim_output
             CHCKERR('')
             if (PB3D_rich_lvl.le.0) then
                 ierr = 1
                 err_msg = 'No suitable Richardson level found'
                 CHCKERR(err_msg)
             end if
+            if (.not.minim_output) minim_output = PB3D_minim_output             ! only if user chose not minimimal output
             call writo('Maximum Richardson level found: '//&
                 &trim(i2str(PB3D_rich_lvl)))
             
@@ -763,7 +767,7 @@ contains
     integer function read_input_eq() result(ierr)
         use num_vars, only: eq_style, use_pol_flux_E, eq_i
         use VMEC, only: read_VMEC
-        use HELENA_vars, only: read_HEL
+        use HELENA_ops, only: read_HEL
         use grid_vars, only: n_r_in
         
         character(*), parameter :: rout_name = 'read_input_eq'
@@ -805,6 +809,9 @@ contains
     !   - RBphi_H
     !   - pres_H
     !   - flux_p_H
+    !   - flux_t_H
+    !   - Dflux_p_H
+    !   - Dflux_t_H
     !   - misc_X:    prim_X, n_mod_X, min_sec_X, max_sec_X, norm_disc_prec_X,
     !                norm_style, U_style, X_style, matrix_SLEPC_style, K_style
     !   - misc_sol:  min_r_sol, max_r_sol, alpha, norm_disc_prec_sol, BC_style,
@@ -825,8 +832,8 @@ contains
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
-        use HELENA_vars, only: chi_H, flux_p_H, R_H, Z_H, nchi, ias, qs_H, &
-            &pres_H, RBphi_H
+        use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, Dflux_p_H, &
+            &Dflux_t_H, R_H, Z_H, nchi, ias, qs_H, pres_H, RBphi_H
         use VMEC, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, gam_V, &
             &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V, rot_t_V, &
             &pres_V, flux_t_V, Dflux_t_V, flux_p_V, Dflux_p_V, nfp_V
@@ -1102,6 +1109,42 @@ contains
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
                 allocate(in_1D_loc%p(n_r_eq))
                 in_1D_loc%p = flux_p_H(in_limits(1):in_limits(2))
+                
+                ! flux_t_H
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'flux_t_H'
+                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(n_r_eq))
+                in_1D_loc%p = flux_t_H(in_limits(1):in_limits(2))
+                
+                ! Dflux_p_H
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'Dflux_p_H'
+                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(n_r_eq))
+                in_1D_loc%p = Dflux_p_H(in_limits(1):in_limits(2))
+                
+                ! Dflux_t_H
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'Dflux_t_H'
+                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+                in_1D_loc%loc_i_min = [1]
+                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(n_r_eq))
+                in_1D_loc%p = Dflux_t_H(in_limits(1):in_limits(2))
                 
                 ! qs_H
                 in_1D_loc => in_1D(id); id = id+1
