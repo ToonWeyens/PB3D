@@ -512,3 +512,8 @@ CHANGELOG
       - Updated "write_flux_q_in_file_for_VMEC" to also give the Fourier coefficients of the boundary shape.
       - read_HEL now calculates the toroidal flux on the full grid.
       - Moved read_HEL to HELENA_ops, as it needs grid utilities.
+
+1.31: - Created new script to run PB3D, making use of cases, that bundles all the previous scripts.
+      - run_PB3D.sh can also run on Uranus, making use of qsub. Selection of machine is automatical but new machines have to be added manually.
+      - Fixed some memory leaks.
+      - "lold_MPI" is no longer available.

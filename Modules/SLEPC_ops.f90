@@ -1793,6 +1793,10 @@ contains
                 ! clean up
                 call VecDestroy(err_vec,ierr)                                   ! destroy error vector
                 CHCKERR('Failed to destroy err_vec')
+                call MatDestroy(err_mat,ierr)                                   ! destroy error matrix
+                CHCKERR('Failed to destroy err_mat')
+                call VecDestroy(E_vec,ierr)                                     ! destroy energy vector
+                CHCKERR('Failed to destroy E_vec')
             end if
             
             ! reinitialize error string if error and increment counter if not

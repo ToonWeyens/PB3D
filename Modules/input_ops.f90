@@ -66,7 +66,8 @@ contains
             &plot_resonance, plot_flux_q, plot_magn_grid, norm_disc_prec_sol, &
             &plot_size, PB3D_rich_lvl, max_it_zero, tol_zero, &
             &relax_fac_HH, min_theta_plot, max_theta_plot, min_zeta_plot, &
-            &max_zeta_plot, max_nr_tries_HH, POST_style, slab_plots
+            &max_zeta_plot, max_nr_tries_HH, POST_style, slab_plots, &
+            &max_tot_mem_per_proc
         
         ! initialize ierr
         ierr = 0

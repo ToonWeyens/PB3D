@@ -74,10 +74,9 @@ include $(OBJLIST)# Names of all the objects
 #   Compiler specifications
 #  	options (used with -D[name]):
 # 		ldebug: debug
-# 		lold_MPI: MPI versions older than 1.8
 ##############################################################################
 # compiler flags
-COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -fcheck=bounds,array-temps,do,pointer,recursion -cpp -Dldebug -Dlold_MPI# profiling with gprof2dot
+COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -fcheck=bounds,array-temps,do,pointer,recursion -cpp -Dldebug# profiling with gprof2dot
 
 # compiler include
 COMP_INC = -I$(HDF5_inc) -I$(NETCDF_inc) -I$(HOME_BIN)/libstell_dir -I$(PB3D_DIR)/include #-I/opt/openmpi/1.10.0/include
@@ -107,10 +106,10 @@ all:	PB3D POST
 PB3D:	$(ObjectFiles) libdfftpack.a PB3D.o
 	$(LINK) -o $@ $(ObjectFiles) PB3D.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
-POST:	$(ObjectFiles) POST.o
+POST:	$(ObjectFiles) libdfftpack.a POST.o
 	$(LINK) -o $@ $(ObjectFiles) POST.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
-libdfftpack: 	$(ObjectFiles_dfftpack)
+libdfftpack.a: 	$(ObjectFiles_dfftpack)
 	ar -rcs libdfftpack.a $(ObjectFiles_dfftpack)
 
 %.o : %.f90
@@ -120,7 +119,7 @@ libdfftpack: 	$(ObjectFiles_dfftpack)
 	gfortran -O2 -funroll-loops -fexpensive-optimizations -c $<
 
 clean:
-	@rm -f *.o *.mod *~ fort.* 
+	@rm -f *.o *.a *.mod *~ fort.* 
 
 clean_all:
 	@rm -f *.o *.mod *~ fort.* PB3D POST

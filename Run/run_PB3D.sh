@@ -13,25 +13,44 @@ else
 fi
 # Display usage function
 display_usage() { 
-    echo -e "\nUsage:\n$0 [OPTS] PB3D_DIR NR_PROCS \n" 
+    echo -e "\nUsage:\n$0 [OPTS] CASE NR_PROCS \n" 
     echo -e "    OPTS:      -o [NAME] specify output name"
     echo -e "               -d use Dr. Memory debugging"
     echo -e "               -h help"
     echo -e ""
-    echo -e "    PB3D_DIR:  PB3D directory"
+    echo -e "    CASE:       1 cbm18a"
+    echo -e "                2 cbm18a_HELENA"
+    echo -e ""
+    echo -e "               11 cbm18a_ripple_1"
+    echo -e "               12 cbm18a_ripple_2"
+    echo -e "               13 cbm18a_ripple_5"
+    echo -e "               14 cbm18a_ripple_18"
+    echo -e "               15 cbm18a_ripple_flat_R"
+    echo -e "               16 cbm18a_ripple_flat_Z"
+    echo -e "               17 cbm18a_ripple_flat_RZ"
+    echo -e "               18 cbm18a_ripple_inverse"
+    echo -e ""
+    echo -e "               21 cdxu"
+    echo -e ""
+    echo -e "               31 qps"
+    echo -e ""
+    echo -e "               41 Hmode_ped4"
+    echo -e "               42 Hmode_ped4_HELENA"
+    echo -e "               43 Hmode_ped2"
+    echo -e "               44 Hmode_ped2_HELENA"
     echo -e ""
     echo -e "    NR_PROCS:  nr. of MPI processes"
     echo -e ""
     } 
 #
 # Setting some variables
+#slepc_opt="-st_pc_factor_shift_type NONZERO -st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_view"
+slepc_opt="-st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_ncv 100 -eps_mpd 100"
+#slepc_opt="-st_pc_type jacobi -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_ncv 100 -eps_mpd 100"
 debug_opt=""
-extra_debug_opt=""
 n_opt_args=0
 use_out_loc=false
 n_procs=1
-PB3D_out_name="PB3D_out.h5"
-input_name="input_POST"
 case $machine_ID in
     1)                                                                          # laptop
         drmemory_location="/opt/DrMemory-Linux-1.10.1-3/bin64"
@@ -58,17 +77,17 @@ while getopts :o:n:dh opt; do
                 echo -e "WARNING: ignoring option -n because not on Uranus"
             fi
         ;;
-        d)
+        d)                                                                      # debug
             debug_opt="$drmemory_location/drmemory --"
             n_opt_args=$((n_opt_args+1))                                        # 1 argument
         ;;
-        h)
+        h)                                                                      # help
             echo -e "program PB3D"
             echo -e "written by Toon Weyens"
             display_usage
             exit 1
         ;;
-        \?)
+        \?)                                                                     # other
             echo -e "ERROR: invalid option -$OPTARG"
             display_usage
             exit 1
@@ -76,7 +95,7 @@ while getopts :o:n:dh opt; do
     esac
 done
 #
-# Checking for number of input arguments (need at least 1 for # procs)
+# Checking for number of input arguments (need at least 1 for # procs and 1 for case)
 if [ "$#" -lt $((n_opt_args+2)) ]; then
     display_usage
     exit 1
@@ -84,52 +103,122 @@ fi
 #
 # Shift arguments to skip options
 shift $n_opt_args
-# Check existence of PB3D folder
 #
-if [[ -d "$1" ]] ; then
-    if [[ ! -f "${1%/}/$PB3D_out_name" ]] ; then
-        echo -e 'ERROR: PB3D output file does not exist.'
+# Set case parameters: input_name
+case $1 in
+    1|2)
+        input_name=cbm18a
+    ;;
+    11|12|13|14|15|16|17|18)
+        input_name=cbm18a_ripple
+    ;;
+    21)
+        input_name=cdxu
+    ;;
+    31)
+        input_name=qps
+    ;;
+    41|42|43|44)
+        input_name=Hmode
+    ;;
+    *)
+        echo -e "ERROR: No case found"
         display_usage
         exit 1
-    fi
-else
-    echo -e 'ERROR: PB3D Directory does not exist.'
-    display_usage
-    exit 1
-fi
+    ;;
+esac
+# Set case parameters: eq_name
+case $1 in
+    1)
+        eq_name=wout_cbm18a.nc
+    ;;
+    2)
+        eq_name=cbm18a
+    ;;
+    11)
+        eq_name=wout_cbm18a_ripple.nc
+    ;;
+    12)
+        eq_name=wout_cbm18a_ripple_2.nc
+    ;;
+    13)
+        eq_name=wout_cbm18a_ripple_5.nc
+    ;;
+    14)
+        eq_name=wout_cbm18a_ripple_18.nc
+    ;;
+    15)
+        eq_name=wout_cbm18a_ripple_flat_R.nc
+    ;;
+    16)
+        eq_name=wout_cbm18a_ripple_flat_Z.nc
+    ;;
+    17)
+        eq_name=wout_cbm18a_ripple_flat_RZ.nc
+    ;;
+    18)
+        eq_name=wout_cbm18a_ripple_inverse.nc
+    ;;
+    21)
+        eq_name=wout_cdxu.nc
+    ;;
+    31)
+        eq_name=wout_qps.nc
+    ;;
+    41)
+        eq_name=wout_Hmode_ped4.nc
+    ;;
+    42)
+        eq_name=Hmode_ped4
+    ;;
+    43)
+        eq_name=wout_Hmode_ped2.nc
+    ;;
+    44)
+        eq_name=Hmode_ped2
+    ;;
+    *)
+        echo -e "ERROR: No case found"
+        display_usage
+        exit 1
+    ;;
+esac
+input_name=input_$input_name
+#
+# Shift arguments to skip case
+shift 1
 #
 if [ -n "$debug_opt" ]; then
     echo "Using Dr. Memory for debugging"
 fi
-#
-# Make new output folder if requested
+# Make new folder
 if [ "$use_out_loc" = true ]; then
     out=$out_loc
 else
-    out=${1%/}
+    get_date=$(date +"%Y-%m-%d-%H-%M-%S")
+    out=$get_date
 fi
 out_full=$(pwd)/$out
 mkdir -p $out_full $out_full/Plots $out_full/Data $out_full/Scripts &&
 {
 # success
 echo -e "input file:       " $input_name
-echo -e "PB3D output file: " ${1%/}/$PB3D_out_name
+echo -e "equilibrium file: " $eq_name
 echo -e ""
 echo -e "Working in directory $out_full/"
 echo -e ""
 # Copy inputs and the program
 cp $input_name $out_full
-cp ../POST $out_full
-chmod +x $out_full/POST
-if [ "$use_out_loc" = true ]; then
-    cp ${1%/}/$PB3D_out_name $out
-fi
+cp $eq_name $out_full
+cp ../PB3D $out_full
+chmod +x $out_full/PB3D
 cd $out_full
+rm -f .lock_file*
 # Do actions depending on machine ID
 case $machine_ID in
     1)                                                                          # laptop
-        echo "$debug_opt mpirun -np $2 ./POST $input_name $PB3D_out_name ${@:3}" > command_POST
-        $debug_opt mpirun -np $2 ./POST $input_name $PB3D_out_name ${@:3}
+        echo "$debug_opt mpirun -np $1 ./PB3D $input_name $eq_name $slepc_opt ${@:2}" > command
+        $debug_opt mpirun -np $1 ./PB3D $input_name $eq_name $slepc_opt ${@:2}
     ;;
     2)                                                                          # uranus
         # get memory
@@ -139,24 +228,24 @@ case $machine_ID in
             max_tot_mem=6000
         else
             # multiply by nr. of procs.
-            max_tot_mem=$(($2*$max_tot_mem))
+            max_tot_mem=$(($1*$max_tot_mem))
         fi 
         mem_unit='kb'
         # Create pbs script
         echo "creating pbs script"
-        rm -f POST.pbs
-        cat > POST.pbs << END
+        rm -f PB3D.pbs
+        cat > PB3D.pbs << END
 #!/bin/sh
 #PBS -N $out
-#PBS -o $out_full/POST.o
-#PBS -e $out_full/POST.e
-#PBS -l nodes=$2:ppn=$n_procs
+#PBS -o $out_full/PB3D.o
+#PBS -e $out_full/PB3D.e
+#PBS -l nodes=$1:ppn=$n_procs
 #PBS -l pvmem=$max_tot_mem$mem_unit
 #PBS -l walltime=04:00:00
 #PBS -m abe
 #PBS -M toon.weyens@gmail.com
 cd $out_full
-rm -f POST.o POST.e
+rm -f PB3D.o PB3D.e
 echo "Job id:   \$PBS_JOBID"
 echo "Job name: \$PBS_JOBNAME"
 echo "Job node: \$PBS_QUEUE"
@@ -166,12 +255,12 @@ export PATH="/share/apps/openmpi-1.10.1/bin:/share/apps/gcc-5.2/bin:$PATH"
 export LD_LIBRARY_PATH="$HOME/lib:/share/apps/openmpi-1.10.1/lib:/share/apps/gcc-5.2/lib64:/share/apps/gcc-5.2/lib:$LD_LIBRARY_PATH"
 pbsdsh uname -n
 . /opt/torque/etc/openmpi-setup.sh
-echo "$debug_opt mpirun -np $2 ./POST $input_name $PB3D_out_name ${@:3}" > command_POST
-$debug_opt mpirun -np $2 ./POST $input_name $PB3D_out_name ${@:3}
+echo "$debug_opt mpirun -np $1 ./PB3D $input_name $eq_name $slepc_opt ${@:2}" > command
+$debug_opt mpirun -np $1 ./PB3D $input_name $eq_name $slepc_opt ${@:2}
 exit
 END
-        chmod u+x POST.pbs
-        qsub POST.pbs
+        chmod u+x PB3D.pbs
+        qsub PB3D.pbs
     ;;
 esac
 cd ../
