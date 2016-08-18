@@ -1,0 +1,16 @@
+GENERAL RESOURCES:
+    http://www.hpc.mcgill.ca/index.php/starthere/81-doc-pages/91-guillimin-job-submit for general overviwe
+    http://www.bc.edu/offices/researchservices/cluster/torqueug.html for another general overview
+    http://docs.adaptivecomputing.com/torque/4-0-2/Content/topics/2-jobs/jobSubmission.htm for detailed information about job submission
+    http://docs.adaptivecomputing.com/maui/commands/checkjob.php for detailed information about checkjob
+
+To see all nodes:
+    pbsnodes
+To check out on which node a job is running, how much memory it has, etc.
+    checkjob -v [JOB_ID]
+To run an interactive job (like running on your own computer), the jobname becomes STDIN:
+    qsub -l nodes=X:ppn=Y -I
+To run jobs on specific nodes:
+    -l nodes=[NODE_NAME]:ppn=Y + [NODE_NAME2]:ppn=Y2
+To show the queue:
+    showq

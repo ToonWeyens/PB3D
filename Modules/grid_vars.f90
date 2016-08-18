@@ -144,9 +144,11 @@ contains
             grid%loc_r_F => grid%r_F
         end if
         
+#if ldebug
         ! set estimated memory usage
         if (print_mem_usage) grid%estim_mem_usage = grid%estim_mem_usage + &
             &grid%n(3)*2
+#endif
         
         ! allocate angular variables
         if (n(1).ne.0 .and. n(2).ne.0) then
@@ -155,9 +157,11 @@ contains
             allocate(grid%theta_F(n(1),n(2),grid%loc_n_r))
             allocate(grid%zeta_F(n(1),n(2),grid%loc_n_r))
             
+#if ldebug
             ! set estimated memory usage
             if (print_mem_usage) grid%estim_mem_usage = grid%estim_mem_usage + &
                 &grid%loc_n_r*n(1)*n(2)*4
+#endif
         end if
         
 #if ldebug

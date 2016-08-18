@@ -185,8 +185,7 @@ contains
     ! tensorial phase it is 2.
     integer function divide_X_jobs(arr_size,div_ord) result(ierr)
         use num_vars, only: max_X_mem_per_proc, n_procs, X_jobs_lims, rank, &
-            &X_jobs_file_name, X_jobs_taken, X_jobs_lock_file_name, &
-            &mem_scale_fac
+            &X_jobs_file_name, X_jobs_taken, mem_scale_fac
         use X_vars, only: n_mod_X
         use files_utilities, only: nextunit
         use MPI_utilities, only: wait_MPI
@@ -272,14 +271,6 @@ contains
             write(file_i,*) '# Process, X job'
             close(file_i,iostat=ierr)
             CHCKERR('Failed to close file')
-        end if
-        
-        ! delete possible lock file
-        if (rank.eq.0) then
-            open(unit=nextunit(file_i),file=X_jobs_lock_file_name,iostat=ierr)
-            CHCKERR('Failed to open lock file')
-            close(file_i,status='DELETE',iostat=ierr)
-            CHCKERR('Failed to delete lock file')
         end if
         
         ! synchronize MPI

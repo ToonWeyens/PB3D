@@ -15,10 +15,7 @@ module HELENA_vars
     private
     public dealloc_HEL, &
         &pres_H, qs_H, flux_p_H, flux_t_H, Dflux_p_H, Dflux_t_H, nchi, chi_H, &
-        &ias, RBphi_H, R_H, Z_H
-#if ldebug
-    public h_H_11, h_H_12, h_H_33
-#endif
+        &ias, RBphi_H, R_H, Z_H, h_H_11, h_H_12, h_H_33
     
     ! global variables
     real(dp), allocatable :: chi_H(:)                                           ! poloidal angle

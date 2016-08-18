@@ -10,7 +10,16 @@ module MPI_utilities
     
     implicit none
     private
-    public get_ser_var, get_ghost_arr, broadcast_var, wait_MPI
+    public get_ser_var, get_ghost_arr, broadcast_var, wait_MPI, mutex_req_acc, &
+        &mutex_return_acc
+#if ldebug
+    public debug_mutex
+#endif
+    
+#if ldebug
+    ! global variables
+    logical :: debug_mutex = .false.                                            ! print debug information about mutex operations
+#endif
     
     ! interfaces
     interface get_ser_var
@@ -495,4 +504,157 @@ contains
         call MPI_Barrier(MPI_Comm_world,ierr)
         CHCKERR('MPI Barrier failed')
     end function wait_MPI
+    
+    ! Request access to mutex.
+    ! (based on http://www.mcs.anl.gov/~thakur/papers/atomic-mode.pdf)
+    integer function mutex_req_acc(mutex_win,wakeup_tag) result(ierr)
+#if ldebug
+        use num_vars, only: rank
+#endif
+        
+        character(*), parameter :: rout_name = 'mutex_req_acc'
+        
+        ! input / output
+        integer, intent(in) :: mutex_win                                        ! window to mutex
+        integer, intent(in) :: wakeup_tag                                       ! wakeup tag
+        
+        ! local variables
+        integer, allocatable :: mutex_loc(:)                                    ! local copy of waiting to list
+        integer :: dum_buf                                                      ! dummy buffer
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! add current process to mutex waiting list
+        ierr = mutex_wlist_add_remove(.true.,mutex_win,mutex_loc)
+        
+        ! wait for notification if mutex already held
+        if (sum(mutex_loc).gt.0) then
+#if ldebug
+            if (debug_mutex) &
+                &write(*,*) '>>>', rank, 'waiting for mutex on', mutex_loc
+#endif
+            call MPI_Recv(dum_buf,1,MPI_INTEGER,MPI_ANY_SOURCE,&
+                &wakeup_tag,MPI_Comm_world,MPI_STATUS_IGNORE,ierr)
+            CHCKERR('Failed to receive notification')
+        end if
+#if ldebug
+            if (debug_mutex) write(*,*) '>>>', rank, 'got mutex'
+#endif
+    end function mutex_req_acc
+    
+    ! Returns access to a mutex.
+    ! (based on http://www.mcs.anl.gov/~thakur/papers/atomic-mode.pdf)
+    integer function mutex_return_acc(mutex_win,wakeup_tag) result(ierr)
+        use num_vars, only: rank, n_procs
+        
+        character(*), parameter :: rout_name = 'mutex_return_acc'
+        
+        ! input / output
+        integer, intent(in) :: mutex_win                                        ! window to mutex
+        integer, intent(in) :: wakeup_tag                                       ! wakeup tag
+        
+        ! local variables
+        integer, allocatable :: mutex_loc(:)                                    ! local copy of waiting list to mutex
+        integer :: id                                                           ! counter
+        integer :: next_rank                                                    ! next rank to be running
+        integer :: dum_buf                                                      ! dummy buffer
+        
+        ! initialize ierr
+        ierr = 0
+        
+#if ldebug
+        if(debug_mutex) write(*,*) '>>>', rank, 'returning access'
+#endif
+        ! remove current process to mutex waiting list
+        ierr = mutex_wlist_add_remove(.false.,mutex_win,mutex_loc)
+        CHCKERR('')
+        
+        ! give mutex to next proces that requests it
+        notify_next: if (sum(mutex_loc).gt.0) then
+            ! find the next rank, wrapping around zero
+            do id = 1,n_procs-1
+                next_rank = mod(rank+id-1,n_procs-1)                            ! wrap around n_procs-1 to zero
+                if (mutex_loc(next_rank+1).eq.1) then                           ! arrays start at 1, ranks at 0
+                    dum_buf = 1
+                    ! next rank possibly needs to be incremented for full arrays
+                    if (next_rank.ge.rank) next_rank = next_rank+1
+                    ! send to next rank
+                    call MPI_Send(dum_buf,1,MPI_INTEGER,next_rank,&
+                        &wakeup_tag,MPI_Comm_world,ierr)
+                    CHCKERR('Failed to send notification')
+#if ldebug
+                    if (debug_mutex) &
+                        &write(*,*) '>>>', rank, 'notified', next_rank
+#endif
+                    exit notify_next
+                end if
+            end do
+            ! no next process found: impossible situation
+            ierr = 1
+            CHCKERR('No next process found')
+        end if notify_next
+    end function mutex_return_acc
+    
+    ! Adds or removes a rank from the waiting list for a mutex and returns the
+    ! previous mutex waiting list.
+    ! (based on http://www.mcs.anl.gov/~thakur/papers/atomic-mode.pdf)
+    integer function mutex_wlist_add_remove(add,mutex_win,mutex_excl) &
+        &result(ierr)
+        use num_vars, only: n_procs, rank
+        
+        character(*), parameter :: rout_name = 'mutex_wlist_add_remove'
+        
+        ! input / output
+        logical, intent(in) :: add                                              ! true if add, false if remove from mutex waiting list
+        integer, intent(in) :: mutex_win                                        ! window to mutex
+        integer, intent(inout), allocatable :: mutex_excl(:)                    ! previous mutex waiting list, excluding local proc.
+        
+        ! local variables
+        integer :: lens(2), disps(2)                                            ! lengths and displacements of excluded type
+        integer :: mutex_type                                                   ! indexed type to access mutex, excluding the actual process
+        integer :: onezero                                                      ! one or zero
+        integer(kind=MPI_ADDRESS_KIND) :: one = 1                               ! one
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set plus or minus one and allocate mutex_excl
+        if (add) then
+            onezero = 1
+        else
+            onezero = 0
+        end if
+        allocate(mutex_excl(n_procs-1))
+        
+        ! set lengths and displacements of extended type to exclude current rank
+        lens = [rank, n_procs-rank-1]
+        disps = [0, rank+1]
+        
+        ! create type
+        call MPI_Type_indexed(2,lens,disps,MPI_INTEGER,mutex_type,ierr)
+        CHCKERR('Failed to create indexed type')
+        call MPI_Type_commit(mutex_type,ierr)
+        CHCKERR('Failed to commit type')
+        
+        ! get window to mutex
+        call MPI_Win_lock(MPI_LOCK_EXCLUSIVE,0,0,mutex_win,ierr)
+        CHCKERR('Failed to lock window')
+        
+        ! get previous list and put value for current proc
+        call MPI_Get(mutex_excl,n_procs-1,MPI_INTEGER,0,one*0,1,&
+            &mutex_type,mutex_win,ierr)
+        CHCKERR('Failed to get waiting list')
+        call MPI_Put(onezero,1,MPI_INTEGER,0,rank*one,1,MPI_INTEGER,mutex_win,&
+            &ierr)
+        CHCKERR('Failed to add to waiting list')
+        
+        ! unlock window
+        call MPI_Win_unlock(0,mutex_win,ierr)
+        CHCKERR('Failed to lock window')
+        
+        ! free mutex type
+        call MPI_Type_free(mutex_type,ierr)
+        CHCKERR('Failed to free type')
+    end function mutex_wlist_add_remove
 end module MPI_utilities

@@ -344,6 +344,7 @@ contains
             use eq_vars, only: pres_0
             use grid_vars, only: n_r_eq
             use HELENA_vars, only: nchi, R_H, Z_H, ias
+            use X_vars, only: min_r_sol, max_r_sol
             use files_utilities, only: nextunit
             
             ! local variables
@@ -361,6 +362,11 @@ contains
             
             call writo('Writing output to file '//trim(file_name))
             call writo('This can be used for VMEC porting')
+            
+            ! test if full range
+            if (min_r_sol.gt.0 .or. max_r_sol.lt.1) &
+                &call writo('This routine should be run with the full normal &
+                &range!',warning=.true.)
             
             open(unit=nextunit(file_i),file=trim(file_name))
             write(file_i,*) '# for export to VMEC'

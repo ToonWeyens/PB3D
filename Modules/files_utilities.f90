@@ -8,8 +8,7 @@ module files_utilities
     use num_vars, only: dp, max_str_ln
     implicit none
     private
-    public search_file, nextunit, wait_file, get_file_info, &
-        &get_full_PB3D_name, delete_file
+    public search_file, nextunit, get_file_info, get_full_PB3D_name, delete_file
 
 contains
     ! looks for the full name of a file and tests for its existence
@@ -61,29 +60,6 @@ contains
         ! return unit number if present
         if (present(unit)) unit=nextunit
     end function nextunit
-    
-    ! Waits for file acces through a lock file.
-    subroutine wait_file(lock_file_i,lock_file_name)
-        ! input / output
-        integer, intent(inout) :: lock_file_i                                   ! lock file nr.
-        character(len=*), intent(in) :: lock_file_name                          ! name of lock file
-        
-        ! local variables
-        logical :: file_exists                                                  ! file exists status
-        integer :: open_stat                                                    ! file open status
-        
-        ! open X_jobs file if no lock-file exists
-        file_exists = .true.
-        do while (file_exists)
-            open(STATUS='NEW',unit=nextunit(lock_file_i),&
-                &file=lock_file_name,iostat=open_stat)
-            if (open_stat.eq.0) then
-                file_exists = .false.
-            !else
-                !call sleep(1)
-            end if
-        end do
-    end subroutine wait_file
     
     ! Gets file information
     ! The  time informations  can be  converted to  strings using  the intrinsic

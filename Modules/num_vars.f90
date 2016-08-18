@@ -10,16 +10,18 @@ module num_vars
         &output_name, prog_version, prog_style, min_PB3D_version, &
         &shell_commands_name, mem_usage_name, mem_usage_i, mem_usage_count, &
         &weight_dp, &
-        &rank, n_procs, HDF5_lock_file_name, time_start, &
+        &rank, n_procs, HDF5_mutex, HDF5_mutex_win, HDF5_mutex_wakeup_tag, &
+        &time_start, &
         &max_tot_mem_per_proc, max_X_mem_per_proc, X_jobs_lims, X_jobs_taken, &
-        &X_job_nr, X_jobs_file_name, X_jobs_lock_file_name, eq_jobs_lims, &
-        &eq_job_nr, mem_scale_fac, &
+        &X_job_nr, X_jobs_file_name, X_jobs_mutex, X_jobs_mutex_win, &
+        &X_jobs_mutex_wakeup_tag, eq_jobs_lims, eq_job_nr, mem_scale_fac, &
         &pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
         &X_style, matrix_SLEPC_style, plot_resonance, plot_magn_grid, &
-        &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, use_normalization, &
-        &EV_BC, tol_SLEPC, max_it_slepc, norm_disc_prec_eq, K_style, &
-        &norm_disc_prec_X, norm_disc_prec_sol, POST_style, magn_int_style, &
+        &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
+        &use_normalization, EV_BC, tol_SLEPC, max_it_slepc, &
+        &norm_disc_prec_eq, K_style, norm_disc_prec_X, norm_disc_prec_sol, &
+        &POST_style, magn_int_style, &
         &max_it_rich, tol_rich, &
         &max_it_inv, &
         &max_it_zero, max_nr_tries_HH, relax_fac_HH, tol_zero, tol_norm, &
@@ -49,13 +51,15 @@ module num_vars
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
     integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
-    real(dp), parameter :: prog_version = 1.31_dp                               ! version number
-    real(dp), parameter :: min_PB3D_version = 1.30_dp                           ! minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 1.32_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.32_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
     integer :: rank                                                             ! MPI rank
     integer :: n_procs                                                          ! nr. of MPI processes
-    character(len=15) :: HDF5_lock_file_name = '.lock_file_HDF5'                ! name of lock file for HDF5 operations
+    integer, allocatable :: HDF5_mutex(:)                                       ! HDF5 mutex
+    integer :: HDF5_mutex_win                                                   ! window to HDF5_mutex
+    integer :: HDF5_mutex_wakeup_tag = 10                                       ! wakeup tag for HDF5_mutex
     real(dp) :: time_start                                                      ! start time of simulation
     
     ! job variables
@@ -67,7 +71,9 @@ module num_vars
     integer :: X_job_nr                                                         ! nr. of X job
     integer :: eq_job_nr                                                        ! nr. of eq job
     character(len=10) :: X_jobs_file_name = 'X_jobs.txt'                        ! name of X jobs file
-    character(len=12) :: X_jobs_lock_file_name = '.lock_file_X'                 ! name of lock file for X jobs
+    integer, allocatable :: X_jobs_mutex(:)                                     ! X_jobs_mutex
+    integer :: X_jobs_mutex_win                                                 ! window to X_jobs_mutex
+    integer :: X_jobs_mutex_wakeup_tag = 11                                     ! wakeup tag for X_jobs_mutex
     real(dp), parameter :: mem_scale_fac = 1.5                                  ! empirical scale factor of memory (because operations are done)
 
     ! physical and mathematical variables

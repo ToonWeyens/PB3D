@@ -1666,8 +1666,6 @@ contains
             call EPSComputeError(solver,id_tot-1,EPS_ERROR_RELATIVE,error,ierr) ! get error (starts at index 0) (petsc 3.6.1)
             !call EPSComputeRelativeError(solver,id_tot-1,error,ierr)            ! get error (starts at index 0) (petsc 3.5.3)
             CHCKERR('EPSComputeError failed')
-            call EPSGetErrorEstimate(solver,id_tot-1,error_est)                 ! get error estimate
-            CHCKERR('EPSGetErrorEstimate failed')
             
             ! set up local solution val
             sol_val_loc = sol%val(id)
@@ -1722,7 +1720,10 @@ contains
                     &sol_vec_max(sol_vec_max_loc(1))
             end if
             
+#if ldebug
             if (EV_err_str.eq.'') then
+                call EPSGetErrorEstimate(solver,id_tot-1,error_est)             ! get error estimate
+                CHCKERR('EPSGetErrorEstimate failed')
                 ! user message
                 call writo('Checking whether A x - omega^2 B x = 0 for EV '//&
                     &trim(i2str(id))//': '//trim(c2strt(sol%val(id))))
@@ -1798,6 +1799,7 @@ contains
                 call VecDestroy(E_vec,ierr)                                     ! destroy energy vector
                 CHCKERR('Failed to destroy E_vec')
             end if
+#endif
             
             ! reinitialize error string if error and increment counter if not
             if (EV_err_str.ne.'') then

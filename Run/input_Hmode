@@ -3,7 +3,7 @@
     min_par_X               = -1.0
     max_par_X               = 1.0
     alpha                   = 0.0
-    min_r_sol               = 0.5
+    min_r_sol               = 0.0
     max_r_sol               = 1.0
     n_r_sol                 = 1000
     norm_disc_prec_sol      = 3
@@ -11,8 +11,8 @@
     max_it_zero             = 500
     use_pol_flux_F          = .true.
     use_normalization       = .true.
-    prim_X                  = 50
-    n_mod_X                 = 40
+    prim_X                  = 150
+    n_mod_X                 = 75
     tol_rich                = 1.0E-4
     n_sol_requested         = 1
     max_it_inv              = 1

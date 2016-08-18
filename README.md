@@ -517,3 +517,13 @@ CHANGELOG
       - run_PB3D.sh can also run on Uranus, making use of qsub. Selection of machine is automatical but new machines have to be added manually.
       - Fixed some memory leaks.
       - "lold_MPI" is no longer available.
+
+1.32: - Makefile now uses shared libraries.
+      - Fixed bug in the run scripts that used kb instead of mb.
+      - Lock files are now explicitely removed at initialization in the code itself.
+      - Improved the run scripts further by making use of common functions for PB3D and POST in run_aux.sh.
+      - The run scripts now have the option to run for multiple variations of an input file, making use of an additional optional flag and file.
+      - Fixed a bug when running HELENA in release mode considering the metric variables h_H.
+      - Removed the need for lockfiles, as everything is now performed internally using a mutex system made with MPI.
+      - The mutex system can be debugged using a debug flag in MPI_utilities.
+      - For large numbers of procs, the code is slow as every HDF5 read and write is currently isolated using mutex. This is necessary as it is not possible to read from a file that is being written to, even though multiple procs can indeed access the same file at the same time. This needs to be resolved; either using SRMW from version 1.10, or another mechanism.

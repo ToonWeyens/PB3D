@@ -376,8 +376,10 @@ contains
                 &trim(var_name)
             dataitem_id%xml_str(3) = '</DataItem>'
             
+#if ldebug
             if (debug_HDF5_ops) write(*,*) 'created data item "'//&
                 &trim(dataitem_id%name)//'"'
+#endif
         end if
     contains
         ! check whether the  dimensions provided are a  valid parallel indicator
@@ -469,8 +471,10 @@ contains
             end do
             att_id%xml_str(dataitem_len+2) = '</Attribute>'
             
+#if ldebug
             if (debug_HDF5_ops) write(*,*) 'created attribute "'//&
                 &trim(att_id%name)//'"'
+#endif
             
             ! reset if requested
             if (reset_loc) call reset_HDF5_item(att_dataitem,ind_plot_loc)
@@ -517,8 +521,10 @@ contains
                 &trim(XDMF_top_types(top_type))//'" NumberOfElements="'//&
                 &trim(work_str)//'"/>'
             
+#if ldebug
             if (debug_HDF5_ops) write(*,*) 'created topology "'//&
                 &trim(top_id%name)//'"'
+#endif
         end if
     end subroutine print_HDF5_top
     
@@ -577,8 +583,10 @@ contains
             end do
             geom_id%xml_str(id_sum) = '</Geometry>'
             
+#if ldebug
             if (debug_HDF5_ops) write(*,*) 'created geometry "'//&
                 &trim(geom_id%name)//'"'
+#endif
             
             ! reset if requested
             if (reset_loc) call reset_HDF5_item(geom_dataitems,ind_plot_loc)
@@ -755,8 +763,10 @@ contains
             end if
             grid_id%xml_str(id_sum) = '</Grid>'
             
+#if ldebug
             if (debug_HDF5_ops) write(*,*) 'created grid "'//&
                 &trim(grid_id%name)//'"'
+#endif
             
             ! reset if requested
             if (reset_loc) then
@@ -825,9 +835,9 @@ contains
     ! for an explanation of the selection of the dataspaces.
     integer function print_HDF5_arrs(vars,PB3D_name,head_name,rich_lvl,eq_job,&
         &disp_info,ind_print) result(ierr)
-        use num_vars, only: n_procs, rank, HDF5_lock_file_name
+        use num_vars, only: n_procs, rank, HDF5_mutex_win, HDF5_mutex_wakeup_tag
         use messages, only: lvl_ud
-        use files_utilities, only: wait_file
+        use MPI_utilities, only: mutex_req_acc, mutex_return_acc
         use MPI
         use HDF5_utilities, only: set_1D_vars
         
@@ -847,7 +857,6 @@ contains
         integer :: MPI_Comm                                                     ! MPI Communicator used
         integer :: istat                                                        ! status
         integer :: n_dims                                                       ! nr. of dimensions
-        integer :: lock_file_i                                                  ! lock file number
         integer, allocatable :: lim_tot(:,:)                                    ! total limits
         integer, allocatable :: lim_loc(:,:)                                    ! local limits
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -918,7 +927,8 @@ contains
         
         ! wait for file access if individual print and multiple processes
         if (n_procs.gt.1 .and. ind_print_loc) then
-            call wait_file(lock_file_i,HDF5_lock_file_name)
+            ierr = mutex_req_acc(HDF5_mutex_win,HDF5_mutex_wakeup_tag)
+            CHCKERR('')
         end if
         
         ! open the file
@@ -1133,12 +1143,13 @@ contains
         call H5gclose_f(head_group_id,ierr)
         CHCKERR('Failed to close group')
         
-        ! close the HDF5 and possibly lock file
+        ! close the HDF5 and return mutex
         call H5Fclose_f(HDF5_i,ierr)
         CHCKERR('failed to close HDF5 file')
         if (n_procs.gt.1 .and. ind_print_loc) then
-            close(lock_file_i,status='DELETE',iostat=ierr)
-            CHCKERR('Failed to delete lock file')
+            ! return mutex
+            ierr = mutex_return_acc(HDF5_mutex_win,HDF5_mutex_wakeup_tag)
+            CHCKERR('')
         end if
         
         ! close FORTRAN interfaces and HDF5 library.
@@ -1188,9 +1199,12 @@ contains
     ! multiple parallel jobs.
     integer function read_HDF5_arr_ind(var,PB3D_name,head_name,var_name,&
         &rich_lvl,eq_job,disp_info,lim_loc) result(ierr)                        ! individual version
-        use HDF5_utilities, only: list_all_vars_in_group, set_1D_vars
-        use num_vars, only: HDF5_lock_file_name
-        use files_utilities, only: wait_file
+        use HDF5_utilities, only: set_1D_vars
+        use num_vars, only: HDF5_mutex_win, HDF5_mutex_wakeup_tag
+        use MPI_utilities, only: mutex_req_acc, mutex_return_acc
+#if ldebug
+        use HDF5_utilities, only: list_all_vars_in_group
+#endif
         
         character(*), parameter :: rout_name = 'read_HDF5_arr_ind'
         
@@ -1218,7 +1232,6 @@ contains
         integer(HSIZE_T) :: data_size                                           ! size of data set
         integer(HSIZE_T) :: n_dims                                              ! nr. of dimensions
         integer(SIZE_T) :: name_len                                             ! length of name of group
-        integer :: lock_file_i                                                  ! lock file number
         integer :: storage_type                                                 ! type of storage used in HDF5 file
         integer :: nr_lnks_head                                                 ! number of links in head group
         integer :: max_corder                                                   ! current maximum creation order value for group
@@ -1248,10 +1261,12 @@ contains
         end if
         
         ! user output
+#if ldebug
         if (debug_HDF5_ops) then
             write(*,*) 'Reading data from PB3D output "'//trim(PB3D_name)//&
                 &'/'//trim(head_name_loc)//'/'//trim(var_name)//'"'
         end if
+#endif
         
         ! initialize FORTRAN predefined datatypes
         call H5open_f(ierr) 
@@ -1260,11 +1275,9 @@ contains
         ! preparation
         HDF5_kind_64 = H5kind_to_type(dp,H5_REAL_KIND)
         
-        ! wait for file access if currently being written
-        call wait_file(lock_file_i,HDF5_lock_file_name)
-        ! immediately close the lock file, as read can be done in parallel
-        close(lock_file_i,status='DELETE',iostat=ierr)
-        CHCKERR('Failed to delete lock file')
+        ! wait for file access
+        ierr = mutex_req_acc(HDF5_mutex_win,HDF5_mutex_wakeup_tag)
+        CHCKERR('')
         
         ! user output
         if (disp_info_loc) then
@@ -1444,6 +1457,10 @@ contains
         call H5Fclose_f(HDF5_i,ierr)
         CHCKERR('failed to close HDF5 file')
         
+        ! return mutex
+        ierr = mutex_return_acc(HDF5_mutex_win,HDF5_mutex_wakeup_tag)
+        CHCKERR('')
+        
         ! close FORTRAN interfaces and HDF5 library.
         call H5Close_f(ierr)
         err_msg = 'Failed to close FORTRAN HDF5 interface'
@@ -1519,8 +1536,10 @@ contains
                     call writo('Could not reset HDF5 XDMF item "'&
                         &//trim(XDMF_items(id)%name)//'"',warning=.true.)
                 else
+#if ldebug
                     if (debug_HDF5_ops) write(*,*) 'reset "'//&
                         &trim(XDMF_items(id)%name)//'"'
+#endif
                     XDMF_items(id)%name = ''
                     deallocate(XDMF_items(id)%xml_str)
                 end if
@@ -1546,8 +1565,10 @@ contains
                 call writo('Could not reset HDF5 XDMF item "'&
                     &//trim(XDMF_item%name)//'"',warning=.true.)
             else
+#if ldebug
                 if (debug_HDF5_ops) write(*,*) 'reset "'//trim(XDMF_item%name)&
                     &//'"'
+#endif
                 XDMF_item%name = ''
                 deallocate(XDMF_item%xml_str)
             end if
