@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module grid_utilities
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use num_vars, only: dp, pi, max_str_ln, iu
@@ -119,7 +119,7 @@ contains
     contains
         integer function coord_F2E_VMEC() result(ierr)
             use num_vars, only: norm_disc_prec_eq
-            use num_utilities, only: calc_zero_HH
+            use num_ops, only: calc_zero_HH
             use VMEC, only: mnmax_V
             
             character(*), parameter :: rout_name = 'coord_F2E_VMEC'

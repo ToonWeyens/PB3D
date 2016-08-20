@@ -18,7 +18,7 @@
 !                Eindhoven University of Technology                            !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.32                                                              !
+!   Version: 1.33                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -26,10 +26,9 @@
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program POST
-    use str_ops, only: i2str
+    use str_utilities, only: i2str
     use num_vars, only: prog_name, prog_style, rank
-    use messages, only: writo, print_goodbye, lvl_ud, print_hello, &
-        &init_messages, init_time, start_time, stop_time, passed_time
+    use messages
     use HDF5_vars, only: init_HDF5
     use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_opts
     use files_ops, only: init_files, parse_args, open_input, open_output, &
@@ -56,7 +55,7 @@ program POST
     prog_name = 'POST'                                                          ! program name
     prog_style = 2                                                              ! post-processing part
     call print_hello()                                                          ! print message with time, etc
-    call init_messages()                                                        ! initialize message operations
+    call init_output()                                                          ! initialize output
     call init_files()                                                           ! initialize file operations
     call init_time()                                                            ! initialize time
     call init_HDF5()                                                            ! initialize HDF5

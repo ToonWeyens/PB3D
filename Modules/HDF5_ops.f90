@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Variables pertaining to HDF5 and XDMF                                      !
+!   Operations on HDF5 and XDMF variables                                      !
 !   Notes about XDMF:                                                          !
 !       - Collections can be spatial or temporal. If a variable is to be       !
 !         evolved in time or if its domain is decomposed (e.g. the same        !
@@ -28,8 +28,8 @@
 module HDF5_ops
 #include <PB3D_macros.h>
     use num_vars, only: max_str_ln, dp, plot_dir, data_dir, script_dir
-    use messages, only: writo, lvl_ud
-    use str_ops, only: i2str, r2str, r2strt
+    use messages
+    use str_utilities, only: i2str, r2str, r2strt
     use HDF5_vars
     use HDF5
     
@@ -835,10 +835,10 @@ contains
     ! for an explanation of the selection of the dataspaces.
     integer function print_HDF5_arrs(vars,PB3D_name,head_name,rich_lvl,eq_job,&
         &disp_info,ind_print) result(ierr)
-        use num_vars, only: n_procs, rank, HDF5_mutex_win, HDF5_mutex_wakeup_tag
-        use messages, only: lvl_ud
-        use MPI_utilities, only: mutex_req_acc, mutex_return_acc
+        use num_vars, only: n_procs, rank
         use MPI
+        use MPI_vars, only: HDF5_lock
+        use MPI_utilities, only: lock_req_acc, lock_return_acc
         use HDF5_utilities, only: set_1D_vars
         
         character(*), parameter :: rout_name = 'print_HDF5_arrs'
@@ -927,7 +927,7 @@ contains
         
         ! wait for file access if individual print and multiple processes
         if (n_procs.gt.1 .and. ind_print_loc) then
-            ierr = mutex_req_acc(HDF5_mutex_win,HDF5_mutex_wakeup_tag)
+            ierr = lock_req_acc(HDF5_lock)
             CHCKERR('')
         end if
         
@@ -1143,12 +1143,12 @@ contains
         call H5gclose_f(head_group_id,ierr)
         CHCKERR('Failed to close group')
         
-        ! close the HDF5 and return mutex
+        ! close the HDF5 and return lock
         call H5Fclose_f(HDF5_i,ierr)
         CHCKERR('failed to close HDF5 file')
         if (n_procs.gt.1 .and. ind_print_loc) then
-            ! return mutex
-            ierr = mutex_return_acc(HDF5_mutex_win,HDF5_mutex_wakeup_tag)
+            ! return lock
+            ierr = lock_return_acc(HDF5_lock)
             CHCKERR('')
         end if
         
@@ -1200,8 +1200,8 @@ contains
     integer function read_HDF5_arr_ind(var,PB3D_name,head_name,var_name,&
         &rich_lvl,eq_job,disp_info,lim_loc) result(ierr)                        ! individual version
         use HDF5_utilities, only: set_1D_vars
-        use num_vars, only: HDF5_mutex_win, HDF5_mutex_wakeup_tag
-        use MPI_utilities, only: mutex_req_acc, mutex_return_acc
+        use MPI_vars, only: HDF5_lock
+        use MPI_utilities, only: lock_req_acc, lock_return_acc
 #if ldebug
         use HDF5_utilities, only: list_all_vars_in_group
 #endif
@@ -1275,8 +1275,8 @@ contains
         ! preparation
         HDF5_kind_64 = H5kind_to_type(dp,H5_REAL_KIND)
         
-        ! wait for file access
-        ierr = mutex_req_acc(HDF5_mutex_win,HDF5_mutex_wakeup_tag)
+        ! wait for file access in a non-blocking way
+        ierr = lock_req_acc(HDF5_lock,blocking=.false.)
         CHCKERR('')
         
         ! user output
@@ -1457,8 +1457,8 @@ contains
         call H5Fclose_f(HDF5_i,ierr)
         CHCKERR('failed to close HDF5 file')
         
-        ! return mutex
-        ierr = mutex_return_acc(HDF5_mutex_win,HDF5_mutex_wakeup_tag)
+        ! return lock
+        ierr = lock_return_acc(HDF5_lock)
         CHCKERR('')
         
         ! close FORTRAN interfaces and HDF5 library.

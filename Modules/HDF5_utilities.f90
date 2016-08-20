@@ -22,8 +22,8 @@
 module HDF5_utilities
 #include <PB3D_macros.h>
     use num_vars, only: max_str_ln, dp, plot_dir, data_dir, script_dir
-    use messages, only: writo, lvl_ud
-    use str_ops, only: i2str, r2str, r2strt
+    use messages
+    use str_utilities, only: i2str, r2str, r2strt
     use HDF5_vars
     use HDF5
     

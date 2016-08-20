@@ -27,7 +27,7 @@
 !------------------------------------------------------------------------------!
 module eq_vars
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use messages
     use num_vars, only: dp, pi, max_str_ln, mu_0_original, weight_dp
     use grid_vars, only: grid_type
@@ -435,7 +435,6 @@ contains
     ! deallocates equilibrium quantities
     subroutine dealloc_eq_1(eq)                                                 ! flux version
 #if ldebug
-        use messages, only: get_mem_usage
         use num_vars, only: rank, print_mem_usage
 #endif
         
@@ -480,7 +479,6 @@ contains
     end subroutine dealloc_eq_1
     subroutine dealloc_eq_2(eq)                                                 ! metric version
 #if ldebug
-        use messages, only: get_mem_usage
         use num_vars, only: rank, print_mem_usage
 #endif
         ! input / output

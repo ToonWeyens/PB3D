@@ -4,7 +4,7 @@
 module HELENA_ops
 #include <PB3D_macros.h>
     use num_vars, only: pi
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use num_vars, only: dp, max_str_ln

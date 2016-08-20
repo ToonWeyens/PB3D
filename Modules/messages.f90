@@ -2,13 +2,13 @@
 !   Numerical utilities related to giving output                               !
 !------------------------------------------------------------------------------!
 module messages
-    use str_ops
+    use str_utilities
     use num_vars, only: dp, max_str_ln
     use foul
     
     implicit none
     private
-    public init_messages, lvl_ud, writo, print_ar_1, print_ar_2, &
+    public init_output, lvl_ud, writo, print_ar_1, print_ar_2, &
         &print_err_msg, init_time, start_time, stop_time, passed_time, &
         &print_hello, print_goodbye, &
         &temp_output, lvl, lvl_sep, temp_output_active, time_sep
@@ -29,7 +29,7 @@ module messages
 contains
     ! initialize the variables for the module
     ! [MPI] All ranks
-    subroutine init_messages
+    subroutine init_output
         use num_vars, only: rank
 #if ldebug
         use num_vars, only: mem_usage_count
@@ -55,7 +55,7 @@ contains
 #if ldebug
         mem_usage_count = 0
 #endif
-    end subroutine init_messages
+    end subroutine init_output
     
     ! prints first message
     subroutine print_hello
@@ -270,6 +270,7 @@ contains
 #if ldebug
         integer :: istat                                                        ! status
         integer :: mem_usage                                                    ! memory usage
+        integer(kind=8) :: clock                                                ! current clock
 #endif
         
         ! bypass output if no_output
@@ -306,13 +307,16 @@ contains
                 &trim(i2str(mem_usage_count))//': '//&
                 &trim(i2str(mem_usage))//'kB]'
             
+            ! get clock
+            call system_clock(clock)
+            
             ! write rank, count, time, memory usage to file if not temp_output
             if (.not.temp_output_active) then
                 open(UNIT=mem_usage_i,FILE=prog_name//'_'//&
                     &trim(mem_usage_name)//'.dat',STATUS='old',&
                     &POSITION='append',IOSTAT=istat)
                 write(mem_usage_i,*) rank, mem_usage_count, &
-                    &MPI_Wtime()-time_start, mem_usage, &
+                    &clock-time_start, mem_usage, &
                     &max_tot_mem_per_proc*1000, max_X_mem_per_proc*1000
                 close(UNIT=mem_usage_i)
             end if

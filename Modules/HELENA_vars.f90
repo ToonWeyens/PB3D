@@ -4,7 +4,7 @@
 module HELENA_vars
 #include <PB3D_macros.h>
     use num_vars, only: pi
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use num_vars, only: dp, max_str_ln
@@ -38,7 +38,6 @@ contains
     ! deallocates HELENA quantities that are not used any more
     subroutine dealloc_HEL
 #if ldebug
-        use messages, only: get_mem_usage
         use num_vars, only: rank, print_mem_usage
         
         ! local variables

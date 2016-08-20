@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module X_utilities
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use messages
     use num_vars, only: dp, max_name_ln, iu, max_str_ln
     use grid_vars, only: grid_type

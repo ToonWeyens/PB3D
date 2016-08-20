@@ -22,13 +22,15 @@ input_ops.o \
 input_utilities.o \
 messages.o \
 MPI_ops.o \
+MPI_vars.o \
 num_vars.o \
 output_ops.o \
 SLEPC_ops.o \
 SLEPC_utilities.o \
 sol_ops.o \
 sol_utilities.o \
-str_ops.o \
+str_utilities.o \
+num_ops.o \
 num_utilities.o \
 MPI_utilities.o \
 VMEC.o \

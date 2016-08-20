@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module grid_vars
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use messages
     use num_vars, only: dp, pi, max_str_ln, weight_dp
 
@@ -179,7 +179,6 @@ contains
     ! deallocates a grid
     subroutine dealloc_grid(grid)
 #if ldebug
-        use messages, only: get_mem_usage
         use num_vars, only: rank, print_mem_usage
 #endif
         ! input / output
@@ -291,10 +290,6 @@ contains
     
     ! Deallocate discretization variable type
     subroutine dealloc_disc(disc)
-#if ldebug
-        use messages, only: get_mem_usage
-#endif
-        
         ! input / output
         class(disc_type), intent(inout) :: disc                                 ! discretization variable to be deallocated
         

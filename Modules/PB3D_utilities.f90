@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module PB3D_utilities
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use messages
     use num_vars, only: dp, pi, max_str_ln, max_name_ln
     use HDF5_vars, only: var_1D_type

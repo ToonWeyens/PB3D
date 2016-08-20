@@ -4,8 +4,8 @@
 module HDF5_vars
 #include <PB3D_macros.h>
     use num_vars, only: max_str_ln, dp, plot_dir, data_dir, script_dir
-    use messages, only: writo, lvl_ud
-    use str_ops, only: i2str, r2str, r2strt
+    use messages
+    use str_utilities, only: i2str, r2str, r2strt
     use HDF5
     
     implicit none
@@ -44,7 +44,7 @@ module HDF5_vars
     end type HDF5_file_type
     
     ! 1D equivalent of multidimensional variables
-    type var_1D_type
+    type :: var_1D_type
         real(dp), allocatable :: p(:)                                           ! 1D equivalent of data of variable
         integer, allocatable :: tot_i_min(:), tot_i_max(:)                      ! total min. and max. of indices of variable
         integer, allocatable :: loc_i_min(:), loc_i_max(:)                      ! group min. and max. of indices of variable

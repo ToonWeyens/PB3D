@@ -3,11 +3,12 @@
 !------------------------------------------------------------------------------!
 module MPI_ops
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use messages
     use MPI
     use num_vars, only: dp, max_str_ln, pi
     use grid_vars, only: grid_type
+    use MPI_vars, only: lock_type
     
     implicit none
     private
@@ -18,8 +19,9 @@ contains
     ! start MPI and gather information
     ! [MPI] Collective call
     integer function start_MPI() result(ierr)
-        use num_vars, only: rank, n_procs, HDF5_mutex, HDF5_mutex_win, &
-            &X_jobs_mutex, X_jobs_mutex_win
+        use num_vars, only: rank, n_procs, time_start
+        use MPI_vars, only: init_lock, &
+            &HDF5_lock
         use files_utilities, only: nextunit
         use input_utilities, only: pause_prog
 #if ldebug
@@ -27,14 +29,9 @@ contains
         use eq_vars, only: n_alloc_eq_1s, n_alloc_eq_2s
         use X_vars, only: n_alloc_X_1s, n_alloc_X_2s
         use sol_vars, only: n_alloc_sols
-        use num_vars, only: time_start
 #endif
         
         character(*), parameter :: rout_name = 'start_MPI'
-        
-        ! local variables
-        integer(kind=MPI_ADDRESS_KIND) :: intlb                                 ! lower bound of int type
-        integer(kind=MPI_ADDRESS_KIND) :: intex                                 ! extent of int type
         
         ! initialize ierr
         ierr = 0
@@ -47,38 +44,12 @@ contains
         call MPI_Comm_size(MPI_Comm_world,n_procs,ierr)                         ! nr. processes
         CHCKERR('MPI size failed')
         
-        ! create HDF5 mutex and X_jobs mutex and windows
-        call MPI_Type_get_extent(MPI_INTEGER,intlb,intex,ierr)
-        CHCKERR('Failed to get extent of int')
-        if (rank.eq.0) then                                                     ! master
-            allocate(HDF5_mutex(n_procs))
-            allocate(X_jobs_mutex(n_procs))
-            
-            HDF5_mutex = 0
-            X_jobs_mutex = 0
-            call MPI_Win_create(HDF5_mutex,n_procs*intex,int(intex),&
-                &MPI_INFO_NULL,MPI_Comm_world,HDF5_mutex_win,ierr)
-            CHCKERR('Failed to create window to mutex')
-            call MPI_Win_create(X_jobs_mutex,n_procs*intex,int(intex),&
-                &MPI_INFO_NULL,MPI_Comm_world,X_jobs_mutex_win,ierr)
-            CHCKERR('Failed to create window to mutex')
-        else
-            allocate(HDF5_mutex(0))
-            allocate(X_jobs_mutex(0))
-            
-            call MPI_Win_create(HDF5_mutex,0*intex,int(intex),MPI_INFO_NULL,&
-                &MPI_Comm_world,HDF5_mutex_win,ierr)
-            CHCKERR('Failed to create window to mutex')
-            call MPI_Win_create(X_jobs_mutex,0*intex,int(intex),MPI_INFO_NULL,&
-                &MPI_Comm_world,X_jobs_mutex_win,ierr)
-            CHCKERR('Failed to create window to mutex')
-        end if
+        ! create HDF5 lock
+        ierr = init_lock(HDF5_lock,10)
+        CHCKERR('')
         
-        ! set fences
-        call MPI_Win_fence(0,HDF5_mutex_win,ierr) 
-        CHCKERR('Couldn''t set fence') 
-        call MPI_Win_fence(0,X_jobs_mutex_win,ierr) 
-        CHCKERR('Couldn''t set fence') 
+        ! initialize time
+        call system_clock(time_start)
         
 #if ldebug
         ! set up allocated variable counters
@@ -89,15 +60,14 @@ contains
         n_alloc_X_1s = 0
         n_alloc_X_2s = 0
         n_alloc_sols = 0
-        
-        ! initialize time
-        time_start = MPI_Wtime()
 #endif
     end function start_MPI
     
     ! stop MPI
     ! [MPI] Collective call
     integer function stop_MPI() result(ierr)
+        use MPI_vars, only: dealloc_lock, &
+            &HDF5_lock
 #if ldebug
         use num_vars, only: rank
         use grid_vars, only: n_alloc_grids, n_alloc_discs
@@ -111,7 +81,14 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! user output
         call writo('Stopping MPI')
+        
+        ! deallocate HDF5 lock
+        ierr = dealloc_lock(HDF5_lock)
+        CHCKERR('')
+        
+        ! finalize
         call MPI_finalize(ierr)
         CHCKERR('MPI stop failed')
         
@@ -137,18 +114,10 @@ contains
     ! abort MPI
     ! [MPI] Collective call
     integer function abort_MPI() result(ierr)
-        use num_vars, only: HDF5_mutex_win, X_jobs_mutex_win
-        
         character(*), parameter :: rout_name = 'abort_MPI'
         
         ! initialize ierr
         ierr = 0
-        
-        ! free HDF5 and X_jobs mutex windows
-        call MPI_Win_free(HDF5_mutex_win,ierr)
-        CHCKERR('Failed to free window to HDF5_mutex')
-        call MPI_Win_free(X_jobs_mutex_win,ierr)
-        CHCKERR('Failed to free window to X_jobs mutex')
         
         call MPI_Abort(MPI_Comm_world,0,ierr)
         CHCKERR('MPI abort failed')
@@ -159,10 +128,10 @@ contains
     ! Optionally an array of logicals can be  passed to see whether the modes of
     ! the next job are the same as the previous job.
     integer function get_next_job(X_job_nr,same_modes) result(ierr)
-        use num_vars, only: X_jobs_taken, X_jobs_lims, X_jobs_file_name, rank, &
-            &X_jobs_mutex_win, X_jobs_mutex_wakeup_tag
+        use num_vars, only: X_jobs_taken, X_jobs_lims, X_jobs_file_name, rank
         use files_utilities, only: nextunit
-        use MPI_utilities, only: mutex_req_acc, mutex_return_acc
+        use MPI_vars, only: X_jobs_lock
+        use MPI_utilities, only: lock_req_acc, lock_return_acc
         
         character(*), parameter :: rout_name = 'get_next_job'
         
@@ -193,8 +162,8 @@ contains
         current_job = X_job_nr
         X_job_nr = -1
         
-        ! get access to X jobs mutex
-        ierr = mutex_req_acc(X_jobs_mutex_win,X_jobs_mutex_wakeup_tag)
+        ! get access to X jobs lock
+        ierr = lock_req_acc(X_jobs_lock)
         CHCKERR('')
         open(STATUS='OLD',ACTION = 'READWRITE',unit=nextunit(X_file_i),&
             &file=X_jobs_file_name,iostat=ierr)
@@ -237,10 +206,10 @@ contains
             write(X_file_i,*) rank, X_job_nr
         end if
         
-        ! close X_jobs file and return access to mutex
+        ! close X_jobs file and return access to lock
         close(X_file_i,iostat=ierr)
         CHCKERR('Failed to close X jobs file')
-        ierr = mutex_return_acc(X_jobs_mutex_win,X_jobs_mutex_wakeup_tag)
+        ierr = lock_return_acc(X_jobs_lock)
         CHCKERR('')
     contains
         ! checks whether there is a  job with matching mode numbers. Optionally,

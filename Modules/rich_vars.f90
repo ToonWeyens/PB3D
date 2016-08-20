@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module rich_vars
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use num_vars, only: dp, pi, max_str_ln, max_it_rich, tol_rich

@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module VMEC
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use grid_vars, only: grid_type
@@ -269,7 +269,6 @@ contains
     ! deallocates VMEC quantities that are not used anymore
     subroutine dealloc_VMEC
 #if ldebug
-        use messages, only: get_mem_usage
         use num_vars, only: rank, print_mem_usage
         
         ! local variables

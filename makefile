@@ -77,8 +77,8 @@ include $(OBJLIST)# Names of all the objects
 # 		ldebug: debug
 ##############################################################################
 # compiler flags
-#COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -fcheck=bounds,array-temps,do,pointer,recursion -cpp -Dldebug# profiling with gprof2dot
-COMP_FLAGS = -O3 -fimplicit-none -fno-omit-frame-pointer -cpp# optimized
+COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -fcheck=bounds,array-temps,do,pointer,recursion -cpp -Dldebug# profiling with gprof2dot
+#COMP_FLAGS = -O3 -fimplicit-none -fno-omit-frame-pointer -cpp# optimized
 
 # compiler include
 COMP_INC = -I$(HDF5_inc) -I$(NETCDF_inc) -I$(HOME_BIN)/libstell_dir -I$(PB3D_DIR)/include #-I/opt/openmpi/1.10.0/include

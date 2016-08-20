@@ -4,7 +4,7 @@
 !------------------------------------------------------------------------------!
 module output_ops
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use messages
     use num_vars, only: dp, max_str_ln, no_plots, iu, plot_dir, data_dir, &
         &script_dir, plot_size
@@ -1479,7 +1479,6 @@ contains
     ! absolute error.
     subroutine plot_diff_HDF5(A,B,file_name,tot_dim,loc_offset,description,&
         &output_message)
-        use messages, only: lvl_ud
         
         ! input / output
         real(dp), intent(in) :: A(:,:,:), B(:,:,:)                              ! vectors A and B

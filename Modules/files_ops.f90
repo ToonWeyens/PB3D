@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module files_ops
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use messages
     use num_vars, only: dp, max_str_ln
     implicit none
@@ -440,7 +440,6 @@ contains
     integer function open_output() result(ierr)
         use num_vars, only: prog_style, output_i, output_name, prog_name, &
             &rich_restart_lvl, shell_commands_name, PB3D_name
-        use messages, only: temp_output, temp_output_active
         use files_utilities, only: nextunit
         use HDF5_ops, only: create_output_HDF5
 #if ldebug

@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module X_ops
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, max_name_ln, pi
@@ -614,7 +614,7 @@ contains
         use X_vars, only: min_n_X, min_m_X, sec_X_ind, prim_X
         use num_vars, only: use_pol_flux_F, norm_disc_prec_eq
         use eq_vars, only: max_flux_F, max_flux_F
-        use num_utilities, only: calc_zero_Zhang
+        use num_ops, only: calc_zero_Zhang
         use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
         use MPI_utilities, only: get_ser_var
         

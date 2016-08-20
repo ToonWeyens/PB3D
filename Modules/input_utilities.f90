@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module input_utilities
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use num_vars, only: dp, max_str_ln
@@ -17,7 +17,6 @@ contains
     ! be provided.
     ! [MPI] All ranks, but only master can give input
     function get_log(yes,ind) result(val)
-        use messages, only: start_time, stop_time
         use num_vars, only: rank
         use MPI_utilities, only: wait_MPI, broadcast_var
         
@@ -71,7 +70,6 @@ contains
     ! provided as well.
     ! [MPI] All ranks, but only global rank can give input
     function get_real(lim_lo,lim_hi,ind) result(val)
-        use messages, only: start_time, stop_time
         use num_vars, only: rank
         use MPI_utilities, only: wait_MPI, broadcast_var
         
@@ -145,7 +143,6 @@ contains
     ! provided as well.
     ! [MPI] All ranks, but only global rank can give input
     function get_int(lim_lo,lim_hi,ind) result(val)
-        use messages, only: start_time, stop_time
         use num_vars, only: rank
         use MPI_utilities, only: wait_MPI, broadcast_var
         
@@ -218,7 +215,6 @@ contains
     ! pauses the running of the program
     ! [MPI] All ranks or, optinally, only current rank
     subroutine pause_prog(ind)
-        use messages, only: start_time, stop_time
         use MPI_utilities, only: wait_MPI
         use num_vars, only: rank, rank
         

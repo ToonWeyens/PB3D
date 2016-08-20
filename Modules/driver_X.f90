@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module driver_X
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use num_vars, only: dp, pi, max_str_ln
@@ -37,7 +37,7 @@ contains
             &n_mod_X
         use grid_vars, only: n_r_sol, min_par_X, max_par_X
         use PB3D_ops, only: reconstruct_PB3D_in
-        use MPI_ops, only: get_next_job, print_jobs_info
+        use MPI_ops, only: print_jobs_info
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
             &setup_nm_X
         use input_utilities, only: dealloc_in
@@ -291,6 +291,8 @@ contains
     integer function run_driver_X_1(grid_eq,grid_X,eq_1,eq_2) result(ierr)
         use MPI_ops, only: get_next_job, print_jobs_info
         use MPI_utilities, only: wait_MPI
+        use MPI_vars, only: init_lock, dealloc_lock, &
+            &X_jobs_lock
         use X_utilities, only: divide_X_jobs
         use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
             &eq_job_nr
@@ -327,6 +329,10 @@ contains
         ! divide perturbation jobs
         arr_size = grid_X%loc_n_r*product(grid_X%n(1:2))
         ierr = divide_X_jobs(arr_size,1)
+        CHCKERR('')
+        
+        ! create lock for perturbation jobs
+        ierr = init_lock(X_jobs_lock,11)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -439,6 +445,10 @@ contains
         call lvl_ud(-1)
         call writo('Vectorial perturbation jobs finished')
         
+        ! deallocate HDF5 lock
+        ierr = dealloc_lock(X_jobs_lock)
+        CHCKERR('')
+        
         ! user output
         if (n_procs.gt.1) call writo('Waiting for the other processes')
         
@@ -528,6 +538,8 @@ contains
         &result(ierr)
         use MPI_ops, only: get_next_job, print_jobs_info
         use MPI_utilities, only: wait_MPI
+        use MPI_vars, only: init_lock, dealloc_lock, &
+            &X_jobs_lock
         use X_utilities, only: divide_X_jobs
         use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
             &eq_job_nr
@@ -570,6 +582,10 @@ contains
         ! divide perturbation jobs, tensor phase
         arr_size = grid_X_B%loc_n_r*product(grid_X_B%n(1:2))
         ierr = divide_X_jobs(arr_size,2)
+        CHCKERR('')
+        
+        ! create lock for perturbation jobs
+        ierr = init_lock(X_jobs_lock,12)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -799,6 +815,10 @@ contains
             if (allocated(X_1(id)%n)) call X_1(id)%dealloc()
         end do
         call lvl_ud(-1)
+        
+        ! deallocate HDF5 lock
+        ierr = dealloc_lock(X_jobs_lock)
+        CHCKERR('')
         
         ! user output
         if (n_procs.gt.1) call writo('Waiting for the other processes')

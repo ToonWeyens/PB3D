@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module driver_POST
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use num_vars, only: max_str_ln, dp, iu

@@ -3,10 +3,11 @@
 !------------------------------------------------------------------------------!
 module test
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use num_vars, only: pi, dp, max_str_ln, iu
+    use input_utilities
     
     implicit none
     private
@@ -18,13 +19,19 @@ module test
 contains
     ! performs generic tests
     integer function generic_tests() result(ierr)
-        use input_utilities, only: pause_prog, get_log
         use num_vars, only: prog_style
         
         character(*), parameter :: rout_name = 'generic_tests'
         
         ! initialize ierr
         ierr = 0
+        
+        call writo('Test lock system')
+        if (get_log(.false.)) then
+            ierr = test_lock()
+            CHCKERR('')
+            call pause_prog
+        end if
         
         ! select according to program style
         select case (prog_style)
@@ -52,10 +59,162 @@ contains
         end select
     end function generic_tests
     
+    ! test lock system
+    integer function test_lock() result(ierr)
+        use MPI_vars, only: init_lock, dealloc_lock, &
+            &lock_type
+        use MPI_utilities, only: lock_req_acc, lock_return_acc, wait_MPI, &
+            &lock_header, lock_wl_change, &
+            &debug_lock
+        use num_vars, only: rank
+        
+        character(*), parameter :: rout_name = 'test_lock'
+        
+        ! local variables
+        type(lock_type) :: lock
+        integer :: wait_time
+        integer(kind=8) :: sleep_time(2)
+        integer :: testcase
+        integer :: n_cycles
+        integer :: id
+        logical :: blocking
+        logical :: red_lat
+        integer, allocatable :: wl(:)
+        character(len=max_str_ln) :: title
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! debug messages
+        debug_lock = .true.
+        
+        call writo('which test?')
+        call lvl_ud(1)
+        call writo('1. blocking')
+        call writo('2. non-blocking')
+        call writo('3. blocking and non-blocking')
+        testcase = get_int(lim_lo=1,lim_hi=3)
+        call lvl_ud(-1)
+        
+        call writo('How many cycles?')
+        n_cycles = get_int(lim_lo=1)
+        
+        if (testcase.eq.2 .or. testcase.eq.3) then
+            call writo('Do you want to check whether locking and unlocking the &
+                &window multiple times by the master helps reduce latency?')
+            red_lat = get_log(.false.)
+        end if
+        
+        ! set name
+        select case (testcase)
+            case (1)
+                title = 'blocking'
+            case (2)
+                title = 'non-blocking'
+            case (3)
+                title = 'blocking and non-blocking'
+        end select
+        
+        ! create lock
+        ierr = init_lock(lock,100)
+        CHCKERR('')
+        
+        ! test blocking access
+        call writo('Testing '//trim(title)//' access')
+        call lvl_ud(1)
+        call writo('Every process immediately requests access and then &
+            &waits some seconds between 0 and 3')
+        
+        ! set name
+        select case (testcase)
+            case (1)
+                call writo('Every process is blocking')
+            case (2)
+                call writo('Every process is non-blocking')
+            case (3)
+                call writo('In the first cycle, every process is non-blocking')
+                call writo('Afterwards, each process becomes blocking &
+                    &sequentially')
+        end select
+        
+        ! synchronize MPI
+        ierr = wait_MPI()
+        CHCKERR('')
+        
+        do id = 1,n_cycles
+            select case (testcase)
+                case (1)                                                        ! blocking
+                    blocking = .true.
+                case (2)                                                        ! non-blocking
+                    blocking = .false.
+                case (3)                                                        ! both
+                    if (id.eq.rank+2) then
+                        blocking = .true.
+                    else
+                        blocking = .false.
+                    end if
+            end select
+            ierr = lock_req_acc(lock,blocking)
+            CHCKERR('')
+            
+            wait_time = random_int([0,3])
+            write(*,*) trim(lock_header(lock)),'sleeps ',&
+                &wait_time,' seconds'
+            if (red_lat .and. rank.eq.0 .and. wait_time.gt.0) then
+                call system_clock(sleep_time(1))
+                call system_clock(sleep_time(2))
+                do while (1.E-9_dp*(sleep_time(2)-sleep_time(1)).lt.wait_time)
+                    debug_lock = .false.
+                    ierr = lock_wl_change(2,lock%blocking,lock,wl)
+                    CHCKERR('')
+                    call system_clock(sleep_time(2))
+                end do
+                debug_lock = .true.
+            else
+                call sleep(wait_time)
+            endif
+            write(*,*) trim(lock_header(lock)),'has slept ',&
+                &wait_time,' seconds, returning lock'
+            
+            ierr = lock_return_acc(lock)
+            CHCKERR('')
+        end do
+        
+        ! synchronize MPI
+        ierr = wait_MPI()
+        CHCKERR('')
+        
+        call lvl_ud(-1)
+    contains
+        ! not very high quality random number between the limits
+        integer function random_int(lim) result(res)
+            ! input / output
+            integer, intent(in) :: lim(2)
+            
+            ! local variables
+            integer :: seed(12)
+            real(dp) :: r_nr
+            integer :: n_steps = 5
+            integer :: id
+            
+            do id = 1,n_steps
+                ! random number for seed
+                call random_number(r_nr)
+                
+                ! set seed
+                seed = int(1000_dp*r_nr*(rank+1))
+                call random_seed(put=seed)
+            end do
+            
+            ! random numbeer
+            call random_number(r_nr)
+            res = lim(1) + floor((lim(2)-lim(1)+1)*r_nr)
+        end function random_int
+    end function test_lock
+    
     ! tests the calculation of derivatives
     integer function test_calc_deriv() result(ierr)
         use num_vars, only: rank
-        use input_utilities, only: get_log, get_int, get_real
         use grid_vars, only: disc_type
         use grid_utilities, only: setup_deriv_data, apply_disc
         
@@ -292,7 +451,6 @@ contains
     integer function test_conv_FHM() result(ierr)
         use num_vars, only: rank
         use num_utilities, only: conv_FHM
-        use input_utilities, only: get_log, get_int
         
         character(*), parameter :: rout_name = 'test_conv_FHM'
         
@@ -404,7 +562,6 @@ contains
     ! tests calculation of volume integral
     integer function test_calc_int_vol() result(ierr)
         use num_vars, only: rank
-        use input_utilities, only: get_int, get_log
         use grid_utilities, only: calc_eqd_grid, calc_int_vol, &
             &debug_calc_int_vol
         

@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module vac
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use messages
     use output_ops
     use num_vars, only: dp, pi, max_str_ln, iu

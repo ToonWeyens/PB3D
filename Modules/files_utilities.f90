@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module files_utilities
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use messages
     use num_vars, only: dp, max_str_ln
     implicit none

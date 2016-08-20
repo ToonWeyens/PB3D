@@ -18,7 +18,7 @@
 !                Eindhoven University of Technology                            !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.32                                                              !
+!   Version: 1.33                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -27,9 +27,8 @@
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D
     use num_vars, only: prog_name, prog_style, rank, rich_restart_lvl
-    use str_ops, only: r2str, i2str
-    use messages, only: init_messages, lvl_ud, writo, init_time, start_time, &
-        &passed_time, stop_time, print_hello, print_goodbye
+    use str_utilities, only: r2str, i2str
+    use messages
     use HDF5_vars, only: init_HDF5
     use driver_eq, only: run_driver_eq
     use driver_X, only: run_driver_X
@@ -64,7 +63,7 @@ program PB3D
     prog_name = 'PB3D'                                                          ! program name
     prog_style = 1                                                              ! main part
     call print_hello()                                                          ! print message with time, etc
-    call init_messages()                                                        ! initialize message operations
+    call init_output()                                                          ! initialize output utilities
     call init_files()                                                           ! initialize file operations
     call init_time()                                                            ! initialize time
     call init_HDF5()                                                            ! initialize HDF5

@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module eq_ops
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use num_vars, only: pi, dp, max_str_ln, max_deriv

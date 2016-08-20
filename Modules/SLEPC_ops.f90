@@ -12,7 +12,7 @@ module SLEPC_ops
 #include <slepc/finclude/slepcepsdef.h>
 ! for slepc 3.5.3:
 !#include <finclude/slepcepsdef.h>
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use slepceps

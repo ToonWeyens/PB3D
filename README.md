@@ -527,3 +527,13 @@ CHANGELOG
       - Removed the need for lockfiles, as everything is now performed internally using a mutex system made with MPI.
       - The mutex system can be debugged using a debug flag in MPI_utilities.
       - For large numbers of procs, the code is slow as every HDF5 read and write is currently isolated using mutex. This is necessary as it is not possible to read from a file that is being written to, even though multiple procs can indeed access the same file at the same time. This needs to be resolved; either using SRMW from version 1.10, or another mechanism.
+
+1.33: - Renamed "str_ops" to "str_utilities" for consistency.
+      - Split num_utilities into num_utilities and num_ops, where the latter requires output_ops.
+      - Bubble sort implemented in num_utilities.
+      - Renamed "mutex" to lock.
+      - Implemented tests for the lock system.
+      - Completely redesigned the lock system.
+      - The lock system now supports blocking as well as non-blocking locks, which is good for HDF5 performance with many reads and few writes.
+      - Sometimes opening HDF5 files still fails. Multiple attempts will therefore be performed.
+      - The timing functions now use system_clock with integer of kind 8, which is precise.

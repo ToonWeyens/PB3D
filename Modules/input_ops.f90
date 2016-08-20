@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module input_ops
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use num_vars, only: dp, max_str_ln
@@ -31,7 +31,6 @@ contains
             &max_nr_tries_HH, POST_style, slab_plots, def_relax_fac_HH, &
             &magn_int_style, K_style
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
-        use messages, only: writo, lvl_ud
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
         use rich_vars, only: rich_lvl, min_n_par_X, req_min_n_par_X

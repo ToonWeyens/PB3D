@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module sol_utilities
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use output_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, pi

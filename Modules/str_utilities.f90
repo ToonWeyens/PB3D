@@ -1,11 +1,11 @@
 !------------------------------------------------------------------------------!
 !   Operations on strings                                                      !
 !------------------------------------------------------------------------------!
-module str_ops
+module str_utilities
     use num_vars, only: dp, max_str_ln
     implicit none
     private
-    public i2str, r2str, r2strt, c2str, c2strt, strh2l, strl2h
+    public i2str, ii2str, r2str, r2strt, c2str, c2strt, strh2l, strl2h
 
 contains
     ! Convert an integer to string 
@@ -17,6 +17,13 @@ contains
         write (i2str, *) k
         i2str = adjustl(i2str)
     end function i2str
+    elemental character(len=max_str_ln) function ii2str(k)
+        ! input / output
+        integer(kind=8), intent(in) :: k
+        
+        write (ii2str, *) k
+        ii2str = adjustl(ii2str)
+    end function ii2str
 
     ! Convert a real (double) to string
     ! Note: See http://www.fortran90.org/src/best-practices.html how to not lose
@@ -115,4 +122,4 @@ contains
           if ( n /= 0 ) output_string(i:i) = upper_case(n:n)
         end do
     end function strl2h
-end module str_ops
+end module str_utilities

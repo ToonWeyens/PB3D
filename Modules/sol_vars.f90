@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module sol_vars
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use messages
     use num_vars, only: dp, max_str_ln, iu, weight_dp
     use grid_vars, only: grid_type
@@ -96,7 +96,6 @@ contains
     ! Note: intent(out) automatically deallocates the variable
     subroutine dealloc_sol(sol)
 #if ldebug
-        use messages, only: get_mem_usage
         use num_vars, only: rank, print_mem_usage
 #endif
         

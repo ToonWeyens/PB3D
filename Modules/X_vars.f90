@@ -3,7 +3,7 @@
 !------------------------------------------------------------------------------!
 module X_vars
 #include <PB3D_macros.h>
-    use str_ops
+    use str_utilities
     use messages
     use num_vars, only: dp, max_name_ln, iu, weight_dp
     use grid_vars, only: grid_type
@@ -300,7 +300,6 @@ contains
     ! deallocates perturbation variables
     subroutine dealloc_X_1(X)                                                   ! vectorial version
 #if ldebug
-        use messages, only: get_mem_usage
         use num_vars, only: rank, print_mem_usage
 #endif
         
@@ -345,7 +344,6 @@ contains
     end subroutine dealloc_X_1
     subroutine dealloc_X_2(X)                                                   ! tensorial version
 #if ldebug
-        use messages, only: get_mem_usage
         use num_vars, only: rank, print_mem_usage
 #endif
         
