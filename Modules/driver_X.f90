@@ -30,7 +30,7 @@ contains
     ! Main driver of PB3D perturbation part.
     integer function run_driver_X() result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, rank, plot_resonance, &
-            &X_style, rich_restart_lvl, eq_job_nr
+            &X_style, rich_restart_lvl, eq_job_nr, jump_to_sol
         use rich_vars, only: n_par_X, rich_lvl
         use MPI_utilities, only: wait_MPI
         use X_vars, only: min_sec_X, max_sec_X, prim_X, min_r_sol, max_r_sol, &
@@ -128,21 +128,26 @@ contains
             CHCKERR('')
         end if
         
-        ! plot resonances if requested
-        if (plot_resonance .and. rank.eq.0 .and. rich_lvl.eq.1) then
-            ierr = resonance_plot(eq_1,grid_eq)
-            CHCKERR('')
+        ! jump to solution if requested
+        if (rich_lvl.eq.rich_restart_lvl .and.  jump_to_sol) then
+            call writo('Skipping rest to jump to solution')
         else
-            call writo('Resonance plot not requested')
+            ! plot resonances if requested
+            if (plot_resonance .and. rank.eq.0 .and. rich_lvl.eq.1) then
+                ierr = resonance_plot(eq_1,grid_eq)
+                CHCKERR('')
+            else
+                call writo('Resonance plot not requested')
+            end if
+            
+            ! Run vectorial part of driver
+            ierr = run_driver_X_1(grid_eq,grid_X,eq_1,eq_2)
+            CHCKERR('')
+            
+            ! Run Tensorial part of driver
+            ierr = run_driver_X_2(grid_eq_B,grid_X,grid_X_B,eq_1,eq_2_B)
+            CHCKERR('')
         end if
-        
-        ! Run vectorial part of driver
-        ierr = run_driver_X_1(grid_eq,grid_X,eq_1,eq_2)
-        CHCKERR('')
-        
-        ! Run Tensorial part of driver
-        ierr = run_driver_X_2(grid_eq_B,grid_X,grid_X_B,eq_1,eq_2_B)
-        CHCKERR('')
         
         ! clean up
         call writo('Clean up')
@@ -291,8 +296,7 @@ contains
     integer function run_driver_X_1(grid_eq,grid_X,eq_1,eq_2) result(ierr)
         use MPI_ops, only: get_next_job, print_jobs_info
         use MPI_utilities, only: wait_MPI
-        use MPI_vars, only: init_lock, dealloc_lock, &
-            &X_jobs_lock
+        use MPI_vars, only: X_jobs_lock
         use X_utilities, only: divide_X_jobs
         use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
             &eq_job_nr
@@ -332,7 +336,7 @@ contains
         CHCKERR('')
         
         ! create lock for perturbation jobs
-        ierr = init_lock(X_jobs_lock,11)
+        ierr = X_jobs_lock%init(11)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -446,7 +450,7 @@ contains
         call writo('Vectorial perturbation jobs finished')
         
         ! deallocate HDF5 lock
-        ierr = dealloc_lock(X_jobs_lock)
+        ierr = X_jobs_lock%dealloc()
         CHCKERR('')
         
         ! user output
@@ -538,8 +542,7 @@ contains
         &result(ierr)
         use MPI_ops, only: get_next_job, print_jobs_info
         use MPI_utilities, only: wait_MPI
-        use MPI_vars, only: init_lock, dealloc_lock, &
-            &X_jobs_lock
+        use MPI_vars, only: X_jobs_lock
         use X_utilities, only: divide_X_jobs
         use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
             &eq_job_nr
@@ -585,7 +588,7 @@ contains
         CHCKERR('')
         
         ! create lock for perturbation jobs
-        ierr = init_lock(X_jobs_lock,12)
+        ierr = X_jobs_lock%init(12)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -817,7 +820,7 @@ contains
         call lvl_ud(-1)
         
         ! deallocate HDF5 lock
-        ierr = dealloc_lock(X_jobs_lock)
+        ierr = X_jobs_lock%dealloc()
         CHCKERR('')
         
         ! user output

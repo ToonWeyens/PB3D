@@ -77,8 +77,8 @@ include $(OBJLIST)# Names of all the objects
 # 		ldebug: debug
 ##############################################################################
 # compiler flags
-COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -fcheck=bounds,array-temps,do,pointer,recursion -cpp -Dldebug# profiling with gprof2dot
-#COMP_FLAGS = -O3 -fimplicit-none -fno-omit-frame-pointer -cpp# optimized
+#COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -fcheck=bounds,array-temps,do,pointer,recursion -cpp -Dldebug# profiling with gprof2dot
+COMP_FLAGS = -O3 -fimplicit-none -fno-omit-frame-pointer -cpp# optimized
 
 # compiler include
 COMP_INC = -I$(HDF5_inc) -I$(NETCDF_inc) -I$(HOME_BIN)/libstell_dir -I$(PB3D_DIR)/include #-I/opt/openmpi/1.10.0/include
@@ -93,7 +93,7 @@ COMPILE = $(COMP_DIR) $(COMP_INC) $(PETSC_FC_INCLUDES) $(SLEPC_INCLUDE) $(COMP_F
 LINK_FLAGS = -fPIC -pg
 
 # libraries
-LINK_LIB = $(HOME_BIN)/libstell.a libdfftpack.a -lgfortran -llapack -lblas -lsz \
+LINK_LIB = $(HOME_BIN)/libstell.a libdfftpack.a -lgfortran -llapack -lblas \
 	-L$(HDF5_lib) -lhdf5_fortran -lhdf5 -L$(NETCDF_lib) -lnetcdf -lnetcdff  \
 	-Wl,-R$(NETCDF_lib) -lz -lpthread -ldl -lm# -Wl,-R[PATH] to set to default search path http://superuser.com/questions/192573/how-do-you-specify-the-location-of-libraries-to-a-binary-linux)
 

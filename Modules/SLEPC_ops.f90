@@ -1497,7 +1497,7 @@ contains
         ! user output
         call EPSGetType(solver,EPS_type,ierr)                                   ! EPS solver type
         CHCKERR('EPSGetType failed')
-        call EPSGetTolerances(solver,tol,max_it);                               ! tolerance and max. nr. of iterations
+        call EPSGetTolerances(solver,tol,max_it,ierr)                           ! tolerance and max. nr. of iterations
         CHCKERR('EPSGetTolerances failed')
         call writo(trim(EPS_type)//' solver with tolerance '//&
             &trim(r2strt(tol))//' and maximum '//trim(i2str(max_it))//&

@@ -58,6 +58,9 @@ module MPI_vars
         integer :: wl_win                                                       ! window to waiting list
         integer :: wu_tag                                                       ! wakeup tag
         logical :: blocking                                                     ! is a normal blocking process
+    contains
+        procedure :: init => init_lock                                          ! initialize
+        procedure :: dealloc => dealloc_lock                                    ! deallocate
     end type lock_type
     
     ! global variables
@@ -74,7 +77,7 @@ contains
         character(*), parameter :: rout_name = 'init_lock'
         
         ! input / output
-        type(lock_type), intent(inout) :: lock                                  ! lock
+        class(lock_type), intent(inout) :: lock                                 ! lock
         integer, intent(in) :: wu_tag                                           ! wakeup tag
         
         ! local variables
@@ -114,7 +117,7 @@ contains
         character(*), parameter :: rout_name = 'dealloc_lock'
         
         ! input / output
-        type(lock_type), intent(inout) :: lock                                  ! lock
+        class(lock_type), intent(inout) :: lock                                 ! lock
         
         ! initialize ierr
         ierr = 0

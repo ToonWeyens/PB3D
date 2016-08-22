@@ -1044,9 +1044,7 @@ contains
     
     ! if this equilibrium job should be done, also increment eq_job_nr
     logical function do_eq()
-        use num_vars, only: eq_jobs_lims, eq_job_nr, rich_restart_lvl, &
-            &jump_to_sol
-        use rich_vars, only: rich_lvl
+        use num_vars, only: eq_jobs_lims, eq_job_nr
         
         ! increment equilibrium job nr.
         eq_job_nr = eq_job_nr + 1
@@ -1056,9 +1054,6 @@ contains
         else
             do_eq = .false.
         end if
-        
-        ! possibly skip equilibrium jobs for first Richardson level
-        if (rich_lvl.le.rich_restart_lvl .and. jump_to_sol) do_eq = .false.
     end function do_eq
     
     ! Possible  extension with  equilibrium job  as well  as  parallel job  or

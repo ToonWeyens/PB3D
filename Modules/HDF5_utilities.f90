@@ -240,6 +240,9 @@ contains
     ! Probe HDF5 file for group existence.
     integer function probe_HDF5_group(HDF5_name,group_name,group_exists) &
         &result(ierr)
+        use MPI_vars, only: HDF5_lock
+        use MPI_utilities, only: lock_req_acc, lock_return_acc
+        
         character(*), parameter :: rout_name = 'probe_HDF5_group'
         
         ! input / output
@@ -258,6 +261,10 @@ contains
         ! initialize FORTRAN predefined datatypes
         call H5open_f(ierr) 
         CHCKERR('Failed to initialize HDF5')
+        
+        ! wait for file access in a non-blocking way
+        ierr = lock_req_acc(HDF5_lock,blocking=.false.)
+        CHCKERR('')
         
         ! open the file
         call H5Fopen_f(HDF5_name,H5F_ACC_RDONLY_F,HDF5_i,ierr)
@@ -284,6 +291,10 @@ contains
         ! close the HDF5 file
         call H5Fclose_f(HDF5_i,ierr)
         CHCKERR('failed to close HDF5 file')
+        
+        ! return lock
+        ierr = lock_return_acc(HDF5_lock)
+        CHCKERR('')
         
         ! close FORTRAN interfaces and HDF5 library.
         call H5Close_f(ierr)

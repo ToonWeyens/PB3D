@@ -388,8 +388,9 @@ contains
                         &guessed from previous Richardson level')
                     no_guess = .true.
                 case (9)                                                        ! disable guessing Eigenfunction from previous Richardson level
-                    call writo('option jump_to_sol chosen: Skip equilibrium &
-                        &and perturbation drivers for first Richardson level')
+                    call writo('option jump_to_sol chosen: Skip all possible &
+                        &equilibrium and perturbation drivers for first &
+                        &Richardson level')
                     jump_to_sol = .true.
                 case (10)
                     call writo('option st_pc_factor_shift_type '//&
@@ -439,7 +440,7 @@ contains
     ! and the output log file name is different.
     integer function open_output() result(ierr)
         use num_vars, only: prog_style, output_i, output_name, prog_name, &
-            &rich_restart_lvl, shell_commands_name, PB3D_name
+            &rich_restart_lvl, shell_commands_name, PB3D_name, jump_to_sol
         use files_utilities, only: nextunit
         use HDF5_ops, only: create_output_HDF5
 #if ldebug
@@ -518,7 +519,7 @@ contains
         select case (prog_style)
             case (1)                                                            ! PB3D
                 ! create HDF5 file for output if no restart
-                if (rich_restart_lvl.eq.1) then
+                if (rich_restart_lvl.eq.1 .and. .not. jump_to_sol) then
                     ierr = create_output_HDF5(PB3D_name)
                     CHCKERR('')
                 end if

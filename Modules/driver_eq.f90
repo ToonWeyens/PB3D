@@ -23,7 +23,8 @@ contains
     ! Main driver of PB3D equilibrium part.
     integer function run_driver_eq() result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
-            &plot_magn_grid, eq_job_nr, eq_jobs_lims
+            &plot_magn_grid, eq_job_nr, eq_jobs_lims, jump_to_sol, &
+            &rich_restart_lvl
         use MPI_utilities, only: wait_MPI
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot
         use sol_vars, only: alpha
@@ -50,6 +51,12 @@ contains
         
         ! initialize ierr
         ierr = 0
+        
+        ! jump to solution if requested
+        if (rich_lvl.eq.rich_restart_lvl .and.  jump_to_sol) then
+            call writo('Skipping to jump to solution')
+            return
+        end if
         
 #if ldebug
         if (plot_info) dealloc_vars = .false.

@@ -537,3 +537,6 @@ CHANGELOG
       - The lock system now supports blocking as well as non-blocking locks, which is good for HDF5 performance with many reads and few writes.
       - Sometimes opening HDF5 files still fails. Multiple attempts will therefore be performed.
       - The timing functions now use system_clock with integer of kind 8, which is precise.
+
+1.34: - Fixed a bug where no NB file lock was requested for probe_HDF5_group.
+      - Fixed a bug where jump_to_sol no longer worked because n_X and m_X were not set. A part of the X driver is now also run.

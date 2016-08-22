@@ -20,8 +20,7 @@ contains
     ! [MPI] Collective call
     integer function start_MPI() result(ierr)
         use num_vars, only: rank, n_procs, time_start
-        use MPI_vars, only: init_lock, &
-            &HDF5_lock
+        use MPI_vars, only: HDF5_lock
         use files_utilities, only: nextunit
         use input_utilities, only: pause_prog
 #if ldebug
@@ -45,7 +44,7 @@ contains
         CHCKERR('MPI size failed')
         
         ! create HDF5 lock
-        ierr = init_lock(HDF5_lock,10)
+        ierr = HDF5_lock%init(10)
         CHCKERR('')
         
         ! initialize time

@@ -1382,9 +1382,6 @@ contains
             &(lim_c(2)-lim_c(1))
     end function con2dis_eqd
     integer function con2dis_reg(pt_c,pt_d,var_c) result(ierr)                  ! regular grid version
-#if ldebug
-        use output_ops
-#endif
         character(*), parameter :: rout_name = 'con2dis_reg'
         
         ! input / output
@@ -1456,8 +1453,8 @@ contains
         if (debug_con2dis_reg) then
             call writo('final ind_lo = '//trim(i2str(ind_lo))//', ind_hi = '//&
                 &trim(i2str(ind_hi)))
-            call print_GP_2D('var_c_loc, var_c_inv','',&
-                &reshape([var_c_loc,var_c_inv],[size_c,2]))
+            !!call print_GP_2D('var_c_loc, var_c_inv','',&
+                !!&reshape([var_c_loc,var_c_inv],[size_c,2]))
         end if
 #endif
         

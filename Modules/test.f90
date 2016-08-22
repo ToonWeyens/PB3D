@@ -61,8 +61,7 @@ contains
     
     ! test lock system
     integer function test_lock() result(ierr)
-        use MPI_vars, only: init_lock, dealloc_lock, &
-            &lock_type
+        use MPI_vars, only: lock_type
         use MPI_utilities, only: lock_req_acc, lock_return_acc, wait_MPI, &
             &lock_header, lock_wl_change, &
             &debug_lock
@@ -116,7 +115,7 @@ contains
         end select
         
         ! create lock
-        ierr = init_lock(lock,100)
+        ierr = lock%init(100)
         CHCKERR('')
         
         ! test blocking access
@@ -179,6 +178,10 @@ contains
             ierr = lock_return_acc(lock)
             CHCKERR('')
         end do
+        
+        ! clean up
+        ierr = lock%dealloc()
+        CHCKERR('')
         
         ! synchronize MPI
         ierr = wait_MPI()
