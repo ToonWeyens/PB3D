@@ -77,14 +77,15 @@ include $(OBJLIST)# Names of all the objects
 # 		ldebug: debug
 ##############################################################################
 # compiler flags
-#COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -fcheck=bounds,array-temps,do,pointer,recursion -cpp -Dldebug# profiling with gprof2dot
-COMP_FLAGS = -O3 -fimplicit-none -fno-omit-frame-pointer -cpp# optimized
+COMP_FLAGS = -g -O0 -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -fcheck=bounds,array-temps,do,pointer,recursion -cpp -Dldebug# profiling with gprof2dot
+#COMP_FLAGS = -O3 -fimplicit-none -fno-omit-frame-pointer -cpp# optimized
 
 # compiler include
 COMP_INC = -I$(HDF5_inc) -I$(NETCDF_inc) -I$(HOME_BIN)/libstell_dir -I$(PB3D_DIR)/include #-I/opt/openmpi/1.10.0/include
 
 # compiler command
 COMPILE = $(COMP_DIR) $(COMP_INC) $(PETSC_FC_INCLUDES) $(SLEPC_INCLUDE) $(COMP_FLAGS)
+COMPILE_EXTERNAL_LIB = $(COMP_DIR) -O2 -w
 
 ##############################################################################
 #   Link specifications
@@ -93,7 +94,7 @@ COMPILE = $(COMP_DIR) $(COMP_INC) $(PETSC_FC_INCLUDES) $(SLEPC_INCLUDE) $(COMP_F
 LINK_FLAGS = -fPIC -pg
 
 # libraries
-LINK_LIB = $(HOME_BIN)/libstell.a libdfftpack.a -lgfortran -llapack -lblas \
+LINK_LIB = $(HOME_BIN)/libstell.a libdfftpack.a libfoul.a -lgfortran -llapack -lblas \
 	-L$(HDF5_lib) -lhdf5_fortran -lhdf5 -L$(NETCDF_lib) -lnetcdf -lnetcdff  \
 	-Wl,-R$(NETCDF_lib) -lz -lpthread -ldl -lm# -Wl,-R[PATH] to set to default search path http://superuser.com/questions/192573/how-do-you-specify-the-location-of-libraries-to-a-binary-linux)
 
@@ -105,20 +106,29 @@ LINK    = $(LINK_DIR) $(LINK_FLAGS)
 ##############################################################################
 all:	PB3D POST
 
-PB3D:	$(ObjectFiles) libdfftpack.a PB3D.o
+PB3D:	$(ObjectFiles) libdfftpack.a libfoul.a PB3D.o
 	$(LINK) -o $@ $(ObjectFiles) PB3D.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
-POST:	$(ObjectFiles) libdfftpack.a POST.o
+POST:	$(ObjectFiles) libdfftpack.a libfoul.a POST.o
 	$(LINK) -o $@ $(ObjectFiles) POST.o $(LINK_LIB) $(PETSC_LIB) $(SLEPC_LIB)
 
-libdfftpack.a: 	$(ObjectFiles_dfftpack)
-	ar -rcs libdfftpack.a $(ObjectFiles_dfftpack)
+libdfftpack.a: 	dfft.o
+	ar -rcs libdfftpack.a dfft.o
 
-%.o : %.f90
+libfoul.a: 	foul.o
+	ar -rcs libfoul.a foul.o
+
+%.o: %.f90
 	$(COMPILE) -c $<
 
-%.o : %.f
+%.o: %.f
 	gfortran -O2 -funroll-loops -fexpensive-optimizations -c $<
+
+dfft.o: dfft.f
+	$(COMPILE_EXTERNAL_LIB) -c $<
+
+foul.o: foul.f90
+	$(COMPILE_EXTERNAL_LIB) -c $<
 
 clean:
 	@rm -f *.o *.a *.mod *~ fort.* 

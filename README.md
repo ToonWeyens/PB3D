@@ -540,3 +540,17 @@ CHANGELOG
 
 1.34: - Fixed a bug where no NB file lock was requested for probe_HDF5_group.
       - Fixed a bug where jump_to_sol no longer worked because n_X and m_X were not set. A part of the X driver is now also run.
+
+1.35: - Reorganized the external library structure (foul and fftpack), using better compilation flags as well.
+      - Fixed a bug in con2dis_reg, where no correct range was found for negative values.
+      - Added the possibility to perform trigonometric interpolation, but only for an even order.
+      - Added tests for interpolation routines.
+      - Fixed the calculation of the fourier modes for exportation of HELENA to VMEC. Simulations have to be rerun.
+      - Export of HELENA to VMEC now happens through the flag "--export_HEL".
+      - Procedure merge_GP was deleted.
+      - GNUPlot 'GP' procedures are renamed to external 'ex' procedures.
+      - Array versions of draw_ex and draw_aminated_ex, corresponding to multi-file versions, are deleted.
+      - The external plotting now takes multiple draw options.
+      - External animation is only possible for 2D.
+      - Added external plotting possibility: Bokeh for 2D and Mayavi2 for 3D.
+      - There is a problem when Mayavi plots are generated through system calls in the program, but they do work by calling them afterwards.

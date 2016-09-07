@@ -122,7 +122,7 @@ contains
         read(eq_i,*,IOSTAT=ierr) nchi                                           ! nr. poloidal points
         CHCKERR(err_msg)
         nchi_loc = nchi
-        if (ias.ne.0) nchi = nchi + 1                                           ! extend grid to 2pi
+        if (ias.ne.0) nchi = nchi + 1                                           ! extend grid to 2pi if asymmetric (so doubling a point!)
         
         allocate(chi_H(nchi))                                                   ! poloidal points
         read(eq_i,*,IOSTAT=ierr) (chi_H(id),id=1,nchi_loc)
@@ -222,8 +222,8 @@ contains
         call norm_deriv_data%dealloc()
         
         !!!! To plot the cross-section
-        !!!call print_GP_2D('cross_section','cross_section',Z_H,x=R_H,draw=.false.)
-        !!!call draw_GP('cross_section','cross_section','cross_section',n_r_in,1,&
+        !!!call print_ex_2D('cross_section','cross_section',Z_H,x=R_H,draw=.false.)
+        !!!call draw_ex('cross_section','cross_section','cross_section',n_r_in,1,&
             !!!&.false.)
         
 #if ldebug

@@ -24,13 +24,13 @@ module num_vars
         &max_it_inv, &
         &max_it_zero, max_nr_tries_HH, relax_fac_HH, tol_zero, tol_norm, &
         &def_relax_fac_HH, &
-        &GP_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
+        &ex_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
         &max_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
         &do_execute_command_line, print_mem_usage, input_name, slab_plots, &
         &swap_angles, rich_restart_lvl, plot_size, minim_output, PB3D_name_eq, &
-        &jump_to_sol
+        &jump_to_sol, export_HEL, ex_plot_style
 
     ! technical variables
     !integer, parameter :: dp = kind(1.d0)                                       ! double precision
@@ -49,7 +49,7 @@ module num_vars
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
     integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
-    real(dp), parameter :: prog_version = 1.34_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.35_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.32_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
@@ -115,7 +115,7 @@ module num_vars
     real(dp) :: tol_norm                                                        ! tolerance for normal range (normalized to 0..1)
 
     ! concerning input / output
-    integer, parameter :: GP_max_size = 300                                     ! maximum size of matrices for GNUPlot
+    integer, parameter :: ex_max_size = 300                                     ! maximum size of matrices for external plot
     integer :: input_i                                                          ! file number of input file
     integer :: eq_i                                                             ! file number of equilibrium file from VMEC or HELENA
     character(len=max_str_ln) :: eq_name                                        ! name of equilibrium file from VMEC or HELENA
@@ -125,6 +125,7 @@ module num_vars
     integer :: output_i                                                         ! file number of output file
     logical :: no_plots = .false.                                               ! no plots made
     logical :: jump_to_sol = .false.                                            ! jump to solution
+    logical :: export_HEL = .false.                                             ! export HELENA
     logical :: no_output = .false.                                              ! no output shown
     logical :: do_execute_command_line = .false.                                ! call "execute_command_line" inside program
     logical :: print_mem_usage = .false.                                        ! print memory usage is printed
@@ -144,4 +145,5 @@ module num_vars
     integer :: plot_size(2)                                                     ! size of plot in inches
     integer :: rich_restart_lvl                                                 ! starting Richardson level (0: none [default])
     character(len=max_str_ln) :: input_name                                     ! will hold the full name of the input file
+    integer :: ex_plot_style                                                    ! external plot style (1: GNUPlot, 2: Bokeh for 2D, Mayavi for 3D)
 end module num_vars

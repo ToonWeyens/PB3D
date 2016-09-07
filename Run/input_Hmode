@@ -3,7 +3,7 @@
     min_par_X               = -1.0
     max_par_X               = 1.0
     alpha                   = 0.0
-    min_r_sol               = 0.5
+    min_r_sol               = 0.0
     max_r_sol               = 1.0
     n_r_sol                 = 1000
     norm_disc_prec_sol      = 3
@@ -21,7 +21,7 @@
     norm_style              = 1
     U_style                 = 3
     max_it_slepc            = 500
-    max_tot_mem_per_proc    = 1000
+    max_tot_mem_per_proc    = 3000
     plot_magn_grid          = .false.
     plot_flux_q             = .false.
     plot_resonance          = .false.
@@ -30,6 +30,7 @@
     rich_restart_lvl        = 1
     n_zeta_plot             = 1
     magn_int_style          = 1
+    ex_plot_style           = 2
 /
     n_mod_X                 = 5
     min_sec_X               = 12

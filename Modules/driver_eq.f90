@@ -294,18 +294,18 @@ contains
                 call plot_HDF5('z_plot','z_plot',z_plot)
                 
                 ! flux quantities
-                call print_GP_2D('pres_FD','pres_FD',eq_1%pres_FD(:,d(2)),&
+                call print_ex_2D('pres_FD','pres_FD',eq_1%pres_FD(:,d(2)),&
                     &x=grid_eq%loc_r_F,draw=.false.)
-                call draw_GP('pres_FD','pres_FD','pres_FD',1,1,.false.)
-                call print_GP_2D('q_saf_FD','q_saf_FD',eq_1%q_saf_FD(:,d(2)),&
+                call draw_ex('pres_FD','pres_FD','pres_FD',1,1,.false.)
+                call print_ex_2D('q_saf_FD','q_saf_FD',eq_1%q_saf_FD(:,d(2)),&
                     &x=grid_eq%loc_r_F,draw=.false.)
-                call draw_GP('q_saf_FD','q_saf_FD','q_saf_FD',1,1,.false.)
-                call print_GP_2D('flux_p_FD','flux_p_FD',&
+                call draw_ex('q_saf_FD','q_saf_FD','q_saf_FD',1,1,.false.)
+                call print_ex_2D('flux_p_FD','flux_p_FD',&
                     &eq_1%flux_p_FD(:,d(2)),x=grid_eq%loc_r_F,draw=.false.)
-                call draw_GP('flux_p_FD','flux_p_FD','flux_p_FD',1,1,.false.)
-                call print_GP_2D('flux_t_FD','flux_t_FD',&
+                call draw_ex('flux_p_FD','flux_p_FD','flux_p_FD',1,1,.false.)
+                call print_ex_2D('flux_t_FD','flux_t_FD',&
                     &eq_1%flux_t_FD(:,d(2)),x=grid_eq%loc_r_F,draw=.false.)
-                call draw_GP('flux_t_FD','flux_t_FD','flux_t_FD',1,1,.false.)
+                call draw_ex('flux_t_FD','flux_t_FD','flux_t_FD',1,1,.false.)
                 
                 ! R and Z
                 select case (eq_style)

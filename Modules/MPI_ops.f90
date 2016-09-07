@@ -279,8 +279,10 @@ contains
                     call writo('Job '//trim(i2str(X_job_done))//&
                         &' was done by process '//trim(i2str(proc)))
                     call lvl_ud(1)
+#if ldebug
                     call writo('The output can be found in ¡¡¡OUTPUT SHOULD &
                         &BE CAPTURED!!!')
+#endif
                     call lvl_ud(-1)
                 end if
             end do
@@ -301,7 +303,7 @@ contains
             &slab_plots, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &swap_angles, plot_resonance, tol_SLEPC, prog_style, POST_style, &
-            &minim_output, jump_to_sol, &
+            &minim_output, jump_to_sol, export_HEL, ex_plot_style, &
             &max_it_inv, tol_norm, max_it_slepc, &
             &max_tot_mem_per_proc, max_X_mem_per_proc, plot_size, &
             &do_execute_command_line, print_mem_usage, &
@@ -379,6 +381,8 @@ contains
             call MPI_Bcast(PB3D_name_eq,len(PB3D_name_eq),MPI_CHARACTER,0,&
                 &MPI_Comm_world,ierr)
             CHCKERR(err_msg)
+            call MPI_Bcast(ex_plot_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
             
             ! select according to program style
             select case (prog_style)
@@ -386,6 +390,9 @@ contains
                     call MPI_Bcast(no_guess,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(jump_to_sol,1,MPI_LOGICAL,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(export_HEL,1,MPI_LOGICAL,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(min_n_par_X,1,MPI_INTEGER,0,MPI_Comm_world,&

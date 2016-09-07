@@ -29,7 +29,7 @@ contains
             &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &max_nr_tries_HH, POST_style, slab_plots, def_relax_fac_HH, &
-            &magn_int_style, K_style
+            &magn_int_style, K_style, ex_plot_style
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -60,13 +60,13 @@ contains
             &norm_disc_prec_sol, plot_size, U_style, norm_style, K_style, &
             &matrix_SLEPC_style, rich_restart_lvl, min_n_par_X, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &max_nr_tries_HH, magn_int_style
+            &max_nr_tries_HH, magn_int_style, ex_plot_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_magn_grid, norm_disc_prec_sol, &
             &plot_size, PB3D_rich_lvl, max_it_zero, tol_zero, &
             &relax_fac_HH, min_theta_plot, max_theta_plot, min_zeta_plot, &
             &max_zeta_plot, max_nr_tries_HH, POST_style, slab_plots, &
-            &max_tot_mem_per_proc
+            &max_tot_mem_per_proc, ex_plot_style
         
         ! initialize ierr
         ierr = 0
@@ -99,6 +99,7 @@ contains
             end select
             relax_fac_HH = def_relax_fac_HH                                     ! default relaxation factor
             max_nr_tries_HH = 6                                                 ! standard nr. of tries
+            ex_plot_style = 1                                                   ! GNUPlot
             
             ! select depending on program style
             select case (prog_style)

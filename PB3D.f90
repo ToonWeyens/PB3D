@@ -18,7 +18,7 @@
 !                Eindhoven University of Technology                            !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.34                                                              !
+!   Version: 1.35                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -194,7 +194,7 @@ program PB3D
     !   Stop Richarson Extrapolation Loop
     !-------------------------------------------------------
     call start_time
-    call term_rich()                                                          ! stop Richardson loop
+    call term_rich()                                                            ! stop Richardson loop
     call stop_time
     
     !-------------------------------------------------------

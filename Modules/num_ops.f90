@@ -182,15 +182,15 @@ contains
             ! plot function
             call writo('Initial guess: '//trim(r2str(guess)))
             call writo('Resulting zero: '//trim(r2str(zero)))
-            call print_GP_2D('function and derivative','',y_out,x=x_out)
+            call print_ex_2D('function and derivative','',y_out,x=x_out)
             
             ! user output
             call writo('Last correction '//trim(r2strt(corrs(size(corrs))))&
                 &//' with tolerance '//trim(r2strt(tol_zero)))
             
             ! plot corrections and values
-            call print_GP_2D('corrs','',corrs)
-            call print_GP_2D('values','',values)
+            call print_ex_2D('corrs','',corrs)
+            call print_ex_2D('values','',values)
         end subroutine plot_evolution
 #endif
     end function calc_zero_HH_0D
@@ -562,7 +562,7 @@ contains
             call writo('Initial interval: ['//trim(r2str(x_int_in(1)))//&
                 &'..'//trim(r2str(x_int_in(2)))//']')
             call writo('Resulting zero: '//trim(r2str(zero)))
-            call print_GP_2D('function','',y_out,x=x_out)
+            call print_ex_2D('function','',y_out,x=x_out)
             
             ! user output
             call writo('Final interval ['//trim(r2str(x_ints(n_ints,1)))//&
@@ -570,7 +570,7 @@ contains
                 &trim(r2strt(tol_zero)))
             
             ! plot intervals
-            call print_GP_2D('x_intervals','',x_ints)
+            call print_ex_2D('x_intervals','',x_ints)
         end subroutine plot_evolution
 #endif
     end function calc_zero_Zhang

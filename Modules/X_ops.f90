@@ -310,15 +310,15 @@ contains
             ! plot poloidal modes
             plot_title = 'poloidal mode numbers'
             plot_name = 'modes_m_X'
-            call print_GP_2D(plot_title,plot_name,m_X*1._dp,x=x_plot,&
+            call print_ex_2D(plot_title,plot_name,m_X*1._dp,x=x_plot,&
                 &draw=.false.)
-            call draw_GP(plot_title,plot_name,plot_name,n_mod_X,1,.false.)
+            call draw_ex(plot_title,plot_name,plot_name,n_mod_X,1,.false.)
             ! plot toroidal modes
             plot_title = 'toroidal mode numbers'
             plot_name = 'modes_n_X'
-            call print_GP_2D(plot_title,plot_name,n_X*1._dp,x=x_plot,&
+            call print_ex_2D(plot_title,plot_name,n_X*1._dp,x=x_plot,&
                 &draw=.false.)
-            call draw_GP(plot_title,plot_name,plot_name,n_mod_X,1,.false.)
+            call draw_ex(plot_title,plot_name,plot_name,n_mod_X,1,.false.)
         end if
         
         call lvl_ud(-1)
@@ -590,9 +590,9 @@ contains
                 end do
                 plot_name = 'TEST_max_frac'
                 plot_title = 'maximum fraction'
-                call print_GP_2D(plot_title,plot_name,max_frac,&
+                call print_ex_2D(plot_title,plot_name,max_frac,&
                     &x=x_vars,draw=.false.)
-                call draw_GP(plot_title,plot_name,plot_name,n_mod_X,1,&
+                call draw_ex(plot_title,plot_name,plot_name,n_mod_X,1,&
                     &.false.)
             end if
 #endif
@@ -963,7 +963,7 @@ contains
             
             call lvl_ud(-1)
             
-            call writo('Plot results using GNUPlot')
+            call writo('Plot results')
             
             call lvl_ud(1)
             
@@ -971,10 +971,10 @@ contains
             x_vars = x_vars*2*pi/max_flux_F
             
             ! print to file
-            call print_GP_2D(plot_title,file_name,y_vars,x=x_vars,draw=.false.)
+            call print_ex_2D(plot_title,file_name,y_vars,x=x_vars,draw=.false.)
             
-            ! plot using GNUPlot
-            call draw_GP(plot_title,file_name,file_name,n_mod_loc+1,1,&
+            ! plot using external program
+            call draw_ex(plot_title,file_name,file_name,n_mod_loc+1,1,&
                 &.false.)
             
             call lvl_ud(-1)

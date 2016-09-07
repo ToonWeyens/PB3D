@@ -57,29 +57,29 @@ contains
             ! Last Eigenvalues
             plot_title = 'final Eigenvalues omega^2 [log]'
             plot_name = 'Eigenvalues'
-            call print_GP_2D(plot_title,plot_name,&
+            call print_ex_2D(plot_title,plot_name,&
                 &log10(abs(realpart(sol%val(1:n_sol_found)))),draw=.false.)
-            call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+            call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
             
             ! Last Eigenvalues: unstable range
             if (last_unstable_id.gt.0) then
                 plot_title = 'final unstable Eigenvalues omega^2'
                 plot_name = 'Eigenvalues_unstable'
-                call print_GP_2D(plot_title,plot_name,&
+                call print_ex_2D(plot_title,plot_name,&
                     &realpart(sol%val(1:last_unstable_id)),&
                     &x=[(id*1._dp,id=1,last_unstable_id)],draw=.false.)
-                call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+                call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
             end if
             
             ! Last Eigenvalues: stable range
             if (last_unstable_id.lt.n_sol_found) then
                 plot_title = 'final stable Eigenvalues omega^2'
                 plot_name = 'Eigenvalues_stable'
-                call print_GP_2D(plot_title,plot_name,&
+                call print_ex_2D(plot_title,plot_name,&
                     &realpart(sol%val(last_unstable_id+1:n_sol_found)),&
                     &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)],&
                     &draw=.false.)
-                call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+                call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
             end if
         end if
         
@@ -377,8 +377,7 @@ contains
         ! Note: This routine needs a trimmed grid.
         integer function plot_harmonics(grid_sol,sol,X_id,res_surf) result(ierr)
             use MPI_utilities, only: wait_MPI, get_ser_var
-            use output_ops, only: merge_GP
-            use num_vars, only: GP_max_size, rank, no_plots
+            use num_vars, only: ex_max_size, rank, no_plots
             use eq_vars, only: max_flux_F
             use X_vars, only: sec_X_ind
             use sol_utilities, only: calc_tot_sol_vec
@@ -455,17 +454,17 @@ contains
                 plot_title = 'EV - midplane'
                 
                 ! print real amplitude of harmonics of eigenvector at midplane
-                call print_GP_2D(plot_title,file_name,&
+                call print_ex_2D(plot_title,file_name,&
                     &realpart(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
                 
                 ! plot in file
-                call draw_GP(plot_title,file_name,file_name,n_mod_tot,1,&
-                    &.false.,draw_ops='with lines')
+                call draw_ex(plot_title,file_name,file_name,n_mod_tot,1,&
+                    &.false.,draw_ops=['with lines'])
                 
-                ! plot in file using decoupled 3D in GNUPlot
-                call draw_GP(trim(plot_title)//' - 3D',file_name,&
+                ! plot in file using decoupled 3D
+                call draw_ex(trim(plot_title)//' - 3D',file_name,&
                     &trim(file_name)//'_3D',n_mod_tot,3,.false.,&
-                    &draw_ops='with lines')
+                    &draw_ops=['with lines'])
                 
                 ! plot using HDF5
                 call plot_HDF5(trim(plot_title),trim(file_name),&
@@ -485,18 +484,18 @@ contains
                 plot_title = 'EV - midplane'
                 
                 ! print imag amplitude of harmonics of eigenvector at midplane
-                call print_GP_2D(plot_title,file_name,&
+                call print_ex_2D(plot_title,file_name,&
                     &imagpart(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
                 
                 ! plot in file
-                call draw_GP(plot_title,file_name,file_name,n_mod_tot,1,&
-                    &.false.,draw_ops='with lines')
+                call draw_ex(plot_title,file_name,file_name,n_mod_tot,1,&
+                    &.false.,draw_ops=['with lines'])
                 
-                ! plot in file using decoupled 3D in GNUPlot if not too big
-                if (n_mod_tot*grid_sol%n(3).le.GP_max_size) then
-                    call draw_GP(trim(plot_title)//' - 3D',file_name,&
+                ! plot in file using decoupled 3D if not too big
+                if (n_mod_tot*grid_sol%n(3).le.ex_max_size) then
+                    call draw_ex(trim(plot_title)//' - 3D',file_name,&
                         &trim(file_name)//'_3D',n_mod_tot,3,.false.,&
-                        &draw_ops='with lines')
+                        &draw_ops=['with lines'])
                 end if
                 
                 ! plot using HDF5
@@ -523,18 +522,18 @@ contains
                 where (sol_vec_phase.lt.0) sol_vec_phase = sol_vec_phase + 2*pi
                 
                 ! print imag amplitude of harmonics of eigenvector at midplane
-                call print_GP_2D(plot_title,file_name,sol_vec_phase,x=x_plot,&
+                call print_ex_2D(plot_title,file_name,sol_vec_phase,x=x_plot,&
                     &draw=.false.)
                 
                 ! plot in file
-                call draw_GP(plot_title,file_name,file_name,n_mod_tot,1,&
-                    &.false.,draw_ops='with lines')
+                call draw_ex(plot_title,file_name,file_name,n_mod_tot,1,&
+                    &.false.,draw_ops=['with lines'])
                 
-                ! plot in file using decoupled 3D in GNUPlot if not too big
-                if (n_mod_tot*grid_sol%n(3).le.GP_max_size) then
-                    call draw_GP(trim(plot_title)//' - 3D',file_name,&
+                ! plot in file using decoupled 3D if not too big
+                if (n_mod_tot*grid_sol%n(3).le.ex_max_size) then
+                    call draw_ex(trim(plot_title)//' - 3D',file_name,&
                         &trim(file_name)//'_3D',n_mod_tot,3,.false.,&
-                        &draw_ops='with lines')
+                        &draw_ops=['with lines'])
                 end if
                 
                 ! plot using HDF5
@@ -586,11 +585,11 @@ contains
                 x_plot = x_plot/norm_factor
                 
                 ! plot the maximum at midplane
-                call print_GP_2D(plot_title,file_name,y_plot,x=x_plot,&
+                call print_ex_2D(plot_title,file_name,y_plot,x=x_plot,&
                     &draw=.false.)
                 
                 ! draw plot in file
-                call draw_GP(plot_title,file_name,file_name,2,1,.false.,&
+                call draw_ex(plot_title,file_name,file_name,2,1,.false.,&
                     &extra_ops='set xrange ['//&
                     &trim(r2str(grid_sol%r_F(1)/norm_factor))//':'//&
                     &trim(r2str(grid_sol%r_F(grid_sol%n(3))/norm_factor))//&

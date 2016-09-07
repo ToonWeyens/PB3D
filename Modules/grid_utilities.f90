@@ -15,13 +15,13 @@ module grid_utilities
         &calc_int_vol, trim_grid, untrim_grid, setup_deriv_data, &
         &setup_interp_data, apply_disc, calc_n_par_X_rich
 #if ldebug
-    public debug_calc_int_vol, debug_setup_interp_dat
+    public debug_calc_int_vol, debug_setup_interp_data
 #endif
     
     ! global variables
 #if ldebug
     logical :: debug_calc_int_vol = .false.                                     ! plot debug information for calc_int_vol
-    logical :: debug_setup_interp_dat = .false.                                 ! plot debug information for calc_int_vol
+    logical :: debug_setup_interp_data = .false.                                ! plot debug information for calc_int_vol
 #endif
     
     interface coord_F2E
@@ -1438,12 +1438,30 @@ contains
     ! calculated  for  each of  the  interpolation  points,  multiplied by  1  /
     ! (x-x_j). The result is scaled by the sum of all, and this is tabulated.
     ! Note: To avoid numerical problems, the  factors (x_j-x_i) are divided by a
-    ! characteristic length  len, equal  tot the average  length of  the working
+    ! characteristic  length len,  equal to  the average  length of  the working
     ! interval. This  scales both the  enumerator and the denominator  by len^N,
     ! which  therefore cancel.  Also,  if the  interpolation  point x_interp  is
     ! within a tiny tolerance of the grid points x, the machinery is bypassed to
     ! avoid unstabilities.
-    integer function setup_interp_data(x,x_interp,A,ord) result(ierr)
+    ! Optionally,  this routine  can do  trigonometric interpolation  instead of
+    ! polynomial, which results in using sin((x-x_j)/2) instead of (x-x_j).
+    ! [https://en.wikipedia.org/wiki/Trigonometric_interpolation, 01/09/2016]
+    ! Currently, this only works  for an odd number of points,  as there is also
+    ! an odd number of constraints.
+    ! Note that this can  be used to resample a periodic  function that has been
+    ! sampled on an irregular grid, in  order to calculate the fourier transform
+    ! with a FFT, which requires a regular grid. In this case, a full 2pi period
+    ! is assumed.
+    ! The  fact  that  this is  can  be  done  can  be seen  by  realizing  that
+    ! trigonometric  interpolation can  also be  written in  Lagrange form,  and
+    ! subsequently in barycentric  Lagrange form. There is  an additional factor
+    ! 1/2 in l'(x_j),  due to the derivation of sin((x-x_k)/2)  but this cancels
+    ! as it is present in both enumerator and denominator.
+    ! Optionally  also  a normalization  length  can  be  provided so  that  the
+    ! individual terms in  the interpolation do not blow up.  This can be useful
+    ! for example for interpolation with many points.
+    integer function setup_interp_data(x,x_interp,A,ord,is_trigon,norm_len) &
+        &result(ierr)
         use grid_vars, only: disc_type
         use num_utilities, only: con2dis
         
@@ -1454,31 +1472,53 @@ contains
         real(dp), intent(in) :: x_interp(:)                                     ! values of x at which to interpolate
         type(disc_type), intent(inout) :: A                                     ! interpolation mat
         integer, intent(in) :: ord                                              ! order of derivative
+        logical, intent(in), optional :: is_trigon                              ! trigonometric interpolation
+        real(dp), intent(in), optional :: norm_len                              ! custom normalization length
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
-        integer :: n                                                            ! size of x
-        integer :: n_mat                                                        ! size of problem to solve
+        integer :: n                                                            ! size of x_interp
+        integer :: n_loc                                                        ! nr. of points used for interpolation locally
         real(dp) :: len                                                         ! interval length
         real(dp) :: x_interp_disc                                               ! discrete index of current x_interp
         real(dp), parameter :: tol = 1.0E-8                                     ! tolerance
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: weight(:)                                      ! weights w_j
+        real(dp) :: weight_loc                                                  ! local weight factor
+        logical :: is_trigon_loc                                                ! local is_trigon
         
-        ! set n_mat and n
-        n_mat = ord+1
-        n = size(x_interp)
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local is_trigon
+        is_trigon_loc = .false.
+        if (present(is_trigon)) is_trigon_loc = is_trigon
         
         ! tests
         if (ord.lt.1) then
             ierr = 1
             err_msg = 'order has to be at least 1'
             CHCKERR(err_msg)
+        else if (ord+1.gt.size(x)) then
+            ierr = 1
+            err_msg = 'order can be at most size(x)-1 = '//&
+                &trim(i2str(size(x)-1))
+            CHCKERR(err_msg)
+        end if
+        if (is_trigon_loc .and. mod(ord,2).ne.0) then
+            ierr = 1
+            err_msg = 'Need an even order, so that there is an odd number of &
+                &points'
+            CHCKERR(err_msg)
         end if
         
+        ! set n_loc and n
+        n_loc = ord+1
+        n = size(x_interp)
+        
         ! set variables
-        allocate(weight(n_mat))
-        ierr = A%init(n,n_mat)
+        allocate(weight(n_loc))
+        ierr = A%init(n,n_loc)
         CHCKERR('')
         
         ! iterate over all x_interp values
@@ -1487,10 +1527,13 @@ contains
             ierr = con2dis(x_interp(id),x_interp_disc,x)
             CHCKERR('')
             
-            ! possibly lower the order locally
             ! set up start id
-            A%id_start(id) = ceiling(x_interp_disc-n_mat*0.5_dp)                ! get minimum of bounding indices
-            A%id_start(id) = max(1,min(A%id_start(id),size(x)-n_mat+1))         ! limit to lie within x
+            if (n_loc.lt.size(x)) then
+                A%id_start(id) = ceiling(x_interp_disc-n_loc*0.5_dp)            ! get minimum of bounding indices
+                A%id_start(id) = max(1,min(A%id_start(id),size(x)-n_loc+1))     ! limit to lie within x
+            else
+                A%id_start(id) = 1                                              ! all values of x are used
+            end if
             
             ! check for (near) exact match
             if (mod(x_interp_disc,1._dp).lt.tol) then
@@ -1499,24 +1542,31 @@ contains
                 A%dat(id,nint(x_interp_disc)-A%id_start(id)+1) = 1._dp
             else
                 ! calculate w_j/(x-x_j)
+                len = (x(A%id_start(id)+n_loc-1) - x(A%id_start(id)))/n_loc
+                if (is_trigon_loc) len = sin(len/2)                             ! take sines
+                if (present(norm_len)) len = norm_len
+                
+                ! set up the interp. coeffs. due to each of the points used
                 weight = 1._dp
-                len = (x(A%id_start(id)+n_mat-1) - x(A%id_start(id)))/n_mat
-                do jd = 1,n_mat
-                    ! calculate l'(x_j) = product_k.ne.j (x_j-x_k)
-                    do kd = 1,jd-1
-                        weight(jd) = weight(jd) * &
-                            &(x(A%id_start(id)-1+jd)-x(A%id_start(id)-1+kd)) / &
-                            &len
+                do jd = 1,n_loc
+                    do kd = 1,n_loc
+                        ! basis of local weight
+                        if (kd.ne.jd) then                                      ! skip k = j
+                            ! calculate l'(x_j) = product_k.ne.j (x_j-x_k)
+                            weight_loc = &
+                                &x(A%id_start(id)-1+jd)-x(A%id_start(id)-1+kd)
+                        else
+                            ! multiply additionally by (x_interp - x_j)
+                            weight_loc = x_interp(id)-x(A%id_start(id)-1+jd)
+                        end if
+                        
+                        ! modification of local weight
+                        if (is_trigon_loc) weight_loc = sin(weight_loc/2)       ! take sines
+                        weight_loc = weight_loc/len                             ! normalize
+                        
+                        ! including modified local weight
+                        weight(jd) = weight(jd) * weight_loc
                     end do
-                    do kd = jd+1,n_mat
-                        weight(jd) = weight(jd) * &
-                            &(x(A%id_start(id)-1+jd)-x(A%id_start(id)-1+kd)) / &
-                            &len
-                    end do
-                    
-                    ! multiply by (x_interp-x_j)
-                    weight(jd) = weight(jd) * &
-                        &(x_interp(id)-x(A%id_start(id)-1+jd)) / len
                 end do
                 
                 ! invert

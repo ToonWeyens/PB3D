@@ -258,6 +258,7 @@ contains
             use HELENA_vars, only: qs_H, flux_p_H, flux_t_H, Dflux_p_H, &
                 &Dflux_t_H, pres_H
             use num_utilities, only: calc_int
+            use num_vars, only: export_HEL
             
             character(*), parameter :: rout_name = 'calc_flux_q_HEL'
             
@@ -335,28 +336,47 @@ contains
                 grid_eq%r_F = flux_t_E_full(:,0)/(2*pi)                         ! psi_F = flux_t/2pi
             end if
             
-            !!!! export for VMEC port
-            !!!call write_flux_q_in_file_for_VMEC()
+            ! export for VMEC port
+            if (export_HEL) then
+                ierr = write_flux_q_in_file_for_VMEC()
+                CHCKERR('')
+            end if
         end function calc_flux_q_HEL
         
-        ! plots flux quantities in file for VMEC port
-        subroutine write_flux_q_in_file_for_VMEC()
+        ! Plots flux quantities in file for VMEC port.
+        ! Optionally, a perturbation can be added.
+        integer function write_flux_q_in_file_for_VMEC() result(ierr)
             use eq_vars, only: pres_0
             use grid_vars, only: n_r_eq
-            use HELENA_vars, only: nchi, R_H, Z_H, ias
+            use grid_utilities, only: setup_interp_data, apply_disc
+            use HELENA_vars, only: nchi, R_H, Z_H, ias, chi_H
             use X_vars, only: min_r_sol, max_r_sol
             use files_utilities, only: nextunit
+            use input_utilities, only: pause_prog, get_log, get_int, get_real
+            
+            character(*), parameter :: rout_name = &
+                &'write_flux_q_in_file_for_VMEC'
             
             ! local variables
+            character(len=max_str_ln) :: err_msg                                ! error message
             integer :: id, kd                                                   ! counters
             integer :: file_i                                                   ! file to output flux quantities for VMEC export
-            integer :: n_F                                                      ! nr. of points in Fourier series
+            integer :: n_B                                                      ! nr. of points in Fourier series
             integer :: m_F                                                      ! nr. of modes
+            integer :: n_pert                                                   ! toroidal perturbation number
             character(len=max_str_ln) :: file_name                              ! name of file
-            character(len=3) :: plot_name(2)                                    ! name of plot
+            character(len=7) :: plot_name(2)                                    ! name of plot
+            real(dp) :: q_pert                                                  ! perturbation pitch
             real(dp), allocatable :: work(:,:)                                  ! work array
-            real(dp), allocatable :: RZ_F(:,:)                                  ! fourier series of R and Z
-            real(dp), allocatable :: RZ_F_ind(:,:)                              ! cosine and sine of fourier series
+            real(dp), allocatable :: RZ_BH(:,:)                                 ! fourier series of R and Z, HELENA coordinates
+            real(dp), allocatable :: RZ_BG(:,:)                                 ! fourier series of R and Z, geometrical coordinates
+            real(dp), allocatable :: RZ_BG_ind(:,:)                             ! cosine and sine of fourier series
+            real(dp), allocatable :: theta_geo(:,:)                             ! geometrical poloidal angle
+            type(disc_type) :: trigon_interp_data                               ! data for non-equidistant sampling fourier coefficients
+            logical :: perturb_eq                                               ! perturb the equilibrium
+            
+            ! initialize ierr
+            ierr = 0
             
             file_name = 'flux_quantities.dat'
             
@@ -364,9 +384,22 @@ contains
             call writo('This can be used for VMEC porting')
             
             ! test if full range
-            if (min_r_sol.gt.0 .or. max_r_sol.lt.1) &
-                &call writo('This routine should be run with the full normal &
-                &range!',warning=.true.)
+            if (min_r_sol.gt.0 .or. max_r_sol.lt.1) then
+                ierr = 1
+                err_msg = 'This routine should be run with the full normal &
+                    &range!'
+                CHCKERR(err_msg)
+            end if
+            
+            call writo('Do you want to add a perturbation of the equilibrium?')
+            perturb_eq = get_log(.false.)
+            
+            if (perturb_eq) then
+                call writo('Toroidal mode number N?')
+                n_pert = get_int(lim_lo=0)
+                call writo('pitch q?')
+                q_pert = get_real()
+            end if
             
             open(unit=nextunit(file_i),file=trim(file_name))
             write(file_i,*) '# for export to VMEC'
@@ -403,111 +436,115 @@ contains
             write(file_i,*) ''
             write(file_i,*) ''
             
-            write(file_i,*) '# toroidal flux once every 4 values'
-            do kd = 0,(grid_eq%n(3)-1)/4
-                write(file_i,'(ES23.16)') &
-                    &flux_t_E_full(1+kd*4,0)/flux_t_E_full(grid_eq%n(3),0)
-            end do
-            write(file_i,*) ''
-            write(file_i,*) ''
-            write(file_i,*) '# pressure once every 4 values'
-            do kd = 0,(grid_eq%n(3)-1)/4
-                write(file_i,'(ES23.16)') pres_E_full(1+kd*4,0)*pres_0
-            end do
-            write(file_i,*) ''
-            write(file_i,*) ''
-            write(file_i,*) '# rotational transform once every 4 values'
-            do kd = 0,(grid_eq%n(3)-1)/4
-                write(file_i,'(ES23.16)') -rot_t_E_full(1+kd*4,0)
-            end do
-            
             ! Fourier transform of boundary R and Z
-            if (ias.eq.0) then                                                  ! symmetric
-                n_F = nchi*2-2
-            else                                                                ! asymmetric
-                n_F  = nchi-1
+            if (ias.eq.0) then                                                  ! symmetric (so nchi is odd)
+                n_B = nchi*2-2                                                  ! -2 because of overlapping points at 0, pi
+            else                                                                ! asymmetric (so nchi is aumented by one)
+                n_B  = nchi-1                                                   ! -1 because of overlapping points at 0
             end if
-            m_F = (n_F-1)/2                                                     ! nr. of modes
-            allocate(work(3*n_F+15,2))                                          ! from manual
-            allocate(RZ_F(n_F,2))                                               ! will contain DF coeffs.
-            allocate(RZ_F_ind(m_F,2))                                           ! DF coeffs of cosine and sine individually
+            m_F = (n_B-1)/2                                                     ! nr. of modes
+            allocate(work(3*n_B+15,2))                                          ! from manual
+            allocate(RZ_BH(n_B+1,2))                                            ! values of R and Z at boundary, HELENA coords (overlap at 0)
+            allocate(RZ_BG(n_B,2))                                              ! values of R and Z at boundary, geometrical coords.
+            allocate(RZ_BG_ind(m_F,2))                                          ! DF coeffs of cosine and sine individually
+            allocate(theta_geo(n_B+1,2))                                        ! geometrical poloidal angle (overlap at 0)
             if (ias.eq.0) then                                                  ! symmetric
-                RZ_F(1:nchi,1) = R_H(:,n_r_eq)
-                RZ_F(1:nchi,2) = Z_H(:,n_r_eq)
-                do kd = 1,nchi-2
-                    RZ_F(nchi+kd,:) = [R_H(nchi-kd,n_r_eq),-Z_H(nchi-kd,n_r_eq)]
+                RZ_BH(1:nchi,1) = R_H(:,n_r_eq)
+                RZ_BH(1:nchi,2) = Z_H(:,n_r_eq)
+                theta_geo(1:nchi,2) = chi_H
+                do kd = 1,nchi-1
+                    RZ_BH(nchi+kd,1) = R_H(nchi-kd,n_r_eq)
+                    RZ_BH(nchi+kd,2) = -Z_H(nchi-kd,n_r_eq)
+                    theta_geo(nchi+kd,2) = 2*pi-chi_H(nchi-kd)
                 end do
             else
-                RZ_F(1:nchi-1,1) = R_H(1:nchi-1,n_r_eq)
-                RZ_F(1:nchi-1,2) = Z_H(1:nchi-1,n_r_eq)
+                RZ_BH(:,1) = R_H(:,n_r_eq)
+                RZ_BH(:,2) = Z_H(:,n_r_eq)
             end if
-            !do kd = 1,n_F
-                !RZ_F(kd,1) = &
-                    !&3*cos((kd-1._dp)/n_F*2*pi*1)+&
-                    !&0.5+cos((kd-1._dp)/n_F*2*pi*255)+&
-                    !&1.5*cos((kd-1._dp)/n_F*2*pi*256)+&
-                    !&4*sin((kd-1._dp)/n_F*2*pi*1)+&
-                    !&2*sin((kd-1._dp)/n_F*2*pi*254)+&
-                    !&4.5*sin((kd-1._dp)/n_F*2*pi*255)
-            !end do
+            theta_geo(:,1) = atan2(RZ_BH(:,2),RZ_BH(:,1)-R_H(1,1))
+            where(theta_geo(:,1).lt.0._dp) theta_geo(:,1) = theta_geo(:,1)+2*pi
+            theta_geo(n_B+1,1) = theta_geo(n_B+1,1)+2*pi
+            plot_name(1) = 'last_fs'
+            call print_ex_2D(plot_name(1),plot_name(1),RZ_BH(:,2),&
+                &x=RZ_BH(:,1),draw=.false.)
+            call draw_ex(plot_name(1),plot_name(1),plot_name(1),1,1,.false.)
+            plot_name(1) = 'chi'
+            call print_ex_2D(plot_name(1),plot_name(1),theta_geo/pi,&
+                &x=reshape([theta_geo(:,2),theta_geo(:,2)],[n_B+1,2])/pi,&
+                &draw=.false.)
+            call draw_ex(plot_name(1),plot_name(1),plot_name(1),2,1,.false.)
+            ierr = setup_interp_data(theta_geo(:,1),&
+                &[((id-1._dp)/n_B*2*pi,id=1,n_B)],trigon_interp_data,4)
+            CHCKERR('')
             plot_name(1) = 'R_F'
             plot_name(2) = 'Z_F'
             do kd = 1,2
+                ierr = apply_disc(RZ_BH(:,kd),trigon_interp_data,RZ_BG(:,kd))
+                CHCKERR('')
+                !!do id = 1,n_B
+                    !!RZ_BG(id,kd) = -4._dp+&
+                        !!&3*cos((id-1._dp)/n_B*2*pi*1)+&
+                        !!&0.5*cos((id-1._dp)/n_B*2*pi*100)+&
+                        !!&1.5*cos((id-1._dp)/n_B*2*pi*101)+&
+                        !!&4*sin((id-1._dp)/n_B*2*pi*1)+&
+                        !!&2*sin((id-1._dp)/n_B*2*pi*50)+&
+                        !!&4.5*sin((id-1._dp)/n_B*2*pi*55)
+                !!end do
+                !!call print_ex_2D('RZ_BG','',&
+                    !!&reshape([RZ_BG(:,kd),RZ_BH(1:n_B,kd)],[n_B,2]),&
+                    !!&reshape([theta_geo(1:n_B,2),theta_geo(1:n_B,1)],[n_B,2]))
                 ! user output
                 call writo('analyzing '//plot_name(kd))
                 call lvl_ud(1)
                 ! FFT
-                call dffti(n_F,work(:,kd))
-                call dfftf(n_F,RZ_F(:,kd),work(:,kd))
+                call dffti(n_B,work(:,kd))
+                call dfftf(n_B,RZ_BG(:,kd),work(:,kd))
                 ! rescale
-                RZ_F(:,kd) = RZ_F(:,kd)*2/n_F
-                RZ_F(1,kd) = RZ_F(1,kd)/2
-                call writo('DC value = '//trim(r2str(RZ_F(1,kd))))
+                RZ_BG(:,kd) = RZ_BG(:,kd)*2/n_B
+                RZ_BG(1,kd) = RZ_BG(1,kd)/2
+                call writo('DC value = '//trim(r2str(RZ_BG(1,kd))))
                 ! separate cos and sine
-                RZ_F_ind(:,1) = RZ_F(2:2*m_F:2,kd)
-                RZ_F_ind(:,2) = -RZ_F(3:2*m_F+1:2,kd)                           ! routine returns - sine factors
+                RZ_BG_ind(:,1) = RZ_BG(2:2*m_F:2,kd)
+                RZ_BG_ind(:,2) = -RZ_BG(3:2*m_F+1:2,kd)                         ! routine returns - sine factors
                 ! output cos and sine
-                call print_GP_2D(plot_name(kd),plot_name(kd),&
-                    &log10(abs(RZ_F_ind)),draw=.false.)
-                call draw_GP(plot_name(kd),plot_name(kd),plot_name(kd),2,1,&
+                call print_ex_2D(plot_name(kd),plot_name(kd),RZ_BG_ind)
+                call draw_ex(plot_name(kd),plot_name(kd),plot_name(kd),2,1,&
                     &.false.)
-                ! multiply by mode number
-                do id = 1,m_F
-                    RZ_F_ind(id,:) = RZ_F_ind(id,:)*id
-                end do
-                ! output cos and sine, multiplied by mode number
-                call print_GP_2D(plot_name(kd)//'_m',plot_name(kd)//'_m',&
-                    &log10(abs(RZ_F_ind)),draw=.false.)
-                call draw_GP(plot_name(kd)//'_m',plot_name(kd)//'_m',&
-                    &plot_name(kd)//'_m',2,1,.false.)
+                call print_ex_2D(trim(plot_name(kd))//'_log',&
+                    &trim(plot_name(kd))//'_log',log10(abs(RZ_BG_ind)))
+                call draw_ex(trim(plot_name(kd))//'_log',trim(plot_name(kd))//&
+                    &'_log',trim(plot_name(kd))//'_log',2,1,.false.)
                 call lvl_ud(-1)
             end do
             write(file_i,*) ''
             write(file_i,*) ''
             write(file_i,*) '# cos and sine factors for R_H'
             write(file_i,'(A6,I4,A4,ES23.16,A9,I4,A4,ES23.16)') &
-                &'RBC(0,',0,') = ',RZ_F(1,1),&
+                &'RBC(0,',0,') = ',RZ_BG(1,1),&
                 &'   RBS(0,',0,') = ',0._dp
             do kd = 1,m_F
                 write(file_i,'(A6,I4,A4,ES23.16,A9,I4,A4,ES23.16)') &
-                    &'RBC(0,',kd,') = ',RZ_F(2*kd,1),&
-                    &'   RBS(0,',kd,') = ',-RZ_F(2*kd+1,1)                      ! routine returns - sine factors
+                    &'RBC(0,',kd,') = ',RZ_BG(2*kd,1),&
+                    &'   RBS(0,',kd,') = ',-RZ_BG(2*kd+1,1)                     ! routine returns - sine factors
             end do
             write(file_i,*) ''
             write(file_i,*) ''
             write(file_i,*) '# cos and sine factors for Z_H'
             write(file_i,'(A6,I4,A4,ES23.16,A9,I4,A4,ES23.16)') &
-                &'ZBC(0,',0,') = ',RZ_F(1,2),&
+                &'ZBC(0,',0,') = ',RZ_BG(1,2),&
                 &'   ZBS(0,',0,') = ',0._dp
             do kd = 1,m_F
                 write(file_i,'(A6,I4,A4,ES23.16,A9,I4,A4,ES23.16)') &
-                    &'ZBC(0,',kd,') = ',RZ_F(2*kd,2),&
-                    &'   ZBS(0,',kd,') = ',-RZ_F(2*kd+1,2)                      ! routine returns - sine factors
+                    &'ZBC(0,',kd,') = ',RZ_BG(2*kd,2),&
+                    &'   ZBS(0,',kd,') = ',-RZ_BG(2*kd+1,2)                     ! routine returns - sine factors
             end do
             
             ! close file
             close(file_i)
-        end subroutine write_flux_q_in_file_for_VMEC
+            
+            ! wait
+            call pause_prog
+        end function write_flux_q_in_file_for_VMEC
     end function calc_eq_1
     integer function calc_eq_2(grid_eq,eq_1,eq_2,dealloc_vars) result(ierr)     ! metric version
         use num_vars, only: eq_style
@@ -835,8 +872,8 @@ contains
         ierr = flux_q_plot_HDF5()
         CHCKERR('')
         
-        ! plot using GNUPlot
-        ierr = flux_q_plot_GP()
+        ! plot using external program
+        ierr = flux_q_plot_ex()
         CHCKERR('')
         
         ! clean up
@@ -932,12 +969,12 @@ contains
             call grid_plot%dealloc()
         end function flux_q_plot_HDF5
         
-        ! plots the pressure and fluxes in GNUplot
-        integer function flux_q_plot_GP() result(ierr)
+        ! plots the pressure and fluxes in external program
+        integer function flux_q_plot_ex() result(ierr)
             use eq_vars, only: max_flux_F, pres_0, psi_0
             use num_vars, only: use_normalization
             
-            character(*), parameter :: rout_name = 'flux_q_plot_GP'
+            character(*), parameter :: rout_name = 'flux_q_plot_ex'
             
             ! local variables
             character(len=max_str_ln), allocatable :: file_name(:)              ! file_name
@@ -996,17 +1033,17 @@ contains
                 
                 ! plot the  individual 2D output  of this process  (except q_saf
                 ! and rot_t, as they are already in plot_resonance)
-                call print_GP_2D(plot_titles(3),file_name(1),&
+                call print_ex_2D(plot_titles(3),file_name(1),&
                     &Y_plot_2D(:,3),X_plot_2D(:,3),draw=.false.)
                 ! fluxes
-                call print_GP_2D(trim(plot_titles(4))//', '//&
+                call print_ex_2D(trim(plot_titles(4))//', '//&
                     &trim(plot_titles(5)),file_name(2),&
                     &Y_plot_2D(:,4:5),X_plot_2D(:,4:5),draw=.false.)
                 
                 ! draw plot
-                call draw_GP(plot_titles(3),file_name(1),file_name(1),1,1,&
+                call draw_ex(plot_titles(3),file_name(1),file_name(1),1,1,&
                     &.false.)                                                   ! pressure
-                call draw_GP(trim(plot_titles(4))//', '//trim(plot_titles(5)),&
+                call draw_ex(trim(plot_titles(4))//', '//trim(plot_titles(5)),&
                     &file_name(2),file_name(2),2,1,.false.)                     ! fluxes
                 
                 ! user output
@@ -1016,7 +1053,7 @@ contains
                 ! clean up
                 deallocate(X_plot_2D,Y_plot_2D)
             end if
-        end function flux_q_plot_GP
+        end function flux_q_plot_ex
     end function flux_q_plot
     
     ! prepare the cosine  and sine factors that are used  in the inverse Fourier

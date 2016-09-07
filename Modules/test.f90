@@ -26,7 +26,14 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call writo('Test lock system')
+        call writo('Test interpolation?')
+        if (get_log(.false.)) then
+            ierr = test_interp()
+            CHCKERR('')
+            call pause_prog
+        end if
+        
+        call writo('Test lock system?')
         if (get_log(.false.)) then
             ierr = test_lock()
             CHCKERR('')
@@ -58,6 +65,252 @@ contains
                 end if
         end select
     end function generic_tests
+    
+    ! test interpolation
+    integer function test_interp() result(ierr)
+        use MPI_utilities, only: wait_MPI
+        use grid_vars, only: disc_type
+        use grid_utilities, only: setup_interp_data, apply_disc
+        
+        character(*), parameter :: rout_name = 'test_interp'
+        
+        ! local variables
+        real(dp), allocatable :: x(:)
+        real(dp), allocatable :: x_interp(:)
+        real(dp), allocatable :: f(:)
+        real(dp), allocatable :: f_interp(:)
+        integer :: interp_style
+        integer :: fun_style
+        integer :: n
+        integer :: n_interp
+        integer :: ord
+        real(dp) :: x_lim(2)
+        real(dp) :: x_lim_interp(2)
+        logical :: change_lims
+        type(disc_type) :: interp_data
+        logical :: is_trigon
+        real(dp), allocatable :: x_plot(:,:)
+        real(dp), allocatable :: f_plot(:,:)
+        real(dp) :: gam
+        integer :: id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user input
+        call writo('which kind of interpolation?')
+        call lvl_ud(1)
+        call writo('1. polynomical interpolation')
+        call writo('2. trigonometric interpolation')
+        interp_style = get_int(lim_lo=1,lim_hi=2)
+        call lvl_ud(-1)
+        is_trigon = .false.
+        select case (interp_style)
+            case(1)
+                x_lim = [0._dp,1._dp]
+            case(2)
+                x_lim = [0._dp,2*pi]
+                is_trigon = .true.
+        end select
+        
+        ! set up the function to be interpolated
+        call writo('function to interpolate?')
+        call lvl_ud(1)
+        call writo('1: sin(x)')
+        call writo('2: sin(x) + 0.25*cos(2*x)')
+        call writo('3: sin(x) + 0.25*cos(2*x) + 2*sin(6*x) + 3*cos(7*x)')
+        call writo('4: 0.5+x-2*x^3+x^4')
+        call writo('5: x^7')
+        call writo('6: x^6')
+        call writo('7: x^5')
+        call writo('8: x^4')
+        call writo('9: square wave')
+        call writo('10: sawtooth')
+        call writo('11: triangle wave')
+        call writo('12: sine composed by squares')
+        fun_style = get_int(lim_lo=1,lim_hi=12)
+        call lvl_ud(-1)
+        
+        call writo('order of interpolation?')
+        ord = get_int(lim_lo=1)
+        
+        ! set up the fixed points and function
+        call setup_x(x,'at which to tabulate',x_lim,ord+1)
+        n = size(x)
+        allocate(f(n))
+        select case (fun_style)
+            case (1)
+                f = sin(x)
+            case (2)
+                f = sin(x) + 0.25*cos(2*x)
+            case (3)
+                f = sin(x) + 0.25*cos(2*x) + 2*sin(6*x) + 3*cos(7*x)
+            case (4)
+                f = 0.5 + x-2*x**3 + x**4
+            case (5)
+                f = x**7
+            case (6)
+                f = x**6
+            case (7)
+                f = x**5
+            case (8)
+                f = x**4
+            case (9)
+                do id = 1,n
+                    if (x(id)-x_lim(1) .le. (x_lim(2)-x_lim(1))/2) then
+                        f(id) = 0._dp
+                    else
+                        f(id) = 1._dp
+                    end if
+                end do
+            case (10)
+                f = x
+            case (11)
+                do id = 1,n
+                    if (x(id)-x_lim(1) .le. (x_lim(2)-x_lim(1))/2) then
+                        f(id) = x(id)
+                    else
+                        f(id) = x_lim(2)-x(id)
+                    end if
+                end do
+            case (12)
+                do id = 1,n
+                    gam = (x_lim(2)-x_lim(1))/2
+                    if (x(id)-x_lim(1) .le. (x_lim(2)-x_lim(1))/2) then
+                        f(id) = -(x(id)-x_lim(1))/(x_lim(2)+x_lim(1)) * &
+                            &(x(id)-gam)/(3*x_lim(1)+x_lim(2))*16
+                    else
+                        f(id) = (x(id)-x_lim(2))/(x_lim(2)-x_lim(1)) * &
+                            &(x(id)-gam)/(x_lim(2)-x_lim(1))*16
+                    end if
+                end do
+        end select
+        
+        ! set up interpolation points
+        x_lim_interp = [x(1),x(n)]
+        call setup_x(x_interp,'at which to interpolate',x_lim_interp,n_min=2)
+        n_interp = size(x_interp)
+        allocate(f_interp(n_interp))
+        
+        ! interpolate
+        ierr = setup_interp_data(x,x_interp,interp_data,ord,is_trigon)
+        CHCKERR('')
+        ierr = apply_disc(f,interp_data,f_interp)
+        CHCKERR('')
+        
+        ! visualize
+        allocate(x_plot(max(n,n_interp),2))
+        allocate(f_plot(max(n,n_interp),2))
+        x_plot(:,1) = x(n)
+        x_plot(:,2) = x_interp(n_interp)
+        f_plot(:,1) = f(n)
+        f_plot(:,2) = f_interp(n_interp)
+        x_plot(1:n,1) = x
+        f_plot(1:n,1) = f
+        x_plot(1:n_interp,2) = x_interp
+        f_plot(1:n_interp,2) = f_interp
+        call print_ex_2D('f and f_interp','',f_plot,x=x_plot)
+        
+        if (interp_style.eq.2) then
+            call writo('Spectrum of f?')
+            if (get_log(.true.)) call plot_fft(x,f)
+            
+            call writo('Spectrum of interpolated f?')
+            call lvl_ud(1)
+            call writo('Note: The end points are missing: not reliable &
+                &spectrum', alert=.true.)
+            call lvl_ud(-1)
+            if (get_log(.false.)) call plot_fft(x_interp,f_interp)
+        end if
+        
+        ! synchronize MPI
+        ierr = wait_MPI()
+        CHCKERR('')
+        
+        call lvl_ud(-1)
+    contains
+        subroutine setup_x(x,description,x_lim,n_min)
+            ! input / output
+            real(dp), intent(inout), allocatable :: x(:)
+            character(len=*), intent(in) :: description
+            real(dp), intent(inout) :: x_lim(2)
+            integer, intent(in) :: n_min
+            
+            ! local variables
+            integer :: n
+            integer :: style
+            integer :: id
+            
+            ! set up the number of points
+            call writo('nr. of points '//description//'?')
+            n = get_int(lim_lo=n_min)
+            call writo('which sampling distribution?')
+            call lvl_ud(1)
+            call writo('1. equidistant grid')
+            call writo('2. more points in center')
+            call writo('3. more points at edges')
+            style = get_int(lim_lo=1,lim_hi=3)
+            call lvl_ud(-1)
+            call writo('changed proposed limits ['//&
+                &trim(r2strt(x_lim(1)))//','//trim(r2strt(x_lim(2)))//')?')
+            change_lims = get_log(.false.)
+            if (change_lims) then
+                call writo('lower limit?')
+                x_lim(1) = get_real()
+                call writo('upper limit?')
+                x_lim(2) = get_real(lim_lo=x_lim(1))
+            end if
+            
+            allocate(x(n))
+            x = [((id-1._dp)/n*2*pi-pi,id=1,n)]                                 ! equidistant base -pi..pi
+            select case (style)
+                case (1)
+                    ! do nothing
+                case (2)
+                    x = x - 0.75*sin(x)
+                case (3)
+                    x = x + 0.75*sin(x)
+            end select
+            x = x_lim(1) + (x+pi)/(2*pi)*(x_lim(2)-x_lim(1))
+        end subroutine setup_x
+        
+        subroutine plot_fft(x,f)
+            ! input / output
+            real(dp), intent(in) :: x(:)
+            real(dp), intent(in) :: f(:)
+            
+            ! local variables
+            integer :: n
+            integer :: m_F
+            real(dp), allocatable :: f_loc(:)
+            real(dp), allocatable :: work(:)
+            real(dp), allocatable :: x_plot(:,:)
+            real(dp), allocatable :: f_plot(:,:)
+            
+            ! fft
+            call writo('!!! The following does not work for &
+                &non-equidistant grids !!!',alert=.true.)
+            n = size(x,1)
+            allocate(work(3*n+15))
+            allocate(f_loc(n))
+            f_loc = f
+            call dffti(n,work)
+            call dfftf(n,f_loc,work)
+            ! rescale
+            f_loc = f_loc*2/n
+            f_loc(1) = f_loc(1)/2
+            ! separate cos and sine
+            m_F = (n-1)/2
+            ! plot
+            allocate(x_plot(m_F,2))
+            allocate(f_plot(m_F,2))
+            x_plot = 0._dp
+            f_plot = 0._dp
+            f_plot(:,1) = f_loc(2:2*m_F:2)
+            f_plot(:,2) = -f_loc(3:2*m_F+1:2)
+            call print_ex_2D('cosine and sine spectrum','',f_plot(1:m_f,:))
+        end subroutine
+    end function test_interp
     
     ! test lock system
     integer function test_lock() result(ierr)
@@ -414,14 +667,14 @@ contains
                 
                 ! plots
                 if (ind_plots) then
-                    call print_GP_2D('input variable','',varin,x=x)
+                    call print_ex_2D('input variable','',varin,x=x)
                     
                     do kd = 1,max_deriv
-                        call print_GP_2D('analytical deriv. ord. '//&
+                        call print_ex_2D('analytical deriv. ord. '//&
                             &trim(i2str(kd)),'',var_an(:,kd),x=x)
-                        call print_GP_2D('numerical deriv. ord. '//&
+                        call print_ex_2D('numerical deriv. ord. '//&
                             &trim(i2str(kd)),'',var_nm(:,kd),x=x)
-                        call print_GP_2D('diff deriv. ord. '//&
+                        call print_ex_2D('diff deriv. ord. '//&
                             &trim(i2str(kd)),'',(var_an(:,kd)-var_nm(:,kd))&
                             &/maxval(abs(var_an(:,kd))),x=x)
                     end do
@@ -434,13 +687,13 @@ contains
                 plot_x(:,2) = step_size
                 plot_y(:,1) = max_error(:,id)
                 plot_y(:,2) = mean_error(:,id)
-                call print_GP_2D('max. and mean error for deriv. of order '&
+                call print_ex_2D('max. and mean error for deriv. of order '&
                     &//trim(i2str(id)),'',plot_y,x=plot_x)
                 plot_x(:,1) = log10(step_size)
                 plot_x(:,2) = log10(step_size)
                 plot_y(:,1) = log10(max_error(:,id))
                 plot_y(:,2) = log10(mean_error(:,id))
-                call print_GP_2D('max. and mean error [log-log], for deriv. of &
+                call print_ex_2D('max. and mean error [log-log], for deriv. of &
                     &order '//trim(i2str(id)),'',plot_y,x=plot_x)
             end do
         end if
@@ -523,16 +776,16 @@ contains
                 averr(id) = sum(abs(vardiff))/size(vardiff)
                 
                 if (ind_plot) then
-                    call print_GP_2D('input with '//trim(i2str(n_r))&
+                    call print_ex_2D('input with '//trim(i2str(n_r))&
                         &//' radial points ('//trim(i2str(id))//'/'//&
                         &trim(i2str(length))//')','',varin)
-                    call print_GP_2D('first output with '//trim(i2str(n_r))&
+                    call print_ex_2D('first output with '//trim(i2str(n_r))&
                         &//' radial points ('//trim(i2str(id))//'/'//&
                         &trim(i2str(length))//')','',varout)
-                    call print_GP_2D('output with '//trim(i2str(n_r))&
+                    call print_ex_2D('output with '//trim(i2str(n_r))&
                         &//' radial points ('//trim(i2str(id))//'/'//&
                         &trim(i2str(length))//')','',varoutout)
-                    call print_GP_2D('rel. difference with '//trim(i2str(n_r))&
+                    call print_ex_2D('rel. difference with '//trim(i2str(n_r))&
                         &//' radial points ('//trim(i2str(id))//'/'//&
                         &trim(i2str(length))//')','',vardiff)
                     call writo('max = '//trim(r2strt(maxerr(id)))&
@@ -546,14 +799,14 @@ contains
             else
                 plotvar(2,:) = maxerr
             end if
-            call print_GP_2D('maximum error as a function of numer of points',&
+            call print_ex_2D('maximum error as a function of numer of points',&
                 &'',plotvar(2,:),x=plotvar(1,:))
             if (log_plot) then
                 plotvar(2,:) = log10(averr)
             else
                 plotvar(2,:) = averr
             end if
-            call print_GP_2D('average error as a function of numer of points',&
+            call print_ex_2D('average error as a function of numer of points',&
                 &'',plotvar(2,:),x=plotvar(1,:))
         end if
         
@@ -725,9 +978,9 @@ contains
                 do jd = 1,n_steps
                     fun_int_plot(jd,:) = fun_int(:,1,jd)/fun_int(1,1,jd)
                 end do
-                call print_GP_2D('analytical vs. numerical integral, real','',&
+                call print_ex_2D('analytical vs. numerical integral, real','',&
                     &realpart(fun_int_plot))
-                call print_GP_2D('analytical vs. numerical integral, imag.','',&
+                call print_ex_2D('analytical vs. numerical integral, imag.','',&
                     &imagpart(fun_int_plot))
             end if
         end if 

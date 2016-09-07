@@ -483,9 +483,9 @@ contains
                     &XYZ_out(:,:,:,2),XYZ_out(:,:,:,3))
                 CHCKERR('')
                 !!! To plot the cross-section
-                !!call print_GP_2D('cross_section','cross_section',&
+                !!call print_ex_2D('cross_section','cross_section',&
                     !!&XYZ_out(:,1,:,3),x=XYZ_out(:,1,:,1),draw=.false.)
-                !!call draw_GP('cross_section','cross_section','cross_section',&
+                !!call draw_ex('cross_section','cross_section','cross_section',&
                     !!&size(XYZ_out,3),1,.false.)
             end if
             
@@ -813,48 +813,48 @@ contains
             ! real part
             plot_title = 'RE sol_val and E_frac'
             plot_name = 'sol_val_comp_RE'
-            call print_GP_2D(plot_title,plot_name,&
+            call print_ex_2D(plot_title,plot_name,&
                 &realpart(sol_val_comp(:,1,:)),&
                 &x=realpart(sol_val_comp(:,2,:)),draw=.false.)
-            call draw_GP(plot_title,plot_name,plot_name,size(sol_val_comp,3),1,&
+            call draw_ex(plot_title,plot_name,plot_name,size(sol_val_comp,3),1,&
                 &.false.)
             plot_title = 'RE sol_val and E_frac rel diff'
             plot_name = 'sol_val_comp_RE_rel_diff'
-            call print_GP_2D(plot_title,plot_name,realpart(&
+            call print_ex_2D(plot_title,plot_name,realpart(&
                 &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
                 &sol_val_comp(1,2,:)),x=realpart(sol_val_comp(1,1,:)),&
                 &draw=.false.)
-            call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+            call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
             plot_title = 'RE sol_val and E_frac log rel diff'
             plot_name = 'sol_val_comp_RE_rel_diff_log'
-            call print_GP_2D(plot_title,plot_name,log10(abs(realpart(&
+            call print_ex_2D(plot_title,plot_name,log10(abs(realpart(&
                 &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
                 &sol_val_comp(1,2,:)))),x=realpart(sol_val_comp(1,1,:)),&
                 &draw=.false.)
-            call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+            call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
             
             ! imaginary part
             plot_title = 'IM sol_val and E_frac'
             plot_name = 'sol_val_comp_IM'
-            call print_GP_2D(plot_title,plot_name,&
+            call print_ex_2D(plot_title,plot_name,&
                 &realpart(sol_val_comp(:,1,:)),x=imagpart(sol_val_comp(:,2,:)),&
                 &draw=.false.)
-            call draw_GP(plot_title,plot_name,plot_name,size(sol_val_comp,3),1,&
+            call draw_ex(plot_title,plot_name,plot_name,size(sol_val_comp,3),1,&
                 &.false.)
             plot_title = 'IM sol_val and E_frac rel diff'
             plot_name = 'sol_val_comp_IM_rel_diff'
-            call print_GP_2D(plot_title,plot_name,imagpart(&
+            call print_ex_2D(plot_title,plot_name,imagpart(&
                 &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
                 &sol_val_comp(1,2,:)),x=realpart(sol_val_comp(1,1,:)),&
                 &draw=.false.)
-            call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+            call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
             plot_title = 'IM sol_val and E_frac log rel diff'
             plot_name = 'sol_val_comp_IM_rel_diff_log'
-            call print_GP_2D(plot_title,plot_name,log10(abs(imagpart(&
+            call print_ex_2D(plot_title,plot_name,log10(abs(imagpart(&
                 &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
                 &sol_val_comp(1,2,:)))),x=realpart(sol_val_comp(1,1,:)),&
                 &draw=.false.)
-            call draw_GP(plot_title,plot_name,plot_name,1,1,.false.)
+            call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
         end if
     end subroutine plot_sol_val_comp
 end module driver_POST

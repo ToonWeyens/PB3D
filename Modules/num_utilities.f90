@@ -302,7 +302,7 @@ contains
     ! Integrates a function using the trapezoidal rule:
     !   int_1^n f(x) dx = sum_k=1^(n-1) {(f(k+1)+f(k))*(x(k+1)-x(k))/2},
     ! with n the number of points. So, n  points have to be specified as well as
-    ! n values  for the function  to be interpolated. They  have to be  given in
+    ! n values  for the function  to be integrated. They  have to be  given in
     ! ascending order but the step size does not have to be constant
     ! this yields the following difference formula:
     !   int_1^n f(x) dx = int_1^(n-1) f(x) dx + (f(n)+f(n-1))*(x(n)-x(n-1))/2,
@@ -1432,7 +1432,7 @@ contains
         ind_lo = 0
         ind_hi = size_c+1
         do id = 1,size_c
-            if (var_c_loc(id).le.pt_c_loc*(1+tol)) then
+            if (pt_c_loc+tol*abs(pt_c_loc) .ge. var_c_loc(id)) then
                 ind_lo = id
 #if ldebug 
                 if (debug_con2dis_reg) call writo('for iteration '//&
@@ -1440,7 +1440,7 @@ contains
                     &trim(i2str(ind_lo)))
 #endif
             end if
-            if (var_c_inv(id).ge.pt_c_loc*(1-tol)) then
+            if (pt_c_loc-tol*abs(pt_c_loc) .le. var_c_inv(id)) then
                 ind_hi = size_c+1-id
 #if ldebug 
                 if (debug_con2dis_reg) call writo('for iteration '//&
@@ -1453,7 +1453,7 @@ contains
         if (debug_con2dis_reg) then
             call writo('final ind_lo = '//trim(i2str(ind_lo))//', ind_hi = '//&
                 &trim(i2str(ind_hi)))
-            !!call print_GP_2D('var_c_loc, var_c_inv','',&
+            !!call print_ex_2D('var_c_loc, var_c_inv','',&
                 !!&reshape([var_c_loc,var_c_inv],[size_c,2]))
         end if
 #endif
@@ -1477,7 +1477,7 @@ contains
             pt_d = -1._dp
             ierr = 1
             err_msg = 'ind_lo cannot be higher than ind_hi'
-            CHCKERR('')
+            CHCKERR(err_msg)
         end if
         
         ! deallocate
