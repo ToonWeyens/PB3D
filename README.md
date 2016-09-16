@@ -554,3 +554,9 @@ CHANGELOG
       - External animation is only possible for 2D.
       - Added external plotting possibility: Bokeh for 2D and Mayavi2 for 3D.
       - There is a problem when Mayavi plots are generated through system calls in the program, but they do work by calling them afterwards.
+
+1.36: - Fixed bugs with the drawing options.
+      - Multiple 3D plots are again supported, for GNUPlot and Mayavi.
+      - Unified external program drawing into one procedure.
+      - A HELENA equilibrium can now be perturbed before exporting to VMEC format.
+      - The modification of the equilibrium can be provided in a file as well. Examples are given in "pert_*.dat".

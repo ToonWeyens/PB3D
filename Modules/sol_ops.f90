@@ -59,7 +59,7 @@ contains
             plot_name = 'Eigenvalues'
             call print_ex_2D(plot_title,plot_name,&
                 &log10(abs(realpart(sol%val(1:n_sol_found)))),draw=.false.)
-            call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
+            call draw_ex([plot_title],plot_name,1,1,.false.,ex_plot_style=1)
             
             ! Last Eigenvalues: unstable range
             if (last_unstable_id.gt.0) then
@@ -68,7 +68,7 @@ contains
                 call print_ex_2D(plot_title,plot_name,&
                     &realpart(sol%val(1:last_unstable_id)),&
                     &x=[(id*1._dp,id=1,last_unstable_id)],draw=.false.)
-                call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
+                call draw_ex([plot_title],plot_name,1,1,.false.,ex_plot_style=1)
             end if
             
             ! Last Eigenvalues: stable range
@@ -79,7 +79,7 @@ contains
                     &realpart(sol%val(last_unstable_id+1:n_sol_found)),&
                     &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)],&
                     &draw=.false.)
-                call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
+                call draw_ex([plot_title],plot_name,1,1,.false.,ex_plot_style=1)
             end if
         end if
         
@@ -396,7 +396,7 @@ contains
             integer :: n_mod_tot                                                ! total number of modes that can resonate
             integer :: n_mod_loc                                                ! local number of modes that are used in the calculations
             character(len=max_str_ln) :: file_name                              ! name of file of plots of this proc.
-            character(len=max_str_ln) :: plot_title                             ! title for plots
+            character(len=max_str_ln) :: plot_title(2)                          ! title for plots
             real(dp) :: norm_factor                                             ! conversion factor max_flux/2pi from flux to normal coordinate
             real(dp), allocatable :: x_plot(:,:)                                ! x values of plot
             real(dp), allocatable :: y_plot(:,:)                                ! y values of plot
@@ -451,23 +451,24 @@ contains
             if (rank.eq.0) then
                 ! set up file name of this rank and plot title
                 file_name = trim(i2str(X_id))//'_EV_midplane_RE'
-                plot_title = 'EV - midplane'
+                plot_title(1) = 'EV - midplane'
                 
                 ! print real amplitude of harmonics of eigenvector at midplane
-                call print_ex_2D(plot_title,file_name,&
+                call print_ex_2D(plot_title(1:1),file_name,&
                     &realpart(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
                 
                 ! plot in file
-                call draw_ex(plot_title,file_name,file_name,n_mod_tot,1,&
-                    &.false.,draw_ops=['with lines'])
+                call draw_ex(plot_title(1:1),file_name,n_mod_tot,1,&
+                    &.false.,draw_ops=['with lines'],ex_plot_style=1)
                 
                 ! plot in file using decoupled 3D
-                call draw_ex(trim(plot_title)//' - 3D',file_name,&
+                call draw_ex([trim(plot_title(1))//' - 3D'],&
                     &trim(file_name)//'_3D',n_mod_tot,3,.false.,&
-                    &draw_ops=['with lines'])
+                    &draw_ops=['with lines'],data_name=file_name,&
+                    &ex_plot_style=1)
                 
                 ! plot using HDF5
-                call plot_HDF5(trim(plot_title),trim(file_name),&
+                call plot_HDF5(trim(plot_title(1)),trim(file_name),&
                     &reshape(realpart(transpose(sol_vec_ser_tot)),&
                     &[1,grid_sol%n(3),n_mod_tot]),y=reshape(x_plot,&
                     &[1,grid_sol%n(3),n_mod_tot]))
@@ -481,25 +482,26 @@ contains
             if (rank.eq.0) then
                 ! set up file name of this rank and plot title
                 file_name = trim(i2str(X_id))//'_EV_midplane_IM'
-                plot_title = 'EV - midplane'
+                plot_title(1) = 'EV - midplane'
                 
                 ! print imag amplitude of harmonics of eigenvector at midplane
-                call print_ex_2D(plot_title,file_name,&
+                call print_ex_2D(plot_title(1:1),file_name,&
                     &imagpart(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
                 
                 ! plot in file
-                call draw_ex(plot_title,file_name,file_name,n_mod_tot,1,&
-                    &.false.,draw_ops=['with lines'])
+                call draw_ex(plot_title(1:1),file_name,n_mod_tot,1,.false.,&
+                    &draw_ops=['with lines'],ex_plot_style=1)
                 
                 ! plot in file using decoupled 3D if not too big
                 if (n_mod_tot*grid_sol%n(3).le.ex_max_size) then
-                    call draw_ex(trim(plot_title)//' - 3D',file_name,&
+                    call draw_ex([trim(plot_title(1))//' - 3D'],&
                         &trim(file_name)//'_3D',n_mod_tot,3,.false.,&
-                        &draw_ops=['with lines'])
+                        &draw_ops=['with lines'],data_name=file_name,&
+                        &ex_plot_style=1)
                 end if
                 
                 ! plot using HDF5
-                call plot_HDF5(trim(plot_title),trim(file_name),&
+                call plot_HDF5(trim(plot_title(1)),trim(file_name),&
                     &reshape(imagpart(transpose(sol_vec_ser_tot)),&
                     &[1,grid_sol%n(3),n_mod_tot]),y=reshape(x_plot,&
                     &[1,grid_sol%n(3),n_mod_tot]))
@@ -513,7 +515,7 @@ contains
             if (rank.eq.0) then
                 ! set up file name of this rank and plot title
                 file_name = trim(i2str(X_id))//'_EV_midplane_PH'
-                plot_title = 'EV - midplane'
+                plot_title(1) = 'EV - midplane'
                 
                 ! set up phase
                 allocate(sol_vec_phase(grid_sol%n(3),n_mod_tot))
@@ -522,22 +524,23 @@ contains
                 where (sol_vec_phase.lt.0) sol_vec_phase = sol_vec_phase + 2*pi
                 
                 ! print imag amplitude of harmonics of eigenvector at midplane
-                call print_ex_2D(plot_title,file_name,sol_vec_phase,x=x_plot,&
-                    &draw=.false.)
+                call print_ex_2D(plot_title(1:1),file_name,sol_vec_phase,&
+                    &x=x_plot,draw=.false.)
                 
                 ! plot in file
-                call draw_ex(plot_title,file_name,file_name,n_mod_tot,1,&
-                    &.false.,draw_ops=['with lines'])
+                call draw_ex(plot_title(1:1),file_name,n_mod_tot,1,&
+                    &.false.,draw_ops=['with lines'],ex_plot_style=1)
                 
                 ! plot in file using decoupled 3D if not too big
                 if (n_mod_tot*grid_sol%n(3).le.ex_max_size) then
-                    call draw_ex(trim(plot_title)//' - 3D',file_name,&
+                    call draw_ex([trim(plot_title(1))//' - 3D'],&
                         &trim(file_name)//'_3D',n_mod_tot,3,.false.,&
-                        &draw_ops=['with lines'])
+                        &draw_ops=['with lines'],data_name=file_name,&
+                        &ex_plot_style=1)
                 end if
                 
                 ! plot using HDF5
-                call plot_HDF5(trim(plot_title),trim(file_name),&
+                call plot_HDF5(trim(plot_title(1)),trim(file_name),&
                     &reshape(sol_vec_phase,[1,grid_sol%n(3),n_mod_tot]),&
                     &y=reshape(x_plot,[1,grid_sol%n(3),n_mod_tot]))
                 
@@ -554,7 +557,7 @@ contains
             if (rank.eq.0 .and. size(res_surf,1).gt.0) then
                 ! set up file name of this rank and plot title
                 file_name = trim(i2str(X_id))//'_EV_max'
-                plot_title = trim(i2str(X_id))//' EV - maximum of modes'
+                plot_title = ['mode maximum      ','resonating surface']
                 
                 ! set up plot variables
                 allocate(x_plot(n_mod_tot,2))
@@ -589,11 +592,11 @@ contains
                     &draw=.false.)
                 
                 ! draw plot in file
-                call draw_ex(plot_title,file_name,file_name,2,1,.false.,&
-                    &extra_ops='set xrange ['//&
+                call draw_ex(plot_title,file_name,2,1,.false.,extra_ops=&
+                    &'set xrange ['//&
                     &trim(r2str(grid_sol%r_F(1)/norm_factor))//':'//&
                     &trim(r2str(grid_sol%r_F(grid_sol%n(3))/norm_factor))//&
-                    &']')
+                    &']',ex_plot_style=1)
             end if
             
             ! synchronize processes

@@ -806,55 +806,53 @@ contains
         complex(dp) :: sol_val_comp(:,:,:)                                      ! fraction between total E_pot and E_kin, compared with EV
         
         ! local variables
-        character(len=max_str_ln) :: plot_title                                 ! title for plots
+        character(len=max_str_ln) :: plot_title(2)                              ! title for plots
         character(len=max_str_ln) :: plot_name                                  ! file name for plots
         
         if (rank.eq.0) then
             ! real part
-            plot_title = 'RE sol_val and E_frac'
+            plot_title = ['RE sol_val','E_frac    ']
             plot_name = 'sol_val_comp_RE'
             call print_ex_2D(plot_title,plot_name,&
                 &realpart(sol_val_comp(:,1,:)),&
                 &x=realpart(sol_val_comp(:,2,:)),draw=.false.)
-            call draw_ex(plot_title,plot_name,plot_name,size(sol_val_comp,3),1,&
-                &.false.)
-            plot_title = 'RE sol_val and E_frac rel diff'
+            call draw_ex(plot_title,plot_name,size(sol_val_comp,3),1,.false.)
+            plot_title(1) = 'rel diff between RE sol_val and E_frac'
             plot_name = 'sol_val_comp_RE_rel_diff'
-            call print_ex_2D(plot_title,plot_name,realpart(&
+            call print_ex_2D(plot_title(1),plot_name,realpart(&
                 &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
                 &sol_val_comp(1,2,:)),x=realpart(sol_val_comp(1,1,:)),&
                 &draw=.false.)
-            call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
-            plot_title = 'RE sol_val and E_frac log rel diff'
+            call draw_ex(plot_title(1:1),plot_name,1,1,.false.)
+            plot_title(1) = 'rel diff between RE sol_val and E_frac [log]'
             plot_name = 'sol_val_comp_RE_rel_diff_log'
-            call print_ex_2D(plot_title,plot_name,log10(abs(realpart(&
+            call print_ex_2D(plot_title(1),plot_name,log10(abs(realpart(&
                 &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
                 &sol_val_comp(1,2,:)))),x=realpart(sol_val_comp(1,1,:)),&
                 &draw=.false.)
-            call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
+            call draw_ex(plot_title(1:1),plot_name,1,1,.false.)
             
             ! imaginary part
-            plot_title = 'IM sol_val and E_frac'
+            plot_title = ['IM sol_val','E_frac    ']
             plot_name = 'sol_val_comp_IM'
             call print_ex_2D(plot_title,plot_name,&
                 &realpart(sol_val_comp(:,1,:)),x=imagpart(sol_val_comp(:,2,:)),&
                 &draw=.false.)
-            call draw_ex(plot_title,plot_name,plot_name,size(sol_val_comp,3),1,&
-                &.false.)
-            plot_title = 'IM sol_val and E_frac rel diff'
+            call draw_ex(plot_title,plot_name,size(sol_val_comp,3),1,.false.)
+            plot_title(1) = 'rel diff between IM sol_val and E_frac'
             plot_name = 'sol_val_comp_IM_rel_diff'
-            call print_ex_2D(plot_title,plot_name,imagpart(&
+            call print_ex_2D(plot_title(1),plot_name,imagpart(&
                 &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
                 &sol_val_comp(1,2,:)),x=realpart(sol_val_comp(1,1,:)),&
                 &draw=.false.)
-            call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
-            plot_title = 'IM sol_val and E_frac log rel diff'
+            call draw_ex(plot_title(1:1),plot_name,1,1,.false.)
+            plot_title(1) = 'rel diff between IM sol_val and E_frac [log]'
             plot_name = 'sol_val_comp_IM_rel_diff_log'
-            call print_ex_2D(plot_title,plot_name,log10(abs(imagpart(&
+            call print_ex_2D(plot_title(1),plot_name,log10(abs(imagpart(&
                 &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
                 &sol_val_comp(1,2,:)))),x=realpart(sol_val_comp(1,1,:)),&
                 &draw=.false.)
-            call draw_ex(plot_title,plot_name,plot_name,1,1,.false.)
+            call draw_ex(plot_title(1:1),plot_name,1,1,.false.)
         end if
     end subroutine plot_sol_val_comp
 end module driver_POST

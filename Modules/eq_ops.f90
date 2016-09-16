@@ -345,6 +345,10 @@ contains
         
         ! Plots flux quantities in file for VMEC port.
         ! Optionally, a perturbation can be added.
+        ! A note about the indices of B_F, B_F_pert and B_F_loc:
+        !   B_F_loc:  (pol modes, cos/sin)
+        !   B_F:      (pol modes, tor modes, cos/sin (m theta), R/Z)
+        !   B_F_pert: (pol modes, cos/sin (m theta), R/Z, cos/sin (N zeta))
         integer function write_flux_q_in_file_for_VMEC() result(ierr)
             use eq_vars, only: pres_0
             use grid_vars, only: n_r_eq
@@ -353,27 +357,49 @@ contains
             use X_vars, only: min_r_sol, max_r_sol
             use files_utilities, only: nextunit
             use input_utilities, only: pause_prog, get_log, get_int, get_real
+            use num_utilities, only: GCD, bubble_sort
             
             character(*), parameter :: rout_name = &
                 &'write_flux_q_in_file_for_VMEC'
             
             ! local variables
-            character(len=max_str_ln) :: err_msg                                ! error message
-            integer :: id, kd                                                   ! counters
+            integer :: id, jd, kd                                               ! counters
+            integer :: jd_min                                                   ! start value of jd, possibly excluding N = 0 from equilibrium
             integer :: file_i                                                   ! file to output flux quantities for VMEC export
             integer :: n_B                                                      ! nr. of points in Fourier series
-            integer :: m_F                                                      ! nr. of modes
-            integer :: n_pert                                                   ! toroidal perturbation number
+            integer :: nfp                                                      ! scale factor for toroidal mode numbers
+            integer :: tot_nr_pert                                              ! total number of perturbations combinations (N,M)
+            integer :: nr_n                                                     ! number of different N
+            integer :: n_loc, m_loc                                             ! local n_pert and m_pert
+            integer :: n_id                                                     ! index in bundled n_pert
+            integer :: pert_file_i                                              ! handle of perturbation input file
+            integer :: istat                                                    ! status
+            integer, allocatable :: n_pert(:), m_pert(:,:)                      ! tor. mode numbers and pol. mode numbers for each of them
+            integer, allocatable :: m_pert_copy(:,:)                            ! copy of m_pert, for sorting
+            integer, allocatable :: piv(:)                                      ! pivots for sorting
+            integer, allocatable :: nr_m(:)                                     ! number of different M for every N
+            integer, allocatable :: nr_m_copy(:)                                ! copy of nr_m, for sorting
+            character(len=1) :: loc_data_char                                   ! first data character
+            character(len=2) :: plus                                            ! "+ " or ""
+            character(len=max_str_ln) :: pert_file_name                         ! name of perturbation file
+            character(len=max_str_ln) :: err_msg                                ! error message
             character(len=max_str_ln) :: file_name                              ! name of file
-            character(len=7) :: plot_name(2)                                    ! name of plot
-            real(dp) :: q_pert                                                  ! perturbation pitch
-            real(dp), allocatable :: work(:,:)                                  ! work array
-            real(dp), allocatable :: RZ_BH(:,:)                                 ! fourier series of R and Z, HELENA coordinates
-            real(dp), allocatable :: RZ_BG(:,:)                                 ! fourier series of R and Z, geometrical coordinates
-            real(dp), allocatable :: RZ_BG_ind(:,:)                             ! cosine and sine of fourier series
-            real(dp), allocatable :: theta_geo(:,:)                             ! geometrical poloidal angle
-            type(disc_type) :: trigon_interp_data                               ! data for non-equidistant sampling fourier coefficients
-            logical :: perturb_eq                                               ! perturb the equilibrium
+            character(len=max_str_ln) :: plot_name(2)                           ! name of plot file
+            character(len=max_str_ln) :: plot_title(2)                          ! name of plot
+            real(dp) :: delta_loc(2)                                            ! local delta
+            real(dp), allocatable :: delta(:,:,:)                               ! amplitudes of perturbations (N,M,c/s)
+            real(dp), allocatable :: delta_copy(:,:,:)                          ! copy of m_pert, for sorting
+            real(dp), allocatable :: BH_0(:,:)                                  ! R and Z at unperturbed bounday
+            real(dp), allocatable :: BH_pert(:,:)                               ! BH perturbed by cos(M theta) or sin(M theta)
+            real(dp), allocatable :: BH_deriv(:,:)                              ! theta derivative of R and Z
+            real(dp), allocatable :: B_F(:,:,:,:)                               ! cos and sin Fourier components
+            real(dp), allocatable :: B_F_pert(:,:,:,:)                          ! cosine and sine of fourier series of perturbation
+            real(dp), allocatable :: B_F_loc(:,:)                               ! Local B_F
+            real(dp), allocatable :: u_norm(:,:)                                ! normalized unit vector
+            real(dp), allocatable :: theta(:,:)                                 ! pol. angle: (geometric, HELENA (equidistant))
+            logical :: zero_N_pert = .false.                                    ! there is a perturbation with N = 0
+            logical :: pert_eq                                                  ! whether equilibrium is perturbed
+            logical :: pert_from_file                                           ! perturbation read from file
             
             ! initialize ierr
             ierr = 0
@@ -391,50 +417,202 @@ contains
                 CHCKERR(err_msg)
             end if
             
-            call writo('Do you want to add a perturbation of the equilibrium?')
-            perturb_eq = get_log(.false.)
+            ! get input about equilibrium perturbation
+            ! Note: negative N values will be converted to negative M values and
+            ! Possibly negative delta's.
+            call writo('Do you want to perturb the equilibrium?')
+            pert_eq = get_log(.false.)
             
-            if (perturb_eq) then
-                call writo('Toroidal mode number N?')
-                n_pert = get_int(lim_lo=0)
-                call writo('pitch q?')
-                q_pert = get_real()
+            if (pert_eq) then
+                call writo('Prescribe the perturbation through a file?')
+                call lvl_ud(1)
+                call writo('It should provide N M delta_cos delta_sin in four &
+                    &columns')
+                call writo('Rows starting with "#" are ignored')
+                call lvl_ud(-1)
+                
+                pert_from_file = get_log(.false.)
+                
+                if (pert_from_file) then
+                    ! user input
+                    call writo('File name?')
+                    read(*,*) pert_file_name
+                    
+                    ! open
+                    open(unit=nextunit(pert_file_i),file=trim(pert_file_name),&
+                        &iostat=ierr,status='old')
+                    err_msg = 'Could not open file '//&
+                        &trim(pert_file_name)
+                    CHCKERR(err_msg)
+                    call writo('Parsing "'//trim(pert_file_name)//'"')
+                    
+                    ! get number of lines
+                    istat = 0
+                    tot_nr_pert = 0
+                    do while (istat.eq.0)
+                        read(pert_file_i,*,IOSTAT=istat) loc_data_char          ! read first character of data
+                        if (istat.eq.0 .and. loc_data_char.ne.'#') then         ! exclude comment lines
+                            tot_nr_pert = tot_nr_pert + 1
+                        end if
+                    end do
+                    rewind(pert_file_i)
+                    loc_data_char = '#'
+                    
+                    ! set error message
+                    err_msg = 'Could not read file '//trim(pert_file_name)
+                else
+                    ! user input
+                    call writo('How many different combinations of toroidal &
+                        &and poloidal mode numbers (N,M)?')
+                    tot_nr_pert = get_int(lim_lo=1)
+                end if
+                
+                ! set up n, m and delta  (use maximum possible size, possibly +1
+                ! if N=0 is not a perturbation, and limit afterwards)
+                allocate(n_pert(tot_nr_pert+1))
+                allocate(m_pert(tot_nr_pert+1,tot_nr_pert+1))
+                allocate(delta(tot_nr_pert+1,tot_nr_pert+1,2))
+                allocate(nr_m(tot_nr_pert+1))
+                nr_n = 0
+                nr_m = 0
+                do jd = 1,tot_nr_pert
+                    if (pert_from_file) then
+                        do while (loc_data_char.eq.'#')
+                            read(pert_file_i,*,IOSTAT=ierr) loc_data_char       ! read first character of data
+                            CHCKERR(err_msg)
+                            if (loc_data_char.ne.'#') then                      ! exclude comment lines
+                                backspace(UNIT=pert_file_i)                     ! go back one line
+                                read(pert_file_i,*,IOSTAT=ierr) &
+                                    &n_loc, m_loc, delta_loc
+                                CHCKERR(err_msg)
+                            end if
+                        end do
+                        loc_data_char = '#'
+                    else
+                        call writo('For mode '//trim(i2str(jd))//'/'//&
+                            &trim(i2str(tot_nr_pert))//':')
+                        call lvl_ud(1)
+                        
+                        ! input
+                        call writo('Toroidal mode number N?')
+                        n_loc = get_int()
+                        call writo('Poloidal mode number M?')
+                        m_loc = get_int()
+                        call writo('Perturbation strength ~ cos('//&
+                            &trim(i2str(m_loc))//' theta - '//&
+                            &trim(i2str(n_loc))//' zeta)?')
+                        delta_loc(1) = get_real()
+                        call writo('Perturbation strength ~ sin('//&
+                            &trim(i2str(m_loc))//' theta - '//&
+                            &trim(i2str(n_loc))//' zeta)?')
+                        delta_loc(2) = get_real()
+                        
+                        call lvl_ud(-1)
+                    end if
+                    
+                    ! has N = 0 been prescribed?
+                    if (n_loc.eq.0) zero_N_pert = .true.
+                    
+                    ! possibly convert to positive N
+                    if (n_loc.lt.0) then
+                        n_loc = -n_loc
+                        m_loc = -m_loc
+                        delta_loc(2) = -delta_loc(2)
+                    end if
+                    
+                    ! bundle into n_pert and m_pert
+                    n_id = nr_n+1                                               ! default new N in next index
+                    do id = 1,nr_n
+                        if (n_loc.eq.n_pert(id)) n_id = id
+                    end do
+                    if (n_id.gt.nr_n) then                                      ! new N
+                        nr_n = n_id                                             ! increment number of N
+                        n_pert(n_id) = n_loc                                    ! with value n_loc
+                    end if
+                    nr_m(n_id) = nr_m(n_id) + 1                                 ! one more M in either old or new N
+                    m_pert(n_id,nr_m(n_id)) = m_loc                             ! with value m_loc
+                    delta(n_id,nr_m(n_id),:) = delta_loc                        ! and perturbation amplitude for cos and sin with value delta_loc
+                end do
+                
+                if (pert_from_file) close(pert_file_i)
+            else
+                nr_n = 0
             end if
             
+            ! possibly include N = 0 for equilibrium if not already done so
+            if (.not.zero_N_pert) then                                          ! N = 0 was not already included
+                jd_min = 2
+                nr_n = nr_n + 1
+                if (pert_eq) then
+                    n_pert(nr_n) = 0
+                    nr_m(nr_n) = 1
+                    m_pert(nr_n,1) = 0
+                    delta(nr_n,1,:) = 0
+                end if
+            else
+                jd_min = 1
+            end if
+            
+            ! sort and output
+            if (pert_eq) then
+                ! sort
+                allocate(m_pert_copy(size(m_pert,1),size(m_pert,2)))
+                allocate(delta_copy(size(delta,1),size(delta,2),size(delta,3)))
+                allocate(nr_m_copy(size(nr_m)))
+                m_pert_copy = m_pert
+                delta_copy = delta
+                nr_m_copy = nr_m
+                allocate(piv(nr_n))
+                call bubble_sort(n_pert(1:nr_n),piv)
+                do jd = 1,nr_n
+                    nr_m(jd) = nr_m_copy(piv(jd))
+                    m_pert(jd,:) = m_pert_copy(piv(jd),:)
+                    delta(jd,:,:) = delta_copy(piv(jd),:,:)
+                    !!write(*,*) 'jd', jd, nr_n
+                    !!write(*,*) 'nr_m', nr_m(jd)
+                    !!write(*,*) ' >> n', n_pert(jd)
+                    !!write(*,*) ' >> m', m_pert(jd,1:nr_m(jd))
+                end do
+                deallocate(m_pert_copy)
+                deallocate(delta_copy)
+                deallocate(nr_m_copy)
+                
+                ! output
+                call writo('Summary of perturbation form:')
+                call lvl_ud(1)
+                plus = ''
+                do jd = jd_min,nr_n
+                    do id = 1,nr_m(jd)
+                        call writo(plus//&
+                            &trim(r2strt(delta(jd,id,1)))//' cos('//&
+                            &trim(i2str(m_pert(jd,id)))//' theta - '//&
+                            &trim(i2str(n_pert(jd)))//' zeta) + '//&
+                            &trim(r2strt(delta(jd,id,2)))//' sin('//&
+                            &trim(i2str(m_pert(jd,id)))//' theta - '//&
+                            &trim(i2str(n_pert(jd)))//' zeta)')
+                        plus = '+ '
+                    end do
+                end do
+                call lvl_ud(-1)
+            end if
+            
+            ! open output file
             open(unit=nextunit(file_i),file=trim(file_name))
             write(file_i,*) '# for export to VMEC'
             write(file_i,*) '# ------------------'
             write(file_i,*) '# total enclosed toroidal flux: ', &
                 &-flux_t_E_full(grid_eq%n(3),0)
-            write(file_i,*) '#'
+            write(file_i,*) ''
             write(file_i,*) '# pressure and rotational transform for 2D plot'
             do kd = 1,grid_eq%n(3)
                 write(file_i,'(ES23.16,A,ES23.16,A,ES23.16)') &
                     &flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0), ' ', &
                     &pres_E_full(kd,0)*pres_0, ' ', -rot_t_E_full(kd,0)
             end do
-            write(file_i,*) ''
-            write(file_i,*) ''
             
-            write(file_i,*) '# toroidal flux'
-            do kd = 1,grid_eq%n(3)
-                write(file_i,'(ES23.16)') &
-                    &flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0)
-            end do
-            write(file_i,*) ''
-            write(file_i,*) ''
-            write(file_i,*) '# pressure'
-            do kd = 1,grid_eq%n(3)
-                write(file_i,'(ES23.16)') pres_E_full(kd,0)*pres_0
-            end do
-            write(file_i,*) ''
-            write(file_i,*) ''
-            write(file_i,*) '# rotational transform'
-            do kd = 1,grid_eq%n(3)
-                write(file_i,'(ES23.16)') -rot_t_E_full(kd,0)
-            end do
-            write(file_i,*) ''
-            write(file_i,*) ''
+            ! user output
+            call writo('Set up axisymmetric data')
+            call lvl_ud(1)
             
             ! Fourier transform of boundary R and Z
             if (ias.eq.0) then                                                  ! symmetric (so nchi is odd)
@@ -442,102 +620,290 @@ contains
             else                                                                ! asymmetric (so nchi is aumented by one)
                 n_B  = nchi-1                                                   ! -1 because of overlapping points at 0
             end if
-            m_F = (n_B-1)/2                                                     ! nr. of modes
-            allocate(work(3*n_B+15,2))                                          ! from manual
-            allocate(RZ_BH(n_B+1,2))                                            ! values of R and Z at boundary, HELENA coords (overlap at 0)
-            allocate(RZ_BG(n_B,2))                                              ! values of R and Z at boundary, geometrical coords.
-            allocate(RZ_BG_ind(m_F,2))                                          ! DF coeffs of cosine and sine individually
-            allocate(theta_geo(n_B+1,2))                                        ! geometrical poloidal angle (overlap at 0)
+            allocate(BH_0(n_B,2))                                               ! HELENA coords (no overlap at 0)
+            allocate(theta(n_B,2))                                              ! geometrical poloidal angle (overlap at 0)
             if (ias.eq.0) then                                                  ! symmetric
-                RZ_BH(1:nchi,1) = R_H(:,n_r_eq)
-                RZ_BH(1:nchi,2) = Z_H(:,n_r_eq)
-                theta_geo(1:nchi,2) = chi_H
-                do kd = 1,nchi-1
-                    RZ_BH(nchi+kd,1) = R_H(nchi-kd,n_r_eq)
-                    RZ_BH(nchi+kd,2) = -Z_H(nchi-kd,n_r_eq)
-                    theta_geo(nchi+kd,2) = 2*pi-chi_H(nchi-kd)
+                BH_0(1:nchi,1) = R_H(:,n_r_eq)
+                BH_0(1:nchi,2) = Z_H(:,n_r_eq)
+                theta(1:nchi,2) = chi_H
+                do kd = 1,nchi-2
+                    BH_0(nchi+kd,1) = R_H(nchi-kd,n_r_eq)
+                    BH_0(nchi+kd,2) = -Z_H(nchi-kd,n_r_eq)
+                    theta(nchi+kd,2) = 2*pi-chi_H(nchi-kd)
                 end do
             else
-                RZ_BH(:,1) = R_H(:,n_r_eq)
-                RZ_BH(:,2) = Z_H(:,n_r_eq)
+                BH_0(:,1) = R_H(1:n_B-1,n_r_eq)
+                BH_0(:,2) = Z_H(1:n_B-1,n_r_eq)
             end if
-            theta_geo(:,1) = atan2(RZ_BH(:,2),RZ_BH(:,1)-R_H(1,1))
-            where(theta_geo(:,1).lt.0._dp) theta_geo(:,1) = theta_geo(:,1)+2*pi
-            theta_geo(n_B+1,1) = theta_geo(n_B+1,1)+2*pi
-            plot_name(1) = 'last_fs'
-            call print_ex_2D(plot_name(1),plot_name(1),RZ_BH(:,2),&
-                &x=RZ_BH(:,1),draw=.false.)
-            call draw_ex(plot_name(1),plot_name(1),plot_name(1),1,1,.false.)
+            theta(:,1) = atan2(BH_0(:,2),BH_0(:,1)-R_H(1,1))
+            where(theta(:,1).lt.0._dp) theta(:,1) = theta(:,1)+2*pi
+            
+            !!! TEMPORARILY
+            !!write(*,*) 'TEMPORARILY CIRCULAR TOKAMAK !!!!!!!!!!!'
+            !!theta(:,1) = theta(:,2)
+            !!BH_0(:,1) = 1.5_dp + 0.5*cos(theta(:,1))
+            !!BH_0(:,2) = 0.5*sin(theta(:,1))
+            
+            ! plot output
             plot_name(1) = 'chi'
-            call print_ex_2D(plot_name(1),plot_name(1),theta_geo/pi,&
-                &x=reshape([theta_geo(:,2),theta_geo(:,2)],[n_B+1,2])/pi,&
+            plot_title = ['theta_G','chi_H  ']
+            call print_ex_2D(plot_title(1:2),plot_name(1),theta/pi,&
+                &x=reshape([theta(:,2),theta(:,2)],[n_B,2])/pi,&
                 &draw=.false.)
-            call draw_ex(plot_name(1),plot_name(1),plot_name(1),2,1,.false.)
-            ierr = setup_interp_data(theta_geo(:,1),&
-                &[((id-1._dp)/n_B*2*pi,id=1,n_B)],trigon_interp_data,4)
-            CHCKERR('')
+            call draw_ex(plot_title(1:2),plot_name(1),2,1,.false.)
+            
+            ! calculate output for unperturbed R and Z
+            write(file_i,*) ''
+            write(file_i,*) ''
+            write(file_i,*) '# Fourier modes for axisymmetric equilibrium'
             plot_name(1) = 'R_F'
             plot_name(2) = 'Z_F'
             do kd = 1,2
-                ierr = apply_disc(RZ_BH(:,kd),trigon_interp_data,RZ_BG(:,kd))
-                CHCKERR('')
-                !!do id = 1,n_B
-                    !!RZ_BG(id,kd) = -4._dp+&
-                        !!&3*cos((id-1._dp)/n_B*2*pi*1)+&
-                        !!&0.5*cos((id-1._dp)/n_B*2*pi*100)+&
-                        !!&1.5*cos((id-1._dp)/n_B*2*pi*101)+&
-                        !!&4*sin((id-1._dp)/n_B*2*pi*1)+&
-                        !!&2*sin((id-1._dp)/n_B*2*pi*50)+&
-                        !!&4.5*sin((id-1._dp)/n_B*2*pi*55)
-                !!end do
-                !!call print_ex_2D('RZ_BG','',&
-                    !!&reshape([RZ_BG(:,kd),RZ_BH(1:n_B,kd)],[n_B,2]),&
-                    !!&reshape([theta_geo(1:n_B,2),theta_geo(1:n_B,1)],[n_B,2]))
                 ! user output
-                call writo('analyzing '//plot_name(kd))
+                call writo('analyzing '//trim(plot_name(kd)))
                 call lvl_ud(1)
-                ! FFT
-                call dffti(n_B,work(:,kd))
-                call dfftf(n_B,RZ_BG(:,kd),work(:,kd))
-                ! rescale
-                RZ_BG(:,kd) = RZ_BG(:,kd)*2/n_B
-                RZ_BG(1,kd) = RZ_BG(1,kd)/2
-                call writo('DC value = '//trim(r2str(RZ_BG(1,kd))))
-                ! separate cos and sine
-                RZ_BG_ind(:,1) = RZ_BG(2:2*m_F:2,kd)
-                RZ_BG_ind(:,2) = -RZ_BG(3:2*m_F+1:2,kd)                         ! routine returns - sine factors
-                ! output cos and sine
-                call print_ex_2D(plot_name(kd),plot_name(kd),RZ_BG_ind)
-                call draw_ex(plot_name(kd),plot_name(kd),plot_name(kd),2,1,&
-                    &.false.)
-                call print_ex_2D(trim(plot_name(kd))//'_log',&
-                    &trim(plot_name(kd))//'_log',log10(abs(RZ_BG_ind)))
-                call draw_ex(trim(plot_name(kd))//'_log',trim(plot_name(kd))//&
-                    &'_log',trim(plot_name(kd))//'_log',2,1,.false.)
+                
+                ! NUFFT
+                ierr = nufft(theta(:,1),BH_0(:,kd),B_F_loc,plot_name(kd))
+                CHCKERR('')
+                if (kd.eq.1) then
+                    allocate(B_F(size(B_F_loc,1),-(nr_n-1):(nr_n-1),2,2))       ! (pol modes, tor modes, cos/sin (m theta), R/Z)
+                    B_F = 0._dp
+                end if
+                B_F(:,0,:,kd) = B_F_loc
+                
                 call lvl_ud(-1)
             end do
-            write(file_i,*) ''
-            write(file_i,*) ''
-            write(file_i,*) '# cos and sine factors for R_H'
-            write(file_i,'(A6,I4,A4,ES23.16,A9,I4,A4,ES23.16)') &
-                &'RBC(0,',0,') = ',RZ_BG(1,1),&
-                &'   RBS(0,',0,') = ',0._dp
-            do kd = 1,m_F
-                write(file_i,'(A6,I4,A4,ES23.16,A9,I4,A4,ES23.16)') &
-                    &'RBC(0,',kd,') = ',RZ_BG(2*kd,1),&
-                    &'   RBS(0,',kd,') = ',-RZ_BG(2*kd+1,1)                     ! routine returns - sine factors
-            end do
-            write(file_i,*) ''
-            write(file_i,*) ''
-            write(file_i,*) '# cos and sine factors for Z_H'
-            write(file_i,'(A6,I4,A4,ES23.16,A9,I4,A4,ES23.16)') &
-                &'ZBC(0,',0,') = ',RZ_BG(1,2),&
-                &'   ZBS(0,',0,') = ',0._dp
-            do kd = 1,m_F
-                write(file_i,'(A6,I4,A4,ES23.16,A9,I4,A4,ES23.16)') &
-                    &'ZBC(0,',kd,') = ',RZ_BG(2*kd,2),&
-                    &'   ZBS(0,',kd,') = ',-RZ_BG(2*kd+1,2)                     ! routine returns - sine factors
-            end do
+            
+            ! output to file
+            call print_mode_numbers(file_i,B_F(:,0,:,:),0)
+            
+            ! plot axisymetric boundary in 3D
+            call plot_boundary(B_F(:,0:0,:,:),[0],'last_fs')
+            
+            call lvl_ud(-1)
+            
+            ! user output
+            if (pert_eq) then
+                call writo('Modify axisymmetric equilibrium')
+                call lvl_ud(1)
+            end if
+            
+            ! Calculate  the  normal  unit vector  on  the HELENA  (equidistant)
+            ! poloidal grid.
+            if (pert_eq) then
+                ! calculate unit normal vector  by calculating first the Fourier
+                ! components in  the Helena poloidal coordinate,  and then using
+                ! them to obtain the poloidal derivative  of R and Z. The normal
+                ! unit vector is then given by
+                !   (Z_theta e_R - R_theta e_Z)/sqrt(Z_theta^2 + R_theta^2)
+                allocate(BH_deriv(n_B,2))                                       ! theta derivative of BH
+                allocate(u_norm(n_B,2))                                         ! normalized unit vector: (Z_theta e_R - R_theta e_Z)/norm
+                BH_deriv = 0._dp
+                do kd = 1,2
+                    ! NUFFT
+                    ierr = nufft(theta(:,2),BH_0(:,kd),B_F_loc)                 ! HELENA pol. Fourier coefficients
+                    CHCKERR('')
+                    
+                    ! calculate poloidal derivative using the Fourier series
+                    do id = 0,size(B_F_loc,1)-1
+                        BH_deriv(:,kd) = BH_deriv(:,kd) + id*(&
+                            &B_F_loc(id+1,2)*cos(id*theta(:,2)) - &
+                            &B_F_loc(id+1,1)*sin(id*theta(:,2)))
+                    end do
+                end do
+                u_norm(:,1) = sqrt(BH_deriv(:,1)**2 + BH_deriv(:,2)**2)
+                u_norm(:,2) = -BH_deriv(:,1)/u_norm(:,1)
+                u_norm(:,1) = BH_deriv(:,2)/u_norm(:,1)
+                deallocate(BH_deriv)
+            end if
+            
+            ! loop  over all  toroidal  modes N  and  include the  corresponding
+            ! perturbation, consisting of terms of the form:
+            ! delta_c cos(M theta - N zeta) + delta_s sin(M theta - N zeta) = 
+            !   delta_c [cos(M theta)cos(N zeta) + sin(M theta) sin(N zeta) ] + 
+            !   delta_s [sin(M theta)cos(N zeta) - cos(M theta) sin(N zeta) ],
+            ! where theta is in Helena  straight-field line coordinates and zeta
+            ! corresponds to the geometrical toroidal angle.
+            ! The terms  dependent on theta will  shift up and down  the Fourier
+            ! components of the axisymmetric R and Z, but the terms dependent on
+            ! zeta will not.
+            ! The final output should be on the geometrical poloidal grid, so to
+            ! calculate the Fourier components of the  perturbed R and Z on this
+            ! geometrical poloidal  grid interpolation from the  HELENA poloidal
+            ! grid is necessary. This means  that all multiplications with terms
+            ! ~ cos(M theta) and terms ~  sin(M theta) where theta is the HELENA
+            ! poloidal angle are performed first, before calculating the Fourier
+            ! modes in the geometrical poloidal grid through interpolation.
+            ! Note that  the different poloidal  modes for equal  toroidal modes
+            ! are combined.
+            ! The resulting  cosine and sine  modes in the  geometrical poloidal
+            ! angle are  then be combined  with the cosine  and sine modes  of N
+            ! zeta. The result  will be a contribution to the  terms cos(m theta
+            ! +/- N zeta) and sin(m theta +/- N zeta), described below.
+            pert_N: do jd = jd_min,nr_n
+                ! user output
+                call writo(trim(i2str(jd-jd_min+1))//'/'//&
+                    &trim(i2str(nr_n-jd_min+1))//': N = '//&
+                    &trim(i2str(n_pert(jd))))
+                call lvl_ud(1)
+                
+                ! calculate the  modal content in geometrical  poloidal angle of
+                ! the perturbation.
+                allocate(B_F_pert(size(B_F,1),2,2,2))                           ! (pol modes, cos/sin (m theta), R/Z, cos/sin (N zeta))
+                
+                ! user output
+                call writo('Calculating contributions to cos('//&
+                    &trim(i2str(n_pert(jd)))//' zeta):')
+                call lvl_ud(1)
+                
+                allocate(BH_pert(n_B,2))                                        ! perturbed BH
+                BH_pert = 0._dp
+                do kd = 1,nr_m(jd)
+                    ! user output
+                    call writo('term '//trim(r2strt(delta(jd,kd,1)))//&
+                        &' cos('//trim(i2str(m_pert(jd,kd)))//' theta) + '//&
+                        &trim(r2strt(delta(jd,kd,2)))//&
+                        &' sin('//trim(i2str(m_pert(jd,kd)))//&
+                        &' theta) contributes')
+                    do id = 1,n_B
+                        BH_pert(id,:) = BH_pert(id,:) + u_norm(id,:)*(&
+                            &delta(jd,kd,1)*cos(m_pert(jd,kd)*theta(id,2)) + &
+                            &delta(jd,kd,2)*sin(m_pert(jd,kd)*theta(id,2)))
+                    end do
+                end do
+                
+                ! calculate the Fourier series of perturbed R and Z
+                plot_name(1) = 'R_F_pert_cos_'//trim(i2str(jd-jd_min+1))
+                plot_name(2) = 'Z_F_pert_cos_'//trim(i2str(jd-jd_min+1))
+                do kd = 1,2
+                    ! NUFFT
+                    ierr = nufft(theta(:,1),BH_pert(:,kd),B_F_loc,&
+                        &plot_name(kd))
+                    CHCKERR('')
+                    B_F_pert(:,:,kd,1) = B_F_loc
+                end do
+                deallocate(BH_pert)
+                
+                call lvl_ud(-1)
+                
+                ! user output
+                call writo('Calculating contributions to sin('//&
+                    &trim(i2str(n_pert(jd)))//' zeta):')
+                call lvl_ud(1)
+                
+                allocate(BH_pert(n_B,2))                                        ! perturbed BH
+                BH_pert = 0._dp
+                do kd = 1,nr_m(jd)
+                    ! user output
+                    call writo('term '//trim(r2strt(delta(jd,kd,1)))//&
+                        &' sin('//trim(i2str(m_pert(jd,kd)))//' theta) - '//&
+                        &trim(r2strt(delta(jd,kd,2)))//&
+                        &' cos('//trim(i2str(m_pert(jd,kd)))//&
+                        &' theta) contributes')
+                    do id = 1,n_B
+                        BH_pert(id,:) = BH_pert(id,:) + u_norm(id,:)*(&
+                            &delta(jd,kd,1)*sin(m_pert(jd,kd)*theta(id,2)) - &
+                            &delta(jd,kd,2)*cos(m_pert(jd,kd)*theta(id,2)))
+                    end do
+                end do
+                
+                ! calculate the Fourier series of perturbed R and Z
+                plot_name(1) = 'R_F_pert_sin_'//trim(i2str(jd-jd_min+1))
+                plot_name(2) = 'Z_F_pert_sin_'//trim(i2str(jd-jd_min+1))
+                do kd = 1,2
+                    ! NUFFT
+                    ierr = nufft(theta(:,1),BH_pert(:,kd),B_F_loc,&
+                        &plot_name(kd))
+                    CHCKERR('')
+                    B_F_pert(:,:,kd,2) = B_F_loc
+                end do
+                deallocate(BH_pert)
+                
+                call lvl_ud(-1)
+                
+                ! We now  have the cos and  sin factors in front  of cos(N zeta)
+                ! and sin(N zeta). The four combinations combine to terms
+                !   cos(k theta +/- N zeta) and sin(k theta +/- N zeta)
+                ! note that the poloidal modes k are always positive and nonzero
+                ! whereas the toroidal mode numbers can be negative or positive.
+                ! Therefore, the terms that contribute to a positive N are:
+                !   - BC(:,N): 1/2 (alpha^c + beta^s)
+                !   - BS(:,N): 1/2 (alpha^s - beta^c)
+                !   - BC(:,-N): 1/2 (alpha^c - beta^s)
+                !   - BS(:,-N): 1/2 (alpha^s + beta^c)
+                ! where  alpha^c and  alpha^s result  from the  calculation with
+                ! cos(M theta) and beta^c and beta^s from sin(M theta).
+                
+                ! user output
+                call writo('Convert to contributions to')
+                call lvl_ud(1)
+                call writo(&
+                    &'cos(k theta +/- '//trim(i2str(n_pert(jd)))//&
+                    &' zeta) and sin(k theta +/- '//&
+                    &trim(i2str(n_pert(jd)))//' zeta)')
+                
+                write(file_i,*) ''
+                write(file_i,*) ''
+                write(file_i,*) '# Fourier modes for perturbed equilibrium &
+                    &with N = '//trim(i2str(n_pert(jd)))
+                RZ: do kd = 1,2
+                    ! terms with N
+                    B_F_loc(:,1) = &
+                        &0.5_dp*(B_F_pert(:,1,kd,1)+B_F_pert(:,2,kd,2))         ! ~ cos, N
+                    B_F_loc(:,2) = &
+                        &0.5_dp*(B_F_pert(:,2,kd,1)-B_F_pert(:,1,kd,2))         ! ~ sin, N
+                    
+                    ! update total B_F
+                    B_F(:,jd-1,:,kd) = B_F(:,jd-1,:,kd) + B_F_loc
+                    
+                    ! terms with -N
+                    B_F_loc(:,1) = &
+                        &0.5_dp*(B_F_pert(:,1,kd,1)-B_F_pert(:,2,kd,2))         ! ~ cos, -N
+                    B_F_loc(:,2) = &
+                        &0.5_dp*(B_F_pert(:,2,kd,1)+B_F_pert(:,1,kd,2))         ! ~ sin, -N
+                    
+                    ! update total B_F
+                    B_F(:,-(jd-1),:,kd) = B_F(:,-(jd-1),:,kd) + B_F_loc
+                end do RZ
+                
+                deallocate(B_F_pert)
+                
+                call lvl_ud(-1)
+                call lvl_ud(-1)
+            end do pert_N
+            
+            if (pert_eq) then
+                ! plot boundary in 3D
+                call plot_boundary(B_F,n_pert(1:nr_n),'last_fs_pert')
+                
+                ! save greatest common denominator of N into nfp, excluding N=0
+                do jd = 2,nr_n
+                    if (jd.eq.2) then
+                        nfp = n_pert(jd)
+                    else
+                        nfp = GCD(nfp,n_pert(jd))
+                    end if
+                end do
+                if (nfp.ne.0) then
+                    call writo('Greatest common denominator NFP = '&
+                        &//trim(i2str(nfp)))
+                    n_pert = n_pert/nfp
+                    write(file_i,*) ''
+                    write(file_i,*) '# NFP = '//trim(i2str(nfp))
+                end if
+                
+                ! output to file
+                call print_mode_numbers(file_i,B_F(:,0,:,:),0)
+                do jd = 2,nr_n
+                    call print_mode_numbers(file_i,B_F(:,-(jd-1),:,:),&
+                        &-n_pert(jd))
+                    call print_mode_numbers(file_i,B_F(:,jd-1,:,:),n_pert(jd))
+                end do
+                
+                ! user output
+                call lvl_ud(-1)
+            end if
             
             ! close file
             close(file_i)
@@ -545,6 +911,189 @@ contains
             ! wait
             call pause_prog
         end function write_flux_q_in_file_for_VMEC
+        
+        ! plots the boundary of a toroidal configuration
+        subroutine plot_boundary(B,n,plot_name)
+            ! input / output
+            real(dp), intent(in) :: B(:,:,:,:)                                  ! cosine and sine of fourier series
+            integer, intent(in) :: n(:)                                         ! toroidal mode numbers
+            character(len=*), intent(in) :: plot_name                           ! name of plot
+            
+            ! local variables
+            real(dp), allocatable :: ang_plot(:,:,:)                            ! angles of plot (theta,zeta)
+            real(dp), allocatable :: XYZ_plot(:,:,:)                            ! coordinates of boundary (X,Y,Z)
+            integer :: dim_plot(2)                                              ! dimensions for plot
+            integer :: kd, id                                                   ! counters
+            integer :: id_loc                                                   ! local id
+            integer :: n_F                                                      ! number of toroidal modes (given by n)
+            integer :: n_F_loc                                                  ! local n_F
+            integer :: m_F                                                      ! number of poloidal modes (including 0)
+            
+            ! set variables
+            dim_plot = [100,100]
+            allocate(ang_plot(dim_plot(1),dim_plot(2),2))                       ! theta and zeta
+            allocate(XYZ_plot(dim_plot(1),dim_plot(2),3))                       ! X, Y and Z
+            XYZ_plot = 0._dp
+            n_F = size(n)
+            m_F = size(B,1)
+            
+            ! create grid
+            do kd = 1,dim_plot(1)
+                ang_plot(kd,:,1) = (kd-1)*2*pi/(dim_plot(1)-1)
+            end do
+            do kd = 1,dim_plot(2)
+                ang_plot(:,kd,2) = 0.5*pi + (kd-1)*1.5*pi/(dim_plot(2)-1)
+            end do
+            
+            ! inverse Fourier transform
+            do id = 1,n_F                                                       ! toroidal modes
+                do n_F_loc = -n(id),n(id),max(2*n(id),1)                        ! positive and negative N modes, no duplication at zero
+                    id_loc = n_F + (id-1)*n_F_loc/max(n(id),1)
+                    do kd = 0,m_F-1                                                 ! poloidal modes
+                        ! R
+                        XYZ_plot(:,:,1) = XYZ_plot(:,:,1) + &
+                            &B(kd+1,id_loc,1,1)*cos(kd*ang_plot(:,:,1)-&
+                            &n_F_loc*ang_plot(:,:,2)) + &
+                            &B(kd+1,id_loc,2,1)*sin(kd*ang_plot(:,:,1)-&
+                            &n_F_loc*ang_plot(:,:,2))
+                        ! Z
+                        XYZ_plot(:,:,3) = XYZ_plot(:,:,3) + &
+                            &B(kd+1,id_loc,1,2)*cos(kd*ang_plot(:,:,1)-&
+                            &n_F_loc*ang_plot(:,:,2)) + &
+                            &B(kd+1,id_loc,2,2)*sin(kd*ang_plot(:,:,1)-&
+                            &n_F_loc*ang_plot(:,:,2))
+                    end do
+                end do
+            end do
+            XYZ_plot(:,:,2) = XYZ_plot(:,:,1)*sin(ang_plot(:,:,2))
+            XYZ_plot(:,:,1) = XYZ_plot(:,:,1)*cos(ang_plot(:,:,2))
+            
+            ! print
+            call print_ex_3D('plasma boundary',trim(plot_name),XYZ_plot(:,:,3),&
+                &x=XYZ_plot(:,:,1),y=XYZ_plot(:,:,2))
+        end subroutine plot_boundary
+        
+        ! calculates the cosine and sine mode numbers of a function defined on a
+        ! non-regular grid.
+        ! If a plot name is provided, the modes are plotted.
+        ! Note that  the fundamental interval is  assumed to be 0..2pi  but that
+        ! there should be no overlap between the first and last point.
+        integer function nufft(x,f,f_F,plot_name) result(ierr)
+            use grid_utilities, only: setup_interp_data, apply_disc
+            
+            character(*), parameter :: rout_name = 'nufft'
+            
+            ! input / output
+            real(dp), intent(in) :: x(:)                                        ! coordinate values
+            real(dp), intent(in) :: f(:)                                        ! function values
+            real(dp), intent(inout), allocatable :: f_F(:,:)                    ! Fourier modes for cos and sin
+            character(len=*), intent(in), optional :: plot_name                 ! name of possible plot
+            
+            ! local variables
+            integer :: m_F                                                      ! nr. of modes
+            integer :: n_x                                                      ! nr. of points
+            integer :: interp_ord = 4                                           ! order of interpolation
+            integer :: id                                                       ! counter
+            real(dp), allocatable :: work(:)                                    ! work array
+            real(dp), allocatable :: f_loc(:)                                   ! local copy of f
+            type(disc_type) :: trigon_interp_data                               ! data for non-equidistant sampling fourier coefficients
+            character(len=max_str_ln) :: plot_title(2)                          ! name of plot
+            logical :: print_log = .false.                                      ! print log plot as well
+            
+            ! tests
+            if (size(x).ne.size(f)) then
+                ierr = 1
+                CHCKERR('x and f must have same size')
+            end if
+            
+            ! set local f and interpolate
+            n_x = size(x)
+            allocate(f_loc(n_x))
+            ierr = setup_interp_data([x,2*pi],[((id-1._dp)/n_x*2*pi,id=1,n_x)],&
+                &trigon_interp_data,interp_ord)
+            ierr = apply_disc([f,f(1)],trigon_interp_data,f_loc)
+            CHCKERR('')
+            call trigon_interp_data%dealloc()
+            
+            !!do id = 1,n_x
+                !!f_loc(id) = -4._dp+&
+                    !!&3*cos((id-1._dp)/n_x*2*pi*1)+&
+                    !!&0.5*cos((id-1._dp)/n_x*2*pi*100)+&
+                    !!&1.5*cos((id-1._dp)/n_x*2*pi*101)+&
+                    !!&4*sin((id-1._dp)/n_x*2*pi*1)+&
+                    !!&2*sin((id-1._dp)/n_x*2*pi*50)+&
+                    !!&4.5*sin((id-1._dp)/n_x*2*pi*55)
+            !!end do
+            
+            ! set up variables for fft
+            m_F = (n_x-1)/2                                                     ! nr. of modes
+            allocate(work(3*n_x+15))                                            ! from fftpack manual
+            
+            ! calculate fft
+            call dffti(n_x,work)
+            call dfftf(n_x,f_loc,work)
+            deallocate(work)
+            
+            ! rescale
+            f_loc(:) = f_loc(:)*2/n_x
+            f_loc(1) = f_loc(1)/2
+            
+            ! separate cos and sine
+            if (allocated(f_F)) deallocate(f_F)
+            allocate(f_F(m_F+1,2))
+            f_F(1,1) = f_loc(1)
+            f_F(1,2) = 0._dp
+            f_F(2:m_F+1,1) = f_loc(2:2*m_F:2)
+            f_F(2:m_F+1,2) = -f_loc(3:2*m_F+1:2)                                ! routine returns - sine factors
+            
+            ! output in plot if requested
+            if (present(plot_name)) then
+                plot_title = ['cos','sin']
+                call print_ex_2D(plot_title,plot_name,f_F)
+                call draw_ex(plot_title,plot_name,2,1,.false.)
+                if (print_log) then
+                    plot_title = ['cos [log]','sin [log]']
+                    call print_ex_2D(plot_title,trim(plot_name)//'_log',&
+                        &log10(abs(f_F)))
+                    call draw_ex(plot_title,trim(plot_name)//'_log',2,1,.false.)
+                end if
+            end if
+        end function nufft
+        
+        ! print the mode numbers
+        subroutine print_mode_numbers(file_i,B,n_pert)
+            ! input / output
+            integer, intent(in) :: file_i                                       ! file to output flux quantities for VMEC export
+            real(dp), intent(in) :: B(:,:,:)                                    ! cosine and sine of fourier series for R and Z
+            integer, intent(in) :: n_pert                                       ! toroidal mode number
+            
+            ! local variables
+            integer :: kd                                                       ! counter
+            integer :: m                                                        ! counter
+            character :: var_name                                               ! name of variables (R or Z)
+            
+            do kd = 1,2                                                         ! R and Z
+                select case (kd)
+                    case (1)
+                        var_name = 'R'
+                    case (2)
+                        var_name = 'Z'
+                    case default
+                        var_name = '?'
+                end select
+                
+                ! output to file
+                write(file_i,*) ''
+                write(file_i,*) '# cos and sine factors for '//var_name
+                do m = 0,size(B,1)-1
+                    write(file_i,'(A8,I4,A4,ES23.16,A9,I6,A4,ES23.16)') &
+                        &var_name//'BC('//trim(i2str(n_pert))//',',m,&
+                        &') = ',B(m+1,1,kd),'   '//&
+                        &var_name//'BS('//trim(i2str(n_pert))//',',m,&
+                        &') = ',B(m+1,2,kd)
+                end do
+            end do
+        end subroutine print_mode_numbers
     end function calc_eq_1
     integer function calc_eq_2(grid_eq,eq_1,eq_2,dealloc_vars) result(ierr)     ! metric version
         use num_vars, only: eq_style
@@ -568,6 +1117,9 @@ contains
         integer :: id
         integer :: pmone                                                        ! plus or minus one
         logical :: dealloc_vars_loc                                             ! local dealloc_vars
+        
+        ! initialize ierr
+        ierr = 0
         
         ! user output
         call writo('Start setting up metric equilibrium quantities')
@@ -1036,15 +1588,12 @@ contains
                 call print_ex_2D(plot_titles(3),file_name(1),&
                     &Y_plot_2D(:,3),X_plot_2D(:,3),draw=.false.)
                 ! fluxes
-                call print_ex_2D(trim(plot_titles(4))//', '//&
-                    &trim(plot_titles(5)),file_name(2),&
+                call print_ex_2D(plot_titles(4:5),file_name(2),&
                     &Y_plot_2D(:,4:5),X_plot_2D(:,4:5),draw=.false.)
                 
                 ! draw plot
-                call draw_ex(plot_titles(3),file_name(1),file_name(1),1,1,&
-                    &.false.)                                                   ! pressure
-                call draw_ex(trim(plot_titles(4))//', '//trim(plot_titles(5)),&
-                    &file_name(2),file_name(2),2,1,.false.)                     ! fluxes
+                call draw_ex(plot_titles(3:3),file_name(1),1,1,.false.)         ! pressure
+                call draw_ex(plot_titles(2:2),file_name(2),2,1,.false.)         ! fluxes
                 
                 ! user output
                 call writo('Safety factor and rotational transform are plotted &

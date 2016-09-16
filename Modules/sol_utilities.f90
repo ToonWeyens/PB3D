@@ -224,7 +224,7 @@ contains
                     ierr = calc_int(realpart(Dsol_vec_tot(ld,:)),&
                         &grid_X%loc_r_F,sol_vec_ALT)
                     CHCKERR('')
-                    call print_ex_2D('TEST_RE_Dsol_vec','',reshape(&
+                    call print_ex_2D(['TEST_RE_Dsol_vec'],'',reshape(&
                         &[realpart(sol_vec_tot(ld,:)),sol_vec_ALT],&
                         &[grid_X%loc_n_r,2]),x=reshape(&
                         &[grid_X%loc_r_F(1:grid_X%loc_n_r),&
@@ -233,7 +233,7 @@ contains
                     ierr = calc_int(imagpart(Dsol_vec_tot(ld,:)),&
                         &grid_X%loc_r_F,sol_vec_ALT)
                     CHCKERR('')
-                    call print_ex_2D('TEST_IM_Dsol_vec','',reshape(&
+                    call print_ex_2D(['TEST_IM_Dsol_vec'],'',reshape(&
                         &[imagpart(sol_vec_tot(ld,:)),sol_vec_ALT],&
                         &[grid_X%loc_n_r,2]),x=reshape(&
                         &[grid_X%loc_r_F(1:grid_X%loc_n_r),&

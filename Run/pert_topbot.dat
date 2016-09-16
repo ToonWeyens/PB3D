@@ -1,0 +1,7 @@
+# Perturbation data for N = 4, M = 5, 0.1 perturbation.
+# It implements 1/2 (1+sin(theta)) cos(M theta - N zeta)
+# This corresponds to a perturbation that is present predominantly on the top and bottom
+#   N   M   delta_c     delta_s
+    4   5   0.05        0.0
+    4   7   0.0        -0.025
+    4   3   0.0         0.025

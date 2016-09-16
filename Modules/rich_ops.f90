@@ -270,14 +270,12 @@ contains
             ! print, using rich_lvl-1 as it has been aumented
             plot_title = 'Eigenvalues as function of nr. of parallel points'
             plot_name = 'Eigenvalues_richardson'
-            call print_ex_2D(plot_title,plot_name,&
+            call print_ex_2D([plot_title],plot_name,&
                 &realpart(sol_val_rich(1:rich_lvl-1,1,:)),&
-                &x=x_axis_rich(1:rich_lvl-1,:),&
-                &draw=.false.)
+                &x=x_axis_rich(1:rich_lvl-1,:),draw=.false.)
             
             ! output in file
-            call draw_ex(plot_title,plot_name,plot_name,&
-                &n_sol_requested,1,.false.)
+            call draw_ex([plot_title],plot_name,n_sol_requested,1,.false.)
             
             ! user output
             call lvl_ud(-1)

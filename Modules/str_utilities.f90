@@ -5,7 +5,8 @@ module str_utilities
     use num_vars, only: dp, max_str_ln
     implicit none
     private
-    public i2str, ii2str, r2str, r2strt, c2str, c2strt, strh2l, strl2h
+    public i2str, ii2str, r2str, r2strt, c2str, c2strt, strh2l, strl2h, &
+        &merge_strings
 
 contains
     ! Convert an integer to string 
@@ -122,4 +123,26 @@ contains
           if ( n /= 0 ) output_string(i:i) = upper_case(n:n)
         end do
     end function strl2h
+    
+    function merge_strings(input_strings)
+        ! input / output
+        character(*), intent(in) :: input_strings(:)
+        character((len(input_strings)+2)*size(input_strings)) :: merge_strings
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        
+        ! start with first string
+        if (size(input_strings).gt.0) then
+            merge_strings = trim(input_strings(1))
+            
+            ! loop over next strings
+            do id = 2,size(input_strings)
+                merge_strings = trim(merge_strings)//', '//&
+                    &trim(input_strings(id))
+            end do
+        else
+            merge_strings = ''
+        end if
+    end function merge_strings
 end module str_utilities

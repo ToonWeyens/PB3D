@@ -12,7 +12,7 @@ module num_utilities
     public calc_ext_var, calc_det, calc_int, add_arr_mult, c, conv_FHM, &
         &check_deriv, calc_inv, calc_mult, calc_aux_utilities, derivs, &
         &con2dis, dis2con, round_with_tol, conv_mat, is_sym, con, &
-        &calc_coeff_fin_diff, fac, d, m, f, bubble_sort
+        &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD
 #if ldebug
     public debug_con2dis_reg, debug_calc_coeff_fin_diff
 #endif
@@ -1879,15 +1879,26 @@ contains
     end function fac
     
     ! Sorting with the bubble sort routine.
-    ! (from: http://rosettacode.org/wiki/Category:Fortran)
-    subroutine bubble_sort_real(a)                                              ! real version
+    ! Optionally, the pivots can be given back.
+    ! (adapted from: http://rosettacode.org/wiki/Category:Fortran)
+    subroutine bubble_sort_real(a,piv)                                          ! real version
         ! input / output
         real(dp), intent(inout) :: a(:)                                         ! vector to sort
+        integer, intent(inout), optional :: piv(:)                              ! pivots
         
         ! local variables
         real(dp) :: temp                                                        ! temporary value
         integer :: id, jd                                                       ! counter
         logical :: swapped                                                      ! value swapped with next
+        logical :: save_piv                                                     ! save pivots
+        
+        save_piv = .false.
+        if (present(piv)) then
+            if (size(piv).eq.size(a)) then
+                save_piv = .true.
+                piv = [(jd,jd=1,size(a))]
+            end if
+        end if
         
         do jd = size(a)-1,1,-1
             swapped = .false.
@@ -1896,20 +1907,31 @@ contains
                     temp = a(id)
                     a(id) = a(id+1)
                     a(id+1) = temp
+                    piv(id:id+1) = piv(id+1:id:-1)
                     swapped = .true.
                 end if
             end do
             if (.not. swapped) exit
         end do
     end subroutine bubble_sort_real
-    subroutine bubble_sort_int(a)                                               ! integer version
+    subroutine bubble_sort_int(a,piv)                                           ! integer version
         ! input / output
         integer, intent(inout) :: a(:)                                          ! vector to sort
+        integer, intent(inout), optional :: piv(:)                              ! pivots
         
         ! local variables
         integer :: temp                                                         ! temporary value
         integer :: id, jd                                                       ! counter
         logical :: swapped                                                      ! value swapped with next
+        logical :: save_piv                                                     ! save pivots
+        
+        save_piv = .false.
+        if (present(piv)) then
+            if (size(piv).eq.size(a)) then
+                save_piv = .true.
+                piv = [(jd,jd=1,size(a))]
+            end if
+        end if
         
         do jd = size(a)-1,1,-1
             swapped = .false.
@@ -1918,10 +1940,25 @@ contains
                     temp = a(id)
                     a(id) = a(id+1)
                     a(id+1) = temp
+                    piv(id:id+1) = piv(id+1:id:-1)
                     swapped = .true.
                 end if
             end do
             if (.not. swapped) exit
         end do
     end subroutine bubble_sort_int
+    
+    ! Common denominator
+    ! (From https://rosettacode.org/wiki/Greatest_common_divisor#
+    !  Recursive_Euclid_algorithm_3)
+    recursive function GCD(u, v) result(res)
+        integer :: res
+        integer, intent(in) :: u, v
+     
+        if (mod(u, v) /= 0) then
+            res = GCD(v, mod(u, v))
+        else
+            res = v
+        end if
+    end function GCD
 end module num_utilities

@@ -11,7 +11,7 @@ PB3D.o : \
     input_utilities.o \
     num_utilities.o \
     MPI_ops.o \
-    #eq_ops.o \
+    eq_ops.o \
     eq_utilities.o \
     test.o \
     rich_vars.o \
@@ -49,7 +49,7 @@ PB3D_ops.o : \
     X_ops.o \
     sol_vars.o \
     PB3D_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     HDF5_vars.o \
     HDF5_ops.o \
     HELENA_vars.o \
@@ -57,7 +57,7 @@ PB3D_ops.o : \
 
 test.o : \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     num_vars.o \
     input_utilities.o \
@@ -78,7 +78,7 @@ sol_ops.o : \
     eq_vars.o \
     X_vars.o \
     grid_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     str_utilities.o \
     messages.o \
     grid_vars.o \
@@ -88,7 +88,7 @@ sol_ops.o : \
 
 sol_utilities.o : \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     num_vars.o \
     grid_vars.o \
@@ -100,7 +100,7 @@ sol_utilities.o : \
 
 grid_utilities.o : \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     num_vars.o \
     grid_vars.o \
@@ -114,7 +114,7 @@ grid_utilities.o : \
 
 grid_ops.o : \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     num_vars.o \
     grid_vars.o \
@@ -133,13 +133,13 @@ grid_ops.o : \
 
 rich_vars.o : \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     num_vars.o \
 
 rich_ops.o : \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     num_vars.o \
     PB3D_ops.o \
@@ -152,11 +152,11 @@ rich_ops.o : \
 driver_eq.o : \
     num_vars.o \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     eq_vars.o \
     sol_vars.o \
-    #eq_ops.o \
+    eq_ops.o \
     eq_utilities.o \
     PB3D_ops.o \
     HELENA_vars.o \
@@ -168,7 +168,7 @@ driver_eq.o : \
 
 driver_X.o : \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     num_vars.o \
     grid_vars.o \
@@ -188,7 +188,7 @@ driver_X.o : \
 
 driver_sol.o : \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     num_vars.o \
     grid_vars.o \
@@ -207,7 +207,7 @@ driver_sol.o : \
 driver_POST.o : \
     num_vars.o \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     MPI_ops.o \
     eq_vars.o \
@@ -242,17 +242,17 @@ SLEPC_utilities.o: \
     num_vars.o \
     messages.o \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     X_vars.o \
     input_utilities.o \
 
 X_ops.o : \
     num_vars.o \
     eq_vars.o \
-    #eq_ops.o \
+    eq_ops.o \
     num_utilities.o \
     MPI_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     X_vars.o \
     sol_vars.o \
@@ -289,7 +289,7 @@ sol_vars.o : \
 
 eq_ops.o : \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     num_vars.o \
     grid_vars.o \
@@ -308,7 +308,7 @@ eq_ops.o : \
 
 eq_utilities.o : \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     messages.o \
     num_vars.o \
     grid_vars.o \
@@ -356,7 +356,7 @@ HDF5_vars.o: \
 input_utilities.o : \
     messages.o \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     num_vars.o \
     MPI_utilities.o \
 
@@ -405,7 +405,7 @@ VMEC.o : \
 vac.o : \
     str_utilities.o \
     messages.o \
-    #output_ops.o \
+    output_ops.o \
     num_vars.o \
     X_vars.o \
 
@@ -413,7 +413,7 @@ HELENA_vars.o : \
     num_vars.o \
     str_utilities.o \
     messages.o \
-    #output_ops.o \
+    output_ops.o \
     X_vars.o \
     eq_vars.o \
 
@@ -422,7 +422,7 @@ HELENA_ops.o : \
     str_utilities.o \
     messages.o \
     num_utilities.o \
-    #output_ops.o \
+    output_ops.o \
     eq_vars.o \
     X_vars.o \
     eq_vars.o \
@@ -439,7 +439,7 @@ num_ops.o : \
     num_vars.o \
     messages.o \
     str_utilities.o \
-    #output_ops.o \
+    output_ops.o \
 
 eq_vars.o : \
     num_vars.o \
@@ -448,7 +448,7 @@ eq_vars.o : \
     grid_vars.o \
 
 MPI_ops.o : \
-    #output_ops.o \
+    output_ops.o \
     num_vars.o \
     str_utilities.o \
     sol_vars.o \

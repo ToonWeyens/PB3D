@@ -14,8 +14,7 @@ module output_ops
     
     implicit none
     private
-    public print_ex_2D, print_ex_3D, draw_ex, draw_ex_animated, &
-        &plot_HDF5, plot_diff_HDF5
+    public print_ex_2D, print_ex_3D, draw_ex, plot_HDF5, plot_diff_HDF5
     
     ! global variables
     character(len=9) :: line_clrs(20) = [&
@@ -67,18 +66,18 @@ contains
         
         ! call multiplot version
         if (present(x)) then
-            call print_ex_2D_arr(var_name,file_name,reshape(y,[npoints,1]),&
+            call print_ex_2D_arr([var_name],file_name,reshape(y,[npoints,1]),&
                 &x=reshape(x,[npoints,1]),draw=draw)
         else
-            call print_ex_2D_arr(var_name,file_name,reshape(y,[npoints,1]),&
+            call print_ex_2D_arr([var_name],file_name,reshape(y,[npoints,1]),&
                 &draw=draw)
         end if
     end subroutine print_ex_2D_ind
-    subroutine print_ex_2D_arr(var_name,file_name_i,y,x,draw)                   ! multiple plots
+    subroutine print_ex_2D_arr(var_names,file_name_i,y,x,draw)                  ! multiple plots
         use num_vars, only: rank
         
         ! input / output
-        character(len=*), intent(in) :: var_name
+        character(len=*), intent(in) :: var_names(:)
         character(len=*), intent(in) :: file_name_i
         real(dp), intent(in) :: y(1:,1:)
         real(dp), intent(in), optional :: x(1:,1:)
@@ -123,7 +122,7 @@ contains
             &iostat=istat)
         
         ! write to output file
-        write(file_i,*) '# '//trim(var_name)//':'
+        write(file_i,*) '# '//trim(merge_strings(var_names))//':'
         do ipnt = 1,npnt
             write(file_i,*) (x_fin(ipnt,iplt), iplt = 1,nplt), &
                 &(y(ipnt,iplt), iplt = 1,nplt)
@@ -140,7 +139,7 @@ contains
         if (present(draw)) then
             if (.not.draw) return
         end if
-        call draw_ex(var_name,file_name,file_name,nplt,1,.true.)
+        call draw_ex(var_names,file_name,nplt,1,.true.)
         
         if (trim(file_name_i).eq.'') then
             call use_execute_command_line('rm '//data_dir//'/'//&
@@ -177,33 +176,33 @@ contains
         ! call multiplot version
         if (present(y)) then
             if (present(x)) then
-                call print_ex_3D_arr(var_name,file_name,&
+                call print_ex_3D_arr([var_name],file_name,&
                     &reshape(z,[size(z,1),size(z,2),1]),&
                     &y=reshape(y,[size(z,1),size(z,2),1]),&
                     &x=reshape(x,[size(z,1),size(z,2),1]),draw=draw)
             else
-                call print_ex_3D_arr(var_name,file_name,&
+                call print_ex_3D_arr([var_name],file_name,&
                     &reshape(z,[size(z,1),size(z,2),1]),&
                     &y=reshape(y,[size(z,1),size(z,2),1]),&
                     &draw=draw)
             end if
         else
             if (present(x)) then
-                call print_ex_3D_arr(var_name,file_name,&
+                call print_ex_3D_arr([var_name],file_name,&
                     &reshape(z,[size(z,1),size(z,2),1]),&
                     &x=reshape(x,[size(z,1),size(z,2),1]),&
                     &draw=draw)
             else
-                call print_ex_3D_arr(var_name,file_name,&
+                call print_ex_3D_arr([var_name],file_name,&
                     &reshape(z,[size(z,1),size(z,2),1]),draw=draw)
             end if
         end if
     end subroutine print_ex_3D_ind
-    subroutine print_ex_3D_arr(var_name,file_name_i,z,y,x,draw)                 ! multiple plots
+    subroutine print_ex_3D_arr(var_names,file_name_i,z,y,x,draw)                ! multiple plots
         use num_vars, only: rank
         
         ! input / output
-        character(len=*), intent(in) :: var_name
+        character(len=*), intent(in) :: var_names(:)
         character(len=*), intent(in) :: file_name_i
         real(dp), intent(in) :: z(1:,1:,1:)
         real(dp), intent(in), optional :: y(1:,1:,1:)
@@ -271,7 +270,7 @@ contains
             &iostat=istat)
         
         ! write to output file
-        write(file_i,*) '# '//trim(var_name)//':'
+        write(file_i,*) '# '//trim(merge_strings(var_names))//':'
         do ipntx = 1,npntx
             do ipnty = 1,npnty
                 write(file_i,*) (x_fin(ipntx,ipnty,iplt), iplt = 1,nplt), &
@@ -292,7 +291,7 @@ contains
         if (present(draw)) then
             if (.not.draw) return
         end if
-        call draw_ex(var_name,file_name,file_name,nplt,2,.true.)
+        call draw_ex(var_names,file_name,nplt,2,.true.)
         
         if (trim(file_name_i).eq.'') then
             call use_execute_command_line('rm '//data_dir//'/'//&
@@ -301,15 +300,23 @@ contains
     end subroutine print_ex_3D_arr
     
     ! Use external program to draw a plot.
-    ! The  variable file_name  holds the  file which  is to  be plot.  It should
-    ! contain nplt plots, arranged  in columns. Furthermore, draw_dim determines
-    ! whether  the plot  is to  be  2D, 3D  or decoupled  3D and  plot_on_screen
-    ! whether the  plot is  be shown on  the screen,  or to be  saved in  a file
-    ! called [draw_name].pdf or [draw_name].html.
-    ! Finally, an optional command extra_ops  can be provided, to provide overal
+    ! The  output is  saved  in  a file  [draw_name].[ext]  where the  extension
+    ! depends  on the  plotting  style  and the  dimension,  or  on the  screen,
+    ! depending on plot_on_screen.
+    ! If  not specified  otherwise through  data_name,  it is  assumed that  the
+    ! datafile to be plot is situated in [draw_name].dat.
+    ! The title(s) of  the plot(s) are provided through var_names and the number
+    ! of plots through nplt.  If there are less names than  the number of plots,
+    ! the first one is taken and appended by the plot number.
+    ! Furthermore, draw_dim  determines whether the plot  is to be 2D,  3D or 2D
+    ! slices in 3D.
+    ! Also, an  optional command  extra_ops can be  provided, to  provide overal
     ! options, as well  as draw_ops that specifies the line  style for the plots
     ! from the  file. If  less draw_ops  are provided than  plots, they  will be
     ! cycled.
+    ! Finally,  there is  an  option  to provide  animated  plots,  but is  only
+    ! available in  2D. Also, for  external plot style  1, no on-screen  view is
+    ! possible. Animations can take optional ranges arguments as well as delay.
     ! Note about draw_dim:
     !   -  draw_dim  =  1:  2D  plot;  should  be  called  with  the  output  of
     !   print_ex_2D, nplt should be correctly set.
@@ -319,52 +326,100 @@ contains
     !   Z.
     !   - draw_dim = 3:  2D plot in 3D slices; should be  called with the output
     !   of print_ex_2D, nplt should be correctly set.
-    subroutine draw_ex(var_name,file_name,draw_name,nplt,draw_dim,&
-        &plot_on_screen,draw_ops,extra_ops)
+    subroutine draw_ex(var_names,draw_name,nplt,draw_dim,plot_on_screen,&
+        &ex_plot_style,data_name,draw_ops,extra_ops,is_animated,ranges,delay)
         
-        use num_vars, only: ex_plot_style, rank
+        use num_vars, only: ex_plot_style_global => ex_plot_style, rank
         
         ! input / output
+        character(len=*), intent(in) :: var_names(:)                            ! name of variables
         character(len=*), intent(in) :: draw_name                               ! name of drawing
-        character(len=*), intent(in) :: file_name                               ! name of file
-        character(len=*), intent(in) :: var_name                                ! name of function
         integer, intent(in) :: nplt                                             ! number of plots
         integer, intent(in) :: draw_dim                                         ! 1: 2D, 2: 3D, 3: decoupled 3D
         logical, intent(in) :: plot_on_screen                                   ! True if on screen, false if in file
+        integer, intent(in), optional :: ex_plot_style                          ! alternative external plot style
+        character(len=*), intent(in), optional :: data_name                     ! name of data file
         character(len=*), intent(in), optional :: draw_ops(:)                   ! drawing options
         character(len=*), intent(in), optional :: extra_ops                     ! extra options
+        logical, intent(in), optional :: is_animated                            ! plot is animated
+        real(dp), intent(in), optional :: ranges(:,:)                           ! x and y range of animated plot
+        integer, intent(in), optional :: delay                                  ! time delay between animated plot frames
         
         ! local variables
-        character(len=3*max_str_ln) :: plot_cmd                                 ! individual plot command
-        character(len=max_str_ln) :: script_name                                ! name of script, including path
-        character(len=max_str_ln) :: loc_draw_op                                ! local draw option
-        character(len=max_str_ln) :: ex_prog_name                               ! name of external program
         character(len=4) :: ex_ext                                              ! output extension of external program
+        character(len=5*max_str_ln) :: cmdmsg                                   ! error message of C system command
+        character(len=max_str_ln) :: script_name                                ! name of script, including path
+        character(len=max_str_ln) :: ex_prog_name                               ! name of external program
+        character(len=max_str_ln) :: data_name_loc                              ! local data name
+        character(len=max_str_ln), allocatable :: var_names_loc(:)              ! local variables names
+        logical :: is_animated_loc                                              ! local is_animated
+        logical :: run_shell_necessary                                          ! whether shell needs to be run
+        real(dp), allocatable :: ranges_loc(:,:)                                ! local copy of ranges
+        integer :: delay_loc                                                    ! local copy of delay
         integer :: n_draw_ops                                                   ! number of draw options provided
         integer :: istat                                                        ! status of opening a file
         integer :: iplt                                                         ! counter
         integer :: cmd_i                                                        ! file number for script file
-        integer :: plt_count                                                    ! counts the number of plots
         integer :: cmdstat                                                      ! status of C system command
-        character(len=5*max_str_ln) :: cmdmsg                                   ! error message of C system command
+        integer :: ex_plot_style_loc                                            ! local ex_plot_style
+        
+        ! skip if no plots
+        if (no_plots) return
+        
+        ! set up local data_name, variable names, is_animated and ex_plot_style
+        data_name_loc = draw_name
+        if (present(data_name)) data_name_loc = data_name
+        allocate(var_names_loc(nplt))
+        if (size(var_names).ge.nplt) then
+            var_names_loc = var_names(1:nplt)
+        else
+            do iplt = 1,nplt
+                var_names_loc(iplt) = var_names(1)//' ('//trim(i2str(iplt))//&
+                    &' / '//trim(i2str(nplt))//')'
+            end do
+        end if
+        is_animated_loc = .false.
+        if (present(is_animated)) is_animated_loc = is_animated
+        ex_plot_style_loc = ex_plot_style_global
+        if (present(ex_plot_style)) ex_plot_style_loc = ex_plot_style
+        
+        ! run shell to produce the plot by default
+        run_shell_necessary = .true.
+        
+        ! test whether animation is in 2D and set some variables
+        if (is_animated_loc) then
+            if (draw_dim.ne.1) then
+                call writo('Animations are only possible in 2D',warning=.true.,&
+                    &persistent=.true.)
+                return
+            else
+                ! calculate delay [1/100 s]
+                if (present(delay)) then
+                    delay_loc = delay
+                else
+                    delay_loc = max(250/nplt,10)
+                end if
+            end if
+        end if
         
         ! create the external program command
-        if (plot_on_screen) then
+        if (plot_on_screen .and. &
+            &(ex_plot_style_loc.ne.1 .and. is_animated_loc)) then               ! not for GNUPlot animation
             script_name = trim(script_dir)//'/'//'temp_script_draw_ex_'//&
                 &trim(i2str(rank))
         else
             script_name = trim(script_dir)//'/'//trim(draw_name)
         end if
-        select case (ex_plot_style)
+        select case (ex_plot_style_loc)
             case (1)                                                            ! GNUPlot
                 script_name = trim(script_name)//'.gnu'
                 ex_ext = 'pdf'
                 ex_prog_name = 'gnuplot'
-            case (2)                                                            ! Boekh
+            case (2)                                                            ! Bokeh or Mayavi
                 script_name = trim(script_name)//'.py'
-                if (draw_dim.eq.1) then
+                if (draw_dim.eq.1) then                                         ! 2D: Bokeh
                     ex_ext = 'html'
-                else
+                else                                                            ! 3D and 2D slices in 3D: Mayavi
                     ex_ext = 'png'
                 end if
                 ex_prog_name = 'python'
@@ -385,13 +440,22 @@ contains
             n_draw_ops = 0
         end if
         
-        select case (ex_plot_style)
+        select case (ex_plot_style_loc)
             case (1)                                                            ! GNUPlot
-                call draw_ex_GNUPlot()
+                if (is_animated_loc) then
+                    call draw_ex_animated_GNUPlot()
+                else
+                    call draw_ex_GNUPlot()
+                end if
             case (2)                                                            ! Bokeh
                 select case (draw_dim)
                     case (1)                                                    ! 2D
-                        call draw_ex_Bokeh()
+                        run_shell_necessary = plot_on_screen                    ! only need to run if plot on screen
+                        if (is_animated_loc) then
+                            call draw_ex_animated_Bokeh()
+                        else
+                            call draw_ex_Bokeh()
+                        end if
                     case (2:3)                                                  ! 3D, 2D slices in 3D
                         call draw_ex_Mayavi()
                 end select
@@ -403,38 +467,38 @@ contains
         ! stop timer
         call stop_time
         
-        ! bypass plots if no_plots
-        if (.not.no_plots) then
-            ! call external program
-            call use_execute_command_line(trim(ex_prog_name)//' "'//&
+        ! run shell if necessary
+        istat = 0
+        cmdstat = 0
+        if (run_shell_necessary) &
+            &call use_execute_command_line(trim(ex_prog_name)//' "'//&
                 &trim(script_name)//'"'//err_output_str,exitstat=istat,&
                 &cmdstat=cmdstat,cmdmsg=cmdmsg)
-            
-            if (istat.ne.0) then
+        
+        if (istat.ne.0) then
+            call writo('Failed to plot '//trim(draw_name)//'.'//&
+                &trim(ex_ext),persistent=.true.,warning=.true.)
+        else
+            if (cmdstat.ne.0) then
                 call writo('Failed to plot '//trim(draw_name)//'.'//&
                     &trim(ex_ext),persistent=.true.,warning=.true.)
+                call lvl_ud(1)
+                call writo('System message: "'//trim(cmdmsg)//'"',&
+                    &persistent=.true.)
+                if (.not.plot_on_screen) call writo(&
+                    &'Try running "'//trim(ex_prog_name)//' "'//&
+                    &trim(script_name)//'"'//'" manually',persistent=.true.)
+                call lvl_ud(-1)
             else
-                if (cmdstat.ne.0) then
-                    call writo('Failed to plot '//trim(draw_name)//'.'//&
-                        &trim(ex_ext),persistent=.true.,warning=.true.)
-                    call lvl_ud(1)
-                    if (cmdstat.ne.0) call writo('System message: "'//&
-                        &trim(cmdmsg)//'"',persistent=.true.)
-                    if (.not.plot_on_screen) call writo(&
-                        &'Try running "'//trim(ex_prog_name)//' "'//&
-                        &trim(script_name)//'"'//'" manually',persistent=.true.)
-                    call lvl_ud(-1)
+                if (plot_on_screen .and. run_shell_necessary) then
+                    call use_execute_command_line('rm '//&
+                        &trim(script_name),exitstat=istat,&
+                        &cmdstat=cmdstat,cmdmsg=cmdmsg)
+                    ! ignore errors
                 else
-                    if (plot_on_screen) then
-                        call use_execute_command_line('rm '//&
-                            &trim(script_name),exitstat=istat,&
-                            &cmdstat=cmdstat,cmdmsg=cmdmsg)
-                        ! ignore errors
-                    else
-                        call writo('Created plot in output file "'//&
-                            &trim(plot_dir)//'/'//trim(draw_name)//&
-                            &'.'//trim(ex_ext)//'"',persistent=.true.)
-                    end if
+                    call writo('Created plot in output file "'//&
+                        &trim(plot_dir)//'/'//trim(draw_name)//&
+                        &'.'//trim(ex_ext)//'"',persistent=.true.)
                 end if
             end if
         end if
@@ -463,72 +527,45 @@ contains
             
             ! set up line styles
             if (n_draw_ops.eq.0) then
-                do plt_count = 1,min(nplt,size(line_clrs))
+                do iplt = 1,min(nplt,size(line_clrs))
                     write(cmd_i,"(A)") 'set style line '//&
-                        &trim(i2str(plt_count))//' lc rgb '//&
-                        &line_clrs(plt_count)//' '//trim(line_style)
+                        &trim(i2str(iplt))//' lc rgb '//&
+                        &line_clrs(iplt)//' '//trim(line_style)
                 end do
             end if
-            
-            ! set up plt_count
-            plt_count = 1
             
             ! individual plots
             select case (draw_dim)
                 case (1)                                                        ! 2D
                     write(cmd_i,"(A)") 'plot \'
                     do iplt = 1,nplt
-                        plot_cmd = ''
-                        if (n_draw_ops.gt.0) then
-                            loc_draw_op = &
-                                &trim(draw_ops(mod(iplt-1,n_draw_ops)+1))
-                        else
-                            loc_draw_op = 'with linespoints linestyle '//&
-                                &trim(i2str(mod(plt_count-1,&
-                                &size(line_clrs))+1))
-                        end if
-                        plot_cmd = trim(plot_cmd)//' "'//trim(data_dir)//&
-                            &'/'//trim(file_name)//'.dat" using '//&
+                        write(cmd_i,"(A)") ' "'//trim(data_dir)//&
+                            &'/'//trim(data_name_loc)//'.dat" using '//&
                             &trim(i2str(iplt))//':'//&
                             &trim(i2str(nplt+iplt))//' title "'//&
-                            &trim(var_name)//' ('//trim(i2str(iplt))//&
-                            &'/'//trim(i2str(nplt))//')" '//&
-                            &trim(loc_draw_op)//', \'
-                        plt_count = plt_count + 1
-                        write(cmd_i,"(A)") trim(plot_cmd)
+                            &trim(var_names_loc(iplt))//'" '//&
+                            &trim(loc_draw_op())//', \'
                     end do
                 case (2)                                                        ! 3D
                     write(cmd_i,"(A)") 'splot \'
-                    plot_cmd = ''
-                    if (n_draw_ops.gt.0) then
-                        loc_draw_op = trim(draw_ops(1))
-                    else
-                        loc_draw_op = 'with linespoints linestyle 1'
-                    end if
-                    plot_cmd = trim(plot_cmd)//' "'//trim(data_dir)//&
-                        &'/'//trim(file_name)//'.dat" using 1:2:3 title "'//&
-                        &trim(var_name)//'" '//trim(loc_draw_op)//', \'
-                    write(cmd_i,"(A)") trim(plot_cmd)
+                    do iplt = 1,nplt
+                        write(cmd_i,"(A)") ' "'//trim(data_dir)//&
+                            &'/'//trim(data_name_loc)//&
+                            &'.dat" using '//trim(i2str(iplt))//':'//&
+                            &trim(i2str(nplt+iplt))//':'//&
+                            &trim(i2str(2*nplt+iplt))//' title "'//&
+                            &trim(var_names_loc(iplt))//&
+                            &'" '//trim(loc_draw_op())//', \'
+                    end do
                 case (3)                                                        ! 2D slices in 3D
                     write(cmd_i,"(A)") 'splot \'
                     do iplt = 1,nplt
-                        plot_cmd = ''
-                        if (n_draw_ops.gt.0) then
-                            loc_draw_op = &
-                                &trim(draw_ops(mod(iplt-1,n_draw_ops)+1))
-                        else
-                            loc_draw_op = 'with linespoints linestyle '//&
-                                &trim(i2str(mod(plt_count-1,&
-                                &size(line_clrs))+1))
-                        end if
-                        plot_cmd = trim(plot_cmd)//' "'//trim(data_dir)//&
-                            &'/'//trim(file_name)//'.dat" using ('//&
+                        write(cmd_i,"(A)") ' "'//trim(data_dir)//&
+                            &'/'//trim(data_name_loc)//'.dat" using ('//&
                             &trim(i2str(iplt))//'):'//trim(i2str(iplt))//&
                             &':'//trim(i2str(nplt+iplt))//' title "'//&
-                            &trim(var_name)//' ('//trim(i2str(iplt))//'/'//&
-                            &trim(i2str(nplt))//')" '//trim(loc_draw_op)//', \'
-                        plt_count = plt_count + 1
-                        write(cmd_i,"(A)") trim(plot_cmd)
+                            &trim(var_names_loc(iplt))//'" '//&
+                            &trim(loc_draw_op())//', \'
                     end do
                 case default
                     call writo('No draw_dim associated with '//&
@@ -553,11 +590,11 @@ contains
                 &save"'
             write(cmd_i,"(A)") ''
             write(cmd_i,"(A)") 'output_file("'//trim(plot_dir)//'/'//&
-                &trim(draw_name)//'.html", title="'//trim(var_name)//&
+                &trim(draw_name)//'.html", title="'//trim(draw_name)//&
                 &'", mode="cdn") '
             write(cmd_i,"(A)") ''
             write(cmd_i,"(A)") 'data = genfromtxt("'//trim(data_dir)//'/'//&
-                &trim(file_name)//'.dat")'
+                &trim(data_name_loc)//'.dat")'
             write(cmd_i,"(A)") ''
             write(cmd_i,"(A)") 'p = figure(toolbar_location="above",'//&
                 &'tools=TOOLS,active_drag="pan",active_scroll="wheel_zoom",'//&
@@ -567,31 +604,17 @@ contains
             ! write extra options
             if (present(extra_ops)) write(cmd_i,"(A)") trim(extra_ops)
             
-            ! set up plt_count
-            plt_count = 1
-            
             ! individual plots
             do iplt = 1,nplt
-                ! plot the lines
-                if (n_draw_ops.gt.0) then
-                    loc_draw_op = &
-                        &trim(draw_ops(mod(iplt-1,n_draw_ops)+1))
-                else
-                    loc_draw_op = 'line_color='//&
-                        &line_clrs(mod(iplt-1,size(line_clrs))+1)//&
-                        &',line_width=2'
-                end if
+                ! plot the lines with legend
                 write(cmd_i,"(A)") 'p.line(data[:,'//trim(i2str(iplt-1))//&
                     &'],data[:,'//trim(i2str(nplt+iplt-1))//'],'//&
-                    &trim(loc_draw_op)//')'
-                ! plot the circles
-                if (n_draw_ops.eq.0) then
-                    loc_draw_op = 'color='//&
-                        &line_clrs(mod(iplt-1,size(line_clrs))+1)//',size=5'
-                end if
+                    &trim(loc_draw_op(1))//',legend="'//&
+                    &trim(var_names_loc(iplt))//'")'
+                ! plot the circles without legend
                 write(cmd_i,"(A)") 'p.circle(data[:,'//trim(i2str(iplt-1))//&
                     &'],data[:,'//trim(i2str(nplt+iplt-1))//'],'//&
-                    &trim(loc_draw_op)//')'
+                    &trim(loc_draw_op(2))//')'
             end do
             
             ! finishing the command
@@ -607,24 +630,44 @@ contains
         subroutine draw_ex_Mayavi
             ! initialize the script
             write(cmd_i,"(A)") 'from numpy import genfromtxt, array, size, &
-                &zeros'
+                &zeros, amin, amax'
             write(cmd_i,"(A)") 'from mayavi.mlab import outline, mesh, &
                 &points3d, savefig, colorbar, axes, savefig'
             write(cmd_i,"(A)") ''
             write(cmd_i,"(A)") 'nplt = '//trim(i2str(nplt))
             
+            ! calculate the number of y points
+            write(cmd_i,"(A)") 'npnty = -1'
+            write(cmd_i,"(A)") 'with open("'//trim(data_dir)//'/'//&
+                &trim(data_name_loc)//'.dat") as f:'
+            write(cmd_i,"(A)") '    for line in f:'
+            write(cmd_i,"(A)") '        if (npnty < 0):'
+            write(cmd_i,"(A)") '            if (line.strip()[0] == "#"):'
+            write(cmd_i,"(A)") '                npnty = 0'
+            write(cmd_i,"(A)") '        else:'
+            write(cmd_i,"(A)") '            if (not line.strip()):'
+            write(cmd_i,"(A)") '                break'
+            write(cmd_i,"(A)") '            else:'
+            write(cmd_i,"(A)") '                npnty += 1'
+            
             ! get data
             write(cmd_i,"(A)") 'data = genfromtxt("'//trim(data_dir)//'/'//&
-                &trim(file_name)//'.dat")'
-            write(cmd_i,"(A)") 'dims = array([size(data,0)/nplt,nplt])'
+                &trim(data_name_loc)//'.dat")'
+            write(cmd_i,"(A)") 'dims = array([size(data,0)/npnty,npnty,nplt])'
             write(cmd_i,"(A)") ''
             write(cmd_i,"(A)") 'X = zeros(dims)'
             write(cmd_i,"(A)") 'Y = zeros(dims)'
             write(cmd_i,"(A)") 'Z = zeros(dims)'
             write(cmd_i,"(A)") 'for i in range(0,dims[0]):'
-            write(cmd_i,"(A)") '    X[i,:] = data[nplt*i:nplt*(i+1),0]'
-            write(cmd_i,"(A)") '    Y[i,:] = data[nplt*i:nplt*(i+1),1]'
-            write(cmd_i,"(A)") '    Z[i,:] = data[nplt*i:nplt*(i+1),2]'
+            write(cmd_i,"(A)") '    for j in range(0,dims[2]):'
+            write(cmd_i,"(A)") '        X[i,:,j] = data[npnty*i:npnty*(i+1),j]'
+            write(cmd_i,"(A)") '        Y[i,:,j] = &
+                &data[npnty*i:npnty*(i+1),nplt+j]'
+            write(cmd_i,"(A)") '        Z[i,:,j] = &
+                &data[npnty*i:npnty*(i+1),nplt*2+j]'
+            write(cmd_i,"(A)") ''
+            write(cmd_i,"(A)") 'minZ = amin(Z)'
+            write(cmd_i,"(A)") 'maxZ = amax(Z)'
             write(cmd_i,"(A)") ''
             
             ! write extra options
@@ -633,10 +676,14 @@ contains
             ! plot
             select case (draw_dim)
                 case (2)                                                        ! 3D
-                    write(cmd_i,"(A)") 'mesh(X,Y,Z)'
+                    write(cmd_i,"(A)") 'for j in range(0,dims[2]):'
+                    write(cmd_i,"(A)") '    mesh(X[:,:,j],Y[:,:,j],Z[:,:,j],&
+                        &vmin=minZ,vmax=maxZ)'
                 case (3)                                                        ! 2D slices in 3D
-                    write(cmd_i,"(A)") 'points3d(X,Y,Z,mode="sphere",&
-                        &scale_factor=0.05)'
+                    write(cmd_i,"(A)") 'for j in range(0,dims[2]):'
+                    write(cmd_i,"(A)") '    points3d(X[:,:,j],Y[:,:,j],&
+                        &Z[:,:,j],mode="sphere",scale_factor=0.05,vmin=minZ,&
+                        &vmax=maxZ)'
             end select
             write(cmd_i,"(A)") 'outline()'
             write(cmd_i,"(A)") 'colorbar()'
@@ -658,119 +705,8 @@ contains
                 &trim(draw_name)//'.png"'//',magnification=4)'
             end if
         end subroutine draw_ex_Mayavi
-    end subroutine draw_ex
-    
-    ! Use external program to animate a plot.
-    ! The  variable file_name  holds the  file which  is to  be plot.  It should
-    ! contain nplt plots, arranged in columns. Currently, only 2D animations are
-    ! possible.  The  result  is  saved  in a  file  called  [draw_name].gif  or
-    ! [draw_name].html.
-    ! Finally, an optional command extra_ops  can be provided, to provide overal
-    ! options, as well  as draw_ops that specifies the line  style for the plots
-    ! from the  file. If  less draw_ops  are provided than  plots, they  will be
-    ! cycled.
-    subroutine draw_ex_animated(var_name,file_name,draw_name,nplt,ranges,&
-        &delay,draw_ops,extra_ops)
-        use num_vars, only: ex_plot_style
         
-        ! input / output
-        character(len=*), intent(in) :: var_name                                ! name of function
-        character(len=*), intent(in) :: file_name                               ! name of file
-        character(len=*), intent(in) :: draw_name                               ! name of drawing
-        integer, intent(in) :: nplt                                             ! number of plots
-        real(dp), intent(in), optional :: ranges(:,:)                           ! x and y range, and z range (if 3D) of plot
-        integer, intent(in), optional :: delay                                  ! time delay between plots
-        character(len=*), intent(in), optional :: draw_ops(:)                   ! extra commands
-        character(len=*), intent(in), optional :: extra_ops                     ! extra option
-        
-        ! local variables
-        character(len=3*max_str_ln) :: plot_cmd                                 ! individual plot command
-        character(len=max_str_ln) :: script_name                                ! name of script, including path
-        character(len=max_str_ln) :: loc_draw_op                                ! local draw option
-        character(len=max_str_ln) :: ex_prog_name                               ! name of external program
-        character(len=4) :: ex_ext                                              ! output extension of external program
-        integer :: n_draw_ops                                                   ! number of draw options provided
-        integer :: istat                                                        ! status of opening a file
-        integer :: iplt                                                         ! counter
-        integer :: cmd_i                                                        ! file number for script file
-        integer :: delay_loc                                                    ! local copy of delay
-        real(dp), allocatable :: ranges_loc(:,:)                                ! local copy of ranges
-        integer :: plt_count                                                    ! counts the number of plots
-        integer :: cmdstat                                                      ! status of C system command
-        character(len=5*max_str_ln) :: cmdmsg                                   ! error message of C system command
-        
-        ! calculate delay [1/100 s]
-        if (present(delay)) then
-            delay_loc = delay
-        else
-            delay_loc = max(250/nplt,10)
-        end if
-        
-        ! create the command
-        script_name = trim(script_dir)//'/'//trim(draw_name)
-        select case (ex_plot_style)
-            case (1)                                                            ! GNUPlot
-                script_name = trim(script_name)//'.gnu'
-                ex_ext = 'gif'
-                ex_prog_name = 'gnuplot'
-            case (2)                                                            ! Boekh
-                script_name = trim(script_name)//'.py'
-                ex_ext = 'html'
-                ex_prog_name = 'python'
-        end select
-        
-        ! open script file
-        open(unit=nextunit(cmd_i),file=trim(script_name),iostat=istat)
-        if (istat.ne.0) then
-            call writo('Could not open file for draw command',&
-                &persistent=.true.,warning=.true.)
-            return
-        end if
-        
-        ! set number of draw ops
-        if (present(draw_ops)) then
-            n_draw_ops = size(draw_ops)
-        else
-            n_draw_ops = 0
-        end if
-        
-        select case (ex_plot_style)
-            case (1)                                                            ! GNUPlot
-                call draw_ex_animated_GNUPlot()
-            case (2)                                                            ! Boekh
-                call draw_ex_animated_Bokeh()
-        end select
-        
-        ! closing the command
-        close(cmd_i)
-        
-        ! bypass plots if no_plots
-        if (.not.no_plots) then
-            ! call external program
-            call use_execute_command_line(trim(ex_prog_name)//' "'//&
-                &trim(script_name)//'"'//err_output_str//' &',exitstat=istat,&
-                &cmdstat=cmdstat,cmdmsg=cmdmsg)
-            
-            if (istat.ne.0) then
-                call writo('Failed to plot '//trim(draw_name)//'.'//&
-                    &trim(ex_ext),persistent=.true.,warning=.true.)
-            else
-                if (cmdstat.ne.0) then
-                    call writo('Failed to plot '//trim(draw_name)//'.'//&
-                        &trim(ex_ext),persistent=.true.,warning=.true.)
-                    call lvl_ud(1)
-                    if (cmdstat.ne.0) call writo('System message: "'//&
-                        &trim(cmdmsg)//'"',persistent=.true.)
-                    call lvl_ud(-1)
-                else
-                    call writo('Created animated plot in output file "'//&
-                        &trim(plot_dir)//'/'//trim(draw_name)//&
-                        &'.'//trim(ex_ext)//'"',persistent=.true.)
-                end if
-            end if
-        end if
-    contains
-        ! GNUPlot version: gif output
+        ! GNUPlot animated version: gif output
         subroutine draw_ex_animated_GNUPlot
             ! initialize the script
             write(cmd_i,"(A)") 'set grid'
@@ -797,7 +733,7 @@ contains
                 ranges_loc(:,1) = huge(1._dp)                                   ! minimum value
                 ranges_loc(:,2) = -huge(1._dp)                                  ! maximum value
                 
-                call get_ranges(file_name,ranges_loc)
+                call get_ranges(ranges_loc)
             end if
             
             ! set ranges
@@ -813,40 +749,27 @@ contains
             
             ! set up line styles
             if (n_draw_ops.eq.0) then
-                do plt_count = 1,min(nplt,size(line_clrs))
+                do iplt = 1,min(nplt,size(line_clrs))
                     write(cmd_i,"(A)") 'set style line '//&
-                        &trim(i2str(plt_count))//' lc rgb '//&
-                        &line_clrs(plt_count)//' '//trim(line_style)
+                        &trim(i2str(iplt))//' lc rgb '//&
+                        &line_clrs(iplt)//' '//trim(line_style)
                 end do
             end if
             
-            ! set up plt_count
-            plt_count = 1
-            
             ! individual plots
             do iplt = 1,nplt
-                plot_cmd = 'plot '
-                if (n_draw_ops.gt.0) then
-                    loc_draw_op = trim(draw_ops(mod(iplt-1,n_draw_ops)+1))
-                else
-                    loc_draw_op = 'with linespoints linestyle '//&
-                        &trim(i2str(mod(plt_count-1,&
-                        &size(line_clrs))+1))
-                end if
-                plot_cmd = trim(plot_cmd)//' "'//trim(data_dir)//'/'//&
-                    &trim(file_name)//'.dat" using '//trim(i2str(iplt))//':'//&
-                    &trim(i2str(nplt+iplt))//' title "'//trim(var_name)//&
-                    &' ('//trim(i2str(iplt))//'/'//trim(i2str(nplt))//')" '//&
-                    &trim(loc_draw_op)
-                plt_count = plt_count + 1
-                write(cmd_i,"(A)") trim(plot_cmd)
+                write(cmd_i,"(A)") 'plot "'//trim(data_dir)//'/'//&
+                    &trim(data_name_loc)//'.dat" using '//trim(i2str(iplt))//&
+                    &':'//trim(i2str(nplt+iplt))//' title "'//&
+                    &trim(var_names_loc(iplt))//'" '//&
+                    &trim(loc_draw_op())
             end do
             
             ! finishing the command
             write(cmd_i,"(A)") ''
         end subroutine draw_ex_animated_GNUPlot
         
-        ! Bokeh version: html output
+        ! Bokeh animated version: html output
         subroutine draw_ex_animated_Bokeh
             ! initialize the script
             write(cmd_i,"(A)") '# Note: it is necessary to first run &
@@ -862,11 +785,11 @@ contains
                 &save"'
             write(cmd_i,"(A)") ''
             write(cmd_i,"(A)") 'output_file("'//trim(plot_dir)//'/'//&
-                &trim(draw_name)//'.html", title="'//trim(var_name)//&
+                &trim(draw_name)//'.html", title="'//trim(draw_name)//&
                 &'", mode="cdn") '
             write(cmd_i,"(A)") ''
             write(cmd_i,"(A)") 'data = genfromtxt("'//trim(data_dir)//'/'//&
-                &trim(file_name)//'.dat")'
+                &trim(data_name_loc)//'.dat")'
             write(cmd_i,"(A)") ''
             write(cmd_i,"(A)") 'p = figure(toolbar_location="above",'//&
                 &'tools=TOOLS,active_drag="pan",active_scroll="wheel_zoom",'//&
@@ -876,25 +799,13 @@ contains
             ! write extra options
             if (present(extra_ops)) write(cmd_i,"(A)") trim(extra_ops)
             
-            ! set up plt_count
-            plt_count = 1
-            
             ! individual plot for first plot
-            if (n_draw_ops.gt.0) then
-                loc_draw_op = trim(draw_ops(mod(0,n_draw_ops)+1))
-            else
-                loc_draw_op = 'line_color='//&
-                    &line_clrs(mod(0,size(line_clrs))+1)//',line_width=2'
-            end if
-            write(cmd_i,"(A)") 'line = p.line(data[:,'//trim(i2str(0))//&
-                &'],data[:,'//trim(i2str(nplt))//'],'//trim(loc_draw_op)//')'
+            write(cmd_i,"(A)") 'line = p.line(data[:,0],data[:,'//&
+                &trim(i2str(nplt))//'],'//trim(loc_draw_op(1))//',legend="'//&
+                &trim(var_names_loc(1))//'")'
             ! plot the circles
-            if (n_draw_ops.eq.0) then
-                loc_draw_op = 'color='//line_clrs(mod(0,size(line_clrs))+1)//&
-                    &',size=5'
-            end if
             write(cmd_i,"(A)") 'circle = p.circle(data[:,'//trim(i2str(0))//&
-                &'],data[:,'//trim(i2str(nplt))//'],'//trim(loc_draw_op)//')'
+                &'],data[:,'//trim(i2str(nplt))//'],'//trim(loc_draw_op(2))//')'
             
             ! finishing the command (needs to use show)
             write(cmd_i,"(A)") ''
@@ -911,13 +822,15 @@ contains
             write(cmd_i,"(A)") '    circle.data_source.data["y"] = data[:,'//&
                 &trim(i2str(nplt))//'+i]'
             write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'curdoc().add_periodic_callback(update, 100)'
+            write(cmd_i,"(A)") 'curdoc().add_periodic_callback(update, '//&
+                &trim(i2str(delay_loc*10))//')'
             write(cmd_i,"(A)") 'session.loop_until_closed()'
+            write(*,*) 'delay_loc*10 = ', delay_loc*10
         end subroutine draw_ex_animated_Bokeh
         
-        subroutine get_ranges(file_name,ranges)
+        ! gets ranges for animated plot
+        subroutine get_ranges(ranges)
             ! input / output
-            character(len=*), intent(in) :: file_name                           ! name of file
             real(dp), intent(inout) :: ranges(:,:)                              ! x and y range, and z range (if 3D) of plot
             
             ! local variables
@@ -927,7 +840,7 @@ contains
             
             
             ! open data file
-            open(unit=nextunit(data_i),file=data_dir//'/'//trim(file_name)//&
+            open(unit=nextunit(data_i),file=data_dir//'/'//trim(data_name_loc)//&
                 &'.dat',status='old',iostat=istat)
             
             ! set up loc_data
@@ -939,7 +852,7 @@ contains
                 read(data_i,*,IOSTAT=istat) loc_data_char                       ! read first character of data
                 if (istat.eq.0) then                                            ! read succesful
                     if (loc_data_char.ne.'#') then                              ! exclude comment lines
-                        backspace(UNIT=data_I)                                  ! go back one line
+                        backspace(UNIT=data_i)                                  ! go back one line
                         read(data_i,*,IOSTAT=istat) loc_data                    ! read data again, but now ful
                         ranges(1,1) = &
                             &min(ranges(1,1),minval(loc_data(1:nplt)))
@@ -959,8 +872,45 @@ contains
             ! close data file
             close(data_i)
         end subroutine get_ranges
-    end subroutine draw_ex_animated
-
+        
+        ! sets local draw options either from pre-defined line styles or through
+        ! user specified option, for GNUPlot or Bokeh
+        ! As for  Bokeh, there are  two default  draw options possible  (for the
+        ! lines and for the points), there is an option to select between them.
+        function loc_draw_op(Bokeh_style)
+            ! input / output
+            character(len=max_str_ln) :: loc_draw_op                            ! local drawing option
+            integer, intent(in), optional :: Bokeh_style                        ! lines(1) or points (2)
+            
+            select case (ex_plot_style_loc)
+                case (1)                                                        ! GNUPlot
+                    if (n_draw_ops.gt.0) then
+                        loc_draw_op = trim(draw_ops(mod(iplt-1,n_draw_ops)+1))
+                    else
+                        loc_draw_op = 'with linespoints linestyle '//&
+                            &trim(i2str(mod(iplt-1,size(line_clrs))+1))
+                    end if
+                case (2)                                                        ! Bokeh / Mayavi
+                    if (n_draw_ops.gt.0) then
+                        loc_draw_op = trim(draw_ops(mod(iplt-1,n_draw_ops)+1))
+                    else
+                        select case (Bokeh_style)
+                            case (1)                                            ! lines
+                                loc_draw_op = 'line_color='//&
+                                    &line_clrs(mod(iplt-1,size(line_clrs))+1)//&
+                                    &',line_width=2'
+                            case (2)                                            ! points
+                                loc_draw_op = 'color='//&
+                                    &line_clrs(mod(iplt-1,size(line_clrs))+1)//&
+                                    &',size=5'
+                            case default
+                                loc_draw_op = ''
+                        end select
+                    end if
+            end select
+        end function loc_draw_op
+    end subroutine draw_ex
+    
     ! Prints variables  "vars" with names "var_names"  in a HDF5 file  with name
     ! "file_name" and  accompanying XDMF file.  For collections, only  the first
     ! value for var_names is used, so it should have a size of one.

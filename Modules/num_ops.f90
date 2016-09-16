@@ -182,7 +182,7 @@ contains
             ! plot function
             call writo('Initial guess: '//trim(r2str(guess)))
             call writo('Resulting zero: '//trim(r2str(zero)))
-            call print_ex_2D('function and derivative','',y_out,x=x_out)
+            call print_ex_2D(['function  ','derivative'],'',y_out,x=x_out)
             
             ! user output
             call writo('Last correction '//trim(r2strt(corrs(size(corrs))))&
@@ -570,7 +570,7 @@ contains
                 &trim(r2strt(tol_zero)))
             
             ! plot intervals
-            call print_ex_2D('x_intervals','',x_ints)
+            call print_ex_2D(['x_intervals'],'',x_ints)
         end subroutine plot_evolution
 #endif
     end function calc_zero_Zhang

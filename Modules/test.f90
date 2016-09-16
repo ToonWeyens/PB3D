@@ -209,7 +209,7 @@ contains
         f_plot(1:n,1) = f
         x_plot(1:n_interp,2) = x_interp
         f_plot(1:n_interp,2) = f_interp
-        call print_ex_2D('f and f_interp','',f_plot,x=x_plot)
+        call print_ex_2D(['f       ','f_interp'],'',f_plot,x=x_plot)
         
         if (interp_style.eq.2) then
             call writo('Spectrum of f?')
@@ -308,7 +308,7 @@ contains
             f_plot = 0._dp
             f_plot(:,1) = f_loc(2:2*m_F:2)
             f_plot(:,2) = -f_loc(3:2*m_F+1:2)
-            call print_ex_2D('cosine and sine spectrum','',f_plot(1:m_f,:))
+            call print_ex_2D(['cos','sin'],'',f_plot(1:m_f,:))
         end subroutine
     end function test_interp
     
@@ -687,14 +687,16 @@ contains
                 plot_x(:,2) = step_size
                 plot_y(:,1) = max_error(:,id)
                 plot_y(:,2) = mean_error(:,id)
-                call print_ex_2D('max. and mean error for deriv. of order '&
-                    &//trim(i2str(id)),'',plot_y,x=plot_x)
+                call print_ex_2D(['max. error','mean error']//&
+                    &' for deriv. of order '//trim(i2str(id)),'',&
+                    &plot_y,x=plot_x)
                 plot_x(:,1) = log10(step_size)
                 plot_x(:,2) = log10(step_size)
                 plot_y(:,1) = log10(max_error(:,id))
                 plot_y(:,2) = log10(mean_error(:,id))
-                call print_ex_2D('max. and mean error [log-log], for deriv. of &
-                    &order '//trim(i2str(id)),'',plot_y,x=plot_x)
+                call print_ex_2D(['max. error','mean error']//&
+                    &' for deriv. of order '//trim(i2str(id))//' [log-log]','',&
+                    &plot_y,x=plot_x)
             end do
         end if
         
@@ -978,10 +980,10 @@ contains
                 do jd = 1,n_steps
                     fun_int_plot(jd,:) = fun_int(:,1,jd)/fun_int(1,1,jd)
                 end do
-                call print_ex_2D('analytical vs. numerical integral, real','',&
-                    &realpart(fun_int_plot))
-                call print_ex_2D('analytical vs. numerical integral, imag.','',&
-                    &imagpart(fun_int_plot))
+                call print_ex_2D(['analytical integral, RE',&
+                    &'numerical integral, RE '],'',realpart(fun_int_plot))
+                call print_ex_2D(['analytical integral, IM',&
+                    &'numerical integral, IM '],'',imagpart(fun_int_plot))
             end if
         end if 
     end function test_calc_int_vol
