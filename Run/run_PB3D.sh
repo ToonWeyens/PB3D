@@ -31,14 +31,14 @@ display_usage() {
     echo -e ""
     echo -e "               31 qps"
     echo -e ""
-    echo -e "               41 Hmode_ped4"
-    echo -e "               42 Hmode_ped4_HELENA"
-    echo -e "               43 Hmode_ped2"
-    echo -e "               44 Hmode_ped2_HELENA"
+    echo -e "               41 Hmode_ped4.0"
+    echo -e "               42 Hmode_ped4.0_HELENA"
+    echo -e "               43 Hmode_ped2.0"
+    echo -e "               44 Hmode_ped2.0_HELENA"
     echo -e "               45 Hmode_ped1.5"
     echo -e "               46 Hmode_ped1.5_HELENA"
-    echo -e "               47 Hmode_ped1"
-    echo -e "               48 Hmode_ped1_HELENA"
+    echo -e "               47 Hmode_ped1.0"
+    echo -e "               48 Hmode_ped1.0_HELENA"
     echo -e "               49 Hmode_ped0.8"
     echo -e "               50 Hmode_ped0.8_HELENA"
     echo -e "               51 Hmode_ped0.7"
@@ -133,16 +133,16 @@ case $1 in
         eq_name=wout_qps.nc
     ;;
     41)
-        eq_name=wout_Hmode_ped4.nc
+        eq_name=wout_Hmode_ped4.0.nc
     ;;
     42)
-        eq_name=Hmode_ped4
+        eq_name=Hmode_ped4.0
     ;;
     43)
-        eq_name=wout_Hmode_ped2.nc
+        eq_name=wout_Hmode_ped2.0.nc
     ;;
     44)
-        eq_name=Hmode_ped2
+        eq_name=Hmode_ped2.0
     ;;
     45)
         eq_name=wout_Hmode_ped1.5.nc
@@ -151,10 +151,10 @@ case $1 in
         eq_name=Hmode_ped1.5
     ;;
     47)
-        eq_name=wout_Hmode_ped1.nc
+        eq_name=wout_Hmode_ped1.0.nc
     ;;
     48)
-        eq_name=Hmode_ped1
+        eq_name=Hmode_ped1.0
     ;;
     49)
         eq_name=wout_Hmode_ped0.8.nc

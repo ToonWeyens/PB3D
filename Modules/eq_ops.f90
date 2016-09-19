@@ -338,8 +338,12 @@ contains
             
             ! export for VMEC port
             if (export_HEL) then
+                call writo('Exporting HELENA equilibrium for VMEC porting')
+                call lvl_ud(1)
                 ierr = write_flux_q_in_file_for_VMEC()
                 CHCKERR('')
+                call lvl_ud(-1)
+                call writo('Done exporting')
             end if
         end function calc_flux_q_HEL
         
@@ -358,6 +362,7 @@ contains
             use files_utilities, only: nextunit
             use input_utilities, only: pause_prog, get_log, get_int, get_real
             use num_utilities, only: GCD, bubble_sort
+            use num_vars, only: eq_name
             
             character(*), parameter :: rout_name = &
                 &'write_flux_q_in_file_for_VMEC'
@@ -374,6 +379,8 @@ contains
             integer :: n_id                                                     ! index in bundled n_pert
             integer :: pert_file_i                                              ! handle of perturbation input file
             integer :: istat                                                    ! status
+            integer :: plot_dim(2)                                              ! plot dimensions
+            integer :: rec_min_m                                                ! recommended minimum of poloidal modes
             integer, allocatable :: n_pert(:), m_pert(:,:)                      ! tor. mode numbers and pol. mode numbers for each of them
             integer, allocatable :: m_pert_copy(:,:)                            ! copy of m_pert, for sorting
             integer, allocatable :: piv(:)                                      ! pivots for sorting
@@ -381,12 +388,16 @@ contains
             integer, allocatable :: nr_m_copy(:)                                ! copy of nr_m, for sorting
             character(len=1) :: loc_data_char                                   ! first data character
             character(len=2) :: plus                                            ! "+ " or ""
+            character(len=8) :: flux_name(2)                                    ! "poloidal" or "toroidal"
             character(len=max_str_ln) :: pert_file_name                         ! name of perturbation file
             character(len=max_str_ln) :: err_msg                                ! error message
             character(len=max_str_ln) :: file_name                              ! name of file
             character(len=max_str_ln) :: plot_name(2)                           ! name of plot file
             character(len=max_str_ln) :: plot_title(2)                          ! name of plot
+            real(dp) :: m_tol = 1.E-7_dp                                        ! tolerance for Fourier mode strength
             real(dp) :: delta_loc(2)                                            ! local delta
+            real(dp) :: plot_lims(2,2)                                          ! limits of plot dims [pi]
+            real(dp) :: norm_B_H(2)                                             ! normalization for R and Z Fourier modes
             real(dp), allocatable :: delta(:,:,:)                               ! amplitudes of perturbations (N,M,c/s)
             real(dp), allocatable :: delta_copy(:,:,:)                          ! copy of m_pert, for sorting
             real(dp), allocatable :: BH_0(:,:)                                  ! R and Z at unperturbed bounday
@@ -400,14 +411,10 @@ contains
             logical :: zero_N_pert = .false.                                    ! there is a perturbation with N = 0
             logical :: pert_eq                                                  ! whether equilibrium is perturbed
             logical :: pert_from_file                                           ! perturbation read from file
+            logical :: stel_sym                                                 ! whether there is stellarator symmetry
             
             ! initialize ierr
             ierr = 0
-            
-            file_name = 'flux_quantities.dat'
-            
-            call writo('Writing output to file '//trim(file_name))
-            call writo('This can be used for VMEC porting')
             
             ! test if full range
             if (min_r_sol.gt.0 .or. max_r_sol.lt.1) then
@@ -462,6 +469,7 @@ contains
                     err_msg = 'Could not read file '//trim(pert_file_name)
                 else
                     ! user input
+                    call writo('Prescribe interactively')
                     call writo('How many different combinations of toroidal &
                         &and poloidal mode numbers (N,M)?')
                     tot_nr_pert = get_int(lim_lo=1)
@@ -539,6 +547,34 @@ contains
                 nr_n = 0
             end if
             
+            ! plot properties
+            plot_dim = [100,100]
+            plot_lims(:,1) = [0.0_dp,2.0_dp]
+            plot_lims(:,2) = [0.5_dp,2.0_dp]
+            flux_name = ['poloidal','toroidal']
+            call writo('Change plot properties from defaults?')
+            call lvl_ud(1)
+            do id = 1,2
+                call writo(trim(i2str(plot_dim(id)))//' '//flux_name(id)//&
+                    &' points on range '//trim(r2strt(plot_lims(1,id)))//&
+                    &' pi .. '//trim(r2strt(plot_lims(2,id)))//' pi')
+            end do
+            call lvl_ud(-1)
+            if (get_log(.false.)) then
+                call lvl_ud(1)
+                do id = 1,2
+                    call writo('number of '//flux_name(id)//' points?')
+                    plot_dim(id) = get_int(lim_lo=3)
+                    call writo('lower limit of '//flux_name(id)//&
+                        &' range [pi]?')
+                    plot_lims(1,id) = get_real()
+                    call writo('upper limit of '//flux_name(id)//&
+                        &' range [pi]?')
+                    plot_lims(2,id) = get_real()
+                end do
+                call lvl_ud(-1)
+            end if
+            
             ! possibly include N = 0 for equilibrium if not already done so
             if (.not.zero_N_pert) then                                          ! N = 0 was not already included
                 jd_min = 2
@@ -596,20 +632,6 @@ contains
                 call lvl_ud(-1)
             end if
             
-            ! open output file
-            open(unit=nextunit(file_i),file=trim(file_name))
-            write(file_i,*) '# for export to VMEC'
-            write(file_i,*) '# ------------------'
-            write(file_i,*) '# total enclosed toroidal flux: ', &
-                &-flux_t_E_full(grid_eq%n(3),0)
-            write(file_i,*) ''
-            write(file_i,*) '# pressure and rotational transform for 2D plot'
-            do kd = 1,grid_eq%n(3)
-                write(file_i,'(ES23.16,A,ES23.16,A,ES23.16)') &
-                    &flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0), ' ', &
-                    &pres_E_full(kd,0)*pres_0, ' ', -rot_t_E_full(kd,0)
-            end do
-            
             ! user output
             call writo('Set up axisymmetric data')
             call lvl_ud(1)
@@ -653,9 +675,6 @@ contains
             call draw_ex(plot_title(1:2),plot_name(1),2,1,.false.)
             
             ! calculate output for unperturbed R and Z
-            write(file_i,*) ''
-            write(file_i,*) ''
-            write(file_i,*) '# Fourier modes for axisymmetric equilibrium'
             plot_name(1) = 'R_F'
             plot_name(2) = 'Z_F'
             do kd = 1,2
@@ -675,11 +694,8 @@ contains
                 call lvl_ud(-1)
             end do
             
-            ! output to file
-            call print_mode_numbers(file_i,B_F(:,0,:,:),0)
-            
             ! plot axisymetric boundary in 3D
-            call plot_boundary(B_F(:,0:0,:,:),[0],'last_fs')
+            call plot_boundary(B_F(:,0:0,:,:),[0],'last_fs',plot_dim,plot_lims)
             
             call lvl_ud(-1)
             
@@ -843,10 +859,6 @@ contains
                     &' zeta) and sin(k theta +/- '//&
                     &trim(i2str(n_pert(jd)))//' zeta)')
                 
-                write(file_i,*) ''
-                write(file_i,*) ''
-                write(file_i,*) '# Fourier modes for perturbed equilibrium &
-                    &with N = '//trim(i2str(n_pert(jd)))
                 RZ: do kd = 1,2
                     ! terms with N
                     B_F_loc(:,1) = &
@@ -873,10 +885,12 @@ contains
                 call lvl_ud(-1)
             end do pert_N
             
+            ! plot boundary in 3D
+            if (pert_eq) call plot_boundary(&
+                &B_F,n_pert(1:nr_n),'last_fs_pert',plot_dim,plot_lims)
+            
+            ! set up nfp
             if (pert_eq) then
-                ! plot boundary in 3D
-                call plot_boundary(B_F,n_pert(1:nr_n),'last_fs_pert')
-                
                 ! save greatest common denominator of N into nfp, excluding N=0
                 do jd = 2,nr_n
                     if (jd.eq.2) then
@@ -886,43 +900,158 @@ contains
                     end if
                 end do
                 if (nfp.ne.0) then
-                    call writo('Greatest common denominator NFP = '&
-                        &//trim(i2str(nfp)))
                     n_pert = n_pert/nfp
-                    write(file_i,*) ''
-                    write(file_i,*) '# NFP = '//trim(i2str(nfp))
+                else
+                    nfp = 1
                 end if
-                
-                ! output to file
-                call print_mode_numbers(file_i,B_F(:,0,:,:),0)
+            else
+                nfp = 1
+            end if
+            
+            ! detect whether there is stellarator symmetry
+            stel_sym = .false.
+            if (maxval(abs(B_F(:,:,2,1)))/maxval(abs(B_F(:,:,1,1))) &
+                &.lt. m_tol .and. &                                             ! R_s << R_c
+                maxval(abs(B_F(:,:,1,2)))/maxval(abs(B_F(:,:,2,2))) &
+                &.lt. m_tol) &                                                  ! R_c << Z_s
+                &stel_sym = .true.
+            if (stel_sym) then
+                call writo("The equilibrium configuration contains &
+                    &stellarator symmetry")
+            else
+                call writo("The equilibrium configuration does not contain &
+                    &stellarator symmetry")
+            end if
+            
+            ! find out how many poloidal modes would be necessary
+            rec_min_m = 1
+            norm_B_H(1) = maxval(abs(B_F(:,:,:,1)))
+            norm_B_H(2) = maxval(abs(B_F(:,:,:,2)))
+            do id = 1,size(B_F,1)
+                if (maxval(abs(B_F(id,:,:,1)/norm_B_H(1))).gt.m_tol .or. &      ! for R
+                    &maxval(abs(B_F(id,:,:,2)/norm_B_H(2))).gt.m_tol) &         ! for Z
+                    &rec_min_m = id
+            end do
+            call writo("Detected recommended number of poloidal modes: "//&
+                &trim(i2str(rec_min_m)))
+            
+            ! user output
+            if (pert_eq) then
+                call lvl_ud(-1)
+            end if
+            
+            ! user output
+            file_name = "input."//trim(eq_name)
+            if (pert_eq) then
+                do jd = jd_min,nr_n
+                    file_name = trim(file_name)//'_N'//&
+                        &trim(i2str(n_pert(jd)))
+                    do id = 1,nr_m(jd)
+                        file_name = trim(file_name)//'M'//&
+                            &trim(i2str(m_pert(jd,id)))
+                    end do
+                end do
+            end if
+            call writo('Generate VMEC input file "'//trim(file_name)//'"')
+            call writo('This can be used for VMEC porting')
+            call lvl_ud(1)
+            
+            ! output to VMEC input file
+            open(unit=nextunit(file_i),file=trim(file_name))
+            
+            write(file_i,"(A)") "!----- General Parameters -----"
+            write(file_i,"(A)") "&INDATA"
+            write(file_i,"(A)") "MGRID_FILE = 'NONE',"
+            write(file_i,"(A)") "PRECON_TYPE = 'GMRES'"
+            write(file_i,"(A)") "PREC2D_THRESHOLD = 3.E-8"
+            write(file_i,"(A)") "DELT = 1.00E+00,"
+            write(file_i,"(A)") "NS_ARRAY = 19, 39, 79, 159, 319, 639"
+            write(file_i,"(A)") "LRFP = F"
+            write(file_i,"(A,L1)") "LASYM = ", .not.stel_sym
+            write(file_i,"(A)") "LFREEB = F"
+            write(file_i,"(A)") "NTOR = "//trim(i2str(nr_n-1))                  ! -NTOR .. NTOR
+            write(file_i,"(A)") "MPOL = "//trim(i2str(rec_min_m))               ! 0 .. MPOL-1
+            write(file_i,"(A)") "TCON0 = 1"
+            write(file_i,"(A)") "FTOL_ARRAY = 1.E-6, 1.E-6, 1.E-6, 1.E-6, &
+                &1.E-10, 1.000E-18, "
+            write(file_i,"(A)") "NITER = 6000, NSTEP = 200,"
+            write(file_i,"(A)") "NFP = "//trim(i2str(nfp))
+            write(file_i,"(A)") "PHIEDGE = "//&
+                &trim(r2str(-flux_t_E_full(grid_eq%n(3),0)))
+            
+            write(file_i,"(A)") ""
+            write(file_i,"(A)") ""
+            
+            write(file_i,"(A)") "!----- Pressure Parameters -----"
+            write(file_i,"(A)") "PMASS_TYPE = 'cubic_spline'"
+            write(file_i,"(A)") "GAMMA =  0.00000000000000E+00"
+            write(file_i,"(A)") ""
+            write(file_i,"(A)",advance="no") "AM_AUX_S ="
+            do kd = 1,grid_eq%n(3)
+                write(file_i,"(A1,ES23.16)") " ", &
+                    &flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0)
+            end do
+            write(file_i,"(A)") ""
+            write(file_i,"(A)",advance="no") "AM_AUX_F ="
+            do kd = 1,grid_eq%n(3)
+                write(file_i,"(A1,ES23.16)") " ", pres_E_full(kd,0)*pres_0
+            end do
+            
+            write(file_i,"(A)") ""
+            write(file_i,"(A)") ""
+            
+            write(file_i,"(A)") "!----- Current/Iota Parameters -----"
+            write(file_i,"(A)") "NCURR = 0"
+            write(file_i,"(A)") "PIOTA_TYPE = 'Cubic_spline'"
+            write(file_i,"(A)") ""
+            write(file_i,"(A)",advance="no") "AI_AUX_S ="
+            do kd = 1,grid_eq%n(3)
+                write(file_i,"(A1,ES23.16)") " ", &
+                    &flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0)
+            end do
+            write(file_i,"(A)") ""
+            write(file_i,"(A)",advance="no") "AI_AUX_F ="
+            do kd = 1,grid_eq%n(3)
+                write(file_i,"(A1,ES23.16)") " ", -rot_t_E_full(kd,0)
+            end do
+            
+            write(file_i,"(A)") ""
+            write(file_i,"(A)") ""
+            
+            write(file_i,"(A)") "!----- Boundary Shape Parameters -----"
+            call print_mode_numbers(file_i,B_F(:,0,:,:),0)
+            if (pert_eq) then
                 do jd = 2,nr_n
                     call print_mode_numbers(file_i,B_F(:,-(jd-1),:,:),&
                         &-n_pert(jd))
                     call print_mode_numbers(file_i,B_F(:,jd-1,:,:),n_pert(jd))
                 end do
-                
-                ! user output
-                call lvl_ud(-1)
             end if
+            write(file_i,"(A,ES23.16)") "RAXIS = ", B_F(1,0,1,1)
+            write(file_i,"(A,ES23.16)") "ZAXIS = ", B_F(1,0,1,2)
+            write(file_i,"(A)") "&END"
             
-            ! close file
             close(file_i)
+            
+            ! user output
+            call lvl_ud(-1)
             
             ! wait
             call pause_prog
         end function write_flux_q_in_file_for_VMEC
         
         ! plots the boundary of a toroidal configuration
-        subroutine plot_boundary(B,n,plot_name)
+        subroutine plot_boundary(B,n,plot_name,plot_dim,plot_lims)
             ! input / output
             real(dp), intent(in) :: B(:,:,:,:)                                  ! cosine and sine of fourier series
             integer, intent(in) :: n(:)                                         ! toroidal mode numbers
             character(len=*), intent(in) :: plot_name                           ! name of plot
+            integer, intent(in) :: plot_dim(2)                                  ! plot dimensions
+            real(dp), intent(in) :: plot_lims(2,2)                              ! limits of plot dimensions [pi]
             
             ! local variables
             real(dp), allocatable :: ang_plot(:,:,:)                            ! angles of plot (theta,zeta)
             real(dp), allocatable :: XYZ_plot(:,:,:)                            ! coordinates of boundary (X,Y,Z)
-            integer :: dim_plot(2)                                              ! dimensions for plot
             integer :: kd, id                                                   ! counters
             integer :: id_loc                                                   ! local id
             integer :: n_F                                                      ! number of toroidal modes (given by n)
@@ -930,20 +1059,22 @@ contains
             integer :: m_F                                                      ! number of poloidal modes (including 0)
             
             ! set variables
-            dim_plot = [100,100]
-            allocate(ang_plot(dim_plot(1),dim_plot(2),2))                       ! theta and zeta
-            allocate(XYZ_plot(dim_plot(1),dim_plot(2),3))                       ! X, Y and Z
+            allocate(ang_plot(plot_dim(1),plot_dim(2),2))                       ! theta and zeta
+            allocate(XYZ_plot(plot_dim(1),plot_dim(2),3))                       ! X, Y and Z
             XYZ_plot = 0._dp
             n_F = size(n)
             m_F = size(B,1)
             
             ! create grid
-            do kd = 1,dim_plot(1)
-                ang_plot(kd,:,1) = (kd-1)*2*pi/(dim_plot(1)-1)
+            do kd = 1,plot_dim(1)
+                ang_plot(kd,:,1) = plot_lims(1,1) + (kd-1._dp)/(plot_dim(1)-1)*&
+                    &(plot_lims(2,1)-plot_lims(1,1))
             end do
-            do kd = 1,dim_plot(2)
-                ang_plot(:,kd,2) = 0.5*pi + (kd-1)*1.5*pi/(dim_plot(2)-1)
+            do kd = 1,plot_dim(2)
+                ang_plot(:,kd,2) = plot_lims(1,2) + (kd-1._dp)/(plot_dim(2)-1)*&
+                    &(plot_lims(2,2)-plot_lims(1,2))
             end do
+            ang_plot = ang_plot*pi
             
             ! inverse Fourier transform
             do id = 1,n_F                                                       ! toroidal modes
@@ -1068,6 +1199,7 @@ contains
             integer, intent(in) :: n_pert                                       ! toroidal mode number
             
             ! local variables
+            integer :: max_n_B_output = 101                                     ! max. nr. of modes written in output file (constant in VMEC)
             integer :: kd                                                       ! counter
             integer :: m                                                        ! counter
             character :: var_name                                               ! name of variables (R or Z)
@@ -1083,15 +1215,13 @@ contains
                 end select
                 
                 ! output to file
-                write(file_i,*) ''
-                write(file_i,*) '# cos and sine factors for '//var_name
-                do m = 0,size(B,1)-1
-                    write(file_i,'(A8,I4,A4,ES23.16,A9,I6,A4,ES23.16)') &
-                        &var_name//'BC('//trim(i2str(n_pert))//',',m,&
-                        &') = ',B(m+1,1,kd),'   '//&
-                        &var_name//'BS('//trim(i2str(n_pert))//',',m,&
-                        &') = ',B(m+1,2,kd)
+                do m = 0,min(size(B,1)-1,max_n_B_output)-1
+                    write(file_i,"(' ',A,'BC(',I4,', ',I4,') = ',ES23.16,'   ',&
+                        &A,'BS(',I4,', ',I4,') = ',ES23.16)") &
+                        &var_name,n_pert,m,B(m+1,1,kd), &
+                        &var_name,n_pert,m,B(m+1,2,kd)
                 end do
+                write(file_i,"(A)") ""
             end do
         end subroutine print_mode_numbers
     end function calc_eq_1

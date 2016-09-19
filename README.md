@@ -560,3 +560,6 @@ CHANGELOG
       - Unified external program drawing into one procedure.
       - A HELENA equilibrium can now be perturbed before exporting to VMEC format.
       - The modification of the equilibrium can be provided in a file as well. Examples are given in "pert_*.dat".
+
+1.37: - The plotting variables of HELENA equilibria for VMEC export can now be adapted.
+      - HELENA export now outputs a VMEC input file that can be further adapted.
