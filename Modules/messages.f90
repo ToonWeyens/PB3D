@@ -61,6 +61,9 @@ contains
     subroutine print_hello
         use num_vars, only: rank, prog_name, prog_version, n_procs
         
+        ! local variables
+        integer :: istat                                                        ! status
+        
         if (rank.eq.0) then
             call write_formatted(' Simulation started on '//get_date()//', at '&
                 &//get_clock(),'italic')
@@ -72,7 +75,7 @@ contains
                 call write_formatted(' '//trim(i2str(n_procs))//&
                     &' MPI processes','italic')
             end if
-            write(*,*) ''
+            write(*,*,IOSTAT=istat) ''
         end if
     end subroutine print_hello
 
@@ -80,8 +83,11 @@ contains
     subroutine print_goodbye
         use num_vars, only: rank
         
+        ! local variables
+        integer :: istat                                                        ! status
+        
         if (rank.eq.0) then
-            write(*,*) ''
+            write(*,*,IOSTAT=istat) ''
             call write_formatted(' Simulation finished on '//get_date()//&
                 &', at '//get_clock(),'italic')
         end if
@@ -175,16 +181,19 @@ contains
     
     ! returns the date
     ! (from http://infohost.nmt.edu/tcc/help/lang/fortran/date.html)
-    function get_date() result(date)
+    function get_date() result(now)
+#if (lwith_intel && !lwith_gnu)
+        use IFPORT
+#endif
         ! input / output
-        character(len=10) :: date                                               ! date
+        character(len=10) :: now                                                ! date
         
         ! local variables
         integer :: today(3)
         
         call idate(today)                                                       ! today(1)=day, (2)=month, (3)=year
         
-        write (date,'(i2.2,"/",i2.2,"/",i4.4)')  today(2), today(1), today(3)
+        write (now,'(i2.2,"/",i2.2,"/",i4.4)')  today(2), today(1), today(3)
     end function get_date
     
     ! returns the time
@@ -267,8 +276,8 @@ contains
         logical :: error_loc                                                    ! local error
         logical :: warning_loc                                                  ! local warning
         logical :: alert_loc                                                    ! local alert
-#if ldebug
         integer :: istat                                                        ! status
+#if ldebug
         integer :: mem_usage                                                    ! memory usage
         integer(kind=8) :: clock                                                ! current clock
 #endif
@@ -315,10 +324,12 @@ contains
                 open(UNIT=mem_usage_i,FILE=prog_name//'_'//&
                     &trim(mem_usage_name)//'.dat',STATUS='old',&
                     &POSITION='append',IOSTAT=istat)
-                write(mem_usage_i,*) rank, mem_usage_count, &
-                    &clock-time_start, mem_usage, &
-                    &max_tot_mem_per_proc*1000, max_X_mem_per_proc*1000
-                close(UNIT=mem_usage_i)
+                if (istat.eq.0) then
+                    write(mem_usage_i,"(1X,A)",IOSTAT=istat) rank, &
+                        &mem_usage_count, clock-time_start, mem_usage, &
+                        &max_tot_mem_per_proc*1000, max_X_mem_per_proc*1000
+                    close(UNIT=mem_usage_i,IOSTAT=istat)
+                end if
             end if
         end if
 #endif
@@ -376,9 +387,12 @@ contains
                     deallocate(temp_output_loc)
                 else                                                            ! normal output to file output_i
                     if (output_i.ne.0) then
-                        if (lvl.eq.1) write(output_i,*) trim(header_str)              ! first level gets extra lines
-                        write(output_i,*) trim(time_str)//' '//trim(output_str)
-                        if (lvl.eq.1) write(output_i,*) trim(header_str)
+                        if (lvl.eq.1) write(output_i,"(1X,A)",IOSTAT=istat) &
+                            &trim(header_str)                                   ! first level gets extra lines
+                        write(output_i,"(1X,A)",IOSTAT=istat) &
+                            &trim(time_str)//' '//trim(output_str)
+                        if (lvl.eq.1) write(output_i,"(1X,A)",IOSTAT=istat) &
+                            &trim(header_str)
                     end if
                 end if
                 
@@ -400,7 +414,8 @@ contains
                     call write_formatted(' '//trim(time_str)//' ','',&
                         &trim(output_str),'bright blue')
                 else
-                    write(*,*) trim(time_str)//' '//trim(output_str)
+                    write(*,"(1X,A)",IOSTAT=istat) &
+                        &trim(time_str)//' '//trim(output_str)
                 end if
             end do
         end if
@@ -443,13 +458,14 @@ contains
     subroutine print_ar_1(arr)
         real(dp) :: arr(:)
         
+        ! local variables
         integer :: id
         character(len=2*max_str_ln) :: output_str                               ! holds string for a range of values
         character(len=14) :: var_str                                             ! holds string for one value, for last value
         integer :: vlen                                                         ! space for one variable + leading space
         integer :: n_free                                                       ! how much space free
-        
         logical :: str_full                                                     ! whether the output_str is full
+        integer :: istat                                                        ! status
         
         output_str = '|'
         str_full = .false.
@@ -493,7 +509,7 @@ contains
             id = id+1
         end do
         output_str = trim(output_str) // ' |'
-        write(*,*) output_str
+        write(*,*,IOSTAT=istat) output_str
     end subroutine print_ar_1
     
 #if ldebug
@@ -503,6 +519,9 @@ contains
     ! Note: only works under linux
     integer function get_mem_usage() result(mem)
         use num_vars, only: mem_usage_i
+#if ( lwith_intel && !lwith_gnu)
+        use IFPORT
+#endif
         
         ! local variables
         character(len=200):: filename=' '                                       ! name of file where memory stored
@@ -528,7 +547,7 @@ contains
         
         ! open and read memory file
         open(UNIT=mem_usage_i-1,FILE=filename,ACTION='read',IOSTAT=istat)
-        if (istat.ne.0) return
+        if (istat.eq.0) return
         do
             read (mem_usage_i-1,'(A)',IOSTAT=istat) line
             if (istat.ne.0) return

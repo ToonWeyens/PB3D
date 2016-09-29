@@ -8,6 +8,8 @@
 !------------------------------------------------------------------------------!
 module SLEPC_ops
 #include <PB3D_macros.h>
+#include <wrappers.h>
+#include <IO_resilience.h>
 ! for slepc 3.6.0:
 #include <slepc/finclude/slepcepsdef.h>
 ! for slepc 3.5.3:
@@ -1165,6 +1167,9 @@ contains
             complex(dp), allocatable :: V_triple(:,:)                           ! product of 3 V's
             character :: uplo                                                   ! upper or lower Cholesky factorization used to invert KV_2
             PetscInt :: k, m                                                    ! counters
+#if ldebug
+            integer :: istat                                                    ! status
+#endif
             
             ! initialize ierr
             ierr = 0
@@ -1186,12 +1191,12 @@ contains
             
 #if ldebug
             if (debug_calc_V_0_mod) then
-                write(*,*) 'KV_2 = '
+                write(*,*,IOSTAT=istat) 'KV_2 = '
                 
-                write(*,*) 'real part:'
-                call print_ar_2(realpart(KV_2_inv))
-                write(*,*) 'imaginary part:'
-                call print_ar_2(imagpart(KV_2_inv))
+                write(*,*,IOSTAT=istat) 'real part:'
+                call print_ar_2(rp(KV_2_inv))
+                write(*,*,IOSTAT=istat) 'imaginary part:'
+                call print_ar_2(ip(KV_2_inv))
             end if
 #endif
             
@@ -1255,47 +1260,47 @@ contains
             V_0_mod(:,:,2) = V_0_mod(:,:,2) - V_triple
 #if ldebug
         if (debug_calc_V_0_mod) then
-            write(*,*) 'KV_2^-1 = '
+            write(*,*,IOSTAT=istat) 'KV_2^-1 = '
             
-            write(*,*) 'real part:'
-            call print_ar_2(realpart(KV_2_inv))
-            write(*,*) 'imaginary part:'
-            call print_ar_2(imagpart(KV_2_inv))
+            write(*,*,IOSTAT=istat) 'real part:'
+            call print_ar_2(rp(KV_2_inv))
+            write(*,*,IOSTAT=istat) 'imaginary part:'
+            call print_ar_2(ip(KV_2_inv))
             
-            write(*,*) 'PV_1 = '
+            write(*,*,IOSTAT=istat) 'PV_1 = '
             
-            write(*,*) 'real part:'
-            call print_ar_2(realpart(PV_1_loc))
-            write(*,*) 'imaginary part:'
-            call print_ar_2(imagpart(PV_1_loc))
+            write(*,*,IOSTAT=istat) 'real part:'
+            call print_ar_2(rp(PV_1_loc))
+            write(*,*,IOSTAT=istat) 'imaginary part:'
+            call print_ar_2(ip(PV_1_loc))
             
-            write(*,*) 'vac = '
+            write(*,*,IOSTAT=istat) 'vac = '
             
-            write(*,*) 'real part:'
-            call print_ar_2(realpart(X%vac_res))
-            write(*,*) 'imaginary part:'
-            call print_ar_2(imagpart(X%vac_res))
+            write(*,*,IOSTAT=istat) 'real part:'
+            call print_ar_2(rp(X%vac_res))
+            write(*,*,IOSTAT=istat) 'imaginary part:'
+            call print_ar_2(ip(X%vac_res))
             
-            write(*,*) 'KV_1 = '
+            write(*,*,IOSTAT=istat) 'KV_1 = '
             
-            write(*,*) 'real part:'
-            call print_ar_2(realpart(KV_1_loc))
-            write(*,*) 'imaginary part:'
-            call print_ar_2(imagpart(KV_1_loc))
+            write(*,*,IOSTAT=istat) 'real part:'
+            call print_ar_2(rp(KV_1_loc))
+            write(*,*,IOSTAT=istat) 'imaginary part:'
+            call print_ar_2(ip(KV_1_loc))
             
-            write(*,*) 'PV_0_mod = '
+            write(*,*,IOSTAT=istat) 'PV_0_mod = '
             
-            write(*,*) 'real part:'
-            call print_ar_2(realpart(V_0_mod(:,:,1)))
-            write(*,*) 'imaginary part:'
-            call print_ar_2(imagpart(V_0_mod(:,:,1)))
+            write(*,*,IOSTAT=istat) 'real part:'
+            call print_ar_2(rp(V_0_mod(:,:,1)))
+            write(*,*,IOSTAT=istat) 'imaginary part:'
+            call print_ar_2(ip(V_0_mod(:,:,1)))
             
-            write(*,*) 'KV_0_mod = '
+            write(*,*,IOSTAT=istat) 'KV_0_mod = '
             
-            write(*,*) 'real part:'
-            call print_ar_2(realpart(V_0_mod(:,:,2)))
-            write(*,*) 'imaginary part:'
-            call print_ar_2(imagpart(V_0_mod(:,:,2)))
+            write(*,*,IOSTAT=istat) 'real part:'
+            call print_ar_2(rp(V_0_mod(:,:,2)))
+            write(*,*,IOSTAT=istat) 'imaginary part:'
+            call print_ar_2(ip(V_0_mod(:,:,2)))
         end if
 #endif
             
@@ -1575,10 +1580,11 @@ contains
         character(len=max_str_ln) :: format_val                                 ! format
         character(len=max_str_ln) :: format_head                                ! header
         character(len=max_str_ln) :: EV_err_str                                 ! String with information about EV error
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=2*max_str_ln) :: temp_output_str                          ! temporary output string
         integer :: output_EV_i                                                  ! file number
         integer :: n_digits                                                     ! nr. of digits for the integer number
         integer :: n_err(3)                                                     ! how many errors there were
-        character(len=max_str_ln) :: err_msg                                    ! error message
 #if ldebug
         Mat :: err_mat                                                          ! A - omega^2 B
         Vec :: err_vec                                                          ! AX - omega^2 BX
@@ -1612,7 +1618,7 @@ contains
         EV_err_str = ''
         if (rank.eq.0) then
             n_digits = min(ceiling(log10(1._dp*max_n_EV)),16)
-            format_val = '(I'//trim(i2str(n_digits))//'," ",ES23.16," ",&
+            format_val = '(A2,I'//trim(i2str(n_digits))//'," ",ES23.16," ",&
                 &ES23.16," ",ES23.16)'
             format_head = '(A'//trim(i2str(n_digits+3))//'," ",A23," ",A23," ",&
                 &A23)'
@@ -1622,29 +1628,41 @@ contains
         if (rank.eq.0) then
             full_output_name = prog_name//'_'//trim(output_name)//'_EV_R_'//&
                 &trim(i2str(rich_lvl))//'.txt'
-            open(unit=nextunit(output_EV_i),file=full_output_name,iostat=ierr)
+            rIO(open(nextunit(output_EV_i),FILE=full_output_name,&
+                &STATUS='replace',IOSTAT=ierr),ierr)
             CHCKERR('Cannot open EV output file')
         end if
         
         ! output to file
         if (rank.eq.0) then
             if (use_normalization) then
-                write(output_EV_i,'(A)') '# Eigenvalues normalized to the &
-                    &squared  Alfven frequency omega_A^2 = '
+                rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
+                    &'# Eigenvalues normalized to the squared Alfven &
+                    &frequency omega_A^2 = ',ierr)
+                CHCKERR('Failed to write')
                 select case (eq_style)
                     case (1)                                                    ! VMEC
-                        write(output_EV_i,'(A)') '#     ('//&
-                            &trim(r2str(1._dp/T_0))//' Hz)^2 = '//&
-                            &trim(r2str(1._dp/T_0**2))//' Hz^2'
+                        rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
+                            &'#     ('//trim(r2str(1._dp/T_0))//' Hz)^2 = '//&
+                            &trim(r2str(1._dp/T_0**2))//' Hz^2',ierr)
+                        CHCKERR('Failed to write')
                     case (2)                                                    ! HELENA
-                        write(output_EV_i,'(A)') '#     (HELENA normalization)'
+                        rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
+                            &'#     (HELENA normalization)',ierr)
+                        CHCKERR('Failed to write')
                 end select
             else
-                write(output_EV_i,'(A)') '# Eigenvalues'
+                rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
+                    &'# Eigenvalues',ierr)
+                CHCKERR('Failed to write')
             end if
-            write(output_EV_i,format_head) '#  I                            ', &
+            write(temp_output_str,format_head) &
+                &'#  I                            ', &
                 &'real part               ', 'imaginary part          ', &
                 &'relative precision      '
+            rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str),ierr)
+            CHCKERR('Failed to write')
         end if
         
         ! initialize helper variables
@@ -1672,12 +1690,11 @@ contains
             
             ! tests
             tol_complex = tol_SLEPC(rich_lvl)
-            if (abs(imagpart(sol%val(id))/realpart(sol%val(id))).gt.&
-                &tol_complex) then                                              ! test for unphysical complex solution
+            if (abs(ip(sol%val(id))/rp(sol%val(id))).gt.tol_complex) then       ! test for unphysical complex solution
                 EV_err_str = '# WARNING: Unphysical complex Eigenvalue!'
                 n_err(1) = n_err(1)+1
                 call remove_EV(id,max_n_EV)
-            else if (abs(realpart(sol%val(id)-EV_BC)/EV_BC).lt.tol_EV_BC) then  ! test for artificial EV due to BC
+            else if (abs(rp(sol%val(id)-EV_BC)/EV_BC).lt.tol_EV_BC) then        ! test for artificial EV due to BC
                 EV_err_str = '# WARNING: Eigenvalue probably due to BC''s &
                     &(artifically set to '//trim(r2strt(EV_BC))//')'
                 n_err(2) = n_err(2)+1
@@ -1690,20 +1707,25 @@ contains
                 exit
             end if
             
-            ! if error, comment the next line
-            if (EV_err_str.ne.'') then
-                if (rank.eq.0) write(output_EV_i,'(A)',advance='no') '# '
-            else
-                if (rank.eq.0) write(output_EV_i,'(A)',advance='no') '  '
-            end if
-            
             if (rank.eq.0) then
                 ! output EV to file
-                write(output_EV_i,format_val) id,realpart(sol_val_loc),&
-                    &imagpart(sol_val_loc),error
+                if (EV_err_str.ne.'') then
+                    write(temp_output_str,format_val) '#', id,rp(sol_val_loc),&
+                        &ip(sol_val_loc),error                                  ! if error, comment the next line
+                else
+                    write(temp_output_str,format_val) '', id,rp(sol_val_loc),&
+                        &ip(sol_val_loc),error
+                end if
+                rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str),ierr)
+                CHCKERR('Failed to write')
                 
                 ! if error, print explanation
-                if (EV_err_str.ne.'') write(output_EV_i,'(A)') trim(EV_err_str)
+                if (EV_err_str.ne.'') then
+                    rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
+                        &trim(EV_err_str),ierr)
+                    CHCKERR('Failed to write')
+                end if
             end if
             
             ! normalize Eigenvectors to make output more easily comparable

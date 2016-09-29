@@ -11,8 +11,8 @@ err_arg() {
 set_machine_ID() {
     machine_ID=0
     name=$(uname -n)
-    uname -n | grep toon &> /dev/null && machine_ID=1
-    uname -n | grep uranus &> /dev/null && machine_ID=2
+    uname -n | grep toon &> /dev/null && machine_ID=1 && on_cluster=false
+    uname -n | grep iter &> /dev/null && machine_ID=2 && on_cluster=true
     if (( machine_ID == 0 )); then
         echo -e "ERROR: invalid machine $(uname -n)"
         exit 1
@@ -40,7 +40,6 @@ init_vars() {
     n_opt_args=0
     n_inputs=1
     use_out_loc=false
-    use_n_nodes_loc=false
     use_input_mods=false
 }
 
@@ -53,8 +52,6 @@ print_opts() {
     echo -e "                       * per line a list of input parameters name and value(s)"
     echo -e "                       * format: name_1 = val_1, name_2 = val_2, ..."
     echo -e "                       * val_i can be an array, delimited by spaces"
-    echo -e "               -n [NR] specify nr. of parallel computing nodes"
-    echo -e "                       * only valid for clusters"
     echo -e "               -o [NAME] specify output name"
     echo -e "                       * default: date"
 }
@@ -82,21 +79,10 @@ catch_options() {
             i)                                                                  # input file modifications
                 use_input_mods=true
                 n_opt_args=$((n_opt_args+2))                                    # 2 arguments
-                IFS=$'\n' read -d '' -r -a input_mods < "${OPTARG%/}"
+                IFS=$'\n' input_mods=($(grep "^[^#;]" "${OPTARG%/}"))
                 n_inputs=${#input_mods[@]}
                 echo -e "Using $n_inputs input file modification(s)"
                 echo -e ""
-            ;;
-            n)                                                                  # nr. of nodes on server
-                n_nodes_loc=${OPTARG%/}
-                use_n_nodes_loc=true
-                n_opt_args=$((n_opt_args+2))                                    # 2 arguments
-                if (( machine_ID == 2 )); then                                  # uranus
-                    echo -e "Using $n_nodes_loc nodes"
-                    echo -e ""
-                else
-                    echo -e "WARNING: ignoring option -n because not in Uranus"
-                fi
             ;;
             o)                                                                  # output file
                 out_loc=${OPTARG%/}
@@ -112,12 +98,10 @@ catch_options() {
     done
 }
 
-# Setup output directory
+# Setup output name
 # input: - default directory of output
 # Note: if the -i option is used, subfolder are created for every line of the input modification file.
-setup_output_dir() {
-    home_dir=$(pwd)
-    
+setup_out() {
     [[ $# -ne 1 ]] && err_arg 1
     if [[ $use_out_loc = true ]]; then
         out=$out_loc
@@ -125,91 +109,55 @@ setup_output_dir() {
         out=$1
     fi
     [[ $use_input_mods = true ]] && out=$out/$input_i
-    
-    out_full=$home_dir/$out
-    
-    mkdir -p $out_full $out_full/Plots $out_full/Data $out_full/Scripts || {
-        # failure
-        echo "ERROR: unable to create directory $out_full/ and subdirectories"
-        echo "Do you have the correct permissions?"
-        exit 1
-    }
-}
-
-# setup pbs parameters
-setup_pbs_params() {
-    # set variables
-    n_cores_max=16
-    memory_factor=3                                                             # safety factor for requesting memory (needs to be integer)
-    
-    # get memory
-    max_tot_mem=$(grep $input_name -e 'max_tot_mem_per_proc' | tr -dc '0-9')
-    if [ -z "$max_tot_mem" ]; then
-        # default for PB3D and POST
-        max_tot_mem=6000
-    else
-        # multiply by nr. of procs.
-        max_tot_mem=$(($nr_procs*$max_tot_mem))
-    fi 
-    
-    # multiply by safety factor
-    max_tot_mem=$(($max_tot_mem*$memory_factor))
-    max_ind_mem=$((max_tot_mem/$nr_procs))
-    mem_unit='mb'
-    
-    # set nodes and procs
-    if [[ $use_n_nodes_loc = true ]]; then
-        n_nodes=$n_nodes_loc
-    else
-        n_nodes=$(($nr_procs/$n_cores_max))
-        [[ $nr_procs%$n_cores_max -gt 0 ]] && n_nodes=$(($n_nodes+1))
-    fi
-    n_cores=$(($nr_procs/$n_nodes))
-    [[ $nr_procs%$n_nodes -gt 0 ]] && n_cores=$(($n_cores+1))
 }
 
 # setup pbs script
-setup_pbs_script() {
+init_pbs_script() {
     # print into script
     cat <<- END > $prog_name.pbs
         #!/bin/sh
-        #PBS -N $out
-        #PBS -o $out_full/$prog_name.o
-        #PBS -e $out_full/$prog_name.e
+        #PBS -N $(echo $out | tr '/' '_')
+        #PBS -k oe
+        #PBS -o $out_full_loc/$prog_name.out
+        #PBS -e $out_full_loc/$prog_name.err
         #PBS -l nodes=$n_nodes:ppn=$n_cores
-        #PBS -l pvmem=$max_ind_mem$mem_unit
-        #PBS -l pmem=$max_ind_mem$mem_unit
+        #PBS -q batch
+        #PBS -l vmem=$max_tot_mem$mem_unit
+        #PBS -l mem=$max_tot_mem$mem_unit
         #PBS -l walltime=04:00:00
-        #PBS -m abe
+        #PBS -m a
         #PBS -M toon.weyens@gmail.com
-        cd $out_full
-        rm -f $prog_name.o $prog_name.e
+        
+        # set up general variables
+        . /home/ITER/weyenst/load_MPICH3.1.3.sh
+        
+        # user output
         echo "Job statistics:"
-        echo ""
-        echo "id:   \$PBS_JOBID"
-        echo "name: \$PBS_JOBNAME"
-        echo "node: \$PBS_QUEUE"
-        echo "Walltime: \$PBS_WALLTIME"
-        echo ""
-        echo "Computing nodes:"
-        echo ""
-        pbsdsh uname -n
-        echo ""
-        export PATH="/share/apps/openmpi-1.10.1/bin:/share/apps/gcc-5.2/bin:$PATH"
-        export LD_LIBRARY_PATH="$HOME/lib:/share/apps/openmpi-1.10.1/lib:/share/apps/gcc-5.2/lib64:/share/apps/gcc-5.2/lib:$LD_LIBRARY_PATH"
-        . /opt/torque/etc/openmpi-setup.sh
-        echo "$debug_opt mpirun $mpi_command" > command_$prog_name
-        $debug_opt mpirun $mpi_command
-        exit
+        echo "    ID                \$PBS_JOBID"
+        echo "    name              \$PBS_JOBNAME"
+        echo "    environment       \$PBS_ENVIRONMENT"
+        echo "    nodefile          \$PBS_NODEFILE"
+        echo "    array ID          \$PBS_ARRAYID"
+        echo "    procs             \$PBS_NP"
+        echo "    queue             \$PBS_QUEUE"
+        echo "    walltime          \$PBS_WALLTIME"
+        echo "    submit directory  \$PBS_O_WORKDIR"
+        echo "    host machine      \$PBS_O_HOST"
+        echo "    procs per node    \$PBS_NUM_PPN"
+        echo "    login name        \$PBS_O_LOGNAME"
+        echo "    home              \$PBS_O_HOME"
+        echo "" 
 END
-    
-    # trim leading whitespaces and make executable
-    sed -i 's/^ *//' $prog_name.pbs
-    chmod u+x $prog_name.pbs
+    # cut 8 leading whitespaces and make executable
+    sed -i 's/^.\{8\}//' $prog_name".pbs"
+    chmod u+x $prog_name".pbs"
 }
 
 # modify input file if requested
+# input: - input file
 modify_input_file() {
+    [[ $# -ne 1 ]] && err_arg 1
+     
     if [[ $use_input_mods = true ]]; then
         echo -e "modifications for input file $input_i/$n_inputs:"
         input_mod_i=${input_mods[$input_i-1]}
@@ -226,38 +174,10 @@ modify_input_file() {
             val=$(echo $j | cut --complement -d = -f 1 )
             
             # change input file variable
-            change_input_var "$input_name" "$var_name" "$val"
+            change_input_var "$1" "$var_name" "$val"
         done
     fi
     echo ""
-}
-
-# run mpi command, depending on machine ID
-run_mpi_command() {
-    case $machine_ID in
-        1)                                                                          # laptop
-            echo "$debug_opt mpirun -np $nr_procs $mpi_command" > command_$prog_name
-            $debug_opt mpirun -np $nr_procs $mpi_command
-        ;;
-        2)                                                                          # uranus
-            # setup pbs parameters
-            setup_pbs_params
-            
-            # user output
-            echo "creating pbs script with"
-            echo "    $n_nodes node(s) and $n_cores core(s) per node"
-            echo "    $max_ind_mem$mem_unit memory per process"
-            echo ""
-            echo "job:"
-            echo -e "    \c"
-            
-            # setup pbs script
-            setup_pbs_script
-            
-            # submit
-            qsub $prog_name.pbs
-        ;;
-    esac
 }
 
 # change an input variable of a PB3D or POST input file.
@@ -288,5 +208,5 @@ finish() {
     echo ""
     echo "Leaving directory $out_full/"
     echo ""
-    cd $home_dir
+    cd $home
 }

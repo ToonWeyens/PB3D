@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module eq_ops
 #include <PB3D_macros.h>
+#include <IO_resilience.h>
     use str_utilities
     use output_ops
     use messages
@@ -446,10 +447,9 @@ contains
                     read(*,*) pert_file_name
                     
                     ! open
-                    open(unit=nextunit(pert_file_i),file=trim(pert_file_name),&
-                        &iostat=ierr,status='old')
-                    err_msg = 'Could not open file '//&
-                        &trim(pert_file_name)
+                    rIO(open(nextunit(pert_file_i),FILE=trim(pert_file_name),&
+                        &IOSTAT=ierr,STATUS='old'),ierr)
+                    err_msg = 'Could not open file '//trim(pert_file_name)
                     CHCKERR(err_msg)
                     call writo('Parsing "'//trim(pert_file_name)//'"')
                     
@@ -457,7 +457,9 @@ contains
                     istat = 0
                     tot_nr_pert = 0
                     do while (istat.eq.0)
-                        read(pert_file_i,*,IOSTAT=istat) loc_data_char          ! read first character of data
+                        ! read first character of data
+                        rIO2(read(pert_file_i,*,IOSTAT=istat) loc_data_char,&
+                            &istat)
                         if (istat.eq.0 .and. loc_data_char.ne.'#') then         ! exclude comment lines
                             tot_nr_pert = tot_nr_pert + 1
                         end if
@@ -486,12 +488,20 @@ contains
                 do jd = 1,tot_nr_pert
                     if (pert_from_file) then
                         do while (loc_data_char.eq.'#')
-                            read(pert_file_i,*,IOSTAT=ierr) loc_data_char       ! read first character of data
+                            ! read first character of data
+                            rIO2(read(pert_file_i,*,IOSTAT=ierr) loc_data_char,&
+                                &ierr)
                             CHCKERR(err_msg)
                             if (loc_data_char.ne.'#') then                      ! exclude comment lines
                                 backspace(UNIT=pert_file_i)                     ! go back one line
-                                read(pert_file_i,*,IOSTAT=ierr) &
-                                    &n_loc, m_loc, delta_loc
+                                rIO2(read(pert_file_i,*,IOSTAT=ierr) n_loc, &
+                                    &ierr)
+                                CHCKERR(err_msg)
+                                rIO2(read(pert_file_i,*,IOSTAT=ierr) m_loc, &
+                                    &ierr)
+                                CHCKERR(err_msg)
+                                rIO2(read(pert_file_i,*,IOSTAT=ierr) delta_loc, &
+                                    &ierr)
                                 CHCKERR(err_msg)
                             end if
                         end do
@@ -957,7 +967,9 @@ contains
             call lvl_ud(1)
             
             ! output to VMEC input file
-            open(unit=nextunit(file_i),file=trim(file_name))
+            rIO(open(nextunit(file_i),STATUS='replace',FILE=trim(file_name),&
+                &IOSTAT=ierr),ierr)
+            CHCKERR('Failed to open file')
             
             write(file_i,"(A)") "!----- General Parameters -----"
             write(file_i,"(A)") "&INDATA"
@@ -1019,12 +1031,15 @@ contains
             write(file_i,"(A)") ""
             
             write(file_i,"(A)") "!----- Boundary Shape Parameters -----"
-            call print_mode_numbers(file_i,B_F(:,0,:,:),0)
+            ierr = print_mode_numbers(file_i,B_F(:,0,:,:),0)
+            CHCKERR('')
             if (pert_eq) then
                 do jd = 2,nr_n
-                    call print_mode_numbers(file_i,B_F(:,-(jd-1),:,:),&
+                    ierr = print_mode_numbers(file_i,B_F(:,-(jd-1),:,:),&
                         &-n_pert(jd))
-                    call print_mode_numbers(file_i,B_F(:,jd-1,:,:),n_pert(jd))
+                    CHCKERR('')
+                    ierr = print_mode_numbers(file_i,B_F(:,jd-1,:,:),n_pert(jd))
+                    CHCKERR('')
                 end do
             end if
             write(file_i,"(A,ES23.16)") "RAXIS = ", B_F(1,0,1,1)
@@ -1192,7 +1207,9 @@ contains
         end function nufft
         
         ! print the mode numbers
-        subroutine print_mode_numbers(file_i,B,n_pert)
+        integer function print_mode_numbers(file_i,B,n_pert) result(ierr)
+            character(*), parameter :: rout_name = 'print_mode_numbers'
+            
             ! input / output
             integer, intent(in) :: file_i                                       ! file to output flux quantities for VMEC export
             real(dp), intent(in) :: B(:,:,:)                                    ! cosine and sine of fourier series for R and Z
@@ -1203,6 +1220,10 @@ contains
             integer :: kd                                                       ! counter
             integer :: m                                                        ! counter
             character :: var_name                                               ! name of variables (R or Z)
+            character(len=2*max_str_ln) :: temp_output_str                      ! temporary output string
+            
+            ! initialize ierr
+            ierr = 0
             
             do kd = 1,2                                                         ! R and Z
                 select case (kd)
@@ -1216,14 +1237,18 @@ contains
                 
                 ! output to file
                 do m = 0,min(size(B,1)-1,max_n_B_output)-1
-                    write(file_i,"(' ',A,'BC(',I4,', ',I4,') = ',ES23.16,'   ',&
-                        &A,'BS(',I4,', ',I4,') = ',ES23.16)") &
+                    write(temp_output_str,"(' ',A,'BC(',I4,', ',I4,') = ',&
+                        &ES23.16,'   ',A,'BS(',I4,', ',I4,') = ',ES23.16)") &
                         &var_name,n_pert,m,B(m+1,1,kd), &
                         &var_name,n_pert,m,B(m+1,2,kd)
+                    rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
+                        &trim(temp_output_str),ierr)
+                    CHCKERR('Failed to write')
                 end do
-                write(file_i,"(A)") ""
+                rIO(write(UNIT=file_i,FMT="(A)",IOSTAT=ierr) "",ierr)
+                CHCKERR('Failed to write')
             end do
-        end subroutine print_mode_numbers
+        end function print_mode_numbers
     end function calc_eq_1
     integer function calc_eq_2(grid_eq,eq_1,eq_2,dealloc_vars) result(ierr)     ! metric version
         use num_vars, only: eq_style

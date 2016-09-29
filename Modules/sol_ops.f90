@@ -4,6 +4,8 @@
 !------------------------------------------------------------------------------!
 module sol_ops
 #include <PB3D_macros.h>
+#include <wrappers.h>
+#include <IO_resilience.h>
     use str_utilities
     use output_ops
     use messages
@@ -58,7 +60,7 @@ contains
             plot_title = 'final Eigenvalues omega^2 [log]'
             plot_name = 'Eigenvalues'
             call print_ex_2D(plot_title,plot_name,&
-                &log10(abs(realpart(sol%val(1:n_sol_found)))),draw=.false.)
+                &log10(abs(rp(sol%val(1:n_sol_found)))),draw=.false.)
             call draw_ex([plot_title],plot_name,1,1,.false.,ex_plot_style=1)
             
             ! Last Eigenvalues: unstable range
@@ -66,7 +68,7 @@ contains
                 plot_title = 'final unstable Eigenvalues omega^2'
                 plot_name = 'Eigenvalues_unstable'
                 call print_ex_2D(plot_title,plot_name,&
-                    &realpart(sol%val(1:last_unstable_id)),&
+                    &rp(sol%val(1:last_unstable_id)),&
                     &x=[(id*1._dp,id=1,last_unstable_id)],draw=.false.)
                 call draw_ex([plot_title],plot_name,1,1,.false.,ex_plot_style=1)
             end if
@@ -76,7 +78,7 @@ contains
                 plot_title = 'final stable Eigenvalues omega^2'
                 plot_name = 'Eigenvalues_stable'
                 call print_ex_2D(plot_title,plot_name,&
-                    &realpart(sol%val(last_unstable_id+1:n_sol_found)),&
+                    &rp(sol%val(last_unstable_id+1:n_sol_found)),&
                     &x=[(id*1._dp,id=last_unstable_id+1,n_sol_found)],&
                     &draw=.false.)
                 call draw_ex([plot_title],plot_name,1,1,.false.,ex_plot_style=1)
@@ -192,7 +194,7 @@ contains
         ! if the  Eigenvalue is negative,  the Eigenfunction explodes,  so limit
         ! n_t(2) to 1. If it is positive, the Eigenfunction oscilates, so choose
         ! n_t(2) = 8 for 2 whole periods
-        if (realpart(sol%val(X_id)).lt.0) then                                  ! exploding, unstable
+        if (rp(sol%val(X_id)).lt.0) then                                        ! exploding, unstable
             n_t(1) = 1                                                          ! 1 point per quarter period
             n_t(2) = 1                                                          ! 1 quarter period
         else                                                                    ! oscillating, stable
@@ -233,7 +235,7 @@ contains
         ! calculate omega =  sqrt(sol_val) and make sure to  select the decaying
         ! solution
         omega = sqrt(sol%val(X_id))
-        if (imagpart(omega).gt.0) omega = - omega                               ! exploding solution, not the decaying one
+        if (ip(omega).gt.0) omega = - omega                                     ! exploding solution, not the decaying one
         
         ! calculate  the function  to  plot: normal  and  geodesic component  of
         ! perturbation X_F
@@ -308,20 +310,20 @@ contains
             
             ! plotting real part
             call plot_HDF5('RE X','TEST_RE_X_'//&
-                &trim(i2str(X_id)),realpart(f_plot(:,:,:,1,1)),&
+                &trim(i2str(X_id)),rp(f_plot(:,:,:,1,1)),&
                 &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1])
-            call plot_diff_HDF5(realpart(f_plot(:,:,:,1,2)),&
-                &realpart(U_inf(:,:,:,1)),'TEST_RE_U_inf_'//trim(i2str(X_id)),&
+            call plot_diff_HDF5(rp(f_plot(:,:,:,1,2)),&
+                &rp(U_inf(:,:,:,1)),'TEST_RE_U_inf_'//trim(i2str(X_id)),&
                 &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1],&
                 &description='To test whether U approximates the ideal &
                 &ballooning result',output_message=.true.)
             
             ! plotting imaginary part
             call plot_HDF5('IM X','TEST_IM_X_'//&
-                &trim(i2str(X_id)),imagpart(f_plot(:,:,:,1,1)),&
+                &trim(i2str(X_id)),ip(f_plot(:,:,:,1,1)),&
                 &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1])
-            call plot_diff_HDF5(imagpart(f_plot(:,:,:,1,2)),&
-                &imagpart(U_inf(:,:,:,1)),'TEST_IM_U_inf_'//trim(i2str(X_id)),&
+            call plot_diff_HDF5(ip(f_plot(:,:,:,1,2)),&
+                &ip(U_inf(:,:,:,1)),'TEST_IM_U_inf_'//trim(i2str(X_id)),&
                 &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1],&
                 &description='To test whether U approximates the ideal &
                 &ballooning result',output_message=.true.)
@@ -336,12 +338,12 @@ contains
         file_name(1) = trim(i2str(X_id))//'_sol_X'
         description(1) = 'Normal component of solution vector X &
             &for Eigenvalue '//trim(i2str(X_id))//' with omega = '//&
-            &trim(r2str(realpart(omega)))
+            &trim(r2str(rp(omega)))
         var_name(2) = 'Geodesic comp. of EV'
         file_name(2) = trim(i2str(X_id))//'_sol_U'
         description(2) = 'Geodesic compoment of solution vector U &
             &for Eigenvalue '//trim(i2str(X_id))//' with omega = '//&
-            &trim(r2str(realpart(omega)))
+            &trim(r2str(rp(omega)))
         
         ! set up temporary variable for phase
         allocate(f_plot_phase(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
@@ -349,18 +351,18 @@ contains
         
         do kd = 1,2
             call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_RE',&
-                &realpart(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
+                &rp(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
                 &tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
                 &Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
                 &description=description(kd))
             call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_IM',&
-                &imagpart(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
+                &ip(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
                 &tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
                 &Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
                 &description=description(kd))
             f_plot_phase = atan2(&
-                &imagpart(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
-                &realpart(f_plot(:,:,norm_id(1):norm_id(2),:,kd)))
+                &ip(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
+                &rp(f_plot(:,:,norm_id(1):norm_id(2),:,kd)))
             where (f_plot_phase.lt.0) f_plot_phase = f_plot_phase + 2*pi
             call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_PH',&
                 &f_plot_phase,tot_dim=plot_dim,loc_offset=plot_offset,&
@@ -455,7 +457,7 @@ contains
                 
                 ! print real amplitude of harmonics of eigenvector at midplane
                 call print_ex_2D(plot_title(1:1),file_name,&
-                    &realpart(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
+                    &rp(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
                 
                 ! plot in file
                 call draw_ex(plot_title(1:1),file_name,n_mod_tot,1,&
@@ -469,7 +471,7 @@ contains
                 
                 ! plot using HDF5
                 call plot_HDF5(trim(plot_title(1)),trim(file_name),&
-                    &reshape(realpart(transpose(sol_vec_ser_tot)),&
+                    &reshape(rp(transpose(sol_vec_ser_tot)),&
                     &[1,grid_sol%n(3),n_mod_tot]),y=reshape(x_plot,&
                     &[1,grid_sol%n(3),n_mod_tot]))
             end if
@@ -486,7 +488,7 @@ contains
                 
                 ! print imag amplitude of harmonics of eigenvector at midplane
                 call print_ex_2D(plot_title(1:1),file_name,&
-                    &imagpart(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
+                    &ip(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
                 
                 ! plot in file
                 call draw_ex(plot_title(1:1),file_name,n_mod_tot,1,.false.,&
@@ -502,7 +504,7 @@ contains
                 
                 ! plot using HDF5
                 call plot_HDF5(trim(plot_title(1)),trim(file_name),&
-                    &reshape(imagpart(transpose(sol_vec_ser_tot)),&
+                    &reshape(ip(transpose(sol_vec_ser_tot)),&
                     &[1,grid_sol%n(3),n_mod_tot]),y=reshape(x_plot,&
                     &[1,grid_sol%n(3),n_mod_tot]))
             end if
@@ -519,8 +521,8 @@ contains
                 
                 ! set up phase
                 allocate(sol_vec_phase(grid_sol%n(3),n_mod_tot))
-                sol_vec_phase = atan2(imagpart(transpose(sol_vec_ser_tot)),&
-                    &realpart(transpose(sol_vec_ser_tot)))
+                sol_vec_phase = atan2(ip(transpose(sol_vec_ser_tot)),&
+                    &rp(transpose(sol_vec_ser_tot)))
                 where (sol_vec_phase.lt.0) sol_vec_phase = sol_vec_phase + 2*pi
                 
                 ! print imag amplitude of harmonics of eigenvector at midplane
@@ -566,10 +568,10 @@ contains
                 ! set up maximum of each mode at midplane
                 ld_loc = 0
                 do ld = 1,n_mod_tot
-                    if (maxval(abs(realpart(sol_vec_ser_tot(ld,:)))).gt.0) then ! mode resonates somewhere
+                    if (maxval(abs(rp(sol_vec_ser_tot(ld,:)))).gt.0) then       ! mode resonates somewhere
                         ld_loc = ld_loc + 1
                         x_plot(ld_loc,1) = grid_sol%r_F(&
-                            &maxloc(abs(realpart(sol_vec_ser_tot(ld,:))),1))
+                            &maxloc(abs(rp(sol_vec_ser_tot(ld,:))),1))
                         y_plot(ld_loc,1) = ld
                     end if
                 end do
@@ -670,6 +672,7 @@ contains
         character(len=max_str_ln) :: file_name                                  ! name of file
         character(len=max_str_ln) :: description                                ! description
         character(len=max_str_ln) :: format_val                                 ! format
+        character(len=2*max_str_ln) :: temp_output_str                          ! temporary output string
         
         ! initialize ierr
         ierr = 0
@@ -686,7 +689,7 @@ contains
         
         ! set sol_val_comp if wanted
         if (present(sol_val_comp)) then
-            sol_val_comp(:,1) = complex(X_id*1._dp,0)
+            sol_val_comp(:,1) = X_id*1._dp
             sol_val_comp(:,2) = [sol%val(X_id),sum(E_pot_int)/sum(E_kin_int)]
         end if
         
@@ -709,39 +712,59 @@ contains
                     &ES23.16," ",ES23.16," ",ES23.16," ",ES23.16," ",ES23.16)'
                 
                 ! write header
-                write(log_i,'(A)') '# Eigenvalue '//trim(i2str(X_id))
+                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &'# Eigenvalue '//trim(i2str(X_id)),ierr)
+                CHCKERR('Failed to write')
                 
                 ! write values
-                write(log_i,format_val) &
-                    &realpart(sol%val(X_id)),&
-                    &realpart(sum(E_pot_int)/sum(E_kin_int)),&
-                    &realpart(sum(E_pot_int)),&
-                    &realpart(sum(E_kin_int))
-                write(log_i,format_val) &
-                    &imagpart(sol%val(X_id)),&
-                    &imagpart(sum(E_pot_int)/sum(E_kin_int)), &
-                    &imagpart(sum(E_pot_int)),&
-                    &imagpart(sum(E_kin_int))
-                write(log_i,format_val) &
-                    &realpart(E_kin_int(1)),&
-                    &realpart(E_kin_int(2))
-                write(log_i,format_val) &
-                    &imagpart(E_kin_int(1)),&
-                    &imagpart(E_kin_int(2))
-                write(log_i,format_val) &
-                    &realpart(E_pot_int(1)),&
-                    &realpart(E_pot_int(2)),&
-                    &realpart(E_pot_int(3)),&
-                    &realpart(E_pot_int(4)),&
-                    &realpart(E_pot_int(5)),&
-                    &realpart(E_pot_int(6))
-                write(log_i,format_val) &
-                    &imagpart(E_pot_int(1)),&
-                    &imagpart(E_pot_int(2)),&
-                    &imagpart(E_pot_int(3)),&
-                    &imagpart(E_pot_int(4)),&
-                    &imagpart(E_pot_int(5)),&
-                    &imagpart(E_pot_int(6))
+                write(temp_output_str,format_val) &
+                    &rp(sol%val(X_id)),&
+                    &rp(sum(E_pot_int)/sum(E_kin_int)),&
+                    &rp(sum(E_pot_int)),&
+                    &rp(sum(E_kin_int))
+                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str),ierr)
+                CHCKERR('Failed to write')
+                write(temp_output_str,format_val) &
+                    &ip(sol%val(X_id)),&
+                    &ip(sum(E_pot_int)/sum(E_kin_int)), &
+                    &ip(sum(E_pot_int)),&
+                    &ip(sum(E_kin_int))
+                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str),ierr)
+                CHCKERR('Failed to write')
+                write(temp_output_str,format_val) &
+                    &rp(E_kin_int(1)),&
+                    &rp(E_kin_int(2))
+                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str),ierr)
+                CHCKERR('Failed to write')
+                write(temp_output_str,format_val) &
+                    &ip(E_kin_int(1)),&
+                    &ip(E_kin_int(2))
+                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str),ierr)
+                CHCKERR('Failed to write')
+                write(temp_output_str,format_val) &
+                    &rp(E_pot_int(1)),&
+                    &rp(E_pot_int(2)),&
+                    &rp(E_pot_int(3)),&
+                    &rp(E_pot_int(4)),&
+                    &rp(E_pot_int(5)),&
+                    &rp(E_pot_int(6))
+                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str),ierr)
+                CHCKERR('Failed to write')
+                write(temp_output_str,format_val) &
+                    &ip(E_pot_int(1)),&
+                    &ip(E_pot_int(2)),&
+                    &ip(E_pot_int(3)),&
+                    &ip(E_pot_int(4)),&
+                    &ip(E_pot_int(5)),&
+                    &ip(E_pot_int(6))
+                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str),ierr)
+                CHCKERR('Failed to write')
             end if
             
             call lvl_ud(-1)
@@ -805,11 +828,11 @@ contains
             Y_tot_trim => Y_tot(:,:,:,1:2)
             Z_tot_trim => Z_tot(:,:,:,1:2)
             call plot_HDF5(var_names_kin,trim(file_name)//'_RE',&
-                &realpart(E_kin_trim),tot_dim=[tot_dim,2],&
+                &rp(E_kin_trim),tot_dim=[tot_dim,2],&
                 &loc_offset=[loc_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
                 &Z=Z_tot_trim,description=description)
             call plot_HDF5(var_names_kin,trim(file_name)//'_IM',&
-                &imagpart(E_kin_trim),tot_dim=[tot_dim,2],&
+                &ip(E_kin_trim),tot_dim=[tot_dim,2],&
                 &loc_offset=[loc_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
                 &Z=Z_tot_trim,description=description)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
@@ -821,11 +844,11 @@ contains
             Y_tot_trim => Y_tot(:,:,:,1:6)
             Z_tot_trim => Z_tot(:,:,:,1:6)
             call plot_HDF5(var_names_pot,trim(file_name)//'_RE',&
-                &realpart(E_pot_trim),tot_dim=[tot_dim,6],&
+                &rp(E_pot_trim),tot_dim=[tot_dim,6],&
                 &loc_offset=[loc_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
                 &Z=Z_tot_trim,description=description)
             call plot_HDF5(var_names_pot,trim(file_name)//'_IM',&
-                &imagpart(E_pot_trim),tot_dim=[tot_dim,6],&
+                &ip(E_pot_trim),tot_dim=[tot_dim,6],&
                 &loc_offset=[loc_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
                 &Z=Z_tot_trim,description=description)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
@@ -838,12 +861,12 @@ contains
             X_tot_trim => X_tot(:,:,:,1:2)
             Y_tot_trim => Y_tot(:,:,:,1:2)
             Z_tot_trim => Z_tot(:,:,:,1:2)
-            call plot_HDF5(var_names,trim(file_name)//'_RE',realpart(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_RE',rp(reshape(&
                 &[sum(E_pot_trim(:,:,:,1:2),4),sum(E_pot_trim(:,:,:,3:6),4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
                 &tot_dim=[tot_dim,2],loc_offset=[loc_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,description=description)
-            call plot_HDF5(var_names,trim(file_name)//'_IM',imagpart(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_IM',ip(reshape(&
                 &[sum(E_pot_trim(:,:,:,1:2),4),sum(E_pot_trim(:,:,:,3:6),4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
                 &tot_dim=[tot_dim,2],loc_offset=[loc_offset,0],&
@@ -854,12 +877,12 @@ contains
             var_names(2) = '2. kinetic energy'
             file_name = trim(i2str(X_id))//'_E'
             description = 'total potential and kinetic energy'
-            call plot_HDF5(var_names,trim(file_name)//'_RE',realpart(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_RE',rp(reshape(&
                 &[sum(E_pot_trim,4),sum(E_kin_trim,4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
                 &tot_dim=[tot_dim,2],loc_offset=[loc_offset,0],X=X_tot_trim,&
                 &Y=Y_tot_trim,Z=Z_tot_trim,description=description)
-            call plot_HDF5(var_names,trim(file_name)//'_IM',imagpart(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_IM',ip(reshape(&
                 &[sum(E_pot_trim,4),sum(E_kin_trim,4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
                 &tot_dim=[tot_dim,2],loc_offset=[loc_offset,0],X=X_tot_trim,&
@@ -1053,7 +1076,7 @@ contains
             ! alternative formulation for E_pot, always real
             E_pot(:,:,:,3) = (-2*D2p*kappa_n+sigma*S)*&
                 &XUQ(:,:,:,1)*conjg(XUQ(:,:,:,1))
-            E_pot(:,:,:,4) = -sigma/J*2*realpart(XUQ(:,:,:,1)*conjg(DU))
+            E_pot(:,:,:,4) = -sigma/J*2*rp(XUQ(:,:,:,1)*conjg(DU))
             E_pot(:,:,:,5:6) = 0._dp
             
             call lvl_ud(-1)
@@ -1065,7 +1088,7 @@ contains
             call lvl_ud(1)
             
             call plot_HDF5('X_norm', 'TEST_X_norm_POST_'//trim(i2str(X_id)),&
-                &realpart(XUQ(:,:,:,1)*conjg(XUQ(:,:,:,1))),&
+                &rp(XUQ(:,:,:,1)*conjg(XUQ(:,:,:,1))),&
                 &tot_dim=grid_X%n,loc_offset=[0,0,grid_X%i_min-1])
             
             call lvl_ud(-1)
@@ -1093,18 +1116,18 @@ contains
             
             ! plot real part
             call plot_HDF5('RE U','TEST_RE_U_'//&
-                &trim(i2str(X_id)),realpart(XUQ(:,:,:,2)),grid_X%n,&
+                &trim(i2str(X_id)),rp(XUQ(:,:,:,2)),grid_X%n,&
                 &[0,0,grid_sol%i_min-1])
-            call plot_diff_HDF5(realpart(DU),realpart(DU_ALT),&
+            call plot_diff_HDF5(rp(DU),rp(DU_ALT),&
                 &'TEST_RE_DU_'//trim(i2str(X_id)),grid_X%n,&
                 &[0,0,grid_sol%i_min-1],description='To test whether DU is &
                 &parallel derivative of U',output_message=.true.)
             
             ! plot imaginary part
             call plot_HDF5('IM U','TEST_IM_U_'//&
-                &trim(i2str(X_id)),imagpart(XUQ(:,:,:,2)),grid_X%n,&
+                &trim(i2str(X_id)),ip(XUQ(:,:,:,2)),grid_X%n,&
                 &[0,0,grid_sol%i_min-1])
-            call plot_diff_HDF5(imagpart(DU),imagpart(DU_ALT),&
+            call plot_diff_HDF5(ip(DU),ip(DU_ALT),&
                 &'TEST_IM_DU_'//trim(i2str(X_id)),grid_X%n,&
                 &[0,0,grid_sol%i_min-1],description='To test whether DU is &
                 &parallel derivative of U',output_message=.true.)
@@ -1215,7 +1238,7 @@ contains
             sol_1D_loc%loc_i_min = [1]
             sol_1D_loc%loc_i_max = [size(sol%val)]
             allocate(sol_1D_loc%p(size(sol%val)))
-            sol_1D_loc%p = realpart(sol%val)
+            sol_1D_loc%p = rp(sol%val)
             
             ! IM_sol_val
             sol_1D_loc => sol_1D(id); id = id+1
@@ -1227,7 +1250,7 @@ contains
             sol_1D_loc%loc_i_min = [1]
             sol_1D_loc%loc_i_max = [size(sol%val)]
             allocate(sol_1D_loc%p(size(sol%val)))
-            sol_1D_loc%p = imagpart(sol%val)
+            sol_1D_loc%p = ip(sol%val)
             
             ! RE_sol_vec
             sol_1D_loc => sol_1D(id); id = id+1
@@ -1240,7 +1263,7 @@ contains
             sol_1D_loc%tot_i_max = [sol%n_mod,grid_trim%n(3),size(sol%vec,3)]
             allocate(sol_1D_loc%p(size(sol%vec(:,norm_id(1):norm_id(2),:))))
             sol_1D_loc%p = &
-                &reshape(realpart(sol%vec(:,norm_id(1):norm_id(2),:)),&
+                &reshape(rp(sol%vec(:,norm_id(1):norm_id(2),:)),&
                 &[size(sol%vec(:,norm_id(1):norm_id(2),:))])
             
             ! IM_sol_vec
@@ -1254,7 +1277,7 @@ contains
             sol_1D_loc%tot_i_max = [sol%n_mod,grid_trim%n(3),size(sol%vec,3)]
             allocate(sol_1D_loc%p(size(sol%vec(:,norm_id(1):norm_id(2),:))))
             sol_1D_loc%p = &
-                &reshape(imagpart(sol%vec(:,norm_id(1):norm_id(2),:)),&
+                &reshape(ip(sol%vec(:,norm_id(1):norm_id(2),:)),&
                 &[size(sol%vec(:,norm_id(1):norm_id(2),:))])
             
             ! write

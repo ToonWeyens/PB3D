@@ -100,9 +100,12 @@ contains
         integer(HSIZE_T) :: chunk_dims(1)                                       ! chunk dimensions
         integer(SIZE_T) :: chunk_nslots                                         ! number of chunk slots in the raw data chunk  cache hash table.
         integer(SIZE_T) :: chunk_nbytes                                         ! total size of the raw data chunk cache, in bytes. 
-        real(dp) :: max_chunk_size = 4.E9_dp / sizeof(1._dp)                    ! maximum 4 GB (from manual)
+        real(dp) :: max_chunk_size                                              ! maximum 4 GB (from manual)
         real :: chunk_w0                                                        ! preemption policy.
         character(len=max_str_ln) :: err_msg                                    ! error message
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -131,11 +134,11 @@ contains
         end do
         
         if (debug_set_1D_vars) then
-            write(*,*) rank, 'in set_1D_vars:'
-            write(*,*) rank, 'lim_tot_lo = ', lim_tot(:,1)
-            write(*,*) rank, 'lim_tot_hi = ', lim_tot(:,2)
-            write(*,*) rank, 'lim_loc_lo = ', lim_loc(:,1)
-            write(*,*) rank, 'lim_loc_hi = ', lim_loc(:,2)
+            write(*,*,IOSTAT=istat) rank, 'in set_1D_vars:'
+            write(*,*,IOSTAT=istat) rank, 'lim_tot_lo = ', lim_tot(:,1)
+            write(*,*,IOSTAT=istat) rank, 'lim_tot_hi = ', lim_tot(:,2)
+            write(*,*,IOSTAT=istat) rank, 'lim_loc_lo = ', lim_loc(:,1)
+            write(*,*,IOSTAT=istat) rank, 'lim_loc_hi = ', lim_loc(:,2)
         end if
 #endif
         
@@ -164,8 +167,9 @@ contains
                     
 #if ldebug
                     if (debug_set_1D_vars) then
-                        write(*,*) rank, 'dimension', id, 'of', n_dims
-                        write(*,*) rank, 'n_prod = ', n_prod
+                        write(*,*,IOSTAT=istat) rank, 'dimension', id, 'of', &
+                            &n_dims
+                        write(*,*,IOSTAT=istat) rank, 'n_prod = ', n_prod
                     end if
 #endif
                     
@@ -179,8 +183,8 @@ contains
                     
 #if ldebug
                     if (debug_set_1D_vars) then
-                        write(*,*) rank, 'block, offset, stride, count = ', &
-                            &block, offset, stride, count
+                        write(*,*,IOSTAT=istat) rank, 'block, offset, stride, &
+                            &count = ', block, offset, stride, count
                     end if
 #endif
                     
@@ -190,17 +194,19 @@ contains
                 end if
 #if ldebug
                 if (debug_set_1D_vars) then
-                    write(*,*) rank, 'total range DIFFERS from local'
+                    write(*,*,IOSTAT=istat) rank, 'total range DIFFERS from &
+                        &local'
                 end if
             else
                 if (debug_set_1D_vars) then
-                    write(*,*) rank, 'total range EQUAL to local'
+                    write(*,*,IOSTAT=istat) rank, 'total range EQUAL to local'
                 end if
 #endif
             end if
         end do
         
         ! set chunk property list if requested
+        max_chunk_size = 4.E9_dp / sizeof(1._dp)                                ! maximum 4 GB (from manual)
         if (present(c_plist_id) .or. present(a_plist_id)) then
             ! set up variables
             chunk_size = &

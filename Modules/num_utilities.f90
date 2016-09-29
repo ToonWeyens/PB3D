@@ -191,11 +191,11 @@ contains
     !   (order+dims-1,order) = (order+dims-1)!/(order!(dims-1)!)
     ! The number  of dimensions is taken to  be 3 by default but  can be changed
     ! optionally.
-    recursive function derivs(order,dims) result(derivs_res)
+    recursive subroutine calc_derivs_of_order(res,order,dims)
         ! input / output
+        integer, intent(inout), allocatable :: res(:,:)                         ! array of all unique derivatives
         integer, intent(in) :: order                                            ! order of derivative
         integer, intent(in), optional :: dims                                   ! nr. of dimensions
-        integer, allocatable :: derivs_res(:,:)                                 ! array of all unique derivatives
         
         ! local variables
         integer :: id                                                           ! counter
@@ -208,7 +208,8 @@ contains
         if (present(dims)) dims_loc = dims
         
         ! allocate resulting derivs
-        allocate(derivs_res(&
+        if (allocated(res)) deallocate(res)
+        allocate(res(&
             &dims_loc,fac(order+dims_loc-1)/(fac(order)*fac(dims_loc-1))))
         
         ! iterate over the first index if order greater than 0
@@ -218,18 +219,27 @@ contains
                 ! calculate  the  derivs  of  local  subblock  if  more  than  1
                 ! dimension
                 if (dims_loc.gt.1) then
-                    derivs_loc = derivs(order-id,dims_loc-1)                    ! calculate iteratively subblock
-                    derivs_res(1,id_tot+1:id_tot+size(derivs_loc,2)) = id       ! set first dimension
-                    derivs_res(2:dims_loc,id_tot+1:id_tot+size(derivs_loc,2)) &
+                    call calc_derivs_of_order(derivs_loc,order-id,dims_loc-1)   ! calculate iteratively subblock
+                    res(1,id_tot+1:id_tot+size(derivs_loc,2)) = id              ! set first dimension
+                    res(2:dims_loc,id_tot+1:id_tot+size(derivs_loc,2)) &
                         &= derivs_loc                                           ! set next dimensions
                     id_tot = id_tot+size(derivs_loc,2)
                 else 
-                    derivs_res = order
+                    res = order
                 end if
             end do
         else
-            derivs_res = 0
+            res = 0
         end if
+    end subroutine calc_derivs_of_order
+    function derivs(order,dims) result(res)
+        ! input / output
+        integer, intent(in) :: order                                            ! order of derivative
+        integer, intent(in), optional :: dims                                   ! nr. of dimensions
+        integer, allocatable :: res(:,:)                                        ! array of all unique derivatives
+        
+        ! call the subroutine
+        call calc_derivs_of_order(res,order,dims)
     end function derivs
 
     ! numerically interpolates a function that is given on either FM to HM or to
@@ -1620,6 +1630,9 @@ contains
         integer, allocatable :: ipiv(:)                                         ! pivot indices
         integer :: id, jd                                                       ! counter
         integer :: fac                                                          ! (i-1)!
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -1666,10 +1679,10 @@ contains
         
 #if ldebug
         if (debug_calc_coeff_fin_diff) then
-            write(*,*) 'solving system of linear equations A x = b'
-            write(*,*) 'with A = '
+            write(*,*,IOSTAT=istat) 'solving system of linear equations A x = b'
+            write(*,*,IOSTAT=istat) 'with A = '
             call print_ar_2(A)
-            write(*,*) 'and b = '
+            write(*,*,IOSTAT=istat) 'and b = '
             call print_ar_1(b)
         end if
 #endif
@@ -1684,7 +1697,7 @@ contains
         
 #if ldebug
         if (debug_calc_coeff_fin_diff) then
-            write(*,*) 'solution x = '
+            write(*,*,IOSTAT=istat) 'solution x = '
             call print_ar_1(coeff)
         end if
 #endif
@@ -1940,7 +1953,7 @@ contains
                     temp = a(id)
                     a(id) = a(id+1)
                     a(id+1) = temp
-                    piv(id:id+1) = piv(id+1:id:-1)
+                    if (present(piv)) piv(id:id+1) = piv(id+1:id:-1)
                     swapped = .true.
                 end if
             end do

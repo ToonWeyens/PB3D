@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module sol_utilities
 #include <PB3D_macros.h>
+#include <wrappers.h>
     use str_utilities
     use output_ops
     use messages
@@ -130,8 +131,7 @@ contains
         
         ! set up normalized sqrt(sol_val)
         sqrt_sol_val_norm = sqrt(sol%val(X_id))
-        if (imagpart(sqrt_sol_val_norm).gt.0) &
-            &sqrt_sol_val_norm = - sqrt_sol_val_norm                            ! exploding solution, not the decaying one
+        if (ip(sqrt_sol_val_norm).gt.0) sqrt_sol_val_norm = - sqrt_sol_val_norm ! exploding solution, not the decaying one
         sqrt_sol_val_norm = sqrt_sol_val_norm / abs(sqrt_sol_val_norm)          ! normalize
         
         ! allocate helper variables
@@ -221,20 +221,20 @@ contains
                         &whether Dsol_vec is correct by comparing its integral &
                         &with original sol_vec')
                     allocate(sol_vec_ALT(1:grid_X%loc_n_r))
-                    ierr = calc_int(realpart(Dsol_vec_tot(ld,:)),&
+                    ierr = calc_int(rp(Dsol_vec_tot(ld,:)),&
                         &grid_X%loc_r_F,sol_vec_ALT)
                     CHCKERR('')
                     call print_ex_2D(['TEST_RE_Dsol_vec'],'',reshape(&
-                        &[realpart(sol_vec_tot(ld,:)),sol_vec_ALT],&
+                        &[rp(sol_vec_tot(ld,:)),sol_vec_ALT],&
                         &[grid_X%loc_n_r,2]),x=reshape(&
                         &[grid_X%loc_r_F(1:grid_X%loc_n_r),&
                         &grid_X%loc_r_F(1:grid_X%loc_n_r)],&
                         &[grid_X%loc_n_r,2]))
-                    ierr = calc_int(imagpart(Dsol_vec_tot(ld,:)),&
+                    ierr = calc_int(ip(Dsol_vec_tot(ld,:)),&
                         &grid_X%loc_r_F,sol_vec_ALT)
                     CHCKERR('')
                     call print_ex_2D(['TEST_IM_Dsol_vec'],'',reshape(&
-                        &[imagpart(sol_vec_tot(ld,:)),sol_vec_ALT],&
+                        &[ip(sol_vec_tot(ld,:)),sol_vec_ALT],&
                         &[grid_X%loc_n_r,2]),x=reshape(&
                         &[grid_X%loc_r_F(1:grid_X%loc_n_r),&
                         &grid_X%loc_r_F(1:grid_X%loc_n_r)],&

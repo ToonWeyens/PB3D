@@ -1,0 +1,41 @@
+TORQUE
+------
+GENERAL RESOURCES:
+    http://www.hpc.mcgill.ca/index.php/starthere/81-doc-pages/91-guillimin-job-submit for general overview
+    http://www.bc.edu/offices/researchservices/cluster/torqueug.html for another general overview
+    http://docs.adaptivecomputing.com/torque/4-0-2/Content/topics/2-jobs/jobSubmission.htm for detailed information about job submission
+    http://docs.adaptivecomputing.com/maui/commands/checkjob.php for detailed information about checkjob
+
+To see all nodes:
+    pbsnodes
+To check out on which node a job is running, how much memory it has, etc.
+    checkjob -v [JOB_ID]
+To run an interactive job (like running on your own computer), the jobname becomes STDIN:
+    qsub -l nodes=X:ppn=Y -I
+To run jobs on specific nodes:
+    -l nodes=[NODE_NAME]:ppn=Y + [NODE_NAME2]:ppn=Y2
+To show the queue:
+    showq
+
+SLURM
+-----
+GENERAL RESOURCES:
+    http://slurm.schedmd.com/sbatch.html for info about sbatch
+    http://slurm.schedmd.com/sinfo.html for info about sinfo command.
+
+To see all nodes:
+    sinfo --long --Nodes
+To run a job
+    sbatch [JOB NAME]
+Detailed information about job (from https://rc.fas.harvard.edu/resources/documentation/convenient-slurm-commands/)
+    scontrol show jobid -dd [ID]
+To restart:
+    systemctl restart slurmctld.service on every node
+To reconfigure:
+    sudo scontrol reconfigure
+Slum file on george:
+    /etc/slurm-llnl/slurm.conf
+Forcefully kill a job without restarting node (from https://groups.google.com/forum/#!topic/slurm-devel/TQm73GZtp0o)
+    sudo scontrol update nodename=[NAME] state=down reason=hung
+    sudo scontrol update nodename=[NAME] state=resume
+

@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module rich_ops
 #include <PB3D_macros.h>
+#include <wrappers.h>
     use str_utilities
     use output_ops
     use messages
@@ -271,7 +272,7 @@ contains
             plot_title = 'Eigenvalues as function of nr. of parallel points'
             plot_name = 'Eigenvalues_richardson'
             call print_ex_2D([plot_title],plot_name,&
-                &realpart(sol_val_rich(1:rich_lvl-1,1,:)),&
+                &rp(sol_val_rich(1:rich_lvl-1,1,:)),&
                 &x=x_axis_rich(1:rich_lvl-1,:),draw=.false.)
             
             ! output in file

@@ -1110,7 +1110,8 @@ contains
                 CHCKERR('')
                 
                 ! add collection grid to HDF5 file and reset it
-                call add_HDF5_item(file_info,time_col_grid,reset=.true.)
+                ierr = add_HDF5_item(file_info,time_col_grid,reset=.true.)
+                CHCKERR('')
                 
                 ! close HDF5 file
                 ierr = close_HDF5_file(file_info)

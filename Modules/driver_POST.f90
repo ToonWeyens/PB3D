@@ -3,6 +3,8 @@
 !------------------------------------------------------------------------------!
 module driver_POST
 #include <PB3D_macros.h>
+#include <wrappers.h>
+#include <IO_resilience.h>
     use str_utilities
     use output_ops
     use messages
@@ -659,6 +661,7 @@ contains
         character(len=max_str_ln) :: format_head                                ! header format
         character(len=max_str_ln) :: full_output_name                           ! full name
         character(len=max_str_ln) :: grid_name                                  ! name of grid on which calculations are done
+        character(len=2*max_str_ln) :: temp_output_str                          ! temporary output string
         
         ! initialize ierr
         ierr = 0
@@ -680,31 +683,52 @@ contains
             ! open output file for the log
             full_output_name = prog_name//'_'//trim(output_name)//'_EN_R'//&
                 &trim(i2str(rich_lvl))//'.txt'
-            open(unit=nextunit(file_i),file=full_output_name,iostat=ierr)
+            rIO(open(nextunit(file_i),STATUS='replace',FILE=full_output_name,&
+                &IOSTAT=ierr),ierr)
             CHCKERR('Cannot open EN output file')
             call writo('Log file opened in '//trim(full_output_name))
-            write(file_i,'(A)') '# Energy decomposition using the &
-                &solution Eigenvectors'
-            write(file_i,'(A)') '# (Output on the '//trim(grid_name)//&
-                &' grid)'
-            write(file_i,format_head) &
+            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
+                &'# Energy decomposition using the solution Eigenvectors',ierr)
+            CHCKERR('Failed to write')
+            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
+                &'# (Output on the '//trim(grid_name)//' grid)',ierr)
+            CHCKERR('Failed to write')
+            write(temp_output_str,format_head) &
                 &'RE Eigenvalue          ', 'RE E_pot/E_kin         ', &
                 &'RE E_pot               ', 'RE E_kin               '
-            write(file_i,format_head) &
+            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str),ierr)
+            CHCKERR('Failed to write')
+            write(temp_output_str,format_head) &
                 &'IM Eigenvalue          ', 'IM E_pot/E_kin         ', &
                 &'IM E_pot               ', 'IM E_kin               '
-            write(file_i,format_head) &
+            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str),ierr)
+            CHCKERR('Failed to write')
+            write(temp_output_str,format_head) &
                 &'RE E_kin_n             ', 'RE E_kin_g             '
-            write(file_i,format_head) &
+            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str),ierr)
+            CHCKERR('Failed to write')
+            write(temp_output_str,format_head) &
                 &'IM E_kin_n             ', 'IM E_kin_g             '
-            write(file_i,format_head) &
+            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str),ierr)
+            CHCKERR('Failed to write')
+            write(temp_output_str,format_head) &
                 &'RE E_pot line_bending_n', 'RE E_pot line_bending_g', &
                 &'RE E_pot ballooning_n  ', 'RE E_pot ballooning_g  ', &
                 &'RE E_pot kink_n        ', 'RE E_pot kink_g        '
-            write(file_i,format_head) &
+            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str),ierr)
+            CHCKERR('Failed to write')
+            write(temp_output_str,format_head) &
                 &'IM E_pot line_bending_n', 'IM E_pot line_bending_g', &
                 &'IM E_pot ballooning_n  ', 'IM E_pot ballooning_g  ', &
                 &'IM E_pot kink_n        ', 'IM E_pot kink_g        '
+            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str),ierr)
+            CHCKERR('Failed to write')
         end if
         call lvl_ud(-1)
     end function open_decomp_log
@@ -742,7 +766,7 @@ contains
         ! find last unstable index (if ends with 0, no unstable EV)
         last_unstable_id = 0
         do id = 1,n_sol_found
-            if (realpart(sol%val(id)).lt.0._dp) last_unstable_id = id
+            if (rp(sol%val(id)).lt.0._dp) last_unstable_id = id
         end do
         ! set up min. and max. of range 1
         if (last_unstable_id.gt.0) then                                         ! there is an unstable range
@@ -814,21 +838,21 @@ contains
             plot_title = ['RE sol_val','E_frac    ']
             plot_name = 'sol_val_comp_RE'
             call print_ex_2D(plot_title,plot_name,&
-                &realpart(sol_val_comp(:,1,:)),&
-                &x=realpart(sol_val_comp(:,2,:)),draw=.false.)
+                &rp(sol_val_comp(:,1,:)),&
+                &x=rp(sol_val_comp(:,2,:)),draw=.false.)
             call draw_ex(plot_title,plot_name,size(sol_val_comp,3),1,.false.)
             plot_title(1) = 'rel diff between RE sol_val and E_frac'
             plot_name = 'sol_val_comp_RE_rel_diff'
-            call print_ex_2D(plot_title(1),plot_name,realpart(&
+            call print_ex_2D(plot_title(1),plot_name,rp(&
                 &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
-                &sol_val_comp(1,2,:)),x=realpart(sol_val_comp(1,1,:)),&
+                &sol_val_comp(1,2,:)),x=rp(sol_val_comp(1,1,:)),&
                 &draw=.false.)
             call draw_ex(plot_title(1:1),plot_name,1,1,.false.)
             plot_title(1) = 'rel diff between RE sol_val and E_frac [log]'
             plot_name = 'sol_val_comp_RE_rel_diff_log'
-            call print_ex_2D(plot_title(1),plot_name,log10(abs(realpart(&
+            call print_ex_2D(plot_title(1),plot_name,log10(abs(rp(&
                 &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
-                &sol_val_comp(1,2,:)))),x=realpart(sol_val_comp(1,1,:)),&
+                &sol_val_comp(1,2,:)))),x=rp(sol_val_comp(1,1,:)),&
                 &draw=.false.)
             call draw_ex(plot_title(1:1),plot_name,1,1,.false.)
             
@@ -836,21 +860,20 @@ contains
             plot_title = ['IM sol_val','E_frac    ']
             plot_name = 'sol_val_comp_IM'
             call print_ex_2D(plot_title,plot_name,&
-                &realpart(sol_val_comp(:,1,:)),x=imagpart(sol_val_comp(:,2,:)),&
-                &draw=.false.)
+                &rp(sol_val_comp(:,1,:)),x=ip(sol_val_comp(:,2,:)),draw=.false.)
             call draw_ex(plot_title,plot_name,size(sol_val_comp,3),1,.false.)
             plot_title(1) = 'rel diff between IM sol_val and E_frac'
             plot_name = 'sol_val_comp_IM_rel_diff'
-            call print_ex_2D(plot_title(1),plot_name,imagpart(&
+            call print_ex_2D(plot_title(1),plot_name,ip(&
                 &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
-                &sol_val_comp(1,2,:)),x=realpart(sol_val_comp(1,1,:)),&
+                &sol_val_comp(1,2,:)),x=rp(sol_val_comp(1,1,:)),&
                 &draw=.false.)
             call draw_ex(plot_title(1:1),plot_name,1,1,.false.)
             plot_title(1) = 'rel diff between IM sol_val and E_frac [log]'
             plot_name = 'sol_val_comp_IM_rel_diff_log'
-            call print_ex_2D(plot_title(1),plot_name,log10(abs(imagpart(&
+            call print_ex_2D(plot_title(1),plot_name,log10(abs(ip(&
                 &(sol_val_comp(1,2,:)-sol_val_comp(2,2,:))/&
-                &sol_val_comp(1,2,:)))),x=realpart(sol_val_comp(1,1,:)),&
+                &sol_val_comp(1,2,:)))),x=rp(sol_val_comp(1,1,:)),&
                 &draw=.false.)
             call draw_ex(plot_title(1:1),plot_name,1,1,.false.)
         end if

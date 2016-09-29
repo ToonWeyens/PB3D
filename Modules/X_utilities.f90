@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module X_utilities
 #include <PB3D_macros.h>
+#include <IO_resilience.h>
     use str_utilities
     use messages
     use num_vars, only: dp, max_name_ln, iu, max_str_ln
@@ -258,18 +259,20 @@ contains
         allocate(n_mod_loc(n_div))
         n_mod_loc = n_mod_X/n_div                                               ! number of radial points on this processor
         n_mod_loc(1:mod(n_mod_X,n_div)) = n_mod_loc(1:mod(n_mod_X,n_div)) + 1   ! add a mode to if there is a remainder
-        X_jobs_lims = calc_X_jobs_lims(n_mod_loc,div_ord)
+        call calc_X_jobs_lims(X_jobs_lims,n_mod_loc,div_ord)
         if (allocated(X_jobs_taken)) deallocate(X_jobs_taken)
         allocate(X_jobs_taken(n_div**div_ord))
         X_jobs_taken = .false.
         
         ! initialize file with global variable
         if (rank.eq.0) then
-            open(STATUS='REPLACE',unit=nextunit(file_i),file=X_jobs_file_name,&
-                &iostat=ierr)
+            rIO(open(nextunit(file_i),STATUS='REPLACE',&
+                &FILE=X_jobs_file_name,IOSTAT=ierr),ierr)
             CHCKERR('Cannot open perturbation jobs file')
-            write(file_i,*) '# Process, X job'
-            close(file_i,iostat=ierr)
+            rIO(write(UNIT=file_i,IOSTAT=ierr,FMT='(1X,A)') &
+                &'# Process, X job',ierr)
+            CHCKERR('Failed to write perturbation jobs file')
+            close(file_i,IOSTAT=ierr)
             CHCKERR('Failed to close file')
         end if
         
@@ -354,11 +357,11 @@ contains
         !   - for order 2: [3,4,1,5],
         !       which corresponds to the 2-D range 3..4 x 1..5,
         ! etc.
-        recursive function calc_X_jobs_lims(n_mod,ord) result(res)
+        recursive subroutine calc_X_jobs_lims(res,n_mod,ord)
             ! input / output
+            integer, intent(inout), allocatable :: res(:,:)                     ! result
             integer, intent(in) :: n_mod(:)                                     ! X jobs data
             integer, intent(in) :: ord                                          ! order of data
-            integer, allocatable :: res(:,:)                                    ! result
             
             ! local variables
             integer, allocatable :: res_loc(:,:)                                ! local result
@@ -375,7 +378,7 @@ contains
             ! loop over divisions
             do id = 1,n_div
                 if (ord.gt.1) then                                              ! call lower order
-                    res_loc = calc_X_jobs_lims(n_mod,ord-1)
+                    call calc_X_jobs_lims(res_loc,n_mod,ord-1)
                     res(1:2*ord-2,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = &
                         &res_loc
                 end if                                                          ! set for own order
@@ -384,6 +387,6 @@ contains
                 res(2*ord,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = &
                     &sum(n_mod(1:id))
             end do
-        end function calc_X_jobs_lims
+        end subroutine calc_X_jobs_lims
     end function divide_X_jobs
 end module X_utilities

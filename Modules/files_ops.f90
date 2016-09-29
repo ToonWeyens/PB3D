@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module files_ops
 #include <PB3D_macros.h>
+#include <IO_resilience.h>
     use str_utilities
     use messages
     use num_vars, only: dp, max_str_ln
@@ -162,8 +163,9 @@ contains
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
             &do_execute_command_line, output_name, prog_name, PB3D_name_eq, &
-            &print_mem_usage, swap_angles, minim_output, jump_to_sol, export_HEL
-        use files_utilities, only: search_file
+            &print_mem_usage, swap_angles, minim_output, jump_to_sol, &
+            &export_HEL
+        use files_utilities, only: nextunit
         use rich_vars, only: no_guess
 #if ldebug
         use num_vars, only: ltest
@@ -172,7 +174,7 @@ contains
         character(*), parameter :: rout_name = 'open_input'
         
         ! local variables
-        integer :: id                                                           ! counter
+        integer :: id, kd                                                       ! counters
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: first_ints(2)                                                ! first two input integers of input file (HELENA)
         integer :: istat                                                        ! status
@@ -190,26 +192,28 @@ contains
                 case(1)                                                         ! PB3D
                     ! check for correct input file and use default if needed
                     input_name = command_arg(1)                                 ! first argument is the name of the input file
-                    call search_file(input_i,input_name)
-                    if (input_name.eq."") then
-                        call writo('No input file found. Default used')
-                    else 
+                    rIO2(open(UNIT=nextunit(input_i),FILE=input_name,&
+                        &STATUS='old',IOSTAT=istat),istat)
+                    if (istat.eq.0) then
                         call writo('Input file "' // trim(input_name) &
                             &// '" opened')
+                    else 
+                        call writo('No input file found. Default used')
+                        input_name = ''
+                        input_i = 0
                     end if
                     
                     ! check for  equilibrium file and  print error if  not found
                     ! (no default!)
                     eq_name = command_arg(2)
-                    call search_file(eq_i,eq_name)
-                    if (eq_name.eq."") then
-                        ierr = 1
-                        err_msg = 'No equilibrium file found.'
-                        CHCKERR(err_msg)
-                    else
-                        call writo('equilibrium file "' // trim(eq_name) &
-                            &// '" opened')
-                    end if
+                    rIO(open(UNIT=nextunit(eq_i),FILE=eq_name,STATUS='old',&
+                        &IOSTAT=ierr),ierr)
+                    err_msg = 'No equilibrium file found.'
+                    CHCKERR(err_msg)
+                    
+                    ! succeeded
+                    call writo('equilibrium file "' // trim(eq_name) &
+                        &// '" opened')
                     
                     ! Determine which equilibrium style (1: VMEC, 2: HELENA)
                     ! set eq_style to a nonsensical value
@@ -228,7 +232,7 @@ contains
                     end if
                     
                     ! Check for HELENA
-                    read(eq_i,*,IOSTAT=istat) first_ints
+                    rIO(read(eq_i,*,IOSTAT=istat) first_ints,istat)
                     backspace(UNIT=eq_i)                                        ! go back one line in the equilibrium file
                     if (istat.eq.0) then
                         eq_style = 2
@@ -249,27 +253,29 @@ contains
                 case(2)                                                         ! POST
                     ! check for correct input file and use default if needed
                     input_name = command_arg(1)                                 ! first argument is the name of the input file
-                    call search_file(input_i,input_name)
-                    if (input_name.eq."") then
-                        call writo('No input file found. Default used')
-                    else 
+                    rIO2(open(UNIT=nextunit(input_i),FILE=input_name,&
+                        &STATUS='old',IOSTAT=istat),istat)
+                    if (istat.eq.0) then
                         call writo('Input file "' // trim(input_name) &
                             &// '" opened')
+                    else 
+                        call writo('No input file found. Default used')
+                        input_name = ''
+                        input_i = 0
                     end if
                     
                     ! check for PB3D_PB3D file and  print error if not found (no
                     ! default!)
                     PB3D_name = command_arg(2)
-                    call search_file(PB3D_i,PB3D_name)
-                    if (PB3D_name.eq."") then
-                        ierr = 1
-                        err_msg = 'No PB3D file found.'
-                        CHCKERR(err_msg)
-                    else
-                        call writo('PB3D output file "' // trim(PB3D_name) &
-                            &// '" opened')
-                        close(PB3D_i)
-                    end if
+                    rIO(open(UNIT=nextunit(PB3D_i),FILE=PB3D_name,&
+                        &STATUS='old',IOSTAT=ierr),ierr)
+                    err_msg = 'No PB3D file found.'
+                    CHCKERR(err_msg)
+                    
+                    ! succeeded
+                    call writo('PB3D output file "' // trim(PB3D_name) &
+                        &// '" opened')
+                    close(PB3D_i)
             end select
             
             ! also initialize PB3D equilibrium output name
@@ -288,6 +294,9 @@ contains
     contains
         ! this subroutine scans for chosen options
         subroutine read_opts
+#if ( lwith_intel && !lwith_gnu)
+            use IFPORT
+#endif
             integer :: jd
             integer :: numopts
             logical :: opt_taken(size(opt_args))                                ! which of the options has been taken
@@ -456,6 +465,9 @@ contains
 #if ldebug
         use num_vars, only: print_mem_usage, mem_usage_name, mem_usage_i
 #endif
+#if ( lwith_intel && !lwith_gnu)
+        use IFPORT
+#endif
         
         character(*), parameter :: rout_name = 'open_output'
         
@@ -480,16 +492,18 @@ contains
         ! actions depending on Richardson restart level and program style
         if (rich_restart_lvl.gt.1 .and. prog_style.eq.1) then
             ! append to existing file
-            open(UNIT=nextunit(output_i),FILE=trim(full_output_name),&
-                &STATUS='old',POSITION='append',IOSTAT=ierr)
+            rIO(open(nextunit(output_i),FILE=trim(full_output_name),&
+                &STATUS='old',POSITION='append',IOSTAT=ierr),ierr)
+            CHCKERR('Failed to open output file')
             
             ! print message
             call writo('log output file "'//trim(full_output_name)//&
                 &'" reopened at number '//trim(i2str(output_i)))
         else
             ! open file after wiping it
-            open(UNIT=nextunit(output_i),FILE=trim(full_output_name),&
-                &STATUS='replace',IOSTAT=ierr)
+            rIO(open(nextunit(output_i),FILE=trim(full_output_name),&
+                &STATUS='replace',IOSTAT=ierr),ierr)
+            CHCKERR('Failed to open output file')
             
             ! print message
             call writo('log output file "'//trim(full_output_name)//&
@@ -498,7 +512,7 @@ contains
         
         ! if temporary output present, silently write it to log output file
         do id = 1,size(temp_output)
-            write(output_i,*) trim(temp_output(id))
+            write(output_i,*,IOSTAT=istat) trim(temp_output(id))
         end do
         
         ! 2. SHELL COMMANDS
@@ -507,18 +521,22 @@ contains
         full_output_name = prog_name//'_'//trim(shell_commands_name)//'.sh'
         
         ! create output file for shell commands
-        open(UNIT=nextunit(shell_commands_i),FILE=trim(full_output_name),&
-            &STATUS='replace',IOSTAT=ierr)
+        rIO(open(nextunit(shell_commands_i),FILE=trim(full_output_name),&
+            &STATUS='replace',IOSTAT=ierr),ierr)
         CHCKERR('Failed to create shell command file')
         
         ! write header, close and make executable
-        write(shell_commands_i,'(A)') '#!/bin/bash'
-        write(shell_commands_i,'(A)') '# This file contains all the shell &
-            &commands from the '//trim(prog_name)//' run'
+        write(shell_commands_i,'(A)',IOSTAT=istat) '#!/bin/bash'
+        write(shell_commands_i,'(A)',IOSTAT=istat) '# This file contains all &
+            &the shell commands from the '//trim(prog_name)//' run'
         close(shell_commands_i)
         istat = 0
+#if ( lwith_intel && !lwith_gnu)
+        istat = system('chmod +x '//trim(full_output_name))
+#else
         call execute_command_line('chmod +x '//trim(full_output_name),&
             &EXITSTAT=istat)                                                    ! not too terrible if execute_command_line fails
+#endif
         
         ! print message
         call writo('shell commands script file "'//trim(full_output_name)//&
@@ -545,12 +563,13 @@ contains
             full_output_name = prog_name//'_'//trim(mem_usage_name)//'.dat'
             
             ! create output file for memory usage
-            open(UNIT=mem_usage_i,FILE=trim(full_output_name),&
-                &STATUS='replace',IOSTAT=ierr)
+            rIO(open(mem_usage_i,FILE=trim(full_output_name),STATUS='replace',&
+                &IOSTAT=ierr),ierr)
+            CHCKERR('Failed to open memory file')
             
             ! write header and close
-            write(mem_usage_i,'(A)') '# Rank [] - Count [] - Time [s] - &
-                &Memory Usage [kB] - Max. tot. Memory [kB] - &
+            write(mem_usage_i,'(A)',IOSTAT=istat) '# Rank [] - Count [] - &
+                &Time [s] - Memory Usage [kB] - Max. tot. Memory [kB] - &
                 &Max. X. Memory [kB]'
             close(mem_usage_i)
             

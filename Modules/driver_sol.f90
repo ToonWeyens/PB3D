@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module driver_sol
 #include <PB3D_macros.h>
+#include <wrappers.h>
     use str_utilities
     use output_ops
     use messages
@@ -202,7 +203,7 @@ contains
             
             ! plot |X|^2
             file_name = 'TEST_X_norm_PB3D'
-            call plot_HDF5(var_names(1),file_name,realpart(X_norm),&
+            call plot_HDF5(var_names(1),file_name,rp(X_norm),&
                 &tot_dim=grid_X_B%n,loc_offset=[0,0,grid_X%i_min-1])
             
             ! clean up

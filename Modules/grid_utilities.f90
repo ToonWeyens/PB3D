@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module grid_utilities
 #include <PB3D_macros.h>
+#include <wrappers.h>
     use str_utilities
     use output_ops
     use messages
@@ -1110,9 +1111,9 @@ contains
             end do
             
             call plot_HDF5(var_names(:,1),'TEST_RE_Jf_'//trim(i2str(rank)),&
-                &realpart(Jf))
+                &rp(Jf))
             call plot_HDF5(var_names(:,2),'TEST_IM_Jf_'//trim(i2str(rank)),&
-                &imagpart(Jf))
+                &ip(Jf))
             call plot_HDF5('transformation of Jacobians',&
                 &'TEST_transf_J_'//trim(i2str(rank)),transf_J_tot)
             
@@ -1678,10 +1679,10 @@ contains
         allocate(dvar_loc(size(dvar,1),size(dvar,2),size(dvar,3),size(dvar,4)))
         
         ! call the real version for the real and imaginary part separately
-        ierr = apply_disc_4D_real(realpart(var),disc_data,dvar_loc,disc_dim)
+        ierr = apply_disc_4D_real(rp(var),disc_data,dvar_loc,disc_dim)
         CHCKERR('')
         dvar = dvar_loc
-        ierr = apply_disc_4D_real(imagpart(var),disc_data,dvar_loc,disc_dim)
+        ierr = apply_disc_4D_real(ip(var),disc_data,dvar_loc,disc_dim)
         CHCKERR('')
         dvar = dvar + iu*dvar_loc
     end function apply_disc_4D_complex

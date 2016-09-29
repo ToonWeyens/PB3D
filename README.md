@@ -563,3 +563,15 @@ CHANGELOG
 
 1.37: - The plotting variables of HELENA equilibria for VMEC export can now be adapted.
       - HELENA export now outputs a VMEC input file that can be further adapted.
+
+1.38: - Many changes to improve the resilience for input / output errors in order to work on the ITER cluster.
+      - New precompile include that allows to run any command (typically I/O) to be repeated a number of times, using the CPP flag "lrIO" for "resilient I/O".
+      - Bug fixes.
+      - Compatibility fixes with older compilers and INTEL compilers.
+      - Support for INTEL compiler (checked with 12.0.1), using a wrapper include file and a compile flag "lwith_intel", as opposed to "lwith_gnu".
+      - Workaround for recursive function "derivs" that did not work with INTEL (https://software.intel.com/en-us/forums/intel-fortran-compiler-for-linux-and-mac-os-x/topic/270127).
+      - "search_file" has been deleted, as its functionality can be done using open.
+      - Improved run scripts, with better support for TORQUE and SLURM clusters. This solves the I/O problems.
+      - New script for extraction of results from array jobs.
+      - New script for inspection of SLURM jobs.
+      - Cleaned stellinstall and added it to this repository.

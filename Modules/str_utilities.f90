@@ -2,6 +2,7 @@
 !   Operations on strings                                                      !
 !------------------------------------------------------------------------------!
 module str_utilities
+#include <wrappers.h>
     use num_vars, only: dp, max_str_ln
     implicit none
     private
@@ -54,9 +55,9 @@ contains
         ! local variables
         character(len=max_str_ln) :: dum_str                                    ! dummy string
         
-        write (c2str, '(ES23.16)') realpart(k)
-        write (dum_str, '(ES23.16)') abs(imagpart(k))
-        if (imagpart(k).lt.0) then
+        write (c2str, '(ES23.16)') rp(k)
+        write (dum_str, '(ES23.16)') abs(imag(k))
+        if (imag(k).lt.0) then
             c2str = trim(c2str)//' -'
         else
             c2str = trim(c2str)//' +'
@@ -71,9 +72,9 @@ contains
         ! local variables
         character(len=max_str_ln) :: dum_str                                    ! dummy string
         
-        write (c2strt, '(ES9.2)') realpart(k)
-        write (dum_str, '(ES9.2)') abs(imagpart(k))
-        if (imagpart(k).lt.0) then
+        write (c2strt, '(ES9.2)') rp(k)
+        write (dum_str, '(ES9.2)') abs(imag(k))
+        if (imag(k).lt.0) then
             c2strt = trim(c2strt)//' -'
         else
             c2strt = trim(c2strt)//' +'

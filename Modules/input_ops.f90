@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module input_ops
 #include <PB3D_macros.h>
+#include <IO_resilience.h>
     use str_utilities
     use output_ops
     use messages
@@ -42,6 +43,7 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: kd                                                           ! counter
         integer :: PB3D_rich_lvl                                                ! Richardson level to post-process (for POST)
         integer, parameter :: max_size_tol_SLEPC = 100                          ! maximum size of tol_SLEPC
         real(dp) :: tol_SLEPC(max_size_tol_SLEPC)                               ! tol_SLEPC
@@ -116,7 +118,7 @@ contains
             ! select depending on program style
             select case (prog_style)
                 case(1)                                                         ! PB3D
-                    read(input_i,nml=inputdata_PB3D,iostat=ierr)                ! read input data
+                    rIO(read(input_i,nml=inputdata_PB3D,iostat=ierr),ierr)      ! read input data
                     
                     ! check input if successful read
                     if (ierr.eq.0) then                                         ! input file succesfully read
@@ -176,7 +178,7 @@ contains
                     ! multiply alpha by pi
                     alpha = alpha*pi
                 case(2)                                                         ! POST
-                    read(input_i,nml=inputdata_POST,iostat=ierr)                ! read input data
+                    rIO(read(input_i,nml=inputdata_POST,iostat=ierr),ierr)      ! read input data
                     
                     ! check input if successful read
                     if (ierr.eq.0) then                                         ! input file succesfully read

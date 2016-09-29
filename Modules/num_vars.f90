@@ -31,6 +31,9 @@ module num_vars
         &do_execute_command_line, print_mem_usage, input_name, slab_plots, &
         &swap_angles, rich_restart_lvl, plot_size, minim_output, PB3D_name_eq, &
         &jump_to_sol, export_HEL, ex_plot_style
+#if lrIO
+    public nr_extra_tries_IO, max_nr_tries_IO, rIOd
+#endif
 
     ! technical variables
     !integer, parameter :: dp = kind(1.d0)                                       ! double precision
@@ -49,7 +52,7 @@ module num_vars
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
     integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
-    real(dp), parameter :: prog_version = 1.37_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.38_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.32_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
@@ -146,4 +149,9 @@ module num_vars
     integer :: rich_restart_lvl                                                 ! starting Richardson level (0: none [default])
     character(len=max_str_ln) :: input_name                                     ! will hold the full name of the input file
     integer :: ex_plot_style                                                    ! external plot style (1: GNUPlot, 2: Bokeh for 2D, Mayavi for 3D)
+#if lrIO
+    integer :: max_nr_tries_IO = 10                                             ! maximum number of tries for input/output
+    integer :: nr_extra_tries_IO                                                ! number of extra tries for IO
+    integer :: rIOd                                                             ! dummy counter
+#endif
 end module num_vars

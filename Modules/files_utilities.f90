@@ -3,35 +3,15 @@
 !------------------------------------------------------------------------------!
 module files_utilities
 #include <PB3D_macros.h>
+#include <IO_resilience.h>
     use str_utilities
     use messages
     use num_vars, only: dp, max_str_ln
     implicit none
     private
-    public search_file, nextunit, get_file_info, get_full_PB3D_name, delete_file
+    public nextunit, get_file_info, get_full_PB3D_name, delete_file
 
 contains
-    ! looks for the full name of a file and tests for its existence
-    ! output:   full name of file, empty string if non-existent
-    subroutine search_file(i_unit,file_name)
-        ! input / output
-        character(len=*), intent(inout) :: file_name                            ! the name that is searched for
-        integer, intent(out) :: i_unit                                          ! will hold the file handle
-        
-        ! local variables
-        character(len=max_str_ln) :: mod_file_name                              ! modified file name
-        integer :: istat                                                        ! status
-        
-        ! try to open the given name
-        mod_file_name = file_name                                               ! copy file_name to mod_file_name
-        open(unit=nextunit(i_unit),file=file_name,status='old',iostat=istat)
-        if (istat.eq.0) return
-        
-        ! no matches, empty file_name and i_unit = 0 returned
-        file_name = ""
-        i_unit = 0
-    end subroutine search_file
-    
     ! Search for available  new unit where lun_min and lun_max  define the range
     ! of possible luns to check. The unit value is returned by the function, and
     ! also  by the  optional  argument.  This allows  the  function  to be  used
@@ -115,7 +95,7 @@ contains
             full_PB3D_name = trim(PB3D_name)//'.h5'
         end if
     end function get_full_PB3D_name
-    
+
     ! removes a file
     integer function delete_file(file_name) result(istat)
         ! input / output
@@ -126,14 +106,16 @@ contains
         logical :: file_open                                                    ! whether file is open
         
         ! initialize istat
-        istat = 0
+        istat = 0 
         
         ! check if opened and open if not
         inquire(FILE=trim(file_name),OPENED=file_open,NUMBER=file_i,&
             &IOSTAT=istat)
         CHCKSTT
-        if (.not.file_open) open(FILE=trim(file_name),UNIT=nextunit(file_i),&
-            &IOSTAT=istat)
+        if (.not.file_open) then
+            rIO2(open(UNIT=nextunit(file_i),FILE=trim(file_name),IOSTAT=istat),&
+                &istat)
+        end if
         CHCKSTT
         
         ! remove open file

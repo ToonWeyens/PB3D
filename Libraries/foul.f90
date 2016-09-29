@@ -103,6 +103,8 @@
 
 MODULE foul_helpers
 
+    INTEGER :: istat
+    
 CONTAINS
 
 
@@ -321,7 +323,7 @@ FUNCTION integer_to_string(integer_value, string_length)
     CHARACTER * 16 :: string_buffer
 
 
-    WRITE(string_buffer, '(I16)') integer_value
+    WRITE(string_buffer, '(I16)',IOSTAT=istat) integer_value
     string_buffer = ADJUSTL(string_buffer)
 
     IF (LEN_TRIM(string_buffer) < LEN(integer_to_string)) THEN
@@ -402,9 +404,9 @@ FUNCTION real_to_string(real_value, integer_length, fractional_length)
     ! Truncation is neccessary in order to catch a rare bug
     ! where rounding would change the numer of digits in front
     ! of the decimal separator
-!    WRITE(string_buffer, TRIM(format_string)) DBLE(INT(real_value * (10.0D0**fractional_length))) /   &
+!    WRITE(string_buffer, TRIM(format_string),IOSTAT=istat) DBLE(INT(real_value * (10.0D0**fractional_length))) /   &
 !                                              (10.0D0**fractional_length)
-    WRITE(string_buffer, TRIM(format_string)) real_value
+    WRITE(string_buffer, TRIM(format_string),IOSTAT=istat) real_value
 
     string_buffer = ADJUSTL(string_buffer)
 
@@ -1527,7 +1529,7 @@ SUBROUTINE write_formatted(text_1,  style_1,  text_2,  style_2,  text_3,  style_
 
 
     ! Write actual output
-    WRITE(output_unit, TRIM(format_string)) (output_strings(i)(1 : output_lengths(i)),   &
+    WRITE(output_unit, TRIM(format_string),IOSTAT=istat) (output_strings(i)(1 : output_lengths(i)),   &
                                              i = 1, output_string_count)
 
 
@@ -1567,11 +1569,11 @@ SUBROUTINE start_section(text, style)
         END IF
 
     ELSE
-        WRITE(output_unit, 10) text
-        WRITE(output_unit, 10) REPEAT('-', section_width)
+        WRITE(output_unit, 10,IOSTAT=istat) text
+        WRITE(output_unit, 10,IOSTAT=istat) REPEAT('-', section_width)
     END IF
 
-    WRITE(output_unit, 10) ''
+    WRITE(output_unit, 10,IOSTAT=istat) ''
 
 
 10  FORMAT(A)
@@ -1605,8 +1607,8 @@ SUBROUTINE end_section(text, style)
     IF (use_escape_codes) THEN
         CALL write_formatted(REPEAT(' ', section_width), 'bright underline')
     ELSE
-        WRITE(output_unit, 10) ''
-        WRITE(output_unit, 10) REPEAT('-', section_width)
+        WRITE(output_unit, 10,IOSTAT=istat) ''
+        WRITE(output_unit, 10,IOSTAT=istat) REPEAT('-', section_width)
     END IF
 
     IF (LEN(text) < section_width) THEN
@@ -1658,12 +1660,12 @@ SUBROUTINE set_formatting(style_string)
 
         format_string = '(' // integer_to_string(LEN_TRIM(escape_sequence), 0) // 'A1)'
 
-        WRITE(output_unit, TRIM(format_string)) (escape_sequence_array(i),   &
+        WRITE(output_unit, TRIM(format_string),IOSTAT=istat) (escape_sequence_array(i),   &
                                                  i = 1, LEN_TRIM(escape_sequence))
 
         ! Move cursor up to compensate for newline inserted
         ! by previous WRITE command
-        WRITE(output_unit, '(4A1)') (/ CHAR(27), '[', '2', 'F' /)
+        WRITE(output_unit, '(4A1)',IOSTAT=istat) (/ CHAR(27), '[', '2', 'F' /)
     END IF
 
 
@@ -1689,11 +1691,11 @@ SUBROUTINE clear_formatting()
 
     IF (use_escape_codes) THEN
         ! Clear all previously set styles
-        WRITE(output_unit, '(3A1)') (/ CHAR(27), '[', 'm' /)
+        WRITE(output_unit, '(3A1)',IOSTAT=istat) (/ CHAR(27), '[', 'm' /)
 
         ! Move cursor up to compensate for newline inserted
         ! by previous WRITE command
-        WRITE(output_unit, '(4A1)') (/ CHAR(27), '[', '2', 'F' /)
+        WRITE(output_unit, '(4A1)',IOSTAT=istat) (/ CHAR(27), '[', '2', 'F' /)
     END IF
 
 

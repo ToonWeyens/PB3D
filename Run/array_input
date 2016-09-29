@@ -1,3 +1,5 @@
+# This is a file that describes the modification of the input variables
+# lines starting with "#" are ignored.
 prim_X = 150, n_mod_X = 75
 prim_X = 100, n_mod_X = 70
 prim_X = 80, n_mod_X = 65

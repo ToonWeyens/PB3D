@@ -72,6 +72,8 @@ for (( input_i=1; input_i<=$n_inputs; input_i++ )); do
     [[ $use_out_loc = true ]] && cp ${1%/}/$PB3D_out_name $out
     cp ../$prog_name $out_full
     chmod +x $out_full/$prog_name
+    
+    # go to run directory
     cd $out_full
     
     # modify input file

@@ -7,6 +7,7 @@
 !------------------------------------------------------------------------------!
 module SLEPC_utilities
 #include <PB3D_macros.h>
+#include <wrappers.h>
 ! for slepc 3.6.0:
 #include <slepc/finclude/slepcepsdef.h>
 ! for slepc 3.5.3:
@@ -155,9 +156,9 @@ contains
             if (debug_insert_block_mat) then
                 call writo('following local block is going to be added: ')
                 call writo('Re =')
-                call print_ar_2(realpart(block_loc))
+                call print_ar_2(rp(block_loc))
                 call writo('Im =')
-                call print_ar_2(imagpart(block_loc))
+                call print_ar_2(ip(block_loc))
                 if (transp_loc) call writo('as well as at the transposed place')
                 if (overwrite_loc) then
                     call writo('(with operation INSERT_VALUES)')

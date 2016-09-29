@@ -27,6 +27,7 @@
 !------------------------------------------------------------------------------!
 module HDF5_ops
 #include <PB3D_macros.h>
+#include <IO_resilience.h>
     use num_vars, only: max_str_ln, dp, plot_dir, data_dir, script_dir
     use messages
     use str_utilities, only: i2str, r2str, r2strt
@@ -80,7 +81,8 @@ contains
         character(len=max_str_ln) :: full_file_name                             ! full file name
         integer(HID_T) :: HDF5_i                                                ! file identifier 
         integer(HID_T) :: plist_id                                              ! property list identifier 
-        integer :: MPI_Comm                                                     ! MPI Communicator used
+        integer :: MPI_Comm_loc                                                 ! MPI Communicator used
+        integer :: disable_rw                                                   ! MPI info to disable read and write
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
         
         ! initialize ierr
@@ -91,9 +93,9 @@ contains
         
         ! set up MPI Communicator
         if (ind_plot_loc) then
-            MPI_Comm = MPI_Comm_self                                            ! individual plot
+            MPI_Comm_loc = MPI_Comm_self                                        ! individual plot
         else
-            MPI_Comm = MPI_Comm_world                                           ! default world communicator
+            MPI_Comm_loc = MPI_Comm_world                                       ! default world communicator
         end if
         
         ! set up full file name
@@ -103,11 +105,29 @@ contains
         call H5Open_f(ierr) 
         CHCKERR('Failed to initialize HDF5')
         
+#if lIB
+        ! disable file locking
+        call MPI_Info_create(disable_rw,ierr)
+        CHCKERR('Failed to create MPI info')
+        call MPI_Info_set(disable_rw,'romio_ds_read','disable',ierr)
+        CHCKERR('Failed to set MPI info')
+        call MPI_Info_set(disable_rw,'romio_ds_write','disable',ierr)
+        CHCKERR('Failed to set MPI info')
+#else
+        disable_rw = MPI_INFO_NULL
+#endif
+        
         ! setup file access property list with parallel I/O access if needed
         call H5Pcreate_f(H5P_FILE_ACCESS_F,plist_id,ierr)
         CHCKERR('Failed to create property list')
-        call H5Pset_fapl_mpio_f(plist_id,MPI_Comm,MPI_INFO_NULL,ierr)
+        call H5Pset_fapl_mpio_f(plist_id,MPI_Comm_loc,disable_rw,ierr)
         CHCKERR('Failed to set file access property')
+        
+#if lIB
+        ! free file locking info
+        call MPI_Info_free(disable_rw,ierr)
+        CHCKERR('Failed to free MPI info')
+#endif
         
         ! create the file collectively.
         call H5Fcreate_f(trim(full_file_name)//'.h5',H5F_ACC_TRUNC_F,HDF5_i,&
@@ -123,21 +143,33 @@ contains
         ! only group master if parallel plot or current rank if individual plot
         if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
             ! open accompanying xmf file
-            open(unit=nextunit(file_info%XDMF_i),&
-                &file=trim(full_file_name)//'.xmf',iostat=ierr)
+            rIO(open(nextunit(file_info%XDMF_i),STATUS='replace',&
+                &file=trim(full_file_name)//'.xmf',iostat=ierr),ierr)
             CHCKERR('Failed to open xmf file')
             
             ! write header if group master
-            write(file_info%XDMF_i,xmf_fmt) '<?xml version="1.0" ?>'
-            write(file_info%XDMF_i,xmf_fmt) '<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" &
-                &[]>'
-            write(file_info%XDMF_i,xmf_fmt) '<Xdmf Version="2.0">'
-            write(file_info%XDMF_i,xmf_fmt) '<Domain>'
+            rIO(write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                &'<?xml version="1.0" ?>',ierr)
+            CHCKERR('Failed to write')
+            rIO(write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                &'<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>',ierr)
+            CHCKERR('Failed to write')
+            rIO(write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                &'<Xdmf Version="2.0">',ierr)
+            CHCKERR('Failed to write')
+            rIO(write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                &'<Domain>',ierr)
+            CHCKERR('Failed to write')
             if (present(description)) then
-                write(file_info%XDMF_i,xmf_fmt) &
-                    &'<Information Name="Description">'
-                write(file_info%XDMF_i,xmf_fmt) trim(description)
-                write(file_info%XDMF_i,xmf_fmt) '</Information>'
+                rIO(write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                    &'<Information Name="Description">',ierr)
+                CHCKERR('Failed to write')
+                rIO(write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                    &trim(description),ierr)
+                CHCKERR('Failed to write')
+                rIO(write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                    &'</Information>',ierr)
+                CHCKERR('Failed to write')
             end if
         end if
     end function open_HDF5_file
@@ -181,8 +213,12 @@ contains
         ! only group master if parallel plot or current rank if individual plot
         if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
             ! close header
-            write(file_info%XDMF_i,xmf_fmt) '</Domain>'
-            write(file_info%XDMF_i,xmf_fmt) '</Xdmf>'
+            rIO(write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                &'</Domain>',ierr)
+            CHCKERR('Failed to write')
+            rIO(write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                &'</Xdmf>',ierr)
+            CHCKERR('Failed to write')
             
             ! close accompanying xmf file
             close(file_info%XDMF_i,IOSTAT=ierr)
@@ -198,8 +234,11 @@ contains
     ! Note:  This  should  only  be  used  with  grids  (or for  topologies  and
     ! geometries that are used throughout)
     ! [MPI] Only group master
-    subroutine add_HDF5_item(file_info,XDMF_item,reset,ind_plot)
+    integer function add_HDF5_item(file_info,XDMF_item,reset,ind_plot) &
+        &result(ierr)
         use num_vars, only: rank
+        
+        character(*), parameter :: rout_name = 'add_HDF5_item'
         
         ! input / output
         type(HDF5_file_type), intent(inout) :: file_info                        ! info about HDF5 file
@@ -212,6 +251,9 @@ contains
         integer :: item_len                                                     ! length of item
         logical :: reset_loc                                                    ! local copy of reset
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        
+        ! initialize ierr
+        ierr = 0
         
         ! set up local ind_plot
         if (present(ind_plot)) ind_plot_loc = ind_plot
@@ -230,13 +272,15 @@ contains
             
             ! write the strings to the file
             do id = 1,item_len
-                write(file_info%XDMF_i,xmf_fmt) trim(XDMF_item%xml_str(id))
+                rIO(write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                    &trim(XDMF_item%xml_str(id)),ierr)
+                CHCKERR('Failed to write HDF5 item')
             end do
             
             ! reset if requested
             if (reset_loc) call reset_HDF5_item(XDMF_item,ind_plot_loc)
         end if
-    end subroutine add_HDF5_item
+    end function add_HDF5_item
     
     ! prints an HDF5 data item
     ! If this is a parallel data item, the group dimension and offset have to be
@@ -277,6 +321,9 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
         integer(HID_T) :: HDF5_kind_64                                          ! HDF5 type corresponding to dp
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -377,7 +424,7 @@ contains
             dataitem_id%xml_str(3) = '</DataItem>'
             
 #if ldebug
-            if (debug_HDF5_ops) write(*,*) 'created data item "'//&
+            if (debug_HDF5_ops) write(*,*,IOSTAT=istat) 'created data item "'//&
                 &trim(dataitem_id%name)//'"'
 #endif
         end if
@@ -444,6 +491,9 @@ contains
         integer :: id                                                           ! counter
         logical :: reset_loc                                                    ! local copy of reset
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! set up local ind_plot
         if (present(ind_plot)) ind_plot_loc = ind_plot
@@ -472,7 +522,7 @@ contains
             att_id%xml_str(dataitem_len+2) = '</Attribute>'
             
 #if ldebug
-            if (debug_HDF5_ops) write(*,*) 'created attribute "'//&
+            if (debug_HDF5_ops) write(*,*,IOSTAT=istat) 'created attribute "'//&
                 &trim(att_id%name)//'"'
 #endif
             
@@ -498,6 +548,9 @@ contains
         integer :: n_dims                                                       ! nr. of dimensions
         character(len=max_str_ln) :: work_str                                   ! work string
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! set up local ind_plot
         if (present(ind_plot)) ind_plot_loc = ind_plot
@@ -522,7 +575,7 @@ contains
                 &trim(work_str)//'"/>'
             
 #if ldebug
-            if (debug_HDF5_ops) write(*,*) 'created topology "'//&
+            if (debug_HDF5_ops) write(*,*,IOSTAT=istat) 'created topology "'//&
                 &trim(top_id%name)//'"'
 #endif
         end if
@@ -547,6 +600,9 @@ contains
         integer :: n_dataitems                                                  ! nr. of data items
         logical :: reset_loc                                                    ! local copy of reset
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! set up local ind_plot
         if (present(ind_plot)) ind_plot_loc = ind_plot
@@ -584,7 +640,7 @@ contains
             geom_id%xml_str(id_sum) = '</Geometry>'
             
 #if ldebug
-            if (debug_HDF5_ops) write(*,*) 'created geometry "'//&
+            if (debug_HDF5_ops) write(*,*,IOSTAT=istat) 'created geometry "'//&
                 &trim(geom_id%name)//'"'
 #endif
             
@@ -631,6 +687,9 @@ contains
         logical :: reset_loc                                                    ! local copy of reset
         character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -764,7 +823,7 @@ contains
             grid_id%xml_str(id_sum) = '</Grid>'
             
 #if ldebug
-            if (debug_HDF5_ops) write(*,*) 'created grid "'//&
+            if (debug_HDF5_ops) write(*,*,IOSTAT=istat) 'created grid "'//&
                 &trim(grid_id%name)//'"'
 #endif
             
@@ -795,6 +854,7 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer(HID_T) :: HDF5_i                                                ! file identifier 
+        integer :: kd                                                           ! counter
         
         ! initialize ierr
         ierr = 0
@@ -802,20 +862,20 @@ contains
         call lvl_ud(1)
         
         ! initialize FORTRAN predefined datatypes
-        call H5Open_f(ierr) 
+        rIO(call H5Open_f(ierr),ierr)
         CHCKERR('Failed to initialize HDF5')
         
         ! create the file by group master
-        call H5Fcreate_f(trim(HDF5_name),H5F_ACC_TRUNC_F,HDF5_i,&
-            &ierr)
-        CHCKERR('Failed to create file')
+        rIO(call H5Fcreate_f(trim(HDF5_name),H5F_ACC_TRUNC_F,HDF5_i,ierr),ierr)
+        err_msg = 'Failed to create file "'//trim(HDF5_name)//'"'
+        CHCKERR(err_msg)
         
         ! close the HDF5 file
-        call H5Fclose_f(HDF5_i,ierr)
+        rIO(call H5Fclose_f(HDF5_i,ierr),ierr)
         CHCKERR('failed to close HDF5 file')
         
         ! close FORTRAN interfaces and HDF5 library.
-        call H5Close_f(ierr)
+        rIO(call H5Close_f(ierr),ierr)
         err_msg = 'Failed to close FORTRAN HDF5 interface'
         CHCKERR(err_msg)
         
@@ -853,8 +913,8 @@ contains
         logical, intent(in), optional :: ind_print                              ! individual write (possibly partial I/O)
         
         ! local variables
-        integer :: id, jd                                                       ! counter
-        integer :: MPI_Comm                                                     ! MPI Communicator used
+        integer :: id, jd, kd                                                   ! counters
+        integer :: MPI_Comm_loc                                                 ! MPI Communicator used
         integer :: istat                                                        ! status
         integer :: n_dims                                                       ! nr. of dimensions
         integer, allocatable :: lim_tot(:,:)                                    ! total limits
@@ -863,6 +923,7 @@ contains
         character(len=max_str_ln) :: head_name_loc                              ! local head_name
         logical :: ind_print_loc                                                ! local ind_print
         logical :: disp_info_loc                                                ! local disp_info
+        logical :: group_exists                                                 ! the group exists and does not have to be created
         integer(HID_T) :: a_plist_id                                            ! access property list identifier 
         integer(HID_T) :: x_plist_id                                            ! transfer property list identifier 
         integer(HID_T) :: chunk_a_plist_id                                      ! chunk access property list identifier 
@@ -876,6 +937,7 @@ contains
         integer(HID_T) :: head_group_id                                         ! head group identifier
         integer(HSIZE_T) :: dimsf(1)                                            ! total dataset dimensions
         integer(HSIZE_T) :: dimsm(1)                                            ! group dataset dimensions
+        integer :: disable_rw                                                   ! MPI info to disable read and write
 #if ldebug
         real :: rdcc_w0                                                         ! Preemption policy.
         integer(SIZE_T) :: rdcc_nslots                                          ! Number of chunk slots in the raw data chunk  cache hash table.
@@ -906,24 +968,43 @@ contains
         
         ! set up MPI Communicator
         if (ind_print_loc) then
-            MPI_Comm = MPI_Comm_self                                            ! individual print
+            MPI_Comm_loc = MPI_Comm_self                                        ! individual print
         else
-            MPI_Comm = MPI_Comm_world                                           ! default world communicator
+            MPI_Comm_loc = MPI_Comm_world                                       ! default world communicator
         end if
         
         ! initialize FORTRAN predefined datatypes
-        call H5Open_f(ierr) 
+        rIO(call H5Open_f(ierr),ierr)
         CHCKERR('Failed to initialize HDF5')
         
+#if lIB
+        ! disable file locking
+        call MPI_Info_create(disable_rw,ierr)
+        CHCKERR('Failed to create MPI info')
+        call MPI_Info_set(disable_rw,'romio_ds_read','disable',ierr)
+        CHCKERR('Failed to set MPI info')
+        call MPI_Info_set(disable_rw,'romio_ds_write','disable',ierr)
+        CHCKERR('Failed to set MPI info')
+#else
+        disable_rw = MPI_INFO_NULL
+#endif
+        
         ! setup file access property list with parallel I/O access if needed
-        call H5Pcreate_f(H5P_FILE_ACCESS_F,a_plist_id,ierr)
+        rIO(call H5Pcreate_f(H5P_FILE_ACCESS_F,a_plist_id,ierr),ierr)
         CHCKERR('Failed to create property list')
         if (ind_print_loc) then
-            call H5Pset_fapl_stdio_f(a_plist_id,ierr) 
+            rIO(call H5Pset_fapl_stdio_f(a_plist_id,ierr),ierr)
         else
-            call H5Pset_fapl_mpio_f(a_plist_id,MPI_Comm,MPI_INFO_NULL,ierr)
+            rIO(call H5Pset_fapl_mpio_f(a_plist_id,MPI_Comm_loc,disable_rw,&
+                &ierr),ierr)
         end if
         CHCKERR('Failed to set file access property')
+        
+#if lIB
+        ! free file locking info
+        call MPI_Info_free(disable_rw,ierr)
+        CHCKERR('Failed to free MPI info')
+#endif
         
         ! wait for file access if individual print and multiple processes
         if (n_procs.gt.1 .and. ind_print_loc) then
@@ -932,24 +1013,27 @@ contains
         end if
         
         ! open the file
-        call H5Fopen_f(trim(PB3D_name),H5F_ACC_RDWR_F,HDF5_i,ierr,&
-            &access_prp=a_plist_id)
+        rIO(call H5Fopen_f(trim(PB3D_name),H5F_ACC_RDWR_F,HDF5_i,ierr,&
+            &access_prp=a_plist_id),ierr)
         CHCKERR('Failed to open file')
-        call H5Pclose_f(a_plist_id,ierr)
+        rIO(call H5Pclose_f(a_plist_id,ierr),ierr)
         CHCKERR('Failed to close property list')
         
         ! set HDF5 type corresponding to dp
         HDF5_kind_64 = H5Kind_to_type(dp,H5_REAL_KIND)
         
         ! check if head group exists and if not create it
-        call H5Eset_auto_f(0,ierr)
+        rIO(call H5Eset_auto_f(0,ierr),ierr)
         CHCKERR('Failed to disable error printing')
-        call H5Gopen_f(HDF5_i,trim(head_name_loc),head_group_id,istat)
-        if (istat.ne.0) then                                                    ! group does not exist
-            call H5Gcreate_f(HDF5_i,trim(head_name_loc),head_group_id,ierr)
+        rIO2(call H5Gopen_f(HDF5_i,trim(head_name_loc),head_group_id,istat),&
+            &istat)
+        group_exists = istat.eq.0
+        if (.not.group_exists) then                                             ! group does not exist
+            rIO(call H5Gcreate_f(HDF5_i,trim(head_name_loc),&
+                &head_group_id,ierr),ierr)
             CHCKERR('Failed to create group')
         end if
-        call H5Eset_auto_f(1,ierr)
+        rIO(call H5Eset_auto_f(1,ierr),ierr)
         CHCKERR('Failed to enable error printing')
         
         ! user output
@@ -965,16 +1049,17 @@ contains
             end if
             
             ! check if group exists and if not create it
-            call H5Eset_auto_f(0,ierr)
+            rIO(call H5Eset_auto_f(0,ierr),ierr)
             CHCKERR('Failed to disable error printing')
-            call H5Gopen_f(head_group_id,trim(vars(id)%var_name),group_id,&
-                &istat)
-            call H5Eset_auto_f(1,ierr)
+            rIO2(call H5Gopen_f(head_group_id,trim(vars(id)%var_name),group_id,&
+                &istat),istat)
+            group_exists = istat.eq.0
+            rIO(call H5Eset_auto_f(1,ierr),ierr)
             CHCKERR('Failed to enable error printing')
-            if (istat.ne.0) then                                                ! group does not exist
+            if (.not.group_exists) then                                         ! group does not exist
                 ! create group
-                call H5Gcreate_f(head_group_id,trim(vars(id)%var_name),&
-                    &group_id,ierr)
+                rIO(call H5Gcreate_f(head_group_id,trim(vars(id)%var_name),&
+                        &group_id,ierr),ierr)
                 CHCKERR('Failed to create group')
             end if
             
@@ -982,6 +1067,8 @@ contains
             
             ! set up local and total limits
             n_dims = size(vars(id)%tot_i_min)
+            allocate(lim_tot(n_dims,2))
+            allocate(lim_loc(n_dims,2))
             lim_tot = &
                 &reshape([vars(id)%tot_i_min,vars(id)%tot_i_max],[n_dims,2])
             lim_loc = &
@@ -991,9 +1078,9 @@ contains
             dimsf = product(lim_tot(:,2)-lim_tot(:,1)+1)                        ! file space has total dimensions
             
             ! create or open data set with filespace
-            if (istat.ne.0) then                                                ! group did not exist
+            if (.not.group_exists) then                                         ! group did not exist
                 ! create file data space
-                call H5Screate_simple_f(1,dimsf,filespace,ierr)
+                rIO(call H5Screate_simple_f(1,dimsf,filespace,ierr),ierr)
                 CHCKERR('Failed to create file space')
                 
                 ! set up chunk creation and access property list
@@ -1002,12 +1089,13 @@ contains
                 CHCKERR('')
                 
                 ! create file data set in group
-                call H5Dcreate_f(group_id,'var',HDF5_kind_64,filespace,dset_id,&
-                    &ierr,dcpl_id=chunk_c_plist_id,dapl_id=chunk_a_plist_id)
+                rIO(call H5Dcreate_f(group_id,'var',HDF5_kind_64,filespace,&
+                        &dset_id,ierr,dcpl_id=chunk_c_plist_id,&
+                        &dapl_id=chunk_a_plist_id),ierr)
                 CHCKERR('Failed to create file data set')
                 
                 ! close chunk property list
-                call H5Pclose_f(chunk_c_plist_id,ierr)
+                rIO(call H5Pclose_f(chunk_c_plist_id,ierr),ierr)
                 CHCKERR('Failed to close property list')
             else                                                                ! group already exists
                 ! set up chunk access property list
@@ -1015,37 +1103,37 @@ contains
                 CHCKERR('')
                 
                 ! open file data set
-                call H5Dopen_f(group_id,'var',dset_id,ierr,dapl_id=&
-                    &chunk_a_plist_id)
+                rIO(call H5Dopen_f(group_id,'var',dset_id,ierr,dapl_id=&
+                        &chunk_a_plist_id),ierr)
                 CHCKERR('Failed to open file data set')
                 
                 ! get file data space
-                call H5Dget_space_f(dset_id,filespace,ierr) 
+                rIO(call H5Dget_space_f(dset_id,filespace,ierr),ierr)
                 CHCKERR('Failed to get file space')
             end if
             
             ! close data access property list
-            call H5Pclose_f(chunk_a_plist_id,ierr)
+            rIO(call H5Pclose_f(chunk_a_plist_id,ierr),ierr)
             CHCKERR('Failed to close property list')
             
 #if ldebug
             if (debug_print_HDF5_arrs) then
                 ! get data access property list
-                call H5Dget_access_plist_f(dset_id,a_plist_id,ierr)
+                rIO(call H5Dget_access_plist_f(dset_id,a_plist_id,ierr),ierr)
                 CHCKERR('Failed to get property list')
                 
                 ! get chunk cache
-                call H5PGet_chunk_cache_f(a_plist_id,rdcc_nslots,&
-                    &rdcc_nbytes,rdcc_w0,ierr)
-                write(*,*) rank, 'Number of chunk slots in the raw data chunk &
-                    &cache hash table:', rdcc_nslots
-                write(*,*) rank, 'Total size of the raw data chunk cache, in &
-                    &Mbytes:', rdcc_nbytes*1.E-6_dp
-                write(*,*) rank, 'Preemption Policy:', rdcc_w0
+                rIO(call H5PGet_chunk_cache_f(a_plist_id,rdcc_nslots,&
+                    &rdcc_nbytes,rdcc_w0,ierr),ierr)
+                write(*,*,IOSTAT=istat) rank, 'Number of chunk slots in the &
+                    &raw data chunk cache hash table:', rdcc_nslots
+                write(*,*,IOSTAT=istat) rank, 'Total size of the raw data &
+                    &chunk cache, in Mbytes:', rdcc_nbytes*1.E-6_dp
+                write(*,*,IOSTAT=istat) rank, 'Preemption Policy:', rdcc_w0
                 CHCKERR('Failed to get chunk cache')
                 
                 ! close data access property list
-                call H5Pclose_f(a_plist_id,ierr)
+                rIO(call H5Pclose_f(a_plist_id,ierr),ierr)
                 CHCKERR('Failed to close property list')
             end if
 #endif
@@ -1055,12 +1143,13 @@ contains
             CHCKERR('')
             
             ! create property list for collective dataset write
-            call H5Pcreate_f(H5P_DATASET_XFER_F,x_plist_id,ierr) 
+            rIO(call H5Pcreate_f(H5P_DATASET_XFER_F,x_plist_id,ierr),ierr)
             CHCKERR('Failed to create property list')
             if (ind_print_loc) then
                 x_plist_id = H5P_DEFAULT_F
             else
-                call H5Pset_dxpl_mpio_f(x_plist_id,H5FD_MPIO_COLLECTIVE_F,ierr)
+                rIO(call H5Pset_dxpl_mpio_f(x_plist_id,H5FD_MPIO_COLLECTIVE_F,&
+                    &ierr),ierr)
                 CHCKERR('Failed to set parallel property')
             end if
             
@@ -1068,28 +1157,28 @@ contains
             dimsm = product(lim_loc(:,2)-lim_loc(:,1)+1)                        ! memory space has local dimensions
             
             ! create memory data space
-            call H5Screate_simple_f(1,dimsm,memspace,ierr)
+            rIO(call H5Screate_simple_f(1,dimsm,memspace,ierr),ierr)
             CHCKERR('Failed to create memory space')
             
             ! write the dataset collectively. 
-            call H5Dwrite_f(dset_id,HDF5_kind_64,vars(id)%p,&
-                &dimsf,ierr,file_space_id=filespace,&
-                &mem_space_id=memspace,xfer_prp=x_plist_id)
+            rIO(call H5Dwrite_f(dset_id,HDF5_kind_64,vars(id)%p,&
+                    &dimsf,ierr,file_space_id=filespace,&
+                    &mem_space_id=memspace,xfer_prp=x_plist_id),ierr)
             if (ierr.ne.0) call writo('Did you increase max_tot_mem_per_proc &
                 &while restarting Richardson? If so, must start from 1...',&
                 &alert=.true.)
             CHCKERR('Failed to write data data set')
-            call H5Pclose_f(x_plist_id,ierr)
+            rIO(call H5Pclose_f(x_plist_id,ierr),ierr)
             CHCKERR('Failed to close property list')
             
             ! close dataspaces
-            call H5Sclose_f(filespace,ierr)
+            rIO(call H5Sclose_f(filespace,ierr),ierr)
             CHCKERR('Unable to close file space')
-            call H5Sclose_f(memspace,ierr)
+            rIO(call H5Sclose_f(memspace,ierr),ierr)
             CHCKERR('Unable to close memory space')
             
             ! close the dataset.
-            call H5Dclose_f(dset_id,ierr)
+            rIO(call H5Dclose_f(dset_id,ierr),ierr)
             CHCKERR('Failed to close data set')
             
             ! 2. Limit information
@@ -1098,53 +1187,54 @@ contains
             dimsf = size(lim_tot)                                               ! min. and max. limit value per dimension
             
             ! create or open data set with filespace
-            if (istat.ne.0) then                                                ! group did not exist
+            if (.not.group_exists) then                                         ! group did not exist
                 ! create file data space
-                call H5Screate_simple_f(1,dimsf,filespace,ierr)
+                rIO(call H5Screate_simple_f(1,dimsf,filespace,ierr),ierr)
                 CHCKERR('Failed to create file space')
                 
                 ! create file data set in group
-                call H5Dcreate_f(group_id,'lim',H5T_NATIVE_INTEGER,filespace,&
-                    &dset_id,ierr)
+                rIO(call H5Dcreate_f(group_id,'lim',H5T_NATIVE_INTEGER,&
+                    &filespace,dset_id,ierr),ierr)
                 CHCKERR('Failed to create file data set')
                 
                 ! close dataspace
-                call H5Sclose_f(filespace,ierr)
+                rIO(call H5Sclose_f(filespace,ierr),ierr)
                 CHCKERR('Unable to close file space')
             else                                                                ! group already exists
                 ! open file data set
-                call H5Dopen_f(group_id,'lim',dset_id,ierr)
+                rIO(call H5Dopen_f(group_id,'lim',dset_id,ierr),ierr)
                 CHCKERR('Failed to open file data set')
             end if
             
             ! only leader writes
             if (rank.eq.0 .or. ind_print_loc) then
                 ! write the dataset
-                call H5Dwrite_f(dset_id,H5T_NATIVE_INTEGER,&
-                    &[vars(id)%tot_i_min,vars(id)%tot_i_max],dimsf,ierr)
+                rIO(call H5Dwrite_f(dset_id,H5T_NATIVE_INTEGER,&
+                        &[vars(id)%tot_i_min,vars(id)%tot_i_max],dimsf,ierr),&
+                        &ierr)
                 CHCKERR('Failed to write limit data set')
             end if
             
             ! close the dataset.
-            call H5Dclose_f(dset_id,ierr)
+            rIO(call H5Dclose_f(dset_id,ierr),ierr)
             CHCKERR('Failed to close data set')
             
             ! deallocate limits
             deallocate(lim_tot,lim_loc)
             
             ! close the group
-            call H5Gclose_f(group_id,ierr)
+            rIO(call H5Gclose_f(group_id,ierr),ierr)
             CHCKERR('Failed to close group')
         end do
         
         call lvl_ud(-1)
         
         ! close the head group
-        call H5gclose_f(head_group_id,ierr)
+        rIO(call H5gclose_f(head_group_id,ierr),ierr)
         CHCKERR('Failed to close group')
         
         ! close the HDF5 and return lock
-        call H5Fclose_f(HDF5_i,ierr)
+        rIO(call H5Fclose_f(HDF5_i,ierr),ierr)
         CHCKERR('failed to close HDF5 file')
         if (n_procs.gt.1 .and. ind_print_loc) then
             ! return lock
@@ -1153,7 +1243,7 @@ contains
         end if
         
         ! close FORTRAN interfaces and HDF5 library.
-        call H5Close_f(ierr)
+        rIO(call H5Close_f(ierr),ierr)
         err_msg = 'Failed to close FORTRAN HDF5 interface'
         CHCKERR(err_msg)
     contains
@@ -1232,6 +1322,7 @@ contains
         integer(HSIZE_T) :: data_size                                           ! size of data set
         integer(HSIZE_T) :: n_dims                                              ! nr. of dimensions
         integer(SIZE_T) :: name_len                                             ! length of name of group
+        integer :: kd                                                           ! counter
         integer :: storage_type                                                 ! type of storage used in HDF5 file
         integer :: nr_lnks_head                                                 ! number of links in head group
         integer :: max_corder                                                   ! current maximum creation order value for group
@@ -1241,6 +1332,9 @@ contains
         character(len=max_str_ln) :: group_name                                 ! name of group
         character(len=max_str_ln) :: head_name_loc                              ! local head_name
         logical :: disp_info_loc                                                ! local disp_info
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -1263,13 +1357,14 @@ contains
         ! user output
 #if ldebug
         if (debug_HDF5_ops) then
-            write(*,*) 'Reading data from PB3D output "'//trim(PB3D_name)//&
-                &'/'//trim(head_name_loc)//'/'//trim(var_name)//'"'
+            write(*,*,IOSTAT=istat) 'Reading data from PB3D output "'//&
+                &trim(PB3D_name)//'/'//trim(head_name_loc)//'/'//&
+                &trim(var_name)//'"'
         end if
 #endif
         
         ! initialize FORTRAN predefined datatypes
-        call H5open_f(ierr) 
+        rIO(call H5open_f(ierr),ierr)
         CHCKERR('Failed to initialize HDF5')
         
         ! preparation
@@ -1285,7 +1380,7 @@ contains
         end if
         
         ! open the file
-        call H5Fopen_f(trim(PB3D_name),H5F_ACC_RDONLY_F,HDF5_i,ierr)
+        rIO(call H5Fopen_f(trim(PB3D_name),H5F_ACC_RDONLY_F,HDF5_i,ierr),ierr)
         CHCKERR('Failed to open file')
         
         ! user output
@@ -1294,8 +1389,9 @@ contains
         end if
         
         ! open head group
-        call H5Gopen_f(HDF5_i,trim(head_name_loc),head_group_id,ierr)
-        CHCKERR('Failed to open head group')
+        rIO(call H5Gopen_f(HDF5_i,trim(head_name_loc),head_group_id,ierr),ierr)
+        err_msg = 'Failed to open head group "'//trim(head_name_loc)//'"'
+        CHCKERR(err_msg)
         
 #if ldebug
         ! display all variables in group
@@ -1306,14 +1402,14 @@ contains
 #endif
         
         ! get number of objects in group to allocate vars
-        call H5Gget_info_f(head_group_id,storage_type,nr_lnks_head,max_corder,&
-            &ierr)
+        rIO(call H5Gget_info_f(head_group_id,storage_type,nr_lnks_head,&
+            &max_corder,ierr),ierr)
         CHCKERR('Failed to get group info')
         
         ! iterate over all elements in group to save all acceptable variables
         do id = 1, nr_lnks_head
-            call H5Lget_name_by_idx_f(head_group_id,'.',H5_INDEX_NAME_F,&
-                &H5_ITER_NATIVE_F,id-1,group_name,ierr,size=name_len)
+            rIO(call H5Lget_name_by_idx_f(head_group_id,'.',H5_INDEX_NAME_F,&
+                &H5_ITER_NATIVE_F,id-1,group_name,ierr,size=name_len),ierr)
             CHCKERR('Failed to get name')
             
 #if ldebug
@@ -1339,28 +1435,30 @@ contains
             var%var_name = trim(group_name)
             
             ! open group
-            call H5Gopen_f(head_group_id,trim(group_name),group_id,ierr)
+            rIO(call H5Gopen_f(head_group_id,trim(group_name),group_id,ierr),&
+                &ierr)
             CHCKERR('Failed to open group')
             
             ! 1. limit information
             
             ! open limit information dataset
-            call h5dopen_f(group_id,'lim',dset_id,ierr)
+            rIO(call h5dopen_f(group_id,'lim',dset_id,ierr),ierr)
             CHCKERR('Failed to open dataset')
             
             ! get dataspace
-            call H5Dget_space_f(dset_id,filespace,ierr)
+            rIO(call H5Dget_space_f(dset_id,filespace,ierr),ierr)
             CHCKERR('Failed to get file space')
             
             ! get size to allocate the 1D variable
-            call H5Sget_simple_extent_npoints_f(filespace,data_size,ierr)
-            n_dims = data_size/2
+            rIO(call H5Sget_simple_extent_npoints_f(filespace,data_size,ierr),&
+                &ierr)
             CHCKERR('Failed to get storage size')
+            n_dims = data_size/2
             allocate(var%tot_i_min(n_dims))
             allocate(var%tot_i_max(n_dims))
             
             ! close dataspace
-            call H5Sclose_f(filespace,ierr)
+            rIO(call H5Sclose_f(filespace,ierr),ierr)
             CHCKERR('Failed to close file space')
             
             ! allocate helper variables
@@ -1368,8 +1466,8 @@ contains
             allocate(lim_loc_loc(n_dims,2))
             
             ! read into 1D variable
-            call H5Dread_f(dset_id,H5T_NATIVE_INTEGER,lim_tot,&
-                &[2*n_dims],ierr)
+            rIO(call H5Dread_f(dset_id,H5T_NATIVE_INTEGER,lim_tot,[2*n_dims],&
+                &ierr),ierr)
             CHCKERR('Failed to read dataset')
             
             ! set up local limits
@@ -1387,7 +1485,7 @@ contains
             var%tot_i_max = lim_loc_loc(:,2)
             
             ! close the dataset.
-            call H5Dclose_f(dset_id,ierr)
+            rIO(call H5Dclose_f(dset_id,ierr),ierr)
             CHCKERR('Failed to close data set')
             
             ! 2. variable
@@ -1401,16 +1499,16 @@ contains
             CHCKERR('')
             
             ! open variable dataset
-            call H5Dopen_f(group_id,'var',dset_id,ierr,&
-                &dapl_id=chunk_a_plist_id)
+            rIO(call H5Dopen_f(group_id,'var',dset_id,ierr,&
+                &dapl_id=chunk_a_plist_id),ierr)
             CHCKERR('Failed to open dataset')
             
             ! close data access property list
-            call H5Pclose_f(chunk_a_plist_id,ierr)
+            rIO(call H5Pclose_f(chunk_a_plist_id,ierr),ierr)
             CHCKERR('Failed to close property list')
             
             ! get dataspace
-            call H5Dget_space_f(dset_id,filespace,ierr)
+            rIO(call H5Dget_space_f(dset_id,filespace,ierr),ierr)
             CHCKERR('Failed to get file space')
             
             ! set 1D filespace hyperslab selection
@@ -1418,22 +1516,22 @@ contains
             CHCKERR('')
             
             ! create memory data space
-            call H5Screate_simple_f(1,[data_size],memspace,ierr)
+            rIO(call H5Screate_simple_f(1,[data_size],memspace,ierr),ierr)
             CHCKERR('Failed to create memory space')
             
             ! read into 1D variable
-            call H5Dread_f(dset_id,HDF5_kind_64,var%p,[data_size],&
-                &ierr,mem_space_id=memspace,file_space_id=filespace)
+            rIO(call H5Dread_f(dset_id,HDF5_kind_64,var%p,[data_size],&
+                    &ierr,mem_space_id=memspace,file_space_id=filespace),ierr)
             CHCKERR('Failed to read dataset')
             
             ! close dataspaces
-            call H5Sclose_f(filespace,ierr)
+            rIO(call H5Sclose_f(filespace,ierr),ierr)
             CHCKERR('Failed to close file space')
-            call H5Sclose_f(memspace,ierr)
+            rIO(call H5Sclose_f(memspace,ierr),ierr)
             CHCKERR('Unable to close memory space')
             
             ! close the dataset.
-            call H5Dclose_f(dset_id,ierr)
+            rIO(call H5Dclose_f(dset_id,ierr),ierr)
             CHCKERR('Failed to close data set')
             
             ! end of group
@@ -1442,7 +1540,7 @@ contains
             deallocate(lim_tot,lim_loc_loc)
             
             ! close the group
-            call H5Gclose_f(group_id,ierr)
+            rIO(call H5Gclose_f(group_id,ierr),ierr)
             CHCKERR('Failed to close group')
             
             ! exit loop
@@ -1450,11 +1548,11 @@ contains
         end do
         
         ! close the head group
-        call H5Gclose_f(head_group_id,ierr)
+        rIO(call H5Gclose_f(head_group_id,ierr),ierr)
         CHCKERR('Failed to close head group')
         
         ! close the HDF5 file
-        call H5Fclose_f(HDF5_i,ierr)
+        rIO(call H5Fclose_f(HDF5_i,ierr),ierr)
         CHCKERR('failed to close HDF5 file')
         
         ! return lock
@@ -1462,7 +1560,7 @@ contains
         CHCKERR('')
         
         ! close FORTRAN interfaces and HDF5 library.
-        call H5Close_f(ierr)
+        rIO(call H5Close_f(ierr),ierr)
         err_msg = 'Failed to close FORTRAN HDF5 interface'
         CHCKERR(err_msg)
     end function read_HDF5_arr_ind
@@ -1522,6 +1620,9 @@ contains
         integer :: id                                                           ! counter
         integer :: n_items                                                      ! nr. of items
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! set up local ind_plot
         if (present(ind_plot)) ind_plot_loc = ind_plot
@@ -1537,7 +1638,7 @@ contains
                         &//trim(XDMF_items(id)%name)//'"',warning=.true.)
                 else
 #if ldebug
-                    if (debug_HDF5_ops) write(*,*) 'reset "'//&
+                    if (debug_HDF5_ops) write(*,*,IOSTAT=istat) 'reset "'//&
                         &trim(XDMF_items(id)%name)//'"'
 #endif
                     XDMF_items(id)%name = ''
@@ -1555,6 +1656,9 @@ contains
         
         ! local variables
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! set up local ind_plot
         if (present(ind_plot)) ind_plot_loc = ind_plot
@@ -1566,8 +1670,8 @@ contains
                     &//trim(XDMF_item%name)//'"',warning=.true.)
             else
 #if ldebug
-                if (debug_HDF5_ops) write(*,*) 'reset "'//trim(XDMF_item%name)&
-                    &//'"'
+                if (debug_HDF5_ops) write(*,*,IOSTAT=istat) 'reset "'//&
+                    &trim(XDMF_item%name)//'"'
 #endif
                 XDMF_item%name = ''
                 deallocate(XDMF_item%xml_str)

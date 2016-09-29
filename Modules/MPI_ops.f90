@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module MPI_ops
 #include <PB3D_macros.h>
+#include <IO_resilience.h>
     use str_utilities
     use messages
     use MPI
@@ -29,6 +30,9 @@ contains
         use X_vars, only: n_alloc_X_1s, n_alloc_X_2s
         use sol_vars, only: n_alloc_sols
 #endif
+#if lrIO
+        use num_vars, only: nr_extra_tries_IO
+#endif
         
         character(*), parameter :: rout_name = 'start_MPI'
         
@@ -51,7 +55,7 @@ contains
         call system_clock(time_start)
         
 #if ldebug
-        ! set up allocated variable counters
+        ! set up allocated variable counters and number of extra IO tries
         n_alloc_discs = 0
         n_alloc_grids = 0
         n_alloc_eq_1s = 0
@@ -59,6 +63,9 @@ contains
         n_alloc_X_1s = 0
         n_alloc_X_2s = 0
         n_alloc_sols = 0
+#endif
+#if lrIO
+        nr_extra_tries_IO = 0
 #endif
     end function start_MPI
     
@@ -74,6 +81,9 @@ contains
         use X_vars, only: n_alloc_X_1s, n_alloc_X_2s
         use sol_vars, only: n_alloc_sols
 #endif
+#if lrIO
+        use num_vars, only: rank, nr_extra_tries_IO
+#endif
         
         character(*), parameter :: rout_name = 'stop_MPI'
         
@@ -82,14 +92,6 @@ contains
         
         ! user output
         call writo('Stopping MPI')
-        
-        ! deallocate HDF5 lock
-        ierr = dealloc_lock(HDF5_lock)
-        CHCKERR('')
-        
-        ! finalize
-        call MPI_finalize(ierr)
-        CHCKERR('MPI stop failed')
         
 #if ldebug
         ! information about allocated variables
@@ -108,6 +110,18 @@ contains
         if (n_alloc_sols.ne.0) call writo('For rank '//trim(i2str(rank))//&
             &', n_alloc_sols = '//trim(i2str(n_alloc_sols)))
 #endif
+#if lrIO
+        if (nr_extra_tries_IO.ne.0) call writo('For rank '//trim(i2str(rank))//&
+            &', nr_extra_tries_IO = '//trim(i2str(nr_extra_tries_IO)))
+#endif
+        
+        ! deallocate HDF5 lock
+        ierr = dealloc_lock(HDF5_lock)
+        CHCKERR('')
+        
+        ! finalize
+        call MPI_finalize(ierr)
+        CHCKERR('MPI stop failed')
     end function stop_MPI
     
     ! abort MPI
@@ -141,7 +155,7 @@ contains
         ! local variables
         integer :: current_job                                                  ! current job when calling this routine
         integer :: n_jobs                                                       ! nr. of jobs
-        integer :: id                                                           ! counter
+        integer :: id, kd                                                       ! counters
         integer :: read_stat                                                    ! read status
         integer :: X_file_i                                                     ! X file number
         integer :: proc                                                         ! process that did a job
@@ -164,17 +178,17 @@ contains
         ! get access to X jobs lock
         ierr = lock_req_acc(X_jobs_lock)
         CHCKERR('')
-        open(STATUS='OLD',ACTION = 'READWRITE',unit=nextunit(X_file_i),&
-            &file=X_jobs_file_name,iostat=ierr)
+        rIO(open(nextunit(X_file_i),STATUS='old',ACTION ='readwrite',&
+            &FILE=X_jobs_file_name,IOSTAT=ierr),ierr)
         CHCKERR('Failed to open X jobs file')
         
         ! read X_jobs file and update X_jobs_taken
-        read(X_file_i,*,iostat=ierr) dummy_char
+        rIO(read(X_file_i,*,iostat=ierr) dummy_char,ierr)
         if (ierr.eq.0 .and. dummy_char.ne.'#') ierr = 1                         ! even if good read, first char must be #
         CHCKERR('X_job file corrupt')
         read_stat = 0
         do while(read_stat.eq.0) 
-            read(X_file_i,*,iostat=read_stat) proc, X_job_done
+            rIO2(read(X_file_i,*,iostat=read_stat) (proc, X_job_done),read_stat)
             if (read_stat.eq.0) X_jobs_taken(X_job_done) = .true.
         end do
         
@@ -202,7 +216,9 @@ contains
         ! if new job found, put back X_jobs_taken
         if (X_job_nr.ge.1) then
             backspace(UNIT=X_file_i)
-            write(X_file_i,*) rank, X_job_nr
+            rIO(write(UNIT=X_file_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(i2str(rank))//' '//trim(i2str(X_job_nr)),ierr)
+            CHCKERR('Failed to write')
         end if
         
         ! close X_jobs file and return access to lock
@@ -251,6 +267,7 @@ contains
         character(*), parameter :: rout_name = 'print_jobs_info'
         
         ! local variables
+        integer :: kd                                                           ! counter
         integer :: read_stat                                                    ! read status
         integer :: X_file_i                                                     ! X file number
         integer :: proc                                                         ! process that did a job
@@ -263,18 +280,19 @@ contains
         ! only if master
         if (rank.eq.0) then
             ! open X_jobs file
-            open(STATUS='OLD',ACTION = 'READWRITE',unit=nextunit(X_file_i),&
-                &file=X_jobs_file_name,iostat=ierr)
+            rIO(open(nextunit(X_file_i),STATUS='old',ACTION='readwrite',&
+                &FILE=X_jobs_file_name,IOSTAT=ierr),ierr)
             CHCKERR('Failed to open X jobs file')
             
             ! read  X_jobs  file  and  output message  for  jobs  done by  other
             ! processes
-            read(X_file_i,*,iostat=ierr) dummy_char
+            rIO(read(X_file_i,*,iostat=ierr) dummy_char,ierr)
             if (ierr.eq.0 .and. dummy_char.ne.'#') ierr = 1                     ! even if good read, first char must be #
             CHCKERR('X_job file corrupt')
             read_stat = 0
             do while(read_stat.eq.0) 
-                read(X_file_i,*,iostat=read_stat) proc, X_job_done
+                rIO2(read(X_file_i,*,iostat=read_stat) (proc, X_job_done),&
+                    &read_stat)
                 if (read_stat.eq.0 .and. proc.ne.rank) then
                     call writo('Job '//trim(i2str(X_job_done))//&
                         &' was done by process '//trim(i2str(proc)))

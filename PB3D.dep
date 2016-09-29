@@ -85,6 +85,7 @@ sol_ops.o : \
     sol_vars.o \
     sol_utilities.o \
     rich_vars.o \
+    files_utilities.o \
 
 sol_utilities.o : \
     str_utilities.o \
@@ -331,6 +332,7 @@ output_ops.o : \
     str_utilities.o \
     messages.o \
     MPI_utilities.o \
+    files_utilities.o \
 
 HDF5_ops.o : \
     files_utilities.o \

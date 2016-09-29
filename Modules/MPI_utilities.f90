@@ -526,6 +526,9 @@ contains
         logical, intent(in), optional :: blocking                               ! is a blocking process
         logical :: next_nb_proc_exists                                          ! a next NB process exists
         logical :: direct_receipt                                               ! receipt was direct
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -543,7 +546,7 @@ contains
         if (present(blocking)) lock%blocking = blocking
         
 #if ldebug
-        if(debug_lock) write(*,*) trim(lock_header(lock)), &
+        if(debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)), &
             &'requesting access'
 #endif
         
@@ -557,7 +560,7 @@ contains
         ! wait for notification if other processes
         if (direct_receipt) then
 #if ldebug
-            if(debug_lock) write(*,*) trim(lock_header(lock)), &
+            if(debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)), &
                 &'and got it right away'
 #endif
             
@@ -568,7 +571,8 @@ contains
                 next_nb_proc_exists =  &
                     &.not.wl_empty(wl_loc,[-1],next_procs=next_nb_procs)
 #if ldebug
-                if (debug_lock) write(*,*) trim(lock_header(lock)),&
+                if (debug_lock) write(*,*,IOSTAT=istat) &
+                    &trim(lock_header(lock)),&
                     &'    NB proc, next NB procs found:', next_nb_procs
 #endif
             end if
@@ -585,7 +589,7 @@ contains
             
             ! activate
 #if ldebug
-            if(debug_lock) write(*,*) trim(lock_header(lock)), &
+            if(debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)), &
                 &'    setting status to activate:', ranks_to_activate
 #endif
             ierr = lock_wl_change(2,.false.,lock,wl_loc,ranks=ranks_to_activate)
@@ -622,6 +626,9 @@ contains
         integer, allocatable :: ranks_to_activate(:)                            ! ranks to be set active
         logical :: next_proc_exists                                             ! a next process exists
         logical :: next_proc_Bl                                                 ! next process is BL
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -632,7 +639,7 @@ contains
             CHCKERR('lock not intialized')
         end if
         
-        if(debug_lock) write(*,*) trim(lock_header(lock)), &
+        if(debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)), &
             &'returning access'
 #endif
         
@@ -645,34 +652,32 @@ contains
         !   - NB: was last NB running
         next_proc_Bl = .false.
         next_proc_exists = .false.
-        find_next: if (lock%blocking .or. wl_empty(wl_loc,[-2])) then
+        if (lock%blocking .or. wl_empty(wl_loc,[-2])) then
             ! find all BL procs
             next_proc_exists = .not.wl_empty(wl_loc,[1],next_procs=next_procs)
+            if (next_proc_exists) next_proc_Bl = .true.
 #if ldebug
-            if (debug_lock) write(*,*) trim(lock_header(lock)),&
+            if (debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)),&
                 &'    next BL procs found:', next_procs
 #endif
-            if (next_proc_exists) then
-                next_proc_Bl = .true.
-                exit find_next
-            end if
             
             ! if none found, try NB procs
-            next_proc_exists = .not.wl_empty(wl_loc,[-1],next_procs=next_procs)
+            if (.not. next_proc_exists) then
+                next_proc_exists = .not.wl_empty(wl_loc,[-1],&
+                    &next_procs=next_procs)
+                if (next_proc_exists) next_proc_Bl = .false.
 #if ldebug
-            if (debug_lock) write(*,*) trim(lock_header(lock)),&
-                &'    next NB procs found:', next_procs
+                if (debug_lock) write(*,*,IOSTAT=istat) &
+                    &trim(lock_header(lock)),&
+                    &'    next NB procs found:', next_procs
 #endif
-            if (next_proc_exists) then
-                next_proc_Bl = .false.
-                exit find_next
             end if
 #if ldebug
         else
-            if(debug_lock) write(*,*) trim(lock_header(lock)), &
+            if(debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)), &
                 &'but has no notification rights'
 #endif
-        end if find_next
+        end if
         
         if (next_proc_exists) then
             ! set ranks to activate
@@ -687,7 +692,7 @@ contains
             
             ! activate
 #if ldebug
-            if(debug_lock) write(*,*) trim(lock_header(lock)), &
+            if(debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)), &
                 &'    setting status to activate:', ranks_to_activate
 #endif
             ierr = lock_wl_change(2,next_proc_BL,lock,wl_loc,&
@@ -761,6 +766,11 @@ contains
         type(lock_type), intent(in) :: lock                                     ! lock
         integer, intent(in) :: rec_rank                                         ! receiving rank
         
+        ! local variables
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
+        
         ! initialize ierr
         ierr = 0
         
@@ -769,7 +779,7 @@ contains
         CHCKERR('Failed to send notification')
         
 #if ldebug
-        if (debug_lock) write(*,*) trim(lock_header(lock)), &
+        if (debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)), &
             &'    notified', rec_rank
 #endif
     end function lock_notify
@@ -783,19 +793,22 @@ contains
         
         ! local variables
         integer :: dum_buf                                                      ! dummy buffer
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
         
         ! initialize ierr
         ierr = 0
         
 #if ldebug
-        if (debug_lock) write(*,*) trim(lock_header(lock)), &
+        if (debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)), &
             &'    but needs to wait for lock'
 #endif
         call MPI_Recv(dum_buf,1,MPI_INTEGER,MPI_ANY_SOURCE,&
             &lock%wu_tag,MPI_Comm_world,MPI_STATUS_IGNORE,ierr)
         CHCKERR('Failed to receive notification')
 #if ldebug
-        if (debug_lock) write(*,*) trim(lock_header(lock)), &
+        if (debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)), &
             &'    got notified by ',dum_buf-1
 #endif
     end function lock_get_notified
@@ -832,6 +845,7 @@ contains
         integer(kind=MPI_ADDRESS_KIND) :: disp                                  ! local displacement
         integer :: ln                                                           ! local length
 #if ldebug
+        integer :: istat                                                        ! status
         integer(kind=8) :: window_time(2)                                       ! time that a window is locked
 #endif
         
@@ -863,6 +877,10 @@ contains
         CHCKERR('Failed to lock window')
         
         ! get previous list and put value for current ranks
+        ! Do this by looking at every rank that is to be put, whether there are
+        ! values to be gotten between the previous put and the current put.
+        ! Finally, do one more get for the ranks between  the last put  and the
+        ! end.
         do id = 1,n_ranks+1
             ! set local displacement and length
             if (id.eq.1) then
@@ -876,13 +894,13 @@ contains
                     ln = n_procs-ranks_loc(id-1)-1
                 end if
             end if
-        !!write(*,*) trim(lock_header(lock)), 'ranks=',ranks_loc, 'id', id, &
-            !!&'disp, ln ', disp, ln
             
             ! perform the gets between this rank and previous rank
-            call MPI_Get(wl(int(disp)+1:int(disp)+ln),ln,MPI_INTEGER,0,disp,ln,&
-                &MPI_INTEGER,lock%wl_win,ierr)
-            CHCKERR('Failed to get waiting list')
+            if (ln.gt.0) then                                                   ! if there is something to get between last put and this one
+                call MPI_Get(wl(int(disp)+1:int(disp)+ln),ln,MPI_INTEGER,0,&
+                    &disp,ln,MPI_INTEGER,lock%wl_win,ierr)
+                CHCKERR('Failed to get waiting list')
+            end if
             
             ! perform the single put up to the current rank if not last piece
             if (id.lt.n_ranks+1) then
@@ -901,7 +919,8 @@ contains
 #endif
 
 #if ldebug
-        if(debug_lock) write(*,*) trim(lock_header(lock)), '    time: '//&
+        if(debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)),&
+            &'    time: '//&
             &trim(r2strt(1.E-9_dp*(window_time(2)-window_time(1)))),&
             &' waiting list:', wl
 #endif

@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module X_ops
 #include <PB3D_macros.h>
+#include <wrappers.h>
     use str_utilities
     use output_ops
     use messages
@@ -470,8 +471,8 @@ contains
             lim_lo = max(min_jq-tol_norm,min_jq/(1+pmone*tol_norm))
             lim_hi = min(max_jq+tol_norm,max_jq/(1-pmone*tol_norm))
             
-            ! for every mode (n,m) check whether m/n is inside the range of q values
-            ! or n/m inside the range of iota values
+            ! for  every mode (n,m) check  whether m/n is inside the range of q
+            ! values or n/m inside the range of iota values
             do id = 1,n_mod_X
                 ! check if limits are met
                 if (use_pol_flux_F) then
@@ -526,7 +527,7 @@ contains
             real(dp), allocatable :: fac_n(:), fac_m(:)                         ! factors to be multiplied with n m m
             character(len=max_str_ln) :: frac_name                              ! name of fraction
 #if ldebug
-            real(dp), allocatable :: x_vars(:,:)                                ! for plotting
+            real(dp), allocatable :: x_plot(:,:)                                ! for plotting
             character(len=max_str_ln) :: plot_title                             ! title for plots
             character(len=max_str_ln) :: plot_name                              ! file name for plots
 #endif
@@ -584,13 +585,13 @@ contains
 #if ldebug
             if (debug_check_X_modes_2) then
                 call writo('Plotting the fraction for all modes')
-                allocate(x_vars(grid_eq%n(3),n_mod_X))
+                allocate(x_plot(grid_eq%n(3),n_mod_X))
                 do ld = 1,n_mod_X
-                    x_vars(:,ld) = grid_eq%r_F
+                    x_plot(:,ld) = grid_eq%r_F
                 end do
                 plot_name = 'TEST_max_frac'
                 plot_title = 'maximum fraction'
-                call print_ex_2D([plot_title],plot_name,max_frac,x=x_vars,&
+                call print_ex_2D([plot_title],plot_name,max_frac,x=x_plot,&
                     &draw=.false.)
                 call draw_ex([plot_title],plot_name,n_mod_X,1,.false.)
             end if
@@ -686,7 +687,7 @@ contains
         ! calculate normalization factor max_flux / 2pi
         norm_factor = max_flux_F/(2*pi)
         
-        ! loop over all modes (and shift the index in x and y_vars by 1)
+        ! loop over all modes (and shift the index in m_loc and n_loc by 1)
         ld_loc = 1
         do ld = 1,size(sec_X_ind,2)
             
@@ -805,8 +806,8 @@ contains
         integer :: ld                                                           ! counter
         integer :: n_mod_loc                                                    ! local n_mod
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
-        real(dp), allocatable :: x_vars(:,:)                                    ! for plotting
-        real(dp), allocatable :: y_vars(:,:)                                    ! for plotting
+        real(dp), allocatable :: x_plot_loc(:,:)                                    ! for plotting
+        real(dp), allocatable :: y_plot_loc(:,:)                                    ! for plotting
         character(len=max_str_ln) :: plot_title, file_name                      ! name of plot, of file
         real(dp), allocatable :: jq(:)                                          ! saf. fac. or rot. transf. in Flux coords.
         integer :: n_r                                                          ! total number of normal points
@@ -862,18 +863,18 @@ contains
             ! set local n_mod
             n_mod_loc = size(res_surf,1)
             
-            ! initialize x_vars and y_vars
-            allocate(x_vars(n_r,n_mod_loc+1)); x_vars = 0
-            allocate(y_vars(n_r,n_mod_loc+1)); y_vars = 0
+            ! initialize x_plot_loc and y_plot_loc
+            allocate(x_plot_loc(n_r,n_mod_loc+1)); x_plot_loc = 0
+            allocate(y_plot_loc(n_r,n_mod_loc+1)); y_plot_loc = 0
             
-            ! set x_vars and y_vars for first column
-            x_vars(:,1) = grid_trim%r_F
-            y_vars(:,1) = jq(:)
+            ! set x_plot_loc and y_plot_loc for first column
+            x_plot_loc(:,1) = grid_trim%r_F
+            y_plot_loc(:,1) = jq(:)
             
-            ! set x_vars and y_vars for other columns
+            ! set x_plot_loc and y_plot_loc for other columns
             do ld = 1,n_mod_loc
-                x_vars(:,ld+1) = res_surf(ld,2)
-                y_vars(n_r,ld+1) = res_surf(ld,3)
+                x_plot_loc(:,ld+1) = res_surf(ld,2)
+                y_plot_loc(n_r,ld+1) = res_surf(ld,3)
             end do
             
             ! user message
@@ -894,7 +895,7 @@ contains
             ! set up vars
             allocate(vars(n_theta_plot,n_zeta_plot,1,n_mod_loc))
             do ld = 1,n_mod_loc
-                vars(:,:,:,ld) = y_vars(n_r,ld+1)
+                vars(:,:,:,ld) = y_plot_loc(n_r,ld+1)
             end do
             
             ! set up plot titles
@@ -918,7 +919,7 @@ contains
             
             ! calculate normal vars in Equilibrium coords.
             allocate(r_plot_E(n_mod_loc))
-            ierr = coord_F2E(grid,x_vars(n_r,2:n_mod_loc+1),r_plot_E,&
+            ierr = coord_F2E(grid,x_plot_loc(n_r,2:n_mod_loc+1),r_plot_E,&
                 &r_F_array=grid%r_F,r_E_array=grid%r_E)
             CHCKERR('')
             
@@ -966,11 +967,11 @@ contains
             
             call lvl_ud(1)
             
-            ! rescale x_vars by max_flux_F/2*pi
-            x_vars = x_vars*2*pi/max_flux_F
+            ! rescale x_plot_loc by max_flux_F/2*pi
+            x_plot_loc = x_plot_loc*2*pi/max_flux_F
             
             ! print to file
-            call print_ex_2D([plot_title],file_name,y_vars,x=x_vars,&
+            call print_ex_2D([plot_title],file_name,y_plot_loc,x=x_plot_loc,&
                 &draw=.false.)
             
             ! plot using external program
@@ -991,7 +992,7 @@ contains
             allocate(Z_plot(plot_dim(1),plot_dim(2),plot_dim(3),1))
             
             do ld = 1,n_mod_loc
-                X_plot(1,ld,1,1) = x_vars(1,ld+1)
+                X_plot(1,ld,1,1) = x_plot_loc(1,ld+1)
                 Y_plot(1,ld,1,1) = res_surf(ld,1)-1
                 Z_plot(1,ld,1,1) = 1._dp
             end do
@@ -1495,7 +1496,7 @@ contains
                     &mode '//trim(i2str(ld)//', real part')
                 
                 ! plot difference for RE DU_0
-                call plot_diff_HDF5(realpart(DU_0),realpart(X%DU_0(:,:,:,ld)),&
+                call plot_diff_HDF5(rp(DU_0),rp(X%DU_0(:,:,:,ld)),&
                     &file_name,description=description,output_message=.true.)
                 
                 ! set some variables
@@ -1504,7 +1505,7 @@ contains
                     &mode '//trim(i2str(ld)//', imaginary part')
                 
                 ! plot difference for IM DU_0
-                call plot_diff_HDF5(imagpart(DU_0),imagpart(X%DU_0(:,:,:,ld)),&
+                call plot_diff_HDF5(ip(DU_0),ip(X%DU_0(:,:,:,ld)),&
                     &file_name,description=description,output_message=.true.)
                 
                 ! set some variables
@@ -1513,7 +1514,7 @@ contains
                     &mode '//trim(i2str(ld)//', real part')
                 
                 ! plot difference for RE DU_1
-                call plot_diff_HDF5(realpart(DU_1),realpart(X%DU_1(:,:,:,ld)),&
+                call plot_diff_HDF5(rp(DU_1),rp(X%DU_1(:,:,:,ld)),&
                     &file_name,description=description,output_message=.true.)
                 
                 ! set some variables
@@ -1522,7 +1523,7 @@ contains
                     &mode '//trim(i2str(ld)//', imaginary part')
                 
                 ! plot difference for IM DU_1
-                call plot_diff_HDF5(imagpart(DU_1),imagpart(X%DU_1(:,:,:,ld)),&
+                call plot_diff_HDF5(ip(DU_1),ip(X%DU_1(:,:,:,ld)),&
                     &file_name,description=description,output_message=.true.)
             end do
             call par_deriv_data%dealloc()
@@ -2232,7 +2233,7 @@ contains
         X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
         X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
         allocate(X_1D_loc%p(product(dims)*n_mod_loc))
-        X_1D_loc%p = reshape(realpart(X%U_0),[size(X_1D_loc%p)])
+        X_1D_loc%p = reshape(rp(X%U_0),[size(X_1D_loc%p)])
         
         ! IM_U_0
         X_1D_loc => X_1D(id); id = id+1
@@ -2244,7 +2245,7 @@ contains
         X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
         X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
         allocate(X_1D_loc%p(product(dims)*n_mod_loc))
-        X_1D_loc%p = reshape(imagpart(X%U_0),[size(X_1D_loc%p)])
+        X_1D_loc%p = reshape(ip(X%U_0),[size(X_1D_loc%p)])
         
         ! RE_U_1
         X_1D_loc => X_1D(id); id = id+1
@@ -2256,7 +2257,7 @@ contains
         X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
         X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
         allocate(X_1D_loc%p(product(dims)*n_mod_loc))
-        X_1D_loc%p = reshape(realpart(X%U_1),[size(X_1D_loc%p)])
+        X_1D_loc%p = reshape(rp(X%U_1),[size(X_1D_loc%p)])
         
         ! IM_U_1
         X_1D_loc => X_1D(id); id = id+1
@@ -2268,7 +2269,7 @@ contains
         X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
         X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
         allocate(X_1D_loc%p(product(dims)*n_mod_loc))
-        X_1D_loc%p = reshape(imagpart(X%U_1),[size(X_1D_loc%p)])
+        X_1D_loc%p = reshape(ip(X%U_1),[size(X_1D_loc%p)])
         
         ! RE_DU_0
         X_1D_loc => X_1D(id); id = id+1
@@ -2280,7 +2281,7 @@ contains
         X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
         X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
         allocate(X_1D_loc%p(product(dims)*n_mod_loc))
-        X_1D_loc%p = reshape(realpart(X%DU_0),[size(X_1D_loc%p)])
+        X_1D_loc%p = reshape(rp(X%DU_0),[size(X_1D_loc%p)])
         
         ! IM_DU_0
         X_1D_loc => X_1D(id); id = id+1
@@ -2292,7 +2293,7 @@ contains
         X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
         X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
         allocate(X_1D_loc%p(product(dims)*n_mod_loc))
-        X_1D_loc%p = reshape(imagpart(X%DU_0),[size(X_1D_loc%p)])
+        X_1D_loc%p = reshape(ip(X%DU_0),[size(X_1D_loc%p)])
         
         ! RE_DU_1
         X_1D_loc => X_1D(id); id = id+1
@@ -2304,7 +2305,7 @@ contains
         X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
         X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
         allocate(X_1D_loc%p(product(dims)*n_mod_loc))
-        X_1D_loc%p = reshape(realpart(X%DU_1),[size(X_1D_loc%p)])
+        X_1D_loc%p = reshape(rp(X%DU_1),[size(X_1D_loc%p)])
         
         ! IM_DU_1
         X_1D_loc => X_1D(id); id = id+1
@@ -2316,7 +2317,7 @@ contains
         X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
         X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
         allocate(X_1D_loc%p(product(dims)*n_mod_loc))
-        X_1D_loc%p = reshape(imagpart(X%DU_1),[size(X_1D_loc%p)])
+        X_1D_loc%p = reshape(ip(X%DU_1),[size(X_1D_loc%p)])
         
         ! write
         ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name_eq,trim(data_name),&
@@ -2411,7 +2412,7 @@ contains
                 X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
                 X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
                 allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(realpart(&
+                X_1D_loc%p = reshape(rp(&
                     &X%PV_0(par_lim(1):par_lim(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
@@ -2425,7 +2426,7 @@ contains
                 X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
                 X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
                 allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(imagpart(&
+                X_1D_loc%p = reshape(ip(&
                     &X%PV_0(par_lim(1):par_lim(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                     
@@ -2439,7 +2440,7 @@ contains
                 X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
                 X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
                 allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(realpart(&
+                X_1D_loc%p = reshape(rp(&
                     &X%PV_2(par_lim(1):par_lim(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
@@ -2453,7 +2454,7 @@ contains
                 X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
                 X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
                 allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(imagpart(&
+                X_1D_loc%p = reshape(ip(&
                     &X%PV_2(par_lim(1):par_lim(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
@@ -2467,7 +2468,7 @@ contains
                 X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
                 X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
                 allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(realpart(&
+                X_1D_loc%p = reshape(rp(&
                     &X%KV_0(par_lim(1):par_lim(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
@@ -2481,7 +2482,7 @@ contains
                 X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
                 X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
                 allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(imagpart(&
+                X_1D_loc%p = reshape(ip(&
                     &X%KV_0(par_lim(1):par_lim(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                     
@@ -2495,7 +2496,7 @@ contains
                 X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
                 X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
                 allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(realpart(&
+                X_1D_loc%p = reshape(rp(&
                     &X%KV_2(par_lim(1):par_lim(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
@@ -2509,7 +2510,7 @@ contains
                 X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
                 X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
                 allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(imagpart(&
+                X_1D_loc%p = reshape(ip(&
                     &X%KV_2(par_lim(1):par_lim(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
             end if
@@ -2525,7 +2526,7 @@ contains
                 X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,2)]
                 X_1D_loc%loc_i_max = [dims,sXr_tot(2,2)]
                 allocate(X_1D_loc%p(product(dims)*nn_mod_loc(2)))
-                X_1D_loc%p = reshape(realpart(&
+                X_1D_loc%p = reshape(rp(&
                     &X%PV_1(par_lim(1):par_lim(2),:,:,&
                     &sXr_loc(1,2):sXr_loc(2,2))),[size(X_1D_loc%p)])
                 
@@ -2539,7 +2540,7 @@ contains
                 X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,2)]
                 X_1D_loc%loc_i_max = [dims,sXr_tot(2,2)]
                 allocate(X_1D_loc%p(product(dims)*nn_mod_loc(2)))
-                X_1D_loc%p = reshape(imagpart(&
+                X_1D_loc%p = reshape(ip(&
                     &X%PV_1(par_lim(1):par_lim(2),:,:,&
                     &sXr_loc(1,2):sXr_loc(2,2))),[size(X_1D_loc%p)])
                 
@@ -2553,7 +2554,7 @@ contains
                 X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,2)]
                 X_1D_loc%loc_i_max = [dims,sXr_tot(2,2)]
                 allocate(X_1D_loc%p(product(dims)*nn_mod_loc(2)))
-                X_1D_loc%p = reshape(realpart(&
+                X_1D_loc%p = reshape(rp(&
                     &X%KV_1(par_lim(1):par_lim(2),:,:,&
                     &sXr_loc(1,2):sXr_loc(2,2))),[size(X_1D_loc%p)])
                 
@@ -2567,7 +2568,7 @@ contains
                 X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,2)]
                 X_1D_loc%loc_i_max = [dims,sXr_tot(2,2)]
                 allocate(X_1D_loc%p(product(dims)*nn_mod_loc(2)))
-                X_1D_loc%p = reshape(imagpart(&
+                X_1D_loc%p = reshape(ip(&
                     &X%KV_1(par_lim(1):par_lim(2),:,:,&
                     &sXr_loc(1,2):sXr_loc(2,2))),[size(X_1D_loc%p)])
             end if

@@ -4,6 +4,7 @@
 !------------------------------------------------------------------------------!
 module output_ops
 #include <PB3D_macros.h>
+#include <IO_resilience.h>
     use str_utilities
     use messages
     use num_vars, only: dp, max_str_ln, no_plots, iu, plot_dir, data_dir, &
@@ -101,7 +102,8 @@ contains
         end if
         
         ! set x
-        if (present (x)) then
+        if (present(x)) then
+            allocate(x_fin(size(x,1),size(x,2)))
             x_fin = x
         else
             allocate(x_fin(size(y,1),size(y,2)))
@@ -118,16 +120,17 @@ contains
         end if
         
         ! open output file
-        open(unit=nextunit(file_i),file=data_dir//'/'//trim(file_name)//'.dat',&
-            &iostat=istat)
+        rIO(open(UNIT=nextunit(file_i),FILE=data_dir//'/'//trim(file_name)//&
+            &'.dat',IOSTAT=istat),istat)
+        CHCKSTT
         
         ! write to output file
-        write(file_i,*) '# '//trim(merge_strings(var_names))//':'
+        write(file_i,*,IOSTAT=istat) '# '//trim(merge_strings(var_names))//':'
         do ipnt = 1,npnt
-            write(file_i,*) (x_fin(ipnt,iplt), iplt = 1,nplt), &
+            write(file_i,*,IOSTAT=istat) (x_fin(ipnt,iplt), iplt = 1,nplt), &
                 &(y(ipnt,iplt), iplt = 1,nplt)
         enddo 
-        write(file_i,*) ''
+        write(file_i,*,IOSTAT=istat) ''
         
         ! close output file
         close(file_i)
@@ -266,20 +269,22 @@ contains
         end if
         
         ! open output file
-        open(unit=nextunit(file_i),file=data_dir//'/'//trim(file_name)//'.dat',&
-            &iostat=istat)
+        rIO(open(nextunit(file_i),FILE=data_dir//'/'//trim(file_name)//&
+            &'.dat',IOSTAT=istat),istat)
+        CHCKSTT
         
         ! write to output file
-        write(file_i,*) '# '//trim(merge_strings(var_names))//':'
+        write(file_i,*,IOSTAT=istat) '# '//trim(merge_strings(var_names))//':'
         do ipntx = 1,npntx
             do ipnty = 1,npnty
-                write(file_i,*) (x_fin(ipntx,ipnty,iplt), iplt = 1,nplt), &
+                write(file_i,*,IOSTAT=istat) &
+                    &(x_fin(ipntx,ipnty,iplt), iplt = 1,nplt), &
                     &(y_fin(ipntx,ipnty,iplt), iplt = 1,nplt), &
                     &(z(ipntx,ipnty,iplt), iplt = 1,nplt)
             end do
-            write(file_i,*) ''
+            write(file_i,*,IOSTAT=istat) ''
         enddo 
-        write(file_i,*) ''
+        write(file_i,*,IOSTAT=istat) ''
         
         ! close output file
         close(file_i)
@@ -426,12 +431,8 @@ contains
         end select
         
         ! open script file
-        open(unit=nextunit(cmd_i),file=trim(script_name),iostat=istat)
-        if (istat.ne.0) then
-            call writo('Could not open file for draw command',&
-                &persistent=.true.,warning=.true.)
-            return
-        end if
+        rIO(open(nextunit(cmd_i),FILE=trim(script_name),IOSTAT=istat),istat)
+        CHCKSTT
         
         ! set number of draw ops
         if (present(draw_ops)) then
@@ -509,26 +510,28 @@ contains
         ! GNUPlot version: wxt terminal or pdf output
         subroutine draw_ex_GNUPlot
             ! initialize the script
-            write(cmd_i,"(A)") 'set grid'
-            write(cmd_i,"(A)") 'set border 4095 front linetype -1 linewidth 1.0'
-            write(cmd_i,"(A)") 'set terminal wxt'
+            write(cmd_i,"(A)",IOSTAT=istat) 'set grid'
+            write(cmd_i,"(A)",IOSTAT=istat) 'set border 4095 front linetype -1 &
+                &linewidth 1.0'
+            write(cmd_i,"(A)",IOSTAT=istat) 'set terminal wxt'
             if (.not.plot_on_screen) then
-                write(cmd_i,"(A)") 'set terminal pdf size '//&
+                write(cmd_i,"(A)",IOSTAT=istat) 'set terminal pdf size '//&
                     &trim(i2str(plot_size(1)))//','//trim(i2str(plot_size(2)))
-                write(cmd_i,"(A)") 'set output "'//trim(plot_dir)//'/'//&
-                    &trim(draw_name)//'.pdf"'
+                write(cmd_i,"(A)",IOSTAT=istat) 'set output "'//&
+                    &trim(plot_dir)//'/'//trim(draw_name)//'.pdf"'
             end if
             
             ! no legend if too many plots
-            if (nplt.gt.10) write(cmd_i,"(A)") 'set nokey;'
+            if (nplt.gt.10) write(cmd_i,"(A)",IOSTAT=istat) 'set nokey;'
             
             ! write extra options
-            if (present(extra_ops)) write(cmd_i,"(A)") trim(extra_ops)
+            if (present(extra_ops)) write(cmd_i,"(A)",IOSTAT=istat) &
+                &trim(extra_ops)
             
             ! set up line styles
             if (n_draw_ops.eq.0) then
                 do iplt = 1,min(nplt,size(line_clrs))
-                    write(cmd_i,"(A)") 'set style line '//&
+                    write(cmd_i,"(A)",IOSTAT=istat) 'set style line '//&
                         &trim(i2str(iplt))//' lc rgb '//&
                         &line_clrs(iplt)//' '//trim(line_style)
                 end do
@@ -537,9 +540,9 @@ contains
             ! individual plots
             select case (draw_dim)
                 case (1)                                                        ! 2D
-                    write(cmd_i,"(A)") 'plot \'
+                    write(cmd_i,"(A)",IOSTAT=istat) 'plot \'
                     do iplt = 1,nplt
-                        write(cmd_i,"(A)") ' "'//trim(data_dir)//&
+                        write(cmd_i,"(A)",IOSTAT=istat) ' "'//trim(data_dir)//&
                             &'/'//trim(data_name_loc)//'.dat" using '//&
                             &trim(i2str(iplt))//':'//&
                             &trim(i2str(nplt+iplt))//' title "'//&
@@ -547,9 +550,9 @@ contains
                             &trim(loc_draw_op())//', \'
                     end do
                 case (2)                                                        ! 3D
-                    write(cmd_i,"(A)") 'splot \'
+                    write(cmd_i,"(A)",IOSTAT=istat) 'splot \'
                     do iplt = 1,nplt
-                        write(cmd_i,"(A)") ' "'//trim(data_dir)//&
+                        write(cmd_i,"(A)",IOSTAT=istat) ' "'//trim(data_dir)//&
                             &'/'//trim(data_name_loc)//&
                             &'.dat" using '//trim(i2str(iplt))//':'//&
                             &trim(i2str(nplt+iplt))//':'//&
@@ -558,9 +561,9 @@ contains
                             &'" '//trim(loc_draw_op())//', \'
                     end do
                 case (3)                                                        ! 2D slices in 3D
-                    write(cmd_i,"(A)") 'splot \'
+                    write(cmd_i,"(A)",IOSTAT=istat) 'splot \'
                     do iplt = 1,nplt
-                        write(cmd_i,"(A)") ' "'//trim(data_dir)//&
+                        write(cmd_i,"(A)",IOSTAT=istat) ' "'//trim(data_dir)//&
                             &'/'//trim(data_name_loc)//'.dat" using ('//&
                             &trim(i2str(iplt))//'):'//trim(i2str(iplt))//&
                             &':'//trim(i2str(nplt+iplt))//' title "'//&
@@ -575,148 +578,154 @@ contains
             end select
             
             ! finishing the command
-            write(cmd_i,"(A)") ''
-            if (plot_on_screen) write(cmd_i,"(A)") 'pause -1'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            if (plot_on_screen) write(cmd_i,"(A)",IOSTAT=istat) 'pause -1'
         end subroutine draw_ex_GNUPlot
         
         ! Bokeh version: 2D html output
         subroutine draw_ex_Bokeh
             ! initialize the script
-            write(cmd_i,"(A)") 'from numpy import genfromtxt'
-            write(cmd_i,"(A)") 'from bokeh.plotting import figure, &
-                &output_file, save, show'
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'TOOLS="crosshair,pan,wheel_zoom,box_zoom,reset,&
-                &save"'
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'output_file("'//trim(plot_dir)//'/'//&
-                &trim(draw_name)//'.html", title="'//trim(draw_name)//&
+            write(cmd_i,"(A)",IOSTAT=istat) 'from numpy import genfromtxt'
+            write(cmd_i,"(A)",IOSTAT=istat) 'from bokeh.plotting import &
+                &figure, output_file, save, show'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'TOOLS="crosshair,pan,wheel_zoom,&
+                &box_zoom,reset,save"'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'output_file("'//trim(plot_dir)//&
+                &'/'//trim(draw_name)//'.html", title="'//trim(draw_name)//&
                 &'", mode="cdn") '
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'data = genfromtxt("'//trim(data_dir)//'/'//&
-                &trim(data_name_loc)//'.dat")'
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'p = figure(toolbar_location="above",'//&
-                &'tools=TOOLS,active_drag="pan",active_scroll="wheel_zoom",'//&
-                &'plot_width=600, plot_height=600)'
-            write(cmd_i,"(A)") ''
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'data = genfromtxt("'//&
+                &trim(data_dir)//'/'//trim(data_name_loc)//'.dat")'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'p = figure(toolbar_location=&
+                &"above",tools=TOOLS,active_drag="pan",active_scroll=&
+                &"wheel_zoom",plot_width=600, plot_height=600)'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
             
             ! write extra options
-            if (present(extra_ops)) write(cmd_i,"(A)") trim(extra_ops)
+            if (present(extra_ops)) write(cmd_i,"(A)",IOSTAT=istat) &
+                &trim(extra_ops)
             
             ! individual plots
             do iplt = 1,nplt
                 ! plot the lines with legend
-                write(cmd_i,"(A)") 'p.line(data[:,'//trim(i2str(iplt-1))//&
-                    &'],data[:,'//trim(i2str(nplt+iplt-1))//'],'//&
-                    &trim(loc_draw_op(1))//',legend="'//&
-                    &trim(var_names_loc(iplt))//'")'
+                write(cmd_i,"(A)",IOSTAT=istat) 'p.line(data[:,'//&
+                    &trim(i2str(iplt-1))//'],data[:,'//&
+                    &trim(i2str(nplt+iplt-1))//'],'//trim(loc_draw_op(1))//&
+                    &',legend="'//trim(var_names_loc(iplt))//'")'
                 ! plot the circles without legend
-                write(cmd_i,"(A)") 'p.circle(data[:,'//trim(i2str(iplt-1))//&
-                    &'],data[:,'//trim(i2str(nplt+iplt-1))//'],'//&
-                    &trim(loc_draw_op(2))//')'
+                write(cmd_i,"(A)",IOSTAT=istat) 'p.circle(data[:,'//&
+                    &trim(i2str(iplt-1))//'],data[:,'//&
+                    &trim(i2str(nplt+iplt-1))//'],'//trim(loc_draw_op(2))//')'
             end do
             
             ! finishing the command
-            write(cmd_i,"(A)") ''
+            write(cmd_i,"(A)",IOSTAT=istat) ''
             if (plot_on_screen) then
-                write(cmd_i,"(A)") 'show(p)'
+                write(cmd_i,"(A)",IOSTAT=istat) 'show(p)'
             else
-                write(cmd_i,"(A)") 'save(p)'
+                write(cmd_i,"(A)",IOSTAT=istat) 'save(p)'
             end if
         end subroutine draw_ex_Bokeh
         
         ! Mayavi version: 3D png output
         subroutine draw_ex_Mayavi
             ! initialize the script
-            write(cmd_i,"(A)") 'from numpy import genfromtxt, array, size, &
-                &zeros, amin, amax'
-            write(cmd_i,"(A)") 'from mayavi.mlab import outline, mesh, &
-                &points3d, savefig, colorbar, axes, savefig'
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'nplt = '//trim(i2str(nplt))
+            write(cmd_i,"(A)",IOSTAT=istat) 'from numpy import genfromtxt, &
+                &array, size, zeros, amin, amax'
+            write(cmd_i,"(A)",IOSTAT=istat) 'from mayavi.mlab import outline, &
+                &mesh, points3d, savefig, colorbar, axes, savefig'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'nplt = '//trim(i2str(nplt))
             
             ! calculate the number of y points
-            write(cmd_i,"(A)") 'npnty = -1'
-            write(cmd_i,"(A)") 'with open("'//trim(data_dir)//'/'//&
-                &trim(data_name_loc)//'.dat") as f:'
-            write(cmd_i,"(A)") '    for line in f:'
-            write(cmd_i,"(A)") '        if (npnty < 0):'
-            write(cmd_i,"(A)") '            if (line.strip()[0] == "#"):'
-            write(cmd_i,"(A)") '                npnty = 0'
-            write(cmd_i,"(A)") '        else:'
-            write(cmd_i,"(A)") '            if (not line.strip()):'
-            write(cmd_i,"(A)") '                break'
-            write(cmd_i,"(A)") '            else:'
-            write(cmd_i,"(A)") '                npnty += 1'
+            write(cmd_i,"(A)",IOSTAT=istat) 'npnty = -1'
+            write(cmd_i,"(A)",IOSTAT=istat) 'with open("'//trim(data_dir)//&
+                &'/'//trim(data_name_loc)//'.dat") as f:'
+            write(cmd_i,"(A)",IOSTAT=istat) '    for line in f:'
+            write(cmd_i,"(A)",IOSTAT=istat) '        if (npnty < 0):'
+            write(cmd_i,"(A)",IOSTAT=istat) '            if &
+                &(line.strip()[0] == "#"):'
+            write(cmd_i,"(A)",IOSTAT=istat) '                npnty = 0'
+            write(cmd_i,"(A)",IOSTAT=istat) '        else:'
+            write(cmd_i,"(A)",IOSTAT=istat) '            if (not line.strip()):'
+            write(cmd_i,"(A)",IOSTAT=istat) '                break'
+            write(cmd_i,"(A)",IOSTAT=istat) '            else:'
+            write(cmd_i,"(A)",IOSTAT=istat) '                npnty += 1'
             
             ! get data
-            write(cmd_i,"(A)") 'data = genfromtxt("'//trim(data_dir)//'/'//&
-                &trim(data_name_loc)//'.dat")'
-            write(cmd_i,"(A)") 'dims = array([size(data,0)/npnty,npnty,nplt])'
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'X = zeros(dims)'
-            write(cmd_i,"(A)") 'Y = zeros(dims)'
-            write(cmd_i,"(A)") 'Z = zeros(dims)'
-            write(cmd_i,"(A)") 'for i in range(0,dims[0]):'
-            write(cmd_i,"(A)") '    for j in range(0,dims[2]):'
-            write(cmd_i,"(A)") '        X[i,:,j] = data[npnty*i:npnty*(i+1),j]'
-            write(cmd_i,"(A)") '        Y[i,:,j] = &
+            write(cmd_i,"(A)",IOSTAT=istat) 'data = genfromtxt("'//&
+                &trim(data_dir)//'/'//trim(data_name_loc)//'.dat")'
+            write(cmd_i,"(A)",IOSTAT=istat) 'dims = &
+                &array([size(data,0)/npnty,npnty,nplt])'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'X = zeros(dims)'
+            write(cmd_i,"(A)",IOSTAT=istat) 'Y = zeros(dims)'
+            write(cmd_i,"(A)",IOSTAT=istat) 'Z = zeros(dims)'
+            write(cmd_i,"(A)",IOSTAT=istat) 'for i in range(0,dims[0]):'
+            write(cmd_i,"(A)",IOSTAT=istat) '    for j in range(0,dims[2]):'
+            write(cmd_i,"(A)",IOSTAT=istat) '        X[i,:,j] = &
+                &data[npnty*i:npnty*(i+1),j]'
+            write(cmd_i,"(A)",IOSTAT=istat) '        Y[i,:,j] = &
                 &data[npnty*i:npnty*(i+1),nplt+j]'
-            write(cmd_i,"(A)") '        Z[i,:,j] = &
+            write(cmd_i,"(A)",IOSTAT=istat) '        Z[i,:,j] = &
                 &data[npnty*i:npnty*(i+1),nplt*2+j]'
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'minZ = amin(Z)'
-            write(cmd_i,"(A)") 'maxZ = amax(Z)'
-            write(cmd_i,"(A)") ''
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'minZ = amin(Z)'
+            write(cmd_i,"(A)",IOSTAT=istat) 'maxZ = amax(Z)'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
             
             ! write extra options
-            if (present(extra_ops)) write(cmd_i,"(A)") trim(extra_ops)
+            if (present(extra_ops)) write(cmd_i,"(A)",IOSTAT=istat) &
+                &trim(extra_ops)
             
             ! plot
             select case (draw_dim)
                 case (2)                                                        ! 3D
-                    write(cmd_i,"(A)") 'for j in range(0,dims[2]):'
-                    write(cmd_i,"(A)") '    mesh(X[:,:,j],Y[:,:,j],Z[:,:,j],&
-                        &vmin=minZ,vmax=maxZ)'
+                    write(cmd_i,"(A)",IOSTAT=istat) 'for j in range(0,dims[2]):'
+                    write(cmd_i,"(A)",IOSTAT=istat) '    &
+                        &mesh(X[:,:,j],Y[:,:,j],Z[:,:,j],vmin=minZ,vmax=maxZ)'
                 case (3)                                                        ! 2D slices in 3D
-                    write(cmd_i,"(A)") 'for j in range(0,dims[2]):'
-                    write(cmd_i,"(A)") '    points3d(X[:,:,j],Y[:,:,j],&
-                        &Z[:,:,j],mode="sphere",scale_factor=0.05,vmin=minZ,&
-                        &vmax=maxZ)'
+                    write(cmd_i,"(A)",IOSTAT=istat) 'for j in range(0,dims[2]):'
+                    write(cmd_i,"(A)",IOSTAT=istat) '    &
+                        &points3d(X[:,:,j],Y[:,:,j],Z[:,:,j],mode="sphere",&
+                        &scale_factor=0.05,vmin=minZ,vmax=maxZ)'
             end select
-            write(cmd_i,"(A)") 'outline()'
-            write(cmd_i,"(A)") 'colorbar()'
-            write(cmd_i,"(A)") 'axes()'
+            write(cmd_i,"(A)",IOSTAT=istat) 'outline()'
+            write(cmd_i,"(A)",IOSTAT=istat) 'colorbar()'
+            write(cmd_i,"(A)",IOSTAT=istat) 'axes()'
             
             ! pause on screen or output to file
             if (plot_on_screen) then
-                write(cmd_i,"(A)") 'def pause():'
-                write(cmd_i,"(A)") '    programPause = &
+                write(cmd_i,"(A)",IOSTAT=istat) 'def pause():'
+                write(cmd_i,"(A)",IOSTAT=istat) '    programPause = &
                     &raw_input("Paused. Press enter...")'
-                write(cmd_i,"(A)") 'pause()'
+                write(cmd_i,"(A)",IOSTAT=istat) 'pause()'
             else
-                write(cmd_i,"(A)") '#def pause():'
-                write(cmd_i,"(A)") '#    programPause = &
+                write(cmd_i,"(A)",IOSTAT=istat) '#def pause():'
+                write(cmd_i,"(A)",IOSTAT=istat) '#    programPause = &
                     &raw_input("Paused. Press enter...")'
-                write(cmd_i,"(A)") '#pause()'
-                write(cmd_i,"(A)") ''
-                write(cmd_i,"(A)") 'savefig("'//trim(plot_dir)//'/'//&
-                &trim(draw_name)//'.png"'//',magnification=4)'
+                write(cmd_i,"(A)",IOSTAT=istat) '#pause()'
+                write(cmd_i,"(A)",IOSTAT=istat) ''
+                write(cmd_i,"(A)",IOSTAT=istat) 'savefig("'//trim(plot_dir)//&
+                    &'/'//trim(draw_name)//'.png"'//',magnification=4)'
             end if
         end subroutine draw_ex_Mayavi
         
         ! GNUPlot animated version: gif output
         subroutine draw_ex_animated_GNUPlot
             ! initialize the script
-            write(cmd_i,"(A)") 'set grid'
-            write(cmd_i,"(A)") 'set border 4095 front linetype -1 linewidth 1.0'
-            write(cmd_i,"(A)") 'set terminal gif animate &
+            write(cmd_i,"(A)",IOSTAT=istat) 'set grid'
+            write(cmd_i,"(A)",IOSTAT=istat) 'set border 4095 front linetype -1 &
+                &linewidth 1.0'
+            write(cmd_i,"(A)",IOSTAT=istat) 'set terminal gif animate &
                 &delay '//trim(i2str(delay_loc))//' size '//&
                 &trim(i2str(128*plot_size(1)))//','//&
                 &trim(i2str(128*plot_size(2)))
-            write(cmd_i,"(A)") 'set output "'//trim(plot_dir)//'/'//&
-                &trim(draw_name)//'.gif"'
+            write(cmd_i,"(A)",IOSTAT=istat) 'set output "'//trim(plot_dir)//&
+                &'/'//trim(draw_name)//'.gif"'
             
             ! find and set ranges
             allocate(ranges_loc(2,2))
@@ -737,20 +746,21 @@ contains
             end if
             
             ! set ranges
-            write(cmd_i,"(A)") 'set xrange ['//&
+            write(cmd_i,"(A)",IOSTAT=istat) 'set xrange ['//&
                 &trim(r2str(ranges_loc(1,1)))//':'//&
                 &trim(r2str(ranges_loc(1,2)))//'];'
-            write(cmd_i,"(A)") 'set yrange ['//&
+            write(cmd_i,"(A)",IOSTAT=istat) 'set yrange ['//&
                 &trim(r2str(ranges_loc(2,1)))//':'//&
                 &trim(r2str(ranges_loc(2,2)))//'];'
             
             ! write extra options
-            if (present(extra_ops)) write(cmd_i,"(A)") trim(extra_ops)
+            if (present(extra_ops)) write(cmd_i,"(A)",IOSTAT=istat) &
+                &trim(extra_ops)
             
             ! set up line styles
             if (n_draw_ops.eq.0) then
                 do iplt = 1,min(nplt,size(line_clrs))
-                    write(cmd_i,"(A)") 'set style line '//&
+                    write(cmd_i,"(A)",IOSTAT=istat) 'set style line '//&
                         &trim(i2str(iplt))//' lc rgb '//&
                         &line_clrs(iplt)//' '//trim(line_style)
                 end do
@@ -758,7 +768,7 @@ contains
             
             ! individual plots
             do iplt = 1,nplt
-                write(cmd_i,"(A)") 'plot "'//trim(data_dir)//'/'//&
+                write(cmd_i,"(A)",IOSTAT=istat) 'plot "'//trim(data_dir)//'/'//&
                     &trim(data_name_loc)//'.dat" using '//trim(i2str(iplt))//&
                     &':'//trim(i2str(nplt+iplt))//' title "'//&
                     &trim(var_names_loc(iplt))//'" '//&
@@ -766,66 +776,72 @@ contains
             end do
             
             ! finishing the command
-            write(cmd_i,"(A)") ''
+            write(cmd_i,"(A)",IOSTAT=istat) ''
         end subroutine draw_ex_animated_GNUPlot
         
         ! Bokeh animated version: html output
         subroutine draw_ex_animated_Bokeh
             ! initialize the script
-            write(cmd_i,"(A)") '# Note: it is necessary to first run &
-                &"bokeh serve" before calling python'
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'from numpy import genfromtxt'
-            write(cmd_i,"(A)") 'from bokeh.plotting import figure, &
-                &output_file, save, show, curdoc'
-            write(cmd_i,"(A)") 'from bokeh.client import push_session'
-            write(cmd_i,"(A)") 'from bokeh.driving import repeat'
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'TOOLS="crosshair,pan,wheel_zoom,box_zoom,reset,&
-                &save"'
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'output_file("'//trim(plot_dir)//'/'//&
-                &trim(draw_name)//'.html", title="'//trim(draw_name)//&
+            write(cmd_i,"(A)",IOSTAT=istat) '# Note: it is necessary to first &
+                &run "bokeh serve" before calling python'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'from numpy import genfromtxt'
+            write(cmd_i,"(A)",IOSTAT=istat) 'from bokeh.plotting import &
+                &figure, output_file, save, show, curdoc'
+            write(cmd_i,"(A)",IOSTAT=istat) 'from bokeh.client import &
+                &push_session'
+            write(cmd_i,"(A)",IOSTAT=istat) 'from bokeh.driving import repeat'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'TOOLS="crosshair,pan,wheel_zoom,&
+                &box_zoom,reset,save"'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'output_file("'//trim(plot_dir)//&
+                &'/'//trim(draw_name)//'.html", title="'//trim(draw_name)//&
                 &'", mode="cdn") '
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'data = genfromtxt("'//trim(data_dir)//'/'//&
-                &trim(data_name_loc)//'.dat")'
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'p = figure(toolbar_location="above",'//&
-                &'tools=TOOLS,active_drag="pan",active_scroll="wheel_zoom",'//&
-                &'plot_width=600, plot_height=600)'
-            write(cmd_i,"(A)") ''
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'data = genfromtxt("'//&
+                &trim(data_dir)//'/'//trim(data_name_loc)//'.dat")'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'p = figure(toolbar_location=&
+                &"above",'//'tools=TOOLS,active_drag="pan",active_scroll=&
+                &"wheel_zoom",'//'plot_width=600, plot_height=600)'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
             
             ! write extra options
-            if (present(extra_ops)) write(cmd_i,"(A)") trim(extra_ops)
+            if (present(extra_ops)) write(cmd_i,"(A)",IOSTAT=istat) &
+                &trim(extra_ops)
             
             ! individual plot for first plot
-            write(cmd_i,"(A)") 'line = p.line(data[:,0],data[:,'//&
+            write(cmd_i,"(A)",IOSTAT=istat) 'line = p.line(data[:,0],data[:,'//&
                 &trim(i2str(nplt))//'],'//trim(loc_draw_op(1))//',legend="'//&
                 &trim(var_names_loc(1))//'")'
             ! plot the circles
-            write(cmd_i,"(A)") 'circle = p.circle(data[:,'//trim(i2str(0))//&
-                &'],data[:,'//trim(i2str(nplt))//'],'//trim(loc_draw_op(2))//')'
+            write(cmd_i,"(A)",IOSTAT=istat) 'circle = p.circle(data[:,'//&
+                &trim(i2str(0))//'],data[:,'//trim(i2str(nplt))//'],'//&
+                &trim(loc_draw_op(2))//')'
             
             ! finishing the command (needs to use show)
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'session = push_session(curdoc())'
-            write(cmd_i,"(A)") 'session.show(p)'
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'seq = range(0,'//trim(i2str(nplt))//')'
-            write(cmd_i,"(A)") '@repeat(seq)'
-            write(cmd_i,"(A)") 'def update(i):'
-            write(cmd_i,"(A)") '    line.data_source.data["x"] = data[:,i]'
-            write(cmd_i,"(A)") '    line.data_source.data["y"] = data[:,'//&
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'session = push_session(curdoc())'
+            write(cmd_i,"(A)",IOSTAT=istat) 'session.show(p)'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'seq = range(0,'//&
+                &trim(i2str(nplt))//')'
+            write(cmd_i,"(A)",IOSTAT=istat) '@repeat(seq)'
+            write(cmd_i,"(A)",IOSTAT=istat) 'def update(i):'
+            write(cmd_i,"(A)",IOSTAT=istat) '    line.data_source.data["x"] = &
+                &data[:,i]'
+            write(cmd_i,"(A)",IOSTAT=istat) '    line.data_source.data["y"] = &
+                &data[:,'//trim(i2str(nplt))//'+i]'
+            write(cmd_i,"(A)",IOSTAT=istat) '    circle.data_source.data["x"] = &
+                &data[:,i]'
+            write(cmd_i,"(A)",IOSTAT=istat) '    circle.data_source.data["y"] = &
+                &data[:,'//&
                 &trim(i2str(nplt))//'+i]'
-            write(cmd_i,"(A)") '    circle.data_source.data["x"] = data[:,i]'
-            write(cmd_i,"(A)") '    circle.data_source.data["y"] = data[:,'//&
-                &trim(i2str(nplt))//'+i]'
-            write(cmd_i,"(A)") ''
-            write(cmd_i,"(A)") 'curdoc().add_periodic_callback(update, '//&
-                &trim(i2str(delay_loc*10))//')'
-            write(cmd_i,"(A)") 'session.loop_until_closed()'
-            write(*,*) 'delay_loc*10 = ', delay_loc*10
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            write(cmd_i,"(A)",IOSTAT=istat) 'curdoc().add_periodic_callback(&
+                &update, '//trim(i2str(delay_loc*10))//')'
+            write(cmd_i,"(A)",IOSTAT=istat) 'session.loop_until_closed()'
         end subroutine draw_ex_animated_Bokeh
         
         ! gets ranges for animated plot
@@ -835,42 +851,47 @@ contains
             
             ! local variables
             integer :: data_i                                                   ! file number of data file
+            integer :: kd                                                       ! counter
             real(dp), allocatable :: loc_data(:)                                ! one line of data
             character(len=1) :: loc_data_char
             
             
             ! open data file
-            open(unit=nextunit(data_i),file=data_dir//'/'//trim(data_name_loc)//&
-                &'.dat',status='old',iostat=istat)
+            rIO2(open(nextunit(data_i),FILE=data_dir//'/'//&
+                &trim(data_name_loc)//'.dat',STATUS='old',IOSTAT=istat),istat)
             
-            ! set up loc_data
-            allocate(loc_data(2*nplt))
-            
-            ! read the data file
-            istat = 0
-            do while (istat.eq.0)
-                read(data_i,*,IOSTAT=istat) loc_data_char                       ! read first character of data
-                if (istat.eq.0) then                                            ! read succesful
-                    if (loc_data_char.ne.'#') then                              ! exclude comment lines
-                        backspace(UNIT=data_i)                                  ! go back one line
-                        read(data_i,*,IOSTAT=istat) loc_data                    ! read data again, but now ful
-                        ranges(1,1) = &
-                            &min(ranges(1,1),minval(loc_data(1:nplt)))
-                        ranges(1,2) = &
-                            &max(ranges(1,2),maxval(loc_data(1:nplt)))
-                        ranges(2,1) = &
-                            &min(ranges(2,1),minval(loc_data(nplt+1:2*nplt)))
-                        ranges(2,2) = &
-                            &max(ranges(2,2),maxval(loc_data(nplt+1:2*nplt)))
+            if (istat.eq.0) then
+                ! set up loc_data
+                allocate(loc_data(2*nplt))
+                
+                ! read the data file
+                istat = 0
+                do while (istat.eq.0)
+                    rIO(read(data_i,*,IOSTAT=istat) loc_data_char,istat)        ! read first character of data
+                    if (istat.eq.0) then                                        ! read succesful
+                        if (loc_data_char.ne.'#') then                          ! exclude comment lines
+                            backspace(UNIT=data_i)                              ! go back one line
+                            rIO(read(data_i,*,IOSTAT=istat) loc_data,istat)     ! read data again, but now ful
+                            ranges(1,1) = &
+                                &min(ranges(1,1),minval(loc_data(1:nplt)))
+                            ranges(1,2) = &
+                                &max(ranges(1,2),maxval(loc_data(1:nplt)))
+                            ranges(2,1) = &
+                                &min(ranges(2,1),&
+                                &minval(loc_data(nplt+1:2*nplt)))
+                            ranges(2,2) = &
+                                &max(ranges(2,2),&
+                                &maxval(loc_data(nplt+1:2*nplt)))
+                        end if
                     end if
-                end if
-            end do
-            !write(*,*) 'ranges(1,:) = ', ranges(1,:)
-            !write(*,*) 'ranges(2,:) = ', ranges(2,:)
-            !write(*,*) 'ranges(3,:) = ', ranges(3,:)
-            
-            ! close data file
-            close(data_i)
+                end do
+                !write(*,*) 'ranges(1,:) = ', ranges(1,:)
+                !write(*,*) 'ranges(2,:) = ', ranges(2,:)
+                !write(*,*) 'ranges(3,:) = ', ranges(3,:)
+                
+                ! close data file
+                close(data_i,IOSTAT=istat)
+            end if
         end subroutine get_ranges
         
         ! sets local draw options either from pre-defined line styles or through
@@ -1239,8 +1260,9 @@ contains
         if (col_loc.eq.1) then
             ! add individual grids to HDF5 file and reset them
             do id = 1,n_plot
-                call add_HDF5_item(file_info,grids(id),reset=.true.,&
+                istat = add_HDF5_item(file_info,grids(id),reset=.true.,&
                 &ind_plot=ind_plot)
+                CHCKSTT
             end do
         else
             ! create grid collection from individual grids and reset them
@@ -1249,8 +1271,9 @@ contains
             CHCKSTT
             
             ! add collection grid to HDF5 file and reset it
-            call add_HDF5_item(file_info,col_grid,reset=.true.,&
+            istat = add_HDF5_item(file_info,col_grid,reset=.true.,&
                 &ind_plot=ind_plot)
+            CHCKSTT
         end if
         
         ! close HDF5 file
@@ -1591,6 +1614,9 @@ contains
     subroutine use_execute_command_line(command,exitstat,cmdstat,cmdmsg)
         use num_vars, only: do_execute_command_line, prog_name, &
             &shell_commands_name
+#if ( lwith_intel && !lwith_gnu)
+        use IFPORT
+#endif
         
         ! input / output
         character(len=*), intent(in) :: command                                 ! command to execute
@@ -1607,11 +1633,11 @@ contains
         full_name = prog_name//'_'//trim(shell_commands_name)//'.sh'
         
         ! write the command to the file
-        open(unit=nextunit(shell_commands_i),file=trim(full_name),&
-            &status='old',position='append',iostat=istat)
+        rIO2(open(nextunit(shell_commands_i),FILE=trim(full_name),&
+            &STATUS='old',POSITION='append',IOSTAT=istat),istat)
         if (istat.eq.0) then
-            write(shell_commands_i,'(A)') trim(command)
-            close(shell_commands_i)
+            write(shell_commands_i,'(A)',IOSTAT=istat) trim(command)
+            close(shell_commands_i,IOSTAT=istat)
         else
             call writo('Failed to write to shell commands log file "'&
                 &//trim(full_name)//'"',warning=.true.)
@@ -1624,8 +1650,12 @@ contains
         
         ! execute command line
         if (do_execute_command_line) then
+#if ( lwith_intel && !lwith_gnu)
+            exitstat = system(command)
+#else
             call execute_command_line(command,EXITSTAT=exitstat,&
                 &CMDSTAT=cmdstat,CMDMSG=cmdmsg)
+#endif
         else
             call writo('Command added to log file "'//trim(full_name)//'":')
             call lvl_ud(1)

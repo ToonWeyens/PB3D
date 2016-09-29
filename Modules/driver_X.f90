@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module driver_X
 #include <PB3D_macros.h>
+#include <wrappers.h>
     use str_utilities
     use output_ops
     use messages
@@ -383,9 +384,9 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_1%U_0),col_id=4,col=1)
+                    &rp(X_1%U_0),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_1%U_0),col_id=4,col=1)
+                    &ip(X_1%U_0),col_id=4,col=1)
                 deallocate(var_names)
                 ! U_1
                 allocate(var_names(size(X_1%U_1,4)))
@@ -398,9 +399,9 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_1%U_1),col_id=4,col=1)
+                    &rp(X_1%U_1),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_1%U_1),col_id=4,col=1)
+                    &ip(X_1%U_1),col_id=4,col=1)
                 deallocate(var_names)
                 ! DU_0
                 allocate(var_names(size(X_1%DU_0,4)))
@@ -413,9 +414,9 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_1%DU_0),col_id=4,col=1)
+                    &rp(X_1%DU_0),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_1%DU_0),col_id=4,col=1)
+                    &ip(X_1%DU_0),col_id=4,col=1)
                 deallocate(var_names)
                 ! DU_1
                 allocate(var_names(size(X_1%DU_1,4)))
@@ -428,9 +429,9 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_1%DU_1),col_id=4,col=1)
+                    &rp(X_1%DU_1),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_1%DU_1),col_id=4,col=1)
+                    &ip(X_1%DU_1),col_id=4,col=1)
                 deallocate(var_names)
             end if
             
@@ -503,23 +504,23 @@ contains
                 call plot_HDF5('z_plot','z_plot',z_plot)
                 
                 ! U_0 and U_1
-                call plot_HDF5('RE_U_0','RE_U_0',realpart(X%U_0(:,:,:,ld)),&
+                call plot_HDF5('RE_U_0','RE_U_0',rp(X%U_0(:,:,:,ld)),&
                     &x=x_plot,y=y_plot,z=z_plot)
-                call plot_HDF5('IM_U_0','IM_U_0',imagpart(X%U_0(:,:,:,ld)),&
+                call plot_HDF5('IM_U_0','IM_U_0',ip(X%U_0(:,:,:,ld)),&
                     &x=x_plot,y=y_plot,z=z_plot)
-                call plot_HDF5('RE_U_1','RE_U_1',realpart(X%U_1(:,:,:,ld)),&
+                call plot_HDF5('RE_U_1','RE_U_1',rp(X%U_1(:,:,:,ld)),&
                     &x=x_plot,y=y_plot,z=z_plot)
-                call plot_HDF5('IM_U_1','IM_U_1',imagpart(X%U_1(:,:,:,ld)),&
+                call plot_HDF5('IM_U_1','IM_U_1',ip(X%U_1(:,:,:,ld)),&
                     &x=x_plot,y=y_plot,z=z_plot)
                 
                 ! DU_0 and DU_1
-                call plot_HDF5('RE_DU_0','RE_DU_0',realpart(X%DU_0(:,:,:,ld)),&
+                call plot_HDF5('RE_DU_0','RE_DU_0',rp(X%DU_0(:,:,:,ld)),&
                     &x=x_plot,y=y_plot,z=z_plot)
-                call plot_HDF5('IM_DU_0','IM_DU_0',imagpart(X%DU_0(:,:,:,ld)),&
+                call plot_HDF5('IM_DU_0','IM_DU_0',ip(X%DU_0(:,:,:,ld)),&
                     &x=x_plot,y=y_plot,z=z_plot)
-                call plot_HDF5('RE_DU_1','RE_DU_1',realpart(X%DU_1(:,:,:,ld)),&
+                call plot_HDF5('RE_DU_1','RE_DU_1',rp(X%DU_1(:,:,:,ld)),&
                     &x=x_plot,y=y_plot,z=z_plot)
-                call plot_HDF5('IM_DU_1','IM_DU_1',imagpart(X%DU_1(:,:,:,ld)),&
+                call plot_HDF5('IM_DU_1','IM_DU_1',ip(X%DU_1(:,:,:,ld)),&
                     &x=x_plot,y=y_plot,z=z_plot)
                 
                 ! clean up
@@ -672,9 +673,9 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_2%PV_0),col_id=4,col=1)
+                    &rp(X_2%PV_0),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_2%PV_0),col_id=4,col=1)
+                    &ip(X_2%PV_0),col_id=4,col=1)
                 deallocate(var_names)
                 ! PV_1
                 allocate(var_names(size(X_2%PV_1,4)))
@@ -687,9 +688,9 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_2%PV_1),col_id=4,col=1)
+                    &rp(X_2%PV_1),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_2%PV_1),col_id=4,col=1)
+                    &ip(X_2%PV_1),col_id=4,col=1)
                 deallocate(var_names)
                 ! PV_2
                 allocate(var_names(size(X_2%PV_2,4)))
@@ -702,9 +703,9 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_2%PV_2),col_id=4,col=1)
+                    &rp(X_2%PV_2),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_2%PV_2),col_id=4,col=1)
+                    &ip(X_2%PV_2),col_id=4,col=1)
                 deallocate(var_names)
                 ! KV_0
                 allocate(var_names(size(X_2%KV_0,4)))
@@ -717,9 +718,9 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_2%KV_0),col_id=4,col=1)
+                    &rp(X_2%KV_0),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_2%KV_0),col_id=4,col=1)
+                    &ip(X_2%KV_0),col_id=4,col=1)
                 deallocate(var_names)
                 ! KV_1
                 allocate(var_names(size(X_2%KV_1,4)))
@@ -732,9 +733,9 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_2%KV_1),col_id=4,col=1)
+                    &rp(X_2%KV_1),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_2%KV_1),col_id=4,col=1)
+                    &ip(X_2%KV_1),col_id=4,col=1)
                 deallocate(var_names)
                 ! KV_2
                 allocate(var_names(size(X_2%KV_2,4)))
@@ -747,9 +748,9 @@ contains
                     var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
                 end do
                 call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &realpart(X_2%KV_2),col_id=4,col=1)
+                    &rp(X_2%KV_2),col_id=4,col=1)
                 call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &imagpart(X_2%KV_2),col_id=4,col=1)
+                    &ip(X_2%KV_2),col_id=4,col=1)
                 deallocate(var_names)
             end if
 #endif

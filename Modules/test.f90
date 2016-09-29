@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module test
 #include <PB3D_macros.h>
+#include <wrappers.h>
     use str_utilities
     use output_ops
     use messages
@@ -943,9 +944,9 @@ contains
                     end do
                 end if
                 call plot_HDF5(var_name(1),file_name(1),J,X=X,Y=Y,Z=Z)
-                call plot_HDF5(var_name(2),file_name(2),realpart(fun(:,:,:,1)),&
+                call plot_HDF5(var_name(2),file_name(2),rp(fun(:,:,:,1)),&
                     &X=X,Y=Y,Z=Z)
-                call plot_HDF5(var_name(3),file_name(3),imagpart(fun(:,:,:,1)),&
+                call plot_HDF5(var_name(3),file_name(3),ip(fun(:,:,:,1)),&
                     &X=X,Y=Y,Z=Z)
                 
                 ! user output
@@ -981,9 +982,9 @@ contains
                     fun_int_plot(jd,:) = fun_int(:,1,jd)/fun_int(1,1,jd)
                 end do
                 call print_ex_2D(['analytical integral, RE',&
-                    &'numerical integral, RE '],'',realpart(fun_int_plot))
+                    &'numerical integral, RE '],'',rp(fun_int_plot))
                 call print_ex_2D(['analytical integral, IM',&
-                    &'numerical integral, IM '],'',imagpart(fun_int_plot))
+                    &'numerical integral, IM '],'',ip(fun_int_plot))
             end if
         end if 
     end function test_calc_int_vol
