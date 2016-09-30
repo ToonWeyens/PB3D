@@ -225,13 +225,6 @@ contains
         !!!call print_ex_2D('cross_section','cross_section',Z_H,x=R_H,draw=.false.)
         !!!call draw_ex('cross_section','cross_section','cross_section',n_r_in,1,&
             !!!&.false.)
-        
-#if ldebug
-        ! do nothing
-#else
-        ! deallocate variables not used
-        deallocate(h_H_11,h_H_12,h_H_33)
-#endif
        
         ! HELENA always uses the poloidal flux
         use_pol_flux_H = .true.

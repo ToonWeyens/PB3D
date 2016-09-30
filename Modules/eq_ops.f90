@@ -3,7 +3,6 @@
 !------------------------------------------------------------------------------!
 module eq_ops
 #include <PB3D_macros.h>
-#include <IO_resilience.h>
     use str_utilities
     use output_ops
     use messages
@@ -360,10 +359,9 @@ contains
             use grid_utilities, only: setup_interp_data, apply_disc
             use HELENA_vars, only: nchi, R_H, Z_H, ias, chi_H
             use X_vars, only: min_r_sol, max_r_sol
-            use files_utilities, only: nextunit
             use input_utilities, only: pause_prog, get_log, get_int, get_real
             use num_utilities, only: GCD, bubble_sort
-            use num_vars, only: eq_name
+            use num_vars, only: eq_name, HEL_pert_file_i, HEL_export_file_i
             
             character(*), parameter :: rout_name = &
                 &'write_flux_q_in_file_for_VMEC'
@@ -371,14 +369,12 @@ contains
             ! local variables
             integer :: id, jd, kd                                               ! counters
             integer :: jd_min                                                   ! start value of jd, possibly excluding N = 0 from equilibrium
-            integer :: file_i                                                   ! file to output flux quantities for VMEC export
             integer :: n_B                                                      ! nr. of points in Fourier series
             integer :: nfp                                                      ! scale factor for toroidal mode numbers
             integer :: tot_nr_pert                                              ! total number of perturbations combinations (N,M)
             integer :: nr_n                                                     ! number of different N
             integer :: n_loc, m_loc                                             ! local n_pert and m_pert
             integer :: n_id                                                     ! index in bundled n_pert
-            integer :: pert_file_i                                              ! handle of perturbation input file
             integer :: istat                                                    ! status
             integer :: plot_dim(2)                                              ! plot dimensions
             integer :: rec_min_m                                                ! recommended minimum of poloidal modes
@@ -447,8 +443,8 @@ contains
                     read(*,*) pert_file_name
                     
                     ! open
-                    rIO(open(nextunit(pert_file_i),FILE=trim(pert_file_name),&
-                        &IOSTAT=ierr,STATUS='old'),ierr)
+                    open(HEL_pert_file_i,FILE=trim(pert_file_name),&
+                        &IOSTAT=ierr,STATUS='old')
                     err_msg = 'Could not open file '//trim(pert_file_name)
                     CHCKERR(err_msg)
                     call writo('Parsing "'//trim(pert_file_name)//'"')
@@ -458,13 +454,12 @@ contains
                     tot_nr_pert = 0
                     do while (istat.eq.0)
                         ! read first character of data
-                        rIO2(read(pert_file_i,*,IOSTAT=istat) loc_data_char,&
-                            &istat)
+                        read(HEL_pert_file_i,*,IOSTAT=istat) loc_data_char
                         if (istat.eq.0 .and. loc_data_char.ne.'#') then         ! exclude comment lines
                             tot_nr_pert = tot_nr_pert + 1
                         end if
                     end do
-                    rewind(pert_file_i)
+                    rewind(HEL_pert_file_i)
                     loc_data_char = '#'
                     
                     ! set error message
@@ -489,19 +484,12 @@ contains
                     if (pert_from_file) then
                         do while (loc_data_char.eq.'#')
                             ! read first character of data
-                            rIO2(read(pert_file_i,*,IOSTAT=ierr) loc_data_char,&
-                                &ierr)
+                            read(HEL_pert_file_i,*,IOSTAT=ierr) loc_data_char
                             CHCKERR(err_msg)
                             if (loc_data_char.ne.'#') then                      ! exclude comment lines
-                                backspace(UNIT=pert_file_i)                     ! go back one line
-                                rIO2(read(pert_file_i,*,IOSTAT=ierr) n_loc, &
-                                    &ierr)
-                                CHCKERR(err_msg)
-                                rIO2(read(pert_file_i,*,IOSTAT=ierr) m_loc, &
-                                    &ierr)
-                                CHCKERR(err_msg)
-                                rIO2(read(pert_file_i,*,IOSTAT=ierr) delta_loc, &
-                                    &ierr)
+                                backspace(UNIT=HEL_pert_file_i)                 ! go back one line
+                                read(HEL_pert_file_i,*,IOSTAT=ierr) &
+                                    &n_loc, m_loc, delta_loc
                                 CHCKERR(err_msg)
                             end if
                         end do
@@ -552,7 +540,7 @@ contains
                     delta(n_id,nr_m(n_id),:) = delta_loc                        ! and perturbation amplitude for cos and sin with value delta_loc
                 end do
                 
-                if (pert_from_file) close(pert_file_i)
+                if (pert_from_file) close(HEL_pert_file_i)
             else
                 nr_n = 0
             end if
@@ -967,86 +955,91 @@ contains
             call lvl_ud(1)
             
             ! output to VMEC input file
-            rIO(open(nextunit(file_i),STATUS='replace',FILE=trim(file_name),&
-                &IOSTAT=ierr),ierr)
+            open(HEL_export_file_i,STATUS='replace',FILE=trim(file_name),&
+                &IOSTAT=ierr)
             CHCKERR('Failed to open file')
             
-            write(file_i,"(A)") "!----- General Parameters -----"
-            write(file_i,"(A)") "&INDATA"
-            write(file_i,"(A)") "MGRID_FILE = 'NONE',"
-            write(file_i,"(A)") "PRECON_TYPE = 'GMRES'"
-            write(file_i,"(A)") "PREC2D_THRESHOLD = 3.E-8"
-            write(file_i,"(A)") "DELT = 1.00E+00,"
-            write(file_i,"(A)") "NS_ARRAY = 19, 39, 79, 159, 319, 639"
-            write(file_i,"(A)") "LRFP = F"
-            write(file_i,"(A,L1)") "LASYM = ", .not.stel_sym
-            write(file_i,"(A)") "LFREEB = F"
-            write(file_i,"(A)") "NTOR = "//trim(i2str(nr_n-1))                  ! -NTOR .. NTOR
-            write(file_i,"(A)") "MPOL = "//trim(i2str(rec_min_m))               ! 0 .. MPOL-1
-            write(file_i,"(A)") "TCON0 = 1"
-            write(file_i,"(A)") "FTOL_ARRAY = 1.E-6, 1.E-6, 1.E-6, 1.E-6, &
-                &1.E-10, 1.000E-18, "
-            write(file_i,"(A)") "NITER = 6000, NSTEP = 200,"
-            write(file_i,"(A)") "NFP = "//trim(i2str(nfp))
-            write(file_i,"(A)") "PHIEDGE = "//&
+            write(HEL_export_file_i,"(A)") "!----- General Parameters -----"
+            write(HEL_export_file_i,"(A)") "&INDATA"
+            write(HEL_export_file_i,"(A)") "MGRID_FILE = 'NONE',"
+            write(HEL_export_file_i,"(A)") "PRECON_TYPE = 'GMRES'"
+            write(HEL_export_file_i,"(A)") "PREC2D_THRESHOLD = 3.E-8"
+            write(HEL_export_file_i,"(A)") "DELT = 1.00E+00,"
+            write(HEL_export_file_i,"(A)") "NS_ARRAY = 19, 39, 79, 159, 319, &
+                &639"
+            write(HEL_export_file_i,"(A)") "LRFP = F"
+            write(HEL_export_file_i,"(A,L1)") "LASYM = ", .not.stel_sym
+            write(HEL_export_file_i,"(A)") "LFREEB = F"
+            write(HEL_export_file_i,"(A)") "NTOR = "//trim(i2str(nr_n-1))       ! -NTOR .. NTOR
+            write(HEL_export_file_i,"(A)") "MPOL = "//trim(i2str(rec_min_m))    ! 0 .. MPOL-1
+            write(HEL_export_file_i,"(A)") "TCON0 = 1"
+            write(HEL_export_file_i,"(A)") "FTOL_ARRAY = 1.E-6, 1.E-6, 1.E-6, &
+                &1.E-6, 1.E-10, 1.000E-18, "
+            write(HEL_export_file_i,"(A)") "NITER = 6000, NSTEP = 200,"
+            write(HEL_export_file_i,"(A)") "NFP = "//trim(i2str(nfp))
+            write(HEL_export_file_i,"(A)") "PHIEDGE = "//&
                 &trim(r2str(-flux_t_E_full(grid_eq%n(3),0)))
             
-            write(file_i,"(A)") ""
-            write(file_i,"(A)") ""
+            write(HEL_export_file_i,"(A)") ""
+            write(HEL_export_file_i,"(A)") ""
             
-            write(file_i,"(A)") "!----- Pressure Parameters -----"
-            write(file_i,"(A)") "PMASS_TYPE = 'cubic_spline'"
-            write(file_i,"(A)") "GAMMA =  0.00000000000000E+00"
-            write(file_i,"(A)") ""
-            write(file_i,"(A)",advance="no") "AM_AUX_S ="
+            write(HEL_export_file_i,"(A)") "!----- Pressure Parameters -----"
+            write(HEL_export_file_i,"(A)") "PMASS_TYPE = 'cubic_spline'"
+            write(HEL_export_file_i,"(A)") "GAMMA =  0.00000000000000E+00"
+            write(HEL_export_file_i,"(A)") ""
+            write(HEL_export_file_i,"(A)",advance="no") "AM_AUX_S ="
             do kd = 1,grid_eq%n(3)
-                write(file_i,"(A1,ES23.16)") " ", &
+                write(HEL_export_file_i,"(A1,ES23.16)") " ", &
                     &flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0)
             end do
-            write(file_i,"(A)") ""
-            write(file_i,"(A)",advance="no") "AM_AUX_F ="
+            write(HEL_export_file_i,"(A)") ""
+            write(HEL_export_file_i,"(A)",advance="no") "AM_AUX_F ="
             do kd = 1,grid_eq%n(3)
-                write(file_i,"(A1,ES23.16)") " ", pres_E_full(kd,0)*pres_0
+                write(HEL_export_file_i,"(A1,ES23.16)") " ", &
+                    &pres_E_full(kd,0)*pres_0
             end do
             
-            write(file_i,"(A)") ""
-            write(file_i,"(A)") ""
+            write(HEL_export_file_i,"(A)") ""
+            write(HEL_export_file_i,"(A)") ""
             
-            write(file_i,"(A)") "!----- Current/Iota Parameters -----"
-            write(file_i,"(A)") "NCURR = 0"
-            write(file_i,"(A)") "PIOTA_TYPE = 'Cubic_spline'"
-            write(file_i,"(A)") ""
-            write(file_i,"(A)",advance="no") "AI_AUX_S ="
+            write(HEL_export_file_i,"(A)") &
+                &"!----- Current/Iota Parameters -----"
+            write(HEL_export_file_i,"(A)") "NCURR = 0"
+            write(HEL_export_file_i,"(A)") "PIOTA_TYPE = 'Cubic_spline'"
+            write(HEL_export_file_i,"(A)") ""
+            write(HEL_export_file_i,"(A)",advance="no") "AI_AUX_S ="
             do kd = 1,grid_eq%n(3)
-                write(file_i,"(A1,ES23.16)") " ", &
+                write(HEL_export_file_i,"(A1,ES23.16)") " ", &
                     &flux_t_E_full(kd,0)/flux_t_E_full(grid_eq%n(3),0)
             end do
-            write(file_i,"(A)") ""
-            write(file_i,"(A)",advance="no") "AI_AUX_F ="
+            write(HEL_export_file_i,"(A)") ""
+            write(HEL_export_file_i,"(A)",advance="no") "AI_AUX_F ="
             do kd = 1,grid_eq%n(3)
-                write(file_i,"(A1,ES23.16)") " ", -rot_t_E_full(kd,0)
+                write(HEL_export_file_i,"(A1,ES23.16)") " ", -rot_t_E_full(kd,0)
             end do
             
-            write(file_i,"(A)") ""
-            write(file_i,"(A)") ""
+            write(HEL_export_file_i,"(A)") ""
+            write(HEL_export_file_i,"(A)") ""
             
-            write(file_i,"(A)") "!----- Boundary Shape Parameters -----"
-            ierr = print_mode_numbers(file_i,B_F(:,0,:,:),0)
+            write(HEL_export_file_i,"(A)") &
+                &"!----- Boundary Shape Parameters -----"
+            ierr = print_mode_numbers(HEL_export_file_i,B_F(:,0,:,:),0)
             CHCKERR('')
             if (pert_eq) then
                 do jd = 2,nr_n
-                    ierr = print_mode_numbers(file_i,B_F(:,-(jd-1),:,:),&
-                        &-n_pert(jd))
+                    ierr = print_mode_numbers(HEL_export_file_i,&
+                        &B_F(:,-(jd-1),:,:),-n_pert(jd))
                     CHCKERR('')
-                    ierr = print_mode_numbers(file_i,B_F(:,jd-1,:,:),n_pert(jd))
+                    ierr = print_mode_numbers(HEL_export_file_i,&
+                        &B_F(:,jd-1,:,:),n_pert(jd))
                     CHCKERR('')
                 end do
             end if
-            write(file_i,"(A,ES23.16)") "RAXIS = ", B_F(1,0,1,1)
-            write(file_i,"(A,ES23.16)") "ZAXIS = ", B_F(1,0,1,2)
-            write(file_i,"(A)") "&END"
+            write(HEL_export_file_i,"(A,ES23.16)") "RAXIS = ", B_F(1,0,1,1)
+            write(HEL_export_file_i,"(A,ES23.16)") "ZAXIS = ", B_F(1,0,1,2)
+            write(HEL_export_file_i,"(A)") "&END"
             
-            close(file_i)
+            close(HEL_export_file_i)
             
             ! user output
             call lvl_ud(-1)
@@ -1241,11 +1234,11 @@ contains
                         &ES23.16,'   ',A,'BS(',I4,', ',I4,') = ',ES23.16)") &
                         &var_name,n_pert,m,B(m+1,1,kd), &
                         &var_name,n_pert,m,B(m+1,2,kd)
-                    rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
-                        &trim(temp_output_str),ierr)
+                    write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
+                        &trim(temp_output_str)
                     CHCKERR('Failed to write')
                 end do
-                rIO(write(UNIT=file_i,FMT="(A)",IOSTAT=ierr) "",ierr)
+                write(UNIT=file_i,FMT="(A)",IOSTAT=ierr) ""
                 CHCKERR('Failed to write')
             end do
         end function print_mode_numbers
@@ -1864,6 +1857,9 @@ contains
         ! local variables
         integer :: id
         
+        ! initialize ierr
+        ierr = 0
+        
         do id = 1, size(deriv,2)
             ierr = calc_RZL_ind(grid,eq,deriv(:,id))
             CHCKERR('')
@@ -1909,6 +1905,9 @@ contains
         ! local variables
         integer :: id
         
+        ! initialize ierr
+        ierr = 0
+        
         do id = 1, size(deriv,2)
             ierr = calc_g_C_ind(eq,deriv(:,id))
             CHCKERR('')
@@ -1949,6 +1948,9 @@ contains
         
         ! local variables
         integer :: id
+        
+        ! initialize ierr
+        ierr = 0
         
         do id = 1, size(deriv,2)
             ierr = calc_g_V_ind(eq,deriv(:,id))
@@ -2070,6 +2072,9 @@ contains
         ! local variables
         integer :: id
         
+        ! initialize ierr
+        ierr = 0
+        
         do id = 1, size(deriv,2)
             ierr = calc_h_H_ind(grid,eq,deriv(:,id))
             CHCKERR('')
@@ -2110,6 +2115,9 @@ contains
         ! local variables
         integer :: id
         
+        ! initialize ierr
+        ierr = 0
+        
         do id = 1, size(deriv,2)
             ierr = calc_g_F_ind(eq,deriv(:,id))
             CHCKERR('')
@@ -2143,6 +2151,9 @@ contains
         
         ! local variables
         integer :: id
+        
+        ! initialize ierr
+        ierr = 0
         
         do id = 1, size(deriv,2)
             ierr = calc_jac_C_ind(eq,deriv(:,id))
@@ -2187,6 +2198,9 @@ contains
         
         ! local variables
         integer :: id
+        
+        ! initialize ierr
+        ierr = 0
         
         do id = 1, size(deriv,2)
             ierr = calc_jac_V_ind(eq,deriv(:,id))
@@ -2301,6 +2315,9 @@ contains
         ! local variables
         integer :: id
         
+        ! initialize ierr
+        ierr = 0
+        
         do id = 1, size(deriv,2)
             ierr = calc_jac_H_ind(grid,eq_1,eq_2,deriv(:,id))
             CHCKERR('')
@@ -2344,6 +2361,9 @@ contains
         
         ! local variables
         integer :: id
+        
+        ! initialize ierr
+        ierr = 0
         
         do id = 1, size(deriv,2)
             ierr = calc_jac_F_ind(eq,deriv(:,id))
@@ -2408,6 +2428,9 @@ contains
         
         ! local variables
         integer :: id
+        
+        ! initialize ierr
+        ierr = 0
         
         do id = 1, size(deriv,2)
             ierr = calc_T_VC_ind(eq,deriv(:,id))
@@ -2596,6 +2619,9 @@ contains
         
         ! local variables
         integer :: id
+        
+        ! initialize ierr
+        ierr = 0
         
         do id = 1, size(deriv,2)
             ierr = calc_T_VF_ind(grid,eq_1,eq_2,deriv(:,id))
@@ -2786,6 +2812,9 @@ contains
         
         ! local variables
         integer :: id
+        
+        ! initialize ierr
+        ierr = 0
         
         do id = 1, size(deriv,2)
             ierr = calc_T_HF_ind(grid,eq_1,eq_2,deriv(:,id))

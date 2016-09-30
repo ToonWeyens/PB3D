@@ -241,6 +241,9 @@ contains
         ! local variables
         integer :: id
         
+        ! initialize ierr
+        ierr = 0
+        
         do id = 1, size(deriv,2)
             ierr = calc_inv_met_ind(X,Y,deriv(:,id))
             CHCKERR('')
@@ -256,6 +259,9 @@ contains
         
         ! local variables
         integer :: id
+        
+        ! initialize ierr
+        ierr = 0
         
         do id = 1, size(deriv,2)
             ierr = calc_inv_met_ind_0D(X,Y,deriv(:,id))
@@ -523,6 +529,9 @@ contains
         ! local variables
         integer :: id                                                           ! counter
         
+        ! initialize ierr
+        ierr = 0
+        
         do id = 1, size(derivs,2)
             ierr = transf_deriv_3_ind(X_A,T_BA,&
                 &X_B(:,:,:,derivs(1,id),derivs(2,id),derivs(3,id)),&
@@ -547,6 +556,9 @@ contains
         integer :: id, kd                                                       ! counters
         character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: sym                                                          ! sym
+        
+        ! initialize ierr
+        ierr = 0
         
         ! test whether the dimensions of X_A and X_B agree
         if (size(X_A,4).ne.size(X_B,4)) then
@@ -819,7 +831,6 @@ contains
         
         use num_vars, only: max_tot_mem_per_proc, max_X_mem_per_proc, &
             &eq_jobs_lims, mem_scale_fac, eq_job_nr, magn_int_style
-        use files_utilities, only: nextunit
         use rich_vars, only: rich_lvl
         use MPI_utilities, only: wait_MPI
         

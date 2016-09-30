@@ -464,7 +464,7 @@ contains
                         err_msg = 'Something went wrong...'
                         converged = .true.
                     end if
-                    x_rule = 0.5_dp*(x_int(id_loc)+x_mid)
+                    if (.not.converged) x_rule = 0.5_dp*(x_int(id_loc)+x_mid)
                 end if
             else
                 ! two function values overlap so use secant rule
@@ -476,7 +476,7 @@ contains
                     err_msg = 'Something went wrong...'
                     converged = .true.
                 end if
-                x_rule = x_int(id_loc) - &
+                if (.not.converged) x_rule = x_int(id_loc) - &
                     &fun_int(id_loc)*(x_int(id_loc)-x_mid)/&
                     &(fun_int(id_loc)-fun_mid)
             end if

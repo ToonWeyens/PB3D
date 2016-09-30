@@ -325,8 +325,9 @@ contains
                     &trim(mem_usage_name)//'.dat',STATUS='old',&
                     &POSITION='append',IOSTAT=istat)
                 if (istat.eq.0) then
-                    write(mem_usage_i,"(1X,A)",IOSTAT=istat) rank, &
-                        &mem_usage_count, clock-time_start, mem_usage, &
+                    write(mem_usage_i,"(1X,2I10,I21,I10,2ES23.16)",&
+                        &IOSTAT=istat) &
+                        &rank, mem_usage_count, clock-time_start, mem_usage, &
                         &max_tot_mem_per_proc*1000, max_X_mem_per_proc*1000
                     close(UNIT=mem_usage_i,IOSTAT=istat)
                 end if
@@ -509,7 +510,7 @@ contains
             id = id+1
         end do
         output_str = trim(output_str) // ' |'
-        write(*,*,IOSTAT=istat) output_str
+        write(*,'(1X,A)',IOSTAT=istat) output_str
     end subroutine print_ar_1
     
 #if ldebug
@@ -547,7 +548,7 @@ contains
         
         ! open and read memory file
         open(UNIT=mem_usage_i-1,FILE=filename,ACTION='read',IOSTAT=istat)
-        if (istat.eq.0) return
+        if (istat.ne.0) return
         do
             read (mem_usage_i-1,'(A)',IOSTAT=istat) line
             if (istat.ne.0) return

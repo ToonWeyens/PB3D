@@ -5,7 +5,6 @@
 module sol_ops
 #include <PB3D_macros.h>
 #include <wrappers.h>
-#include <IO_resilience.h>
     use str_utilities
     use output_ops
     use messages
@@ -712,8 +711,8 @@ contains
                     &ES23.16," ",ES23.16," ",ES23.16," ",ES23.16," ",ES23.16)'
                 
                 ! write header
-                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &'# Eigenvalue '//trim(i2str(X_id)),ierr)
+                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &'# Eigenvalue '//trim(i2str(X_id))
                 CHCKERR('Failed to write')
                 
                 ! write values
@@ -722,28 +721,28 @@ contains
                     &rp(sum(E_pot_int)/sum(E_kin_int)),&
                     &rp(sum(E_pot_int)),&
                     &rp(sum(E_kin_int))
-                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str),ierr)
+                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str)
                 CHCKERR('Failed to write')
                 write(temp_output_str,format_val) &
                     &ip(sol%val(X_id)),&
                     &ip(sum(E_pot_int)/sum(E_kin_int)), &
                     &ip(sum(E_pot_int)),&
                     &ip(sum(E_kin_int))
-                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str),ierr)
+                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str)
                 CHCKERR('Failed to write')
                 write(temp_output_str,format_val) &
                     &rp(E_kin_int(1)),&
                     &rp(E_kin_int(2))
-                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str),ierr)
+                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str)
                 CHCKERR('Failed to write')
                 write(temp_output_str,format_val) &
                     &ip(E_kin_int(1)),&
                     &ip(E_kin_int(2))
-                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str),ierr)
+                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str)
                 CHCKERR('Failed to write')
                 write(temp_output_str,format_val) &
                     &rp(E_pot_int(1)),&
@@ -752,8 +751,8 @@ contains
                     &rp(E_pot_int(4)),&
                     &rp(E_pot_int(5)),&
                     &rp(E_pot_int(6))
-                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str),ierr)
+                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str)
                 CHCKERR('Failed to write')
                 write(temp_output_str,format_val) &
                     &ip(E_pot_int(1)),&
@@ -762,8 +761,8 @@ contains
                     &ip(E_pot_int(4)),&
                     &ip(E_pot_int(5)),&
                     &ip(E_pot_int(6))
-                rIO(write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str),ierr)
+                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str)
                 CHCKERR('Failed to write')
             end if
             

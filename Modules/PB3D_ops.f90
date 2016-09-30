@@ -52,8 +52,8 @@ contains
         use VMEC, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, gam_V, &
             &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V, rot_t_V, &
             &pres_V, flux_t_V, Dflux_t_V, flux_p_V, Dflux_p_V, nfp_V
-#if ldebug
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
+#if ldebug
         use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
         
@@ -342,7 +342,6 @@ contains
                 deallocate(dum_1D)
                 call dealloc_var_1D(var_1D)
                 
-#if ldebug
                 ! h_H
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'h_H')
                 CHCKERR('')
@@ -355,7 +354,6 @@ contains
                 h_H_33 = dum_3D(:,:,3)
                 deallocate(dum_3D)
                 call dealloc_var_1D(var_1D)
-#endif
         end select
         
         ! misc_X

@@ -58,12 +58,11 @@ contains
         deallocate(RBphi_H)
         deallocate(R_H)
         deallocate(Z_H)
-        
-#if ldebug
         deallocate(h_H_11)
         deallocate(h_H_12)
         deallocate(h_H_33)
         
+#if ldebug
         ! memory usage difference after deallocation
         if (print_mem_usage) then
             mem_diff = mem_diff - get_mem_usage()

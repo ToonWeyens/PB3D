@@ -3,7 +3,6 @@
 !------------------------------------------------------------------------------!
 module files_ops
 #include <PB3D_macros.h>
-#include <IO_resilience.h>
     use str_utilities
     use messages
     use num_vars, only: dp, max_str_ln
@@ -165,7 +164,6 @@ contains
             &do_execute_command_line, output_name, prog_name, PB3D_name_eq, &
             &print_mem_usage, swap_angles, minim_output, jump_to_sol, &
             &export_HEL
-        use files_utilities, only: nextunit
         use rich_vars, only: no_guess
 #if ldebug
         use num_vars, only: ltest
@@ -174,7 +172,7 @@ contains
         character(*), parameter :: rout_name = 'open_input'
         
         ! local variables
-        integer :: id, kd                                                       ! counters
+        integer :: id                                                           ! counter
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: first_ints(2)                                                ! first two input integers of input file (HELENA)
         integer :: istat                                                        ! status
@@ -192,22 +190,19 @@ contains
                 case(1)                                                         ! PB3D
                     ! check for correct input file and use default if needed
                     input_name = command_arg(1)                                 ! first argument is the name of the input file
-                    rIO2(open(UNIT=nextunit(input_i),FILE=input_name,&
-                        &STATUS='old',IOSTAT=istat),istat)
+                    open(UNIT=input_i,FILE=input_name,STATUS='old',IOSTAT=istat)
                     if (istat.eq.0) then
                         call writo('Input file "' // trim(input_name) &
                             &// '" opened')
                     else 
                         call writo('No input file found. Default used')
                         input_name = ''
-                        input_i = 0
                     end if
                     
                     ! check for  equilibrium file and  print error if  not found
                     ! (no default!)
                     eq_name = command_arg(2)
-                    rIO(open(UNIT=nextunit(eq_i),FILE=eq_name,STATUS='old',&
-                        &IOSTAT=ierr),ierr)
+                    open(UNIT=eq_i,FILE=eq_name,STATUS='old',IOSTAT=ierr)
                     err_msg = 'No equilibrium file found.'
                     CHCKERR(err_msg)
                     
@@ -232,7 +227,7 @@ contains
                     end if
                     
                     ! Check for HELENA
-                    rIO(read(eq_i,*,IOSTAT=istat) first_ints,istat)
+                    read(eq_i,*,IOSTAT=istat) first_ints
                     backspace(UNIT=eq_i)                                        ! go back one line in the equilibrium file
                     if (istat.eq.0) then
                         eq_style = 2
@@ -253,22 +248,19 @@ contains
                 case(2)                                                         ! POST
                     ! check for correct input file and use default if needed
                     input_name = command_arg(1)                                 ! first argument is the name of the input file
-                    rIO2(open(UNIT=nextunit(input_i),FILE=input_name,&
-                        &STATUS='old',IOSTAT=istat),istat)
+                    open(UNIT=input_i,FILE=input_name,STATUS='old',IOSTAT=istat)
                     if (istat.eq.0) then
                         call writo('Input file "' // trim(input_name) &
                             &// '" opened')
                     else 
                         call writo('No input file found. Default used')
                         input_name = ''
-                        input_i = 0
                     end if
                     
                     ! check for PB3D_PB3D file and  print error if not found (no
                     ! default!)
                     PB3D_name = command_arg(2)
-                    rIO(open(UNIT=nextunit(PB3D_i),FILE=PB3D_name,&
-                        &STATUS='old',IOSTAT=ierr),ierr)
+                    open(UNIT=PB3D_i,FILE=PB3D_name,STATUS='old',IOSTAT=ierr)
                     err_msg = 'No PB3D file found.'
                     CHCKERR(err_msg)
                     
@@ -341,6 +333,7 @@ contains
                                         &chosen: execute_command_line enabled')
                                     do_execute_command_line = .true.
                                 case (6)                                        ! disable execute_command_line
+#if ldebug
                                     call writo('option mem_info chosen: &
                                         &memory usage is printed')
                                     call lvl_ud(1)
@@ -348,6 +341,11 @@ contains
                                         &trim(i2str(getpid())))
                                     print_mem_usage = .true.
                                     call lvl_ud(-1)
+#else
+                                    call writo('option mem_info is only &
+                                        &available when compiled with &
+                                        &"ldebug"',warning=.true.)
+#endif
                                 ! specific options for each program style
                                 case default
                                     select case (prog_style)
@@ -459,8 +457,8 @@ contains
     ! and the output log file name is different.
     integer function open_output() result(ierr)
         use num_vars, only: prog_style, output_i, output_name, prog_name, &
-            &rich_restart_lvl, shell_commands_name, PB3D_name, jump_to_sol
-        use files_utilities, only: nextunit
+            &rich_restart_lvl, shell_commands_name, shell_commands_i, &
+            &PB3D_name, jump_to_sol
         use HDF5_ops, only: create_output_HDF5
 #if ldebug
         use num_vars, only: print_mem_usage, mem_usage_name, mem_usage_i
@@ -475,7 +473,6 @@ contains
         integer :: id                                                           ! counter
         character(len=max_str_ln) :: full_output_name                           ! full name
         integer :: istat                                                        ! status
-        integer :: shell_commands_i                                             ! handle for shell commands file
         
         ! initialize ierr
         ierr = 0
@@ -492,8 +489,8 @@ contains
         ! actions depending on Richardson restart level and program style
         if (rich_restart_lvl.gt.1 .and. prog_style.eq.1) then
             ! append to existing file
-            rIO(open(nextunit(output_i),FILE=trim(full_output_name),&
-                &STATUS='old',POSITION='append',IOSTAT=ierr),ierr)
+            open(output_i,FILE=trim(full_output_name),STATUS='old',&
+                &POSITION='append',IOSTAT=ierr)
             CHCKERR('Failed to open output file')
             
             ! print message
@@ -501,8 +498,8 @@ contains
                 &'" reopened at number '//trim(i2str(output_i)))
         else
             ! open file after wiping it
-            rIO(open(nextunit(output_i),FILE=trim(full_output_name),&
-                &STATUS='replace',IOSTAT=ierr),ierr)
+            open(output_i,FILE=trim(full_output_name),STATUS='replace',&
+                &IOSTAT=ierr)
             CHCKERR('Failed to open output file')
             
             ! print message
@@ -512,7 +509,7 @@ contains
         
         ! if temporary output present, silently write it to log output file
         do id = 1,size(temp_output)
-            write(output_i,*,IOSTAT=istat) trim(temp_output(id))
+            write(output_i,'(A)',IOSTAT=istat) trim(temp_output(id))
         end do
         
         ! 2. SHELL COMMANDS
@@ -521,8 +518,8 @@ contains
         full_output_name = prog_name//'_'//trim(shell_commands_name)//'.sh'
         
         ! create output file for shell commands
-        rIO(open(nextunit(shell_commands_i),FILE=trim(full_output_name),&
-            &STATUS='replace',IOSTAT=ierr),ierr)
+        open(UNIT=shell_commands_i,FILE=trim(full_output_name),&
+            &STATUS='replace',IOSTAT=ierr)
         CHCKERR('Failed to create shell command file')
         
         ! write header, close and make executable
@@ -563,13 +560,13 @@ contains
             full_output_name = prog_name//'_'//trim(mem_usage_name)//'.dat'
             
             ! create output file for memory usage
-            rIO(open(mem_usage_i,FILE=trim(full_output_name),STATUS='replace',&
-                &IOSTAT=ierr),ierr)
+            open(mem_usage_i,FILE=trim(full_output_name),STATUS='replace',&
+                &IOSTAT=ierr)
             CHCKERR('Failed to open memory file')
             
             ! write header and close
-            write(mem_usage_i,'(A)',IOSTAT=istat) '# Rank [] - Count [] - &
-                &Time [s] - Memory Usage [kB] - Max. tot. Memory [kB] - &
+            write(mem_usage_i,'(A)',IOSTAT=istat) '#   Rank []  Count [] &
+                &            Time [s] Mem. [kB]  Max. tot. Memory [kB] &
                 &Max. X. Memory [kB]'
             close(mem_usage_i)
             

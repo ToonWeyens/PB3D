@@ -564,8 +564,9 @@ CHANGELOG
 1.37: - The plotting variables of HELENA equilibria for VMEC export can now be adapted.
       - HELENA export now outputs a VMEC input file that can be further adapted.
 
-1.38: - Many changes to improve the resilience for input / output errors in order to work on the ITER cluster.
-      - New precompile include that allows to run any command (typically I/O) to be repeated a number of times, using the CPP flag "lrIO" for "resilient I/O".
+1.38: - VERSION NOT INTENDED FOR USE.
+      - Many changes to improve the resilience for input / output errors in order to work on the ITER cluster.
+      - New precompile include that allows to run any command (typically I/O) to be repeated a number of times, using the CPP flag "lrIO" for "resilient I/O". This is going to be removed in the next commit, this commit serves solely to store the idea.
       - Bug fixes.
       - Compatibility fixes with older compilers and INTEL compilers.
       - Support for INTEL compiler (checked with 12.0.1), using a wrapper include file and a compile flag "lwith_intel", as opposed to "lwith_gnu".
@@ -575,3 +576,8 @@ CHANGELOG
       - New script for extraction of results from array jobs.
       - New script for inspection of SLURM jobs.
       - Cleaned stellinstall and added it to this repository.
+
+1.39: - Removed the "lrIO" precompiler option.
+      - "--minim_output" is set by the run script by default. Remove it in "run_PB3D.sh" if you don't want this.
+      - stellinstall is now configured for 1. XPS-L501X, 2. ITER.
+      - Updated run scripts and bundled everything into 'run.sh'.

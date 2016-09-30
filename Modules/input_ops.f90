@@ -3,7 +3,6 @@
 !------------------------------------------------------------------------------!
 module input_ops
 #include <PB3D_macros.h>
-#include <IO_resilience.h>
     use str_utilities
     use output_ops
     use messages
@@ -43,7 +42,6 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: kd                                                           ! counter
         integer :: PB3D_rich_lvl                                                ! Richardson level to post-process (for POST)
         integer, parameter :: max_size_tol_SLEPC = 100                          ! maximum size of tol_SLEPC
         real(dp) :: tol_SLEPC(max_size_tol_SLEPC)                               ! tol_SLEPC
@@ -118,7 +116,7 @@ contains
             ! select depending on program style
             select case (prog_style)
                 case(1)                                                         ! PB3D
-                    rIO(read(input_i,nml=inputdata_PB3D,iostat=ierr),ierr)      ! read input data
+                    read(UNIT=input_i,NML=inputdata_PB3D,iostat=ierr)           ! read input data
                     
                     ! check input if successful read
                     if (ierr.eq.0) then                                         ! input file succesfully read
@@ -178,7 +176,7 @@ contains
                     ! multiply alpha by pi
                     alpha = alpha*pi
                 case(2)                                                         ! POST
-                    rIO(read(input_i,nml=inputdata_POST,iostat=ierr),ierr)      ! read input data
+                    read(UNIT=input_i,NML=inputdata_POST,iostat=ierr)           ! read input data
                     
                     ! check input if successful read
                     if (ierr.eq.0) then                                         ! input file succesfully read
@@ -840,8 +838,8 @@ contains
         use VMEC, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, gam_V, &
             &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V, rot_t_V, &
             &pres_V, flux_t_V, Dflux_t_V, flux_p_V, Dflux_p_V, nfp_V
-#if ldebug
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
+#if ldebug
         use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
 #endif
         
@@ -1185,7 +1183,6 @@ contains
                 allocate(in_1D_loc%p(n_r_eq))
                 in_1D_loc%p = RBphi_H(in_limits(1):in_limits(2))
                 
-#if ldebug
                 ! h_H
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'h_H'
@@ -1200,7 +1197,6 @@ contains
                     &h_H_12(:,in_limits(1):in_limits(2)),&
                     &h_H_33(:,in_limits(1):in_limits(2))],&
                     &[3*nchi*n_r_eq])
-#endif
         end select
         
         ! misc_X

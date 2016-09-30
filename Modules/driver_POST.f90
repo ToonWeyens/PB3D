@@ -4,7 +4,6 @@
 module driver_POST
 #include <PB3D_macros.h>
 #include <wrappers.h>
-#include <IO_resilience.h>
     use str_utilities
     use output_ops
     use messages
@@ -35,7 +34,8 @@ contains
     integer function run_driver_POST() result(ierr)
         use num_vars, only: no_output, no_plots, eq_style, plot_resonance, &
             &plot_flux_q, plot_magn_grid, rank, norm_disc_prec_X, POST_style, &
-            &slab_plots, use_pol_flux_F, pi, swap_angles, minim_output
+            &slab_plots, use_pol_flux_F, pi, swap_angles, minim_output, &
+            &decomp_i
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol
@@ -75,7 +75,6 @@ contains
         integer :: id, jd, kd                                                   ! counter
         integer :: min_id(3), max_id(3)                                         ! min. and max. index of range 1, 2 and 3
         integer :: last_unstable_id                                             ! index of last unstable EV
-        integer :: output_EN_i                                                  ! file number
         integer :: eq_limits(2)                                                 ! i_limit of eq variables
         integer :: X_limits(2)                                                  ! i_limit of X variables
         integer :: sol_limits(2)                                                ! i_limit of sol variables
@@ -497,7 +496,7 @@ contains
             call lvl_ud(-1)
             
             ! open decomposition log file
-            ierr = open_decomp_log(output_EN_i)
+            ierr = open_decomp_log()
             CHCKERR('')
         end if
         
@@ -553,7 +552,7 @@ contains
                     sol_val_comp_loc(:,:,1:size(sol_val_comp,3)) = sol_val_comp
                     ierr = decompose_energy(grid_eq_out,grid_X_out,grid_sol,&
                         &eq_1,eq_2_out,X_out,sol,id,B_aligned,&
-                        &log_i=output_EN_i,sol_val_comp=&
+                        &log_i=decomp_i,sol_val_comp=&
                         &sol_val_comp_loc(:,:,size(sol_val_comp_loc,3)),&
                         &XYZ=XYZ_out)
                     CHCKERR('')
@@ -643,19 +642,16 @@ contains
         CHCKERR('')
         
         ! close output
-        if (rank.eq.0) close(output_EN_i)
+        if (rank.eq.0) close(decomp_i)
     end function run_driver_POST
     
     ! opens the decomposition log file
-    integer function open_decomp_log(file_i) result(ierr)
-        use files_utilities, only: nextunit
-        use num_vars, only: prog_name, output_name, rank, POST_style
+    integer function open_decomp_log() result(ierr)
+        use num_vars, only: prog_name, output_name, rank, POST_style, &
+            &decomp_i
         use rich_vars, only: rich_lvl
         
         character(*), parameter :: rout_name = 'open_decomp_log'
-        
-        ! input / output
-        integer, intent(inout) :: file_i                                        ! decomposition file id
         
         ! local variables
         character(len=max_str_ln) :: format_head                                ! header format
@@ -683,51 +679,45 @@ contains
             ! open output file for the log
             full_output_name = prog_name//'_'//trim(output_name)//'_EN_R'//&
                 &trim(i2str(rich_lvl))//'.txt'
-            rIO(open(nextunit(file_i),STATUS='replace',FILE=full_output_name,&
-                &IOSTAT=ierr),ierr)
+            open(UNIT=decomp_i,STATUS='replace',FILE=full_output_name,&
+                &IOSTAT=ierr)
             CHCKERR('Cannot open EN output file')
             call writo('Log file opened in '//trim(full_output_name))
-            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
-                &'# Energy decomposition using the solution Eigenvectors',ierr)
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
+                &'# Energy decomposition using the solution Eigenvectors'
             CHCKERR('Failed to write')
-            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
-                &'# (Output on the '//trim(grid_name)//' grid)',ierr)
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
+                &'# (Output on the '//trim(grid_name)//' grid)'
             CHCKERR('Failed to write')
             write(temp_output_str,format_head) &
                 &'RE Eigenvalue          ', 'RE E_pot/E_kin         ', &
                 &'RE E_pot               ', 'RE E_kin               '
-            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
-                &trim(temp_output_str),ierr)
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) trim(temp_output_str)
             CHCKERR('Failed to write')
             write(temp_output_str,format_head) &
                 &'IM Eigenvalue          ', 'IM E_pot/E_kin         ', &
                 &'IM E_pot               ', 'IM E_kin               '
-            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
-                &trim(temp_output_str),ierr)
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) trim(temp_output_str)
             CHCKERR('Failed to write')
             write(temp_output_str,format_head) &
                 &'RE E_kin_n             ', 'RE E_kin_g             '
-            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
-                &trim(temp_output_str),ierr)
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) trim(temp_output_str)
             CHCKERR('Failed to write')
             write(temp_output_str,format_head) &
                 &'IM E_kin_n             ', 'IM E_kin_g             '
-            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
-                &trim(temp_output_str),ierr)
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) trim(temp_output_str)
             CHCKERR('Failed to write')
             write(temp_output_str,format_head) &
                 &'RE E_pot line_bending_n', 'RE E_pot line_bending_g', &
                 &'RE E_pot ballooning_n  ', 'RE E_pot ballooning_g  ', &
                 &'RE E_pot kink_n        ', 'RE E_pot kink_g        '
-            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
-                &trim(temp_output_str),ierr)
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) trim(temp_output_str)
             CHCKERR('Failed to write')
             write(temp_output_str,format_head) &
                 &'IM E_pot line_bending_n', 'IM E_pot line_bending_g', &
                 &'IM E_pot ballooning_n  ', 'IM E_pot ballooning_g  ', &
                 &'IM E_pot kink_n        ', 'IM E_pot kink_g        '
-            rIO(write(UNIT=file_i,FMT='(A)',IOSTAT=ierr) &
-                &trim(temp_output_str),ierr)
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) trim(temp_output_str)
             CHCKERR('Failed to write')
         end if
         call lvl_ud(-1)

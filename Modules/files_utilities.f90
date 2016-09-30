@@ -3,7 +3,6 @@
 !------------------------------------------------------------------------------!
 module files_utilities
 #include <PB3D_macros.h>
-#include <IO_resilience.h>
     use str_utilities
     use messages
     use num_vars, only: dp, max_str_ln
@@ -23,7 +22,7 @@ contains
         integer, intent(out), optional :: unit
         
         ! local variables
-        integer, parameter :: lun_min=10, lun_max=1000
+        integer, parameter :: lun_min=70, lun_max=1000
         logical :: file_open
         integer :: lun
         
@@ -113,8 +112,7 @@ contains
             &IOSTAT=istat)
         CHCKSTT
         if (.not.file_open) then
-            rIO2(open(UNIT=nextunit(file_i),FILE=trim(file_name),IOSTAT=istat),&
-                &istat)
+            open(UNIT=nextunit(file_i),FILE=trim(file_name),IOSTAT=istat)
         end if
         CHCKSTT
         

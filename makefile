@@ -119,7 +119,6 @@ LINKER=mpifort
 # 		lIB: infiniband
 # 		lwith_gnu: use GNU compiler [default]
 # 		lwith_intel: use INTEL compiler, (checked for version 12.0.2)
-# 		lrIO: for resilient I/O
 #   note: INTEL warning 6536 is suppressed, which informs about extra "USE".
 #   note: INTEL warning 6843 is suppressed, which informs about empty intent(out) variables
 ##############################################################################

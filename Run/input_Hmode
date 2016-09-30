@@ -3,7 +3,7 @@
     min_par_X               = -1.0
     max_par_X               = 1.0
     alpha                   = 0.0
-    min_r_sol               = 0.5
+    min_r_sol               = 0.0
     max_r_sol               = 1.0
     n_r_sol                 = 500
     norm_disc_prec_sol      = 3

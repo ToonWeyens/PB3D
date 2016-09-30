@@ -3,7 +3,6 @@
 !------------------------------------------------------------------------------!
 module X_utilities
 #include <PB3D_macros.h>
-#include <IO_resilience.h>
     use str_utilities
     use messages
     use num_vars, only: dp, max_name_ln, iu, max_str_ln
@@ -186,9 +185,8 @@ contains
     ! tensorial phase it is 2.
     integer function divide_X_jobs(arr_size,div_ord) result(ierr)
         use num_vars, only: max_X_mem_per_proc, n_procs, X_jobs_lims, rank, &
-            &X_jobs_file_name, X_jobs_taken, mem_scale_fac
+            &X_jobs_file_name, X_jobs_taken, mem_scale_fac, X_jobs_file_i
         use X_vars, only: n_mod_X
-        use files_utilities, only: nextunit
         use MPI_utilities, only: wait_MPI
         
         character(*), parameter :: rout_name = 'divide_X_jobs'
@@ -204,7 +202,6 @@ contains
         integer, allocatable :: n_mod_loc(:)                                    ! number of modes per block
         character(len=max_str_ln) :: block_message                              ! message about how many blocks
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: file_i                                                       ! file number
         
         ! initialize ierr
         ierr = 0
@@ -266,13 +263,14 @@ contains
         
         ! initialize file with global variable
         if (rank.eq.0) then
-            rIO(open(nextunit(file_i),STATUS='REPLACE',&
-                &FILE=X_jobs_file_name,IOSTAT=ierr),ierr)
+            open(UNIT=X_jobs_file_i,STATUS='REPLACE',FILE=X_jobs_file_name,&
+                &IOSTAT=ierr)
             CHCKERR('Cannot open perturbation jobs file')
-            rIO(write(UNIT=file_i,IOSTAT=ierr,FMT='(1X,A)') &
-                &'# Process, X job',ierr)
-            CHCKERR('Failed to write perturbation jobs file')
-            close(file_i,IOSTAT=ierr)
+            write(UNIT=X_jobs_file_i,IOSTAT=ierr,FMT='(1X,A)') &
+                &'# Process, X job'
+            err_msg = 'Failed to write perturbation jobs file'
+            CHCKERR(err_msg)
+            close(X_jobs_file_i,IOSTAT=ierr)
             CHCKERR('Failed to close file')
         end if
         

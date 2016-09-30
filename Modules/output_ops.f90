@@ -4,7 +4,6 @@
 !------------------------------------------------------------------------------!
 module output_ops
 #include <PB3D_macros.h>
-#include <IO_resilience.h>
     use str_utilities
     use messages
     use num_vars, only: dp, max_str_ln, no_plots, iu, plot_dir, data_dir, &
@@ -90,6 +89,7 @@ contains
         real(dp), allocatable :: x_fin(:,:)
         integer :: istat
         character(len=max_str_ln) :: file_name
+        character(len=max_str_ln) :: write_format
         
         ! set nplt, npnt
         npnt = size(y,1)
@@ -120,17 +120,20 @@ contains
         end if
         
         ! open output file
-        rIO(open(UNIT=nextunit(file_i),FILE=data_dir//'/'//trim(file_name)//&
-            &'.dat',IOSTAT=istat),istat)
+        open(UNIT=nextunit(file_i),FILE=data_dir//'/'//trim(file_name)//'.dat',&
+            &IOSTAT=istat)
         CHCKSTT
         
         ! write to output file
-        write(file_i,*,IOSTAT=istat) '# '//trim(merge_strings(var_names))//':'
+        write(file_i,'(1X,A)',IOSTAT=istat) &
+            &'# '//trim(merge_strings(var_names))//':'
+        write_format='('//trim(i2str(2*nplt))//'ES23.16)'
         do ipnt = 1,npnt
-            write(file_i,*,IOSTAT=istat) (x_fin(ipnt,iplt), iplt = 1,nplt), &
+            write(file_i,FMT=trim(write_format),IOSTAT=istat) &
+                &(x_fin(ipnt,iplt), iplt = 1,nplt), &
                 &(y(ipnt,iplt), iplt = 1,nplt)
         enddo 
-        write(file_i,*,IOSTAT=istat) ''
+        write(file_i,'(1X,A)',IOSTAT=istat) ''
         
         ! close output file
         close(file_i)
@@ -219,6 +222,7 @@ contains
         real(dp), allocatable :: y_fin(:,:,:)
         integer :: istat
         character(len=max_str_ln) :: file_name
+        character(len=max_str_ln) :: write_format
         
         ! set nplt, npnt
         npntx = size(z,1)
@@ -269,22 +273,24 @@ contains
         end if
         
         ! open output file
-        rIO(open(nextunit(file_i),FILE=data_dir//'/'//trim(file_name)//&
-            &'.dat',IOSTAT=istat),istat)
+        open(nextunit(file_i),FILE=data_dir//'/'//trim(file_name)//'.dat',&
+            &IOSTAT=istat)
         CHCKSTT
         
         ! write to output file
-        write(file_i,*,IOSTAT=istat) '# '//trim(merge_strings(var_names))//':'
+        write(file_i,'(A)',IOSTAT=istat) &
+            &'# '//trim(merge_strings(var_names))//':'
+        write_format='('//trim(i2str(3*nplt))//'ES23.16)'
         do ipntx = 1,npntx
             do ipnty = 1,npnty
-                write(file_i,*,IOSTAT=istat) &
+                write(file_i,FMT=trim(write_format),IOSTAT=istat) &
                     &(x_fin(ipntx,ipnty,iplt), iplt = 1,nplt), &
                     &(y_fin(ipntx,ipnty,iplt), iplt = 1,nplt), &
                     &(z(ipntx,ipnty,iplt), iplt = 1,nplt)
             end do
-            write(file_i,*,IOSTAT=istat) ''
+            write(file_i,'(A)',IOSTAT=istat) ''
         enddo 
-        write(file_i,*,IOSTAT=istat) ''
+        write(file_i,'(A)',IOSTAT=istat) ''
         
         ! close output file
         close(file_i)
@@ -431,7 +437,7 @@ contains
         end select
         
         ! open script file
-        rIO(open(nextunit(cmd_i),FILE=trim(script_name),IOSTAT=istat),istat)
+        open(nextunit(cmd_i),FILE=trim(script_name),IOSTAT=istat)
         CHCKSTT
         
         ! set number of draw ops
@@ -851,14 +857,13 @@ contains
             
             ! local variables
             integer :: data_i                                                   ! file number of data file
-            integer :: kd                                                       ! counter
             real(dp), allocatable :: loc_data(:)                                ! one line of data
             character(len=1) :: loc_data_char
             
             
             ! open data file
-            rIO2(open(nextunit(data_i),FILE=data_dir//'/'//&
-                &trim(data_name_loc)//'.dat',STATUS='old',IOSTAT=istat),istat)
+            open(nextunit(data_i),FILE=data_dir//'/'//trim(data_name_loc)//&
+                &'.dat',STATUS='old',IOSTAT=istat)
             
             if (istat.eq.0) then
                 ! set up loc_data
@@ -867,11 +872,11 @@ contains
                 ! read the data file
                 istat = 0
                 do while (istat.eq.0)
-                    rIO(read(data_i,*,IOSTAT=istat) loc_data_char,istat)        ! read first character of data
+                    read(data_i,*,IOSTAT=istat) loc_data_char                   ! read first character of data
                     if (istat.eq.0) then                                        ! read succesful
                         if (loc_data_char.ne.'#') then                          ! exclude comment lines
                             backspace(UNIT=data_i)                              ! go back one line
-                            rIO(read(data_i,*,IOSTAT=istat) loc_data,istat)     ! read data again, but now ful
+                            read(data_i,*,IOSTAT=istat) loc_data                ! read data again, but now ful
                             ranges(1,1) = &
                                 &min(ranges(1,1),minval(loc_data(1:nplt)))
                             ranges(1,2) = &
@@ -1613,7 +1618,7 @@ contains
     ! of all shell commands executed.
     subroutine use_execute_command_line(command,exitstat,cmdstat,cmdmsg)
         use num_vars, only: do_execute_command_line, prog_name, &
-            &shell_commands_name
+            &shell_commands_name, shell_commands_i
 #if ( lwith_intel && !lwith_gnu)
         use IFPORT
 #endif
@@ -1626,15 +1631,14 @@ contains
         
         ! local variables
         integer :: istat                                                        ! status
-        integer :: shell_commands_i                                             ! handle for shell commands file
         character(len=max_str_ln) :: full_name                                  ! full name
         
         ! set up the full shell commands file name
         full_name = prog_name//'_'//trim(shell_commands_name)//'.sh'
         
         ! write the command to the file
-        rIO2(open(nextunit(shell_commands_i),FILE=trim(full_name),&
-            &STATUS='old',POSITION='append',IOSTAT=istat),istat)
+        open(shell_commands_i,FILE=trim(full_name),STATUS='old',&
+            &POSITION='append',IOSTAT=istat)
         if (istat.eq.0) then
             write(shell_commands_i,'(A)',IOSTAT=istat) trim(command)
             close(shell_commands_i,IOSTAT=istat)

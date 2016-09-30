@@ -8,12 +8,11 @@ module num_vars
     private
     public dp, dpi, max_str_ln, max_name_ln, max_deriv, prog_name, &
         &output_name, prog_version, prog_style, min_PB3D_version, &
-        &shell_commands_name, mem_usage_name, mem_usage_i, mem_usage_count, &
-        &weight_dp, &
-        &rank, n_procs, time_start, &
+        &shell_commands_name, mem_usage_name, &
+        &mem_usage_count, weight_dp, rank, n_procs, time_start, &
         &max_tot_mem_per_proc, max_X_mem_per_proc, X_jobs_lims, X_jobs_taken, &
-        &X_job_nr, X_jobs_file_name, eq_jobs_lims, eq_job_nr, mem_scale_fac, &
-        &pi, mu_0_original, iu, &
+        &X_job_nr, X_jobs_file_name, eq_jobs_lims, &
+        &eq_job_nr, mem_scale_fac, pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
         &X_style, matrix_SLEPC_style, plot_resonance, plot_magn_grid, &
         &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
@@ -24,16 +23,16 @@ module num_vars
         &max_it_inv, &
         &max_it_zero, max_nr_tries_HH, relax_fac_HH, tol_zero, tol_norm, &
         &def_relax_fac_HH, &
-        &ex_max_size, input_i, PB3D_i, PB3D_name, eq_i, eq_name, output_i, &
+        &ex_max_size, eq_name, &
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
         &max_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
         &do_execute_command_line, print_mem_usage, input_name, slab_plots, &
         &swap_angles, rich_restart_lvl, plot_size, minim_output, PB3D_name_eq, &
-        &jump_to_sol, export_HEL, ex_plot_style
-#if lrIO
-    public nr_extra_tries_IO, max_nr_tries_IO, rIOd
-#endif
+        &jump_to_sol, export_HEL, ex_plot_style, &
+        &shell_commands_i, mem_usage_i, output_EV_i, decomp_i, &
+        &HEL_pert_file_i, HEL_export_file_i, X_jobs_file_i, input_i, PB3D_i, &
+        &PB3D_name, eq_i, output_i
 
     ! technical variables
     !integer, parameter :: dp = kind(1.d0)                                       ! double precision
@@ -51,8 +50,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    integer, parameter :: mem_usage_i = 100                                     ! has to be fixed, so should be chosen high enough
-    real(dp), parameter :: prog_version = 1.38_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.39_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.32_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
@@ -119,13 +117,9 @@ module num_vars
 
     ! concerning input / output
     integer, parameter :: ex_max_size = 300                                     ! maximum size of matrices for external plot
-    integer :: input_i                                                          ! file number of input file
-    integer :: eq_i                                                             ! file number of equilibrium file from VMEC or HELENA
     character(len=max_str_ln) :: eq_name                                        ! name of equilibrium file from VMEC or HELENA
-    integer :: PB3D_i                                                           ! file number of PB3D output file
     character(len=max_str_ln) :: PB3D_name                                      ! name of PB3D output file
     character(len=max_str_ln) :: PB3D_name_eq                                   ! name of PB3D output file for vars on eq grid (see minim_output)
-    integer :: output_i                                                         ! file number of output file
     logical :: no_plots = .false.                                               ! no plots made
     logical :: jump_to_sol = .false.                                            ! jump to solution
     logical :: export_HEL = .false.                                             ! export HELENA
@@ -149,9 +143,17 @@ module num_vars
     integer :: rich_restart_lvl                                                 ! starting Richardson level (0: none [default])
     character(len=max_str_ln) :: input_name                                     ! will hold the full name of the input file
     integer :: ex_plot_style                                                    ! external plot style (1: GNUPlot, 2: Bokeh for 2D, Mayavi for 3D)
-#if lrIO
-    integer :: max_nr_tries_IO = 10                                             ! maximum number of tries for input/output
-    integer :: nr_extra_tries_IO                                                ! number of extra tries for IO
-    integer :: rIOd                                                             ! dummy counter
-#endif
+    
+    ! Concerning file numbers
+    integer, parameter :: input_i = 50                                          ! file number of input file
+    integer, parameter :: eq_i = 51                                             ! file number of equilibrium file from VMEC or HELENA
+    integer, parameter :: PB3D_i = 52                                           ! file number of PB3D output file
+    integer, parameter :: output_i = 53                                         ! file number of output file
+    integer, parameter :: shell_commands_i = 54                                 ! file number of shell commands file
+    integer, parameter :: mem_usage_i = 55                                      ! file number of memory usage file
+    integer, parameter :: output_EV_i = 56                                      ! file number of output of EV
+    integer, parameter :: decomp_i = 57                                         ! file number of output of EV decomposition
+    integer, parameter :: HEL_pert_file_i = 58                                  ! file number of output of HELENA equilibrium perturbation file
+    integer, parameter :: HEL_export_file_i = 59                                ! file number of output of HELENA equilibrium export file
+    integer, parameter :: X_jobs_file_i = 60                                    ! file number of X jobs file
 end module num_vars

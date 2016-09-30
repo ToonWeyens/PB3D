@@ -9,7 +9,6 @@
 module SLEPC_ops
 #include <PB3D_macros.h>
 #include <wrappers.h>
-#include <IO_resilience.h>
 ! for slepc 3.6.0:
 #include <slepc/finclude/slepcepsdef.h>
 ! for slepc 3.5.3:
@@ -1547,8 +1546,7 @@ contains
         use eq_vars, only: T_0
         use X_vars, only: n_mod_X
         use num_vars, only: use_normalization, EV_BC, prog_name, output_name, &
-            &n_procs, rank, tol_SLEPC, eq_style
-        use files_utilities, only: nextunit
+            &n_procs, rank, tol_SLEPC, eq_style, output_EV_i
         use MPI_utilities, only: get_ser_var
         use rich_vars, only: rich_lvl
         
@@ -1582,7 +1580,6 @@ contains
         character(len=max_str_ln) :: EV_err_str                                 ! String with information about EV error
         character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=2*max_str_ln) :: temp_output_str                          ! temporary output string
-        integer :: output_EV_i                                                  ! file number
         integer :: n_digits                                                     ! nr. of digits for the integer number
         integer :: n_err(3)                                                     ! how many errors there were
 #if ldebug
@@ -1628,40 +1625,38 @@ contains
         if (rank.eq.0) then
             full_output_name = prog_name//'_'//trim(output_name)//'_EV_R_'//&
                 &trim(i2str(rich_lvl))//'.txt'
-            rIO(open(nextunit(output_EV_i),FILE=full_output_name,&
-                &STATUS='replace',IOSTAT=ierr),ierr)
+            open(output_EV_i,FILE=full_output_name,STATUS='replace',&
+                &IOSTAT=ierr)
             CHCKERR('Cannot open EV output file')
         end if
         
         ! output to file
         if (rank.eq.0) then
             if (use_normalization) then
-                rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
+                write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
                     &'# Eigenvalues normalized to the squared Alfven &
-                    &frequency omega_A^2 = ',ierr)
+                    &frequency omega_A^2 = '
                 CHCKERR('Failed to write')
                 select case (eq_style)
                     case (1)                                                    ! VMEC
-                        rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
+                        write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
                             &'#     ('//trim(r2str(1._dp/T_0))//' Hz)^2 = '//&
-                            &trim(r2str(1._dp/T_0**2))//' Hz^2',ierr)
+                            &trim(r2str(1._dp/T_0**2))//' Hz^2'
                         CHCKERR('Failed to write')
                     case (2)                                                    ! HELENA
-                        rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
-                            &'#     (HELENA normalization)',ierr)
+                        write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
+                            &'#     (HELENA normalization)'
                         CHCKERR('Failed to write')
                 end select
             else
-                rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
-                    &'# Eigenvalues',ierr)
+                write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) '# Eigenvalues'
                 CHCKERR('Failed to write')
             end if
             write(temp_output_str,format_head) &
                 &'#  I                            ', &
                 &'real part               ', 'imaginary part          ', &
                 &'relative precision      '
-            rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
-                &trim(temp_output_str),ierr)
+            write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) trim(temp_output_str)
             CHCKERR('Failed to write')
         end if
         
@@ -1716,14 +1711,14 @@ contains
                     write(temp_output_str,format_val) '', id,rp(sol_val_loc),&
                         &ip(sol_val_loc),error
                 end if
-                rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str),ierr)
+                write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
+                    &trim(temp_output_str)
                 CHCKERR('Failed to write')
                 
                 ! if error, print explanation
                 if (EV_err_str.ne.'') then
-                    rIO(write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
-                        &trim(EV_err_str),ierr)
+                    write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
+                        &trim(EV_err_str)
                     CHCKERR('Failed to write')
                 end if
             end if
